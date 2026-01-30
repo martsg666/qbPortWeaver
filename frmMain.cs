@@ -10,15 +10,37 @@ namespace qbPortWeaver
 
         // Constants
         const string APP_NAME = "qbPortWeaver";
-        const string APP_VERSION = "1.0.0";
+        const string APP_VERSION = "1.1.0";
         const string LOG_FILE_NAME = "qbPortWeaver.log";
         const string INI_FILE_NAME = "qbPortWeaver.ini";
+
+        // Get logfile, inifile and ProtonVPN paths
+        string logFilePath = GetLogFilePath();
+        string iniFilePath = GetIniFilePath();
+        string protonVPNLogFilePath = GetProtonVPNLogFilePath();
+
+        // Initialize port update count
+        int portUpdateCount = 0;
+
+        // Cancellation token to interrupt waiting
+        CancellationTokenSource delayCancel = new CancellationTokenSource();
+
+        // Manual update triggered flag 
+        bool manualUpdateTriggered = false;
+
+        // Declare LogManager instance
+        private LogManager logManager;
 
         // Constructor
         public frmMain()
         {
             InitializeComponent();
+
+            // Initialize LogManager
+            logManager = new LogManager(logFilePath);
+
             InitializeTrayIcon();
+            UpdateTrayTooltip();
         }
 
         // Main load event
@@ -28,150 +50,27 @@ namespace qbPortWeaver
             this.WindowState = FormWindowState.Minimized;
             this.ShowInTaskbar = false;
 
-            // Get logfile, inifile and ProtonVPN paths
-            string logFilePath = GetLogFilePath();
-            string iniFilePath = GetIniFilePath();
-            string protonVPNLogFilePath = GetProtonVPNLogFilePath();
-
             // Start main loop
             Task.Run(async () =>
             {
                 while (true)
                 {
-                    // Check and delete log file if exceeds size limit
-                    CheckAndDeleteLogFile(logFilePath);
+                    string updateIntervalSeconds;
 
-                    // Starting
-                    LogMessage(logFilePath, $"Starting {APP_NAME} {APP_VERSION}", "INFO");
-
-                    // Must initialize updateIntervalSeconds to avoid uninitialized variable error
-                    string updateIntervalSeconds = "180";
-
-                    // Loading INI file and creating default if missing
-                    var oIniFile = new IniFileManager(iniFilePath);
-                    if (!oIniFile.Load())
+                    if (manualUpdateTriggered)
                     {
-                        LogMessage(logFilePath, $"Failed to load INI file: {iniFilePath}", "ERROR");
-                        LogMessage(logFilePath, $"Creating default INI file: {iniFilePath}", "INFO");
-                        if (!oIniFile.CreateIniFileIfMissing())
-                        {
-                            LogMessage(logFilePath, $"Failed to create default INI file: {iniFilePath}", "ERROR");
-                        }
-                        else
-                        {
-                            LogMessage(logFilePath, $"Successfully created default INI file: {iniFilePath}", "INFO");
-                        }
-                        goto EndLoop;
+                        // Skip loop-triggered update once
+                        manualUpdateTriggered = false;
+
+                        // 10 seconds wait after manual update and back to configured interval
+                        updateIntervalSeconds = "10";
                     }
                     else
                     {
-                        LogMessage(logFilePath, $"Successfully loaded: {iniFilePath}", "INFO");
+                        // Run port update check
+                        updateIntervalSeconds = await CheckForPortUpdate();
                     }
 
-                    // Reading configuration values
-                    updateIntervalSeconds = oIniFile.GetValue("general", "updateIntervalSeconds");
-                    string qBittorrentURL = oIniFile.GetValue("qBittorrent", "qBittorrentURL");
-                    string qBittorrentUserName = oIniFile.GetValue("qBittorrent", "qBittorrentUserName");
-                    string qBittorrentPassword = oIniFile.GetValue("qBittorrent", "qBittorrentPassword");
-                    string qBittorrentExePath = oIniFile.GetValue("qBittorrent", "qBittorrentExePath");
-                    string qBittorrentProcessName = oIniFile.GetValue("qBittorrent", "qBittorrentProcessName");
-                    string restartqBittorrent = oIniFile.GetValue("qBittorrent", "restartqBittorrent");
-
-                    // Creating ProtonVPN manager instance
-                    var oProtonVPN = new ProtonVPNManager(protonVPNLogFilePath);
-
-                    // Checking if ProtonVPN is connected
-                    if (!oProtonVPN.IsProtonVPNConnected())
-                    {
-                        LogMessage(logFilePath, "ProtonVPN is not connected", "ERROR");
-                        goto EndLoop;
-                    }
-                    else
-                    {
-                        LogMessage(logFilePath, "ProtonVPN is connected", "INFO");
-                    }
-
-                    // Proton VPN is connected, now we can proceed to get the port
-                    int? ProtonVPNport = oProtonVPN.GetProtonVPNPort();
-                    if (!ProtonVPNport.HasValue)
-                    {
-                        LogMessage(logFilePath, "Could not determine ProtonVPN's port", "ERROR");
-                        goto EndLoop;
-                    }
-                    else
-                    {
-                        LogMessage(logFilePath, $"ProtonVPN's port found in logfile: {ProtonVPNport.Value}", "INFO");
-                    }
-
-                    // Creating qBittorrent manager instance
-                    var oqBittorrent = new qBittorrentManager(qBittorrentURL, qBittorrentUserName, qBittorrentPassword, qBittorrentProcessName, qBittorrentExePath);
-
-                    // Checking if qBittorrent is running
-                    if (!oqBittorrent.IsRunning())
-                    {
-                        LogMessage(logFilePath, "qBittorrent is not running", "ERROR");
-                        goto EndLoop;
-                    }
-                    else
-                    {
-                        LogMessage(logFilePath, "qBittorrent is running", "INFO");
-                    }
-
-                    // Getting current listening port
-                    int? qBittorrentPort = await oqBittorrent.GetListeningPortAsync();
-                    if (!qBittorrentPort.HasValue)
-                    {
-                        LogMessage(logFilePath, "Could not determine current qBittorrent's port", "ERROR");
-                        goto EndLoop;
-                    }
-                    else
-                    {
-                        LogMessage(logFilePath, $"Current port found in qBittorrent's configuration: {qBittorrentPort.Value}", "INFO");
-                    }
-
-                    // Comparing ports and updating if necessary
-                    if (qBittorrentPort.Value != ProtonVPNport.Value)
-                    {
-                        LogMessage(logFilePath, $"Ports do not match, updating qBittorrent's port to: {ProtonVPNport.Value}", "INFO");
-                        bool setPortResult = await oqBittorrent.SetListeningPortAsync(ProtonVPNport.Value);
-                        if (!setPortResult)
-                        {
-                            LogMessage(logFilePath, $"Failed to set qBittorrent's port to: {ProtonVPNport.Value}", "ERROR");
-                            goto EndLoop;
-                        }
-                        else
-                        {
-                            LogMessage(logFilePath, $"Successfully set qBittorrent's port to: {ProtonVPNport.Value}", "INFO");
-                        }
-
-                        // Restarting qBittorrent, defaulting to true if invalid value
-                        bool shouldRestart;
-                        if (!bool.TryParse(restartqBittorrent, out shouldRestart))
-                        {
-                            shouldRestart = true;
-                        }
-
-                        if (shouldRestart)
-                        {
-                            LogMessage(logFilePath, "Restarting qBittorent", "INFO");
-                            bool restartResult = oqBittorrent.Restart();
-                            if (!restartResult)
-                            {
-                                LogMessage(logFilePath, "Failed to restart qBittorrent", "ERROR");
-                                goto EndLoop;
-                            }
-                            else
-                            {
-                                LogMessage(logFilePath, "Successfully restarted qBittorrent", "INFO");
-                            }
-                        }
-                    }
-                    else
-                    {
-                        LogMessage(logFilePath, "Ports match, no update needed", "INFO");
-                    }
-
-                EndLoop:
                     // Parsing update interval, defaulting to 180 seconds if invalid
                     int updateInterval;
                     if (!int.TryParse(updateIntervalSeconds, out updateInterval))
@@ -179,16 +78,176 @@ namespace qbPortWeaver
                         // Handle invalid value, default to 180 seconds
                         updateInterval = 180;
                     }
-                    LogMessage(logFilePath, "Completed", "INFO");
-                    LogMessage(logFilePath, $"Waiting for: {updateInterval} seconds", "INFO");
+                    
                     // Converting seconds to milliseconds for Task.Delay
                     updateInterval = updateInterval * 1000;
-                    await Task.Delay(updateInterval);
+
+                    // Wait for the specified interval or until cancellation
+                    try
+                    {
+                        await Task.Delay(updateInterval, delayCancel.Token);
+                    }
+                    catch (TaskCanceledException)
+                    {
+                        // Normal when manual update interrupts delay
+                        logManager.LogMessage("Delay interrupted by manual update, resuming in 10 seconds", "INFO");
+                    }
+                    // Reset token for next loop iteration
+                    delayCancel.Dispose();
+                    delayCancel = new CancellationTokenSource();
                 }
             });
         }
 
+        // Main port update logic, returns updateIntervalSeconds
+        private async Task<string> CheckForPortUpdate()
+        {
+            try
+            {
+                // Check and delete log file if exceeds size limit
+                logManager.CheckAndDeleteLogFile();
 
+                // Starting
+                logManager.LogMessage($"Starting {APP_NAME} {APP_VERSION}", "INFO");
+
+                // Must initialize updateIntervalSeconds to avoid uninitialized variable error
+                string updateIntervalSeconds = "180";
+
+                // Loading INI file and creating default if missing
+                var oIniFile = new IniFileManager(iniFilePath);
+                if (!oIniFile.Load())
+                {
+                    logManager.LogMessage($"Failed to load INI file: {iniFilePath}", "ERROR");
+                    logManager.LogMessage($"Creating default INI file: {iniFilePath}", "INFO");
+                    if (!oIniFile.CreateIniFileIfMissing())
+                    {
+                        logManager.LogMessage($"Failed to create default INI file: {iniFilePath}", "ERROR");
+                    }
+                    else
+                    {
+                        logManager.LogMessage($"Successfully created default INI file: {iniFilePath}", "INFO");
+                    }
+                    return updateIntervalSeconds;
+                }
+                else
+                {
+                    logManager.LogMessage($"Successfully loaded: {iniFilePath}", "INFO");
+                }
+
+                // Reading configuration values
+                updateIntervalSeconds = oIniFile.GetValue("general", "updateIntervalSeconds");
+                string qBittorrentURL = oIniFile.GetValue("qBittorrent", "qBittorrentURL");
+                string qBittorrentUserName = oIniFile.GetValue("qBittorrent", "qBittorrentUserName");
+                string qBittorrentPassword = oIniFile.GetValue("qBittorrent", "qBittorrentPassword");
+                string qBittorrentExePath = oIniFile.GetValue("qBittorrent", "qBittorrentExePath");
+                string qBittorrentProcessName = oIniFile.GetValue("qBittorrent", "qBittorrentProcessName");
+                string restartqBittorrent = oIniFile.GetValue("qBittorrent", "restartqBittorrent");
+
+                // Creating ProtonVPN manager instance
+                var oProtonVPN = new ProtonVPNManager(protonVPNLogFilePath);
+
+                // Checking if ProtonVPN is connected
+                if (!oProtonVPN.IsProtonVPNConnected())
+                {
+                    logManager.LogMessage("Completed: ProtonVPN is not connected", "ERROR");
+                    return updateIntervalSeconds;
+                }
+                else
+                {
+                    logManager.LogMessage("ProtonVPN is connected", "INFO");
+                }
+
+                // Proton VPN is connected, now we can proceed to get the port
+                int? ProtonVPNport = oProtonVPN.GetProtonVPNPort();
+                if (!ProtonVPNport.HasValue)
+                {
+                    logManager.LogMessage("Completed : Could not determine ProtonVPN's port", "ERROR");
+                    return updateIntervalSeconds;
+                }
+                else
+                {
+                    logManager.LogMessage($"ProtonVPN's port found in logfile: {ProtonVPNport.Value}", "INFO");
+                }
+
+                // Creating qBittorrent manager instance
+                var oqBittorrent = new qBittorrentManager(qBittorrentURL, qBittorrentUserName, qBittorrentPassword, qBittorrentProcessName, qBittorrentExePath);
+
+                // Checking if qBittorrent is running
+                if (!oqBittorrent.IsRunning())
+                {
+                    logManager.LogMessage("Completed: qBittorrent is not running", "ERROR");
+                    return updateIntervalSeconds;
+                }
+                else
+                {
+                    logManager.LogMessage("qBittorrent is running", "INFO");
+                }
+
+                // Getting current listening port
+                int? qBittorrentPort = await oqBittorrent.GetListeningPortAsync();
+                if (!qBittorrentPort.HasValue)
+                {
+                    logManager.LogMessage("Completed: Could not determine current qBittorrent's port", "ERROR");
+                    return updateIntervalSeconds;
+                }
+                else
+                {
+                    logManager.LogMessage($"Current port found in qBittorrent's configuration: {qBittorrentPort.Value}", "INFO");
+                }
+
+                // Comparing ports and updating if necessary
+                if (qBittorrentPort.Value != ProtonVPNport.Value)
+                {
+                    logManager.LogMessage($"Ports do not match, updating qBittorrent's port to: {ProtonVPNport.Value}", "INFO");
+                    bool setPortResult = await oqBittorrent.SetListeningPortAsync(ProtonVPNport.Value);
+                    if (!setPortResult)
+                    {
+                        logManager.LogMessage($"Completed: Failed to set qBittorrent's port to: {ProtonVPNport.Value}", "ERROR");
+                        return updateIntervalSeconds;
+                    }
+                    else
+                    {
+                        logManager.LogMessage($"Successfully set qBittorrent's port to: {ProtonVPNport.Value}", "INFO");
+                        // Incrementing port update count
+                        portUpdateCount++;
+                        UpdateTrayTooltip();
+                    }
+
+                    // Restarting qBittorrent, defaulting to true if invalid value
+                    bool shouldRestart;
+                    if (!bool.TryParse(restartqBittorrent, out shouldRestart))
+                    {
+                        shouldRestart = true;
+                    }
+
+                    if (shouldRestart)
+                    {
+                        logManager.LogMessage("Restarting qBittorent", "INFO");
+                        bool restartResult = oqBittorrent.Restart();
+                        if (!restartResult)
+                        {
+                            logManager.LogMessage("Completed: Failed to restart qBittorrent", "ERROR");
+                            return updateIntervalSeconds;
+                        }
+                        else
+                        {
+                            logManager.LogMessage("Successfully restarted qBittorrent", "INFO");
+                        }
+                    }
+                }
+                else
+                {
+                    logManager.LogMessage("Ports match, no update needed", "INFO");
+                }
+                logManager.LogMessage("Completed successfully", "INFO");
+                return updateIntervalSeconds;
+            }
+            catch (Exception ex)
+            {
+                logManager.LogMessage($"Completed: An unexpected error occurred: {ex.Message}", "ERROR");
+                return "180";
+            }
+        }
 
         // Open received file in notepad.exe
         public static void OpenFileInNotepad(string filePath)
@@ -250,60 +309,14 @@ namespace qbPortWeaver
             return Path.Combine(folder, LOG_FILE_NAME);
         }
 
-        // Check log file size and delete if exceeds 5 MB
-        public static void CheckAndDeleteLogFile(string logFilePath)
-        {
-            try
-            {
-                if (File.Exists(logFilePath))
-                {
-                    FileInfo fileInfo = new FileInfo(logFilePath);
-
-                    // Taille limite en octets (5 Mo = 5 * 1024 * 1024)
-                    long maxSize = 5 * 1024 * 1024;
-
-                    if (fileInfo.Length > maxSize)
-                    {
-                        File.Delete(logFilePath);
-                        Debug.WriteLine($"Log file deleted because it exceeded 5 MB: {logFilePath}");
-                    }
-                    else
-                    {
-                        Debug.WriteLine($"Log file size is OK: {fileInfo.Length} bytes");
-                    }
-                }
-                else
-                {
-                    Debug.WriteLine($"Log file does not exist: {logFilePath}");
-                }
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine($"Error checking or deleting log file: {ex.Message}");
-            }
-        }
-
-
-        // Logging message to logfile
-        public static void LogMessage(string logFilePath, string message, string type)
-        {
-            try
-            {
-                type = type.PadRight(5);
-                string logEntry = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} | {type} | {message}{Environment.NewLine}";
-                File.AppendAllText(logFilePath, logEntry);
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine($"Failed to write to logfile: {ex.Message}");
-            }
-        }
-
         private ToolStripMenuItem autoStartMenuItem;
 
         private void InitializeTrayIcon()
         {
             trayMenu = new ContextMenuStrip();
+
+            // Adding update now option
+            trayMenu.Items.Add("Update Now", null, UpdateNow_Click);
 
             // Adding show logs
             trayMenu.Items.Add("Show Logs", null, (s, e) => OpenFileInNotepad(GetLogFilePath()));
@@ -358,6 +371,25 @@ namespace qbPortWeaver
             }
         }
 
+        // Manual update now click event
+        private async void UpdateNow_Click(object sender, EventArgs e)
+        {
+            // Optional: show temporary notification
+            trayIcon.ShowBalloonTip(750, APP_NAME, "Updating port...", ToolTipIcon.Info);
+
+            // Set manual update flag to true
+            manualUpdateTriggered = true;
+
+            // Log manual update request
+            logManager.LogMessage("Manual update requested", "INFO");
+
+            // Interrupt the wait inside the main loop immediately
+            delayCancel.Cancel();
+
+            // Perform port update
+            string updateIntervalSeconds = await CheckForPortUpdate();
+        }
+
         protected override void OnResize(EventArgs e)
         {
             base.OnResize(e);
@@ -374,5 +406,12 @@ namespace qbPortWeaver
             trayIcon.Visible = false; // Hide tray icon before exit
             Application.Exit();
         }
+
+        // Update tray tooltip with current status
+        private void UpdateTrayTooltip()
+        {
+            trayIcon.Text = $"{APP_NAME} {APP_VERSION}\nPort updates: {portUpdateCount}";
+        }
+
     }
 }

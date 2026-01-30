@@ -1,4 +1,4 @@
-# qbPortWeaver 1.0.0
+# qbPortWeaver 1.1.0
 
 ## Overview
 

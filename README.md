@@ -124,5 +124,5 @@ The modular architecture makes it easy to:
 Free of use and distribution. No warranty provided.
 
 ## Author
-Developed @martsg666
+Developed by @martsg666
 

@@ -85,6 +85,7 @@ namespace qbPortWeaver
                     // Wait for the specified interval or until cancellation
                     try
                     {
+                        logManager.LogMessage($"Waiting for {updateIntervalSeconds} seconds", "INFO");
                         await Task.Delay(updateInterval, delayCancel.Token);
                     }
                     catch (TaskCanceledException)
@@ -161,7 +162,7 @@ namespace qbPortWeaver
                 int? ProtonVPNport = oProtonVPN.GetProtonVPNPort();
                 if (!ProtonVPNport.HasValue)
                 {
-                    logManager.LogMessage("Completed : Could not determine ProtonVPN's port", "ERROR");
+                    logManager.LogMessage("Completed: Could not determine ProtonVPN's port", "ERROR");
                     return updateIntervalSeconds;
                 }
                 else

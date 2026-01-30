@@ -67,6 +67,7 @@ The application uses an **INI file**, typically located in the user’s local ap
 
 ### Tray Menu Options
 
+- Update Now
 - Show logs
 - Show configuration
 - Enable/disable startup with Windows
@@ -123,5 +124,5 @@ The modular architecture makes it easy to:
 Free of use and distribution. No warranty provided.
 
 ## Author
-Developed by eiKo Solutions
+Developed @martsg666
 

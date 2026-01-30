@@ -4,9 +4,9 @@
 
 ; HM NIS Edit Wizard helper defines
 !define PRODUCT_NAME "qbPortWeaver"
-!define PRODUCT_VERSION "1.0.0"
-!define PRODUCT_PUBLISHER "eiKo Solutions"
-!define PRODUCT_WEB_SITE "http://www.eikosolutions.com"
+!define PRODUCT_VERSION "1.1.0"
+!define PRODUCT_PUBLISHER "@martsg666"
+!define PRODUCT_WEB_SITE "https://github.com/martsg666/qbPortWeaver"
 !define PRODUCT_UNINST_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT_NAME}"
 !define PRODUCT_UNINST_ROOT_KEY "HKLM"
 
@@ -70,7 +70,6 @@ Section "MainSection" SEC01
   
   CreateDirectory "$SMPROGRAMS\${PRODUCT_NAME}"
   CreateShortCut "$SMPROGRAMS\${PRODUCT_NAME}\${PRODUCT_NAME}.lnk" "$INSTDIR\${PRODUCT_NAME}.exe"
-  CreateShortCut "$DESKTOP\${PRODUCT_NAME}.lnk" "$INSTDIR\${PRODUCT_NAME}.exe"
 
 SectionEnd
 
@@ -100,7 +99,6 @@ Section Uninstall
 
   Delete "$INSTDIR\*.*"
 
-  Delete "$DESKTOP\${PRODUCT_NAME}.lnk"
   Delete "$SMPROGRAMS\${PRODUCT_NAME}\${PRODUCT_NAME}.lnk"
 
   RMDir "$SMPROGRAMS\${PRODUCT_NAME}"

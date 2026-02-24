@@ -28,6 +28,7 @@
                     _iconOK?.Dispose();
                     _iconWarning?.Dispose();
                     _iconError?.Dispose();
+                    _updateCheckTimer?.Dispose();
                     _updateSemaphore?.Dispose();
                     _delayCancel?.Dispose();
                     _shutdownCts?.Dispose();

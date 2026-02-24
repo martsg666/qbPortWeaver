@@ -12,6 +12,7 @@ namespace qbPortWeaver
         public const int DEFAULT_UPDATE_INTERVAL_SECONDS = 180;
         public const int MANUAL_UPDATE_WAIT_SECONDS = 10;
         public const int MILLISECONDS_PER_SECOND = 1000;
+        public const int AUTO_UPDATE_CHECK_INTERVAL_MS = 12 * 60 * 60 * MILLISECONDS_PER_SECOND;
 
         // UI
         public const int MAX_TOOLTIP_LENGTH = 63;

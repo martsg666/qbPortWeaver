@@ -34,6 +34,9 @@ namespace qbPortWeaver
         // Shutdown cancellation token to signal graceful exit
         private readonly CancellationTokenSource _shutdownCts = new CancellationTokenSource();
 
+        // Periodic update check timer (fires every 12 hours)
+        private System.Windows.Forms.Timer _updateCheckTimer = null!;
+
         public frmMain()
         {
             InitializeComponent();
@@ -62,7 +65,20 @@ namespace qbPortWeaver
             // Perform initial log rotation check
             LogManager.Instance.CheckAndRotateLogFile();
 
-            // Check for updates on GitHub
+            // Check for updates on GitHub (startup check)
+            await PerformUpdateCheckAsync();
+
+            // Schedule periodic update checks every 12 hours
+            _updateCheckTimer = new System.Windows.Forms.Timer { Interval = AppConstants.AUTO_UPDATE_CHECK_INTERVAL_MS };
+            _updateCheckTimer.Tick += async (s, e) => await PerformUpdateCheckAsync();
+            _updateCheckTimer.Start();
+
+            // Start main loop (intentional fire-and-forget)
+            _ = Task.Run(RunMainLoopAsync);
+        }
+
+        private async Task PerformUpdateCheckAsync()
+        {
             try
             {
                 var update = await UpdateChecker.CheckForUpdateAsync(AppConstants.APP_VERSION);
@@ -80,11 +96,8 @@ namespace qbPortWeaver
             }
             catch (Exception ex)
             {
-                LogManager.Instance.LogDebug($"frmMain.frmMain_Load: Update check failed: {ex.Message}");
+                LogManager.Instance.LogDebug($"frmMain.PerformUpdateCheckAsync: Update check failed: {ex.Message}");
             }
-
-            // Start main loop (intentional fire-and-forget)
-            _ = Task.Run(RunMainLoopAsync);
         }
 
         // Handle form closing (user exit, Windows shutdown/restart/logoff)

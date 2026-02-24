@@ -10,6 +10,7 @@ namespace qbPortWeaver
     {
         private static readonly string GITHUB_BASE_API_URL = $"https://api.github.com/repos/{AppConstants.GITHUB_REPO_OWNER}/{AppConstants.APP_NAME}";
         private static readonly string GITHUB_API_URL      = GITHUB_BASE_API_URL + "/releases/latest";
+        private static readonly string JSON_HTML_URL_ELEMENT = "html_url";
         private const int HTTP_TIMEOUT_SECONDS = 10;
 
         // Returns unique human commit authors for the latest release by comparing its tag against the
@@ -73,7 +74,7 @@ namespace qbPortWeaver
                         continue;
 
                     string login = authorEl.TryGetProperty("login",    out var l) ? l.GetString() ?? "" : "";
-                    string url   = authorEl.TryGetProperty("html_url", out var u) ? u.GetString() ?? "" : "";
+                    string url   = authorEl.TryGetProperty(JSON_HTML_URL_ELEMENT, out var u) ? u.GetString() ?? "" : "";
 
                     if (string.IsNullOrEmpty(login)) continue;
                     if (login.EndsWith("[bot]", StringComparison.OrdinalIgnoreCase)) continue;
@@ -108,7 +109,7 @@ namespace qbPortWeaver
                 var root = doc.RootElement;
 
                 if (!root.TryGetProperty("tag_name", out var tagElement) ||
-                    !root.TryGetProperty("html_url", out var urlElement))
+                    !root.TryGetProperty(JSON_HTML_URL_ELEMENT, out var urlElement))
                     return null;
 
                 string tagName = tagElement.GetString() ?? "";
@@ -119,7 +120,7 @@ namespace qbPortWeaver
                 if (root.TryGetProperty("author", out var authorEl))
                 {
                     authorLogin = authorEl.TryGetProperty("login",    out var loginEl) ? loginEl.GetString() ?? "" : "";
-                    authorUrl   = authorEl.TryGetProperty("html_url", out var aUrlEl)  ? aUrlEl.GetString()  ?? "" : "";
+                    authorUrl   = authorEl.TryGetProperty(JSON_HTML_URL_ELEMENT, out var aUrlEl)  ? aUrlEl.GetString()  ?? "" : "";
                 }
 
                 string versionString = tagName.TrimStart('v', 'V');
@@ -153,7 +154,7 @@ namespace qbPortWeaver
                 var root = doc.RootElement;
 
                 if (!root.TryGetProperty("tag_name", out var tagElement) ||
-                    !root.TryGetProperty("html_url", out var urlElement))
+                    !root.TryGetProperty(JSON_HTML_URL_ELEMENT, out var urlElement))
                     return null;
 
                 string tagName = tagElement.GetString() ?? "";

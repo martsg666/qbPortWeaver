@@ -8,8 +8,8 @@ namespace qbPortWeaver
 
     public static class UpdateChecker
     {
-        private const string GITHUB_BASE_API_URL = "https://api.github.com/repos/martsg666/qbPortWeaver";
-        private const string GITHUB_API_URL      = GITHUB_BASE_API_URL + "/releases/latest";
+        private static readonly string GITHUB_BASE_API_URL = $"https://api.github.com/repos/{AppConstants.GITHUB_REPO_OWNER}/{AppConstants.APP_NAME}";
+        private static readonly string GITHUB_API_URL      = GITHUB_BASE_API_URL + "/releases/latest";
         private const int HTTP_TIMEOUT_SECONDS = 10;
 
         // Returns unique human commit authors for the latest release by comparing its tag against the
@@ -20,7 +20,7 @@ namespace qbPortWeaver
             try
             {
                 using var client = new HttpClient();
-                client.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("qbPortWeaver", AppConstants.APP_VERSION));
+                client.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue(AppConstants.APP_NAME, AppConstants.APP_VERSION));
                 client.Timeout = TimeSpan.FromSeconds(HTTP_TIMEOUT_SECONDS);
 
                 // Fetch the two most recent releases to determine the comparison range
@@ -97,7 +97,7 @@ namespace qbPortWeaver
             try
             {
                 using var client = new HttpClient();
-                client.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("qbPortWeaver", currentVersion));
+                client.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue(AppConstants.APP_NAME, currentVersion));
                 client.Timeout = TimeSpan.FromSeconds(HTTP_TIMEOUT_SECONDS);
 
                 using var response = await client.GetAsync(GITHUB_API_URL);
@@ -142,7 +142,7 @@ namespace qbPortWeaver
             try
             {
                 using var client = new HttpClient();
-                client.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("qbPortWeaver", currentVersion));
+                client.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue(AppConstants.APP_NAME, currentVersion));
                 client.Timeout = TimeSpan.FromSeconds(HTTP_TIMEOUT_SECONDS);
 
                 using var response = await client.GetAsync(GITHUB_API_URL);

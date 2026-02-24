@@ -14,6 +14,14 @@ namespace qbPortWeaver
         private static readonly string JSON_HTML_TAG_ELEMENT = "tag_name";
         private const int HTTP_TIMEOUT_SECONDS = 10;
 
+        // Creates an HttpClient pre-configured with the required User-Agent and timeout
+        private static HttpClient CreateHttpClient(string version)
+        {
+            var client = new HttpClient { Timeout = TimeSpan.FromSeconds(HTTP_TIMEOUT_SECONDS) };
+            client.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue(AppConstants.APP_NAME, version));
+            return client;
+        }
+
         // Returns unique human commit authors for the latest release by comparing its tag against the
         // previous release tag (falls back to the last 100 commits on the tag if only one release exists).
         // Bots are excluded. Returns an empty list on any error.
@@ -21,9 +29,7 @@ namespace qbPortWeaver
         {
             try
             {
-                using var client = new HttpClient();
-                client.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue(AppConstants.APP_NAME, AppConstants.APP_VERSION));
-                client.Timeout = TimeSpan.FromSeconds(HTTP_TIMEOUT_SECONDS);
+                using var client = CreateHttpClient(AppConstants.APP_VERSION);
 
                 using var relResponse = await client.GetAsync(GITHUB_BASE_API_URL + "/releases?per_page=2");
                 relResponse.EnsureSuccessStatusCode();
@@ -111,15 +117,13 @@ namespace qbPortWeaver
         {
             try
             {
-                using var client = new HttpClient();
-                client.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue(AppConstants.APP_NAME, currentVersion));
-                client.Timeout = TimeSpan.FromSeconds(HTTP_TIMEOUT_SECONDS);
+                using var client = CreateHttpClient(currentVersion);
 
                 using var response = await client.GetAsync(GITHUB_API_URL);
                 response.EnsureSuccessStatusCode();
 
                 using var stream = await response.Content.ReadAsStreamAsync();
-                using var doc = await JsonDocument.ParseAsync(stream);
+                using var doc    = await JsonDocument.ParseAsync(stream);
                 var root = doc.RootElement;
 
                 if (!root.TryGetProperty(JSON_HTML_TAG_ELEMENT, out var tagElement) ||
@@ -133,7 +137,7 @@ namespace qbPortWeaver
                 string authorUrl   = "";
                 if (root.TryGetProperty("author", out var authorEl))
                 {
-                    authorLogin = authorEl.TryGetProperty("login",    out var loginEl) ? loginEl.GetString() ?? "" : "";
+                    authorLogin = authorEl.TryGetProperty("login",              out var loginEl) ? loginEl.GetString() ?? "" : "";
                     authorUrl   = authorEl.TryGetProperty(JSON_HTML_URL_ELEMENT, out var aUrlEl)  ? aUrlEl.GetString()  ?? "" : "";
                 }
 
@@ -154,44 +158,8 @@ namespace qbPortWeaver
         // Returns the latest release tag and URL if a newer version exists on GitHub; null if up-to-date or on any error
         public static async Task<(string Version, string Url)?> CheckForUpdateAsync(string currentVersion)
         {
-            try
-            {
-                using var client = new HttpClient();
-                client.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue(AppConstants.APP_NAME, currentVersion));
-                client.Timeout = TimeSpan.FromSeconds(HTTP_TIMEOUT_SECONDS);
-
-                using var response = await client.GetAsync(GITHUB_API_URL);
-                response.EnsureSuccessStatusCode();
-
-                using var stream = await response.Content.ReadAsStreamAsync();
-                using var doc = await JsonDocument.ParseAsync(stream);
-                var root = doc.RootElement;
-
-                if (!root.TryGetProperty(JSON_HTML_TAG_ELEMENT, out var tagElement) ||
-                    !root.TryGetProperty(JSON_HTML_URL_ELEMENT, out var urlElement))
-                    return null;
-
-                string tagName = tagElement.GetString() ?? "";
-                string htmlUrl = urlElement.GetString() ?? "";
-
-                // Strip leading 'v' or 'V' if present
-                string versionString = tagName.TrimStart('v', 'V');
-
-                if (Version.TryParse(versionString, out var latestVersion) &&
-                    Version.TryParse(currentVersion, out var current) &&
-                    latestVersion > current)
-                {
-                    return (tagName, htmlUrl);
-                }
-
-                return null;
-            }
-            catch (Exception ex)
-            {
-                // Update check is best-effort — log but do not propagate (no network, API down, etc.)
-                LogManager.Instance.LogDebug($"UpdateChecker.CheckForUpdateAsync: {ex.Message}");
-                return null;
-            }
+            var info = await GetLatestReleaseInfoAsync(currentVersion);
+            return info?.IsNewer == true ? (info.TagName, info.ReleaseUrl) : null;
         }
     }
 }

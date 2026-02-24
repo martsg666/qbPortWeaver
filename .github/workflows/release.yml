@@ -1,0 +1,59 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.x'
+
+      - name: Extract version from tag
+        id: version
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $version = $tag.TrimStart('v')
+          $fileVersion = "$version.0"
+          "VERSION=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "FILE_VERSION=$fileVersion" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+      - name: Publish
+        shell: pwsh
+        run: |
+          dotnet publish qbPortWeaver.csproj `
+            -c Release `
+            -r win-x64 `
+            --self-contained true `
+            -p:PublishSingleFile=true `
+            -p:EnableCompressionInSingleFile=true `
+            -p:Version=${{ steps.version.outputs.VERSION }} `
+            -p:FileVersion=${{ steps.version.outputs.FILE_VERSION }} `
+            -p:AssemblyVersion=${{ steps.version.outputs.FILE_VERSION }} `
+            -o publish
+
+      - name: Create zip archive
+        shell: pwsh
+        run: |
+          Compress-Archive `
+            -Path publish/qbPortWeaver.exe `
+            -DestinationPath qbPortWeaver-${{ steps.version.outputs.VERSION }}-win-x64.zip
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: qbPortWeaver-${{ steps.version.outputs.VERSION }}-win-x64.zip
+          generate_release_notes: true

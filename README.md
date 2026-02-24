@@ -203,6 +203,37 @@ The modular architecture makes it easy to:
 
 ---
 
+## Releasing a New Version
+
+Releases are built and published automatically by GitHub Actions when a version tag is pushed. No manual build steps are required.
+
+### Steps
+
+1. Create a branch for your changes:
+   ```
+   git checkout -b feature/my-feature   # new functionality
+   git checkout -b fix/my-bug-fix       # bug fixes
+   ```
+2. Update the version in `qbPortWeaver.csproj` (`<Version>`, `<FileVersion>`, `<AssemblyVersion>`).
+3. Add a changelog entry in this file under `## Changelog`.
+4. Open a pull request and merge into `master`.
+5. Tag the release commit and push the tag:
+   ```
+   git tag vX.Y.Z
+   git push origin vX.Y.Z
+   ```
+
+Pushing the tag triggers the `Build and Release` workflow (`.github/workflows/release.yml`), which:
+
+- Builds a self-contained, single-file Windows x64 executable with the tag version embedded
+- Creates a GitHub Release named after the tag
+- Attaches `qbPortWeaver-X.Y.Z-win-x64.zip` as the release artifact
+- Auto-generates release notes from commits since the previous tag
+
+The running application reports the version from the compiled assembly, so it always matches the tag used to build it.
+
+---
+
 ## Changelog
 
 ### 2.1.0

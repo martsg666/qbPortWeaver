@@ -168,6 +168,11 @@ namespace qbPortWeaver
                 using var frm = new frmSettings();
                 frm.ShowDialog(this);
             });
+            _trayMenu.Items.Add("About", null, (s, e) =>
+            {
+                using var frm = new frmAbout();
+                frm.ShowDialog(this);
+            });
 
             _autoStartMenuItem = new ToolStripMenuItem("Start Automatically with Windows")
             {

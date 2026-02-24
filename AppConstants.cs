@@ -18,6 +18,11 @@ namespace qbPortWeaver
         public const int MAX_TOOLTIP_LENGTH = 63;
         public const int BALLOON_TIP_DURATION_MS = 750;
 
+        // GitHub
+        public const string GITHUB_REPO_OWNER = "martsg666";
+        public const string GITHUB_REPO_URL   = "https://github.com/martsg666/qbPortWeaver";
+        public const string GITHUB_AUTHOR_URL = "https://github.com/martsg666";
+
         // App data folder, created once on first access
         private static readonly string _appDataFolder = Directory.CreateDirectory(
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), APP_NAME)

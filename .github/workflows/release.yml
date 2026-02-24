@@ -53,7 +53,7 @@ jobs:
             -DestinationPath qbPortWeaver-${{ steps.version.outputs.VERSION }}-win-x64.zip
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b # equates to v2, Use full commit SHA hash for this dependency.
         with:
           files: qbPortWeaver-${{ steps.version.outputs.VERSION }}-win-x64.zip
           generate_release_notes: true

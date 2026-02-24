@@ -58,11 +58,13 @@ namespace qbPortWeaver
                 using var cmpDoc    = await JsonDocument.ParseAsync(cmpStream);
 
                 // Compare API returns { commits: [...] }; commits list API returns [...]
-                var commitsArray = cmpDoc.RootElement.ValueKind == JsonValueKind.Array
-                    ? cmpDoc.RootElement.EnumerateArray()
-                    : cmpDoc.RootElement.TryGetProperty("commits", out var commitsEl)
-                        ? commitsEl.EnumerateArray()
-                        : Enumerable.Empty<JsonElement>();
+                IEnumerable<JsonElement> commitsArray;
+                if (cmpDoc.RootElement.ValueKind == JsonValueKind.Array)
+                    commitsArray = cmpDoc.RootElement.EnumerateArray();
+                else if (cmpDoc.RootElement.TryGetProperty("commits", out var commitsEl))
+                    commitsArray = commitsEl.EnumerateArray();
+                else
+                    commitsArray = [];
 
                 var seen         = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                 var contributors = new List<ContributorInfo>();

@@ -1,0 +1,21 @@
+VERIFICATION
+============
+Verification is intended to assist the Chocolatey moderators and community in
+confirming that the contents of this package are trustworthy.
+
+The binary included in this package is the official release published by the
+project author (@martsg666) on GitHub.
+
+1. Visit the official release page:
+   https://github.com/martsg666/qbPortWeaver/releases/tag/vTEMPLATE_VERSION
+
+2. Download the asset directly:
+   TEMPLATE_URL
+
+3. Verify the SHA256 checksum matches:
+   TEMPLATE_CHECKSUM
+
+   PowerShell command to verify:
+     (Get-FileHash -Path '<downloaded-file>' -Algorithm SHA256).Hash
+
+The checksum above should match the output of the command above (case-insensitive).

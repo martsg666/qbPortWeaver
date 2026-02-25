@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  This nuspec uses TEMPLATE_ placeholders that are replaced during CI/CD packaging.
+  - TEMPLATE_VERSION  → e.g. 2.1.0
+
+  To package manually, run: scripts/Push-ChocolateyPackage.ps1
+-->
+<package xmlns="http://schemas.microsoft.com/packaging/2015/06/nuspec.xsd">
+  <metadata>
+    <id>qbportweaver</id>
+    <version>TEMPLATE_VERSION</version>
+    <title>qbPortWeaver</title>
+    <authors>martsg666</authors>
+    <owners>CHOCOLATEY_MAINTAINER_USERNAME</owners>
+    <projectUrl>https://github.com/martsg666/qbPortWeaver</projectUrl>
+    <packageSourceUrl>https://github.com/martsg666/qbPortWeaver/tree/master/choco</packageSourceUrl>
+    <projectSourceUrl>https://github.com/martsg666/qbPortWeaver</projectSourceUrl>
+    <docsUrl>https://github.com/martsg666/qbPortWeaver#readme</docsUrl>
+    <bugTrackerUrl>https://github.com/martsg666/qbPortWeaver/issues</bugTrackerUrl>
+    <requireLicenseAcceptance>false</requireLicenseAcceptance>
+    <summary>Synchronizes qBittorrent's listening port with the port assigned by your VPN provider</summary>
+    <description><![CDATA[
+## qbPortWeaver
+
+qbPortWeaver is a lightweight Windows system tray application that automatically synchronizes the listening port of [qBittorrent](https://www.qbittorrent.org/) with the port assigned by your VPN provider.
+
+### Supported VPN Providers
+
+- **ProtonVPN** — reads the forwarded port via the ProtonVPN local API
+- **Private Internet Access (PIA)** — reads the forwarded port from the PIA port-forwarding payload file
+
+### Features
+
+- Runs silently in the Windows system tray
+- Automatically detects VPN port changes and updates qBittorrent via its Web API
+- Optional Windows startup integration
+- Built-in automatic update checker
+- Supports a custom post-update PowerShell command (e.g., send an email notification)
+- File-based logging with automatic rotation
+- JSON status file for external monitoring
+
+### Requirements
+
+- Windows 10/11 (x64)
+- qBittorrent with Web UI enabled
+- ProtonVPN or Private Internet Access (PIA) with port forwarding enabled
+
+### Configuration
+
+On first launch, open **Settings** from the system tray icon to configure:
+- qBittorrent Web UI URL and credentials
+- VPN provider selection
+- Sync interval
+- Startup options
+    ]]></description>
+    <releaseNotes>https://github.com/martsg666/qbPortWeaver/releases/tag/vTEMPLATE_VERSION</releaseNotes>
+    <copyright>© 2026 @martsg666</copyright>
+    <tags>qbittorrent vpn port-forwarding protonvpn pia private-internet-access system-tray torrent port-sync admin</tags>
+    <licenseUrl>https://github.com/martsg666/qbPortWeaver#license</licenseUrl>
+    <iconUrl>https://rawcdn.githack.com/martsg666/qbPortWeaver/master/qbPortWeaver.ico</iconUrl>
+    <dependencies>
+      <!-- .NET 10 Desktop Runtime — required unless the package is published as self-contained (which it is by default) -->
+      <!-- Remove this dependency block if using the self-contained single-file release -->
+    </dependencies>
+  </metadata>
+  <files>
+    <file src="tools\**" target="tools" />
+  </files>
+</package>

@@ -29,11 +29,15 @@ jobs:
       - name: Resolve release tag
         id: tag
         shell: pwsh
+        env:
+          GH_EVENT_NAME: ${{ github.event_name }}
+          GH_INPUT_TAG: ${{ inputs.tag }}
+          GH_RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: |
-          if ('${{ github.event_name }}' -eq 'workflow_dispatch') {
-            $tag = '${{ inputs.tag }}'
+          if ($env:GH_EVENT_NAME -eq 'workflow_dispatch') {
+            $tag = $env:GH_INPUT_TAG
           } else {
-            $tag = '${{ github.event.release.tag_name }}'
+            $tag = $env:GH_RELEASE_TAG
           }
           $version = $tag.TrimStart('v')
           "TAG=$tag"         | Out-File -FilePath $env:GITHUB_OUTPUT -Append
@@ -65,9 +69,12 @@ jobs:
       - name: Download release asset and compute checksum
         id: asset
         shell: pwsh
+        env:
+          RELEASE_VERSION: ${{ steps.tag.outputs.VERSION }}
+          RELEASE_TAG: ${{ steps.tag.outputs.TAG }}
         run: |
-          $version   = '${{ steps.tag.outputs.VERSION }}'
-          $tag       = '${{ steps.tag.outputs.TAG }}'
+          $version   = $env:RELEASE_VERSION
+          $tag       = $env:RELEASE_TAG
           $assetName = "qbPortWeaver_${version}_Setup.exe"
           $url       = "https://github.com/martsg666/qbPortWeaver/releases/download/$tag/$assetName"
 
@@ -86,10 +93,14 @@ jobs:
       # -----------------------------------------------------------------------
       - name: Update package files with release details
         shell: pwsh
+        env:
+          RELEASE_VERSION: ${{ steps.tag.outputs.VERSION }}
+          ASSET_DOWNLOAD_URL: ${{ steps.asset.outputs.DOWNLOAD_URL }}
+          ASSET_CHECKSUM: ${{ steps.asset.outputs.CHECKSUM }}
         run: |
-          $version     = '${{ steps.tag.outputs.VERSION }}'
-          $downloadUrl = '${{ steps.asset.outputs.DOWNLOAD_URL }}'
-          $checksum    = '${{ steps.asset.outputs.CHECKSUM }}'
+          $version     = $env:RELEASE_VERSION
+          $downloadUrl = $env:ASSET_DOWNLOAD_URL
+          $checksum    = $env:ASSET_CHECKSUM
 
           # nuspec — version and release notes URL
           $nuspecPath = 'choco\qbPortWeaver.nuspec'

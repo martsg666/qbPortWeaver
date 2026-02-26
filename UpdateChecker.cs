@@ -58,31 +58,36 @@ namespace qbPortWeaver
             }
         }
 
-        // Returns unique human commit authors for the latest release by comparing its tag against the
-        // previous release tag (falls back to the last 100 commits on the tag if only one release exists).
-        // Bots are excluded. Returns an empty list on any error.
+        // Returns all unique human contributors to the repo. Bots are excluded.
+        // Returns an empty list on any error.
         public static async Task<IReadOnlyList<ContributorInfo>> GetReleaseContributorsAsync()
         {
             try
             {
                 using var client = CreateHttpClient(AppConstants.APP_VERSION);
 
-                using var relResponse = await client.GetAsync(GITHUB_BASE_API_URL + "/releases?per_page=2");
-                relResponse.EnsureSuccessStatusCode();
+                using var response = await client.GetAsync(GITHUB_BASE_API_URL + "/contributors?per_page=100");
+                response.EnsureSuccessStatusCode();
 
-                using var relStream = await relResponse.Content.ReadAsStreamAsync();
-                using var relDoc    = await JsonDocument.ParseAsync(relStream);
+                using var stream = await response.Content.ReadAsStreamAsync();
+                using var doc    = await JsonDocument.ParseAsync(stream);
 
-                string? commitsUrl = BuildCommitsUrl([.. relDoc.RootElement.EnumerateArray()]);
-                if (commitsUrl == null) return [];
+                var seen         = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                var contributors = new List<ContributorInfo>();
 
-                using var cmpResponse = await client.GetAsync(commitsUrl);
-                cmpResponse.EnsureSuccessStatusCode();
+                foreach (var item in doc.RootElement.EnumerateArray())
+                {
+                    string login = item.TryGetProperty("login",              out var loginEl) ? loginEl.GetString() ?? "" : "";
+                    string url   = item.TryGetProperty(JSON_HTML_URL_ELEMENT, out var urlEl)   ? urlEl.GetString()   ?? "" : "";
+                    string type  = item.TryGetProperty("type",               out var typeEl)  ? typeEl.GetString()  ?? "" : "";
 
-                using var cmpStream = await cmpResponse.Content.ReadAsStreamAsync();
-                using var cmpDoc    = await JsonDocument.ParseAsync(cmpStream);
+                    if (string.IsNullOrEmpty(login)) continue;
+                    if (type.Equals("Bot", StringComparison.OrdinalIgnoreCase)) continue;
+                    if (login.EndsWith("[bot]", StringComparison.OrdinalIgnoreCase)) continue;
+                    if (!seen.Add(login)) continue;
 
-                var contributors = ExtractContributors(GetCommitsArray(cmpDoc.RootElement));
+                    contributors.Add(new ContributorInfo(login, url));
+                }
 
                 // Always list the repo owner first
                 int ownerIndex = contributors.FindIndex(c => c.Login.Equals(AppConstants.GITHUB_REPO_OWNER, StringComparison.OrdinalIgnoreCase));
@@ -110,61 +115,6 @@ namespace qbPortWeaver
             return client;
         }
 
-        // Derives the commits URL from the releases list.
-        // Uses compare/{prev}...{latest} when a previous release exists, otherwise falls back to /commits.
-        // Returns null if the latest tag cannot be determined.
-        private static string? BuildCommitsUrl(List<JsonElement> releases)
-        {
-            if (releases.Count == 0) return null;
 
-            string latestTag = releases[0].TryGetProperty(JSON_HTML_TAG_ELEMENT, out var tagEl)  ? tagEl.GetString()  ?? "" : "";
-            if (string.IsNullOrEmpty(latestTag)) return null;
-
-            if (releases.Count >= 2)
-            {
-                string prevTag = releases[1].TryGetProperty(JSON_HTML_TAG_ELEMENT, out var prevEl) ? prevEl.GetString() ?? "" : "";
-                if (!string.IsNullOrEmpty(prevTag))
-                    return $"{GITHUB_BASE_API_URL}/compare/{prevTag}...{latestTag}";
-            }
-
-            return $"{GITHUB_BASE_API_URL}/commits?sha={latestTag}&per_page=100";
-        }
-
-        // Handles the JSON shape difference: compare API returns { commits: [...] }, commits API returns [...]
-        private static IEnumerable<JsonElement> GetCommitsArray(JsonElement root)
-        {
-            if (root.ValueKind == JsonValueKind.Array)
-                return root.EnumerateArray();
-
-            if (root.TryGetProperty("commits", out var commitsEl))
-                return commitsEl.EnumerateArray();
-
-            return [];
-        }
-
-        // Walks a commit list and returns unique, non-bot GitHub-linked authors in encounter order
-        private static List<ContributorInfo> ExtractContributors(IEnumerable<JsonElement> commits)
-        {
-            var seen         = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            var contributors = new List<ContributorInfo>();
-
-            foreach (var commit in commits)
-            {
-                // Top-level "author" is the GitHub user object (has login); skip unlinked git authors
-                if (!commit.TryGetProperty("author", out var authorEl) || authorEl.ValueKind == JsonValueKind.Null)
-                    continue;
-
-                string login = authorEl.TryGetProperty("login",              out var loginEl) ? loginEl.GetString() ?? "" : "";
-                string url   = authorEl.TryGetProperty(JSON_HTML_URL_ELEMENT, out var urlEl)   ? urlEl.GetString()   ?? "" : "";
-
-                if (string.IsNullOrEmpty(login)) continue;
-                if (login.EndsWith("[bot]", StringComparison.OrdinalIgnoreCase)) continue;
-                if (!seen.Add(login)) continue;
-
-                contributors.Add(new ContributorInfo(login, url));
-            }
-
-            return contributors;
-        }
     }
 }

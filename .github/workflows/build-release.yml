@@ -1,7 +1,7 @@
-name: Build and Release
+name: Build, Release, and Publish
 
-# Triggers on any tag push matching v* (e.g. v2.1.1).
-# Can also be run manually to rebuild an existing tag's installer.
+# Triggers on any tag push matching v* (e.g. v2.2.0).
+# Can also be run manually to rebuild and republish an existing tag.
 on:
   push:
     tags:
@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Tag to build (e.g. v2.1.0)'
+        description: 'Release tag to build (e.g. v2.2.0)'
         required: true
         type: string
 
@@ -18,7 +18,7 @@ permissions:
   contents: write  # required to create releases and upload assets
 
 jobs:
-  build-and-release:
+  build-release-publish:
     runs-on: windows-latest
 
     steps:
@@ -118,7 +118,108 @@ jobs:
           Write-Host "Installer ready: $setupExe"
 
       # -----------------------------------------------------------------------
-      # 5. Create GitHub Release with auto-generated notes, or update existing
+      # 5. Compute SHA256 checksum of the local installer
+      #    (computed here so we avoid re-downloading from the release later)
+      # -----------------------------------------------------------------------
+      - name: Compute installer checksum
+        id: checksum
+        shell: pwsh
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.VERSION }}
+          RELEASE_TAG:     ${{ steps.version.outputs.TAG }}
+          SETUP_PATH:      ${{ steps.nsis.outputs.SETUP_PATH }}
+        run: |
+          $version   = $env:RELEASE_VERSION
+          $tag       = $env:RELEASE_TAG
+          $assetName = "qbPortWeaver_${version}_Setup.exe"
+          $url       = "https://github.com/martsg666/qbPortWeaver/releases/download/$tag/$assetName"
+          $checksum  = (Get-FileHash -Path $env:SETUP_PATH -Algorithm SHA256).Hash.ToUpper()
+
+          Write-Host "Asset : $assetName"
+          Write-Host "URL   : $url"
+          Write-Host "SHA256: $checksum"
+
+          "ASSET_NAME=$assetName" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "DOWNLOAD_URL=$url"     | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "CHECKSUM=$checksum"    | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+      # -----------------------------------------------------------------------
+      # 6. Stamp version, URL, and checksum into the Chocolatey package files
+      # -----------------------------------------------------------------------
+      - name: Update Chocolatey package files
+        shell: pwsh
+        env:
+          RELEASE_VERSION:    ${{ steps.version.outputs.VERSION }}
+          ASSET_DOWNLOAD_URL: ${{ steps.checksum.outputs.DOWNLOAD_URL }}
+          ASSET_CHECKSUM:     ${{ steps.checksum.outputs.CHECKSUM }}
+        run: |
+          $version     = $env:RELEASE_VERSION
+          $downloadUrl = $env:ASSET_DOWNLOAD_URL
+          $checksum    = $env:ASSET_CHECKSUM
+
+          # nuspec — version and release notes URL
+          $nuspecPath = 'choco\qbPortWeaver.nuspec'
+          (Get-Content $nuspecPath) `
+            -replace 'TEMPLATE_VERSION', $version |
+            Set-Content $nuspecPath
+
+          # chocolateyInstall.ps1 — download URL and checksum
+          $installPath = 'choco\tools\chocolateyInstall.ps1'
+          (Get-Content $installPath) `
+            -replace 'TEMPLATE_URL',      $downloadUrl `
+            -replace 'TEMPLATE_CHECKSUM', $checksum |
+            Set-Content $installPath
+
+          # VERIFICATION.txt — version, URL, and checksum
+          $verifyPath = 'choco\tools\VERIFICATION.txt'
+          (Get-Content $verifyPath) `
+            -replace 'TEMPLATE_VERSION',  $version `
+            -replace 'TEMPLATE_URL',      $downloadUrl `
+            -replace 'TEMPLATE_CHECKSUM', $checksum |
+            Set-Content $verifyPath
+
+          Write-Host "Chocolatey package files updated for v$version"
+
+      # -----------------------------------------------------------------------
+      # 7. Validate that all TEMPLATE_ placeholders were replaced
+      # -----------------------------------------------------------------------
+      - name: Validate placeholder substitution
+        shell: pwsh
+        run: |
+          $files = @(
+            'choco\qbPortWeaver.nuspec',
+            'choco\tools\chocolateyInstall.ps1',
+            'choco\tools\VERIFICATION.txt'
+          )
+          $found = $false
+          foreach ($file in $files) {
+            if (Select-String -Path $file -Pattern 'TEMPLATE_' -Quiet) {
+              Write-Error "Unreplaced TEMPLATE_ placeholder found in: $file"
+              $found = $true
+            }
+          }
+          if ($found) { exit 1 }
+          Write-Host "All placeholders replaced successfully."
+
+      # -----------------------------------------------------------------------
+      # 8. Pack the Chocolatey package
+      # -----------------------------------------------------------------------
+      - name: Pack Chocolatey package
+        id: pack
+        shell: pwsh
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.VERSION }}
+        run: |
+          $version = $env:RELEASE_VERSION
+          choco pack choco\qbPortWeaver.nuspec --output-directory .
+          # Use the explicit versioned filename rather than a wildcard to avoid
+          # accidentally picking up a stale .nupkg from a previous run
+          $nupkg = Get-Item "qbportweaver.$version.nupkg"
+          Write-Host "Created: $($nupkg.Name)"
+          "NUPKG_PATH=$($nupkg.FullName)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+      # -----------------------------------------------------------------------
+      # 9. Create GitHub Release with auto-generated notes, or update existing
       # -----------------------------------------------------------------------
       - name: Create or update GitHub Release
         shell: pwsh
@@ -141,3 +242,20 @@ jobs:
               --title "qbPortWeaver $tag" `
               --generate-notes
           }
+
+      # -----------------------------------------------------------------------
+      # 10. Push to Chocolatey Community Repository
+      # -----------------------------------------------------------------------
+      - name: Push to Chocolatey Community Repository
+        shell: pwsh
+        env:
+          RELEASE_VERSION:    ${{ steps.version.outputs.VERSION }}
+          CHOCOLATEY_API_KEY: ${{ secrets.CHOCOLATEY_API_KEY }}
+        run: |
+          $version = $env:RELEASE_VERSION
+          # Use the explicit versioned filename — same reasoning as the pack step
+          $nupkg = Get-Item "qbportweaver.$version.nupkg"
+          Write-Host "Pushing: $($nupkg.Name)"
+          choco push $nupkg.FullName `
+            --source https://push.chocolatey.org/ `
+            --api-key $env:CHOCOLATEY_API_KEY

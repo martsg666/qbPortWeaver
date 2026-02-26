@@ -204,6 +204,57 @@ The modular architecture makes it easy to:
 
 ---
 
+## Contributing
+
+### Branch and Release Strategy
+
+**`master`** always reflects the latest published release. Do not commit directly to `master`.
+
+#### Branch naming
+
+| Purpose | Base branch | Name pattern |
+|---|---|---|
+| Release | Previous release branch | `2.x.y` |
+| Hotfix | Corresponding release branch | `fix/<description>` |
+| Feature | Corresponding release branch | `feature/<description>` |
+
+#### Workflow
+
+1. **Create a release branch** from the appropriate upstream:
+   ```
+   git checkout -b 2.3.0 origin/2.2.0
+   git push -u origin 2.3.0
+   ```
+
+2. **Create fix or feature branches** off the release branch and open a PR targeting it:
+   ```
+   git checkout -b fix/my-fix origin/2.3.0
+   # or
+   git checkout -b feature/my-feature origin/2.3.0
+   ```
+
+3. **Tag the release branch** once all testing is complete — this triggers the pipeline:
+   ```
+   git tag v2.3.0 origin/2.3.0
+   git push origin v2.3.0
+   ```
+   Pushing the tag automatically triggers the **Build, Release, and Publish** pipeline, which builds the app, compiles the NSIS installer, creates the GitHub Release, and publishes to Chocolatey.
+
+4. **Merge the release branch into `master`** after the pipeline completes successfully:
+   ```
+   git checkout master
+   git merge --no-ff 2.3.0
+   git push origin master
+   ```
+
+5. **Do not delete release branches.** They serve as the base for future hotfixes. If a branch is accidentally deleted it can be reconstructed from its tag:
+   ```
+   git checkout -b 2.3.0 v2.3.0
+   git push origin 2.3.0
+   ```
+
+---
+
 ## Changelog
 
 ### 2.2.0

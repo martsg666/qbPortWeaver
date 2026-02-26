@@ -82,8 +82,7 @@ namespace qbPortWeaver
                     string type  = item.TryGetProperty("type",               out var typeEl)  ? typeEl.GetString()  ?? "" : "";
 
                     if (string.IsNullOrEmpty(login)) continue;
-                    if (type.Equals("Bot", StringComparison.OrdinalIgnoreCase)) continue;
-                    if (login.EndsWith("[bot]", StringComparison.OrdinalIgnoreCase)) continue;
+                    if (IsBot(login, type)) continue;
                     if (!seen.Add(login)) continue;
 
                     contributors.Add(new ContributorInfo(login, url));
@@ -106,6 +105,10 @@ namespace qbPortWeaver
                 return [];
             }
         }
+
+        private static bool IsBot(string login, string type) =>
+            type.Equals("Bot", StringComparison.OrdinalIgnoreCase) ||
+            login.EndsWith("[bot]", StringComparison.OrdinalIgnoreCase);
 
         // Creates an HttpClient pre-configured with the required User-Agent and timeout
         private static HttpClient CreateHttpClient(string version)

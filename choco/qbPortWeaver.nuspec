@@ -53,7 +53,7 @@ On first launch, open **Settings** from the system tray icon to configure:
 - Sync interval
 - Startup options
     ]]></description>
-    <releaseNotes>https://github.com/martsg666/qbPortWeaver/releases/tag/TEMPLATE_VERSION</releaseNotes>
+    <releaseNotes>https://github.com/martsg666/qbPortWeaver/releases/tag/vTEMPLATE_VERSION</releaseNotes>
     <copyright>© 2026 @martsg666</copyright>
     <tags>qbittorrent vpn port-forwarding protonvpn pia private-internet-access system-tray torrent port-sync admin</tags>
     <licenseUrl>https://github.com/martsg666/qbPortWeaver#license</licenseUrl>

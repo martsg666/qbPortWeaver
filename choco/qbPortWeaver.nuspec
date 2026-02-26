@@ -58,10 +58,6 @@ On first launch, open **Settings** from the system tray icon to configure:
     <tags>qbittorrent vpn port-forwarding protonvpn pia private-internet-access system-tray torrent port-sync admin</tags>
     <licenseUrl>https://github.com/martsg666/qbPortWeaver#license</licenseUrl>
     <iconUrl>https://rawcdn.githack.com/martsg666/qbPortWeaver/master/qbPortWeaver.ico</iconUrl>
-    <dependencies>
-      <!-- .NET 10 Desktop Runtime — required unless the package is published as self-contained (which it is by default) -->
-      <!-- Remove this dependency block if using the self-contained single-file release -->
-    </dependencies>
   </metadata>
   <files>
     <file src="tools\**" target="tools" />

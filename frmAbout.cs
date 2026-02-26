@@ -10,16 +10,19 @@ namespace qbPortWeaver
         public frmAbout()
         {
             InitializeComponent();
-            lblAppVersion.Text = $"Version {AppConstants.APP_VERSION}";
-            lnkGitHub.Text     = $"{AppConstants.GITHUB_REPO_OWNER}/{AppConstants.APP_NAME}";
-            Text               = $"{AppConstants.APP_NAME} | About";
+            lblAppVersion.Text         = $"Version {AppConstants.APP_VERSION}";
+            lblCurrentVersionValue.Text = AppConstants.APP_VERSION;
+            lnkGitHub.Text             = $"{AppConstants.GITHUB_REPO_OWNER}/{AppConstants.APP_NAME}";
+            Text                       = $"{AppConstants.APP_NAME} | About";
         }
 
         // Kick off the GitHub data fetch as fire-and-forget; the IsDisposed guard in the async method handles early close
         protected override void OnLoad(EventArgs e)
         {
             base.OnLoad(e);
-            _ = LoadGitHubDataAsync();
+            _ = LoadGitHubDataAsync().ContinueWith(
+                t => LogManager.Instance.LogDebug($"frmAbout.LoadGitHubDataAsync: {t.Exception?.GetBaseException().Message}"),
+                TaskContinuationOptions.OnlyOnFaulted);
         }
 
         // Fetches the latest release info and contributor list in parallel, then populates all UI fields

@@ -5,7 +5,7 @@
 ; PRODUCT_VERSION can be overridden at compile time with:
 ;   makensis /DPRODUCT_VERSION=x.y.z qbPortWeaverSetup.nsi
 !ifndef PRODUCT_VERSION
-  !define PRODUCT_VERSION "2.1.0"
+  !define PRODUCT_VERSION "2.2.0"
 !endif
 !define PRODUCT_PUBLISHER "@martsg666"
 !define PRODUCT_WEB_SITE "https://github.com/martsg666/qbPortWeaver"
@@ -37,6 +37,9 @@ Page custom PostInstallNotice
 ; Language files
 !insertmacro MUI_LANGUAGE "English"
 ; MUI end ------
+
+; Require administrator rights — needed to install to $PROGRAMFILES64
+RequestExecutionLevel admin
 
 Name "${PRODUCT_NAME} ${PRODUCT_VERSION}"
 OutFile "${PRODUCT_NAME}_${PRODUCT_VERSION}_Setup.exe"
@@ -86,7 +89,7 @@ Section "MainSection" SEC01
   SetOutPath "$INSTDIR"
   SetOverwrite on
   SetRebootFlag false
-  File "..\bin\Release\net10.0-windows\*.*"
+  File "..\bin\Release\net10.0-windows\win-x64\publish\qbPortWeaver.exe"
   File "..\README.md"
   
   CreateDirectory "$SMPROGRAMS\${PRODUCT_NAME}"

@@ -177,9 +177,11 @@ namespace qbPortWeaver
         {
             try
             {
+                LogManager.Instance.LogMessage("Checking for application updates", "INFO");
                 var update = await UpdateChecker.CheckForUpdateAsync();
                 if (update.HasValue)
                 {
+                    LogManager.Instance.LogMessage($"New application version available: {update.Value.Version}", "INFO");
                     var result = MessageBox.Show(
                         $"A new version of {AppConstants.APP_NAME} is available: {update.Value.Version}\n\nWould you like to open the download page?",
                         $"{AppConstants.APP_NAME} - Update Available",
@@ -189,10 +191,14 @@ namespace qbPortWeaver
                     if (result == DialogResult.Yes)
                         Process.Start(new ProcessStartInfo(update.Value.Url) { UseShellExecute = true })?.Dispose();
                 }
+                else
+                {
+                    LogManager.Instance.LogMessage("Application is up to date", "INFO");
+                }
             }
             catch (Exception ex)
             {
-                LogManager.Instance.LogDebug($"frmMain.PerformUpdateCheckAsync: Update check failed: {ex.Message}");
+                LogManager.Instance.LogDebug($"frmMain.PerformUpdateCheckAsync: {ex.Message}");
             }
         }
 
@@ -219,7 +225,7 @@ namespace qbPortWeaver
                     {
                         _manualSyncTriggered = false;
                         updateInterval = AppConstants.MANUAL_SYNC_WAIT_SECONDS;
-                        LogManager.Instance.LogMessage($"Manual sync completed, waiting {AppConstants.MANUAL_SYNC_WAIT_SECONDS} seconds before resuming normal interval", "INFO");
+                        LogManager.Instance.LogMessage("Manual sync complete", "INFO");
                     }
 
                     if (await ShutdownRequestedDuringDelayAsync(updateInterval))

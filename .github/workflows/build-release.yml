@@ -52,21 +52,24 @@ jobs:
           fetch-depth: 0
 
       # -----------------------------------------------------------------------
-      # 3. Build the .NET application (version stamped from the tag)
+      # 3. Publish the .NET application (self-contained single-file, version stamped from the tag)
       # -----------------------------------------------------------------------
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.x'
 
-      - name: Build application
+      - name: Publish application
         shell: pwsh
         env:
           BUILD_VERSION: ${{ steps.version.outputs.VERSION }}
         run: |
           $v = $env:BUILD_VERSION
-          dotnet build qbPortWeaver.csproj `
+          dotnet publish qbPortWeaver.csproj `
             --configuration Release `
+            --runtime win-x64 `
+            --self-contained true `
+            /p:PublishSingleFile=true `
             /p:Version=$v `
             /p:FileVersion="$v.0" `
             /p:AssemblyVersion="$v.0"

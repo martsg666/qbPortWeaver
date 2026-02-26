@@ -1,4 +1,4 @@
-# qbPortWeaver 2.1.0
+# qbPortWeaver 2.2.0
 
 ## Overview
 
@@ -206,11 +206,14 @@ The modular architecture makes it easy to:
 
 ## Changelog
 
-### 2.1.0
+### 2.2.0
 - Removed legacy INI file migration code — v2.0.0 is the required baseline for upgrading
 - Internal code cleanup and consistency improvements across all modules
 - New **About** dialog (tray menu → About): shows current and latest GitHub release, update status, and contributor links
 - Update checker now also runs every 12 hours in the background, not only on startup
+- Distributed as a **self-contained single-file executable** — no .NET runtime installation required
+- Automated **CI/CD pipeline** via GitHub Actions: pushing a `v*` tag builds the app, compiles the NSIS installer, and publishes a GitHub Release automatically
+- Available on the **Chocolatey Community Repository**: `choco install qbportweaver`
 
 ### 2.0.0
 - **Tray status indicator**: the tray icon now shows a colored dot (green / orange / red) reflecting the last sync result, and the tooltip shows the current port and status without opening the log file

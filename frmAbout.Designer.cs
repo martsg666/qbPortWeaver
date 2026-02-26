@@ -97,7 +97,7 @@ namespace qbPortWeaver
             lblCurrentVersionValue.Name = "lblCurrentVersionValue";
             lblCurrentVersionValue.Size = new Size(200, 23);
             lblCurrentVersionValue.TabIndex = 1;
-            lblCurrentVersionValue.Text = "2.1.0";
+            lblCurrentVersionValue.Text = "";
             lblCurrentVersionValue.TextAlign = ContentAlignment.MiddleLeft;
             // 
             // lblLatestVersionLabel

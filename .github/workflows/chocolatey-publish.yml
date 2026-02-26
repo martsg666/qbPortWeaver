@@ -126,26 +126,55 @@ jobs:
           Write-Host "Package files updated for v$version"
 
       # -----------------------------------------------------------------------
-      # 6. Pack the Chocolatey package
+      # 6. Validate that all TEMPLATE_ placeholders were replaced
       # -----------------------------------------------------------------------
-      - name: Pack Chocolatey package
+      - name: Validate placeholder substitution
         shell: pwsh
         run: |
-          choco pack choco\qbPortWeaver.nuspec --output-directory .
-          $nupkg = Get-Item "*.nupkg" | Select-Object -First 1
-          Write-Host "Created: $($nupkg.Name)"
-          "NUPKG_PATH=$($nupkg.FullName)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-        id: pack
+          $files = @(
+            'choco\qbPortWeaver.nuspec',
+            'choco\tools\chocolateyInstall.ps1',
+            'choco\tools\VERIFICATION.txt'
+          )
+          $found = $false
+          foreach ($file in $files) {
+            if (Select-String -Path $file -Pattern 'TEMPLATE_' -Quiet) {
+              Write-Error "Unreplaced TEMPLATE_ placeholder found in: $file"
+              $found = $true
+            }
+          }
+          if ($found) { exit 1 }
+          Write-Host "All placeholders replaced successfully."
 
       # -----------------------------------------------------------------------
-      # 7. Push to Chocolatey Community Repository
+      # 7. Pack the Chocolatey package
+      # -----------------------------------------------------------------------
+      - name: Pack Chocolatey package
+        id: pack
+        shell: pwsh
+        env:
+          RELEASE_VERSION: ${{ steps.tag.outputs.VERSION }}
+        run: |
+          $version = $env:RELEASE_VERSION
+          choco pack choco\qbPortWeaver.nuspec --output-directory .
+          # Use the explicit versioned filename rather than a wildcard to avoid
+          # accidentally picking up a stale .nupkg from a previous run
+          $nupkg = Get-Item "qbportweaver.$version.nupkg"
+          Write-Host "Created: $($nupkg.Name)"
+          "NUPKG_PATH=$($nupkg.FullName)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+      # -----------------------------------------------------------------------
+      # 8. Push to Chocolatey Community Repository
       # -----------------------------------------------------------------------
       - name: Push to Chocolatey Community Repository
         shell: pwsh
         env:
+          RELEASE_VERSION: ${{ steps.tag.outputs.VERSION }}
           CHOCOLATEY_API_KEY: ${{ secrets.CHOCOLATEY_API_KEY }}
         run: |
-          $nupkg = Get-Item "*.nupkg" | Select-Object -First 1
+          $version = $env:RELEASE_VERSION
+          # Use the explicit versioned filename — same reasoning as the pack step
+          $nupkg = Get-Item "qbportweaver.$version.nupkg"
           Write-Host "Pushing: $($nupkg.Name)"
           choco push $nupkg.FullName `
             --source https://push.chocolatey.org/ `

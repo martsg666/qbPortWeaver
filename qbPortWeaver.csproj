@@ -13,9 +13,9 @@
     <Product>qbPortWeaver</Product>
     <Authors>@martsg666</Authors>
     <Copyright>© 2026 @martsg666</Copyright>
-    <Version>2.1.0</Version>
-    <FileVersion>2.1.0.0</FileVersion>
-    <AssemblyVersion>2.1.0.0</AssemblyVersion>
+    <Version>2.2.0</Version>
+    <FileVersion>2.2.0.0</FileVersion>
+    <AssemblyVersion>2.2.0.0</AssemblyVersion>
     <SignAssembly>False</SignAssembly>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageIcon></PackageIcon>

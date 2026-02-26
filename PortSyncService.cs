@@ -110,7 +110,7 @@ namespace qbPortWeaver
             else
             {
                 if (!cfg.VpnProvider.Equals("ProtonVPN", StringComparison.OrdinalIgnoreCase))
-                    LogManager.Instance.LogMessage($"Unknown vpnProvider '{cfg.VpnProvider}', defaulting to ProtonVPN", "WARN");
+                    LogManager.Instance.LogMessage($"Unknown VPN provider '{cfg.VpnProvider}', defaulting to ProtonVPN", "WARN");
                 vpnManager = new ProtonVPNManager(AppConstants.GetProtonVPNLogFilePath());
             }
 
@@ -312,7 +312,7 @@ namespace qbPortWeaver
 
             if (config.Restart)
             {
-                LogManager.Instance.LogMessage("Restarting qBittorrent", "INFO");
+                LogManager.Instance.LogMessage("Attempting to restart qBittorrent", "INFO");
                 if (!await qBittorrentMgr.RestartAsync())
                 {
                     SetCompleted(status, false, "Failed to restart qBittorrent");
@@ -340,7 +340,7 @@ namespace qbPortWeaver
                     CreateNoWindow = true
                 };
                 Process.Start(psi)?.Dispose();
-                LogManager.Instance.LogMessage("Post-update command launched successfully", "INFO");
+                LogManager.Instance.LogMessage("Successfully launched post-update command", "INFO");
             }
             catch (Exception ex)
             {

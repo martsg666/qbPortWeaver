@@ -1,8 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  This nuspec uses TEMPLATE_ placeholders that are replaced during CI/CD packaging.
-  - TEMPLATE_VERSION  → e.g. 2.1.0
-
+  Version, URL, and checksum placeholders are stamped by the CI/CD pipeline.
   To package manually, run: scripts/Push-ChocolateyPackage.ps1
 -->
 <package xmlns="http://schemas.microsoft.com/packaging/2015/06/nuspec.xsd">

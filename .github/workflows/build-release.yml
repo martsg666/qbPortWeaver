@@ -196,6 +196,7 @@ jobs:
             if (Select-String -Path $file -Pattern 'TEMPLATE_' -Quiet) {
               Write-Error "Unreplaced TEMPLATE_ placeholder found in: $file"
               $found = $true
+              write-error $(get-content $file)
             }
           }
           if ($found) { exit 1 }

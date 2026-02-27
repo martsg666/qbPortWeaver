@@ -367,3 +367,6 @@ CLAUDE.md
 
 # Build folder
 \!Build/
+
+# Generated installer binaries (produced by Build-Local.ps1 or makensis; distributed via GitHub Releases)
+installer/*.exe

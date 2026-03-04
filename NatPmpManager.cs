@@ -108,19 +108,11 @@ namespace qbPortWeaver
         // DHCP-configured adapters even when a default gateway exists in the routing table.
         private static IPAddress? ResolveGateway(IPInterfaceProperties props)
         {
-            foreach (GatewayIPAddressInformation gw in props.GatewayAddresses)
-            {
-                if (gw.Address.AddressFamily != AddressFamily.InterNetwork)
-                    continue;
+            IPAddress? gateway = props.GatewayAddresses
+                .Select(gw => gw.Address)
+                .FirstOrDefault(a => a.AddressFamily == AddressFamily.InterNetwork && !a.Equals(IPAddress.Any));
 
-                if (!gw.Address.Equals(IPAddress.Any))
-                    return gw.Address;
-
-                // 0.0.0.0 — keep scanning; a real gateway may follow
-            }
-
-            // No explicit IPv4 gateway found: infer x.x.x.1 from the unicast address
-            return InferGatewayFromUnicast(props);
+            return gateway ?? InferGatewayFromUnicast(props);
         }
 
         // Infers x.x.x.1 of the subnet from the adapter's unicast address

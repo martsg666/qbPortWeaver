@@ -105,33 +105,9 @@ namespace qbPortWeaver
             status["updateIntervalSeconds"] = cfg.UpdateInterval;
 
             // Instantiate VPN manager based on configured provider
-            IVPNManager vpnManager;
-            if (cfg.VpnProvider.Equals("PIA", StringComparison.OrdinalIgnoreCase))
-            {
-                vpnManager = new PIAVPNManager();
-            }
-            else if (cfg.VpnProvider.Equals("NAT-PMP", StringComparison.OrdinalIgnoreCase))
-            {
-                var adapters = NatPmpManager.DiscoverAdapters();
-                if (adapters.Count == 0)
-                {
-                    SetCompleted(status, false, "No NAT-PMP capable adapters found");
-                    return cfg.UpdateInterval;
-                }
-                // Use the configured adapter if set; otherwise fall back to the first connected one
-                if (!string.IsNullOrWhiteSpace(cfg.NatPmpAdapterName))
-                    vpnManager = adapters.FirstOrDefault(adapter => adapter.ProviderName.Equals(cfg.NatPmpAdapterName, StringComparison.OrdinalIgnoreCase))
-                                 ?? adapters.FirstOrDefault(adapter => adapter.IsVPNConnected())
-                                 ?? adapters[0];
-                else
-                    vpnManager = adapters.FirstOrDefault(adapter => adapter.IsVPNConnected()) ?? adapters[0];
-            }
-            else
-            {
-                if (!cfg.VpnProvider.Equals("ProtonVPN", StringComparison.OrdinalIgnoreCase))
-                    LogManager.Instance.LogMessage($"Unknown VPN provider '{cfg.VpnProvider}', defaulting to ProtonVPN", "WARN");
-                vpnManager = new ProtonVPNManager(AppConstants.GetProtonVPNLogFilePath());
-            }
+            IVPNManager? vpnManager = CreateVpnManager(cfg, status);
+            if (vpnManager is null)
+                return cfg.UpdateInterval;
 
             int targetPort;
             string? vpnProviderName;
@@ -184,6 +160,34 @@ namespace qbPortWeaver
                 status);
 
             return cfg.UpdateInterval;
+        }
+
+        // Instantiates the appropriate VPN manager for the configured provider.
+        // Returns null (with status already set) if the provider cannot be initialised.
+        private static IVPNManager? CreateVpnManager(AppConfig cfg, Dictionary<string, object?> status)
+        {
+            if (cfg.VpnProvider.Equals("PIA", StringComparison.OrdinalIgnoreCase))
+                return new PIAVPNManager();
+
+            if (cfg.VpnProvider.Equals("NAT-PMP", StringComparison.OrdinalIgnoreCase))
+            {
+                var adapters = NatPmpManager.DiscoverAdapters();
+                if (adapters.Count == 0)
+                {
+                    SetCompleted(status, false, "No NAT-PMP capable adapters found");
+                    return null;
+                }
+                // Use the configured adapter if set; otherwise fall back to the first connected one
+                if (!string.IsNullOrWhiteSpace(cfg.NatPmpAdapterName))
+                    return adapters.FirstOrDefault(a => a.ProviderName.Equals(cfg.NatPmpAdapterName, StringComparison.OrdinalIgnoreCase))
+                           ?? adapters.FirstOrDefault(a => a.IsVPNConnected())
+                           ?? adapters[0];
+                return adapters.FirstOrDefault(a => a.IsVPNConnected()) ?? adapters[0];
+            }
+
+            if (!cfg.VpnProvider.Equals("ProtonVPN", StringComparison.OrdinalIgnoreCase))
+                LogManager.Instance.LogMessage($"Unknown VPN provider '{cfg.VpnProvider}', defaulting to ProtonVPN", "WARN");
+            return new ProtonVPNManager(AppConstants.GetProtonVPNLogFilePath());
         }
 
         // Reads all configuration values from the registry into a single AppConfig record

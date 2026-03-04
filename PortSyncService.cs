@@ -145,7 +145,7 @@ namespace qbPortWeaver
                 warnOnInterfaceMismatch = cfg.WarnOnInterfaceMismatch;
             }
 
-            using var qBittorrentMgr = new qBittorrentManager(
+            using var qBittorrentMgr = new QBittorrentManager(
                 cfg.QBittorrentURL, cfg.QBittorrentUserName, cfg.QBittorrentPassword,
                 cfg.QBittorrentProcessName, cfg.QBittorrentExePath);
 
@@ -225,7 +225,7 @@ namespace qbPortWeaver
         }
 
         // Ensures qBittorrent is running, then updates its port if it differs from the target port
-        private async Task EnsureRunningAndUpdatePortAsync(qBittorrentManager qBittorrentMgr, int targetPort, SyncConfig config, Dictionary<string, object?> status)
+        private async Task EnsureRunningAndUpdatePortAsync(QBittorrentManager qBittorrentMgr, int targetPort, SyncConfig config, Dictionary<string, object?> status)
         {
             if (!await EnsureQBittorrentRunningAsync(qBittorrentMgr, config, status))
                 return;
@@ -266,7 +266,7 @@ namespace qbPortWeaver
         }
 
         // Returns true if qBittorrent is running (or was successfully force-started), false otherwise
-        private static async Task<bool> EnsureQBittorrentRunningAsync(qBittorrentManager qBittorrentMgr, SyncConfig config, Dictionary<string, object?> status)
+        private static async Task<bool> EnsureQBittorrentRunningAsync(QBittorrentManager qBittorrentMgr, SyncConfig config, Dictionary<string, object?> status)
         {
             if (qBittorrentMgr.IsRunning())
             {
@@ -338,7 +338,7 @@ namespace qbPortWeaver
 
         // Sets the listening port, optionally restarts qBittorrent and runs the post-update command.
         // Returns false if any step fails.
-        private static async Task<bool> ApplyPortUpdateAsync(qBittorrentManager qBittorrentMgr, int targetPort, SyncConfig config, Dictionary<string, object?> status)
+        private static async Task<bool> ApplyPortUpdateAsync(QBittorrentManager qBittorrentMgr, int targetPort, SyncConfig config, Dictionary<string, object?> status)
         {
             LogManager.Instance.LogMessage($"Ports do not match, updating qBittorrent port to: {targetPort}", "INFO");
             if (!await qBittorrentMgr.SetListeningPortAsync(targetPort))
@@ -390,7 +390,7 @@ namespace qbPortWeaver
         }
 
         // Polls /api/v2/transfer/info and restarts qBittorrent if connection_status is "disconnected"
-        private static async Task CheckAndRestartIfDisconnectedAsync(qBittorrentManager qBittorrentMgr)
+        private static async Task CheckAndRestartIfDisconnectedAsync(QBittorrentManager qBittorrentMgr)
         {
             string? connectionStatus = await qBittorrentMgr.GetConnectionStatusAsync();
             if (connectionStatus == null)

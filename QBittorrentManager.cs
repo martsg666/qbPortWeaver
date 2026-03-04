@@ -5,7 +5,7 @@ using System.Text.Json;
 namespace qbPortWeaver
 {
     // Manages qBittorrent-related operations via Web API
-    public sealed class qBittorrentManager : IDisposable
+    public sealed class QBittorrentManager : IDisposable
     {
         private const int HTTP_TIMEOUT_SECONDS = 10;
         private const int PROCESS_START_DELAY_MS = 2000;
@@ -20,7 +20,7 @@ namespace qbPortWeaver
         private readonly HttpClient _httpClient;
         private bool _isAuthenticated;
 
-        public qBittorrentManager(string qBittorrentURL, string qBittorrentUserName, string qBittorrentPassword, string qBittorrentProcessName, string qBittorrentExePath)
+        public QBittorrentManager(string qBittorrentURL, string qBittorrentUserName, string qBittorrentPassword, string qBittorrentProcessName, string qBittorrentExePath)
         {
             _qBittorrentURL = (qBittorrentURL ?? string.Empty).TrimEnd('/');
             _qBittorrentUserName = qBittorrentUserName;
@@ -103,8 +103,8 @@ namespace qbPortWeaver
 
                 if (listenPort == null)
                 {
-                    LogManager.Instance.LogDebug("qBittorrentManager.GetPreferencesAsync: listen_port not parsed in preferences JSON");
-                    LogManager.Instance.LogDebug($"qBittorrentManager.GetPreferencesAsync: {json}");
+                    LogManager.Instance.LogDebug("QBittorrentManager.GetPreferencesAsync: listen_port not parsed in preferences JSON");
+                    LogManager.Instance.LogDebug($"QBittorrentManager.GetPreferencesAsync: {json}");
                 }
 
                 string? currentInterfaceName = null;
@@ -125,7 +125,7 @@ namespace qbPortWeaver
             }
             catch (Exception ex)
             {
-                LogManager.Instance.LogDebug($"qBittorrentManager.GetPreferencesAsync: {ex.Message}");
+                LogManager.Instance.LogDebug($"QBittorrentManager.GetPreferencesAsync: {ex.Message}");
                 return (null, null);
             }
         }
@@ -163,7 +163,7 @@ namespace qbPortWeaver
             }
             catch (Exception ex)
             {
-                LogManager.Instance.LogDebug($"qBittorrentManager.SetListeningPortAsync: {ex.Message}");
+                LogManager.Instance.LogDebug($"QBittorrentManager.SetListeningPortAsync: {ex.Message}");
                 return false;
             }
         }
@@ -177,7 +177,7 @@ namespace qbPortWeaver
                 foreach (var proc in Process.GetProcessesByName(_qBittorrentProcessName))
                 {
                     try { proc.Kill(); }
-                    catch (Exception ex) { LogManager.Instance.LogDebug($"qBittorrentManager.RestartAsync: Failed to kill process: {ex.Message}"); }
+                    catch (Exception ex) { LogManager.Instance.LogDebug($"QBittorrentManager.RestartAsync: Failed to kill process: {ex.Message}"); }
                     finally { proc.Dispose(); }
                 }
 
@@ -224,7 +224,7 @@ namespace qbPortWeaver
                 if (doc.RootElement.TryGetProperty("connection_status", out var statusElement))
                     return statusElement.GetString();
 
-                LogManager.Instance.LogDebug("qBittorrentManager.GetConnectionStatusAsync: connection_status not found in transfer/info response");
+                LogManager.Instance.LogDebug("QBittorrentManager.GetConnectionStatusAsync: connection_status not found in transfer/info response");
                 return null;
             }
             catch (TaskCanceledException)
@@ -239,7 +239,7 @@ namespace qbPortWeaver
             }
             catch (Exception ex)
             {
-                LogManager.Instance.LogDebug($"qBittorrentManager.GetConnectionStatusAsync: {ex.Message}");
+                LogManager.Instance.LogDebug($"QBittorrentManager.GetConnectionStatusAsync: {ex.Message}");
                 return null;
             }
         }
@@ -301,7 +301,7 @@ namespace qbPortWeaver
             }
             catch (Exception ex)
             {
-                LogManager.Instance.LogDebug($"qBittorrentManager.AuthenticateAsync: {ex.Message}");
+                LogManager.Instance.LogDebug($"QBittorrentManager.AuthenticateAsync: {ex.Message}");
                 return false;
             }
         }

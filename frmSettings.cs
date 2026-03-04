@@ -17,7 +17,8 @@ namespace qbPortWeaver
         // Wire up tooltips for each setting control
         private void SetupTooltips()
         {
-            toolTip.SetToolTip(cboVpnProvider,              "VPN provider used for port detection (ProtonVPN or PIA)");
+            toolTip.SetToolTip(cboVpnProvider,              "VPN provider used for port detection (ProtonVPN, PIA, or NAT-PMP)");
+            toolTip.SetToolTip(cboNatPmpAdapter,             "Network adapter to use for NAT-PMP port mapping (only applies when NAT-PMP is selected)");
             toolTip.SetToolTip(nudUpdateInterval,            "How often to check and sync the port, in seconds");
             toolTip.SetToolTip(txtQBittorrentURL,            "URL for the qBittorrent Web UI (e.g. http://127.0.0.1:8080)");
             toolTip.SetToolTip(txtQBittorrentUserName,       "Username for the qBittorrent Web UI");
@@ -41,6 +42,14 @@ namespace qbPortWeaver
             cboVpnProvider.SelectedItem = RegistrySettingsManager.GetValue("general", "vpnProvider");
             if (cboVpnProvider.SelectedIndex < 0)
                 cboVpnProvider.SelectedIndex = 0;
+
+            // NAT-PMP adapter
+            cboNatPmpAdapter.Items.Clear();
+            foreach (var adapter in NatPmpManager.DiscoverAdapters())
+                cboNatPmpAdapter.Items.Add(adapter.ProviderName);
+            string savedAdapter = RegistrySettingsManager.GetValue("general", "natPmpAdapterName");
+            if (!string.IsNullOrWhiteSpace(savedAdapter))
+                cboNatPmpAdapter.SelectedItem = savedAdapter;
 
             if (int.TryParse(RegistrySettingsManager.GetValue("general", "updateIntervalSeconds"), out int interval))
                 nudUpdateInterval.Value = Math.Clamp(interval, (int)nudUpdateInterval.Minimum, (int)nudUpdateInterval.Maximum);
@@ -80,6 +89,7 @@ namespace qbPortWeaver
             // General
             RegistrySettingsManager.SetValue("general", "vpnProvider",           cboVpnProvider.SelectedItem?.ToString() ?? "ProtonVPN");
             RegistrySettingsManager.SetValue("general", "updateIntervalSeconds",  ((int)nudUpdateInterval.Value).ToString());
+            RegistrySettingsManager.SetValue("general", "natPmpAdapterName",      cboNatPmpAdapter.SelectedItem?.ToString() ?? "");
 
             // qBittorrent
             RegistrySettingsManager.SetValue("qBittorrent", "qBittorrentURL",          txtQBittorrentURL.Text.Trim());
@@ -96,6 +106,11 @@ namespace qbPortWeaver
             // Extra
             RegistrySettingsManager.SetValue("extra", "postUpdateCmd", txtPostUpdateCmd.Text.Trim());
             RegistrySettingsManager.SetValue("extra", "debugMode",     chkDebugMode.Checked ? "True" : "False");
+        }
+
+        private void cboVpnProvider_SelectedIndexChanged(object? sender, EventArgs e)
+        {
+            cboNatPmpAdapter.Enabled = cboVpnProvider.SelectedItem?.ToString() == "NAT-PMP";
         }
 
         private void btnBrowseExePath_Click(object? sender, EventArgs e)

@@ -15,7 +15,8 @@ namespace qbPortWeaver
                 ["general"] = new(StringComparer.OrdinalIgnoreCase)
                 {
                     ["vpnProvider"]           = "ProtonVPN",
-                    ["updateIntervalSeconds"] = "180"
+                    ["updateIntervalSeconds"] = "180",
+                    ["natPmpAdapterName"]     = ""
                 },
                 ["qBittorrent"] = new(StringComparer.OrdinalIgnoreCase)
                 {

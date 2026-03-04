@@ -17,6 +17,7 @@ namespace qbPortWeaver
         // All values read from the registry for a single sync cycle
         private sealed record AppConfig(
             string VpnProvider,
+            string NatPmpAdapterName,
             int UpdateInterval,
             string QBittorrentURL,
             string QBittorrentUserName,
@@ -109,6 +110,22 @@ namespace qbPortWeaver
             {
                 vpnManager = new PIAVPNManager();
             }
+            else if (cfg.VpnProvider.Equals("NAT-PMP", StringComparison.OrdinalIgnoreCase))
+            {
+                var adapters = NatPmpManager.DiscoverAdapters();
+                if (adapters.Count == 0)
+                {
+                    SetCompleted(status, false, "No NAT-PMP capable adapters found");
+                    return cfg.UpdateInterval;
+                }
+                // Use the configured adapter if set; otherwise fall back to the first connected one
+                if (!string.IsNullOrWhiteSpace(cfg.NatPmpAdapterName))
+                    vpnManager = adapters.FirstOrDefault(adapter => adapter.ProviderName.Equals(cfg.NatPmpAdapterName, StringComparison.OrdinalIgnoreCase))
+                                 ?? adapters.FirstOrDefault(adapter => adapter.IsVPNConnected())
+                                 ?? adapters[0];
+                else
+                    vpnManager = adapters.FirstOrDefault(adapter => adapter.IsVPNConnected()) ?? adapters[0];
+            }
             else
             {
                 if (!cfg.VpnProvider.Equals("ProtonVPN", StringComparison.OrdinalIgnoreCase))
@@ -187,6 +204,7 @@ namespace qbPortWeaver
 
             return new AppConfig(
                 VpnProvider:            RegistrySettingsManager.GetValue("general",     "vpnProvider"),
+                NatPmpAdapterName:      RegistrySettingsManager.GetValue("general",     "natPmpAdapterName"),
                 UpdateInterval:         updateInterval,
                 QBittorrentURL:         RegistrySettingsManager.GetValue("qBittorrent", "qBittorrentURL"),
                 QBittorrentUserName:    RegistrySettingsManager.GetValue("qBittorrent", "qBittorrentUserName"),
@@ -291,9 +309,16 @@ namespace qbPortWeaver
                 isMatch = interfaceName.Contains("Private Internet Access", StringComparison.OrdinalIgnoreCase) ||
                           interfaceName.Contains("PIA", StringComparison.OrdinalIgnoreCase);
             }
-            else
+            else if (vpnProviderName.Equals("ProtonVPN", StringComparison.OrdinalIgnoreCase))
             {
                 isMatch = interfaceName.Contains("ProtonVPN", StringComparison.OrdinalIgnoreCase);
+            }
+            else
+            {
+                // NAT-PMP: vpnProviderName is the adapter description configured by the user.
+                // qBittorrent may return either the adapter name or description, so check both directions.
+                isMatch = interfaceName.Contains(vpnProviderName, StringComparison.OrdinalIgnoreCase) ||
+                          vpnProviderName.Contains(interfaceName, StringComparison.OrdinalIgnoreCase);
             }
 
             if (!isMatch)

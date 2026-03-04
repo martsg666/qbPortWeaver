@@ -20,11 +20,11 @@ if ($key.Count -eq 1) {
 } elseif ($key.Count -eq 0) {
   Write-Warning "$($packageArgs['packageName']) has already been uninstalled by other means."
 } else {
-  Write-Warning "$($key.Count) matching uninstall entries found — skipping to avoid accidental removal."
+  Write-Warning "$($key.Count) matching uninstall entries found - skipping to avoid accidental removal."
   Write-Warning "Matches: $(($key | Select-Object -ExpandProperty DisplayName) -join ', ')"
 }
 
-# Optionally remove user data (disabled by default — uncomment if desired):
+# Optionally remove user data (disabled by default - uncomment if desired):
 # $appDataPath = Join-Path $env:LOCALAPPDATA 'qbPortWeaver'
 # if (Test-Path $appDataPath) {
 #   Remove-Item -Recurse -Force $appDataPath

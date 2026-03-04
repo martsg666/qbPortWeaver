@@ -1,6 +1,6 @@
 namespace qbPortWeaver
 {
-    partial class frmAbout
+    partial class AboutForm
     {
         private System.ComponentModel.IContainer components = null;
 
@@ -17,7 +17,7 @@ namespace qbPortWeaver
 
         private void InitializeComponent()
         {
-            System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(frmAbout));
+            System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(AboutForm));
             picIcon = new PictureBox();
             lblAppName = new Label();
             lblAppVersion = new Label();
@@ -203,7 +203,7 @@ namespace qbPortWeaver
             btnClose.TabIndex = 3;
             btnClose.Text = "Close";
             // 
-            // frmAbout
+            // AboutForm
             // 
             AutoScaleDimensions = new SizeF(7F, 15F);
             AutoScaleMode = AutoScaleMode.Font;
@@ -219,7 +219,7 @@ namespace qbPortWeaver
             FormBorderStyle = FormBorderStyle.FixedDialog;
             MaximizeBox = false;
             MinimizeBox = false;
-            Name = "frmAbout";
+            Name = "AboutForm";
             ShowIcon = false;
             StartPosition = FormStartPosition.CenterScreen;
             Text = "About";

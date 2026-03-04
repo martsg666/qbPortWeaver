@@ -1,8 +1,8 @@
 namespace qbPortWeaver
 {
-    public partial class frmSettings : Form
+    public partial class SettingsForm : Form
     {
-        public frmSettings()
+        public SettingsForm()
         {
             InitializeComponent();
         }

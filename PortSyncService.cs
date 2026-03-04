@@ -105,7 +105,7 @@ namespace qbPortWeaver
             status["updateIntervalSeconds"] = cfg.UpdateInterval;
 
             // Instantiate VPN manager based on configured provider
-            IVPNManager? vpnManager = CreateVpnManager(cfg, status);
+            IVpnManager? vpnManager = CreateVpnManager(cfg, status);
             if (vpnManager is null)
                 return cfg.UpdateInterval;
 
@@ -164,10 +164,10 @@ namespace qbPortWeaver
 
         // Instantiates the appropriate VPN manager for the configured provider.
         // Returns null (with status already set) if the provider cannot be initialised.
-        private static IVPNManager? CreateVpnManager(AppConfig cfg, Dictionary<string, object?> status)
+        private static IVpnManager? CreateVpnManager(AppConfig cfg, Dictionary<string, object?> status)
         {
             if (cfg.VpnProvider.Equals("PIA", StringComparison.OrdinalIgnoreCase))
-                return new PIAVPNManager();
+                return new PiaVpnManager();
 
             if (cfg.VpnProvider.Equals("NAT-PMP", StringComparison.OrdinalIgnoreCase))
             {

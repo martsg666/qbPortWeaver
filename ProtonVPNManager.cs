@@ -5,7 +5,7 @@ using System.Text.RegularExpressions;
 namespace qbPortWeaver
 {
     // Detects ProtonVPN connectivity via network adapter enumeration and reads the forwarded port from ProtonVPN's log file
-    public sealed class ProtonVPNManager : IVPNManager
+    public sealed class ProtonVPNManager : IVpnManager
     {
         private readonly string _logFilePath;
         private static readonly Regex PortRegex = new Regex(@"Port pair\s+(\d+)->(?:\d+)", RegexOptions.Compiled);

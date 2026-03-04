@@ -26,7 +26,7 @@ namespace qbPortWeaver
                     MessageBoxIcon.Information);
                 return;
             }
-            Application.Run(new frmMain());
+            Application.Run(new MainForm());
         }
     }
 }

@@ -1,6 +1,6 @@
 namespace qbPortWeaver
 {
-    public interface IVPNManager
+    public interface IVpnManager
     {
         string ProviderName { get; }
         bool IsVPNConnected();

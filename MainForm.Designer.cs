@@ -1,6 +1,6 @@
 ﻿namespace qbPortWeaver
 {
-    partial class frmMain
+    partial class MainForm
     {
         /// <summary>
         ///  Required designer variable.
@@ -35,7 +35,7 @@
                 }
                 catch (Exception ex)
                 {
-                    LogManager.Instance?.LogDebug($"frmMain.Dispose: Error disposing resources: {ex.Message}");
+                    LogManager.Instance?.LogDebug($"MainForm.Dispose: Error disposing resources: {ex.Message}");
                 }
             }
             base.Dispose(disposing);
@@ -51,15 +51,15 @@
         {
             SuspendLayout();
             //
-            // frmMain
+            // MainForm
             //
             AutoScaleDimensions = new SizeF(7F, 15F);
             AutoScaleMode = AutoScaleMode.Font;
             ClientSize = new Size(800, 450);
             Icon = Properties.Resources.qbPortWeaver;
-            Name = "frmMain";
+            Name = "MainForm";
             Text = "qbPortWeaver";
-            Load += frmMain_Load;
+            Load += MainForm_Load;
             ResumeLayout(false);
         }
 

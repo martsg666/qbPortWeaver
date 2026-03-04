@@ -2,12 +2,12 @@ using System.Diagnostics;
 
 namespace qbPortWeaver
 {
-    public partial class frmAbout : Form
+    public partial class AboutForm : Form
     {
         // Set to the release URL when an update is available; null when up-to-date or not yet checked
         private string? _releaseUrl;
 
-        public frmAbout()
+        public AboutForm()
         {
             InitializeComponent();
             lblAppVersion.Text         = $"Version {AppConstants.APP_VERSION}";
@@ -21,7 +21,7 @@ namespace qbPortWeaver
         {
             base.OnLoad(e);
             _ = LoadGitHubDataAsync().ContinueWith(
-                t => LogManager.Instance.LogDebug($"frmAbout.LoadGitHubDataAsync: {t.Exception?.GetBaseException().Message}"),
+                t => LogManager.Instance.LogDebug($"AboutForm.LoadGitHubDataAsync: {t.Exception?.GetBaseException().Message}"),
                 TaskContinuationOptions.OnlyOnFaulted);
         }
 
@@ -135,7 +135,7 @@ namespace qbPortWeaver
             }
             catch (Exception ex)
             {
-                LogManager.Instance.LogDebug($"frmAbout.OpenUrl: {ex.Message}");
+                LogManager.Instance.LogDebug($"AboutForm.OpenUrl: {ex.Message}");
             }
         }
     }

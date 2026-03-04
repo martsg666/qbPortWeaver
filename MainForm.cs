@@ -3,14 +3,14 @@ using System.Runtime.InteropServices;
 
 namespace qbPortWeaver
 {
-    public partial class frmMain : Form
+    public partial class MainForm : Form
     {
         // Tray icon, menu and auto-start menu item
         private NotifyIcon _trayIcon = null!;
         private ContextMenuStrip _trayMenu = null!;
         private ToolStripMenuItem _autoStartMenuItem = null!;
 
-        // Status tray icons (generated at startup; disposed in frmMain.Designer.cs)
+        // Status tray icons (generated at startup; disposed in MainForm.Designer.cs)
         private Icon? _iconBase;
         private Icon? _iconOK;
         private Icon? _iconWarning;
@@ -40,7 +40,7 @@ namespace qbPortWeaver
         // Last version for which the user was already shown an update prompt
         private string? _lastNotifiedVersion;
 
-        public frmMain()
+        public MainForm()
         {
             InitializeComponent();
 
@@ -59,7 +59,7 @@ namespace qbPortWeaver
             UpdateTrayTooltip();
         }
 
-        private async void frmMain_Load(object sender, EventArgs e)
+        private async void MainForm_Load(object sender, EventArgs e)
         {
             // Start minimized and hide from taskbar
             this.WindowState = FormWindowState.Minimized;
@@ -89,7 +89,7 @@ namespace qbPortWeaver
             // Hide tray icon immediately to avoid ghost icon
             _trayIcon.Visible = false;
 
-            // Resources are disposed in Dispose(bool) via frmMain.Designer.cs
+            // Resources are disposed in Dispose(bool) via MainForm.Designer.cs
             base.OnFormClosing(e);
         }
 
@@ -147,12 +147,12 @@ namespace qbPortWeaver
             });
             _trayMenu.Items.Add("Settings", null, (s, e) =>
             {
-                using var frm = new frmSettings();
+                using var frm = new SettingsForm();
                 frm.ShowDialog(this);
             });
             _trayMenu.Items.Add("About", null, (s, e) =>
             {
-                using var frm = new frmAbout();
+                using var frm = new AboutForm();
                 frm.ShowDialog(this);
             });
 
@@ -211,7 +211,7 @@ namespace qbPortWeaver
             }
             catch (Exception ex)
             {
-                LogManager.Instance.LogDebug($"frmMain.PerformUpdateCheckAsync: {ex.Message}");
+                LogManager.Instance.LogDebug($"MainForm.PerformUpdateCheckAsync: {ex.Message}");
             }
         }
 

@@ -1,6 +1,6 @@
 namespace qbPortWeaver
 {
-    partial class frmSettings
+    partial class SettingsForm
     {
         private System.ComponentModel.IContainer components = null;
 
@@ -269,7 +269,7 @@ namespace qbPortWeaver
             btnCancel.TabIndex     = 16;
             btnCancel.DialogResult = DialogResult.Cancel;
 
-            // ── frmSettings ───────────────────────────────────────────────
+            // ── SettingsForm ───────────────────────────────────────────────
             AutoScaleDimensions = new SizeF(7F, 15F);
             AutoScaleMode       = AutoScaleMode.Font;
             AcceptButton        = btnOK;

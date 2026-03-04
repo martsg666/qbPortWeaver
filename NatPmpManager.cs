@@ -5,7 +5,7 @@ using System.Net.Sockets;
 namespace qbPortWeaver
 {
     // Generic NAT-PMP VPN manager. Instantiate with an adapter returned by DiscoverAdapters().
-    public sealed class NatPmpManager : IVPNManager
+    public sealed class NatPmpManager : IVpnManager
     {
         private const int  NAT_PMP_PORT           = 5351;
         private const int  TIMEOUT_MS             = 2000;

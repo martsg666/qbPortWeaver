@@ -8,17 +8,21 @@ namespace qbPortWeaver
     {
         private const string BaseKeyPath = @"Software\qbPortWeaver\Settings";
 
+        public const string SectionGeneral     = "general";
+        public const string SectionQBittorrent = "qBittorrent";
+        public const string SectionExtra       = "extra";
+
         // Default values for all settings (single source of truth)
         internal static readonly Dictionary<string, Dictionary<string, string>> Defaults =
             new(StringComparer.OrdinalIgnoreCase)
             {
-                ["general"] = new(StringComparer.OrdinalIgnoreCase)
+                [SectionGeneral] = new(StringComparer.OrdinalIgnoreCase)
                 {
                     ["vpnProvider"]           = "ProtonVPN",
                     ["updateIntervalSeconds"] = "180",
                     ["natPmpAdapterName"]     = ""
                 },
-                ["qBittorrent"] = new(StringComparer.OrdinalIgnoreCase)
+                [SectionQBittorrent] = new(StringComparer.OrdinalIgnoreCase)
                 {
                     ["qBittorrentURL"]          = "http://127.0.0.1:8080",
                     ["qBittorrentUserName"]     = "admin",
@@ -31,7 +35,7 @@ namespace qbPortWeaver
                     ["warnOnInterfaceMismatch"] = "True",
                     ["restartOnDisconnect"]     = "False"
                 },
-                ["extra"] = new(StringComparer.OrdinalIgnoreCase)
+                [SectionExtra] = new(StringComparer.OrdinalIgnoreCase)
                 {
                     ["postUpdateCmd"] = "",
                     ["debugMode"]     = "False"
@@ -94,7 +98,7 @@ namespace qbPortWeaver
         {
             try
             {
-                using var regKey = Registry.CurrentUser.OpenSubKey($@"{BaseKeyPath}\qBittorrent");
+                using var regKey = Registry.CurrentUser.OpenSubKey($@"{BaseKeyPath}\{SectionQBittorrent}");
                 if (regKey?.GetValue("qBittorrentPassword") is string storedValue && storedValue.Length > 0)
                 {
                     try
@@ -115,7 +119,7 @@ namespace qbPortWeaver
                 LogManager.Instance.LogDebug($"RegistrySettingsManager.GetPassword: {ex.Message}");
             }
 
-            return GetDefault("qBittorrent", "qBittorrentPassword");
+            return GetDefault(SectionQBittorrent, "qBittorrentPassword");
         }
 
         // Writes a single value to the registry
@@ -139,7 +143,7 @@ namespace qbPortWeaver
             try
             {
                 string encoded = EncryptPassword(plaintext);
-                using var regKey = Registry.CurrentUser.CreateSubKey($@"{BaseKeyPath}\qBittorrent");
+                using var regKey = Registry.CurrentUser.CreateSubKey($@"{BaseKeyPath}\{SectionQBittorrent}");
                 regKey.SetValue("qBittorrentPassword", encoded, RegistryValueKind.String);
                 LogManager.Instance.LogDebug("RegistrySettingsManager.SetPassword: password saved (encrypted)");
             }
@@ -160,7 +164,7 @@ namespace qbPortWeaver
                     continue;
 
                 // The password is always stored encrypted; encrypt before the initial write.
-                if (sectionName.Equals("qBittorrent", StringComparison.OrdinalIgnoreCase) &&
+                if (sectionName.Equals(SectionQBittorrent, StringComparison.OrdinalIgnoreCase) &&
                     kvp.Key.Equals("qBittorrentPassword", StringComparison.OrdinalIgnoreCase))
                 {
                     regKey.SetValue(kvp.Key, EncryptPassword(kvp.Value), RegistryValueKind.String);

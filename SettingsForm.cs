@@ -39,7 +39,7 @@ namespace qbPortWeaver
         private void LoadSettings()
         {
             // General
-            cboVpnProvider.SelectedItem = RegistrySettingsManager.GetValue("general", "vpnProvider");
+            cboVpnProvider.SelectedItem = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral, "vpnProvider");
             if (cboVpnProvider.SelectedIndex < 0)
                 cboVpnProvider.SelectedIndex = 0;
 
@@ -48,7 +48,7 @@ namespace qbPortWeaver
             cboNatPmpAdapter.Items.Add("Discovering adapters…");
             cboNatPmpAdapter.SelectedIndex = 0;
             cboNatPmpAdapter.Enabled = false;
-            string savedAdapter = RegistrySettingsManager.GetValue("general", "natPmpAdapterName");
+            string savedAdapter = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral, "natPmpAdapterName");
             _ = Task.Run(() => NatPmpManager.DiscoverAdapters())
                     .ContinueWith(t =>
                     {
@@ -70,28 +70,28 @@ namespace qbPortWeaver
                     }, CancellationToken.None, TaskContinuationOptions.OnlyOnRanToCompletion, TaskScheduler.FromCurrentSynchronizationContext());
 
             nudUpdateInterval.Value = Math.Clamp(
-                RegistrySettingsManager.GetInt("general", "updateIntervalSeconds"),
+                RegistrySettingsManager.GetInt(RegistrySettingsManager.SectionGeneral, "updateIntervalSeconds"),
                 (int)nudUpdateInterval.Minimum, (int)nudUpdateInterval.Maximum);
 
             // qBittorrent
-            txtQBittorrentURL.Text         = RegistrySettingsManager.GetValue("qBittorrent", "qBittorrentURL");
-            txtQBittorrentUserName.Text    = RegistrySettingsManager.GetValue("qBittorrent", "qBittorrentUserName");
+            txtQBittorrentURL.Text         = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionQBittorrent, "qBittorrentURL");
+            txtQBittorrentUserName.Text    = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionQBittorrent, "qBittorrentUserName");
             txtQBittorrentPassword.Text    = RegistrySettingsManager.GetPassword();
-            txtQBittorrentExePath.Text     = RegistrySettingsManager.GetValue("qBittorrent", "qBittorrentExePath");
-            txtQBittorrentProcessName.Text = RegistrySettingsManager.GetValue("qBittorrent", "qBittorrentProcessName");
+            txtQBittorrentExePath.Text     = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionQBittorrent, "qBittorrentExePath");
+            txtQBittorrentProcessName.Text = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionQBittorrent, "qBittorrentProcessName");
 
-            chkRestartQBittorrent.Checked      = RegistrySettingsManager.GetBool("qBittorrent", "restartqBittorrent");
-            chkForceStartQBittorrent.Checked   = RegistrySettingsManager.GetBool("qBittorrent", "forceStartqBittorrent");
-            chkWarnOnInterfaceMismatch.Checked = RegistrySettingsManager.GetBool("qBittorrent", "warnOnInterfaceMismatch");
-            chkRestartOnDisconnect.Checked     = RegistrySettingsManager.GetBool("qBittorrent", "restartOnDisconnect");
+            chkRestartQBittorrent.Checked      = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionQBittorrent, "restartqBittorrent");
+            chkForceStartQBittorrent.Checked   = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionQBittorrent, "forceStartqBittorrent");
+            chkWarnOnInterfaceMismatch.Checked = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionQBittorrent, "warnOnInterfaceMismatch");
+            chkRestartOnDisconnect.Checked     = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionQBittorrent, "restartOnDisconnect");
 
             nudDefaultPort.Value = Math.Clamp(
-                RegistrySettingsManager.GetInt("qBittorrent", "defaultPort"),
+                RegistrySettingsManager.GetInt(RegistrySettingsManager.SectionQBittorrent, "defaultPort"),
                 (int)nudDefaultPort.Minimum, (int)nudDefaultPort.Maximum);
 
             // Extra
-            txtPostUpdateCmd.Text = RegistrySettingsManager.GetValue("extra", "postUpdateCmd");
-            chkDebugMode.Checked  = RegistrySettingsManager.GetBool("extra", "debugMode");
+            txtPostUpdateCmd.Text = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionExtra, "postUpdateCmd");
+            chkDebugMode.Checked  = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionExtra, "debugMode");
         }
 
         private void btnOK_Click(object? sender, EventArgs e)
@@ -103,25 +103,25 @@ namespace qbPortWeaver
         private void SaveSettings()
         {
             // General
-            RegistrySettingsManager.SetValue("general", "vpnProvider",           cboVpnProvider.SelectedItem?.ToString() ?? "ProtonVPN");
-            RegistrySettingsManager.SetValue("general", "updateIntervalSeconds",  ((int)nudUpdateInterval.Value).ToString());
-            RegistrySettingsManager.SetValue("general", "natPmpAdapterName",      cboNatPmpAdapter.SelectedItem?.ToString() ?? "");
+            RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionGeneral, "vpnProvider",           cboVpnProvider.SelectedItem?.ToString() ?? "ProtonVPN");
+            RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionGeneral, "updateIntervalSeconds",  ((int)nudUpdateInterval.Value).ToString());
+            RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionGeneral, "natPmpAdapterName",      cboNatPmpAdapter.SelectedItem?.ToString() ?? "");
 
             // qBittorrent
-            RegistrySettingsManager.SetValue("qBittorrent", "qBittorrentURL",          txtQBittorrentURL.Text.Trim());
-            RegistrySettingsManager.SetValue("qBittorrent", "qBittorrentUserName",     txtQBittorrentUserName.Text.Trim());
+            RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionQBittorrent, "qBittorrentURL",          txtQBittorrentURL.Text.Trim());
+            RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionQBittorrent, "qBittorrentUserName",     txtQBittorrentUserName.Text.Trim());
             RegistrySettingsManager.SetPassword(txtQBittorrentPassword.Text);
-            RegistrySettingsManager.SetValue("qBittorrent", "qBittorrentExePath",      txtQBittorrentExePath.Text.Trim());
-            RegistrySettingsManager.SetValue("qBittorrent", "qBittorrentProcessName",  txtQBittorrentProcessName.Text.Trim());
-            RegistrySettingsManager.SetValue("qBittorrent", "restartqBittorrent",      chkRestartQBittorrent.Checked      ? "True" : "False");
-            RegistrySettingsManager.SetValue("qBittorrent", "forceStartqBittorrent",   chkForceStartQBittorrent.Checked   ? "True" : "False");
-            RegistrySettingsManager.SetValue("qBittorrent", "defaultPort",             ((int)nudDefaultPort.Value).ToString());
-            RegistrySettingsManager.SetValue("qBittorrent", "warnOnInterfaceMismatch", chkWarnOnInterfaceMismatch.Checked ? "True" : "False");
-            RegistrySettingsManager.SetValue("qBittorrent", "restartOnDisconnect",     chkRestartOnDisconnect.Checked     ? "True" : "False");
+            RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionQBittorrent, "qBittorrentExePath",      txtQBittorrentExePath.Text.Trim());
+            RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionQBittorrent, "qBittorrentProcessName",  txtQBittorrentProcessName.Text.Trim());
+            RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionQBittorrent, "restartqBittorrent",      chkRestartQBittorrent.Checked      ? "True" : "False");
+            RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionQBittorrent, "forceStartqBittorrent",   chkForceStartQBittorrent.Checked   ? "True" : "False");
+            RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionQBittorrent, "defaultPort",             ((int)nudDefaultPort.Value).ToString());
+            RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionQBittorrent, "warnOnInterfaceMismatch", chkWarnOnInterfaceMismatch.Checked ? "True" : "False");
+            RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionQBittorrent, "restartOnDisconnect",     chkRestartOnDisconnect.Checked     ? "True" : "False");
 
             // Extra
-            RegistrySettingsManager.SetValue("extra", "postUpdateCmd", txtPostUpdateCmd.Text.Trim());
-            RegistrySettingsManager.SetValue("extra", "debugMode",     chkDebugMode.Checked ? "True" : "False");
+            RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionExtra, "postUpdateCmd", txtPostUpdateCmd.Text.Trim());
+            RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionExtra, "debugMode",     chkDebugMode.Checked ? "True" : "False");
         }
 
         private void cboVpnProvider_SelectedIndexChanged(object? sender, EventArgs e)

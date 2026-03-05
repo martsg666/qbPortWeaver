@@ -18,8 +18,6 @@ namespace qbPortWeaver
         private readonly object _lockObject = new object();
         private int _writeCount;
 
-        // volatile: read lock-free on the hot path in LogDebug for performance;
-        // written infrequently from the sync loop, so a torn read is not a concern.
         private volatile bool _debugMode;
         public bool DebugMode
         {

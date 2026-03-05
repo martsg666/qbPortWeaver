@@ -97,7 +97,7 @@ namespace qbPortWeaver
             LogManager.Instance.LogMessage("Sync cycle started", LogLevel.Info);
 
             // Set debug mode as early as possible (reads fresh from registry each loop)
-            bool.TryParse(RegistrySettingsManager.GetValue("extra", "debugMode"), out bool debugMode);
+            bool.TryParse(RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionExtra, "debugMode"), out bool debugMode);
             LogManager.Instance.DebugMode = debugMode;
 
             var cfg = ReadConfig();
@@ -196,30 +196,30 @@ namespace qbPortWeaver
         // Reads all configuration values from the registry into a single AppConfig record
         private static AppConfig ReadConfig()
         {
-            int updateInterval = RegistrySettingsManager.GetInt("general", "updateIntervalSeconds");
+            int updateInterval = RegistrySettingsManager.GetInt(RegistrySettingsManager.SectionGeneral, "updateIntervalSeconds");
             if (updateInterval < 10) updateInterval = AppConstants.DefaultUpdateIntervalSeconds;
 
-            bool restartQBittorrent      = RegistrySettingsManager.GetBool("qBittorrent", "restartqBittorrent");
-            bool forceStartQBittorrent   = RegistrySettingsManager.GetBool("qBittorrent", "forceStartqBittorrent");
-            int  defaultPort             = RegistrySettingsManager.GetInt ("qBittorrent", "defaultPort");
-            bool warnOnInterfaceMismatch = RegistrySettingsManager.GetBool("qBittorrent", "warnOnInterfaceMismatch");
-            bool restartOnDisconnect     = RegistrySettingsManager.GetBool("qBittorrent", "restartOnDisconnect");
+            bool restartQBittorrent      = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionQBittorrent, "restartqBittorrent");
+            bool forceStartQBittorrent   = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionQBittorrent, "forceStartqBittorrent");
+            int  defaultPort             = RegistrySettingsManager.GetInt (RegistrySettingsManager.SectionQBittorrent, "defaultPort");
+            bool warnOnInterfaceMismatch = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionQBittorrent, "warnOnInterfaceMismatch");
+            bool restartOnDisconnect     = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionQBittorrent, "restartOnDisconnect");
 
             return new AppConfig(
-                VpnProvider:            RegistrySettingsManager.GetValue("general",     "vpnProvider"),
-                NatPmpAdapterName:      RegistrySettingsManager.GetValue("general",     "natPmpAdapterName"),
+                VpnProvider:            RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral,     "vpnProvider"),
+                NatPmpAdapterName:      RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral,     "natPmpAdapterName"),
                 UpdateInterval:         updateInterval,
-                QBittorrentURL:         RegistrySettingsManager.GetValue("qBittorrent", "qBittorrentURL"),
-                QBittorrentUserName:    RegistrySettingsManager.GetValue("qBittorrent", "qBittorrentUserName"),
+                QBittorrentURL:         RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionQBittorrent, "qBittorrentURL"),
+                QBittorrentUserName:    RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionQBittorrent, "qBittorrentUserName"),
                 QBittorrentPassword:    RegistrySettingsManager.GetPassword(),
-                QBittorrentExePath:     RegistrySettingsManager.GetValue("qBittorrent", "qBittorrentExePath"),
-                QBittorrentProcessName: RegistrySettingsManager.GetValue("qBittorrent", "qBittorrentProcessName"),
+                QBittorrentExePath:     RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionQBittorrent, "qBittorrentExePath"),
+                QBittorrentProcessName: RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionQBittorrent, "qBittorrentProcessName"),
                 RestartQBittorrent:     restartQBittorrent,
                 ForceStartQBittorrent:  forceStartQBittorrent,
                 DefaultPort:            defaultPort,
                 WarnOnInterfaceMismatch: warnOnInterfaceMismatch,
                 RestartOnDisconnect:    restartOnDisconnect,
-                PostUpdateCommand:      RegistrySettingsManager.GetValue("extra",        "postUpdateCmd")
+                PostUpdateCommand:      RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionExtra,        "postUpdateCmd")
             );
         }
 

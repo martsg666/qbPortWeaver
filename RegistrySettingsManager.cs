@@ -6,7 +6,7 @@ namespace qbPortWeaver
 {
     public static class RegistrySettingsManager
     {
-        private const string BASE_KEY_PATH = @"Software\qbPortWeaver\Settings";
+        private const string BaseKeyPath = @"Software\qbPortWeaver\Settings";
 
         // Default values for all settings (single source of truth)
         internal static readonly Dictionary<string, Dictionary<string, string>> Defaults =
@@ -46,7 +46,7 @@ namespace qbPortWeaver
             {
                 try
                 {
-                    using var regKey = Registry.CurrentUser.CreateSubKey($@"{BASE_KEY_PATH}\{section.Key}");
+                    using var regKey = Registry.CurrentUser.CreateSubKey($@"{BaseKeyPath}\{section.Key}");
                     anyWritten |= WriteDefaultsForSection(regKey, section.Key, section.Value);
                 }
                 catch (Exception ex)
@@ -56,7 +56,7 @@ namespace qbPortWeaver
             }
 
             if (anyWritten)
-                LogManager.Instance.LogMessage("Registry settings initialized with defaults", "INFO");
+                LogManager.Instance.LogMessage("Registry settings initialized with defaults", LogLevel.Info);
         }
 
         // Reads a value from the registry; returns the hardcoded default if not found
@@ -64,7 +64,7 @@ namespace qbPortWeaver
         {
             try
             {
-                using var regKey = Registry.CurrentUser.OpenSubKey($@"{BASE_KEY_PATH}\{section}");
+                using var regKey = Registry.CurrentUser.OpenSubKey($@"{BaseKeyPath}\{section}");
                 if (regKey?.GetValue(key) is string value)
                 {
                     LogManager.Instance.LogDebug($"RegistrySettingsManager.GetValue: [{section}] {key} = {value}");
@@ -81,12 +81,20 @@ namespace qbPortWeaver
             return fallback;
         }
 
-        // Reads the qBittorrent password from the registry and decrypts it with DPAPI.
+        // Reads a bool value from the registry; returns false if not found or not parseable
+        public static bool GetBool(string section, string key) =>
+            bool.TryParse(GetValue(section, key), out bool result) && result;
+
+        // Reads an int value from the registry; returns 0 if not found or not parseable
+        public static int GetInt(string section, string key) =>
+            int.TryParse(GetValue(section, key), out int result) ? result : 0;
+
+        // Reads the qBittorrent password from the registry and decrypts it with DPAPI
         public static string GetPassword()
         {
             try
             {
-                using var regKey = Registry.CurrentUser.OpenSubKey($@"{BASE_KEY_PATH}\qBittorrent");
+                using var regKey = Registry.CurrentUser.OpenSubKey($@"{BaseKeyPath}\qBittorrent");
                 if (regKey?.GetValue("qBittorrentPassword") is string storedValue && storedValue.Length > 0)
                 {
                     try
@@ -115,7 +123,7 @@ namespace qbPortWeaver
         {
             try
             {
-                using var regKey = Registry.CurrentUser.CreateSubKey($@"{BASE_KEY_PATH}\{section}");
+                using var regKey = Registry.CurrentUser.CreateSubKey($@"{BaseKeyPath}\{section}");
                 regKey.SetValue(key, value, RegistryValueKind.String);
                 LogManager.Instance.LogDebug($"RegistrySettingsManager.SetValue: [{section}] {key} = {value}");
             }
@@ -125,13 +133,13 @@ namespace qbPortWeaver
             }
         }
 
-        // Encrypts plaintext with DPAPI (CurrentUser scope) and writes it to the registry.
+        // Encrypts the password with DPAPI (CurrentUser scope) and writes it to the registry
         public static void SetPassword(string plaintext)
         {
             try
             {
                 string encoded = EncryptPassword(plaintext);
-                using var regKey = Registry.CurrentUser.CreateSubKey($@"{BASE_KEY_PATH}\qBittorrent");
+                using var regKey = Registry.CurrentUser.CreateSubKey($@"{BaseKeyPath}\qBittorrent");
                 regKey.SetValue("qBittorrentPassword", encoded, RegistryValueKind.String);
                 LogManager.Instance.LogDebug("RegistrySettingsManager.SetPassword: password saved (encrypted)");
             }
@@ -167,7 +175,7 @@ namespace qbPortWeaver
             return anyWritten;
         }
 
-        // Encrypts a plaintext password with DPAPI and returns a Base64 string.
+        // Encrypts a plaintext password with DPAPI and returns a Base64 string
         private static string EncryptPassword(string plaintext)
         {
             byte[] data = Encoding.UTF8.GetBytes(plaintext);

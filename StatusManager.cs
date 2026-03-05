@@ -23,7 +23,7 @@ namespace qbPortWeaver
             }
             catch (Exception ex)
             {
-                LogManager.Instance.LogMessage($"Failed to write status file: {ex.Message}", "WARN");
+                LogManager.Instance.LogMessage($"Failed to write status file: {ex.Message}", LogLevel.Warn);
                 try { File.Delete(tempPath); }
                 catch (Exception) { /* Best-effort cleanup; ignore if temp file cannot be deleted. */ }
             }

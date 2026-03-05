@@ -7,9 +7,9 @@ namespace qbPortWeaver
     // Generic NAT-PMP VPN manager. Instantiate with an adapter returned by DiscoverAdapters().
     public sealed class NatPmpManager : IVpnManager
     {
-        private const int  NAT_PMP_PORT             = 5351;
-        private const int  TIMEOUT_MS               = 2000;
-        public  const uint DEFAULT_MAPPING_LIFETIME = 3600; // 1 hour
+        private const int  NatPmpPort             = 5351;
+        private const int  TimeoutMs              = 2000;
+        public  const uint DefaultMappingLifetime = 3600; // 1 hour
 
         private readonly NetworkInterface _adapter;
         private readonly IPAddress        _gateway;
@@ -30,7 +30,7 @@ namespace qbPortWeaver
         // including TUN/VPN adapters where the gateway is inferred from the unicast address.
         // All candidates are probed in parallel; only those with a responding gateway are returned.
         // mappingLifetime: requested port mapping duration in seconds (gateway may grant less).
-        public static IReadOnlyList<NatPmpManager> DiscoverAdapters(uint mappingLifetime = DEFAULT_MAPPING_LIFETIME)
+        public static IReadOnlyList<NatPmpManager> DiscoverAdapters(uint mappingLifetime = DefaultMappingLifetime)
         {
             var candidates = new List<(NetworkInterface Nic, IPAddress Gateway)>();
 
@@ -83,7 +83,7 @@ namespace qbPortWeaver
             }
         }
 
-        // Sends a NAT-PMP UDP port mapping request and returns the assigned external port
+        // Sends a NAT-PMP UDP port mapping request and returns the assigned external port.
         // Note: unlike other manager classes where all logging is at debug level, this method
         // intentionally logs at INFO/WARN level — the gateway response (or failure) carries
         // diagnostic information (reason, lease time) that is not surfaced elsewhere in the sync cycle.
@@ -95,23 +95,17 @@ namespace qbPortWeaver
 
                 if (!result.Success)
                 {
-                    LogManager.Instance.LogMessage($"NAT-PMP port mapping failed on '{_adapter.Description}': {result.Error}", "WARN");
+                    LogManager.Instance.LogMessage($"NAT-PMP port mapping failed on '{_adapter.Description}': {result.Error}", LogLevel.Warn);
                     return null;
                 }
 
-                IPAddress? externalIp = RequestExternalAddressAsync(_gateway).GetAwaiter().GetResult();
-                if (externalIp != null)
-                    LogManager.Instance.LogDebug($"NatPmpManager.GetVPNPort: External IP for '{_adapter.Name}': {externalIp}");
-                else
-                    LogManager.Instance.LogDebug($"NatPmpManager.GetVPNPort: Could not retrieve external IP for '{_adapter.Name}'");
-
-                LogManager.Instance.LogMessage($"NAT-PMP lease granted: port {result.ExternalPort}, lifetime {result.LifetimeGranted}s", "INFO");
+                LogManager.Instance.LogMessage($"NAT-PMP lease granted: port {result.ExternalPort}, lifetime {result.LifetimeGranted}s", LogLevel.Info);
 
                 return result.ExternalPort;
             }
             catch (Exception ex)
             {
-                LogManager.Instance.LogMessage($"NAT-PMP error on '{_adapter.Description}': {ex.Message}", "WARN");
+                LogManager.Instance.LogMessage($"NAT-PMP error on '{_adapter.Description}': {ex.Message}", LogLevel.Warn);
                 return null;
             }
         }
@@ -133,16 +127,16 @@ namespace qbPortWeaver
         // Infers x.x.x.1 of the subnet from the adapter's unicast address
         private static IPAddress? InferGatewayFromUnicast(IPInterfaceProperties props)
         {
-            foreach (UnicastIPAddressInformation uni in props.UnicastAddresses)
+            foreach (UnicastIPAddressInformation address in props.UnicastAddresses)
             {
-                if (uni.Address.AddressFamily != AddressFamily.InterNetwork)
+                if (address.Address.AddressFamily != AddressFamily.InterNetwork)
                     continue;
 
-                if (uni.IPv4Mask.Equals(IPAddress.Any))
+                if (address.IPv4Mask.Equals(IPAddress.Any))
                     continue; // zero mask — cannot infer a meaningful gateway
 
-                byte[] addr = uni.Address.GetAddressBytes();
-                byte[] mask = uni.IPv4Mask.GetAddressBytes();
+                byte[] addr = address.Address.GetAddressBytes();
+                byte[] mask = address.IPv4Mask.GetAddressBytes();
 
                 byte[] network = new byte[4];
                 for (int i = 0; i < 4; i++)
@@ -151,7 +145,7 @@ namespace qbPortWeaver
                 network[3] = 1;
                 var candidate = new IPAddress(network);
 
-                if (!candidate.Equals(uni.Address))
+                if (!candidate.Equals(address.Address))
                     return candidate;
             }
             return null;
@@ -222,9 +216,9 @@ namespace qbPortWeaver
             try
             {
                 using var udp = new UdpClient();
-                await udp.SendAsync(request, new IPEndPoint(gateway, NAT_PMP_PORT)).ConfigureAwait(false);
+                await udp.SendAsync(request, new IPEndPoint(gateway, NatPmpPort)).ConfigureAwait(false);
 
-                using var cts = new CancellationTokenSource(TIMEOUT_MS);
+                using var cts = new CancellationTokenSource(TimeoutMs);
                 UdpReceiveResult result = await udp.ReceiveAsync(cts.Token).ConfigureAwait(false);
 
                 if (!result.RemoteEndPoint.Address.Equals(gateway))

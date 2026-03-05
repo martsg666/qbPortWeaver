@@ -7,10 +7,9 @@ namespace qbPortWeaver
     // Manages qBittorrent-related operations via Web API
     public sealed class QBittorrentManager : IDisposable
     {
-        private const int HTTP_TIMEOUT_SECONDS = 10;
-        private const int PROCESS_START_DELAY_MS = 2000;
-        private const int PROCESS_KILL_DELAY_MS = 2000;
-        private const int PROCESS_INIT_DELAY_MS = 1000;
+        private const int ProcessStartDelayMs = 2000;
+        private const int ProcessKillDelayMs  = 2000;
+        private const int ProcessInitDelayMs  = 1000;
 
         private readonly string _qBittorrentURL;
         private readonly string _qBittorrentUserName;
@@ -29,10 +28,11 @@ namespace qbPortWeaver
             _qBittorrentExePath = qBittorrentExePath;
             var cookies = new CookieContainer();
             var handler = new HttpClientHandler { CookieContainer = cookies };
-            _httpClient = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(HTTP_TIMEOUT_SECONDS) };
+            _httpClient = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(AppConstants.HttpTimeoutSeconds) };
         }
 
-        // Checks if the qBittorrent process is running
+        // ── Process operations ────────────────────────────────────────────────────
+
         public bool IsRunning()
         {
             if (string.IsNullOrEmpty(_qBittorrentProcessName)) return false;
@@ -48,28 +48,51 @@ namespace qbPortWeaver
             }
         }
 
-        // Launches qBittorrent via the configured executable path
         public async Task<bool> ForceStartAsync()
         {
             try
             {
-                var psi = new ProcessStartInfo(_qBittorrentExePath)
-                {
-                    UseShellExecute = true,
-                    WorkingDirectory = Path.GetDirectoryName(_qBittorrentExePath) ?? string.Empty
-                };
+                Process.Start(CreateQBittorrentStartInfo())?.Dispose();
+                await Task.Delay(ProcessStartDelayMs);
+                return IsRunning();
+            }
+            catch (Exception ex)
+            {
+                LogManager.Instance.LogMessage($"Failed to start qBittorrent: {ex.Message} - check the Executable path in Settings ({_qBittorrentExePath})", LogLevel.Error);
+                return false;
+            }
+        }
 
-                Process.Start(psi)?.Dispose();
-                await Task.Delay(PROCESS_START_DELAY_MS);
+        public async Task<bool> RestartAsync()
+        {
+            try
+            {
+                // Kill any running qBittorrent processes
+                foreach (var proc in Process.GetProcessesByName(_qBittorrentProcessName))
+                {
+                    try { proc.Kill(); }
+                    catch (Exception ex) { LogManager.Instance.LogDebug($"QBittorrentManager.RestartAsync: Failed to kill process: {ex.Message}"); }
+                    finally { proc.Dispose(); }
+                }
+
+                // Wait for process to terminate
+                await Task.Delay(ProcessKillDelayMs);
+
+                Process.Start(CreateQBittorrentStartInfo())?.Dispose();
+
+                // Brief delay to allow the process to register before IsRunning() checks for it
+                await Task.Delay(ProcessInitDelayMs);
 
                 return IsRunning();
             }
             catch (Exception ex)
             {
-                LogManager.Instance.LogMessage($"Failed to start qBittorrent: {ex.Message} - check the Executable path in Settings ({_qBittorrentExePath})", "ERROR");
+                LogManager.Instance.LogMessage($"Failed to restart qBittorrent: {ex.Message} - check the Executable path in Settings ({_qBittorrentExePath})", LogLevel.Error);
                 return false;
             }
         }
+
+        // ── API operations ────────────────────────────────────────────────────────
 
         // Gets listen_port and current_interface_name from qBittorrent preferences in a single request
         public async Task<(int? ListenPort, string? CurrentInterfaceName)> GetPreferencesAsync()
@@ -82,7 +105,7 @@ namespace qbPortWeaver
 
                 if (!response.IsSuccessStatusCode)
                 {
-                    LogManager.Instance.LogMessage($"qBittorrent preferences request failed (HTTP {(int)response.StatusCode} {response.StatusCode})", "ERROR");
+                    LogManager.Instance.LogMessage($"qBittorrent preferences request failed (HTTP {(int)response.StatusCode} {response.StatusCode})", LogLevel.Error);
                     return (null, null);
                 }
 
@@ -95,10 +118,11 @@ namespace qbPortWeaver
                 if (root.TryGetProperty("listen_port", out var portElement))
                 {
                     // listen_port may be a JSON number or string depending on qBittorrent version
-                    if (portElement.ValueKind == JsonValueKind.Number && portElement.TryGetInt32(out int p1))
-                        listenPort = p1;
-                    else if (portElement.ValueKind == JsonValueKind.String && int.TryParse(portElement.GetString(), out int p2))
-                        listenPort = p2;
+                    int parsed = 0;
+                    if (portElement.ValueKind == JsonValueKind.Number && portElement.TryGetInt32(out parsed))
+                        listenPort = parsed;
+                    else if (portElement.ValueKind == JsonValueKind.String && int.TryParse(portElement.GetString(), out parsed))
+                        listenPort = parsed;
                 }
 
                 if (listenPort == null)
@@ -113,24 +137,13 @@ namespace qbPortWeaver
 
                 return (listenPort, currentInterfaceName);
             }
-            catch (TaskCanceledException)
-            {
-                LogManager.Instance.LogMessage($"qBittorrent Web UI is not reachable (timed out): check the URL in Settings ({_qBittorrentURL})", "ERROR");
-                return (null, null);
-            }
-            catch (HttpRequestException ex)
-            {
-                LogManager.Instance.LogMessage($"qBittorrent Web UI connection failed: {ex.Message} - check the URL in Settings ({_qBittorrentURL})", "ERROR");
-                return (null, null);
-            }
             catch (Exception ex)
             {
-                LogManager.Instance.LogDebug($"QBittorrentManager.GetPreferencesAsync: {ex.Message}");
+                LogHttpException("GetPreferencesAsync", ex);
                 return (null, null);
             }
         }
 
-        // Sets the listening port in qBittorrent preferences
         public async Task<bool> SetListeningPortAsync(int port)
         {
             if (!await EnsureAuthenticatedAsync().ConfigureAwait(false)) return false;
@@ -146,60 +159,14 @@ namespace qbPortWeaver
                 using var response = await _httpClient.PostAsync($"{_qBittorrentURL}/api/v2/app/setPreferences", content).ConfigureAwait(false);
                 if (!response.IsSuccessStatusCode)
                 {
-                    LogManager.Instance.LogMessage($"qBittorrent set port failed (HTTP {(int)response.StatusCode} {response.StatusCode})", "ERROR");
+                    LogManager.Instance.LogMessage($"qBittorrent set port failed (HTTP {(int)response.StatusCode} {response.StatusCode})", LogLevel.Error);
                     return false;
                 }
                 return true;
             }
-            catch (TaskCanceledException)
-            {
-                LogManager.Instance.LogMessage($"qBittorrent Web UI is not reachable (timed out): check the URL in Settings ({_qBittorrentURL})", "ERROR");
-                return false;
-            }
-            catch (HttpRequestException ex)
-            {
-                LogManager.Instance.LogMessage($"qBittorrent Web UI connection failed: {ex.Message} - check the URL in Settings ({_qBittorrentURL})", "ERROR");
-                return false;
-            }
             catch (Exception ex)
             {
-                LogManager.Instance.LogDebug($"QBittorrentManager.SetListeningPortAsync: {ex.Message}");
-                return false;
-            }
-        }
-
-        // Restarts the qBittorrent application directly
-        public async Task<bool> RestartAsync()
-        {
-            try
-            {
-                // Kill any running qBittorrent processes
-                foreach (var proc in Process.GetProcessesByName(_qBittorrentProcessName))
-                {
-                    try { proc.Kill(); }
-                    catch (Exception ex) { LogManager.Instance.LogDebug($"QBittorrentManager.RestartAsync: Failed to kill process: {ex.Message}"); }
-                    finally { proc.Dispose(); }
-                }
-
-                // Wait for process to terminate
-                await Task.Delay(PROCESS_KILL_DELAY_MS);
-
-                var psi = new ProcessStartInfo(_qBittorrentExePath)
-                {
-                    UseShellExecute = true,
-                    WorkingDirectory = Path.GetDirectoryName(_qBittorrentExePath) ?? string.Empty
-                };
-
-                Process.Start(psi)?.Dispose();
-
-                // Brief delay to allow the process to register before IsRunning() checks for it
-                await Task.Delay(PROCESS_INIT_DELAY_MS);
-
-                return IsRunning();
-            }
-            catch (Exception ex)
-            {
-                LogManager.Instance.LogMessage($"Failed to restart qBittorrent: {ex.Message} - check the Executable path in Settings ({_qBittorrentExePath})", "ERROR");
+                LogHttpException("SetListeningPortAsync", ex);
                 return false;
             }
         }
@@ -215,7 +182,7 @@ namespace qbPortWeaver
 
                 if (!response.IsSuccessStatusCode)
                 {
-                    LogManager.Instance.LogMessage($"qBittorrent transfer/info request failed (HTTP {(int)response.StatusCode} {response.StatusCode})", "ERROR");
+                    LogManager.Instance.LogMessage($"qBittorrent transfer/info request failed (HTTP {(int)response.StatusCode} {response.StatusCode})", LogLevel.Error);
                     return null;
                 }
 
@@ -227,24 +194,18 @@ namespace qbPortWeaver
                 LogManager.Instance.LogDebug("QBittorrentManager.GetConnectionStatusAsync: connection_status not found in transfer/info response");
                 return null;
             }
-            catch (TaskCanceledException)
-            {
-                LogManager.Instance.LogMessage($"qBittorrent Web UI is not reachable (timed out): check the URL in Settings ({_qBittorrentURL})", "ERROR");
-                return null;
-            }
-            catch (HttpRequestException ex)
-            {
-                LogManager.Instance.LogMessage($"qBittorrent Web UI connection failed: {ex.Message} - check the URL in Settings ({_qBittorrentURL})", "ERROR");
-                return null;
-            }
             catch (Exception ex)
             {
-                LogManager.Instance.LogDebug($"QBittorrentManager.GetConnectionStatusAsync: {ex.Message}");
+                LogHttpException("GetConnectionStatusAsync", ex);
                 return null;
             }
         }
 
+        // ── Lifecycle ─────────────────────────────────────────────────────────────
+
         public void Dispose() => _httpClient.Dispose();
+
+        // ── Private helpers ───────────────────────────────────────────────────────
 
         // Authenticates once per instance; subsequent calls reuse the existing session cookie
         private async Task<bool> EnsureAuthenticatedAsync()
@@ -254,7 +215,6 @@ namespace qbPortWeaver
             return _isAuthenticated;
         }
 
-        // Authenticates with the qBittorrent Web API
         private async Task<bool> AuthenticateAsync()
         {
             try
@@ -269,13 +229,13 @@ namespace qbPortWeaver
 
                 if (response.StatusCode == HttpStatusCode.Forbidden)
                 {
-                    LogManager.Instance.LogMessage("qBittorrent authentication failed (HTTP 403 Forbidden): your IP has been banned by qBittorrent due to too many failed login attempts. Restart qBittorrent to clear the ban", "ERROR");
+                    LogManager.Instance.LogMessage("qBittorrent authentication failed (HTTP 403 Forbidden): your IP has been banned by qBittorrent due to too many failed login attempts. Restart qBittorrent to clear the ban", LogLevel.Error);
                     return false;
                 }
 
                 if (!response.IsSuccessStatusCode)
                 {
-                    LogManager.Instance.LogMessage($"qBittorrent authentication failed (HTTP {(int)response.StatusCode} {response.StatusCode}): check the URL in Settings ({_qBittorrentURL})", "ERROR");
+                    LogManager.Instance.LogMessage($"qBittorrent authentication failed (HTTP {(int)response.StatusCode} {response.StatusCode}): check the URL in Settings ({_qBittorrentURL})", LogLevel.Error);
                     return false;
                 }
 
@@ -283,27 +243,36 @@ namespace qbPortWeaver
                 var body = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
                 if (!body.Contains("Ok.", StringComparison.OrdinalIgnoreCase))
                 {
-                    LogManager.Instance.LogMessage("qBittorrent authentication failed: wrong username or password. Check the credentials in Settings", "ERROR");
+                    LogManager.Instance.LogMessage("qBittorrent authentication failed: wrong username or password. Check the credentials in Settings", LogLevel.Error);
                     return false;
                 }
 
                 return true;
             }
-            catch (TaskCanceledException)
-            {
-                LogManager.Instance.LogMessage($"qBittorrent Web UI is not reachable (timed out): check the URL in Settings ({_qBittorrentURL})", "ERROR");
-                return false;
-            }
-            catch (HttpRequestException ex)
-            {
-                LogManager.Instance.LogMessage($"qBittorrent Web UI connection failed: {ex.Message} - check the URL in Settings ({_qBittorrentURL})", "ERROR");
-                return false;
-            }
             catch (Exception ex)
             {
-                LogManager.Instance.LogDebug($"QBittorrentManager.AuthenticateAsync: {ex.Message}");
+                LogHttpException("AuthenticateAsync", ex);
                 return false;
             }
+        }
+
+        // Builds the ProcessStartInfo used to launch or re-launch qBittorrent
+        private ProcessStartInfo CreateQBittorrentStartInfo() =>
+            new ProcessStartInfo(_qBittorrentExePath)
+            {
+                UseShellExecute  = true,
+                WorkingDirectory = Path.GetDirectoryName(_qBittorrentExePath) ?? string.Empty
+            };
+
+        // Classifies and logs an HTTP-related exception; suppresses detail to debug for unexpected types
+        private void LogHttpException(string methodName, Exception ex)
+        {
+            if (ex is TaskCanceledException)
+                LogManager.Instance.LogMessage($"qBittorrent Web UI is not reachable (timed out): check the URL in Settings ({_qBittorrentURL})", LogLevel.Error);
+            else if (ex is HttpRequestException)
+                LogManager.Instance.LogMessage($"qBittorrent Web UI connection failed: {ex.Message} - check the URL in Settings ({_qBittorrentURL})", LogLevel.Error);
+            else
+                LogManager.Instance.LogDebug($"QBittorrentManager.{methodName}: {ex.Message}");
         }
     }
 }

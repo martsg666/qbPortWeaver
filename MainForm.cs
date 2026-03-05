@@ -44,8 +44,7 @@ namespace qbPortWeaver
         {
             InitializeComponent();
 
-            // Discard intentional — LogManager constructor sets LogManager.Instance as a singleton
-            _ = new LogManager(AppConstants.GetLogFilePath());
+            LogManager.Initialize(AppConstants.GetLogFilePath());
 
             // Ensure all registry keys exist, writing defaults for any missing ones
             RegistrySettingsManager.EnsureDefaults();
@@ -65,6 +64,9 @@ namespace qbPortWeaver
             this.WindowState = FormWindowState.Minimized;
             this.ShowInTaskbar = false;
 
+            // Log once at startup so the version is visible in the log file for diagnostics
+            LogManager.Instance.LogMessage($"{AppConstants.AppName} {AppConstants.AppVersion} starting", LogLevel.Info);
+
             // Perform initial log rotation check
             LogManager.Instance.CheckAndRotateLogFile();
 
@@ -72,7 +74,7 @@ namespace qbPortWeaver
             await PerformUpdateCheckAsync();
 
             // Schedule periodic update checks every 12 hours
-            _updateCheckTimer = new System.Windows.Forms.Timer { Interval = AppConstants.AUTO_UPDATE_CHECK_INTERVAL_MS };
+            _updateCheckTimer = new System.Windows.Forms.Timer { Interval = AppConstants.AutoUpdateCheckIntervalMs };
             _updateCheckTimer.Tick += async (s, e) => await PerformUpdateCheckAsync();
             _updateCheckTimer.Start();
 
@@ -102,9 +104,6 @@ namespace qbPortWeaver
             _iconError   = CreateStatusIcon(_iconBase, Color.Red);
         }
 
-        [DllImport("user32.dll", SetLastError = true)]
-        private static extern bool DestroyIcon(IntPtr hIcon);
-
         // Draws a small filled circle onto a 16x16 copy of the base icon and returns it as an Icon
         private static Icon CreateStatusIcon(Icon baseIcon, Color dotColor)
         {
@@ -130,7 +129,7 @@ namespace qbPortWeaver
             }
             finally
             {
-                DestroyIcon(hIcon);
+                NativeMethods.DestroyIcon(hIcon);
             }
         }
 
@@ -139,11 +138,11 @@ namespace qbPortWeaver
         {
             _trayMenu = new ContextMenuStrip();
             _trayMenu.Items.Add("Synchronize Port Now", null, SynchronizePortNow_Click);
-            _trayMenu.Items.Add("Show Logs", null, (s, e) => AppConstants.OpenFileInNotepad(AppConstants.GetLogFilePath()));
+            _trayMenu.Items.Add("Show Logs", null, (s, e) => OpenFileInNotepad(AppConstants.GetLogFilePath()));
             _trayMenu.Items.Add("Clear Logs", null, (s, e) =>
             {
                 LogManager.Instance.ClearLogs();
-                _trayIcon.ShowBalloonTip(AppConstants.BALLOON_TIP_DURATION_MS, AppConstants.APP_NAME, "Logs cleared", ToolTipIcon.Info);
+                _trayIcon.ShowBalloonTip(AppConstants.BalloonTipDurationMs, AppConstants.AppName, "Logs cleared", ToolTipIcon.Info);
             });
             _trayMenu.Items.Add("Settings", null, (s, e) =>
             {
@@ -169,7 +168,7 @@ namespace qbPortWeaver
             _trayIcon = new NotifyIcon
             {
                 Icon = _iconBase,
-                Text = $"{AppConstants.APP_NAME} {AppConstants.APP_VERSION}",
+                Text = $"{AppConstants.AppName} {AppConstants.AppVersion}",
                 Visible = true,
                 ContextMenuStrip = _trayMenu
             };
@@ -180,24 +179,21 @@ namespace qbPortWeaver
         {
             try
             {
-                LogManager.Instance.LogMessage("Checking for application updates", "INFO");
+                LogManager.Instance.LogMessage("Checking for application updates", LogLevel.Info);
                 var update = await UpdateChecker.CheckForUpdateAsync();
                 if (update.HasValue)
                 {
-                    // Remove leading 'v' or 'V' from version if present
-                    var versionText = update.Value.Version.TrimStart('v', 'V');
-
-                    if (versionText == _lastNotifiedVersion)
+                    if (update.Value.Version == _lastNotifiedVersion)
                     {
-                        LogManager.Instance.LogMessage($"New version {versionText} available (already notified)", "INFO");
+                        LogManager.Instance.LogMessage($"New version {update.Value.Version} available (already notified)", LogLevel.Info);
                         return;
                     }
 
-                    _lastNotifiedVersion = versionText;
-                    LogManager.Instance.LogMessage($"New application version available: {versionText}", "INFO");
+                    _lastNotifiedVersion = update.Value.Version;
+                    LogManager.Instance.LogMessage($"New application version available: {update.Value.Version}", LogLevel.Info);
                     var result = MessageBox.Show(
-                        $"A new version of {AppConstants.APP_NAME} is available: {versionText}\n\nWould you like to open the download page?",
-                        $"{AppConstants.APP_NAME} - Update Available",
+                        $"A new version of {AppConstants.AppName} is available: {update.Value.Version}\n\nWould you like to open the download page?",
+                        $"{AppConstants.AppName} - Update Available",
                         MessageBoxButtons.YesNo,
                         MessageBoxIcon.Information);
 
@@ -206,7 +202,7 @@ namespace qbPortWeaver
                 }
                 else
                 {
-                    LogManager.Instance.LogMessage("Application is up to date", "INFO");
+                    LogManager.Instance.LogMessage("Application is up to date", LogLevel.Info);
                 }
             }
             catch (Exception ex)
@@ -237,20 +233,20 @@ namespace qbPortWeaver
                     if (_manualSyncTriggered)
                     {
                         _manualSyncTriggered = false;
-                        updateInterval = AppConstants.MANUAL_SYNC_WAIT_SECONDS;
-                        LogManager.Instance.LogMessage("Manual sync complete", "INFO");
+                        updateInterval = AppConstants.ManualSyncWaitSeconds;
+                        LogManager.Instance.LogMessage("Manual sync complete", LogLevel.Info);
                     }
 
                     if (await ShutdownRequestedDuringDelayAsync(updateInterval))
                         return;
                 }
 
-                LogManager.Instance.LogMessage("Main loop exited gracefully", "INFO");
+                LogManager.Instance.LogMessage("Main loop exited gracefully", LogLevel.Info);
             }
             catch (OperationCanceledException)
             {
                 // Shutdown was requested while waiting on semaphore or during work
-                LogManager.Instance.LogMessage("Main loop exited due to shutdown", "INFO");
+                LogManager.Instance.LogMessage("Main loop exited due to shutdown", LogLevel.Info);
             }
             catch (Exception ex)
             {
@@ -264,20 +260,20 @@ namespace qbPortWeaver
         {
             try
             {
-                LogManager.Instance.LogMessage($"Waiting for {updateInterval} seconds", "INFO");
+                LogManager.Instance.LogDebug($"MainForm.ShutdownRequestedDuringDelayAsync: waiting {updateInterval} seconds before next cycle");
                 // Link both tokens: _delayCancel (manual sync) and _shutdownCts (app exit)
                 using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(_delayCancel.Token, _shutdownCts.Token);
-                await Task.Delay(updateInterval * AppConstants.MILLISECONDS_PER_SECOND, linkedCts.Token);
+                await Task.Delay(updateInterval * AppConstants.MillisecondsPerSecond, linkedCts.Token);
             }
             catch (OperationCanceledException)
             {
                 if (_shutdownCts.IsCancellationRequested)
                 {
-                    LogManager.Instance.LogMessage("Shutdown requested, exiting main loop", "INFO");
+                    LogManager.Instance.LogMessage("Shutdown requested, exiting main loop", LogLevel.Info);
                     return true;
                 }
                 // Manual sync interrupts delay — loop will restart immediately
-                LogManager.Instance.LogMessage("Delay interrupted by manual sync", "INFO");
+                LogManager.Instance.LogMessage("Delay interrupted by manual sync", LogLevel.Info);
             }
 
             // Reset token for next loop iteration (properly dispose old one)
@@ -292,18 +288,18 @@ namespace qbPortWeaver
         {
             if (_shutdownCts.IsCancellationRequested)
             {
-                LogManager.Instance.LogMessage($"Main loop exited during shutdown: {ex.Message}", "INFO");
+                LogManager.Instance.LogMessage($"Main loop exited during shutdown: {ex.Message}", LogLevel.Info);
                 return;
             }
 
-            LogManager.Instance.LogMessage($"Main loop crashed: {ex.Message}", "ERROR");
+            LogManager.Instance.LogMessage($"Main loop crashed: {ex.Message}", LogLevel.Error);
 
             string message = $"Critical error in main loop: {ex.Message}\n\nThe application will now exit.";
             try
             {
                 InvokeOnUiThread(() =>
                 {
-                    MessageBox.Show(message, AppConstants.APP_NAME, MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    MessageBox.Show(message, AppConstants.AppName, MessageBoxButtons.OK, MessageBoxIcon.Error);
                     Application.Exit();
                 });
             }
@@ -318,7 +314,7 @@ namespace qbPortWeaver
         private void SynchronizePortNow_Click(object? sender, EventArgs e)
         {
             _manualSyncTriggered = true;
-            LogManager.Instance.LogMessage("Manual sync requested", "INFO");
+            LogManager.Instance.LogMessage("Manual sync requested", LogLevel.Info);
 
             // Interrupt the wait inside the main loop immediately
             try { _delayCancel.Cancel(); }
@@ -330,7 +326,6 @@ namespace qbPortWeaver
 
         private void Exit_Click(object? sender, EventArgs e)
         {
-            // Close the form (triggers OnFormClosing -> Dispose)
             this.Close();
         }
 
@@ -346,7 +341,7 @@ namespace qbPortWeaver
         private void OnInterfaceMismatchDetected(string message)
         {
             if (_shutdownCts.IsCancellationRequested) return;
-            InvokeOnUiThread(() => _trayIcon.ShowBalloonTip(AppConstants.BALLOON_TIP_DURATION_MS, AppConstants.APP_NAME, message, ToolTipIcon.Warning));
+            InvokeOnUiThread(() => _trayIcon.ShowBalloonTip(AppConstants.BalloonTipDurationMs, AppConstants.AppName, message, ToolTipIcon.Warning));
         }
 
         // Swaps the tray icon to reflect the current sync state
@@ -373,11 +368,11 @@ namespace qbPortWeaver
                 _                                                      => "Starting\u2026"
             };
 
-            string text = $"{AppConstants.APP_NAME} {AppConstants.APP_VERSION}\n{statusLine}";
+            string text = $"{AppConstants.AppName} {AppConstants.AppVersion}\n{statusLine}";
 
             // Tooltip is limited to 63 characters
-            if (text.Length > AppConstants.MAX_TOOLTIP_LENGTH)
-                text = text[..AppConstants.MAX_TOOLTIP_LENGTH];
+            if (text.Length > AppConstants.MaxTooltipLength)
+                text = text[..AppConstants.MaxTooltipLength];
 
             _trayIcon.Text = text;
         }
@@ -389,6 +384,37 @@ namespace qbPortWeaver
                 this.Invoke(action);
             else
                 action();
+        }
+
+        // Opens a file in Notepad; logs a warning if the file does not exist or the process fails to start
+        private static void OpenFileInNotepad(string filePath)
+        {
+            try
+            {
+                if (File.Exists(filePath))
+                {
+                    var startInfo = new ProcessStartInfo("notepad.exe", $"\"{filePath}\"")
+                    {
+                        UseShellExecute = true
+                    };
+                    Process.Start(startInfo)?.Dispose();
+                }
+                else
+                {
+                    LogManager.Instance.LogMessage($"Could not open file in Notepad, file not found: {filePath}", LogLevel.Warn);
+                }
+            }
+            catch (Exception ex)
+            {
+                LogManager.Instance.LogMessage($"Failed to open file in Notepad: {ex.Message}", LogLevel.Warn);
+            }
+        }
+
+        // P/Invoke declarations
+        private static class NativeMethods
+        {
+            [DllImport("user32.dll", SetLastError = true)]
+            public static extern bool DestroyIcon(IntPtr hIcon);
         }
     }
 }

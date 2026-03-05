@@ -3,11 +3,13 @@ using System.Text;
 
 namespace qbPortWeaver
 {
+    public enum LogLevel { Info, Warn, Error, Debug }
+
     public sealed class LogManager
     {
-        private const long MAX_SIZE               = 5 * 1024 * 1024; // 5 MB
-        private const int  MAX_LOG_FILES          = 3;   // Keep only 3 logfiles total (including current)
-        private const int  ROTATION_CHECK_INTERVAL = 100; // Check rotation every N writes
+        private const long MaxSize              = 5 * 1024 * 1024; // 5 MB
+        private const int  MaxLogFiles          = 3;   // Keep only 3 logfiles total (including current)
+        private const int  RotationCheckInterval = 100; // Check rotation every N writes
 
         // Static instance for global access
         public static LogManager Instance { get; private set; } = null!;
@@ -16,7 +18,8 @@ namespace qbPortWeaver
         private readonly object _lockObject = new object();
         private int _writeCount;
 
-        // Debug mode flag (when true, LogDebug writes to the log file)
+        // volatile: read lock-free on the hot path in LogDebug for performance;
+        // written infrequently from the sync loop, so a torn read is not a concern.
         private volatile bool _debugMode;
         public bool DebugMode
         {
@@ -24,17 +27,22 @@ namespace qbPortWeaver
             set => _debugMode = value;
         }
 
-        // Constructor — enforces singleton; throws if called more than once
-        public LogManager(string logFilePath)
+        // Initializes the singleton; throws if called more than once
+        public static LogManager Initialize(string logFilePath)
         {
             if (Instance != null)
                 throw new InvalidOperationException($"{nameof(LogManager)} has already been initialized");
-            _logFilePath = logFilePath;
-            Instance = this;
+            return new LogManager(logFilePath);
         }
 
-        // Log message to logfile (thread-safe)
-        public void LogMessage(string message, string type)
+        private LogManager(string logFilePath)
+        {
+            _logFilePath = logFilePath;
+            Instance     = this;
+        }
+
+        // Writes a log entry at the given level (thread-safe)
+        public void LogMessage(string message, LogLevel level)
         {
             lock (_lockObject)
             {
@@ -42,13 +50,13 @@ namespace qbPortWeaver
                 {
                     // Check if rotation is needed periodically (every N writes)
                     _writeCount++;
-                    if (_writeCount >= ROTATION_CHECK_INTERVAL)
+                    if (_writeCount >= RotationCheckInterval)
                     {
                         _writeCount = 0;
                         RotateIfNeeded();
                     }
 
-                    string paddedType = type.PadRight(5);
+                    string paddedType = level.ToString().ToUpperInvariant().PadRight(5);
                     string logEntry = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} | {paddedType} | {message}{Environment.NewLine}";
 
                     using var fs = new FileStream(_logFilePath, FileMode.Append, FileAccess.Write, FileShare.Read);
@@ -62,14 +70,14 @@ namespace qbPortWeaver
             }
         }
 
-        // Log debug message to logfile only when DebugMode is enabled (thread-safe)
+        // Writes a debug entry only when DebugMode is enabled (thread-safe)
         public void LogDebug(string message)
         {
             if (!DebugMode) return;
-            LogMessage(message, "DEBUG");
+            LogMessage(message, LogLevel.Debug);
         }
 
-        // Clear all log files and start fresh (thread-safe)
+        // Clears all log files and starts fresh (thread-safe)
         public void ClearLogs()
         {
             lock (_lockObject)
@@ -77,7 +85,7 @@ namespace qbPortWeaver
                 try
                 {
                     // Delete rotated backup files
-                    for (int i = 1; i < MAX_LOG_FILES; i++)
+                    for (int i = 1; i < MaxLogFiles; i++)
                     {
                         string backup = $"{_logFilePath}.{i}";
                         if (File.Exists(backup))
@@ -96,10 +104,10 @@ namespace qbPortWeaver
             }
 
             // Write fresh entry outside the lock (LogMessage acquires its own lock)
-            LogMessage("Logs cleared by user", "INFO");
+            LogMessage("Logs cleared by user", LogLevel.Info);
         }
 
-        // Check logfile size and rotate if exceeds MAX_SIZE (public entry point, acquires lock)
+        // Checks log file size and rotates if needed; acquires lock
         public void CheckAndRotateLogFile()
         {
             lock (_lockObject)
@@ -108,7 +116,7 @@ namespace qbPortWeaver
             }
         }
 
-        // Internal rotation check (must be called while holding _lockObject)
+        // Internal rotation check — must be called while holding _lockObject
         private void RotateIfNeeded()
         {
             try
@@ -117,10 +125,10 @@ namespace qbPortWeaver
                     return;
 
                 var fileInfo = new FileInfo(_logFilePath);
-                if (fileInfo.Length > MAX_SIZE)
+                if (fileInfo.Length > MaxSize)
                 {
                     // Delete oldest backup if we already have max files
-                    string oldestBackup = $"{_logFilePath}.{MAX_LOG_FILES - 1}";
+                    string oldestBackup = $"{_logFilePath}.{MaxLogFiles - 1}";
                     if (File.Exists(oldestBackup))
                         File.Delete(oldestBackup);
 
@@ -137,10 +145,10 @@ namespace qbPortWeaver
             }
         }
 
-        // Rotate existing backup files (.1 -> .2, etc.)
+        // Shifts existing backup files up by one (.1 -> .2, etc.)
         private void RotateBackupFiles()
         {
-            for (int i = MAX_LOG_FILES - 2; i >= 1; i--)
+            for (int i = MaxLogFiles - 2; i >= 1; i--)
             {
                 string currentBackup = $"{_logFilePath}.{i}";
                 string nextBackup = $"{_logFilePath}.{i + 1}";

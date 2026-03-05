@@ -4,15 +4,14 @@ namespace qbPortWeaver
 {
     public static class StartupManager
     {
-        private const string RUN_REGISTRY_KEY = @"Software\Microsoft\Windows\CurrentVersion\Run";
+        private const string RunRegistryKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
 
-        // Check if startup with Windows is enabled
         public static bool IsStartupEnabled()
         {
             try
             {
-                using var key = Registry.CurrentUser.OpenSubKey(RUN_REGISTRY_KEY);
-                return key?.GetValue(AppConstants.APP_NAME) != null;
+                using var key = Registry.CurrentUser.OpenSubKey(RunRegistryKey);
+                return key?.GetValue(AppConstants.AppName) != null;
             }
             catch (Exception ex)
             {
@@ -21,26 +20,31 @@ namespace qbPortWeaver
             }
         }
 
-        // Enable/disable startup with Windows
         public static void SetStartup(bool enable)
         {
             try
             {
-                using var key = Registry.CurrentUser.OpenSubKey(RUN_REGISTRY_KEY, true);
+                using var key = Registry.CurrentUser.OpenSubKey(RunRegistryKey, true);
                 if (key == null)
                 {
-                    LogManager.Instance.LogMessage("Failed to update startup setting: could not open registry Run key", "WARN");
+                    LogManager.Instance.LogMessage("Failed to update startup setting: could not open registry Run key", LogLevel.Warn);
                     return;
                 }
 
                 if (enable)
-                    key.SetValue(AppConstants.APP_NAME, Application.ExecutablePath);
+                {
+                    key.SetValue(AppConstants.AppName, Application.ExecutablePath);
+                    LogManager.Instance.LogMessage("Windows startup enabled", LogLevel.Info);
+                }
                 else
-                    key.DeleteValue(AppConstants.APP_NAME, false);
+                {
+                    key.DeleteValue(AppConstants.AppName, false);
+                    LogManager.Instance.LogMessage("Windows startup disabled", LogLevel.Info);
+                }
             }
             catch (Exception ex)
             {
-                LogManager.Instance.LogMessage($"Failed to update startup setting: {ex.Message}", "WARN");
+                LogManager.Instance.LogMessage($"Failed to update startup setting: {ex.Message}", LogLevel.Warn);
             }
         }
     }

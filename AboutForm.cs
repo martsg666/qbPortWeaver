@@ -10,10 +10,10 @@ namespace qbPortWeaver
         public AboutForm()
         {
             InitializeComponent();
-            lblAppVersion.Text         = $"Version {AppConstants.APP_VERSION}";
-            lblCurrentVersionValue.Text = AppConstants.APP_VERSION;
-            lnkGitHub.Text             = $"{AppConstants.GITHUB_REPO_OWNER}/{AppConstants.APP_NAME}";
-            Text                       = $"{AppConstants.APP_NAME} | About";
+            lblAppVersion.Text          = $"Version {AppConstants.AppVersion}";
+            lblCurrentVersionValue.Text = AppConstants.AppVersion;
+            lnkGitHub.Text              = $"{AppConstants.GitHubRepoOwner}/{AppConstants.AppName}";
+            Text                        = $"{AppConstants.AppName} | About";
         }
 
         // Kick off the GitHub data fetch as fire-and-forget; the IsDisposed guard in the async method handles early close
@@ -35,7 +35,7 @@ namespace qbPortWeaver
             lblStatusValue.Text             = "";
             _releaseUrl                     = null;
 
-            // Fetch release info and release commit authors in parallel
+            // Fetch release info and contributor list in parallel
             var releaseTask      = UpdateChecker.GetLatestReleaseInfoAsync();
             var contributorsTask = UpdateChecker.GetReleaseContributorsAsync();
             await Task.WhenAll(releaseTask, contributorsTask);
@@ -48,7 +48,7 @@ namespace qbPortWeaver
             if (contributors.Count > 0)
                 SetContributorLinks(contributors);
             else
-                lnkAuthor.Text = AppConstants.GITHUB_REPO_OWNER;
+                lnkAuthor.Text = AppConstants.GitHubRepoOwner;
 
             // ── Version / update status ───────────────────────────────────
             var info = releaseTask.Result;
@@ -62,7 +62,7 @@ namespace qbPortWeaver
             }
             else
             {
-                lblLatestVersionValue.Text      = info.TagName.TrimStart('v', 'V');
+                lblLatestVersionValue.Text      = info.VersionString;
                 lblLatestVersionValue.ForeColor = SystemColors.ControlText;
 
                 if (info.IsNewer)
@@ -123,7 +123,7 @@ namespace qbPortWeaver
         // Opens the project repository in the default browser
         private void lnkGitHub_LinkClicked(object? sender, LinkLabelLinkClickedEventArgs e)
         {
-            OpenUrl(AppConstants.GITHUB_REPO_URL);
+            OpenUrl(AppConstants.GitHubRepoUrl);
         }
 
         // Opens a URL in the default browser; UseShellExecute is required for shell-handled URLs

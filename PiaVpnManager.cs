@@ -6,14 +6,13 @@ namespace qbPortWeaver
     // Manages PIA (Private Internet Access) VPN operations
     public sealed class PiaVpnManager : IVpnManager
     {
-        private const string PIA_UNINSTALL_REGISTRY_PATH = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall";
-        private const string PIA_DISPLAY_NAME            = "Private Internet Access";
-        private const string PIACTL_FILENAME              = "piactl.exe";
-        private const int    PROCESS_TIMEOUT_MS           = 5000;
+        private const string PiaUninstallRegistryPath = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall";
+        private const string PiaDisplayName           = "Private Internet Access";
+        private const string PiactlFilename           = "piactl.exe";
+        private const int    ProcessTimeoutMs         = 5000;
 
         public string ProviderName => "PIA";
 
-        // Checks if PIA VPN is connected via piactl
         public bool IsVPNConnected()
         {
             try
@@ -40,7 +39,6 @@ namespace qbPortWeaver
             }
         }
 
-        // Gets the forwarded port from PIA via piactl
         public int? GetVPNPort()
         {
             try
@@ -80,14 +78,14 @@ namespace qbPortWeaver
                     return null;
                 }
 
-                var psi = new ProcessStartInfo(piactlPath, arguments)
+                var startInfo = new ProcessStartInfo(piactlPath, arguments)
                 {
-                    UseShellExecute = false,
+                    UseShellExecute        = false,
                     RedirectStandardOutput = true,
-                    CreateNoWindow = true
+                    CreateNoWindow         = true
                 };
 
-                using var process = Process.Start(psi);
+                using var process = Process.Start(startInfo);
                 if (process == null)
                 {
                     LogManager.Instance.LogDebug("PiaVpnManager.RunPiactl: Failed to start piactl process");
@@ -97,7 +95,7 @@ namespace qbPortWeaver
                 // Read asynchronously so WaitForExit timeout still applies even if output is large
                 var outputTask = process.StandardOutput.ReadToEndAsync();
 
-                if (!process.WaitForExit(PROCESS_TIMEOUT_MS))
+                if (!process.WaitForExit(ProcessTimeoutMs))
                 {
                     process.Kill();
                     LogManager.Instance.LogDebug("PiaVpnManager.RunPiactl: piactl timed out and was killed");
@@ -122,7 +120,7 @@ namespace qbPortWeaver
         {
             try
             {
-                using var uninstallKey = Registry.LocalMachine.OpenSubKey(PIA_UNINSTALL_REGISTRY_PATH);
+                using var uninstallKey = Registry.LocalMachine.OpenSubKey(PiaUninstallRegistryPath);
                 if (uninstallKey == null)
                 {
                     LogManager.Instance.LogDebug("PiaVpnManager.GetPiactlPath: Could not open Uninstall registry key");
@@ -136,7 +134,7 @@ namespace qbPortWeaver
                         continue;
 
                     string? displayName = subKey.GetValue("DisplayName") as string;
-                    if (displayName == null || !displayName.Equals(PIA_DISPLAY_NAME, StringComparison.OrdinalIgnoreCase))
+                    if (displayName == null || !displayName.Equals(PiaDisplayName, StringComparison.OrdinalIgnoreCase))
                         continue;
 
                     string? installLocation = subKey.GetValue("InstallLocation") as string;
@@ -146,7 +144,7 @@ namespace qbPortWeaver
                         return null;
                     }
 
-                    string piactlPath = Path.Combine(installLocation, PIACTL_FILENAME);
+                    string piactlPath = Path.Combine(installLocation, PiactlFilename);
                     if (!File.Exists(piactlPath))
                     {
                         LogManager.Instance.LogDebug($"PiaVpnManager.GetPiactlPath: piactl not found at: {piactlPath}");

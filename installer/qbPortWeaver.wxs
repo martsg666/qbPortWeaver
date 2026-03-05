@@ -4,7 +4,7 @@
 
 	<Package
 	  Name="qbPortWeaver"
-	  Manufacturer="@martsg666"
+	  Manufacturer="martsg666"
 	  Version="$(var.ProductVersion)"
 	  UpgradeCode="{6E2B5A1C-4D89-4F3A-B2C7-9A1E8D5F0C3B}"
 	  InstallerVersion="500"
@@ -13,6 +13,7 @@
 		<!-- Major upgrade handling -->
 		<MajorUpgrade
 		  DowngradeErrorMessage="A newer version of qbPortWeaver is already installed."
+		  AllowSameVersionUpgrades="yes"
 		  Schedule="afterInstallInitialize" />
 
 		<MediaTemplate EmbedCab="yes" />
@@ -119,7 +120,7 @@
 		<ComponentGroup Id="AppComponents" Directory="INSTALLFOLDER">
 
 			<Component Id="AppExecutable">
-				<File Source="..\bin\Release\net10.0-windows\win-x64\publish\qbPortWeaver.exe"
+				<File Source="..\bin\Release\$(var.TFM)\win-x64\publish\qbPortWeaver.exe"
 					  KeyPath="yes" />
 			</Component>
 

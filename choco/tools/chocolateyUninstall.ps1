@@ -4,8 +4,7 @@ $packageArgs = @{
   packageName    = $env:ChocolateyPackageName
   softwareName   = 'qbPortWeaver*'
   fileType       = 'msi'
-  # MSI silent uninstall flags: /qn = no UI, /norestart = suppress reboot prompt
-  silentArgs     = '/qn /norestart'
+  silentArgs     = ''
   validExitCodes = @(0, 3010, 1641)
 }
 
@@ -13,8 +12,10 @@ $packageArgs = @{
 
 if ($key.Count -eq 1) {
   $key | ForEach-Object {
-    # For MSI packages the registry key name IS the ProductCode GUID
-    $packageArgs['file'] = $_.PSChildName
+    # PSChildName is the ProductCode GUID. It must go in silentArgs (unquoted),
+    # not in 'file' — Chocolatey quotes the 'file' parameter, which msiexec rejects.
+    $packageArgs['silentArgs'] = "$($_.PSChildName) /qn /norestart"
+    $packageArgs['file']       = ''
     Uninstall-ChocolateyPackage @packageArgs
   }
 } elseif ($key.Count -eq 0) {

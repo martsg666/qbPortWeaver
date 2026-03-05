@@ -45,20 +45,33 @@ namespace qbPortWeaver
 
             // NAT-PMP adapter — discovered on a background thread to avoid blocking the UI
             cboNatPmpAdapter.Items.Clear();
+            cboNatPmpAdapter.Items.Add("Discovering adapters…");
+            cboNatPmpAdapter.SelectedIndex = 0;
+            cboNatPmpAdapter.Enabled = false;
             string savedAdapter = RegistrySettingsManager.GetValue("general", "natPmpAdapterName");
             _ = Task.Run(() => NatPmpManager.DiscoverAdapters())
                     .ContinueWith(t =>
                     {
-                        foreach (var adapter in t.Result)
-                            cboNatPmpAdapter.Items.Add(adapter.ProviderName);
-                        if (!string.IsNullOrWhiteSpace(savedAdapter))
+                        cboNatPmpAdapter.Items.Clear();
+                        if (t.Result.Count == 0)
+                        {
+                            cboNatPmpAdapter.Items.Add("No NAT-PMP adapters found");
+                            cboNatPmpAdapter.SelectedIndex = 0;
+                        }
+                        else
+                        {
+                            foreach (var adapter in t.Result)
+                                cboNatPmpAdapter.Items.Add(adapter.ProviderName);
                             cboNatPmpAdapter.SelectedItem = savedAdapter;
+                            if (cboNatPmpAdapter.SelectedIndex < 0)
+                                cboNatPmpAdapter.SelectedIndex = 0;
+                        }
+                        cboNatPmpAdapter.Enabled = cboVpnProvider.SelectedItem?.ToString() == "NAT-PMP";
                     }, CancellationToken.None, TaskContinuationOptions.OnlyOnRanToCompletion, TaskScheduler.FromCurrentSynchronizationContext());
 
-            if (int.TryParse(RegistrySettingsManager.GetValue("general", "updateIntervalSeconds"), out int interval))
-                nudUpdateInterval.Value = Math.Clamp(interval, (int)nudUpdateInterval.Minimum, (int)nudUpdateInterval.Maximum);
-            else
-                nudUpdateInterval.Value = AppConstants.DEFAULT_UPDATE_INTERVAL_SECONDS;
+            nudUpdateInterval.Value = Math.Clamp(
+                RegistrySettingsManager.GetInt("general", "updateIntervalSeconds"),
+                (int)nudUpdateInterval.Minimum, (int)nudUpdateInterval.Maximum);
 
             // qBittorrent
             txtQBittorrentURL.Text         = RegistrySettingsManager.GetValue("qBittorrent", "qBittorrentURL");
@@ -67,19 +80,18 @@ namespace qbPortWeaver
             txtQBittorrentExePath.Text     = RegistrySettingsManager.GetValue("qBittorrent", "qBittorrentExePath");
             txtQBittorrentProcessName.Text = RegistrySettingsManager.GetValue("qBittorrent", "qBittorrentProcessName");
 
-            chkRestartQBittorrent.Checked      = RegistrySettingsManager.GetValue("qBittorrent", "restartqBittorrent").Equals("True", StringComparison.OrdinalIgnoreCase);
-            chkForceStartQBittorrent.Checked   = RegistrySettingsManager.GetValue("qBittorrent", "forceStartqBittorrent").Equals("True", StringComparison.OrdinalIgnoreCase);
-            chkWarnOnInterfaceMismatch.Checked = RegistrySettingsManager.GetValue("qBittorrent", "warnOnInterfaceMismatch").Equals("True", StringComparison.OrdinalIgnoreCase);
-            chkRestartOnDisconnect.Checked     = RegistrySettingsManager.GetValue("qBittorrent", "restartOnDisconnect").Equals("True", StringComparison.OrdinalIgnoreCase);
+            chkRestartQBittorrent.Checked      = RegistrySettingsManager.GetBool("qBittorrent", "restartqBittorrent");
+            chkForceStartQBittorrent.Checked   = RegistrySettingsManager.GetBool("qBittorrent", "forceStartqBittorrent");
+            chkWarnOnInterfaceMismatch.Checked = RegistrySettingsManager.GetBool("qBittorrent", "warnOnInterfaceMismatch");
+            chkRestartOnDisconnect.Checked     = RegistrySettingsManager.GetBool("qBittorrent", "restartOnDisconnect");
 
-            if (int.TryParse(RegistrySettingsManager.GetValue("qBittorrent", "defaultPort"), out int defaultPort))
-                nudDefaultPort.Value = Math.Clamp(defaultPort, (int)nudDefaultPort.Minimum, (int)nudDefaultPort.Maximum);
-            else
-                nudDefaultPort.Value = nudDefaultPort.Minimum;
+            nudDefaultPort.Value = Math.Clamp(
+                RegistrySettingsManager.GetInt("qBittorrent", "defaultPort"),
+                (int)nudDefaultPort.Minimum, (int)nudDefaultPort.Maximum);
 
             // Extra
             txtPostUpdateCmd.Text = RegistrySettingsManager.GetValue("extra", "postUpdateCmd");
-            chkDebugMode.Checked  = RegistrySettingsManager.GetValue("extra", "debugMode").Equals("True", StringComparison.OrdinalIgnoreCase);
+            chkDebugMode.Checked  = RegistrySettingsManager.GetBool("extra", "debugMode");
         }
 
         private void btnOK_Click(object? sender, EventArgs e)
@@ -114,7 +126,12 @@ namespace qbPortWeaver
 
         private void cboVpnProvider_SelectedIndexChanged(object? sender, EventArgs e)
         {
-            cboNatPmpAdapter.Enabled = cboVpnProvider.SelectedItem?.ToString() == "NAT-PMP";
+            // Only enable the adapter combo if NAT-PMP is selected AND discovery has finished
+            // (discovery replaces the placeholder and re-enables it via ContinueWith)
+            bool isNatPmp = cboVpnProvider.SelectedItem?.ToString() == "NAT-PMP";
+            bool discoveryPending = cboNatPmpAdapter.Items.Count == 1 &&
+                                    cboNatPmpAdapter.Items[0]?.ToString() == "Discovering adapters…";
+            cboNatPmpAdapter.Enabled = isNatPmp && !discoveryPending;
         }
 
         private void btnBrowseExePath_Click(object? sender, EventArgs e)

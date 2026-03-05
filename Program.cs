@@ -20,8 +20,8 @@ namespace qbPortWeaver
             if (!isNewInstance)
             {
                 MessageBox.Show(
-                    $"{AppConstants.APP_NAME} is already running.",
-                    AppConstants.APP_NAME,
+                    $"{AppConstants.AppName} is already running.",
+                    AppConstants.AppName,
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Information);
                 return;

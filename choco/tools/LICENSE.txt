@@ -1,5 +1,5 @@
 qbPortWeaver
-Copyright © 2026 @martsg666
+Copyright © 2026 martsg666
 https://github.com/martsg666/qbPortWeaver
 
 Free of use and distribution. No warranty provided.

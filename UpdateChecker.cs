@@ -5,21 +5,25 @@ namespace qbPortWeaver
 {
     public static class UpdateChecker
     {
-        private const string JSON_HTML_URL_ELEMENT = "html_url";
-        private const string JSON_HTML_TAG_ELEMENT = "tag_name";
-        private const int HTTP_TIMEOUT_SECONDS = 10;
+        private const string JsonPropTagName = "tag_name";
+        private const string JsonPropHtmlUrl = "html_url";
 
-        private static readonly string GITHUB_BASE_API_URL  = $"https://api.github.com/repos/{AppConstants.GITHUB_REPO_OWNER}/{AppConstants.APP_NAME}";
-        private static readonly string GITHUB_API_URL       = GITHUB_BASE_API_URL + "/releases/latest";
+        private static readonly string GitHubBaseApiUrl = $"https://api.github.com/repos/{AppConstants.GitHubRepoOwner}/{AppConstants.AppName}";
+        private static readonly string GitHubApiUrl     = GitHubBaseApiUrl + "/releases/latest";
 
-        public record LatestReleaseInfo(string TagName, string ReleaseUrl, bool IsNewer);
+        public record LatestReleaseInfo(string TagName, string ReleaseUrl, bool IsNewer)
+        {
+            // TagName with leading 'v'/'V' stripped (e.g. "v2.1.0" → "2.1.0")
+            public string VersionString => TagName.TrimStart('v', 'V');
+        }
+
         public record ContributorInfo(string Login, string ProfileUrl);
 
-        // Returns the latest release tag and URL if a newer version exists on GitHub; null if up-to-date or on any error
+        // Returns the latest release version string and URL if a newer version exists; null if up-to-date or on any error
         public static async Task<(string Version, string Url)?> CheckForUpdateAsync()
         {
             var info = await GetLatestReleaseInfoAsync();
-            return info?.IsNewer == true ? (info.TagName, info.ReleaseUrl) : null;
+            return info?.IsNewer == true ? (info.VersionString, info.ReleaseUrl) : null;
         }
 
         // Returns full release info from GitHub including whether a newer version exists; null on any error
@@ -27,17 +31,17 @@ namespace qbPortWeaver
         {
             try
             {
-                using var client = CreateHttpClient(AppConstants.APP_VERSION);
+                using var client = CreateHttpClient();
 
-                using var response = await client.GetAsync(GITHUB_API_URL);
+                using var response = await client.GetAsync(GitHubApiUrl).ConfigureAwait(false);
                 response.EnsureSuccessStatusCode();
 
-                using var stream = await response.Content.ReadAsStreamAsync();
-                using var doc    = await JsonDocument.ParseAsync(stream);
+                using var stream = await response.Content.ReadAsStreamAsync().ConfigureAwait(false);
+                using var doc    = await JsonDocument.ParseAsync(stream).ConfigureAwait(false);
                 var root = doc.RootElement;
 
-                if (!root.TryGetProperty(JSON_HTML_TAG_ELEMENT, out var tagElement) ||
-                    !root.TryGetProperty(JSON_HTML_URL_ELEMENT, out var urlElement))
+                if (!root.TryGetProperty(JsonPropTagName, out var tagElement) ||
+                    !root.TryGetProperty(JsonPropHtmlUrl, out var urlElement))
                     return null;
 
                 string tagName = tagElement.GetString() ?? "";
@@ -46,7 +50,7 @@ namespace qbPortWeaver
                 // Strip leading 'v' or 'V' from the tag (e.g. "v2.1.0" → "2.1.0") before parsing
                 string versionString = tagName.TrimStart('v', 'V');
                 bool isNewer = Version.TryParse(versionString, out var latest) &&
-                               Version.TryParse(AppConstants.APP_VERSION, out var current) &&
+                               Version.TryParse(AppConstants.AppVersion, out var current) &&
                                latest > current;
 
                 return new LatestReleaseInfo(tagName, htmlUrl, isNewer);
@@ -64,22 +68,22 @@ namespace qbPortWeaver
         {
             try
             {
-                using var client = CreateHttpClient(AppConstants.APP_VERSION);
+                using var client = CreateHttpClient();
 
-                using var response = await client.GetAsync(GITHUB_BASE_API_URL + "/contributors?per_page=100");
+                using var response = await client.GetAsync(GitHubBaseApiUrl + "/contributors?per_page=100").ConfigureAwait(false);
                 response.EnsureSuccessStatusCode();
 
-                using var stream = await response.Content.ReadAsStreamAsync();
-                using var doc    = await JsonDocument.ParseAsync(stream);
+                using var stream = await response.Content.ReadAsStreamAsync().ConfigureAwait(false);
+                using var doc    = await JsonDocument.ParseAsync(stream).ConfigureAwait(false);
 
                 var seen         = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                 var contributors = new List<ContributorInfo>();
 
                 foreach (var item in doc.RootElement.EnumerateArray())
                 {
-                    string login = item.TryGetProperty("login",              out var loginEl) ? loginEl.GetString() ?? "" : "";
-                    string url   = item.TryGetProperty(JSON_HTML_URL_ELEMENT, out var urlEl)   ? urlEl.GetString()   ?? "" : "";
-                    string type  = item.TryGetProperty("type",               out var typeEl)  ? typeEl.GetString()  ?? "" : "";
+                    string login = item.TryGetProperty("login",          out var loginEl) ? loginEl.GetString() ?? "" : "";
+                    string url   = item.TryGetProperty(JsonPropHtmlUrl,  out var urlEl)   ? urlEl.GetString()   ?? "" : "";
+                    string type  = item.TryGetProperty("type",           out var typeEl)  ? typeEl.GetString()  ?? "" : "";
 
                     if (string.IsNullOrEmpty(login)) continue;
                     if (IsBot(login, type)) continue;
@@ -89,7 +93,7 @@ namespace qbPortWeaver
                 }
 
                 // Always list the repo owner first
-                int ownerIndex = contributors.FindIndex(c => c.Login.Equals(AppConstants.GITHUB_REPO_OWNER, StringComparison.OrdinalIgnoreCase));
+                int ownerIndex = contributors.FindIndex(c => c.Login.Equals(AppConstants.GitHubRepoOwner, StringComparison.OrdinalIgnoreCase));
                 if (ownerIndex > 0)
                 {
                     var owner = contributors[ownerIndex];
@@ -111,10 +115,10 @@ namespace qbPortWeaver
             login.EndsWith("[bot]", StringComparison.OrdinalIgnoreCase);
 
         // Creates an HttpClient pre-configured with the required User-Agent and timeout
-        private static HttpClient CreateHttpClient(string version)
+        private static HttpClient CreateHttpClient()
         {
-            var client = new HttpClient { Timeout = TimeSpan.FromSeconds(HTTP_TIMEOUT_SECONDS) };
-            client.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue(AppConstants.APP_NAME, version));
+            var client = new HttpClient { Timeout = TimeSpan.FromSeconds(AppConstants.HttpTimeoutSeconds) };
+            client.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue(AppConstants.AppName, AppConstants.AppVersion));
             return client;
         }
     }

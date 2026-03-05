@@ -1,4 +1,4 @@
-﻿using System.Net.NetworkInformation;
+using System.Net.NetworkInformation;
 using System.Text;
 using System.Text.RegularExpressions;
 
@@ -7,6 +7,8 @@ namespace qbPortWeaver
     // Detects ProtonVPN connectivity via network adapter enumeration and reads the forwarded port from ProtonVPN's log file
     public sealed class ProtonVPNManager : IVpnManager
     {
+        private const int LogReadChunkSize = 4096;
+
         private readonly string _logFilePath;
         private static readonly Regex PortRegex = new Regex(@"Port pair\s+(\d+)->(?:\d+)", RegexOptions.Compiled);
 
@@ -17,7 +19,6 @@ namespace qbPortWeaver
             _logFilePath = logFilePath;
         }
 
-        // Checks if ProtonVPN network adapter is connected
         public bool IsVPNConnected()
         {
             try
@@ -40,12 +41,10 @@ namespace qbPortWeaver
             }
         }
 
-        // Reads the ProtonVPN logfile to find the current port
         public int? GetVPNPort()
         {
             try
             {
-                // Validate logfile path
                 if (string.IsNullOrWhiteSpace(_logFilePath))
                 {
                     LogManager.Instance.LogDebug("ProtonVPNManager.GetVPNPort: Logfile path is null or empty");
@@ -82,16 +81,15 @@ namespace qbPortWeaver
         // Opens with FileShare.ReadWrite so ProtonVPN can keep writing while we read.
         private int? ReadLastPortFromLog()
         {
-            const int CHUNK_SIZE = 4096;
             using var fs = new FileStream(_logFilePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
 
             long bytesRemaining = fs.Length;
             string lineFragment = string.Empty;
-            byte[] buffer = new byte[CHUNK_SIZE];
+            byte[] buffer = new byte[LogReadChunkSize];
 
             while (bytesRemaining > 0)
             {
-                int chunkSize = (int)Math.Min(CHUNK_SIZE, bytesRemaining);
+                int chunkSize = (int)Math.Min(LogReadChunkSize, bytesRemaining);
                 bytesRemaining -= chunkSize;
                 fs.Seek(bytesRemaining, SeekOrigin.Begin);
                 fs.ReadExactly(buffer, 0, chunkSize);

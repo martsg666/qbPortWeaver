@@ -15,9 +15,8 @@
     The choco/ source files are NOT permanently modified — all edits are written
     to a temp staging directory that is cleaned up after packing.
 
-    WiX Toolset v4 must be installed as a .NET global tool:
-      dotnet tool install --global wix --version "4.0.6"
-      wix extension add WixToolset.UI.wixext/4.0.6 WixToolset.Util.wixext/4.0.6 --global
+    WiX Toolset v4 is installed/updated automatically by this script.
+    To install manually: dotnet tool update --global wix --version "4.0.6"
 
     To push the resulting .nupkg to the Chocolatey Community Repository, run:
       choco push <path-to.nupkg> --source https://push.chocolatey.org/ --api-key <key>
@@ -27,7 +26,7 @@
     Defaults to the version defined in qbPortWeaver.csproj.
 
 .PARAMETER OutputDirectory
-    Where to write the .nupkg file. Defaults to the repo root.
+    Where to write the .nupkg file. Defaults to the choco/ folder (gitignored).
 
 .EXAMPLE
     # Build and pack using the version from qbPortWeaver.csproj
@@ -49,8 +48,8 @@ $ErrorActionPreference = 'Stop'
 
 $repoRoot   = Split-Path -Parent $PSScriptRoot
 $chocoSrc   = Join-Path $repoRoot 'choco'
-$outputDir  = if ($OutputDirectory) { $OutputDirectory } else { $repoRoot }
-$stagingDir = Join-Path ([System.IO.Path]::GetTempPath()) "qbPortWeaver-choco-$(Get-Random)"
+$outputDir  = if ($OutputDirectory) { $OutputDirectory } else { $chocoSrc }
+$stagingDir = Join-Path ([System.IO.Path]::GetTempPath()) "qbPortWeaver-choco-$([System.Guid]::NewGuid().ToString('N'))"
 
 function Write-Step([string]$msg) { Write-Host "`n==> $msg" -ForegroundColor Cyan }
 function Write-Ok([string]$msg)   { Write-Host "    $msg"   -ForegroundColor Green }
@@ -80,7 +79,7 @@ Write-Ok "Tag     : $tag"
 # ---------------------------------------------------------------------------
 # Step 2: Publish as self-contained single-file win-x64
 #         This matches the CI build-release-publish.yml publish step exactly.
-#         Output lands in: bin\Release\net10.0-windows\win-x64\publish\
+#         Output lands in: bin\Release\<tfm>\win-x64\publish\
 # ---------------------------------------------------------------------------
 Write-Step 'Publishing self-contained single-file executable...'
 
@@ -100,7 +99,8 @@ try {
     Pop-Location
 }
 
-$publishedExe = Join-Path $repoRoot "bin\Release\net10.0-windows\win-x64\publish\qbPortWeaver.exe"
+$tfm          = ([xml](Get-Content (Join-Path $repoRoot 'qbPortWeaver.csproj'))).Project.PropertyGroup.TargetFramework
+$publishedExe = Join-Path $repoRoot "bin\Release\$tfm\win-x64\publish\qbPortWeaver.exe"
 if (-not (Test-Path $publishedExe)) {
     Write-Error "Expected publish output not found: $publishedExe"
     exit 1
@@ -114,11 +114,9 @@ Write-Ok "Published : $publishedExe"
 # ---------------------------------------------------------------------------
 Write-Step 'Building MSI installer with WiX Toolset v4...'
 
-if (-not (Get-Command wix -ErrorAction SilentlyContinue)) {
-    Write-Host '    Installing WiX Toolset v4...' -ForegroundColor Yellow
-    dotnet tool install --global wix --version "4.0.6"
-    if ($LASTEXITCODE -ne 0) { Write-Error 'Failed to install WiX Toolset.'; exit 1 }
-}
+# Install/update WiX (idempotent — installs if missing, updates if present)
+dotnet tool update --global wix --version "4.0.6"
+if ($LASTEXITCODE -ne 0) { Write-Error 'Failed to install/update WiX Toolset.'; exit 1 }
 
 # Install required extensions pinned to v4 (safe to run if already present)
 wix extension add WixToolset.UI.wixext/4.0.6 WixToolset.Util.wixext/4.0.6 --global
@@ -134,6 +132,7 @@ wix build $wxsFile `
     -ext WixToolset.Util.wixext `
     -b $installerDir `
     -d ProductVersion=$Version `
+    -d TFM=$tfm `
     -out $setupMsi
 
 if ($LASTEXITCODE -ne 0) { Write-Error 'WiX build failed.'; exit 1 }
@@ -167,12 +166,12 @@ try {
     $installPath = Join-Path $stagingDir 'tools\chocolateyInstall.ps1'
     $verifyPath  = Join-Path $stagingDir 'tools\VERIFICATION.txt'
 
-    (Get-Content $nuspecPath)  -replace 'TEMPLATE_VERSION',  $Version      | Set-Content $nuspecPath
-    (Get-Content $installPath) -replace 'TEMPLATE_URL',      $downloadUrl `
-                               -replace 'TEMPLATE_CHECKSUM', $checksum      | Set-Content $installPath
-    (Get-Content $verifyPath)  -replace 'TEMPLATE_VERSION',  $Version `
+    (Get-Content $nuspecPath  -Encoding utf8) -replace 'TEMPLATE_VERSION',  $Version      | Set-Content $nuspecPath  -Encoding utf8
+    (Get-Content $installPath -Encoding utf8) -replace 'TEMPLATE_URL',      $downloadUrl `
+                               -replace 'TEMPLATE_CHECKSUM', $checksum      | Set-Content $installPath -Encoding utf8
+    (Get-Content $verifyPath  -Encoding utf8) -replace 'TEMPLATE_VERSION',  $Version `
                                -replace 'TEMPLATE_URL',      $downloadUrl `
-                               -replace 'TEMPLATE_CHECKSUM', $checksum      | Set-Content $verifyPath
+                               -replace 'TEMPLATE_CHECKSUM', $checksum      | Set-Content $verifyPath  -Encoding utf8
 
     choco pack $nuspecPath --output-directory $outputDir
     if ($LASTEXITCODE -ne 0) { Write-Error 'choco pack failed.'; exit 1 }

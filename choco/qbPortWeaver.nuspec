@@ -20,37 +20,31 @@
     <description><![CDATA[
 ## qbPortWeaver
 
-qbPortWeaver is a lightweight Windows system tray application that automatically synchronizes the listening port of [qBittorrent](https://www.qbittorrent.org/) with the port assigned by your VPN provider.
+qbPortWeaver is a lightweight Windows system tray application that automatically keeps qBittorrent's listening port in sync with the port assigned by your VPN provider — no manual updates needed.
 
 ### Supported VPN Providers
 
-- **ProtonVPN** — reads the forwarded port from the ProtonVPN log file
-- **Private Internet Access (PIA)** — reads the forwarded port via `piactl get portforward`
-- **NAT-PMP** — requests a port mapping directly from the VPN gateway using the NAT-PMP protocol (RFC 6886)
+- **ProtonVPN** — via log file parsing (default) or NAT-PMP
+- **Private Internet Access (PIA)** — via `piactl` CLI
+- **NAT-PMP (RFC 6886)** — works with any NAT-PMP capable VPN client or router
 
 ### Features
 
-- Runs silently in the Windows system tray
-- Automatically detects VPN port changes and updates qBittorrent via its Web API
-- Optional Windows startup integration
-- Built-in automatic update checker
-- Supports a custom post-update PowerShell command (e.g., send an email notification)
-- File-based logging with automatic rotation
-- JSON status file for external monitoring
+- **Automatic port sync** — detects VPN port changes and updates qBittorrent via its Web API
+- **Tray status indicator** — color-coded dot (green / orange / red) shows sync status at a glance; tooltip displays current port without opening the log
+- **Multi-VPN support** — ProtonVPN, PIA, and NAT-PMP selectable from Settings
+- **Restart qBittorrent after port change** — ensures port changes take effect immediately
+- **Force start qBittorrent** — launches qBittorrent automatically if it is not running
+- **Default port fallback** — apply a fallback port when the VPN is disconnected
+- **Restart on disconnect** — optionally restart qBittorrent when the connection drops
+- **Interface mismatch warning** — alerts if qBittorrent is not bound to the VPN adapter
+- **Post-update command** — run a custom script after each successful port update
+- **Automatic update checker** — notifies when a new release is available on GitHub
+- **Windows startup integration** — optional auto-start with Windows
+- **File-based logging** — automatic log rotation; debug mode available
+- **JSON status file** — written after each sync cycle for external monitoring
 
-### Requirements
-
-- Windows 10/11 (x64)
-- qBittorrent with Web UI enabled
-- ProtonVPN, Private Internet Access (PIA), or any NAT-PMP capable VPN gateway with port forwarding enabled
-
-### Configuration
-
-On first launch, open **Settings** from the system tray icon to configure:
-- qBittorrent Web UI URL and credentials
-- VPN provider selection
-- Sync interval
-- Startup options
+For setup instructions, configuration details, and recommended settings, see the full documentation at https://github.com/martsg666/qbPortWeaver#readme
     ]]></description>
     <releaseNotes>https://github.com/martsg666/qbPortWeaver/releases/tag/vTEMPLATE_VERSION</releaseNotes>
     <copyright>© 2026 martsg666</copyright>

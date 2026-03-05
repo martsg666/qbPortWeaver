@@ -224,21 +224,14 @@ jobs:
           Write-Host "All placeholders replaced successfully."
 
       # -----------------------------------------------------------------------
-      # 10. Validate the Chocolatey package source (catches issues before submission)
-      #     The community validation extension validates the .nuspec and tools folder;
-      #     it does not require a packed .nupkg — validation must run before choco pack.
+      # 10. Install community validation extension and pack the Chocolatey package
+      #     The extension hooks into choco pack and validates automatically in v2.x —
+      #     there is no separate choco validate command.
       # -----------------------------------------------------------------------
       - name: Install Chocolatey Community Validation Extension
         shell: pwsh
         run: |
-          choco install chocolatey-community-validation -y --no-progress
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
-      - name: Validate Chocolatey package
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          choco validate choco\qbPortWeaver.nuspec
+          choco install chocolatey-community-validation.extension -y --no-progress
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       # -----------------------------------------------------------------------

@@ -10,7 +10,8 @@
       4. Computes the SHA256 checksum of the local MSI
       5. Stamps the version, expected GitHub download URL, and checksum into a
          temporary copy of the choco/ package source files
-      6. Runs `choco pack` to produce a .nupkg
+      6. Installs the community validation extension (idempotent) and runs
+         `choco pack` — the extension hooks in and validates automatically
 
     The choco/ source files are NOT permanently modified — all edits are written
     to a temp staging directory that is cleaned up after packing.
@@ -152,9 +153,9 @@ Write-Ok "SHA256    : $checksum"
 Write-Ok "URL       : $downloadUrl"
 
 # ---------------------------------------------------------------------------
-# Step 5: Stage package source, stamp placeholders, and pack
+# Step 5: Stage package source and stamp placeholders
 # ---------------------------------------------------------------------------
-Write-Step 'Staging, stamping and packing Chocolatey package...'
+Write-Step 'Staging and stamping Chocolatey package source...'
 
 Copy-Item -Recurse -Path $chocoSrc -Destination $stagingDir
 try {
@@ -168,6 +169,30 @@ try {
     (Get-Content $verifyPath  -Encoding utf8) -replace 'TEMPLATE_VERSION',  $Version `
                                -replace 'TEMPLATE_URL',      $downloadUrl `
                                -replace 'TEMPLATE_CHECKSUM', $checksum      | Set-Content $verifyPath  -Encoding utf8
+
+    Write-Ok "Placeholders stamped"
+
+    # Verify no TEMPLATE_ placeholders survived the substitution
+    $unreplaced = $false
+    foreach ($f in @($nuspecPath, $installPath, $verifyPath)) {
+        if (Select-String -Path $f -Pattern 'TEMPLATE_' -Quiet) {
+            Write-Host "    Unreplaced TEMPLATE_ placeholder in: $f" -ForegroundColor Red
+            $unreplaced = $true
+        }
+    }
+    if ($unreplaced) { throw 'Unreplaced TEMPLATE_ placeholders found — stamping failed.' }
+
+    # ---------------------------------------------------------------------------
+    # Step 6: Install community validation extension + pack
+    #         The extension hooks into choco pack and runs validation rules
+    #         automatically — no separate validate command needed in v2.x.
+    # ---------------------------------------------------------------------------
+    Write-Step 'Installing community validation extension and packing...'
+
+    # Install the community validation extension if not already present (idempotent).
+    # When installed, it automatically validates the package during choco pack.
+    choco install chocolatey-community-validation.extension -y --no-progress
+    if ($LASTEXITCODE -ne 0) { throw 'Failed to install chocolatey-community-validation.extension.' }
 
     choco pack $nuspecPath --output-directory $outputDir
     if ($LASTEXITCODE -ne 0) { throw 'choco pack failed.' }

@@ -12,6 +12,9 @@ namespace qbPortWeaver
         public const string SectionQBittorrent = "qBittorrent";
         public const string SectionExtra       = "extra";
 
+        public const string BoolTrue  = BoolTrue;
+        public const string BoolFalse = BoolFalse;
+
         // Default values for all settings (single source of truth)
         internal static readonly Dictionary<string, Dictionary<string, string>> Defaults =
             new(StringComparer.OrdinalIgnoreCase)
@@ -29,16 +32,16 @@ namespace qbPortWeaver
                     ["qBittorrentPassword"]     = "",
                     ["qBittorrentExePath"]      = @"C:\Program Files\qBittorrent\qbittorrent.exe",
                     ["qBittorrentProcessName"]  = "qbittorrent",
-                    ["restartqBittorrent"]      = "True",
-                    ["forceStartqBittorrent"]   = "False",
+                    ["restartqBittorrent"]      = BoolTrue,
+                    ["forceStartqBittorrent"]   = BoolFalse,
                     ["defaultPort"]             = "0",
-                    ["warnOnInterfaceMismatch"] = "True",
-                    ["restartOnDisconnect"]     = "False"
+                    ["warnOnInterfaceMismatch"] = BoolTrue,
+                    ["restartOnDisconnect"]     = BoolFalse
                 },
                 [SectionExtra] = new(StringComparer.OrdinalIgnoreCase)
                 {
                     ["postUpdateCmd"] = "",
-                    ["debugMode"]     = "False"
+                    ["debugMode"]     = BoolFalse
                 }
             };
 

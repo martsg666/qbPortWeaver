@@ -113,15 +113,15 @@ namespace qbPortWeaver
             RegistrySettingsManager.SetPassword(txtQBittorrentPassword.Text);
             RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionQBittorrent, "qBittorrentExePath",      txtQBittorrentExePath.Text.Trim());
             RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionQBittorrent, "qBittorrentProcessName",  txtQBittorrentProcessName.Text.Trim());
-            RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionQBittorrent, "restartqBittorrent",      chkRestartQBittorrent.Checked      ? "True" : "False");
-            RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionQBittorrent, "forceStartqBittorrent",   chkForceStartQBittorrent.Checked   ? "True" : "False");
+            RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionQBittorrent, "restartqBittorrent",      chkRestartQBittorrent.Checked      ? RegistrySettingsManager.BoolTrue : RegistrySettingsManager.BoolFalse);
+            RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionQBittorrent, "forceStartqBittorrent",   chkForceStartQBittorrent.Checked   ? RegistrySettingsManager.BoolTrue : RegistrySettingsManager.BoolFalse);
             RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionQBittorrent, "defaultPort",             ((int)nudDefaultPort.Value).ToString());
-            RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionQBittorrent, "warnOnInterfaceMismatch", chkWarnOnInterfaceMismatch.Checked ? "True" : "False");
-            RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionQBittorrent, "restartOnDisconnect",     chkRestartOnDisconnect.Checked     ? "True" : "False");
+            RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionQBittorrent, "warnOnInterfaceMismatch", chkWarnOnInterfaceMismatch.Checked ? RegistrySettingsManager.BoolTrue : RegistrySettingsManager.BoolFalse);
+            RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionQBittorrent, "restartOnDisconnect",     chkRestartOnDisconnect.Checked     ? RegistrySettingsManager.BoolTrue : RegistrySettingsManager.BoolFalse);
 
             // Extra
             RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionExtra, "postUpdateCmd", txtPostUpdateCmd.Text.Trim());
-            RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionExtra, "debugMode",     chkDebugMode.Checked ? "True" : "False");
+            RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionExtra, "debugMode",     chkDebugMode.Checked ? RegistrySettingsManager.BoolTrue : RegistrySettingsManager.BoolFalse);
         }
 
         private void cboVpnProvider_SelectedIndexChanged(object? sender, EventArgs e)

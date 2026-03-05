@@ -49,8 +49,7 @@ if (-not $Version) {
     $csprojPath = Join-Path $repoRoot 'qbPortWeaver.csproj'
     $match = Select-String -Path $csprojPath -Pattern '<Version>([^<]+)</Version>'
     if (-not $match) {
-        Write-Error "Could not find <Version> in qbPortWeaver.csproj. Pass -Version explicitly."
-        exit 1
+        throw "Could not find <Version> in qbPortWeaver.csproj. Pass -Version explicitly."
     }
     $Version = $match.Matches[0].Groups[1].Value
 }
@@ -75,7 +74,7 @@ try {
         -p:FileVersion="$Version.0" `
         -p:AssemblyVersion="$Version.0"
 
-    if ($LASTEXITCODE -ne 0) { Write-Error 'dotnet publish failed.'; exit 1 }
+    if ($LASTEXITCODE -ne 0) { throw 'dotnet publish failed.' }
 } finally {
     Pop-Location
 }
@@ -83,8 +82,7 @@ try {
 $tfm          = ([xml](Get-Content (Join-Path $repoRoot 'qbPortWeaver.csproj'))).Project.PropertyGroup.TargetFramework
 $publishedExe = Join-Path $repoRoot "bin\Release\$tfm\win-x64\publish\qbPortWeaver.exe"
 if (-not (Test-Path $publishedExe)) {
-    Write-Error "Expected publish output not found: $publishedExe"
-    exit 1
+    throw "Expected publish output not found: $publishedExe"
 }
 
 Write-Ok "Published : $publishedExe"
@@ -97,11 +95,11 @@ Write-Step 'Building MSI installer with WiX Toolset v4...'
 
 # Ensure WiX is installed (update is idempotent — installs if missing, updates if present)
 dotnet tool update --global wix --version "4.0.6"
-if ($LASTEXITCODE -ne 0) { Write-Error 'Failed to install/update WiX Toolset.'; exit 1 }
+if ($LASTEXITCODE -ne 0) { throw 'Failed to install/update WiX Toolset.' }
 
 # Install required extensions pinned to v4 (safe to run if already present)
 wix extension add WixToolset.UI.wixext/4.0.6 WixToolset.Util.wixext/4.0.6 --global
-if ($LASTEXITCODE -ne 0) { Write-Error 'Failed to install WiX extensions.'; exit 1 }
+if ($LASTEXITCODE -ne 0) { throw 'Failed to install WiX extensions.' }
 
 $wxsFile      = Join-Path $repoRoot 'installer\qbPortWeaver.wxs'
 $installerDir = Join-Path $repoRoot 'installer'
@@ -116,11 +114,10 @@ wix build $wxsFile `
     -d TFM=$tfm `
     -out $setupMsi
 
-if ($LASTEXITCODE -ne 0) { Write-Error 'WiX build failed.'; exit 1 }
+if ($LASTEXITCODE -ne 0) { throw 'WiX build failed.' }
 
 if (-not (Test-Path $setupMsi)) {
-    Write-Error "Expected installer not found: $setupMsi"
-    exit 1
+    throw "Expected installer not found: $setupMsi"
 }
 
 Write-Ok "Installer : $setupMsi"

@@ -23,14 +23,13 @@ $stagingDir = Join-Path ([System.IO.Path]::GetTempPath()) "qbPortWeaver-choco-te
 
 # Resolve version from csproj
 $match = Select-String -Path $csprojPath -Pattern '<Version>([^<]+)</Version>'
-if (-not $match) { Write-Error "Could not find <Version> in qbPortWeaver.csproj."; exit 1 }
+if (-not $match) { throw "Could not find <Version> in qbPortWeaver.csproj." }
 $version = $match.Matches[0].Groups[1].Value
 
 # Locate the locally built MSI
 $setupMsi = Join-Path $repoRoot "installer\qbPortWeaver_${version}_Setup.msi"
 if (-not (Test-Path $setupMsi)) {
-    Write-Error "MSI not found: $setupMsi`nRun Build-LocalMsi.ps1 or Build-ChocolateyPackage.ps1 first."
-    exit 1
+    throw "MSI not found: $setupMsi`nRun Build-LocalMsi.ps1 or Build-ChocolateyPackage.ps1 first."
 }
 
 $localUrl = 'file:///' + $setupMsi.Replace('\', '/')
@@ -55,10 +54,10 @@ try {
                                -replace 'TEMPLATE_CHECKSUM', $checksum                 | Set-Content $verifyPath  -Encoding utf8
 
     choco pack $nuspecPath --output-directory $stagingDir
-    if ($LASTEXITCODE -ne 0) { Write-Error 'choco pack failed.'; exit 1 }
+    if ($LASTEXITCODE -ne 0) { throw 'choco pack failed.' }
 
     choco install qbportweaver --source $stagingDir -y --ignore-checksums
-    if ($LASTEXITCODE -ne 0) { Write-Error 'choco install failed.'; exit 1 }
+    if ($LASTEXITCODE -ne 0) { throw 'choco install failed.' }
 } finally {
     Remove-Item -Recurse -Force $stagingDir -ErrorAction SilentlyContinue
 }

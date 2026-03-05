@@ -19,22 +19,19 @@ $csprojPath = Join-Path $repoRoot 'qbPortWeaver.csproj'
 
 $match = Select-String -Path $csprojPath -Pattern '<Version>([^<]+)</Version>'
 if (-not $match) {
-    Write-Error "Could not find <Version> in qbPortWeaver.csproj."
-    exit 1
+    throw "Could not find <Version> in qbPortWeaver.csproj."
 }
 $version = $match.Matches[0].Groups[1].Value
 $msi = Join-Path $repoRoot "installer\qbPortWeaver_${version}_Setup.msi"
 
 if (-not (Test-Path $msi)) {
-    Write-Error "MSI not found: $msi`nRun Build-LocalMsi.ps1 or Build-ChocolateyPackage.ps1 first."
-    exit 1
+    throw "MSI not found: $msi`nRun Build-LocalMsi.ps1 or Build-ChocolateyPackage.ps1 first."
 }
 
 Write-Host "Installing: $msi" -ForegroundColor Cyan
 # msiexec is a GUI-subsystem application — use Start-Process to reliably capture the exit code
 $p = Start-Process msiexec -ArgumentList "/i `"$msi`" /qn /norestart" -Wait -PassThru
 if ($p.ExitCode -notin @(0, 3010, 1641)) {
-    Write-Error "msiexec failed with exit code $($p.ExitCode)"
-    exit $p.ExitCode
+    throw "msiexec failed with exit code $($p.ExitCode)"
 }
 Write-Host "Done." -ForegroundColor Green

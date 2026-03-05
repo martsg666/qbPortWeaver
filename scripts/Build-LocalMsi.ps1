@@ -20,11 +20,11 @@
 
 .EXAMPLE
     # Build using the default version from AppConstants.cs
-    .\scripts\Build-Local.ps1
+    .\scripts\Build-LocalMsi.ps1
 
 .EXAMPLE
     # Build with an explicit version override
-    .\scripts\Build-Local.ps1 -Version 2.3.0
+    .\scripts\Build-LocalMsi.ps1 -Version 2.3.0
 #>
 
 [CmdletBinding()]

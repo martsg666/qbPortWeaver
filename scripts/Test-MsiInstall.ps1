@@ -3,7 +3,7 @@
     Installs the locally built MSI installer directly for testing.
 
 .DESCRIPTION
-    Installs the MSI produced by Build-Local.ps1 or Build-ChocolateyPackage.ps1
+    Installs the MSI produced by Build-LocalMsi.ps1 or Build-ChocolateyPackage.ps1
     using msiexec, bypassing Chocolatey's download mechanism. Use this to test
     the binary built from the current branch rather than the published GitHub release.
 
@@ -25,7 +25,7 @@ $version = $match.Matches[0].Groups[1].Value
 $msi = Join-Path $repoRoot "installer\qbPortWeaver_${version}_Setup.msi"
 
 if (-not (Test-Path $msi)) {
-    Write-Error "MSI not found: $msi`nRun Build-Local.ps1 or Build-ChocolateyPackage.ps1 first."
+    Write-Error "MSI not found: $msi`nRun Build-LocalMsi.ps1 or Build-ChocolateyPackage.ps1 first."
     exit 1
 }
 

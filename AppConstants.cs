@@ -1,3 +1,5 @@
+using System.Diagnostics;
+
 namespace qbPortWeaver
 {
     public static class AppConstants
@@ -39,5 +41,18 @@ namespace qbPortWeaver
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "Proton", "Proton VPN", "Logs", "client-logs.txt"
         );
+
+        // Opens a URL in the default browser using ShellExecute
+        public static void OpenUrl(string url)
+        {
+            try
+            {
+                Process.Start(new ProcessStartInfo(url) { UseShellExecute = true })?.Dispose();
+            }
+            catch (Exception ex)
+            {
+                LogManager.Instance.LogDebug($"AppConstants.OpenUrl: {ex.Message}");
+            }
+        }
     }
 }

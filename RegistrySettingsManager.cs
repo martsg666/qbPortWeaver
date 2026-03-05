@@ -19,33 +19,54 @@ namespace qbPortWeaver
         public const string VpnProviderPia       = "PIA";
         public const string VpnProviderNatPmp    = "NAT-PMP";
 
+        // Registry key names — general section
+        public const string KeyVpnProvider          = "vpnProvider";
+        public const string KeyUpdateIntervalSeconds = "updateIntervalSeconds";
+        public const string KeyNatPmpAdapterName    = "natPmpAdapterName";
+
+        // Registry key names — qBittorrent section
+        public const string KeyQBittorrentUrl          = "qBittorrentURL";
+        public const string KeyQBittorrentUserName     = "qBittorrentUserName";
+        public const string KeyQBittorrentPassword     = "qBittorrentPassword";
+        public const string KeyQBittorrentExePath      = "qBittorrentExePath";
+        public const string KeyQBittorrentProcessName  = "qBittorrentProcessName";
+        public const string KeyRestartQBittorrent      = "restartqBittorrent";
+        public const string KeyForceStartQBittorrent   = "forceStartqBittorrent";
+        public const string KeyDefaultPort             = "defaultPort";
+        public const string KeyWarnOnInterfaceMismatch = "warnOnInterfaceMismatch";
+        public const string KeyRestartOnDisconnect     = "restartOnDisconnect";
+
+        // Registry key names — extra section
+        public const string KeyPostUpdateCmd = "postUpdateCmd";
+        public const string KeyDebugMode     = "debugMode";
+
         // Default values for all settings (single source of truth)
         internal static readonly Dictionary<string, Dictionary<string, string>> Defaults =
             new(StringComparer.OrdinalIgnoreCase)
             {
                 [SectionGeneral] = new(StringComparer.OrdinalIgnoreCase)
                 {
-                    ["vpnProvider"]           = VpnProviderProtonVpn,
-                    ["updateIntervalSeconds"] = "180",
-                    ["natPmpAdapterName"]     = ""
+                    [KeyVpnProvider]          = VpnProviderProtonVpn,
+                    [KeyUpdateIntervalSeconds] = "180",
+                    [KeyNatPmpAdapterName]    = ""
                 },
                 [SectionQBittorrent] = new(StringComparer.OrdinalIgnoreCase)
                 {
-                    ["qBittorrentURL"]          = "http://127.0.0.1:8080",
-                    ["qBittorrentUserName"]     = "admin",
-                    ["qBittorrentPassword"]     = "",
-                    ["qBittorrentExePath"]      = @"C:\Program Files\qBittorrent\qbittorrent.exe",
-                    ["qBittorrentProcessName"]  = "qbittorrent",
-                    ["restartqBittorrent"]      = BoolTrue,
-                    ["forceStartqBittorrent"]   = BoolFalse,
-                    ["defaultPort"]             = "0",
-                    ["warnOnInterfaceMismatch"] = BoolTrue,
-                    ["restartOnDisconnect"]     = BoolFalse
+                    [KeyQBittorrentUrl]          = "http://127.0.0.1:8080",
+                    [KeyQBittorrentUserName]     = "admin",
+                    [KeyQBittorrentPassword]     = "",
+                    [KeyQBittorrentExePath]      = @"C:\Program Files\qBittorrent\qbittorrent.exe",
+                    [KeyQBittorrentProcessName]  = "qbittorrent",
+                    [KeyRestartQBittorrent]      = BoolTrue,
+                    [KeyForceStartQBittorrent]   = BoolFalse,
+                    [KeyDefaultPort]             = "0",
+                    [KeyWarnOnInterfaceMismatch] = BoolTrue,
+                    [KeyRestartOnDisconnect]     = BoolFalse
                 },
                 [SectionExtra] = new(StringComparer.OrdinalIgnoreCase)
                 {
-                    ["postUpdateCmd"] = "",
-                    ["debugMode"]     = BoolFalse
+                    [KeyPostUpdateCmd] = "",
+                    [KeyDebugMode]     = BoolFalse
                 }
             };
 
@@ -106,7 +127,7 @@ namespace qbPortWeaver
             try
             {
                 using var regKey = Registry.CurrentUser.OpenSubKey($@"{BaseKeyPath}\{SectionQBittorrent}");
-                if (regKey?.GetValue("qBittorrentPassword") is string storedValue && storedValue.Length > 0)
+                if (regKey?.GetValue(KeyQBittorrentPassword) is string storedValue && storedValue.Length > 0)
                 {
                     try
                     {
@@ -126,7 +147,7 @@ namespace qbPortWeaver
                 LogManager.Instance.LogDebug($"RegistrySettingsManager.GetPassword: {ex.Message}");
             }
 
-            return GetDefault(SectionQBittorrent, "qBittorrentPassword");
+            return GetDefault(SectionQBittorrent, KeyQBittorrentPassword);
         }
 
         // Writes a single value to the registry
@@ -151,7 +172,7 @@ namespace qbPortWeaver
             {
                 string encoded = EncryptPassword(plaintext);
                 using var regKey = Registry.CurrentUser.CreateSubKey($@"{BaseKeyPath}\{SectionQBittorrent}");
-                regKey.SetValue("qBittorrentPassword", encoded, RegistryValueKind.String);
+                regKey.SetValue(KeyQBittorrentPassword, encoded, RegistryValueKind.String);
                 LogManager.Instance.LogDebug("RegistrySettingsManager.SetPassword: password saved (encrypted)");
             }
             catch (Exception ex)
@@ -172,7 +193,7 @@ namespace qbPortWeaver
 
                 // The password is always stored encrypted; encrypt before the initial write.
                 if (sectionName.Equals(SectionQBittorrent, StringComparison.OrdinalIgnoreCase) &&
-                    kvp.Key.Equals("qBittorrentPassword", StringComparison.OrdinalIgnoreCase))
+                    kvp.Key.Equals(KeyQBittorrentPassword, StringComparison.OrdinalIgnoreCase))
                 {
                     regKey.SetValue(kvp.Key, EncryptPassword(kvp.Value), RegistryValueKind.String);
                 }

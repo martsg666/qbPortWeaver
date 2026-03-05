@@ -48,22 +48,22 @@ namespace qbPortWeaver
             }
         }
 
-        public async Task<bool> ForceStartAsync()
+        public async Task<bool> ForceStartAsync(CancellationToken cancellationToken = default)
         {
             try
             {
                 Process.Start(CreateQBittorrentStartInfo())?.Dispose();
-                await Task.Delay(ProcessStartDelayMs);
+                await Task.Delay(ProcessStartDelayMs, cancellationToken);
                 return IsRunning();
             }
-            catch (Exception ex)
+            catch (Exception ex) when (ex is not OperationCanceledException)
             {
                 LogManager.Instance.LogMessage($"Failed to start qBittorrent: {ex.Message} - check the Executable path in Settings ({_qBittorrentExePath})", LogLevel.Error);
                 return false;
             }
         }
 
-        public async Task<bool> RestartAsync()
+        public async Task<bool> RestartAsync(CancellationToken cancellationToken = default)
         {
             try
             {
@@ -76,16 +76,16 @@ namespace qbPortWeaver
                 }
 
                 // Wait for process to terminate
-                await Task.Delay(ProcessKillDelayMs);
+                await Task.Delay(ProcessKillDelayMs, cancellationToken);
 
                 Process.Start(CreateQBittorrentStartInfo())?.Dispose();
 
                 // Brief delay to allow the process to register before IsRunning() checks for it
-                await Task.Delay(ProcessInitDelayMs);
+                await Task.Delay(ProcessInitDelayMs, cancellationToken);
 
                 return IsRunning();
             }
-            catch (Exception ex)
+            catch (Exception ex) when (ex is not OperationCanceledException)
             {
                 LogManager.Instance.LogMessage($"Failed to restart qBittorrent: {ex.Message} - check the Executable path in Settings ({_qBittorrentExePath})", LogLevel.Error);
                 return false;

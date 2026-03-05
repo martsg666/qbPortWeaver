@@ -64,21 +64,21 @@ namespace qbPortWeaver
         }
 
         // Checks if the adapter is up and operational
-        public bool IsVPNConnected()
+        public bool IsVpnConnected()
         {
             try
             {
                 bool connected = _adapter.OperationalStatus == OperationalStatus.Up;
 
                 LogManager.Instance.LogDebug(connected
-                    ? $"NatPmpManager.IsVPNConnected: Adapter '{_adapter.Description}' is up"
-                    : $"NatPmpManager.IsVPNConnected: Adapter '{_adapter.Description}' is not up (status: {_adapter.OperationalStatus})");
+                    ? $"NatPmpManager.IsVpnConnected: Adapter '{_adapter.Description}' is up"
+                    : $"NatPmpManager.IsVpnConnected: Adapter '{_adapter.Description}' is not up (status: {_adapter.OperationalStatus})");
 
                 return connected;
             }
             catch (Exception ex)
             {
-                LogManager.Instance.LogDebug($"NatPmpManager.IsVPNConnected: {ex.Message}");
+                LogManager.Instance.LogDebug($"NatPmpManager.IsVpnConnected: {ex.Message}");
                 return false;
             }
         }
@@ -87,7 +87,7 @@ namespace qbPortWeaver
         // Note: unlike other manager classes where all logging is at debug level, this method
         // intentionally logs at INFO/WARN level — the gateway response (or failure) carries
         // diagnostic information (reason, lease time) that is not surfaced elsewhere in the sync cycle.
-        public int? GetVPNPort()
+        public int? GetVpnPort()
         {
             try
             {

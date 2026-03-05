@@ -11,57 +11,57 @@ namespace qbPortWeaver
         private const string PiactlFilename           = "piactl.exe";
         private const int    ProcessTimeoutMs         = 5000;
 
-        public string ProviderName => "PIA";
+        public string ProviderName => RegistrySettingsManager.VpnProviderPia;
 
-        public bool IsVPNConnected()
+        public bool IsVpnConnected()
         {
             try
             {
                 string? output = RunPiactl("get connectionstate");
                 if (output == null)
                 {
-                    LogManager.Instance.LogDebug("PiaVpnManager.IsVPNConnected: piactl returned no output");
+                    LogManager.Instance.LogDebug("PiaVpnManager.IsVpnConnected: piactl returned no output");
                     return false;
                 }
 
                 bool isConnected = output.Equals("Connected", StringComparison.OrdinalIgnoreCase);
 
                 LogManager.Instance.LogDebug(isConnected
-                    ? "PiaVpnManager.IsVPNConnected: PIA VPN is connected"
-                    : $"PiaVpnManager.IsVPNConnected: PIA VPN is not connected (state: {output})");
+                    ? "PiaVpnManager.IsVpnConnected: PIA VPN is connected"
+                    : $"PiaVpnManager.IsVpnConnected: PIA VPN is not connected (state: {output})");
 
                 return isConnected;
             }
             catch (Exception ex)
             {
-                LogManager.Instance.LogDebug($"PiaVpnManager.IsVPNConnected: {ex.Message}");
+                LogManager.Instance.LogDebug($"PiaVpnManager.IsVpnConnected: {ex.Message}");
                 return false;
             }
         }
 
-        public int? GetVPNPort()
+        public int? GetVpnPort()
         {
             try
             {
                 string? output = RunPiactl("get portforward");
                 if (output == null)
                 {
-                    LogManager.Instance.LogDebug("PiaVpnManager.GetVPNPort: piactl returned no output");
+                    LogManager.Instance.LogDebug("PiaVpnManager.GetVpnPort: piactl returned no output");
                     return null;
                 }
 
                 if (int.TryParse(output, out int port) && port > 0)
                 {
-                    LogManager.Instance.LogDebug($"PiaVpnManager.GetVPNPort: Found port {port}");
+                    LogManager.Instance.LogDebug($"PiaVpnManager.GetVpnPort: Found port {port}");
                     return port;
                 }
 
-                LogManager.Instance.LogDebug($"PiaVpnManager.GetVPNPort: Could not parse port from piactl output: {output}");
+                LogManager.Instance.LogDebug($"PiaVpnManager.GetVpnPort: Could not parse port from piactl output: {output}");
                 return null;
             }
             catch (Exception ex)
             {
-                LogManager.Instance.LogDebug($"PiaVpnManager.GetVPNPort: {ex.Message}");
+                LogManager.Instance.LogDebug($"PiaVpnManager.GetVpnPort: {ex.Message}");
                 return null;
             }
         }

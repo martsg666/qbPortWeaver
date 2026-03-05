@@ -3,6 +3,14 @@ using System.Text.Json;
 
 namespace qbPortWeaver
 {
+    public sealed record LatestReleaseInfo(string TagName, string ReleaseUrl, bool IsNewer)
+    {
+        // TagName with leading 'v'/'V' stripped (e.g. "v2.1.0" → "2.1.0")
+        public string VersionString => TagName.TrimStart('v', 'V');
+    }
+
+    public sealed record ContributorInfo(string Login, string ProfileUrl);
+
     public static class UpdateChecker
     {
         private const string JsonPropTagName = "tag_name";
@@ -12,14 +20,6 @@ namespace qbPortWeaver
         private static readonly string GitHubApiUrl     = GitHubBaseApiUrl + "/releases/latest";
 
         private static readonly HttpClient _httpClient = CreateHttpClient();
-
-        public record LatestReleaseInfo(string TagName, string ReleaseUrl, bool IsNewer)
-        {
-            // TagName with leading 'v'/'V' stripped (e.g. "v2.1.0" → "2.1.0")
-            public string VersionString => TagName.TrimStart('v', 'V');
-        }
-
-        public record ContributorInfo(string Login, string ProfileUrl);
 
         // Returns the latest release version string and URL if a newer version exists; null if up-to-date or on any error
         public static async Task<(string Version, string Url)?> GetAvailableUpdateAsync()

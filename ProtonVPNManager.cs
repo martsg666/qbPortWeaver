@@ -12,14 +12,14 @@ namespace qbPortWeaver
         private readonly string _logFilePath;
         private static readonly Regex PortRegex = new Regex(@"Port pair\s+(\d+)->(?:\d+)", RegexOptions.Compiled);
 
-        public string ProviderName => "ProtonVPN";
+        public string ProviderName => RegistrySettingsManager.VpnProviderProtonVpn;
 
         public ProtonVPNManager(string logFilePath)
         {
             _logFilePath = logFilePath;
         }
 
-        public bool IsVPNConnected()
+        public bool IsVpnConnected()
         {
             try
             {
@@ -29,50 +29,50 @@ namespace qbPortWeaver
                     adapter.OperationalStatus == OperationalStatus.Up);
 
                 LogManager.Instance.LogDebug(isConnected
-                    ? "ProtonVPNManager.IsVPNConnected: ProtonVPN adapter is connected"
-                    : "ProtonVPNManager.IsVPNConnected: ProtonVPN adapter not found or not connected");
+                    ? "ProtonVPNManager.IsVpnConnected: ProtonVPN adapter is connected"
+                    : "ProtonVPNManager.IsVpnConnected: ProtonVPN adapter not found or not connected");
 
                 return isConnected;
             }
             catch (Exception ex)
             {
-                LogManager.Instance.LogDebug($"ProtonVPNManager.IsVPNConnected: {ex.Message}");
+                LogManager.Instance.LogDebug($"ProtonVPNManager.IsVpnConnected: {ex.Message}");
                 return false;
             }
         }
 
-        public int? GetVPNPort()
+        public int? GetVpnPort()
         {
             try
             {
                 if (string.IsNullOrWhiteSpace(_logFilePath))
                 {
-                    LogManager.Instance.LogDebug("ProtonVPNManager.GetVPNPort: Logfile path is null or empty");
+                    LogManager.Instance.LogDebug("ProtonVPNManager.GetVpnPort: Logfile path is null or empty");
                     return null;
                 }
 
                 if (!File.Exists(_logFilePath))
                 {
-                    LogManager.Instance.LogDebug($"ProtonVPNManager.GetVPNPort: Logfile does not exist: {_logFilePath}");
+                    LogManager.Instance.LogDebug($"ProtonVPNManager.GetVpnPort: Logfile does not exist: {_logFilePath}");
                     return null;
                 }
 
-                LogManager.Instance.LogDebug($"ProtonVPNManager.GetVPNPort: Reading logfile: {_logFilePath}");
+                LogManager.Instance.LogDebug($"ProtonVPNManager.GetVpnPort: Reading logfile: {_logFilePath}");
 
                 int? port = ReadLastPortFromLog();
 
                 if (port.HasValue)
                 {
-                    LogManager.Instance.LogDebug($"ProtonVPNManager.GetVPNPort: Found port {port.Value} in logfile");
+                    LogManager.Instance.LogDebug($"ProtonVPNManager.GetVpnPort: Found port {port.Value} in logfile");
                     return port.Value;
                 }
 
-                LogManager.Instance.LogDebug("ProtonVPNManager.GetVPNPort: No port found in logfile");
+                LogManager.Instance.LogDebug("ProtonVPNManager.GetVpnPort: No port found in logfile");
                 return null;
             }
             catch (Exception ex)
             {
-                LogManager.Instance.LogDebug($"ProtonVPNManager.GetVPNPort: {ex.Message}");
+                LogManager.Instance.LogDebug($"ProtonVPNManager.GetVpnPort: {ex.Message}");
                 return null;
             }
         }

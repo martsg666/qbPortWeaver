@@ -224,7 +224,21 @@ jobs:
           Write-Host "All placeholders replaced successfully."
 
       # -----------------------------------------------------------------------
-      # 10. Pack the Chocolatey package
+      # 10. Validate the Chocolatey package (catches issues before submission)
+      # -----------------------------------------------------------------------
+      - name: Install Chocolatey Community Validation Extension
+        shell: pwsh
+        run: choco install chocolatey-community-validation -y --no-progress
+
+      - name: Validate Chocolatey package
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          choco validate choco\qbPortWeaver.nuspec
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      # -----------------------------------------------------------------------
+      # 11. Pack the Chocolatey package
       # -----------------------------------------------------------------------
       - name: Pack Chocolatey package
         id: pack
@@ -243,7 +257,7 @@ jobs:
           "NUPKG_PATH=$($nupkg.FullName)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
       # -----------------------------------------------------------------------
-      # 11. Create GitHub Release with auto-generated notes, or update existing
+      # 12. Create GitHub Release with auto-generated notes, or update existing
       # -----------------------------------------------------------------------
       - name: Create or update GitHub Release
         shell: pwsh
@@ -270,7 +284,7 @@ jobs:
           }
 
       # -----------------------------------------------------------------------
-      # 12. Push to Chocolatey Community Repository
+      # 13. Push to Chocolatey Community Repository
       # -----------------------------------------------------------------------
       - name: Push to Chocolatey Community Repository
         shell: pwsh

@@ -1,5 +1,3 @@
-using System.Diagnostics;
-
 namespace qbPortWeaver
 {
     public partial class AboutForm : Form
@@ -23,6 +21,28 @@ namespace qbPortWeaver
             _ = LoadGitHubDataAsync().ContinueWith(
                 t => LogManager.Instance.LogDebug($"AboutForm.LoadGitHubDataAsync: {t.Exception?.GetBaseException().Message}"),
                 TaskContinuationOptions.OnlyOnFaulted);
+        }
+
+        // Opens the release page if an update is available; otherwise re-runs the update check
+        private void btnCheckForUpdates_Click(object? sender, EventArgs e)
+        {
+            if (_releaseUrl != null)
+                AppConstants.OpenUrl(_releaseUrl);
+            else
+                _ = LoadGitHubDataAsync();
+        }
+
+        // Each link region carries its contributor profile URL as LinkData
+        private void lnkAuthor_LinkClicked(object? sender, LinkLabelLinkClickedEventArgs e)
+        {
+            if (e.Link?.LinkData is string url && !string.IsNullOrEmpty(url))
+                AppConstants.OpenUrl(url);
+        }
+
+        // Opens the project repository in the default browser
+        private void lnkGitHub_LinkClicked(object? sender, LinkLabelLinkClickedEventArgs e)
+        {
+            AppConstants.OpenUrl(AppConstants.GitHubRepoUrl);
         }
 
         // Fetches the latest release info and contributor list in parallel, then populates all UI fields
@@ -84,16 +104,9 @@ namespace qbPortWeaver
         }
 
         // Populates lnkAuthor with one clickable link region per contributor
-        private void SetContributorLinks(IReadOnlyList<UpdateChecker.ContributorInfo> contributors)
+        private void SetContributorLinks(IReadOnlyList<ContributorInfo> contributors)
         {
-            var sb = new System.Text.StringBuilder();
-            for (int i = 0; i < contributors.Count; i++)
-            {
-                if (i > 0) sb.Append(", ");
-                sb.Append(contributors[i].Login);
-            }
-
-            lnkAuthor.Text = sb.ToString();
+            lnkAuthor.Text = string.Join(", ", contributors.Select(c => c.Login));
             lnkAuthor.Links.Clear();
 
             int offset = 0;
@@ -101,41 +114,6 @@ namespace qbPortWeaver
             {
                 lnkAuthor.Links.Add(offset, c.Login.Length, c.ProfileUrl);
                 offset += c.Login.Length + 2; // +2 for ", "
-            }
-        }
-
-        // Opens the release page if an update is available; otherwise re-runs the update check
-        private void btnCheckForUpdates_Click(object? sender, EventArgs e)
-        {
-            if (_releaseUrl != null)
-                OpenUrl(_releaseUrl);
-            else
-                _ = LoadGitHubDataAsync();
-        }
-
-        // Each link region carries its contributor profile URL as LinkData
-        private void lnkAuthor_LinkClicked(object? sender, LinkLabelLinkClickedEventArgs e)
-        {
-            if (e.Link?.LinkData is string url && !string.IsNullOrEmpty(url))
-                OpenUrl(url);
-        }
-
-        // Opens the project repository in the default browser
-        private void lnkGitHub_LinkClicked(object? sender, LinkLabelLinkClickedEventArgs e)
-        {
-            OpenUrl(AppConstants.GitHubRepoUrl);
-        }
-
-        // Opens a URL in the default browser; UseShellExecute is required for shell-handled URLs
-        private static void OpenUrl(string url)
-        {
-            try
-            {
-                Process.Start(new ProcessStartInfo(url) { UseShellExecute = true })?.Dispose();
-            }
-            catch (Exception ex)
-            {
-                LogManager.Instance.LogDebug($"AboutForm.OpenUrl: {ex.Message}");
             }
         }
     }

@@ -15,7 +15,7 @@ namespace qbPortWeaver
         public static LogManager Instance { get; private set; } = null!;
 
         private readonly string _logFilePath;
-        private readonly object _lockObject = new object();
+        private readonly object _lock = new object();
         private int _writeCount;
 
         private volatile bool _debugMode;
@@ -42,7 +42,7 @@ namespace qbPortWeaver
         // Writes a log entry at the given level (thread-safe)
         public void LogMessage(string message, LogLevel level)
         {
-            lock (_lockObject)
+            lock (_lock)
             {
                 try
                 {
@@ -78,7 +78,7 @@ namespace qbPortWeaver
         // Clears all log files and starts fresh (thread-safe)
         public void ClearLogs()
         {
-            lock (_lockObject)
+            lock (_lock)
             {
                 try
                 {
@@ -105,16 +105,16 @@ namespace qbPortWeaver
             LogMessage("Logs cleared by user", LogLevel.Info);
         }
 
-        // Checks log file size and rotates if needed; acquires lock
+        // Checks log file size and rotates if it exceeds the maximum
         public void CheckAndRotateLogFile()
         {
-            lock (_lockObject)
+            lock (_lock)
             {
                 RotateIfNeeded();
             }
         }
 
-        // Internal rotation check — must be called while holding _lockObject
+        // Internal rotation check — must be called while holding _lock
         private void RotateIfNeeded()
         {
             try

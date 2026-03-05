@@ -85,7 +85,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       # -----------------------------------------------------------------------
-      # 5. Build the MSI installer using WiX Toolset v4 (pinned to 4.0.6)
+      # 5. Install WiX Toolset v4 (pinned to 4.0.6)
       # -----------------------------------------------------------------------
       - name: Install WiX Toolset
         shell: pwsh
@@ -96,12 +96,16 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           wix --version
 
+      # -----------------------------------------------------------------------
+      # 6. Build the MSI installer
+      # -----------------------------------------------------------------------
       - name: Build MSI installer
         id: msi
         shell: pwsh
         env:
           BUILD_VERSION: ${{ steps.version.outputs.VERSION }}
         run: |
+          $ErrorActionPreference = 'Stop'
           $version = $env:BUILD_VERSION
           $tfm     = ([xml](Get-Content 'qbPortWeaver.csproj')).Project.PropertyGroup.TargetFramework
 
@@ -126,7 +130,7 @@ jobs:
           Write-Host "Installer ready: $setupMsi"
 
       # -----------------------------------------------------------------------
-      # 6. Compute SHA256 checksum of the local MSI
+      # 7. Compute SHA256 checksum of the local MSI
       #    (computed here so we avoid re-downloading from the release later)
       # -----------------------------------------------------------------------
       - name: Compute installer checksum
@@ -152,7 +156,7 @@ jobs:
           "CHECKSUM=$checksum"    | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
       # -----------------------------------------------------------------------
-      # 7. Stamp version, URL, and checksum into the Chocolatey package files
+      # 8. Stamp version, URL, and checksum into the Chocolatey package files
       # -----------------------------------------------------------------------
       - name: Update Chocolatey package files
         shell: pwsh
@@ -190,7 +194,7 @@ jobs:
           Write-Host "Chocolatey package files updated for v$version"
 
       # -----------------------------------------------------------------------
-      # 8. Validate that all TEMPLATE_ placeholders were replaced
+      # 9. Validate that all TEMPLATE_ placeholders were replaced
       # -----------------------------------------------------------------------
       - name: Validate placeholder substitution
         shell: pwsh
@@ -204,7 +208,7 @@ jobs:
           $found = $false
           foreach ($file in $files) {
             if (Select-String -Path $file -Pattern 'TEMPLATE_' -Quiet) {
-              Write-Error "Unreplaced TEMPLATE_ placeholder found in: $file"
+              Write-Host "Unreplaced TEMPLATE_ placeholder found in: $file" -ForegroundColor Red
               Select-String -Path $file -Pattern 'TEMPLATE_' | ForEach-Object { Write-Host "  $_" -ForegroundColor Red }
               $found = $true
             }
@@ -213,7 +217,7 @@ jobs:
           Write-Host "All placeholders replaced successfully."
 
       # -----------------------------------------------------------------------
-      # 9. Pack the Chocolatey package
+      # 10. Pack the Chocolatey package
       # -----------------------------------------------------------------------
       - name: Pack Chocolatey package
         id: pack
@@ -221,6 +225,7 @@ jobs:
         env:
           RELEASE_VERSION: ${{ steps.version.outputs.VERSION }}
         run: |
+          $ErrorActionPreference = 'Stop'
           $version = $env:RELEASE_VERSION
           choco pack choco\qbPortWeaver.nuspec --output-directory .
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -231,7 +236,7 @@ jobs:
           "NUPKG_PATH=$($nupkg.FullName)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
       # -----------------------------------------------------------------------
-      # 10. Create GitHub Release with auto-generated notes, or update existing
+      # 11. Create GitHub Release with auto-generated notes, or update existing
       # -----------------------------------------------------------------------
       - name: Create or update GitHub Release
         shell: pwsh
@@ -258,7 +263,7 @@ jobs:
           }
 
       # -----------------------------------------------------------------------
-      # 11. Push to Chocolatey Community Repository
+      # 12. Push to Chocolatey Community Repository
       # -----------------------------------------------------------------------
       - name: Push to Chocolatey Community Repository
         shell: pwsh

@@ -12,8 +12,8 @@ namespace qbPortWeaver
         public const string SectionQBittorrent = "qBittorrent";
         public const string SectionExtra       = "extra";
 
-        public const string BoolTrue  = BoolTrue;
-        public const string BoolFalse = BoolFalse;
+        public const string BoolTrue  = "True";
+        public const string BoolFalse = "False";
 
         // Default values for all settings (single source of truth)
         internal static readonly Dictionary<string, Dictionary<string, string>> Defaults =

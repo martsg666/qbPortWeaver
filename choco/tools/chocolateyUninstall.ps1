@@ -1,10 +1,11 @@
+Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $packageArgs = @{
   packageName    = $env:ChocolateyPackageName
   softwareName   = 'qbPortWeaver*'
   fileType       = 'msi'
-  silentArgs     = ''
+  silentArgs     = ''  # overridden below with ProductCode + /qn /norestart
   validExitCodes = @(0, 3010, 1641)
 }
 

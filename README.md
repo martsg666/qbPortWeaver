@@ -80,7 +80,7 @@ On first run, all settings are initialized with sensible defaults.
 | Setting | Description | Default |
 |---|---|---|
 | VPN Provider | `ProtonVPN`, `PIA`, or `NAT-PMP` | `ProtonVPN` |
-| NAT-PMP Adapter | Network adapter to use for NAT-PMP port mapping (only shown when NAT-PMP is selected) | — |
+| NAT-PMP Adapter | Network adapter to use for NAT-PMP port mapping (only enabled when NAT-PMP is selected) | — |
 | Update interval | How often to check and sync the port (seconds) | `180` |
 | URL | qBittorrent Web API URL | `http://127.0.0.1:8080` |
 | Username | qBittorrent Web UI username | `admin` |
@@ -113,7 +113,7 @@ On first run, all settings are initialized with sensible defaults.
 5. If ports differ:
    - Updates qBittorrent's port.
    - Restarts qBittorrent if configured.
-   - Runs the optional post-update command if configured. ex: `powershell -File "C:\Dev\SendMail.ps1"`
+   - Runs the optional post-update command if configured. ex: `powershell -File "C:\path\to\SampleSendMail.ps1"`
 6. Waits for the configured interval before repeating.
 
 ### Tray Menu Options
@@ -223,35 +223,35 @@ NAT-PMP (RFC 6886) is a protocol for requesting port mappings directly from a ga
 
 1. **Create a release branch** from the appropriate upstream:
    ```
-   git checkout -b 2.3.0 origin/2.2.0
-   git push -u origin 2.3.0
+   git checkout -b 1.2.3 origin/1.2.2
+   git push -u origin 1.2.3
    ```
 
 2. **Create fix or feature branches** off the release branch and open a PR targeting it:
    ```
-   git checkout -b fix/my-fix origin/2.3.0
+   git checkout -b fix/my-fix origin/1.2.3
    # or
-   git checkout -b feature/my-feature origin/2.3.0
+   git checkout -b feature/my-feature origin/1.2.3
    ```
 
 3. **Tag the release branch** once all testing is complete — this triggers the pipeline:
    ```
-   git tag v2.3.0 origin/2.3.0
-   git push origin v2.3.0
+   git tag v1.2.3 origin/1.2.3
+   git push origin v1.2.3
    ```
    Pushing the tag automatically triggers the **Build, Release, and Publish** pipeline, which builds the app, compiles the MSI installer, creates the GitHub Release, and publishes to Chocolatey.
 
 4. **Merge the release branch into `master`** after the pipeline completes successfully:
    ```
    git checkout master
-   git merge --no-ff 2.3.0
+   git merge --no-ff 1.2.3
    git push origin master
    ```
 
 5. **Do not delete release branches.** They serve as the base for future hotfixes. If a branch is accidentally deleted it can be reconstructed from its tag:
    ```
-   git checkout -b 2.3.0 v2.3.0
-   git push origin 2.3.0
+   git checkout -b 1.2.3 v1.2.3
+   git push origin 1.2.3
    ```
 
 ---

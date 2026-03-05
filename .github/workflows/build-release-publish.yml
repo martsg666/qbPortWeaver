@@ -36,6 +36,9 @@ jobs:
           $ErrorActionPreference = 'Stop'
           if ($env:GH_EVENT_NAME -eq 'workflow_dispatch') {
             $tag = $env:GH_INPUT_TAG
+            if (-not $tag.StartsWith('v')) {
+              throw "Tag must start with 'v' (e.g. v2.4.0). Got: $tag"
+            }
           } else {
             $tag = $env:GH_REF_NAME
           }
@@ -95,6 +98,7 @@ jobs:
           wix extension add WixToolset.UI.wixext/4.0.6 WixToolset.Util.wixext/4.0.6 --global
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           wix --version
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       # -----------------------------------------------------------------------
       # 6. Build the MSI installer
@@ -280,7 +284,7 @@ jobs:
           $version = $env:RELEASE_VERSION
           $alreadyPublished = try {
             Invoke-WebRequest -Uri "https://community.chocolatey.org/api/v2/Packages(Id='qbportweaver',Version='$version')" `
-              -Method Head -UseBasicParsing -ErrorAction Stop | Out-Null
+              -Method Head -UseBasicParsing | Out-Null
             $true
           } catch { $false }
 

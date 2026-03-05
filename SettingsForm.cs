@@ -43,31 +43,13 @@ namespace qbPortWeaver
             if (cboVpnProvider.SelectedIndex < 0)
                 cboVpnProvider.SelectedIndex = 0;
 
-            // NAT-PMP adapter — discovered on a background thread to avoid blocking the UI
+            // NAT-PMP adapter — discovered asynchronously to avoid blocking the UI
             cboNatPmpAdapter.Items.Clear();
             cboNatPmpAdapter.Items.Add("Discovering adapters…");
             cboNatPmpAdapter.SelectedIndex = 0;
             cboNatPmpAdapter.Enabled = false;
             string savedAdapter = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral, "natPmpAdapterName");
-            _ = Task.Run(() => NatPmpManager.DiscoverAdapters())
-                    .ContinueWith(t =>
-                    {
-                        cboNatPmpAdapter.Items.Clear();
-                        if (t.Result.Count == 0)
-                        {
-                            cboNatPmpAdapter.Items.Add("No NAT-PMP adapters found");
-                            cboNatPmpAdapter.SelectedIndex = 0;
-                        }
-                        else
-                        {
-                            foreach (var adapter in t.Result)
-                                cboNatPmpAdapter.Items.Add(adapter.ProviderName);
-                            cboNatPmpAdapter.SelectedItem = savedAdapter;
-                            if (cboNatPmpAdapter.SelectedIndex < 0)
-                                cboNatPmpAdapter.SelectedIndex = 0;
-                        }
-                        cboNatPmpAdapter.Enabled = cboVpnProvider.SelectedItem?.ToString() == "NAT-PMP";
-                    }, CancellationToken.None, TaskContinuationOptions.OnlyOnRanToCompletion, TaskScheduler.FromCurrentSynchronizationContext());
+            _ = PopulateNatPmpAdaptersAsync(savedAdapter);
 
             nudUpdateInterval.Value = Math.Clamp(
                 RegistrySettingsManager.GetInt(RegistrySettingsManager.SectionGeneral, "updateIntervalSeconds"),
@@ -103,7 +85,7 @@ namespace qbPortWeaver
         private void SaveSettings()
         {
             // General
-            RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionGeneral, "vpnProvider",           cboVpnProvider.SelectedItem?.ToString() ?? "ProtonVPN");
+            RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionGeneral, "vpnProvider",           cboVpnProvider.SelectedItem?.ToString() ?? RegistrySettingsManager.VpnProviderProtonVpn);
             RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionGeneral, "updateIntervalSeconds",  ((int)nudUpdateInterval.Value).ToString());
             RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionGeneral, "natPmpAdapterName",      cboNatPmpAdapter.SelectedItem?.ToString() ?? "");
 
@@ -124,11 +106,31 @@ namespace qbPortWeaver
             RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionExtra, "debugMode",     chkDebugMode.Checked ? RegistrySettingsManager.BoolTrue : RegistrySettingsManager.BoolFalse);
         }
 
+        private async Task PopulateNatPmpAdaptersAsync(string savedAdapter)
+        {
+            var adapters = await NatPmpManager.DiscoverAdapters();
+            cboNatPmpAdapter.Items.Clear();
+            if (adapters.Count == 0)
+            {
+                cboNatPmpAdapter.Items.Add("No NAT-PMP adapters found");
+                cboNatPmpAdapter.SelectedIndex = 0;
+            }
+            else
+            {
+                foreach (var adapter in adapters)
+                    cboNatPmpAdapter.Items.Add(adapter.ProviderName);
+                cboNatPmpAdapter.SelectedItem = savedAdapter;
+                if (cboNatPmpAdapter.SelectedIndex < 0)
+                    cboNatPmpAdapter.SelectedIndex = 0;
+            }
+            cboNatPmpAdapter.Enabled = cboVpnProvider.SelectedItem?.ToString() == RegistrySettingsManager.VpnProviderNatPmp;
+        }
+
         private void cboVpnProvider_SelectedIndexChanged(object? sender, EventArgs e)
         {
             // Only enable the adapter combo if NAT-PMP is selected AND discovery has finished
             // (discovery replaces the placeholder and re-enables it via ContinueWith)
-            bool isNatPmp = cboVpnProvider.SelectedItem?.ToString() == "NAT-PMP";
+            bool isNatPmp = cboVpnProvider.SelectedItem?.ToString() == RegistrySettingsManager.VpnProviderNatPmp;
             bool discoveryPending = cboNatPmpAdapter.Items.Count == 1 &&
                                     cboNatPmpAdapter.Items[0]?.ToString() == "Discovering adapters…";
             cboNatPmpAdapter.Enabled = isNatPmp && !discoveryPending;

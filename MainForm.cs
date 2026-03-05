@@ -23,7 +23,7 @@ namespace qbPortWeaver
         private volatile TrayStatus? _lastSyncStatus;
 
         // Cancellation token to interrupt waiting
-        private CancellationTokenSource _delayCancel = new CancellationTokenSource();
+        private CancellationTokenSource _delayCts = new CancellationTokenSource();
 
         // Semaphore to prevent concurrent updates
         private readonly SemaphoreSlim _updateSemaphore = new SemaphoreSlim(1, 1);
@@ -180,7 +180,7 @@ namespace qbPortWeaver
             try
             {
                 LogManager.Instance.LogMessage("Checking for application updates", LogLevel.Info);
-                var update = await UpdateChecker.CheckForUpdateAsync();
+                var update = await UpdateChecker.GetAvailableUpdateAsync();
                 if (update.HasValue)
                 {
                     if (update.Value.Version == _lastNotifiedVersion)
@@ -261,8 +261,8 @@ namespace qbPortWeaver
             try
             {
                 LogManager.Instance.LogDebug($"MainForm.ShutdownRequestedDuringDelayAsync: waiting {updateInterval} seconds before next cycle");
-                // Link both tokens: _delayCancel (manual sync) and _shutdownCts (app exit)
-                using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(_delayCancel.Token, _shutdownCts.Token);
+                // Link both tokens: _delayCts (manual sync) and _shutdownCts (app exit)
+                using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(_delayCts.Token, _shutdownCts.Token);
                 await Task.Delay(updateInterval * AppConstants.MillisecondsPerSecond, linkedCts.Token);
             }
             catch (OperationCanceledException)
@@ -277,8 +277,8 @@ namespace qbPortWeaver
             }
 
             // Reset token for next loop iteration (properly dispose old one)
-            var oldToken = _delayCancel;
-            _delayCancel = new CancellationTokenSource();
+            var oldToken = _delayCts;
+            _delayCts = new CancellationTokenSource();
             oldToken.Dispose();
             return false;
         }
@@ -317,7 +317,7 @@ namespace qbPortWeaver
             LogManager.Instance.LogMessage("Manual sync requested", LogLevel.Info);
 
             // Interrupt the wait inside the main loop immediately
-            try { _delayCancel.Cancel(); }
+            try { _delayCts.Cancel(); }
             catch (ObjectDisposedException)
             {
                 // Expected: if the delay completed naturally, the token is already disposed before Cancel() is called.

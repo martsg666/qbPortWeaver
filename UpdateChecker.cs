@@ -11,6 +11,8 @@ namespace qbPortWeaver
         private static readonly string GitHubBaseApiUrl = $"https://api.github.com/repos/{AppConstants.GitHubRepoOwner}/{AppConstants.AppName}";
         private static readonly string GitHubApiUrl     = GitHubBaseApiUrl + "/releases/latest";
 
+        private static readonly HttpClient _httpClient = CreateHttpClient();
+
         public record LatestReleaseInfo(string TagName, string ReleaseUrl, bool IsNewer)
         {
             // TagName with leading 'v'/'V' stripped (e.g. "v2.1.0" → "2.1.0")
@@ -20,7 +22,7 @@ namespace qbPortWeaver
         public record ContributorInfo(string Login, string ProfileUrl);
 
         // Returns the latest release version string and URL if a newer version exists; null if up-to-date or on any error
-        public static async Task<(string Version, string Url)?> CheckForUpdateAsync()
+        public static async Task<(string Version, string Url)?> GetAvailableUpdateAsync()
         {
             var info = await GetLatestReleaseInfoAsync();
             return info?.IsNewer == true ? (info.VersionString, info.ReleaseUrl) : null;
@@ -31,9 +33,7 @@ namespace qbPortWeaver
         {
             try
             {
-                using var client = CreateHttpClient();
-
-                using var response = await client.GetAsync(GitHubApiUrl).ConfigureAwait(false);
+                using var response = await _httpClient.GetAsync(GitHubApiUrl).ConfigureAwait(false);
                 response.EnsureSuccessStatusCode();
 
                 using var stream = await response.Content.ReadAsStreamAsync().ConfigureAwait(false);
@@ -68,9 +68,7 @@ namespace qbPortWeaver
         {
             try
             {
-                using var client = CreateHttpClient();
-
-                using var response = await client.GetAsync(GitHubBaseApiUrl + "/contributors?per_page=100").ConfigureAwait(false);
+                using var response = await _httpClient.GetAsync(GitHubBaseApiUrl + "/contributors?per_page=100").ConfigureAwait(false);
                 response.EnsureSuccessStatusCode();
 
                 using var stream = await response.Content.ReadAsStreamAsync().ConfigureAwait(false);
@@ -114,7 +112,7 @@ namespace qbPortWeaver
             type.Equals("Bot", StringComparison.OrdinalIgnoreCase) ||
             login.EndsWith("[bot]", StringComparison.OrdinalIgnoreCase);
 
-        // Creates an HttpClient pre-configured with the required User-Agent and timeout
+        // Creates the shared HttpClient pre-configured with the required User-Agent and timeout
         private static HttpClient CreateHttpClient()
         {
             var client = new HttpClient { Timeout = TimeSpan.FromSeconds(AppConstants.HttpTimeoutSeconds) };

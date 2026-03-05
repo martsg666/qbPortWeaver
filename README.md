@@ -268,9 +268,6 @@ The modular architecture makes it easy to:
 
 ## Changelog
 
-### Unreleased
-- Added **NAT-PMP** (RFC 6886) as a third VPN provider option — works with ProtonVPN, any NAT-PMP capable VPN client, or a NAT-PMP capable router
-
 ### v2.2.0 and later — see [GitHub Releases](https://github.com/martsg666/qbPortWeaver/releases)
 
 ### 2.0.0
@@ -325,4 +322,4 @@ The modular architecture makes it easy to:
 Free of use and distribution. No warranty provided.
 
 ## Author
-Developed by @martsg666
+Developed by martsg666

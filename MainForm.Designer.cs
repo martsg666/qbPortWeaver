@@ -30,7 +30,7 @@
                     _iconError?.Dispose();
                     _updateCheckTimer?.Dispose();
                     _updateSemaphore?.Dispose();
-                    _delayCancel?.Dispose();
+                    _delayCts?.Dispose();
                     _shutdownCts?.Dispose();
                 }
                 catch (Exception ex)

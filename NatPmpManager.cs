@@ -30,7 +30,7 @@ namespace qbPortWeaver
         // including TUN/VPN adapters where the gateway is inferred from the unicast address.
         // All candidates are probed in parallel; only those with a responding gateway are returned.
         // mappingLifetime: requested port mapping duration in seconds (gateway may grant less).
-        public static IReadOnlyList<NatPmpManager> DiscoverAdapters(uint mappingLifetime = DefaultMappingLifetime)
+        public static async Task<IReadOnlyList<NatPmpManager>> DiscoverAdapters(uint mappingLifetime = DefaultMappingLifetime)
         {
             var candidates = new List<(NetworkInterface Nic, IPAddress Gateway)>();
 
@@ -51,13 +51,13 @@ namespace qbPortWeaver
             }
 
             // Probe all candidates in parallel to verify NAT-PMP support
-            var probed = Task.WhenAll(candidates.Select(async c =>
+            var probeResults = await Task.WhenAll(candidates.Select(async c =>
             {
                 bool supported = await RequestExternalAddressAsync(c.Gateway).ConfigureAwait(false) is not null;
                 return (c.Nic, c.Gateway, Supported: supported);
-            })).GetAwaiter().GetResult();
+            })).ConfigureAwait(false);
 
-            return probed
+            return probeResults
                 .Where(r => r.Supported)
                 .Select(r => new NatPmpManager(r.Nic, r.Gateway, mappingLifetime))
                 .ToList();

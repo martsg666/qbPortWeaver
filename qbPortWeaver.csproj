@@ -9,10 +9,10 @@
     <ApplicationIcon>qbPortWeaver.ico</ApplicationIcon>
     <AssemblyTitle>qbPortWeaver</AssemblyTitle>
     <Description>Synchronizes the listening port of qBittorrent with the port assigned by your VPN provider (ProtonVPN, PIA, or any NAT-PMP capable adapter)</Description>
-    <Company>@martsg666</Company>
+    <Company>martsg666</Company>
     <Product>qbPortWeaver</Product>
-    <Authors>@martsg666</Authors>
-    <Copyright>© 2026 @martsg666</Copyright>
+    <Authors>martsg666</Authors>
+    <Copyright>© 2026 martsg666</Copyright>
     <Version>2.4.0</Version>
     <FileVersion>2.4.0.0</FileVersion>
     <AssemblyVersion>2.4.0.0</AssemblyVersion>

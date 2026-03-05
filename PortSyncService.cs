@@ -19,7 +19,7 @@ namespace qbPortWeaver
             string VpnProvider,
             string NatPmpAdapterName,
             int UpdateInterval,
-            string QBittorrentURL,
+            string QBittorrentUrl,
             string QBittorrentUserName,
             string QBittorrentPassword,
             string QBittorrentExePath,
@@ -105,7 +105,7 @@ namespace qbPortWeaver
             status[StatusKeys.UpdateIntervalSeconds] = cfg.UpdateInterval;
 
             // Instantiate VPN manager based on configured provider
-            IVpnManager? vpnManager = CreateVpnManager(cfg, status);
+            IVpnManager? vpnManager = await CreateVpnManager(cfg, status);
             if (vpnManager is null)
                 return cfg.UpdateInterval;
 
@@ -146,7 +146,7 @@ namespace qbPortWeaver
             }
 
             using var manager = new QBittorrentManager(
-                cfg.QBittorrentURL, cfg.QBittorrentUserName, cfg.QBittorrentPassword,
+                cfg.QBittorrentUrl, cfg.QBittorrentUserName, cfg.QBittorrentPassword,
                 cfg.QBittorrentProcessName, cfg.QBittorrentExePath);
 
             await EnsureRunningAndUpdatePortAsync(manager, targetPort,
@@ -164,14 +164,14 @@ namespace qbPortWeaver
 
         // Instantiates the appropriate VPN manager for the configured provider.
         // Returns null (with status already set) if the provider cannot be initialised.
-        private static IVpnManager? CreateVpnManager(AppConfig cfg, Dictionary<string, object?> status)
+        private static async Task<IVpnManager?> CreateVpnManager(AppConfig cfg, Dictionary<string, object?> status)
         {
-            if (cfg.VpnProvider.Equals("PIA", StringComparison.OrdinalIgnoreCase))
+            if (cfg.VpnProvider.Equals(RegistrySettingsManager.VpnProviderPia, StringComparison.OrdinalIgnoreCase))
                 return new PiaVpnManager();
 
-            if (cfg.VpnProvider.Equals("NAT-PMP", StringComparison.OrdinalIgnoreCase))
+            if (cfg.VpnProvider.Equals(RegistrySettingsManager.VpnProviderNatPmp, StringComparison.OrdinalIgnoreCase))
             {
-                var adapters = NatPmpManager.DiscoverAdapters();
+                var adapters = await NatPmpManager.DiscoverAdapters().ConfigureAwait(false);
                 if (adapters.Count == 0)
                 {
                     SetCompleted(status, false, "No NAT-PMP capable adapters found");
@@ -188,7 +188,7 @@ namespace qbPortWeaver
                 return adapters.FirstOrDefault(a => a.IsVPNConnected()) ?? adapters[0];
             }
 
-            if (!cfg.VpnProvider.Equals("ProtonVPN", StringComparison.OrdinalIgnoreCase))
+            if (!cfg.VpnProvider.Equals(RegistrySettingsManager.VpnProviderProtonVpn, StringComparison.OrdinalIgnoreCase))
                 LogManager.Instance.LogMessage($"Unknown VPN provider '{cfg.VpnProvider}', defaulting to ProtonVPN", LogLevel.Warn);
             return new ProtonVPNManager(AppConstants.GetProtonVPNLogFilePath());
         }
@@ -209,7 +209,7 @@ namespace qbPortWeaver
                 VpnProvider:            RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral,     "vpnProvider"),
                 NatPmpAdapterName:      RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral,     "natPmpAdapterName"),
                 UpdateInterval:         updateInterval,
-                QBittorrentURL:         RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionQBittorrent, "qBittorrentURL"),
+                QBittorrentUrl:         RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionQBittorrent, "qBittorrentURL"),
                 QBittorrentUserName:    RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionQBittorrent, "qBittorrentUserName"),
                 QBittorrentPassword:    RegistrySettingsManager.GetPassword(),
                 QBittorrentExePath:     RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionQBittorrent, "qBittorrentExePath"),
@@ -307,12 +307,12 @@ namespace qbPortWeaver
 
             bool isMatch;
 
-            if (vpnProviderName.Equals("PIA", StringComparison.OrdinalIgnoreCase))
+            if (vpnProviderName.Equals(RegistrySettingsManager.VpnProviderPia, StringComparison.OrdinalIgnoreCase))
             {
                 isMatch = interfaceName.Contains("Private Internet Access", StringComparison.OrdinalIgnoreCase) ||
                           interfaceName.Contains("PIA", StringComparison.OrdinalIgnoreCase);
             }
-            else if (vpnProviderName.Equals("ProtonVPN", StringComparison.OrdinalIgnoreCase))
+            else if (vpnProviderName.Equals(RegistrySettingsManager.VpnProviderProtonVpn, StringComparison.OrdinalIgnoreCase))
             {
                 isMatch = interfaceName.Contains("ProtonVPN", StringComparison.OrdinalIgnoreCase);
             }

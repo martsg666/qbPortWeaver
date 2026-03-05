@@ -15,13 +15,17 @@ namespace qbPortWeaver
         public const string BoolTrue  = "True";
         public const string BoolFalse = "False";
 
+        public const string VpnProviderProtonVpn = "ProtonVPN";
+        public const string VpnProviderPia       = "PIA";
+        public const string VpnProviderNatPmp    = "NAT-PMP";
+
         // Default values for all settings (single source of truth)
         internal static readonly Dictionary<string, Dictionary<string, string>> Defaults =
             new(StringComparer.OrdinalIgnoreCase)
             {
                 [SectionGeneral] = new(StringComparer.OrdinalIgnoreCase)
                 {
-                    ["vpnProvider"]           = "ProtonVPN",
+                    ["vpnProvider"]           = VpnProviderProtonVpn,
                     ["updateIntervalSeconds"] = "180",
                     ["natPmpAdapterName"]     = ""
                 },

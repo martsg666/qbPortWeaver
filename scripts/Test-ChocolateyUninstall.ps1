@@ -10,6 +10,7 @@
     .\scripts\Test-ChocolateyUninstall.ps1
 #>
 
+Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 choco uninstall qbportweaver -y

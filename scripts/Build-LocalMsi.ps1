@@ -19,7 +19,7 @@
     Defaults to the version defined in qbPortWeaver.csproj.
 
 .EXAMPLE
-    # Build using the default version from AppConstants.cs
+    # Build using the default version from qbPortWeaver.csproj
     .\scripts\Build-LocalMsi.ps1
 
 .EXAMPLE

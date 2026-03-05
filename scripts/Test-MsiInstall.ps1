@@ -11,6 +11,7 @@
     .\scripts\Test-MsiInstall.ps1
 #>
 
+Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $repoRoot = Split-Path -Parent $PSScriptRoot

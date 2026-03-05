@@ -155,10 +155,9 @@ Write-Ok "SHA256    : $checksum"
 Write-Ok "URL       : $downloadUrl"
 
 # ---------------------------------------------------------------------------
-# Step 5: Copy choco source to a staging directory and stamp placeholders
-# Step 6: Pack the Chocolatey package
+# Step 5: Stage package source, stamp placeholders, and pack
 # ---------------------------------------------------------------------------
-Write-Step 'Preparing and packing Chocolatey package...'
+Write-Step 'Staging, stamping and packing Chocolatey package...'
 
 Copy-Item -Recurse -Path $chocoSrc -Destination $stagingDir
 try {

@@ -1,58 +1,52 @@
 <#
 .SYNOPSIS
-    Packages and (optionally) pushes the latest qbPortWeaver GitHub release
-    to the Chocolatey Community Repository.
+    Builds qbPortWeaver from source and produces a Chocolatey .nupkg ready for publishing.
 
 .DESCRIPTION
-    This script:
-      1. Queries the GitHub API for the latest release of qbPortWeaver
-      2. Downloads the Setup.msi asset
-      3. Computes its SHA256 checksum
-      4. Stamps the version, URL, and checksum into the choco/ package source files
-      5. Runs `choco pack` to produce a .nupkg
-      6. Optionally runs `choco push` to publish to the CCR
+    This script mirrors the CI build-release-publish.yml pipeline locally:
+      1. Resolves the version from qbPortWeaver.csproj (or -Version parameter)
+      2. Publishes the .NET app as a self-contained single-file win-x64 executable
+      3. Builds the MSI installer using WiX Toolset v4
+      4. Computes the SHA256 checksum of the local MSI
+      5. Stamps the version, expected GitHub download URL, and checksum into a
+         temporary copy of the choco/ package source files
+      6. Runs `choco pack` to produce a .nupkg
 
-    The script works on copies of the choco/ source files and does NOT
-    permanently modify them — all edits are written to a temp staging directory.
+    The choco/ source files are NOT permanently modified — all edits are written
+    to a temp staging directory that is cleaned up after packing.
 
-.PARAMETER ApiKey
-    Your Chocolatey Community Repository API key.
-    If omitted the script packs only (no push).
-    You can also set the environment variable CHOCOLATEY_API_KEY instead.
+    WiX Toolset v4 must be installed as a .NET global tool:
+      dotnet tool install --global wix --version "4.0.6"
+      wix extension add WixToolset.UI.wixext/4.0.6 WixToolset.Util.wixext/4.0.6 --global
 
-.PARAMETER Tag
-    A specific release tag to package (e.g. 'v2.1.0').
-    Defaults to the latest published release.
+    To push the resulting .nupkg to the Chocolatey Community Repository, run:
+      choco push <path-to.nupkg> --source https://push.chocolatey.org/ --api-key <key>
+
+.PARAMETER Version
+    The version string to stamp into the build (e.g. '2.3.0').
+    Defaults to the version defined in qbPortWeaver.csproj.
 
 .PARAMETER OutputDirectory
-    Where to write the .nupkg file.  Defaults to the repo root.
+    Where to write the .nupkg file. Defaults to the repo root.
 
 .EXAMPLE
-    # Pack the latest release without pushing
-    .\scripts\Push-ChocolateyPackage.ps1
+    # Build and pack using the version from qbPortWeaver.csproj
+    .\scripts\Build-ChocolateyPackage.ps1
 
 .EXAMPLE
-    # Pack and push the latest release
-    .\scripts\Push-ChocolateyPackage.ps1 -ApiKey 'your-api-key-here'
-
-.EXAMPLE
-    # Pack and push a specific release tag
-    .\scripts\Push-ChocolateyPackage.ps1 -Tag v2.0.0 -ApiKey 'your-api-key-here'
+    # Build and pack with an explicit version override
+    .\scripts\Build-ChocolateyPackage.ps1 -Version 2.3.0
 #>
 
 [CmdletBinding()]
 param(
-    [string] $ApiKey        = $env:CHOCOLATEY_API_KEY,
-    [string] $Tag           = '',
+    [string] $Version         = '',
     [string] $OutputDirectory = ''
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-# ---------------------------------------------------------------------------
-# Resolve paths relative to the repository root (script lives in scripts/)
-# ---------------------------------------------------------------------------
 $repoRoot   = Split-Path -Parent $PSScriptRoot
 $chocoSrc   = Join-Path $repoRoot 'choco'
 $outputDir  = if ($OutputDirectory) { $OutputDirectory } else { $repoRoot }
@@ -62,104 +56,133 @@ function Write-Step([string]$msg) { Write-Host "`n==> $msg" -ForegroundColor Cya
 function Write-Ok([string]$msg)   { Write-Host "    $msg"   -ForegroundColor Green }
 
 # ---------------------------------------------------------------------------
-# Step 1: Resolve release information from GitHub API
+# Step 1: Resolve version from csproj if not provided
 # ---------------------------------------------------------------------------
-Write-Step 'Querying GitHub for release info...'
+Write-Step 'Resolving version...'
 
-$headers = @{ 'User-Agent' = 'qbPortWeaver-choco-packager' }
-
-if ($Tag) {
-    $apiUrl = "https://api.github.com/repos/martsg666/qbPortWeaver/releases/tags/$Tag"
-} else {
-    $apiUrl = 'https://api.github.com/repos/martsg666/qbPortWeaver/releases/latest'
+if (-not $Version) {
+    $csprojPath = Join-Path $repoRoot 'qbPortWeaver.csproj'
+    $match = Select-String -Path $csprojPath -Pattern '<Version>([^<]+)</Version>'
+    if (-not $match) {
+        Write-Error "Could not find <Version> in qbPortWeaver.csproj. Pass -Version explicitly."
+        exit 1
+    }
+    $Version = $match.Matches[0].Groups[1].Value
 }
 
-$release = Invoke-RestMethod -Uri $apiUrl -Headers $headers
-$relTag  = $release.tag_name
-$version = $relTag.TrimStart('v')
+$tag         = "v$Version"
+$assetName   = "qbPortWeaver_${Version}_Setup.msi"
+$downloadUrl = "https://github.com/martsg666/qbPortWeaver/releases/download/$tag/$assetName"
 
-Write-Ok "Tag     : $relTag"
-Write-Ok "Version : $version"
+Write-Ok "Version : $Version"
+Write-Ok "Tag     : $tag"
 
 # ---------------------------------------------------------------------------
-# Step 2: Locate the Setup.msi asset
+# Step 2: Publish as self-contained single-file win-x64
+#         This matches the CI build-release-publish.yml publish step exactly.
+#         Output lands in: bin\Release\net10.0-windows\win-x64\publish\
 # ---------------------------------------------------------------------------
-$assetName = "qbPortWeaver_"+$version+"_Setup.msi"
-$asset     = $release.assets | Where-Object { $_.name -eq $assetName } | Select-Object -First 1
+Write-Step 'Publishing self-contained single-file executable...'
 
-if (-not $asset) {
-    $available = ($release.assets | Select-Object -ExpandProperty name) -join ', '
-    Write-Error "Asset '$assetName' not found in release $relTag. Available assets: $available"
+Push-Location $repoRoot
+try {
+    dotnet publish qbPortWeaver.csproj `
+        --configuration Release `
+        --runtime win-x64 `
+        --self-contained true `
+        -p:PublishSingleFile=true `
+        -p:Version=$Version `
+        -p:FileVersion="$Version.0" `
+        -p:AssemblyVersion="$Version.0"
+
+    if ($LASTEXITCODE -ne 0) { Write-Error 'dotnet publish failed.'; exit 1 }
+} finally {
+    Pop-Location
+}
+
+$publishedExe = Join-Path $repoRoot "bin\Release\net10.0-windows\win-x64\publish\qbPortWeaver.exe"
+if (-not (Test-Path $publishedExe)) {
+    Write-Error "Expected publish output not found: $publishedExe"
     exit 1
 }
 
-$downloadUrl = $asset.browser_download_url
-Write-Ok "Asset   : $downloadUrl"
+Write-Ok "Published : $publishedExe"
 
 # ---------------------------------------------------------------------------
-# Step 3: Download asset and compute checksum
+# Step 3: Build the MSI installer using WiX Toolset v4
+#         Output: installer\qbPortWeaver_{version}_Setup.msi
 # ---------------------------------------------------------------------------
-Write-Step 'Downloading release asset and computing checksum...'
+Write-Step 'Building MSI installer with WiX Toolset v4...'
 
-$tmpMsi = Join-Path ([System.IO.Path]::GetTempPath()) $assetName
-Invoke-WebRequest -Uri $downloadUrl -OutFile $tmpMsi -UseBasicParsing
-$checksum = (Get-FileHash -Path $tmpMsi -Algorithm SHA256).Hash.ToUpper()
-Remove-Item $tmpMsi -Force
+if (-not (Get-Command wix -ErrorAction SilentlyContinue)) {
+    Write-Host '    Installing WiX Toolset v4...' -ForegroundColor Yellow
+    dotnet tool install --global wix --version "4.0.6"
+    if ($LASTEXITCODE -ne 0) { Write-Error 'Failed to install WiX Toolset.'; exit 1 }
+}
 
-Write-Ok "SHA256  : $checksum"
+# Install required extensions pinned to v4 (safe to run if already present)
+wix extension add WixToolset.UI.wixext/4.0.6 WixToolset.Util.wixext/4.0.6 --global
+if ($LASTEXITCODE -ne 0) { Write-Error 'Failed to install WiX extensions.'; exit 1 }
+
+$wxsFile      = Join-Path $repoRoot 'installer\qbPortWeaver.wxs'
+$installerDir = Join-Path $repoRoot 'installer'
+$setupMsi     = Join-Path $repoRoot "installer\qbPortWeaver_${Version}_Setup.msi"
+
+wix build $wxsFile `
+    -arch x64 `
+    -ext WixToolset.UI.wixext `
+    -ext WixToolset.Util.wixext `
+    -b $installerDir `
+    -d ProductVersion=$Version `
+    -out $setupMsi
+
+if ($LASTEXITCODE -ne 0) { Write-Error 'WiX build failed.'; exit 1 }
+
+if (-not (Test-Path $setupMsi)) {
+    Write-Error "Expected installer not found: $setupMsi"
+    exit 1
+}
+
+Write-Ok "Installer : $setupMsi"
 
 # ---------------------------------------------------------------------------
-# Step 4: Copy package source to a staging directory and stamp placeholders
+# Step 4: Compute SHA256 checksum of the local MSI
 # ---------------------------------------------------------------------------
-Write-Step 'Preparing staging directory...'
+Write-Step 'Computing installer checksum...'
+
+$checksum = (Get-FileHash -Path $setupMsi -Algorithm SHA256).Hash.ToUpper()
+
+Write-Ok "SHA256    : $checksum"
+Write-Ok "URL       : $downloadUrl"
+
+# ---------------------------------------------------------------------------
+# Step 5: Copy choco source to a staging directory and stamp placeholders
+# Step 6: Pack the Chocolatey package
+# ---------------------------------------------------------------------------
+Write-Step 'Preparing and packing Chocolatey package...'
 
 Copy-Item -Recurse -Path $chocoSrc -Destination $stagingDir
+try {
+    $nuspecPath  = Join-Path $stagingDir 'qbPortWeaver.nuspec'
+    $installPath = Join-Path $stagingDir 'tools\chocolateyInstall.ps1'
+    $verifyPath  = Join-Path $stagingDir 'tools\VERIFICATION.txt'
 
-$nuspecPath  = Join-Path $stagingDir 'qbPortWeaver.nuspec'
-$installPath = Join-Path $stagingDir 'tools\chocolateyInstall.ps1'
-$verifyPath  = Join-Path $stagingDir 'tools\VERIFICATION.txt'
+    (Get-Content $nuspecPath)  -replace 'TEMPLATE_VERSION',  $Version      | Set-Content $nuspecPath
+    (Get-Content $installPath) -replace 'TEMPLATE_URL',      $downloadUrl `
+                               -replace 'TEMPLATE_CHECKSUM', $checksum      | Set-Content $installPath
+    (Get-Content $verifyPath)  -replace 'TEMPLATE_VERSION',  $Version `
+                               -replace 'TEMPLATE_URL',      $downloadUrl `
+                               -replace 'TEMPLATE_CHECKSUM', $checksum      | Set-Content $verifyPath
 
-(Get-Content $nuspecPath)  -replace 'TEMPLATE_VERSION',  $version      | Set-Content $nuspecPath
-(Get-Content $installPath) -replace 'TEMPLATE_URL',      $downloadUrl `
-                           -replace 'TEMPLATE_CHECKSUM', $checksum      | Set-Content $installPath
-(Get-Content $verifyPath)  -replace 'TEMPLATE_VERSION',  $version `
-                           -replace 'TEMPLATE_URL',      $downloadUrl `
-                           -replace 'TEMPLATE_CHECKSUM', $checksum      | Set-Content $verifyPath
-
-Write-Ok "Staged to: $stagingDir"
-
-# ---------------------------------------------------------------------------
-# Step 5: Pack
-# ---------------------------------------------------------------------------
-Write-Step 'Running choco pack...'
-
-choco pack $nuspecPath --output-directory $outputDir
-if ($LASTEXITCODE -ne 0) { Write-Error 'choco pack failed.'; exit 1 }
-
-$nupkg = Get-Item (Join-Path $outputDir "qbportweaver.$version.nupkg") -ErrorAction SilentlyContinue
-if (-not $nupkg) {
-    $nupkg = Get-Item (Join-Path $outputDir '*.nupkg') | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+    choco pack $nuspecPath --output-directory $outputDir
+    if ($LASTEXITCODE -ne 0) { Write-Error 'choco pack failed.'; exit 1 }
+} finally {
+    Remove-Item -Recurse -Force $stagingDir -ErrorAction SilentlyContinue
 }
 
-Write-Ok "Created : $($nupkg.FullName)"
+$nupkg = Get-Item (Join-Path $outputDir "qbportweaver.$Version.nupkg")
+Write-Ok "Package   : $($nupkg.FullName)"
 
-# ---------------------------------------------------------------------------
-# Step 6: Push (optional)
-# ---------------------------------------------------------------------------
-if ($ApiKey) {
-    Write-Step 'Pushing to Chocolatey Community Repository...'
-    choco push $nupkg.FullName --source https://push.chocolatey.org/ --api-key $ApiKey
-    if ($LASTEXITCODE -ne 0) { Write-Error 'choco push failed.'; exit 1 }
-    Write-Ok 'Package submitted. It will appear on chocolatey.org after moderation.'
-} else {
-    Write-Host "`n[INFO] No API key provided — skipping push." -ForegroundColor Yellow
-    Write-Host "       To push, run:"
-    Write-Host "       .\scripts\Push-ChocolateyPackage.ps1 -ApiKey '<your-key>'" -ForegroundColor Yellow
-}
-
-# ---------------------------------------------------------------------------
-# Cleanup staging
-# ---------------------------------------------------------------------------
-Remove-Item -Recurse -Force $stagingDir
-
+Write-Host "`nTo push to the Chocolatey Community Repository, run:" -ForegroundColor Yellow
+Write-Host "  choco push '$($nupkg.FullName)' --source https://push.chocolatey.org/ --api-key <key>" -ForegroundColor Yellow
 Write-Host "`nDone." -ForegroundColor Green

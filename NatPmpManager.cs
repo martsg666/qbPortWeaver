@@ -71,8 +71,8 @@ namespace qbPortWeaver
                 bool connected = _adapter.OperationalStatus == OperationalStatus.Up;
 
                 LogManager.Instance.LogDebug(connected
-                    ? $"NatPmpManager.IsVPNConnected: Adapter '{_adapter.Name}' is up"
-                    : $"NatPmpManager.IsVPNConnected: Adapter '{_adapter.Name}' is not up (status: {_adapter.OperationalStatus})");
+                    ? $"NatPmpManager.IsVPNConnected: Adapter '{_adapter.Description}' is up"
+                    : $"NatPmpManager.IsVPNConnected: Adapter '{_adapter.Description}' is not up (status: {_adapter.OperationalStatus})");
 
                 return connected;
             }

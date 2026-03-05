@@ -43,13 +43,17 @@ namespace qbPortWeaver
             if (cboVpnProvider.SelectedIndex < 0)
                 cboVpnProvider.SelectedIndex = 0;
 
-            // NAT-PMP adapter
+            // NAT-PMP adapter — discovered on a background thread to avoid blocking the UI
             cboNatPmpAdapter.Items.Clear();
-            foreach (var adapter in NatPmpManager.DiscoverAdapters())
-                cboNatPmpAdapter.Items.Add(adapter.ProviderName);
             string savedAdapter = RegistrySettingsManager.GetValue("general", "natPmpAdapterName");
-            if (!string.IsNullOrWhiteSpace(savedAdapter))
-                cboNatPmpAdapter.SelectedItem = savedAdapter;
+            _ = Task.Run(() => NatPmpManager.DiscoverAdapters())
+                    .ContinueWith(t =>
+                    {
+                        foreach (var adapter in t.Result)
+                            cboNatPmpAdapter.Items.Add(adapter.ProviderName);
+                        if (!string.IsNullOrWhiteSpace(savedAdapter))
+                            cboNatPmpAdapter.SelectedItem = savedAdapter;
+                    }, CancellationToken.None, TaskContinuationOptions.OnlyOnRanToCompletion, TaskScheduler.FromCurrentSynchronizationContext());
 
             if (int.TryParse(RegistrySettingsManager.GetValue("general", "updateIntervalSeconds"), out int interval))
                 nudUpdateInterval.Value = Math.Clamp(interval, (int)nudUpdateInterval.Minimum, (int)nudUpdateInterval.Maximum);

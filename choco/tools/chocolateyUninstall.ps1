@@ -24,9 +24,9 @@ if ($key.Count -eq 1) {
   Write-Warning "Matches: $(($key | Select-Object -ExpandProperty DisplayName) -join ', ')"
 }
 
-# Optionally remove user data (disabled by default - uncomment if desired):
-# $appDataPath = Join-Path $env:LOCALAPPDATA 'qbPortWeaver'
-# if (Test-Path $appDataPath) {
-#   Remove-Item -Recurse -Force $appDataPath
-#   Write-Host "Removed user data at $appDataPath"
+# Optionally remove user settings from the registry (disabled by default - uncomment if desired):
+# $regPath = 'HKCU:\Software\qbPortWeaver'
+# if (Test-Path $regPath) {
+#   Remove-Item -Recurse -Force $regPath
+#   Write-Host "Removed user settings at $regPath"
 # }

@@ -190,8 +190,8 @@ jobs:
           foreach ($file in $files) {
             if (Select-String -Path $file -Pattern 'TEMPLATE_' -Quiet) {
               Write-Error "Unreplaced TEMPLATE_ placeholder found in: $file"
+              Select-String -Path $file -Pattern 'TEMPLATE_' | ForEach-Object { Write-Host "  $_" -ForegroundColor Red }
               $found = $true
-              write-error $(get-content $file)
             }
           }
           if ($found) { exit 1 }
@@ -245,13 +245,11 @@ jobs:
       - name: Push to Chocolatey Community Repository
         shell: pwsh
         env:
-          RELEASE_VERSION:    ${{ steps.version.outputs.VERSION }}
+          NUPKG_PATH:         ${{ steps.pack.outputs.NUPKG_PATH }}
           CHOCOLATEY_API_KEY: ${{ secrets.CHOCOLATEY_API_KEY }}
         run: |
-          $version = $env:RELEASE_VERSION
-          # Use the explicit versioned filename — same reasoning as the pack step
-          $nupkg = Get-Item "qbportweaver.$version.nupkg"
-          Write-Host "Pushing: $($nupkg.Name)"
-          choco push $nupkg.FullName `
+          $nupkg = $env:NUPKG_PATH
+          Write-Host "Pushing: $(Split-Path $nupkg -Leaf)"
+          choco push $nupkg `
             --source https://push.chocolatey.org/ `
             --api-key $env:CHOCOLATEY_API_KEY

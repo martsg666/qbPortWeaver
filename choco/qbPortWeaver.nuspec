@@ -24,8 +24,9 @@ qbPortWeaver is a lightweight Windows system tray application that automatically
 
 ### Supported VPN Providers
 
-- **ProtonVPN** — reads the forwarded port via the ProtonVPN local API
-- **Private Internet Access (PIA)** — reads the forwarded port from the PIA port-forwarding payload file
+- **ProtonVPN** — reads the forwarded port from the ProtonVPN log file
+- **Private Internet Access (PIA)** — reads the forwarded port via `piactl get portforward`
+- **NAT-PMP** — requests a port mapping directly from the VPN gateway using the NAT-PMP protocol (RFC 6886)
 
 ### Features
 
@@ -41,7 +42,7 @@ qbPortWeaver is a lightweight Windows system tray application that automatically
 
 - Windows 10/11 (x64)
 - qBittorrent with Web UI enabled
-- ProtonVPN or Private Internet Access (PIA) with port forwarding enabled
+- ProtonVPN, Private Internet Access (PIA), or any NAT-PMP capable VPN gateway with port forwarding enabled
 
 ### Configuration
 
@@ -52,8 +53,8 @@ On first launch, open **Settings** from the system tray icon to configure:
 - Startup options
     ]]></description>
     <releaseNotes>https://github.com/martsg666/qbPortWeaver/releases/tag/vTEMPLATE_VERSION</releaseNotes>
-    <copyright>© 2026 @martsg666</copyright>
-    <tags>qbittorrent vpn port-forwarding protonvpn pia private-internet-access system-tray torrent port-sync admin</tags>
+    <copyright>© 2026 martsg666</copyright>
+    <tags>qbittorrent vpn port-forwarding protonvpn pia private-internet-access nat-pmp system-tray torrent port-sync admin</tags>
     <licenseUrl>https://github.com/martsg666/qbPortWeaver#license</licenseUrl>
     <iconUrl>https://rawcdn.githack.com/martsg666/qbPortWeaver/master/qbPortWeaver.ico</iconUrl>
   </metadata>

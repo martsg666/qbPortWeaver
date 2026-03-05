@@ -7,8 +7,8 @@ namespace qbPortWeaver
     // Generic NAT-PMP VPN manager. Instantiate with an adapter returned by DiscoverAdapters().
     public sealed class NatPmpManager : IVpnManager
     {
-        private const int  NAT_PMP_PORT           = 5351;
-        private const int  TIMEOUT_MS             = 2000;
+        private const int  NAT_PMP_PORT             = 5351;
+        private const int  TIMEOUT_MS               = 2000;
         public  const uint DEFAULT_MAPPING_LIFETIME = 3600; // 1 hour
 
         private readonly NetworkInterface _adapter;
@@ -26,12 +26,13 @@ namespace qbPortWeaver
             _mappingLifetime = mappingLifetime;
         }
 
-        // Returns all network adapters that have a reachable NAT-PMP gateway,
+        // Returns all network adapters whose gateway actively responds to NAT-PMP,
         // including TUN/VPN adapters where the gateway is inferred from the unicast address.
+        // All candidates are probed in parallel; only those with a responding gateway are returned.
         // mappingLifetime: requested port mapping duration in seconds (gateway may grant less).
         public static IReadOnlyList<NatPmpManager> DiscoverAdapters(uint mappingLifetime = DEFAULT_MAPPING_LIFETIME)
         {
-            var discovered = new List<NatPmpManager>();
+            var candidates = new List<(NetworkInterface Nic, IPAddress Gateway)>();
 
             foreach (NetworkInterface nic in NetworkInterface.GetAllNetworkInterfaces())
             {
@@ -46,10 +47,20 @@ namespace qbPortWeaver
                 if (gateway is null)
                     continue;
 
-                discovered.Add(new NatPmpManager(nic, gateway, mappingLifetime));
+                candidates.Add((nic, gateway));
             }
 
-            return discovered;
+            // Probe all candidates in parallel to verify NAT-PMP support
+            var probed = Task.WhenAll(candidates.Select(async c =>
+            {
+                bool supported = await RequestExternalAddressAsync(c.Gateway).ConfigureAwait(false) is not null;
+                return (c.Nic, c.Gateway, Supported: supported);
+            })).GetAwaiter().GetResult();
+
+            return probed
+                .Where(r => r.Supported)
+                .Select(r => new NatPmpManager(r.Nic, r.Gateway, mappingLifetime))
+                .ToList();
         }
 
         // Checks if the adapter is up and operational
@@ -73,6 +84,9 @@ namespace qbPortWeaver
         }
 
         // Sends a NAT-PMP UDP port mapping request and returns the assigned external port
+        // Note: unlike other manager classes where all logging is at debug level, this method
+        // intentionally logs at INFO/WARN level — the gateway response (or failure) carries
+        // diagnostic information (reason, lease time) that is not surfaced elsewhere in the sync cycle.
         public int? GetVPNPort()
         {
             try
@@ -81,22 +95,23 @@ namespace qbPortWeaver
 
                 if (!result.Success)
                 {
-                    LogManager.Instance.LogDebug($"NatPmpManager.GetVPNPort: Mapping failed on '{_adapter.Name}': {result.Error}");
+                    LogManager.Instance.LogMessage($"NAT-PMP port mapping failed on '{_adapter.Description}': {result.Error}", "WARN");
                     return null;
                 }
 
                 IPAddress? externalIp = RequestExternalAddressAsync(_gateway).GetAwaiter().GetResult();
                 if (externalIp != null)
-                    LogManager.Instance.LogMessage($"NAT-PMP external IP: {externalIp}", "INFO");
+                    LogManager.Instance.LogDebug($"NatPmpManager.GetVPNPort: External IP for '{_adapter.Name}': {externalIp}");
                 else
                     LogManager.Instance.LogDebug($"NatPmpManager.GetVPNPort: Could not retrieve external IP for '{_adapter.Name}'");
 
-                LogManager.Instance.LogDebug($"NatPmpManager.GetVPNPort: '{_adapter.Name}' mapped external port {result.ExternalPort} (lifetime {result.LifetimeGranted}s)");
+                LogManager.Instance.LogMessage($"NAT-PMP lease granted: port {result.ExternalPort}, lifetime {result.LifetimeGranted}s", "INFO");
+
                 return result.ExternalPort;
             }
             catch (Exception ex)
             {
-                LogManager.Instance.LogDebug($"NatPmpManager.GetVPNPort: {ex.Message}");
+                LogManager.Instance.LogMessage($"NAT-PMP error on '{_adapter.Description}': {ex.Message}", "WARN");
                 return null;
             }
         }
@@ -156,9 +171,9 @@ namespace qbPortWeaver
             request[10] = (byte)(lifetime >> 8);
             request[11] = (byte)(lifetime & 0xFF);
 
-            byte[]? data = await SendReceiveAsync(gateway, request);
+            byte[]? data = await SendReceiveAsync(gateway, request).ConfigureAwait(false);
             if (data is null)
-                return (false, 0, 0, "Timeout");
+                return (false, 0, 0, "No response from gateway (timeout)");
 
             // [0] version=0  [1] opcode=0x81  [2-3] result  [4-7] epoch
             // [8-9] internal port  [10-11] external port  [12-15] lifetime
@@ -186,7 +201,7 @@ namespace qbPortWeaver
             request[0] = 0x00;
             request[1] = 0x00;
 
-            byte[]? data = await SendReceiveAsync(gateway, request);
+            byte[]? data = await SendReceiveAsync(gateway, request).ConfigureAwait(false);
             if (data is null)
                 return null;
 
@@ -207,10 +222,10 @@ namespace qbPortWeaver
             try
             {
                 using var udp = new UdpClient();
-                await udp.SendAsync(request, new IPEndPoint(gateway, NAT_PMP_PORT));
+                await udp.SendAsync(request, new IPEndPoint(gateway, NAT_PMP_PORT)).ConfigureAwait(false);
 
                 using var cts = new CancellationTokenSource(TIMEOUT_MS);
-                UdpReceiveResult result = await udp.ReceiveAsync(cts.Token);
+                UdpReceiveResult result = await udp.ReceiveAsync(cts.Token).ConfigureAwait(false);
 
                 if (!result.RemoteEndPoint.Address.Equals(gateway))
                 {

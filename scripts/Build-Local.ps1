@@ -60,7 +60,7 @@ Write-Ok "Version : $Version"
 
 # ---------------------------------------------------------------------------
 # Step 2: Publish as self-contained single-file win-x64
-#         This matches the CI build-release.yml publish step exactly.
+#         This matches the CI build-release-publish.yml publish step exactly.
 #         Output lands in: bin\Release\net10.0-windows\win-x64\publish\
 # ---------------------------------------------------------------------------
 Write-Step 'Publishing self-contained single-file executable...'

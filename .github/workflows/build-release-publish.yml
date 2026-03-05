@@ -33,6 +33,7 @@ jobs:
           GH_INPUT_TAG:  ${{ inputs.tag }}
           GH_REF_NAME:   ${{ github.ref_name }}
         run: |
+          $ErrorActionPreference = 'Stop'
           if ($env:GH_EVENT_NAME -eq 'workflow_dispatch') {
             $tag = $env:GH_INPUT_TAG
           } else {
@@ -56,7 +57,7 @@ jobs:
           ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
 
       # -----------------------------------------------------------------------
-      # 3. Publish the .NET application (self-contained single-file, version stamped from the tag)
+      # 3. Set up the .NET SDK
       # -----------------------------------------------------------------------
       - name: Setup .NET
         # Pinned to a specific commit SHA — see checkout step for rationale.
@@ -64,6 +65,9 @@ jobs:
         with:
           dotnet-version: '10.x'
 
+      # -----------------------------------------------------------------------
+      # 4. Publish the .NET application (self-contained single-file, version stamped from the tag)
+      # -----------------------------------------------------------------------
       - name: Publish application
         shell: pwsh
         env:
@@ -81,7 +85,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       # -----------------------------------------------------------------------
-      # 4. Build the MSI installer using WiX Toolset v4 (pinned to latest 4.0.x)
+      # 5. Build the MSI installer using WiX Toolset v4 (pinned to 4.0.6)
       # -----------------------------------------------------------------------
       - name: Install WiX Toolset
         shell: pwsh
@@ -122,7 +126,7 @@ jobs:
           Write-Host "Installer ready: $setupMsi"
 
       # -----------------------------------------------------------------------
-      # 5. Compute SHA256 checksum of the local MSI
+      # 6. Compute SHA256 checksum of the local MSI
       #    (computed here so we avoid re-downloading from the release later)
       # -----------------------------------------------------------------------
       - name: Compute installer checksum
@@ -133,6 +137,7 @@ jobs:
           RELEASE_TAG:     ${{ steps.version.outputs.TAG }}
           SETUP_PATH:      ${{ steps.msi.outputs.SETUP_PATH }}
         run: |
+          $ErrorActionPreference = 'Stop'
           $version   = $env:RELEASE_VERSION
           $tag       = $env:RELEASE_TAG
           $assetName = "qbPortWeaver_${version}_Setup.msi"
@@ -147,7 +152,7 @@ jobs:
           "CHECKSUM=$checksum"    | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
       # -----------------------------------------------------------------------
-      # 6. Stamp version, URL, and checksum into the Chocolatey package files
+      # 7. Stamp version, URL, and checksum into the Chocolatey package files
       # -----------------------------------------------------------------------
       - name: Update Chocolatey package files
         shell: pwsh
@@ -156,6 +161,7 @@ jobs:
           ASSET_DOWNLOAD_URL: ${{ steps.checksum.outputs.DOWNLOAD_URL }}
           ASSET_CHECKSUM:     ${{ steps.checksum.outputs.CHECKSUM }}
         run: |
+          $ErrorActionPreference = 'Stop'
           $version     = $env:RELEASE_VERSION
           $downloadUrl = $env:ASSET_DOWNLOAD_URL
           $checksum    = $env:ASSET_CHECKSUM
@@ -184,11 +190,12 @@ jobs:
           Write-Host "Chocolatey package files updated for v$version"
 
       # -----------------------------------------------------------------------
-      # 7. Validate that all TEMPLATE_ placeholders were replaced
+      # 8. Validate that all TEMPLATE_ placeholders were replaced
       # -----------------------------------------------------------------------
       - name: Validate placeholder substitution
         shell: pwsh
         run: |
+          $ErrorActionPreference = 'Stop'
           $files = @(
             'choco\qbPortWeaver.nuspec',
             'choco\tools\chocolateyInstall.ps1',
@@ -206,7 +213,7 @@ jobs:
           Write-Host "All placeholders replaced successfully."
 
       # -----------------------------------------------------------------------
-      # 8. Pack the Chocolatey package
+      # 9. Pack the Chocolatey package
       # -----------------------------------------------------------------------
       - name: Pack Chocolatey package
         id: pack
@@ -224,7 +231,7 @@ jobs:
           "NUPKG_PATH=$($nupkg.FullName)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
       # -----------------------------------------------------------------------
-      # 9. Create GitHub Release with auto-generated notes, or update existing
+      # 10. Create GitHub Release with auto-generated notes, or update existing
       # -----------------------------------------------------------------------
       - name: Create or update GitHub Release
         shell: pwsh
@@ -251,7 +258,7 @@ jobs:
           }
 
       # -----------------------------------------------------------------------
-      # 10. Push to Chocolatey Community Repository
+      # 11. Push to Chocolatey Community Repository
       # -----------------------------------------------------------------------
       - name: Push to Chocolatey Community Repository
         shell: pwsh

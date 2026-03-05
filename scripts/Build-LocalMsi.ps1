@@ -7,7 +7,7 @@
       1. Publishes the .NET app as a self-contained single-file win-x64 executable
       2. Builds the MSI installer using WiX Toolset v4
 
-    Use this script before building the MSI locally — a regular Visual Studio
+    Use this script to build the MSI locally — a regular Visual Studio
     Release build does NOT produce the self-contained single-file output that
     the WiX source expects under bin\Release\<tfm>\win-x64\publish\.
 

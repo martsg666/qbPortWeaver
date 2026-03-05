@@ -2,6 +2,8 @@ namespace qbPortWeaver
 {
     public partial class SettingsForm : Form
     {
+        private const string DiscoveringAdaptersPlaceholder = "Discovering adapters\u2026";
+
         public SettingsForm()
         {
             InitializeComponent();
@@ -26,7 +28,7 @@ namespace qbPortWeaver
             // (discovery replaces the placeholder and re-enables it via PopulateNatPmpAdaptersAsync)
             bool isNatPmp = cboVpnProvider.SelectedItem?.ToString() == RegistrySettingsManager.VpnProviderNatPmp;
             bool discoveryPending = cboNatPmpAdapter.Items.Count == 1 &&
-                                    cboNatPmpAdapter.Items[0]?.ToString() == "Discovering adapters…";
+                                    cboNatPmpAdapter.Items[0]?.ToString() == DiscoveringAdaptersPlaceholder;
             cboNatPmpAdapter.Enabled = isNatPmp && !discoveryPending;
         }
 
@@ -79,7 +81,7 @@ namespace qbPortWeaver
 
             // NAT-PMP adapter — discovered asynchronously to avoid blocking the UI
             cboNatPmpAdapter.Items.Clear();
-            cboNatPmpAdapter.Items.Add("Discovering adapters…");
+            cboNatPmpAdapter.Items.Add(DiscoveringAdaptersPlaceholder);
             cboNatPmpAdapter.SelectedIndex = 0;
             cboNatPmpAdapter.Enabled = false;
             string savedAdapter = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyNatPmpAdapterName);

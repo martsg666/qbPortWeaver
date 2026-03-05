@@ -29,7 +29,9 @@ namespace qbPortWeaver
             if (_releaseUrl != null)
                 AppConstants.OpenUrl(_releaseUrl);
             else
-                _ = LoadGitHubDataAsync();
+                _ = LoadGitHubDataAsync().ContinueWith(
+                    t => LogManager.Instance.LogDebug($"AboutForm.LoadGitHubDataAsync: {t.Exception?.GetBaseException().Message}"),
+                    TaskContinuationOptions.OnlyOnFaulted);
         }
 
         // Each link region carries its contributor profile URL as LinkData

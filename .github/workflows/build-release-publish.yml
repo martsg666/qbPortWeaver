@@ -10,9 +10,13 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Release tag to build — must include the v prefix (e.g. v2.3.0)'
+        description: 'Release tag to build — must include the v prefix (e.g. v1.2.3)'
         required: true
         type: string
+
+concurrency:
+  group: release-${{ github.ref_name }}
+  cancel-in-progress: false  # queue rather than cancel so no release is skipped
 
 permissions:
   contents: write  # required to create releases and upload assets
@@ -233,7 +237,7 @@ jobs:
           choco pack choco\qbPortWeaver.nuspec --output-directory .
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           # Use the explicit versioned filename rather than a wildcard to avoid
-          # accidentally picking up a stale .nupkg from a previous run
+          # accidentally picking up a stale .nupkg from a prior step in this job
           $nupkg = Get-Item "qbportweaver.$version.nupkg"
           Write-Host "Created: $($nupkg.Name)"
           "NUPKG_PATH=$($nupkg.FullName)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append

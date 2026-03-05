@@ -402,7 +402,7 @@ namespace qbPortWeaver
                 }
                 else
                 {
-                    LogManager.Instance.LogMessage($"Could not open file in Notepad, file not found: {filePath}", LogLevel.Warn);
+                    LogManager.Instance.LogMessage($"Failed to open file in Notepad: file not found ({filePath})", LogLevel.Warn);
                 }
             }
             catch (Exception ex)

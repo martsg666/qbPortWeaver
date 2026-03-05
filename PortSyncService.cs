@@ -119,7 +119,7 @@ namespace qbPortWeaver
                 {
                     status[StatusKeys.Status]  = "skipped";
                     status[StatusKeys.Message] = $"{vpnManager.ProviderName} is not connected";
-                    LogManager.Instance.LogMessage($"{vpnManager.ProviderName} is not connected, defaultPort is 0 — skipping port update", LogLevel.Info);
+                    LogManager.Instance.LogMessage($"{vpnManager.ProviderName} is not connected, default port is 0 — skipping port update", LogLevel.Info);
                     return cfg.UpdateInterval;
                 }
                 LogManager.Instance.LogMessage($"{vpnManager.ProviderName} is not connected, applying default port {cfg.DefaultPort}", LogLevel.Info);

@@ -74,7 +74,7 @@ namespace qbPortWeaver
                 string? piactlPath = GetPiactlPath();
                 if (piactlPath == null)
                 {
-                    LogManager.Instance.LogDebug("PiaVpnManager.RunPiactl: Could not resolve piactl path");
+                    LogManager.Instance.LogDebug("PiaVpnManager.RunPiactl: Failed to resolve piactl path");
                     return null;
                 }
 
@@ -123,7 +123,7 @@ namespace qbPortWeaver
                 using var uninstallKey = Registry.LocalMachine.OpenSubKey(PiaUninstallRegistryPath);
                 if (uninstallKey == null)
                 {
-                    LogManager.Instance.LogDebug("PiaVpnManager.GetPiactlPath: Could not open Uninstall registry key");
+                    LogManager.Instance.LogDebug("PiaVpnManager.GetPiactlPath: Failed to open Uninstall registry key");
                     return null;
                 }
 

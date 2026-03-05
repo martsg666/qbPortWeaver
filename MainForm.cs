@@ -393,7 +393,8 @@ namespace qbPortWeaver
             {
                 if (File.Exists(filePath))
                 {
-                    var startInfo = new ProcessStartInfo("notepad.exe", $"\"{filePath}\"")
+                    string notepadExe = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "notepad.exe");
+                    var startInfo = new ProcessStartInfo(notepadExe, $"\"{filePath}\"")
                     {
                         UseShellExecute = true
                     };

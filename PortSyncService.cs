@@ -374,7 +374,8 @@ namespace qbPortWeaver
             LogManager.Instance.LogMessage($"Running post-update command: {cmd}", LogLevel.Info);
             try
             {
-                var startInfo = new ProcessStartInfo("cmd.exe", $"/C \"{cmd}\"")
+                string cmdExe = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "cmd.exe");
+                var startInfo = new ProcessStartInfo(cmdExe, $"/C \"{cmd}\"")
                 {
                     UseShellExecute = false,
                     CreateNoWindow  = true

@@ -122,8 +122,7 @@ jobs:
 
           $setupMsi = "installer\qbPortWeaver_${version}_Setup.msi"
           if (-not (Test-Path $setupMsi)) {
-            Write-Error "Expected installer not found: $setupMsi"
-            exit 1
+            throw "Expected installer not found: $setupMsi"
           }
 
           "SETUP_PATH=$setupMsi" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
@@ -272,9 +271,9 @@ jobs:
           RELEASE_VERSION:    ${{ steps.version.outputs.VERSION }}
           CHOCOLATEY_API_KEY: ${{ secrets.CHOCOLATEY_API_KEY }}
         run: |
+          $ErrorActionPreference = 'Stop'
           if (-not $env:CHOCOLATEY_API_KEY) {
-            Write-Error "CHOCOLATEY_API_KEY secret is not configured."
-            exit 1
+            throw "CHOCOLATEY_API_KEY secret is not configured."
           }
 
           # Skip push if this version is already published (e.g. workflow_dispatch re-run)

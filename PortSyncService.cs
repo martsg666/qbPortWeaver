@@ -14,6 +14,11 @@ namespace qbPortWeaver
         // Event raised when qBittorrent's network interface does not match the configured VPN provider
         public event Action<string>? InterfaceMismatchDetected;
 
+        // Cached NAT-PMP manager — reused across cycles to avoid a redundant opcode-0 gateway
+        // probe before every opcode-1 port mapping request on the same remote server.
+        private NatPmpManager? _cachedNatPmpManager;
+        private string         _cachedNatPmpAdapterName = string.Empty;
+
         // All values read from the registry for a single sync cycle
         private sealed record AppConfig(
             string VpnProvider,
@@ -135,6 +140,9 @@ namespace qbPortWeaver
                 int? vpnPort = vpnManager.GetVpnPort();
                 if (!vpnPort.HasValue)
                 {
+                    // Invalidate the NAT-PMP cache so the next cycle re-discovers the gateway
+                    // (e.g. after a VPN reconnect where the gateway address may have changed)
+                    _cachedNatPmpManager = null;
                     SetCompleted(status, false, $"Failed to determine {vpnManager.ProviderName} port");
                     return cfg.UpdateInterval;
                 }
@@ -195,31 +203,50 @@ namespace qbPortWeaver
 
         // Instantiates the appropriate VPN manager for the configured provider.
         // Returns null (with status already set) if the provider cannot be initialised.
-        private static async Task<IVpnManager?> CreateVpnManager(AppConfig cfg, Dictionary<string, object?> status)
+        // For NAT-PMP, reuses the cached manager when the adapter is unchanged and still connected,
+        // avoiding a redundant opcode-0 discovery probe every cycle.
+        private async Task<IVpnManager?> CreateVpnManager(AppConfig cfg, Dictionary<string, object?> status)
         {
             if (cfg.VpnProvider.Equals(RegistrySettingsManager.VpnProviderPia, StringComparison.OrdinalIgnoreCase))
                 return new PiaVpnManager();
 
             if (cfg.VpnProvider.Equals(RegistrySettingsManager.VpnProviderNatPmp, StringComparison.OrdinalIgnoreCase))
             {
+                // Return cached manager if the configured adapter name matches.
+                // IsVpnConnected() is intentionally not checked here — RunCoreAsync handles
+                // disconnection gracefully (default port / skip). The cache is invalidated by
+                // GetVpnPort() failure, which triggers re-discovery on the next cycle.
+                if (_cachedNatPmpManager is not null &&
+                    _cachedNatPmpAdapterName.Equals(cfg.NatPmpAdapterName, StringComparison.OrdinalIgnoreCase))
+                {
+                    LogManager.Instance.LogDebug("PortSyncService.CreateVpnManager: using cached NAT-PMP manager, skipping discovery");
+                    return _cachedNatPmpManager;
+                }
+
+                _cachedNatPmpManager = null;
                 var adapters = await NatPmpManager.DiscoverAdapters().ConfigureAwait(false);
                 if (adapters.Count == 0)
                 {
                     SetCompleted(status, false, "No NAT-PMP capable adapters found");
                     return null;
                 }
-                // Use the configured adapter if set; otherwise fall back to the first connected one
-                if (!string.IsNullOrWhiteSpace(cfg.NatPmpAdapterName))
+
+                if (string.IsNullOrWhiteSpace(cfg.NatPmpAdapterName))
                 {
-                    var configured = adapters.FirstOrDefault(a => a.ProviderName.Equals(cfg.NatPmpAdapterName, StringComparison.OrdinalIgnoreCase));
-                    if (configured is null)
-                    {
-                        SetCompleted(status, false, $"Configured NAT-PMP adapter '{cfg.NatPmpAdapterName}' not found — adapter may not be up or gateway not responding");
-                        return null;
-                    }
-                    return configured;
+                    SetCompleted(status, false, "No NAT-PMP adapter configured — open Settings and select an adapter");
+                    return null;
                 }
-                return adapters.FirstOrDefault(a => a.IsVpnConnected()) ?? adapters[0];
+
+                var selected = adapters.FirstOrDefault(a => a.ProviderName.Equals(cfg.NatPmpAdapterName, StringComparison.OrdinalIgnoreCase));
+                if (selected is null)
+                {
+                    SetCompleted(status, false, $"Configured NAT-PMP adapter '{cfg.NatPmpAdapterName}' not found — adapter may not be up or gateway not responding");
+                    return null;
+                }
+
+                _cachedNatPmpManager     = selected;
+                _cachedNatPmpAdapterName = cfg.NatPmpAdapterName;
+                return selected;
             }
 
             if (!cfg.VpnProvider.Equals(RegistrySettingsManager.VpnProviderProtonVpn, StringComparison.OrdinalIgnoreCase))

@@ -8,8 +8,8 @@ namespace qbPortWeaver
     public sealed class NatPmpManager : IVpnManager
     {
         private const int  NatPmpPort             = 5351;
-        private const int  InitialTimeoutMs       = 250; // RFC 6886 §3.1: exponential backoff from 250ms
-        private const int  MaxAttempts            = 4;   // 250ms → 500ms → 1000ms → 2000ms
+        private const int  InitialTimeoutMs       = 1500; // VPN NAT-PMP gateways are remote; 250ms is too aggressive
+        private const int  MaxAttempts            = 3;   // 1500ms → 3000ms → 6000ms
         public  const uint DefaultMappingLifetime = 3600; // 1 hour
 
         private readonly NetworkInterface _adapter;

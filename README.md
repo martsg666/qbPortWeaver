@@ -41,7 +41,7 @@ The application runs in the system tray, manages configuration and logging, and 
   Authenticates with qBittorrent's Web API, updates preferences, and restarts the client if required.
 
 - **Last-Run Status File**
-  Writes a JSON status file (`qbPortWeaver.status.json`) after each sync cycle, exposing VPN port, qBittorrent port, timestamps, and completion status for external scripts.
+  Writes a JSON status file (`%LocalAppData%\qbPortWeaver\qbPortWeaver.status.json`) after each sync cycle, exposing VPN port, qBittorrent port, timestamps, and completion status for external scripts.
 
 - **Restart qBittorrent After Port Change**
   Optionally restart qBittorrent after updating the port to ensure changes take effect immediately.
@@ -107,14 +107,19 @@ On first run, all settings are initialized with sensible defaults.
 ### Synchronization Loop
 
 1. Checks whether the configured VPN provider is connected.
-2. Reads the VPN-assigned port from the configured provider.
+   - If **not connected** and **Default port** is 0: skips the cycle and waits for the next interval.
+   - If **not connected** and **Default port** is set: uses the default port as the target and continues.
+2. Reads the VPN-assigned port from the configured provider (skipped if using the default port fallback).
 3. Checks if qBittorrent is running (optionally force starts it if configured).
-4. Authenticates with qBittorrent and retrieves the current listening port.
-5. If ports differ:
+4. Authenticates with qBittorrent and retrieves the current listening port and network interface.
+5. If **Warn on interface mismatch** is enabled: checks that qBittorrent's network interface matches the configured VPN provider and shows a tray warning if not.
+6. If ports differ:
    - Updates qBittorrent's port.
    - Restarts qBittorrent if configured.
    - Runs the optional post-update command if configured. e.g., `powershell -File "C:\path\to\SampleSendMail.ps1"`
-6. Waits for the configured interval before repeating.
+7. If **Restart on disconnect** is enabled (and qBittorrent was not already restarted in step 6): checks qBittorrent's connection status and restarts it if disconnected.
+8. Writes the JSON status file (`%LocalAppData%\qbPortWeaver\qbPortWeaver.status.json`) and updates the tray icon and tooltip.
+9. Waits for the configured interval before repeating.
 
 ### Tray Menu Options
 
@@ -194,14 +199,16 @@ NAT-PMP (RFC 6886) is a protocol for requesting port mappings directly from a ga
 
 ## Logging
 
-- All actions and errors are logged to `qbPortWeaver.log`.
+- All actions and errors are logged to `%LocalAppData%\qbPortWeaver\qbPortWeaver.log`.
 - Log files are automatically rotated when exceeding **5 MB**, keeping up to 3 files (current + 2 backups).
 
 ---
 
 ## Error Handling
 
-- If the VPN provider is not connected or the port cannot be determined, the issue is logged and the update is skipped.
+- If the VPN provider is not connected and no default port is configured, the cycle is skipped and the issue is logged.
+- If the VPN provider is not connected and a default port is configured, the default port is applied instead.
+- If the VPN port cannot be determined, the issue is logged and the update is skipped.
 - If qBittorrent is not running and cannot be force started or updated, errors are logged and the loop continues after the next interval.
 
 ---

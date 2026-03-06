@@ -21,8 +21,7 @@ namespace qbPortWeaver
         // Returns all network adapters whose gateway actively responds to NAT-PMP,
         // including TUN/VPN adapters where the gateway is inferred from the unicast address.
         // All candidates are probed in parallel; only those with a responding gateway are returned.
-        // Logs discovered adapters at INFO level — the gateway address and external IP are not
-        // surfaced elsewhere and are useful context when diagnosing connectivity issues.
+        // Logs discovered adapters at DEBUG level — discovery runs every cycle so INFO would be noisy.
         // mappingLifetime: requested port mapping duration in seconds (gateway may grant less).
         public static async Task<IReadOnlyList<NatPmpManager>> DiscoverAdapters(uint mappingLifetime = DefaultMappingLifetime)
         {
@@ -49,7 +48,7 @@ namespace qbPortWeaver
             {
                 IPAddress? externalIp = await RequestExternalAddressAsync(c.Gateway).ConfigureAwait(false);
                 if (externalIp is not null)
-                    LogManager.Instance.LogMessage($"NAT-PMP adapter discovered: '{c.Nic.Description}' via gateway {c.Gateway} (external IP: {externalIp})", LogLevel.Info);
+                    LogManager.Instance.LogDebug($"NatPmpManager.DiscoverAdapters: '{c.Nic.Description}' via gateway {c.Gateway} (external IP: {externalIp})");
                 return (c.Nic, c.Gateway, Supported: externalIp is not null);
             })).ConfigureAwait(false);
 
@@ -95,7 +94,7 @@ namespace qbPortWeaver
 
         // Sends a NAT-PMP UDP port mapping request and returns the assigned external port.
         // Logs at INFO/WARN level (not DEBUG) — lease time and failure details are not surfaced
-        // elsewhere in the sync cycle. See also DiscoverAdapters which logs the external IP at INFO.
+        // elsewhere in the sync cycle.
         public int? GetVpnPort()
         {
             try

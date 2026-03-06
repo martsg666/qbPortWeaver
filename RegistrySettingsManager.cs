@@ -85,7 +85,7 @@ namespace qbPortWeaver
                 }
                 catch (Exception ex)
                 {
-                    LogManager.Instance.LogDebug($"RegistrySettingsManager.EnsureDefaults [{section.Key}]: {ex.Message}");
+                    LogManager.Instance.LogDebug($"RegistrySettingsManager.EnsureDefaults: [{section.Key}]: {ex.Message}");
                 }
             }
 
@@ -108,7 +108,7 @@ namespace qbPortWeaver
             }
             catch (Exception ex)
             {
-                LogManager.Instance.LogDebug($"RegistrySettingsManager.GetValue [{section}\\{key}]: {ex.Message}");
+                LogManager.Instance.LogDebug($"RegistrySettingsManager.GetValue: [{section}] {key}: {ex.Message}");
             }
 
             string fallback = GetDefault(section, key);
@@ -165,7 +165,7 @@ namespace qbPortWeaver
             }
             catch (Exception ex)
             {
-                LogManager.Instance.LogDebug($"RegistrySettingsManager.SetValue [{section}\\{key}]: {ex.Message}");
+                LogManager.Instance.LogDebug($"RegistrySettingsManager.SetValue: [{section}] {key}: {ex.Message}");
             }
         }
 

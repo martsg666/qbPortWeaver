@@ -8,7 +8,8 @@ namespace qbPortWeaver
     public sealed class NatPmpManager : IVpnManager
     {
         private const int  NatPmpPort             = 5351;
-        private const int  TimeoutMs              = 2000;
+        private const int  InitialTimeoutMs       = 250; // RFC 6886 §3.1: exponential backoff from 250ms
+        private const int  MaxAttempts            = 4;   // 250ms → 500ms → 1000ms → 2000ms
         public  const uint DefaultMappingLifetime = 3600; // 1 hour
 
         private readonly NetworkInterface _adapter;
@@ -210,34 +211,44 @@ namespace qbPortWeaver
             return new IPAddress(new byte[] { data[8], data[9], data[10], data[11] });
         }
 
-        // Sends a UDP datagram to the gateway and waits for a response
+        // Sends a UDP datagram to the gateway and waits for a response.
+        // Retries with exponential backoff per RFC 6886 §3.1 to handle dropped UDP packets.
         private static async Task<byte[]?> SendReceiveAsync(IPAddress gateway, byte[] request)
         {
-            try
+            int timeoutMs = InitialTimeoutMs;
+
+            for (int attempt = 0; attempt < MaxAttempts; attempt++)
             {
-                using var udp = new UdpClient();
-                await udp.SendAsync(request, new IPEndPoint(gateway, NatPmpPort)).ConfigureAwait(false);
-
-                using var cts = new CancellationTokenSource(TimeoutMs);
-                UdpReceiveResult result = await udp.ReceiveAsync(cts.Token).ConfigureAwait(false);
-
-                if (!result.RemoteEndPoint.Address.Equals(gateway))
+                try
                 {
-                    LogManager.Instance.LogDebug($"NatPmpManager.SendReceiveAsync: Ignoring response from unexpected sender {result.RemoteEndPoint.Address}");
+                    using var udp = new UdpClient();
+                    await udp.SendAsync(request, new IPEndPoint(gateway, NatPmpPort)).ConfigureAwait(false);
+
+                    using var cts = new CancellationTokenSource(timeoutMs);
+                    UdpReceiveResult result = await udp.ReceiveAsync(cts.Token).ConfigureAwait(false);
+
+                    if (!result.RemoteEndPoint.Address.Equals(gateway))
+                    {
+                        LogManager.Instance.LogDebug($"NatPmpManager.SendReceiveAsync: Ignoring response from unexpected sender {result.RemoteEndPoint.Address}");
+                        return null;
+                    }
+
+                    return result.Buffer;
+                }
+                catch (OperationCanceledException)
+                {
+                    if (attempt < MaxAttempts - 1)
+                        LogManager.Instance.LogDebug($"NatPmpManager.SendReceiveAsync: No response after {timeoutMs}ms, retrying (attempt {attempt + 2}/{MaxAttempts})");
+                    timeoutMs *= 2;
+                }
+                catch (Exception ex)
+                {
+                    LogManager.Instance.LogDebug($"NatPmpManager.SendReceiveAsync: {ex.Message}");
                     return null;
                 }
+            }
 
-                return result.Buffer;
-            }
-            catch (OperationCanceledException)
-            {
-                return null;
-            }
-            catch (Exception ex)
-            {
-                LogManager.Instance.LogDebug($"NatPmpManager.SendReceiveAsync: {ex.Message}");
-                return null;
-            }
+            return null;
         }
     }
 }

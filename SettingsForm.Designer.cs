@@ -22,6 +22,7 @@ namespace qbPortWeaver
             cboVpnProvider           = new ComboBox();
             lblNatPmpAdapter         = new Label();
             cboNatPmpAdapter         = new ComboBox();
+            btnRefreshAdapters       = new Button();
             lblUpdateInterval        = new Label();
             nudUpdateInterval        = new NumericUpDown();
             lblSeconds               = new Label();
@@ -67,6 +68,7 @@ namespace qbPortWeaver
             grpGeneral.Controls.Add(cboVpnProvider);
             grpGeneral.Controls.Add(lblNatPmpAdapter);
             grpGeneral.Controls.Add(cboNatPmpAdapter);
+            grpGeneral.Controls.Add(btnRefreshAdapters);
             grpGeneral.Controls.Add(lblUpdateInterval);
             grpGeneral.Controls.Add(nudUpdateInterval);
             grpGeneral.Controls.Add(lblSeconds);
@@ -93,8 +95,15 @@ namespace qbPortWeaver
 
             cboNatPmpAdapter.DropDownStyle = ComboBoxStyle.DropDownList;
             cboNatPmpAdapter.Location  = new Point(148, 82);
-            cboNatPmpAdapter.Size      = new Size(320, 23);
+            cboNatPmpAdapter.Size      = new Size(290, 23);
             cboNatPmpAdapter.TabIndex  = 17;
+
+            btnRefreshAdapters.Location  = new Point(442, 82);
+            btnRefreshAdapters.Size      = new Size(26, 23);
+            btnRefreshAdapters.Text      = "\u21bb";
+            btnRefreshAdapters.TabIndex  = 18;
+            btnRefreshAdapters.Enabled   = false;
+            btnRefreshAdapters.Click    += btnRefreshAdapters_Click;
 
             lblUpdateInterval.Location  = new Point(12, 56);
             lblUpdateInterval.Size      = new Size(130, 23);
@@ -303,6 +312,7 @@ namespace qbPortWeaver
         private ComboBox    cboVpnProvider;
         private Label       lblNatPmpAdapter;
         private ComboBox    cboNatPmpAdapter;
+        private Button      btnRefreshAdapters;
         private Label       lblUpdateInterval;
         private NumericUpDown nudUpdateInterval;
         private Label       lblSeconds;

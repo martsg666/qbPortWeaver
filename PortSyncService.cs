@@ -213,8 +213,11 @@ namespace qbPortWeaver
                 {
                     var configured = adapters.FirstOrDefault(a => a.ProviderName.Equals(cfg.NatPmpAdapterName, StringComparison.OrdinalIgnoreCase));
                     if (configured is null)
-                        LogManager.Instance.LogMessage($"Configured NAT-PMP adapter '{cfg.NatPmpAdapterName}' not found, falling back to first available", LogLevel.Warn);
-                    return configured ?? adapters.FirstOrDefault(a => a.IsVpnConnected()) ?? adapters[0];
+                    {
+                        SetCompleted(status, false, $"Configured NAT-PMP adapter '{cfg.NatPmpAdapterName}' not found — adapter may not be up or gateway not responding");
+                        return null;
+                    }
+                    return configured;
                 }
                 return adapters.FirstOrDefault(a => a.IsVpnConnected()) ?? adapters[0];
             }

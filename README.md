@@ -179,7 +179,7 @@ NAT-PMP (RFC 6886) is a protocol for requesting port mappings directly from a ga
 - Set `VPN Provider` to `NAT-PMP` in qbPortWeaver Settings.
 - Select the correct **network adapter** in the NAT-PMP Adapter dropdown — choose the virtual adapter created by your VPN client, or your LAN adapter if using a NAT-PMP capable router.
 
-> If no adapter appears in the list, ensure the VPN is connected and the adapter is up, then reopen Settings.
+> If no adapter appears in the list, ensure the adapter is up and its gateway is responding to NAT-PMP, then click the **↻** button to refresh without reopening Settings.
 
 ### 6. qBittorrent Configuration
 

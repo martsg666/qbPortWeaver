@@ -68,16 +68,21 @@ namespace qbPortWeaver
             _mappingLifetime = mappingLifetime;
         }
 
-        // Checks if the adapter is up and operational
+        // Re-enumerates network interfaces to check if the adapter is currently present and up.
+        // The stored _adapter object retains its last-seen OperationalStatus even after the
+        // adapter is removed (e.g. ProtonVPN removes the TUN adapter on disconnect), so a
+        // fresh enumeration is required for an accurate result.
         public bool IsVpnConnected()
         {
             try
             {
-                bool connected = _adapter.OperationalStatus == OperationalStatus.Up;
+                bool connected = NetworkInterface.GetAllNetworkInterfaces()
+                    .Any(nic => nic.Description.Equals(_adapter.Description, StringComparison.OrdinalIgnoreCase)
+                             && nic.OperationalStatus == OperationalStatus.Up);
 
                 LogManager.Instance.LogDebug(connected
                     ? $"NatPmpManager.IsVpnConnected: Adapter '{_adapter.Description}' is up"
-                    : $"NatPmpManager.IsVpnConnected: Adapter '{_adapter.Description}' is not up (status: {_adapter.OperationalStatus})");
+                    : $"NatPmpManager.IsVpnConnected: Adapter '{_adapter.Description}' is not found or not up");
 
                 return connected;
             }

@@ -191,7 +191,8 @@ namespace qbPortWeaver
             return (true, externalPort, lifetimeGiven, null);
         }
 
-        // Sends a NAT-PMP external address request (RFC 6886 opcode 0) and returns the public IP
+        // Sends a NAT-PMP external address request (RFC 6886 opcode 0) and returns the public IP.
+        // Single attempt only — discovery is best-effort; a missed adapter can be found via Refresh.
         private static async Task<IPAddress?> RequestExternalAddressAsync(IPAddress gateway)
         {
             // [0] version=0  [1] opcode=0 (external address request)
@@ -199,7 +200,7 @@ namespace qbPortWeaver
             request[0] = 0x00;
             request[1] = 0x00;
 
-            byte[]? data = await SendReceiveAsync(gateway, request).ConfigureAwait(false);
+            byte[]? data = await SendReceiveAsync(gateway, request, maxAttempts: 1).ConfigureAwait(false);
             if (data is null)
                 return null;
 
@@ -216,11 +217,12 @@ namespace qbPortWeaver
 
         // Sends a UDP datagram to the gateway and waits for a response.
         // Retries with exponential backoff per RFC 6886 §3.1 to handle dropped UDP packets.
-        private static async Task<byte[]?> SendReceiveAsync(IPAddress gateway, byte[] request)
+        // maxAttempts defaults to MaxAttempts; pass 1 for best-effort probes (e.g. discovery).
+        private static async Task<byte[]?> SendReceiveAsync(IPAddress gateway, byte[] request, int maxAttempts = MaxAttempts)
         {
             int timeoutMs = InitialTimeoutMs;
 
-            for (int attempt = 0; attempt < MaxAttempts; attempt++)
+            for (int attempt = 0; attempt < maxAttempts; attempt++)
             {
                 try
                 {
@@ -240,8 +242,8 @@ namespace qbPortWeaver
                 }
                 catch (OperationCanceledException)
                 {
-                    if (attempt < MaxAttempts - 1)
-                        LogManager.Instance.LogDebug($"NatPmpManager.SendReceiveAsync: No response after {timeoutMs}ms, retrying (attempt {attempt + 2}/{MaxAttempts})");
+                    if (attempt < maxAttempts - 1)
+                        LogManager.Instance.LogDebug($"NatPmpManager.SendReceiveAsync: No response after {timeoutMs}ms, retrying (attempt {attempt + 2}/{maxAttempts})");
                     timeoutMs *= 2;
                 }
                 catch (Exception ex)

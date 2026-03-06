@@ -11,21 +11,21 @@ namespace qbPortWeaver
         private const int ProcessKillDelayMs  = 2000;
         private const int ProcessInitDelayMs  = 1000;
 
-        private readonly string _qBittorrentUrl;
-        private readonly string _qBittorrentUserName;
-        private readonly string _qBittorrentPassword;
-        private readonly string _qBittorrentProcessName;
-        private readonly string _qBittorrentExePath;
+        private readonly string _url;
+        private readonly string _userName;
+        private readonly string _password;
+        private readonly string _processName;
+        private readonly string _exePath;
         private readonly HttpClient _httpClient;
         private bool _isAuthenticated;
 
         public QBittorrentManager(string qBittorrentUrl, string qBittorrentUserName, string qBittorrentPassword, string qBittorrentProcessName, string qBittorrentExePath)
         {
-            _qBittorrentUrl = (qBittorrentUrl ?? string.Empty).TrimEnd('/');
-            _qBittorrentUserName = qBittorrentUserName;
-            _qBittorrentPassword = qBittorrentPassword;
-            _qBittorrentProcessName = qBittorrentProcessName;
-            _qBittorrentExePath = qBittorrentExePath;
+            _url = (qBittorrentUrl ?? string.Empty).TrimEnd('/');
+            _userName = qBittorrentUserName;
+            _password = qBittorrentPassword;
+            _processName = qBittorrentProcessName;
+            _exePath = qBittorrentExePath;
             var cookies = new CookieContainer();
             var handler = new HttpClientHandler { CookieContainer = cookies };
             _httpClient = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(AppConstants.HttpTimeoutSeconds) };
@@ -35,9 +35,9 @@ namespace qbPortWeaver
 
         public bool IsRunning()
         {
-            if (string.IsNullOrEmpty(_qBittorrentProcessName)) return false;
+            if (string.IsNullOrEmpty(_processName)) return false;
 
-            var processes = Process.GetProcessesByName(_qBittorrentProcessName);
+            var processes = Process.GetProcessesByName(_processName);
             try
             {
                 return processes.Length > 0;
@@ -58,7 +58,7 @@ namespace qbPortWeaver
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                LogManager.Instance.LogMessage($"Failed to start qBittorrent: {ex.Message} - check the Executable path in Settings ({_qBittorrentExePath})", LogLevel.Error);
+                LogManager.Instance.LogMessage($"Failed to start qBittorrent: {ex.Message} - check the Executable path in Settings ({_exePath})", LogLevel.Error);
                 return false;
             }
         }
@@ -68,7 +68,7 @@ namespace qbPortWeaver
             try
             {
                 // Kill any running qBittorrent processes
-                foreach (var proc in Process.GetProcessesByName(_qBittorrentProcessName))
+                foreach (var proc in Process.GetProcessesByName(_processName))
                 {
                     try { proc.Kill(); }
                     catch (Exception ex) { LogManager.Instance.LogDebug($"QBittorrentManager.RestartAsync: Failed to kill process: {ex.Message}"); }
@@ -87,7 +87,7 @@ namespace qbPortWeaver
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                LogManager.Instance.LogMessage($"Failed to restart qBittorrent: {ex.Message} - check the Executable path in Settings ({_qBittorrentExePath})", LogLevel.Error);
+                LogManager.Instance.LogMessage($"Failed to restart qBittorrent: {ex.Message} - check the Executable path in Settings ({_exePath})", LogLevel.Error);
                 return false;
             }
         }
@@ -101,7 +101,7 @@ namespace qbPortWeaver
 
             try
             {
-                using var response = await _httpClient.GetAsync($"{_qBittorrentUrl}/api/v2/app/preferences").ConfigureAwait(false);
+                using var response = await _httpClient.GetAsync($"{_url}/api/v2/app/preferences").ConfigureAwait(false);
 
                 if (!response.IsSuccessStatusCode)
                 {
@@ -156,7 +156,7 @@ namespace qbPortWeaver
                     new KeyValuePair<string, string>("json", jsonBody)
                 });
 
-                using var response = await _httpClient.PostAsync($"{_qBittorrentUrl}/api/v2/app/setPreferences", content).ConfigureAwait(false);
+                using var response = await _httpClient.PostAsync($"{_url}/api/v2/app/setPreferences", content).ConfigureAwait(false);
                 if (!response.IsSuccessStatusCode)
                 {
                     LogManager.Instance.LogMessage($"qBittorrent set port failed (HTTP {(int)response.StatusCode} {response.StatusCode})", LogLevel.Error);
@@ -178,7 +178,7 @@ namespace qbPortWeaver
 
             try
             {
-                using var response = await _httpClient.GetAsync($"{_qBittorrentUrl}/api/v2/transfer/info").ConfigureAwait(false);
+                using var response = await _httpClient.GetAsync($"{_url}/api/v2/transfer/info").ConfigureAwait(false);
 
                 if (!response.IsSuccessStatusCode)
                 {
@@ -221,11 +221,11 @@ namespace qbPortWeaver
             {
                 using var content = new FormUrlEncodedContent(new[]
                 {
-                    new KeyValuePair<string, string>("username", _qBittorrentUserName),
-                    new KeyValuePair<string, string>("password", _qBittorrentPassword)
+                    new KeyValuePair<string, string>("username", _userName),
+                    new KeyValuePair<string, string>("password", _password)
                 });
 
-                using var response = await _httpClient.PostAsync($"{_qBittorrentUrl}/api/v2/auth/login", content).ConfigureAwait(false);
+                using var response = await _httpClient.PostAsync($"{_url}/api/v2/auth/login", content).ConfigureAwait(false);
 
                 if (response.StatusCode == HttpStatusCode.Forbidden)
                 {
@@ -235,7 +235,7 @@ namespace qbPortWeaver
 
                 if (!response.IsSuccessStatusCode)
                 {
-                    LogManager.Instance.LogMessage($"qBittorrent authentication failed (HTTP {(int)response.StatusCode} {response.StatusCode}): check the URL in Settings ({_qBittorrentUrl})", LogLevel.Error);
+                    LogManager.Instance.LogMessage($"qBittorrent authentication failed (HTTP {(int)response.StatusCode} {response.StatusCode}): check the URL in Settings ({_url})", LogLevel.Error);
                     return false;
                 }
 
@@ -258,21 +258,24 @@ namespace qbPortWeaver
 
         // Builds the ProcessStartInfo used to launch or re-launch qBittorrent
         private ProcessStartInfo CreateQBittorrentStartInfo() =>
-            new ProcessStartInfo(_qBittorrentExePath)
+            new ProcessStartInfo(_exePath)
             {
                 UseShellExecute  = true,
-                WorkingDirectory = Path.GetDirectoryName(_qBittorrentExePath) ?? string.Empty
+                WorkingDirectory = Path.GetDirectoryName(_exePath) ?? string.Empty
             };
 
-        // Classifies and logs an HTTP-related exception; suppresses detail to debug for unexpected types
+        // Classifies and logs an HTTP-related exception
         private void LogHttpException(string methodName, Exception ex)
         {
             if (ex is TaskCanceledException)
-                LogManager.Instance.LogMessage($"qBittorrent Web UI is not reachable (timed out): check the URL in Settings ({_qBittorrentUrl})", LogLevel.Error);
+                LogManager.Instance.LogMessage($"qBittorrent Web UI is not reachable (timed out): check the URL in Settings ({_url})", LogLevel.Error);
             else if (ex is HttpRequestException)
-                LogManager.Instance.LogMessage($"qBittorrent Web UI connection failed: {ex.Message} - check the URL in Settings ({_qBittorrentUrl})", LogLevel.Error);
+                LogManager.Instance.LogMessage($"qBittorrent Web UI connection failed: {ex.Message} - check the URL in Settings ({_url})", LogLevel.Error);
             else
+            {
+                LogManager.Instance.LogMessage($"qBittorrent request failed unexpectedly in {methodName}: {ex.GetType().Name}", LogLevel.Warn);
                 LogManager.Instance.LogDebug($"QBittorrentManager.{methodName}: {ex.Message}");
+            }
         }
     }
 }

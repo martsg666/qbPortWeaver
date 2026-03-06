@@ -24,7 +24,7 @@
 
 .EXAMPLE
     # Build with an explicit version override
-    .\scripts\Build-LocalMsi.ps1 -Version 2.3.0
+    .\scripts\Build-LocalMsi.ps1 -Version 2.5.0
 #>
 
 [CmdletBinding()]
@@ -79,7 +79,7 @@ try {
     Pop-Location
 }
 
-$tfm          = ([xml](Get-Content (Join-Path $repoRoot 'qbPortWeaver.csproj'))).Project.PropertyGroup.TargetFramework
+$tfm          = (Select-String -Path (Join-Path $repoRoot 'qbPortWeaver.csproj') -Pattern '<TargetFramework>([^<]+)</TargetFramework>').Matches[0].Groups[1].Value
 $publishedExe = Join-Path $repoRoot "bin\Release\$tfm\win-x64\publish\qbPortWeaver.exe"
 if (-not (Test-Path $publishedExe)) {
     throw "Expected publish output not found: $publishedExe"

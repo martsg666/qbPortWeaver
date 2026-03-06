@@ -24,6 +24,7 @@ permissions:
 jobs:
   build-release-publish:
     runs-on: windows-latest
+    timeout-minutes: 30
 
     steps:
       # -----------------------------------------------------------------------
@@ -43,6 +44,8 @@ jobs:
             if (-not $tag.StartsWith('v')) {
               throw "Tag must start with 'v' (e.g. v2.4.0). Got: $tag"
             }
+            git ls-remote --exit-code --tags origin $tag | Out-Null
+            if ($LASTEXITCODE -ne 0) { throw "Tag '$tag' does not exist in the remote repository." }
           } else {
             $tag = $env:GH_REF_NAME
           }
@@ -52,7 +55,21 @@ jobs:
           Write-Host "Building version: $version  (tag: $tag)"
 
       # -----------------------------------------------------------------------
-      # 2. Checkout — full history lets --generate-notes span all commits
+      # 2. Validate required secrets are present before spending time on the build
+      # -----------------------------------------------------------------------
+      - name: Validate required secrets
+        shell: pwsh
+        env:
+          CHOCOLATEY_API_KEY: ${{ secrets.CHOCOLATEY_API_KEY }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (-not $env:CHOCOLATEY_API_KEY) {
+            throw "CHOCOLATEY_API_KEY secret is not configured. Add it in Settings > Secrets before running this workflow."
+          }
+          Write-Host "Required secrets validated."
+
+      # -----------------------------------------------------------------------
+      # 3. Checkout — full history lets --generate-notes span all commits
       # -----------------------------------------------------------------------
       - name: Checkout repository
         # Pinned to a specific commit SHA rather than a floating tag (e.g. @v4) so that
@@ -64,7 +81,7 @@ jobs:
           ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
 
       # -----------------------------------------------------------------------
-      # 3. Set up the .NET SDK
+      # 4. Set up the .NET SDK
       # -----------------------------------------------------------------------
       - name: Setup .NET
         # Pinned to a specific commit SHA — see checkout step for rationale.
@@ -73,13 +90,14 @@ jobs:
           dotnet-version: '10.x'
 
       # -----------------------------------------------------------------------
-      # 4. Publish the .NET application (self-contained single-file, version stamped from the tag)
+      # 5. Publish the .NET application (self-contained single-file, version stamped from the tag)
       # -----------------------------------------------------------------------
       - name: Publish application
         shell: pwsh
         env:
           BUILD_VERSION: ${{ steps.version.outputs.VERSION }}
         run: |
+          $ErrorActionPreference = 'Stop'
           $v = $env:BUILD_VERSION
           dotnet publish qbPortWeaver.csproj `
             --configuration Release `
@@ -92,11 +110,12 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       # -----------------------------------------------------------------------
-      # 5. Install WiX Toolset v4 (pinned to 4.0.6)
+      # 6. Install WiX Toolset v4 (pinned to 4.0.6)
       # -----------------------------------------------------------------------
       - name: Install WiX Toolset
         shell: pwsh
         run: |
+          $ErrorActionPreference = 'Stop'
           dotnet tool update --global wix --version "4.0.6"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           wix extension add WixToolset.UI.wixext/4.0.6 WixToolset.Util.wixext/4.0.6 --global
@@ -105,7 +124,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       # -----------------------------------------------------------------------
-      # 6. Build the MSI installer
+      # 7. Build the MSI installer
       # -----------------------------------------------------------------------
       - name: Build MSI installer
         id: msi
@@ -115,7 +134,7 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $version = $env:BUILD_VERSION
-          $tfm     = ([xml](Get-Content 'qbPortWeaver.csproj')).Project.PropertyGroup.TargetFramework
+          $tfm     = (Select-String -Path 'qbPortWeaver.csproj' -Pattern '<TargetFramework>([^<]+)</TargetFramework>').Matches[0].Groups[1].Value
 
           wix build installer\qbPortWeaver.wxs `
             -arch x64 `
@@ -137,7 +156,7 @@ jobs:
           Write-Host "Installer ready: $setupMsi"
 
       # -----------------------------------------------------------------------
-      # 7. Compute SHA256 checksum of the local MSI
+      # 8. Compute SHA256 checksum of the local MSI
       #    (computed here so we avoid re-downloading from the release later)
       # -----------------------------------------------------------------------
       - name: Compute installer checksum
@@ -163,7 +182,7 @@ jobs:
           "CHECKSUM=$checksum"    | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
       # -----------------------------------------------------------------------
-      # 8. Stamp version, URL, and checksum into the Chocolatey package files
+      # 9. Stamp version, URL, and checksum into the Chocolatey package files
       # -----------------------------------------------------------------------
       - name: Update Chocolatey package files
         shell: pwsh
@@ -201,7 +220,7 @@ jobs:
           Write-Host "Chocolatey package files updated for v$version"
 
       # -----------------------------------------------------------------------
-      # 9. Validate that all TEMPLATE_ placeholders were replaced
+      # 10. Validate that all TEMPLATE_ placeholders were replaced
       # -----------------------------------------------------------------------
       - name: Validate placeholder substitution
         shell: pwsh
@@ -224,7 +243,7 @@ jobs:
           Write-Host "All placeholders replaced successfully."
 
       # -----------------------------------------------------------------------
-      # 10. Install community validation extension and pack the Chocolatey package
+      # 11. Install community validation extension and pack the Chocolatey package
       #     The extension hooks into choco pack and validates automatically in v2.x —
       #     there is no separate choco validate command.
       # -----------------------------------------------------------------------
@@ -235,7 +254,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       # -----------------------------------------------------------------------
-      # 11. Pack the Chocolatey package
+      # 12. Pack the Chocolatey package
       # -----------------------------------------------------------------------
       - name: Pack Chocolatey package
         id: pack
@@ -254,7 +273,7 @@ jobs:
           "NUPKG_PATH=$($nupkg.FullName)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
       # -----------------------------------------------------------------------
-      # 12. Create GitHub Release with auto-generated notes, or update existing
+      # 13. Create GitHub Release with auto-generated notes, or update existing
       # -----------------------------------------------------------------------
       - name: Create or update GitHub Release
         shell: pwsh
@@ -281,7 +300,7 @@ jobs:
           }
 
       # -----------------------------------------------------------------------
-      # 13. Push to Chocolatey Community Repository
+      # 14. Push to Chocolatey Community Repository
       # -----------------------------------------------------------------------
       - name: Push to Chocolatey Community Repository
         shell: pwsh
@@ -291,15 +310,11 @@ jobs:
           CHOCOLATEY_API_KEY: ${{ secrets.CHOCOLATEY_API_KEY }}
         run: |
           $ErrorActionPreference = 'Stop'
-          if (-not $env:CHOCOLATEY_API_KEY) {
-            throw "CHOCOLATEY_API_KEY secret is not configured."
-          }
-
           # Skip push if this version is already published (e.g. workflow_dispatch re-run)
           $version = $env:RELEASE_VERSION
           $alreadyPublished = try {
             Invoke-WebRequest -Uri "https://community.chocolatey.org/api/v2/Packages(Id='qbportweaver',Version='$version')" `
-              -Method Head -UseBasicParsing | Out-Null
+              -Method Head | Out-Null
             $true
           } catch { $false }
 

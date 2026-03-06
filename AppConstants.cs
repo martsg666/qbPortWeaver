@@ -29,7 +29,7 @@ namespace qbPortWeaver
         private const string LogFileName    = "qbPortWeaver.log";
         private const string StatusFileName = "qbPortWeaver.status.json";
 
-        // App data folder, created once on first access
+        // App data folder — created on class initialization (static field initializer)
         private static readonly string _appDataFolder = Directory.CreateDirectory(
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), AppName)
         ).FullName;

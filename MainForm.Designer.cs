@@ -25,7 +25,7 @@
                     _trayIcon?.Dispose();
                     _trayMenu?.Dispose();
                     _iconBase?.Dispose();
-                    _iconOK?.Dispose();
+                    _iconOk?.Dispose();
                     _iconWarning?.Dispose();
                     _iconError?.Dispose();
                     _updateCheckTimer?.Dispose();

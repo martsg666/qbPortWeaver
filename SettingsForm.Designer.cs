@@ -81,7 +81,6 @@ namespace qbPortWeaver
             lblVpnProvider.TextAlign = ContentAlignment.MiddleLeft;
 
             cboVpnProvider.DropDownStyle = ComboBoxStyle.DropDownList;
-            cboVpnProvider.Items.AddRange(new object[] { "ProtonVPN", "PIA", "NAT-PMP" });
             cboVpnProvider.Location  = new Point(148, 24);
             cboVpnProvider.Size      = new Size(200, 23);
             cboVpnProvider.TabIndex  = 0;

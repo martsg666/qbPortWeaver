@@ -17,15 +17,6 @@ namespace qbPortWeaver
 
         public string ProviderName => _adapter.Description;
 
-        // mappingLifetime: requested port mapping duration in seconds (gateway may grant less).
-        // Valid range: 1 – uint.MaxValue (~136 years). Use 0 to delete an existing mapping.
-        private NatPmpManager(NetworkInterface adapter, IPAddress gateway, uint mappingLifetime)
-        {
-            _adapter         = adapter;
-            _gateway         = gateway;
-            _mappingLifetime = mappingLifetime;
-        }
-
         // Returns all network adapters whose gateway actively responds to NAT-PMP,
         // including TUN/VPN adapters where the gateway is inferred from the unicast address.
         // All candidates are probed in parallel; only those with a responding gateway are returned.
@@ -61,6 +52,15 @@ namespace qbPortWeaver
                 .Where(r => r.Supported)
                 .Select(r => new NatPmpManager(r.Nic, r.Gateway, mappingLifetime))
                 .ToList();
+        }
+
+        // mappingLifetime: requested port mapping duration in seconds (gateway may grant less).
+        // Valid range: 1 – uint.MaxValue (~136 years). Use 0 to delete an existing mapping.
+        private NatPmpManager(NetworkInterface adapter, IPAddress gateway, uint mappingLifetime)
+        {
+            _adapter         = adapter;
+            _gateway         = gateway;
+            _mappingLifetime = mappingLifetime;
         }
 
         // Checks if the adapter is up and operational

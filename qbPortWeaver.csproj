@@ -18,7 +18,6 @@
     <AssemblyVersion>2.4.0.0</AssemblyVersion>
     <SignAssembly>False</SignAssembly>
     <PackageReadmeFile>README.md</PackageReadmeFile>
-    <PackageIcon></PackageIcon>
   </PropertyGroup>
 
   <ItemGroup>

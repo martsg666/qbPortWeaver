@@ -39,9 +39,7 @@ namespace qbPortWeaver
             grpVersion.SuspendLayout();
             grpLinks.SuspendLayout();
             SuspendLayout();
-            // 
-            // picIcon
-            // 
+            // ── Header ────────────────────────────────────────────────────
             picIcon.Image = (Image)resources.GetObject("picIcon.Image");
             picIcon.Location = new Point(12, 12);
             picIcon.Name = "picIcon";
@@ -49,26 +47,18 @@ namespace qbPortWeaver
             picIcon.SizeMode = PictureBoxSizeMode.Zoom;
             picIcon.TabIndex = 0;
             picIcon.TabStop = false;
-            // 
-            // lblAppName
-            // 
             lblAppName.Font = new Font("Segoe UI", 13F, FontStyle.Bold);
             lblAppName.Location = new Point(70, 14);
             lblAppName.Name = "lblAppName";
             lblAppName.Size = new Size(296, 26);
             lblAppName.TabIndex = 1;
             lblAppName.Text = "qbPortWeaver";
-            // 
-            // lblAppVersion
-            // 
             lblAppVersion.ForeColor = SystemColors.GrayText;
             lblAppVersion.Location = new Point(70, 44);
             lblAppVersion.Name = "lblAppVersion";
             lblAppVersion.Size = new Size(296, 20);
             lblAppVersion.TabIndex = 2;
-            // 
-            // grpVersion
-            // 
+            // ── grpVersion ────────────────────────────────────────────────
             grpVersion.Controls.Add(lblCurrentVersionLabel);
             grpVersion.Controls.Add(lblCurrentVersionValue);
             grpVersion.Controls.Add(lblLatestVersionLabel);
@@ -81,36 +71,24 @@ namespace qbPortWeaver
             grpVersion.TabIndex = 3;
             grpVersion.TabStop = false;
             grpVersion.Text = "Version";
-            // 
-            // lblCurrentVersionLabel
-            // 
             lblCurrentVersionLabel.Location = new Point(12, 24);
             lblCurrentVersionLabel.Name = "lblCurrentVersionLabel";
             lblCurrentVersionLabel.Size = new Size(130, 23);
             lblCurrentVersionLabel.TabIndex = 0;
             lblCurrentVersionLabel.Text = "Current version:";
             lblCurrentVersionLabel.TextAlign = ContentAlignment.MiddleLeft;
-            // 
-            // lblCurrentVersionValue
-            // 
             lblCurrentVersionValue.Location = new Point(148, 24);
             lblCurrentVersionValue.Name = "lblCurrentVersionValue";
             lblCurrentVersionValue.Size = new Size(200, 23);
             lblCurrentVersionValue.TabIndex = 1;
             lblCurrentVersionValue.Text = "";
             lblCurrentVersionValue.TextAlign = ContentAlignment.MiddleLeft;
-            // 
-            // lblLatestVersionLabel
-            // 
             lblLatestVersionLabel.Location = new Point(12, 51);
             lblLatestVersionLabel.Name = "lblLatestVersionLabel";
             lblLatestVersionLabel.Size = new Size(130, 23);
             lblLatestVersionLabel.TabIndex = 2;
             lblLatestVersionLabel.Text = "Latest version:";
             lblLatestVersionLabel.TextAlign = ContentAlignment.MiddleLeft;
-            // 
-            // lblLatestVersionValue
-            // 
             lblLatestVersionValue.ForeColor = SystemColors.GrayText;
             lblLatestVersionValue.Location = new Point(148, 51);
             lblLatestVersionValue.Name = "lblLatestVersionValue";
@@ -118,26 +96,18 @@ namespace qbPortWeaver
             lblLatestVersionValue.TabIndex = 3;
             lblLatestVersionValue.Text = "Checking…";
             lblLatestVersionValue.TextAlign = ContentAlignment.MiddleLeft;
-            // 
-            // lblStatusLabel
-            // 
             lblStatusLabel.Location = new Point(12, 78);
             lblStatusLabel.Name = "lblStatusLabel";
             lblStatusLabel.Size = new Size(130, 23);
             lblStatusLabel.TabIndex = 4;
             lblStatusLabel.Text = "Status:";
             lblStatusLabel.TextAlign = ContentAlignment.MiddleLeft;
-            // 
-            // lblStatusValue
-            // 
             lblStatusValue.Location = new Point(148, 78);
             lblStatusValue.Name = "lblStatusValue";
             lblStatusValue.Size = new Size(200, 23);
             lblStatusValue.TabIndex = 5;
             lblStatusValue.TextAlign = ContentAlignment.MiddleLeft;
-            // 
-            // grpLinks
-            // 
+            // ── grpLinks ──────────────────────────────────────────────────
             grpLinks.Controls.Add(lblAuthorLabel);
             grpLinks.Controls.Add(lnkAuthor);
             grpLinks.Controls.Add(lblGitHubLabel);
@@ -148,17 +118,11 @@ namespace qbPortWeaver
             grpLinks.TabIndex = 4;
             grpLinks.TabStop = false;
             grpLinks.Text = "Links";
-            // 
-            // lblAuthorLabel
-            // 
             lblAuthorLabel.Location = new Point(12, 24);
             lblAuthorLabel.Name = "lblAuthorLabel";
             lblAuthorLabel.Size = new Size(130, 23);
             lblAuthorLabel.TabIndex = 0;
             lblAuthorLabel.Text = "Contributors:";
-            // 
-            // lnkAuthor
-            // 
             lnkAuthor.LinkArea = new LinkArea(0, 0);
             lnkAuthor.Location = new Point(148, 22);
             lnkAuthor.Name = "lnkAuthor";
@@ -166,45 +130,32 @@ namespace qbPortWeaver
             lnkAuthor.TabIndex = 0;
             lnkAuthor.Text = "Loading…";
             lnkAuthor.LinkClicked += lnkAuthor_LinkClicked;
-            // 
-            // lblGitHubLabel
-            // 
             lblGitHubLabel.Location = new Point(12, 70);
             lblGitHubLabel.Name = "lblGitHubLabel";
             lblGitHubLabel.Size = new Size(130, 23);
             lblGitHubLabel.TabIndex = 1;
             lblGitHubLabel.Text = "GitHub:";
             lblGitHubLabel.TextAlign = ContentAlignment.MiddleLeft;
-            // 
-            // lnkGitHub
-            // 
             lnkGitHub.Location = new Point(148, 70);
             lnkGitHub.Name = "lnkGitHub";
             lnkGitHub.Size = new Size(200, 23);
             lnkGitHub.TabIndex = 1;
             lnkGitHub.TextAlign = ContentAlignment.MiddleLeft;
             lnkGitHub.LinkClicked += lnkGitHub_LinkClicked;
-            // 
-            // btnCheckForUpdates
-            // 
+            // ── Buttons ───────────────────────────────────────────────────
             btnCheckForUpdates.Location = new Point(8, 301);
             btnCheckForUpdates.Name = "btnCheckForUpdates";
             btnCheckForUpdates.Size = new Size(145, 28);
             btnCheckForUpdates.TabIndex = 2;
             btnCheckForUpdates.Text = "Check for Updates";
             btnCheckForUpdates.Click += btnCheckForUpdates_Click;
-            // 
-            // btnClose
-            // 
             btnClose.DialogResult = DialogResult.Cancel;
             btnClose.Location = new Point(286, 301);
             btnClose.Name = "btnClose";
             btnClose.Size = new Size(82, 28);
             btnClose.TabIndex = 3;
             btnClose.Text = "Close";
-            // 
-            // AboutForm
-            // 
+            // ── AboutForm ─────────────────────────────────────────────────
             AutoScaleDimensions = new SizeF(7F, 15F);
             AutoScaleMode = AutoScaleMode.Font;
             CancelButton = btnClose;

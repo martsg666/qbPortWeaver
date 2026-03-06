@@ -8,7 +8,7 @@ namespace qbPortWeaver
     {
         private const string PiaUninstallRegistryPath = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall";
         private const string PiaDisplayName           = "Private Internet Access";
-        private const string PiactlFilename           = "piactl.exe";
+        private const string PiactlFileName           = "piactl.exe";
         private const int    ProcessTimeoutMs         = 5000;
 
         public string ProviderName => RegistrySettingsManager.VpnProviderPia;
@@ -144,7 +144,7 @@ namespace qbPortWeaver
                         return null;
                     }
 
-                    string piactlPath = Path.Combine(installLocation, PiactlFilename);
+                    string piactlPath = Path.Combine(installLocation, PiactlFileName);
                     if (!File.Exists(piactlPath))
                     {
                         LogManager.Instance.LogDebug($"PiaVpnManager.GetPiactlPath: piactl not found at: {piactlPath}");

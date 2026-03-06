@@ -18,9 +18,7 @@ namespace qbPortWeaver
         protected override void OnLoad(EventArgs e)
         {
             base.OnLoad(e);
-            _ = LoadGitHubDataAsync().ContinueWith(
-                t => LogManager.Instance.LogDebug($"AboutForm.LoadGitHubDataAsync: {t.Exception?.GetBaseException().Message}"),
-                TaskContinuationOptions.OnlyOnFaulted);
+            _ = LoadGitHubDataAsync();
         }
 
         // Opens the release page if an update is available; otherwise re-runs the update check
@@ -29,9 +27,7 @@ namespace qbPortWeaver
             if (_releaseUrl != null)
                 AppConstants.OpenUrl(_releaseUrl);
             else
-                _ = LoadGitHubDataAsync().ContinueWith(
-                    t => LogManager.Instance.LogDebug($"AboutForm.LoadGitHubDataAsync: {t.Exception?.GetBaseException().Message}"),
-                    TaskContinuationOptions.OnlyOnFaulted);
+                _ = LoadGitHubDataAsync();
         }
 
         // Each link region carries its contributor profile URL as LinkData
@@ -50,59 +46,66 @@ namespace qbPortWeaver
         // Fetches the latest release info and contributor list in parallel, then populates all UI fields
         private async Task LoadGitHubDataAsync()
         {
-            btnCheckForUpdates.Enabled      = false;
-            btnCheckForUpdates.Text         = "Checking\u2026";
-            lblLatestVersionValue.Text      = "Checking\u2026";
-            lblLatestVersionValue.ForeColor = SystemColors.GrayText;
-            lblStatusValue.Text             = "";
-            _releaseUrl                     = null;
-
-            // Fetch release info and contributor list in parallel
-            var releaseTask      = UpdateChecker.GetLatestReleaseInfoAsync();
-            var contributorsTask = UpdateChecker.GetReleaseContributorsAsync();
-            await Task.WhenAll(releaseTask, contributorsTask);
-
-            // Guard against the form being closed while the GitHub requests were in flight
-            if (IsDisposed) return;
-
-            // ── Contributors ─────────────────────────────────────────────
-            var contributors = contributorsTask.Result;
-            if (contributors.Count > 0)
-                SetContributorLinks(contributors);
-            else
-                lnkAuthor.Text = AppConstants.GitHubRepoOwner;
-
-            // ── Version / update status ───────────────────────────────────
-            var info = releaseTask.Result;
-            if (info == null)
+            try
             {
-                lblLatestVersionValue.Text      = "Unable to check";
-                lblLatestVersionValue.ForeColor = SystemColors.ControlText;
-                lblStatusValue.Text             = "Check failed";
-                lblStatusValue.ForeColor        = SystemColors.ControlText;
-                btnCheckForUpdates.Text         = "Check for Updates";
-            }
-            else
-            {
-                lblLatestVersionValue.Text      = info.VersionString;
-                lblLatestVersionValue.ForeColor = SystemColors.ControlText;
+                btnCheckForUpdates.Enabled      = false;
+                btnCheckForUpdates.Text         = "Checking\u2026";
+                lblLatestVersionValue.Text      = "Checking\u2026";
+                lblLatestVersionValue.ForeColor = SystemColors.GrayText;
+                lblStatusValue.Text             = "";
+                _releaseUrl                     = null;
 
-                if (info.IsNewer)
+                // Fetch release info and contributor list in parallel
+                var releaseTask      = UpdateChecker.GetLatestReleaseInfoAsync();
+                var contributorsTask = UpdateChecker.GetReleaseContributorsAsync();
+                await Task.WhenAll(releaseTask, contributorsTask);
+
+                // Guard against the form being closed while the GitHub requests were in flight
+                if (IsDisposed) return;
+
+                // ── Contributors ─────────────────────────────────────────────
+                var contributors = contributorsTask.Result;
+                if (contributors.Count > 0)
+                    SetContributorLinks(contributors);
+                else
+                    lnkAuthor.Text = AppConstants.GitHubRepoOwner;
+
+                // ── Version / update status ───────────────────────────────────
+                var info = releaseTask.Result;
+                if (info == null)
                 {
-                    lblStatusValue.Text      = "Update available";
-                    lblStatusValue.ForeColor = Color.DarkOrange;
-                    btnCheckForUpdates.Text  = "View Release";
-                    _releaseUrl              = info.ReleaseUrl;
+                    lblLatestVersionValue.Text      = "Unable to check";
+                    lblLatestVersionValue.ForeColor = SystemColors.ControlText;
+                    lblStatusValue.Text             = "Check failed";
+                    lblStatusValue.ForeColor        = SystemColors.ControlText;
+                    btnCheckForUpdates.Text         = "Check for Updates";
                 }
                 else
                 {
-                    lblStatusValue.Text      = "Up to date";
-                    lblStatusValue.ForeColor = Color.Green;
-                    btnCheckForUpdates.Text  = "Check for Updates";
-                }
-            }
+                    lblLatestVersionValue.Text      = info.VersionString;
+                    lblLatestVersionValue.ForeColor = SystemColors.ControlText;
 
-            btnCheckForUpdates.Enabled = true;
+                    if (info.IsNewer)
+                    {
+                        lblStatusValue.Text      = "Update available";
+                        lblStatusValue.ForeColor = Color.DarkOrange;
+                        btnCheckForUpdates.Text  = "View Release";
+                        _releaseUrl              = info.ReleaseUrl;
+                    }
+                    else
+                    {
+                        lblStatusValue.Text      = "Up to date";
+                        lblStatusValue.ForeColor = Color.Green;
+                        btnCheckForUpdates.Text  = "Check for Updates";
+                    }
+                }
+
+                btnCheckForUpdates.Enabled = true;
+            }
+            catch (Exception ex)
+            {
+                LogManager.Instance.LogDebug($"AboutForm.LoadGitHubDataAsync: {ex.Message}");
+            }
         }
 
         // Populates lnkAuthor with one clickable link region per contributor

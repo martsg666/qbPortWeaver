@@ -12,7 +12,7 @@ namespace qbPortWeaver
 
         // Status tray icons (generated at startup; disposed in MainForm.Designer.cs)
         private Icon? _iconBase;
-        private Icon? _iconOK;
+        private Icon? _iconOk;
         private Icon? _iconWarning;
         private Icon? _iconError;
 
@@ -22,7 +22,7 @@ namespace qbPortWeaver
         // Last sync status (written from background thread, read on UI thread)
         private volatile TrayStatus? _lastSyncStatus;
 
-        // Cancellation token to interrupt waiting
+        // Cancellation token for the inter-cycle delay — cancelled by manual sync requests to skip the wait
         private CancellationTokenSource _delayCts = new CancellationTokenSource();
 
         // Semaphore to prevent concurrent updates
@@ -133,7 +133,7 @@ namespace qbPortWeaver
         private void InitializeStatusIcons()
         {
             _iconBase    = Properties.Resources.qbPortWeaver;
-            _iconOK      = CreateStatusIcon(_iconBase, Color.LimeGreen);
+            _iconOk      = CreateStatusIcon(_iconBase, Color.LimeGreen);
             _iconWarning = CreateStatusIcon(_iconBase, Color.Orange);
             _iconError   = CreateStatusIcon(_iconBase, Color.Red);
         }
@@ -206,43 +206,6 @@ namespace qbPortWeaver
                 Visible = true,
                 ContextMenuStrip = _trayMenu
             };
-        }
-
-        // Checks GitHub for a newer release and prompts the user to open the download page if one is found
-        private async Task PerformUpdateCheckAsync()
-        {
-            try
-            {
-                LogManager.Instance.LogMessage("Checking for application updates", LogLevel.Info);
-                var update = await UpdateChecker.GetAvailableUpdateAsync();
-                if (update.HasValue)
-                {
-                    if (update.Value.Version == _lastNotifiedVersion)
-                    {
-                        LogManager.Instance.LogMessage($"New version {update.Value.Version} available (already notified)", LogLevel.Info);
-                        return;
-                    }
-
-                    _lastNotifiedVersion = update.Value.Version;
-                    LogManager.Instance.LogMessage($"New application version available: {update.Value.Version}", LogLevel.Info);
-                    var result = MessageBox.Show(
-                        $"A new version of {AppConstants.AppName} is available: {update.Value.Version}\n\nWould you like to open the download page?",
-                        $"{AppConstants.AppName} - Update Available",
-                        MessageBoxButtons.YesNo,
-                        MessageBoxIcon.Information);
-
-                    if (result == DialogResult.Yes)
-                        AppConstants.OpenUrl(update.Value.Url);
-                }
-                else
-                {
-                    LogManager.Instance.LogMessage("Application is up to date", LogLevel.Info);
-                }
-            }
-            catch (Exception ex)
-            {
-                LogManager.Instance.LogDebug($"MainForm.PerformUpdateCheckAsync: {ex.Message}");
-            }
         }
 
         // Runs the port-sync loop until shutdown is requested
@@ -344,12 +307,49 @@ namespace qbPortWeaver
             }
         }
 
+        // Checks GitHub for a newer release and prompts the user to open the download page if one is found
+        private async Task PerformUpdateCheckAsync()
+        {
+            try
+            {
+                LogManager.Instance.LogMessage("Checking for application updates", LogLevel.Info);
+                var update = await UpdateChecker.GetAvailableUpdateAsync();
+                if (update.HasValue)
+                {
+                    if (update.Value.Version == _lastNotifiedVersion)
+                    {
+                        LogManager.Instance.LogMessage($"New version {update.Value.Version} available (already notified)", LogLevel.Info);
+                        return;
+                    }
+
+                    _lastNotifiedVersion = update.Value.Version;
+                    LogManager.Instance.LogMessage($"New application version available: {update.Value.Version}", LogLevel.Info);
+                    var result = MessageBox.Show(
+                        $"A new version of {AppConstants.AppName} is available: {update.Value.Version}\n\nWould you like to open the download page?",
+                        $"{AppConstants.AppName} - Update Available",
+                        MessageBoxButtons.YesNo,
+                        MessageBoxIcon.Information);
+
+                    if (result == DialogResult.Yes)
+                        AppConstants.OpenUrl(update.Value.Url);
+                }
+                else
+                {
+                    LogManager.Instance.LogMessage("Application is up to date", LogLevel.Info);
+                }
+            }
+            catch (Exception ex)
+            {
+                LogManager.Instance.LogDebug($"MainForm.PerformUpdateCheckAsync: {ex.Message}");
+            }
+        }
+
         // Swaps the tray icon to reflect the current sync state
         private void UpdateTrayIcon(SyncState state)
         {
             _trayIcon.Icon = state switch
             {
-                SyncState.OK              => _iconOK      ?? _iconBase!,
+                SyncState.OK              => _iconOk      ?? _iconBase!,
                 SyncState.VpnDisconnected => _iconWarning ?? _iconBase!,
                 SyncState.Error           => _iconError   ?? _iconBase!,
                 _                         =>                 _iconBase!

@@ -16,8 +16,8 @@ namespace qbPortWeaver
         private const string JsonPropTagName = "tag_name";
         private const string JsonPropHtmlUrl = "html_url";
 
-        private static readonly string GitHubBaseApiUrl = $"https://api.github.com/repos/{AppConstants.GitHubRepoOwner}/{AppConstants.AppName}";
-        private static readonly string GitHubApiUrl     = GitHubBaseApiUrl + "/releases/latest";
+        private static readonly string _gitHubBaseApiUrl = $"https://api.github.com/repos/{AppConstants.GitHubRepoOwner}/{AppConstants.AppName}";
+        private static readonly string _gitHubApiUrl     = _gitHubBaseApiUrl + "/releases/latest";
 
         private static readonly HttpClient _httpClient = CreateHttpClient();
 
@@ -33,7 +33,7 @@ namespace qbPortWeaver
         {
             try
             {
-                using var response = await _httpClient.GetAsync(GitHubApiUrl).ConfigureAwait(false);
+                using var response = await _httpClient.GetAsync(_gitHubApiUrl).ConfigureAwait(false);
                 response.EnsureSuccessStatusCode();
 
                 using var stream = await response.Content.ReadAsStreamAsync().ConfigureAwait(false);
@@ -44,16 +44,15 @@ namespace qbPortWeaver
                     !root.TryGetProperty(JsonPropHtmlUrl, out var urlElement))
                     return null;
 
-                string tagName = tagElement.GetString() ?? "";
-                string htmlUrl = urlElement.GetString() ?? "";
+                string tagName    = tagElement.GetString() ?? "";
+                string releaseUrl = urlElement.GetString() ?? "";
 
-                // Strip leading 'v' or 'V' from the tag (e.g. "v2.1.0" → "2.1.0") before parsing
-                string versionString = tagName.TrimStart('v', 'V');
-                bool isNewer = Version.TryParse(versionString, out var latest) &&
+                var info = new LatestReleaseInfo(tagName, releaseUrl, false);
+                bool isNewer = Version.TryParse(info.VersionString, out var latest) &&
                                Version.TryParse(AppConstants.AppVersion, out var current) &&
                                latest > current;
 
-                return new LatestReleaseInfo(tagName, htmlUrl, isNewer);
+                return info with { IsNewer = isNewer };
             }
             catch (Exception ex)
             {
@@ -68,7 +67,7 @@ namespace qbPortWeaver
         {
             try
             {
-                using var response = await _httpClient.GetAsync(GitHubBaseApiUrl + "/contributors?per_page=100").ConfigureAwait(false);
+                using var response = await _httpClient.GetAsync(_gitHubBaseApiUrl + "/contributors?per_page=100").ConfigureAwait(false);
                 response.EnsureSuccessStatusCode();
 
                 using var stream = await response.Content.ReadAsStreamAsync().ConfigureAwait(false);

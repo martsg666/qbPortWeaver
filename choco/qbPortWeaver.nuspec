@@ -49,8 +49,8 @@ For setup instructions, configuration details, and recommended settings, see the
     <releaseNotes>https://github.com/martsg666/qbPortWeaver/releases/tag/vTEMPLATE_VERSION</releaseNotes>
     <copyright>© 2026 martsg666</copyright>
     <tags>qbittorrent vpn port-forwarding protonvpn pia private-internet-access nat-pmp system-tray torrent port-sync admin</tags>
-    <licenseUrl>https://github.com/martsg666/qbPortWeaver/blob/master/LICENSE</licenseUrl>
-    <iconUrl>https://cdn.jsdelivr.net/gh/martsg666/qbPortWeaver@master/qbPortWeaver.png</iconUrl>
+    <license type="file">tools\LICENSE.txt</license>
+    <iconUrl>https://cdn.jsdelivr.net/gh/martsg666/qbPortWeaver@vTEMPLATE_VERSION/qbPortWeaver.png</iconUrl>
   </metadata>
   <files>
     <file src="tools\**" target="tools" />

@@ -10,6 +10,8 @@ namespace qbPortWeaver
         private const int LogReadChunkSize = 4096;
 
         private readonly string _logFilePath;
+        // Log format: "Port pair X->Y" where X and Y are always identical (ProtonVPN does not
+        // differentiate external from internal port). Capture group 1 gives the forwarded port.
         private static readonly Regex PortRegex = new Regex(@"Port pair\s+(\d+)->(?:\d+)", RegexOptions.Compiled);
 
         public string ProviderName => RegistrySettingsManager.VpnProviderProtonVpn;

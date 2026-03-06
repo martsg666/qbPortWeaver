@@ -66,7 +66,7 @@ namespace qbPortWeaver
 
             try
             {
-                return await RunCoreAsync(status, cancellationToken);
+                return await RunCoreAsync(status, cancellationToken).ConfigureAwait(false);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
@@ -105,7 +105,7 @@ namespace qbPortWeaver
             status[StatusKeys.UpdateIntervalSeconds] = cfg.UpdateInterval;
 
             // Instantiate VPN manager based on configured provider
-            IVpnManager? vpnManager = await CreateVpnManager(cfg, status);
+            IVpnManager? vpnManager = await CreateVpnManager(cfg, status).ConfigureAwait(false);
             if (vpnManager is null)
                 return cfg.UpdateInterval;
 
@@ -158,7 +158,7 @@ namespace qbPortWeaver
                     WarnOnInterfaceMismatch: warnOnInterfaceMismatch,
                     RestartOnDisconnect:     cfg.RestartOnDisconnect),
                 status,
-                cancellationToken);
+                cancellationToken).ConfigureAwait(false);
 
             return cfg.UpdateInterval;
         }
@@ -227,12 +227,12 @@ namespace qbPortWeaver
         // Ensures qBittorrent is running, then updates its port if it differs from the target port
         private async Task EnsureRunningAndUpdatePortAsync(QBittorrentManager manager, int targetPort, SyncConfig config, Dictionary<string, object?> status, CancellationToken cancellationToken)
         {
-            if (!await EnsureQBittorrentRunningAsync(manager, config, status, cancellationToken))
+            if (!await EnsureQBittorrentRunningAsync(manager, config, status, cancellationToken).ConfigureAwait(false))
                 return;
             status[StatusKeys.QBittorrentRunning] = true;
 
             // Get current preferences (listening port and network interface) in a single request
-            var (currentPort, currentInterfaceName) = await manager.GetPreferencesAsync();
+            var (currentPort, currentInterfaceName) = await manager.GetPreferencesAsync().ConfigureAwait(false);
             if (!currentPort.HasValue)
             {
                 SetCompleted(status, false, "Failed to determine qBittorrent port");
@@ -252,7 +252,7 @@ namespace qbPortWeaver
             }
             else
             {
-                if (!await ApplyPortUpdateAsync(manager, targetPort, config, status, cancellationToken))
+                if (!await ApplyPortUpdateAsync(manager, targetPort, config, status, cancellationToken).ConfigureAwait(false))
                     return;
             }
 
@@ -260,7 +260,7 @@ namespace qbPortWeaver
             // by ApplyPortUpdateAsync (port changed + restart enabled) to avoid a redundant cycle.
             bool alreadyRestarted = config.Restart && status[StatusKeys.PortChanged] is true;
             if (config.RestartOnDisconnect && !alreadyRestarted)
-                await CheckAndRestartIfDisconnectedAsync(manager, cancellationToken);
+                await CheckAndRestartIfDisconnectedAsync(manager, cancellationToken).ConfigureAwait(false);
 
             SetCompleted(status, true, "Completed successfully");
         }
@@ -281,7 +281,7 @@ namespace qbPortWeaver
             }
 
             LogManager.Instance.LogMessage("qBittorrent is not running, attempting to force start", LogLevel.Info);
-            if (!await manager.ForceStartAsync(cancellationToken))
+            if (!await manager.ForceStartAsync(cancellationToken).ConfigureAwait(false))
             {
                 SetCompleted(status, false, "Failed to force start qBittorrent");
                 return false;
@@ -341,7 +341,7 @@ namespace qbPortWeaver
         private static async Task<bool> ApplyPortUpdateAsync(QBittorrentManager manager, int targetPort, SyncConfig config, Dictionary<string, object?> status, CancellationToken cancellationToken)
         {
             LogManager.Instance.LogMessage($"Ports do not match, updating qBittorrent port to {targetPort}", LogLevel.Info);
-            if (!await manager.SetListeningPortAsync(targetPort))
+            if (!await manager.SetListeningPortAsync(targetPort).ConfigureAwait(false))
             {
                 SetCompleted(status, false, $"Failed to set qBittorrent port to {targetPort}");
                 return false;
@@ -354,7 +354,7 @@ namespace qbPortWeaver
             if (config.Restart)
             {
                 LogManager.Instance.LogMessage("Attempting to restart qBittorrent", LogLevel.Info);
-                if (!await manager.RestartAsync(cancellationToken))
+                if (!await manager.RestartAsync(cancellationToken).ConfigureAwait(false))
                 {
                     SetCompleted(status, false, "Failed to restart qBittorrent");
                     return false;
@@ -382,7 +382,7 @@ namespace qbPortWeaver
                     CreateNoWindow  = true
                 };
                 Process.Start(startInfo)?.Dispose();
-                LogManager.Instance.LogMessage("Successfully launched post-update command", LogLevel.Info);
+                LogManager.Instance.LogMessage("Post-update command launched (fire-and-forget; result not tracked)", LogLevel.Info);
             }
             catch (Exception ex)
             {
@@ -393,7 +393,7 @@ namespace qbPortWeaver
         // Polls /api/v2/transfer/info and restarts qBittorrent if connection_status is "disconnected"
         private static async Task CheckAndRestartIfDisconnectedAsync(QBittorrentManager manager, CancellationToken cancellationToken)
         {
-            string? connectionStatus = await manager.GetConnectionStatusAsync();
+            string? connectionStatus = await manager.GetConnectionStatusAsync().ConfigureAwait(false);
             if (connectionStatus == null)
                 return;
 
@@ -403,7 +403,7 @@ namespace qbPortWeaver
                 return;
 
             LogManager.Instance.LogMessage("qBittorrent connection status is disconnected — restarting", LogLevel.Warn);
-            if (!await manager.RestartAsync(cancellationToken))
+            if (!await manager.RestartAsync(cancellationToken).ConfigureAwait(false))
                 LogManager.Instance.LogMessage("Failed to restart qBittorrent after connection disconnect", LogLevel.Error);
             else
                 LogManager.Instance.LogMessage("Successfully restarted qBittorrent after connection disconnect", LogLevel.Info);

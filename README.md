@@ -113,7 +113,7 @@ On first run, all settings are initialized with sensible defaults.
 5. If ports differ:
    - Updates qBittorrent's port.
    - Restarts qBittorrent if configured.
-   - Runs the optional post-update command if configured. ex: `powershell -File "C:\path\to\SampleSendMail.ps1"`
+   - Runs the optional post-update command if configured. e.g., `powershell -File "C:\path\to\SampleSendMail.ps1"`
 6. Waits for the configured interval before repeating.
 
 ### Tray Menu Options
@@ -179,6 +179,7 @@ NAT-PMP (RFC 6886) is a protocol for requesting port mappings directly from a ga
 ### 6. qBittorrent Configuration
 
 - **Disable UPnP/NAT-PMP** port mapping (Options > Connection) since the port is managed by your VPN provider.
+  > **Note:** qBittorrent's built-in NAT-PMP tries to open ports on your local router. qbPortWeaver's NAT-PMP mode is different — it queries your VPN gateway directly using the same protocol. Disabling qBittorrent's option does not affect qbPortWeaver.
 - Enable **Anonymous Mode** (Options > BitTorrent).
 - Enable **Web UI** (Options > Web UI) and configure a username and password matching your qbPortWeaver Settings.
 - Bind the **network interface** to your VPN adapter (Options > Advanced > Network Interface) to prevent traffic leaks outside the VPN.
@@ -219,39 +220,55 @@ NAT-PMP (RFC 6886) is a protocol for requesting port mappings directly from a ga
 | Hotfix | Corresponding release branch | `fix/<description>` |
 | Feature | Corresponding release branch | `feature/<description>` |
 
-#### Workflow
+#### Workflow diagram
 
-1. **Create a release branch** from the appropriate upstream:
+```
+master  ──────────────────────────────────────────────────────────────► (always latest release)
+           │                                                          ▲
+           │  git checkout -b 2.5.0 origin/2.4.0                    │ git merge --no-ff 2.5.0
+           ▼                                                          │
+2.5.0   ──┬───────────────────────────────────────── git tag v2.5.0 ─┘
+           │                                                  │
+           ├── fix/some-bug   → PR → merge into 2.5.0         └─► CI/CD pipeline triggers
+           └── feature/new-ui → PR → merge into 2.5.0               ├─ dotnet publish (self-contained win-x64)
+                                                                      ├─ WiX MSI build
+                                                                      ├─ GitHub Release created + MSI uploaded
+                                                                      └─ Chocolatey package pushed
+```
+
+#### Workflow steps
+
+1. **Create a release branch** from the previous release branch:
    ```
-   git checkout -b 1.2.3 origin/1.2.2
-   git push -u origin 1.2.3
+   git checkout -b 2.5.0 origin/2.4.0
+   git push -u origin 2.5.0
    ```
 
 2. **Create fix or feature branches** off the release branch and open a PR targeting it:
    ```
-   git checkout -b fix/my-fix origin/1.2.3
+   git checkout -b fix/my-fix origin/2.5.0
    # or
-   git checkout -b feature/my-feature origin/1.2.3
+   git checkout -b feature/my-feature origin/2.5.0
    ```
 
 3. **Tag the release branch** once all testing is complete — this triggers the pipeline:
    ```
-   git tag v1.2.3 origin/1.2.3
-   git push origin v1.2.3
+   git tag v2.5.0 origin/2.5.0
+   git push origin v2.5.0
    ```
    Pushing the tag automatically triggers the **Build, Release, and Publish** pipeline, which builds the app, compiles the MSI installer, creates the GitHub Release, and publishes to Chocolatey.
 
 4. **Merge the release branch into `master`** after the pipeline completes successfully:
    ```
    git checkout master
-   git merge --no-ff 1.2.3
+   git merge --no-ff 2.5.0
    git push origin master
    ```
 
 5. **Do not delete release branches.** They serve as the base for future hotfixes. If a branch is accidentally deleted it can be reconstructed from its tag:
    ```
-   git checkout -b 1.2.3 v1.2.3
-   git push origin 1.2.3
+   git checkout -b 2.5.0 v2.5.0
+   git push origin 2.5.0
    ```
 
 ---
@@ -270,49 +287,49 @@ The modular architecture makes it easy to:
 
 ### v2.2.0 and later — see [GitHub Releases](https://github.com/martsg666/qbPortWeaver/releases)
 
-### 2.0.0
+### v2.0.0
 - **Tray status indicator**: the tray icon now shows a colored dot (green / orange / red) reflecting the last sync result, and the tooltip shows the current port and status without opening the log file
 - Settings are now stored in the **Windows Registry** (`HKCU\Software\qbPortWeaver\Settings`). Existing settings are automatically migrated from the INI file on first run
 - The qBittorrent **password is now encrypted** in the registry using Windows DPAPI. Existing plaintext passwords (from INI migration or older installs) are transparently re-encrypted on first read
 - New **Settings** dialog (tray menu → Settings): all options are now editable in a dedicated form with inline descriptions and tooltips, replacing the previous Notepad shortcut
 - Tray balloon tip and log warning when qBittorrent's network interface doesn't match the configured VPN provider, or when bound to all interfaces (potential traffic leak). Configurable via **Warn on interface mismatch** in Settings
 
-### 1.7.0
+### v1.7.0
 - **Last-run status file** (`qbPortWeaver.status.json`) written after each sync cycle to `%LocalAppData%\qbPortWeaver\`. Useful for external scripts or monitoring — exposes VPN port, qBittorrent port, port change flag, timestamp, and status message
 - **Clear Logs** option in the tray menu
 - Improved error messages for qBittorrent Web API failures, including wrong credentials, unreachable Web UI, and HTTP errors
 - Fixed a PIA issue where `piactl.exe` could hang indefinitely if it failed to return a port
 
-### 1.6.1
+### v1.6.1
 - New **Default port** option: set a fallback listening port when the VPN is not connected (0 = disabled). Useful if you have a port forwarded on your router for direct connections
 - Fixed PIA VPN detection failing in certain installation configurations
 
-### 1.6.0
+### v1.6.0
 - Added **Private Internet Access (PIA)** VPN support via `piactl` CLI alongside ProtonVPN
 - New `vpnProvider` setting to switch between ProtonVPN and PIA. Changing the provider takes effect on the next sync cycle without restarting
 - New `debugMode` setting for verbose debug logging
 - **Breaking change:** settings `ForceStartqBittorrent` and `PostUpdateCmd` renamed to `forceStartqBittorrent` and `postUpdateCmd`
 
-### 1.5.0
+### v1.5.0
 - **Automatic update checker**: notifies on startup when a new release is available on GitHub
 
-### 1.4.0
+### v1.4.0
 - New **Force start** option: automatically launches qBittorrent if it is not running during a sync cycle
 
-### 1.3.0
+### v1.3.0
 - New **Post-update command** option: run a custom script or command after a successful port update (runs in the background, never blocks the sync loop)
 
-### 1.2.1
+### v1.2.1
 - Fixed a crash on Windows shutdown, restart, or logoff
 
-### 1.2.0
+### v1.2.0
 - Log rotation: keeps up to 3 log files (5 MB each) instead of overwriting
 - Various stability improvements
 
-### 1.1.0
+### v1.1.0
 - Added **Synchronize Port Now** tray menu option for on-demand port sync
 
-### 1.0.0
+### v1.0.0
 - Initial release
 
 ---

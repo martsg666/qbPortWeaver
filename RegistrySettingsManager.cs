@@ -12,8 +12,10 @@ namespace qbPortWeaver
         public const string SectionQBittorrent = "qBittorrent";
         public const string SectionExtra       = "extra";
 
-        public const string BoolTrue  = "True";
-        public const string BoolFalse = "False";
+        // Explicit string literals for boolean registry values.
+        // bool.ToString() is culture-dependent and must not be used for registry storage.
+        public const string ValueTrue  = "True";
+        public const string ValueFalse = "False";
 
         public const string VpnProviderProtonVpn = "ProtonVPN";
         public const string VpnProviderPia       = "PIA";
@@ -57,16 +59,16 @@ namespace qbPortWeaver
                     [KeyQBittorrentPassword]     = "",
                     [KeyQBittorrentExePath]      = @"C:\Program Files\qBittorrent\qbittorrent.exe",
                     [KeyQBittorrentProcessName]  = "qbittorrent",
-                    [KeyRestartQBittorrent]      = BoolTrue,
-                    [KeyForceStartQBittorrent]   = BoolFalse,
+                    [KeyRestartQBittorrent]      = ValueTrue,
+                    [KeyForceStartQBittorrent]   = ValueFalse,
                     [KeyDefaultPort]             = "0",
-                    [KeyWarnOnInterfaceMismatch] = BoolTrue,
-                    [KeyRestartOnDisconnect]     = BoolFalse
+                    [KeyWarnOnInterfaceMismatch] = ValueTrue,
+                    [KeyRestartOnDisconnect]     = ValueFalse
                 },
                 [SectionExtra] = new(StringComparer.OrdinalIgnoreCase)
                 {
                     [KeyPostUpdateCmd] = "",
-                    [KeyDebugMode]     = BoolFalse
+                    [KeyDebugMode]     = ValueFalse
                 }
             };
 
@@ -99,7 +101,8 @@ namespace qbPortWeaver
                 using var regKey = Registry.CurrentUser.OpenSubKey($@"{BaseKeyPath}\{section}");
                 if (regKey?.GetValue(key) is string value)
                 {
-                    LogManager.Instance.LogDebug($"RegistrySettingsManager.GetValue: [{section}] {key} = {value}");
+                    string display = key.Equals(KeyQBittorrentPassword, StringComparison.OrdinalIgnoreCase) ? "***" : value;
+                    LogManager.Instance.LogDebug($"RegistrySettingsManager.GetValue: [{section}] {key} = {display}");
                     return value;
                 }
             }
@@ -157,13 +160,18 @@ namespace qbPortWeaver
             {
                 using var regKey = Registry.CurrentUser.CreateSubKey($@"{BaseKeyPath}\{section}");
                 regKey.SetValue(key, value, RegistryValueKind.String);
-                LogManager.Instance.LogDebug($"RegistrySettingsManager.SetValue: [{section}] {key} = {value}");
+                string display = key.Equals(KeyQBittorrentPassword, StringComparison.OrdinalIgnoreCase) ? "***" : value;
+                LogManager.Instance.LogDebug($"RegistrySettingsManager.SetValue: [{section}] {key} = {display}");
             }
             catch (Exception ex)
             {
                 LogManager.Instance.LogDebug($"RegistrySettingsManager.SetValue [{section}\\{key}]: {ex.Message}");
             }
         }
+
+        // Writes a bool value to the registry as "True" or "False"
+        public static void SetBool(string section, string key, bool value) =>
+            SetValue(section, key, value ? ValueTrue : ValueFalse);
 
         // Encrypts the password with DPAPI (CurrentUser scope) and writes it to the registry
         public static void SetPassword(string plaintext)

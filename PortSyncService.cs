@@ -103,8 +103,7 @@ namespace qbPortWeaver
             LogManager.Instance.LogMessage("Sync cycle started", LogLevel.Info);
 
             // Set debug mode as early as possible (reads fresh from registry each loop)
-            bool.TryParse(RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionExtra, RegistrySettingsManager.KeyDebugMode), out bool debugMode);
-            LogManager.Instance.DebugMode = debugMode;
+            LogManager.Instance.DebugMode = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionExtra, RegistrySettingsManager.KeyDebugMode);
 
             var cfg = ReadConfig();
             status[StatusKeys.VpnProvider]           = cfg.VpnProvider;
@@ -443,6 +442,8 @@ namespace qbPortWeaver
         // Compile-time–safe keys for the status dictionary written to the JSON status file
         private static class StatusKeys
         {
+            // Possible values for Status: "success", "error", "skipped"
+            // "skipped" means the VPN was disconnected and no default port is configured — cycle is a no-op.
             public const string AppVersion              = "appVersion";
             public const string Timestamp               = "timestamp";
             public const string VpnProvider             = "vpnProvider";

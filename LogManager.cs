@@ -130,9 +130,10 @@ namespace qbPortWeaver
                     if (File.Exists(oldestBackup))
                         File.Delete(oldestBackup);
 
-                    // Rotate existing backup files (.1 -> .2, current -> .1)
+                    // Shift existing backups up: .1 → .2
                     RotateBackupFiles();
 
+                    // Move current log to .1
                     string backupPath = $"{_logFilePath}.1";
                     File.Move(_logFilePath, backupPath, overwrite: true);
                 }

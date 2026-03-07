@@ -4,7 +4,8 @@ using System.Net.Sockets;
 
 namespace qbPortWeaver
 {
-    // Generic NAT-PMP VPN manager. Instantiate with an adapter returned by DiscoverAdapters().
+    // NAT-PMP VPN manager. Instances are created by DiscoverAdapters() and cached by PortSyncService
+    // across sync cycles to preserve port renewal state (_lastExternalPort, _lastEpochSsoe).
     public sealed class NatPmpManager : IVpnManager
     {
         private const int  NatPmpPort             = 5351;
@@ -16,12 +17,21 @@ namespace qbPortWeaver
         private readonly IPAddress        _gateway;
         private readonly uint             _mappingLifetime;
 
+        // Cached state for port renewal (persists across sync cycles via PortSyncService._lastKnownNatPmpManager)
+        private ushort _lastExternalPort; // 0 = no prior mapping; sent as suggested port on renewal
+        private uint   _lastEpochSsoe;    // seconds-since-start-of-epoch from the last successful response
+
         public string ProviderName => _adapter.Description;
 
         // Returns all network adapters whose gateway actively responds to NAT-PMP,
         // including TUN/VPN adapters where the gateway is inferred from the unicast address.
         // All candidates are probed in parallel; only those with a responding gateway are returned.
-        // Logs discovered adapters at DEBUG level — discovery runs every cycle so INFO would be noisy.
+        // Logs probe results (success and failure) at DEBUG level — discovery runs every cycle so INFO would be noisy.
+        //
+        // Called every sync cycle. Cost is bounded: each probe uses maxAttempts=1 (no retry backoff),
+        // so the worst-case added latency is InitialTimeoutMs (1500ms) for any non-responding adapter.
+        // All adapters are probed in parallel via Task.WhenAll, so cost does not multiply with adapter count.
+        //
         // mappingLifetime: requested port mapping duration in seconds (gateway may grant less).
         public static async Task<IReadOnlyList<NatPmpManager>> DiscoverAdapters(uint mappingLifetime = DefaultMappingLifetime)
         {
@@ -49,6 +59,8 @@ namespace qbPortWeaver
                 IPAddress? externalIp = await RequestExternalAddressAsync(c.Gateway).ConfigureAwait(false);
                 if (externalIp is not null)
                     LogManager.Instance.LogDebug($"NatPmpManager.DiscoverAdapters: '{c.Nic.Description}' via gateway {c.Gateway} (external IP: {externalIp})");
+                else
+                    LogManager.Instance.LogDebug($"NatPmpManager.DiscoverAdapters: '{c.Nic.Description}' via gateway {c.Gateway} — NAT-PMP probe failed");
                 return (c.Nic, c.Gateway, Supported: externalIp is not null);
             })).ConfigureAwait(false);
 
@@ -58,8 +70,6 @@ namespace qbPortWeaver
                 .ToList();
         }
 
-        // mappingLifetime: requested port mapping duration in seconds (gateway may grant less).
-        // Valid range: 1 – uint.MaxValue (~136 years). Use 0 to delete an existing mapping.
         private NatPmpManager(NetworkInterface adapter, IPAddress gateway, uint mappingLifetime)
         {
             _adapter         = adapter;
@@ -95,11 +105,17 @@ namespace qbPortWeaver
         // Sends a NAT-PMP UDP port mapping request and returns the assigned external port.
         // Logs at INFO/WARN level (not DEBUG) — lease time and failure details are not surfaced
         // elsewhere in the sync cycle.
+        // On renewal, suggests the previously assigned port (RFC 6886 §3.3) so the gateway keeps
+        // the same mapping across cycles, avoiding unnecessary qBittorrent restarts.
         public int? GetVpnPort()
         {
             try
             {
-                var result = RequestPortMappingAsync(_gateway, _mappingLifetime).GetAwaiter().GetResult();
+                // On renewal, suggest the previously assigned port so the gateway keeps the same mapping.
+                // On first call _lastExternalPort is 0, which tells the gateway to assign any available port.
+                ushort suggested = _lastExternalPort;
+
+                var result = RequestPortMappingAsync(_gateway, _mappingLifetime, suggested).GetAwaiter().GetResult();
 
                 if (!result.Success)
                 {
@@ -107,7 +123,32 @@ namespace qbPortWeaver
                     return null;
                 }
 
-                LogManager.Instance.LogMessage($"NAT-PMP lease granted: port {result.ExternalPort}, lifetime {result.LifetimeGranted}s", LogLevel.Info);
+                // Detect NAT-PMP daemon restart: SSOE dropping means all prior mappings are gone.
+                // The response is still valid (a fresh mapping was assigned) — log and reset cached state.
+                if (_lastEpochSsoe > 0 && result.Ssoe < _lastEpochSsoe)
+                    LogManager.Instance.LogMessage(
+                        $"NAT-PMP epoch reset on '{_adapter.Description}' (was {_lastEpochSsoe}s, now {result.Ssoe}s) — prior mapping lost, fresh port assigned",
+                        LogLevel.Info);
+
+                string epochDelta = _lastEpochSsoe == 0                ? "" :
+                                    result.Ssoe   >= _lastEpochSsoe    ? $" (+{result.Ssoe - _lastEpochSsoe}s)" : "";
+                LogManager.Instance.LogDebug($"NatPmpManager.GetVpnPort: SSOE {result.Ssoe}s{epochDelta}");
+
+                _lastEpochSsoe    = result.Ssoe;
+                _lastExternalPort = result.ExternalPort;
+
+                if (suggested != 0 && result.ExternalPort == suggested)
+                    LogManager.Instance.LogMessage($"NAT-PMP lease renewed: port {result.ExternalPort}, lifetime {result.LifetimeGranted}s", LogLevel.Info);
+                else if (suggested != 0)
+                    LogManager.Instance.LogMessage($"NAT-PMP lease granted new port {result.ExternalPort} (suggested {suggested} unavailable), lifetime {result.LifetimeGranted}s", LogLevel.Info);
+                else
+                    LogManager.Instance.LogMessage($"NAT-PMP lease granted: port {result.ExternalPort}, lifetime {result.LifetimeGranted}s", LogLevel.Info);
+
+                int syncInterval = RegistrySettingsManager.GetInt(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyUpdateIntervalSeconds);
+                if (syncInterval > result.LifetimeGranted)
+                    LogManager.Instance.LogMessage(
+                        $"NAT-PMP sync interval ({syncInterval}s) exceeds lease lifetime ({result.LifetimeGranted}s) — port mapping will expire before the next renewal cycle",
+                        LogLevel.Warn);
 
                 return result.ExternalPort;
             }
@@ -159,42 +200,6 @@ namespace qbPortWeaver
             return null;
         }
 
-        // Sends a NAT-PMP UDP port mapping request (RFC 6886 opcode 1)
-        private static async Task<(bool Success, ushort ExternalPort, uint LifetimeGranted, string? Error)>
-            RequestPortMappingAsync(IPAddress gateway, uint lifetime)
-        {
-            // [0] version=0  [1] opcode=1 (UDP)  [2-3] reserved
-            // [4-5] internal port=0  [6-7] external port=0  [8-11] lifetime
-            byte[] request = new byte[12];
-            request[0]  = 0x00;
-            request[1]  = 0x01;
-            request[8]  = (byte)(lifetime >> 24);
-            request[9]  = (byte)(lifetime >> 16);
-            request[10] = (byte)(lifetime >> 8);
-            request[11] = (byte)(lifetime & 0xFF);
-
-            byte[]? data = await SendReceiveAsync(gateway, request).ConfigureAwait(false);
-            if (data is null)
-                return (false, 0, 0, "No response from gateway (timeout)");
-
-            // [0] version=0  [1] opcode=0x81  [2-3] result  [4-7] epoch
-            // [8-9] internal port  [10-11] external port  [12-15] lifetime
-            if (data.Length < 16 || data[0] != 0x00 || data[1] != 0x81)
-                return (false, 0, 0, "Unexpected response format");
-
-            ushort resultCode    = (ushort)((data[2]  << 8)  | data[3]);
-            if (resultCode != 0)
-                return (false, 0, 0, $"NAT-PMP result code {resultCode}");
-
-            ushort externalPort  = (ushort)((data[10] << 8)  | data[11]);
-            uint   lifetimeGiven = (uint)  ((data[12] << 24) | (data[13] << 16) | (data[14] << 8) | data[15]);
-
-            if (externalPort == 0)
-                return (false, 0, 0, "Gateway returned external port 0");
-
-            return (true, externalPort, lifetimeGiven, null);
-        }
-
         // Sends a NAT-PMP external address request (RFC 6886 opcode 0) and returns the public IP.
         // Single attempt only — discovery is best-effort; a missed adapter can be found via Refresh.
         private static async Task<IPAddress?> RequestExternalAddressAsync(IPAddress gateway)
@@ -217,6 +222,47 @@ namespace qbPortWeaver
                 return null;
 
             return new IPAddress(new byte[] { data[8], data[9], data[10], data[11] });
+        }
+
+        // Sends a NAT-PMP UDP port mapping request (RFC 6886 opcode 1).
+        // suggestedExternalPort: 0 = let the gateway assign any port (initial request);
+        //   non-zero = request renewal of a previously assigned port (gateway honors if still available).
+        private static async Task<(bool Success, ushort ExternalPort, uint LifetimeGranted, uint Ssoe, string? Error)>
+            RequestPortMappingAsync(IPAddress gateway, uint lifetime, ushort suggestedExternalPort = 0)
+        {
+            // [0] version=0  [1] opcode=1 (UDP)  [2-3] reserved
+            // [4-5] internal port=0  [6-7] suggested external port  [8-11] lifetime
+            byte[] request = new byte[12];
+            request[0]  = 0x00;
+            request[1]  = 0x01;
+            request[6]  = (byte)(suggestedExternalPort >> 8);
+            request[7]  = (byte)(suggestedExternalPort & 0xFF);
+            request[8]  = (byte)(lifetime >> 24);
+            request[9]  = (byte)(lifetime >> 16);
+            request[10] = (byte)(lifetime >> 8);
+            request[11] = (byte)(lifetime & 0xFF);
+
+            byte[]? data = await SendReceiveAsync(gateway, request).ConfigureAwait(false);
+            if (data is null)
+                return (false, 0, 0, 0, "No response from gateway");
+
+            // [0] version=0  [1] opcode=0x81  [2-3] result  [4-7] SSOE
+            // [8-9] internal port  [10-11] external port  [12-15] lifetime
+            if (data.Length < 16 || data[0] != 0x00 || data[1] != 0x81)
+                return (false, 0, 0, 0, "Unexpected response format");
+
+            ushort resultCode    = (ushort)((data[2]  << 8)  | data[3]);
+            if (resultCode != 0)
+                return (false, 0, 0, 0, $"NAT-PMP result code {resultCode}");
+
+            uint   ssoe          = (uint)  ((data[4]  << 24) | (data[5]  << 16) | (data[6]  << 8) | data[7]);
+            ushort externalPort  = (ushort)((data[10] << 8)  | data[11]);
+            uint   lifetimeGiven = (uint)  ((data[12] << 24) | (data[13] << 16) | (data[14] << 8) | data[15]);
+
+            if (externalPort == 0)
+                return (false, 0, 0, ssoe, "Gateway returned external port 0");
+
+            return (true, externalPort, lifetimeGiven, ssoe, null);
         }
 
         // Sends a UDP datagram to the gateway and waits for a response.
@@ -249,6 +295,11 @@ namespace qbPortWeaver
                     if (attempt < maxAttempts - 1)
                         LogManager.Instance.LogDebug($"NatPmpManager.SendReceiveAsync: No response after {timeoutMs}ms, retrying (attempt {attempt + 2}/{maxAttempts})");
                     timeoutMs *= 2;
+                }
+                catch (SocketException ex)
+                {
+                    LogManager.Instance.LogDebug($"NatPmpManager.SendReceiveAsync: gateway {gateway} rejected NAT-PMP probe ({ex.SocketErrorCode}) — NAT-PMP may not be enabled on this gateway");
+                    return null;
                 }
                 catch (Exception ex)
                 {

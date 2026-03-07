@@ -2,7 +2,7 @@
 
 ## Overview
 
-**qbPortWeaver** is a Windows application designed to synchronize the listening port of **qBittorrent** with the port assigned by your VPN provider (**ProtonVPN**, **Private Internet Access**, or any **NAT-PMP capable VPN adapter or router**).
+**qbPortWeaver** is a Windows application designed to synchronize the listening port of **qBittorrent** with the port assigned by your VPN provider (**ProtonVPN**, **Private Internet Access**, or any **NAT-PMP capable VPN gateway or router**).
 This ensures your torrent client always uses the VPN-provided port, improving privacy and connectivity.
 
 The application runs in the system tray, manages configuration and logging, and automatically updates qBittorrent's port when changes are detected.
@@ -29,7 +29,7 @@ The application runs in the system tray, manages configuration and logging, and 
   Detects the current VPN port and updates qBittorrent's listening port automatically.
 
 - **Multi-VPN Support**
-  Supports **ProtonVPN** (via log file parsing or NAT-PMP), **Private Internet Access** (via `piactl` CLI), and any **NAT-PMP capable VPN adapter or router** (via RFC 6886 UDP port mapping). Configurable through the Settings dialog.
+  Supports **ProtonVPN** (via log file parsing or NAT-PMP), **Private Internet Access** (via `piactl` CLI), and any **NAT-PMP capable VPN gateway or router** (via RFC 6886 UDP port mapping). Configurable through the Settings dialog.
 
 - **Settings Dialog**
   All configuration options are editable through a dedicated Settings form (tray menu → Settings), with inline descriptions and tooltips for each option.
@@ -168,10 +168,12 @@ On first run, all settings are initialized with sensible defaults.
 NAT-PMP (RFC 6886) is a protocol for requesting port mappings directly from a gateway. qbPortWeaver supports it in two scenarios:
 
 **With ProtonVPN (alternative to log file parsing):**
-- ProtonVPN supports NAT-PMP natively. You can use this instead of the default log file approach.
-- Enable **Port Forwarding** in ProtonVPN and connect to a P2P server.
+- ProtonVPN supports NAT-PMP natively on P2P servers. You can use this instead of the default log file approach.
+- Enable **Port Forwarding** in ProtonVPN and connect to a P2P server — this enables NAT-PMP on the VPN gateway, which qbPortWeaver queries directly.
 - Set `VPN Provider` to `NAT-PMP` in qbPortWeaver Settings.
 - Select the **ProtonVPN virtual adapter** in the NAT-PMP Adapter dropdown.
+
+> **Note:** With ProtonVPN, qbPortWeaver and the built-in port forwarding client both query the same gateway and receive the same external port — they share the same mapping rather than competing. qbPortWeaver uses that port to configure qBittorrent.
 
 **With any other NAT-PMP capable VPN client or router:**
 - The VPN gateway or router must support NAT-PMP (RFC 6886) with port forwarding enabled.
@@ -183,7 +185,7 @@ NAT-PMP (RFC 6886) is a protocol for requesting port mappings directly from a ga
 
 ### 6. qBittorrent Configuration
 
-- **Disable UPnP/NAT-PMP** port mapping (Options > Connection) since the port is managed by your VPN provider.
+- **Disable UPnP/NAT-PMP** port mapping (Options > Connection) since the port is managed externally.
   > **Note:** qBittorrent's built-in NAT-PMP tries to open ports on your local router. qbPortWeaver's NAT-PMP mode is different — it queries your VPN gateway directly using the same protocol. Disabling qBittorrent's option does not affect qbPortWeaver.
 - Enable **Anonymous Mode** (Options > BitTorrent).
 - Enable **Web UI** (Options > Web UI) and configure a username and password matching your qbPortWeaver Settings.

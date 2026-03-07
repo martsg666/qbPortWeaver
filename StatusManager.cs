@@ -10,7 +10,7 @@ namespace qbPortWeaver
         };
 
         // Write status dictionary to JSON file (atomic write via temp file)
-        public static void Write(Dictionary<string, object?> status)
+        public static void Write(IReadOnlyDictionary<string, object?> status)
         {
             string filePath = AppConstants.GetStatusFilePath();
             string tempPath = filePath + ".tmp";

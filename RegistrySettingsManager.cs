@@ -12,8 +12,7 @@ namespace qbPortWeaver
         public const string SectionQBittorrent = "qBittorrent";
         public const string SectionExtra       = "extra";
 
-        // Explicit string literals for boolean registry values.
-        // bool.ToString() is culture-dependent and must not be used for registry storage.
+        // Explicit string literals guarantee stable boolean registry serialization independent of framework internals.
         public const string ValueTrue  = "True";
         public const string ValueFalse = "False";
 
@@ -101,8 +100,7 @@ namespace qbPortWeaver
                 using var regKey = Registry.CurrentUser.OpenSubKey($@"{BaseKeyPath}\{section}");
                 if (regKey?.GetValue(key) is string value)
                 {
-                    string display = key.Equals(KeyQBittorrentPassword, StringComparison.OrdinalIgnoreCase) ? "***" : value;
-                    LogManager.Instance.LogDebug($"RegistrySettingsManager.GetValue: [{section}] {key} = {display}");
+                    LogManager.Instance.LogDebug($"RegistrySettingsManager.GetValue: [{section}] {key} = {MaskSensitiveValue(key, value)}");
                     return value;
                 }
             }
@@ -160,8 +158,7 @@ namespace qbPortWeaver
             {
                 using var regKey = Registry.CurrentUser.CreateSubKey($@"{BaseKeyPath}\{section}");
                 regKey.SetValue(key, value, RegistryValueKind.String);
-                string display = key.Equals(KeyQBittorrentPassword, StringComparison.OrdinalIgnoreCase) ? "***" : value;
-                LogManager.Instance.LogDebug($"RegistrySettingsManager.SetValue: [{section}] {key} = {display}");
+                LogManager.Instance.LogDebug($"RegistrySettingsManager.SetValue: [{section}] {key} = {MaskSensitiveValue(key, value)}");
             }
             catch (Exception ex)
             {
@@ -222,6 +219,10 @@ namespace qbPortWeaver
             byte[] encrypted = ProtectedData.Protect(data, null, DataProtectionScope.CurrentUser);
             return Convert.ToBase64String(encrypted);
         }
+
+        // Returns "***" for the password key to avoid writing plaintext credentials to the log
+        private static string MaskSensitiveValue(string key, string value) =>
+            key.Equals(KeyQBittorrentPassword, StringComparison.OrdinalIgnoreCase) ? "***" : value;
 
         // Returns the hardcoded default for a setting; returns empty string if the section or key is not found
         private static string GetDefault(string section, string key)

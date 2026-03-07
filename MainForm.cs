@@ -95,40 +95,6 @@ namespace qbPortWeaver
             base.OnFormClosing(e);
         }
 
-        // Triggers an immediate sync cycle by interrupting the current wait interval
-        private void SynchronizePortNow_Click(object? sender, EventArgs e)
-        {
-            _manualSyncTriggered = true;
-            LogManager.Instance.LogMessage("Manual sync requested", LogLevel.Info);
-
-            // Interrupt the wait inside the main loop immediately
-            try { _delayCts.Cancel(); }
-            catch (ObjectDisposedException)
-            {
-                // Expected: if the delay completed naturally, the token is already disposed before Cancel() is called.
-            }
-        }
-
-        private void Exit_Click(object? sender, EventArgs e)
-        {
-            this.Close();
-        }
-
-        // Called by PortSyncService when a sync cycle completes
-        private void OnSyncCompleted(TrayStatus status)
-        {
-            _lastSyncStatus = status;
-            if (!_shutdownCts.IsCancellationRequested)
-                InvokeOnUiThread(() => { UpdateTrayIcon(status.State); UpdateTrayTooltip(); });
-        }
-
-        // Called by PortSyncService when qBittorrent's network interface doesn't match the configured VPN provider
-        private void OnInterfaceMismatchDetected(string message)
-        {
-            if (_shutdownCts.IsCancellationRequested) return;
-            InvokeOnUiThread(() => _trayIcon.ShowBalloonTip(AppConstants.BalloonTipDurationMs, AppConstants.AppName, message, ToolTipIcon.Warning));
-        }
-
         // Pre-generates the three status icon variants (colored dot in the bottom-right corner)
         private void InitializeStatusIcons()
         {
@@ -206,6 +172,40 @@ namespace qbPortWeaver
                 Visible = true,
                 ContextMenuStrip = _trayMenu
             };
+        }
+
+        // Triggers an immediate sync cycle by interrupting the current wait interval
+        private void SynchronizePortNow_Click(object? sender, EventArgs e)
+        {
+            _manualSyncTriggered = true;
+            LogManager.Instance.LogMessage("Manual sync requested", LogLevel.Info);
+
+            // Interrupt the wait inside the main loop immediately
+            try { _delayCts.Cancel(); }
+            catch (ObjectDisposedException)
+            {
+                // Expected: if the delay completed naturally, the token is already disposed before Cancel() is called.
+            }
+        }
+
+        private void Exit_Click(object? sender, EventArgs e)
+        {
+            this.Close();
+        }
+
+        // Called by PortSyncService when a sync cycle completes
+        private void OnSyncCompleted(TrayStatus status)
+        {
+            _lastSyncStatus = status;
+            if (!_shutdownCts.IsCancellationRequested)
+                InvokeOnUiThread(() => { UpdateTrayIcon(status.State); UpdateTrayTooltip(); });
+        }
+
+        // Called by PortSyncService when qBittorrent's network interface doesn't match the configured VPN provider
+        private void OnInterfaceMismatchDetected(string message)
+        {
+            if (_shutdownCts.IsCancellationRequested) return;
+            InvokeOnUiThread(() => _trayIcon.ShowBalloonTip(AppConstants.BalloonTipDurationMs, AppConstants.AppName, message, ToolTipIcon.Warning));
         }
 
         // Runs the port-sync loop until shutdown is requested

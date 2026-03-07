@@ -64,8 +64,7 @@ namespace qbPortWeaver
             bool isNatPmp = cboVpnProvider.SelectedItem?.ToString() == RegistrySettingsManager.VpnProviderNatPmp;
             bool discoveryPending = cboNatPmpAdapter.Items.Count == 1 &&
                                     cboNatPmpAdapter.Items[0]?.ToString() == DiscoveringAdaptersPlaceholder;
-            cboNatPmpAdapter.Enabled   = isNatPmp && !discoveryPending;
-            btnRefreshAdapters.Enabled = isNatPmp && !discoveryPending;
+            SetAdapterControlsEnabled(isNatPmp && !discoveryPending);
         }
 
         private void btnRefreshAdapters_Click(object? sender, EventArgs e)
@@ -178,6 +177,12 @@ namespace qbPortWeaver
             RegistrySettingsManager.SetBool (RegistrySettingsManager.SectionExtra, RegistrySettingsManager.KeyDebugMode,     chkDebugMode.Checked);
         }
 
+        private void SetAdapterControlsEnabled(bool enabled)
+        {
+            cboNatPmpAdapter.Enabled   = enabled;
+            btnRefreshAdapters.Enabled = enabled;
+        }
+
         private async Task PopulateNatPmpAdaptersAsync(string savedAdapter)
         {
             try
@@ -198,8 +203,7 @@ namespace qbPortWeaver
                         cboNatPmpAdapter.SelectedIndex = 0;
                 }
                 bool isNatPmp = cboVpnProvider.SelectedItem?.ToString() == RegistrySettingsManager.VpnProviderNatPmp;
-                cboNatPmpAdapter.Enabled   = isNatPmp;
-                btnRefreshAdapters.Enabled = isNatPmp;
+                SetAdapterControlsEnabled(isNatPmp);
             }
             catch (Exception ex)
             {

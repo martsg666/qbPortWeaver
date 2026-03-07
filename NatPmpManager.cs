@@ -4,8 +4,9 @@ using System.Net.Sockets;
 
 namespace qbPortWeaver
 {
-    // NAT-PMP VPN manager. Instances are created by DiscoverAdapters() and cached by PortSyncService
-    // across sync cycles to preserve port renewal state (_lastExternalPort, _lastEpochSsoe).
+    // NAT-PMP VPN manager. Instances are created by DiscoverAdapters() each cycle; PortSyncService
+    // transfers renewal state (_lastExternalPort, _lastEpochSsoe) from the previous instance via
+    // CopyRenewalStateFrom() so that port renewal works correctly across cycles.
     public sealed class NatPmpManager : IVpnManager
     {
         private const int  NatPmpPort             = 5351;
@@ -22,6 +23,14 @@ namespace qbPortWeaver
         private uint   _lastEpochSsoe;    // seconds-since-start-of-epoch from the last successful response
 
         public string ProviderName => _adapter.Description;
+
+        // Transfers renewal state from a previous instance for the same adapter so that port renewal
+        // works correctly even when DiscoverAdapters() returns a fresh NatPmpManager instance each cycle.
+        internal void CopyRenewalStateFrom(NatPmpManager other)
+        {
+            _lastExternalPort = other._lastExternalPort;
+            _lastEpochSsoe    = other._lastEpochSsoe;
+        }
 
         // Returns all network adapters whose gateway actively responds to NAT-PMP,
         // including TUN/VPN adapters where the gateway is inferred from the unicast address.

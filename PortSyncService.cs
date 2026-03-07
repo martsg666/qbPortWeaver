@@ -223,6 +223,10 @@ namespace qbPortWeaver
 
                 if (selected is not null)
                 {
+                    // Transfer renewal state from the previous instance so port renewal works correctly
+                    // even though DiscoverAdapters() returns a fresh NatPmpManager instance each cycle.
+                    if (_lastKnownNatPmpManager is not null)
+                        selected.CopyRenewalStateFrom(_lastKnownNatPmpManager);
                     _lastKnownNatPmpManager = selected;
                     return selected;
                 }

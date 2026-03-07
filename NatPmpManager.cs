@@ -130,8 +130,8 @@ namespace qbPortWeaver
                         $"NAT-PMP epoch reset on '{_adapter.Description}' (was {_lastEpochSsoe}s, now {result.Ssoe}s) — prior mapping lost, fresh port assigned",
                         LogLevel.Info);
 
-                string epochDelta = _lastEpochSsoe == 0                ? "" :
-                                    result.Ssoe   >= _lastEpochSsoe    ? $" (+{result.Ssoe - _lastEpochSsoe}s)" : "";
+                string epochDelta = (_lastEpochSsoe > 0 && result.Ssoe >= _lastEpochSsoe)
+                    ? $" (+{result.Ssoe - _lastEpochSsoe}s)" : "";
                 LogManager.Instance.LogDebug($"NatPmpManager.GetVpnPort: SSOE {result.Ssoe}s{epochDelta}");
 
                 _lastEpochSsoe    = result.Ssoe;
@@ -225,8 +225,7 @@ namespace qbPortWeaver
         }
 
         // Sends a NAT-PMP UDP port mapping request (RFC 6886 opcode 1).
-        // suggestedExternalPort: 0 = let the gateway assign any port (initial request);
-        //   non-zero = request renewal of a previously assigned port (gateway honors if still available).
+        // Pass suggestedExternalPort=0 for an initial request; pass the previously assigned port to request renewal.
         private static async Task<(bool Success, ushort ExternalPort, uint LifetimeGranted, uint Ssoe, string? Error)>
             RequestPortMappingAsync(IPAddress gateway, uint lifetime, ushort suggestedExternalPort = 0)
         {

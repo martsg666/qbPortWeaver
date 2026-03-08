@@ -19,7 +19,7 @@ namespace qbPortWeaver
         private readonly uint             _mappingLifetime;
 
         // Cached state for port renewal (persists across sync cycles via PortSyncService._lastKnownNatPmpManager)
-        private ushort _lastExternalPort; // 0 = no prior mapping; sent as suggested port on renewal
+        private ushort _lastExternalPort; // zero until first mapping; suggested to gateway on renewal
         private uint   _lastSsoe; // seconds-since-epoch from the last successful response
 
         private NatPmpManager(NetworkInterface adapter, IPAddress gateway, uint mappingLifetime)
@@ -74,7 +74,7 @@ namespace qbPortWeaver
         {
             try
             {
-                // _lastExternalPort is 0 on first call (gateway assigns any available port);
+                // _lastExternalPort is 0 on first call (gateway assigns any available port)
                 // on renewal it holds the last assigned port so the gateway can keep the same mapping.
                 ushort suggested = _lastExternalPort;
 
@@ -126,7 +126,7 @@ namespace qbPortWeaver
 
         // Returns all network adapters whose gateway actively responds to NAT-PMP,
         // including TUN/VPN adapters where the gateway is inferred from the unicast address.
-        // All candidates are probed in parallel (maxAttempts=1 each); only those with a responding
+        // All candidates are probed in parallel with a single attempt each, only those with a responding
         // gateway are returned. Used by SettingsForm to populate the adapter list.
         // mappingLifetime: requested port mapping duration in seconds (gateway may grant less).
         public static async Task<IReadOnlyList<NatPmpManager>> DiscoverAdapters(uint mappingLifetime = DefaultMappingLifetime)
@@ -244,7 +244,7 @@ namespace qbPortWeaver
         }
 
         // Sends a NAT-PMP external address request (RFC 6886 opcode 0) and returns the public IP.
-        // maxAttempts=1 for discovery (best-effort, all adapters probed in parallel);
+        // maxAttempts=1 for discovery (best-effort, all adapters probed in parallel)
         // MaxAttempts for targeted probes where retrying a single adapter is worthwhile.
         private static async Task<IPAddress?> RequestExternalAddressAsync(IPAddress gateway, int maxAttempts = 1)
         {
@@ -267,7 +267,7 @@ namespace qbPortWeaver
         }
 
         // Sends a NAT-PMP UDP port mapping request (RFC 6886 opcode 1).
-        // suggestedExternalPort=0 for an initial request; pass the previously assigned port to request renewal.
+        // Pass zero as suggestedExternalPort for an initial request, or the previously assigned port to request renewal.
         // Internal port is set to 0 — clients that do not bind a specific port let the gateway infer it.
         private static async Task<(bool Success, ushort ExternalPort, uint LifetimeGranted, uint Ssoe, string? Error)>
             RequestPortMappingAsync(IPAddress gateway, uint lifetime, ushort suggestedExternalPort = 0)

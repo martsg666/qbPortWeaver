@@ -403,13 +403,15 @@ namespace qbPortWeaver
                 action();
         }
 
-        // Opens the log viewer window; brings it to front if already open
+        // Opens the log viewer window; restores and activates it if already open
         private void ShowLogViewer()
         {
             if (_logViewerForm is { IsDisposed: false })
             {
+                if (_logViewerForm.WindowState == FormWindowState.Minimized)
+                    _logViewerForm.WindowState = FormWindowState.Normal;
                 _logViewerForm.BringToFront();
-                _logViewerForm.Focus();
+                _logViewerForm.Activate();
                 return;
             }
 

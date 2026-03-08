@@ -48,22 +48,22 @@ namespace qbPortWeaver
                 string? output = RunPiactl("get portforward");
                 if (output == null)
                 {
-                    LogManager.Instance.LogDebug("PiaVpnManager.GetVpnPort: piactl returned no output");
+                    LogManager.Instance.LogDebug("PiaVpnManager.GetVpnPortCore: piactl returned no output");
                     return null;
                 }
 
                 if (int.TryParse(output, out int port) && port > 0)
                 {
-                    LogManager.Instance.LogDebug($"PiaVpnManager.GetVpnPort: Found port {port}");
+                    LogManager.Instance.LogDebug($"PiaVpnManager.GetVpnPortCore: Found port {port}");
                     return port;
                 }
 
-                LogManager.Instance.LogDebug($"PiaVpnManager.GetVpnPort: Could not parse port from piactl output: {output}");
+                LogManager.Instance.LogDebug($"PiaVpnManager.GetVpnPortCore: Could not parse port from piactl output: {output}");
                 return null;
             }
             catch (Exception ex)
             {
-                LogManager.Instance.LogDebug($"PiaVpnManager.GetVpnPort: {ex.Message}");
+                LogManager.Instance.LogDebug($"PiaVpnManager.GetVpnPortCore: {ex.Message}");
                 return null;
             }
         }

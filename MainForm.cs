@@ -60,26 +60,33 @@ namespace qbPortWeaver
 
         private async void MainForm_Load(object sender, EventArgs e)
         {
-            // Start minimized and hide from taskbar
-            this.WindowState = FormWindowState.Minimized;
-            this.ShowInTaskbar = false;
+            try
+            {
+                // Start minimized and hide from taskbar
+                this.WindowState = FormWindowState.Minimized;
+                this.ShowInTaskbar = false;
 
-            // Log once at startup so the version is visible in the log file for diagnostics
-            LogManager.Instance.LogMessage($"{AppConstants.AppName} {AppConstants.AppVersion} starting", LogLevel.Info);
+                // Log once at startup so the version is visible in the log file for diagnostics
+                LogManager.Instance.LogMessage($"{AppConstants.AppName} {AppConstants.AppVersion} starting", LogLevel.Info);
 
-            // Perform initial log rotation check
-            LogManager.Instance.CheckAndRotateLogFile();
+                // Perform initial log rotation check
+                LogManager.Instance.CheckAndRotateLogFile();
 
-            // Check for updates on GitHub (startup check)
-            await PerformUpdateCheckAsync();
+                // Check for updates on GitHub (startup check)
+                await PerformUpdateCheckAsync();
 
-            // Schedule periodic update checks every 12 hours
-            _updateCheckTimer = new System.Windows.Forms.Timer { Interval = AppConstants.AutoUpdateCheckIntervalMs };
-            _updateCheckTimer.Tick += async (s, e) => await PerformUpdateCheckAsync();
-            _updateCheckTimer.Start();
+                // Schedule periodic update checks every 12 hours
+                _updateCheckTimer = new System.Windows.Forms.Timer { Interval = AppConstants.AutoUpdateCheckIntervalMs };
+                _updateCheckTimer.Tick += async (s, e) => await PerformUpdateCheckAsync();
+                _updateCheckTimer.Start();
 
-            // Start main loop (intentional fire-and-forget)
-            _ = Task.Run(RunMainLoopAsync);
+                // Start main loop (intentional fire-and-forget)
+                _ = Task.Run(RunMainLoopAsync);
+            }
+            catch (Exception ex)
+            {
+                HandleMainLoopException(ex);
+            }
         }
 
         // Handle form closing (user exit, Windows shutdown/restart/logoff)

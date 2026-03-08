@@ -40,67 +40,6 @@ namespace qbPortWeaver
             toolTip.SetToolTip(chkDebugMode,                 "Write verbose debug entries to the log file");
         }
 
-        private void btnOK_Click(object? sender, EventArgs e)
-        {
-            if (cboVpnProvider.SelectedItem?.ToString() == RegistrySettingsManager.VpnProviderNatPmp &&
-                cboNatPmpAdapter.Enabled &&
-                cboNatPmpAdapter.SelectedItem?.ToString() == NoAdaptersFoundPlaceholder)
-            {
-                MessageBox.Show(
-                    "No NAT-PMP capable adapters were found.\n\nEnsure the adapter is up and its gateway is responding to NAT-PMP, then click \u21bb to retry.",
-                    AppConstants.AppName,
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Warning);
-                return;
-            }
-            SaveSettings();
-            DialogResult = DialogResult.OK;
-        }
-
-        private void cboVpnProvider_SelectedIndexChanged(object? sender, EventArgs e)
-        {
-            // Only enable the adapter combo and refresh button if NAT-PMP is selected AND discovery has finished
-            // (discovery replaces the placeholder and re-enables them via PopulateNatPmpAdaptersAsync)
-            bool isNatPmp = cboVpnProvider.SelectedItem?.ToString() == RegistrySettingsManager.VpnProviderNatPmp;
-            bool discoveryPending = cboNatPmpAdapter.Items.Count == 1 &&
-                                    cboNatPmpAdapter.Items[0]?.ToString() == DiscoveringAdaptersPlaceholder;
-            SetAdapterControlsEnabled(isNatPmp && !discoveryPending);
-        }
-
-        private void btnRefreshAdapters_Click(object? sender, EventArgs e)
-        {
-            // Preserve current selection if it is a valid adapter name (not a placeholder)
-            string current = cboNatPmpAdapter.Enabled &&
-                             cboNatPmpAdapter.SelectedItem?.ToString() != NoAdaptersFoundPlaceholder
-                ? cboNatPmpAdapter.SelectedItem?.ToString() ?? ""
-                : RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyNatPmpAdapterName);
-
-            cboNatPmpAdapter.Items.Clear();
-            cboNatPmpAdapter.Items.Add(DiscoveringAdaptersPlaceholder);
-            cboNatPmpAdapter.SelectedIndex = 0;
-            cboNatPmpAdapter.Enabled   = false;
-            btnRefreshAdapters.Enabled = false;
-            _ = PopulateNatPmpAdaptersAsync(current);
-        }
-
-        private void btnBrowseExePath_Click(object? sender, EventArgs e)
-        {
-            using var dlg = new OpenFileDialog
-            {
-                Title  = "Select qBittorrent Executable",
-                Filter = "Executable files (*.exe)|*.exe|All files (*.*)|*.*"
-            };
-
-            if (!string.IsNullOrWhiteSpace(txtQBittorrentExePath.Text) &&
-                File.Exists(txtQBittorrentExePath.Text))
-            {
-                dlg.InitialDirectory = Path.GetDirectoryName(txtQBittorrentExePath.Text)!;
-            }
-
-            if (dlg.ShowDialog() == DialogResult.OK)
-                txtQBittorrentExePath.Text = dlg.FileName;
-        }
-
         private void LoadSettings()
         {
             // General
@@ -175,6 +114,67 @@ namespace qbPortWeaver
             // Extra
             RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionExtra, RegistrySettingsManager.KeyPostUpdateCmd, txtPostUpdateCmd.Text.Trim());
             RegistrySettingsManager.SetBool (RegistrySettingsManager.SectionExtra, RegistrySettingsManager.KeyDebugMode,     chkDebugMode.Checked);
+        }
+
+        private void btnOK_Click(object? sender, EventArgs e)
+        {
+            if (cboVpnProvider.SelectedItem?.ToString() == RegistrySettingsManager.VpnProviderNatPmp &&
+                cboNatPmpAdapter.Enabled &&
+                cboNatPmpAdapter.SelectedItem?.ToString() == NoAdaptersFoundPlaceholder)
+            {
+                MessageBox.Show(
+                    "No NAT-PMP capable adapters were found.\n\nEnsure the adapter is up and its gateway is responding to NAT-PMP, then click \u21bb to retry.",
+                    AppConstants.AppName,
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
+                return;
+            }
+            SaveSettings();
+            DialogResult = DialogResult.OK;
+        }
+
+        private void cboVpnProvider_SelectedIndexChanged(object? sender, EventArgs e)
+        {
+            // Only enable the adapter combo and refresh button if NAT-PMP is selected AND discovery has finished
+            // (discovery replaces the placeholder and re-enables them via PopulateNatPmpAdaptersAsync)
+            bool isNatPmp = cboVpnProvider.SelectedItem?.ToString() == RegistrySettingsManager.VpnProviderNatPmp;
+            bool discoveryPending = cboNatPmpAdapter.Items.Count == 1 &&
+                                    cboNatPmpAdapter.Items[0]?.ToString() == DiscoveringAdaptersPlaceholder;
+            SetAdapterControlsEnabled(isNatPmp && !discoveryPending);
+        }
+
+        private void btnRefreshAdapters_Click(object? sender, EventArgs e)
+        {
+            // Preserve current selection if it is a valid adapter name (not a placeholder)
+            string current = cboNatPmpAdapter.Enabled &&
+                             cboNatPmpAdapter.SelectedItem?.ToString() != NoAdaptersFoundPlaceholder
+                ? cboNatPmpAdapter.SelectedItem?.ToString() ?? ""
+                : RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyNatPmpAdapterName);
+
+            cboNatPmpAdapter.Items.Clear();
+            cboNatPmpAdapter.Items.Add(DiscoveringAdaptersPlaceholder);
+            cboNatPmpAdapter.SelectedIndex = 0;
+            cboNatPmpAdapter.Enabled   = false;
+            btnRefreshAdapters.Enabled = false;
+            _ = PopulateNatPmpAdaptersAsync(current);
+        }
+
+        private void btnBrowseExePath_Click(object? sender, EventArgs e)
+        {
+            using var dlg = new OpenFileDialog
+            {
+                Title  = "Select qBittorrent Executable",
+                Filter = "Executable files (*.exe)|*.exe|All files (*.*)|*.*"
+            };
+
+            if (!string.IsNullOrWhiteSpace(txtQBittorrentExePath.Text) &&
+                File.Exists(txtQBittorrentExePath.Text))
+            {
+                dlg.InitialDirectory = Path.GetDirectoryName(txtQBittorrentExePath.Text)!;
+            }
+
+            if (dlg.ShowDialog() == DialogResult.OK)
+                txtQBittorrentExePath.Text = dlg.FileName;
         }
 
         private void SetAdapterControlsEnabled(bool enabled)

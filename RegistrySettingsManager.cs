@@ -20,6 +20,10 @@ namespace qbPortWeaver
         public const string VpnProviderPia       = "PIA";
         public const string VpnProviderNatPmp    = "NAT-PMP";
 
+        // Registry key name strings are frozen — changing them would silently break existing installations
+        // by orphaning previously saved values. Casing inconsistencies (e.g. "restartqBittorrent" vs
+        // "qBittorrentURL") are historical and must be preserved for backward compatibility.
+
         // Registry key names — general section
         public const string KeyVpnProvider          = "vpnProvider";
         public const string KeyUpdateIntervalSeconds = "updateIntervalSeconds";

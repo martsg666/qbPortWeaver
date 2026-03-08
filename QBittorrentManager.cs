@@ -31,8 +31,6 @@ namespace qbPortWeaver
             _httpClient = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(AppConstants.HttpTimeoutSeconds) };
         }
 
-        // ── Process operations ────────────────────────────────────────────────────
-
         public bool IsRunning()
         {
             if (string.IsNullOrEmpty(_processName)) return false;
@@ -94,8 +92,6 @@ namespace qbPortWeaver
                 return false;
             }
         }
-
-        // ── API operations ────────────────────────────────────────────────────────
 
         // Gets listen_port and current_interface_name from qBittorrent preferences in a single request
         public async Task<(int? ListenPort, string? CurrentInterfaceName)> GetPreferencesAsync()
@@ -204,11 +200,7 @@ namespace qbPortWeaver
             }
         }
 
-        // ── Lifecycle ─────────────────────────────────────────────────────────────
-
         public void Dispose() => _httpClient.Dispose();
-
-        // ── Private helpers ───────────────────────────────────────────────────────
 
         // Authenticates once per instance; subsequent calls reuse the existing session cookie
         private async Task<bool> EnsureAuthenticatedAsync()

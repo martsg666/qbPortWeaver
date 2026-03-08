@@ -26,6 +26,8 @@ namespace qbPortWeaver
             try
             {
                 var adapters = NetworkInterface.GetAllNetworkInterfaces();
+                // Uses Name (not Description) — ProtonVPN's adapter Name is reliably "ProtonVPN" on all
+                // installations, whereas Description varies by driver version (e.g. "ProtonVPN TUN Tunnel").
                 bool isConnected = adapters.Any(adapter =>
                     adapter.Name.Contains("ProtonVPN", StringComparison.OrdinalIgnoreCase) &&
                     adapter.OperationalStatus == OperationalStatus.Up);

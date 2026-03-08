@@ -30,13 +30,13 @@ namespace qbPortWeaver
         {
             if (Instance != null)
                 throw new InvalidOperationException($"{nameof(LogManager)} has already been initialized");
-            return new LogManager(logFilePath);
+            Instance = new LogManager(logFilePath);
+            return Instance;
         }
 
         private LogManager(string logFilePath)
         {
             _logFilePath = logFilePath;
-            Instance     = this;
         }
 
         // Writes a log entry at the given level (thread-safe)

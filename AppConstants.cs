@@ -30,12 +30,12 @@ namespace qbPortWeaver
         private const string StatusFileName = "qbPortWeaver.status.json";
 
         // App data folder — created on class initialization (static field initializer)
-        private static readonly string _appDataFolder = Directory.CreateDirectory(
+        private static readonly string AppDataFolder = Directory.CreateDirectory(
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), AppName)
         ).FullName;
 
-        public static string GetLogFilePath()    => Path.Combine(_appDataFolder, LogFileName);
-        public static string GetStatusFilePath() => Path.Combine(_appDataFolder, StatusFileName);
+        public static string GetLogFilePath()    => Path.Combine(AppDataFolder, LogFileName);
+        public static string GetStatusFilePath() => Path.Combine(AppDataFolder, StatusFileName);
 
         public static string GetProtonVPNLogFilePath() => Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),

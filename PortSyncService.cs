@@ -14,7 +14,7 @@ namespace qbPortWeaver
         // Event raised when qBittorrent's network interface does not match the configured VPN provider
         public event Action<string>? InterfaceMismatchDetected;
 
-        // Kept solely as a disconnection fallback: when DiscoverAdapters cannot find the configured
+        // Kept solely as a disconnection fallback: when TryCreateForAdapter cannot reach the configured
         // adapter (e.g. VPN is between disconnect and reconnect), this is returned so IsVpnConnected()
         // reports false and RunCoreAsync handles disconnection gracefully instead of surfacing an error.
         // Cleared when the configured adapter name changes in settings.
@@ -218,13 +218,12 @@ namespace qbPortWeaver
                     !_lastKnownNatPmpManager.ProviderName.Equals(cfg.NatPmpAdapterName, StringComparison.OrdinalIgnoreCase))
                     _lastKnownNatPmpManager = null;
 
-                var adapters = await NatPmpManager.DiscoverAdapters().ConfigureAwait(false);
-                var selected = adapters.FirstOrDefault(a => a.ProviderName.Equals(cfg.NatPmpAdapterName, StringComparison.OrdinalIgnoreCase));
+                var selected = await NatPmpManager.TryCreateForAdapter(cfg.NatPmpAdapterName).ConfigureAwait(false);
 
                 if (selected is not null)
                 {
                     // Transfer renewal state from the previous instance so port renewal works correctly
-                    // even though DiscoverAdapters() returns a fresh NatPmpManager instance each cycle.
+                    // when TryCreateForAdapter() returns a fresh NatPmpManager instance each cycle.
                     if (_lastKnownNatPmpManager is not null)
                         selected.CopyRenewalStateFrom(_lastKnownNatPmpManager);
                     _lastKnownNatPmpManager = selected;

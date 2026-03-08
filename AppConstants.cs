@@ -11,6 +11,7 @@ namespace qbPortWeaver
 
         // Timing
         public const int DefaultUpdateIntervalSeconds = 180;
+        public const int MinUpdateIntervalSeconds     = 10;
         public const int ManualSyncWaitSeconds        = 10;
         public const int MillisecondsPerSecond        = 1000;
         public const int AutoUpdateCheckIntervalMs    = 12 * 60 * 60 * MillisecondsPerSecond;

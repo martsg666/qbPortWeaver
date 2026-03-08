@@ -32,14 +32,6 @@ namespace qbPortWeaver
         // Returns the adapter description, used as the VPN provider display name in log messages and status.
         public string ProviderName => _adapter.Description;
 
-        // Transfers renewal state from a previous instance so that port renewal works correctly
-        // when a fresh NatPmpManager instance is created each cycle.
-        internal void CopyRenewalStateFrom(NatPmpManager other)
-        {
-            _lastExternalPort  = other._lastExternalPort;
-            _lastEpochSeconds  = other._lastEpochSeconds;
-        }
-
         // Re-enumerates network interfaces to check if the adapter is currently present and up.
         // The stored _adapter object retains its last-seen OperationalStatus even after the
         // adapter is removed (e.g. ProtonVPN removes the TUN adapter on disconnect), so a
@@ -120,6 +112,14 @@ namespace qbPortWeaver
                 LogManager.Instance.LogMessage($"NAT-PMP error on '{_adapter.Description}': {ex.Message}", LogLevel.Warn);
                 return null;
             }
+        }
+
+        // Transfers renewal state from a previous instance so that port renewal works correctly
+        // when a fresh NatPmpManager instance is created each cycle.
+        internal void CopyRenewalStateFrom(NatPmpManager other)
+        {
+            _lastExternalPort  = other._lastExternalPort;
+            _lastEpochSeconds  = other._lastEpochSeconds;
         }
 
         // Returns all network adapters whose gateway actively responds to NAT-PMP,

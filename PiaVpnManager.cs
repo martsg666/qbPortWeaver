@@ -41,7 +41,7 @@ namespace qbPortWeaver
 
         public Task<int?> GetVpnPortAsync() => Task.FromResult(GetVpnPortCore());
 
-        private int? GetVpnPortCore()
+        private static int? GetVpnPortCore()
         {
             try
             {

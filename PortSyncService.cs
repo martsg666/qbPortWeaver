@@ -175,7 +175,7 @@ namespace qbPortWeaver
         private static AppConfig ReadConfig()
         {
             int updateInterval = RegistrySettingsManager.GetInt(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyUpdateIntervalSeconds);
-            if (updateInterval < 10) updateInterval = AppConstants.DefaultUpdateIntervalSeconds;
+            if (updateInterval < AppConstants.MinUpdateIntervalSeconds) updateInterval = AppConstants.DefaultUpdateIntervalSeconds;
 
             bool restartQBittorrent      = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyRestartQBittorrent);
             bool forceStartQBittorrent   = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyForceStartQBittorrent);
@@ -304,7 +304,7 @@ namespace qbPortWeaver
 
             if (!config.ForceStart)
             {
-                SetCompleted(status, false, "qBittorrent is not running");
+                SetCompleted(status, false, "qBittorrent is not running", LogLevel.Warn);
                 return false;
             }
 
@@ -397,7 +397,10 @@ namespace qbPortWeaver
             return true;
         }
 
-        // Launches the post-update shell command (fire-and-forget)
+        // Launches the post-update shell command (fire-and-forget).
+        // The command string is passed through directly without sanitisation — this is intentional.
+        // It is a user-configured value (stored in the registry under HKCU) so the user already
+        // controls execution in their own context; no external or untrusted input reaches this path.
         private static void RunPostUpdateCommand(string cmd)
         {
             LogManager.Instance.LogMessage($"Running post-update command: {cmd}", LogLevel.Info);
@@ -437,12 +440,13 @@ namespace qbPortWeaver
                 LogManager.Instance.LogMessage("Successfully restarted qBittorrent after connection disconnect", LogLevel.Info);
         }
 
-        // Sets the completion status and logs the message
-        private static void SetCompleted(Dictionary<string, object?> status, bool success, string message)
+        // Sets the completion status and logs the message.
+        // Pass an explicit level to override the default (Info on success, Error on failure).
+        private static void SetCompleted(Dictionary<string, object?> status, bool success, string message, LogLevel? level = null)
         {
             status[StatusKeys.Status]  = success ? StatusKeys.StatusSuccess : StatusKeys.StatusError;
             status[StatusKeys.Message] = message;
-            LogManager.Instance.LogMessage(message, success ? LogLevel.Info : LogLevel.Error);
+            LogManager.Instance.LogMessage(message, level ?? (success ? LogLevel.Info : LogLevel.Error));
         }
 
         // Compile-time–safe keys and values for the status dictionary written to the JSON status file

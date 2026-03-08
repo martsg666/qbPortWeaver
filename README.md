@@ -34,8 +34,11 @@ The application runs in the system tray, manages configuration and logging, and 
 - **Settings Dialog**
   All configuration options are editable through a dedicated Settings form (tray menu → Settings), with inline descriptions and tooltips for each option.
 
+- **Log Viewer**
+  Built-in log viewer (tray menu → Show Logs, or double-click the tray icon) displays the log file with color-coded entries by level (error, warn, info, debug) and follows new entries in real time. Supports Windows dark mode.
+
 - **Logging**
-  Logs all operations and errors, with automatic log size management. Clear logs directly from the tray menu.
+  Logs all operations and errors, with automatic log size management (5 MB per file, up to 3 rotated files). Clear logs directly from the tray menu.
 
 - **qBittorrent Control**
   Authenticates with qBittorrent's Web API, updates preferences, and restarts the client if required.
@@ -123,13 +126,13 @@ On first run, all settings are initialized with sensible defaults.
 
 ### Tray Menu Options
 
-- Synchronize Port Now
-- Show Logs
-- Clear Logs
-- Settings
-- About
-- Start Automatically with Windows
-- Exit
+- **Synchronize Port Now** — triggers an immediate sync cycle, skipping the current wait interval
+- **Show Logs** — opens the built-in Log Viewer (also opened by double-clicking the tray icon)
+- **Clear Logs** — deletes all log files and starts a fresh log
+- **Settings** — opens the Settings dialog
+- **About** — shows version info and update status
+- **Start Automatically with Windows** — toggles the Windows startup registry entry
+- **Exit** — shuts down the application
 
 ---
 
@@ -203,6 +206,7 @@ NAT-PMP (RFC 6886) is a protocol for requesting port mappings directly from a ga
 
 - All actions and errors are logged to `%LocalAppData%\qbPortWeaver\qbPortWeaver.log`.
 - Log files are automatically rotated when exceeding **5 MB**, keeping up to 3 files (current + 2 backups).
+- Open the **Log Viewer** from the tray menu (Show Logs) or by double-clicking the tray icon. It shows color-coded entries (red for errors, gold for warnings, blue for info, orange for debug) and tails new entries live. It follows your Windows dark/light theme preference.
 
 ---
 

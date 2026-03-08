@@ -208,7 +208,7 @@ namespace qbPortWeaver
         private async Task<bool> EnsureAuthenticatedAsync()
         {
             if (_isAuthenticated) return true;
-            _isAuthenticated = await AuthenticateAsync();
+            _isAuthenticated = await AuthenticateAsync().ConfigureAwait(false);
             return _isAuthenticated;
         }
 

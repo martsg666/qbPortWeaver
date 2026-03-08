@@ -282,6 +282,7 @@ jobs:
           RELEASE_TAG: ${{ steps.version.outputs.TAG }}
           SETUP_PATH:  ${{ steps.msi.outputs.SETUP_PATH }}
         run: |
+          $ErrorActionPreference = 'Stop'
           $tag   = $env:RELEASE_TAG
           $asset = $env:SETUP_PATH
 

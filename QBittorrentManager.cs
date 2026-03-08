@@ -7,9 +7,10 @@ namespace qbPortWeaver
     // Manages qBittorrent-related operations via Web API
     public sealed class QBittorrentManager : IDisposable
     {
-        private const int ProcessStartDelayMs = 2000;
-        private const int ProcessKillDelayMs  = 2000;
-        private const int ProcessInitDelayMs  = 1000;
+        private const int    ProcessStartDelayMs = 2000;
+        private const int    ProcessKillDelayMs  = 2000;
+        private const int    ProcessInitDelayMs  = 1000;
+        private const string AuthOkResponse      = "Ok.";
 
         private readonly string _url;
         private readonly string _userName;
@@ -65,16 +66,17 @@ namespace qbPortWeaver
         {
             try
             {
-                // Kill any running qBittorrent processes
+                // Kill any running qBittorrent processes and wait for each to exit
                 foreach (var proc in Process.GetProcessesByName(_processName))
                 {
-                    try { proc.Kill(); }
+                    try
+                    {
+                        proc.Kill();
+                        proc.WaitForExit(ProcessKillDelayMs);
+                    }
                     catch (Exception ex) { LogManager.Instance.LogDebug($"QBittorrentManager.RestartAsync: Failed to kill process: {ex.Message}"); }
                     finally { proc.Dispose(); }
                 }
-
-                // Wait for process to terminate
-                await Task.Delay(ProcessKillDelayMs, cancellationToken);
 
                 Process.Start(CreateQBittorrentStartInfo())?.Dispose();
 
@@ -236,7 +238,7 @@ namespace qbPortWeaver
 
                 // qBittorrent returns 200 for both success and failure - check response body
                 var body = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
-                if (!body.Contains("Ok.", StringComparison.OrdinalIgnoreCase))
+                if (!body.Contains(AuthOkResponse, StringComparison.OrdinalIgnoreCase))
                 {
                     LogManager.Instance.LogMessage("qBittorrent authentication failed: wrong username or password. Check the credentials in Settings", LogLevel.Error);
                     return false;

@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Runtime.InteropServices;
 
 namespace qbPortWeaver
@@ -18,6 +17,9 @@ namespace qbPortWeaver
 
         // Services
         private readonly PortSyncService _portSyncService;
+
+        // Modeless log viewer (null when closed)
+        private LogViewerForm? _logViewerForm;
 
         // Last sync status (written from background thread, read on UI thread)
         private volatile TrayStatus? _lastSyncStatus;
@@ -98,6 +100,9 @@ namespace qbPortWeaver
             // Hide tray icon immediately to avoid ghost icon
             _trayIcon.Visible = false;
 
+            // Close modeless log viewer if open
+            _logViewerForm?.Close();
+
             // Resources are disposed in Dispose(bool) via MainForm.Designer.cs
             base.OnFormClosing(e);
         }
@@ -145,7 +150,7 @@ namespace qbPortWeaver
         {
             _trayMenu = new ContextMenuStrip();
             _trayMenu.Items.Add("Synchronize Port Now", null, SynchronizePortNow_Click);
-            _trayMenu.Items.Add("Show Logs", null, (s, e) => OpenFileInNotepad(AppConstants.GetLogFilePath()));
+            _trayMenu.Items.Add("Show Logs", null, (s, e) => ShowLogViewer());
             _trayMenu.Items.Add("Clear Logs", null, (s, e) =>
             {
                 LogManager.Instance.ClearLogs();
@@ -178,6 +183,11 @@ namespace qbPortWeaver
                 Text = $"{AppConstants.AppName} {AppConstants.AppVersion}",
                 Visible = true,
                 ContextMenuStrip = _trayMenu
+            };
+            _trayIcon.MouseDoubleClick += (s, e) =>
+            {
+                if (e.Button == MouseButtons.Left)
+                    ShowLogViewer();
             };
         }
 
@@ -393,29 +403,19 @@ namespace qbPortWeaver
                 action();
         }
 
-        // Opens a file in Notepad; logs a warning if the file does not exist or the process fails to start
-        private static void OpenFileInNotepad(string filePath)
+        // Opens the log viewer window; brings it to front if already open
+        private void ShowLogViewer()
         {
-            try
+            if (_logViewerForm is { IsDisposed: false })
             {
-                if (File.Exists(filePath))
-                {
-                    string notepadExe = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "notepad.exe");
-                    var startInfo = new ProcessStartInfo(notepadExe, $"\"{filePath}\"")
-                    {
-                        UseShellExecute = true
-                    };
-                    Process.Start(startInfo)?.Dispose();
-                }
-                else
-                {
-                    LogManager.Instance.LogMessage($"Failed to open file in Notepad: file not found ({filePath})", LogLevel.Warn);
-                }
+                _logViewerForm.BringToFront();
+                _logViewerForm.Focus();
+                return;
             }
-            catch (Exception ex)
-            {
-                LogManager.Instance.LogMessage($"Failed to open file in Notepad: {ex.Message}", LogLevel.Warn);
-            }
+
+            _logViewerForm = new LogViewerForm(LogManager.Instance.LogFilePath);
+            _logViewerForm.FormClosed += (_, _) => _logViewerForm = null;
+            _logViewerForm.Show();
         }
 
         // P/Invoke declarations

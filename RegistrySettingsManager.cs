@@ -166,7 +166,7 @@ namespace qbPortWeaver
             }
             catch (Exception ex)
             {
-                LogManager.Instance.LogDebug($"RegistrySettingsManager.SetValue: [{section}] {key}: {ex.Message}");
+                LogManager.Instance.LogMessage($"Failed to save setting [{section}] {key}: {ex.Message}", LogLevel.Warn);
             }
         }
 
@@ -186,7 +186,7 @@ namespace qbPortWeaver
             }
             catch (Exception ex)
             {
-                LogManager.Instance.LogDebug($"RegistrySettingsManager.SetPassword: {ex.Message}");
+                LogManager.Instance.LogMessage($"Failed to save password: {ex.Message}", LogLevel.Warn);
             }
         }
 

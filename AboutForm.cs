@@ -82,7 +82,7 @@ namespace qbPortWeaver
                 }
                 else
                 {
-                    lblLatestVersionValue.Text      = info.VersionString;
+                    lblLatestVersionValue.Text      = info.Version;
                     lblLatestVersionValue.ForeColor = SystemColors.ControlText;
 
                     if (info.IsNewer)

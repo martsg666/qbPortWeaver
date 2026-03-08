@@ -6,7 +6,7 @@ namespace qbPortWeaver
     public sealed record LatestReleaseInfo(string TagName, string ReleaseUrl, bool IsNewer)
     {
         // TagName with leading 'v'/'V' stripped (e.g. "v2.1.0" → "2.1.0")
-        public string VersionString => TagName.TrimStart('v', 'V');
+        public string Version => TagName.TrimStart('v', 'V');
     }
 
     public sealed record ContributorInfo(string Login, string ProfileUrl);
@@ -25,7 +25,7 @@ namespace qbPortWeaver
         public static async Task<(string Version, string Url)?> GetAvailableUpdateAsync()
         {
             var info = await GetLatestReleaseInfoAsync();
-            return info?.IsNewer == true ? (info.VersionString, info.ReleaseUrl) : null;
+            return info?.IsNewer == true ? (info.Version, info.ReleaseUrl) : null;
         }
 
         // Returns full release info from GitHub including whether a newer version exists; null on any error
@@ -48,7 +48,7 @@ namespace qbPortWeaver
                 string releaseUrl = urlElement.GetString() ?? "";
 
                 var info = new LatestReleaseInfo(tagName, releaseUrl, false);
-                bool isNewer = Version.TryParse(info.VersionString, out var latest) &&
+                bool isNewer = Version.TryParse(info.Version, out var latest) &&
                                Version.TryParse(AppConstants.AppVersion, out var current) &&
                                latest > current;
 

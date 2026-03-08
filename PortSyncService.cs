@@ -8,6 +8,9 @@ namespace qbPortWeaver
 
     public sealed class PortSyncService
     {
+        // qBittorrent API value returned by /api/v2/transfer/info when the client has no active connections
+        private const string QBDisconnectedStatus = "disconnected";
+
         // Event raised when a sync cycle completes (success or failure)
         public event Action<TrayStatus>? SyncCompleted;
 
@@ -66,7 +69,7 @@ namespace qbPortWeaver
                 [StatusKeys.QBittorrentPort]         = null,
                 [StatusKeys.PortChanged]             = false,
                 [StatusKeys.UpdateIntervalSeconds]   = AppConstants.DefaultUpdateIntervalSeconds,
-                [StatusKeys.Status]                  = "error",
+                [StatusKeys.Status]                  = StatusKeys.StatusError,
                 [StatusKeys.Message]                 = null
             };
 
@@ -83,7 +86,7 @@ namespace qbPortWeaver
             {
                 StatusManager.Write(status);
 
-                bool success      = status[StatusKeys.Status]          as string == "success";
+                bool success      = status[StatusKeys.Status]          as string == StatusKeys.StatusSuccess;
                 bool vpnConnected = status[StatusKeys.VpnConnected]   is true;
                 int? port         = status[StatusKeys.QBittorrentPort] as int?;
                 string message    = status[StatusKeys.Message]         as string ?? string.Empty;
@@ -122,7 +125,7 @@ namespace qbPortWeaver
             {
                 if (cfg.DefaultPort == 0)
                 {
-                    status[StatusKeys.Status]  = "skipped";
+                    status[StatusKeys.Status]  = StatusKeys.StatusSkipped;
                     status[StatusKeys.Message] = $"{vpnManager.ProviderName} is not connected";
                     LogManager.Instance.LogMessage($"{vpnManager.ProviderName} is not connected, default port is 0 — skipping port update", LogLevel.Info);
                     return cfg.UpdateInterval;
@@ -137,7 +140,7 @@ namespace qbPortWeaver
                 status[StatusKeys.VpnConnected] = true;
                 LogManager.Instance.LogMessage($"{vpnManager.ProviderName} is connected", LogLevel.Info);
 
-                int? vpnPort = vpnManager.GetVpnPort();
+                int? vpnPort = await vpnManager.GetVpnPortAsync().ConfigureAwait(false);
                 if (!vpnPort.HasValue)
                 {
                     SetCompleted(status, false, $"Failed to determine {vpnManager.ProviderName} port");
@@ -424,7 +427,7 @@ namespace qbPortWeaver
 
             LogManager.Instance.LogMessage($"qBittorrent connection status: {connectionStatus}", LogLevel.Info);
 
-            if (!connectionStatus.Equals("disconnected", StringComparison.OrdinalIgnoreCase))
+            if (!connectionStatus.Equals(QBDisconnectedStatus, StringComparison.OrdinalIgnoreCase))
                 return;
 
             LogManager.Instance.LogMessage("qBittorrent connection status is disconnected — restarting", LogLevel.Warn);
@@ -437,16 +440,15 @@ namespace qbPortWeaver
         // Sets the completion status and logs the message
         private static void SetCompleted(Dictionary<string, object?> status, bool success, string message)
         {
-            status[StatusKeys.Status]  = success ? "success" : "error";
+            status[StatusKeys.Status]  = success ? StatusKeys.StatusSuccess : StatusKeys.StatusError;
             status[StatusKeys.Message] = message;
             LogManager.Instance.LogMessage(message, success ? LogLevel.Info : LogLevel.Error);
         }
 
-        // Compile-time–safe keys for the status dictionary written to the JSON status file
+        // Compile-time–safe keys and values for the status dictionary written to the JSON status file
         private static class StatusKeys
         {
-            // Possible values for Status: "success", "error", "skipped"
-            // "skipped" means the VPN was disconnected and no default port is configured — cycle is a no-op.
+            // Keys
             public const string AppVersion              = "appVersion";
             public const string Timestamp               = "timestamp";
             public const string VpnProvider             = "vpnProvider";
@@ -459,6 +461,11 @@ namespace qbPortWeaver
             public const string UpdateIntervalSeconds   = "updateIntervalSeconds";
             public const string Status                  = "status";
             public const string Message                 = "message";
+
+            // Values for the Status key — "skipped" means VPN disconnected with no default port configured (cycle is a no-op)
+            public const string StatusSuccess = "success";
+            public const string StatusError   = "error";
+            public const string StatusSkipped = "skipped";
         }
     }
 }

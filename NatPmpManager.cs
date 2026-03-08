@@ -5,7 +5,7 @@ using System.Net.Sockets;
 namespace qbPortWeaver
 {
     // NAT-PMP VPN manager. PortSyncService creates instances via TryCreateForAdapter() (sync cycle)
-    // or DiscoverAdapters() (SettingsForm). Renewal state (_lastExternalPort, _lastSsoe) is
+    // or DiscoverAdapters() (SettingsForm). Renewal state (_lastExternalPort, _lastEpochSeconds) is
     // transferred across cycles via CopyRenewalStateFrom() so port renewal works correctly.
     public sealed class NatPmpManager : IVpnManager
     {
@@ -19,8 +19,8 @@ namespace qbPortWeaver
         private readonly uint             _mappingLifetime;
 
         // Cached state for port renewal (persists across sync cycles via PortSyncService._lastKnownNatPmpManager)
-        private ushort _lastExternalPort; // zero until first mapping; suggested to gateway on renewal
-        private uint   _lastSsoe; // seconds-since-epoch from the last successful response
+        private ushort _lastExternalPort;  // zero until first mapping; suggested to gateway on renewal
+        private uint   _lastEpochSeconds;  // SSOE (Seconds Since Opened Epoch) from the last successful NAT-PMP response
 
         private NatPmpManager(NetworkInterface adapter, IPAddress gateway, uint mappingLifetime)
         {
@@ -36,8 +36,8 @@ namespace qbPortWeaver
         // when a fresh NatPmpManager instance is created each cycle.
         internal void CopyRenewalStateFrom(NatPmpManager other)
         {
-            _lastExternalPort = other._lastExternalPort;
-            _lastSsoe    = other._lastSsoe;
+            _lastExternalPort  = other._lastExternalPort;
+            _lastEpochSeconds  = other._lastEpochSeconds;
         }
 
         // Re-enumerates network interfaces to check if the adapter is currently present and up.
@@ -66,11 +66,11 @@ namespace qbPortWeaver
         }
 
         // Sends a NAT-PMP UDP port mapping request and returns the assigned external port.
-        // Logs at INFO/WARN level (not DEBUG) — lease time and failure details are not surfaced
-        // elsewhere in the sync cycle.
+        // Primarily logs at INFO/WARN (not DEBUG) — lease time and failure details are not surfaced
+        // elsewhere in the sync cycle. The epoch delta is the exception, logged at DEBUG only.
         // On renewal, suggests the previously assigned port (RFC 6886 §3.3) so the gateway keeps
         // the same mapping across cycles, avoiding unnecessary qBittorrent restarts.
-        public int? GetVpnPort()
+        public async Task<int?> GetVpnPortAsync()
         {
             try
             {
@@ -78,9 +78,7 @@ namespace qbPortWeaver
                 // on renewal it holds the last assigned port so the gateway can keep the same mapping.
                 ushort suggested = _lastExternalPort;
 
-                // Safe sync-over-async: GetVpnPort is only called from PortSyncService.RunCoreAsync,
-                // which runs on a thread pool thread with no synchronization context.
-                var result = RequestPortMappingAsync(_gateway, _mappingLifetime, suggested).GetAwaiter().GetResult();
+                var result = await RequestPortMappingAsync(_gateway, _mappingLifetime, suggested).ConfigureAwait(false);
 
                 if (!result.Success)
                 {
@@ -90,16 +88,16 @@ namespace qbPortWeaver
 
                 // Detect NAT-PMP daemon restart: SSOE dropping means all prior mappings are gone.
                 // The response is still valid (a fresh mapping was assigned) — log and update state below.
-                if (_lastSsoe > 0 && result.Ssoe < _lastSsoe)
+                if (_lastEpochSeconds > 0 && result.EpochSeconds < _lastEpochSeconds)
                     LogManager.Instance.LogMessage(
-                        $"NAT-PMP epoch reset on '{_adapter.Description}' (was {_lastSsoe}s, now {result.Ssoe}s) — prior mapping lost, fresh port assigned",
+                        $"NAT-PMP epoch reset on '{_adapter.Description}' (was {_lastEpochSeconds}s, now {result.EpochSeconds}s) — prior mapping lost, fresh port assigned",
                         LogLevel.Info);
 
-                string epochDelta = (_lastSsoe > 0 && result.Ssoe >= _lastSsoe)
-                    ? $" (+{result.Ssoe - _lastSsoe}s)" : "";
-                LogManager.Instance.LogDebug($"NatPmpManager.GetVpnPort: SSOE {result.Ssoe}s{epochDelta}");
+                string epochDelta = (_lastEpochSeconds > 0 && result.EpochSeconds >= _lastEpochSeconds)
+                    ? $" (+{result.EpochSeconds - _lastEpochSeconds}s)" : "";
+                LogManager.Instance.LogDebug($"NatPmpManager.GetVpnPort: SSOE {result.EpochSeconds}s{epochDelta}");
 
-                _lastSsoe    = result.Ssoe;
+                _lastEpochSeconds = result.EpochSeconds;
                 _lastExternalPort = result.ExternalPort;
 
                 if (suggested != 0 && result.ExternalPort == suggested)
@@ -269,7 +267,7 @@ namespace qbPortWeaver
         // Sends a NAT-PMP UDP port mapping request (RFC 6886 opcode 1).
         // Pass zero as suggestedExternalPort for an initial request, or the previously assigned port to request renewal.
         // Internal port is set to 0 — clients that do not bind a specific port let the gateway infer it.
-        private static async Task<(bool Success, ushort ExternalPort, uint LifetimeGranted, uint Ssoe, string? Error)>
+        private static async Task<(bool Success, ushort ExternalPort, uint LifetimeGranted, uint EpochSeconds, string? Error)>
             RequestPortMappingAsync(IPAddress gateway, uint lifetime, ushort suggestedExternalPort = 0)
         {
             // [0] version=0  [1] opcode=1 (UDP)  [2-3] reserved
@@ -297,14 +295,14 @@ namespace qbPortWeaver
             if (resultCode != 0)
                 return (false, 0, 0, 0, $"NAT-PMP result code {resultCode}");
 
-            uint   ssoe          = (uint)  ((data[4]  << 24) | (data[5]  << 16) | (data[6]  << 8) | data[7]);
+            uint   epochSeconds  = (uint)  ((data[4]  << 24) | (data[5]  << 16) | (data[6]  << 8) | data[7]);
             ushort externalPort  = (ushort)((data[10] << 8)  | data[11]);
             uint   lifetimeGiven = (uint)  ((data[12] << 24) | (data[13] << 16) | (data[14] << 8) | data[15]);
 
             if (externalPort == 0)
-                return (false, 0, 0, ssoe, "Gateway returned external port 0");
+                return (false, 0, 0, epochSeconds, "Gateway returned external port 0");
 
-            return (true, externalPort, lifetimeGiven, ssoe, null);
+            return (true, externalPort, lifetimeGiven, epochSeconds, null);
         }
 
         // Sends a UDP datagram to the gateway and waits for a response.

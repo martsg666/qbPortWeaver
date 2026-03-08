@@ -5,6 +5,7 @@ namespace qbPortWeaver
         [STAThread]
         static void Main()
         {
+            Application.SetColorMode(SystemColorMode.System);
             ApplicationConfiguration.Initialize();
 
             // Enforce single instance using a named mutex.

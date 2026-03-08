@@ -39,7 +39,9 @@ namespace qbPortWeaver
             }
         }
 
-        public int? GetVpnPort()
+        public Task<int?> GetVpnPortAsync() => Task.FromResult(GetVpnPortCore());
+
+        private int? GetVpnPortCore()
         {
             try
             {
@@ -92,9 +94,6 @@ namespace qbPortWeaver
                     return null;
                 }
 
-                // Read asynchronously so WaitForExit timeout still applies even if output is large
-                var outputTask = process.StandardOutput.ReadToEndAsync();
-
                 if (!process.WaitForExit(ProcessTimeoutMs))
                 {
                     process.Kill();
@@ -102,8 +101,9 @@ namespace qbPortWeaver
                     return null;
                 }
 
-                // Process has exited, stdout is closed — the async read is complete
-                string output = outputTask.GetAwaiter().GetResult().Trim();
+                // piactl output is always tiny (a few characters); stdout buffer overflow is not a concern,
+                // so synchronous ReadToEnd() after WaitForExit() is safe and simpler than async.
+                string output = process.StandardOutput.ReadToEnd().Trim();
 
                 LogManager.Instance.LogDebug($"PiaVpnManager.RunPiactl: '{arguments}' returned: {output}");
                 return output;

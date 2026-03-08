@@ -4,6 +4,6 @@ namespace qbPortWeaver
     {
         string ProviderName { get; }
         bool IsVpnConnected();
-        int? GetVpnPort();
+        Task<int?> GetVpnPortAsync();
     }
 }

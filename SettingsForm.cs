@@ -188,6 +188,10 @@ namespace qbPortWeaver
             try
             {
                 var adapters = await NatPmpManager.DiscoverAdapters();
+
+                // Guard against the form being closed while adapter discovery was in flight
+                if (IsDisposed) return;
+
                 cboNatPmpAdapter.Items.Clear();
                 if (adapters.Count == 0)
                 {

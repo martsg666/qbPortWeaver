@@ -171,7 +171,7 @@ jobs:
           $version   = $env:RELEASE_VERSION
           $tag       = $env:RELEASE_TAG
           $assetName = "qbPortWeaver_${version}_Setup.msi"
-          $url       = "https://github.com/martsg666/qbPortWeaver/releases/download/$tag/$assetName"
+          $url       = "https://github.com/$env:GITHUB_REPOSITORY/releases/download/$tag/$assetName"
           $checksum  = (Get-FileHash -Path $env:SETUP_PATH -Algorithm SHA256).Hash.ToUpper()
 
           Write-Host "Asset : $assetName"

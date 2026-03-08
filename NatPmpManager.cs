@@ -12,7 +12,7 @@ namespace qbPortWeaver
         private const int  NatPmpPort             = 5351;
         private const int  InitialTimeoutMs       = 1500; // VPN NAT-PMP gateways are remote; 250ms is too aggressive
         private const int  MaxAttempts            = 3;    // 1500ms → 3000ms → 6000ms
-        public  const uint DefaultMappingLifetime = 3600; // 1 hour
+        private const uint DefaultMappingLifetime = 3600; // 1 hour
 
         private readonly NetworkInterface _adapter;
         private readonly IPAddress        _gateway;
@@ -31,6 +31,10 @@ namespace qbPortWeaver
 
         // Returns the adapter description, used as the VPN provider display name in log messages and status.
         public string ProviderName => _adapter.Description;
+
+        // The lease lifetime (in seconds) granted by the gateway on the last successful port mapping; 0 until first mapping.
+        // Read by PortSyncService to warn when the configured sync interval exceeds the lease lifetime.
+        public uint LastGrantedLifetime { get; private set; }
 
         // Re-enumerates network interfaces to check if the adapter is currently present and up.
         // The stored _adapter object retains its last-seen OperationalStatus even after the
@@ -89,8 +93,9 @@ namespace qbPortWeaver
                     ? $" (+{result.EpochSeconds - _lastEpochSeconds}s)" : "";
                 LogManager.Instance.LogDebug($"NatPmpManager.GetVpnPort: SSOE {result.EpochSeconds}s{epochDelta}");
 
-                _lastEpochSeconds = result.EpochSeconds;
-                _lastExternalPort = result.ExternalPort;
+                _lastEpochSeconds  = result.EpochSeconds;
+                _lastExternalPort  = result.ExternalPort;
+                LastGrantedLifetime = result.LifetimeGranted;
 
                 if (suggested != 0 && result.ExternalPort == suggested)
                     LogManager.Instance.LogMessage($"NAT-PMP lease renewed: port {result.ExternalPort}, lifetime {result.LifetimeGranted}s", LogLevel.Info);
@@ -99,12 +104,6 @@ namespace qbPortWeaver
                 else
                     LogManager.Instance.LogMessage($"NAT-PMP lease granted: port {result.ExternalPort}, lifetime {result.LifetimeGranted}s", LogLevel.Info);
 
-                int syncInterval = RegistrySettingsManager.GetInt(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyUpdateIntervalSeconds);
-                if (syncInterval > result.LifetimeGranted)
-                    LogManager.Instance.LogMessage(
-                        $"NAT-PMP sync interval ({syncInterval}s) exceeds lease lifetime ({result.LifetimeGranted}s) — port mapping will expire before the next sync cycle",
-                        LogLevel.Warn);
-
                 return result.ExternalPort;
             }
             catch (Exception ex)
@@ -112,14 +111,6 @@ namespace qbPortWeaver
                 LogManager.Instance.LogMessage($"NAT-PMP error on '{_adapter.Description}': {ex.Message}", LogLevel.Warn);
                 return null;
             }
-        }
-
-        // Transfers renewal state from a previous instance so that port renewal works correctly
-        // when a fresh NatPmpManager instance is created each cycle.
-        internal void CopyRenewalStateFrom(NatPmpManager other)
-        {
-            _lastExternalPort  = other._lastExternalPort;
-            _lastEpochSeconds  = other._lastEpochSeconds;
         }
 
         // Returns all network adapters whose gateway actively responds to NAT-PMP,
@@ -198,6 +189,14 @@ namespace qbPortWeaver
                 LogManager.Instance.LogDebug($"NatPmpManager.TryCreateForAdapter: '{adapterName}' via gateway {gateway} — NAT-PMP probe failed");
 
             return externalIp is not null ? new NatPmpManager(nic, gateway, mappingLifetime) : null;
+        }
+
+        // Transfers renewal state from a previous instance so that port renewal works correctly
+        // when a fresh NatPmpManager instance is created each cycle.
+        internal void CopyRenewalStateFrom(NatPmpManager other)
+        {
+            _lastExternalPort  = other._lastExternalPort;
+            _lastEpochSeconds  = other._lastEpochSeconds;
         }
 
         // Resolves the usable gateway for an adapter.

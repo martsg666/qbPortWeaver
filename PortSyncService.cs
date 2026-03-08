@@ -9,7 +9,7 @@ namespace qbPortWeaver
     public sealed class PortSyncService
     {
         // qBittorrent API value returned by /api/v2/transfer/info when the client has no active connections
-        private const string QBDisconnectedStatus = "disconnected";
+        private const string QBittorrentDisconnectedStatus = "disconnected";
 
         // Event raised when a sync cycle completes (success or failure)
         public event Action<TrayStatus>? SyncCompleted;
@@ -148,6 +148,15 @@ namespace qbPortWeaver
                 }
                 status[StatusKeys.VpnPort] = vpnPort.Value;
                 LogManager.Instance.LogMessage($"{vpnManager.ProviderName} port found: {vpnPort.Value}", LogLevel.Info);
+
+                // Warn if the NAT-PMP lease will expire before the next sync cycle renews it
+                if (vpnManager is NatPmpManager natPmp &&
+                    natPmp.LastGrantedLifetime > 0 &&
+                    cfg.UpdateInterval > natPmp.LastGrantedLifetime)
+                    LogManager.Instance.LogMessage(
+                        $"NAT-PMP sync interval ({cfg.UpdateInterval}s) exceeds lease lifetime ({natPmp.LastGrantedLifetime}s) — port mapping will expire before the next sync cycle",
+                        LogLevel.Warn);
+
                 targetPort              = vpnPort.Value;
                 vpnProviderName         = vpnManager.ProviderName;
                 warnOnInterfaceMismatch = cfg.WarnOnInterfaceMismatch;
@@ -430,7 +439,7 @@ namespace qbPortWeaver
 
             LogManager.Instance.LogMessage($"qBittorrent connection status: {connectionStatus}", LogLevel.Info);
 
-            if (!connectionStatus.Equals(QBDisconnectedStatus, StringComparison.OrdinalIgnoreCase))
+            if (!connectionStatus.Equals(QBittorrentDisconnectedStatus, StringComparison.OrdinalIgnoreCase))
                 return;
 
             LogManager.Instance.LogMessage("qBittorrent connection status is disconnected — restarting", LogLevel.Warn);

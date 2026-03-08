@@ -52,7 +52,7 @@ namespace qbPortWeaver
             }
             catch (Exception ex)
             {
-                LogManager.Instance.LogDebug($"AppConstants.OpenUrl: {ex.Message}");
+                LogManager.Instance.LogMessage($"AppConstants.OpenUrl: failed to open URL: {ex.Message}", LogLevel.Warn);
             }
         }
     }

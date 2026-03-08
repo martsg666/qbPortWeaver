@@ -7,14 +7,13 @@ namespace qbPortWeaver
     public static class RegistrySettingsManager
     {
         private const string BaseKeyPath = @"Software\qbPortWeaver\Settings";
+        // Explicit string literals guarantee stable boolean registry serialization independent of framework internals.
+        private const string ValueTrue   = "True";
+        private const string ValueFalse  = "False";
 
         public const string SectionGeneral     = "general";
         public const string SectionQBittorrent = "qBittorrent";
         public const string SectionExtra       = "extra";
-
-        // Explicit string literals guarantee stable boolean registry serialization independent of framework internals.
-        public const string ValueTrue  = "True";
-        public const string ValueFalse = "False";
 
         public const string VpnProviderProtonVpn = "ProtonVPN";
         public const string VpnProviderPia       = "PIA";

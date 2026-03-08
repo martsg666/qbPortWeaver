@@ -13,6 +13,7 @@ namespace qbPortWeaver
         private long               _lastReadPosition;
         private FileSystemWatcher? _watcher;
         private bool               _isDarkMode;
+        private Color[]            _themeColors = null!; // initialized in OnLoad after _isDarkMode is set
 
         public LogViewerForm(string logFilePath)
         {
@@ -23,7 +24,10 @@ namespace qbPortWeaver
         protected override void OnLoad(EventArgs e)
         {
             base.OnLoad(e);
-            _isDarkMode = IsDarkModeEnabled();
+            _isDarkMode  = IsDarkModeEnabled();
+            _themeColors = _isDarkMode
+                ? [Color.OrangeRed, Color.Gold, Color.DodgerBlue, Color.DarkOrange, Color.Gainsboro]
+                : [Color.Crimson, Color.Goldenrod, Color.SteelBlue, Color.DarkOrange, SystemColors.WindowText];
             _ = LoadInitialContentAsync(); // fire-and-forget: exceptions are caught within the method
         }
 
@@ -57,8 +61,8 @@ namespace qbPortWeaver
                     return;
                 }
 
-                // Capture on UI thread — ThemeColors must not be read from the background thread
-                Color[] colors = ThemeColors;
+                // Capture on UI thread — _themeColors must not be read from the background thread
+                Color[] colors = _themeColors;
 
                 (string rtf, long position) = await Task.Run(() =>
                 {
@@ -149,9 +153,10 @@ namespace qbPortWeaver
                     ScrollToBottom();
                 });
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-                // Best-effort live update; ignore transient file access errors during rotation or clear
+                // Best-effort live update; transient errors during rotation or clear are expected
+                LogManager.Instance.LogDebug($"LogViewerForm.OnLogFileUpdated: {ex.Message}");
             }
         }
 
@@ -170,7 +175,7 @@ namespace qbPortWeaver
             AppendLine(line, GetLineColor(line));
 
         // Maps a log line to its display colour using the shared colour index
-        private Color GetLineColor(string line) => ThemeColors[GetLineColorIndex(line)];
+        private Color GetLineColor(string line) => _themeColors[GetLineColorIndex(line)];
 
         // Returns the 0-based colour index for a log line, shared by the RTF builder and live-update renderer
         // Log format: "yyyy-MM-dd HH:mm:ss | LEVEL | message" (level padded to 5 chars)
@@ -182,11 +187,6 @@ namespace qbPortWeaver
             if (line.Contains("| DEBUG |", StringComparison.Ordinal)) return 3;
             return 4;
         }
-
-        // Theme-specific colour palette indexed by GetLineColorIndex: Error, Warn, Info, Debug, Default
-        private Color[] ThemeColors => _isDarkMode
-            ? [Color.OrangeRed, Color.Gold, Color.DodgerBlue, Color.DarkOrange, Color.Gainsboro]
-            : [Color.Crimson, Color.Goldenrod, Color.SteelBlue, Color.DarkOrange, SystemColors.WindowText];
 
         // Convenience colour for meta/status messages (not log entries)
         private Color MetaColor => _isDarkMode ? Color.DimGray : SystemColors.GrayText;

@@ -11,8 +11,12 @@ namespace qbPortWeaver
         private const int  MaxLogFiles          = 3;   // Keep only 3 logfiles total (including current)
         private const int  RotationCheckInterval = 100; // Check rotation every N writes
 
-        // Static instance for global access
-        public static LogManager Instance { get; private set; } = null!;
+        // Static instance for global access — null until Initialize() is called
+        private static LogManager? _instance;
+        public static bool IsInitialized => _instance != null;
+        public static LogManager Instance =>
+            _instance ?? throw new InvalidOperationException(
+                $"{nameof(LogManager)} has not been initialized. Call {nameof(Initialize)} first.");
 
         public  string LogFilePath { get; }
         private readonly object _lock = new object();
@@ -28,10 +32,10 @@ namespace qbPortWeaver
         // Initializes the singleton; throws if called more than once
         public static LogManager Initialize(string logFilePath)
         {
-            if (Instance != null)
+            if (_instance != null)
                 throw new InvalidOperationException($"{nameof(LogManager)} has already been initialized");
-            Instance = new LogManager(logFilePath);
-            return Instance;
+            _instance = new LogManager(logFilePath);
+            return _instance;
         }
 
         private LogManager(string logFilePath)

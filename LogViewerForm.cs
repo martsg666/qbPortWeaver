@@ -159,8 +159,8 @@ namespace qbPortWeaver
         }
 
         // Rebuilds the list of match positions in the current RTF content.
-        // navigateToFirst: jump to match 1 (used after text or filter change);
-        //                  false keeps the current index if still valid (used after live updates).
+        // Pass true to jump to the first match (after a text or filter change);
+        // pass false to keep the current index if still valid (after live updates).
         private void RefreshSearch(bool navigateToFirst = false)
         {
             _searchMatches.Clear();
@@ -376,30 +376,9 @@ namespace qbPortWeaver
 
                 try
                 {
-                    Invoke(() =>
-                    {
-                        bool   wasAtBottom = IsAtBottom();
-                        bool   anyVisible  = false;
-                        bool[] filters     = [chkError.Checked, chkWarn.Checked, chkInfo.Checked, chkDebug.Checked];
-
-                        foreach (string line in newLines)
-                        {
-                            _allLines.Add(line);
-                            if (IsLineVisibleWithFilters(line, filters))
-                            {
-                                AppendColoredLine(line);
-                                anyVisible = true;
-                            }
-                        }
-
-                        if (anyVisible && wasAtBottom) ScrollToBottom();
-
-                        // Update match count if a search is active — new lines may contain additional hits
-                        if (!string.IsNullOrEmpty(txtSearch.Text))
-                            RefreshSearch(navigateToFirst: false);
-                    });
+                    Invoke(() => AppendNewLines(newLines));
                 }
-                catch (ObjectDisposedException) { }
+                catch (ObjectDisposedException) { /* form disposed between IsDisposed check and Invoke — expected on close */ }
             }
             catch (Exception ex)
             {
@@ -423,7 +402,32 @@ namespace qbPortWeaver
                     rtbLog.Clear();
                 });
             }
-            catch (ObjectDisposedException) { }
+            catch (ObjectDisposedException) { /* form disposed between IsDisposed check and Invoke — expected on close */ }
+        }
+
+        // Appends new lines to the in-memory store and the display, then scrolls and refreshes search if needed.
+        // Must be called on the UI thread.
+        private void AppendNewLines(string[] newLines)
+        {
+            bool   wasAtBottom = IsAtBottom();
+            bool   anyVisible  = false;
+            bool[] filters     = [chkError.Checked, chkWarn.Checked, chkInfo.Checked, chkDebug.Checked];
+
+            foreach (string line in newLines)
+            {
+                _allLines.Add(line);
+                if (IsLineVisibleWithFilters(line, filters))
+                {
+                    AppendColoredLine(line);
+                    anyVisible = true;
+                }
+            }
+
+            if (anyVisible && wasAtBottom) ScrollToBottom();
+
+            // Update match count if a search is active — new lines may contain additional hits
+            if (!string.IsNullOrEmpty(txtSearch.Text))
+                RefreshSearch(navigateToFirst: false);
         }
 
         private void AppendColoredLine(string line) =>

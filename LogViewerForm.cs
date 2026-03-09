@@ -360,9 +360,11 @@ namespace qbPortWeaver
                     if (lastNl < 0) return; // no complete line yet; wait for the next cycle
 
                     string complete = raw[..(lastNl + 1)];
-                    // Advance by the byte count of the processed portion only — NOT fs.Position —
-                    // so the partial tail beyond lastNl is re-read in the next cycle.
-                    _lastReadPosition += Encoding.UTF8.GetByteCount(complete);
+                    // Use fs.Position (actual file offset, includes any BOM bytes) minus the tail
+                    // byte count so the tail is re-read next cycle. += GetByteCount(complete) would
+                    // be 3 bytes short after a StreamReader-consumed UTF-8 BOM, producing a stray
+                    // 'r' line in the viewer (last bytes of the prior entry re-read as a new line).
+                    _lastReadPosition = fs.Position - Encoding.UTF8.GetByteCount(raw[(lastNl + 1)..]);
 
                     newLines = complete.Split('\n', StringSplitOptions.RemoveEmptyEntries)
                                        .Select(l => l.TrimEnd('\r'))
@@ -500,7 +502,7 @@ namespace qbPortWeaver
             rtbLog.SelectionStart  = rtbLog.TextLength;
             rtbLog.SelectionLength = 0;
             rtbLog.SelectionColor  = color;
-            rtbLog.AppendText(text + Environment.NewLine);
+            rtbLog.AppendText(text + "\n");
         }
 
         private void ScrollToBottom()

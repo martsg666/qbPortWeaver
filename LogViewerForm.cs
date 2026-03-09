@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Text;
 using Microsoft.Win32;
 
@@ -515,6 +516,7 @@ namespace qbPortWeaver
         {
             private string _hint = string.Empty;
 
+            [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
             public new string PlaceholderText
             {
                 get => _hint;

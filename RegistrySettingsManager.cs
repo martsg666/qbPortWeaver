@@ -74,7 +74,7 @@ namespace qbPortWeaver
                 }
             };
 
-        // Ensures all settings keys exist in the registry, writing defaults for any missing keys
+        /// <summary>Ensures all settings keys exist in the registry, writing hardcoded defaults for any that are missing.</summary>
         public static void EnsureDefaults()
         {
             bool anyWritten = false;
@@ -95,7 +95,7 @@ namespace qbPortWeaver
                 LogManager.Instance.LogMessage("Registry settings initialized with defaults", LogLevel.Info);
         }
 
-        // Reads a value from the registry; returns the hardcoded default if not found
+        /// <summary>Reads a string value from the registry. Returns the hardcoded default if the key is missing or unreadable.</summary>
         public static string GetValue(string section, string key)
         {
             try
@@ -117,15 +117,15 @@ namespace qbPortWeaver
             return fallback;
         }
 
-        // Reads a bool value from the registry; returns false if not found or not parseable
+        /// <summary>Reads a bool value from the registry. Returns <see langword="false"/> if the key is missing or not parseable.</summary>
         public static bool GetBool(string section, string key) =>
             bool.TryParse(GetValue(section, key), out bool result) && result;
 
-        // Reads an int value from the registry; returns 0 if not found or not parseable
+        /// <summary>Reads an int value from the registry. Returns <c>0</c> if the key is missing or not parseable.</summary>
         public static int GetInt(string section, string key) =>
             int.TryParse(GetValue(section, key), out int result) ? result : 0;
 
-        // Reads the qBittorrent password from the registry and decrypts it with DPAPI
+        /// <summary>Reads the qBittorrent password from the registry and decrypts it with DPAPI (CurrentUser scope). Returns an empty string if missing or decryption fails.</summary>
         public static string GetPassword()
         {
             try
@@ -154,7 +154,7 @@ namespace qbPortWeaver
             return GetDefault(SectionQBittorrent, KeyQBittorrentPassword);
         }
 
-        // Writes a single value to the registry
+        /// <summary>Writes a string value to the registry under the given section and key.</summary>
         public static void SetValue(string section, string key, string value)
         {
             try
@@ -169,11 +169,11 @@ namespace qbPortWeaver
             }
         }
 
-        // Writes a bool value to the registry as "True" or "False"
+        /// <summary>Writes a bool value to the registry as <c>"True"</c> or <c>"False"</c>.</summary>
         public static void SetBool(string section, string key, bool value) =>
             SetValue(section, key, value ? ValueTrue : ValueFalse);
 
-        // Encrypts the password with DPAPI (CurrentUser scope) and writes it to the registry
+        /// <summary>Encrypts <paramref name="plaintext"/> with DPAPI (CurrentUser scope) and writes the result to the registry.</summary>
         public static void SetPassword(string plaintext)
         {
             try

@@ -2,7 +2,7 @@ using System.Diagnostics;
 
 namespace qbPortWeaver
 {
-    public enum SyncState { OK, VpnDisconnected, Error }
+    public enum SyncState { Synced, VpnDisconnected, Error }
 
     public sealed record TrayStatus(SyncState State, int? Port, string Message);
 
@@ -93,7 +93,7 @@ namespace qbPortWeaver
 
                 SyncState state;
                 if (!vpnConnected)     state = SyncState.VpnDisconnected;
-                else if (success)      state = SyncState.OK;
+                else if (success)      state = SyncState.Synced;
                 else                   state = SyncState.Error;
 
                 SyncCompleted?.Invoke(new TrayStatus(state, port, message));
@@ -258,7 +258,7 @@ namespace qbPortWeaver
 
             if (!cfg.VpnProvider.Equals(RegistrySettingsManager.VpnProviderProtonVpn, StringComparison.OrdinalIgnoreCase))
                 LogManager.Instance.LogMessage($"Unknown VPN provider '{cfg.VpnProvider}', defaulting to ProtonVPN", LogLevel.Warn);
-            return new ProtonVPNManager(AppConstants.GetProtonVPNLogFilePath());
+            return new ProtonVpnManager(AppConstants.GetProtonVPNLogFilePath());
         }
 
         // Ensures qBittorrent is running, then updates its port if it differs from the target port

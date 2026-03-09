@@ -158,9 +158,6 @@ namespace qbPortWeaver
             }
         }
 
-        // Rebuilds the list of match positions in the current RTF content.
-        // Pass true to jump to the first match (after a text or filter change);
-        // pass false to keep the current index if still valid (after live updates).
         private void RefreshSearch(bool navigateToFirst = false)
         {
             _searchMatches.Clear();

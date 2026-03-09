@@ -314,6 +314,16 @@ namespace qbPortWeaver
             return (true, externalPort, lifetimeGiven, epochSeconds, null);
         }
 
+        private static void LogTimeoutDebug(int attempt, int maxAttempts, int timeoutMs)
+        {
+            if (attempt < maxAttempts - 1)
+                LogManager.Instance.LogDebug($"NatPmpManager.SendReceiveAsync: No response after {timeoutMs}ms, retrying (attempt {attempt + 2}/{maxAttempts})");
+            else if (maxAttempts > 1)
+                LogManager.Instance.LogDebug($"NatPmpManager.SendReceiveAsync: No response after {timeoutMs}ms (all {maxAttempts} attempts exhausted)");
+            else
+                LogManager.Instance.LogDebug($"NatPmpManager.SendReceiveAsync: No response after {timeoutMs}ms");
+        }
+
         // Sends a UDP datagram to the gateway and waits for a response.
         // Retries with exponential backoff per RFC 6886 §3.1 to handle dropped UDP packets.
         // maxAttempts defaults to MaxAttempts; pass 1 for best-effort probes (e.g. discovery).
@@ -346,12 +356,7 @@ namespace qbPortWeaver
                 }
                 catch (OperationCanceledException)
                 {
-                    if (attempt < maxAttempts - 1)
-                        LogManager.Instance.LogDebug($"NatPmpManager.SendReceiveAsync: No response after {timeoutMs}ms, retrying (attempt {attempt + 2}/{maxAttempts})");
-                    else if (maxAttempts > 1)
-                        LogManager.Instance.LogDebug($"NatPmpManager.SendReceiveAsync: No response after {timeoutMs}ms (all {maxAttempts} attempts exhausted)");
-                    else
-                        LogManager.Instance.LogDebug($"NatPmpManager.SendReceiveAsync: No response after {timeoutMs}ms");
+                    LogTimeoutDebug(attempt, maxAttempts, timeoutMs);
                     timeoutMs *= 2;
                 }
                 catch (SocketException ex)

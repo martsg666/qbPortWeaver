@@ -63,15 +63,13 @@ namespace qbPortWeaver
                 // Guard against the form being closed while the GitHub requests were in flight
                 if (IsDisposed) return;
 
-                // ── Contributors ─────────────────────────────────────────────
-                var contributors = contributorsTask.Result;
+                var contributors = await contributorsTask;
                 if (contributors.Count > 0)
                     SetContributorLinks(contributors);
                 else
                     lnkAuthor.Text = AppConstants.GitHubRepoOwner;
 
-                // ── Version / update status ───────────────────────────────────
-                var info = releaseTask.Result;
+                var info = await releaseTask;
                 if (info == null)
                 {
                     lblLatestVersionValue.Text      = "Unable to check";

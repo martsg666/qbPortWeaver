@@ -8,6 +8,7 @@ namespace qbPortWeaver
         public SettingsForm()
         {
             InitializeComponent();
+            Text = $"{AppConstants.AppName} | Settings";
         }
 
         protected override void OnLoad(EventArgs e)

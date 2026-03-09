@@ -79,6 +79,7 @@ namespace qbPortWeaver
 
                 // Schedule periodic update checks every 12 hours
                 _updateCheckTimer = new System.Windows.Forms.Timer { Interval = AppConstants.AutoUpdateCheckIntervalMs };
+                // async void lambda is safe here: PerformUpdateCheckAsync has a top-level catch-all and never throws
                 _updateCheckTimer.Tick += async (s, e) => await PerformUpdateCheckAsync();
                 _updateCheckTimer.Start();
 
@@ -366,7 +367,7 @@ namespace qbPortWeaver
         {
             _trayIcon.Icon = state switch
             {
-                SyncState.OK              => _iconOk      ?? _iconBase!,
+                SyncState.Synced              => _iconOk      ?? _iconBase!,
                 SyncState.VpnDisconnected => _iconWarning ?? _iconBase!,
                 SyncState.Error           => _iconError   ?? _iconBase!,
                 _                         =>                 _iconBase!
@@ -378,7 +379,7 @@ namespace qbPortWeaver
         {
             string statusLine = _lastSyncStatus switch
             {
-                { State: SyncState.OK, Port: int p }                  => $"Port {p} | Synced",
+                { State: SyncState.Synced, Port: int p }                  => $"Port {p} | Synced",
                 { State: SyncState.VpnDisconnected, Port: int p }     => $"VPN not connected | Default port {p}",
                 { State: SyncState.VpnDisconnected }                  => "VPN not connected",
                 { State: SyncState.Error, Message: var m }            => $"Error | {m}",

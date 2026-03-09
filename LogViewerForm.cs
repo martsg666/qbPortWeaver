@@ -8,12 +8,15 @@ namespace qbPortWeaver
     // (enforced by MainForm.ShowLogViewer).
     public partial class LogViewerForm : Form
     {
-        private readonly string    _logFilePath;
-        private readonly object    _readLock = new();
-        private long               _lastReadPosition;
-        private FileSystemWatcher? _watcher;
-        private bool               _isDarkMode;
-        private Color[]            _themeColors = null!; // initialized in OnLoad after _isDarkMode is set
+        private readonly string      _logFilePath;
+        private readonly object      _readLock  = new();
+        private readonly List<string> _allLines = new(); // all raw lines in memory; rebuilt on filter change without re-reading the file
+        private readonly List<int>   _searchMatches = new(); // character indices of current search hits in rtbLog
+        private int                  _searchIndex = -1;
+        private long                 _lastReadPosition;
+        private FileSystemWatcher?   _watcher;
+        private bool                 _isDarkMode;
+        private Color[]              _themeColors = null!; // initialized in OnLoad after _isDarkMode is set
 
         public LogViewerForm(string logFilePath)
         {
@@ -28,6 +31,27 @@ namespace qbPortWeaver
             _themeColors = _isDarkMode
                 ? [Color.OrangeRed, Color.Gold, Color.DodgerBlue, Color.DarkOrange, Color.Gainsboro]
                 : [Color.Crimson, Color.Goldenrod, Color.SteelBlue, Color.DarkOrange, SystemColors.WindowText];
+            Text = $"{AppConstants.AppName} | Log Viewer";
+            ApplyTheme();
+            // Vertically center the search box — single-line TextBox auto-sizes its height from the font,
+            // so the actual height is only known after layout; compute the top offset here.
+            int searchTop = (pnlToolbar.Height - txtSearch.Height) / 2;
+            txtSearch.Top = searchTop;
+
+            // Size nav buttons and match count label to the search box height so everything is visually aligned
+            btnPrev.Size      = new Size(btnPrev.Width, txtSearch.Height);
+            btnNext.Size      = new Size(btnNext.Width, txtSearch.Height);
+            btnPrev.Top       = searchTop;
+            btnNext.Top       = searchTop;
+            lblMatchCount.Top = searchTop + (txtSearch.Height - lblMatchCount.Height) / 2;
+
+            // Position the × button inside the right edge of the search box.
+            // Done here so the button tracks the auto-sized TextBox height and right-anchor position.
+            int cbSize = txtSearch.Height - 4;
+            btnClearSearch.Size     = new Size(cbSize, cbSize);
+            btnClearSearch.Location = new Point(txtSearch.Right - cbSize - 2, searchTop + 2);
+            // Must be in front of the native TextBox HWND or it will be hidden behind it
+            btnClearSearch.BringToFront();
             _ = LoadInitialContentAsync(); // fire-and-forget: exceptions are caught within the method
         }
 
@@ -40,11 +64,188 @@ namespace qbPortWeaver
             base.OnFormClosed(e);
         }
 
+        // Applies theme colors to the background, filter buttons, and search controls
+        private void ApplyTheme()
+        {
+            Color bg   = _isDarkMode ? Color.FromArgb(30, 30, 30) : SystemColors.Window;
+            Color fg   = _isDarkMode ? Color.Gainsboro : SystemColors.WindowText;
+            Color border = _isDarkMode ? Color.FromArgb(80, 80, 80) : SystemColors.ControlDark;
+
+            BackColor            = bg;
+            pnlToolbar.BackColor = bg;
+            rtbLog.BackColor     = bg;
+
+            ApplyFilterButtonStyle(chkError, _themeColors[0]);
+            ApplyFilterButtonStyle(chkWarn,  _themeColors[1]);
+            ApplyFilterButtonStyle(chkInfo,  _themeColors[2]);
+            ApplyFilterButtonStyle(chkDebug, _themeColors[3]);
+
+            txtSearch.BackColor = bg;
+            txtSearch.ForeColor = fg;
+
+            foreach (var btn in new[] { btnPrev, btnNext })
+            {
+                btn.BackColor                  = bg;
+                btn.ForeColor                  = fg;
+                btn.FlatAppearance.BorderColor = border;
+            }
+
+            // Clear button sits inside the search box — blend it in rather than styling it like the nav buttons
+            btnClearSearch.BackColor                 = txtSearch.BackColor;
+            btnClearSearch.ForeColor                 = _isDarkMode ? Color.FromArgb(160, 160, 160) : SystemColors.GrayText;
+            btnClearSearch.FlatAppearance.BorderSize = 0;
+
+            lblMatchCount.BackColor = bg;
+            lblMatchCount.ForeColor = _isDarkMode ? Color.FromArgb(160, 160, 160) : SystemColors.GrayText;
+        }
+
+        // Sets filter button foreground and border to the level colour when active, dimmed when inactive
+        private void ApplyFilterButtonStyle(CheckBox chk, Color levelColor)
+        {
+            Color dimmed = _isDarkMode ? Color.FromArgb(80, 80, 80) : Color.FromArgb(180, 180, 180);
+            chk.ForeColor                       = chk.Checked ? levelColor : dimmed;
+            chk.FlatAppearance.BorderColor      = chk.Checked ? levelColor : dimmed;
+            chk.FlatAppearance.CheckedBackColor = _isDarkMode ? Color.FromArgb(55, 55, 55) : Color.FromArgb(225, 225, 235);
+            chk.BackColor                       = pnlToolbar.BackColor;
+        }
+
         // Returns true if the user has enabled dark mode in Windows personalisation settings
         private static bool IsDarkModeEnabled()
         {
             using var key = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize");
             return (key?.GetValue("AppsUseLightTheme") as int?) == 0;
+        }
+
+        // Called when any filter CheckBox changes — updates its style and rebuilds the display
+        private void FilterButton_CheckedChanged(object? sender, EventArgs e)
+        {
+            if (sender is CheckBox chk)
+                ApplyFilterButtonStyle(chk, GetButtonLevelColor(chk));
+            RebuildDisplay();
+        }
+
+        private Color GetButtonLevelColor(CheckBox chk)
+        {
+            if (chk == chkError) return _themeColors[0];
+            if (chk == chkWarn)  return _themeColors[1];
+            if (chk == chkInfo)  return _themeColors[2];
+            return _themeColors[3];
+        }
+
+        private void BtnClearSearch_Click(object? sender, EventArgs e) => txtSearch.Clear();
+        private void BtnPrev_Click(object? sender, EventArgs e)        => SearchPrev();
+        private void BtnNext_Click(object? sender, EventArgs e)        => SearchNext();
+
+        // Triggered when the search text changes — shows/hides the clear button, then refreshes matches
+        private void TxtSearch_TextChanged(object? sender, EventArgs e)
+        {
+            btnClearSearch.Visible = txtSearch.Text.Length > 0;
+            RefreshSearch(navigateToFirst: true);
+        }
+
+        // Handles Enter (next), Shift+Enter (prev), and Escape (clear) in the search box
+        private void TxtSearch_KeyDown(object? sender, KeyEventArgs e)
+        {
+            if (e.KeyCode == Keys.Enter)
+            {
+                if (e.Shift) SearchPrev(); else SearchNext();
+                e.SuppressKeyPress = true;
+            }
+            else if (e.KeyCode == Keys.Escape)
+            {
+                txtSearch.Clear();
+                e.SuppressKeyPress = true;
+            }
+        }
+
+        private void RefreshSearch(bool navigateToFirst = false)
+        {
+            _searchMatches.Clear();
+
+            string query = txtSearch.Text;
+            if (string.IsNullOrEmpty(query))
+            {
+                lblMatchCount.Text     = string.Empty;
+                rtbLog.SelectionLength = 0;
+                return;
+            }
+
+            // Scan plain text with IndexOf — avoids calling rtbLog.Find() which changes the
+            // RichTextBox selection on every call and causes visible flashing.
+            string text  = rtbLog.Text;
+            int    start = 0;
+            while (true)
+            {
+                int found = text.IndexOf(query, start, StringComparison.OrdinalIgnoreCase);
+                if (found < 0) break;
+                _searchMatches.Add(found);
+                start = found + 1;
+            }
+
+            if (_searchMatches.Count == 0)
+            {
+                _searchIndex           = -1;
+                lblMatchCount.Text     = "No matches";
+                rtbLog.SelectionLength = 0;
+                return;
+            }
+
+            if (navigateToFirst || _searchIndex < 0 || _searchIndex >= _searchMatches.Count)
+                _searchIndex = 0;
+
+            NavigateToMatch(_searchIndex);
+        }
+
+        private void SearchNext()
+        {
+            if (_searchMatches.Count == 0) return;
+            NavigateToMatch((_searchIndex + 1) % _searchMatches.Count);
+        }
+
+        private void SearchPrev()
+        {
+            if (_searchMatches.Count == 0) return;
+            NavigateToMatch(_searchIndex <= 0 ? _searchMatches.Count - 1 : _searchIndex - 1);
+        }
+
+        private void NavigateToMatch(int index)
+        {
+            _searchIndex = index;
+            rtbLog.Select(_searchMatches[index], txtSearch.Text.Length);
+            rtbLog.ScrollToCaret();
+            lblMatchCount.Text = $"{_searchIndex + 1} / {_searchMatches.Count}";
+        }
+
+        // Rebuilds the RTF display from the in-memory line store, applying the current filter.
+        // Preserves the scroll position: only scrolls to bottom if the user was already there.
+        private void RebuildDisplay()
+        {
+            bool    wasAtBottom = IsAtBottom();
+            bool[]  filters     = [chkError.Checked, chkWarn.Checked, chkInfo.Checked, chkDebug.Checked];
+            Color[] colors      = _themeColors;
+            string[] filtered   = _allLines.Where(l => IsLineVisibleWithFilters(l, filters)).ToArray();
+            rtbLog.Rtf = BuildRtf(filtered, colors);
+            RefreshSearch(navigateToFirst: true);
+            if (wasAtBottom) ScrollToBottom();
+        }
+
+        // Returns true if the user is scrolled to the bottom of the log.
+        // Uses GetCharIndexFromPosition at the bottom-left of the viewport to avoid the off-by-one
+        // caused by GetPositionFromCharIndex(TextLength-1), which returns the Y of the trailing
+        // paragraph marker (one line below the last log entry) rather than the last text line itself.
+        private bool IsAtBottom()
+        {
+            if (rtbLog.TextLength == 0) return true;
+            int lastVisible = rtbLog.GetCharIndexFromPosition(new Point(0, rtbLog.ClientSize.Height - 1));
+            return lastVisible >= rtbLog.TextLength - 2;
+        }
+
+        // Static — safe to call from background threads (no UI state access).
+        // Meta/unclassified lines (index >= 4) are always shown.
+        private static bool IsLineVisibleWithFilters(string line, bool[] filters)
+        {
+            int idx = GetLineColorIndex(line);
+            return idx >= filters.Length || filters[idx];
         }
 
         // Reads the full log file and builds its RTF representation on a background thread,
@@ -61,22 +262,28 @@ namespace qbPortWeaver
                     return;
                 }
 
-                // Capture on UI thread — _themeColors must not be read from the background thread
-                Color[] colors = _themeColors;
+                // Capture UI-thread state before entering the background task
+                Color[] colors  = _themeColors;
+                bool[]  filters = [chkError.Checked, chkWarn.Checked, chkInfo.Checked, chkDebug.Checked];
 
-                (string rtf, long position) = await Task.Run(() =>
+                (string rtf, long position, string[] allLines) = await Task.Run(() =>
                 {
                     lock (_readLock)
                     {
                         using var fs     = new FileStream(_logFilePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
                         using var reader = new StreamReader(fs, Encoding.UTF8);
-                        var lines        = reader.ReadToEnd().Split('\n', StringSplitOptions.RemoveEmptyEntries);
-                        return (BuildRtf(lines, colors), fs.Position);
+                        string[] lines   = reader.ReadToEnd()
+                                                 .Split('\n', StringSplitOptions.RemoveEmptyEntries)
+                                                 .Select(l => l.TrimEnd('\r'))
+                                                 .ToArray();
+                        string[] filtered = lines.Where(l => IsLineVisibleWithFilters(l, filters)).ToArray();
+                        return (BuildRtf(filtered, colors), fs.Position, lines);
                     }
                 });
 
                 if (IsDisposed) return;
 
+                _allLines.AddRange(allLines);
                 _lastReadPosition = position;
                 rtbLog.Rtf = rtf;
                 ScrollToBottom();
@@ -95,6 +302,7 @@ namespace qbPortWeaver
         // Starts a FileSystemWatcher to detect new log entries and file rotation/clearing
         private void StartWatcher()
         {
+            if (IsDisposed) return;
             try
             {
                 string? dir  = Path.GetDirectoryName(_logFilePath);
@@ -117,7 +325,8 @@ namespace qbPortWeaver
             }
         }
 
-        // Reads any new content appended since the last read and appends it to the RichTextBox
+        // Reads any new content appended since the last read and appends visible lines to the display.
+        // Only scrolls to the bottom if the user was already there before the update.
         private void OnLogFileUpdated()
         {
             try
@@ -139,36 +348,83 @@ namespace qbPortWeaver
 
                     fs.Seek(_lastReadPosition, SeekOrigin.Begin);
                     using var reader = new StreamReader(fs, Encoding.UTF8);
-                    newLines          = reader.ReadToEnd().Split('\n', StringSplitOptions.RemoveEmptyEntries);
-                    _lastReadPosition = fs.Position;
+                    string    raw    = reader.ReadToEnd();
+
+                    // Only process content up to the last complete line. The FileSystemWatcher
+                    // fires as soon as the OS flushes a write, which can happen before the logger
+                    // has finished writing the full line. Reading past the last '\n' would capture
+                    // a partial line, store it in _allLines, and advance _lastReadPosition past it —
+                    // leaving an orphaned fragment in the display that can never be corrected.
+                    int lastNl = raw.LastIndexOf('\n');
+                    if (lastNl < 0) return; // no complete line yet; wait for the next cycle
+
+                    string complete = raw[..(lastNl + 1)];
+                    // Advance by the byte count of the processed portion only — NOT fs.Position —
+                    // so the partial tail beyond lastNl is re-read in the next cycle.
+                    _lastReadPosition += Encoding.UTF8.GetByteCount(complete);
+
+                    newLines = complete.Split('\n', StringSplitOptions.RemoveEmptyEntries)
+                                       .Select(l => l.TrimEnd('\r'))
+                                       .ToArray();
                 }
 
                 if (newLines.Length == 0 || IsDisposed)
                     return;
 
-                Invoke(() =>
+                try
                 {
-                    foreach (string line in newLines)
-                        AppendColoredLine(line.TrimEnd('\r'));
-                    ScrollToBottom();
-                });
+                    Invoke(() => AppendNewLines(newLines));
+                }
+                catch (ObjectDisposedException) { /* form disposed between IsDisposed check and Invoke — expected on close */ }
             }
             catch (Exception ex)
             {
                 // Best-effort live update; transient errors during rotation or clear are expected
-                LogManager.Instance.LogDebug($"LogViewerForm.OnLogFileUpdated: {ex.Message}");
+                LogManager.LogDebugException("LogViewerForm.OnLogFileUpdated", ex);
             }
         }
 
-        // Called when the log file is deleted (e.g. Clear Logs); resets the read position and clears the display
+        // Called when the log file is deleted (e.g. Clear Logs); resets state and clears the display
         private void OnLogFileDeleted()
         {
             lock (_readLock)
                 _lastReadPosition = 0;
 
             if (IsDisposed) return;
-            try { Invoke(() => rtbLog.Clear()); }
-            catch (Exception) { /* ObjectDisposedException if form was disposed between the IsDisposed check and Invoke */ }
+            try
+            {
+                Invoke(() =>
+                {
+                    _allLines.Clear();
+                    rtbLog.Clear();
+                });
+            }
+            catch (ObjectDisposedException) { /* form disposed between IsDisposed check and Invoke — expected on close */ }
+        }
+
+        // Appends new lines to the in-memory store and the display, then scrolls and refreshes search if needed.
+        // Must be called on the UI thread.
+        private void AppendNewLines(string[] newLines)
+        {
+            bool   wasAtBottom = IsAtBottom();
+            bool   anyVisible  = false;
+            bool[] filters     = [chkError.Checked, chkWarn.Checked, chkInfo.Checked, chkDebug.Checked];
+
+            foreach (string line in newLines)
+            {
+                _allLines.Add(line);
+                if (IsLineVisibleWithFilters(line, filters))
+                {
+                    AppendColoredLine(line);
+                    anyVisible = true;
+                }
+            }
+
+            if (anyVisible && wasAtBottom) ScrollToBottom();
+
+            // Update match count if a search is active — new lines may contain additional hits
+            if (!string.IsNullOrEmpty(txtSearch.Text))
+                RefreshSearch(navigateToFirst: false);
         }
 
         private void AppendColoredLine(string line) =>
@@ -208,10 +464,9 @@ namespace qbPortWeaver
             // Consolas 9pt (18 half-points), no paragraph spacing
             sb.Append("\\f0\\fs18\\sb0\\sa0 ");
 
-            foreach (var rawLine in lines)
+            foreach (string line in lines)
             {
-                string line = rawLine.TrimEnd('\r');
-                int    cf   = GetLineColorIndex(line) + 1; // RTF colour table is 1-based
+                int cf = GetLineColorIndex(line) + 1; // RTF colour table is 1-based
                 sb.Append($"\\cf{cf} ");
                 AppendRtfText(sb, line);
                 sb.Append("\\par ");
@@ -251,6 +506,38 @@ namespace qbPortWeaver
         {
             rtbLog.SelectionStart = rtbLog.TextLength;
             rtbLog.ScrollToCaret();
+        }
+
+        // Custom TextBox that draws a vertically-centered placeholder.
+        // Shadowing PlaceholderText prevents the base class from sending EM_SETCUEBANNER,
+        // which renders the native cue at the top-left regardless of the control height.
+        private sealed class PlaceholderTextBox : TextBox
+        {
+            private string _hint = string.Empty;
+
+            public new string PlaceholderText
+            {
+                get => _hint;
+                set { _hint = value; Invalidate(); }
+            }
+
+            protected override void OnGotFocus(EventArgs e)  { base.OnGotFocus(e);  Invalidate(); }
+            protected override void OnLostFocus(EventArgs e) { base.OnLostFocus(e); Invalidate(); }
+
+            protected override void WndProc(ref Message m)
+            {
+                const int WM_PAINT = 0x000F;
+                base.WndProc(ref m);
+                if (m.Msg == WM_PAINT && TextLength == 0 && !Focused && _hint.Length > 0)
+                {
+                    using var g    = Graphics.FromHwnd(Handle);
+                    var       rect = ClientRectangle;
+                    rect.Inflate(-2, 0);
+                    TextRenderer.DrawText(g, _hint, Font, rect, SystemColors.GrayText,
+                        TextFormatFlags.VerticalCenter | TextFormatFlags.Left |
+                        TextFormatFlags.SingleLine     | TextFormatFlags.NoPadding);
+                }
+            }
         }
     }
 }

@@ -2,7 +2,7 @@ using System.Diagnostics;
 
 namespace qbPortWeaver
 {
-    public enum SyncState { OK, VpnDisconnected, Error }
+    public enum SyncState { Synced, VpnDisconnected, Error }
 
     public sealed record TrayStatus(SyncState State, int? Port, string Message);
 
@@ -51,6 +51,29 @@ namespace qbPortWeaver
             bool RestartOnDisconnect
         );
 
+        // Compile-time–safe keys and values for the status dictionary written to the JSON status file
+        private static class StatusKeys
+        {
+            // Keys
+            public const string AppVersion              = "appVersion";
+            public const string Timestamp               = "timestamp";
+            public const string VpnProvider             = "vpnProvider";
+            public const string VpnConnected            = "vpnConnected";
+            public const string VpnPort                 = "vpnPort";
+            public const string QBittorrentRunning      = "qBittorrentRunning";
+            public const string QBittorrentPreviousPort = "qBittorrentPreviousPort";
+            public const string QBittorrentPort         = "qBittorrentPort";
+            public const string PortChanged             = "portChanged";
+            public const string UpdateIntervalSeconds   = "updateIntervalSeconds";
+            public const string Status                  = "status";
+            public const string Message                 = "message";
+
+            // Values for the Status key — "skipped" means VPN disconnected with no default port configured (cycle is a no-op)
+            public const string StatusSuccess = "success";
+            public const string StatusError   = "error";
+            public const string StatusSkipped = "skipped";
+        }
+
         // Main port update logic, returns update interval in seconds
         public async Task<int> RunAsync(CancellationToken cancellationToken = default)
         {
@@ -93,7 +116,7 @@ namespace qbPortWeaver
 
                 SyncState state;
                 if (!vpnConnected)     state = SyncState.VpnDisconnected;
-                else if (success)      state = SyncState.OK;
+                else if (success)      state = SyncState.Synced;
                 else                   state = SyncState.Error;
 
                 SyncCompleted?.Invoke(new TrayStatus(state, port, message));
@@ -258,7 +281,7 @@ namespace qbPortWeaver
 
             if (!cfg.VpnProvider.Equals(RegistrySettingsManager.VpnProviderProtonVpn, StringComparison.OrdinalIgnoreCase))
                 LogManager.Instance.LogMessage($"Unknown VPN provider '{cfg.VpnProvider}', defaulting to ProtonVPN", LogLevel.Warn);
-            return new ProtonVPNManager(AppConstants.GetProtonVPNLogFilePath());
+            return new ProtonVpnManager(AppConstants.GetProtonVPNLogFilePath());
         }
 
         // Ensures qBittorrent is running, then updates its port if it differs from the target port
@@ -458,27 +481,5 @@ namespace qbPortWeaver
             LogManager.Instance.LogMessage(message, level ?? (success ? LogLevel.Info : LogLevel.Error));
         }
 
-        // Compile-time–safe keys and values for the status dictionary written to the JSON status file
-        private static class StatusKeys
-        {
-            // Keys
-            public const string AppVersion              = "appVersion";
-            public const string Timestamp               = "timestamp";
-            public const string VpnProvider             = "vpnProvider";
-            public const string VpnConnected            = "vpnConnected";
-            public const string VpnPort                 = "vpnPort";
-            public const string QBittorrentRunning      = "qBittorrentRunning";
-            public const string QBittorrentPreviousPort = "qBittorrentPreviousPort";
-            public const string QBittorrentPort         = "qBittorrentPort";
-            public const string PortChanged             = "portChanged";
-            public const string UpdateIntervalSeconds   = "updateIntervalSeconds";
-            public const string Status                  = "status";
-            public const string Message                 = "message";
-
-            // Values for the Status key — "skipped" means VPN disconnected with no default port configured (cycle is a no-op)
-            public const string StatusSuccess = "success";
-            public const string StatusError   = "error";
-            public const string StatusSkipped = "skipped";
-        }
     }
 }

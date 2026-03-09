@@ -154,7 +154,7 @@ On first run, all settings are initialized with sensible defaults.
 - Enable **NetShield**.
 - Use **OpenVPN (UDP)** as the protocol to avoid DNS resolution issues that can occur with WireGuard.
 - Set ProtonVPN to **start with Windows**.
-- Set `VPN Provider` to `ProtonVPN` in qbPortWeaver Settings (reads the forwarded port from the ProtonVPN log file — recommended default).
+- Set `VPN Provider` to `ProtonVPN` in qbPortWeaver Settings (reads the forwarded port from the ProtonVPN log file).
 
 > **Alternative:** ProtonVPN also supports NAT-PMP. If you prefer not to rely on log file parsing, set `VPN Provider` to `NAT-PMP` instead and select the ProtonVPN virtual adapter in the NAT-PMP Adapter dropdown. See the NAT-PMP Configuration section below.
 

@@ -29,7 +29,7 @@ namespace qbPortWeaver
             set => _debugMode = value;
         }
 
-        // Initializes the singleton; throws if called more than once
+        /// <summary>Initializes the singleton with the given log file path. Throws if called more than once.</summary>
         public static LogManager Initialize(string logFilePath)
         {
             if (_instance != null)
@@ -43,7 +43,7 @@ namespace qbPortWeaver
             LogFilePath = logFilePath;
         }
 
-        // Writes a log entry at the given level (thread-safe)
+        /// <summary>Writes a log entry at the given level. Thread-safe.</summary>
         public void LogMessage(string message, LogLevel level)
         {
             lock (_lock)
@@ -72,14 +72,25 @@ namespace qbPortWeaver
             }
         }
 
-        // Writes a debug entry only when DebugMode is enabled (thread-safe)
+        /// <summary>Writes a debug entry only when <see cref="DebugMode"/> is enabled. Thread-safe.</summary>
         public void LogDebug(string message)
         {
             if (!DebugMode) return;
             LogMessage(message, LogLevel.Debug);
         }
 
-        // Clears all log files and starts fresh (thread-safe)
+        /// <summary>Logs <paramref name="ex"/>.<see cref="Exception.Message"/> at debug level with a context prefix.</summary>
+        internal static void LogDebugException(string context, Exception ex)
+            => Instance.LogDebug($"{context}: {ex.Message}");
+
+        /// <summary>Logs <paramref name="ex"/>.<see cref="Exception.Message"/> at debug level and returns <see langword="false"/>. Enables single-line catch blocks.</summary>
+        internal static bool LogDebugExceptionFalse(string context, Exception ex)
+        {
+            Instance.LogDebug($"{context}: {ex.Message}");
+            return false;
+        }
+
+        /// <summary>Deletes all log files and starts a fresh log. Thread-safe.</summary>
         public void ClearLogs()
         {
             lock (_lock)
@@ -109,7 +120,7 @@ namespace qbPortWeaver
             LogMessage("Logs cleared by user", LogLevel.Info);
         }
 
-        // Checks log file size and rotates if it exceeds the maximum
+        /// <summary>Checks the log file size and rotates it if it exceeds the maximum. Thread-safe.</summary>
         public void CheckAndRotateLogFile()
         {
             lock (_lock)

@@ -9,7 +9,7 @@ namespace qbPortWeaver
             WriteIndented = true
         };
 
-        // Write status dictionary to JSON file (atomic write via temp file)
+        /// <summary>Serializes <paramref name="status"/> to the JSON status file using an atomic temp-file write.</summary>
         public static void Write(IReadOnlyDictionary<string, object?> status)
         {
             string filePath = AppConstants.GetStatusFilePath();

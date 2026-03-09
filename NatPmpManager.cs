@@ -329,15 +329,20 @@ namespace qbPortWeaver
                     await udp.SendAsync(request, new IPEndPoint(gateway, NatPmpPort)).ConfigureAwait(false);
 
                     using var cts = new CancellationTokenSource(timeoutMs);
-                    UdpReceiveResult result = await udp.ReceiveAsync(cts.Token).ConfigureAwait(false);
-
-                    if (!result.RemoteEndPoint.Address.Equals(gateway))
+                    while (true)
                     {
-                        LogManager.Instance.LogDebug($"NatPmpManager.SendReceiveAsync: Response from unexpected sender {result.RemoteEndPoint.Address}, discarding and retrying");
-                        continue;
-                    }
+                        UdpReceiveResult result = await udp.ReceiveAsync(cts.Token).ConfigureAwait(false);
 
-                    return result.Buffer;
+                        if (!result.RemoteEndPoint.Address.Equals(gateway))
+                        {
+                            // Discard stray datagrams without consuming a retry slot — keep waiting
+                            // on the same socket until the timeout fires or the gateway responds.
+                            LogManager.Instance.LogDebug($"NatPmpManager.SendReceiveAsync: Response from unexpected sender {result.RemoteEndPoint.Address}, discarding");
+                            continue;
+                        }
+
+                        return result.Buffer;
+                    }
                 }
                 catch (OperationCanceledException)
                 {

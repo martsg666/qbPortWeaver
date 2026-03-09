@@ -25,7 +25,7 @@ namespace qbPortWeaver
         private volatile TrayStatus? _lastSyncStatus;
 
         // Cancellation token for the inter-cycle delay — cancelled by manual sync requests to skip the wait
-        private CancellationTokenSource _delayCts = new CancellationTokenSource();
+        private volatile CancellationTokenSource _delayCts = new CancellationTokenSource();
 
         // Semaphore to prevent concurrent updates
         private readonly SemaphoreSlim _updateSemaphore = new SemaphoreSlim(1, 1);
@@ -307,7 +307,7 @@ namespace qbPortWeaver
                 return;
             }
 
-            LogManager.Instance.LogMessage($"Main loop crashed: {ex.Message}", LogLevel.Error);
+            LogManager.Instance.LogMessage($"Main loop crashed: {ex}", LogLevel.Error);
 
             string message = $"Critical error in main loop: {ex.Message}\n\nThe application will now exit.";
             try

@@ -16,8 +16,7 @@
             if (disposing)
             {
                 // Dispose components container
-                if (components != null)
-                    components.Dispose();
+                components?.Dispose();
 
                 // Dispose custom resources
                 try

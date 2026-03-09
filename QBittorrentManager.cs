@@ -129,8 +129,10 @@ namespace qbPortWeaver
 
                 if (listenPort == null)
                 {
-                    LogManager.Instance.LogDebug("QBittorrentManager.GetPreferencesAsync: listen_port not parsed in preferences JSON");
-                    LogManager.Instance.LogDebug($"QBittorrentManager.GetPreferencesAsync: {json}");
+                    string portDiag = root.TryGetProperty("listen_port", out var diagElement)
+                        ? $"listen_port kind={diagElement.ValueKind} value={diagElement}"
+                        : "listen_port key absent";
+                    LogManager.Instance.LogDebug($"QBittorrentManager.GetPreferencesAsync: listen_port not parsed in preferences JSON ({portDiag})");
                 }
 
                 string? currentInterfaceName = null;

@@ -21,6 +21,7 @@ namespace qbPortWeaver
         // adapter (e.g. VPN is between disconnect and reconnect), this is returned so IsVpnConnected()
         // reports false and RunCoreAsync handles disconnection gracefully instead of surfacing an error.
         // Cleared when the configured adapter name changes in settings.
+        // Thread-safety: only accessed inside RunCoreAsync, which is serialised by MainForm._updateSemaphore.
         private NatPmpManager? _lastKnownNatPmpManager;
 
         // All values read from the registry for a single sync cycle
@@ -444,7 +445,7 @@ namespace qbPortWeaver
                     UseShellExecute = false,
                     CreateNoWindow  = true
                 };
-                Process.Start(startInfo)?.Dispose();
+                Process.Start(startInfo)?.Dispose(); // NOSONAR S4721 — cmd is a user-configured registry value; execution of arbitrary commands is the intended behaviour
                 LogManager.Instance.LogMessage("Post-update command launched (fire-and-forget; result not tracked)", LogLevel.Info);
             }
             catch (Exception ex)

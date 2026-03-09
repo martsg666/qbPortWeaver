@@ -72,7 +72,8 @@ namespace qbPortWeaver
                     try
                     {
                         proc.Kill();
-                        proc.WaitForExit(ProcessKillDelayMs);
+                        if (!proc.WaitForExit(ProcessKillDelayMs))
+                            LogManager.Instance.LogMessage($"qBittorrent process (PID {proc.Id}) did not exit within {ProcessKillDelayMs}ms after Kill — a duplicate instance may start", LogLevel.Warn);
                     }
                     catch (Exception ex) { LogManager.Instance.LogDebug($"QBittorrentManager.RestartAsync: Failed to kill process: {ex.Message}"); }
                     finally { proc.Dispose(); }
@@ -270,8 +271,8 @@ namespace qbPortWeaver
                 LogManager.Instance.LogMessage($"qBittorrent Web UI connection failed: {ex.Message} — check the URL in Settings ({_url})", LogLevel.Error);
             else
             {
-                LogManager.Instance.LogMessage($"qBittorrent request failed unexpectedly in {methodName}: {ex.GetType().Name}", LogLevel.Warn);
-                LogManager.Instance.LogDebug($"QBittorrentManager.{methodName}: {ex.Message}");
+                LogManager.Instance.LogMessage($"qBittorrent request failed unexpectedly in {methodName}: {ex.Message}", LogLevel.Warn);
+                LogManager.Instance.LogDebug($"QBittorrentManager.{methodName}: {ex.GetType().Name}");
             }
         }
     }

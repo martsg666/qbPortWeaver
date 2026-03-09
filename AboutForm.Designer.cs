@@ -173,7 +173,7 @@ namespace qbPortWeaver
             Name = "AboutForm";
             ShowIcon = false;
             StartPosition = FormStartPosition.CenterScreen;
-            Text = "About";
+            Text = "qbPortWeaver | About"; // overridden in constructor with AppConstants.AppName
             ((System.ComponentModel.ISupportInitialize)picIcon).EndInit();
             grpVersion.ResumeLayout(false);
             grpLinks.ResumeLayout(false);

@@ -79,6 +79,7 @@ namespace qbPortWeaver
 
                 // Schedule periodic update checks every 12 hours
                 _updateCheckTimer = new System.Windows.Forms.Timer { Interval = AppConstants.AutoUpdateCheckIntervalMs };
+                // async void lambda is safe here: PerformUpdateCheckAsync has a top-level catch-all and never throws
                 _updateCheckTimer.Tick += async (s, e) => await PerformUpdateCheckAsync();
                 _updateCheckTimer.Start();
 

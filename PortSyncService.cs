@@ -51,6 +51,29 @@ namespace qbPortWeaver
             bool RestartOnDisconnect
         );
 
+        // Compile-time–safe keys and values for the status dictionary written to the JSON status file
+        private static class StatusKeys
+        {
+            // Keys
+            public const string AppVersion              = "appVersion";
+            public const string Timestamp               = "timestamp";
+            public const string VpnProvider             = "vpnProvider";
+            public const string VpnConnected            = "vpnConnected";
+            public const string VpnPort                 = "vpnPort";
+            public const string QBittorrentRunning      = "qBittorrentRunning";
+            public const string QBittorrentPreviousPort = "qBittorrentPreviousPort";
+            public const string QBittorrentPort         = "qBittorrentPort";
+            public const string PortChanged             = "portChanged";
+            public const string UpdateIntervalSeconds   = "updateIntervalSeconds";
+            public const string Status                  = "status";
+            public const string Message                 = "message";
+
+            // Values for the Status key — "skipped" means VPN disconnected with no default port configured (cycle is a no-op)
+            public const string StatusSuccess = "success";
+            public const string StatusError   = "error";
+            public const string StatusSkipped = "skipped";
+        }
+
         // Main port update logic, returns update interval in seconds
         public async Task<int> RunAsync(CancellationToken cancellationToken = default)
         {
@@ -458,27 +481,5 @@ namespace qbPortWeaver
             LogManager.Instance.LogMessage(message, level ?? (success ? LogLevel.Info : LogLevel.Error));
         }
 
-        // Compile-time–safe keys and values for the status dictionary written to the JSON status file
-        private static class StatusKeys
-        {
-            // Keys
-            public const string AppVersion              = "appVersion";
-            public const string Timestamp               = "timestamp";
-            public const string VpnProvider             = "vpnProvider";
-            public const string VpnConnected            = "vpnConnected";
-            public const string VpnPort                 = "vpnPort";
-            public const string QBittorrentRunning      = "qBittorrentRunning";
-            public const string QBittorrentPreviousPort = "qBittorrentPreviousPort";
-            public const string QBittorrentPort         = "qBittorrentPort";
-            public const string PortChanged             = "portChanged";
-            public const string UpdateIntervalSeconds   = "updateIntervalSeconds";
-            public const string Status                  = "status";
-            public const string Message                 = "message";
-
-            // Values for the Status key — "skipped" means VPN disconnected with no default port configured (cycle is a no-op)
-            public const string StatusSuccess = "success";
-            public const string StatusError   = "error";
-            public const string StatusSkipped = "skipped";
-        }
     }
 }

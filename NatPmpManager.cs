@@ -29,11 +29,13 @@ namespace qbPortWeaver
         // Read by PortSyncService to warn when the configured sync interval exceeds the lease lifetime.
         public uint LastGrantedLifetime { get; private set; }
 
-        // Returns all network adapters whose gateway actively responds to NAT-PMP,
-        // including TUN/VPN adapters where the gateway is inferred from the unicast address.
-        // All candidates are probed in parallel with a single attempt each, only those with a responding
-        // gateway are returned. Used by SettingsForm to populate the adapter list.
-        // mappingLifetime: requested port mapping duration in seconds (gateway may grant less).
+        /// <summary>
+        /// Returns all network adapters whose gateway actively responds to NAT-PMP,
+        /// including TUN/VPN adapters where the gateway is inferred from the unicast address.
+        /// All candidates are probed in parallel with a single attempt each; only those whose
+        /// gateway responds are returned. Used by SettingsForm to populate the adapter list.
+        /// </summary>
+        /// <param name="mappingLifetime">Requested port mapping duration in seconds; the gateway may grant less.</param>
         public static async Task<IReadOnlyList<NatPmpManager>> DiscoverAdapters(uint mappingLifetime = DefaultMappingLifetime)
         {
             var candidates = new List<(NetworkInterface Nic, IPAddress Gateway)>();
@@ -66,12 +68,16 @@ namespace qbPortWeaver
                 .ToList();
         }
 
-        // Probes only the named adapter rather than all adapters. Used by the sync cycle so that
-        // unrelated adapters (e.g. ZeroTier, Ethernet) are never probed unnecessarily.
-        // Unlike DiscoverAdapters (maxAttempts=1), uses MaxAttempts retries with exponential backoff
-        // since probing a single known adapter is worth retrying on transient packet loss.
-        // Returns null if the adapter is not found/up, has no resolvable gateway, or does not
-        // respond to a NAT-PMP probe.
+        /// <summary>
+        /// Probes only the named adapter rather than all adapters. Used by the sync cycle so that
+        /// unrelated adapters (e.g. ZeroTier, Ethernet) are never probed unnecessarily.
+        /// Unlike <see cref="DiscoverAdapters"/>, uses <see cref="MaxAttempts"/> retries with
+        /// exponential backoff since probing a single known adapter is worth retrying on transient packet loss.
+        /// Returns <see langword="null"/> if the adapter is not found or not up, has no resolvable
+        /// gateway, or does not respond to a NAT-PMP probe.
+        /// </summary>
+        /// <param name="adapterName">The adapter description to match (case-insensitive).</param>
+        /// <param name="mappingLifetime">Requested port mapping duration in seconds; the gateway may grant less.</param>
         public static async Task<NatPmpManager?> TryCreateForAdapter(string adapterName, uint mappingLifetime = DefaultMappingLifetime)
         {
             NetworkInterface? nic = GetActiveNetworkInterfaces()

@@ -293,7 +293,7 @@ namespace qbPortWeaver
             MinimizeBox     = false;
             ShowIcon        = false;
             StartPosition   = FormStartPosition.CenterScreen;
-            Text            = $"{AppConstants.AppName} | Settings";
+            Text            = "qbPortWeaver | Settings"; // overridden in constructor with AppConstants.AppName
 
             grpGeneral.ResumeLayout(false);
             ((System.ComponentModel.ISupportInitialize)nudUpdateInterval).EndInit();

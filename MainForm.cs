@@ -25,9 +25,10 @@ namespace qbPortWeaver
         private volatile TrayStatus? _lastSyncStatus;
 
         // Cancellation token for the inter-cycle delay — cancelled by manual sync requests to skip the wait
-        private CancellationTokenSource _delayCts = new CancellationTokenSource();
+        private volatile CancellationTokenSource _delayCts = new CancellationTokenSource();
 
-        // Semaphore to prevent concurrent updates
+        // Semaphore to prevent concurrent sync cycles. Also serialises access to
+        // PortSyncService instance state (e.g. _lastKnownNatPmpManager) — see PortSyncService.cs.
         private readonly SemaphoreSlim _updateSemaphore = new SemaphoreSlim(1, 1);
 
         // Manual sync triggered flag (thread-safe with volatile)
@@ -307,7 +308,7 @@ namespace qbPortWeaver
                 return;
             }
 
-            LogManager.Instance.LogMessage($"Main loop crashed: {ex.Message}", LogLevel.Error);
+            LogManager.Instance.LogMessage($"Main loop crashed: {ex}", LogLevel.Error);
 
             string message = $"Critical error in main loop: {ex.Message}\n\nThe application will now exit.";
             try
@@ -330,7 +331,7 @@ namespace qbPortWeaver
         {
             try
             {
-                LogManager.Instance.LogMessage("Checking for application updates", LogLevel.Info);
+                LogManager.Instance.LogDebug("MainForm.PerformUpdateCheckAsync: checking for application updates");
                 var update = await UpdateChecker.GetAvailableUpdateAsync();
                 if (update.HasValue)
                 {
@@ -353,7 +354,7 @@ namespace qbPortWeaver
                 }
                 else
                 {
-                    LogManager.Instance.LogMessage("Application is up to date", LogLevel.Info);
+                    LogManager.Instance.LogDebug("MainForm.PerformUpdateCheckAsync: application is up to date");
                 }
             }
             catch (Exception ex)

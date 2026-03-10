@@ -15,6 +15,8 @@ The application runs in the system tray, manages configuration and logging, and 
 - ProtonVPN, Private Internet Access (PIA), or any NAT-PMP capable VPN or router with port forwarding enabled
 - qBittorrent installed with Web UI enabled
 
+> **Note:** The MSI installer is not code-signed. Windows SmartScreen may show an "Unknown publisher" warning on first install — click **More info → Run anyway** to proceed. This is expected for open-source projects without a commercial code-signing certificate.
+
 ---
 
 ## Features

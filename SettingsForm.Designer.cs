@@ -6,8 +6,8 @@ namespace qbPortWeaver
 
         protected override void Dispose(bool disposing)
         {
-            if (disposing && components != null)
-                components.Dispose();
+            if (disposing)
+                components?.Dispose();
             base.Dispose(disposing);
         }
 

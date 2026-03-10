@@ -55,10 +55,7 @@ namespace qbPortWeaver
             var probeResults = await Task.WhenAll(candidates.Select(async c =>
             {
                 IPAddress? externalIp = await RequestExternalAddressAsync(c.Gateway).ConfigureAwait(false);
-                if (externalIp is not null)
-                    LogManager.Instance.LogDebug($"NatPmpManager.DiscoverAdapters: '{c.Nic.Description}' via gateway {c.Gateway} (external IP: {externalIp})");
-                else
-                    LogManager.Instance.LogDebug($"NatPmpManager.DiscoverAdapters: '{c.Nic.Description}' via gateway {c.Gateway} — NAT-PMP probe failed");
+                LogProbeResultDebug("DiscoverAdapters", c.Nic.Description, c.Gateway, externalIp);
                 return (c.Nic, c.Gateway, Supported: externalIp is not null);
             })).ConfigureAwait(false);
 
@@ -97,10 +94,7 @@ namespace qbPortWeaver
             }
 
             IPAddress? externalIp = await RequestExternalAddressAsync(gateway, MaxAttempts).ConfigureAwait(false);
-            if (externalIp is not null)
-                LogManager.Instance.LogDebug($"NatPmpManager.TryCreateForAdapter: '{adapterName}' via gateway {gateway} (external IP: {externalIp})");
-            else
-                LogManager.Instance.LogDebug($"NatPmpManager.TryCreateForAdapter: '{adapterName}' via gateway {gateway} — NAT-PMP probe failed");
+            LogProbeResultDebug("TryCreateForAdapter", adapterName, gateway, externalIp);
 
             return externalIp is not null ? new NatPmpManager(nic, gateway, mappingLifetime) : null;
         }
@@ -196,7 +190,10 @@ namespace qbPortWeaver
             _lastEpochSeconds  = other._lastEpochSeconds;
         }
 
-        // Returns all network interfaces that are up and not loopback or tunnel adapters.
+        // Returns all network interfaces that are up and not loopback or protocol-tunnel adapters.
+        // NetworkInterfaceType.Tunnel covers Windows IF_TYPE_TUNNEL (Teredo, ISATAP, 6to4) —
+        // not VPN adapters. WireGuard/wintun (ProtonVPN) and TAP/OpenVPN adapters report as
+        // Unknown or Ethernet and are not excluded by this filter.
         private static IEnumerable<NetworkInterface> GetActiveNetworkInterfaces()
             => NetworkInterface.GetAllNetworkInterfaces()
                 .Where(nic => nic.OperationalStatus == OperationalStatus.Up
@@ -314,6 +311,24 @@ namespace qbPortWeaver
             return (true, externalPort, lifetimeGiven, epochSeconds, null);
         }
 
+        private static void LogProbeResultDebug(string context, string adapterName, IPAddress gateway, IPAddress? externalIp)
+        {
+            if (externalIp is not null)
+                LogManager.Instance.LogDebug($"NatPmpManager.{context}: '{adapterName}' via gateway {gateway} (external IP: {externalIp})");
+            else
+                LogManager.Instance.LogDebug($"NatPmpManager.{context}: '{adapterName}' via gateway {gateway} — NAT-PMP probe failed");
+        }
+
+        private static void LogTimeoutDebug(int attempt, int maxAttempts, int timeoutMs)
+        {
+            if (attempt < maxAttempts - 1)
+                LogManager.Instance.LogDebug($"NatPmpManager.SendReceiveAsync: No response after {timeoutMs}ms, retrying (attempt {attempt + 2}/{maxAttempts})");
+            else if (maxAttempts > 1)
+                LogManager.Instance.LogDebug($"NatPmpManager.SendReceiveAsync: No response after {timeoutMs}ms (all {maxAttempts} attempts exhausted)");
+            else
+                LogManager.Instance.LogDebug($"NatPmpManager.SendReceiveAsync: No response after {timeoutMs}ms");
+        }
+
         // Sends a UDP datagram to the gateway and waits for a response.
         // Retries with exponential backoff per RFC 6886 §3.1 to handle dropped UDP packets.
         // maxAttempts defaults to MaxAttempts; pass 1 for best-effort probes (e.g. discovery).
@@ -329,24 +344,24 @@ namespace qbPortWeaver
                     await udp.SendAsync(request, new IPEndPoint(gateway, NatPmpPort)).ConfigureAwait(false);
 
                     using var cts = new CancellationTokenSource(timeoutMs);
-                    UdpReceiveResult result = await udp.ReceiveAsync(cts.Token).ConfigureAwait(false);
-
-                    if (!result.RemoteEndPoint.Address.Equals(gateway))
+                    while (true)
                     {
-                        LogManager.Instance.LogDebug($"NatPmpManager.SendReceiveAsync: Response from unexpected sender {result.RemoteEndPoint.Address}, discarding and retrying");
-                        continue;
-                    }
+                        UdpReceiveResult result = await udp.ReceiveAsync(cts.Token).ConfigureAwait(false);
 
-                    return result.Buffer;
+                        if (!result.RemoteEndPoint.Address.Equals(gateway))
+                        {
+                            // Discard stray datagrams without consuming a retry slot — keep waiting
+                            // on the same socket until the timeout fires or the gateway responds.
+                            LogManager.Instance.LogDebug($"NatPmpManager.SendReceiveAsync: Response from unexpected sender {result.RemoteEndPoint.Address}, discarding");
+                            continue;
+                        }
+
+                        return result.Buffer;
+                    }
                 }
                 catch (OperationCanceledException)
                 {
-                    if (attempt < maxAttempts - 1)
-                        LogManager.Instance.LogDebug($"NatPmpManager.SendReceiveAsync: No response after {timeoutMs}ms, retrying (attempt {attempt + 2}/{maxAttempts})");
-                    else if (maxAttempts > 1)
-                        LogManager.Instance.LogDebug($"NatPmpManager.SendReceiveAsync: No response after {timeoutMs}ms (all {maxAttempts} attempts exhausted)");
-                    else
-                        LogManager.Instance.LogDebug($"NatPmpManager.SendReceiveAsync: No response after {timeoutMs}ms");
+                    LogTimeoutDebug(attempt, maxAttempts, timeoutMs);
                     timeoutMs *= 2;
                 }
                 catch (SocketException ex)

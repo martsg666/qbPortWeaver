@@ -29,7 +29,11 @@ namespace qbPortWeaver
             set => _debugMode = value;
         }
 
-        /// <summary>Initializes the singleton with the given log file path. Throws if called more than once.</summary>
+        /// <summary>
+        /// Initializes the singleton with the given log file path. Throws if called more than once.
+        /// Not thread-safe by design — must be called once from the UI thread during application startup,
+        /// before any background tasks are started.
+        /// </summary>
         public static LogManager Initialize(string logFilePath)
         {
             if (_instance != null)
@@ -79,17 +83,6 @@ namespace qbPortWeaver
             LogMessage(message, LogLevel.Debug);
         }
 
-        /// <summary>Logs <paramref name="ex"/>.<see cref="Exception.Message"/> at debug level with a context prefix.</summary>
-        internal static void LogDebugException(string context, Exception ex)
-            => Instance.LogDebug($"{context}: {ex.Message}");
-
-        /// <summary>Logs <paramref name="ex"/>.<see cref="Exception.Message"/> at debug level and returns <see langword="false"/>. Enables single-line catch blocks.</summary>
-        internal static bool LogDebugExceptionFalse(string context, Exception ex)
-        {
-            Instance.LogDebug($"{context}: {ex.Message}");
-            return false;
-        }
-
         /// <summary>Deletes all log files and starts a fresh log. Thread-safe.</summary>
         public void ClearLogs()
         {
@@ -120,13 +113,24 @@ namespace qbPortWeaver
             LogMessage("Logs cleared by user", LogLevel.Info);
         }
 
-        /// <summary>Checks the log file size and rotates it if it exceeds the maximum. Thread-safe.</summary>
-        public void CheckAndRotateLogFile()
+        // Checks the log file size and rotates it if it exceeds the maximum. Thread-safe.
+        internal void CheckAndRotateLogFile()
         {
             lock (_lock)
             {
                 RotateIfNeeded();
             }
+        }
+
+        /// <summary>Logs <paramref name="ex"/>.<see cref="Exception.Message"/> at debug level with a context prefix.</summary>
+        internal static void LogDebugException(string context, Exception ex)
+            => Instance.LogDebug($"{context}: {ex.Message}");
+
+        /// <summary>Logs <paramref name="ex"/>.<see cref="Exception.Message"/> at debug level and returns <see langword="false"/>. Enables single-line catch blocks.</summary>
+        internal static bool LogDebugExceptionFalse(string context, Exception ex)
+        {
+            Instance.LogDebug($"{context}: {ex.Message}");
+            return false;
         }
 
         // Internal rotation check — must be called while holding _lock

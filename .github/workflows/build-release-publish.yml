@@ -75,6 +75,7 @@ jobs:
         # Pinned to a specific commit SHA rather than a floating tag (e.g. @v4) so that
         # a compromised or force-pushed tag cannot silently introduce malicious code into
         # the pipeline. Update the SHA intentionally when upgrading the action.
+        # Maintenance: review and rotate these SHAs periodically to pick up security patches.
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
         with:
           fetch-depth: 0
@@ -90,7 +91,25 @@ jobs:
           dotnet-version: '10.x'
 
       # -----------------------------------------------------------------------
-      # 5. Publish the .NET application (self-contained single-file, version stamped from the tag)
+      # 5. Verify that <Version> in qbPortWeaver.csproj matches the tag version.
+      #    Catches cases where the .csproj was not updated before tagging.
+      # -----------------------------------------------------------------------
+      - name: Verify csproj version matches tag
+        shell: pwsh
+        env:
+          BUILD_VERSION: ${{ steps.version.outputs.VERSION }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $tagVersion    = $env:BUILD_VERSION
+          $match         = Select-String -Path 'qbPortWeaver.csproj' -Pattern '<Version>([^<]+)</Version>'
+          $csprojVersion = $match.Matches[0].Groups[1].Value
+          if ($csprojVersion -ne $tagVersion) {
+            throw "Version mismatch: tag is '$tagVersion' but qbPortWeaver.csproj has '$csprojVersion'. Update <Version> in the .csproj before tagging."
+          }
+          Write-Host "Version check passed: $csprojVersion"
+
+      # -----------------------------------------------------------------------
+      # 6. Publish the .NET application (self-contained single-file, version stamped from the tag)
       # -----------------------------------------------------------------------
       - name: Publish application
         shell: pwsh
@@ -110,7 +129,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       # -----------------------------------------------------------------------
-      # 6. Install WiX Toolset v4 (pinned to 4.0.6)
+      # 7. Install WiX Toolset v4 (pinned to 4.0.6)
       # -----------------------------------------------------------------------
       - name: Install WiX Toolset
         shell: pwsh
@@ -124,7 +143,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       # -----------------------------------------------------------------------
-      # 7. Build the MSI installer
+      # 8. Build the MSI installer
       # -----------------------------------------------------------------------
       - name: Build MSI installer
         id: msi
@@ -156,7 +175,7 @@ jobs:
           Write-Host "Installer ready: $setupMsi"
 
       # -----------------------------------------------------------------------
-      # 8. Compute SHA256 checksum of the local MSI
+      # 9. Compute SHA256 checksum of the local MSI
       #    (computed here so we avoid re-downloading from the release later)
       # -----------------------------------------------------------------------
       - name: Compute installer checksum
@@ -182,7 +201,7 @@ jobs:
           "CHECKSUM=$checksum"    | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
       # -----------------------------------------------------------------------
-      # 9. Stamp version, URL, and checksum into the Chocolatey package files
+      # 10. Stamp version, URL, and checksum into the Chocolatey package files
       # -----------------------------------------------------------------------
       - name: Update Chocolatey package files
         shell: pwsh
@@ -220,7 +239,7 @@ jobs:
           Write-Host "Chocolatey package files updated for v$version"
 
       # -----------------------------------------------------------------------
-      # 10. Validate that all TEMPLATE_ placeholders were replaced
+      # 11. Validate that all TEMPLATE_ placeholders were replaced
       # -----------------------------------------------------------------------
       - name: Validate placeholder substitution
         shell: pwsh
@@ -243,7 +262,7 @@ jobs:
           Write-Host "All placeholders replaced successfully."
 
       # -----------------------------------------------------------------------
-      # 11. Install community validation extension and pack the Chocolatey package
+      # 12. Install community validation extension and pack the Chocolatey package
       #     The extension hooks into choco pack and validates automatically in v2.x —
       #     there is no separate choco validate command.
       # -----------------------------------------------------------------------
@@ -254,7 +273,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       # -----------------------------------------------------------------------
-      # 12. Pack the Chocolatey package
+      # 13. Pack the Chocolatey package
       # -----------------------------------------------------------------------
       - name: Pack Chocolatey package
         id: pack
@@ -273,7 +292,7 @@ jobs:
           "NUPKG_PATH=$($nupkg.FullName)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
       # -----------------------------------------------------------------------
-      # 13. Create GitHub Release with auto-generated notes, or update existing
+      # 14. Create GitHub Release with auto-generated notes, or update existing
       # -----------------------------------------------------------------------
       - name: Create or update GitHub Release
         shell: pwsh
@@ -301,7 +320,7 @@ jobs:
           }
 
       # -----------------------------------------------------------------------
-      # 14. Push to Chocolatey Community Repository
+      # 15. Push to Chocolatey Community Repository
       # -----------------------------------------------------------------------
       - name: Push to Chocolatey Community Repository
         shell: pwsh

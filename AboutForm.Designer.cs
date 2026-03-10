@@ -10,7 +10,7 @@ namespace qbPortWeaver
             {
                 picIcon.Image?.Dispose();
                 lblAppName.Font?.Dispose();
-                if (components != null) components.Dispose();
+                components?.Dispose();
             }
             base.Dispose(disposing);
         }

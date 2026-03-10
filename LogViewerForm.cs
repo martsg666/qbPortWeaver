@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Text;
 using Microsoft.Win32;
 
@@ -359,9 +360,11 @@ namespace qbPortWeaver
                     if (lastNl < 0) return; // no complete line yet; wait for the next cycle
 
                     string complete = raw[..(lastNl + 1)];
-                    // Advance by the byte count of the processed portion only — NOT fs.Position —
-                    // so the partial tail beyond lastNl is re-read in the next cycle.
-                    _lastReadPosition += Encoding.UTF8.GetByteCount(complete);
+                    // Use fs.Position (actual file offset, includes any BOM bytes) minus the tail
+                    // byte count so the tail is re-read next cycle. += GetByteCount(complete) would
+                    // be 3 bytes short after a StreamReader-consumed UTF-8 BOM, producing a stray
+                    // 'r' line in the viewer (last bytes of the prior entry re-read as a new line).
+                    _lastReadPosition = fs.Position - Encoding.UTF8.GetByteCount(raw[(lastNl + 1)..]);
 
                     newLines = complete.Split('\n', StringSplitOptions.RemoveEmptyEntries)
                                        .Select(l => l.TrimEnd('\r'))
@@ -499,7 +502,7 @@ namespace qbPortWeaver
             rtbLog.SelectionStart  = rtbLog.TextLength;
             rtbLog.SelectionLength = 0;
             rtbLog.SelectionColor  = color;
-            rtbLog.AppendText(text + Environment.NewLine);
+            rtbLog.AppendText(text + "\n");
         }
 
         private void ScrollToBottom()
@@ -513,12 +516,13 @@ namespace qbPortWeaver
         // which renders the native cue at the top-left regardless of the control height.
         private sealed class PlaceholderTextBox : TextBox
         {
-            private string _hint = string.Empty;
+            private string _placeholderText = string.Empty;
 
+            [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
             public new string PlaceholderText
             {
-                get => _hint;
-                set { _hint = value; Invalidate(); }
+                get => _placeholderText;
+                set { _placeholderText = value; Invalidate(); }
             }
 
             protected override void OnGotFocus(EventArgs e)  { base.OnGotFocus(e);  Invalidate(); }
@@ -528,12 +532,12 @@ namespace qbPortWeaver
             {
                 const int WM_PAINT = 0x000F;
                 base.WndProc(ref m);
-                if (m.Msg == WM_PAINT && TextLength == 0 && !Focused && _hint.Length > 0)
+                if (m.Msg == WM_PAINT && TextLength == 0 && !Focused && _placeholderText.Length > 0)
                 {
                     using var g    = Graphics.FromHwnd(Handle);
                     var       rect = ClientRectangle;
                     rect.Inflate(-2, 0);
-                    TextRenderer.DrawText(g, _hint, Font, rect, SystemColors.GrayText,
+                    TextRenderer.DrawText(g, _placeholderText, Font, rect, SystemColors.GrayText,
                         TextFormatFlags.VerticalCenter | TextFormatFlags.Left |
                         TextFormatFlags.SingleLine     | TextFormatFlags.NoPadding);
                 }

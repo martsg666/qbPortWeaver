@@ -19,7 +19,7 @@ namespace qbPortWeaver
         private static readonly string GitHubBaseApiUrl = $"https://api.github.com/repos/{AppConstants.GitHubRepoOwner}/{AppConstants.AppName}";
         private static readonly string GitHubApiUrl     = GitHubBaseApiUrl + "/releases/latest";
 
-        private static readonly HttpClient Client = CreateHttpClient();
+        private static readonly HttpClient Client = CreateHttpClient(); // Not disposed — static lifetime matches process lifetime (recommended pattern for HttpClient)
 
         // Returns the latest release version string and URL if a newer version exists; null if up-to-date or on any error
         public static async Task<(string Version, string Url)?> GetAvailableUpdateAsync()

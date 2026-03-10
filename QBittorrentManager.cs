@@ -208,6 +208,7 @@ namespace qbPortWeaver
         public void Dispose() => _httpClient.Dispose();
 
         // Authenticates once per instance; subsequent calls reuse the existing session cookie
+
         private async Task<bool> EnsureAuthenticatedAsync()
         {
             if (_isAuthenticated) return true;

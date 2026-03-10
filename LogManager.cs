@@ -113,8 +113,8 @@ namespace qbPortWeaver
             LogMessage("Logs cleared by user", LogLevel.Info);
         }
 
-        /// <summary>Checks the log file size and rotates it if it exceeds the maximum. Thread-safe.</summary>
-        public void CheckAndRotateLogFile()
+        // Checks the log file size and rotates it if it exceeds the maximum. Thread-safe.
+        internal void CheckAndRotateLogFile()
         {
             lock (_lock)
             {

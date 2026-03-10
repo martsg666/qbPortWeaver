@@ -436,7 +436,7 @@ namespace qbPortWeaver
         // controls execution in their own context; no external or untrusted input reaches this path.
         private static void RunPostUpdateCommand(string cmd)
         {
-            LogManager.Instance.LogMessage($"Running post-update command: {cmd}", LogLevel.Info);
+            LogManager.Instance.LogDebug($"PortSyncService.RunPostUpdateCommand: {cmd}");
             try
             {
                 string cmdExe = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "cmd.exe");

@@ -516,13 +516,13 @@ namespace qbPortWeaver
         // which renders the native cue at the top-left regardless of the control height.
         private sealed class PlaceholderTextBox : TextBox
         {
-            private string _hint = string.Empty;
+            private string _placeholderText = string.Empty;
 
             [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
             public new string PlaceholderText
             {
-                get => _hint;
-                set { _hint = value; Invalidate(); }
+                get => _placeholderText;
+                set { _placeholderText = value; Invalidate(); }
             }
 
             protected override void OnGotFocus(EventArgs e)  { base.OnGotFocus(e);  Invalidate(); }
@@ -532,12 +532,12 @@ namespace qbPortWeaver
             {
                 const int WM_PAINT = 0x000F;
                 base.WndProc(ref m);
-                if (m.Msg == WM_PAINT && TextLength == 0 && !Focused && _hint.Length > 0)
+                if (m.Msg == WM_PAINT && TextLength == 0 && !Focused && _placeholderText.Length > 0)
                 {
                     using var g    = Graphics.FromHwnd(Handle);
                     var       rect = ClientRectangle;
                     rect.Inflate(-2, 0);
-                    TextRenderer.DrawText(g, _hint, Font, rect, SystemColors.GrayText,
+                    TextRenderer.DrawText(g, _placeholderText, Font, rect, SystemColors.GrayText,
                         TextFormatFlags.VerticalCenter | TextFormatFlags.Left |
                         TextFormatFlags.SingleLine     | TextFormatFlags.NoPadding);
                 }

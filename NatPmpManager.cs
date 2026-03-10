@@ -55,10 +55,7 @@ namespace qbPortWeaver
             var probeResults = await Task.WhenAll(candidates.Select(async c =>
             {
                 IPAddress? externalIp = await RequestExternalAddressAsync(c.Gateway).ConfigureAwait(false);
-                if (externalIp is not null)
-                    LogManager.Instance.LogDebug($"NatPmpManager.DiscoverAdapters: '{c.Nic.Description}' via gateway {c.Gateway} (external IP: {externalIp})");
-                else
-                    LogManager.Instance.LogDebug($"NatPmpManager.DiscoverAdapters: '{c.Nic.Description}' via gateway {c.Gateway} — NAT-PMP probe failed");
+                LogProbeResultDebug("DiscoverAdapters", c.Nic.Description, c.Gateway, externalIp);
                 return (c.Nic, c.Gateway, Supported: externalIp is not null);
             })).ConfigureAwait(false);
 
@@ -97,10 +94,7 @@ namespace qbPortWeaver
             }
 
             IPAddress? externalIp = await RequestExternalAddressAsync(gateway, MaxAttempts).ConfigureAwait(false);
-            if (externalIp is not null)
-                LogManager.Instance.LogDebug($"NatPmpManager.TryCreateForAdapter: '{adapterName}' via gateway {gateway} (external IP: {externalIp})");
-            else
-                LogManager.Instance.LogDebug($"NatPmpManager.TryCreateForAdapter: '{adapterName}' via gateway {gateway} — NAT-PMP probe failed");
+            LogProbeResultDebug("TryCreateForAdapter", adapterName, gateway, externalIp);
 
             return externalIp is not null ? new NatPmpManager(nic, gateway, mappingLifetime) : null;
         }
@@ -196,7 +190,10 @@ namespace qbPortWeaver
             _lastEpochSeconds  = other._lastEpochSeconds;
         }
 
-        // Returns all network interfaces that are up and not loopback or tunnel adapters.
+        // Returns all network interfaces that are up and not loopback or protocol-tunnel adapters.
+        // NetworkInterfaceType.Tunnel covers Windows IF_TYPE_TUNNEL (Teredo, ISATAP, 6to4) —
+        // not VPN adapters. WireGuard/wintun (ProtonVPN) and TAP/OpenVPN adapters report as
+        // Unknown or Ethernet and are not excluded by this filter.
         private static IEnumerable<NetworkInterface> GetActiveNetworkInterfaces()
             => NetworkInterface.GetAllNetworkInterfaces()
                 .Where(nic => nic.OperationalStatus == OperationalStatus.Up
@@ -312,6 +309,14 @@ namespace qbPortWeaver
                 return (false, 0, 0, epochSeconds, "Gateway returned external port 0");
 
             return (true, externalPort, lifetimeGiven, epochSeconds, null);
+        }
+
+        private static void LogProbeResultDebug(string context, string adapterName, IPAddress gateway, IPAddress? externalIp)
+        {
+            if (externalIp is not null)
+                LogManager.Instance.LogDebug($"NatPmpManager.{context}: '{adapterName}' via gateway {gateway} (external IP: {externalIp})");
+            else
+                LogManager.Instance.LogDebug($"NatPmpManager.{context}: '{adapterName}' via gateway {gateway} — NAT-PMP probe failed");
         }
 
         private static void LogTimeoutDebug(int attempt, int maxAttempts, int timeoutMs)

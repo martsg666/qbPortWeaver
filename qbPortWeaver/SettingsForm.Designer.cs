@@ -83,7 +83,7 @@ namespace qbPortWeaver
             grpGeneral.Controls.Add(nudVpnRecoveryCycles);
             grpGeneral.Controls.Add(lblVpnRecoveryCyclesUnit);
             grpGeneral.Location = new Point(8, 8);
-            grpGeneral.Size     = new Size(480, 171);
+            grpGeneral.Size     = new Size(480, 165);
             grpGeneral.TabStop  = false;
             grpGeneral.Text     = "General";
 
@@ -140,19 +140,19 @@ namespace qbPortWeaver
             chkVpnAutoRecovery.CheckedChanged += chkVpnAutoRecovery_CheckedChanged;
 
             // Row 4 — Trigger cycles (sub-option, indented)
-            lblVpnRecoveryCycles.Location  = new Point(28, 143);
+            lblVpnRecoveryCycles.Location  = new Point(28, 137);
             lblVpnRecoveryCycles.Size      = new Size(180, 23);
             lblVpnRecoveryCycles.Text      = "Restart service after";
             lblVpnRecoveryCycles.TextAlign = ContentAlignment.MiddleLeft;
 
-            nudVpnRecoveryCycles.Location = new Point(212, 140);
+            nudVpnRecoveryCycles.Location = new Point(212, 134);
             nudVpnRecoveryCycles.Minimum  = 1;
             nudVpnRecoveryCycles.Maximum  = 10;
             nudVpnRecoveryCycles.Value    = 3;
             nudVpnRecoveryCycles.Size     = new Size(50, 23);
             nudVpnRecoveryCycles.TabIndex = 20;
 
-            lblVpnRecoveryCyclesUnit.Location  = new Point(266, 143);
+            lblVpnRecoveryCyclesUnit.Location  = new Point(266, 137);
             lblVpnRecoveryCyclesUnit.Size      = new Size(160, 23);
             lblVpnRecoveryCyclesUnit.Text      = "consecutive disconnected cycles";
             lblVpnRecoveryCyclesUnit.TextAlign = ContentAlignment.MiddleLeft;
@@ -175,7 +175,7 @@ namespace qbPortWeaver
             grpQBittorrent.Controls.Add(nudDefaultPort);
             grpQBittorrent.Controls.Add(chkWarnOnInterfaceMismatch);
             grpQBittorrent.Controls.Add(chkRestartOnDisconnect);
-            grpQBittorrent.Location = new Point(8, 191);
+            grpQBittorrent.Location = new Point(8, 185);
             grpQBittorrent.Size     = new Size(480, 320);
             grpQBittorrent.TabStop  = false;
             grpQBittorrent.Text     = "qBittorrent";
@@ -278,7 +278,7 @@ namespace qbPortWeaver
             grpExtra.Controls.Add(lblPostUpdateCmd);
             grpExtra.Controls.Add(txtPostUpdateCmd);
             grpExtra.Controls.Add(chkDebugMode);
-            grpExtra.Location = new Point(8, 523);
+            grpExtra.Location = new Point(8, 517);
             grpExtra.Size     = new Size(480, 84);
             grpExtra.TabStop  = false;
             grpExtra.Text     = "Extra";
@@ -300,13 +300,13 @@ namespace qbPortWeaver
             chkDebugMode.TabIndex = 14;
 
             // ── Buttons ───────────────────────────────────────────────────
-            btnOK.Location     = new Point(308, 619);
+            btnOK.Location     = new Point(308, 613);
             btnOK.Size         = new Size(82, 28);
             btnOK.Text         = "OK";
             btnOK.TabIndex     = 15;
             btnOK.Click       += btnOK_Click;
 
-            btnCancel.Location     = new Point(400, 619);
+            btnCancel.Location     = new Point(400, 613);
             btnCancel.Size         = new Size(82, 28);
             btnCancel.Text         = "Cancel";
             btnCancel.TabIndex     = 16;
@@ -317,7 +317,7 @@ namespace qbPortWeaver
             AutoScaleMode       = AutoScaleMode.Font;
             AcceptButton        = btnOK;
             CancelButton        = btnCancel;
-            ClientSize          = new Size(498, 659);
+            ClientSize          = new Size(498, 653);
             Controls.Add(grpGeneral);
             Controls.Add(grpQBittorrent);
             Controls.Add(grpExtra);

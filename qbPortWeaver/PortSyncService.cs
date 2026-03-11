@@ -310,7 +310,8 @@ namespace qbPortWeaver
             _consecutiveDisconnectedCycles++;
             int count = _consecutiveDisconnectedCycles;
             string notFoundMsg = $"NAT-PMP adapter '{cfg.NatPmpAdapterName}' not found — VPN may be disconnected " +
-                                 $"({count} consecutive {(count == 1 ? "cycle" : "cycles")})";
+                                 $"({count} consecutive {(count == 1 ? "cycle" : "cycles")}" +
+                                 (cfg.VpnAutoRecoveryEnabled ? $", recovery triggers after {cfg.VpnAutoRecoveryTriggerCycles} consecutive disconnects" : "") + ")";
             LogManager.Instance.LogMessage(notFoundMsg, LogLevel.Warn);
 
             if (cfg.VpnAutoRecoveryEnabled && _consecutiveDisconnectedCycles >= cfg.VpnAutoRecoveryTriggerCycles)

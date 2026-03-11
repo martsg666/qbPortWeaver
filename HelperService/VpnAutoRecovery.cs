@@ -63,8 +63,15 @@ internal static class VpnAutoRecovery
         {
             logger.LogWarn($"VPN service '{serviceName}' stop timed out — force-killing process");
             KillServiceProcess(sc, logger);
-            sc.WaitForStatus(ServiceControllerStatus.Stopped, TimeSpan.FromMilliseconds(ServiceOperationTimeoutMs));
-            logger.LogInfo($"VPN service '{serviceName}' force-stopped");
+            try
+            {
+                sc.WaitForStatus(ServiceControllerStatus.Stopped, TimeSpan.FromMilliseconds(ServiceOperationTimeoutMs));
+                logger.LogInfo($"VPN service '{serviceName}' force-stopped");
+            }
+            catch (System.TimeoutException)
+            {
+                logger.LogWarn($"VPN service '{serviceName}' still not stopped after force-kill — proceeding with start anyway");
+            }
         }
     }
 

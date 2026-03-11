@@ -229,7 +229,7 @@ namespace qbPortWeaver
 
                 if (response.StatusCode == HttpStatusCode.Forbidden)
                 {
-                    LogManager.Instance.LogMessage("qBittorrent authentication failed (HTTP 403 Forbidden): your IP has been banned by qBittorrent due to too many failed login attempts. Restart qBittorrent to clear the ban", LogLevel.Error);
+                    LogManager.Instance.LogMessage("qBittorrent returned HTTP 403 Forbidden — IP banned due to too many failed login attempts. Restart qBittorrent to clear the ban.", LogLevel.Error);
                     return false;
                 }
 

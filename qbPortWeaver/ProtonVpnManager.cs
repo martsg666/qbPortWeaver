@@ -1,4 +1,5 @@
 using System.Net.NetworkInformation;
+using System.ServiceProcess;
 using System.Text;
 using System.Text.RegularExpressions;
 
@@ -7,7 +8,9 @@ namespace qbPortWeaver
     // Detects ProtonVPN connectivity via network adapter enumeration and reads the forwarded port from ProtonVPN's log file
     public sealed class ProtonVpnManager : IVpnManager
     {
-        private const int LogReadChunkSize = 4096;
+        private const int    LogReadChunkSize = 4096;
+        internal const string VpnServiceName    = "ProtonVPN Service";
+        internal const string ClientProcessName = "ProtonVPN.Client";
 
         private readonly string _logFilePath;
         // Log format: "Port pair X->Y" where X and Y are always identical (ProtonVPN does not
@@ -26,8 +29,8 @@ namespace qbPortWeaver
             try
             {
                 var adapters = NetworkInterface.GetAllNetworkInterfaces();
-                // Uses Name (not Description) — ProtonVPN's adapter Name is reliably "ProtonVPN" on all
-                // installations, whereas Description varies by driver version (e.g. "ProtonVPN TUN Tunnel").
+                // Uses Name (not Description) — ProtonVPN's adapter Name contains "ProtonVPN" on all
+                // installations: "ProtonVPN" (WireGuard) or "ProtonVPN TUN" (OpenVPN).
                 bool isConnected = adapters.Any(adapter =>
                     adapter.Name.Contains("ProtonVPN", StringComparison.OrdinalIgnoreCase) &&
                     adapter.OperationalStatus == OperationalStatus.Up);
@@ -46,15 +49,20 @@ namespace qbPortWeaver
 
         public Task<int?> GetVpnPortAsync() => Task.FromResult(GetVpnPortCore());
 
-        // Delegates to NatPmpManager.FindServiceNameForAdapter using the provider name as the adapter
-        // name key — the same ProtonVPN/PIA matching logic is centralised there.
-        public string? DiscoverServiceName()
+        public string? FindServiceName()
         {
-            string? serviceName = NatPmpManager.FindServiceNameForAdapter(RegistrySettingsManager.VpnProviderProtonVpn);
-            LogManager.Instance.LogDebug(serviceName != null
-                ? $"ProtonVpnManager.DiscoverServiceName: found service '{serviceName}'"
-                : "ProtonVpnManager.DiscoverServiceName: no ProtonVPN service found");
-            return serviceName;
+            ServiceController[] services = ServiceController.GetServices();
+            try
+            {
+                string? serviceName = services
+                    .FirstOrDefault(s => s.ServiceName.Equals(VpnServiceName, StringComparison.OrdinalIgnoreCase))
+                    ?.ServiceName;
+                LogManager.Instance.LogDebug(serviceName != null
+                    ? $"ProtonVpnManager.FindServiceName: found service '{serviceName}'"
+                    : $"ProtonVpnManager.FindServiceName: '{VpnServiceName}' not found");
+                return serviceName;
+            }
+            finally { foreach (var s in services) s.Dispose(); }
         }
 
         private int? GetVpnPortCore()

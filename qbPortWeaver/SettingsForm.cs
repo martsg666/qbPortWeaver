@@ -63,7 +63,7 @@ namespace qbPortWeaver
             cboNatPmpAdapter.SelectedIndex = 0;
             cboNatPmpAdapter.Enabled = false;
             string savedAdapter = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyNatPmpAdapterName);
-            _ = PopulateNatPmpAdaptersAsync(savedAdapter); // NOSONAR S6966 — fire-and-forget; exceptions are handled inside PopulateNatPmpAdaptersAsync
+            _ = PopulateNatPmpAdaptersAsync(savedAdapter); // fire-and-forget; exceptions are handled inside PopulateNatPmpAdaptersAsync
 
             nudUpdateInterval.Value = Math.Clamp(
                 RegistrySettingsManager.GetInt(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyUpdateIntervalSeconds),

@@ -26,9 +26,9 @@ namespace qbPortWeaver
 
         /// <summary>
         /// Returns the Windows service name that backs this VPN provider, or <c>null</c> if
-        /// no relevant service is found or service discovery is not supported for this provider.
+        /// the service is not installed or the provider is not recognised.
         /// Used by VPN auto-recovery to restart the service when the VPN goes down.
         /// </summary>
-        string? DiscoverServiceName();
+        string? FindServiceName();
     }
 }

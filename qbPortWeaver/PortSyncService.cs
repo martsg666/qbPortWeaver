@@ -21,11 +21,10 @@ namespace qbPortWeaver
         // Serialised by MainForm._updateSemaphore (same guarantee as _lastKnownNatPmpManager).
         private int _consecutiveDisconnectedCycles;
 
-        // Kept solely as a disconnection fallback: when TryCreateForAdapter cannot reach the configured
-        // adapter (e.g. VPN is between disconnect and reconnect), this is returned so IsVpnConnected()
-        // reports false and RunCoreAsync handles disconnection gracefully instead of surfacing an error.
-        // Cleared when the configured adapter name changes in settings.
-        // Thread-safety: only accessed inside RunCoreAsync, which is serialised by MainForm._updateSemaphore.
+        // Fallback for when TryCreateForAdapter cannot reach the configured adapter (e.g. VPN is
+        // between disconnect and reconnect) — returned so IsVpnConnected() reports false and
+        // RunCoreAsync handles disconnection gracefully. Cleared when the adapter name changes in settings.
+        // Thread-safety: only accessed inside RunCoreAsync, serialised by MainForm._updateSemaphore.
         private NatPmpManager? _lastKnownNatPmpManager;
 
         // All values read from the registry for a single sync cycle
@@ -157,9 +156,9 @@ namespace qbPortWeaver
                 int disconnectedCount = _consecutiveDisconnectedCycles;
                 LogManager.Instance.LogMessage(
                     $"{vpnManager.ProviderName} is not connected ({disconnectedCount} consecutive {(disconnectedCount == 1 ? "cycle" : "cycles")}" +
-                    (cfg.VpnAutoRecoveryEnabled ? $", recovery triggers at {cfg.VpnAutoRecoveryTriggerCycles}" : "") + ")",
+                    (cfg.VpnAutoRecoveryEnabled ? $", recovery triggers after {cfg.VpnAutoRecoveryTriggerCycles} consecutive disconnects" : "") + ")",
                     LogLevel.Info);
-                TryTriggerVpnRecovery(vpnManager, cfg);
+                await TryTriggerVpnRecoveryAsync(vpnManager, cfg).ConfigureAwait(false);
 
                 if (cfg.DefaultPort == 0)
                 {
@@ -319,7 +318,7 @@ namespace qbPortWeaver
                 _consecutiveDisconnectedCycles = 0;
                 string? serviceName = NatPmpManager.FindServiceNameForAdapter(cfg.NatPmpAdapterName);
                 if (serviceName != null)
-                    VpnAutoRecoveryManager.TriggerRecovery(serviceName);
+                    await VpnAutoRecoveryManager.TriggerRecoveryAsync(serviceName).ConfigureAwait(false);
                 else
                     LogManager.Instance.LogMessage($"VPN auto-recovery: no Windows service found for NAT-PMP adapter '{cfg.NatPmpAdapterName}'", LogLevel.Warn);
             }
@@ -415,8 +414,7 @@ namespace qbPortWeaver
 
             if (vpnProviderName.Equals(RegistrySettingsManager.VpnProviderPia, StringComparison.OrdinalIgnoreCase))
             {
-                isMatch = interfaceName.Contains("Private Internet Access", StringComparison.OrdinalIgnoreCase) ||
-                          interfaceName.Contains("PIA", StringComparison.OrdinalIgnoreCase);
+                isMatch = interfaceName.Contains("PIA", StringComparison.OrdinalIgnoreCase);
             }
             else if (vpnProviderName.Equals(RegistrySettingsManager.VpnProviderProtonVpn, StringComparison.OrdinalIgnoreCase))
             {
@@ -424,8 +422,10 @@ namespace qbPortWeaver
             }
             else
             {
-                // NAT-PMP: vpnProviderName is the adapter description configured by the user.
-                // qBittorrent may return either the adapter name or description, so check both directions.
+                // NAT-PMP: vpnProviderName is the adapter name configured in qbPortWeaver settings
+                // (e.g. "ProtonVPN TUN", "ProtonVPN", "wgpia0"). qBittorrent stores the interface by
+                // its Windows connection name. A bidirectional Contains handles cases where the names
+                // differ in length (e.g. "ProtonVPN TUN" vs "ProtonVPN" across OpenVPN/WireGuard).
                 isMatch = interfaceName.Contains(vpnProviderName, StringComparison.OrdinalIgnoreCase) ||
                           vpnProviderName.Contains(interfaceName, StringComparison.OrdinalIgnoreCase);
             }
@@ -519,12 +519,12 @@ namespace qbPortWeaver
 
         // Triggers VPN auto-recovery if enabled and the disconnected cycle threshold is reached.
         // Resets the counter after triggering to avoid firing again on the next cycle.
-        private void TryTriggerVpnRecovery(IVpnManager vpnManager, AppConfig cfg)
+        private async Task TryTriggerVpnRecoveryAsync(IVpnManager vpnManager, AppConfig cfg)
         {
             if (!cfg.VpnAutoRecoveryEnabled) return;
             if (_consecutiveDisconnectedCycles < cfg.VpnAutoRecoveryTriggerCycles) return;
 
-            string? serviceName = vpnManager.DiscoverServiceName();
+            string? serviceName = vpnManager.FindServiceName();
             if (serviceName == null)
             {
                 LogManager.Instance.LogMessage($"VPN auto-recovery: no Windows service found for '{vpnManager.ProviderName}'", LogLevel.Warn);
@@ -536,7 +536,7 @@ namespace qbPortWeaver
             LogManager.Instance.LogMessage(
                 $"VPN auto-recovery: triggering recovery for '{vpnManager.ProviderName}' after {count} consecutive disconnected {(count == 1 ? "cycle" : "cycles")}",
                 LogLevel.Info);
-            VpnAutoRecoveryManager.TriggerRecovery(serviceName);
+            await VpnAutoRecoveryManager.TriggerRecoveryAsync(serviceName).ConfigureAwait(false);
         }
 
         // Sets the completion status and logs the message.

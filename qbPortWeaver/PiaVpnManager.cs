@@ -1,5 +1,6 @@
 using Microsoft.Win32;
 using System.Diagnostics;
+using System.ServiceProcess;
 
 namespace qbPortWeaver
 {
@@ -9,6 +10,8 @@ namespace qbPortWeaver
         private const string PiaUninstallRegistryPath = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall";
         private const string PiaDisplayName           = "Private Internet Access";
         private const string PiactlFileName           = "piactl.exe";
+        internal const string VpnServiceName           = "PrivateInternetAccessService";
+        internal const string ClientProcessName        = "pia-client";
         private const int    ProcessTimeoutMs         = 5000;
 
         public string ProviderName => RegistrySettingsManager.VpnProviderPia;
@@ -40,15 +43,20 @@ namespace qbPortWeaver
 
         public Task<int?> GetVpnPortAsync() => Task.FromResult(GetVpnPortCore());
 
-        // Delegates to NatPmpManager.FindServiceNameForAdapter using the provider name as the adapter
-        // name key — the same ProtonVPN/PIA matching logic is centralised there.
-        public string? DiscoverServiceName()
+        public string? FindServiceName()
         {
-            string? serviceName = NatPmpManager.FindServiceNameForAdapter(RegistrySettingsManager.VpnProviderPia);
-            LogManager.Instance.LogDebug(serviceName != null
-                ? $"PiaVpnManager.DiscoverServiceName: found service '{serviceName}'"
-                : "PiaVpnManager.DiscoverServiceName: no PIA service found");
-            return serviceName;
+            ServiceController[] services = ServiceController.GetServices();
+            try
+            {
+                string? serviceName = services
+                    .FirstOrDefault(s => s.ServiceName.Equals(VpnServiceName, StringComparison.OrdinalIgnoreCase))
+                    ?.ServiceName;
+                LogManager.Instance.LogDebug(serviceName != null
+                    ? $"PiaVpnManager.FindServiceName: found service '{serviceName}'"
+                    : $"PiaVpnManager.FindServiceName: '{VpnServiceName}' not found");
+                return serviceName;
+            }
+            finally { foreach (var s in services) s.Dispose(); }
         }
 
         private static int? GetVpnPortCore()

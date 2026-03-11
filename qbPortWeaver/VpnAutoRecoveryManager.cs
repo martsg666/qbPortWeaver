@@ -5,41 +5,41 @@ namespace qbPortWeaver
 {
     // Handles VPN auto-recovery from the user session.
     // Service restart (requires SYSTEM) is delegated to the helper service via named pipe.
-    // VPN client process restart runs directly in the user session — no elevation needed.
+    // VPN client process restart (e.g. ProtonVPN.Client, pia-client) runs directly in the user session — no elevation needed.
     internal static class VpnAutoRecoveryManager
     {
         private const int ClientRestartDelayMs = 2000;
         private const int PipeConnectTimeoutMs = 5000;
 
-        // Maps a VPN service name fragment to the client process name that must be restarted
-        // alongside the service. The client holds the connection state and triggers auto-connect
-        // on startup; restarting the service alone is not sufficient to reconnect.
-        private static readonly (string ServiceFragment, string ClientProcessName)[] ClientProcessMap =
+        // Maps a VPN service name to the client process that must be restarted alongside it.
+        // The client holds connection state and triggers auto-connect on startup;
+        // restarting the service alone is not sufficient to reconnect.
+        private static readonly (string ServiceName, string ClientProcessName)[] ClientProcessMap =
         [
-            ("ProtonVPN",             "ProtonVPN.Client"),
-            ("PrivateInternetAccess", "pia-client"),
+            (ProtonVpnManager.VpnServiceName, ProtonVpnManager.ClientProcessName),
+            (PiaVpnManager.VpnServiceName,    PiaVpnManager.ClientProcessName),
         ];
 
         // Sends a service restart request to the helper service and restarts the VPN client
         // process in the current user session.
-        internal static void TriggerRecovery(string serviceName)
+        internal static async Task TriggerRecoveryAsync(string serviceName)
         {
-            SendToHelperService(serviceName);
+            await SendToHelperServiceAsync(serviceName).ConfigureAwait(false);
 
             string? clientProcessName = ResolveClientProcessName(serviceName);
             if (clientProcessName != null)
-                RestartClientProcess(clientProcessName);
+                await RestartClientProcessAsync(clientProcessName).ConfigureAwait(false);
         }
 
         // Sends a restart request for the given service to the SYSTEM helper service via named pipe.
-        private static void SendToHelperService(string serviceName)
+        private static async Task SendToHelperServiceAsync(string serviceName)
         {
             try
             {
                 using var pipe = new NamedPipeClientStream(".", AppConstants.HelperServicePipeName, PipeDirection.Out);
-                pipe.Connect(PipeConnectTimeoutMs);
+                await pipe.ConnectAsync(PipeConnectTimeoutMs).ConfigureAwait(false);
                 using var writer = new StreamWriter(pipe) { AutoFlush = true };
-                writer.WriteLine($"restart:{serviceName}:{AppConstants.GetLogFilePath()}");
+                await writer.WriteLineAsync($"restart:{serviceName}:{AppConstants.GetLogFilePath()}").ConfigureAwait(false);
                 LogManager.Instance.LogMessage($"VPN auto-recovery triggered for service '{serviceName}'", LogLevel.Info);
             }
             catch (Exception ex)
@@ -50,19 +50,19 @@ namespace qbPortWeaver
 
         private static string? ResolveClientProcessName(string serviceName)
         {
-            foreach (var (fragment, clientProcess) in ClientProcessMap)
+            foreach (var (service, clientProcess) in ClientProcessMap)
             {
-                if (serviceName.Contains(fragment, StringComparison.OrdinalIgnoreCase))
+                if (serviceName.Equals(service, StringComparison.OrdinalIgnoreCase))
                     return clientProcess;
             }
-            LogManager.Instance.LogMessage($"No client process mapping for service '{serviceName}' — skipping client restart", LogLevel.Info);
+            LogManager.Instance.LogMessage($"No client process restart configured for service '{serviceName}' — skipping", LogLevel.Info);
             return null;
         }
 
         // Kills all instances of the named client process (capturing the exe path first),
         // waits briefly, then relaunches it. Runs in the main app's user session — no
         // elevation or WTS token manipulation needed.
-        private static void RestartClientProcess(string processName)
+        private static async Task RestartClientProcessAsync(string processName)
         {
             string? exePath = null;
             try
@@ -73,7 +73,7 @@ namespace qbPortWeaver
                     exePath = processes.FirstOrDefault()?.MainModule?.FileName;
                     foreach (var p in processes)
                     {
-                        try { p.Kill(entireProcessTree: true); } catch { /* best-effort */ }
+                        try { p.Kill(entireProcessTree: true); } catch (Exception ex) { LogManager.Instance.LogDebug($"Kill process '{processName}': {ex.Message} — ignored"); }
                     }
                     LogManager.Instance.LogMessage(exePath != null
                         ? $"Killed client process '{processName}'"
@@ -91,7 +91,7 @@ namespace qbPortWeaver
 
             if (exePath == null) return;
 
-            Thread.Sleep(ClientRestartDelayMs);
+            await Task.Delay(ClientRestartDelayMs).ConfigureAwait(false);
             try
             {
                 Process.Start(new ProcessStartInfo(exePath) { UseShellExecute = true })?.Dispose();

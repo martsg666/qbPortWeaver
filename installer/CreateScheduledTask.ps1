@@ -31,7 +31,7 @@ try {
 <?xml version="1.0" encoding="UTF-16"?>
 <Task version="1.4" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
   <RegistrationInfo>
-    <Description>qbPortWeaver VPN auto-recovery — restarts the VPN service when the VPN is not connected.</Description>
+    <Description>qbPortWeaver VPN auto-recovery - restarts the VPN service when the VPN is not connected.</Description>
   </RegistrationInfo>
   <Triggers>
     <EventTrigger>

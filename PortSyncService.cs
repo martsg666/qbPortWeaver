@@ -257,63 +257,67 @@ namespace qbPortWeaver
                 return new PiaVpnManager();
 
             if (cfg.VpnProvider.Equals(RegistrySettingsManager.VpnProviderNatPmp, StringComparison.OrdinalIgnoreCase))
-            {
-                if (string.IsNullOrWhiteSpace(cfg.NatPmpAdapterName))
-                {
-                    SetCompleted(status, false, "No NAT-PMP adapter configured — open Settings and select an adapter");
-                    return null;
-                }
-
-                // Discard the fallback if the adapter name changed in settings
-                if (_lastKnownNatPmpManager is not null &&
-                    !_lastKnownNatPmpManager.ProviderName.Equals(cfg.NatPmpAdapterName, StringComparison.OrdinalIgnoreCase))
-                    _lastKnownNatPmpManager = null;
-
-                var selected = await NatPmpManager.TryCreateForAdapter(cfg.NatPmpAdapterName).ConfigureAwait(false);
-
-                if (selected is not null)
-                {
-                    // Transfer renewal state from the previous instance so port renewal works correctly
-                    // when TryCreateForAdapter() returns a fresh NatPmpManager instance each cycle.
-                    if (_lastKnownNatPmpManager is not null)
-                        selected.CopyRenewalStateFrom(_lastKnownNatPmpManager);
-                    _lastKnownNatPmpManager = selected;
-                    return selected;
-                }
-
-                // Adapter not found — likely down between disconnect and reconnect.
-                // Return the last known manager so IsVpnConnected() reports false and
-                // RunCoreAsync handles disconnection gracefully (apply default port or skip).
-                if (_lastKnownNatPmpManager is not null)
-                {
-                    LogManager.Instance.LogDebug("PortSyncService.CreateVpnManager: adapter not discoverable, using last known manager for disconnection handling");
-                    return _lastKnownNatPmpManager;
-                }
-
-                // No previous knowledge of this adapter — VPN likely just disconnected for the first time.
-                // Treat as disconnected so the consecutive-cycle counter increments and auto-recovery can fire.
-                _consecutiveDisconnectedCycles++;
-                string notFoundMsg = $"NAT-PMP adapter '{cfg.NatPmpAdapterName}' not found — VPN may be disconnected ({_consecutiveDisconnectedCycles} consecutive cycle(s))";
-                LogManager.Instance.LogMessage(notFoundMsg, LogLevel.Warn);
-
-                if (cfg.VpnAutoRecoveryEnabled && _consecutiveDisconnectedCycles >= cfg.VpnAutoRecoveryTriggerCycles)
-                {
-                    _consecutiveDisconnectedCycles = 0;
-                    string? serviceName = NatPmpManager.FindServiceNameForAdapter(cfg.NatPmpAdapterName);
-                    if (serviceName != null)
-                        VpnAutoRecoveryManager.TriggerRecovery(serviceName);
-                    else
-                        LogManager.Instance.LogMessage($"VPN auto-recovery: no Windows service found for NAT-PMP adapter '{cfg.NatPmpAdapterName}'", LogLevel.Warn);
-                }
-
-                status[StatusKeys.Status]  = StatusKeys.StatusSkipped;
-                status[StatusKeys.Message] = notFoundMsg;
-                return null;
-            }
+                return await CreateNatPmpVpnManager(cfg, status).ConfigureAwait(false);
 
             if (!cfg.VpnProvider.Equals(RegistrySettingsManager.VpnProviderProtonVpn, StringComparison.OrdinalIgnoreCase))
                 LogManager.Instance.LogMessage($"Unknown VPN provider '{cfg.VpnProvider}', defaulting to ProtonVPN", LogLevel.Warn);
             return new ProtonVpnManager(AppConstants.GetProtonVPNLogFilePath());
+        }
+
+        // Handles the NAT-PMP branch of CreateVpnManager, extracted to reduce cognitive complexity.
+        private async Task<IVpnManager?> CreateNatPmpVpnManager(AppConfig cfg, Dictionary<string, object?> status)
+        {
+            if (string.IsNullOrWhiteSpace(cfg.NatPmpAdapterName))
+            {
+                SetCompleted(status, false, "No NAT-PMP adapter configured — open Settings and select an adapter");
+                return null;
+            }
+
+            // Discard the fallback if the adapter name changed in settings
+            if (_lastKnownNatPmpManager is not null &&
+                !_lastKnownNatPmpManager.ProviderName.Equals(cfg.NatPmpAdapterName, StringComparison.OrdinalIgnoreCase))
+                _lastKnownNatPmpManager = null;
+
+            var selected = await NatPmpManager.TryCreateForAdapter(cfg.NatPmpAdapterName).ConfigureAwait(false);
+
+            if (selected is not null)
+            {
+                // Transfer renewal state from the previous instance so port renewal works correctly
+                // when TryCreateForAdapter() returns a fresh NatPmpManager instance each cycle.
+                if (_lastKnownNatPmpManager is not null)
+                    selected.CopyRenewalStateFrom(_lastKnownNatPmpManager);
+                _lastKnownNatPmpManager = selected;
+                return selected;
+            }
+
+            // Adapter not found — likely down between disconnect and reconnect.
+            // Return the last known manager so IsVpnConnected() reports false and
+            // RunCoreAsync handles disconnection gracefully (apply default port or skip).
+            if (_lastKnownNatPmpManager is not null)
+            {
+                LogManager.Instance.LogDebug("PortSyncService.CreateVpnManager: adapter not discoverable, using last known manager for disconnection handling");
+                return _lastKnownNatPmpManager;
+            }
+
+            // No previous knowledge of this adapter — VPN likely just disconnected for the first time.
+            // Treat as disconnected so the consecutive-cycle counter increments and auto-recovery can fire.
+            _consecutiveDisconnectedCycles++;
+            string notFoundMsg = $"NAT-PMP adapter '{cfg.NatPmpAdapterName}' not found — VPN may be disconnected ({_consecutiveDisconnectedCycles} consecutive cycle(s))";
+            LogManager.Instance.LogMessage(notFoundMsg, LogLevel.Warn);
+
+            if (cfg.VpnAutoRecoveryEnabled && _consecutiveDisconnectedCycles >= cfg.VpnAutoRecoveryTriggerCycles)
+            {
+                _consecutiveDisconnectedCycles = 0;
+                string? serviceName = NatPmpManager.FindServiceNameForAdapter(cfg.NatPmpAdapterName);
+                if (serviceName != null)
+                    VpnAutoRecoveryManager.TriggerRecovery(serviceName);
+                else
+                    LogManager.Instance.LogMessage($"VPN auto-recovery: no Windows service found for NAT-PMP adapter '{cfg.NatPmpAdapterName}'", LogLevel.Warn);
+            }
+
+            status[StatusKeys.Status]  = StatusKeys.StatusSkipped;
+            status[StatusKeys.Message] = notFoundMsg;
+            return null;
         }
 
         // Ensures qBittorrent is running, then updates its port if it differs from the target port

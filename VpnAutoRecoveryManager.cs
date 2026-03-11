@@ -191,7 +191,7 @@ namespace qbPortWeaver
         {
             try
             {
-                int    bufSize = Marshal.SizeOf<SERVICE_STATUS_PROCESS>();
+                int    bufSize = Marshal.SizeOf<ServiceStatusProcess>();
                 IntPtr buf    = Marshal.AllocHGlobal(bufSize);
                 try
                 {
@@ -199,7 +199,7 @@ namespace qbPortWeaver
                             SC_STATUS_PROCESS_INFO, buf, bufSize, out _))
                         return;
 
-                    int pid = Marshal.PtrToStructure<SERVICE_STATUS_PROCESS>(buf).dwProcessId;
+                    int pid = Marshal.PtrToStructure<ServiceStatusProcess>(buf).dwProcessId;
                     if (pid <= 0) return;
 
                     using var process = Process.GetProcessById(pid);
@@ -224,7 +224,7 @@ namespace qbPortWeaver
             IntPtr hService, int infoLevel, IntPtr buffer, int bufSize, out int bytesNeeded);
 
         [StructLayout(LayoutKind.Sequential)]
-        private struct SERVICE_STATUS_PROCESS
+        private struct ServiceStatusProcess
         {
             public int dwServiceType, dwCurrentState, dwControlsAccepted,
                        dwWin32ExitCode, dwServiceSpecificExitCode,

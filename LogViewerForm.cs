@@ -490,7 +490,7 @@ namespace qbPortWeaver
                     case '{':  sb.Append("\\{");  break;
                     case '}':  sb.Append("\\}");  break;
                     default:
-                        if (c > 127) sb.Append($"\\u{(int)c}?");
+                        if (c > 127) sb.Append($"\\u{(int)c} ");
                         else sb.Append(c);
                         break;
                 }

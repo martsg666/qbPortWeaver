@@ -154,16 +154,21 @@ namespace qbPortWeaver
             if (!vpnManager.IsVpnConnected())
             {
                 _consecutiveDisconnectedCycles++;
+                int disconnectedCount = _consecutiveDisconnectedCycles;
+                LogManager.Instance.LogMessage(
+                    $"{vpnManager.ProviderName} is not connected ({disconnectedCount} consecutive {(disconnectedCount == 1 ? "cycle" : "cycles")}" +
+                    (cfg.VpnAutoRecoveryEnabled ? $", recovery triggers at {cfg.VpnAutoRecoveryTriggerCycles}" : "") + ")",
+                    LogLevel.Info);
                 TryTriggerVpnRecovery(vpnManager, cfg);
 
                 if (cfg.DefaultPort == 0)
                 {
                     status[StatusKeys.Status]  = StatusKeys.StatusSkipped;
                     status[StatusKeys.Message] = $"{vpnManager.ProviderName} is not connected";
-                    LogManager.Instance.LogMessage($"{vpnManager.ProviderName} is not connected, default port is 0 — skipping port update", LogLevel.Info);
+                    LogManager.Instance.LogMessage($"{vpnManager.ProviderName} default port is 0 - skipping port update", LogLevel.Info);
                     return cfg.UpdateInterval;
                 }
-                LogManager.Instance.LogMessage($"{vpnManager.ProviderName} is not connected, applying default port {cfg.DefaultPort}", LogLevel.Info);
+                LogManager.Instance.LogMessage($"{vpnManager.ProviderName} applying default port {cfg.DefaultPort}", LogLevel.Info);
                 targetPort              = cfg.DefaultPort;
                 vpnProviderName         = null;
                 warnOnInterfaceMismatch = false;

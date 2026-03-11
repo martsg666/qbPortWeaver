@@ -23,6 +23,10 @@ namespace qbPortWeaver
         // HTTP — shared timeout used by all outbound HTTP clients
         public const int HttpTimeoutSeconds = 10;
 
+        // Named pipe used to communicate with the SYSTEM helper service for session 0 actions.
+        // Must match HelperPipeServer.PipeName in qbPortWeaver.HelperService.
+        public const string HelperServicePipeName = "qbPortWeaverHelper";
+
         // GitHub — only the owner is a literal; all URLs are derived
         public const string GitHubRepoOwner = "martsg666";
         public static readonly string GitHubRepoUrl = $"https://github.com/{GitHubRepoOwner}/{AppName}";
@@ -30,8 +34,9 @@ namespace qbPortWeaver
         private const string LogFileName    = "qbPortWeaver.log";
         private const string StatusFileName = "qbPortWeaver.status.json";
 
-        // App data folder — created on class initialization (static field initializer)
-        private static readonly string AppDataFolder = Directory.CreateDirectory(
+        private static string? _appDataFolder;
+
+        private static string AppDataFolder => _appDataFolder ??= Directory.CreateDirectory(
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), AppName)
         ).FullName;
 

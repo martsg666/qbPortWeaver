@@ -7,7 +7,9 @@ namespace qbPortWeaver
     // Detects ProtonVPN connectivity via network adapter enumeration and reads the forwarded port from ProtonVPN's log file
     public sealed class ProtonVpnManager : IVpnManager
     {
-        private const int LogReadChunkSize = 4096;
+        private const int    LogReadChunkSize = 4096;
+        internal const string VpnServiceName    = "ProtonVPN Service";
+        internal const string ClientProcessName = "ProtonVPN.Client";
 
         private readonly string _logFilePath;
         // Log format: "Port pair X->Y" where X and Y are always identical (ProtonVPN does not
@@ -26,8 +28,8 @@ namespace qbPortWeaver
             try
             {
                 var adapters = NetworkInterface.GetAllNetworkInterfaces();
-                // Uses Name (not Description) — ProtonVPN's adapter Name is reliably "ProtonVPN" on all
-                // installations, whereas Description varies by driver version (e.g. "ProtonVPN TUN Tunnel").
+                // Uses Name (not Description) — ProtonVPN's adapter Name contains "ProtonVPN" on all
+                // installations: "ProtonVPN" (WireGuard) or "ProtonVPN TUN" (OpenVPN).
                 bool isConnected = adapters.Any(adapter =>
                     adapter.Name.Contains("ProtonVPN", StringComparison.OrdinalIgnoreCase) &&
                     adapter.OperationalStatus == OperationalStatus.Up);
@@ -45,6 +47,9 @@ namespace qbPortWeaver
         }
 
         public Task<int?> GetVpnPortAsync() => Task.FromResult(GetVpnPortCore());
+
+        public string? FindServiceName()
+            => VpnManagerHelper.FindServiceByExactName(VpnServiceName, nameof(ProtonVpnManager));
 
         private int? GetVpnPortCore()
         {

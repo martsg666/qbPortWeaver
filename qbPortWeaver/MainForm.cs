@@ -61,7 +61,9 @@ namespace qbPortWeaver
             UpdateTrayTooltip();
         }
 
-        private async void MainForm_Load(object sender, EventArgs e)
+        private void MainForm_Load(object sender, EventArgs e) => _ = MainForm_LoadAsync();
+
+        private async Task MainForm_LoadAsync()
         {
             try
             {
@@ -80,12 +82,11 @@ namespace qbPortWeaver
 
                 // Schedule periodic update checks every 12 hours
                 _updateCheckTimer = new System.Windows.Forms.Timer { Interval = AppConstants.AutoUpdateCheckIntervalMs };
-                // async void lambda is safe here: PerformUpdateCheckAsync has a top-level catch-all and never throws
-                _updateCheckTimer.Tick += async (s, e) => await PerformUpdateCheckAsync();
+                _updateCheckTimer.Tick += OnUpdateCheckTimerTick;
                 _updateCheckTimer.Start();
 
                 // Start main loop (intentional fire-and-forget)
-                _ = Task.Run(RunMainLoopAsync);
+                _ = Task.Run(RunMainLoopAsync); // fire-and-forget; exceptions are handled inside RunMainLoopAsync
             }
             catch (Exception ex)
             {
@@ -261,8 +262,7 @@ namespace qbPortWeaver
             }
             catch (OperationCanceledException)
             {
-                // Shutdown was requested while waiting on semaphore or during work
-                LogManager.Instance.LogMessage("Main loop exited due to shutdown", LogLevel.Info);
+                LogManager.Instance.LogMessage("Main loop exited (operation cancelled)", LogLevel.Info);
             }
             catch (Exception ex)
             {
@@ -325,6 +325,10 @@ namespace qbPortWeaver
                 Application.Exit();
             }
         }
+
+        // Event handler for the periodic update-check timer — async void is correct here (event handler)
+        private async void OnUpdateCheckTimerTick(object? sender, EventArgs e)
+            => await PerformUpdateCheckAsync();
 
         // Checks GitHub for a newer release and prompts the user to open the download page if one is found
         private async Task PerformUpdateCheckAsync()

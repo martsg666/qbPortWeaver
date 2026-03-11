@@ -19,7 +19,7 @@
 		<MediaTemplate EmbedCab="yes" />
 
 		<!-- ARP metadata -->
-		<Icon Id="AppIcon.ico" SourceFile="..\qbPortWeaver.ico" />
+		<Icon Id="AppIcon.ico" SourceFile="..\qbPortWeaver\qbPortWeaver.ico" />
 		<Property Id="ARPPRODUCTICON" Value="AppIcon.ico" />
 		<Property Id="ARPHELPLINK" Value="https://github.com/martsg666/qbPortWeaver" />
 		<Property Id="ARPNOREPAIR" Value="1" />
@@ -42,7 +42,7 @@
 			</DirectorySearch>
 		</Property>
 
-		<!-- Kill running process (EXECUTE SEQUENCE ONLY to avoid 2732) -->
+		<!-- Kill running tray process before install/upgrade -->
 		<CustomAction Id="CA_KillProcess"
 					  ExeCommand="taskkill /F /IM qbPortWeaver.exe"
 					  Directory="SystemFolder"
@@ -120,12 +120,37 @@
 		<ComponentGroup Id="AppComponents" Directory="INSTALLFOLDER">
 
 			<Component Id="AppExecutable">
-				<File Source="..\bin\Release\$(var.TFM)\win-x64\publish\qbPortWeaver.exe"
+				<File Source="..\qbPortWeaver\bin\Release\$(var.TFM)\win-x64\publish\qbPortWeaver.exe"
 					  KeyPath="yes" />
 			</Component>
 
 			<Component Id="AppReadme">
 				<File Source="..\README.md" />
+			</Component>
+
+			<!-- Helper service — provides a session 0 endpoint for privileged actions
+			     (e.g. restarting VPN services) requested by the user-session tray app via named pipe.
+			     ServiceControl stops the service before files are replaced on upgrade (Stop="both")
+			     and removes it cleanly on uninstall. -->
+			<Component Id="HelperServiceExe">
+				<File Source="..\HelperService\bin\Release\$(var.TFM)\win-x64\publish\qbPortWeaver.HelperService.exe"
+					  KeyPath="yes" />
+				<ServiceInstall
+					Id="HelperServiceInstall"
+					Name="qbPortWeaverHelper"
+					DisplayName="qbPortWeaver Helper Service"
+					Description="Helper for qbPortWeaver — executes privileged session 0 actions on behalf of the user-session tray app"
+					Type="ownProcess"
+					Start="auto"
+					ErrorControl="normal"
+					Account="LocalSystem" />
+				<ServiceControl
+					Id="HelperServiceControl"
+					Name="qbPortWeaverHelper"
+					Start="install"
+					Stop="both"
+					Remove="uninstall"
+					Wait="yes" />
 			</Component>
 
 		</ComponentGroup>

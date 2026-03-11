@@ -52,7 +52,7 @@ namespace qbPortWeaver
             try
             {
                 Process.Start(CreateQBittorrentStartInfo())?.Dispose();
-                await Task.Delay(ProcessStartDelayMs, cancellationToken);
+                await Task.Delay(ProcessStartDelayMs, cancellationToken).ConfigureAwait(false);
                 return IsRunning();
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
@@ -82,7 +82,7 @@ namespace qbPortWeaver
                 Process.Start(CreateQBittorrentStartInfo())?.Dispose();
 
                 // Brief delay to allow the process to register before IsRunning() checks for it
-                await Task.Delay(ProcessInitDelayMs, cancellationToken);
+                await Task.Delay(ProcessInitDelayMs, cancellationToken).ConfigureAwait(false);
 
                 // Invalidate the session — the old cookie is dead after the process was killed
                 _isAuthenticated = false;
@@ -208,7 +208,6 @@ namespace qbPortWeaver
         public void Dispose() => _httpClient.Dispose();
 
         // Authenticates once per instance; subsequent calls reuse the existing session cookie
-
         private async Task<bool> EnsureAuthenticatedAsync()
         {
             if (_isAuthenticated) return true;
@@ -230,7 +229,7 @@ namespace qbPortWeaver
 
                 if (response.StatusCode == HttpStatusCode.Forbidden)
                 {
-                    LogManager.Instance.LogMessage("qBittorrent authentication failed (HTTP 403 Forbidden): your IP has been banned by qBittorrent due to too many failed login attempts. Restart qBittorrent to clear the ban", LogLevel.Error);
+                    LogManager.Instance.LogMessage("qBittorrent returned HTTP 403 Forbidden — IP banned due to too many failed login attempts. Restart qBittorrent to clear the ban.", LogLevel.Error);
                     return false;
                 }
 

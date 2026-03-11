@@ -9,6 +9,8 @@ namespace qbPortWeaver
         private const string PiaUninstallRegistryPath = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall";
         private const string PiaDisplayName           = "Private Internet Access";
         private const string PiactlFileName           = "piactl.exe";
+        internal const string VpnServiceName           = "PrivateInternetAccessService";
+        internal const string ClientProcessName        = "pia-client";
         private const int    ProcessTimeoutMs         = 5000;
 
         public string ProviderName => RegistrySettingsManager.VpnProviderPia;
@@ -39,6 +41,9 @@ namespace qbPortWeaver
         }
 
         public Task<int?> GetVpnPortAsync() => Task.FromResult(GetVpnPortCore());
+
+        public string? FindServiceName()
+            => VpnManagerHelper.FindServiceByExactName(VpnServiceName, nameof(PiaVpnManager));
 
         private static int? GetVpnPortCore()
         {

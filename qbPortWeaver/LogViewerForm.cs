@@ -53,7 +53,7 @@ namespace qbPortWeaver
             btnClearSearch.Location = new Point(txtSearch.Right - cbSize - 2, searchTop + 2);
             // Must be in front of the native TextBox HWND or it will be hidden behind it
             btnClearSearch.BringToFront();
-            _ = LoadInitialContentAsync(); // fire-and-forget: exceptions are caught within the method
+            _ = LoadInitialContentAsync(); // fire-and-forget; exceptions are handled inside LoadInitialContentAsync
         }
 
         protected override void OnFormClosed(FormClosedEventArgs e)
@@ -238,7 +238,7 @@ namespace qbPortWeaver
         {
             if (rtbLog.TextLength == 0) return true;
             int lastVisible = rtbLog.GetCharIndexFromPosition(new Point(0, rtbLog.ClientSize.Height - 1));
-            return lastVisible >= rtbLog.TextLength - 2;
+            return lastVisible >= rtbLog.TextLength - 2; // -2: allow for the \r\n that terminates the last line
         }
 
         // Static — safe to call from background threads (no UI state access).
@@ -490,7 +490,7 @@ namespace qbPortWeaver
                     case '{':  sb.Append("\\{");  break;
                     case '}':  sb.Append("\\}");  break;
                     default:
-                        if (c > 127) sb.Append($"\\u{(int)c}?");
+                        if (c > 127) sb.Append($"\\u{(int)c} ");
                         else sb.Append(c);
                         break;
                 }
@@ -502,7 +502,7 @@ namespace qbPortWeaver
             rtbLog.SelectionStart  = rtbLog.TextLength;
             rtbLog.SelectionLength = 0;
             rtbLog.SelectionColor  = color;
-            rtbLog.AppendText(text + "\n");
+            rtbLog.AppendText(text + "\r\n");
         }
 
         private void ScrollToBottom()

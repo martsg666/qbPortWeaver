@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
+using System.ServiceProcess;
 
 namespace qbPortWeaver
 {
@@ -22,8 +23,8 @@ namespace qbPortWeaver
         private ushort _lastExternalPort;  // zero until first mapping; suggested to gateway on renewal
         private uint   _lastEpochSeconds;  // SSOE (Seconds Since Opened Epoch) from the last successful NAT-PMP response
 
-        // Returns the adapter description, used as the VPN provider display name in log messages and status.
-        public string ProviderName => _adapter.Description;
+        // Returns the adapter name, used as the VPN provider display name in log messages and status.
+        public string ProviderName => _adapter.Name;
 
         // The lease lifetime (in seconds) granted by the gateway on the last successful port mapping; 0 until first mapping.
         // Read by PortSyncService to warn when the configured sync interval exceeds the lease lifetime.
@@ -55,7 +56,7 @@ namespace qbPortWeaver
             var probeResults = await Task.WhenAll(candidates.Select(async c =>
             {
                 IPAddress? externalIp = await RequestExternalAddressAsync(c.Gateway).ConfigureAwait(false);
-                LogProbeResultDebug("DiscoverAdapters", c.Nic.Description, c.Gateway, externalIp);
+                LogProbeResultDebug("DiscoverAdapters", c.Nic.Name, c.Gateway, externalIp);
                 return (c.Nic, c.Gateway, Supported: externalIp is not null);
             })).ConfigureAwait(false);
 
@@ -78,7 +79,7 @@ namespace qbPortWeaver
         public static async Task<NatPmpManager?> TryCreateForAdapter(string adapterName, uint mappingLifetime = DefaultMappingLifetime)
         {
             NetworkInterface? nic = GetActiveNetworkInterfaces()
-                .FirstOrDefault(n => n.Description.Equals(adapterName, StringComparison.OrdinalIgnoreCase));
+                .FirstOrDefault(n => n.Name.Equals(adapterName, StringComparison.OrdinalIgnoreCase));
 
             if (nic is null)
             {
@@ -115,12 +116,12 @@ namespace qbPortWeaver
             try
             {
                 bool connected = NetworkInterface.GetAllNetworkInterfaces()
-                    .Any(nic => nic.Description.Equals(_adapter.Description, StringComparison.OrdinalIgnoreCase)
+                    .Any(nic => nic.Name.Equals(_adapter.Name, StringComparison.OrdinalIgnoreCase)
                              && nic.OperationalStatus == OperationalStatus.Up);
 
                 LogManager.Instance.LogDebug(connected
-                    ? $"NatPmpManager.IsVpnConnected: Adapter '{_adapter.Description}' is up"
-                    : $"NatPmpManager.IsVpnConnected: Adapter '{_adapter.Description}' is not found or not up");
+                    ? $"NatPmpManager.IsVpnConnected: Adapter '{_adapter.Name}' is connected"
+                    : $"NatPmpManager.IsVpnConnected: Adapter '{_adapter.Name}' is not found or not connected");
 
                 return connected;
             }
@@ -147,7 +148,7 @@ namespace qbPortWeaver
 
                 if (!result.Success)
                 {
-                    LogManager.Instance.LogMessage($"NAT-PMP port mapping failed on '{_adapter.Description}': {result.Error}", LogLevel.Warn);
+                    LogManager.Instance.LogMessage($"NAT-PMP port mapping failed on '{_adapter.Name}': {result.Error}", LogLevel.Warn);
                     return null;
                 }
 
@@ -155,7 +156,7 @@ namespace qbPortWeaver
                 // The response is still valid (a fresh mapping was assigned) — log and update state below.
                 if (_lastEpochSeconds > 0 && result.EpochSeconds < _lastEpochSeconds)
                     LogManager.Instance.LogMessage(
-                        $"NAT-PMP epoch reset on '{_adapter.Description}' (was {_lastEpochSeconds}s, now {result.EpochSeconds}s) — prior mapping lost, fresh port assigned",
+                        $"NAT-PMP epoch reset on '{_adapter.Name}' (was {_lastEpochSeconds}s, now {result.EpochSeconds}s) — gateway restarted, fresh port assigned",
                         LogLevel.Info);
 
                 string epochDelta = (_lastEpochSeconds > 0 && result.EpochSeconds >= _lastEpochSeconds)
@@ -177,9 +178,73 @@ namespace qbPortWeaver
             }
             catch (Exception ex)
             {
-                LogManager.Instance.LogMessage($"NAT-PMP error on '{_adapter.Description}': {ex.Message}", LogLevel.Warn);
+                LogManager.Instance.LogMessage($"NAT-PMP error on '{_adapter.Name}': {ex.Message}", LogLevel.Warn);
                 return null;
             }
+        }
+
+        // Finds the Windows service to restart during VPN auto-recovery.
+        // Supported adapters and their corresponding VPN client services:
+        //   - ProtonVPN adapters ("ProtonVPN TUN" / "ProtonVPN") → "ProtonVPN Service"
+        //   - PIA adapters ("PIA OpenVPN WinTUN Adapter" / "wgpia0") → "PrivateInternetAccessService"
+        // Unknown adapters return null — restarting an unrecognised service would be unsafe.
+        public string? FindServiceName()
+        {
+            try
+            {
+                ServiceController[] services = ServiceController.GetServices();
+                try
+                {
+                    string? serviceName = MatchServiceName(_adapter.Name, services);
+                    LogManager.Instance.LogDebug(serviceName != null
+                        ? $"NatPmpManager.FindServiceName: found service '{serviceName}' for adapter '{_adapter.Name}'"
+                        : $"NatPmpManager.FindServiceName: adapter '{_adapter.Name}' is not a recognised VPN provider");
+                    return serviceName;
+                }
+                finally { foreach (var svc in services) svc.Dispose(); }
+            }
+            catch (Exception ex)
+            {
+                LogManager.LogDebugException("NatPmpManager.FindServiceName", ex);
+                return null;
+            }
+        }
+
+        // Finds the Windows service name for a given NAT-PMP adapter by adapter name.
+        // Used as a static fallback by PortSyncService when no NatPmpManager instance exists
+        // (e.g. the VPN adapter is not currently up on the first disconnected cycle).
+        internal static string? FindServiceNameForAdapter(string adapterName)
+        {
+            try
+            {
+                ServiceController[] services = ServiceController.GetServices();
+                try   { return MatchServiceName(adapterName, services); }
+                finally { foreach (var svc in services) svc.Dispose(); }
+            }
+            catch (Exception ex)
+            {
+                LogManager.LogDebugException("NatPmpManager.FindServiceNameForAdapter", ex);
+                return null;
+            }
+        }
+
+        // Core service-name matching shared by FindServiceName and FindServiceNameForAdapter.
+        // Returns null for unrecognised adapters — restarting an unknown service would be unsafe.
+        private static string? MatchServiceName(string adapterName, ServiceController[] services)
+        {
+            // ProtonVPN: adapter name is "ProtonVPN TUN" (OpenVPN) or "ProtonVPN" (WireGuard)
+            if (adapterName.Contains("ProtonVPN", StringComparison.OrdinalIgnoreCase))
+                return services
+                    .FirstOrDefault(s => s.ServiceName.Equals(ProtonVpnManager.VpnServiceName, StringComparison.OrdinalIgnoreCase))
+                    ?.ServiceName;
+
+            // PIA: adapter name is "PIA OpenVPN WinTUN Adapter" (OpenVPN) or "wgpia0" (WireGuard) — both contain "PIA".
+            if (adapterName.Contains("PIA", StringComparison.OrdinalIgnoreCase))
+                return services
+                    .FirstOrDefault(s => s.ServiceName.Equals(PiaVpnManager.VpnServiceName, StringComparison.OrdinalIgnoreCase))
+                    ?.ServiceName;
+
+            return null;
         }
 
         // Transfers renewal state from a previous instance so that port renewal works correctly

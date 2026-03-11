@@ -91,8 +91,8 @@ jobs:
           dotnet-version: '10.x'
 
       # -----------------------------------------------------------------------
-      # 5. Verify that <Version> in qbPortWeaver.csproj matches the tag version.
-      #    Catches cases where the .csproj was not updated before tagging.
+      # 5. Verify that <Version> in both .csproj files matches the tag version.
+      #    Catches cases where a .csproj was not updated before tagging.
       # -----------------------------------------------------------------------
       - name: Verify csproj version matches tag
         shell: pwsh
@@ -100,16 +100,22 @@ jobs:
           BUILD_VERSION: ${{ steps.version.outputs.VERSION }}
         run: |
           $ErrorActionPreference = 'Stop'
-          $tagVersion    = $env:BUILD_VERSION
-          $match         = Select-String -Path 'qbPortWeaver.csproj' -Pattern '<Version>([^<]+)</Version>'
-          $csprojVersion = $match.Matches[0].Groups[1].Value
-          if ($csprojVersion -ne $tagVersion) {
-            throw "Version mismatch: tag is '$tagVersion' but qbPortWeaver.csproj has '$csprojVersion'. Update <Version> in the .csproj before tagging."
+          $tagVersion = $env:BUILD_VERSION
+          $csproj = @(
+            'qbPortWeaver\qbPortWeaver.csproj'
+            'HelperService\qbPortWeaver.HelperService.csproj'
+          )
+          foreach ($proj in $csproj) {
+            $match   = Select-String -Path $proj -Pattern '<Version>([^<]+)</Version>'
+            $version = $match.Matches[0].Groups[1].Value
+            if ($version -ne $tagVersion) {
+              throw "Version mismatch: tag is '$tagVersion' but $proj has '$version'. Update <Version> before tagging."
+            }
+            Write-Host "Version check passed: $proj ($version)"
           }
-          Write-Host "Version check passed: $csprojVersion"
 
       # -----------------------------------------------------------------------
-      # 6. Publish the .NET application (self-contained single-file, version stamped from the tag)
+      # 6. Publish both projects (self-contained single-file, version stamped from the tag)
       # -----------------------------------------------------------------------
       - name: Publish application
         shell: pwsh
@@ -118,15 +124,21 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $v = $env:BUILD_VERSION
-          dotnet publish qbPortWeaver.csproj `
-            --configuration Release `
-            --runtime win-x64 `
-            --self-contained true `
-            -p:PublishSingleFile=true `
-            -p:Version=$v `
-            -p:FileVersion="$v.0" `
-            -p:AssemblyVersion="$v.0"
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $projects = @(
+            'qbPortWeaver\qbPortWeaver.csproj'
+            'HelperService\qbPortWeaver.HelperService.csproj'
+          )
+          foreach ($proj in $projects) {
+            dotnet publish $proj `
+              --configuration Release `
+              --runtime win-x64 `
+              --self-contained true `
+              -p:PublishSingleFile=true `
+              -p:Version=$v `
+              -p:FileVersion="$v.0" `
+              -p:AssemblyVersion="$v.0"
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
 
       # -----------------------------------------------------------------------
       # 7. Install WiX Toolset v4 (pinned to 4.0.6)
@@ -153,7 +165,7 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $version = $env:BUILD_VERSION
-          $tfm     = (Select-String -Path 'qbPortWeaver.csproj' -Pattern '<TargetFramework>([^<]+)</TargetFramework>').Matches[0].Groups[1].Value
+          $tfm     = (Select-String -Path 'qbPortWeaver\qbPortWeaver.csproj' -Pattern '<TargetFramework>([^<]+)</TargetFramework>').Matches[0].Groups[1].Value
 
           wix build installer\qbPortWeaver.wxs `
             -arch x64 `

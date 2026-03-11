@@ -1,10 +1,9 @@
 name: Build Check
 
 # Runs on every branch push and pull request to catch compile errors before release.
+# Tag pushes are handled exclusively by build-release-publish.yml.
 on:
   push:
-    branches-ignore:
-      - 'refs/tags/**'  # tag pushes are handled by build-release-publish.yml
   pull_request:
 
 concurrency:

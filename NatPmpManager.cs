@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
+using System.ServiceProcess;
 
 namespace qbPortWeaver
 {
@@ -180,6 +181,88 @@ namespace qbPortWeaver
                 LogManager.Instance.LogMessage($"NAT-PMP error on '{_adapter.Description}': {ex.Message}", LogLevel.Warn);
                 return null;
             }
+        }
+
+        // Finds the Windows service to restart during VPN auto-recovery.
+        // Supported adapters and their corresponding VPN client services:
+        //   - ProtonVPN adapters ("ProtonVPN TUN" / "ProtonVPN") → "ProtonVPN Service"
+        //   - PIA adapters ("PIA OpenVPN WinTUN Adapter" / "wgpia0") → "PrivateInternetAccessService"
+        // Unknown adapters return null — restarting an unrecognised service would be unsafe.
+        // Protocol-specific services (WireGuard) are excluded so only the main client is restarted.
+        public string? DiscoverServiceName()
+        {
+            try
+            {
+                ServiceController[] services = ServiceController.GetServices();
+                string? serviceName;
+                try
+                {
+                    serviceName = FindServiceForAdapter(services);
+                }
+                finally
+                {
+                    foreach (var svc in services) svc.Dispose();
+                }
+
+                LogManager.Instance.LogDebug(serviceName != null
+                    ? $"NatPmpManager.DiscoverServiceName: found service '{serviceName}' for adapter '{_adapter.Name}'"
+                    : $"NatPmpManager.DiscoverServiceName: no service found for adapter '{_adapter.Name}'");
+
+                return serviceName;
+            }
+            catch (Exception ex)
+            {
+                LogManager.LogDebugException("NatPmpManager.DiscoverServiceName", ex);
+                return null;
+            }
+        }
+
+        private string? FindServiceForAdapter(ServiceController[] services)
+        {
+            string? result = MatchServiceName(_adapter.Name, services);
+            if (result is null)
+                LogManager.Instance.LogDebug($"NatPmpManager.DiscoverServiceName: adapter '{_adapter.Name}' is not a recognised VPN provider; skipping service discovery");
+            return result;
+        }
+
+        // Finds the Windows service name for a given NAT-PMP adapter by name or description.
+        // Used as a static fallback by PortSyncService when no NatPmpManager instance exists
+        // (e.g. the VPN adapter is not currently up on the first disconnected cycle).
+        internal static string? FindServiceNameForAdapter(string adapterName)
+        {
+            try
+            {
+                ServiceController[] services = ServiceController.GetServices();
+                try   { return MatchServiceName(adapterName, services); }
+                finally { foreach (var svc in services) svc.Dispose(); }
+            }
+            catch (Exception ex)
+            {
+                LogManager.LogDebugException("NatPmpManager.FindServiceNameForAdapter", ex);
+                return null;
+            }
+        }
+
+        // Core service-name matching shared by FindServiceForAdapter and FindServiceNameForAdapter.
+        // Returns null for unrecognised adapters — restarting an unknown service would be unsafe.
+        private static string? MatchServiceName(string adapterName, ServiceController[] services)
+        {
+            // ProtonVPN: adapter name is "ProtonVPN TUN" (OpenVPN) or "ProtonVPN" (WireGuard)
+            if (adapterName.Contains("ProtonVPN", StringComparison.OrdinalIgnoreCase))
+                return services
+                    .FirstOrDefault(s => s.ServiceName.Contains("ProtonVPN", StringComparison.OrdinalIgnoreCase)
+                                      && !s.ServiceName.Contains("WireGuard", StringComparison.OrdinalIgnoreCase))
+                    ?.ServiceName;
+
+            // PIA: adapter name is "PIA OpenVPN WinTUN Adapter" (OpenVPN) or "wgpia0" (WireGuard)
+            // "wgpia0".Contains("PIA") is true via substring match, so both cases are handled.
+            if (adapterName.Contains("PIA", StringComparison.OrdinalIgnoreCase))
+                return services
+                    .FirstOrDefault(s => s.ServiceName.Contains("PrivateInternetAccess", StringComparison.OrdinalIgnoreCase)
+                                      && !s.ServiceName.Contains("WireGuard", StringComparison.OrdinalIgnoreCase))
+                    ?.ServiceName;
+
+            return null;
         }
 
         // Transfers renewal state from a previous instance so that port renewal works correctly

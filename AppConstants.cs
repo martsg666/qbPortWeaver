@@ -23,6 +23,11 @@ namespace qbPortWeaver
         // HTTP — shared timeout used by all outbound HTTP clients
         public const int HttpTimeoutSeconds = 10;
 
+        // VPN auto-recovery
+        public const string VpnAutoRecoveryTaskName = "qbPortWeaver-Vpn-AutoRecovery";
+        public const string VpnAutoRecoveryArg      = "--vpn-autorecovery";
+        public const int    VpnAutoRecoveryEventId  = 1001;
+
         // GitHub — only the owner is a literal; all URLs are derived
         public const string GitHubRepoOwner = "martsg666";
         public static readonly string GitHubRepoUrl = $"https://github.com/{GitHubRepoOwner}/{AppName}";
@@ -30,9 +35,16 @@ namespace qbPortWeaver
         private const string LogFileName    = "qbPortWeaver.log";
         private const string StatusFileName = "qbPortWeaver.status.json";
 
-        // App data folder — created on class initialization (static field initializer)
-        private static readonly string AppDataFolder = Directory.CreateDirectory(
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), AppName)
+        // App data folder — lazily resolved so OverrideLocalAppData() can be called first
+        // (used when running as SYSTEM via the scheduled task, which passes the real user's
+        // LocalAppData path as a command-line argument).
+        private static string? _localAppDataOverride;
+        private static string? _appDataFolder;
+
+        public static void OverrideLocalAppData(string path) => _localAppDataOverride = path;
+
+        private static string AppDataFolder => _appDataFolder ??= Directory.CreateDirectory(
+            Path.Combine(_localAppDataOverride ?? Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), AppName)
         ).FullName;
 
         public static string GetLogFilePath()    => Path.Combine(AppDataFolder, LogFileName);

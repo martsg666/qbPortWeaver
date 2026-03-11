@@ -23,5 +23,12 @@ namespace qbPortWeaver
         /// For NAT-PMP this is the external port assigned by the gateway via a UDP port-mapping request.
         /// </summary>
         Task<int?> GetVpnPortAsync();
+
+        /// <summary>
+        /// Returns the Windows service name that backs this VPN provider, or <c>null</c> if
+        /// no relevant service is found or service discovery is not supported for this provider.
+        /// Used by VPN auto-recovery to restart the service when the VPN goes down.
+        /// </summary>
+        string? DiscoverServiceName();
     }
 }

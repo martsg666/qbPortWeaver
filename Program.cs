@@ -3,8 +3,23 @@ namespace qbPortWeaver
     internal static class Program
     {
         [STAThread]
-        static void Main()
+        static void Main(string[] args)
         {
+            if (args.Length >= 1 && args[0] == AppConstants.VpnAutoRecoveryArg)
+            {
+                // args[1] is the service name extracted from the triggering event by the task's
+                // ValueQueries binding (Event/EventData/Data).
+                // args[2] is the user's LocalAppData path baked in at task-creation time.
+                // Overriding before LogManager.Initialize() ensures all paths resolve correctly
+                // when this process runs as SYSTEM via the scheduled task.
+                string serviceName = args.Length >= 2 ? args[1] : string.Empty;
+                if (args.Length >= 3 && Directory.Exists(args[2]))
+                    AppConstants.OverrideLocalAppData(args[2]);
+                LogManager.Initialize(AppConstants.GetLogFilePath());
+                VpnAutoRecoveryManager.ExecuteRecovery(serviceName);
+                return;
+            }
+
             Application.SetColorMode(SystemColorMode.System);
             ApplicationConfiguration.Initialize();
 

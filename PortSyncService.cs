@@ -17,6 +17,10 @@ namespace qbPortWeaver
         // Event raised when qBittorrent's network interface does not match the configured VPN provider
         public event Action<string>? InterfaceMismatchDetected;
 
+        // Consecutive sync cycles in which the VPN was detected as disconnected.
+        // Serialised by MainForm._updateSemaphore (same guarantee as _lastKnownNatPmpManager).
+        private int _consecutiveDisconnectedCycles;
+
         // Kept solely as a disconnection fallback: when TryCreateForAdapter cannot reach the configured
         // adapter (e.g. VPN is between disconnect and reconnect), this is returned so IsVpnConnected()
         // reports false and RunCoreAsync handles disconnection gracefully instead of surfacing an error.
@@ -39,7 +43,9 @@ namespace qbPortWeaver
             int DefaultPort,
             bool WarnOnInterfaceMismatch,
             bool RestartOnDisconnect,
-            string PostUpdateCommand
+            string PostUpdateCommand,
+            bool VpnAutoRecoveryEnabled,
+            int VpnAutoRecoveryTriggerCycles
         );
 
         // Groups qBittorrent behaviour settings passed to EnsureRunningAndUpdatePortAsync
@@ -147,6 +153,9 @@ namespace qbPortWeaver
 
             if (!vpnManager.IsVpnConnected())
             {
+                _consecutiveDisconnectedCycles++;
+                TryTriggerVpnRecovery(vpnManager, cfg);
+
                 if (cfg.DefaultPort == 0)
                 {
                     status[StatusKeys.Status]  = StatusKeys.StatusSkipped;
@@ -161,6 +170,7 @@ namespace qbPortWeaver
             }
             else
             {
+                _consecutiveDisconnectedCycles = 0;
                 status[StatusKeys.VpnConnected] = true;
                 LogManager.Instance.LogMessage($"{vpnManager.ProviderName} is connected", LogLevel.Info);
 
@@ -216,21 +226,26 @@ namespace qbPortWeaver
             bool warnOnInterfaceMismatch = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyWarnOnInterfaceMismatch);
             bool restartOnDisconnect     = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyRestartOnDisconnect);
 
+            int vpnAutoRecoveryTriggerCycles = RegistrySettingsManager.GetInt(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyVpnAutoRecoveryTriggerCycles);
+            if (vpnAutoRecoveryTriggerCycles < 1) vpnAutoRecoveryTriggerCycles = 3;
+
             return new AppConfig(
-                VpnProvider:            RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral,     RegistrySettingsManager.KeyVpnProvider),
-                NatPmpAdapterName:      RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral,     RegistrySettingsManager.KeyNatPmpAdapterName),
-                UpdateInterval:         updateInterval,
-                QBittorrentUrl:         RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyQBittorrentUrl),
-                QBittorrentUserName:    RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyQBittorrentUserName),
-                QBittorrentPassword:    RegistrySettingsManager.GetPassword(),
-                QBittorrentExePath:     RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyQBittorrentExePath),
-                QBittorrentProcessName: RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyQBittorrentProcessName),
-                RestartQBittorrent:     restartQBittorrent,
-                ForceStartQBittorrent:  forceStartQBittorrent,
-                DefaultPort:            defaultPort,
-                WarnOnInterfaceMismatch: warnOnInterfaceMismatch,
-                RestartOnDisconnect:    restartOnDisconnect,
-                PostUpdateCommand:      RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionExtra,        RegistrySettingsManager.KeyPostUpdateCmd)
+                VpnProvider:                    RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral,     RegistrySettingsManager.KeyVpnProvider),
+                NatPmpAdapterName:              RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral,     RegistrySettingsManager.KeyNatPmpAdapterName),
+                UpdateInterval:                 updateInterval,
+                QBittorrentUrl:                 RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyQBittorrentUrl),
+                QBittorrentUserName:            RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyQBittorrentUserName),
+                QBittorrentPassword:            RegistrySettingsManager.GetPassword(),
+                QBittorrentExePath:             RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyQBittorrentExePath),
+                QBittorrentProcessName:         RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyQBittorrentProcessName),
+                RestartQBittorrent:             restartQBittorrent,
+                ForceStartQBittorrent:          forceStartQBittorrent,
+                DefaultPort:                    defaultPort,
+                WarnOnInterfaceMismatch:        warnOnInterfaceMismatch,
+                RestartOnDisconnect:            restartOnDisconnect,
+                PostUpdateCommand:              RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionExtra, RegistrySettingsManager.KeyPostUpdateCmd),
+                VpnAutoRecoveryEnabled:         RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyVpnAutoRecoveryEnabled),
+                VpnAutoRecoveryTriggerCycles:   vpnAutoRecoveryTriggerCycles
             );
         }
 
@@ -275,8 +290,24 @@ namespace qbPortWeaver
                     return _lastKnownNatPmpManager;
                 }
 
-                // No previous knowledge of this adapter — first run with VPN disconnected or misconfiguration
-                SetCompleted(status, false, $"Configured NAT-PMP adapter '{cfg.NatPmpAdapterName}' not found — adapter may not be up or gateway not responding");
+                // No previous knowledge of this adapter — VPN likely just disconnected for the first time.
+                // Treat as disconnected so the consecutive-cycle counter increments and auto-recovery can fire.
+                _consecutiveDisconnectedCycles++;
+                string notFoundMsg = $"NAT-PMP adapter '{cfg.NatPmpAdapterName}' not found — VPN may be disconnected ({_consecutiveDisconnectedCycles} consecutive cycle(s))";
+                LogManager.Instance.LogMessage(notFoundMsg, LogLevel.Warn);
+
+                if (cfg.VpnAutoRecoveryEnabled && _consecutiveDisconnectedCycles >= cfg.VpnAutoRecoveryTriggerCycles)
+                {
+                    _consecutiveDisconnectedCycles = 0;
+                    string? serviceName = NatPmpManager.FindServiceNameForAdapter(cfg.NatPmpAdapterName);
+                    if (serviceName != null)
+                        VpnAutoRecoveryManager.TriggerRecovery(serviceName);
+                    else
+                        LogManager.Instance.LogMessage($"VPN auto-recovery: no Windows service found for NAT-PMP adapter '{cfg.NatPmpAdapterName}'", LogLevel.Warn);
+                }
+
+                status[StatusKeys.Status]  = StatusKeys.StatusSkipped;
+                status[StatusKeys.Message] = notFoundMsg;
                 return null;
             }
 
@@ -471,6 +502,24 @@ namespace qbPortWeaver
                 LogManager.Instance.LogMessage("Failed to restart qBittorrent after connection disconnect", LogLevel.Error);
             else
                 LogManager.Instance.LogMessage("Successfully restarted qBittorrent after connection disconnect", LogLevel.Info);
+        }
+
+        // Triggers VPN auto-recovery if enabled and the disconnected cycle threshold is reached.
+        // Resets the counter after triggering to avoid firing again on the next cycle.
+        private void TryTriggerVpnRecovery(IVpnManager vpnManager, AppConfig cfg)
+        {
+            if (!cfg.VpnAutoRecoveryEnabled) return;
+            if (_consecutiveDisconnectedCycles < cfg.VpnAutoRecoveryTriggerCycles) return;
+
+            string? serviceName = vpnManager.DiscoverServiceName();
+            if (serviceName == null)
+            {
+                LogManager.Instance.LogMessage($"VPN auto-recovery: no Windows service found for '{vpnManager.ProviderName}'", LogLevel.Warn);
+                return;
+            }
+
+            _consecutiveDisconnectedCycles = 0;
+            VpnAutoRecoveryManager.TriggerRecovery(serviceName);
         }
 
         // Sets the completion status and logs the message.

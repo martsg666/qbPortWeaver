@@ -51,6 +51,11 @@ namespace qbPortWeaver
             txtPostUpdateCmd         = new TextBox();
             chkDebugMode             = new CheckBox();
 
+            chkVpnAutoRecovery       = new CheckBox();
+            lblVpnRecoveryCycles     = new Label();
+            nudVpnRecoveryCycles     = new NumericUpDown();
+            lblVpnRecoveryCyclesUnit = new Label();
+
             btnOK                    = new Button();
             btnCancel                = new Button();
 
@@ -58,6 +63,7 @@ namespace qbPortWeaver
 
             grpGeneral.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)nudUpdateInterval).BeginInit();
+            ((System.ComponentModel.ISupportInitialize)nudVpnRecoveryCycles).BeginInit();
             grpQBittorrent.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)nudDefaultPort).BeginInit();
             grpExtra.SuspendLayout();
@@ -72,8 +78,12 @@ namespace qbPortWeaver
             grpGeneral.Controls.Add(lblUpdateInterval);
             grpGeneral.Controls.Add(nudUpdateInterval);
             grpGeneral.Controls.Add(lblSeconds);
+            grpGeneral.Controls.Add(chkVpnAutoRecovery);
+            grpGeneral.Controls.Add(lblVpnRecoveryCycles);
+            grpGeneral.Controls.Add(nudVpnRecoveryCycles);
+            grpGeneral.Controls.Add(lblVpnRecoveryCyclesUnit);
             grpGeneral.Location = new Point(8, 8);
-            grpGeneral.Size     = new Size(480, 113);
+            grpGeneral.Size     = new Size(480, 171);
             grpGeneral.TabStop  = false;
             grpGeneral.Text     = "General";
 
@@ -122,6 +132,31 @@ namespace qbPortWeaver
             lblSeconds.Text      = "seconds";
             lblSeconds.TextAlign = ContentAlignment.MiddleLeft;
 
+            // Row 3 — VPN auto-recovery
+            chkVpnAutoRecovery.AutoSize = true;
+            chkVpnAutoRecovery.Location = new Point(12, 112);
+            chkVpnAutoRecovery.Text     = "Enable VPN auto-recovery";
+            chkVpnAutoRecovery.TabIndex = 19;
+            chkVpnAutoRecovery.CheckedChanged += chkVpnAutoRecovery_CheckedChanged;
+
+            // Row 4 — Trigger cycles (sub-option, indented)
+            lblVpnRecoveryCycles.Location  = new Point(28, 143);
+            lblVpnRecoveryCycles.Size      = new Size(180, 23);
+            lblVpnRecoveryCycles.Text      = "Restart service after";
+            lblVpnRecoveryCycles.TextAlign = ContentAlignment.MiddleLeft;
+
+            nudVpnRecoveryCycles.Location = new Point(212, 140);
+            nudVpnRecoveryCycles.Minimum  = 1;
+            nudVpnRecoveryCycles.Maximum  = 10;
+            nudVpnRecoveryCycles.Value    = 3;
+            nudVpnRecoveryCycles.Size     = new Size(50, 23);
+            nudVpnRecoveryCycles.TabIndex = 20;
+
+            lblVpnRecoveryCyclesUnit.Location  = new Point(266, 143);
+            lblVpnRecoveryCyclesUnit.Size      = new Size(160, 23);
+            lblVpnRecoveryCyclesUnit.Text      = "consecutive disconnected cycles";
+            lblVpnRecoveryCyclesUnit.TextAlign = ContentAlignment.MiddleLeft;
+
             // ── grpQBittorrent ────────────────────────────────────────────
             grpQBittorrent.Controls.Add(lblQBittorrentURL);
             grpQBittorrent.Controls.Add(txtQBittorrentURL);
@@ -140,7 +175,7 @@ namespace qbPortWeaver
             grpQBittorrent.Controls.Add(nudDefaultPort);
             grpQBittorrent.Controls.Add(chkWarnOnInterfaceMismatch);
             grpQBittorrent.Controls.Add(chkRestartOnDisconnect);
-            grpQBittorrent.Location = new Point(8, 133);
+            grpQBittorrent.Location = new Point(8, 191);
             grpQBittorrent.Size     = new Size(480, 320);
             grpQBittorrent.TabStop  = false;
             grpQBittorrent.Text     = "qBittorrent";
@@ -243,7 +278,7 @@ namespace qbPortWeaver
             grpExtra.Controls.Add(lblPostUpdateCmd);
             grpExtra.Controls.Add(txtPostUpdateCmd);
             grpExtra.Controls.Add(chkDebugMode);
-            grpExtra.Location = new Point(8, 465);
+            grpExtra.Location = new Point(8, 523);
             grpExtra.Size     = new Size(480, 84);
             grpExtra.TabStop  = false;
             grpExtra.Text     = "Extra";
@@ -265,13 +300,13 @@ namespace qbPortWeaver
             chkDebugMode.TabIndex = 14;
 
             // ── Buttons ───────────────────────────────────────────────────
-            btnOK.Location     = new Point(308, 561);
+            btnOK.Location     = new Point(308, 619);
             btnOK.Size         = new Size(82, 28);
             btnOK.Text         = "OK";
             btnOK.TabIndex     = 15;
             btnOK.Click       += btnOK_Click;
 
-            btnCancel.Location     = new Point(400, 561);
+            btnCancel.Location     = new Point(400, 619);
             btnCancel.Size         = new Size(82, 28);
             btnCancel.Text         = "Cancel";
             btnCancel.TabIndex     = 16;
@@ -282,7 +317,7 @@ namespace qbPortWeaver
             AutoScaleMode       = AutoScaleMode.Font;
             AcceptButton        = btnOK;
             CancelButton        = btnCancel;
-            ClientSize          = new Size(498, 601);
+            ClientSize          = new Size(498, 659);
             Controls.Add(grpGeneral);
             Controls.Add(grpQBittorrent);
             Controls.Add(grpExtra);
@@ -296,7 +331,9 @@ namespace qbPortWeaver
             Text            = "qbPortWeaver | Settings"; // overridden in constructor with AppConstants.AppName
 
             grpGeneral.ResumeLayout(false);
+            grpGeneral.PerformLayout();
             ((System.ComponentModel.ISupportInitialize)nudUpdateInterval).EndInit();
+            ((System.ComponentModel.ISupportInitialize)nudVpnRecoveryCycles).EndInit();
             grpQBittorrent.ResumeLayout(false);
             grpQBittorrent.PerformLayout();
             ((System.ComponentModel.ISupportInitialize)nudDefaultPort).EndInit();
@@ -340,6 +377,11 @@ namespace qbPortWeaver
         private Label       lblPostUpdateCmd;
         private TextBox     txtPostUpdateCmd;
         private CheckBox    chkDebugMode;
+
+        private CheckBox      chkVpnAutoRecovery;
+        private Label         lblVpnRecoveryCycles;
+        private NumericUpDown nudVpnRecoveryCycles;
+        private Label         lblVpnRecoveryCyclesUnit;
 
         private Button      btnOK;
         private Button      btnCancel;

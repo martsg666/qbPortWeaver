@@ -1,5 +1,6 @@
 using Microsoft.Win32;
 using System.Diagnostics;
+using System.ServiceProcess;
 
 namespace qbPortWeaver
 {
@@ -39,6 +40,39 @@ namespace qbPortWeaver
         }
 
         public Task<int?> GetVpnPortAsync() => Task.FromResult(GetVpnPortCore());
+
+        public string? DiscoverServiceName()
+        {
+            try
+            {
+                ServiceController[] services = ServiceController.GetServices();
+                string? serviceName;
+                try
+                {
+                    // Exclude protocol-specific services (e.g. "PrivateInternetAccessWireguard") so that
+                    // only the main client service is restarted during auto-recovery.
+                    serviceName = services
+                        .FirstOrDefault(s => s.ServiceName.Contains("PrivateInternetAccess", StringComparison.OrdinalIgnoreCase)
+                                          && !s.ServiceName.Contains("WireGuard", StringComparison.OrdinalIgnoreCase))
+                        ?.ServiceName;
+                }
+                finally
+                {
+                    foreach (var svc in services) svc.Dispose();
+                }
+
+                LogManager.Instance.LogDebug(serviceName != null
+                    ? $"PiaVpnManager.DiscoverServiceName: found service '{serviceName}'"
+                    : "PiaVpnManager.DiscoverServiceName: no PIA service found");
+
+                return serviceName;
+            }
+            catch (Exception ex)
+            {
+                LogManager.LogDebugException("PiaVpnManager.DiscoverServiceName", ex);
+                return null;
+            }
+        }
 
         private static int? GetVpnPortCore()
         {

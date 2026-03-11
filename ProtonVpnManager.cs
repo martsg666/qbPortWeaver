@@ -1,5 +1,4 @@
 using System.Net.NetworkInformation;
-using System.ServiceProcess;
 using System.Text;
 using System.Text.RegularExpressions;
 
@@ -47,37 +46,15 @@ namespace qbPortWeaver
 
         public Task<int?> GetVpnPortAsync() => Task.FromResult(GetVpnPortCore());
 
+        // Delegates to NatPmpManager.FindServiceNameForAdapter using the provider name as the adapter
+        // name key — the same ProtonVPN/PIA matching logic is centralised there.
         public string? DiscoverServiceName()
         {
-            try
-            {
-                ServiceController[] services = ServiceController.GetServices();
-                string? serviceName;
-                try
-                {
-                    // Exclude protocol-specific services (e.g. "ProtonVPN WireGuard") so that
-                    // only the main client service is restarted during auto-recovery.
-                    serviceName = services
-                        .FirstOrDefault(s => s.ServiceName.Contains("ProtonVPN", StringComparison.OrdinalIgnoreCase)
-                                          && !s.ServiceName.Contains("WireGuard", StringComparison.OrdinalIgnoreCase))
-                        ?.ServiceName;
-                }
-                finally
-                {
-                    foreach (var svc in services) svc.Dispose();
-                }
-
-                LogManager.Instance.LogDebug(serviceName != null
-                    ? $"ProtonVpnManager.DiscoverServiceName: found service '{serviceName}'"
-                    : "ProtonVpnManager.DiscoverServiceName: no ProtonVPN service found");
-
-                return serviceName;
-            }
-            catch (Exception ex)
-            {
-                LogManager.LogDebugException("ProtonVpnManager.DiscoverServiceName", ex);
-                return null;
-            }
+            string? serviceName = NatPmpManager.FindServiceNameForAdapter(RegistrySettingsManager.VpnProviderProtonVpn);
+            LogManager.Instance.LogDebug(serviceName != null
+                ? $"ProtonVpnManager.DiscoverServiceName: found service '{serviceName}'"
+                : "ProtonVpnManager.DiscoverServiceName: no ProtonVPN service found");
+            return serviceName;
         }
 
         private int? GetVpnPortCore()

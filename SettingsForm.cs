@@ -63,7 +63,7 @@ namespace qbPortWeaver
             cboNatPmpAdapter.SelectedIndex = 0;
             cboNatPmpAdapter.Enabled = false;
             string savedAdapter = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyNatPmpAdapterName);
-            _ = PopulateNatPmpAdaptersAsync(savedAdapter);
+            _ = PopulateNatPmpAdaptersAsync(savedAdapter); // NOSONAR S6966 — fire-and-forget; exceptions are handled inside PopulateNatPmpAdaptersAsync
 
             nudUpdateInterval.Value = Math.Clamp(
                 RegistrySettingsManager.GetInt(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyUpdateIntervalSeconds),
@@ -167,7 +167,7 @@ namespace qbPortWeaver
             cboNatPmpAdapter.SelectedIndex = 0;
             cboNatPmpAdapter.Enabled   = false;
             btnRefreshAdapters.Enabled = false;
-            _ = PopulateNatPmpAdaptersAsync(current);
+            _ = PopulateNatPmpAdaptersAsync(current); // NOSONAR S6966 — fire-and-forget; exceptions are handled inside PopulateNatPmpAdaptersAsync
         }
 
         private void btnBrowseExePath_Click(object? sender, EventArgs e)

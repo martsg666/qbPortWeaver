@@ -227,7 +227,8 @@ namespace qbPortWeaver
             bool restartOnDisconnect     = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyRestartOnDisconnect);
 
             int vpnAutoRecoveryTriggerCycles = RegistrySettingsManager.GetInt(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyVpnAutoRecoveryTriggerCycles);
-            if (vpnAutoRecoveryTriggerCycles < 1) vpnAutoRecoveryTriggerCycles = 3;
+            if (vpnAutoRecoveryTriggerCycles < 1)
+                vpnAutoRecoveryTriggerCycles = int.TryParse(RegistrySettingsManager.Defaults[RegistrySettingsManager.SectionGeneral][RegistrySettingsManager.KeyVpnAutoRecoveryTriggerCycles], out int def) ? def : 1;
 
             return new AppConfig(
                 VpnProvider:                    RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral,     RegistrySettingsManager.KeyVpnProvider),
@@ -264,7 +265,8 @@ namespace qbPortWeaver
             return new ProtonVpnManager(AppConstants.GetProtonVPNLogFilePath());
         }
 
-        // Handles the NAT-PMP branch of CreateVpnManager, extracted to reduce cognitive complexity.
+        // Resolves the NAT-PMP VPN manager for the configured adapter, handling the disconnected
+        // fallback cases and auto-recovery triggering when no adapter is reachable.
         private async Task<IVpnManager?> CreateNatPmpVpnManager(AppConfig cfg, Dictionary<string, object?> status)
         {
             if (string.IsNullOrWhiteSpace(cfg.NatPmpAdapterName))
@@ -302,7 +304,9 @@ namespace qbPortWeaver
             // No previous knowledge of this adapter — VPN likely just disconnected for the first time.
             // Treat as disconnected so the consecutive-cycle counter increments and auto-recovery can fire.
             _consecutiveDisconnectedCycles++;
-            string notFoundMsg = $"NAT-PMP adapter '{cfg.NatPmpAdapterName}' not found — VPN may be disconnected ({_consecutiveDisconnectedCycles} consecutive cycle(s))";
+            int count = _consecutiveDisconnectedCycles;
+            string notFoundMsg = $"NAT-PMP adapter '{cfg.NatPmpAdapterName}' not found — VPN may be disconnected " +
+                                 $"({count} consecutive {(count == 1 ? "cycle" : "cycles")})";
             LogManager.Instance.LogMessage(notFoundMsg, LogLevel.Warn);
 
             if (cfg.VpnAutoRecoveryEnabled && _consecutiveDisconnectedCycles >= cfg.VpnAutoRecoveryTriggerCycles)
@@ -522,7 +526,11 @@ namespace qbPortWeaver
                 return;
             }
 
+            int count = _consecutiveDisconnectedCycles;
             _consecutiveDisconnectedCycles = 0;
+            LogManager.Instance.LogMessage(
+                $"VPN auto-recovery: triggering recovery for '{vpnManager.ProviderName}' after {count} consecutive disconnected {(count == 1 ? "cycle" : "cycles")}",
+                LogLevel.Info);
             VpnAutoRecoveryManager.TriggerRecovery(serviceName);
         }
 

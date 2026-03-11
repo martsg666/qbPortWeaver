@@ -61,7 +61,9 @@ namespace qbPortWeaver
             UpdateTrayTooltip();
         }
 
-        private async void MainForm_Load(object sender, EventArgs e)
+        private void MainForm_Load(object sender, EventArgs e) => _ = MainForm_LoadAsync();
+
+        private async Task MainForm_LoadAsync()
         {
             try
             {
@@ -80,12 +82,11 @@ namespace qbPortWeaver
 
                 // Schedule periodic update checks every 12 hours
                 _updateCheckTimer = new System.Windows.Forms.Timer { Interval = AppConstants.AutoUpdateCheckIntervalMs };
-                // async void lambda is safe here: PerformUpdateCheckAsync has a top-level catch-all and never throws
-                _updateCheckTimer.Tick += async (s, e) => await PerformUpdateCheckAsync();
+                _updateCheckTimer.Tick += (_, _) => _ = PerformUpdateCheckAsync(); // NOSONAR S6966 — fire-and-forget; PerformUpdateCheckAsync has a top-level catch-all and never throws
                 _updateCheckTimer.Start();
 
                 // Start main loop (intentional fire-and-forget)
-                _ = Task.Run(RunMainLoopAsync);
+                _ = Task.Run(RunMainLoopAsync); // NOSONAR S6966 — fire-and-forget; exceptions are handled inside RunMainLoopAsync
             }
             catch (Exception ex)
             {
@@ -257,7 +258,7 @@ namespace qbPortWeaver
                         return;
                 }
 
-                LogManager.Instance.LogMessage("Main loop exited gracefully", LogLevel.Info);
+                LogManager.Instance.LogMessage("Main loop exited (shutdown signalled between cycles)", LogLevel.Info);
             }
             catch (OperationCanceledException)
             {

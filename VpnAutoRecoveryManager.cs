@@ -196,7 +196,7 @@ namespace qbPortWeaver
                 try
                 {
                     if (!QueryServiceStatusEx(sc.ServiceHandle.DangerousGetHandle(),
-                            SC_STATUS_PROCESS_INFO, buf, bufSize, out _))
+                            ScStatusProcessInfo, buf, bufSize, out _))
                         return;
 
                     int pid = Marshal.PtrToStructure<ServiceStatusProcess>(buf).dwProcessId;
@@ -217,7 +217,7 @@ namespace qbPortWeaver
             }
         }
 
-        private const int  SC_STATUS_PROCESS_INFO    = 0;
+        private const int  ScStatusProcessInfo = 0;
 
         [DllImport("advapi32.dll", SetLastError = true)]
         private static extern bool QueryServiceStatusEx(

@@ -18,7 +18,7 @@ namespace qbPortWeaver
         protected override void OnLoad(EventArgs e)
         {
             base.OnLoad(e);
-            _ = LoadGitHubDataAsync(); // NOSONAR S6966 — fire-and-forget; exceptions are handled inside LoadGitHubDataAsync
+            _ = LoadGitHubDataAsync(); // fire-and-forget; exceptions are handled inside LoadGitHubDataAsync
         }
 
         // Opens the release page if an update is available; otherwise re-runs the update check
@@ -27,7 +27,7 @@ namespace qbPortWeaver
             if (_releaseUrl != null)
                 AppConstants.OpenUrl(_releaseUrl);
             else
-                _ = LoadGitHubDataAsync(); // NOSONAR S6966 — fire-and-forget; exceptions are handled inside LoadGitHubDataAsync
+                _ = LoadGitHubDataAsync(); // fire-and-forget; exceptions are handled inside LoadGitHubDataAsync
         }
 
         // Each link region carries its contributor profile URL as LinkData

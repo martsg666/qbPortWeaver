@@ -53,7 +53,7 @@ namespace qbPortWeaver
             btnClearSearch.Location = new Point(txtSearch.Right - cbSize - 2, searchTop + 2);
             // Must be in front of the native TextBox HWND or it will be hidden behind it
             btnClearSearch.BringToFront();
-            _ = LoadInitialContentAsync(); // NOSONAR S6966 — fire-and-forget; exceptions are handled inside LoadInitialContentAsync
+            _ = LoadInitialContentAsync(); // fire-and-forget; exceptions are handled inside LoadInitialContentAsync
         }
 
         protected override void OnFormClosed(FormClosedEventArgs e)

@@ -167,7 +167,7 @@ namespace qbPortWeaver
             cboNatPmpAdapter.SelectedIndex = 0;
             cboNatPmpAdapter.Enabled   = false;
             btnRefreshAdapters.Enabled = false;
-            _ = PopulateNatPmpAdaptersAsync(current); // NOSONAR S6966 — fire-and-forget; exceptions are handled inside PopulateNatPmpAdaptersAsync
+            _ = PopulateNatPmpAdaptersAsync(current); // fire-and-forget; exceptions are handled inside PopulateNatPmpAdaptersAsync
         }
 
         private void btnBrowseExePath_Click(object? sender, EventArgs e)

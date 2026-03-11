@@ -86,7 +86,7 @@ namespace qbPortWeaver
                 _updateCheckTimer.Start();
 
                 // Start main loop (intentional fire-and-forget)
-                _ = Task.Run(RunMainLoopAsync); // NOSONAR S6966 — fire-and-forget; exceptions are handled inside RunMainLoopAsync
+                _ = Task.Run(RunMainLoopAsync); // fire-and-forget; exceptions are handled inside RunMainLoopAsync
             }
             catch (Exception ex)
             {

@@ -12,7 +12,7 @@ namespace qbPortWeaver
         private const int PipeConnectTimeoutMs = 5000;
 
         // Maps a VPN service name to the client process that must be restarted alongside it.
-        // The client holds connection state and triggers auto-connect on startup;
+        // The client holds connection state and triggers auto-connect on startup —
         // restarting the service alone is not sufficient to reconnect.
         private static readonly (string ServiceName, string ClientProcessName)[] ClientProcessMap =
         [

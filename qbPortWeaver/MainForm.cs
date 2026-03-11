@@ -82,7 +82,7 @@ namespace qbPortWeaver
 
                 // Schedule periodic update checks every 12 hours
                 _updateCheckTimer = new System.Windows.Forms.Timer { Interval = AppConstants.AutoUpdateCheckIntervalMs };
-                _updateCheckTimer.Tick += (_, _) => _ = PerformUpdateCheckAsync(); // NOSONAR S6966 — fire-and-forget; PerformUpdateCheckAsync has a top-level catch-all and never throws
+                _updateCheckTimer.Tick += OnUpdateCheckTimerTick;
                 _updateCheckTimer.Start();
 
                 // Start main loop (intentional fire-and-forget)
@@ -258,12 +258,11 @@ namespace qbPortWeaver
                         return;
                 }
 
-                LogManager.Instance.LogMessage("Main loop exited (shutdown signalled between cycles)", LogLevel.Info);
+                LogManager.Instance.LogMessage("Main loop exited gracefully", LogLevel.Info);
             }
             catch (OperationCanceledException)
             {
-                // Shutdown was requested while waiting on semaphore or during work
-                LogManager.Instance.LogMessage("Main loop exited due to shutdown", LogLevel.Info);
+                LogManager.Instance.LogMessage("Main loop exited (operation cancelled)", LogLevel.Info);
             }
             catch (Exception ex)
             {
@@ -326,6 +325,10 @@ namespace qbPortWeaver
                 Application.Exit();
             }
         }
+
+        // Event handler for the periodic update-check timer — async void is correct here (event handler)
+        private async void OnUpdateCheckTimerTick(object? sender, EventArgs e)
+            => await PerformUpdateCheckAsync();
 
         // Checks GitHub for a newer release and prompts the user to open the download page if one is found
         private async Task PerformUpdateCheckAsync()

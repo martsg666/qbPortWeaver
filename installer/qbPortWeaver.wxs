@@ -19,7 +19,7 @@
 		<MediaTemplate EmbedCab="yes" />
 
 		<!-- ARP metadata -->
-		<Icon Id="AppIcon.ico" SourceFile="..\qbPortWeaver.ico" />
+		<Icon Id="AppIcon.ico" SourceFile="..\qbPortWeaver\qbPortWeaver.ico" />
 		<Property Id="ARPPRODUCTICON" Value="AppIcon.ico" />
 		<Property Id="ARPHELPLINK" Value="https://github.com/martsg666/qbPortWeaver" />
 		<Property Id="ARPNOREPAIR" Value="1" />
@@ -42,33 +42,11 @@
 			</DirectorySearch>
 		</Property>
 
-		<!-- Kill running process (execute sequence only, to avoid error 2732) -->
+		<!-- Kill running tray process before install/upgrade -->
 		<CustomAction Id="CA_KillProcess"
 					  ExeCommand="taskkill /F /IM qbPortWeaver.exe"
 					  Directory="SystemFolder"
 					  Execute="immediate"
-					  Return="ignore" />
-
-		<!-- Create the VPN auto-recovery scheduled task.
-		     Execute=deferred runs inside the WI server process (SYSTEM for perMachine installs).
-		     Impersonate=no keeps SYSTEM context — required to register a SYSTEM-principal task.
-		     MSI resolves [INSTALLFOLDER] and [UserSID] when it defers the action, so no
-		     SetProperty/CustomActionData indirection is needed. -->
-		<CustomAction Id="CA_CreateAutoRecoveryTask"
-					  ExeCommand="[SystemFolder]WindowsPowerShell\v1.0\powershell.exe -NonInteractive -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File &quot;[INSTALLFOLDER]CreateScheduledTask.ps1&quot; [UserSID]"
-					  Directory="SystemFolder"
-					  Execute="deferred"
-					  Impersonate="no"
-					  Return="ignore" />
-
-		<!-- Remove the scheduled task on uninstall.
-		     Deferred + Impersonate=no so it runs as SYSTEM and can unregister the SYSTEM-owned task.
-		     Runs Before="RemoveFiles" so the script is still on disk when the CA fires. -->
-		<CustomAction Id="CA_DeleteAutoRecoveryTask"
-					  ExeCommand="[SystemFolder]WindowsPowerShell\v1.0\powershell.exe -NonInteractive -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File &quot;[INSTALLFOLDER]RemoveScheduledTask.ps1&quot;"
-					  Directory="SystemFolder"
-					  Execute="deferred"
-					  Impersonate="no"
 					  Return="ignore" />
 
 		<!-- Block install if legacy NSIS found (UI sequence only) -->
@@ -85,8 +63,6 @@
 		<!-- Execute Sequence -->
 		<InstallExecuteSequence>
 			<Custom Action="CA_KillProcess" Before="InstallInitialize" />
-			<Custom Action="CA_CreateAutoRecoveryTask" After="InstallFiles" Condition="NOT REMOVE=&quot;ALL&quot;" />
-			<Custom Action="CA_DeleteAutoRecoveryTask" Before="RemoveFiles" Condition="REMOVE=&quot;ALL&quot;" />
 		</InstallExecuteSequence>
 
 		<!-- Minimal UI -->
@@ -144,7 +120,7 @@
 		<ComponentGroup Id="AppComponents" Directory="INSTALLFOLDER">
 
 			<Component Id="AppExecutable">
-				<File Source="..\bin\Release\$(var.TFM)\win-x64\publish\qbPortWeaver.exe"
+				<File Source="..\qbPortWeaver\bin\Release\$(var.TFM)\win-x64\publish\qbPortWeaver.exe"
 					  KeyPath="yes" />
 			</Component>
 
@@ -152,14 +128,29 @@
 				<File Source="..\README.md" />
 			</Component>
 
-			<Component Id="AppCreateTaskScript">
-				<File Source="..\installer\CreateScheduledTask.ps1"
-					  DefaultVersion="$(var.ProductVersion)" />
-			</Component>
-
-			<Component Id="AppRemoveTaskScript">
-				<File Source="..\installer\RemoveScheduledTask.ps1"
-					  DefaultVersion="$(var.ProductVersion)" />
+			<!-- Helper service — provides a session 0 endpoint for privileged actions
+			     (e.g. restarting VPN services) requested by the user-session tray app via named pipe.
+			     ServiceControl stops the service before files are replaced on upgrade (Stop="both")
+			     and removes it cleanly on uninstall. -->
+			<Component Id="HelperServiceExe">
+				<File Source="..\HelperService\bin\Release\$(var.TFM)\win-x64\publish\qbPortWeaver.HelperService.exe"
+					  KeyPath="yes" />
+				<ServiceInstall
+					Id="HelperServiceInstall"
+					Name="qbPortWeaverHelper"
+					DisplayName="qbPortWeaver Helper Service"
+					Description="Helper for qbPortWeaver — executes privileged session 0 actions on behalf of the user-session tray app"
+					Type="ownProcess"
+					Start="auto"
+					ErrorControl="normal"
+					Account="LocalSystem" />
+				<ServiceControl
+					Id="HelperServiceControl"
+					Name="qbPortWeaverHelper"
+					Start="install"
+					Stop="both"
+					Remove="uninstall"
+					Wait="yes" />
 			</Component>
 
 		</ComponentGroup>

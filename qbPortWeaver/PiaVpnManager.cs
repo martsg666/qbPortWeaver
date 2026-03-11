@@ -1,6 +1,5 @@
 using Microsoft.Win32;
 using System.Diagnostics;
-using System.ServiceProcess;
 
 namespace qbPortWeaver
 {
@@ -44,20 +43,7 @@ namespace qbPortWeaver
         public Task<int?> GetVpnPortAsync() => Task.FromResult(GetVpnPortCore());
 
         public string? FindServiceName()
-        {
-            ServiceController[] services = ServiceController.GetServices();
-            try
-            {
-                string? serviceName = services
-                    .FirstOrDefault(s => s.ServiceName.Equals(VpnServiceName, StringComparison.OrdinalIgnoreCase))
-                    ?.ServiceName;
-                LogManager.Instance.LogDebug(serviceName != null
-                    ? $"PiaVpnManager.FindServiceName: found service '{serviceName}'"
-                    : $"PiaVpnManager.FindServiceName: '{VpnServiceName}' not found");
-                return serviceName;
-            }
-            finally { foreach (var s in services) s.Dispose(); }
-        }
+            => VpnManagerHelper.FindServiceByExactName(VpnServiceName, nameof(PiaVpnManager));
 
         private static int? GetVpnPortCore()
         {

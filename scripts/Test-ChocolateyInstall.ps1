@@ -20,7 +20,7 @@ $ErrorActionPreference = 'Stop'
 
 $repoRoot   = Split-Path -Parent $PSScriptRoot
 $chocoSrc   = Join-Path $repoRoot 'choco'
-$csprojPath = Join-Path $repoRoot 'qbPortWeaver.csproj'
+$csprojPath = Join-Path $repoRoot 'qbPortWeaver\qbPortWeaver.csproj'
 $stagingDir = Join-Path ([System.IO.Path]::GetTempPath()) "qbPortWeaver-choco-test-$([System.Guid]::NewGuid().ToString('N'))"
 
 function Write-Step([string]$msg) { Write-Host "`n==> $msg" -ForegroundColor Cyan }

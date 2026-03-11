@@ -1,5 +1,4 @@
 using System.Net.NetworkInformation;
-using System.ServiceProcess;
 using System.Text;
 using System.Text.RegularExpressions;
 
@@ -50,20 +49,7 @@ namespace qbPortWeaver
         public Task<int?> GetVpnPortAsync() => Task.FromResult(GetVpnPortCore());
 
         public string? FindServiceName()
-        {
-            ServiceController[] services = ServiceController.GetServices();
-            try
-            {
-                string? serviceName = services
-                    .FirstOrDefault(s => s.ServiceName.Equals(VpnServiceName, StringComparison.OrdinalIgnoreCase))
-                    ?.ServiceName;
-                LogManager.Instance.LogDebug(serviceName != null
-                    ? $"ProtonVpnManager.FindServiceName: found service '{serviceName}'"
-                    : $"ProtonVpnManager.FindServiceName: '{VpnServiceName}' not found");
-                return serviceName;
-            }
-            finally { foreach (var s in services) s.Dispose(); }
-        }
+            => VpnManagerHelper.FindServiceByExactName(VpnServiceName, nameof(ProtonVpnManager));
 
         private int? GetVpnPortCore()
         {

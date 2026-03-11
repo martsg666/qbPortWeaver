@@ -52,7 +52,7 @@ namespace qbPortWeaver
             try
             {
                 Process.Start(CreateQBittorrentStartInfo())?.Dispose();
-                await Task.Delay(ProcessStartDelayMs, cancellationToken);
+                await Task.Delay(ProcessStartDelayMs, cancellationToken).ConfigureAwait(false);
                 return IsRunning();
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
@@ -82,7 +82,7 @@ namespace qbPortWeaver
                 Process.Start(CreateQBittorrentStartInfo())?.Dispose();
 
                 // Brief delay to allow the process to register before IsRunning() checks for it
-                await Task.Delay(ProcessInitDelayMs, cancellationToken);
+                await Task.Delay(ProcessInitDelayMs, cancellationToken).ConfigureAwait(false);
 
                 // Invalidate the session — the old cookie is dead after the process was killed
                 _isAuthenticated = false;

@@ -238,7 +238,7 @@ namespace qbPortWeaver
         {
             if (rtbLog.TextLength == 0) return true;
             int lastVisible = rtbLog.GetCharIndexFromPosition(new Point(0, rtbLog.ClientSize.Height - 1));
-            return lastVisible >= rtbLog.TextLength - 2;
+            return lastVisible >= rtbLog.TextLength - 2; // -2: allow for the \r\n that terminates the last line
         }
 
         // Static — safe to call from background threads (no UI state access).
@@ -502,7 +502,7 @@ namespace qbPortWeaver
             rtbLog.SelectionStart  = rtbLog.TextLength;
             rtbLog.SelectionLength = 0;
             rtbLog.SelectionColor  = color;
-            rtbLog.AppendText(text + "\n");
+            rtbLog.AppendText(text + "\r\n");
         }
 
         private void ScrollToBottom()

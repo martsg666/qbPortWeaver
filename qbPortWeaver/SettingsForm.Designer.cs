@@ -83,7 +83,7 @@ namespace qbPortWeaver
             grpGeneral.Controls.Add(nudVpnRecoveryCycles);
             grpGeneral.Controls.Add(lblVpnRecoveryCyclesUnit);
             grpGeneral.Location = new Point(8, 8);
-            grpGeneral.Size     = new Size(480, 165);
+            grpGeneral.Size     = new Size(480, 178);
             grpGeneral.TabStop  = false;
             grpGeneral.Text     = "General";
 
@@ -134,26 +134,26 @@ namespace qbPortWeaver
 
             // Row 3 — VPN auto-recovery
             chkVpnAutoRecovery.AutoSize = true;
-            chkVpnAutoRecovery.Location = new Point(12, 112);
+            chkVpnAutoRecovery.Location = new Point(12, 114);
             chkVpnAutoRecovery.Text     = "Enable VPN auto-recovery";
             chkVpnAutoRecovery.TabIndex = 19;
             chkVpnAutoRecovery.CheckedChanged += chkVpnAutoRecovery_CheckedChanged;
 
             // Row 4 — Trigger cycles (sub-option, indented)
-            lblVpnRecoveryCycles.Location  = new Point(28, 137);
+            lblVpnRecoveryCycles.Location  = new Point(28, 143);
             lblVpnRecoveryCycles.Size      = new Size(180, 23);
             lblVpnRecoveryCycles.Text      = "Restart service after";
             lblVpnRecoveryCycles.TextAlign = ContentAlignment.MiddleLeft;
 
-            nudVpnRecoveryCycles.Location = new Point(212, 134);
+            nudVpnRecoveryCycles.Location = new Point(212, 140);
             nudVpnRecoveryCycles.Minimum  = 1;
             nudVpnRecoveryCycles.Maximum  = 10;
             nudVpnRecoveryCycles.Value    = 3;
             nudVpnRecoveryCycles.Size     = new Size(50, 23);
             nudVpnRecoveryCycles.TabIndex = 20;
 
-            lblVpnRecoveryCyclesUnit.Location  = new Point(266, 137);
-            lblVpnRecoveryCyclesUnit.Size      = new Size(160, 23);
+            lblVpnRecoveryCyclesUnit.Location  = new Point(266, 143);
+            lblVpnRecoveryCyclesUnit.Size      = new Size(202, 23);
             lblVpnRecoveryCyclesUnit.Text      = "consecutive disconnected cycles";
             lblVpnRecoveryCyclesUnit.TextAlign = ContentAlignment.MiddleLeft;
 
@@ -175,7 +175,7 @@ namespace qbPortWeaver
             grpQBittorrent.Controls.Add(nudDefaultPort);
             grpQBittorrent.Controls.Add(chkWarnOnInterfaceMismatch);
             grpQBittorrent.Controls.Add(chkRestartOnDisconnect);
-            grpQBittorrent.Location = new Point(8, 185);
+            grpQBittorrent.Location = new Point(8, 198);
             grpQBittorrent.Size     = new Size(480, 320);
             grpQBittorrent.TabStop  = false;
             grpQBittorrent.Text     = "qBittorrent";
@@ -278,7 +278,7 @@ namespace qbPortWeaver
             grpExtra.Controls.Add(lblPostUpdateCmd);
             grpExtra.Controls.Add(txtPostUpdateCmd);
             grpExtra.Controls.Add(chkDebugMode);
-            grpExtra.Location = new Point(8, 517);
+            grpExtra.Location = new Point(8, 530);
             grpExtra.Size     = new Size(480, 84);
             grpExtra.TabStop  = false;
             grpExtra.Text     = "Extra";
@@ -300,13 +300,13 @@ namespace qbPortWeaver
             chkDebugMode.TabIndex = 14;
 
             // ── Buttons ───────────────────────────────────────────────────
-            btnOK.Location     = new Point(308, 613);
+            btnOK.Location     = new Point(308, 626);
             btnOK.Size         = new Size(82, 28);
             btnOK.Text         = "OK";
             btnOK.TabIndex     = 15;
             btnOK.Click       += btnOK_Click;
 
-            btnCancel.Location     = new Point(400, 613);
+            btnCancel.Location     = new Point(400, 626);
             btnCancel.Size         = new Size(82, 28);
             btnCancel.Text         = "Cancel";
             btnCancel.TabIndex     = 16;
@@ -317,7 +317,7 @@ namespace qbPortWeaver
             AutoScaleMode       = AutoScaleMode.Font;
             AcceptButton        = btnOK;
             CancelButton        = btnCancel;
-            ClientSize          = new Size(498, 653);
+            ClientSize          = new Size(498, 666);
             Controls.Add(grpGeneral);
             Controls.Add(grpQBittorrent);
             Controls.Add(grpExtra);

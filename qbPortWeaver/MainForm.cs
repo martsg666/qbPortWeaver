@@ -371,7 +371,7 @@ namespace qbPortWeaver
                 }
                 else
                 {
-                    LogManager.Instance.LogMessage($"Application is up to date (v{AppConstants.AppVersion})", LogLevel.Info);
+                    LogManager.Instance.LogMessage($"Application is up to date ({AppConstants.AppVersion})", LogLevel.Info);
                 }
             }
             catch (Exception ex)

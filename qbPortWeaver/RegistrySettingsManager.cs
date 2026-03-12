@@ -19,16 +19,16 @@ namespace qbPortWeaver
         public const string VpnProviderPia       = "PIA";
         public const string VpnProviderNatPmp    = "NAT-PMP";
 
-        // Registry key name strings are frozen — changing them would silently break existing installations
+        // Registry key name strings are frozen - changing them would silently break existing installations
         // by orphaning previously saved values. Casing inconsistencies (e.g. "restartqBittorrent" vs
         // "qBittorrentURL") are historical and must be preserved for backward compatibility.
 
-        // Registry key names — general section
+        // Registry key names - general section
         public const string KeyVpnProvider          = "vpnProvider";
         public const string KeyUpdateIntervalSeconds = "updateIntervalSeconds";
         public const string KeyNatPmpAdapterName    = "natPmpAdapterName";
 
-        // Registry key names — qBittorrent section
+        // Registry key names - qBittorrent section
         public const string KeyQBittorrentUrl          = "qBittorrentURL";
         public const string KeyQBittorrentUserName     = "qBittorrentUserName";
         public const string KeyQBittorrentPassword     = "qBittorrentPassword";
@@ -40,11 +40,11 @@ namespace qbPortWeaver
         public const string KeyWarnOnInterfaceMismatch = "warnOnInterfaceMismatch";
         public const string KeyRestartOnDisconnect     = "restartOnDisconnect";
 
-        // Registry key names — extra section
+        // Registry key names - extra section
         public const string KeyPostUpdateCmd = "postUpdateCmd";
         public const string KeyDebugMode     = "debugMode";
 
-        // Registry key names — general section (VPN auto-recovery)
+        // Registry key names - general section (VPN auto-recovery)
         public const string KeyVpnAutoRecoveryEnabled      = "vpnAutoRecoveryEnabled";
         public const string KeyVpnAutoRecoveryTriggerCycles = "vpnAutoRecoveryTriggerCycles";
 
@@ -147,7 +147,7 @@ namespace qbPortWeaver
                     }
                     catch (Exception)
                     {
-                        // Not a valid DPAPI blob — return empty rather than exposing garbled data
+                        // Not a valid DPAPI blob - return empty rather than exposing garbled data
                         LogManager.Instance.LogDebug("RegistrySettingsManager.GetPassword: stored value is not a valid DPAPI blob");
                     }
                 }

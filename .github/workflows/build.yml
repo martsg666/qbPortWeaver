@@ -4,6 +4,8 @@ name: Build Check
 # Tag pushes are handled exclusively by build-release-publish.yml.
 on:
   push:
+    tags-ignore:
+      - '**'  # tag pushes are handled exclusively by build-release-publish.yml
   pull_request:
 
 concurrency:
@@ -23,7 +25,7 @@ jobs:
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
 
       - name: Setup .NET
-        # Pinned to a specific commit SHA — see checkout step for rationale.
+        # Pinned to a specific commit SHA - see checkout step for rationale.
         uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9  # v4
         with:
           dotnet-version: '10.x'

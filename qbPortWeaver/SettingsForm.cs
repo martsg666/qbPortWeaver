@@ -31,7 +31,7 @@ namespace qbPortWeaver
             toolTip.SetToolTip(txtQBittorrentExePath,        "Path to qbittorrent.exe, used to start or restart the application");
             toolTip.SetToolTip(btnBrowseExePath,             "Browse for the qBittorrent executable");
             toolTip.SetToolTip(txtQBittorrentProcessName,    "Process name used to detect if qBittorrent is running (usually qbittorrent)");
-            toolTip.SetToolTip(chkRestartQBittorrent,        "Restart qBittorrent after updating the port — required for the change to take effect");
+            toolTip.SetToolTip(chkRestartQBittorrent,        "Restart qBittorrent after updating the port - required for the change to take effect");
             toolTip.SetToolTip(chkForceStartQBittorrent,     "Automatically launch qBittorrent if it is not already running");
             toolTip.SetToolTip(nudDefaultPort,               "Port to apply when the VPN is disconnected (0 = do nothing when disconnected)");
             toolTip.SetToolTip(lblDefaultPort,               "Port to apply when the VPN is disconnected (0 = do nothing when disconnected)");
@@ -57,7 +57,7 @@ namespace qbPortWeaver
             if (cboVpnProvider.SelectedIndex < 0)
                 cboVpnProvider.SelectedIndex = 0;
 
-            // NAT-PMP adapter — discovered asynchronously to avoid blocking the UI
+            // NAT-PMP adapter - discovered asynchronously to avoid blocking the UI
             cboNatPmpAdapter.Items.Clear();
             cboNatPmpAdapter.Items.Add(DiscoveringAdaptersPlaceholder);
             cboNatPmpAdapter.SelectedIndex = 0;
@@ -181,7 +181,7 @@ namespace qbPortWeaver
             if (!string.IsNullOrWhiteSpace(txtQBittorrentExePath.Text) &&
                 File.Exists(txtQBittorrentExePath.Text))
             {
-                dlg.InitialDirectory = Path.GetDirectoryName(txtQBittorrentExePath.Text)!;
+                dlg.InitialDirectory = Path.GetDirectoryName(txtQBittorrentExePath.Text) ?? string.Empty;
             }
 
             if (dlg.ShowDialog() == DialogResult.OK)
@@ -209,7 +209,7 @@ namespace qbPortWeaver
         {
             try
             {
-                // No ConfigureAwait(false) — continuation must run on the UI thread to update controls.
+                // No ConfigureAwait(false) - continuation must run on the UI thread to update controls.
                 var adapters = await NatPmpManager.DiscoverAdapters();
 
                 // Guard against the form being closed while adapter discovery was in flight

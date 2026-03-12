@@ -11,9 +11,9 @@
       5. Stamps the version, expected GitHub download URL, and checksum into a
          temporary copy of the choco/ package source files
       6. Installs the community validation extension (idempotent) and runs
-         `choco pack` — the extension hooks in and validates automatically
+         `choco pack` - the extension hooks in and validates automatically
 
-    The choco/ source files are NOT permanently modified — all edits are written
+    The choco/ source files are NOT permanently modified - all edits are written
     to a temp staging directory that is cleaned up after packing.
 
     WiX Toolset v4 is installed/updated automatically by this script.
@@ -119,7 +119,7 @@ foreach ($exe in $publishedExes) {
 # ---------------------------------------------------------------------------
 Write-Step 'Building MSI installer with WiX Toolset v4...'
 
-# Install/update WiX (idempotent — installs if missing, updates if present)
+# Install/update WiX (idempotent - installs if missing, updates if present)
 dotnet tool update --global wix --version "4.0.6"
 if ($LASTEXITCODE -ne 0) { throw 'Failed to install/update WiX Toolset.' }
 
@@ -186,12 +186,12 @@ try {
             $unreplaced = $true
         }
     }
-    if ($unreplaced) { throw 'Unreplaced TEMPLATE_ placeholders found — stamping failed.' }
+    if ($unreplaced) { throw 'Unreplaced TEMPLATE_ placeholders found - stamping failed.' }
 
     # ---------------------------------------------------------------------------
     # Step 6: Install community validation extension + pack
     #         The extension hooks into choco pack and runs validation rules
-    #         automatically — no separate validate command needed in v2.x.
+    #         automatically - no separate validate command needed in v2.x.
     # ---------------------------------------------------------------------------
     Write-Step 'Installing community validation extension and packing...'
 

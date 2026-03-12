@@ -28,7 +28,7 @@ namespace qbPortWeaver
             try
             {
                 var adapters = NetworkInterface.GetAllNetworkInterfaces();
-                // Uses Name (not Description) — ProtonVPN's adapter Name contains "ProtonVPN" on all
+                // Uses Name (not Description) - ProtonVPN's adapter Name contains "ProtonVPN" on all
                 // installations: "ProtonVPN" (WireGuard) or "ProtonVPN TUN" (OpenVPN).
                 bool isConnected = adapters.Any(adapter =>
                     adapter.Name.Contains("ProtonVPN", StringComparison.OrdinalIgnoreCase) &&
@@ -42,7 +42,7 @@ namespace qbPortWeaver
             }
             catch (Exception ex)
             {
-                return LogManager.LogDebugExceptionFalse("ProtonVpnManager.IsVpnConnected", ex);
+                return LogManager.LogDebugFalse($"ProtonVpnManager.IsVpnConnected: {ex.Message}");
             }
         }
 
@@ -82,7 +82,7 @@ namespace qbPortWeaver
             }
             catch (Exception ex)
             {
-                LogManager.LogDebugException("ProtonVpnManager.GetVpnPortCore", ex);
+                LogManager.Instance.LogDebug($"ProtonVpnManager.GetVpnPortCore: {ex.Message}");
                 return null;
             }
         }

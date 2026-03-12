@@ -15,7 +15,7 @@ The application runs in the system tray, manages configuration and logging, and 
 - ProtonVPN, Private Internet Access (PIA), or any NAT-PMP capable VPN or router with port forwarding enabled
 - qBittorrent installed with Web UI enabled
 
-> **Note:** The MSI installer is not code-signed. Windows SmartScreen may show an "Unknown publisher" warning on first install — click **More info → Run anyway** to proceed. This is expected for open-source projects without a commercial code-signing certificate.
+> **Note:** The MSI installer is not code-signed. Windows SmartScreen may show an "Unknown publisher" warning on first install - click **More info → Run anyway** to proceed. This is expected for open-source projects without a commercial code-signing certificate.
 
 ---
 
@@ -67,7 +67,7 @@ The application runs in the system tray, manages configuration and logging, and 
   Optionally run a custom command after a successful port update (fire-and-forget). See SampleSendMail.ps1 for an example of sending an email notification with status details.
 
 - **VPN Auto-Recovery**
-  Automatically restarts the VPN service when it has been disconnected for a configurable number of consecutive sync cycles. The tray app detects the disconnect and delegates the service restart to a lightweight helper Windows service (`qbPortWeaverHelper`) that runs as LocalSystem — no UAC prompt required. The VPN client process is also restarted in the user session so auto-connect triggers on startup.
+  Automatically restarts the VPN service when it has been disconnected for a configurable number of consecutive sync cycles. The tray app detects the disconnect and delegates the service restart to a lightweight helper Windows service (`qbPortWeaverHelper`) that runs as LocalSystem - no UAC prompt required. The VPN client process is also restarted in the user session so auto-connect triggers on startup.
 
 - **Automatic Update Checker**
   Checks GitHub for new releases on startup and every 12 hours, and offers to open the download page. The **About** dialog (tray menu → About) also shows the current and latest version, update status, and contributor links.
@@ -88,11 +88,11 @@ On first run, all settings are initialized with sensible defaults.
 | Setting | Description | Default |
 |---|---|---|
 | VPN Provider | `ProtonVPN`, `PIA`, or `NAT-PMP` | `ProtonVPN` |
-| NAT-PMP Adapter | Network adapter to use for NAT-PMP port mapping (only enabled when NAT-PMP is selected) | — |
+| NAT-PMP Adapter | Network adapter to use for NAT-PMP port mapping (only enabled when NAT-PMP is selected) | - |
 | Update interval | How often to check and sync the port (seconds) | `180` |
 | URL | qBittorrent Web API URL | `http://127.0.0.1:8080` |
 | Username | qBittorrent Web UI username | `admin` |
-| Password | qBittorrent Web UI password | — |
+| Password | qBittorrent Web UI password | - |
 | Executable | Path to qBittorrent executable | `C:\Program Files\qBittorrent\qbittorrent.exe` |
 | Process name | qBittorrent process name (used to detect if it's running) | `qbittorrent` |
 | Restart after port change | Restart qBittorrent after updating the port (recommended) | `True` |
@@ -100,7 +100,7 @@ On first run, all settings are initialized with sensible defaults.
 | Default port (0 = disabled) | Fallback port to apply when VPN is not connected | `0` |
 | Warn on interface mismatch | Warn if qBittorrent's network interface doesn't match the VPN | `True` |
 | Restart on disconnect | Restart qBittorrent when its connection status changes to disconnected (requires Executable and Process name) | `False` |
-| Post-update command | Command to run after a successful port update (leave empty to disable) | — |
+| Post-update command | Command to run after a successful port update (leave empty to disable) | - |
 | VPN Auto-Recovery | Automatically restart the VPN service after N consecutive disconnected sync cycles | `False` |
 | Auto-Recovery trigger cycles | Number of consecutive disconnected cycles before triggering VPN auto-recovery | `3` |
 | Debug logging | Enable verbose debug logging to the log file | `False` |
@@ -134,13 +134,13 @@ On first run, all settings are initialized with sensible defaults.
 
 ### Tray Menu Options
 
-- **Synchronize Port Now** — triggers an immediate sync cycle, skipping the current wait interval
-- **Show Logs** — opens the built-in Log Viewer (also opened by double-clicking the tray icon)
-- **Clear Logs** — deletes all log files and starts a fresh log
-- **Settings** — opens the Settings dialog
-- **About** — shows version info and update status
-- **Start Automatically with Windows** — toggles the Windows startup registry entry
-- **Exit** — shuts down the application
+- **Synchronize Port Now** - triggers an immediate sync cycle, skipping the current wait interval
+- **Show Logs** - opens the built-in Log Viewer (also opened by double-clicking the tray icon)
+- **Clear Logs** - deletes all log files and starts a fresh log
+- **Settings** - opens the Settings dialog
+- **About** - shows version info and update status
+- **Start Automatically with Windows** - toggles the Windows startup registry entry
+- **Exit** - shuts down the application
 
 ---
 
@@ -180,24 +180,24 @@ NAT-PMP (RFC 6886) is a protocol for requesting port mappings directly from a ga
 
 **With ProtonVPN (alternative to log file parsing):**
 - ProtonVPN supports NAT-PMP natively on P2P servers. You can use this instead of the default log file approach.
-- Enable **Port Forwarding** in ProtonVPN and connect to a P2P server — this enables NAT-PMP on the VPN gateway, which qbPortWeaver queries directly.
+- Enable **Port Forwarding** in ProtonVPN and connect to a P2P server - this enables NAT-PMP on the VPN gateway, which qbPortWeaver queries directly.
 - Set `VPN Provider` to `NAT-PMP` in qbPortWeaver Settings.
 - Select the **ProtonVPN virtual adapter** in the NAT-PMP Adapter dropdown.
 
-> **Note:** With ProtonVPN, qbPortWeaver and the built-in port forwarding client both query the same gateway and receive the same external port — they share the same mapping rather than competing. qbPortWeaver uses that port to configure qBittorrent.
+> **Note:** With ProtonVPN, qbPortWeaver and the built-in port forwarding client both query the same gateway and receive the same external port - they share the same mapping rather than competing. qbPortWeaver uses that port to configure qBittorrent.
 
 **With any other NAT-PMP capable VPN client or router:**
 - The VPN gateway or router must support NAT-PMP (RFC 6886) with port forwarding enabled.
 - Enable **port forwarding** in your VPN client or router settings.
 - Set `VPN Provider` to `NAT-PMP` in qbPortWeaver Settings.
-- Select the correct **network adapter** in the NAT-PMP Adapter dropdown — choose the virtual adapter created by your VPN client, or your LAN adapter if using a NAT-PMP capable router.
+- Select the correct **network adapter** in the NAT-PMP Adapter dropdown - choose the virtual adapter created by your VPN client, or your LAN adapter if using a NAT-PMP capable router.
 
 > If no adapter appears in the list, ensure the adapter is up and its gateway is responding to NAT-PMP, then click the **↻** button to refresh without reopening Settings.
 
 ### 6. qBittorrent Configuration
 
 - **Disable UPnP/NAT-PMP** port mapping (Options > Connection) since the port is managed externally.
-  > **Note:** qBittorrent's built-in NAT-PMP tries to open ports on your local router. qbPortWeaver's NAT-PMP mode is different — it queries your VPN gateway directly using the same protocol. Disabling qBittorrent's option does not affect qbPortWeaver.
+  > **Note:** qBittorrent's built-in NAT-PMP tries to open ports on your local router. qbPortWeaver's NAT-PMP mode is different - it queries your VPN gateway directly using the same protocol. Disabling qBittorrent's option does not affect qbPortWeaver.
 - Enable **Anonymous Mode** (Options > BitTorrent).
 - Enable **Web UI** (Options > Web UI) and configure a username and password matching your qbPortWeaver Settings.
 - Bind the **network interface** to your VPN adapter (Options > Advanced > Network Interface) to prevent traffic leaks outside the VPN.
@@ -272,7 +272,7 @@ master  ────────────────────────
    git checkout -b feature/my-feature origin/2.5.0
    ```
 
-3. **Tag the release branch** once all testing is complete — this triggers the pipeline:
+3. **Tag the release branch** once all testing is complete - this triggers the pipeline:
    ```
    git tag v2.5.0 origin/2.5.0
    git push origin v2.5.0
@@ -306,7 +306,7 @@ The modular architecture makes it easy to:
 
 ## Changelog
 
-### v2.2.0 and later — see [GitHub Releases](https://github.com/martsg666/qbPortWeaver/releases)
+### v2.2.0 and later - see [GitHub Releases](https://github.com/martsg666/qbPortWeaver/releases)
 
 ### v2.0.0
 - **Tray status indicator**: the tray icon now shows a colored dot (green / orange / red) reflecting the last sync result, and the tooltip shows the current port and status without opening the log file
@@ -316,7 +316,7 @@ The modular architecture makes it easy to:
 - Tray balloon tip and log warning when qBittorrent's network interface doesn't match the configured VPN provider, or when bound to all interfaces (potential traffic leak). Configurable via **Warn on interface mismatch** in Settings
 
 ### v1.7.0
-- **Last-run status file** (`qbPortWeaver.status.json`) written after each sync cycle to `%LocalAppData%\qbPortWeaver\`. Useful for external scripts or monitoring — exposes VPN port, qBittorrent port, port change flag, timestamp, and status message
+- **Last-run status file** (`qbPortWeaver.status.json`) written after each sync cycle to `%LocalAppData%\qbPortWeaver\`. Useful for external scripts or monitoring - exposes VPN port, qBittorrent port, port change flag, timestamp, and status message
 - **Clear Logs** option in the tray menu
 - Improved error messages for qBittorrent Web API failures, including wrong credentials, unreachable Web UI, and HTTP errors
 - Fixed a PIA issue where `piactl.exe` could hang indefinitely if it failed to return a port

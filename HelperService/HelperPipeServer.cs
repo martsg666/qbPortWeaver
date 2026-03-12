@@ -14,7 +14,7 @@ namespace qbPortWeaver.HelperService;
 // tray app, regardless of which user profile is active.
 internal sealed class HelperPipeServer : BackgroundService
 {
-    internal const string PipeName = "qbPortWeaverHelper";
+    internal const string PipeName = "qbPortWeaverHelper"; // Must match AppConstants.HelperServicePipeName in qbPortWeaver
 
     private readonly ILogger<HelperPipeServer> _logger;
 
@@ -35,7 +35,7 @@ internal sealed class HelperPipeServer : BackgroundService
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Pipe server error — retrying");
+                _logger.LogError(ex, "Pipe server error - retrying");
                 await Task.Delay(1000, stoppingToken).ConfigureAwait(false);
             }
         }
@@ -66,7 +66,7 @@ internal sealed class HelperPipeServer : BackgroundService
         var message = await reader.ReadLineAsync(ct).ConfigureAwait(false);
         if (string.IsNullOrWhiteSpace(message)) return;
 
-        // Split into exactly 3 parts — the log file path may contain colons (e.g. C:\...)
+        // Split into exactly 3 parts - the log file path may contain colons (e.g. C:\...)
         var parts = message.Split(':', 3);
         if (parts.Length != 3 || parts[0] != "restart")
         {
@@ -77,6 +77,6 @@ internal sealed class HelperPipeServer : BackgroundService
         var serviceName = parts[1];
         var logFilePath = parts[2];
 
-        VpnAutoRecovery.RestartService(serviceName, new HelperLogger(logFilePath));
+        await VpnAutoRecovery.RestartServiceAsync(serviceName, new HelperLogger(logFilePath)).ConfigureAwait(false);
     }
 }

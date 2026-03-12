@@ -17,7 +17,7 @@ namespace qbPortWeaver
         private long                 _lastReadPosition;
         private FileSystemWatcher?   _watcher;
         private bool                 _isDarkMode;
-        private Color[]              _themeColors = null!; // initialized in OnLoad after _isDarkMode is set
+        private Color[]              _themeColors    = null!; // initialized in OnLoad after _isDarkMode is set
 
         public LogViewerForm(string logFilePath)
         {
@@ -34,7 +34,7 @@ namespace qbPortWeaver
                 : [Color.Crimson, Color.Goldenrod, Color.SteelBlue, Color.DarkOrange, SystemColors.WindowText];
             Text = $"{AppConstants.AppName} | Log Viewer";
             ApplyTheme();
-            // Vertically center the search box — single-line TextBox auto-sizes its height from the font,
+            // Vertically center the search box - single-line TextBox auto-sizes its height from the font,
             // so the actual height is only known after layout; compute the top offset here.
             int searchTop = (pnlToolbar.Height - txtSearch.Height) / 2;
             txtSearch.Top = searchTop;
@@ -91,7 +91,7 @@ namespace qbPortWeaver
                 btn.FlatAppearance.BorderColor = border;
             }
 
-            // Clear button sits inside the search box — blend it in rather than styling it like the nav buttons
+            // Clear button sits inside the search box - blend it in rather than styling it like the nav buttons
             btnClearSearch.BackColor                 = txtSearch.BackColor;
             btnClearSearch.ForeColor                 = _isDarkMode ? Color.FromArgb(160, 160, 160) : SystemColors.GrayText;
             btnClearSearch.FlatAppearance.BorderSize = 0;
@@ -117,7 +117,7 @@ namespace qbPortWeaver
             return (key?.GetValue("AppsUseLightTheme") as int?) == 0;
         }
 
-        // Called when any filter CheckBox changes — updates its style and rebuilds the display
+        // Called when any filter CheckBox changes - updates its style and rebuilds the display
         private void FilterButton_CheckedChanged(object? sender, EventArgs e)
         {
             if (sender is CheckBox chk)
@@ -133,11 +133,18 @@ namespace qbPortWeaver
             return _themeColors[3];
         }
 
+        private void CtxLog_Opening(object? sender, System.ComponentModel.CancelEventArgs e)
+            => ctxCopy.Enabled = rtbLog.SelectionLength > 0;
+
+        private void CtxCopy_Click(object? sender, EventArgs e)      => rtbLog.Copy();
+        private void CtxCopyAll_Click(object? sender, EventArgs e)   => Clipboard.SetText(rtbLog.Text.Length > 0 ? rtbLog.Text : " ");
+        private void CtxSelectAll_Click(object? sender, EventArgs e) => rtbLog.SelectAll();
+
         private void BtnClearSearch_Click(object? sender, EventArgs e) => txtSearch.Clear();
         private void BtnPrev_Click(object? sender, EventArgs e)        => SearchPrev();
         private void BtnNext_Click(object? sender, EventArgs e)        => SearchNext();
 
-        // Triggered when the search text changes — shows/hides the clear button, then refreshes matches
+        // Triggered when the search text changes - shows/hides the clear button, then refreshes matches
         private void TxtSearch_TextChanged(object? sender, EventArgs e)
         {
             btnClearSearch.Visible = txtSearch.Text.Length > 0;
@@ -171,7 +178,7 @@ namespace qbPortWeaver
                 return;
             }
 
-            // Scan plain text with IndexOf — avoids calling rtbLog.Find() which changes the
+            // Scan plain text with IndexOf - avoids calling rtbLog.Find() which changes the
             // RichTextBox selection on every call and causes visible flashing.
             string text  = rtbLog.Text;
             int    start = 0;
@@ -231,17 +238,20 @@ namespace qbPortWeaver
         }
 
         // Returns true if the user is scrolled to the bottom of the log.
-        // Uses GetCharIndexFromPosition at the bottom-left of the viewport to avoid the off-by-one
-        // caused by GetPositionFromCharIndex(TextLength-1), which returns the Y of the trailing
-        // paragraph marker (one line below the last log entry) rather than the last text line itself.
+        // Compares line numbers rather than char indices: GetCharIndexFromPosition at the
+        // bottom-left of the viewport returns the *first* char of the bottom-visible line,
+        // which for a long last line is far below TextLength-2, making a char-index comparison
+        // return false even when fully scrolled to the end.
         private bool IsAtBottom()
         {
             if (rtbLog.TextLength == 0) return true;
-            int lastVisible = rtbLog.GetCharIndexFromPosition(new Point(0, rtbLog.ClientSize.Height - 1));
-            return lastVisible >= rtbLog.TextLength - 2; // -2: allow for the \r\n that terminates the last line
+            int lastVisibleLine = rtbLog.GetLineFromCharIndex(
+                rtbLog.GetCharIndexFromPosition(new Point(0, rtbLog.ClientSize.Height - 1)));
+            int totalLines = rtbLog.GetLineFromCharIndex(rtbLog.TextLength);
+            return lastVisibleLine >= totalLines - 1;
         }
 
-        // Static — safe to call from background threads (no UI state access).
+        // Static - safe to call from background threads (no UI state access).
         // Meta/unclassified lines (index >= 4) are always shown.
         private static bool IsLineVisibleWithFilters(string line, bool[] filters)
         {
@@ -340,7 +350,7 @@ namespace qbPortWeaver
 
                     using var fs = new FileStream(_logFilePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
 
-                    // File shorter than expected — it was rotated; read from the start
+                    // File shorter than expected - it was rotated; read from the start
                     if (fs.Length < _lastReadPosition)
                         _lastReadPosition = 0;
 
@@ -354,7 +364,7 @@ namespace qbPortWeaver
                     // Only process content up to the last complete line. The FileSystemWatcher
                     // fires as soon as the OS flushes a write, which can happen before the logger
                     // has finished writing the full line. Reading past the last '\n' would capture
-                    // a partial line, store it in _allLines, and advance _lastReadPosition past it —
+                    // a partial line, store it in _allLines, and advance _lastReadPosition past it -
                     // leaving an orphaned fragment in the display that can never be corrected.
                     int lastNl = raw.LastIndexOf('\n');
                     if (lastNl < 0) return; // no complete line yet; wait for the next cycle
@@ -378,12 +388,12 @@ namespace qbPortWeaver
                 {
                     Invoke(() => AppendNewLines(newLines));
                 }
-                catch (ObjectDisposedException) { /* form disposed between IsDisposed check and Invoke — expected on close */ }
+                catch (ObjectDisposedException) { /* form disposed between IsDisposed check and Invoke - expected on close */ }
             }
             catch (Exception ex)
             {
                 // Best-effort live update; transient errors during rotation or clear are expected
-                LogManager.LogDebugException("LogViewerForm.OnLogFileUpdated", ex);
+                LogManager.Instance.LogDebug($"LogViewerForm.OnLogFileUpdated: {ex.Message}");
             }
         }
 
@@ -402,36 +412,48 @@ namespace qbPortWeaver
                     rtbLog.Clear();
                 });
             }
-            catch (ObjectDisposedException) { /* form disposed between IsDisposed check and Invoke — expected on close */ }
+            catch (ObjectDisposedException) { /* form disposed between IsDisposed check and Invoke - expected on close */ }
         }
 
-        // Appends new lines to the in-memory store and the display, then scrolls and refreshes search if needed.
+        // Appends new lines to the in-memory store and rebuilds the display from scratch.
+        // Rebuilding is simpler and more reliable than SelectedRtf line-by-line appending:
+        // Win32 RichEdit can merge the last paragraph of one Invoke batch with the first of
+        // the next when a repaint occurs between calls, regardless of the \par mechanism used.
         // Must be called on the UI thread.
         private void AppendNewLines(string[] newLines)
         {
-            bool   wasAtBottom = IsAtBottom();
-            bool   anyVisible  = false;
-            bool[] filters     = [chkError.Checked, chkWarn.Checked, chkInfo.Checked, chkDebug.Checked];
+            bool wasAtBottom = IsAtBottom();
+            bool[] filters   = [chkError.Checked, chkWarn.Checked, chkInfo.Checked, chkDebug.Checked];
+
+            // Capture the first visible line before the rebuild so we can restore the scroll
+            // position when the user is not at the bottom. Setting .Rtf resets scroll to the top.
+            int firstVisibleLine = wasAtBottom ? 0 :
+                rtbLog.GetLineFromCharIndex(rtbLog.GetCharIndexFromPosition(new Point(0, 0)));
 
             foreach (string line in newLines)
-            {
                 _allLines.Add(line);
-                if (IsLineVisibleWithFilters(line, filters))
+
+            string[] filtered = _allLines.Where(l => IsLineVisibleWithFilters(l, filters)).ToArray();
+            rtbLog.Rtf = BuildRtf(filtered, _themeColors);
+
+            if (wasAtBottom)
+            {
+                ScrollToBottom();
+            }
+            else
+            {
+                int charIdx = rtbLog.GetFirstCharIndexFromLine(firstVisibleLine);
+                if (charIdx >= 0)
                 {
-                    AppendColoredLine(line);
-                    anyVisible = true;
+                    rtbLog.SelectionStart = charIdx;
+                    rtbLog.ScrollToCaret();
                 }
             }
 
-            if (anyVisible && wasAtBottom) ScrollToBottom();
-
-            // Update match count if a search is active — new lines may contain additional hits
+            // Update match count if a search is active - new lines may contain additional hits
             if (!string.IsNullOrEmpty(txtSearch.Text))
                 RefreshSearch(navigateToFirst: false);
         }
-
-        private void AppendColoredLine(string line) =>
-            AppendLine(line, GetLineColor(line));
 
         // Maps a log line to its display colour using the shared colour index
         private Color GetLineColor(string line) => _themeColors[GetLineColorIndex(line)];
@@ -450,22 +472,25 @@ namespace qbPortWeaver
         // Convenience colour for meta/status messages (not log entries)
         private Color MetaColor => _isDarkMode ? Color.DimGray : SystemColors.GrayText;
 
-        // Builds an RTF document from log lines using the provided colour palette.
-        // Runs on a background thread — must not access any UI elements.
-        private static string BuildRtf(string[] lines, Color[] colors)
+        // Writes the RTF document header shared by BuildRtf and AppendLine:
+        // Unicode-safe, Consolas 9pt (18 half-points), no paragraph spacing, colour table.
+        private static void AppendRtfHeader(StringBuilder sb, Color[] colors)
         {
-            var sb = new StringBuilder(lines.Length * 100);
-
-            // RTF header: Unicode-safe, Consolas monospace font, colour table
             sb.Append("{\\rtf1\\ansi\\uc0\\deff0");
             sb.Append("{\\fonttbl{\\f0\\fmodern\\fprq1\\fcharset0 Consolas;}}");
             sb.Append("{\\colortbl ;");
             foreach (var c in colors)
                 sb.Append($"\\red{c.R}\\green{c.G}\\blue{c.B};");
             sb.Append('}');
-
-            // Consolas 9pt (18 half-points), no paragraph spacing
             sb.Append("\\f0\\fs18\\sb0\\sa0 ");
+        }
+
+        // Builds an RTF document from log lines using the provided colour palette.
+        // Runs on a background thread - must not access any UI elements.
+        private static string BuildRtf(string[] lines, Color[] colors)
+        {
+            var sb = new StringBuilder(lines.Length * 100);
+            AppendRtfHeader(sb, colors);
 
             foreach (string line in lines)
             {
@@ -497,12 +522,25 @@ namespace qbPortWeaver
             }
         }
 
+        // Used only for one-off meta/error messages (e.g. "No log entries yet", watcher errors).
+        // Replaces the entire RTF content with a single styled line - safe because meta messages
+        // are shown before any real log content, or when the watcher has already failed.
         private void AppendLine(string text, Color color)
         {
-            rtbLog.SelectionStart  = rtbLog.TextLength;
-            rtbLog.SelectionLength = 0;
-            rtbLog.SelectionColor  = color;
-            rtbLog.AppendText(text + "\r\n");
+            // Map color to a 1-based RTF colour-table index.
+            // Falls back to the last entry for colours not in the theme palette (e.g. MetaColor).
+            int colorIdx = _themeColors.Length;
+            for (int i = 0; i < _themeColors.Length; i++)
+            {
+                if (_themeColors[i] == color) { colorIdx = i + 1; break; }
+            }
+
+            var sb = new StringBuilder();
+            AppendRtfHeader(sb, _themeColors);
+            sb.Append($"\\cf{colorIdx} ");
+            AppendRtfText(sb, text);
+            sb.Append("\\par}");
+            rtbLog.Rtf = sb.ToString();
         }
 
         private void ScrollToBottom()

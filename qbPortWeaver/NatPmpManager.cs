@@ -90,7 +90,7 @@ namespace qbPortWeaver
             IPAddress? gateway = ResolveGateway(nic.GetIPProperties());
             if (gateway is null)
             {
-                LogManager.Instance.LogDebug($"NatPmpManager.TryCreateForAdapter: '{adapterName}' — no resolvable gateway");
+                LogManager.Instance.LogDebug($"NatPmpManager.TryCreateForAdapter: '{adapterName}' - no resolvable gateway");
                 return null;
             }
 
@@ -127,12 +127,12 @@ namespace qbPortWeaver
             }
             catch (Exception ex)
             {
-                return LogManager.LogDebugExceptionFalse("NatPmpManager.IsVpnConnected", ex);
+                return LogManager.LogDebugFalse($"NatPmpManager.IsVpnConnected: {ex.Message}");
             }
         }
 
         // Sends a NAT-PMP UDP port mapping request and returns the assigned external port.
-        // Primarily logs at INFO/WARN (not DEBUG) — lease time and failure details are not surfaced
+        // Primarily logs at INFO/WARN (not DEBUG) - lease time and failure details are not surfaced
         // elsewhere in the sync cycle. The epoch delta is the exception, logged at DEBUG only.
         // On renewal, suggests the previously assigned port (RFC 6886 §3.3) so the gateway keeps
         // the same mapping across cycles, avoiding unnecessary qBittorrent restarts.
@@ -153,15 +153,15 @@ namespace qbPortWeaver
                 }
 
                 // Detect NAT-PMP daemon restart: SSOE dropping means all prior mappings are gone.
-                // The response is still valid (a fresh mapping was assigned) — log and update state below.
+                // The response is still valid (a fresh mapping was assigned) - log and update state below.
                 if (_lastEpochSeconds > 0 && result.EpochSeconds < _lastEpochSeconds)
                     LogManager.Instance.LogMessage(
-                        $"NAT-PMP epoch reset on '{_adapter.Name}' (was {_lastEpochSeconds}s, now {result.EpochSeconds}s) — gateway restarted, fresh port assigned",
+                        $"NAT-PMP epoch reset on '{_adapter.Name}' (was {_lastEpochSeconds}s, now {result.EpochSeconds}s) - gateway restarted, fresh port assigned",
                         LogLevel.Info);
 
                 string epochDelta = (_lastEpochSeconds > 0 && result.EpochSeconds >= _lastEpochSeconds)
                     ? $" (+{result.EpochSeconds - _lastEpochSeconds}s)" : "";
-                LogManager.Instance.LogDebug($"NatPmpManager.GetVpnPort: SSOE {result.EpochSeconds}s{epochDelta}");
+                LogManager.Instance.LogDebug($"NatPmpManager.GetVpnPortAsync: SSOE {result.EpochSeconds}s{epochDelta}");
 
                 _lastEpochSeconds  = result.EpochSeconds;
                 _lastExternalPort  = result.ExternalPort;
@@ -187,27 +187,14 @@ namespace qbPortWeaver
         // Supported adapters and their corresponding VPN client services:
         //   - ProtonVPN adapters ("ProtonVPN TUN" / "ProtonVPN") → "ProtonVPN Service"
         //   - PIA adapters ("PIA OpenVPN WinTUN Adapter" / "wgpia0") → "PrivateInternetAccessService"
-        // Unknown adapters return null — restarting an unrecognised service would be unsafe.
+        // Unknown adapters return null - restarting an unrecognised service would be unsafe.
         public string? FindServiceName()
         {
-            try
-            {
-                ServiceController[] services = ServiceController.GetServices();
-                try
-                {
-                    string? serviceName = MatchServiceName(_adapter.Name, services);
-                    LogManager.Instance.LogDebug(serviceName != null
-                        ? $"NatPmpManager.FindServiceName: found service '{serviceName}' for adapter '{_adapter.Name}'"
-                        : $"NatPmpManager.FindServiceName: adapter '{_adapter.Name}' is not a recognised VPN provider");
-                    return serviceName;
-                }
-                finally { foreach (var svc in services) svc.Dispose(); }
-            }
-            catch (Exception ex)
-            {
-                LogManager.LogDebugException("NatPmpManager.FindServiceName", ex);
-                return null;
-            }
+            string? serviceName = FindServiceNameForAdapter(_adapter.Name);
+            LogManager.Instance.LogDebug(serviceName != null
+                ? $"NatPmpManager.FindServiceName: found service '{serviceName}' for adapter '{_adapter.Name}'"
+                : $"NatPmpManager.FindServiceName: adapter '{_adapter.Name}' is not a recognised VPN provider");
+            return serviceName;
         }
 
         // Finds the Windows service name for a given NAT-PMP adapter by adapter name.
@@ -223,13 +210,13 @@ namespace qbPortWeaver
             }
             catch (Exception ex)
             {
-                LogManager.LogDebugException("NatPmpManager.FindServiceNameForAdapter", ex);
+                LogManager.Instance.LogDebug($"NatPmpManager.FindServiceNameForAdapter: {ex.Message}");
                 return null;
             }
         }
 
         // Core service-name matching shared by FindServiceName and FindServiceNameForAdapter.
-        // Returns null for unrecognised adapters — restarting an unknown service would be unsafe.
+        // Returns null for unrecognised adapters - restarting an unknown service would be unsafe.
         private static string? MatchServiceName(string adapterName, ServiceController[] services)
         {
             // ProtonVPN: adapter name is "ProtonVPN TUN" (OpenVPN) or "ProtonVPN" (WireGuard)
@@ -238,7 +225,7 @@ namespace qbPortWeaver
                     .FirstOrDefault(s => s.ServiceName.Equals(ProtonVpnManager.VpnServiceName, StringComparison.OrdinalIgnoreCase))
                     ?.ServiceName;
 
-            // PIA: adapter name is "PIA OpenVPN WinTUN Adapter" (OpenVPN) or "wgpia0" (WireGuard) — both contain "PIA".
+            // PIA: adapter name is "PIA OpenVPN WinTUN Adapter" (OpenVPN) or "wgpia0" (WireGuard) - both contain "PIA".
             if (adapterName.Contains("PIA", StringComparison.OrdinalIgnoreCase))
                 return services
                     .FirstOrDefault(s => s.ServiceName.Equals(PiaVpnManager.VpnServiceName, StringComparison.OrdinalIgnoreCase))
@@ -256,7 +243,7 @@ namespace qbPortWeaver
         }
 
         // Returns all network interfaces that are up and not loopback or protocol-tunnel adapters.
-        // NetworkInterfaceType.Tunnel covers Windows IF_TYPE_TUNNEL (Teredo, ISATAP, 6to4) —
+        // NetworkInterfaceType.Tunnel covers Windows IF_TYPE_TUNNEL (Teredo, ISATAP, 6to4) -
         // not VPN adapters. WireGuard/wintun (ProtonVPN) and TAP/OpenVPN adapters report as
         // Unknown or Ethernet and are not excluded by this filter.
         private static IEnumerable<NetworkInterface> GetActiveNetworkInterfaces()
@@ -279,7 +266,7 @@ namespace qbPortWeaver
             return gateway ?? InferGatewayFromUnicast(props);
         }
 
-        // Infers the gateway as x.x.x.1 of the adapter's subnet — a common convention for VPN gateways.
+        // Infers the gateway as x.x.x.1 of the adapter's subnet - a common convention for VPN gateways.
         private static IPAddress? InferGatewayFromUnicast(IPInterfaceProperties props)
         {
             foreach (UnicastIPAddressInformation address in props.UnicastAddresses)
@@ -288,7 +275,7 @@ namespace qbPortWeaver
                     continue;
 
                 if (address.IPv4Mask.Equals(IPAddress.Any))
-                    continue; // zero mask — cannot infer a meaningful gateway
+                    continue; // zero mask - cannot infer a meaningful gateway
 
                 byte[] addr = address.Address.GetAddressBytes();
                 byte[] mask = address.IPv4Mask.GetAddressBytes();
@@ -317,7 +304,7 @@ namespace qbPortWeaver
         // MaxAttempts for targeted probes where retrying a single adapter is worthwhile.
         private static async Task<IPAddress?> RequestExternalAddressAsync(IPAddress gateway, int maxAttempts = 1)
         {
-            // version=0, opcode=0 (external address request) — both zero by default
+            // version=0, opcode=0 (external address request) - both zero by default
             byte[] request = new byte[2];
 
             byte[]? data = await SendReceiveAsync(gateway, request, maxAttempts).ConfigureAwait(false);
@@ -337,7 +324,7 @@ namespace qbPortWeaver
 
         // Sends a NAT-PMP UDP port mapping request (RFC 6886 opcode 1).
         // Pass zero as suggestedExternalPort for an initial request, or the previously assigned port to request renewal.
-        // Internal port is set to 0 — clients that do not bind a specific port let the gateway infer it.
+        // Internal port is set to 0 - clients that do not bind a specific port let the gateway infer it.
         private static async Task<(bool Success, ushort ExternalPort, uint LifetimeGranted, uint EpochSeconds, string? Error)>
             RequestPortMappingAsync(IPAddress gateway, uint lifetime, ushort suggestedExternalPort = 0)
         {
@@ -381,7 +368,7 @@ namespace qbPortWeaver
             if (externalIp is not null)
                 LogManager.Instance.LogDebug($"NatPmpManager.{context}: '{adapterName}' via gateway {gateway} (external IP: {externalIp})");
             else
-                LogManager.Instance.LogDebug($"NatPmpManager.{context}: '{adapterName}' via gateway {gateway} — NAT-PMP probe failed");
+                LogManager.Instance.LogDebug($"NatPmpManager.{context}: '{adapterName}' via gateway {gateway} - NAT-PMP probe failed");
         }
 
         private static void LogTimeoutDebug(int attempt, int maxAttempts, int timeoutMs)
@@ -415,7 +402,7 @@ namespace qbPortWeaver
 
                         if (!result.RemoteEndPoint.Address.Equals(gateway))
                         {
-                            // Discard stray datagrams without consuming a retry slot — keep waiting
+                            // Discard stray datagrams without consuming a retry slot - keep waiting
                             // on the same socket until the timeout fires or the gateway responds.
                             LogManager.Instance.LogDebug($"NatPmpManager.SendReceiveAsync: Response from unexpected sender {result.RemoteEndPoint.Address}, discarding");
                             continue;
@@ -431,12 +418,12 @@ namespace qbPortWeaver
                 }
                 catch (SocketException ex)
                 {
-                    LogManager.Instance.LogDebug($"NatPmpManager.SendReceiveAsync: gateway {gateway} rejected NAT-PMP probe ({ex.SocketErrorCode}) — NAT-PMP may not be enabled on this gateway");
+                    LogManager.Instance.LogDebug($"NatPmpManager.SendReceiveAsync: gateway {gateway} rejected NAT-PMP probe ({ex.SocketErrorCode}) - NAT-PMP may not be enabled on this gateway");
                     return null;
                 }
                 catch (Exception ex)
                 {
-                    LogManager.LogDebugException("NatPmpManager.SendReceiveAsync", ex);
+                    LogManager.Instance.LogDebug($"NatPmpManager.SendReceiveAsync: {ex.Message}");
                     return null;
                 }
             }

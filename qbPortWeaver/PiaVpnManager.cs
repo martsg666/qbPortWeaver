@@ -36,7 +36,7 @@ namespace qbPortWeaver
             }
             catch (Exception ex)
             {
-                return LogManager.LogDebugExceptionFalse("PiaVpnManager.IsVpnConnected", ex);
+                return LogManager.LogDebugFalse($"PiaVpnManager.IsVpnConnected: {ex.Message}");
             }
         }
 
@@ -62,12 +62,12 @@ namespace qbPortWeaver
                     return port;
                 }
 
-                LogManager.Instance.LogDebug($"PiaVpnManager.GetVpnPortCore: Could not parse port from piactl output: {output}");
+                LogManager.Instance.LogDebug($"PiaVpnManager.GetVpnPortCore: Failed to parse port from piactl output: {output}");
                 return null;
             }
             catch (Exception ex)
             {
-                LogManager.LogDebugException("PiaVpnManager.GetVpnPortCore", ex);
+                LogManager.Instance.LogDebug($"PiaVpnManager.GetVpnPortCore: {ex.Message}");
                 return null;
             }
         }
@@ -114,7 +114,7 @@ namespace qbPortWeaver
             }
             catch (Exception ex)
             {
-                LogManager.LogDebugException($"PiaVpnManager.RunPiactl: Failed to run '{arguments}'", ex);
+                LogManager.Instance.LogDebug($"PiaVpnManager.RunPiactl: Failed to run '{arguments}' - {ex.Message}");
                 return null;
             }
         }
@@ -164,7 +164,7 @@ namespace qbPortWeaver
             }
             catch (Exception ex)
             {
-                LogManager.LogDebugException("PiaVpnManager.GetPiactlPath", ex);
+                LogManager.Instance.LogDebug($"PiaVpnManager.GetPiactlPath: {ex.Message}");
                 return null;
             }
         }

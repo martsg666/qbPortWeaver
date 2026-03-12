@@ -3,17 +3,6 @@ namespace qbPortWeaver
     partial class LogViewerForm
     {
         private System.ComponentModel.IContainer components = null;
-        private System.Windows.Forms.RichTextBox rtbLog;
-        private System.Windows.Forms.Panel       pnlToolbar;
-        private System.Windows.Forms.CheckBox    chkError;
-        private System.Windows.Forms.CheckBox    chkWarn;
-        private System.Windows.Forms.CheckBox    chkInfo;
-        private System.Windows.Forms.CheckBox    chkDebug;
-        private PlaceholderTextBox               txtSearch;
-        private System.Windows.Forms.Button      btnClearSearch;
-        private System.Windows.Forms.Button      btnPrev;
-        private System.Windows.Forms.Button      btnNext;
-        private System.Windows.Forms.Label       lblMatchCount;
 
         protected override void Dispose(bool disposing)
         {
@@ -38,10 +27,16 @@ namespace qbPortWeaver
             btnPrev        = new System.Windows.Forms.Button();
             btnNext        = new System.Windows.Forms.Button();
             lblMatchCount  = new System.Windows.Forms.Label();
+            ctxLog         = new System.Windows.Forms.ContextMenuStrip();
+            ctxCopy        = new System.Windows.Forms.ToolStripMenuItem();
+            ctxCopyAll     = new System.Windows.Forms.ToolStripMenuItem();
+            ctxSelectAll   = new System.Windows.Forms.ToolStripMenuItem();
+            components     = new System.ComponentModel.Container();
+            components.Add(ctxLog);
             pnlToolbar.SuspendLayout();
             SuspendLayout();
 
-            // Filter CheckBoxes — colors applied in OnLoad after theme is determined
+            // Filter CheckBoxes - colors applied in OnLoad after theme is determined
             System.Windows.Forms.AnchorStyles leftAnchor = System.Windows.Forms.AnchorStyles.Left | System.Windows.Forms.AnchorStyles.Top;
 
             chkError.Anchor                  = leftAnchor;
@@ -98,22 +93,22 @@ namespace qbPortWeaver
             chkInfo.CheckedChanged  += FilterButton_CheckedChanged;
             chkDebug.CheckedChanged += FilterButton_CheckedChanged;
 
-            // Search controls — anchored Right so they stay visible when the form is resized
-            // Layout from right: [4] [lblMatchCount:64] [4] [btnNext:26] [btnPrev:26] [4] [txtSearch:180] [8]
+            // Search controls - anchored Right so they stay visible when the form is resized
+            // Layout from right: [4] [btnNext:26] [btnPrev:26] [4] [lblMatchCount:64] [4] [txtSearch:220] [8]
             // btnClearSearch floats inside the right edge of txtSearch (z-order above it); positioned in OnLoad.
             System.Windows.Forms.AnchorStyles rightAnchor = System.Windows.Forms.AnchorStyles.Right | System.Windows.Forms.AnchorStyles.Top;
 
-            // txtSearch — font set explicitly so height is predictable; vertically centered in the 36px toolbar
+            // txtSearch - font set explicitly so height is predictable; vertically centered in the 36px toolbar
             txtSearch.Anchor          = rightAnchor;
             txtSearch.BorderStyle     = System.Windows.Forms.BorderStyle.FixedSingle;
             txtSearch.Font            = new System.Drawing.Font("Segoe UI", 9F);
-            txtSearch.Location        = new System.Drawing.Point(788, 8);
+            txtSearch.Location        = new System.Drawing.Point(752, 8);
             txtSearch.PlaceholderText = "Search…";
-            txtSearch.Width           = 180; // height is auto-sized by font; vertically centered in OnLoad
+            txtSearch.Width           = 220; // height is auto-sized by font; vertically centered in OnLoad
             txtSearch.TextChanged    += TxtSearch_TextChanged;
             txtSearch.KeyDown        += TxtSearch_KeyDown;
 
-            // btnClearSearch — overlays the right interior of txtSearch; sized and positioned in OnLoad.
+            // btnClearSearch - overlays the right interior of txtSearch; sized and positioned in OnLoad.
             // Right-margin set to txtSearch.RightMargin - 2 so the button always stays 2px inside the box on resize.
             btnClearSearch.Anchor                    = rightAnchor;
             btnClearSearch.FlatStyle                 = System.Windows.Forms.FlatStyle.Flat;
@@ -131,7 +126,7 @@ namespace qbPortWeaver
             btnPrev.Anchor    = rightAnchor;
             btnPrev.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
             btnPrev.Font      = new System.Drawing.Font("Segoe UI", 9F);
-            btnPrev.Location  = new System.Drawing.Point(972, 5);
+            btnPrev.Location  = new System.Drawing.Point(1044, 5);
             btnPrev.Size      = new System.Drawing.Size(26, 26);
             btnPrev.Text      = "▲";
             btnPrev.Click    += BtnPrev_Click;
@@ -140,7 +135,7 @@ namespace qbPortWeaver
             btnNext.Anchor    = rightAnchor;
             btnNext.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
             btnNext.Font      = new System.Drawing.Font("Segoe UI", 9F);
-            btnNext.Location  = new System.Drawing.Point(1002, 5);
+            btnNext.Location  = new System.Drawing.Point(1070, 5);
             btnNext.Size      = new System.Drawing.Size(26, 26);
             btnNext.Text      = "▼";
             btnNext.Click    += BtnNext_Click;
@@ -149,11 +144,11 @@ namespace qbPortWeaver
             lblMatchCount.Anchor    = rightAnchor;
             lblMatchCount.AutoSize  = false;
             lblMatchCount.Font      = new System.Drawing.Font("Segoe UI", 8F);
-            lblMatchCount.Location  = new System.Drawing.Point(1032, 11);
+            lblMatchCount.Location  = new System.Drawing.Point(976, 11);
             lblMatchCount.Size      = new System.Drawing.Size(64, 14);
             lblMatchCount.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
 
-            // pnlToolbar — Width must be set explicitly before right-anchored children are added,
+            // pnlToolbar - Width must be set explicitly before right-anchored children are added,
             // otherwise the default panel width (~200px) produces a negative right-margin and
             // causes right-anchored controls to fly off-screen when the panel expands to form width.
             pnlToolbar.Controls.AddRange(new System.Windows.Forms.Control[] {
@@ -161,6 +156,17 @@ namespace qbPortWeaver
                 txtSearch, btnClearSearch, btnPrev, btnNext, lblMatchCount });
             pnlToolbar.Dock = System.Windows.Forms.DockStyle.Top;
             pnlToolbar.Size = new System.Drawing.Size(1100, 36);
+
+            // ctxLog - right-click context menu for the log viewer
+            ctxCopy.Text      = "Copy";
+            ctxCopyAll.Text   = "Copy All";
+            ctxSelectAll.Text = "Select All";
+            ctxCopy.Click      += CtxCopy_Click;
+            ctxCopyAll.Click   += CtxCopyAll_Click;
+            ctxSelectAll.Click += CtxSelectAll_Click;
+            ctxLog.Items.AddRange(new System.Windows.Forms.ToolStripItem[] { ctxCopy, ctxCopyAll, ctxSelectAll });
+            ctxLog.Opening += CtxLog_Opening;
+            rtbLog.ContextMenuStrip = ctxLog;
 
             // rtbLog
             rtbLog.BackColor        = System.Drawing.SystemColors.Window;
@@ -191,5 +197,21 @@ namespace qbPortWeaver
             pnlToolbar.ResumeLayout(false);
             ResumeLayout(false);
         }
+
+        private System.Windows.Forms.RichTextBox       rtbLog;
+        private System.Windows.Forms.Panel             pnlToolbar;
+        private System.Windows.Forms.CheckBox          chkError;
+        private System.Windows.Forms.CheckBox          chkWarn;
+        private System.Windows.Forms.CheckBox          chkInfo;
+        private System.Windows.Forms.CheckBox          chkDebug;
+        private PlaceholderTextBox                     txtSearch;
+        private System.Windows.Forms.Button            btnClearSearch;
+        private System.Windows.Forms.Button            btnPrev;
+        private System.Windows.Forms.Button            btnNext;
+        private System.Windows.Forms.Label             lblMatchCount;
+        private System.Windows.Forms.ContextMenuStrip  ctxLog;
+        private System.Windows.Forms.ToolStripMenuItem ctxCopy;
+        private System.Windows.Forms.ToolStripMenuItem ctxCopyAll;
+        private System.Windows.Forms.ToolStripMenuItem ctxSelectAll;
     }
 }

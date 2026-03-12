@@ -24,11 +24,11 @@ namespace qbPortWeaver
         // Last sync status (written from background thread, read on UI thread)
         private volatile TrayStatus? _lastSyncStatus;
 
-        // Cancellation token for the inter-cycle delay — cancelled by manual sync requests to skip the wait
+        // Cancellation token for the inter-cycle delay - cancelled by manual sync requests to skip the wait
         private volatile CancellationTokenSource _delayCts = new CancellationTokenSource();
 
         // Semaphore to prevent concurrent sync cycles. Also serialises access to
-        // PortSyncService instance state (e.g. _lastKnownNatPmpManager) — see PortSyncService.cs.
+        // PortSyncService instance state (e.g. _lastKnownNatPmpManager) - see PortSyncService.cs.
         private readonly SemaphoreSlim _updateSemaphore = new SemaphoreSlim(1, 1);
 
         // Manual sync triggered flag (thread-safe with volatile)
@@ -94,6 +94,19 @@ namespace qbPortWeaver
             }
         }
 
+        // Marks the window as a tool window so it is excluded from the Alt+Tab switcher.
+        // ShowInTaskbar = false hides it from the taskbar but not from Alt+Tab - WS_EX_TOOLWINDOW handles both.
+        protected override CreateParams CreateParams
+        {
+            get
+            {
+                const int WS_EX_TOOLWINDOW = 0x80;
+                CreateParams cp = base.CreateParams;
+                cp.ExStyle |= WS_EX_TOOLWINDOW;
+                return cp;
+            }
+        }
+
         // Handle form closing (user exit, Windows shutdown/restart/logoff)
         protected override void OnFormClosing(FormClosingEventArgs e)
         {
@@ -131,7 +144,7 @@ namespace qbPortWeaver
             using var icon16 = new Icon(baseIcon, 16, 16);
             g.DrawIcon(icon16, new Rectangle(0, 0, 16, 16));
 
-            // 7×7 dark border circle, then 5×5 colored fill — visible on both light and dark taskbars
+            // 7×7 dark border circle, then 5×5 colored fill - visible on both light and dark taskbars
             g.FillEllipse(borderBrush, 9, 9, 7, 7);
             g.FillEllipse(dotBrush,   10, 10, 5, 5);
 
@@ -139,7 +152,7 @@ namespace qbPortWeaver
             try
             {
                 // Clone creates an owned Icon that frees itself on Dispose.
-                // The raw HICON from GetHicon() must be freed separately — Icon.FromHandle does not own it.
+                // The raw HICON from GetHicon() must be freed separately - Icon.FromHandle does not own it.
                 return (Icon)Icon.FromHandle(hIcon).Clone();
             }
             finally
@@ -288,7 +301,7 @@ namespace qbPortWeaver
                     LogManager.Instance.LogMessage("Shutdown requested, exiting main loop", LogLevel.Info);
                     return true;
                 }
-                // Manual sync interrupts delay — loop will restart immediately
+                // Manual sync interrupts delay - loop will restart immediately
                 LogManager.Instance.LogMessage("Delay interrupted by manual sync", LogLevel.Info);
             }
 
@@ -326,7 +339,7 @@ namespace qbPortWeaver
             }
         }
 
-        // Event handler for the periodic update-check timer — async void is correct here (event handler)
+        // Event handler for the periodic update-check timer - async void is correct here (event handler)
         private async void OnUpdateCheckTimerTick(object? sender, EventArgs e)
             => await PerformUpdateCheckAsync();
 
@@ -358,7 +371,7 @@ namespace qbPortWeaver
                 }
                 else
                 {
-                    LogManager.Instance.LogDebug("MainForm.PerformUpdateCheckAsync: application is up to date");
+                    LogManager.Instance.LogMessage($"Application is up to date ({AppConstants.AppVersion})", LogLevel.Info);
                 }
             }
             catch (Exception ex)
@@ -372,7 +385,7 @@ namespace qbPortWeaver
         {
             _trayIcon.Icon = state switch
             {
-                SyncState.Synced              => _iconOk      ?? _iconBase!,
+                SyncState.Synced          => _iconOk      ?? _iconBase!,
                 SyncState.VpnDisconnected => _iconWarning ?? _iconBase!,
                 SyncState.Error           => _iconError   ?? _iconBase!,
                 _                         =>                 _iconBase!

@@ -16,51 +16,44 @@ namespace qbPortWeaver
         private void InitializeComponent()
         {
             components = new System.ComponentModel.Container();
-
-            grpGeneral               = new GroupBox();
-            lblVpnProvider           = new Label();
-            cboVpnProvider           = new ComboBox();
-            lblNatPmpAdapter         = new Label();
-            cboNatPmpAdapter         = new ComboBox();
-            btnRefreshAdapters       = new Button();
-            lblUpdateInterval        = new Label();
-            nudUpdateInterval        = new NumericUpDown();
-            lblSeconds               = new Label();
-
-            grpQBittorrent           = new GroupBox();
-            lblQBittorrentURL        = new Label();
-            txtQBittorrentURL        = new TextBox();
-            lblQBittorrentUserName   = new Label();
-            txtQBittorrentUserName   = new TextBox();
-            lblQBittorrentPassword   = new Label();
-            txtQBittorrentPassword   = new TextBox();
-            lblQBittorrentExePath    = new Label();
-            txtQBittorrentExePath    = new TextBox();
-            btnBrowseExePath         = new Button();
+            grpGeneral = new GroupBox();
+            lblVpnProvider = new Label();
+            cboVpnProvider = new ComboBox();
+            lblNatPmpAdapter = new Label();
+            cboNatPmpAdapter = new ComboBox();
+            btnRefreshAdapters = new Button();
+            lblUpdateInterval = new Label();
+            nudUpdateInterval = new NumericUpDown();
+            lblSeconds = new Label();
+            chkVpnAutoRecovery = new CheckBox();
+            lblVpnRecoveryCycles = new Label();
+            nudVpnRecoveryCycles = new NumericUpDown();
+            lblVpnRecoveryCyclesUnit = new Label();
+            grpQBittorrent = new GroupBox();
+            lblQBittorrentURL = new Label();
+            txtQBittorrentURL = new TextBox();
+            lblQBittorrentUserName = new Label();
+            txtQBittorrentUserName = new TextBox();
+            lblQBittorrentPassword = new Label();
+            txtQBittorrentPassword = new TextBox();
+            lblQBittorrentExePath = new Label();
+            txtQBittorrentExePath = new TextBox();
+            btnBrowseExePath = new Button();
             lblQBittorrentProcessName = new Label();
             txtQBittorrentProcessName = new TextBox();
-            chkRestartQBittorrent    = new CheckBox();
+            chkRestartQBittorrent = new CheckBox();
             chkForceStartQBittorrent = new CheckBox();
-            lblDefaultPort           = new Label();
-            nudDefaultPort           = new NumericUpDown();
+            lblDefaultPort = new Label();
+            nudDefaultPort = new NumericUpDown();
             chkWarnOnInterfaceMismatch = new CheckBox();
-            chkRestartOnDisconnect     = new CheckBox();
-
-            grpExtra                 = new GroupBox();
-            lblPostUpdateCmd         = new Label();
-            txtPostUpdateCmd         = new TextBox();
-            chkDebugMode             = new CheckBox();
-
-            chkVpnAutoRecovery       = new CheckBox();
-            lblVpnRecoveryCycles     = new Label();
-            nudVpnRecoveryCycles     = new NumericUpDown();
-            lblVpnRecoveryCyclesUnit = new Label();
-
-            btnOK                    = new Button();
-            btnCancel                = new Button();
-
-            toolTip                 = new ToolTip(components);
-
+            chkRestartOnDisconnect = new CheckBox();
+            grpExtra = new GroupBox();
+            lblPostUpdateCmd = new Label();
+            txtPostUpdateCmd = new TextBox();
+            chkDebugMode = new CheckBox();
+            btnOK = new Button();
+            btnCancel = new Button();
+            toolTip = new ToolTip(components);
             grpGeneral.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)nudUpdateInterval).BeginInit();
             ((System.ComponentModel.ISupportInitialize)nudVpnRecoveryCycles).BeginInit();
@@ -68,8 +61,9 @@ namespace qbPortWeaver
             ((System.ComponentModel.ISupportInitialize)nudDefaultPort).BeginInit();
             grpExtra.SuspendLayout();
             SuspendLayout();
-
-            // ── grpGeneral ────────────────────────────────────────────────
+            // 
+            // grpGeneral
+            // 
             grpGeneral.Controls.Add(lblVpnProvider);
             grpGeneral.Controls.Add(cboVpnProvider);
             grpGeneral.Controls.Add(lblNatPmpAdapter);
@@ -83,81 +77,125 @@ namespace qbPortWeaver
             grpGeneral.Controls.Add(nudVpnRecoveryCycles);
             grpGeneral.Controls.Add(lblVpnRecoveryCyclesUnit);
             grpGeneral.Location = new Point(8, 8);
-            grpGeneral.Size     = new Size(480, 178);
-            grpGeneral.TabStop  = false;
-            grpGeneral.Text     = "General";
-
-            lblVpnProvider.Location  = new Point(12, 27);
-            lblVpnProvider.Size      = new Size(130, 23);
-            lblVpnProvider.Text      = "VPN Provider:";
+            grpGeneral.Name = "grpGeneral";
+            grpGeneral.Size = new Size(480, 167);
+            grpGeneral.TabIndex = 0;
+            grpGeneral.TabStop = false;
+            grpGeneral.Text = "General";
+            // 
+            // lblVpnProvider
+            // 
+            lblVpnProvider.Location = new Point(12, 24);
+            lblVpnProvider.Name = "lblVpnProvider";
+            lblVpnProvider.Size = new Size(130, 23);
+            lblVpnProvider.TabIndex = 0;
+            lblVpnProvider.Text = "VPN Provider:";
             lblVpnProvider.TextAlign = ContentAlignment.MiddleLeft;
-
+            // 
+            // cboVpnProvider
+            // 
             cboVpnProvider.DropDownStyle = ComboBoxStyle.DropDownList;
-            cboVpnProvider.Location  = new Point(148, 24);
-            cboVpnProvider.Size      = new Size(200, 23);
-            cboVpnProvider.TabIndex  = 0;
+            cboVpnProvider.Location = new Point(148, 24);
+            cboVpnProvider.Name = "cboVpnProvider";
+            cboVpnProvider.Size = new Size(200, 23);
+            cboVpnProvider.TabIndex = 0;
             cboVpnProvider.SelectedIndexChanged += cboVpnProvider_SelectedIndexChanged;
-
-            lblNatPmpAdapter.Location  = new Point(12, 85);
-            lblNatPmpAdapter.Size      = new Size(130, 23);
-            lblNatPmpAdapter.Text      = "NAT-PMP Adapter:";
+            // 
+            // lblNatPmpAdapter
+            // 
+            lblNatPmpAdapter.Location = new Point(12, 82);
+            lblNatPmpAdapter.Name = "lblNatPmpAdapter";
+            lblNatPmpAdapter.Size = new Size(130, 23);
+            lblNatPmpAdapter.TabIndex = 1;
+            lblNatPmpAdapter.Text = "NAT-PMP Adapter:";
             lblNatPmpAdapter.TextAlign = ContentAlignment.MiddleLeft;
-
+            // 
+            // cboNatPmpAdapter
+            // 
             cboNatPmpAdapter.DropDownStyle = ComboBoxStyle.DropDownList;
-            cboNatPmpAdapter.Location  = new Point(148, 82);
-            cboNatPmpAdapter.Size      = new Size(290, 23);
-            cboNatPmpAdapter.TabIndex  = 17;
-
-            btnRefreshAdapters.Location  = new Point(442, 82);
-            btnRefreshAdapters.Size      = new Size(26, 23);
-            btnRefreshAdapters.Text      = "\u21bb";
-            btnRefreshAdapters.TabIndex  = 18;
-            btnRefreshAdapters.Enabled   = false;
-            btnRefreshAdapters.Click    += btnRefreshAdapters_Click;
-
-            lblUpdateInterval.Location  = new Point(12, 56);
-            lblUpdateInterval.Size      = new Size(130, 23);
-            lblUpdateInterval.Text      = "Update interval:";
+            cboNatPmpAdapter.Location = new Point(148, 82);
+            cboNatPmpAdapter.Name = "cboNatPmpAdapter";
+            cboNatPmpAdapter.Size = new Size(290, 23);
+            cboNatPmpAdapter.TabIndex = 17;
+            // 
+            // btnRefreshAdapters
+            // 
+            btnRefreshAdapters.Enabled = false;
+            btnRefreshAdapters.Location = new Point(442, 82);
+            btnRefreshAdapters.Name = "btnRefreshAdapters";
+            btnRefreshAdapters.Size = new Size(26, 23);
+            btnRefreshAdapters.TabIndex = 18;
+            btnRefreshAdapters.Text = "↻";
+            btnRefreshAdapters.Click += btnRefreshAdapters_Click;
+            // 
+            // lblUpdateInterval
+            // 
+            lblUpdateInterval.Location = new Point(12, 53);
+            lblUpdateInterval.Name = "lblUpdateInterval";
+            lblUpdateInterval.Size = new Size(130, 23);
+            lblUpdateInterval.TabIndex = 19;
+            lblUpdateInterval.Text = "Update interval:";
             lblUpdateInterval.TextAlign = ContentAlignment.MiddleLeft;
-
+            // 
+            // nudUpdateInterval
+            // 
             nudUpdateInterval.Location = new Point(148, 53);
-            nudUpdateInterval.Minimum  = 10;
-            nudUpdateInterval.Maximum  = 86400;
-            nudUpdateInterval.Value    = 180;
-            nudUpdateInterval.Size     = new Size(80, 23);
+            nudUpdateInterval.Maximum = new decimal(new int[] { 86400, 0, 0, 0 });
+            nudUpdateInterval.Minimum = new decimal(new int[] { 10, 0, 0, 0 });
+            nudUpdateInterval.Name = "nudUpdateInterval";
+            nudUpdateInterval.Size = new Size(80, 23);
             nudUpdateInterval.TabIndex = 1;
-
-            lblSeconds.Location  = new Point(234, 56);
-            lblSeconds.Size      = new Size(55, 23);
-            lblSeconds.Text      = "seconds";
+            nudUpdateInterval.Value = new decimal(new int[] { 180, 0, 0, 0 });
+            // 
+            // lblSeconds
+            // 
+            lblSeconds.Location = new Point(234, 53);
+            lblSeconds.Name = "lblSeconds";
+            lblSeconds.Size = new Size(55, 23);
+            lblSeconds.TabIndex = 20;
+            lblSeconds.Text = "seconds";
             lblSeconds.TextAlign = ContentAlignment.MiddleLeft;
-
-            // Row 3 — VPN auto-recovery
+            // 
+            // chkVpnAutoRecovery
+            // 
             chkVpnAutoRecovery.AutoSize = true;
             chkVpnAutoRecovery.Location = new Point(12, 114);
-            chkVpnAutoRecovery.Text     = "Enable VPN auto-recovery";
+            chkVpnAutoRecovery.Name = "chkVpnAutoRecovery";
+            chkVpnAutoRecovery.Size = new Size(164, 19);
             chkVpnAutoRecovery.TabIndex = 19;
+            chkVpnAutoRecovery.Text = "Enable VPN auto-recovery";
             chkVpnAutoRecovery.CheckedChanged += chkVpnAutoRecovery_CheckedChanged;
-
-            // Row 4 — Trigger cycles (sub-option, indented)
-            lblVpnRecoveryCycles.Location  = new Point(28, 143);
-            lblVpnRecoveryCycles.Size      = new Size(180, 23);
-            lblVpnRecoveryCycles.Text      = "Restart service after";
+            // 
+            // lblVpnRecoveryCycles
+            // 
+            lblVpnRecoveryCycles.Location = new Point(28, 136);
+            lblVpnRecoveryCycles.Name = "lblVpnRecoveryCycles";
+            lblVpnRecoveryCycles.Size = new Size(180, 23);
+            lblVpnRecoveryCycles.TabIndex = 21;
+            lblVpnRecoveryCycles.Text = "Restart service after";
             lblVpnRecoveryCycles.TextAlign = ContentAlignment.MiddleLeft;
-
-            nudVpnRecoveryCycles.Location = new Point(212, 140);
-            nudVpnRecoveryCycles.Minimum  = 1;
-            nudVpnRecoveryCycles.Maximum  = 10;
-            nudVpnRecoveryCycles.Value    = 3;
-            nudVpnRecoveryCycles.Size     = new Size(50, 23);
+            // 
+            // nudVpnRecoveryCycles
+            // 
+            nudVpnRecoveryCycles.Location = new Point(212, 136);
+            nudVpnRecoveryCycles.Maximum = new decimal(new int[] { 10, 0, 0, 0 });
+            nudVpnRecoveryCycles.Minimum = new decimal(new int[] { 1, 0, 0, 0 });
+            nudVpnRecoveryCycles.Name = "nudVpnRecoveryCycles";
+            nudVpnRecoveryCycles.Size = new Size(50, 23);
             nudVpnRecoveryCycles.TabIndex = 20;
-
-            lblVpnRecoveryCyclesUnit.Location  = new Point(266, 143);
-            lblVpnRecoveryCyclesUnit.Size      = new Size(202, 23);
-            lblVpnRecoveryCyclesUnit.Text      = "consecutive disconnected cycles";
+            nudVpnRecoveryCycles.Value = new decimal(new int[] { 3, 0, 0, 0 });
+            // 
+            // lblVpnRecoveryCyclesUnit
+            // 
+            lblVpnRecoveryCyclesUnit.Location = new Point(266, 136);
+            lblVpnRecoveryCyclesUnit.Name = "lblVpnRecoveryCyclesUnit";
+            lblVpnRecoveryCyclesUnit.Size = new Size(202, 23);
+            lblVpnRecoveryCyclesUnit.TabIndex = 22;
+            lblVpnRecoveryCyclesUnit.Text = "consecutive disconnected cycles";
             lblVpnRecoveryCyclesUnit.TextAlign = ContentAlignment.MiddleLeft;
-
-            // ── grpQBittorrent ────────────────────────────────────────────
+            // 
+            // grpQBittorrent
+            // 
             grpQBittorrent.Controls.Add(lblQBittorrentURL);
             grpQBittorrent.Controls.Add(txtQBittorrentURL);
             grpQBittorrent.Controls.Add(lblQBittorrentUserName);
@@ -175,161 +213,230 @@ namespace qbPortWeaver
             grpQBittorrent.Controls.Add(nudDefaultPort);
             grpQBittorrent.Controls.Add(chkWarnOnInterfaceMismatch);
             grpQBittorrent.Controls.Add(chkRestartOnDisconnect);
-            grpQBittorrent.Location = new Point(8, 198);
-            grpQBittorrent.Size     = new Size(480, 320);
-            grpQBittorrent.TabStop  = false;
-            grpQBittorrent.Text     = "qBittorrent";
-
-            // Row 0 — URL
-            lblQBittorrentURL.Location  = new Point(12, 27);
-            lblQBittorrentURL.Size      = new Size(130, 23);
-            lblQBittorrentURL.Text      = "URL:";
+            grpQBittorrent.Location = new Point(8, 181);
+            grpQBittorrent.Name = "grpQBittorrent";
+            grpQBittorrent.Size = new Size(480, 312);
+            grpQBittorrent.TabIndex = 1;
+            grpQBittorrent.TabStop = false;
+            grpQBittorrent.Text = "qBittorrent";
+            // 
+            // lblQBittorrentURL
+            // 
+            lblQBittorrentURL.Location = new Point(12, 24);
+            lblQBittorrentURL.Name = "lblQBittorrentURL";
+            lblQBittorrentURL.Size = new Size(130, 23);
+            lblQBittorrentURL.TabIndex = 0;
+            lblQBittorrentURL.Text = "URL:";
             lblQBittorrentURL.TextAlign = ContentAlignment.MiddleLeft;
-
+            // 
+            // txtQBittorrentURL
+            // 
             txtQBittorrentURL.Location = new Point(148, 24);
-            txtQBittorrentURL.Size     = new Size(320, 23);
+            txtQBittorrentURL.Name = "txtQBittorrentURL";
+            txtQBittorrentURL.Size = new Size(320, 23);
             txtQBittorrentURL.TabIndex = 2;
-
-            // Row 1 — Username
-            lblQBittorrentUserName.Location  = new Point(12, 56);
-            lblQBittorrentUserName.Size      = new Size(130, 23);
-            lblQBittorrentUserName.Text      = "Username:";
+            // 
+            // lblQBittorrentUserName
+            // 
+            lblQBittorrentUserName.Location = new Point(12, 53);
+            lblQBittorrentUserName.Name = "lblQBittorrentUserName";
+            lblQBittorrentUserName.Size = new Size(130, 23);
+            lblQBittorrentUserName.TabIndex = 3;
+            lblQBittorrentUserName.Text = "Username:";
             lblQBittorrentUserName.TextAlign = ContentAlignment.MiddleLeft;
-
+            // 
+            // txtQBittorrentUserName
+            // 
             txtQBittorrentUserName.Location = new Point(148, 53);
-            txtQBittorrentUserName.Size     = new Size(320, 23);
+            txtQBittorrentUserName.Name = "txtQBittorrentUserName";
+            txtQBittorrentUserName.Size = new Size(320, 23);
             txtQBittorrentUserName.TabIndex = 3;
-
-            // Row 2 — Password
-            lblQBittorrentPassword.Location  = new Point(12, 85);
-            lblQBittorrentPassword.Size      = new Size(130, 23);
-            lblQBittorrentPassword.Text      = "Password:";
+            // 
+            // lblQBittorrentPassword
+            // 
+            lblQBittorrentPassword.Location = new Point(12, 82);
+            lblQBittorrentPassword.Name = "lblQBittorrentPassword";
+            lblQBittorrentPassword.Size = new Size(130, 23);
+            lblQBittorrentPassword.TabIndex = 4;
+            lblQBittorrentPassword.Text = "Password:";
             lblQBittorrentPassword.TextAlign = ContentAlignment.MiddleLeft;
-
-            txtQBittorrentPassword.Location     = new Point(148, 82);
+            // 
+            // txtQBittorrentPassword
+            // 
+            txtQBittorrentPassword.Location = new Point(148, 82);
+            txtQBittorrentPassword.Name = "txtQBittorrentPassword";
             txtQBittorrentPassword.PasswordChar = '*';
-            txtQBittorrentPassword.Size         = new Size(320, 23);
-            txtQBittorrentPassword.TabIndex     = 4;
-
-            // Row 3 — Exe path
-            lblQBittorrentExePath.Location  = new Point(12, 114);
-            lblQBittorrentExePath.Size      = new Size(130, 23);
-            lblQBittorrentExePath.Text      = "Executable:";
+            txtQBittorrentPassword.Size = new Size(320, 23);
+            txtQBittorrentPassword.TabIndex = 4;
+            // 
+            // lblQBittorrentExePath
+            // 
+            lblQBittorrentExePath.Location = new Point(12, 111);
+            lblQBittorrentExePath.Name = "lblQBittorrentExePath";
+            lblQBittorrentExePath.Size = new Size(130, 23);
+            lblQBittorrentExePath.TabIndex = 5;
+            lblQBittorrentExePath.Text = "Executable:";
             lblQBittorrentExePath.TextAlign = ContentAlignment.MiddleLeft;
-
+            // 
+            // txtQBittorrentExePath
+            // 
             txtQBittorrentExePath.Location = new Point(148, 111);
-            txtQBittorrentExePath.Size     = new Size(276, 23);
+            txtQBittorrentExePath.Name = "txtQBittorrentExePath";
+            txtQBittorrentExePath.Size = new Size(276, 23);
             txtQBittorrentExePath.TabIndex = 5;
-
-            btnBrowseExePath.Location  = new Point(428, 111);
-            btnBrowseExePath.Size      = new Size(40, 23);
-            btnBrowseExePath.Text      = "...";
-            btnBrowseExePath.TabIndex  = 6;
-            btnBrowseExePath.Click    += btnBrowseExePath_Click;
-
-            // Row 4 — Process name
-            lblQBittorrentProcessName.Location  = new Point(12, 143);
-            lblQBittorrentProcessName.Size      = new Size(130, 23);
-            lblQBittorrentProcessName.Text      = "Process name:";
+            // 
+            // btnBrowseExePath
+            // 
+            btnBrowseExePath.Location = new Point(428, 111);
+            btnBrowseExePath.Name = "btnBrowseExePath";
+            btnBrowseExePath.Size = new Size(40, 23);
+            btnBrowseExePath.TabIndex = 6;
+            btnBrowseExePath.Text = "...";
+            btnBrowseExePath.Click += btnBrowseExePath_Click;
+            // 
+            // lblQBittorrentProcessName
+            // 
+            lblQBittorrentProcessName.Location = new Point(12, 140);
+            lblQBittorrentProcessName.Name = "lblQBittorrentProcessName";
+            lblQBittorrentProcessName.Size = new Size(130, 23);
+            lblQBittorrentProcessName.TabIndex = 7;
+            lblQBittorrentProcessName.Text = "Process name:";
             lblQBittorrentProcessName.TextAlign = ContentAlignment.MiddleLeft;
-
+            // 
+            // txtQBittorrentProcessName
+            // 
             txtQBittorrentProcessName.Location = new Point(148, 140);
-            txtQBittorrentProcessName.Size     = new Size(320, 23);
+            txtQBittorrentProcessName.Name = "txtQBittorrentProcessName";
+            txtQBittorrentProcessName.Size = new Size(320, 23);
             txtQBittorrentProcessName.TabIndex = 7;
-
-            // Row 5 — Restart checkbox
+            // 
+            // chkRestartQBittorrent
+            // 
             chkRestartQBittorrent.AutoSize = true;
-            chkRestartQBittorrent.Location = new Point(12, 169);
-            chkRestartQBittorrent.Text     = "Restart qBittorrent after a port change (recommended)";
+            chkRestartQBittorrent.Location = new Point(12, 178);
+            chkRestartQBittorrent.Name = "chkRestartQBittorrent";
+            chkRestartQBittorrent.Size = new Size(314, 19);
             chkRestartQBittorrent.TabIndex = 8;
-
-            // Row 6 — Force start checkbox
+            chkRestartQBittorrent.Text = "Restart qBittorrent after a port change (recommended)";
+            // 
+            // chkForceStartQBittorrent
+            // 
             chkForceStartQBittorrent.AutoSize = true;
-            chkForceStartQBittorrent.Location = new Point(12, 195);
-            chkForceStartQBittorrent.Text     = "Force start qBittorrent if not running";
+            chkForceStartQBittorrent.Location = new Point(12, 203);
+            chkForceStartQBittorrent.Name = "chkForceStartQBittorrent";
+            chkForceStartQBittorrent.Size = new Size(217, 19);
             chkForceStartQBittorrent.TabIndex = 9;
-
-            // Row 7 — Default port
-            lblDefaultPort.Location  = new Point(12, 227);
-            lblDefaultPort.Size      = new Size(210, 23);
-            lblDefaultPort.Text      = "Default port (0 = disabled):";
+            chkForceStartQBittorrent.Text = "Force start qBittorrent if not running";
+            // 
+            // lblDefaultPort
+            // 
+            lblDefaultPort.Location = new Point(12, 228);
+            lblDefaultPort.Name = "lblDefaultPort";
+            lblDefaultPort.Size = new Size(210, 23);
+            lblDefaultPort.TabIndex = 10;
+            lblDefaultPort.Text = "Default port (0 = disabled):";
             lblDefaultPort.TextAlign = ContentAlignment.MiddleLeft;
-
-            nudDefaultPort.Location = new Point(226, 224);
-            nudDefaultPort.Minimum  = 0;
-            nudDefaultPort.Maximum  = 65535;
-            nudDefaultPort.Value    = 0;
-            nudDefaultPort.Size     = new Size(80, 23);
+            // 
+            // nudDefaultPort
+            // 
+            nudDefaultPort.Location = new Point(226, 228);
+            nudDefaultPort.Maximum = new decimal(new int[] { 65535, 0, 0, 0 });
+            nudDefaultPort.Name = "nudDefaultPort";
+            nudDefaultPort.Size = new Size(80, 23);
             nudDefaultPort.TabIndex = 10;
-
-            // Row 8 — Interface mismatch warning
+            // 
+            // chkWarnOnInterfaceMismatch
+            // 
             chkWarnOnInterfaceMismatch.AutoSize = true;
-            chkWarnOnInterfaceMismatch.Location = new Point(12, 256);
-            chkWarnOnInterfaceMismatch.Text     = "Warn when network interface doesn't match the VPN";
+            chkWarnOnInterfaceMismatch.Location = new Point(12, 257);
+            chkWarnOnInterfaceMismatch.Name = "chkWarnOnInterfaceMismatch";
+            chkWarnOnInterfaceMismatch.Size = new Size(306, 19);
             chkWarnOnInterfaceMismatch.TabIndex = 11;
-
-            // Row 9 — Restart on disconnect
+            chkWarnOnInterfaceMismatch.Text = "Warn when network interface doesn't match the VPN";
+            // 
+            // chkRestartOnDisconnect
+            // 
             chkRestartOnDisconnect.AutoSize = true;
-            chkRestartOnDisconnect.Location = new Point(12, 285);
-            chkRestartOnDisconnect.Text     = "Restart qBittorrent if connection status disconnects";
+            chkRestartOnDisconnect.Location = new Point(12, 282);
+            chkRestartOnDisconnect.Name = "chkRestartOnDisconnect";
+            chkRestartOnDisconnect.Size = new Size(295, 19);
             chkRestartOnDisconnect.TabIndex = 12;
-
-            // ── grpExtra ──────────────────────────────────────────────────
+            chkRestartOnDisconnect.Text = "Restart qBittorrent if connection status disconnects";
+            // 
+            // grpExtra
+            // 
             grpExtra.Controls.Add(lblPostUpdateCmd);
             grpExtra.Controls.Add(txtPostUpdateCmd);
             grpExtra.Controls.Add(chkDebugMode);
-            grpExtra.Location = new Point(8, 530);
-            grpExtra.Size     = new Size(480, 84);
-            grpExtra.TabStop  = false;
-            grpExtra.Text     = "Extra";
-
-            // Row 0 — Post-update command
-            lblPostUpdateCmd.Location  = new Point(12, 27);
-            lblPostUpdateCmd.Size      = new Size(130, 23);
-            lblPostUpdateCmd.Text      = "Post-update command:";
+            grpExtra.Location = new Point(8, 499);
+            grpExtra.Name = "grpExtra";
+            grpExtra.Size = new Size(480, 97);
+            grpExtra.TabIndex = 2;
+            grpExtra.TabStop = false;
+            grpExtra.Text = "Extra";
+            // 
+            // lblPostUpdateCmd
+            // 
+            lblPostUpdateCmd.Location = new Point(12, 27);
+            lblPostUpdateCmd.Name = "lblPostUpdateCmd";
+            lblPostUpdateCmd.Size = new Size(130, 23);
+            lblPostUpdateCmd.TabIndex = 0;
+            lblPostUpdateCmd.Text = "Post-update command:";
             lblPostUpdateCmd.TextAlign = ContentAlignment.MiddleLeft;
-
+            // 
+            // txtPostUpdateCmd
+            // 
             txtPostUpdateCmd.Location = new Point(148, 24);
-            txtPostUpdateCmd.Size     = new Size(320, 23);
+            txtPostUpdateCmd.Name = "txtPostUpdateCmd";
+            txtPostUpdateCmd.Size = new Size(320, 23);
             txtPostUpdateCmd.TabIndex = 13;
-
-            // Row 1 — Debug mode
+            // 
+            // chkDebugMode
+            // 
             chkDebugMode.AutoSize = true;
             chkDebugMode.Location = new Point(12, 53);
-            chkDebugMode.Text     = "Enable debug logging";
+            chkDebugMode.Name = "chkDebugMode";
+            chkDebugMode.Size = new Size(142, 19);
             chkDebugMode.TabIndex = 14;
-
-            // ── Buttons ───────────────────────────────────────────────────
-            btnOK.Location     = new Point(308, 626);
-            btnOK.Size         = new Size(82, 28);
-            btnOK.Text         = "OK";
-            btnOK.TabIndex     = 15;
-            btnOK.Click       += btnOK_Click;
-
-            btnCancel.Location     = new Point(400, 626);
-            btnCancel.Size         = new Size(82, 28);
-            btnCancel.Text         = "Cancel";
-            btnCancel.TabIndex     = 16;
+            chkDebugMode.Text = "Enable debug logging";
+            // 
+            // btnOK
+            // 
+            btnOK.Location = new Point(308, 608);
+            btnOK.Name = "btnOK";
+            btnOK.Size = new Size(82, 28);
+            btnOK.TabIndex = 15;
+            btnOK.Text = "OK";
+            btnOK.Click += btnOK_Click;
+            // 
+            // btnCancel
+            // 
             btnCancel.DialogResult = DialogResult.Cancel;
-
-            // ── SettingsForm ───────────────────────────────────────────────
+            btnCancel.Location = new Point(400, 608);
+            btnCancel.Name = "btnCancel";
+            btnCancel.Size = new Size(82, 28);
+            btnCancel.TabIndex = 16;
+            btnCancel.Text = "Cancel";
+            // 
+            // SettingsForm
+            // 
+            AcceptButton = btnOK;
             AutoScaleDimensions = new SizeF(7F, 15F);
-            AutoScaleMode       = AutoScaleMode.Font;
-            AcceptButton        = btnOK;
-            CancelButton        = btnCancel;
-            ClientSize          = new Size(498, 666);
+            AutoScaleMode = AutoScaleMode.Font;
+            CancelButton = btnCancel;
+            ClientSize = new Size(498, 648);
             Controls.Add(grpGeneral);
             Controls.Add(grpQBittorrent);
             Controls.Add(grpExtra);
             Controls.Add(btnOK);
             Controls.Add(btnCancel);
             FormBorderStyle = FormBorderStyle.FixedDialog;
-            MaximizeBox     = false;
-            MinimizeBox     = false;
-            ShowIcon        = false;
-            StartPosition   = FormStartPosition.CenterScreen;
-            Text            = "qbPortWeaver | Settings"; // overridden in constructor with AppConstants.AppName
-
+            MaximizeBox = false;
+            MinimizeBox = false;
+            Name = "SettingsForm";
+            ShowIcon = false;
+            StartPosition = FormStartPosition.CenterScreen;
+            Text = "qbPortWeaver | Settings";
             grpGeneral.ResumeLayout(false);
             grpGeneral.PerformLayout();
             ((System.ComponentModel.ISupportInitialize)nudUpdateInterval).EndInit();

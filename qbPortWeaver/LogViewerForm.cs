@@ -18,7 +18,6 @@ namespace qbPortWeaver
         private FileSystemWatcher?   _watcher;
         private bool                 _isDarkMode;
         private Color[]              _themeColors    = null!; // initialized in OnLoad after _isDarkMode is set
-        private string               _rtfLineHeader  = string.Empty; // built in OnLoad from _themeColors; used by AppendLine to insert RTF snippets with \par
 
         public LogViewerForm(string logFilePath)
         {
@@ -33,7 +32,6 @@ namespace qbPortWeaver
             _themeColors = _isDarkMode
                 ? [Color.OrangeRed, Color.Gold, Color.DodgerBlue, Color.DarkOrange, Color.Gainsboro]
                 : [Color.Crimson, Color.Goldenrod, Color.SteelBlue, Color.DarkOrange, SystemColors.WindowText];
-            _rtfLineHeader = BuildRtfLineHeader(_themeColors);
             Text = $"{AppConstants.AppName} | Log Viewer";
             ApplyTheme();
             // Vertically center the search box — single-line TextBox auto-sizes its height from the font,
@@ -233,14 +231,17 @@ namespace qbPortWeaver
         }
 
         // Returns true if the user is scrolled to the bottom of the log.
-        // Uses GetCharIndexFromPosition at the bottom-left of the viewport to avoid the off-by-one
-        // caused by GetPositionFromCharIndex(TextLength-1), which returns the Y of the trailing
-        // paragraph marker (one line below the last log entry) rather than the last text line itself.
+        // Compares line numbers rather than char indices: GetCharIndexFromPosition at the
+        // bottom-left of the viewport returns the *first* char of the bottom-visible line,
+        // which for a long last line is far below TextLength-2, making a char-index comparison
+        // return false even when fully scrolled to the end.
         private bool IsAtBottom()
         {
             if (rtbLog.TextLength == 0) return true;
-            int lastVisible = rtbLog.GetCharIndexFromPosition(new Point(0, rtbLog.ClientSize.Height - 1));
-            return lastVisible >= rtbLog.TextLength - 2; // -2: tolerance for the RTF paragraph marker(s) at the document end
+            int lastVisibleLine = rtbLog.GetLineFromCharIndex(
+                rtbLog.GetCharIndexFromPosition(new Point(0, rtbLog.ClientSize.Height - 1)));
+            int totalLines = rtbLog.GetLineFromCharIndex(rtbLog.TextLength);
+            return lastVisibleLine >= totalLines - 1;
         }
 
         // Static — safe to call from background threads (no UI state access).
@@ -407,33 +408,45 @@ namespace qbPortWeaver
             catch (ObjectDisposedException) { /* form disposed between IsDisposed check and Invoke — expected on close */ }
         }
 
-        // Appends new lines to the in-memory store and the display, then scrolls and refreshes search if needed.
+        // Appends new lines to the in-memory store and rebuilds the display from scratch.
+        // Rebuilding is simpler and more reliable than SelectedRtf line-by-line appending:
+        // Win32 RichEdit can merge the last paragraph of one Invoke batch with the first of
+        // the next when a repaint occurs between calls, regardless of the \par mechanism used.
         // Must be called on the UI thread.
         private void AppendNewLines(string[] newLines)
         {
-            bool   wasAtBottom = IsAtBottom();
-            bool   anyVisible  = false;
-            bool[] filters     = [chkError.Checked, chkWarn.Checked, chkInfo.Checked, chkDebug.Checked];
+            bool wasAtBottom = IsAtBottom();
+            bool[] filters   = [chkError.Checked, chkWarn.Checked, chkInfo.Checked, chkDebug.Checked];
+
+            // Capture the first visible line before the rebuild so we can restore the scroll
+            // position when the user is not at the bottom. Setting .Rtf resets scroll to the top.
+            int firstVisibleLine = wasAtBottom ? 0 :
+                rtbLog.GetLineFromCharIndex(rtbLog.GetCharIndexFromPosition(new Point(0, 0)));
 
             foreach (string line in newLines)
-            {
                 _allLines.Add(line);
-                if (IsLineVisibleWithFilters(line, filters))
+
+            string[] filtered = _allLines.Where(l => IsLineVisibleWithFilters(l, filters)).ToArray();
+            rtbLog.Rtf = BuildRtf(filtered, _themeColors);
+
+            if (wasAtBottom)
+            {
+                ScrollToBottom();
+            }
+            else
+            {
+                int charIdx = rtbLog.GetFirstCharIndexFromLine(firstVisibleLine);
+                if (charIdx >= 0)
                 {
-                    AppendColoredLine(line);
-                    anyVisible = true;
+                    rtbLog.SelectionStart = charIdx;
+                    rtbLog.ScrollToCaret();
                 }
             }
-
-            if (anyVisible && wasAtBottom) ScrollToBottom();
 
             // Update match count if a search is active — new lines may contain additional hits
             if (!string.IsNullOrEmpty(txtSearch.Text))
                 RefreshSearch(navigateToFirst: false);
         }
-
-        private void AppendColoredLine(string line) =>
-            AppendLine(line, GetLineColor(line));
 
         // Maps a log line to its display colour using the shared colour index
         private Color GetLineColor(string line) => _themeColors[GetLineColorIndex(line)];
@@ -481,22 +494,6 @@ namespace qbPortWeaver
             return sb.ToString();
         }
 
-        // Builds the RTF document header used by AppendLine for live-update snippets.
-        // Must match BuildRtf exactly (same font, size, colour table) so live-appended
-        // lines are visually indistinguishable from the initial load.
-        private static string BuildRtfLineHeader(Color[] colors)
-        {
-            var sb = new StringBuilder();
-            sb.Append("{\\rtf1\\ansi\\uc0\\deff0");
-            sb.Append("{\\fonttbl{\\f0\\fmodern\\fprq1\\fcharset0 Consolas;}}");
-            sb.Append("{\\colortbl ;");
-            foreach (var c in colors)
-                sb.Append($"\\red{c.R}\\green{c.G}\\blue{c.B};");
-            sb.Append('}');
-            sb.Append("\\f0\\fs18\\sb0\\sa0 ");
-            return sb.ToString();
-        }
-
         // Appends RTF-escaped text, encoding RTF special characters and non-ASCII as Unicode escapes
         private static void AppendRtfText(StringBuilder sb, string text)
         {
@@ -515,30 +512,31 @@ namespace qbPortWeaver
             }
         }
 
+        // Used only for one-off meta/error messages (e.g. "No log entries yet", watcher errors).
+        // Replaces the entire RTF content with a single styled line — safe because meta messages
+        // are shown before any real log content, or when the watcher has already failed.
         private void AppendLine(string text, Color color)
         {
             // Map color to a 1-based RTF colour-table index.
-            // Falls back to the last entry (default text colour) for colours not in the table (e.g. MetaColor).
+            // Falls back to the last entry for colours not in the theme palette (e.g. MetaColor).
             int colorIdx = _themeColors.Length;
             for (int i = 0; i < _themeColors.Length; i++)
             {
                 if (_themeColors[i] == color) { colorIdx = i + 1; break; }
             }
 
-            // Build a self-contained RTF snippet and insert it via SelectedRtf so that the
-            // paragraph break uses RTF \par — the same mechanism as BuildRtf's initial load.
-            // AppendText with \r\n is unreliable after an .Rtf assignment: in Win32 RichEdit
-            // plain-text newlines can be treated as soft line breaks (\line) within the trailing
-            // paragraph rather than paragraph separators, causing consecutive live-update entries
-            // to appear on the same visual line.
-            var sb = new StringBuilder(_rtfLineHeader);
+            var sb = new StringBuilder();
+            sb.Append("{\\rtf1\\ansi\\uc0\\deff0");
+            sb.Append("{\\fonttbl{\\f0\\fmodern\\fprq1\\fcharset0 Consolas;}}");
+            sb.Append("{\\colortbl ;");
+            foreach (var c in _themeColors)
+                sb.Append($"\\red{c.R}\\green{c.G}\\blue{c.B};");
+            sb.Append('}');
+            sb.Append("\\f0\\fs18\\sb0\\sa0 ");
             sb.Append($"\\cf{colorIdx} ");
             AppendRtfText(sb, text);
             sb.Append("\\par}");
-
-            rtbLog.SelectionStart  = rtbLog.TextLength;
-            rtbLog.SelectionLength = 0;
-            rtbLog.SelectedRtf     = sb.ToString();
+            rtbLog.Rtf = sb.ToString();
         }
 
         private void ScrollToBottom()

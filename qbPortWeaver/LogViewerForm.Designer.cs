@@ -29,6 +29,8 @@ namespace qbPortWeaver
             lblMatchCount  = new System.Windows.Forms.Label();
             ctxLog         = new System.Windows.Forms.ContextMenuStrip();
             ctxCopy        = new System.Windows.Forms.ToolStripMenuItem();
+            ctxCopyAll     = new System.Windows.Forms.ToolStripMenuItem();
+            ctxSelectAll   = new System.Windows.Forms.ToolStripMenuItem();
             components     = new System.ComponentModel.Container();
             components.Add(ctxLog);
             pnlToolbar.SuspendLayout();
@@ -156,12 +158,14 @@ namespace qbPortWeaver
             pnlToolbar.Size = new System.Drawing.Size(1100, 36);
 
             // ctxLog — right-click context menu for the log viewer
-            ctxCopy.Text = "Copy";
-            var ctxCopyAll   = new System.Windows.Forms.ToolStripMenuItem("Copy All",   null, (s, e) => Clipboard.SetText(rtbLog.Text.Length > 0 ? rtbLog.Text : " "));
-            var ctxSelectAll = new System.Windows.Forms.ToolStripMenuItem("Select All", null, (s, e) => rtbLog.SelectAll());
-            ctxCopy.Click += (s, e) => rtbLog.Copy();
+            ctxCopy.Text      = "Copy";
+            ctxCopyAll.Text   = "Copy All";
+            ctxSelectAll.Text = "Select All";
+            ctxCopy.Click      += CtxCopy_Click;
+            ctxCopyAll.Click   += CtxCopyAll_Click;
+            ctxSelectAll.Click += CtxSelectAll_Click;
             ctxLog.Items.AddRange(new System.Windows.Forms.ToolStripItem[] { ctxCopy, ctxCopyAll, ctxSelectAll });
-            ctxLog.Opening  += CtxLog_Opening;
+            ctxLog.Opening += CtxLog_Opening;
             rtbLog.ContextMenuStrip = ctxLog;
 
             // rtbLog
@@ -207,5 +211,7 @@ namespace qbPortWeaver
         private System.Windows.Forms.Label             lblMatchCount;
         private System.Windows.Forms.ContextMenuStrip  ctxLog;
         private System.Windows.Forms.ToolStripMenuItem ctxCopy;
+        private System.Windows.Forms.ToolStripMenuItem ctxCopyAll;
+        private System.Windows.Forms.ToolStripMenuItem ctxSelectAll;
     }
 }

@@ -136,6 +136,10 @@ namespace qbPortWeaver
         private void CtxLog_Opening(object? sender, System.ComponentModel.CancelEventArgs e)
             => ctxCopy.Enabled = rtbLog.SelectionLength > 0;
 
+        private void CtxCopy_Click(object? sender, EventArgs e)      => rtbLog.Copy();
+        private void CtxCopyAll_Click(object? sender, EventArgs e)   => Clipboard.SetText(rtbLog.Text.Length > 0 ? rtbLog.Text : " ");
+        private void CtxSelectAll_Click(object? sender, EventArgs e) => rtbLog.SelectAll();
+
         private void BtnClearSearch_Click(object? sender, EventArgs e) => txtSearch.Clear();
         private void BtnPrev_Click(object? sender, EventArgs e)        => SearchPrev();
         private void BtnNext_Click(object? sender, EventArgs e)        => SearchNext();

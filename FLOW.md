@@ -10,12 +10,19 @@ flowchart TD
     CONFIG --> VPN[Create VPN manager]
     VPN --> CONNECTED{VPN connected?}
 
-    CONNECTED -- Yes --> PORT[Get VPN port]
+    CONNECTED -- Yes --> CACHE_EXE{Auto-recovery enabled?}
     CONNECTED -- No --> DISCONNECTED[Handle disconnection]
+
+    CACHE_EXE -- Yes --> DO_CACHE[Cache VPN client EXE paths]
+    CACHE_EXE -- No --> PORT
+    DO_CACHE --> PORT[Get VPN port]
 
     PORT --> PORT_OK{Port found?}
     PORT_OK -- Yes --> QB[Ensure qBittorrent is running]
-    PORT_OK -- No --> ERROR_PORT([ERROR: Failed to determine port])
+    PORT_OK -- No --> NATPMP_FAIL{NAT-PMP provider?}
+    NATPMP_FAIL -- Yes --> HANDLE_FAIL[Increment counter + try auto-recovery]
+    NATPMP_FAIL -- No --> ERROR_PORT
+    HANDLE_FAIL --> ERROR_PORT([ERROR: Failed to determine port])
 
     DISCONNECTED --> DEFAULT{Default port > 0?}
     DEFAULT -- Yes --> QB
@@ -36,7 +43,7 @@ flowchart TD
     POST_CMD -- No --> DONE_CHECK
     RUN_CMD --> DONE_CHECK
 
-    DONE_CHECK{restartOnDisconnect?}
+    DONE_CHECK{restartOnDisconnect AND\nnot already restarted?}
     DONE_CHECK -- Yes --> CONN_STATUS[Check qBT connection status]
     DONE_CHECK -- No --> SUCCESS
     CONN_STATUS -- disconnected --> RESTART_QB[Restart qBittorrent]
@@ -78,8 +85,9 @@ flowchart TD
     COPY --> RETURN([Return new manager])
     D -- No --> E{Has cached fallback manager?}
     E -- Yes --> FALLBACK([Return cached manager - will report disconnected])
-    E -- No --> F[Increment disconnected counter + try auto-recovery]
-    F --> SKIP_STATUS([SKIP: Adapter not found])
+    E -- No --> F[Increment disconnected counter]
+    F --> G[TryTriggerVpnRecoveryAsync]
+    G --> SKIP_STATUS([SKIP: Adapter not found])
 ```
 
 **Why the fallback?** When a VPN reconnects, the network adapter may briefly disappear. Returning the last known `NatPmpManager` lets `IsVpnConnected()` report `false`, so the main flow handles disconnection gracefully (applies the default port or skips) instead of erroring out.
@@ -111,7 +119,7 @@ The counter is reset to zero at different points depending on the provider:
 | Provider        | Reset point                                    | Reason |
 |-----------------|------------------------------------------------|--------|
 | ProtonVPN / PIA | When `IsVpnConnected()` returns `true`         | Connectivity check is sufficient |
-| NAT-PMP         | After a successful port mapping (`GetVpnPortAsync`) | The gateway may respond to connectivity probes even when port mapping fails |
+| NAT-PMP         | After a successful port mapping (`GetVpnPortAsync`) | The gateway may respond to connectivity probes even when port mapping fails; counter stays non-zero (and may increment via `HandleNatPmpPortMappingFailureAsync`) until a mapping actually succeeds |
 
 ## qBittorrent Interaction
 
@@ -126,6 +134,7 @@ All qBittorrent communication goes through `QBittorrentManager`, which wraps the
 4. (optional) Run post-update shell command
 5. (optional) GET /api/v2/transfer/info → check connection_status
               If "disconnected" → kill + relaunch qBittorrent
+              Skipped if step 3 already restarted (avoids redundant restart)
 ```
 
 ### Interface Mismatch Warning
@@ -166,11 +175,18 @@ RunAsync
      ├─ ReadConfig
      ├─ CreateVpnManager
      │   └─ CreateNatPmpVpnManager (NAT-PMP only)
+     │       ├─ BuildDisconnectedMessage
      │       └─ TryTriggerVpnRecoveryAsync
      ├─ IVpnManager.IsVpnConnected
-     ├─ TryTriggerVpnRecoveryAsync (if disconnected)
-     ├─ IVpnManager.GetVpnPortAsync (if connected)
-     ├─ BuildDisconnectedMessage
+     ├─ (if disconnected)
+     │   ├─ BuildDisconnectedMessage
+     │   └─ TryTriggerVpnRecoveryAsync
+     ├─ (if connected)
+     │   ├─ VpnAutoRecoveryManager.CacheRunningClientExePaths
+     │   ├─ IVpnManager.GetVpnPortAsync
+     │   └─ HandleNatPmpPortMappingFailureAsync (if port null, NAT-PMP only)
+     │       ├─ BuildDisconnectedMessage
+     │       └─ TryTriggerVpnRecoveryAsync
      └─ EnsureRunningAndUpdatePortAsync
          ├─ EnsureQBittorrentRunningAsync
          ├─ QBittorrentManager.GetPreferencesAsync
@@ -179,7 +195,7 @@ RunAsync
          │   ├─ QBittorrentManager.SetListeningPortAsync
          │   ├─ QBittorrentManager.RestartAsync
          │   └─ RunPostUpdateCommand
-         ├─ CheckAndRestartIfDisconnectedAsync
+         ├─ CheckAndRestartIfDisconnectedAsync (skipped if already restarted)
          │   └─ QBittorrentManager.RestartAsync
          └─ SetCompleted
 ```

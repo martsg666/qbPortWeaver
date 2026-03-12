@@ -4,6 +4,8 @@ name: Build Check
 # Tag pushes are handled exclusively by build-release-publish.yml.
 on:
   push:
+    tags-ignore:
+      - '**'  # tag pushes are handled exclusively by build-release-publish.yml
   pull_request:
 
 concurrency:

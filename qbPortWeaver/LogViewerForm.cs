@@ -465,22 +465,25 @@ namespace qbPortWeaver
         // Convenience colour for meta/status messages (not log entries)
         private Color MetaColor => _isDarkMode ? Color.DimGray : SystemColors.GrayText;
 
-        // Builds an RTF document from log lines using the provided colour palette.
-        // Runs on a background thread — must not access any UI elements.
-        private static string BuildRtf(string[] lines, Color[] colors)
+        // Writes the RTF document header shared by BuildRtf and AppendLine:
+        // Unicode-safe, Consolas 9pt (18 half-points), no paragraph spacing, colour table.
+        private static void AppendRtfHeader(StringBuilder sb, Color[] colors)
         {
-            var sb = new StringBuilder(lines.Length * 100);
-
-            // RTF header: Unicode-safe, Consolas monospace font, colour table
             sb.Append("{\\rtf1\\ansi\\uc0\\deff0");
             sb.Append("{\\fonttbl{\\f0\\fmodern\\fprq1\\fcharset0 Consolas;}}");
             sb.Append("{\\colortbl ;");
             foreach (var c in colors)
                 sb.Append($"\\red{c.R}\\green{c.G}\\blue{c.B};");
             sb.Append('}');
-
-            // Consolas 9pt (18 half-points), no paragraph spacing
             sb.Append("\\f0\\fs18\\sb0\\sa0 ");
+        }
+
+        // Builds an RTF document from log lines using the provided colour palette.
+        // Runs on a background thread — must not access any UI elements.
+        private static string BuildRtf(string[] lines, Color[] colors)
+        {
+            var sb = new StringBuilder(lines.Length * 100);
+            AppendRtfHeader(sb, colors);
 
             foreach (string line in lines)
             {
@@ -526,13 +529,7 @@ namespace qbPortWeaver
             }
 
             var sb = new StringBuilder();
-            sb.Append("{\\rtf1\\ansi\\uc0\\deff0");
-            sb.Append("{\\fonttbl{\\f0\\fmodern\\fprq1\\fcharset0 Consolas;}}");
-            sb.Append("{\\colortbl ;");
-            foreach (var c in _themeColors)
-                sb.Append($"\\red{c.R}\\green{c.G}\\blue{c.B};");
-            sb.Append('}');
-            sb.Append("\\f0\\fs18\\sb0\\sa0 ");
+            AppendRtfHeader(sb, _themeColors);
             sb.Append($"\\cf{colorIdx} ");
             AppendRtfText(sb, text);
             sb.Append("\\par}");

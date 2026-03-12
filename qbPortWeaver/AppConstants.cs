@@ -20,14 +20,14 @@ namespace qbPortWeaver
         public const int MaxTooltipLength  = 63;
         public const int BalloonTipDurationMs = 750;
 
-        // HTTP — shared timeout used by all outbound HTTP clients
+        // HTTP - shared timeout used by all outbound HTTP clients
         public const int HttpTimeoutSeconds = 10;
 
         // Named pipe used to communicate with the SYSTEM helper service for session 0 actions.
         // Must match HelperPipeServer.PipeName in qbPortWeaver.HelperService.
         public const string HelperServicePipeName = "qbPortWeaverHelper";
 
-        // GitHub — only the owner is a literal; all URLs are derived
+        // GitHub - only the owner is a literal; all URLs are derived
         public const string GitHubRepoOwner = "martsg666";
         public static readonly string GitHubRepoUrl = $"https://github.com/{GitHubRepoOwner}/{AppName}";
 

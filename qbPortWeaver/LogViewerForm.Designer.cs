@@ -36,7 +36,7 @@ namespace qbPortWeaver
             pnlToolbar.SuspendLayout();
             SuspendLayout();
 
-            // Filter CheckBoxes — colors applied in OnLoad after theme is determined
+            // Filter CheckBoxes - colors applied in OnLoad after theme is determined
             System.Windows.Forms.AnchorStyles leftAnchor = System.Windows.Forms.AnchorStyles.Left | System.Windows.Forms.AnchorStyles.Top;
 
             chkError.Anchor                  = leftAnchor;
@@ -93,12 +93,12 @@ namespace qbPortWeaver
             chkInfo.CheckedChanged  += FilterButton_CheckedChanged;
             chkDebug.CheckedChanged += FilterButton_CheckedChanged;
 
-            // Search controls — anchored Right so they stay visible when the form is resized
+            // Search controls - anchored Right so they stay visible when the form is resized
             // Layout from right: [4] [btnNext:26] [btnPrev:26] [4] [lblMatchCount:64] [4] [txtSearch:220] [8]
             // btnClearSearch floats inside the right edge of txtSearch (z-order above it); positioned in OnLoad.
             System.Windows.Forms.AnchorStyles rightAnchor = System.Windows.Forms.AnchorStyles.Right | System.Windows.Forms.AnchorStyles.Top;
 
-            // txtSearch — font set explicitly so height is predictable; vertically centered in the 36px toolbar
+            // txtSearch - font set explicitly so height is predictable; vertically centered in the 36px toolbar
             txtSearch.Anchor          = rightAnchor;
             txtSearch.BorderStyle     = System.Windows.Forms.BorderStyle.FixedSingle;
             txtSearch.Font            = new System.Drawing.Font("Segoe UI", 9F);
@@ -108,7 +108,7 @@ namespace qbPortWeaver
             txtSearch.TextChanged    += TxtSearch_TextChanged;
             txtSearch.KeyDown        += TxtSearch_KeyDown;
 
-            // btnClearSearch — overlays the right interior of txtSearch; sized and positioned in OnLoad.
+            // btnClearSearch - overlays the right interior of txtSearch; sized and positioned in OnLoad.
             // Right-margin set to txtSearch.RightMargin - 2 so the button always stays 2px inside the box on resize.
             btnClearSearch.Anchor                    = rightAnchor;
             btnClearSearch.FlatStyle                 = System.Windows.Forms.FlatStyle.Flat;
@@ -148,7 +148,7 @@ namespace qbPortWeaver
             lblMatchCount.Size      = new System.Drawing.Size(64, 14);
             lblMatchCount.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
 
-            // pnlToolbar — Width must be set explicitly before right-anchored children are added,
+            // pnlToolbar - Width must be set explicitly before right-anchored children are added,
             // otherwise the default panel width (~200px) produces a negative right-margin and
             // causes right-anchored controls to fly off-screen when the panel expands to form width.
             pnlToolbar.Controls.AddRange(new System.Windows.Forms.Control[] {
@@ -157,7 +157,7 @@ namespace qbPortWeaver
             pnlToolbar.Dock = System.Windows.Forms.DockStyle.Top;
             pnlToolbar.Size = new System.Drawing.Size(1100, 36);
 
-            // ctxLog — right-click context menu for the log viewer
+            // ctxLog - right-click context menu for the log viewer
             ctxCopy.Text      = "Copy";
             ctxCopyAll.Text   = "Copy All";
             ctxSelectAll.Text = "Select All";

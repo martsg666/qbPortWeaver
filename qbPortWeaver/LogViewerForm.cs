@@ -34,7 +34,7 @@ namespace qbPortWeaver
                 : [Color.Crimson, Color.Goldenrod, Color.SteelBlue, Color.DarkOrange, SystemColors.WindowText];
             Text = $"{AppConstants.AppName} | Log Viewer";
             ApplyTheme();
-            // Vertically center the search box — single-line TextBox auto-sizes its height from the font,
+            // Vertically center the search box - single-line TextBox auto-sizes its height from the font,
             // so the actual height is only known after layout; compute the top offset here.
             int searchTop = (pnlToolbar.Height - txtSearch.Height) / 2;
             txtSearch.Top = searchTop;
@@ -91,7 +91,7 @@ namespace qbPortWeaver
                 btn.FlatAppearance.BorderColor = border;
             }
 
-            // Clear button sits inside the search box — blend it in rather than styling it like the nav buttons
+            // Clear button sits inside the search box - blend it in rather than styling it like the nav buttons
             btnClearSearch.BackColor                 = txtSearch.BackColor;
             btnClearSearch.ForeColor                 = _isDarkMode ? Color.FromArgb(160, 160, 160) : SystemColors.GrayText;
             btnClearSearch.FlatAppearance.BorderSize = 0;
@@ -117,7 +117,7 @@ namespace qbPortWeaver
             return (key?.GetValue("AppsUseLightTheme") as int?) == 0;
         }
 
-        // Called when any filter CheckBox changes — updates its style and rebuilds the display
+        // Called when any filter CheckBox changes - updates its style and rebuilds the display
         private void FilterButton_CheckedChanged(object? sender, EventArgs e)
         {
             if (sender is CheckBox chk)
@@ -144,7 +144,7 @@ namespace qbPortWeaver
         private void BtnPrev_Click(object? sender, EventArgs e)        => SearchPrev();
         private void BtnNext_Click(object? sender, EventArgs e)        => SearchNext();
 
-        // Triggered when the search text changes — shows/hides the clear button, then refreshes matches
+        // Triggered when the search text changes - shows/hides the clear button, then refreshes matches
         private void TxtSearch_TextChanged(object? sender, EventArgs e)
         {
             btnClearSearch.Visible = txtSearch.Text.Length > 0;
@@ -178,7 +178,7 @@ namespace qbPortWeaver
                 return;
             }
 
-            // Scan plain text with IndexOf — avoids calling rtbLog.Find() which changes the
+            // Scan plain text with IndexOf - avoids calling rtbLog.Find() which changes the
             // RichTextBox selection on every call and causes visible flashing.
             string text  = rtbLog.Text;
             int    start = 0;
@@ -251,7 +251,7 @@ namespace qbPortWeaver
             return lastVisibleLine >= totalLines - 1;
         }
 
-        // Static — safe to call from background threads (no UI state access).
+        // Static - safe to call from background threads (no UI state access).
         // Meta/unclassified lines (index >= 4) are always shown.
         private static bool IsLineVisibleWithFilters(string line, bool[] filters)
         {
@@ -350,7 +350,7 @@ namespace qbPortWeaver
 
                     using var fs = new FileStream(_logFilePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
 
-                    // File shorter than expected — it was rotated; read from the start
+                    // File shorter than expected - it was rotated; read from the start
                     if (fs.Length < _lastReadPosition)
                         _lastReadPosition = 0;
 
@@ -364,7 +364,7 @@ namespace qbPortWeaver
                     // Only process content up to the last complete line. The FileSystemWatcher
                     // fires as soon as the OS flushes a write, which can happen before the logger
                     // has finished writing the full line. Reading past the last '\n' would capture
-                    // a partial line, store it in _allLines, and advance _lastReadPosition past it —
+                    // a partial line, store it in _allLines, and advance _lastReadPosition past it -
                     // leaving an orphaned fragment in the display that can never be corrected.
                     int lastNl = raw.LastIndexOf('\n');
                     if (lastNl < 0) return; // no complete line yet; wait for the next cycle
@@ -388,7 +388,7 @@ namespace qbPortWeaver
                 {
                     Invoke(() => AppendNewLines(newLines));
                 }
-                catch (ObjectDisposedException) { /* form disposed between IsDisposed check and Invoke — expected on close */ }
+                catch (ObjectDisposedException) { /* form disposed between IsDisposed check and Invoke - expected on close */ }
             }
             catch (Exception ex)
             {
@@ -412,7 +412,7 @@ namespace qbPortWeaver
                     rtbLog.Clear();
                 });
             }
-            catch (ObjectDisposedException) { /* form disposed between IsDisposed check and Invoke — expected on close */ }
+            catch (ObjectDisposedException) { /* form disposed between IsDisposed check and Invoke - expected on close */ }
         }
 
         // Appends new lines to the in-memory store and rebuilds the display from scratch.
@@ -450,7 +450,7 @@ namespace qbPortWeaver
                 }
             }
 
-            // Update match count if a search is active — new lines may contain additional hits
+            // Update match count if a search is active - new lines may contain additional hits
             if (!string.IsNullOrEmpty(txtSearch.Text))
                 RefreshSearch(navigateToFirst: false);
         }
@@ -486,7 +486,7 @@ namespace qbPortWeaver
         }
 
         // Builds an RTF document from log lines using the provided colour palette.
-        // Runs on a background thread — must not access any UI elements.
+        // Runs on a background thread - must not access any UI elements.
         private static string BuildRtf(string[] lines, Color[] colors)
         {
             var sb = new StringBuilder(lines.Length * 100);
@@ -523,7 +523,7 @@ namespace qbPortWeaver
         }
 
         // Used only for one-off meta/error messages (e.g. "No log entries yet", watcher errors).
-        // Replaces the entire RTF content with a single styled line — safe because meta messages
+        // Replaces the entire RTF content with a single styled line - safe because meta messages
         // are shown before any real log content, or when the watcher has already failed.
         private void AppendLine(string text, Color color)
         {

@@ -59,7 +59,7 @@ namespace qbPortWeaver
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                LogManager.Instance.LogMessage($"Failed to start qBittorrent: {ex.Message} — check the Executable path in Settings ({_exePath})", LogLevel.Error);
+                LogManager.Instance.LogMessage($"Failed to start qBittorrent: {ex.Message} - check the Executable path in Settings ({_exePath})", LogLevel.Error);
                 return false;
             }
         }
@@ -75,7 +75,7 @@ namespace qbPortWeaver
                     {
                         proc.Kill();
                         if (!proc.WaitForExit(ProcessKillDelayMs))
-                            LogManager.Instance.LogMessage($"qBittorrent process (PID {proc.Id}) did not exit within {ProcessKillDelayMs}ms after Kill — a duplicate instance may start", LogLevel.Warn);
+                            LogManager.Instance.LogMessage($"qBittorrent process (PID {proc.Id}) did not exit within {ProcessKillDelayMs}ms after Kill - a duplicate instance may start", LogLevel.Warn);
                     }
                     catch (Exception ex) { LogManager.Instance.LogDebug($"QBittorrentManager.RestartAsync: Failed to kill process: {ex.Message}"); }
                     finally { proc.Dispose(); }
@@ -86,14 +86,14 @@ namespace qbPortWeaver
                 // Brief delay to allow the process to register before IsRunning() checks for it
                 await Task.Delay(ProcessInitDelayMs, cancellationToken).ConfigureAwait(false);
 
-                // Invalidate the session — the old cookie is dead after the process was killed
+                // Invalidate the session - the old cookie is dead after the process was killed
                 _isAuthenticated = false;
 
                 return IsRunning();
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                LogManager.Instance.LogMessage($"Failed to restart qBittorrent: {ex.Message} — check the Executable path in Settings ({_exePath})", LogLevel.Error);
+                LogManager.Instance.LogMessage($"Failed to restart qBittorrent: {ex.Message} - check the Executable path in Settings ({_exePath})", LogLevel.Error);
                 return false;
             }
         }
@@ -229,7 +229,7 @@ namespace qbPortWeaver
 
                 if (response.StatusCode == HttpStatusCode.Forbidden)
                 {
-                    LogManager.Instance.LogMessage("qBittorrent returned HTTP 403 Forbidden — IP banned due to too many failed login attempts. Restart qBittorrent to clear the ban.", LogLevel.Error);
+                    LogManager.Instance.LogMessage("qBittorrent returned HTTP 403 Forbidden - IP banned due to too many failed login attempts. Restart qBittorrent to clear the ban.", LogLevel.Error);
                     return false;
                 }
 
@@ -270,7 +270,7 @@ namespace qbPortWeaver
             if (ex is TaskCanceledException)
                 LogManager.Instance.LogMessage($"qBittorrent Web UI is not reachable (timed out): check the URL in Settings ({_url})", LogLevel.Error);
             else if (ex is HttpRequestException)
-                LogManager.Instance.LogMessage($"qBittorrent Web UI connection failed: {ex.Message} — check the URL in Settings ({_url})", LogLevel.Error);
+                LogManager.Instance.LogMessage($"qBittorrent Web UI connection failed: {ex.Message} - check the URL in Settings ({_url})", LogLevel.Error);
             else
             {
                 LogManager.Instance.LogMessage($"qBittorrent request failed unexpectedly in {methodName}: {ex.Message}", LogLevel.Warn);

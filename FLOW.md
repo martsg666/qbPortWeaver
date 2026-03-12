@@ -1,6 +1,6 @@
-# qbPortWeaver — Sync Cycle Flow
+# qbPortWeaver - Sync Cycle Flow
 
-This document describes the core port synchronization logic implemented in `PortSyncService.cs`. The sync cycle runs on a configurable interval (default 180s) and is serialized by a semaphore in `MainForm` — only one cycle runs at a time.
+This document describes the core port synchronization logic implemented in `PortSyncService.cs`. The sync cycle runs on a configurable interval (default 180s) and is serialized by a semaphore in `MainForm` - only one cycle runs at a time.
 
 ## High-Level Overview
 
@@ -77,7 +77,7 @@ flowchart TD
     D -- Yes --> COPY[Copy renewal state from previous instance]
     COPY --> RETURN([Return new manager])
     D -- No --> E{Has cached fallback manager?}
-    E -- Yes --> FALLBACK([Return cached manager — will report disconnected])
+    E -- Yes --> FALLBACK([Return cached manager - will report disconnected])
     E -- No --> F[Increment disconnected counter + try auto-recovery]
     F --> SKIP_STATUS([SKIP: Adapter not found])
 ```
@@ -88,9 +88,9 @@ flowchart TD
 
 When the VPN is detected as disconnected, the cycle increments a consecutive-disconnection counter. This counter drives two behaviors:
 
-1. **Default port fallback** — if `DefaultPort > 0`, the cycle applies it to qBittorrent so the client remains functional (typically on a non-VPN port). If `DefaultPort == 0`, the cycle is skipped entirely.
+1. **Default port fallback** - if `DefaultPort > 0`, the cycle applies it to qBittorrent so the client remains functional (typically on a non-VPN port). If `DefaultPort == 0`, the cycle is skipped entirely.
 
-2. **VPN auto-recovery** — if enabled, once the counter reaches the configured threshold, the cycle:
+2. **VPN auto-recovery** - if enabled, once the counter reaches the configured threshold, the cycle:
    - Resets the counter (to prevent repeated triggers)
    - Looks up the Windows service name for the VPN provider
    - Sends a restart request to the helper service (runs as SYSTEM) via named pipe
@@ -154,9 +154,9 @@ Every cycle writes a JSON status file (`status.json` next to the log file) captu
 ```
 
 The `status` field is one of:
-- **`success`** — port synced (or already matched)
-- **`error`** — something failed (VPN port unreadable, qBittorrent unreachable, etc.)
-- **`skipped`** — VPN disconnected and no default port configured (no-op cycle)
+- **`success`** - port synced (or already matched)
+- **`error`** - something failed (VPN port unreadable, qBittorrent unreachable, etc.)
+- **`skipped`** - VPN disconnected and no default port configured (no-op cycle)
 
 ## Method Call Map
 

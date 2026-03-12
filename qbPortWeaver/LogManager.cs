@@ -11,7 +11,7 @@ namespace qbPortWeaver
         private const int  MaxLogFiles          = 3;   // Keep only 3 logfiles total (including current)
         private const int  RotationCheckInterval = 100; // Check rotation every N writes
 
-        // Static instance for global access — null until Initialize() is called
+        // Static instance for global access - null until Initialize() is called
         private static LogManager? _instance;
         public static bool IsInitialized => _instance != null;
         public static LogManager Instance =>
@@ -31,7 +31,7 @@ namespace qbPortWeaver
 
         /// <summary>
         /// Initializes the singleton with the given log file path. Throws if called more than once.
-        /// Not thread-safe by design — must be called once from the UI thread during application startup,
+        /// Not thread-safe by design - must be called once from the UI thread during application startup,
         /// before any background tasks are started.
         /// </summary>
         public static LogManager Initialize(string logFilePath)
@@ -129,7 +129,7 @@ namespace qbPortWeaver
             return false;
         }
 
-        // Internal rotation check — must be called while holding _lock
+        // Internal rotation check - must be called while holding _lock
         private void RotateIfNeeded()
         {
             try

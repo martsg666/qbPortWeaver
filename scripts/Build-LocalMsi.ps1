@@ -7,7 +7,7 @@
       1. Publishes both projects as self-contained single-file win-x64 executables
       2. Builds the MSI installer using WiX Toolset v4
 
-    Use this script to build the MSI locally — a regular Visual Studio
+    Use this script to build the MSI locally - a regular Visual Studio
     Release build does NOT produce the self-contained single-file output that
     the WiX source expects under qbPortWeaver\bin\Release\<tfm>\win-x64\publish\.
 
@@ -41,7 +41,7 @@ function Write-Step([string]$msg) { Write-Host "`n==> $msg" -ForegroundColor Cya
 function Write-Ok([string]$msg)   { Write-Host "    $msg"   -ForegroundColor Green }
 
 # ---------------------------------------------------------------------------
-# Step 1: Resolve version — read from qbPortWeaver.csproj if not provided
+# Step 1: Resolve version - read from qbPortWeaver.csproj if not provided
 # ---------------------------------------------------------------------------
 Write-Step 'Resolving version...'
 
@@ -99,7 +99,7 @@ foreach ($exe in $publishedExes) {
 # ---------------------------------------------------------------------------
 Write-Step 'Building MSI installer with WiX Toolset v4...'
 
-# Ensure WiX is installed (update is idempotent — installs if missing, updates if present)
+# Ensure WiX is installed (update is idempotent - installs if missing, updates if present)
 dotnet tool update --global wix --version "4.0.6"
 if ($LASTEXITCODE -ne 0) { throw 'Failed to install/update WiX Toolset.' }
 

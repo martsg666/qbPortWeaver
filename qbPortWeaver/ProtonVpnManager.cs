@@ -28,7 +28,7 @@ namespace qbPortWeaver
             try
             {
                 var adapters = NetworkInterface.GetAllNetworkInterfaces();
-                // Uses Name (not Description) — ProtonVPN's adapter Name contains "ProtonVPN" on all
+                // Uses Name (not Description) - ProtonVPN's adapter Name contains "ProtonVPN" on all
                 // installations: "ProtonVPN" (WireGuard) or "ProtonVPN TUN" (OpenVPN).
                 bool isConnected = adapters.Any(adapter =>
                     adapter.Name.Contains("ProtonVPN", StringComparison.OrdinalIgnoreCase) &&

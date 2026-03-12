@@ -6,7 +6,7 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyTitle>qbPortWeaver Helper Service</AssemblyTitle>
-    <Description>Helper for qbPortWeaver — executes privileged session 0 actions on behalf of the user-session tray app</Description>
+    <Description>Helper for qbPortWeaver - executes privileged session 0 actions on behalf of the user-session tray app</Description>
     <Company>martsg666</Company>
     <Product>qbPortWeaver</Product>
     <Authors>martsg666</Authors>

@@ -29,7 +29,7 @@ if (-not (Test-Path $msi)) {
 }
 
 Write-Host "Installing: $msi" -ForegroundColor Cyan
-# msiexec is a GUI-subsystem application — use Start-Process to reliably capture the exit code
+# msiexec is a GUI-subsystem application - use Start-Process to reliably capture the exit code
 $p = Start-Process msiexec -ArgumentList "/i `"$msi`" /qn /norestart" -Wait -PassThru
 if ($p.ExitCode -notin @(0, 3010, 1641)) {
     throw "msiexec failed with exit code $($p.ExitCode)"

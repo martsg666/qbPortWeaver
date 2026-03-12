@@ -43,28 +43,22 @@
 			</DirectorySearch>
 		</Property>
 
-		<!-- Kill running tray process before install/upgrade -->
-		<CustomAction Id="CA_KillProcess"
-					  ExeCommand="taskkill /F /IM qbPortWeaver.exe"
-					  Directory="SystemFolder"
-					  Execute="immediate"
-					  Return="ignore" />
+		<!-- Gracefully close the tray app before install/upgrade/uninstall.
+		     Sends WM_CLOSE first; force-terminates after 5 s if it hasn't exited. -->
+		<util:CloseApplication
+			Id="CloseTrayApp"
+			Target="qbPortWeaver.exe"
+			CloseMessage="yes"
+			RebootPrompt="no"
+			Timeout="5" />
 
-		<!-- Block install if legacy NSIS found (UI sequence only) -->
-		<CustomAction Id="CA_BlockNsis"
-					  Error="A legacy version of qbPortWeaver is already installed. Please uninstall it before continuing." />
+		<!-- Disable the Restart Manager - we handle process closure ourselves via
+		     util:CloseApplication above, so RM's "Files in Use" dialog is unnecessary. -->
+		<Property Id="MSIRESTARTMANAGERCONTROL" Value="Disable" />
 
-		<!-- UI Sequence -->
-		<InstallUISequence>
-			<Custom Action="CA_BlockNsis"
-					After="AppSearch"
-					Condition="NSIS_UNINST_EXE_X64 OR NSIS_UNINST_EXE_X86" />
-		</InstallUISequence>
-
-		<!-- Execute Sequence -->
-		<InstallExecuteSequence>
-			<Custom Action="CA_KillProcess" Before="InstallInitialize" />
-		</InstallExecuteSequence>
+		<!-- Block install if legacy NSIS version is present (fires in both UI and silent installs) -->
+		<Launch Condition="NOT NSIS_UNINST_EXE_X64 AND NOT NSIS_UNINST_EXE_X86"
+				Message="A legacy version of qbPortWeaver is already installed. Please uninstall it before continuing." />
 
 		<!-- Minimal UI -->
 		<ui:WixUI Id="WixUI_Minimal" />
@@ -129,7 +123,7 @@
 				<File Source="..\README.md" />
 			</Component>
 
-			<!-- Helper service — provides a session 0 endpoint for privileged actions
+			<!-- Helper service - provides a session 0 endpoint for privileged actions
 			     (e.g. restarting VPN services) requested by the user-session tray app via named pipe.
 			     ServiceControl stops the service before files are replaced on upgrade (Stop="both")
 			     and removes it cleanly on uninstall. -->
@@ -140,7 +134,7 @@
 					Id="HelperServiceInstall"
 					Name="qbPortWeaverHelper"
 					DisplayName="qbPortWeaver Helper Service"
-					Description="Helper for qbPortWeaver — executes privileged session 0 actions on behalf of the user-session tray app"
+					Description="Helper for qbPortWeaver - executes privileged session 0 actions on behalf of the user-session tray app"
 					Type="ownProcess"
 					Start="auto"
 					ErrorControl="normal"

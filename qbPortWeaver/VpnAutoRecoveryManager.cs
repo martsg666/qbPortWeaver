@@ -6,7 +6,7 @@ namespace qbPortWeaver
 {
     // Handles VPN auto-recovery from the user session.
     // Service restart (requires SYSTEM) is delegated to the helper service via named pipe.
-    // VPN client process restart (e.g. ProtonVPN.Client, pia-client) runs directly in the user session — no elevation needed.
+    // VPN client process restart (e.g. ProtonVPN.Client, pia-client) runs directly in the user session - no elevation needed.
     internal static class VpnAutoRecoveryManager
     {
         private const int ClientRestartDelayMs = 2000;
@@ -17,7 +17,7 @@ namespace qbPortWeaver
         private static readonly ConcurrentDictionary<string, string> CachedClientExePaths = new(StringComparer.OrdinalIgnoreCase);
 
         // Maps a VPN service name to the client process that must be restarted alongside it.
-        // The client holds connection state and triggers auto-connect on startup —
+        // The client holds connection state and triggers auto-connect on startup -
         // restarting the service alone is not sufficient to reconnect.
         private static readonly (string ServiceName, string ClientProcessName)[] ClientProcessMap =
         [
@@ -65,7 +65,7 @@ namespace qbPortWeaver
                 }
                 catch (Exception ex)
                 {
-                    LogManager.Instance.LogDebug($"VpnAutoRecoveryManager.CacheRunningClientExePaths: '{clientProcessName}' — {ex.Message}");
+                    LogManager.Instance.LogDebug($"VpnAutoRecoveryManager.CacheRunningClientExePaths: '{clientProcessName}' - {ex.Message}");
                 }
             }
         }
@@ -94,12 +94,12 @@ namespace qbPortWeaver
                 if (serviceName.Equals(service, StringComparison.OrdinalIgnoreCase))
                     return clientProcess;
             }
-            LogManager.Instance.LogMessage($"No client process restart configured for service '{serviceName}' — skipping", LogLevel.Info);
+            LogManager.Instance.LogMessage($"No client process restart configured for service '{serviceName}' - skipping", LogLevel.Info);
             return null;
         }
 
         // Kills all instances of the named client process (capturing the exe path first),
-        // waits briefly, then relaunches it. Runs in the main app's user session — no
+        // waits briefly, then relaunches it. Runs in the main app's user session - no
         // elevation or WTS token manipulation needed.
         // If the process is already dead (e.g. killed externally), falls back to a cached
         // EXE path from a previous successful discovery.
@@ -116,7 +116,7 @@ namespace qbPortWeaver
                         CachedClientExePaths[processName] = exePath;
                     foreach (var p in processes)
                     {
-                        try { p.Kill(entireProcessTree: true); } catch (Exception ex) { LogManager.Instance.LogDebug($"VpnAutoRecoveryManager.RestartClientProcessAsync: Kill '{processName}' — {ex.Message} — ignored"); }
+                        try { p.Kill(entireProcessTree: true); } catch (Exception ex) { LogManager.Instance.LogDebug($"VpnAutoRecoveryManager.RestartClientProcessAsync: Kill '{processName}' - {ex.Message} - ignored"); }
                     }
                     LogManager.Instance.LogMessage(exePath != null
                         ? $"Killed client process '{processName}'"
@@ -141,7 +141,7 @@ namespace qbPortWeaver
 
             if (exePath == null)
             {
-                LogManager.Instance.LogMessage($"VPN auto-recovery: no EXE path available for '{processName}' — cannot restart client", LogLevel.Warn);
+                LogManager.Instance.LogMessage($"VPN auto-recovery: no EXE path available for '{processName}' - cannot restart client", LogLevel.Warn);
                 return;
             }
 

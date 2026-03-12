@@ -22,7 +22,7 @@ namespace qbPortWeaver
         private int _consecutiveDisconnectedCycles;
 
         // Fallback for when TryCreateForAdapter cannot reach the configured adapter (e.g. VPN is
-        // between disconnect and reconnect) — returned so IsVpnConnected() reports false and
+        // between disconnect and reconnect) - returned so IsVpnConnected() reports false and
         // RunCoreAsync handles disconnection gracefully. Cleared when the adapter name changes in settings.
         // Thread-safety: only accessed inside RunCoreAsync, serialised by MainForm._updateSemaphore.
         private NatPmpManager? _lastKnownNatPmpManager;
@@ -74,7 +74,7 @@ namespace qbPortWeaver
             public const string Status                  = "status";
             public const string Message                 = "message";
 
-            // Values for the Status key — "skipped" means VPN disconnected with no default port configured (cycle is a no-op)
+            // Values for the Status key - "skipped" means VPN disconnected with no default port configured (cycle is a no-op)
             public const string StatusSuccess = "success";
             public const string StatusError   = "error";
             public const string StatusSkipped = "skipped";
@@ -200,7 +200,7 @@ namespace qbPortWeaver
                     natPmp.LastGrantedLifetime > 0 &&
                     cfg.UpdateInterval > natPmp.LastGrantedLifetime)
                     LogManager.Instance.LogMessage(
-                        $"NAT-PMP sync interval ({cfg.UpdateInterval}s) exceeds lease lifetime ({natPmp.LastGrantedLifetime}s) — port mapping will expire before the next sync cycle",
+                        $"NAT-PMP sync interval ({cfg.UpdateInterval}s) exceeds lease lifetime ({natPmp.LastGrantedLifetime}s) - port mapping will expire before the next sync cycle",
                         LogLevel.Warn);
 
                 targetPort              = vpnPort.Value;
@@ -273,7 +273,7 @@ namespace qbPortWeaver
         {
             if (string.IsNullOrWhiteSpace(cfg.NatPmpAdapterName))
             {
-                SetCompleted(status, false, "No NAT-PMP adapter configured — open Settings and select an adapter");
+                SetCompleted(status, false, "No NAT-PMP adapter configured - open Settings and select an adapter");
                 return null;
             }
 
@@ -294,7 +294,7 @@ namespace qbPortWeaver
                 return selected;
             }
 
-            // Adapter not found — likely down between disconnect and reconnect.
+            // Adapter not found - likely down between disconnect and reconnect.
             // Return the last known manager so IsVpnConnected() reports false and
             // RunCoreAsync handles disconnection gracefully (apply default port or skip).
             if (_lastKnownNatPmpManager is not null)
@@ -303,11 +303,11 @@ namespace qbPortWeaver
                 return _lastKnownNatPmpManager;
             }
 
-            // No previous knowledge of this adapter — VPN likely just disconnected for the first time.
+            // No previous knowledge of this adapter - VPN likely just disconnected for the first time.
             // Treat as disconnected so the consecutive-cycle counter increments and auto-recovery can fire.
             _consecutiveDisconnectedCycles++;
             int count = _consecutiveDisconnectedCycles;
-            string disconnectedMsg = $"NAT-PMP adapter '{cfg.NatPmpAdapterName}' not found — VPN may be disconnected";
+            string disconnectedMsg = $"NAT-PMP adapter '{cfg.NatPmpAdapterName}' not found - VPN may be disconnected";
             LogManager.Instance.LogMessage(BuildDisconnectedMessage(disconnectedMsg, count, cfg), LogLevel.Info);
 
             await TryTriggerVpnRecoveryAsync(
@@ -352,7 +352,7 @@ namespace qbPortWeaver
                     return;
             }
 
-            // Check connection status and restart if offline — skip if a restart was already performed
+            // Check connection status and restart if offline - skip if a restart was already performed
             // by ApplyPortUpdateAsync (port changed + restart enabled) to avoid a redundant cycle.
             bool alreadyRestarted = config.Restart && status[StatusKeys.PortChanged] is true;
             if (config.RestartOnDisconnect && !alreadyRestarted)
@@ -397,8 +397,8 @@ namespace qbPortWeaver
 
             if (interfaceName.Length == 0)
             {
-                LogManager.Instance.LogMessage("qBittorrent is bound to all network interfaces — traffic may leak outside the VPN", LogLevel.Warn);
-                InterfaceMismatchDetected?.Invoke("No VPN interface bound — traffic may leak.");
+                LogManager.Instance.LogMessage("qBittorrent is bound to all network interfaces - traffic may leak outside the VPN", LogLevel.Warn);
+                InterfaceMismatchDetected?.Invoke("No VPN interface bound - traffic may leak.");
                 return;
             }
 
@@ -425,7 +425,7 @@ namespace qbPortWeaver
             if (!isMatch)
             {
                 LogManager.Instance.LogMessage($"qBittorrent network interface '{interfaceName}' does not match '{vpnProviderName}'", LogLevel.Warn);
-                InterfaceMismatchDetected?.Invoke($"Interface mismatch — '{interfaceName}' is not a {vpnProviderName} adapter.");
+                InterfaceMismatchDetected?.Invoke($"Interface mismatch - '{interfaceName}' is not a {vpnProviderName} adapter.");
             }
             else
             {
@@ -467,7 +467,7 @@ namespace qbPortWeaver
         }
 
         // Launches the post-update shell command (fire-and-forget).
-        // The command string is passed through directly without sanitisation — this is intentional.
+        // The command string is passed through directly without sanitisation - this is intentional.
         // It is a user-configured value (stored in the registry under HKCU) so the user already
         // controls execution in their own context; no external or untrusted input reaches this path.
         private static void RunPostUpdateCommand(string cmd)
@@ -481,7 +481,7 @@ namespace qbPortWeaver
                     UseShellExecute = false,
                     CreateNoWindow  = true
                 };
-                Process.Start(startInfo)?.Dispose(); // NOSONAR S4721 — cmd is a user-configured registry value; execution of arbitrary commands is the intended behaviour
+                Process.Start(startInfo)?.Dispose(); // NOSONAR S4721 - cmd is a user-configured registry value; execution of arbitrary commands is the intended behaviour
                 LogManager.Instance.LogMessage("Post-update command launched (fire-and-forget; result not tracked)", LogLevel.Info);
             }
             catch (Exception ex)
@@ -502,7 +502,7 @@ namespace qbPortWeaver
             if (!connectionStatus.Equals(QBittorrentDisconnectedStatus, StringComparison.OrdinalIgnoreCase))
                 return;
 
-            LogManager.Instance.LogMessage("qBittorrent connection status is disconnected — restarting", LogLevel.Warn);
+            LogManager.Instance.LogMessage("qBittorrent connection status is disconnected - restarting", LogLevel.Warn);
             if (!await manager.RestartAsync(cancellationToken).ConfigureAwait(false))
                 LogManager.Instance.LogMessage("Failed to restart qBittorrent after connection disconnect", LogLevel.Error);
             else

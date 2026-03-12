@@ -17,7 +17,7 @@ internal static class VpnAutoRecovery
         {
             if (string.IsNullOrWhiteSpace(serviceName))
             {
-                logger.LogWarn("VPN auto-recovery: service name is empty — nothing to restart");
+                logger.LogWarn("VPN auto-recovery: service name is empty - nothing to restart");
                 return;
             }
 
@@ -43,7 +43,7 @@ internal static class VpnAutoRecovery
         }
     }
 
-    // ServiceController.WaitForStatus has no async overload — wrap in Task.Run to avoid
+    // ServiceController.WaitForStatus has no async overload - wrap in Task.Run to avoid
     // blocking the BackgroundService thread pool thread for up to ServiceOperationTimeoutMs.
     private static async Task StopServiceAsync(string serviceName, HelperLogger logger)
     {
@@ -64,7 +64,7 @@ internal static class VpnAutoRecovery
         }
         catch (System.TimeoutException)
         {
-            logger.LogWarn($"VPN service '{serviceName}' stop timed out — force-killing process");
+            logger.LogWarn($"VPN service '{serviceName}' stop timed out - force-killing process");
             KillServiceProcess(sc, logger);
             try
             {
@@ -74,7 +74,7 @@ internal static class VpnAutoRecovery
             }
             catch (System.TimeoutException)
             {
-                logger.LogWarn($"VPN service '{serviceName}' still not stopped after force-kill — proceeding with start anyway");
+                logger.LogWarn($"VPN service '{serviceName}' still not stopped after force-kill - proceeding with start anyway");
             }
         }
     }
@@ -94,7 +94,7 @@ internal static class VpnAutoRecovery
         // before attempting to start, otherwise sc.Start() throws.
         if (sc.Status == ServiceControllerStatus.StopPending)
         {
-            logger.LogInfo($"VPN service '{serviceName}' is still stopping — waiting");
+            logger.LogInfo($"VPN service '{serviceName}' is still stopping - waiting");
             await Task.Run(() => sc.WaitForStatus(ServiceControllerStatus.Stopped,
                 TimeSpan.FromMilliseconds(ServiceOperationTimeoutMs))).ConfigureAwait(false);
         }
@@ -137,7 +137,7 @@ internal static class VpnAutoRecovery
         }
     }
 
-    private const int ScStatusProcessInfo = 0; // SC_STATUS_PROCESS_INFO — only valid infoLevel for QueryServiceStatusEx
+    private const int ScStatusProcessInfo = 0; // SC_STATUS_PROCESS_INFO - only valid infoLevel for QueryServiceStatusEx
 
     [DllImport("advapi32.dll", SetLastError = true)]
     private static extern bool QueryServiceStatusEx(

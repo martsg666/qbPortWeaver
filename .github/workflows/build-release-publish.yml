@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Release tag to build — must include the v prefix (e.g. v1.2.3)'
+        description: 'Release tag to build - must include the v prefix (e.g. v1.2.3)'
         required: true
         type: string
 
@@ -69,7 +69,7 @@ jobs:
           Write-Host "Required secrets validated."
 
       # -----------------------------------------------------------------------
-      # 3. Checkout — full history lets --generate-notes span all commits
+      # 3. Checkout - full history lets --generate-notes span all commits
       # -----------------------------------------------------------------------
       - name: Checkout repository
         # Pinned to a specific commit SHA rather than a floating tag (e.g. @v4) so that
@@ -85,7 +85,7 @@ jobs:
       # 4. Set up the .NET SDK
       # -----------------------------------------------------------------------
       - name: Setup .NET
-        # Pinned to a specific commit SHA — see checkout step for rationale.
+        # Pinned to a specific commit SHA - see checkout step for rationale.
         uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9  # v4
         with:
           dotnet-version: '10.x'
@@ -227,20 +227,20 @@ jobs:
           $downloadUrl = $env:ASSET_DOWNLOAD_URL
           $checksum    = $env:ASSET_CHECKSUM
 
-          # nuspec — version and release notes URL
+          # nuspec - version and release notes URL
           $nuspecPath = 'choco\qbPortWeaver.nuspec'
           (Get-Content $nuspecPath -Encoding utf8) `
             -replace 'TEMPLATE_VERSION', $version |
             Set-Content $nuspecPath -Encoding utf8
 
-          # chocolateyInstall.ps1 — download URL and checksum
+          # chocolateyInstall.ps1 - download URL and checksum
           $installPath = 'choco\tools\chocolateyInstall.ps1'
           (Get-Content $installPath -Encoding utf8) `
             -replace 'TEMPLATE_URL',      $downloadUrl `
             -replace 'TEMPLATE_CHECKSUM', $checksum |
             Set-Content $installPath -Encoding utf8
 
-          # VERIFICATION.txt — version, URL, and checksum
+          # VERIFICATION.txt - version, URL, and checksum
           $verifyPath = 'choco\tools\VERIFICATION.txt'
           (Get-Content $verifyPath -Encoding utf8) `
             -replace 'TEMPLATE_VERSION',  $version `
@@ -275,7 +275,7 @@ jobs:
 
       # -----------------------------------------------------------------------
       # 12. Install community validation extension and pack the Chocolatey package
-      #     The extension hooks into choco pack and validates automatically in v2.x —
+      #     The extension hooks into choco pack and validates automatically in v2.x -
       #     there is no separate choco validate command.
       # -----------------------------------------------------------------------
       - name: Install Chocolatey Community Validation Extension
@@ -320,7 +320,7 @@ jobs:
           # Check whether the release already exists (e.g. manual re-run)
           gh release view $tag 2>&1 | Out-Null
           if ($LASTEXITCODE -eq 0) {
-            Write-Host "Release $tag already exists — uploading asset"
+            Write-Host "Release $tag already exists - uploading asset"
             gh release upload $tag $asset --clobber
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           } else {
@@ -351,7 +351,7 @@ jobs:
           } catch { $false }
 
           if ($alreadyPublished) {
-            Write-Host "qbportweaver v$version is already published on Chocolatey — skipping push."
+            Write-Host "qbportweaver v$version is already published on Chocolatey - skipping push."
           } else {
             $nupkg = $env:NUPKG_PATH
             Write-Host "Pushing: $(Split-Path $nupkg -Leaf)"

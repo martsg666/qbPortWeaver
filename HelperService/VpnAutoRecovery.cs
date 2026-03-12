@@ -11,7 +11,7 @@ internal static class VpnAutoRecovery
     private const int ServiceRestartDelayMs     = 5000;
     private const int ServiceOperationTimeoutMs = 30000;
 
-    internal static void RestartService(string serviceName, HelperLogger logger)
+    internal static async Task RestartServiceAsync(string serviceName, HelperLogger logger)
     {
         try
         {
@@ -23,12 +23,12 @@ internal static class VpnAutoRecovery
 
             logger.LogInfo($"VPN auto-recovery: restarting service '{serviceName}'");
 
-            try { StopService(serviceName, logger); }
+            try { await StopServiceAsync(serviceName, logger).ConfigureAwait(false); }
             catch (Exception ex) { logger.LogWarn($"VPN service '{serviceName}' stop failed: {ex.Message}"); }
 
-            Thread.Sleep(ServiceRestartDelayMs);
+            await Task.Delay(ServiceRestartDelayMs).ConfigureAwait(false);
 
-            try { StartService(serviceName, logger); }
+            try { await StartServiceAsync(serviceName, logger).ConfigureAwait(false); }
             catch (Exception ex)
             {
                 logger.LogWarn($"VPN service '{serviceName}' start failed: {ex.Message}");
@@ -43,7 +43,9 @@ internal static class VpnAutoRecovery
         }
     }
 
-    private static void StopService(string serviceName, HelperLogger logger)
+    // ServiceController.WaitForStatus has no async overload — wrap in Task.Run to avoid
+    // blocking the BackgroundService thread pool thread for up to ServiceOperationTimeoutMs.
+    private static async Task StopServiceAsync(string serviceName, HelperLogger logger)
     {
         using var sc = new ServiceController(serviceName);
         sc.Refresh();
@@ -56,7 +58,8 @@ internal static class VpnAutoRecovery
         sc.Stop();
         try
         {
-            sc.WaitForStatus(ServiceControllerStatus.Stopped, TimeSpan.FromMilliseconds(ServiceOperationTimeoutMs));
+            await Task.Run(() => sc.WaitForStatus(ServiceControllerStatus.Stopped,
+                TimeSpan.FromMilliseconds(ServiceOperationTimeoutMs))).ConfigureAwait(false);
             logger.LogInfo($"VPN service '{serviceName}' stopped");
         }
         catch (System.TimeoutException)
@@ -65,7 +68,8 @@ internal static class VpnAutoRecovery
             KillServiceProcess(sc, logger);
             try
             {
-                sc.WaitForStatus(ServiceControllerStatus.Stopped, TimeSpan.FromMilliseconds(ServiceOperationTimeoutMs));
+                await Task.Run(() => sc.WaitForStatus(ServiceControllerStatus.Stopped,
+                    TimeSpan.FromMilliseconds(ServiceOperationTimeoutMs))).ConfigureAwait(false);
                 logger.LogInfo($"VPN service '{serviceName}' force-stopped");
             }
             catch (System.TimeoutException)
@@ -75,7 +79,7 @@ internal static class VpnAutoRecovery
         }
     }
 
-    private static void StartService(string serviceName, HelperLogger logger)
+    private static async Task StartServiceAsync(string serviceName, HelperLogger logger)
     {
         using var sc = new ServiceController(serviceName);
         sc.Refresh();
@@ -86,7 +90,8 @@ internal static class VpnAutoRecovery
         }
 
         sc.Start();
-        sc.WaitForStatus(ServiceControllerStatus.Running, TimeSpan.FromMilliseconds(ServiceOperationTimeoutMs));
+        await Task.Run(() => sc.WaitForStatus(ServiceControllerStatus.Running,
+            TimeSpan.FromMilliseconds(ServiceOperationTimeoutMs))).ConfigureAwait(false);
         logger.LogInfo($"VPN service '{serviceName}' started");
     }
 

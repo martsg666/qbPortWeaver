@@ -77,6 +77,6 @@ internal sealed class HelperPipeServer : BackgroundService
         var serviceName = parts[1];
         var logFilePath = parts[2];
 
-        VpnAutoRecovery.RestartService(serviceName, new HelperLogger(logFilePath));
+        await VpnAutoRecovery.RestartServiceAsync(serviceName, new HelperLogger(logFilePath)).ConfigureAwait(false);
     }
 }

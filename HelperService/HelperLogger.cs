@@ -28,7 +28,7 @@ internal sealed class HelperLogger(string logFilePath)
             {
                 Thread.Sleep(50);
             }
-            catch
+            catch (Exception)
             {
                 return;
             }

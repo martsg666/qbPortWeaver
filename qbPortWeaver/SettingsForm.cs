@@ -181,7 +181,7 @@ namespace qbPortWeaver
             if (!string.IsNullOrWhiteSpace(txtQBittorrentExePath.Text) &&
                 File.Exists(txtQBittorrentExePath.Text))
             {
-                dlg.InitialDirectory = Path.GetDirectoryName(txtQBittorrentExePath.Text)!;
+                dlg.InitialDirectory = Path.GetDirectoryName(txtQBittorrentExePath.Text) ?? string.Empty;
             }
 
             if (dlg.ShowDialog() == DialogResult.OK)

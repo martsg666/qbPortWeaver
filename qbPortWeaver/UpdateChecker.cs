@@ -107,10 +107,6 @@ namespace qbPortWeaver
             }
         }
 
-        private static bool IsBot(string login, string type) =>
-            type.Equals("Bot", StringComparison.OrdinalIgnoreCase) ||
-            login.EndsWith("[bot]", StringComparison.OrdinalIgnoreCase);
-
         // Creates the shared HttpClient pre-configured with the required User-Agent and timeout
         private static HttpClient CreateHttpClient()
         {
@@ -118,5 +114,9 @@ namespace qbPortWeaver
             client.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue(AppConstants.AppName, AppConstants.AppVersion));
             return client;
         }
+
+        private static bool IsBot(string login, string type) =>
+            type.Equals("Bot", StringComparison.OrdinalIgnoreCase) ||
+            login.EndsWith("[bot]", StringComparison.OrdinalIgnoreCase);
     }
 }

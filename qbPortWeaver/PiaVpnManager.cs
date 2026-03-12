@@ -62,7 +62,7 @@ namespace qbPortWeaver
                     return port;
                 }
 
-                LogManager.Instance.LogDebug($"PiaVpnManager.GetVpnPortCore: Could not parse port from piactl output: {output}");
+                LogManager.Instance.LogDebug($"PiaVpnManager.GetVpnPortCore: Failed to parse port from piactl output: {output}");
                 return null;
             }
             catch (Exception ex)

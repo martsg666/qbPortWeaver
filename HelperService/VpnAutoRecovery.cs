@@ -89,6 +89,16 @@ internal static class VpnAutoRecovery
             return;
         }
 
+        // The service may still be in StopPending (e.g. the VPN client process was killed
+        // concurrently and the service is tearing down). Wait for it to finish stopping
+        // before attempting to start, otherwise sc.Start() throws.
+        if (sc.Status == ServiceControllerStatus.StopPending)
+        {
+            logger.LogInfo($"VPN service '{serviceName}' is still stopping — waiting");
+            await Task.Run(() => sc.WaitForStatus(ServiceControllerStatus.Stopped,
+                TimeSpan.FromMilliseconds(ServiceOperationTimeoutMs))).ConfigureAwait(false);
+        }
+
         sc.Start();
         await Task.Run(() => sc.WaitForStatus(ServiceControllerStatus.Running,
             TimeSpan.FromMilliseconds(ServiceOperationTimeoutMs))).ConfigureAwait(false);

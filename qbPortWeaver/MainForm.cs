@@ -371,7 +371,7 @@ namespace qbPortWeaver
                 }
                 else
                 {
-                    LogManager.Instance.LogDebug("MainForm.PerformUpdateCheckAsync: application is up to date");
+                    LogManager.Instance.LogMessage($"Application is up to date (v{AppConstants.AppVersion})", LogLevel.Info);
                 }
             }
             catch (Exception ex)

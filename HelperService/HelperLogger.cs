@@ -26,7 +26,7 @@ internal sealed class HelperLogger(string logFilePath)
             }
             catch (IOException) when (attempt < 2)
             {
-                Thread.Sleep(50);
+                Thread.Sleep(50); // intentional: WriteLog is synchronous by design; retries are rare and brief
             }
             catch (Exception)
             {

@@ -32,6 +32,8 @@ namespace qbPortWeaver
             _httpClient = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(AppConstants.HttpTimeoutSeconds) };
         }
 
+        public void Dispose() => _httpClient.Dispose();
+
         public bool IsRunning()
         {
             if (string.IsNullOrEmpty(_processName)) return false;
@@ -204,8 +206,6 @@ namespace qbPortWeaver
                 return null;
             }
         }
-
-        public void Dispose() => _httpClient.Dispose();
 
         // Authenticates once per instance; subsequent calls reuse the existing session cookie
         private async Task<bool> EnsureAuthenticatedAsync()

@@ -94,6 +94,19 @@ namespace qbPortWeaver
             }
         }
 
+        // Marks the window as a tool window so it is excluded from the Alt+Tab switcher.
+        // ShowInTaskbar = false hides it from the taskbar but not from Alt+Tab — WS_EX_TOOLWINDOW handles both.
+        protected override CreateParams CreateParams
+        {
+            get
+            {
+                const int WS_EX_TOOLWINDOW = 0x80;
+                CreateParams cp = base.CreateParams;
+                cp.ExStyle |= WS_EX_TOOLWINDOW;
+                return cp;
+            }
+        }
+
         // Handle form closing (user exit, Windows shutdown/restart/logoff)
         protected override void OnFormClosing(FormClosingEventArgs e)
         {

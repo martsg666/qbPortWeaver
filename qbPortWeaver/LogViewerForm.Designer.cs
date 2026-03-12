@@ -2,20 +2,7 @@ namespace qbPortWeaver
 {
     partial class LogViewerForm
     {
-        private System.ComponentModel.IContainer      components = null;
-        private System.Windows.Forms.RichTextBox      rtbLog;
-        private System.Windows.Forms.Panel            pnlToolbar;
-        private System.Windows.Forms.CheckBox         chkError;
-        private System.Windows.Forms.CheckBox         chkWarn;
-        private System.Windows.Forms.CheckBox         chkInfo;
-        private System.Windows.Forms.CheckBox         chkDebug;
-        private PlaceholderTextBox                    txtSearch;
-        private System.Windows.Forms.Button           btnClearSearch;
-        private System.Windows.Forms.Button           btnPrev;
-        private System.Windows.Forms.Button           btnNext;
-        private System.Windows.Forms.Label            lblMatchCount;
-        private System.Windows.Forms.ContextMenuStrip ctxLog;
-        private System.Windows.Forms.ToolStripMenuItem ctxCopy;
+        private System.ComponentModel.IContainer components = null;
 
         protected override void Dispose(bool disposing)
         {
@@ -206,5 +193,19 @@ namespace qbPortWeaver
             pnlToolbar.ResumeLayout(false);
             ResumeLayout(false);
         }
+
+        private System.Windows.Forms.RichTextBox       rtbLog;
+        private System.Windows.Forms.Panel             pnlToolbar;
+        private System.Windows.Forms.CheckBox          chkError;
+        private System.Windows.Forms.CheckBox          chkWarn;
+        private System.Windows.Forms.CheckBox          chkInfo;
+        private System.Windows.Forms.CheckBox          chkDebug;
+        private PlaceholderTextBox                     txtSearch;
+        private System.Windows.Forms.Button            btnClearSearch;
+        private System.Windows.Forms.Button            btnPrev;
+        private System.Windows.Forms.Button            btnNext;
+        private System.Windows.Forms.Label             lblMatchCount;
+        private System.Windows.Forms.ContextMenuStrip  ctxLog;
+        private System.Windows.Forms.ToolStripMenuItem ctxCopy;
     }
 }

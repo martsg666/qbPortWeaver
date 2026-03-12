@@ -15,7 +15,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
-$csprojPath = Join-Path $repoRoot 'qbPortWeaver.csproj'
+$csprojPath = Join-Path $repoRoot 'qbPortWeaver\qbPortWeaver.csproj'
 
 $match = Select-String -Path $csprojPath -Pattern '<Version>([^<]+)</Version>'
 if (-not $match) {

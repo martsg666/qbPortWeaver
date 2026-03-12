@@ -127,7 +127,7 @@ internal static class VpnAutoRecovery
         }
     }
 
-    private const int ScStatusProcessInfo = 0;
+    private const int ScStatusProcessInfo = 0; // SC_STATUS_PROCESS_INFO — only valid infoLevel for QueryServiceStatusEx
 
     [DllImport("advapi32.dll", SetLastError = true)]
     private static extern bool QueryServiceStatusEx(
@@ -136,8 +136,14 @@ internal static class VpnAutoRecovery
     [StructLayout(LayoutKind.Sequential)]
     private struct ServiceStatusProcess
     {
-        public int dwServiceType, dwCurrentState, dwControlsAccepted,
-                   dwWin32ExitCode, dwServiceSpecificExitCode,
-                   dwCheckPoint, dwWaitHint, dwProcessId, dwServiceFlags;
+        public int dwServiceType;
+        public int dwCurrentState;
+        public int dwControlsAccepted;
+        public int dwWin32ExitCode;
+        public int dwServiceSpecificExitCode;
+        public int dwCheckPoint;
+        public int dwWaitHint;
+        public int dwProcessId;
+        public int dwServiceFlags;
     }
 }

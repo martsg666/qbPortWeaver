@@ -42,7 +42,7 @@ namespace qbPortWeaver
             }
             catch (Exception ex)
             {
-                return LogManager.LogDebugExceptionFalse("ProtonVpnManager.IsVpnConnected", ex);
+                return LogManager.LogDebugFalse($"ProtonVpnManager.IsVpnConnected: {ex.Message}");
             }
         }
 
@@ -82,7 +82,7 @@ namespace qbPortWeaver
             }
             catch (Exception ex)
             {
-                LogManager.LogDebugException("ProtonVpnManager.GetVpnPortCore", ex);
+                LogManager.Instance.LogDebug($"ProtonVpnManager.GetVpnPortCore: {ex.Message}");
                 return null;
             }
         }

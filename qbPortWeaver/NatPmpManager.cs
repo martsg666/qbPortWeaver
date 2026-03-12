@@ -127,7 +127,7 @@ namespace qbPortWeaver
             }
             catch (Exception ex)
             {
-                return LogManager.LogDebugExceptionFalse("NatPmpManager.IsVpnConnected", ex);
+                return LogManager.LogDebugFalse($"NatPmpManager.IsVpnConnected: {ex.Message}");
             }
         }
 
@@ -161,7 +161,7 @@ namespace qbPortWeaver
 
                 string epochDelta = (_lastEpochSeconds > 0 && result.EpochSeconds >= _lastEpochSeconds)
                     ? $" (+{result.EpochSeconds - _lastEpochSeconds}s)" : "";
-                LogManager.Instance.LogDebug($"NatPmpManager.GetVpnPort: SSOE {result.EpochSeconds}s{epochDelta}");
+                LogManager.Instance.LogDebug($"NatPmpManager.GetVpnPortAsync: SSOE {result.EpochSeconds}s{epochDelta}");
 
                 _lastEpochSeconds  = result.EpochSeconds;
                 _lastExternalPort  = result.ExternalPort;
@@ -190,24 +190,11 @@ namespace qbPortWeaver
         // Unknown adapters return null — restarting an unrecognised service would be unsafe.
         public string? FindServiceName()
         {
-            try
-            {
-                ServiceController[] services = ServiceController.GetServices();
-                try
-                {
-                    string? serviceName = MatchServiceName(_adapter.Name, services);
-                    LogManager.Instance.LogDebug(serviceName != null
-                        ? $"NatPmpManager.FindServiceName: found service '{serviceName}' for adapter '{_adapter.Name}'"
-                        : $"NatPmpManager.FindServiceName: adapter '{_adapter.Name}' is not a recognised VPN provider");
-                    return serviceName;
-                }
-                finally { foreach (var svc in services) svc.Dispose(); }
-            }
-            catch (Exception ex)
-            {
-                LogManager.LogDebugException("NatPmpManager.FindServiceName", ex);
-                return null;
-            }
+            string? serviceName = FindServiceNameForAdapter(_adapter.Name);
+            LogManager.Instance.LogDebug(serviceName != null
+                ? $"NatPmpManager.FindServiceName: found service '{serviceName}' for adapter '{_adapter.Name}'"
+                : $"NatPmpManager.FindServiceName: adapter '{_adapter.Name}' is not a recognised VPN provider");
+            return serviceName;
         }
 
         // Finds the Windows service name for a given NAT-PMP adapter by adapter name.
@@ -223,7 +210,7 @@ namespace qbPortWeaver
             }
             catch (Exception ex)
             {
-                LogManager.LogDebugException("NatPmpManager.FindServiceNameForAdapter", ex);
+                LogManager.Instance.LogDebug($"NatPmpManager.FindServiceNameForAdapter: {ex.Message}");
                 return null;
             }
         }
@@ -436,7 +423,7 @@ namespace qbPortWeaver
                 }
                 catch (Exception ex)
                 {
-                    LogManager.LogDebugException("NatPmpManager.SendReceiveAsync", ex);
+                    LogManager.Instance.LogDebug($"NatPmpManager.SendReceiveAsync: {ex.Message}");
                     return null;
                 }
             }

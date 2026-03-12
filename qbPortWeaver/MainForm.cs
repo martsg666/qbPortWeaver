@@ -372,7 +372,7 @@ namespace qbPortWeaver
         {
             _trayIcon.Icon = state switch
             {
-                SyncState.Synced              => _iconOk      ?? _iconBase!,
+                SyncState.Synced          => _iconOk      ?? _iconBase!,
                 SyncState.VpnDisconnected => _iconWarning ?? _iconBase!,
                 SyncState.Error           => _iconError   ?? _iconBase!,
                 _                         =>                 _iconBase!

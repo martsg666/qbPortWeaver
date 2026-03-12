@@ -73,7 +73,7 @@ namespace qbPortWeaver
                     exePath = processes.FirstOrDefault()?.MainModule?.FileName;
                     foreach (var p in processes)
                     {
-                        try { p.Kill(entireProcessTree: true); } catch (Exception ex) { LogManager.Instance.LogDebug($"Kill process '{processName}': {ex.Message} — ignored"); }
+                        try { p.Kill(entireProcessTree: true); } catch (Exception ex) { LogManager.Instance.LogDebug($"VpnAutoRecoveryManager.TryTriggerRecoveryAsync: Kill '{processName}' — {ex.Message} — ignored"); }
                     }
                     LogManager.Instance.LogMessage(exePath != null
                         ? $"Killed client process '{processName}'"

@@ -133,6 +133,9 @@ namespace qbPortWeaver
             return _themeColors[3];
         }
 
+        private void CtxLog_Opening(object? sender, System.ComponentModel.CancelEventArgs e)
+            => ctxCopy.Enabled = rtbLog.SelectionLength > 0;
+
         private void BtnClearSearch_Click(object? sender, EventArgs e) => txtSearch.Clear();
         private void BtnPrev_Click(object? sender, EventArgs e)        => SearchPrev();
         private void BtnNext_Click(object? sender, EventArgs e)        => SearchNext();
@@ -386,7 +389,7 @@ namespace qbPortWeaver
             catch (Exception ex)
             {
                 // Best-effort live update; transient errors during rotation or clear are expected
-                LogManager.LogDebugException("LogViewerForm.OnLogFileUpdated", ex);
+                LogManager.Instance.LogDebug($"LogViewerForm.OnLogFileUpdated: {ex.Message}");
             }
         }
 

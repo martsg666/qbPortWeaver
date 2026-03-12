@@ -174,16 +174,25 @@ namespace qbPortWeaver
             }
             else
             {
-                _consecutiveDisconnectedCycles = 0;
+                // For ProtonVPN and PIA, a successful connectivity check is sufficient to reset the counter.
+                // For NAT-PMP, the counter is only reset after a successful port mapping (see below).
+                if (vpnManager is not NatPmpManager)
+                    _consecutiveDisconnectedCycles = 0;
                 status[StatusKeys.VpnConnected] = true;
                 LogManager.Instance.LogMessage($"{vpnManager.ProviderName} is connected", LogLevel.Info);
 
                 int? vpnPort = await vpnManager.GetVpnPortAsync().ConfigureAwait(false);
                 if (!vpnPort.HasValue)
                 {
+                    if (vpnManager is NatPmpManager)
+                    {
+                        _consecutiveDisconnectedCycles++;
+                        await TryTriggerVpnRecoveryAsync(vpnManager, cfg).ConfigureAwait(false);
+                    }
                     SetCompleted(status, false, $"Failed to determine {vpnManager.ProviderName} port");
                     return cfg.UpdateInterval;
                 }
+                _consecutiveDisconnectedCycles = 0; // NAT-PMP: reset only after a successful port mapping
                 status[StatusKeys.VpnPort] = vpnPort.Value;
                 LogManager.Instance.LogMessage($"{vpnManager.ProviderName} port found: {vpnPort.Value}", LogLevel.Info);
 
@@ -224,33 +233,23 @@ namespace qbPortWeaver
             int updateInterval = RegistrySettingsManager.GetInt(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyUpdateIntervalSeconds);
             if (updateInterval < AppConstants.MinUpdateIntervalSeconds) updateInterval = AppConstants.DefaultUpdateIntervalSeconds;
 
-            bool restartQBittorrent      = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyRestartQBittorrent);
-            bool forceStartQBittorrent   = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyForceStartQBittorrent);
-            int  defaultPort             = RegistrySettingsManager.GetInt (RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyDefaultPort);
-            bool warnOnInterfaceMismatch = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyWarnOnInterfaceMismatch);
-            bool restartOnDisconnect     = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyRestartOnDisconnect);
-
-            int vpnAutoRecoveryTriggerCycles = RegistrySettingsManager.GetInt(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyVpnAutoRecoveryTriggerCycles);
-            if (vpnAutoRecoveryTriggerCycles < 1)
-                vpnAutoRecoveryTriggerCycles = int.TryParse(RegistrySettingsManager.Defaults[RegistrySettingsManager.SectionGeneral][RegistrySettingsManager.KeyVpnAutoRecoveryTriggerCycles], out int def) ? def : 1;
-
             return new AppConfig(
-                VpnProvider:                    RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral,     RegistrySettingsManager.KeyVpnProvider),
-                NatPmpAdapterName:              RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral,     RegistrySettingsManager.KeyNatPmpAdapterName),
-                UpdateInterval:                 updateInterval,
-                QBittorrentUrl:                 RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyQBittorrentUrl),
-                QBittorrentUserName:            RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyQBittorrentUserName),
-                QBittorrentPassword:            RegistrySettingsManager.GetPassword(),
-                QBittorrentExePath:             RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyQBittorrentExePath),
-                QBittorrentProcessName:         RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyQBittorrentProcessName),
-                RestartQBittorrent:             restartQBittorrent,
-                ForceStartQBittorrent:          forceStartQBittorrent,
-                DefaultPort:                    defaultPort,
-                WarnOnInterfaceMismatch:        warnOnInterfaceMismatch,
-                RestartOnDisconnect:            restartOnDisconnect,
-                PostUpdateCommand:              RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionExtra, RegistrySettingsManager.KeyPostUpdateCmd),
-                VpnAutoRecoveryEnabled:         RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyVpnAutoRecoveryEnabled),
-                VpnAutoRecoveryTriggerCycles:   vpnAutoRecoveryTriggerCycles
+                VpnProvider:                  RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral,     RegistrySettingsManager.KeyVpnProvider),
+                NatPmpAdapterName:            RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral,     RegistrySettingsManager.KeyNatPmpAdapterName),
+                UpdateInterval:               updateInterval,
+                QBittorrentUrl:               RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyQBittorrentUrl),
+                QBittorrentUserName:          RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyQBittorrentUserName),
+                QBittorrentPassword:          RegistrySettingsManager.GetPassword(),
+                QBittorrentExePath:           RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyQBittorrentExePath),
+                QBittorrentProcessName:       RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyQBittorrentProcessName),
+                RestartQBittorrent:           RegistrySettingsManager.GetBool (RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyRestartQBittorrent),
+                ForceStartQBittorrent:        RegistrySettingsManager.GetBool (RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyForceStartQBittorrent),
+                DefaultPort:                  RegistrySettingsManager.GetInt  (RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyDefaultPort),
+                WarnOnInterfaceMismatch:      RegistrySettingsManager.GetBool (RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyWarnOnInterfaceMismatch),
+                RestartOnDisconnect:          RegistrySettingsManager.GetBool (RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyRestartOnDisconnect),
+                PostUpdateCommand:            RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionExtra,       RegistrySettingsManager.KeyPostUpdateCmd),
+                VpnAutoRecoveryEnabled:       RegistrySettingsManager.GetBool (RegistrySettingsManager.SectionGeneral,     RegistrySettingsManager.KeyVpnAutoRecoveryEnabled),
+                VpnAutoRecoveryTriggerCycles: RegistrySettingsManager.GetInt  (RegistrySettingsManager.SectionGeneral,     RegistrySettingsManager.KeyVpnAutoRecoveryTriggerCycles)
             );
         }
 
@@ -301,7 +300,7 @@ namespace qbPortWeaver
             // RunCoreAsync handles disconnection gracefully (apply default port or skip).
             if (_lastKnownNatPmpManager is not null)
             {
-                LogManager.Instance.LogDebug("PortSyncService.CreateVpnManager: adapter not discoverable, using last known manager for disconnection handling");
+                LogManager.Instance.LogDebug("PortSyncService.CreateNatPmpVpnManager: adapter not discoverable, using last known manager for disconnection handling");
                 return _lastKnownNatPmpManager;
             }
 

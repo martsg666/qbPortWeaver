@@ -14,7 +14,7 @@ namespace qbPortWeaver.HelperService;
 // tray app, regardless of which user profile is active.
 internal sealed class HelperPipeServer : BackgroundService
 {
-    internal const string PipeName = "qbPortWeaverHelper";
+    internal const string PipeName = "qbPortWeaverHelper"; // Must match AppConstants.HelperServicePipeName in qbPortWeaver
 
     private readonly ILogger<HelperPipeServer> _logger;
 

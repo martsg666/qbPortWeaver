@@ -122,14 +122,10 @@ namespace qbPortWeaver
             }
         }
 
-        /// <summary>Logs <paramref name="ex"/>.<see cref="Exception.Message"/> at debug level with a context prefix.</summary>
-        internal static void LogDebugException(string context, Exception ex)
-            => Instance.LogDebug($"{context}: {ex.Message}");
-
-        /// <summary>Logs <paramref name="ex"/>.<see cref="Exception.Message"/> at debug level and returns <see langword="false"/>. Enables single-line catch blocks.</summary>
-        internal static bool LogDebugExceptionFalse(string context, Exception ex)
+        /// <summary>Logs <paramref name="message"/> at debug level and returns <see langword="false"/>. Enables single-line catch blocks.</summary>
+        internal static bool LogDebugFalse(string message)
         {
-            Instance.LogDebug($"{context}: {ex.Message}");
+            Instance.LogDebug(message);
             return false;
         }
 

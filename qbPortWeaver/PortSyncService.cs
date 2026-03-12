@@ -185,6 +185,10 @@ namespace qbPortWeaver
                     if (vpnManager is NatPmpManager)
                     {
                         _consecutiveDisconnectedCycles++;
+                        int failedCount = _consecutiveDisconnectedCycles;
+                        LogManager.Instance.LogMessage(
+                            BuildDisconnectedMessage($"NAT-PMP port mapping failed on '{vpnManager.ProviderName}'", failedCount, cfg),
+                            LogLevel.Info);
                         await TryTriggerVpnRecoveryAsync(vpnManager.FindServiceName(), vpnManager.ProviderName, cfg).ConfigureAwait(false);
                     }
                     SetCompleted(status, false, $"Failed to determine {vpnManager.ProviderName} port");

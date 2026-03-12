@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
-     xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
+     xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui"
+     xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
 
 	<Package
 	  Name="qbPortWeaver"
@@ -144,6 +145,13 @@
 					Start="auto"
 					ErrorControl="normal"
 					Account="LocalSystem" />
+				<util:ServiceConfig
+					ServiceName="qbPortWeaverHelper"
+					FirstFailureActionType="restart"
+					SecondFailureActionType="restart"
+					ThirdFailureActionType="restart"
+					RestartServiceDelayInSeconds="5"
+					ResetPeriodInDays="1" />
 				<ServiceControl
 					Id="HelperServiceControl"
 					Name="qbPortWeaverHelper"

@@ -16,6 +16,14 @@ internal sealed class HelperPipeServer : BackgroundService
 {
     internal const string PipeName = "qbPortWeaverHelper"; // Must match AppConstants.HelperServicePipeName in qbPortWeaver
 
+    // Only these Windows service names may be restarted via the helper pipe.
+    // Must match ProtonVpnManager.VpnServiceName and PiaVpnManager.VpnServiceName in qbPortWeaver.
+    private static readonly HashSet<string> AllowedServices = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "ProtonVPN Service",
+        "PrivateInternetAccessService",
+    };
+
     private readonly ILogger<HelperPipeServer> _logger;
 
     public HelperPipeServer(ILogger<HelperPipeServer> logger) => _logger = logger;
@@ -76,6 +84,12 @@ internal sealed class HelperPipeServer : BackgroundService
 
         var serviceName = parts[1];
         var logFilePath = parts[2];
+
+        if (!AllowedServices.Contains(serviceName))
+        {
+            _logger.LogWarning("Rejected restart request for disallowed service '{Service}'", serviceName);
+            return;
+        }
 
         await VpnAutoRecovery.RestartServiceAsync(serviceName, new HelperLogger(logFilePath)).ConfigureAwait(false);
     }

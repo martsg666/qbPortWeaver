@@ -154,10 +154,7 @@ namespace qbPortWeaver
             {
                 _consecutiveDisconnectedCycles++;
                 int disconnectedCount = _consecutiveDisconnectedCycles;
-                LogManager.Instance.LogMessage(
-                    $"{vpnManager.ProviderName} is not connected ({disconnectedCount} consecutive {(disconnectedCount == 1 ? "cycle" : "cycles")}" +
-                    (cfg.VpnAutoRecoveryEnabled ? $", recovery triggers after {cfg.VpnAutoRecoveryTriggerCycles} consecutive disconnects" : "") + ")",
-                    LogLevel.Info);
+                LogManager.Instance.LogMessage(BuildDisconnectedMessage(vpnManager.ProviderName, disconnectedCount, cfg), LogLevel.Info);
                 await TryTriggerVpnRecoveryAsync(vpnManager, cfg).ConfigureAwait(false);
 
                 if (cfg.DefaultPort == 0)
@@ -225,6 +222,16 @@ namespace qbPortWeaver
                 cancellationToken).ConfigureAwait(false);
 
             return cfg.UpdateInterval;
+        }
+
+        // Builds the "not connected" log message, including the optional recovery trigger suffix
+        private static string BuildDisconnectedMessage(string providerName, int count, AppConfig cfg)
+        {
+            string cycles = count == 1 ? "cycle" : "cycles";
+            string recoverySuffix = cfg.VpnAutoRecoveryEnabled
+                ? $", recovery triggers after {cfg.VpnAutoRecoveryTriggerCycles} consecutive disconnects"
+                : string.Empty;
+            return $"{providerName} is not connected ({count} consecutive {cycles}{recoverySuffix})";
         }
 
         // Reads all configuration values from the registry into a single AppConfig record

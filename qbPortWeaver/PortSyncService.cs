@@ -177,6 +177,11 @@ namespace qbPortWeaver
                 if (vpnManager is not NatPmpManager)
                     _consecutiveDisconnectedCycles = 0;
                 status[StatusKeys.VpnConnected] = true;
+
+                // Cache VPN client EXE paths while the process is running so auto-recovery
+                // can restart the client even if it was killed externally before we inspect it.
+                if (cfg.VpnAutoRecoveryEnabled)
+                    VpnAutoRecoveryManager.CacheRunningClientExePaths();
                 LogManager.Instance.LogMessage($"{vpnManager.ProviderName} is connected", LogLevel.Info);
 
                 int? vpnPort = await vpnManager.GetVpnPortAsync().ConfigureAwait(false);

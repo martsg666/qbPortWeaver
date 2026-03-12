@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.IO.Pipes;
 
@@ -10,6 +11,10 @@ namespace qbPortWeaver
     {
         private const int ClientRestartDelayMs = 2000;
         private const int PipeConnectTimeoutMs = 5000;
+
+        // Caches the EXE path for each client process name so recovery works even when
+        // the process was killed externally before we could inspect it.
+        private static readonly ConcurrentDictionary<string, string> CachedClientExePaths = new(StringComparer.OrdinalIgnoreCase);
 
         // Maps a VPN service name to the client process that must be restarted alongside it.
         // The client holds connection state and triggers auto-connect on startup —
@@ -29,6 +34,40 @@ namespace qbPortWeaver
             string? clientProcessName = ResolveClientProcessName(serviceName);
             if (clientProcessName != null)
                 await RestartClientProcessAsync(clientProcessName).ConfigureAwait(false);
+        }
+
+        // Proactively discovers and caches EXE paths for all known VPN client processes.
+        // Called during normal sync cycles (when the VPN is connected) so the path is
+        // available if the client is later killed externally before recovery runs.
+        internal static void CacheRunningClientExePaths()
+        {
+            foreach (var (_, clientProcessName) in ClientProcessMap)
+            {
+                if (CachedClientExePaths.ContainsKey(clientProcessName))
+                    continue;
+
+                try
+                {
+                    var processes = Process.GetProcessesByName(clientProcessName);
+                    try
+                    {
+                        string? exePath = processes.FirstOrDefault()?.MainModule?.FileName;
+                        if (exePath != null)
+                        {
+                            CachedClientExePaths[clientProcessName] = exePath;
+                            LogManager.Instance.LogDebug($"VpnAutoRecoveryManager.CacheRunningClientExePaths: cached '{clientProcessName}' → {exePath}");
+                        }
+                    }
+                    finally
+                    {
+                        foreach (var p in processes) p.Dispose();
+                    }
+                }
+                catch (Exception ex)
+                {
+                    LogManager.Instance.LogDebug($"VpnAutoRecoveryManager.CacheRunningClientExePaths: '{clientProcessName}' — {ex.Message}");
+                }
+            }
         }
 
         // Sends a restart request for the given service to the SYSTEM helper service via named pipe.
@@ -62,6 +101,8 @@ namespace qbPortWeaver
         // Kills all instances of the named client process (capturing the exe path first),
         // waits briefly, then relaunches it. Runs in the main app's user session — no
         // elevation or WTS token manipulation needed.
+        // If the process is already dead (e.g. killed externally), falls back to a cached
+        // EXE path from a previous successful discovery.
         private static async Task RestartClientProcessAsync(string processName)
         {
             string? exePath = null;
@@ -71,6 +112,8 @@ namespace qbPortWeaver
                 try
                 {
                     exePath = processes.FirstOrDefault()?.MainModule?.FileName;
+                    if (exePath != null)
+                        CachedClientExePaths[processName] = exePath;
                     foreach (var p in processes)
                     {
                         try { p.Kill(entireProcessTree: true); } catch (Exception ex) { LogManager.Instance.LogDebug($"VpnAutoRecoveryManager.RestartClientProcessAsync: Kill '{processName}' — {ex.Message} — ignored"); }
@@ -89,7 +132,18 @@ namespace qbPortWeaver
                 LogManager.Instance.LogMessage($"Failed to kill client process '{processName}': {ex.Message}", LogLevel.Warn);
             }
 
-            if (exePath == null) return;
+            // Fall back to cached path if the process was already dead
+            if (exePath == null && CachedClientExePaths.TryGetValue(processName, out string? cached))
+            {
+                exePath = cached;
+                LogManager.Instance.LogMessage($"Using cached EXE path for '{processName}': {exePath}", LogLevel.Info);
+            }
+
+            if (exePath == null)
+            {
+                LogManager.Instance.LogMessage($"VPN auto-recovery: no EXE path available for '{processName}' — cannot restart client", LogLevel.Warn);
+                return;
+            }
 
             await Task.Delay(ClientRestartDelayMs).ConfigureAwait(false);
             try

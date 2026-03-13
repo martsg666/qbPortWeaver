@@ -47,6 +47,10 @@ namespace qbPortWeaver
         {
             InitializeComponent();
 
+            // Hide immediately — this is a tray-only app with no visible window
+            ShowInTaskbar = false;
+            WindowState = FormWindowState.Minimized;
+
             LogManager.Initialize(AppConstants.GetLogFilePath());
 
             // Ensure all registry keys exist, writing defaults for any missing ones
@@ -67,10 +71,6 @@ namespace qbPortWeaver
         {
             try
             {
-                // Start minimized and hide from taskbar
-                this.WindowState = FormWindowState.Minimized;
-                this.ShowInTaskbar = false;
-
                 // Log once at startup so the version is visible in the log file for diagnostics
                 LogManager.Instance.LogMessage($"{AppConstants.AppName} {AppConstants.AppVersion} starting", LogLevel.Info);
 

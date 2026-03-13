@@ -67,7 +67,7 @@ The application runs in the system tray, manages configuration and logging, and 
   Optionally run a custom command after a successful port update (fire-and-forget). See SampleSendMail.ps1 for an example of sending an email notification with status details.
 
 - **VPN Auto-Recovery**
-  Automatically restarts the VPN service when it has been disconnected for a configurable number of consecutive sync cycles. The tray app detects the disconnect and delegates the service restart to a lightweight helper Windows service (`qbPortWeaverHelper`) that runs as LocalSystem - no UAC prompt required. The VPN client process is also restarted in the user session so auto-connect triggers on startup.
+  Automatically restarts the VPN service when a configurable number of consecutive sync cycles fail — whether the VPN is disconnected or port detection fails despite the VPN being connected. The tray app delegates the service restart to a lightweight helper Windows service (`qbPortWeaverHelper`) that runs as LocalSystem - no UAC prompt required. The VPN client process is also restarted in the user session so auto-connect triggers on startup.
 
 - **Automatic Update Checker**
   Checks GitHub for new releases on startup and every 12 hours, and offers to open the download page. The **About** dialog (tray menu → About) also shows the current and latest version, update status, and contributor links.
@@ -101,8 +101,8 @@ On first run, all settings are initialized with sensible defaults.
 | Warn on interface mismatch | Warn if qBittorrent's network interface doesn't match the VPN | `True` |
 | Restart on disconnect | Restart qBittorrent when its connection status changes to disconnected (requires Executable and Process name) | `False` |
 | Post-update command | Command to run after a successful port update (leave empty to disable) | - |
-| VPN Auto-Recovery | Automatically restart the VPN service after N consecutive disconnected sync cycles | `False` |
-| Auto-Recovery trigger cycles | Number of consecutive disconnected cycles before triggering VPN auto-recovery | `3` |
+| VPN Auto-Recovery | Automatically restart the VPN service after N consecutive failed sync cycles (VPN disconnected or port detection failure) | `False` |
+| Auto-Recovery trigger cycles | Number of consecutive failed cycles before triggering VPN auto-recovery | `3` |
 | Debug logging | Enable verbose debug logging to the log file | `False` |
 
 ---
@@ -119,8 +119,8 @@ On first run, all settings are initialized with sensible defaults.
 1. Checks whether the configured VPN provider is connected.
    - If **not connected** and **Default port** is 0: skips the cycle and waits for the next interval.
    - If **not connected** and **Default port** is set: uses the default port as the target and continues.
-   - If **VPN Auto-Recovery** is enabled and the disconnected cycle count reaches the configured threshold: automatically restarts the VPN service (via the helper Windows service) and the VPN client process.
-2. Reads the VPN-assigned port from the configured provider (skipped if using the default port fallback).
+   - If **VPN Auto-Recovery** is enabled and the failed cycle count reaches the configured threshold: automatically restarts the VPN service (via the helper Windows service) and the VPN client process.
+2. Reads the VPN-assigned port from the configured provider (skipped if using the default port fallback). If port detection fails despite the VPN being connected, the failed cycle counter increments and auto-recovery may trigger.
 3. Checks if qBittorrent is running (optionally force starts it if configured).
 4. Authenticates with qBittorrent and retrieves the current listening port and network interface.
 5. If **Warn on interface mismatch** is enabled: checks that qBittorrent's network interface matches the configured VPN provider and shows a tray warning if not.

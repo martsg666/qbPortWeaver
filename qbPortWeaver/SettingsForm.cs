@@ -39,8 +39,8 @@ namespace qbPortWeaver
             toolTip.SetToolTip(chkRestartOnDisconnect,       "Automatically restart qBittorrent if the connection goes offline or disconnects");
             toolTip.SetToolTip(txtPostUpdateCmd,             "Shell command to run after a successful port update (leave empty to disable)");
             toolTip.SetToolTip(chkDebugMode,                 "Write verbose debug entries to the log file");
-            toolTip.SetToolTip(chkVpnAutoRecovery,           "Automatically restart the VPN service after N consecutive disconnected sync cycles");
-            toolTip.SetToolTip(nudVpnRecoveryCycles,         "Number of consecutive disconnected cycles before the VPN service is restarted");
+            toolTip.SetToolTip(chkVpnAutoRecovery,           "Automatically restart the VPN service after N consecutive failed sync cycles (VPN disconnected or port detection failure)");
+            toolTip.SetToolTip(nudVpnRecoveryCycles,         "Number of consecutive failed cycles before the VPN service is restarted");
         }
 
         private void LoadSettings()

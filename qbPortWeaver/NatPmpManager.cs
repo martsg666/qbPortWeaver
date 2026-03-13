@@ -1,7 +1,7 @@
 using System.Net;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
-using System.ServiceProcess;
+
 
 namespace qbPortWeaver
 {
@@ -183,53 +183,22 @@ namespace qbPortWeaver
             }
         }
 
-        // Finds the Windows service to restart during VPN auto-recovery.
-        // Supported adapters and their corresponding VPN client services:
-        //   - ProtonVPN adapters ("ProtonVPN TUN" / "ProtonVPN") → "ProtonVPN Service"
-        //   - PIA adapters ("PIA OpenVPN WinTUN Adapter" / "wgpia0") → "PrivateInternetAccessService"
-        // Unknown adapters return null - restarting an unrecognised service would be unsafe.
-        public string? FindServiceName()
-        {
-            string? serviceName = FindServiceNameForAdapter(_adapter.Name);
-            LogManager.Instance.LogDebug(serviceName != null
-                ? $"NatPmpManager.FindServiceName: found service '{serviceName}' for adapter '{_adapter.Name}'"
-                : $"NatPmpManager.FindServiceName: adapter '{_adapter.Name}' is not a recognised VPN provider");
-            return serviceName;
-        }
+        // Infers the provider token from the adapter name for auto-recovery.
+        // Supported adapters:
+        //   - ProtonVPN adapters ("ProtonVPN TUN" / "ProtonVPN") → "ProtonVPN"
+        //   - PIA adapters ("PIA OpenVPN WinTUN Adapter" / "wgpia0") → "PIA"
+        // Unknown adapters return null - restarting an unrecognised provider would be unsafe.
+        public string? FindProviderToken() => InferProviderToken(_adapter.Name);
 
-        // Finds the Windows service name for a given NAT-PMP adapter by adapter name.
-        // Used as a static fallback by PortSyncService when no NatPmpManager instance exists
+        // Static fallback used by PortSyncService when no NatPmpManager instance exists
         // (e.g. the VPN adapter is not currently up on the first disconnected cycle).
-        internal static string? FindServiceNameForAdapter(string adapterName)
+        internal static string? InferProviderToken(string adapterName)
         {
-            try
-            {
-                ServiceController[] services = ServiceController.GetServices();
-                try   { return MatchServiceName(adapterName, services); }
-                finally { foreach (var svc in services) svc.Dispose(); }
-            }
-            catch (Exception ex)
-            {
-                LogManager.Instance.LogDebug($"NatPmpManager.FindServiceNameForAdapter: {ex.Message}");
-                return null;
-            }
-        }
-
-        // Core service-name matching shared by FindServiceName and FindServiceNameForAdapter.
-        // Returns null for unrecognised adapters - restarting an unknown service would be unsafe.
-        private static string? MatchServiceName(string adapterName, ServiceController[] services)
-        {
-            // ProtonVPN: adapter name is "ProtonVPN TUN" (OpenVPN) or "ProtonVPN" (WireGuard)
             if (adapterName.Contains("ProtonVPN", StringComparison.OrdinalIgnoreCase))
-                return services
-                    .FirstOrDefault(s => s.ServiceName.Equals(ProtonVpnManager.VpnServiceName, StringComparison.OrdinalIgnoreCase))
-                    ?.ServiceName;
+                return RegistrySettingsManager.VpnProviderProtonVpn;
 
-            // PIA: adapter name is "PIA OpenVPN WinTUN Adapter" (OpenVPN) or "wgpia0" (WireGuard) - both contain "PIA".
             if (adapterName.Contains("PIA", StringComparison.OrdinalIgnoreCase))
-                return services
-                    .FirstOrDefault(s => s.ServiceName.Equals(PiaVpnManager.VpnServiceName, StringComparison.OrdinalIgnoreCase))
-                    ?.ServiceName;
+                return RegistrySettingsManager.VpnProviderPia;
 
             return null;
         }

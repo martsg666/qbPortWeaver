@@ -25,10 +25,10 @@ namespace qbPortWeaver
         Task<int?> GetVpnPortAsync();
 
         /// <summary>
-        /// Returns the Windows service name that backs this VPN provider, or <c>null</c> if
-        /// the service is not installed or the provider is not recognised.
-        /// Used by VPN auto-recovery to restart the service when the VPN goes down.
+        /// Returns the provider token used to identify this VPN for auto-recovery, or <c>null</c>
+        /// if the provider is not recognised. The token is sent to the helper service which maps
+        /// it to the actual Windows service name.
         /// </summary>
-        string? FindServiceName();
+        string? FindProviderToken();
     }
 }

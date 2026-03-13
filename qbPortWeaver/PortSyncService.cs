@@ -17,9 +17,9 @@ namespace qbPortWeaver
         // Event raised when qBittorrent's network interface does not match the configured VPN provider
         public event Action<string>? InterfaceMismatchDetected;
 
-        // Consecutive sync cycles in which the VPN was detected as disconnected.
+        // Consecutive sync cycles in which the VPN was disconnected or port detection failed.
         // Serialised by MainForm._updateSemaphore (same guarantee as _lastKnownNatPmpManager).
-        private int _consecutiveDisconnectedCycles;
+        private int _consecutiveFailedCycles;
 
         // Fallback for when TryCreateForAdapter cannot reach the configured adapter (e.g. VPN is
         // between disconnect and reconnect) - returned so IsVpnConnected() reports false and
@@ -152,11 +152,11 @@ namespace qbPortWeaver
 
             if (!vpnManager.IsVpnConnected())
             {
-                _consecutiveDisconnectedCycles++;
-                int disconnectedCount = _consecutiveDisconnectedCycles;
+                _consecutiveFailedCycles++;
+                int disconnectedCount = _consecutiveFailedCycles;
                 string disconnectedMsg = $"{vpnManager.ProviderName} is not connected";
-                LogManager.Instance.LogMessage(BuildDisconnectedMessage(disconnectedMsg, disconnectedCount, cfg), LogLevel.Info);
-                await TryTriggerVpnRecoveryAsync(vpnManager.FindServiceName(), vpnManager.ProviderName, cfg).ConfigureAwait(false);
+                LogManager.Instance.LogMessage(BuildCycleCountMessage(disconnectedMsg, disconnectedCount, cfg), LogLevel.Info);
+                await TryTriggerVpnRecoveryAsync(vpnManager.FindProviderToken(), vpnManager.ProviderName, cfg).ConfigureAwait(false);
 
                 if (cfg.DefaultPort == 0)
                 {
@@ -172,10 +172,8 @@ namespace qbPortWeaver
             }
             else
             {
-                // For ProtonVPN and PIA, a successful connectivity check is sufficient to reset the counter.
-                // For NAT-PMP, the counter is only reset after a successful port mapping (see below).
-                if (vpnManager is not NatPmpManager)
-                    _consecutiveDisconnectedCycles = 0;
+                // Counter is only reset after a successful port detection (see below) so that
+                // port detection failures also accumulate toward the auto-recovery threshold.
                 status[StatusKeys.VpnConnected] = true;
 
                 // Cache VPN client EXE paths while the process is running so auto-recovery
@@ -187,11 +185,11 @@ namespace qbPortWeaver
                 int? vpnPort = await vpnManager.GetVpnPortAsync().ConfigureAwait(false);
                 if (!vpnPort.HasValue)
                 {
-                    await HandleNatPmpPortMappingFailureAsync(vpnManager, cfg).ConfigureAwait(false);
-                    SetCompleted(status, false, $"Failed to determine {vpnManager.ProviderName} port");
+                    await HandlePortDetectionFailureAsync(vpnManager, cfg).ConfigureAwait(false);
+                    SetCompleted(status, false, $"Failed to determine {vpnManager.ProviderName} port", LogLevel.Warn);
                     return cfg.UpdateInterval;
                 }
-                _consecutiveDisconnectedCycles = 0; // NAT-PMP: reset only after a successful port mapping
+                _consecutiveFailedCycles = 0; // Reset only after a successful port fetch
                 status[StatusKeys.VpnPort] = vpnPort.Value;
                 LogManager.Instance.LogMessage($"{vpnManager.ProviderName} port found: {vpnPort.Value}", LogLevel.Info);
 
@@ -305,13 +303,13 @@ namespace qbPortWeaver
 
             // No previous knowledge of this adapter - VPN likely just disconnected for the first time.
             // Treat as disconnected so the consecutive-cycle counter increments and auto-recovery can fire.
-            _consecutiveDisconnectedCycles++;
-            int count = _consecutiveDisconnectedCycles;
+            _consecutiveFailedCycles++;
+            int count = _consecutiveFailedCycles;
             string disconnectedMsg = $"NAT-PMP adapter '{cfg.NatPmpAdapterName}' not found - VPN may be disconnected";
-            LogManager.Instance.LogMessage(BuildDisconnectedMessage(disconnectedMsg, count, cfg), LogLevel.Info);
+            LogManager.Instance.LogMessage(BuildCycleCountMessage(disconnectedMsg, count, cfg), LogLevel.Info);
 
             await TryTriggerVpnRecoveryAsync(
-                NatPmpManager.FindServiceNameForAdapter(cfg.NatPmpAdapterName),
+                NatPmpManager.InferProviderToken(cfg.NatPmpAdapterName),
                 $"NAT-PMP adapter '{cfg.NatPmpAdapterName}'",
                 cfg).ConfigureAwait(false);
 
@@ -509,49 +507,47 @@ namespace qbPortWeaver
                 LogManager.Instance.LogMessage("Successfully restarted qBittorrent after connection disconnect", LogLevel.Info);
         }
 
-        // Increments the disconnected counter and triggers recovery when the NAT-PMP port mapping
-        // fails despite the adapter being connected. No-op for non-NAT-PMP providers.
-        private async Task HandleNatPmpPortMappingFailureAsync(IVpnManager vpnManager, AppConfig cfg)
+        // Increments the failure counter and triggers recovery when port detection
+        // fails despite the VPN being connected (applies to all providers).
+        private async Task HandlePortDetectionFailureAsync(IVpnManager vpnManager, AppConfig cfg)
         {
-            if (vpnManager is not NatPmpManager) return;
-
-            _consecutiveDisconnectedCycles++;
-            int failedCount = _consecutiveDisconnectedCycles;
+            _consecutiveFailedCycles++;
+            int failedCount = _consecutiveFailedCycles;
             LogManager.Instance.LogMessage(
-                BuildDisconnectedMessage($"NAT-PMP port mapping failed on '{vpnManager.ProviderName}'", failedCount, cfg),
+                BuildCycleCountMessage($"Port detection failed on '{vpnManager.ProviderName}'", failedCount, cfg),
                 LogLevel.Info);
-            await TryTriggerVpnRecoveryAsync(vpnManager.FindServiceName(), vpnManager.ProviderName, cfg).ConfigureAwait(false);
+            await TryTriggerVpnRecoveryAsync(vpnManager.FindProviderToken(), vpnManager.ProviderName, cfg).ConfigureAwait(false);
         }
 
-        // Triggers VPN auto-recovery if enabled and the disconnected cycle threshold is reached.
-        // Resets the counter before the service lookup so the warning does not fire every cycle
-        // when no service name is found.
-        private async Task TryTriggerVpnRecoveryAsync(string? serviceName, string providerName, AppConfig cfg)
+        // Triggers VPN auto-recovery if enabled and the failure cycle threshold is reached.
+        // Resets the counter before the token check so the warning does not fire every cycle
+        // when no provider token is found.
+        private async Task TryTriggerVpnRecoveryAsync(string? providerToken, string providerName, AppConfig cfg)
         {
             if (!cfg.VpnAutoRecoveryEnabled) return;
-            if (_consecutiveDisconnectedCycles < cfg.VpnAutoRecoveryTriggerCycles) return;
+            if (_consecutiveFailedCycles < cfg.VpnAutoRecoveryTriggerCycles) return;
 
-            int count = _consecutiveDisconnectedCycles;
-            _consecutiveDisconnectedCycles = 0;
+            int count = _consecutiveFailedCycles;
+            _consecutiveFailedCycles = 0;
 
-            if (serviceName is null)
+            if (providerToken is null)
             {
-                LogManager.Instance.LogMessage($"VPN auto-recovery: no Windows service found for '{providerName}'", LogLevel.Warn);
+                LogManager.Instance.LogMessage($"VPN auto-recovery: no provider token found for '{providerName}'", LogLevel.Warn);
                 return;
             }
 
             LogManager.Instance.LogMessage(
-                $"VPN auto-recovery: triggering recovery for '{providerName}' after {count} consecutive disconnected {(count == 1 ? "cycle" : "cycles")}",
+                $"VPN auto-recovery: triggering recovery for '{providerName}' after {count} consecutive failed {(count == 1 ? "cycle" : "cycles")}",
                 LogLevel.Info);
-            await VpnAutoRecoveryManager.TriggerRecoveryAsync(serviceName).ConfigureAwait(false);
+            await VpnAutoRecoveryManager.TriggerRecoveryAsync(providerToken).ConfigureAwait(false);
         }
 
-        // Builds a disconnected log message with cycle count and optional recovery trigger suffix
-        private static string BuildDisconnectedMessage(string prefix, int count, AppConfig cfg)
+        // Builds a failure log message with cycle count and optional recovery trigger suffix
+        private static string BuildCycleCountMessage(string prefix, int count, AppConfig cfg)
         {
             string cycles = count == 1 ? "cycle" : "cycles";
             string recoverySuffix = cfg.VpnAutoRecoveryEnabled
-                ? $", recovery triggers after {cfg.VpnAutoRecoveryTriggerCycles} consecutive disconnects"
+                ? $", recovery triggers after {cfg.VpnAutoRecoveryTriggerCycles} consecutive failures"
                 : string.Empty;
             return $"{prefix} ({count} consecutive {cycles}{recoverySuffix})";
         }

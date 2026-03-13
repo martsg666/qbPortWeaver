@@ -48,6 +48,32 @@ namespace qbPortWeaver
             "Proton", "Proton VPN", "Logs", "client-logs.txt"
         );
 
+        // Kills a process (including its entire process tree) and waits up to timeoutMs for it to exit.
+        // If the first wait times out, makes one more kill attempt before giving up.
+        // Returns true if the process exited (or had already exited), false if it may still be running.
+        public static bool KillAndWait(Process process, int timeoutMs = 2000)
+        {
+            try
+            {
+                process.Kill(entireProcessTree: true);
+            }
+            catch (InvalidOperationException)
+            {
+                // Process already exited between retrieval and Kill — treat as success.
+                return true;
+            }
+            if (process.WaitForExit(timeoutMs)) return true;
+            try
+            {
+                process.Kill(entireProcessTree: true);
+            }
+            catch (InvalidOperationException)
+            {
+                return true;
+            }
+            return process.WaitForExit(timeoutMs);
+        }
+
         // Opens a URL in the default browser using ShellExecute
         public static void OpenUrl(string url)
         {

@@ -8,20 +8,22 @@ namespace qbPortWeaver.HelperService;
 // user-session tray app. Runs as a hosted background service inside the helper Windows service.
 //
 // Protocol (one text line per connection):
-//   restart:<serviceName>:<logFilePath>
+//   restart:<providerToken>:<logFilePath>
 //
 // The log file path is sent per-call so the helper writes into the same log file as the
 // tray app, regardless of which user profile is active.
 internal sealed class HelperPipeServer : BackgroundService
 {
     internal const string PipeName = "qbPortWeaverHelper"; // Must match AppConstants.HelperServicePipeName in qbPortWeaver
+    private  const string ExpectedLogFileName = "qbPortWeaver.log"; // Must match AppConstants.LogFileName in qbPortWeaver
 
-    // Only these Windows service names may be restarted via the helper pipe.
-    // Must match ProtonVpnManager.VpnServiceName and PiaVpnManager.VpnServiceName in qbPortWeaver.
-    private static readonly HashSet<string> AllowedServices = new(StringComparer.OrdinalIgnoreCase)
+    // Maps provider tokens (sent by the tray app) to the Windows service names to restart.
+    // Service names live only here — they are never sent over the pipe.
+    // Tokens must match the VpnProvider* constants in RegistrySettingsManager (qbPortWeaver).
+    private static readonly Dictionary<string, string> TokenToService = new(StringComparer.OrdinalIgnoreCase)
     {
-        "ProtonVPN Service",
-        "PrivateInternetAccessService",
+        ["ProtonVPN"] = "ProtonVPN Service",
+        ["PIA"]       = "PrivateInternetAccessService",
     };
 
     private readonly ILogger<HelperPipeServer> _logger;
@@ -82,12 +84,22 @@ internal sealed class HelperPipeServer : BackgroundService
             return;
         }
 
-        var serviceName = parts[1];
-        var logFilePath = parts[2];
+        var providerToken = parts[1];
+        var logFilePath   = parts[2];
 
-        if (!AllowedServices.Contains(serviceName))
+        if (!TokenToService.TryGetValue(providerToken, out string? serviceName))
         {
-            _logger.LogWarning("Rejected restart request for disallowed service '{Service}'", serviceName);
+            _logger.LogWarning("Rejected restart request for unknown provider token '{Token}'", providerToken);
+            return;
+        }
+
+        // Validate the log file name to prevent a caller-controlled path being written
+        // by this SYSTEM-level process to an arbitrary location. We can only check the
+        // filename here — the directory is user-session-specific and not resolvable from
+        // Session 0 without knowing the active user's SID.
+        if (!Path.GetFileName(logFilePath).Equals(ExpectedLogFileName, StringComparison.OrdinalIgnoreCase))
+        {
+            _logger.LogWarning("Rejected unexpected log file name in path '{Path}'", logFilePath);
             return;
         }
 

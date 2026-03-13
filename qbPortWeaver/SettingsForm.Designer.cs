@@ -191,7 +191,7 @@ namespace qbPortWeaver
             lblVpnRecoveryCyclesUnit.Name = "lblVpnRecoveryCyclesUnit";
             lblVpnRecoveryCyclesUnit.Size = new Size(202, 23);
             lblVpnRecoveryCyclesUnit.TabIndex = 10;
-            lblVpnRecoveryCyclesUnit.Text = "consecutive disconnected cycles";
+            lblVpnRecoveryCyclesUnit.Text = "consecutive failed cycles";
             lblVpnRecoveryCyclesUnit.TextAlign = ContentAlignment.MiddleLeft;
             // 
             // grpQBittorrent

@@ -7,9 +7,9 @@ namespace qbPortWeaver
     // Manages qBittorrent-related operations via Web API
     public sealed class QBittorrentManager : IDisposable
     {
-        private const int    ProcessStartDelayMs = 2000;
-        private const int    ProcessKillDelayMs  = 2000;
-        private const int    ProcessInitDelayMs  = 1000;
+        private const int    ProcessStartDelayMs  = 2000;
+        private const int    ProcessKillTimeoutMs = 2000;
+        private const int    ProcessInitDelayMs   = 1000;
         private const string AuthOkResponse      = "Ok.";
 
         private readonly string _url;
@@ -68,14 +68,15 @@ namespace qbPortWeaver
         {
             try
             {
-                // Kill any running qBittorrent processes and wait for each to exit
+                // Kill all running qBittorrent processes and wait for each to fully exit before
+                // launching the new instance, to avoid the new process inheriting a port or
+                // file lock held by a still-dying instance.
                 foreach (var proc in Process.GetProcessesByName(_processName))
                 {
                     try
                     {
-                        proc.Kill();
-                        if (!proc.WaitForExit(ProcessKillDelayMs))
-                            LogManager.Instance.LogMessage($"qBittorrent process (PID {proc.Id}) did not exit within {ProcessKillDelayMs}ms after Kill - a duplicate instance may start", LogLevel.Warn);
+                        if (!AppConstants.KillAndWait(proc, ProcessKillTimeoutMs))
+                            LogManager.Instance.LogMessage($"qBittorrent process (PID {proc.Id}) still running after two kill attempts — new instance may conflict", LogLevel.Warn);
                     }
                     catch (Exception ex) { LogManager.Instance.LogDebug($"QBittorrentManager.RestartAsync: Failed to kill process: {ex.Message}"); }
                     finally { proc.Dispose(); }

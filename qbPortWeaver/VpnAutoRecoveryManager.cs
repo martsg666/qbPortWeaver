@@ -17,7 +17,7 @@ namespace qbPortWeaver
         private static readonly ConcurrentDictionary<string, string> CachedClientExePaths = new(StringComparer.OrdinalIgnoreCase);
 
         // Maps a provider token to the client process that must be restarted alongside the service.
-        // The token is sent over the pipe — the helper holds the only copy of the token→service
+        // The token is sent over the pipe - the helper holds the only copy of the token→service
         // name mapping, so Windows service names never appear in this project.
         // The client holds connection state and triggers auto-connect on startup -
         // restarting the service alone is not sufficient to reconnect.
@@ -45,21 +45,20 @@ namespace qbPortWeaver
         // available if the client is later killed externally before recovery runs.
         internal static void CacheRunningClientExePaths()
         {
-            foreach (var entry in ClientProcessMap)
+            foreach (var processName in ClientProcessMap
+                         .Select(e => e.ClientProcessName)
+                         .Where(name => !CachedClientExePaths.ContainsKey(name)))
             {
-                if (CachedClientExePaths.ContainsKey(entry.ClientProcessName))
-                    continue;
-
                 try
                 {
-                    var processes = Process.GetProcessesByName(entry.ClientProcessName);
+                    var processes = Process.GetProcessesByName(processName);
                     try
                     {
                         string? exePath = processes.FirstOrDefault()?.MainModule?.FileName;
                         if (exePath != null)
                         {
-                            CachedClientExePaths[entry.ClientProcessName] = exePath;
-                            LogManager.Instance.LogDebug($"VpnAutoRecoveryManager.CacheRunningClientExePaths: cached '{entry.ClientProcessName}' → {exePath}");
+                            CachedClientExePaths[processName] = exePath;
+                            LogManager.Instance.LogDebug($"VpnAutoRecoveryManager.CacheRunningClientExePaths: cached '{processName}' → {exePath}");
                         }
                     }
                     finally
@@ -69,13 +68,13 @@ namespace qbPortWeaver
                 }
                 catch (Exception ex)
                 {
-                    LogManager.Instance.LogDebug($"VpnAutoRecoveryManager.CacheRunningClientExePaths: '{entry.ClientProcessName}' - {ex.Message}");
+                    LogManager.Instance.LogDebug($"VpnAutoRecoveryManager.CacheRunningClientExePaths: '{processName}' - {ex.Message}");
                 }
             }
         }
 
         // Sends a restart request to the SYSTEM helper service via named pipe.
-        // The provider token (e.g. "ProtonVPN", "PIA") is sent instead of the service name —
+        // The provider token (e.g. "ProtonVPN", "PIA") is sent instead of the service name -
         // the helper holds the only copy of the token→service name mapping.
         private static async Task SendToHelperServiceAsync(string providerToken)
         {
@@ -93,15 +92,11 @@ namespace qbPortWeaver
             }
         }
 
-        private static string? FindClientProcessName(string providerToken)
-        {
-            foreach (var entry in ClientProcessMap)
-            {
-                if (providerToken.Equals(entry.ProviderToken, StringComparison.OrdinalIgnoreCase))
-                    return entry.ClientProcessName;
-            }
-            return null;
-        }
+        private static string? FindClientProcessName(string providerToken) =>
+            ClientProcessMap
+                .Where(e => providerToken.Equals(e.ProviderToken, StringComparison.OrdinalIgnoreCase))
+                .Select(e => e.ClientProcessName)
+                .FirstOrDefault();
 
         // Kills all instances of the named client process (capturing the exe path first),
         // waits briefly, then relaunches it. Runs in the main app's user session - no
@@ -129,8 +124,8 @@ namespace qbPortWeaver
                         catch (Exception ex) { LogManager.Instance.LogDebug($"VpnAutoRecoveryManager.RestartClientProcessAsync: Kill '{processName}' - {ex.Message} - ignored"); }
                     }
                     LogManager.Instance.LogMessage(exePath != null
-                        ? $"Killed client process '{processName}'"
-                        : $"Client process '{processName}' was not running", LogLevel.Info);
+                        ? $"Killed VPN client process '{processName}'"
+                        : $"VPN client process '{processName}' was not running", LogLevel.Info);
                 }
                 finally
                 {
@@ -139,7 +134,7 @@ namespace qbPortWeaver
             }
             catch (Exception ex)
             {
-                LogManager.Instance.LogMessage($"Failed to kill client process '{processName}': {ex.Message}", LogLevel.Warn);
+                LogManager.Instance.LogMessage($"Failed to kill VPN client process '{processName}': {ex.Message}", LogLevel.Warn);
             }
 
             // Fall back to cached path if the process was already dead
@@ -151,7 +146,7 @@ namespace qbPortWeaver
 
             if (exePath == null)
             {
-                LogManager.Instance.LogMessage($"VPN auto-recovery: no EXE path available for '{processName}' - cannot restart client", LogLevel.Warn);
+                LogManager.Instance.LogMessage($"VPN auto-recovery: no EXE path available for '{processName}' - cannot restart VPN client process", LogLevel.Warn);
                 return;
             }
 
@@ -159,11 +154,11 @@ namespace qbPortWeaver
             try
             {
                 Process.Start(new ProcessStartInfo(exePath) { UseShellExecute = true })?.Dispose();
-                LogManager.Instance.LogMessage($"Restarted client process '{processName}'", LogLevel.Info);
+                LogManager.Instance.LogMessage($"Restarted VPN client process '{processName}'", LogLevel.Info);
             }
             catch (Exception ex)
             {
-                LogManager.Instance.LogMessage($"Failed to restart client process '{processName}': {ex.Message}", LogLevel.Warn);
+                LogManager.Instance.LogMessage($"Failed to restart VPN client process '{processName}': {ex.Message}", LogLevel.Warn);
             }
         }
     }

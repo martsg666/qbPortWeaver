@@ -10,12 +10,12 @@ namespace qbPortWeaver.HelperService;
 // Supported actions:
 //   restart        — stop/start a Windows service by name
 //   cycle-adapter  — disable/enable a network adapter via netsh; if the adapter name
-//                    matches a known provider (ProtonVPN, PIA), restart its service after
-//                    the adapter is re-enabled so the VPN re-initialises on a clean adapter
+//                    matches a known provider (ProtonVPN, PIA), restart its service
+//                    regardless of whether the adapter cycle succeeded
 internal static class AutoRecovery
 {
     private const int ServiceRestartDelayMs     = 5000;
-    private const int ServiceOperationTimeoutMs = 30000;
+    private const int ServiceOperationTimeoutMs = 15000;
     private const int AdapterCycleDelayMs       = 3000;
     private const int NetshTimeoutMs            = 15000;
 
@@ -61,8 +61,9 @@ internal static class AutoRecovery
     }
 
     // Cycles a network adapter by disabling and re-enabling it via netsh. If the adapter
-    // name matches a known provider, the adapter is cycled first (to clear stale state),
-    // then the corresponding Windows service is restarted so it re-initialises cleanly.
+    // name matches a known provider, the corresponding Windows service is restarted
+    // regardless of whether the adapter cycle succeeded — the service restart is the
+    // critical step that re-establishes the VPN tunnel.
     internal static async Task CycleAdapterAsync(string adapterName, HelperLogger logger)
     {
         try
@@ -131,9 +132,12 @@ internal static class AutoRecovery
     }
 
     // Stops a service cleanly via the SCM, with escalating force if it doesn't respond.
-    // Escalation: SCM stop → wait → Process.Kill → wait → taskkill /F /T (last resort).
+    // Escalation: SCM stop → wait (15s) → Process.Kill → wait (15s) → taskkill /F /T.
     // ServiceController.WaitForStatus has no async overload — wrap in Task.Run to avoid
-    // blocking the BackgroundService thread pool thread for up to ServiceOperationTimeoutMs.
+    // blocking the BackgroundService thread pool thread.
+    //
+    // IMPORTANT: WaitForStatus throws System.ServiceProcess.TimeoutException, NOT
+    // System.TimeoutException — they are sibling classes (both inherit SystemException).
     private static async Task StopServiceAsync(string serviceName, HelperLogger logger)
     {
         using var sc = new ServiceController(serviceName);
@@ -150,10 +154,20 @@ internal static class AutoRecovery
         if (sc.Status == ServiceControllerStatus.StopPending)
         {
             logger.LogInfo($"Service '{serviceName}' is already stopping - waiting");
-            await Task.Run(() => sc.WaitForStatus(ServiceControllerStatus.Stopped,
-                TimeSpan.FromMilliseconds(ServiceOperationTimeoutMs))).ConfigureAwait(false);
-            logger.LogInfo($"Service '{serviceName}' stopped");
-            return;
+            try
+            {
+                await Task.Run(() => sc.WaitForStatus(ServiceControllerStatus.Stopped,
+                    TimeSpan.FromMilliseconds(ServiceOperationTimeoutMs))).ConfigureAwait(false);
+                logger.LogInfo($"Service '{serviceName}' stopped");
+                return;
+            }
+            catch (System.ServiceProcess.TimeoutException)
+            {
+                logger.LogWarn($"Service '{serviceName}' StopPending timed out - force-killing process");
+                KillServiceProcess(sc, logger);
+                await WaitForStoppedOrWarnAsync(sc, serviceName, logger).ConfigureAwait(false);
+                return;
+            }
         }
 
         // The service may be mid-startup (e.g. SCM auto-recovery kicked in). Wait for it
@@ -162,31 +176,57 @@ internal static class AutoRecovery
         if (sc.Status == ServiceControllerStatus.StartPending)
         {
             logger.LogInfo($"Service '{serviceName}' is starting - waiting before stopping");
-            await Task.Run(() => sc.WaitForStatus(ServiceControllerStatus.Running,
-                TimeSpan.FromMilliseconds(ServiceOperationTimeoutMs))).ConfigureAwait(false);
+            try
+            {
+                await Task.Run(() => sc.WaitForStatus(ServiceControllerStatus.Running,
+                    TimeSpan.FromMilliseconds(ServiceOperationTimeoutMs))).ConfigureAwait(false);
+            }
+            catch (System.ServiceProcess.TimeoutException)
+            {
+                logger.LogWarn($"Service '{serviceName}' StartPending timed out - force-killing process");
+                KillServiceProcess(sc, logger);
+                await WaitForStoppedOrWarnAsync(sc, serviceName, logger).ConfigureAwait(false);
+                return;
+            }
         }
 
-        sc.Stop();
+        try { sc.Stop(); }
+        catch (Exception ex)
+        {
+            // sc.Stop() can throw if the service doesn't accept stop controls or is in
+            // a transient state. Fall through to force-kill.
+            logger.LogWarn($"Service '{serviceName}' SCM stop failed: {ex.Message} - force-killing process");
+            KillServiceProcess(sc, logger);
+            await WaitForStoppedOrWarnAsync(sc, serviceName, logger).ConfigureAwait(false);
+            return;
+        }
+
         try
         {
             await Task.Run(() => sc.WaitForStatus(ServiceControllerStatus.Stopped,
                 TimeSpan.FromMilliseconds(ServiceOperationTimeoutMs))).ConfigureAwait(false);
             logger.LogInfo($"Service '{serviceName}' stopped");
         }
-        catch (System.TimeoutException)
+        catch (System.ServiceProcess.TimeoutException)
         {
             logger.LogWarn($"Service '{serviceName}' stop timed out - force-killing process");
             KillServiceProcess(sc, logger);
-            try
-            {
-                await Task.Run(() => sc.WaitForStatus(ServiceControllerStatus.Stopped,
-                    TimeSpan.FromMilliseconds(ServiceOperationTimeoutMs))).ConfigureAwait(false);
-                logger.LogInfo($"Service '{serviceName}' force-stopped");
-            }
-            catch (System.TimeoutException)
-            {
-                logger.LogWarn($"Service '{serviceName}' still not stopped after force-kill - proceeding with start anyway");
-            }
+            await WaitForStoppedOrWarnAsync(sc, serviceName, logger).ConfigureAwait(false);
+        }
+    }
+
+    // Waits for a service to reach Stopped after a force-kill attempt, logging the outcome.
+    private static async Task WaitForStoppedOrWarnAsync(ServiceController sc, string serviceName, HelperLogger logger)
+    {
+        try
+        {
+            await Task.Run(() => sc.WaitForStatus(ServiceControllerStatus.Stopped,
+                TimeSpan.FromMilliseconds(ServiceOperationTimeoutMs))).ConfigureAwait(false);
+            logger.LogInfo($"Service '{serviceName}' force-stopped");
+        }
+        catch (System.ServiceProcess.TimeoutException)
+        {
+            logger.LogWarn($"Service '{serviceName}' still not stopped after force-kill - proceeding with start anyway");
         }
     }
 
@@ -206,9 +246,17 @@ internal static class AutoRecovery
         if (sc.Status == ServiceControllerStatus.StartPending)
         {
             logger.LogInfo($"Service '{serviceName}' is already starting (likely SCM auto-recovery) - waiting");
-            await Task.Run(() => sc.WaitForStatus(ServiceControllerStatus.Running,
-                TimeSpan.FromMilliseconds(ServiceOperationTimeoutMs))).ConfigureAwait(false);
-            logger.LogInfo($"Service '{serviceName}' started (by SCM)");
+            try
+            {
+                await Task.Run(() => sc.WaitForStatus(ServiceControllerStatus.Running,
+                    TimeSpan.FromMilliseconds(ServiceOperationTimeoutMs))).ConfigureAwait(false);
+                logger.LogInfo($"Service '{serviceName}' started (by SCM)");
+            }
+            catch (System.ServiceProcess.TimeoutException)
+            {
+                logger.LogWarn($"Service '{serviceName}' stuck in StartPending after {ServiceOperationTimeoutMs}ms");
+                throw;
+            }
             return;
         }
 
@@ -218,19 +266,33 @@ internal static class AutoRecovery
         if (sc.Status == ServiceControllerStatus.StopPending)
         {
             logger.LogInfo($"Service '{serviceName}' is still stopping - waiting");
-            await Task.Run(() => sc.WaitForStatus(ServiceControllerStatus.Stopped,
-                TimeSpan.FromMilliseconds(ServiceOperationTimeoutMs))).ConfigureAwait(false);
+            try
+            {
+                await Task.Run(() => sc.WaitForStatus(ServiceControllerStatus.Stopped,
+                    TimeSpan.FromMilliseconds(ServiceOperationTimeoutMs))).ConfigureAwait(false);
+            }
+            catch (System.ServiceProcess.TimeoutException)
+            {
+                logger.LogWarn($"Service '{serviceName}' StopPending timed out during start - proceeding anyway");
+            }
         }
 
         sc.Start();
-        await Task.Run(() => sc.WaitForStatus(ServiceControllerStatus.Running,
-            TimeSpan.FromMilliseconds(ServiceOperationTimeoutMs))).ConfigureAwait(false);
-        logger.LogInfo($"Service '{serviceName}' started");
+        try
+        {
+            await Task.Run(() => sc.WaitForStatus(ServiceControllerStatus.Running,
+                TimeSpan.FromMilliseconds(ServiceOperationTimeoutMs))).ConfigureAwait(false);
+            logger.LogInfo($"Service '{serviceName}' started");
+        }
+        catch (System.ServiceProcess.TimeoutException)
+        {
+            logger.LogWarn($"Service '{serviceName}' start timed out - service may still be starting");
+        }
     }
 
-    // Called by StopServiceAsync after a clean SCM stop has already timed out.
-    // Resolves the service's host PID via QueryServiceStatusEx, then escalates:
-    // Process.Kill → wait → taskkill /F /T as last resort.
+    // Called by StopServiceAsync when the service doesn't respond to a clean stop
+    // or is stuck in a pending state. Resolves the service's host PID via
+    // QueryServiceStatusEx, then escalates: Process.Kill → wait → taskkill /F /T.
     private static void KillServiceProcess(ServiceController sc, HelperLogger logger)
     {
         try

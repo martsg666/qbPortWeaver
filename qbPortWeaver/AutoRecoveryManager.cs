@@ -14,7 +14,7 @@ namespace qbPortWeaver
 
         private const int ClientRestartDelayMs       = 2000;
         private const int PipeConnectTimeoutMs       = 5000;
-        private const int ServiceHeadStartDelayMs    = 10000;
+        private const int ServiceHeadStartDelayMs    = 20000;
 
         // Caches the EXE path for each client process name so recovery works even when
         // the process was killed externally before we could inspect it.

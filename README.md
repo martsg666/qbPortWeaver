@@ -119,7 +119,7 @@ On first run, all settings are initialized with sensible defaults.
 1. Checks whether the configured VPN provider is connected.
    - If **not connected** and **Default port** is 0: skips the cycle and waits for the next interval.
    - If **not connected** and **Default port** is set: uses the default port as the target and continues.
-   - If **Auto-Recovery** is enabled and the failed cycle count reaches the configured threshold: automatically triggers recovery — restarts the VPN service and client for direct providers, or cycles the network adapter for NAT-PMP (via the helper Windows service).
+   - If **Auto-Recovery** is enabled and the failed cycle count reaches the configured threshold: automatically triggers recovery (via the helper Windows service) — restarts the VPN service and client for direct providers; for NAT-PMP, cycles the network adapter and restarts the VPN service if the adapter belongs to a known provider (ProtonVPN, PIA).
 2. Reads the VPN-assigned port from the configured provider (skipped if using the default port fallback). If port detection fails despite the VPN being connected, the failed cycle counter increments and auto-recovery may trigger.
 3. Checks if qBittorrent is running (optionally force starts it if configured).
 4. Authenticates with qBittorrent and retrieves the current listening port and network interface.

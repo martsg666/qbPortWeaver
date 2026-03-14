@@ -75,28 +75,37 @@ internal static class AutoRecovery
 
             logger.LogInfo($"Auto-recovery: cycling adapter '{adapterName}'");
 
-            if (!await RunNetshAsync($"interface set interface \"{adapterName}\" admin=disable", logger).ConfigureAwait(false))
+            // Attempt adapter disable/enable to clear stale state. If the adapter is already
+            // gone (e.g. VPN removed the TUN device on disconnect), the netsh calls will fail
+            // — that's fine, we still proceed to the service restart which is the critical step.
+            bool adapterCycled = false;
+            if (await RunNetshAsync($"interface set interface \"{adapterName}\" admin=disable", logger).ConfigureAwait(false))
             {
-                logger.LogWarn($"Auto-recovery: failed to disable adapter '{adapterName}'");
-                return;
+                logger.LogInfo($"Auto-recovery: adapter '{adapterName}' disabled");
+                await Task.Delay(AdapterCycleDelayMs).ConfigureAwait(false);
+
+                if (await RunNetshAsync($"interface set interface \"{adapterName}\" admin=enable", logger).ConfigureAwait(false))
+                {
+                    logger.LogInfo($"Auto-recovery: adapter '{adapterName}' re-enabled successfully");
+                    adapterCycled = true;
+                }
+                else
+                {
+                    logger.LogWarn($"Auto-recovery: failed to re-enable adapter '{adapterName}'");
+                }
             }
-            logger.LogInfo($"Auto-recovery: adapter '{adapterName}' disabled");
-
-            await Task.Delay(AdapterCycleDelayMs).ConfigureAwait(false);
-
-            if (!await RunNetshAsync($"interface set interface \"{adapterName}\" admin=enable", logger).ConfigureAwait(false))
+            else
             {
-                logger.LogWarn($"Auto-recovery: failed to enable adapter '{adapterName}'");
-                return;
+                logger.LogWarn($"Auto-recovery: failed to disable adapter '{adapterName}' (adapter may already be down)");
             }
-            logger.LogInfo($"Auto-recovery: adapter '{adapterName}' re-enabled successfully");
 
-            // If the adapter belongs to a known provider, restart its service after cycling
-            // so the VPN re-initialises on a clean adapter
+            // If the adapter belongs to a known provider, restart its service regardless of
+            // whether the adapter cycle succeeded — the service restart is what actually
+            // re-establishes the VPN tunnel and recreates the adapter.
             string? matchedService = FindServiceForAdapter(adapterName);
             if (matchedService is not null)
             {
-                logger.LogInfo($"Auto-recovery: adapter '{adapterName}' matches provider service '{matchedService}' - restarting service");
+                logger.LogInfo($"Auto-recovery: adapter '{adapterName}' matches provider service '{matchedService}' - restarting service{(adapterCycled ? " after adapter cycle" : " (adapter cycle skipped)")}");
                 await RestartServiceAsync(matchedService, logger).ConfigureAwait(false);
             }
         }

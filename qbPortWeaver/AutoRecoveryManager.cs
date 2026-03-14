@@ -12,8 +12,9 @@ namespace qbPortWeaver
         internal const string ActionRestart      = "restart";
         internal const string ActionCycleAdapter = "cycle-adapter";
 
-        private const int ClientRestartDelayMs = 2000;
-        private const int PipeConnectTimeoutMs = 5000;
+        private const int ClientRestartDelayMs       = 2000;
+        private const int PipeConnectTimeoutMs       = 5000;
+        private const int ServiceHeadStartDelayMs    = 10000;
 
         // Caches the EXE path for each client process name so recovery works even when
         // the process was killed externally before we could inspect it.
@@ -37,7 +38,13 @@ namespace qbPortWeaver
 
             string? clientProcessName = FindClientProcessName(target);
             if (clientProcessName != null)
+            {
+                // Give the helper service time to stop/restart the VPN service before
+                // we kill and relaunch the client process — the client should come up
+                // after the service is running, not before.
+                await Task.Delay(ServiceHeadStartDelayMs).ConfigureAwait(false);
                 await RestartClientProcessAsync(clientProcessName).ConfigureAwait(false);
+            }
             else
                 LogManager.Instance.LogMessage($"Auto-recovery: no client process matches '{target}' - skipping client restart", LogLevel.Warn);
         }

@@ -535,18 +535,6 @@ namespace qbPortWeaver
             return TryTriggerRecoveryAsync(AutoRecoveryManager.ActionCycleAdapter, adapterName, vpnManager.ProviderName, cfg);
         }
 
-        // Matches an adapter name against known VPN provider keywords to find the provider token.
-        private static string? FindProviderTokenForAdapter(string adapterName)
-        {
-            ReadOnlySpan<string> providers = [RegistrySettingsManager.VpnProviderProtonVpn, RegistrySettingsManager.VpnProviderPia];
-            foreach (string provider in providers)
-            {
-                if (adapterName.Contains(provider, StringComparison.OrdinalIgnoreCase))
-                    return provider;
-            }
-            return null;
-        }
-
         // Triggers auto-recovery if enabled and the failure cycle threshold is reached.
         // Resets the counter before the target check so the warning does not fire every cycle
         // when no recovery target is found.
@@ -568,6 +556,18 @@ namespace qbPortWeaver
                 $"Auto-recovery: triggering '{action}' for '{displayName}' after {count} consecutive failed {(count == 1 ? "cycle" : "cycles")}",
                 LogLevel.Info);
             await AutoRecoveryManager.TriggerRecoveryAsync(action, recoveryTarget).ConfigureAwait(false);
+        }
+
+        // Matches an adapter name against known VPN provider keywords to find the provider token.
+        private static string? FindProviderTokenForAdapter(string adapterName)
+        {
+            ReadOnlySpan<string> providers = [RegistrySettingsManager.VpnProviderProtonVpn, RegistrySettingsManager.VpnProviderPia];
+            foreach (string provider in providers)
+            {
+                if (adapterName.Contains(provider, StringComparison.OrdinalIgnoreCase))
+                    return provider;
+            }
+            return null;
         }
 
         // Builds a failure log message with cycle count and optional recovery trigger suffix

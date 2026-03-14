@@ -183,9 +183,9 @@ namespace qbPortWeaver
             }
         }
 
-        // Returns the adapter name as the recovery target. The helper service uses this to
-        // cycle the adapter (disable/enable) and, if the name matches a known provider, also
-        // restarts the corresponding service.
+        // Returns the adapter name as the recovery target. PortSyncService checks if the name
+        // matches a known provider (ProtonVPN, PIA) and triggers a service restart instead of
+        // an adapter cycle.
         public string? GetRecoveryTarget() => _adapter.Name;
 
         // Transfers renewal state from a previous instance so that port renewal works correctly

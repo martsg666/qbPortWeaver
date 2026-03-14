@@ -308,9 +308,12 @@ namespace qbPortWeaver
             string disconnectedMsg = $"NAT-PMP adapter '{cfg.NatPmpAdapterName}' not found - VPN may be disconnected";
             LogManager.Instance.LogMessage(BuildCycleCountMessage(disconnectedMsg, count, cfg), LogLevel.Info);
 
+            string adapterName = cfg.NatPmpAdapterName;
+            string? providerToken = FindProviderTokenForAdapter(adapterName);
             await TryTriggerRecoveryAsync(
-                AutoRecoveryManager.ActionCycleAdapter, cfg.NatPmpAdapterName,
-                $"NAT-PMP adapter '{cfg.NatPmpAdapterName}'", cfg).ConfigureAwait(false);
+                providerToken is not null ? AutoRecoveryManager.ActionRestart : AutoRecoveryManager.ActionCycleAdapter,
+                providerToken ?? adapterName,
+                $"NAT-PMP adapter '{adapterName}'", cfg).ConfigureAwait(false);
 
             status[StatusKeys.Status]  = StatusKeys.Skipped;
             status[StatusKeys.Message] = disconnectedMsg;
@@ -514,14 +517,34 @@ namespace qbPortWeaver
             await TryTriggerRecoveryAsync(vpnManager, cfg).ConfigureAwait(false);
         }
 
-        // Triggers auto-recovery via the IVpnManager. Determines the action (restart for
-        // direct providers, cycle-adapter for NAT-PMP) and target from the manager instance.
+        // Triggers auto-recovery via the IVpnManager. For direct providers (ProtonVPN, PIA),
+        // restarts the VPN service. For NAT-PMP, checks if the adapter belongs to a known
+        // provider and triggers the same service restart; otherwise cycles the adapter only.
         private Task TryTriggerRecoveryAsync(IVpnManager vpnManager, AppConfig cfg)
         {
-            string action = vpnManager is NatPmpManager
-                ? AutoRecoveryManager.ActionCycleAdapter
-                : AutoRecoveryManager.ActionRestart;
-            return TryTriggerRecoveryAsync(action, vpnManager.GetRecoveryTarget(), vpnManager.ProviderName, cfg);
+            if (vpnManager is not NatPmpManager)
+                return TryTriggerRecoveryAsync(AutoRecoveryManager.ActionRestart, vpnManager.GetRecoveryTarget(), vpnManager.ProviderName, cfg);
+
+            // NAT-PMP: check if the adapter belongs to a known provider so we can restart
+            // its service (same as direct mode) instead of just cycling the adapter.
+            string adapterName = vpnManager.GetRecoveryTarget() ?? string.Empty;
+            string? providerToken = FindProviderTokenForAdapter(adapterName);
+            if (providerToken is not null)
+                return TryTriggerRecoveryAsync(AutoRecoveryManager.ActionRestart, providerToken, vpnManager.ProviderName, cfg);
+
+            return TryTriggerRecoveryAsync(AutoRecoveryManager.ActionCycleAdapter, adapterName, vpnManager.ProviderName, cfg);
+        }
+
+        // Matches an adapter name against known VPN provider keywords to find the provider token.
+        private static string? FindProviderTokenForAdapter(string adapterName)
+        {
+            ReadOnlySpan<string> providers = [RegistrySettingsManager.VpnProviderProtonVpn, RegistrySettingsManager.VpnProviderPia];
+            foreach (string provider in providers)
+            {
+                if (adapterName.Contains(provider, StringComparison.OrdinalIgnoreCase))
+                    return provider;
+            }
+            return null;
         }
 
         // Triggers auto-recovery if enabled and the failure cycle threshold is reached.

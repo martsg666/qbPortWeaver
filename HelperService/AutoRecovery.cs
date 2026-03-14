@@ -9,9 +9,7 @@ namespace qbPortWeaver.HelperService;
 //
 // Supported actions:
 //   restart        — stop/start a Windows service by name
-//   cycle-adapter  — disable/enable a network adapter via netsh; if the adapter name
-//                    matches a known provider (ProtonVPN, PIA), restart its service
-//                    regardless of whether the adapter cycle succeeded
+//   cycle-adapter  — disable/enable a network adapter via netsh
 internal static class AutoRecovery
 {
     private const int ServiceRestartDelayMs     = 5000;
@@ -19,9 +17,8 @@ internal static class AutoRecovery
     private const int AdapterCycleDelayMs       = 3000;
     private const int NetshTimeoutMs            = 15000;
 
-    // Maps provider keywords to the Windows service to restart. Used by:
-    //   - HelperPipeServer for the "restart" action (exact token lookup via FindServiceForToken)
-    //   - CycleAdapterAsync for the "cycle-adapter" action (adapter name contains keyword)
+    // Maps provider keywords to the Windows service to restart.
+    // Used by HelperPipeServer for the "restart" action (exact token lookup via FindServiceForToken).
     internal static readonly Dictionary<string, string> ProviderServiceMap = new(StringComparer.OrdinalIgnoreCase)
     {
         ["ProtonVPN"] = "ProtonVPN Service",
@@ -60,10 +57,9 @@ internal static class AutoRecovery
         }
     }
 
-    // Cycles a network adapter by disabling and re-enabling it via netsh. If the adapter
-    // name matches a known provider, the corresponding Windows service is restarted
-    // regardless of whether the adapter cycle succeeded — the service restart is the
-    // critical step that re-establishes the VPN tunnel.
+    // Cycles a network adapter by disabling and re-enabling it via netsh.
+    // Used for generic NAT-PMP gateways where no known VPN service is involved.
+    // For known providers (ProtonVPN, PIA), the main app sends "restart" instead.
     internal static async Task CycleAdapterAsync(string adapterName, HelperLogger logger)
     {
         try
@@ -76,39 +72,21 @@ internal static class AutoRecovery
 
             logger.LogInfo($"Auto-recovery: cycling adapter '{adapterName}'");
 
-            // Attempt adapter disable/enable to clear stale state. If the adapter is already
-            // gone (e.g. VPN removed the TUN device on disconnect), the netsh calls will fail
-            // — that's fine, we still proceed to the service restart which is the critical step.
-            bool adapterCycled = false;
-            if (await RunNetshAsync($"interface set interface \"{adapterName}\" admin=disable", logger).ConfigureAwait(false))
+            if (!await RunNetshAsync($"interface set interface \"{adapterName}\" admin=disable", logger).ConfigureAwait(false))
             {
-                logger.LogInfo($"Auto-recovery: adapter '{adapterName}' disabled");
-                await Task.Delay(AdapterCycleDelayMs).ConfigureAwait(false);
+                logger.LogWarn($"Auto-recovery: failed to disable adapter '{adapterName}'");
+                return;
+            }
+            logger.LogInfo($"Auto-recovery: adapter '{adapterName}' disabled");
 
-                if (await RunNetshAsync($"interface set interface \"{adapterName}\" admin=enable", logger).ConfigureAwait(false))
-                {
-                    logger.LogInfo($"Auto-recovery: adapter '{adapterName}' re-enabled successfully");
-                    adapterCycled = true;
-                }
-                else
-                {
-                    logger.LogWarn($"Auto-recovery: failed to re-enable adapter '{adapterName}'");
-                }
-            }
-            else
-            {
-                logger.LogWarn($"Auto-recovery: failed to disable adapter '{adapterName}' (adapter may already be down)");
-            }
+            await Task.Delay(AdapterCycleDelayMs).ConfigureAwait(false);
 
-            // If the adapter belongs to a known provider, restart its service regardless of
-            // whether the adapter cycle succeeded — the service restart is what actually
-            // re-establishes the VPN tunnel and recreates the adapter.
-            string? matchedService = FindServiceForAdapter(adapterName);
-            if (matchedService is not null)
+            if (!await RunNetshAsync($"interface set interface \"{adapterName}\" admin=enable", logger).ConfigureAwait(false))
             {
-                logger.LogInfo($"Auto-recovery: adapter '{adapterName}' matches provider service '{matchedService}' - restarting service{(adapterCycled ? " after adapter cycle" : " (adapter cycle skipped)")}");
-                await RestartServiceAsync(matchedService, logger).ConfigureAwait(false);
+                logger.LogWarn($"Auto-recovery: failed to re-enable adapter '{adapterName}'");
+                return;
             }
+            logger.LogInfo($"Auto-recovery: adapter '{adapterName}' re-enabled successfully");
         }
         catch (Exception ex)
         {
@@ -119,17 +97,6 @@ internal static class AutoRecovery
     // Exact-match lookup used by HelperPipeServer for the "restart" action.
     internal static string? FindServiceForToken(string providerToken) =>
         ProviderServiceMap.TryGetValue(providerToken, out string? serviceName) ? serviceName : null;
-
-    // Matches an adapter name against known provider keywords to find the associated service.
-    private static string? FindServiceForAdapter(string adapterName)
-    {
-        foreach (var (keyword, serviceName) in ProviderServiceMap)
-        {
-            if (adapterName.Contains(keyword, StringComparison.OrdinalIgnoreCase))
-                return serviceName;
-        }
-        return null;
-    }
 
     // Stops a service cleanly via the SCM, with escalating force if it doesn't respond.
     // Escalation: SCM stop → wait (15s) → Process.Kill → wait (15s) → taskkill /F /T.

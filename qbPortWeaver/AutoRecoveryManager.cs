@@ -20,21 +20,23 @@ namespace qbPortWeaver
         // the process was killed externally before we could inspect it.
         private static readonly ConcurrentDictionary<string, string> CachedClientExePaths = new(StringComparer.OrdinalIgnoreCase);
 
-        // Maps a provider keyword (found in adapter names or used as a direct token) to the
-        // client process that must be restarted alongside the service.
+        // Maps a provider token to the client process that must be restarted alongside the service.
         private static readonly (string ProviderKeyword, string ClientProcessName)[] ClientProcessMap =
         [
             (RegistrySettingsManager.VpnProviderProtonVpn, ProtonVpnManager.ClientProcessName),
             (RegistrySettingsManager.VpnProviderPia,       PiaVpnManager.ClientProcessName),
         ];
 
-        // Sends a recovery request to the helper service and restarts the matching client
-        // process in the current user session.
-        //   action: "restart" (direct provider) or "cycle-adapter" (NAT-PMP adapter)
-        //   target: provider token (e.g. "ProtonVPN") or adapter name (e.g. "ProtonVPN TUN")
+        // Sends a recovery request to the helper service. For "restart" actions, also
+        // restarts the matching client process in the current user session after a delay
+        // to let the service come up first. For "cycle-adapter" (generic NAT-PMP gateways),
+        // only the adapter is cycled — no client process is involved.
         internal static async Task TriggerRecoveryAsync(string action, string target)
         {
             await SendToHelperServiceAsync(action, target).ConfigureAwait(false);
+
+            if (action != ActionRestart)
+                return;
 
             string? clientProcessName = FindClientProcessName(target);
             if (clientProcessName != null)
@@ -100,8 +102,7 @@ namespace qbPortWeaver
             }
         }
 
-        // Matches target against known provider keywords. Works for both direct provider
-        // tokens ("ProtonVPN") and adapter names containing the keyword ("ProtonVPN TUN").
+        // Matches the provider token (e.g. "ProtonVPN", "PIA") to the client process name.
         private static string? FindClientProcessName(string target) =>
             ClientProcessMap
                 .Where(e => target.Contains(e.ProviderKeyword, StringComparison.OrdinalIgnoreCase))

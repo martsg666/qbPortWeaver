@@ -35,7 +35,7 @@
                 catch (Exception ex)
                 {
                     if (LogManager.IsInitialized)
-                        LogManager.Instance.LogDebug($"MainForm.Dispose: Error disposing resources: {ex.Message}");
+                        LogManager.Instance.LogDebug($"MainForm.Dispose: {ex.Message}");
                 }
             }
             base.Dispose(disposing);

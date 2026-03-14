@@ -44,9 +44,10 @@ namespace qbPortWeaver
         public const string KeyPostUpdateCmd = "postUpdateCmd";
         public const string KeyDebugMode     = "debugMode";
 
-        // Registry key names - general section (VPN auto-recovery)
-        public const string KeyVpnAutoRecoveryEnabled      = "vpnAutoRecoveryEnabled";
-        public const string KeyVpnAutoRecoveryTriggerCycles = "vpnAutoRecoveryTriggerCycles";
+        // Registry key names - general section (auto-recovery)
+        // Registry string values are frozen for backward compatibility.
+        public const string KeyAutoRecoveryEnabled      = "vpnAutoRecoveryEnabled";
+        public const string KeyAutoRecoveryTriggerCycles = "vpnAutoRecoveryTriggerCycles";
 
         // Default values for all settings (single source of truth)
         internal static readonly Dictionary<string, Dictionary<string, string>> Defaults =
@@ -57,8 +58,8 @@ namespace qbPortWeaver
                     [KeyVpnProvider]                    = VpnProviderProtonVpn,
                     [KeyUpdateIntervalSeconds]           = "180",
                     [KeyNatPmpAdapterName]              = "",
-                    [KeyVpnAutoRecoveryEnabled]         = ValueFalse,
-                    [KeyVpnAutoRecoveryTriggerCycles]   = "3"
+                    [KeyAutoRecoveryEnabled]         = ValueFalse,
+                    [KeyAutoRecoveryTriggerCycles]   = "3"
                 },
                 [SectionQBittorrent] = new(StringComparer.OrdinalIgnoreCase)
                 {

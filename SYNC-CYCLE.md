@@ -84,7 +84,7 @@ flowchart TD
     D -- No --> E{Has cached fallback manager?}
     E -- Yes --> FALLBACK([Return cached manager - will report disconnected])
     E -- No --> F[Increment failed counter]
-    F --> G[TryTriggerVpnRecoveryAsync]
+    F --> G[TryTriggerRecoveryAsync]
     G --> SKIP_STATUS([SKIP: Adapter not found])
 ```
 
@@ -92,15 +92,17 @@ flowchart TD
 
 ## VPN Disconnection Handling
 
-When the VPN is detected as disconnected — or port detection fails despite the VPN being connected — the cycle increments a consecutive-failure counter. This counter drives two behaviors:
+When the VPN is detected as disconnected - or port detection fails despite the VPN being connected - the cycle increments a consecutive-failure counter. This counter drives two behaviors:
 
 1. **Default port fallback** - if `DefaultPort > 0`, the cycle applies it to qBittorrent so the client remains functional (typically on a non-VPN port). If `DefaultPort == 0`, the cycle is skipped entirely.
 
-2. **VPN auto-recovery** - if enabled, once the counter reaches the configured threshold, the cycle:
+2. **Auto-recovery** - if enabled, once the counter reaches the configured threshold, the cycle:
    - Resets the counter (to prevent repeated triggers)
-   - Resolves a provider token for the VPN provider (e.g. "ProtonVPN", "PIA")
-   - Sends a restart request to the helper service (runs as SYSTEM) via named pipe — the helper maps the token to the actual Windows service name
-   - Restarts the VPN client process in the user session
+   - Determines the recovery action and target based on the provider type:
+     - **ProtonVPN / PIA (direct):** action = `restart`, target = provider token (e.g. "ProtonVPN", "PIA") — the helper maps the token to the actual Windows service name and restarts it
+     - **NAT-PMP:** action = `cycle-adapter`, target = adapter name (e.g. "ProtonVPN TUN") — the helper cycles the adapter first (disable/enable via netsh to clear stale state), then if the adapter name matches a known provider, restarts its Windows service so the VPN re-initialises on a clean adapter
+   - Sends the recovery request to the helper service (runs as SYSTEM) via named pipe
+   - If the target matches a known provider's client process, restarts it in the user session
 
 ```
 Cycle 1: VPN disconnected        → counter=1 (threshold=3, no action)
@@ -121,7 +123,7 @@ Cycle 4: VPN connected, port failed  → counter=3 → TRIGGER RECOVERY → coun
 
 ### Counter Reset Rules
 
-The counter is reset to zero only after a successful port detection (`GetVpnPortAsync` returns a valid port). This applies uniformly to all providers — both VPN disconnection and port detection failure accumulate toward the auto-recovery threshold.
+The counter is reset to zero only after a successful port detection (`GetVpnPortAsync` returns a valid port). This applies uniformly to all providers - both VPN disconnection and port detection failure accumulate toward the auto-recovery threshold.
 
 ## qBittorrent Interaction
 
@@ -178,17 +180,17 @@ RunAsync
      ├─ CreateVpnManager
      │   └─ CreateNatPmpVpnManager (NAT-PMP only)
      │       ├─ BuildCycleCountMessage
-     │       └─ TryTriggerVpnRecoveryAsync
+     │       └─ TryTriggerRecoveryAsync
      ├─ IVpnManager.IsVpnConnected
      ├─ (if disconnected)
      │   ├─ BuildCycleCountMessage
-     │   └─ TryTriggerVpnRecoveryAsync
+     │   └─ TryTriggerRecoveryAsync
      ├─ (if connected)
-     │   ├─ VpnAutoRecoveryManager.CacheRunningClientExePaths
+     │   ├─ AutoRecoveryManager.CacheRunningClientExePaths
      │   ├─ IVpnManager.GetVpnPortAsync
      │   └─ HandlePortDetectionFailureAsync (if port null, all providers)
      │       ├─ BuildCycleCountMessage
-     │       └─ TryTriggerVpnRecoveryAsync
+     │       └─ TryTriggerRecoveryAsync
      └─ EnsureRunningAndUpdatePortAsync
          ├─ EnsureQBittorrentRunningAsync
          ├─ QBittorrentManager.GetPreferencesAsync

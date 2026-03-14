@@ -127,19 +127,19 @@ namespace qbPortWeaver
             lnkAuthor.Location = new Point(148, 22);
             lnkAuthor.Name = "lnkAuthor";
             lnkAuthor.Size = new Size(200, 44);
-            lnkAuthor.TabIndex = 0;
+            lnkAuthor.TabIndex = 1;
             lnkAuthor.Text = "Loading…";
             lnkAuthor.LinkClicked += lnkAuthor_LinkClicked;
             lblGitHubLabel.Location = new Point(12, 70);
             lblGitHubLabel.Name = "lblGitHubLabel";
             lblGitHubLabel.Size = new Size(130, 23);
-            lblGitHubLabel.TabIndex = 1;
+            lblGitHubLabel.TabIndex = 2;
             lblGitHubLabel.Text = "GitHub:";
             lblGitHubLabel.TextAlign = ContentAlignment.MiddleLeft;
             lnkGitHub.Location = new Point(148, 70);
             lnkGitHub.Name = "lnkGitHub";
             lnkGitHub.Size = new Size(200, 23);
-            lnkGitHub.TabIndex = 1;
+            lnkGitHub.TabIndex = 3;
             lnkGitHub.TextAlign = ContentAlignment.MiddleLeft;
             lnkGitHub.LinkClicked += lnkGitHub_LinkClicked;
             // ── Buttons ───────────────────────────────────────────────────

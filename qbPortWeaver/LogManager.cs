@@ -31,8 +31,8 @@ namespace qbPortWeaver
 
         /// <summary>
         /// Initializes the singleton with the given log file path. Throws if called more than once.
-        /// Not thread-safe by design - must be called once from the UI thread during application startup,
-        /// before any background tasks are started.
+        /// Call exactly once during startup, before any background tasks are started.
+        /// Not internally synchronized; relies on single-threaded startup sequencing.
         /// </summary>
         public static LogManager Initialize(string logFilePath)
         {

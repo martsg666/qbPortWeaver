@@ -47,7 +47,7 @@ namespace qbPortWeaver
 
         public Task<int?> GetVpnPortAsync() => Task.FromResult(GetVpnPortCore());
 
-        public string? FindProviderToken() => ProviderName;
+        public string? GetRecoveryTarget() => ProviderName;
 
         private int? GetVpnPortCore()
         {

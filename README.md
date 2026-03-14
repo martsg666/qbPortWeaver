@@ -66,8 +66,8 @@ The application runs in the system tray, manages configuration and logging, and 
 - **Post-Update Command**
   Optionally run a custom command after a successful port update (fire-and-forget). See SampleSendMail.ps1 for an example of sending an email notification with status details.
 
-- **VPN Auto-Recovery**
-  Automatically restarts the VPN service when a configurable number of consecutive sync cycles fail — whether the VPN is disconnected or port detection fails despite the VPN being connected. The tray app delegates the service restart to a lightweight helper Windows service (`qbPortWeaverHelper`) that runs as LocalSystem - no UAC prompt required. The VPN client process is also restarted in the user session so auto-connect triggers on startup.
+- **Auto-Recovery**
+  Automatically recovers when a configurable number of consecutive sync cycles fail — whether the VPN is disconnected or port detection fails despite the VPN being connected. For ProtonVPN and PIA (direct providers), the helper restarts the Windows service and the tray app restarts the client process. For NAT-PMP, the helper cycles the network adapter first (disable/enable via netsh to clear stale state), then — if the adapter belongs to a known provider — restarts its Windows service so the VPN re-initialises on a clean adapter; the tray app then restarts the client process. All privileged operations are delegated to a lightweight helper Windows service (`qbPortWeaverHelper`) running as LocalSystem — no UAC prompt required.
 
 - **Automatic Update Checker**
   Checks GitHub for new releases on startup and every 12 hours, and offers to open the download page. The **About** dialog (tray menu → About) also shows the current and latest version, update status, and contributor links.
@@ -101,8 +101,8 @@ On first run, all settings are initialized with sensible defaults.
 | Warn on interface mismatch | Warn if qBittorrent's network interface doesn't match the VPN | `True` |
 | Restart on disconnect | Restart qBittorrent when its connection status changes to disconnected (requires Executable and Process name) | `False` |
 | Post-update command | Command to run after a successful port update (leave empty to disable) | - |
-| VPN Auto-Recovery | Automatically restart the VPN service after N consecutive failed sync cycles (VPN disconnected or port detection failure) | `False` |
-| Auto-Recovery trigger cycles | Number of consecutive failed cycles before triggering VPN auto-recovery | `3` |
+| Auto-Recovery | Automatically recover after N consecutive failed sync cycles (VPN disconnected or port detection failure) | `False` |
+| Auto-Recovery trigger cycles | Number of consecutive failed cycles before triggering auto-recovery | `3` |
 | Debug logging | Enable verbose debug logging to the log file | `False` |
 
 ---
@@ -119,7 +119,7 @@ On first run, all settings are initialized with sensible defaults.
 1. Checks whether the configured VPN provider is connected.
    - If **not connected** and **Default port** is 0: skips the cycle and waits for the next interval.
    - If **not connected** and **Default port** is set: uses the default port as the target and continues.
-   - If **VPN Auto-Recovery** is enabled and the failed cycle count reaches the configured threshold: automatically restarts the VPN service (via the helper Windows service) and the VPN client process.
+   - If **Auto-Recovery** is enabled and the failed cycle count reaches the configured threshold: automatically triggers recovery — restarts the VPN service and client for direct providers, or cycles the network adapter for NAT-PMP (via the helper Windows service).
 2. Reads the VPN-assigned port from the configured provider (skipped if using the default port fallback). If port detection fails despite the VPN being connected, the failed cycle counter increments and auto-recovery may trigger.
 3. Checks if qBittorrent is running (optionally force starts it if configured).
 4. Authenticates with qBittorrent and retrieves the current listening port and network interface.

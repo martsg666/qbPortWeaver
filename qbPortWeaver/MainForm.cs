@@ -93,7 +93,7 @@ namespace qbPortWeaver
             }
         }
 
-        // Prevents the form from ever becoming visible — this is a tray-only app with no visible window.
+        // Prevents the form from ever becoming visible - this is a tray-only app with no visible window.
         // Application.Run() calls Show() internally; overriding SetVisibleCore blocks it permanently.
         // CreateHandle() ensures the window handle exists for the message pump, and OnLoad() fires
         // the Load event exactly once so MainForm_LoadAsync (sync loop, timers, etc.) runs normally.

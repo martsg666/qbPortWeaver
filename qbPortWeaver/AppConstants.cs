@@ -48,8 +48,9 @@ namespace qbPortWeaver
             "Proton", "Proton VPN", "Logs", "client-logs.txt"
         );
 
-        // Kills a process (including its entire process tree) and waits up to timeoutMs for it to exit.
-        // If the first wait times out, makes one more kill attempt before giving up.
+        // Kills a process (including its entire process tree) and waits up to timeoutMs for exit.
+        // Escalation: Process.Kill → wait → taskkill /F /T as last resort (handles processes
+        // that resist .NET's TerminateProcess, e.g. qBittorrent during active I/O).
         // Returns true if the process exited (or had already exited), false if it may still be running.
         public static bool KillAndWait(Process process, int timeoutMs = 2000)
         {
@@ -59,17 +60,25 @@ namespace qbPortWeaver
             }
             catch (InvalidOperationException)
             {
-                // Process already exited between retrieval and Kill — treat as success.
                 return true;
             }
             if (process.WaitForExit(timeoutMs)) return true;
+
+            // Process.Kill failed to terminate in time - fall back to taskkill /F /T
             try
             {
-                process.Kill(entireProcessTree: true);
+                using var taskkill = Process.Start(new ProcessStartInfo(
+                    Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "taskkill.exe"),
+                    $"/F /T /PID {process.Id}")
+                {
+                    UseShellExecute = false,
+                    CreateNoWindow  = true
+                });
+                taskkill?.WaitForExit(timeoutMs);
             }
-            catch (InvalidOperationException)
+            catch (Exception ex)
             {
-                return true;
+                LogManager.Instance.LogDebug($"AppConstants.KillAndWait: taskkill fallback failed: {ex.Message}");
             }
             return process.WaitForExit(timeoutMs);
         }

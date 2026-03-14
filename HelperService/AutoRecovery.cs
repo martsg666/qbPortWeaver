@@ -297,13 +297,12 @@ internal static class AutoRecovery
                         CreateNoWindow  = true
                     });
                     taskkill?.WaitForExit(2000);
+                    logger.LogInfo($"Service '{sc.ServiceName}' process force-killed via taskkill (PID {pid})");
                 }
                 catch (Exception ex)
                 {
                     logger.LogWarn($"Service '{sc.ServiceName}' taskkill fallback failed (PID {pid}): {ex.Message}");
                 }
-
-                logger.LogInfo($"Service '{sc.ServiceName}' process force-killed via taskkill (PID {pid})");
             }
             finally
             {

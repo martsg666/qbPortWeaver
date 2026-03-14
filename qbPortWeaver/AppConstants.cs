@@ -60,7 +60,11 @@ namespace qbPortWeaver
             }
             catch (InvalidOperationException)
             {
-                return true;
+                return true; // already exited
+            }
+            catch (System.ComponentModel.Win32Exception)
+            {
+                return false; // access denied or process protected
             }
             if (process.WaitForExit(timeoutMs)) return true;
 

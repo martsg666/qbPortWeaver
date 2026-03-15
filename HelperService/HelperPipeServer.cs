@@ -8,13 +8,22 @@ namespace qbPortWeaver.HelperService;
 // user-session tray app. Runs as a hosted background service inside the helper Windows service.
 //
 // Protocol (one text line per connection):
-//   restart:<serviceName>:<logFilePath>
+//   <action>:<target>:<logFilePath>
+//
+// Supported actions:
+//   restart        — restart the Windows service identified by the provider token
+//   cycle-adapter  — cycle a network adapter (disable/enable); if the adapter name matches
+//                    a known provider, the corresponding service is also restarted
 //
 // The log file path is sent per-call so the helper writes into the same log file as the
 // tray app, regardless of which user profile is active.
 internal sealed class HelperPipeServer : BackgroundService
 {
     internal const string PipeName = "qbPortWeaverHelper"; // Must match AppConstants.HelperServicePipeName in qbPortWeaver
+    private  const string ExpectedLogFileName = "qbPortWeaver.log"; // Must match AppConstants.LogFileName in qbPortWeaver
+
+    private const string ActionRestart      = "restart";
+    private const string ActionCycleAdapter = "cycle-adapter";
 
     private readonly ILogger<HelperPipeServer> _logger;
 
@@ -68,15 +77,52 @@ internal sealed class HelperPipeServer : BackgroundService
 
         // Split into exactly 3 parts - the log file path may contain colons (e.g. C:\...)
         var parts = message.Split(':', 3);
-        if (parts.Length != 3 || parts[0] != "restart")
+        if (parts.Length != 3)
         {
             _logger.LogWarning("Received malformed pipe message");
             return;
         }
 
-        var serviceName = parts[1];
+        var action      = parts[0];
+        var target      = parts[1];
         var logFilePath = parts[2];
 
-        await VpnAutoRecovery.RestartServiceAsync(serviceName, new HelperLogger(logFilePath)).ConfigureAwait(false);
+        // Validate the log file name to prevent a caller-controlled path being written
+        // by this SYSTEM-level process to an arbitrary location. We can only check the
+        // filename here - the directory is user-session-specific and not resolvable from
+        // Session 0 without knowing the active user's SID.
+        if (!Path.GetFileName(logFilePath).Equals(ExpectedLogFileName, StringComparison.OrdinalIgnoreCase))
+        {
+            _logger.LogWarning("Rejected unexpected log file name in path '{Path}'", logFilePath);
+            return;
+        }
+
+        var logger = new HelperLogger(logFilePath);
+
+        switch (action)
+        {
+            case ActionRestart:
+                string? serviceName = AutoRecovery.FindServiceForToken(target);
+                if (serviceName is null)
+                {
+                    _logger.LogWarning("Rejected restart request for unknown provider token '{Token}'", target);
+                    return;
+                }
+                await AutoRecovery.RestartServiceAsync(serviceName, logger).ConfigureAwait(false);
+                break;
+
+            case ActionCycleAdapter:
+                if (string.IsNullOrWhiteSpace(target))
+                {
+                    _logger.LogWarning("Rejected cycle-adapter request with empty adapter name");
+                    return;
+                }
+                await AutoRecovery.CycleAdapterAsync(target, logger).ConfigureAwait(false);
+                break;
+
+            default:
+                _logger.LogWarning("Rejected unknown action '{Action}'", action);
+                break;
+        }
     }
 }

@@ -14,7 +14,7 @@ internal sealed class HelperLogger(string logFilePath)
 
     private void WriteLog(string message, string paddedLevel)
     {
-        string entry = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} | {paddedLevel} | {message}{Environment.NewLine}";
+        string entry = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} | {paddedLevel} | [{HelperPipeServer.PipeName}] {message}{Environment.NewLine}";
         for (int attempt = 0; attempt < 3; attempt++)
         {
             try

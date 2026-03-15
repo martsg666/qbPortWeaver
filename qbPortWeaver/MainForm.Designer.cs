@@ -35,7 +35,7 @@
                 catch (Exception ex)
                 {
                     if (LogManager.IsInitialized)
-                        LogManager.Instance.LogDebug($"MainForm.Dispose: Error disposing resources: {ex.Message}");
+                        LogManager.Instance.LogDebug($"MainForm.Dispose: {ex.Message}");
                 }
             }
             base.Dispose(disposing);
@@ -55,9 +55,10 @@
             //
             AutoScaleDimensions = new SizeF(7F, 15F);
             AutoScaleMode = AutoScaleMode.Font;
-            ClientSize = new Size(800, 450);
+            ClientSize = new Size(1, 1);
             Icon = Properties.Resources.qbPortWeaver;
             Name = "MainForm";
+            ShowInTaskbar = false;
             Text = "qbPortWeaver";
             Load += MainForm_Load;
             ResumeLayout(false);

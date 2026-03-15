@@ -9,6 +9,16 @@ namespace qbPortWeaver
             if (disposing)
             {
                 _watcher?.Dispose();
+
+                // Dispose explicitly created fonts (WinForms controls do not own their Font)
+                rtbLog?.Font?.Dispose();
+                chkError?.Font?.Dispose();
+                chkWarn?.Font?.Dispose();
+                chkInfo?.Font?.Dispose();
+                chkDebug?.Font?.Dispose();
+                btnClearSearch?.Font?.Dispose();
+                lblMatchCount?.Font?.Dispose();
+
                 components?.Dispose();
             }
             base.Dispose(disposing);
@@ -101,7 +111,6 @@ namespace qbPortWeaver
             // txtSearch - font set explicitly so height is predictable; vertically centered in the 36px toolbar
             txtSearch.Anchor          = rightAnchor;
             txtSearch.BorderStyle     = System.Windows.Forms.BorderStyle.FixedSingle;
-            txtSearch.Font            = new System.Drawing.Font("Segoe UI", 9F);
             txtSearch.Location        = new System.Drawing.Point(752, 8);
             txtSearch.PlaceholderText = "Search…";
             txtSearch.Width           = 220; // height is auto-sized by font; vertically centered in OnLoad
@@ -125,7 +134,6 @@ namespace qbPortWeaver
             // btnPrev
             btnPrev.Anchor    = rightAnchor;
             btnPrev.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
-            btnPrev.Font      = new System.Drawing.Font("Segoe UI", 9F);
             btnPrev.Location  = new System.Drawing.Point(1044, 5);
             btnPrev.Size      = new System.Drawing.Size(26, 26);
             btnPrev.Text      = "▲";
@@ -134,7 +142,6 @@ namespace qbPortWeaver
             // btnNext
             btnNext.Anchor    = rightAnchor;
             btnNext.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
-            btnNext.Font      = new System.Drawing.Font("Segoe UI", 9F);
             btnNext.Location  = new System.Drawing.Point(1070, 5);
             btnNext.Size      = new System.Drawing.Size(26, 26);
             btnNext.Text      = "▼";

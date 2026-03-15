@@ -37,6 +37,9 @@ namespace qbPortWeaver
         // Shutdown cancellation token to signal graceful exit
         private readonly CancellationTokenSource _shutdownCts = new CancellationTokenSource();
 
+        // Guard so SetVisibleCore fires OnLoad exactly once
+        private bool _formLoaded;
+
         // Periodic update check timer (fires every 12 hours)
         private System.Windows.Forms.Timer _updateCheckTimer = null!;
 
@@ -67,10 +70,6 @@ namespace qbPortWeaver
         {
             try
             {
-                // Start minimized and hide from taskbar
-                this.WindowState = FormWindowState.Minimized;
-                this.ShowInTaskbar = false;
-
                 // Log once at startup so the version is visible in the log file for diagnostics
                 LogManager.Instance.LogMessage($"{AppConstants.AppName} {AppConstants.AppVersion} starting", LogLevel.Info);
 
@@ -92,6 +91,22 @@ namespace qbPortWeaver
             {
                 HandleMainLoopException(ex);
             }
+        }
+
+        // Prevents the form from ever becoming visible - this is a tray-only app with no visible window.
+        // Application.Run() calls Show() internally; overriding SetVisibleCore blocks it permanently.
+        // CreateHandle() ensures the window handle exists for the message pump, and OnLoad() fires
+        // the Load event exactly once so MainForm_LoadAsync (sync loop, timers, etc.) runs normally.
+        protected override void SetVisibleCore(bool value)
+        {
+            if (!IsHandleCreated)
+                CreateHandle();
+            if (!_formLoaded)
+            {
+                _formLoaded = true;
+                OnLoad(EventArgs.Empty);
+            }
+            base.SetVisibleCore(false);
         }
 
         // Marks the window as a tool window so it is excluded from the Alt+Tab switcher.

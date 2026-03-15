@@ -25,10 +25,11 @@ namespace qbPortWeaver
         Task<int?> GetVpnPortAsync();
 
         /// <summary>
-        /// Returns the Windows service name that backs this VPN provider, or <c>null</c> if
-        /// the service is not installed or the provider is not recognised.
-        /// Used by VPN auto-recovery to restart the service when the VPN goes down.
+        /// Returns the recovery target sent to the helper service for auto-recovery, or <c>null</c>
+        /// if recovery is not supported.
+        /// For ProtonVPN and PIA this is the provider token (e.g. "ProtonVPN", "PIA").
+        /// For NAT-PMP this is the network adapter name (e.g. "ProtonVPN TUN").
         /// </summary>
-        string? FindServiceName();
+        string? GetRecoveryTarget();
     }
 }

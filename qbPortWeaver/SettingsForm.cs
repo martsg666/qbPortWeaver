@@ -39,8 +39,8 @@ namespace qbPortWeaver
             toolTip.SetToolTip(chkRestartOnDisconnect,       "Automatically restart qBittorrent if the connection goes offline or disconnects");
             toolTip.SetToolTip(txtPostUpdateCmd,             "Shell command to run after a successful port update (leave empty to disable)");
             toolTip.SetToolTip(chkDebugMode,                 "Write verbose debug entries to the log file");
-            toolTip.SetToolTip(chkVpnAutoRecovery,           "Automatically restart the VPN service after N consecutive disconnected sync cycles");
-            toolTip.SetToolTip(nudVpnRecoveryCycles,         "Number of consecutive disconnected cycles before the VPN service is restarted");
+            toolTip.SetToolTip(chkAutoRecovery,           "Automatically recover after N consecutive failed sync cycles (VPN disconnected or port detection failure)");
+            toolTip.SetToolTip(nudRecoveryCycles,         "Number of consecutive failed cycles before recovery is triggered");
         }
 
         private void LoadSettings()
@@ -69,11 +69,11 @@ namespace qbPortWeaver
                 RegistrySettingsManager.GetInt(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyUpdateIntervalSeconds),
                 (int)nudUpdateInterval.Minimum, (int)nudUpdateInterval.Maximum);
 
-            chkVpnAutoRecovery.Checked = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyVpnAutoRecoveryEnabled);
-            nudVpnRecoveryCycles.Value = Math.Clamp(
-                RegistrySettingsManager.GetInt(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyVpnAutoRecoveryTriggerCycles),
-                (int)nudVpnRecoveryCycles.Minimum, (int)nudVpnRecoveryCycles.Maximum);
-            UpdateVpnAutoRecoverySubControls();
+            chkAutoRecovery.Checked = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyAutoRecoveryEnabled);
+            nudRecoveryCycles.Value = Math.Clamp(
+                RegistrySettingsManager.GetInt(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyAutoRecoveryTriggerCycles),
+                (int)nudRecoveryCycles.Minimum, (int)nudRecoveryCycles.Maximum);
+            UpdateAutoRecoverySubControls();
 
             // qBittorrent
             txtQBittorrentURL.Text         = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyQBittorrentUrl);
@@ -107,8 +107,8 @@ namespace qbPortWeaver
                 ? cboNatPmpAdapter.SelectedItem?.ToString() ?? ""
                 : RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyNatPmpAdapterName);
             RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyNatPmpAdapterName,           adapterName);
-            RegistrySettingsManager.SetBool (RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyVpnAutoRecoveryEnabled,       chkVpnAutoRecovery.Checked);
-            RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyVpnAutoRecoveryTriggerCycles, ((int)nudVpnRecoveryCycles.Value).ToString());
+            RegistrySettingsManager.SetBool (RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyAutoRecoveryEnabled,       chkAutoRecovery.Checked);
+            RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyAutoRecoveryTriggerCycles, ((int)nudRecoveryCycles.Value).ToString());
 
             // qBittorrent
             RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyQBittorrentUrl,          txtQBittorrentURL.Text.Trim());
@@ -188,15 +188,15 @@ namespace qbPortWeaver
                 txtQBittorrentExePath.Text = dlg.FileName;
         }
 
-        private void chkVpnAutoRecovery_CheckedChanged(object? sender, EventArgs e) =>
-            UpdateVpnAutoRecoverySubControls();
+        private void chkAutoRecovery_CheckedChanged(object? sender, EventArgs e) =>
+            UpdateAutoRecoverySubControls();
 
-        private void UpdateVpnAutoRecoverySubControls()
+        private void UpdateAutoRecoverySubControls()
         {
-            bool enabled = chkVpnAutoRecovery.Checked;
-            lblVpnRecoveryCycles.Enabled     = enabled;
-            nudVpnRecoveryCycles.Enabled     = enabled;
-            lblVpnRecoveryCyclesUnit.Enabled = enabled;
+            bool enabled = chkAutoRecovery.Checked;
+            lblRecoveryCycles.Enabled     = enabled;
+            nudRecoveryCycles.Enabled     = enabled;
+            lblRecoveryCyclesUnit.Enabled = enabled;
         }
 
         private void SetAdapterControlsEnabled(bool enabled)

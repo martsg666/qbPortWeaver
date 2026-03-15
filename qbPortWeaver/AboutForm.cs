@@ -97,12 +97,15 @@ namespace qbPortWeaver
                         btnCheckForUpdates.Text  = "Check for Updates";
                     }
                 }
-
-                btnCheckForUpdates.Enabled = true;
             }
             catch (Exception ex)
             {
                 LogManager.Instance.LogDebug($"AboutForm.LoadGitHubDataAsync: {ex.Message}");
+            }
+            finally
+            {
+                if (!IsDisposed)
+                    btnCheckForUpdates.Enabled = true;
             }
         }
 

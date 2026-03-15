@@ -1,7 +1,7 @@
 using System.Net;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
-using System.ServiceProcess;
+
 
 namespace qbPortWeaver
 {
@@ -29,6 +29,13 @@ namespace qbPortWeaver
         // The lease lifetime (in seconds) granted by the gateway on the last successful port mapping; 0 until first mapping.
         // Read by PortSyncService to warn when the configured sync interval exceeds the lease lifetime.
         public uint LastGrantedLifetime { get; private set; }
+
+        private NatPmpManager(NetworkInterface adapter, IPAddress gateway, uint mappingLifetime)
+        {
+            _adapter         = adapter;
+            _gateway         = gateway;
+            _mappingLifetime = mappingLifetime;
+        }
 
         /// <summary>
         /// Returns all network adapters whose gateway actively responds to NAT-PMP,
@@ -98,13 +105,6 @@ namespace qbPortWeaver
             LogProbeResultDebug("TryCreateForAdapter", adapterName, gateway, externalIp);
 
             return externalIp is not null ? new NatPmpManager(nic, gateway, mappingLifetime) : null;
-        }
-
-        private NatPmpManager(NetworkInterface adapter, IPAddress gateway, uint mappingLifetime)
-        {
-            _adapter         = adapter;
-            _gateway         = gateway;
-            _mappingLifetime = mappingLifetime;
         }
 
         // Re-enumerates network interfaces to check if the adapter is currently present and up.
@@ -183,56 +183,10 @@ namespace qbPortWeaver
             }
         }
 
-        // Finds the Windows service to restart during VPN auto-recovery.
-        // Supported adapters and their corresponding VPN client services:
-        //   - ProtonVPN adapters ("ProtonVPN TUN" / "ProtonVPN") → "ProtonVPN Service"
-        //   - PIA adapters ("PIA OpenVPN WinTUN Adapter" / "wgpia0") → "PrivateInternetAccessService"
-        // Unknown adapters return null - restarting an unrecognised service would be unsafe.
-        public string? FindServiceName()
-        {
-            string? serviceName = FindServiceNameForAdapter(_adapter.Name);
-            LogManager.Instance.LogDebug(serviceName != null
-                ? $"NatPmpManager.FindServiceName: found service '{serviceName}' for adapter '{_adapter.Name}'"
-                : $"NatPmpManager.FindServiceName: adapter '{_adapter.Name}' is not a recognised VPN provider");
-            return serviceName;
-        }
-
-        // Finds the Windows service name for a given NAT-PMP adapter by adapter name.
-        // Used as a static fallback by PortSyncService when no NatPmpManager instance exists
-        // (e.g. the VPN adapter is not currently up on the first disconnected cycle).
-        internal static string? FindServiceNameForAdapter(string adapterName)
-        {
-            try
-            {
-                ServiceController[] services = ServiceController.GetServices();
-                try   { return MatchServiceName(adapterName, services); }
-                finally { foreach (var svc in services) svc.Dispose(); }
-            }
-            catch (Exception ex)
-            {
-                LogManager.Instance.LogDebug($"NatPmpManager.FindServiceNameForAdapter: {ex.Message}");
-                return null;
-            }
-        }
-
-        // Core service-name matching shared by FindServiceName and FindServiceNameForAdapter.
-        // Returns null for unrecognised adapters - restarting an unknown service would be unsafe.
-        private static string? MatchServiceName(string adapterName, ServiceController[] services)
-        {
-            // ProtonVPN: adapter name is "ProtonVPN TUN" (OpenVPN) or "ProtonVPN" (WireGuard)
-            if (adapterName.Contains("ProtonVPN", StringComparison.OrdinalIgnoreCase))
-                return services
-                    .FirstOrDefault(s => s.ServiceName.Equals(ProtonVpnManager.VpnServiceName, StringComparison.OrdinalIgnoreCase))
-                    ?.ServiceName;
-
-            // PIA: adapter name is "PIA OpenVPN WinTUN Adapter" (OpenVPN) or "wgpia0" (WireGuard) - both contain "PIA".
-            if (adapterName.Contains("PIA", StringComparison.OrdinalIgnoreCase))
-                return services
-                    .FirstOrDefault(s => s.ServiceName.Equals(PiaVpnManager.VpnServiceName, StringComparison.OrdinalIgnoreCase))
-                    ?.ServiceName;
-
-            return null;
-        }
+        // Returns the adapter name as the recovery target. PortSyncService checks if the name
+        // matches a known provider (ProtonVPN, PIA) and triggers a service restart instead of
+        // an adapter cycle.
+        public string? GetRecoveryTarget() => _adapter.Name;
 
         // Transfers renewal state from a previous instance so that port renewal works correctly
         // when a fresh NatPmpManager instance is created each cycle.

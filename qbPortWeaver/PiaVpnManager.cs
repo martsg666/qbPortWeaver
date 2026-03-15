@@ -9,7 +9,6 @@ namespace qbPortWeaver
         private const string PiaUninstallRegistryPath = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall";
         private const string PiaDisplayName           = "Private Internet Access";
         private const string PiactlFileName           = "piactl.exe";
-        internal const string VpnServiceName           = "PrivateInternetAccessService";
         internal const string ClientProcessName        = "pia-client";
         private const int    ProcessTimeoutMs         = 5000;
 
@@ -42,8 +41,7 @@ namespace qbPortWeaver
 
         public Task<int?> GetVpnPortAsync() => Task.FromResult(GetVpnPortCore());
 
-        public string? FindServiceName()
-            => VpnManagerHelper.FindServiceByExactName(VpnServiceName, nameof(PiaVpnManager));
+        public string? GetRecoveryTarget() => ProviderName;
 
         private static int? GetVpnPortCore()
         {
@@ -100,7 +98,8 @@ namespace qbPortWeaver
 
                 if (!process.WaitForExit(ProcessTimeoutMs))
                 {
-                    process.Kill();
+                    // Cleanup only - no new process follows, so KillProcess's retry wait is not needed here.
+                    process.Kill(entireProcessTree: true);
                     LogManager.Instance.LogDebug("PiaVpnManager.RunPiactl: piactl timed out and was killed");
                     return null;
                 }

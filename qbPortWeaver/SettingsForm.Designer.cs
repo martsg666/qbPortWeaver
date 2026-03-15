@@ -25,10 +25,10 @@ namespace qbPortWeaver
             lblUpdateInterval = new Label();
             nudUpdateInterval = new NumericUpDown();
             lblSeconds = new Label();
-            chkVpnAutoRecovery = new CheckBox();
-            lblVpnRecoveryCycles = new Label();
-            nudVpnRecoveryCycles = new NumericUpDown();
-            lblVpnRecoveryCyclesUnit = new Label();
+            chkAutoRecovery = new CheckBox();
+            lblRecoveryCycles = new Label();
+            nudRecoveryCycles = new NumericUpDown();
+            lblRecoveryCyclesUnit = new Label();
             grpQBittorrent = new GroupBox();
             lblQBittorrentURL = new Label();
             txtQBittorrentURL = new TextBox();
@@ -56,7 +56,7 @@ namespace qbPortWeaver
             toolTip = new ToolTip(components);
             grpGeneral.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)nudUpdateInterval).BeginInit();
-            ((System.ComponentModel.ISupportInitialize)nudVpnRecoveryCycles).BeginInit();
+            ((System.ComponentModel.ISupportInitialize)nudRecoveryCycles).BeginInit();
             grpQBittorrent.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)nudDefaultPort).BeginInit();
             grpExtra.SuspendLayout();
@@ -72,10 +72,10 @@ namespace qbPortWeaver
             grpGeneral.Controls.Add(lblUpdateInterval);
             grpGeneral.Controls.Add(nudUpdateInterval);
             grpGeneral.Controls.Add(lblSeconds);
-            grpGeneral.Controls.Add(chkVpnAutoRecovery);
-            grpGeneral.Controls.Add(lblVpnRecoveryCycles);
-            grpGeneral.Controls.Add(nudVpnRecoveryCycles);
-            grpGeneral.Controls.Add(lblVpnRecoveryCyclesUnit);
+            grpGeneral.Controls.Add(chkAutoRecovery);
+            grpGeneral.Controls.Add(lblRecoveryCycles);
+            grpGeneral.Controls.Add(nudRecoveryCycles);
+            grpGeneral.Controls.Add(lblRecoveryCyclesUnit);
             grpGeneral.Location = new Point(8, 8);
             grpGeneral.Name = "grpGeneral";
             grpGeneral.Size = new Size(480, 167);
@@ -106,7 +106,7 @@ namespace qbPortWeaver
             lblNatPmpAdapter.Location = new Point(12, 82);
             lblNatPmpAdapter.Name = "lblNatPmpAdapter";
             lblNatPmpAdapter.Size = new Size(130, 23);
-            lblNatPmpAdapter.TabIndex = 4;
+            lblNatPmpAdapter.TabIndex = 5;
             lblNatPmpAdapter.Text = "NAT-PMP Adapter:";
             lblNatPmpAdapter.TextAlign = ContentAlignment.MiddleLeft;
             // 
@@ -116,7 +116,7 @@ namespace qbPortWeaver
             cboNatPmpAdapter.Location = new Point(148, 82);
             cboNatPmpAdapter.Name = "cboNatPmpAdapter";
             cboNatPmpAdapter.Size = new Size(290, 23);
-            cboNatPmpAdapter.TabIndex = 5;
+            cboNatPmpAdapter.TabIndex = 6;
             // 
             // btnRefreshAdapters
             // 
@@ -124,7 +124,7 @@ namespace qbPortWeaver
             btnRefreshAdapters.Location = new Point(442, 82);
             btnRefreshAdapters.Name = "btnRefreshAdapters";
             btnRefreshAdapters.Size = new Size(26, 23);
-            btnRefreshAdapters.TabIndex = 6;
+            btnRefreshAdapters.TabIndex = 7;
             btnRefreshAdapters.Text = "↻";
             btnRefreshAdapters.Click += btnRefreshAdapters_Click;
             // 
@@ -156,43 +156,43 @@ namespace qbPortWeaver
             lblSeconds.Text = "seconds";
             lblSeconds.TextAlign = ContentAlignment.MiddleLeft;
             // 
-            // chkVpnAutoRecovery
+            // chkAutoRecovery
             // 
-            chkVpnAutoRecovery.AutoSize = true;
-            chkVpnAutoRecovery.Location = new Point(12, 114);
-            chkVpnAutoRecovery.Name = "chkVpnAutoRecovery";
-            chkVpnAutoRecovery.Size = new Size(164, 19);
-            chkVpnAutoRecovery.TabIndex = 7;
-            chkVpnAutoRecovery.Text = "Enable VPN auto-recovery";
-            chkVpnAutoRecovery.CheckedChanged += chkVpnAutoRecovery_CheckedChanged;
+            chkAutoRecovery.AutoSize = true;
+            chkAutoRecovery.Location = new Point(12, 114);
+            chkAutoRecovery.Name = "chkAutoRecovery";
+            chkAutoRecovery.Size = new Size(164, 19);
+            chkAutoRecovery.TabIndex = 8;
+            chkAutoRecovery.Text = "Enable auto-recovery";
+            chkAutoRecovery.CheckedChanged += chkAutoRecovery_CheckedChanged;
             // 
-            // lblVpnRecoveryCycles
+            // lblRecoveryCycles
             // 
-            lblVpnRecoveryCycles.Location = new Point(28, 136);
-            lblVpnRecoveryCycles.Name = "lblVpnRecoveryCycles";
-            lblVpnRecoveryCycles.Size = new Size(180, 23);
-            lblVpnRecoveryCycles.TabIndex = 8;
-            lblVpnRecoveryCycles.Text = "Restart service after";
-            lblVpnRecoveryCycles.TextAlign = ContentAlignment.MiddleLeft;
+            lblRecoveryCycles.Location = new Point(28, 136);
+            lblRecoveryCycles.Name = "lblRecoveryCycles";
+            lblRecoveryCycles.Size = new Size(180, 23);
+            lblRecoveryCycles.TabIndex = 9;
+            lblRecoveryCycles.Text = "Trigger recovery after";
+            lblRecoveryCycles.TextAlign = ContentAlignment.MiddleLeft;
             // 
-            // nudVpnRecoveryCycles
+            // nudRecoveryCycles
             // 
-            nudVpnRecoveryCycles.Location = new Point(212, 136);
-            nudVpnRecoveryCycles.Maximum = new decimal(new int[] { 10, 0, 0, 0 });
-            nudVpnRecoveryCycles.Minimum = new decimal(new int[] { 1, 0, 0, 0 });
-            nudVpnRecoveryCycles.Name = "nudVpnRecoveryCycles";
-            nudVpnRecoveryCycles.Size = new Size(50, 23);
-            nudVpnRecoveryCycles.TabIndex = 9;
-            nudVpnRecoveryCycles.Value = new decimal(new int[] { 3, 0, 0, 0 });
+            nudRecoveryCycles.Location = new Point(212, 136);
+            nudRecoveryCycles.Maximum = new decimal(new int[] { 10, 0, 0, 0 });
+            nudRecoveryCycles.Minimum = new decimal(new int[] { 1, 0, 0, 0 });
+            nudRecoveryCycles.Name = "nudRecoveryCycles";
+            nudRecoveryCycles.Size = new Size(50, 23);
+            nudRecoveryCycles.TabIndex = 10;
+            nudRecoveryCycles.Value = new decimal(new int[] { 3, 0, 0, 0 });
             // 
-            // lblVpnRecoveryCyclesUnit
+            // lblRecoveryCyclesUnit
             // 
-            lblVpnRecoveryCyclesUnit.Location = new Point(266, 136);
-            lblVpnRecoveryCyclesUnit.Name = "lblVpnRecoveryCyclesUnit";
-            lblVpnRecoveryCyclesUnit.Size = new Size(202, 23);
-            lblVpnRecoveryCyclesUnit.TabIndex = 10;
-            lblVpnRecoveryCyclesUnit.Text = "consecutive disconnected cycles";
-            lblVpnRecoveryCyclesUnit.TextAlign = ContentAlignment.MiddleLeft;
+            lblRecoveryCyclesUnit.Location = new Point(266, 136);
+            lblRecoveryCyclesUnit.Name = "lblRecoveryCyclesUnit";
+            lblRecoveryCyclesUnit.Size = new Size(202, 23);
+            lblRecoveryCyclesUnit.TabIndex = 11;
+            lblRecoveryCyclesUnit.Text = "consecutive failed cycles";
+            lblRecoveryCyclesUnit.TextAlign = ContentAlignment.MiddleLeft;
             // 
             // grpQBittorrent
             // 
@@ -440,7 +440,7 @@ namespace qbPortWeaver
             grpGeneral.ResumeLayout(false);
             grpGeneral.PerformLayout();
             ((System.ComponentModel.ISupportInitialize)nudUpdateInterval).EndInit();
-            ((System.ComponentModel.ISupportInitialize)nudVpnRecoveryCycles).EndInit();
+            ((System.ComponentModel.ISupportInitialize)nudRecoveryCycles).EndInit();
             grpQBittorrent.ResumeLayout(false);
             grpQBittorrent.PerformLayout();
             ((System.ComponentModel.ISupportInitialize)nudDefaultPort).EndInit();
@@ -485,10 +485,10 @@ namespace qbPortWeaver
         private TextBox     txtPostUpdateCmd;
         private CheckBox    chkDebugMode;
 
-        private CheckBox      chkVpnAutoRecovery;
-        private Label         lblVpnRecoveryCycles;
-        private NumericUpDown nudVpnRecoveryCycles;
-        private Label         lblVpnRecoveryCyclesUnit;
+        private CheckBox      chkAutoRecovery;
+        private Label         lblRecoveryCycles;
+        private NumericUpDown nudRecoveryCycles;
+        private Label         lblRecoveryCyclesUnit;
 
         private Button      btnOK;
         private Button      btnCancel;

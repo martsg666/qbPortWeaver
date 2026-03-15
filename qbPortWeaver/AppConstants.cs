@@ -48,6 +48,60 @@ namespace qbPortWeaver
             "Proton", "Proton VPN", "Logs", "client-logs.txt"
         );
 
+        // Kills a process (including its entire process tree) and waits up to timeoutMs for exit.
+        // Escalation: Process.Kill → wait → taskkill /F /T → retry Process.Kill (handles processes
+        // that resist .NET's TerminateProcess, e.g. qBittorrent during active I/O).
+        // Returns true if the process exited (or had already exited), false if it may still be running.
+        public static bool KillProcess(Process process, int timeoutMs = 5000)
+        {
+            try
+            {
+                process.Kill(entireProcessTree: true);
+            }
+            catch (InvalidOperationException)
+            {
+                return true; // already exited
+            }
+            catch (System.ComponentModel.Win32Exception)
+            {
+                return false; // access denied or process protected
+            }
+            if (process.WaitForExit(timeoutMs)) return true;
+
+            // Process.Kill failed to terminate in time - fall back to taskkill /F /T
+            try
+            {
+                using var taskkill = Process.Start(new ProcessStartInfo(
+                    Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "taskkill.exe"),
+                    $"/F /T /PID {process.Id}")
+                {
+                    UseShellExecute = false,
+                    CreateNoWindow  = true
+                });
+                taskkill?.WaitForExit(timeoutMs);
+            }
+            catch (Exception ex)
+            {
+                LogManager.Instance.LogDebug($"AppConstants.KillProcess: taskkill fallback failed: {ex.Message}");
+            }
+            if (process.WaitForExit(timeoutMs)) return true;
+
+            // Last resort: retry Process.Kill after taskkill may have weakened the process tree
+            try
+            {
+                process.Kill(entireProcessTree: true);
+            }
+            catch (InvalidOperationException)
+            {
+                return true;
+            }
+            catch (System.ComponentModel.Win32Exception)
+            {
+                return false;
+            }
+            return process.WaitForExit(timeoutMs);
+        }
+
         // Opens a URL in the default browser using ShellExecute
         public static void OpenUrl(string url)
         {

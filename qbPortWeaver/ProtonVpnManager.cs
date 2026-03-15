@@ -8,7 +8,6 @@ namespace qbPortWeaver
     public sealed class ProtonVpnManager : IVpnManager
     {
         private const int    LogReadChunkSize = 4096;
-        internal const string VpnServiceName    = "ProtonVPN Service";
         internal const string ClientProcessName = "ProtonVPN.Client";
 
         private readonly string _logFilePath;
@@ -48,8 +47,7 @@ namespace qbPortWeaver
 
         public Task<int?> GetVpnPortAsync() => Task.FromResult(GetVpnPortCore());
 
-        public string? FindServiceName()
-            => VpnManagerHelper.FindServiceByExactName(VpnServiceName, nameof(ProtonVpnManager));
+        public string? GetRecoveryTarget() => ProviderName;
 
         private int? GetVpnPortCore()
         {

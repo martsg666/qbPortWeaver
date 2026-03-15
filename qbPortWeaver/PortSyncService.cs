@@ -553,12 +553,12 @@ namespace qbPortWeaver
 
             if (recoveryTarget is null)
             {
-                LogManager.Instance.LogMessage($"Auto-recovery: no recovery target found for '{displayName}'", LogLevel.Warn);
+                LogManager.Instance.LogMessage($"No recovery target found for '{displayName}'", LogLevel.Warn);
                 return;
             }
 
             LogManager.Instance.LogMessage(
-                $"Auto-recovery: triggering '{action}' for '{displayName}' after {count} consecutive failed {(count == 1 ? "cycle" : "cycles")}",
+                $"Triggering '{action}' for '{displayName}' after {count} consecutive failed {(count == 1 ? "cycle" : "cycles")}",
                 LogLevel.Info);
             await AutoRecoveryManager.TriggerRecoveryAsync(action, recoveryTarget).ConfigureAwait(false);
         }

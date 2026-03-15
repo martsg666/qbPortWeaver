@@ -48,7 +48,7 @@ namespace qbPortWeaver
                 await RestartClientProcessAsync(clientProcessName).ConfigureAwait(false);
             }
             else
-                LogManager.Instance.LogMessage($"Auto-recovery: no client process matches '{target}' - skipping client restart", LogLevel.Warn);
+                LogManager.Instance.LogMessage($"No client process matches '{target}' - skipping client restart", LogLevel.Warn);
         }
 
         // Proactively discovers and caches EXE paths for all known client processes.
@@ -94,11 +94,11 @@ namespace qbPortWeaver
                 await pipe.ConnectAsync(PipeConnectTimeoutMs).ConfigureAwait(false);
                 using var writer = new StreamWriter(pipe) { AutoFlush = true };
                 await writer.WriteLineAsync($"{action}:{target}:{AppConstants.GetLogFilePath()}").ConfigureAwait(false);
-                LogManager.Instance.LogMessage($"Auto-recovery: sent '{action}' request for '{target}'", LogLevel.Info);
+                LogManager.Instance.LogMessage($"Sent '{action}' request for '{target}'", LogLevel.Info);
             }
             catch (Exception ex)
             {
-                LogManager.Instance.LogMessage($"Auto-recovery: failed to reach helper service: {ex.Message}", LogLevel.Warn);
+                LogManager.Instance.LogMessage($"Failed to reach helper service: {ex.Message}", LogLevel.Warn);
             }
         }
 
@@ -130,13 +130,13 @@ namespace qbPortWeaver
                         try
                         {
                             if (!AppConstants.KillProcess(p))
-                                LogManager.Instance.LogMessage($"Auto-recovery: client process '{processName}' (PID {p.Id}) still running after kill attempts", LogLevel.Warn);
+                                LogManager.Instance.LogMessage($"Client process '{processName}' (PID {p.Id}) still running after kill attempts", LogLevel.Warn);
                         }
                         catch (Exception ex) { LogManager.Instance.LogDebug($"AutoRecoveryManager.RestartClientProcessAsync: Kill '{processName}' - {ex.Message} - ignored"); }
                     }
                     LogManager.Instance.LogMessage(exePath != null
-                        ? $"Auto-recovery: killed client process '{processName}'"
-                        : $"Auto-recovery: client process '{processName}' was not running", LogLevel.Info);
+                        ? $"Killed client process '{processName}'"
+                        : $"Client process '{processName}' was not running", LogLevel.Info);
                 }
                 finally
                 {
@@ -145,19 +145,19 @@ namespace qbPortWeaver
             }
             catch (Exception ex)
             {
-                LogManager.Instance.LogMessage($"Auto-recovery: failed to kill client process '{processName}': {ex.Message}", LogLevel.Warn);
+                LogManager.Instance.LogMessage($"Failed to kill client process '{processName}': {ex.Message}", LogLevel.Warn);
             }
 
             // Fall back to cached path if the process was already dead
             if (exePath == null && CachedClientExePaths.TryGetValue(processName, out string? cached))
             {
                 exePath = cached;
-                LogManager.Instance.LogMessage($"Auto-recovery: using cached EXE path for '{processName}': {exePath}", LogLevel.Info);
+                LogManager.Instance.LogMessage($"Using cached EXE path for '{processName}': {exePath}", LogLevel.Info);
             }
 
             if (exePath == null)
             {
-                LogManager.Instance.LogMessage($"Auto-recovery: no EXE path available for '{processName}' - cannot restart client process", LogLevel.Warn);
+                LogManager.Instance.LogMessage($"No EXE path available for '{processName}' - cannot restart client process", LogLevel.Warn);
                 return;
             }
 
@@ -165,11 +165,11 @@ namespace qbPortWeaver
             try
             {
                 Process.Start(new ProcessStartInfo(exePath) { UseShellExecute = true })?.Dispose();
-                LogManager.Instance.LogMessage($"Auto-recovery: restarted client process '{processName}'", LogLevel.Info);
+                LogManager.Instance.LogMessage($"Restarted client process '{processName}'", LogLevel.Info);
             }
             catch (Exception ex)
             {
-                LogManager.Instance.LogMessage($"Auto-recovery: failed to restart client process '{processName}': {ex.Message}", LogLevel.Warn);
+                LogManager.Instance.LogMessage($"Failed to restart client process '{processName}': {ex.Message}", LogLevel.Warn);
             }
         }
     }

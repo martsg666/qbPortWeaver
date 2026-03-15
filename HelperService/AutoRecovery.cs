@@ -32,11 +32,11 @@ internal static class AutoRecovery
         {
             if (string.IsNullOrWhiteSpace(serviceName))
             {
-                logger.LogWarn("Auto-recovery: service name is empty - nothing to restart");
+                logger.LogWarn("Service name is empty - nothing to restart");
                 return;
             }
 
-            logger.LogInfo($"Auto-recovery: restarting service '{serviceName}'");
+            logger.LogInfo($"Restarting service '{serviceName}'");
 
             try { await StopServiceAsync(serviceName, logger).ConfigureAwait(false); }
             catch (Exception ex) { logger.LogWarn($"Service '{serviceName}' stop failed: {ex.Message}"); }
@@ -50,11 +50,11 @@ internal static class AutoRecovery
                 return;
             }
 
-            logger.LogInfo($"Auto-recovery: service '{serviceName}' restarted successfully");
+            logger.LogInfo($"Service '{serviceName}' restarted successfully");
         }
         catch (Exception ex)
         {
-            logger.LogError($"Auto-recovery: service restart failed: {ex.Message}");
+            logger.LogError($"Service restart failed: {ex.Message}");
         }
     }
 
@@ -67,31 +67,31 @@ internal static class AutoRecovery
         {
             if (string.IsNullOrWhiteSpace(adapterName))
             {
-                logger.LogWarn("Auto-recovery: adapter name is empty - nothing to cycle");
+                logger.LogWarn("Adapter name is empty - nothing to cycle");
                 return;
             }
 
-            logger.LogInfo($"Auto-recovery: cycling adapter '{adapterName}'");
+            logger.LogInfo($"Cycling adapter '{adapterName}'");
 
             if (!await RunNetshAsync($"interface set interface \"{adapterName}\" admin=disable", logger).ConfigureAwait(false))
             {
-                logger.LogWarn($"Auto-recovery: failed to disable adapter '{adapterName}'");
+                logger.LogWarn($"Failed to disable adapter '{adapterName}'");
                 return;
             }
-            logger.LogInfo($"Auto-recovery: adapter '{adapterName}' disabled");
+            logger.LogInfo($"Adapter '{adapterName}' disabled");
 
             await Task.Delay(AdapterCycleDelayMs).ConfigureAwait(false);
 
             if (!await RunNetshAsync($"interface set interface \"{adapterName}\" admin=enable", logger).ConfigureAwait(false))
             {
-                logger.LogWarn($"Auto-recovery: failed to re-enable adapter '{adapterName}'");
+                logger.LogWarn($"Failed to re-enable adapter '{adapterName}'");
                 return;
             }
-            logger.LogInfo($"Auto-recovery: adapter '{adapterName}' re-enabled successfully");
+            logger.LogInfo($"Adapter '{adapterName}' re-enabled successfully");
         }
         catch (Exception ex)
         {
-            logger.LogError($"Auto-recovery: adapter cycle failed: {ex.Message}");
+            logger.LogError($"Adapter cycle failed: {ex.Message}");
         }
     }
 
@@ -352,7 +352,7 @@ internal static class AutoRecovery
             using var process = Process.Start(startInfo);
             if (process is null)
             {
-                logger.LogWarn($"Auto-recovery: failed to start netsh");
+                logger.LogWarn($"Failed to start netsh");
                 return false;
             }
 
@@ -366,14 +366,14 @@ internal static class AutoRecovery
                 // netsh is a short-lived system utility that always responds to Process.Kill —
                 // no taskkill fallback needed here.
                 process.Kill(entireProcessTree: true);
-                logger.LogWarn($"Auto-recovery: netsh timed out and was killed");
+                logger.LogWarn($"Netsh timed out and was killed");
                 return false;
             }
 
             if (process.ExitCode != 0)
             {
                 string output = !string.IsNullOrWhiteSpace(stderr) ? stderr.Trim() : stdout.Trim();
-                logger.LogWarn($"Auto-recovery: netsh exited with code {process.ExitCode}: {output}");
+                logger.LogWarn($"Netsh exited with code {process.ExitCode}: {output}");
                 return false;
             }
 
@@ -381,7 +381,7 @@ internal static class AutoRecovery
         }
         catch (Exception ex)
         {
-            logger.LogWarn($"Auto-recovery: netsh failed: {ex.Message}");
+            logger.LogWarn($"Netsh failed: {ex.Message}");
             return false;
         }
     }

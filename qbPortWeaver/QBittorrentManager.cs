@@ -8,7 +8,7 @@ namespace qbPortWeaver
     public sealed class QBittorrentManager : IDisposable
     {
         private const int    ProcessStartDelayMs  = 2000;
-        private const int    ProcessKillTimeoutMs = 2000;
+        private const int    ProcessKillTimeoutMs = 5000;
         private const int    ProcessInitDelayMs   = 1000;
         private const string AuthOkResponse      = "Ok.";
         private const string ApiAuthLogin        = "/api/v2/auth/login";
@@ -72,26 +72,24 @@ namespace qbPortWeaver
         {
             try
             {
-                // Kill all running qBittorrent processes and wait for each to fully exit before
+                // Kill all running qBittorrent processes and verify none remain before
                 // launching the new instance, to avoid the new process inheriting a port or
                 // file lock held by a still-dying instance.
-                foreach (var proc in Process.GetProcessesByName(_processName))
+                KillProcessesByName(_processName);
+                if (HasRunningProcesses(_processName))
                 {
-                    try
+                    // First pass left survivors - wait briefly and retry with a fresh process list
+                    await Task.Delay(1000, cancellationToken).ConfigureAwait(false);
+                    KillProcessesByName(_processName);
+                    if (HasRunningProcesses(_processName))
                     {
-                        if (!AppConstants.KillAndWait(proc, ProcessKillTimeoutMs))
-                            LogManager.Instance.LogMessage($"qBittorrent process (PID {proc.Id}) still running after kill attempts - new instance may conflict", LogLevel.Warn);
+                        LogManager.Instance.LogMessage("Failed to kill all qBittorrent processes - aborting restart", LogLevel.Error);
+                        return false;
                     }
-                    catch (Exception ex) { LogManager.Instance.LogDebug($"QBittorrentManager.RestartAsync: Failed to kill process: {ex.Message}"); }
-                    finally { proc.Dispose(); }
                 }
 
                 Process.Start(CreateQBittorrentStartInfo())?.Dispose();
-
-                // Brief delay to allow the process to register before IsRunning() checks for it
                 await Task.Delay(ProcessInitDelayMs, cancellationToken).ConfigureAwait(false);
-
-                // Invalidate the session - the old cookie is dead after the process was killed
                 _isAuthenticated = false;
 
                 return IsRunning();
@@ -210,6 +208,30 @@ namespace qbPortWeaver
                 LogHttpException("GetConnectionStatusAsync", ex);
                 return null;
             }
+        }
+
+        // Attempts to kill all processes matching the given name.
+        private static void KillProcessesByName(string processName)
+        {
+            foreach (var proc in Process.GetProcessesByName(processName))
+            {
+                try
+                {
+                    if (!AppConstants.KillProcess(proc, ProcessKillTimeoutMs))
+                        LogManager.Instance.LogMessage($"qBittorrent process (PID {proc.Id}) still running after kill attempts", LogLevel.Warn);
+                }
+                catch (Exception ex) { LogManager.Instance.LogDebug($"QBittorrentManager.KillProcessesByName: Failed to kill process: {ex.Message}"); }
+                finally { proc.Dispose(); }
+            }
+        }
+
+        // Returns true if any process with the given name is currently running.
+        private static bool HasRunningProcesses(string processName)
+        {
+            var processes = Process.GetProcessesByName(processName);
+            bool any = processes.Length > 0;
+            foreach (var p in processes) p.Dispose();
+            return any;
         }
 
         // Authenticates once per instance; subsequent calls reuse the existing session cookie

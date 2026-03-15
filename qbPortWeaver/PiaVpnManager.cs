@@ -98,7 +98,7 @@ namespace qbPortWeaver
 
                 if (!process.WaitForExit(ProcessTimeoutMs))
                 {
-                    // Cleanup only - no new process follows, so KillAndWait's retry wait is not needed here.
+                    // Cleanup only - no new process follows, so KillProcess's retry wait is not needed here.
                     process.Kill(entireProcessTree: true);
                     LogManager.Instance.LogDebug("PiaVpnManager.RunPiactl: piactl timed out and was killed");
                     return null;

@@ -109,10 +109,7 @@ namespace qbPortWeaver
             {
                 using var regKey = Registry.CurrentUser.OpenSubKey($@"{BaseKeyPath}\{section}");
                 if (regKey?.GetValue(key) is string value)
-                {
-                    LogManager.Instance.LogDebug($"RegistrySettingsManager.GetValue: [{section}] {key} = {MaskSensitiveValue(key, value)}");
                     return value;
-                }
             }
             catch (Exception ex)
             {

@@ -49,10 +49,10 @@ namespace qbPortWeaver
         );
 
         // Kills a process (including its entire process tree) and waits up to timeoutMs for exit.
-        // Escalation: Process.Kill → wait → taskkill /F /T as last resort (handles processes
+        // Escalation: Process.Kill → wait → taskkill /F /T → retry Process.Kill (handles processes
         // that resist .NET's TerminateProcess, e.g. qBittorrent during active I/O).
         // Returns true if the process exited (or had already exited), false if it may still be running.
-        public static bool KillAndWait(Process process, int timeoutMs = 2000)
+        public static bool KillProcess(Process process, int timeoutMs = 5000)
         {
             try
             {
@@ -82,7 +82,22 @@ namespace qbPortWeaver
             }
             catch (Exception ex)
             {
-                LogManager.Instance.LogDebug($"AppConstants.KillAndWait: taskkill fallback failed: {ex.Message}");
+                LogManager.Instance.LogDebug($"AppConstants.KillProcess: taskkill fallback failed: {ex.Message}");
+            }
+            if (process.WaitForExit(timeoutMs)) return true;
+
+            // Last resort: retry Process.Kill after taskkill may have weakened the process tree
+            try
+            {
+                process.Kill(entireProcessTree: true);
+            }
+            catch (InvalidOperationException)
+            {
+                return true;
+            }
+            catch (System.ComponentModel.Win32Exception)
+            {
+                return false;
             }
             return process.WaitForExit(timeoutMs);
         }

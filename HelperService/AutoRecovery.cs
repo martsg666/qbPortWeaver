@@ -12,6 +12,7 @@ namespace qbPortWeaver.HelperService;
 //   cycle-adapter  — disable/enable a network adapter via netsh
 internal static class AutoRecovery
 {
+    private const int ProcessKillTimeoutMs      = 5000;
     private const int ServiceRestartDelayMs     = 5000;
     private const int ServiceOperationTimeoutMs = 15000;
     private const int AdapterCycleDelayMs       = 3000;
@@ -99,7 +100,7 @@ internal static class AutoRecovery
         ProviderServiceMap.TryGetValue(providerToken, out string? serviceName) ? serviceName : null;
 
     // Stops a service cleanly via the SCM, with escalating force if it doesn't respond.
-    // Escalation: SCM stop → wait (15s) → Process.Kill → wait (15s) → taskkill /F /T.
+    // Escalation: SCM stop → wait → KillServiceProcess (3-stage: Process.Kill → taskkill /F /T → retry).
     // ServiceController.WaitForStatus has no async overload — wrap in Task.Run to avoid
     // blocking the BackgroundService thread pool thread.
     //
@@ -259,7 +260,8 @@ internal static class AutoRecovery
 
     // Called by StopServiceAsync when the service doesn't respond to a clean stop
     // or is stuck in a pending state. Resolves the service's host PID via
-    // QueryServiceStatusEx, then escalates: Process.Kill → wait → taskkill /F /T.
+    // QueryServiceStatusEx, then escalates: Process.Kill → wait → taskkill /F /T → retry Process.Kill.
+    // Mirrors the escalation logic in AppConstants.KillProcess (main app project).
     private static void KillServiceProcess(ServiceController sc, HelperLogger logger)
     {
         try
@@ -277,16 +279,17 @@ internal static class AutoRecovery
 
                 using var process = Process.GetProcessById(pid);
 
+                // Stage 1: Process.Kill
                 try { process.Kill(entireProcessTree: true); }
                 catch (InvalidOperationException) { return; } // already exited
 
-                if (process.WaitForExit(2000))
+                if (process.WaitForExit(ProcessKillTimeoutMs))
                 {
                     logger.LogInfo($"Service '{sc.ServiceName}' process force-killed (PID {pid})");
                     return;
                 }
 
-                // Process.Kill failed to terminate in time — fall back to taskkill /F /T
+                // Stage 2: taskkill /F /T
                 try
                 {
                     using var taskkill = Process.Start(new ProcessStartInfo(
@@ -296,13 +299,30 @@ internal static class AutoRecovery
                         UseShellExecute = false,
                         CreateNoWindow  = true
                     });
-                    taskkill?.WaitForExit(2000);
-                    logger.LogInfo($"Service '{sc.ServiceName}' process force-killed via taskkill (PID {pid})");
+                    taskkill?.WaitForExit(ProcessKillTimeoutMs);
                 }
                 catch (Exception ex)
                 {
                     logger.LogWarn($"Service '{sc.ServiceName}' taskkill fallback failed (PID {pid}): {ex.Message}");
                 }
+                if (process.WaitForExit(ProcessKillTimeoutMs))
+                {
+                    logger.LogInfo($"Service '{sc.ServiceName}' process force-killed via taskkill (PID {pid})");
+                    return;
+                }
+
+                // Stage 3: retry Process.Kill after taskkill may have weakened the process tree
+                try { process.Kill(entireProcessTree: true); }
+                catch (InvalidOperationException)
+                {
+                    logger.LogInfo($"Service '{sc.ServiceName}' process force-killed (PID {pid})");
+                    return;
+                }
+
+                if (process.WaitForExit(ProcessKillTimeoutMs))
+                    logger.LogInfo($"Service '{sc.ServiceName}' process force-killed (PID {pid})");
+                else
+                    logger.LogWarn($"Service '{sc.ServiceName}' process (PID {pid}) still running after all kill attempts");
             }
             finally
             {

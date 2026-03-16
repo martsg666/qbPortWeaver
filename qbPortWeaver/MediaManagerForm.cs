@@ -183,9 +183,10 @@ namespace qbPortWeaver
                 var remaining = await MediaManagerService.ScanAsync(apiKey, createFolders, movieFolders, tvShowFolders, ct);
                 PopulateGrid(remaining);
 
+                string remainingLabel = $"{remaining.Count} file{(remaining.Count == 1 ? "" : "s")}";
                 lblScanStatus.Text   = remaining.Count == 0
                     ? "Done - all files renamed successfully."
-                    : $"Done - {remaining.Count} file{(remaining.Count == 1 ? "" : "s")} could not be renamed.";
+                    : $"Done - {remainingLabel} could not be renamed.";
                 btnRenameNow.Enabled = remaining.Count > 0;
             }
             catch (OperationCanceledException)

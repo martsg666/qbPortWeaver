@@ -6,7 +6,7 @@ namespace qbPortWeaver
     /// <summary>HTTP client for The Movie Database (TMDB) search API.</summary>
     public sealed class TmdbClient : IDisposable
     {
-        private const string TmdbBaseUrl = "https://api.themoviedb.org/3/";
+        private const string TmdbBaseUrl = "https://api.themoviedb.org/3/"; // NOSONAR S1075 - fixed TMDB API endpoint, not a configurable path
 
         private readonly HttpClient _http;
         private readonly string _apiKey;

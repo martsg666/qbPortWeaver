@@ -1,7 +1,7 @@
 namespace qbPortWeaver
 {
     /// <summary>Orchestrates media file renaming on each sync cycle when the Media Manager feature is enabled.</summary>
-    public class MediaManagerService
+    public static class MediaManagerService
     {
         /// <summary>
         /// Applies a specific set of rename proposals produced by <see cref="ScanAsync"/>, respecting any

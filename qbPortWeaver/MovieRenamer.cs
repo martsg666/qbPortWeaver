@@ -7,6 +7,8 @@ namespace qbPortWeaver
     /// </summary>
     public sealed class MovieRenamer
     {
+        private const string MediaTypeMovie = "Movie";
+
         private readonly TmdbClient _tmdb;
         private readonly bool _dryRun;
         private readonly bool _createFolders;
@@ -29,11 +31,8 @@ namespace qbPortWeaver
             if (!Directory.Exists(moviesRoot))
                 return proposals;
 
-            foreach (var file in Directory.GetFiles(moviesRoot))
-            {
-                if (FileNameParser.IsVideoFile(file))
-                    await ScanStandaloneFileAsync(moviesRoot, file, proposals).ConfigureAwait(false);
-            }
+            foreach (var file in Directory.GetFiles(moviesRoot).Where(FileNameParser.IsVideoFile))
+                await ScanStandaloneFileAsync(moviesRoot, file, proposals).ConfigureAwait(false);
 
             foreach (var dir in Directory.GetDirectories(moviesRoot))
             {
@@ -53,11 +52,8 @@ namespace qbPortWeaver
 
             LogManager.Instance.LogMessage($"[MediaManager] Scanning movie folder: {moviesRoot}", LogLevel.Info);
 
-            foreach (var file in Directory.GetFiles(moviesRoot))
-            {
-                if (FileNameParser.IsVideoFile(file))
-                    await ProcessStandaloneFileAsync(moviesRoot, file).ConfigureAwait(false);
-            }
+            foreach (var file in Directory.GetFiles(moviesRoot).Where(FileNameParser.IsVideoFile))
+                await ProcessStandaloneFileAsync(moviesRoot, file).ConfigureAwait(false);
 
             foreach (var dir in Directory.GetDirectories(moviesRoot))
             {
@@ -77,7 +73,7 @@ namespace qbPortWeaver
             var (info, isConfident) = await LookupMovieAsync(title, year).ConfigureAwait(false);
             if (info == null)
             {
-                proposals.Add(new RenameProposal("Movie", filePath, string.Empty, IsConfident: false, IsMatched: false));
+                proposals.Add(new RenameProposal(MediaTypeMovie, filePath, string.Empty, IsConfident: false, IsMatched: false));
                 return;
             }
 
@@ -89,7 +85,7 @@ namespace qbPortWeaver
                 : Path.Combine(root, $"{plexName}{ext}");
 
             if (!string.Equals(filePath, proposedPath, StringComparison.OrdinalIgnoreCase))
-                proposals.Add(new RenameProposal("Movie", filePath, proposedPath, isConfident));
+                proposals.Add(new RenameProposal(MediaTypeMovie, filePath, proposedPath, isConfident));
         }
 
         private async Task ScanMovieFolderAsync(string root, string dirPath, List<RenameProposal> proposals)
@@ -109,7 +105,7 @@ namespace qbPortWeaver
             if (info == null)
             {
                 foreach (var file in videoFiles)
-                    proposals.Add(new RenameProposal("Movie", file, string.Empty, IsConfident: false, IsMatched: false));
+                    proposals.Add(new RenameProposal(MediaTypeMovie, file, string.Empty, IsConfident: false, IsMatched: false));
                 return;
             }
 
@@ -126,7 +122,7 @@ namespace qbPortWeaver
                 var proposedPath = Path.Combine(newDirPath, newFileName);
 
                 if (!string.Equals(file, proposedPath, StringComparison.OrdinalIgnoreCase))
-                    proposals.Add(new RenameProposal("Movie", file, proposedPath, isConfident));
+                    proposals.Add(new RenameProposal(MediaTypeMovie, file, proposedPath, isConfident));
             }
         }
 
@@ -243,17 +239,7 @@ namespace qbPortWeaver
             var plexFolderName = FileNameParser.SanitizeFileName($"{info.Title} ({info.Year})");
             var newDirPath     = Path.Combine(root, plexFolderName);
 
-            // Log planned renames
-            foreach (var file in videoFiles)
-            {
-                var oldFileName = Path.GetFileName(file);
-                var partSuffix  = ExtractPartSuffix(oldFileName);
-                var newFileName = partSuffix != null
-                    ? $"{plexFolderName} - {partSuffix}{Path.GetExtension(file)}"
-                    : $"{plexFolderName}{Path.GetExtension(file)}";
-
-                LogManager.Instance.LogMessage($"[MediaManager] Renaming '{oldFileName}' -> '{newFileName}'", LogLevel.Info);
-            }
+            LogPlannedRenames(videoFiles, plexFolderName);
 
             if (string.Equals(dirPath, newDirPath, StringComparison.OrdinalIgnoreCase))
             {
@@ -265,7 +251,21 @@ namespace qbPortWeaver
 
             if (_dryRun) return;
 
-            // Rename video files first, then non-video companion files, then the folder itself
+            RenameFilesInFolder(dirPath, videoFiles, plexFolderName);
+
+            if (Directory.Exists(newDirPath))
+                LogManager.Instance.LogMessage($"[MediaManager] Skipped folder rename - target already exists: '{plexFolderName}'", LogLevel.Warn);
+            else
+            {
+                Directory.Move(dirPath, newDirPath);
+                LogManager.Instance.LogDebug("[MediaManager] MovieRenamer.ProcessMovieFolder: renamed");
+            }
+        }
+
+        // Renames video files to Plex names and companion files that share the first video's base name
+        private static void RenameFilesInFolder(string dirPath, List<string> videoFiles, string plexFolderName)
+        {
+            // Rename video files first
             foreach (var file in videoFiles)
             {
                 var ext         = Path.GetExtension(file);
@@ -293,13 +293,20 @@ namespace qbPortWeaver
                         File.Move(file, newFilePath);
                 }
             }
+        }
 
-            if (Directory.Exists(newDirPath))
-                LogManager.Instance.LogMessage($"[MediaManager] Skipped folder rename - target already exists: '{plexFolderName}'", LogLevel.Warn);
-            else
+        // Logs the planned rename for each video file in the folder
+        private static void LogPlannedRenames(IEnumerable<string> videoFiles, string plexFolderName)
+        {
+            foreach (var file in videoFiles)
             {
-                Directory.Move(dirPath, newDirPath);
-                LogManager.Instance.LogDebug("[MediaManager] MovieRenamer.ProcessMovieFolder: renamed");
+                var oldFileName = Path.GetFileName(file);
+                var partSuffix  = ExtractPartSuffix(oldFileName);
+                var newFileName = partSuffix != null
+                    ? $"{plexFolderName} - {partSuffix}{Path.GetExtension(file)}"
+                    : $"{plexFolderName}{Path.GetExtension(file)}";
+
+                LogManager.Instance.LogMessage($"[MediaManager] Renaming '{oldFileName}' -> '{newFileName}'", LogLevel.Info);
             }
         }
 
@@ -317,31 +324,7 @@ namespace qbPortWeaver
                     if (info != null) isConfident = false;
                 }
 
-                // Try the part after " - " (e.g. "Harry Potter 1 - The Sorcerer's Stone")
-                if (info == null && title.Contains(" - "))
-                {
-                    var afterDash = title[(title.IndexOf(" - ", StringComparison.Ordinal) + 3)..].Trim();
-                    LogManager.Instance.LogDebug($"[MediaManager] MovieRenamer.LookupMovie: retrying with '{afterDash}'");
-                    info = await _tmdb.SearchMovieAsync(afterDash, year).ConfigureAwait(false);
-                    if (info != null) isConfident = false;
-                }
-
-                // Try without trailing number (e.g. "Shrek 1" -> "Shrek")
-                if (info == null || (info.Year == null && title.Length > 2))
-                {
-                    var trimmed = title.TrimEnd();
-                    if (trimmed.Length > 2 && char.IsDigit(trimmed[^1]) && trimmed[^2] == ' ')
-                    {
-                        var withoutNum = trimmed[..^2].Trim();
-                        LogManager.Instance.LogDebug($"[MediaManager] MovieRenamer.LookupMovie: retrying without trailing number '{withoutNum}'");
-                        var altInfo = await _tmdb.SearchMovieAsync(withoutNum, year).ConfigureAwait(false);
-                        if (altInfo?.Year != null)
-                        {
-                            info        = altInfo;
-                            isConfident = false;
-                        }
-                    }
-                }
+                (info, isConfident) = await TryFallbackLookupsAsync(title, year, noMatchSoFar: info == null, info, isConfident).ConfigureAwait(false);
 
                 if (info == null)
                 {
@@ -357,6 +340,41 @@ namespace qbPortWeaver
                 LogManager.Instance.LogMessage($"[MediaManager] TMDB movie lookup failed: {ex.Message}", LogLevel.Error);
                 return (null, false);
             }
+        }
+
+        // Applies two fallback TMDB lookup strategies to reduce unmatched results.
+        // After-dash strategy: only runs when noMatchSoFar=true (info was null after initial lookup).
+        // Trailing-number strategy: runs when info==null OR info.Year==null.
+        private async Task<(MovieInfo? info, bool isConfident)> TryFallbackLookupsAsync(
+            string title, int? year, bool noMatchSoFar, MovieInfo? info, bool isConfident)
+        {
+            // Try the part after " - " (e.g. "Harry Potter 1 - The Sorcerer's Stone")
+            if (noMatchSoFar && title.Contains(" - "))
+            {
+                var afterDash = title[(title.IndexOf(" - ", StringComparison.Ordinal) + 3)..].Trim();
+                LogManager.Instance.LogDebug($"[MediaManager] MovieRenamer.LookupMovie: retrying with '{afterDash}'");
+                info = await _tmdb.SearchMovieAsync(afterDash, year).ConfigureAwait(false);
+                if (info != null) isConfident = false;
+            }
+
+            // Try without trailing number (e.g. "Shrek 1" -> "Shrek")
+            if (info == null || (info.Year == null && title.Length > 2))
+            {
+                var trimmed = title.TrimEnd();
+                if (trimmed.Length > 2 && char.IsDigit(trimmed[^1]) && trimmed[^2] == ' ')
+                {
+                    var withoutNum = trimmed[..^2].Trim();
+                    LogManager.Instance.LogDebug($"[MediaManager] MovieRenamer.LookupMovie: retrying without trailing number '{withoutNum}'");
+                    var altInfo = await _tmdb.SearchMovieAsync(withoutNum, year).ConfigureAwait(false);
+                    if (altInfo?.Year != null)
+                    {
+                        info        = altInfo;
+                        isConfident = false;
+                    }
+                }
+            }
+
+            return (info, isConfident);
         }
 
         // Detects multi-part suffixes such as "cd1", "pt2", "disc3" and returns the normalised token.

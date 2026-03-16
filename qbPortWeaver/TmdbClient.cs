@@ -4,15 +4,17 @@ using System.Text.Json.Serialization;
 namespace qbPortWeaver
 {
     /// <summary>HTTP client for The Movie Database (TMDB) search API.</summary>
-    public class TmdbClient : IDisposable
+    public sealed class TmdbClient : IDisposable
     {
+        private const string TmdbBaseUrl = "https://api.themoviedb.org/3/";
+
         private readonly HttpClient _http;
         private readonly string _apiKey;
 
         public TmdbClient(string apiKey)
         {
             _apiKey = apiKey;
-            _http   = new HttpClient { BaseAddress = new Uri("https://api.themoviedb.org/3/") };
+            _http   = new HttpClient { BaseAddress = new Uri(TmdbBaseUrl) };
         }
 
         /// <summary>Searches for a movie by title and optional year. Returns the best match, or null if none found.</summary>
@@ -52,7 +54,11 @@ namespace qbPortWeaver
             };
         }
 
-        public void Dispose() => _http.Dispose();
+        public void Dispose()
+        {
+            _http.Dispose();
+            GC.SuppressFinalize(this);
+        }
     }
 
     public class MovieInfo

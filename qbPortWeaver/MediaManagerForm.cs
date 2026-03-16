@@ -3,9 +3,8 @@ namespace qbPortWeaver
     public partial class MediaManagerForm : Form
     {
         private enum RowConfidence { Confident, Uncertain, Unmatched }
-        private record RowData(RowConfidence Confidence, RenameProposal Proposal);
+        private sealed record RowData(RowConfidence Confidence, RenameProposal Proposal);
 
-        private readonly MediaManagerService _service = new();
         private CancellationTokenSource? _scanCts;
 
         public MediaManagerForm()
@@ -113,18 +112,20 @@ namespace qbPortWeaver
             try
             {
                 bool createFolders = chkCreateFolders.Checked;
-                var proposals = await _service.ScanAsync(apiKey, createFolders, movieFolders, tvShowFolders, ct);
+                var proposals = await MediaManagerService.ScanAsync(apiKey, createFolders, movieFolders, tvShowFolders, ct);
 
                 PopulateGrid(proposals);
 
-                int unmatched = proposals.Count(p => !p.IsMatched);
-                int toRename  = proposals.Count - unmatched;
+                int unmatched     = proposals.Count(p => !p.IsMatched);
+                int toRename      = proposals.Count - unmatched;
+                string renameStr  = $"{toRename} file{(toRename == 1 ? "" : "s")}";
+                string unmatchedStr = $"{unmatched} file{(unmatched == 1 ? "" : "s")}";
                 lblScanStatus.Text = (toRename, unmatched) switch
                 {
                     (0, 0) => "All files already correctly named.",
-                    (0, _) => $"{unmatched} file{(unmatched == 1 ? "" : "s")} had no TMDB match - enter proposed names manually.",
-                    (_, 0) => $"{toRename} file{(toRename == 1 ? "" : "s")} would be renamed.",
-                    _      => $"{toRename} file{(toRename == 1 ? "" : "s")} would be renamed, {unmatched} had no TMDB match."
+                    (0, _) => $"{unmatchedStr} had no TMDB match - enter proposed names manually.",
+                    (_, 0) => $"{renameStr} would be renamed.",
+                    _      => $"{renameStr} would be renamed, {unmatchedStr} had no TMDB match."
                 };
 
                 btnRenameNow.Enabled = proposals.Count > 0;
@@ -169,28 +170,9 @@ namespace qbPortWeaver
 
             try
             {
-                // Build updated proposals from the grid, honouring any edits the user made to the Proposed column.
-                // Each row carries its own RenameProposal in Tag so row order is irrelevant.
-                var toApply = new List<RenameProposal>();
-                foreach (DataGridViewRow row in dgvResults.Rows)
-                {
-                    if (row.Tag is not RowData { Proposal: var original }) continue;
+                var toApply = BuildProposalsFromGrid();
 
-                    var editedName = row.Cells[colProposed.Index].Value?.ToString() ?? string.Empty;
-                    if (string.IsNullOrWhiteSpace(editedName)) continue; // unmatched row with no user-supplied name
-
-                    // Always use the original file's directory unless createFolders is still checked —
-                    // the user may have toggled the checkbox between Scan and Rename Now.
-                    var proposedDir  = chkCreateFolders.Checked && !string.IsNullOrEmpty(original.ProposedPath)
-                                       ? Path.GetDirectoryName(original.ProposedPath) ?? string.Empty
-                                       : Path.GetDirectoryName(original.OriginalPath) ?? string.Empty;
-                    var proposedPath = Path.Combine(proposedDir, editedName);
-
-                    if (!string.Equals(original.OriginalPath, proposedPath, StringComparison.OrdinalIgnoreCase))
-                        toApply.Add(original with { ProposedPath = proposedPath, IsMatched = true });
-                }
-
-                await _service.ApplyProposalsAsync(toApply, ct);
+                await MediaManagerService.ApplyProposalsAsync(toApply, ct);
 
                 // Re-scan to reflect the new state
                 var apiKey        = txtTmdbApiKey.Text.Trim();
@@ -198,7 +180,7 @@ namespace qbPortWeaver
                 var movieFolders  = lstMovieFolders.Items.Cast<string>().ToArray();
                 var tvShowFolders = lstTvShowFolders.Items.Cast<string>().ToArray();
 
-                var remaining = await _service.ScanAsync(apiKey, createFolders, movieFolders, tvShowFolders, ct);
+                var remaining = await MediaManagerService.ScanAsync(apiKey, createFolders, movieFolders, tvShowFolders, ct);
                 PopulateGrid(remaining);
 
                 lblScanStatus.Text   = remaining.Count == 0
@@ -218,6 +200,31 @@ namespace qbPortWeaver
             {
                 SetBusy(false);
             }
+        }
+
+        // Builds updated proposals from the grid, honouring any edits the user made to the Proposed column.
+        // Each row carries its own RenameProposal in Tag so row order is irrelevant.
+        private List<RenameProposal> BuildProposalsFromGrid()
+        {
+            var toApply = new List<RenameProposal>();
+            foreach (DataGridViewRow row in dgvResults.Rows)
+            {
+                if (row.Tag is not RowData { Proposal: var original }) continue;
+
+                var editedName = row.Cells[colProposed.Index].Value?.ToString() ?? string.Empty;
+                if (string.IsNullOrWhiteSpace(editedName)) continue; // unmatched row with no user-supplied name
+
+                // Always use the original file's directory unless createFolders is still checked —
+                // the user may have toggled the checkbox between Scan and Rename Now.
+                var proposedDir  = chkCreateFolders.Checked && !string.IsNullOrEmpty(original.ProposedPath)
+                                   ? Path.GetDirectoryName(original.ProposedPath) ?? string.Empty
+                                   : Path.GetDirectoryName(original.OriginalPath) ?? string.Empty;
+                var proposedPath = Path.Combine(proposedDir, editedName);
+
+                if (!string.Equals(original.OriginalPath, proposedPath, StringComparison.OrdinalIgnoreCase))
+                    toApply.Add(original with { ProposedPath = proposedPath, IsMatched = true });
+            }
+            return toApply;
         }
 
         private void SetupGridContextMenu()
@@ -309,9 +316,12 @@ namespace qbPortWeaver
             dgvResults.Rows.Clear();
             foreach (var p in proposals)
             {
-                var confidence = p.IsMatched
-                    ? (p.IsConfident ? RowConfidence.Confident : RowConfidence.Uncertain)
-                    : RowConfidence.Unmatched;
+                RowConfidence confidence;
+                if (p.IsMatched)
+                    confidence = p.IsConfident ? RowConfidence.Confident : RowConfidence.Uncertain;
+                else
+                    confidence = RowConfidence.Unmatched;
+
                 int idx = dgvResults.Rows.Add(
                     p.MediaType,
                     Path.GetFileName(p.OriginalPath),

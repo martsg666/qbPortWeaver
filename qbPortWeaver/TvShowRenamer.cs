@@ -31,11 +31,8 @@ namespace qbPortWeaver
             if (!Directory.Exists(tvShowsRoot))
                 return proposals;
 
-            foreach (var file in Directory.GetFiles(tvShowsRoot))
-            {
-                if (FileNameParser.IsVideoFile(file) && FileNameParser.IsTvEpisode(Path.GetFileName(file)))
-                    await ScanEpisodeFileAsync(tvShowsRoot, file, proposals).ConfigureAwait(false);
-            }
+            foreach (var file in Directory.GetFiles(tvShowsRoot).Where(FileNameParser.IsVideoEpisode))
+                await ScanEpisodeFileAsync(tvShowsRoot, file, proposals).ConfigureAwait(false);
 
             foreach (var dir in Directory.GetDirectories(tvShowsRoot))
             {
@@ -55,11 +52,8 @@ namespace qbPortWeaver
 
             LogManager.Instance.LogMessage($"[MediaManager] Scanning TV folder: {tvShowsRoot}", LogLevel.Info);
 
-            foreach (var file in Directory.GetFiles(tvShowsRoot))
-            {
-                if (FileNameParser.IsVideoFile(file) && FileNameParser.IsTvEpisode(Path.GetFileName(file)))
-                    await ProcessEpisodeFileAsync(tvShowsRoot, file).ConfigureAwait(false);
-            }
+            foreach (var file in Directory.GetFiles(tvShowsRoot).Where(FileNameParser.IsVideoEpisode))
+                await ProcessEpisodeFileAsync(tvShowsRoot, file).ConfigureAwait(false);
 
             foreach (var dir in Directory.GetDirectories(tvShowsRoot))
             {
@@ -69,11 +63,8 @@ namespace qbPortWeaver
 
         private async Task ScanSubfolderAsync(string tvShowsRoot, string dirPath, List<RenameProposal> proposals)
         {
-            foreach (var file in Directory.GetFiles(dirPath))
-            {
-                if (FileNameParser.IsVideoFile(file) && FileNameParser.IsTvEpisode(Path.GetFileName(file)))
-                    await ScanEpisodeFileAsync(tvShowsRoot, file, proposals).ConfigureAwait(false);
-            }
+            foreach (var file in Directory.GetFiles(dirPath).Where(FileNameParser.IsVideoEpisode))
+                await ScanEpisodeFileAsync(tvShowsRoot, file, proposals).ConfigureAwait(false);
 
             foreach (var subDir in Directory.GetDirectories(dirPath))
             {
@@ -116,11 +107,8 @@ namespace qbPortWeaver
 
         private async Task ProcessSubfolderAsync(string tvShowsRoot, string dirPath)
         {
-            foreach (var file in Directory.GetFiles(dirPath))
-            {
-                if (FileNameParser.IsVideoFile(file) && FileNameParser.IsTvEpisode(Path.GetFileName(file)))
-                    await ProcessEpisodeFileAsync(tvShowsRoot, file).ConfigureAwait(false);
-            }
+            foreach (var file in Directory.GetFiles(dirPath).Where(FileNameParser.IsVideoEpisode))
+                await ProcessEpisodeFileAsync(tvShowsRoot, file).ConfigureAwait(false);
 
             foreach (var subDir in Directory.GetDirectories(dirPath))
             {
@@ -169,6 +157,12 @@ namespace qbPortWeaver
             var showFolderName  = FileNameParser.SanitizeFileName($"{showInfo.Title} ({showInfo.Year})");
             var episodeFileName = $"{showFolderName} - S{episodeInfo.Season:D2}E{episodeInfo.Episode:D2}{ext}";
 
+            MoveEpisodeFile(tvShowsRoot, filePath, episodeInfo, showFolderName, episodeFileName);
+        }
+
+        // Moves or renames the episode file to its Plex-compliant target path, creating season folders if needed.
+        private void MoveEpisodeFile(string tvShowsRoot, string filePath, TvEpisodeInfo episodeInfo, string showFolderName, string episodeFileName)
+        {
             if (_createFolders)
             {
                 var seasonFolder = $"Season {episodeInfo.Season:D2}";

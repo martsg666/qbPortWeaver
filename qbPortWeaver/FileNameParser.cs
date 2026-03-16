@@ -53,6 +53,10 @@ namespace qbPortWeaver
         public static bool IsTvEpisode(string name) =>
             TvEpisodeRegex().IsMatch(name);
 
+        /// <summary>Returns true if the file is a video file containing a TV episode pattern.</summary>
+        public static bool IsVideoEpisode(string path) =>
+            IsVideoFile(path) && IsTvEpisode(Path.GetFileName(path));
+
         /// <summary>
         /// Returns true if the file or folder name already follows Plex naming conventions and
         /// does not need to be looked up or renamed.

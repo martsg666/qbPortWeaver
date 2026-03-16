@@ -16,8 +16,7 @@ namespace qbPortWeaver
         private Icon? _iconError;
 
         // Services
-        private readonly PortSyncService    _portSyncService;
-        private readonly MediaManagerService _mediaManagerService;
+        private readonly PortSyncService _portSyncService;
 
         // Modeless log viewer (null when closed)
         private LogViewerForm? _logViewerForm;
@@ -59,8 +58,6 @@ namespace qbPortWeaver
             _portSyncService = new PortSyncService();
             _portSyncService.SyncCompleted += OnSyncCompleted;
             _portSyncService.InterfaceMismatchDetected += OnInterfaceMismatchDetected;
-
-            _mediaManagerService = new MediaManagerService();
 
             InitializeStatusIcons();
             InitializeTrayIcon();
@@ -276,7 +273,7 @@ namespace qbPortWeaver
                     try
                     {
                         updateInterval = await _portSyncService.RunAsync(_shutdownCts.Token);
-                        await _mediaManagerService.RunAsync(_shutdownCts.Token);
+                        await MediaManagerService.RunAsync(_shutdownCts.Token);
                     }
                     finally
                     {

@@ -8,7 +8,7 @@ namespace qbPortWeaver
         /// user edits made to the proposed paths in the UI grid.
         /// Throws <see cref="OperationCanceledException"/> if <paramref name="cancellationToken"/> is cancelled.
         /// </summary>
-        public Task ApplyProposalsAsync(IEnumerable<RenameProposal> proposals, CancellationToken cancellationToken)
+        public static Task ApplyProposalsAsync(IEnumerable<RenameProposal> proposals, CancellationToken cancellationToken)
             => Task.Run(() =>
             {
                 foreach (var proposal in proposals)
@@ -38,7 +38,7 @@ namespace qbPortWeaver
         /// Returns rename proposals for all configured folders without modifying any files.
         /// Throws <see cref="OperationCanceledException"/> if <paramref name="cancellationToken"/> is cancelled.
         /// </summary>
-        public async Task<List<RenameProposal>> ScanAsync(string apiKey, bool createFolders, string[] movieFolders, string[] tvShowFolders, CancellationToken cancellationToken)
+        public static async Task<List<RenameProposal>> ScanAsync(string apiKey, bool createFolders, string[] movieFolders, string[] tvShowFolders, CancellationToken cancellationToken)
         {
             var proposals = new List<RenameProposal>();
 
@@ -66,7 +66,7 @@ namespace qbPortWeaver
         /// Runs one media scan cycle. Returns immediately if the feature is disabled or the TMDB API key is not configured.
         /// Throws <see cref="OperationCanceledException"/> if <paramref name="cancellationToken"/> is cancelled.
         /// </summary>
-        public async Task RunAsync(CancellationToken cancellationToken)
+        public static async Task RunAsync(CancellationToken cancellationToken)
         {
             if (!RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionMedia, RegistrySettingsManager.KeyMediaEnabled))
                 return;

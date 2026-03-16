@@ -177,28 +177,19 @@ namespace qbPortWeaver
         // Moves or renames the episode file to its Plex-compliant target path, creating season folders if needed.
         private void MoveEpisodeFile(string tvShowsRoot, string filePath, TvShowEpisodeInfo episodeInfo, string showFolderName, string episodeFileName)
         {
-            string targetPath;
-            string? targetDir = null;
+            string targetPath = _createFolders
+                ? Path.Combine(tvShowsRoot, showFolderName, $"Season {episodeInfo.Season:D2}", episodeFileName)
+                : Path.Combine(tvShowsRoot, episodeFileName);
 
-            if (_createFolders)
-            {
-                var seasonFolder = $"Season {episodeInfo.Season:D2}";
-                targetDir  = Path.Combine(tvShowsRoot, showFolderName, seasonFolder);
-                targetPath = Path.Combine(targetDir, episodeFileName);
-                LogManager.Instance.LogMessage($"{AppConstants.MediaManagerLogPrefix}Renaming to {showFolderName}/{seasonFolder}/{episodeFileName}", LogLevel.Info);
-            }
-            else
-            {
-                targetPath = Path.Combine(tvShowsRoot, episodeFileName);
-                LogManager.Instance.LogMessage($"{AppConstants.MediaManagerLogPrefix}Renaming to {episodeFileName}", LogLevel.Info);
-            }
+            if (string.Equals(filePath, targetPath, StringComparison.OrdinalIgnoreCase)) return;
 
-            if (_dryRun || string.Equals(filePath, targetPath, StringComparison.OrdinalIgnoreCase)) return;
+            LogManager.Instance.LogMessage($"{AppConstants.MediaManagerLogPrefix}Renaming to {Path.GetRelativePath(tvShowsRoot, targetPath)}", LogLevel.Info);
 
-            PerformEpisodeMove(filePath, targetPath, targetDir, episodeFileName);
+            if (!_dryRun)
+                MoveFile(filePath, targetPath, episodeFileName);
         }
 
-        private static void PerformEpisodeMove(string sourcePath, string targetPath, string? targetDir, string episodeFileName)
+        private static void MoveFile(string sourcePath, string targetPath, string episodeFileName)
         {
             if (File.Exists(targetPath))
             {
@@ -206,7 +197,8 @@ namespace qbPortWeaver
                 return;
             }
 
-            if (targetDir != null)
+            var targetDir = Path.GetDirectoryName(targetPath);
+            if (!string.IsNullOrEmpty(targetDir))
                 Directory.CreateDirectory(targetDir);
 
             File.Move(sourcePath, targetPath);

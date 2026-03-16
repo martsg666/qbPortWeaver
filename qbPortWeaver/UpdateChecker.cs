@@ -19,7 +19,7 @@ namespace qbPortWeaver
         private static readonly string GitHubBaseApiUrl = $"https://api.github.com/repos/{AppConstants.GitHubRepoOwner}/{AppConstants.AppName}";
         private static readonly string GitHubApiUrl     = GitHubBaseApiUrl + "/releases/latest";
 
-        private static readonly HttpClient Client = CreateHttpClient(); // Not disposed - static lifetime matches process lifetime (recommended pattern for HttpClient)
+        private static readonly HttpClient _httpClient = CreateHttpClient(); // Not disposed - static lifetime matches process lifetime (recommended pattern for HttpClient)
 
         // Returns the latest release version string and URL if a newer version exists; null if up-to-date or on any error
         public static async Task<(string Version, string Url)?> GetAvailableUpdateAsync()
@@ -33,7 +33,7 @@ namespace qbPortWeaver
         {
             try
             {
-                using var response = await Client.GetAsync(GitHubApiUrl).ConfigureAwait(false);
+                using var response = await _httpClient.GetAsync(GitHubApiUrl).ConfigureAwait(false);
                 response.EnsureSuccessStatusCode();
 
                 using var stream = await response.Content.ReadAsStreamAsync().ConfigureAwait(false);
@@ -67,7 +67,7 @@ namespace qbPortWeaver
         {
             try
             {
-                using var response = await Client.GetAsync(GitHubBaseApiUrl + "/contributors?per_page=100").ConfigureAwait(false);
+                using var response = await _httpClient.GetAsync(GitHubBaseApiUrl + "/contributors?per_page=100").ConfigureAwait(false);
                 response.EnsureSuccessStatusCode();
 
                 using var stream = await response.Content.ReadAsStreamAsync().ConfigureAwait(false);

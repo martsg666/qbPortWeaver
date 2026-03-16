@@ -85,7 +85,7 @@ namespace qbPortWeaver
         }
 
         // Sends a recovery request to the SYSTEM helper service via named pipe.
-        // Protocol: <action>:<target>:<logFilePath>
+        // Protocol (pipe-delimited): <action>|<target>|<logFilePath>
         private static async Task SendToHelperServiceAsync(string action, string target)
         {
             try
@@ -93,7 +93,7 @@ namespace qbPortWeaver
                 using var pipe = new NamedPipeClientStream(".", AppConstants.HelperServicePipeName, PipeDirection.Out);
                 await pipe.ConnectAsync(PipeConnectTimeoutMs).ConfigureAwait(false);
                 using var writer = new StreamWriter(pipe) { AutoFlush = true };
-                await writer.WriteLineAsync($"{action}:{target}:{AppConstants.GetLogFilePath()}").ConfigureAwait(false);
+                await writer.WriteLineAsync($"{action}|{target}|{AppConstants.GetLogFilePath()}").ConfigureAwait(false);
                 LogManager.Instance.LogMessage($"Sent '{action}' request for '{target}'", LogLevel.Info);
             }
             catch (Exception ex)

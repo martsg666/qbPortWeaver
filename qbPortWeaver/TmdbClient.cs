@@ -9,7 +9,7 @@ namespace qbPortWeaver
         private const string TmdbBaseUrl = "https://api.themoviedb.org/3/"; // NOSONAR S1075 - fixed TMDB API endpoint, not a configurable path
 
         // Static shared instance: HttpClient is thread-safe and reusing it avoids per-cycle socket exhaustion.
-        private static readonly HttpClient _http = new()
+        private static readonly HttpClient _httpClient = new()
         {
             BaseAddress = new Uri(TmdbBaseUrl),
             Timeout     = TimeSpan.FromSeconds(AppConstants.HttpTimeoutSeconds)
@@ -29,7 +29,7 @@ namespace qbPortWeaver
             if (year.HasValue)
                 url += $"&year={year.Value}";
 
-            var response = await _http.GetFromJsonAsync<TmdbMovieSearchResult>(url).ConfigureAwait(false);
+            var response = await _httpClient.GetFromJsonAsync<TmdbMovieSearchResult>(url).ConfigureAwait(false);
             var result   = response?.Results?.FirstOrDefault();
             if (result == null)
                 return null;
@@ -44,7 +44,7 @@ namespace qbPortWeaver
             var url = $"search/tv?api_key={_apiKey}&query={Uri.EscapeDataString(query)}&language=en-US&page=1";
             if (year.HasValue)
                 url += $"&first_air_date_year={year.Value}";
-            var response = await _http.GetFromJsonAsync<TmdbTvSearchResult>(url).ConfigureAwait(false);
+            var response = await _httpClient.GetFromJsonAsync<TmdbTvSearchResult>(url).ConfigureAwait(false);
             var result   = response?.Results?.FirstOrDefault();
             if (result == null)
                 return null;

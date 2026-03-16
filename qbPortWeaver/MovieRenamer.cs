@@ -163,41 +163,23 @@ namespace qbPortWeaver
             var ext      = Path.GetExtension(filePath);
             var plexName = FileNameParser.SanitizeFileName($"{info.Title} ({info.Year})");
 
-            if (_createFolders)
+            string newFilePath = _createFolders
+                ? Path.Combine(root, plexName, $"{plexName}{ext}")
+                : Path.Combine(root, $"{plexName}{ext}");
+
+            if (string.Equals(filePath, newFilePath, StringComparison.OrdinalIgnoreCase))
             {
-                var newFolderPath = Path.Combine(root, plexName);
-                var newFilePath   = Path.Combine(newFolderPath, $"{plexName}{ext}");
-
-                if (filePath == newFilePath)
-                {
-                    LogManager.Instance.LogDebug($"{AppConstants.MediaManagerLogPrefix}MovieRenamer.ProcessStandaloneFile: Already correctly named");
-                    return;
-                }
-
-                LogManager.Instance.LogMessage($"{AppConstants.MediaManagerLogPrefix}Renaming to {plexName}/{plexName}{ext}", LogLevel.Info);
-                if (!_dryRun)
-                {
-                    Directory.CreateDirectory(newFolderPath);
-                    MoveFile(filePath, newFilePath, $"{plexName}{ext}");
-                    LogManager.Instance.LogDebug($"{AppConstants.MediaManagerLogPrefix}MovieRenamer.ProcessStandaloneFile: Renamed");
-                }
+                LogManager.Instance.LogDebug($"{AppConstants.MediaManagerLogPrefix}MovieRenamer.ProcessStandaloneFile: Already correctly named");
+                return;
             }
-            else
+
+            LogManager.Instance.LogMessage($"{AppConstants.MediaManagerLogPrefix}Renaming to {Path.GetRelativePath(root, newFilePath)}", LogLevel.Info);
+            if (!_dryRun)
             {
-                var newFilePath = Path.Combine(root, $"{plexName}{ext}");
-
-                if (filePath == newFilePath)
-                {
-                    LogManager.Instance.LogDebug($"{AppConstants.MediaManagerLogPrefix}MovieRenamer.ProcessStandaloneFile: Already correctly named");
-                    return;
-                }
-
-                LogManager.Instance.LogMessage($"{AppConstants.MediaManagerLogPrefix}Renaming to {plexName}{ext}", LogLevel.Info);
-                if (!_dryRun)
-                {
-                    MoveFile(filePath, newFilePath, $"{plexName}{ext}");
-                    LogManager.Instance.LogDebug($"{AppConstants.MediaManagerLogPrefix}MovieRenamer.ProcessStandaloneFile: Renamed");
-                }
+                if (_createFolders)
+                    Directory.CreateDirectory(Path.GetDirectoryName(newFilePath)!);
+                MoveFile(filePath, newFilePath, $"{plexName}{ext}");
+                LogManager.Instance.LogDebug($"{AppConstants.MediaManagerLogPrefix}MovieRenamer.ProcessStandaloneFile: Renamed");
             }
         }
 
@@ -387,7 +369,7 @@ namespace qbPortWeaver
         // Detects multi-part suffixes such as "cd1", "pt2", "disc3" and returns the normalised token.
         private static string? ExtractPartSuffix(string fileName)
         {
-            var name     = Path.GetFileNameWithoutExtension(fileName).ToLowerInvariant();
+            var name     = Path.GetFileNameWithoutExtension(fileName);
             string[] patterns = ["cd", "disc", "disk", "dvd", "part", "pt"];
 
             foreach (var pattern in patterns)

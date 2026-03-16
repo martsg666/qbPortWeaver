@@ -12,7 +12,7 @@ namespace qbPortWeaver
             if (!RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionMedia, RegistrySettingsManager.KeyMediaEnabled))
                 return;
 
-            var apiKey = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionMedia, RegistrySettingsManager.KeyTmdbApiKey);
+            var apiKey = RegistrySettingsManager.GetEncryptedValue(RegistrySettingsManager.SectionMedia, RegistrySettingsManager.KeyTmdbApiKey);
             if (string.IsNullOrWhiteSpace(apiKey))
             {
                 LogManager.Instance.LogMessage($"{AppConstants.MediaManagerLogPrefix}TMDB API key not configured - skipping scan", LogLevel.Warn);

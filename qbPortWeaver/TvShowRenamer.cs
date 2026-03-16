@@ -57,8 +57,14 @@ namespace qbPortWeaver
 
             LogManager.Instance.LogMessage($"{AppConstants.MediaManagerLogPrefix}Scanning TV folder: {tvShowsRoot}", LogLevel.Info);
 
+            int skippedFiles = 0;
             foreach (var file in Directory.GetFiles(tvShowsRoot).Where(FileNameParser.IsVideoTvShowEpisode))
+            {
+                if (!_createFolders && FileNameParser.IsPlexFormatted(Path.GetFileName(file))) { skippedFiles++; continue; }
                 await ProcessEpisodeFileAsync(tvShowsRoot, file).ConfigureAwait(false);
+            }
+            if (skippedFiles > 0)
+                LogManager.Instance.LogDebug($"{AppConstants.MediaManagerLogPrefix}Skipped {skippedFiles} already Plex-formatted episode(s)");
 
             foreach (var dir in Directory.GetDirectories(tvShowsRoot))
             {
@@ -133,12 +139,7 @@ namespace qbPortWeaver
         {
             var fileName = Path.GetFileName(filePath);
 
-            // Skip TMDB lookup entirely if the file is already Plex-formatted (and we're not reorganising into folders)
-            if (!_createFolders && FileNameParser.IsPlexFormatted(fileName))
-            {
-                LogManager.Instance.LogDebug($"{AppConstants.MediaManagerLogPrefix}TvShowRenamer.ProcessEpisodeFile: already Plex-formatted, skipping '{fileName}'");
-                return;
-            }
+            if (!_createFolders && FileNameParser.IsPlexFormatted(fileName)) return;
 
             var episodeInfo = FileNameParser.ParseTvShowEpisode(fileName);
 

@@ -150,7 +150,7 @@ namespace qbPortWeaver
             }
 
             LogManager.Instance.LogMessage($"{AppConstants.MediaManagerLogPrefix}Processing '{fileName}'", LogLevel.Info);
-            LogManager.Instance.LogDebug($"{AppConstants.MediaManagerLogPrefix}TvShowRenamer.ProcessEpisodeFile: parsed show='{episodeInfo.ShowName}' S{episodeInfo.Season:D2}E{episodeInfo.Episode:D2}");
+            LogManager.Instance.LogDebug($"{AppConstants.MediaManagerLogPrefix}TvShowRenamer.ProcessEpisodeFile: Parsed show='{episodeInfo.ShowName}' S{episodeInfo.Season:D2}E{episodeInfo.Episode:D2}");
 
             bool isConfident = true;
             if (!_showCache.TryGetValue(episodeInfo.ShowName, out var showInfo))
@@ -210,7 +210,7 @@ namespace qbPortWeaver
                 Directory.CreateDirectory(targetDir);
 
             File.Move(sourcePath, targetPath);
-            LogManager.Instance.LogDebug($"{AppConstants.MediaManagerLogPrefix}TvShowRenamer.ProcessEpisodeFile: renamed");
+            LogManager.Instance.LogDebug($"{AppConstants.MediaManagerLogPrefix}TvShowRenamer.ProcessEpisodeFile: Renamed");
         }
 
         private async Task<(TvShowInfo? Info, bool IsConfident)> LookupTvShowAsync(string name, int? year)
@@ -224,7 +224,7 @@ namespace qbPortWeaver
                     return (null, false);
                 }
 
-                LogManager.Instance.LogDebug($"{AppConstants.MediaManagerLogPrefix}TvShowRenamer.LookupTvShow: matched '{info.Title}' ({info.Year}) [tmdb-{info.TmdbId}]");
+                LogManager.Instance.LogDebug($"{AppConstants.MediaManagerLogPrefix}TvShowRenamer.LookupTvShow: Matched '{info.Title}' ({info.Year}) [tmdb-{info.TmdbId}]");
                 return (info, true);
             }
             catch (HttpRequestException ex)

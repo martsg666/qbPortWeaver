@@ -164,7 +164,7 @@ namespace qbPortWeaver
                     catch (Exception)
                     {
                         // Not a valid DPAPI blob - return empty rather than exposing garbled data
-                        LogManager.Instance.LogDebug("RegistrySettingsManager.GetPassword: stored value is not a valid DPAPI blob");
+                        LogManager.Instance.LogDebug("RegistrySettingsManager.GetPassword: Stored value is not a valid DPAPI blob");
                     }
                 }
             }
@@ -203,7 +203,7 @@ namespace qbPortWeaver
                 string encoded = EncryptPassword(plaintext);
                 using var regKey = Registry.CurrentUser.CreateSubKey($@"{BaseKeyPath}\{SectionQBittorrent}");
                 regKey.SetValue(KeyQBittorrentPassword, encoded, RegistryValueKind.String);
-                LogManager.Instance.LogDebug("RegistrySettingsManager.SetPassword: password saved (encrypted)");
+                LogManager.Instance.LogDebug("RegistrySettingsManager.SetPassword: Password saved (encrypted)");
             }
             catch (Exception ex)
             {

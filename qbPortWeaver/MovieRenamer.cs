@@ -150,7 +150,7 @@ namespace qbPortWeaver
             }
 
             LogManager.Instance.LogMessage($"{AppConstants.MediaManagerLogPrefix}Processing '{fileName}'", LogLevel.Info);
-            LogManager.Instance.LogDebug($"{AppConstants.MediaManagerLogPrefix}MovieRenamer.ProcessStandaloneFile: parsed title='{title}', year={year?.ToString() ?? "unknown"}");
+            LogManager.Instance.LogDebug($"{AppConstants.MediaManagerLogPrefix}MovieRenamer.ProcessStandaloneFile: Parsed title='{title}', year={year?.ToString() ?? "unknown"}");
 
             var (info, isConfident) = await LookupMovieAsync(title, year).ConfigureAwait(false);
             if (info == null) return;
@@ -170,7 +170,7 @@ namespace qbPortWeaver
 
                 if (filePath == newFilePath)
                 {
-                    LogManager.Instance.LogDebug($"{AppConstants.MediaManagerLogPrefix}MovieRenamer.ProcessStandaloneFile: already correctly named");
+                    LogManager.Instance.LogDebug($"{AppConstants.MediaManagerLogPrefix}MovieRenamer.ProcessStandaloneFile: Already correctly named");
                     return;
                 }
 
@@ -179,7 +179,7 @@ namespace qbPortWeaver
                 {
                     Directory.CreateDirectory(newFolderPath);
                     MoveFile(filePath, newFilePath, $"{plexName}{ext}");
-                    LogManager.Instance.LogDebug($"{AppConstants.MediaManagerLogPrefix}MovieRenamer.ProcessStandaloneFile: renamed");
+                    LogManager.Instance.LogDebug($"{AppConstants.MediaManagerLogPrefix}MovieRenamer.ProcessStandaloneFile: Renamed");
                 }
             }
             else
@@ -188,7 +188,7 @@ namespace qbPortWeaver
 
                 if (filePath == newFilePath)
                 {
-                    LogManager.Instance.LogDebug($"{AppConstants.MediaManagerLogPrefix}MovieRenamer.ProcessStandaloneFile: already correctly named");
+                    LogManager.Instance.LogDebug($"{AppConstants.MediaManagerLogPrefix}MovieRenamer.ProcessStandaloneFile: Already correctly named");
                     return;
                 }
 
@@ -196,7 +196,7 @@ namespace qbPortWeaver
                 if (!_dryRun)
                 {
                     MoveFile(filePath, newFilePath, $"{plexName}{ext}");
-                    LogManager.Instance.LogDebug($"{AppConstants.MediaManagerLogPrefix}MovieRenamer.ProcessStandaloneFile: renamed");
+                    LogManager.Instance.LogDebug($"{AppConstants.MediaManagerLogPrefix}MovieRenamer.ProcessStandaloneFile: Renamed");
                 }
             }
         }
@@ -223,7 +223,7 @@ namespace qbPortWeaver
             }
 
             LogManager.Instance.LogMessage($"{AppConstants.MediaManagerLogPrefix}Processing folder '{dirName}'", LogLevel.Info);
-            LogManager.Instance.LogDebug($"{AppConstants.MediaManagerLogPrefix}MovieRenamer.ProcessMovieFolder: parsed title='{title}', year={year?.ToString() ?? "unknown"}");
+            LogManager.Instance.LogDebug($"{AppConstants.MediaManagerLogPrefix}MovieRenamer.ProcessMovieFolder: Parsed title='{title}', year={year?.ToString() ?? "unknown"}");
 
             var (info, isConfident) = await LookupMovieAsync(title, year).ConfigureAwait(false);
             if (info == null) return;
@@ -240,7 +240,7 @@ namespace qbPortWeaver
 
             if (string.Equals(dirPath, newDirPath, StringComparison.OrdinalIgnoreCase))
             {
-                LogManager.Instance.LogDebug($"{AppConstants.MediaManagerLogPrefix}MovieRenamer.ProcessMovieFolder: folder already correctly named");
+                LogManager.Instance.LogDebug($"{AppConstants.MediaManagerLogPrefix}MovieRenamer.ProcessMovieFolder: Folder already correctly named");
                 return;
             }
 
@@ -255,7 +255,7 @@ namespace qbPortWeaver
             else
             {
                 Directory.Move(dirPath, newDirPath);
-                LogManager.Instance.LogDebug($"{AppConstants.MediaManagerLogPrefix}MovieRenamer.ProcessMovieFolder: renamed");
+                LogManager.Instance.LogDebug($"{AppConstants.MediaManagerLogPrefix}MovieRenamer.ProcessMovieFolder: Renamed");
             }
         }
 
@@ -339,7 +339,7 @@ namespace qbPortWeaver
                     return (null, false);
                 }
 
-                LogManager.Instance.LogDebug($"{AppConstants.MediaManagerLogPrefix}MovieRenamer.LookupMovie: matched '{info.Title}' ({info.Year}) [tmdb-{info.TmdbId}]");
+                LogManager.Instance.LogDebug($"{AppConstants.MediaManagerLogPrefix}MovieRenamer.LookupMovie: Matched '{info.Title}' ({info.Year}) [tmdb-{info.TmdbId}]");
                 return (info, isConfident);
             }
             catch (HttpRequestException ex)
@@ -359,7 +359,7 @@ namespace qbPortWeaver
             if (noMatchSoFar && title.Contains(" - "))
             {
                 var afterDash = title[(title.IndexOf(" - ", StringComparison.Ordinal) + 3)..].Trim();
-                LogManager.Instance.LogDebug($"{AppConstants.MediaManagerLogPrefix}MovieRenamer.LookupMovie: retrying with '{afterDash}'");
+                LogManager.Instance.LogDebug($"{AppConstants.MediaManagerLogPrefix}MovieRenamer.LookupMovie: Retrying with '{afterDash}'");
                 info = await _tmdb.SearchMovieAsync(afterDash, year).ConfigureAwait(false);
                 if (info != null) isConfident = false;
             }
@@ -371,7 +371,7 @@ namespace qbPortWeaver
                 if (trimmed.Length > 2 && char.IsDigit(trimmed[^1]) && trimmed[^2] == ' ')
                 {
                     var withoutNum = trimmed[..^2].Trim();
-                    LogManager.Instance.LogDebug($"{AppConstants.MediaManagerLogPrefix}MovieRenamer.LookupMovie: retrying without trailing number '{withoutNum}'");
+                    LogManager.Instance.LogDebug($"{AppConstants.MediaManagerLogPrefix}MovieRenamer.LookupMovie: Retrying without trailing number '{withoutNum}'");
                     var altInfo = await _tmdb.SearchMovieAsync(withoutNum, year).ConfigureAwait(false);
                     if (altInfo?.Year != null)
                     {

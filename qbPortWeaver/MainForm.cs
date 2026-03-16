@@ -311,7 +311,7 @@ namespace qbPortWeaver
         {
             try
             {
-                LogManager.Instance.LogDebug($"MainForm.ShutdownRequestedDuringDelayAsync: waiting {updateInterval} seconds before next cycle");
+                LogManager.Instance.LogDebug($"MainForm.ShutdownRequestedDuringDelayAsync: Waiting {updateInterval} seconds before next cycle");
                 // Link both tokens: _delayCts (manual sync) and _shutdownCts (app exit)
                 using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(_delayCts.Token, _shutdownCts.Token);
                 await Task.Delay(updateInterval * AppConstants.MillisecondsPerSecond, linkedCts.Token);
@@ -370,7 +370,7 @@ namespace qbPortWeaver
         {
             try
             {
-                LogManager.Instance.LogDebug("MainForm.PerformUpdateCheckAsync: checking for application updates");
+                LogManager.Instance.LogDebug("MainForm.PerformUpdateCheckAsync: Checking for application updates");
                 var update = await UpdateChecker.GetAvailableUpdateAsync();
                 if (update.HasValue)
                 {

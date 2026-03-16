@@ -372,7 +372,7 @@ namespace qbPortWeaver
                 }
                 catch (SocketException ex)
                 {
-                    LogManager.Instance.LogDebug($"NatPmpManager.SendReceiveAsync: gateway {gateway} rejected NAT-PMP probe ({ex.SocketErrorCode}) - NAT-PMP may not be enabled on this gateway");
+                    LogManager.Instance.LogDebug($"NatPmpManager.SendReceiveAsync: Gateway {gateway} rejected NAT-PMP probe ({ex.SocketErrorCode}) - NAT-PMP may not be enabled on this gateway");
                     return null;
                 }
                 catch (Exception ex)

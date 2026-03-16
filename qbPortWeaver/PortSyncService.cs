@@ -302,7 +302,7 @@ namespace qbPortWeaver
             // RunCoreAsync handles disconnection gracefully (apply default port or skip).
             if (_lastKnownNatPmpManager is not null)
             {
-                LogManager.Instance.LogDebug("PortSyncService.CreateNatPmpVpnManager: adapter not discoverable, using last known manager for disconnection handling");
+                LogManager.Instance.LogDebug("PortSyncService.CreateNatPmpVpnManager: Adapter not discoverable, using last known manager for disconnection handling");
                 return _lastKnownNatPmpManager;
             }
 

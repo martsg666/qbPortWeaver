@@ -69,7 +69,7 @@ namespace qbPortWeaver
                         if (exePath != null)
                         {
                             CachedClientExePaths[processName] = exePath;
-                            LogManager.Instance.LogDebug($"AutoRecoveryManager.CacheRunningClientExePaths: cached '{processName}' → {exePath}");
+                            LogManager.Instance.LogDebug($"AutoRecoveryManager.CacheRunningClientExePaths: Cached '{processName}' → {exePath}");
                         }
                     }
                     finally

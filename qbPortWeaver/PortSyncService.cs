@@ -593,6 +593,5 @@ namespace qbPortWeaver
             status[StatusKeys.Message] = message;
             LogManager.Instance.LogMessage(message, level ?? (success ? LogLevel.Info : LogLevel.Error));
         }
-
     }
 }

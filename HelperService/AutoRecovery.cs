@@ -8,8 +8,8 @@ namespace qbPortWeaver.HelperService;
 // Called by HelperPipeServer when the user-session tray app signals a recovery request.
 //
 // Supported actions:
-//   restart        — stop/start a Windows service by name
-//   cycle-adapter  — disable/enable a network adapter via netsh
+//   restart        - stop/start a Windows service by name
+//   cycle-adapter  - disable/enable a network adapter via netsh
 internal static class AutoRecovery
 {
     private const int ProcessKillTimeoutMs      = 5000;
@@ -101,11 +101,11 @@ internal static class AutoRecovery
 
     // Stops a service cleanly via the SCM, with escalating force if it doesn't respond.
     // Escalation: SCM stop → wait → KillServiceProcess (3-stage: Process.Kill → taskkill /F /T → retry).
-    // ServiceController.WaitForStatus has no async overload — wrap in Task.Run to avoid
+    // ServiceController.WaitForStatus has no async overload - wrap in Task.Run to avoid
     // blocking the BackgroundService thread pool thread.
     //
     // IMPORTANT: WaitForStatus throws System.ServiceProcess.TimeoutException, NOT
-    // System.TimeoutException — they are sibling classes (both inherit SystemException).
+    // System.TimeoutException - they are sibling classes (both inherit SystemException).
     private static async Task StopServiceAsync(string serviceName, HelperLogger logger)
     {
         using var sc = new ServiceController(serviceName);
@@ -363,7 +363,7 @@ internal static class AutoRecovery
             bool exited = await Task.Run(() => process.WaitForExit(NetshTimeoutMs)).ConfigureAwait(false);
             if (!exited)
             {
-                // netsh is a short-lived system utility that always responds to Process.Kill —
+                // netsh is a short-lived system utility that always responds to Process.Kill -
                 // no taskkill fallback needed here.
                 process.Kill(entireProcessTree: true);
                 logger.LogWarn($"Netsh timed out and was killed");

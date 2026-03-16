@@ -14,6 +14,7 @@ namespace qbPortWeaver
         public const string SectionGeneral     = "general";
         public const string SectionQBittorrent = "qBittorrent";
         public const string SectionExtra       = "extra";
+        public const string SectionMedia       = "media";
 
         public const string VpnProviderProtonVpn = "ProtonVPN";
         public const string VpnProviderPia       = "PIA";
@@ -44,6 +45,14 @@ namespace qbPortWeaver
         public const string KeyPostUpdateCmd = "postUpdateCmd";
         public const string KeyDebugMode     = "debugMode";
 
+        // Registry key names - media section
+        public const string KeyMediaEnabled       = "mediaEnabled";
+        public const string KeyTmdbApiKey         = "tmdbApiKey";
+        public const string KeyMediaMovieFolders  = "movieFolders";
+        public const string KeyMediaTvShowFolders = "tvShowFolders";
+        public const string KeyMediaCreateFolders = "createFolders";
+        public const string KeyMediaDryRun        = "dryRun";
+
         // Registry key names - general section (auto-recovery)
         // Registry string values are frozen for backward compatibility.
         public const string KeyAutoRecoveryEnabled      = "vpnAutoRecoveryEnabled";
@@ -58,8 +67,8 @@ namespace qbPortWeaver
                     [KeyVpnProvider]                    = VpnProviderProtonVpn,
                     [KeyUpdateIntervalSeconds]           = "180",
                     [KeyNatPmpAdapterName]              = "",
-                    [KeyAutoRecoveryEnabled]         = ValueFalse,
-                    [KeyAutoRecoveryTriggerCycles]   = "3"
+                    [KeyAutoRecoveryEnabled]            = ValueFalse,
+                    [KeyAutoRecoveryTriggerCycles]      = "3"
                 },
                 [SectionQBittorrent] = new(StringComparer.OrdinalIgnoreCase)
                 {
@@ -78,6 +87,15 @@ namespace qbPortWeaver
                 {
                     [KeyPostUpdateCmd] = "",
                     [KeyDebugMode]     = ValueFalse
+                },
+                [SectionMedia] = new(StringComparer.OrdinalIgnoreCase)
+                {
+                    [KeyMediaEnabled]       = ValueFalse,
+                    [KeyTmdbApiKey]         = "",
+                    [KeyMediaMovieFolders]  = "",
+                    [KeyMediaTvShowFolders] = "",
+                    [KeyMediaCreateFolders] = ValueFalse,
+                    [KeyMediaDryRun]        = ValueTrue
                 }
             };
 

@@ -192,6 +192,11 @@ namespace qbPortWeaver
                 using var frm = new SettingsForm();
                 frm.ShowDialog(this);
             });
+            _trayMenu.Items.Add("Media Manager", null, (s, e) =>
+            {
+                using var frm = new MediaManagerForm();
+                frm.ShowDialog(this);
+            });
             _trayMenu.Items.Add("About", null, (s, e) =>
             {
                 using var frm = new AboutForm();
@@ -264,10 +269,12 @@ namespace qbPortWeaver
                 while (!_shutdownCts.IsCancellationRequested)
                 {
                     await _updateSemaphore.WaitAsync(_shutdownCts.Token);
+                    LogManager.Instance.LogMessage("Sync cycle started", LogLevel.Info);
                     int updateInterval;
                     try
                     {
                         updateInterval = await _portSyncService.RunAsync(_shutdownCts.Token);
+                        await MediaManagerService.RunAsync(_shutdownCts.Token);
                     }
                     finally
                     {
@@ -304,7 +311,7 @@ namespace qbPortWeaver
         {
             try
             {
-                LogManager.Instance.LogDebug($"MainForm.ShutdownRequestedDuringDelayAsync: waiting {updateInterval} seconds before next cycle");
+                LogManager.Instance.LogDebug($"MainForm.ShutdownRequestedDuringDelayAsync: Waiting {updateInterval} seconds before next cycle");
                 // Link both tokens: _delayCts (manual sync) and _shutdownCts (app exit)
                 using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(_delayCts.Token, _shutdownCts.Token);
                 await Task.Delay(updateInterval * AppConstants.MillisecondsPerSecond, linkedCts.Token);
@@ -363,7 +370,7 @@ namespace qbPortWeaver
         {
             try
             {
-                LogManager.Instance.LogDebug("MainForm.PerformUpdateCheckAsync: checking for application updates");
+                LogManager.Instance.LogDebug("MainForm.PerformUpdateCheckAsync: Checking for application updates");
                 var update = await UpdateChecker.GetAvailableUpdateAsync();
                 if (update.HasValue)
                 {

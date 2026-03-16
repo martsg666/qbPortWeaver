@@ -30,7 +30,7 @@ namespace qbPortWeaver
         // Sends a recovery request to the helper service. For "restart" actions, also
         // restarts the matching client process in the current user session after a delay
         // to let the service come up first. For "cycle-adapter" (generic NAT-PMP gateways),
-        // only the adapter is cycled — no client process is involved.
+        // only the adapter is cycled - no client process is involved.
         internal static async Task TriggerRecoveryAsync(string action, string target)
         {
             await SendToHelperServiceAsync(action, target).ConfigureAwait(false);
@@ -42,7 +42,7 @@ namespace qbPortWeaver
             if (clientProcessName != null)
             {
                 // Give the helper service time to stop/restart the VPN service before
-                // we kill and relaunch the client process — the client should come up
+                // we kill and relaunch the client process - the client should come up
                 // after the service is running, not before.
                 await Task.Delay(ServiceHeadStartDelayMs).ConfigureAwait(false);
                 await RestartClientProcessAsync(clientProcessName).ConfigureAwait(false);
@@ -69,7 +69,7 @@ namespace qbPortWeaver
                         if (exePath != null)
                         {
                             CachedClientExePaths[processName] = exePath;
-                            LogManager.Instance.LogDebug($"AutoRecoveryManager.CacheRunningClientExePaths: cached '{processName}' → {exePath}");
+                            LogManager.Instance.LogDebug($"AutoRecoveryManager.CacheRunningClientExePaths: Cached '{processName}' → {exePath}");
                         }
                     }
                     finally
@@ -85,7 +85,7 @@ namespace qbPortWeaver
         }
 
         // Sends a recovery request to the SYSTEM helper service via named pipe.
-        // Protocol: <action>:<target>:<logFilePath>
+        // Protocol (pipe-delimited): <action>|<target>|<logFilePath>
         private static async Task SendToHelperServiceAsync(string action, string target)
         {
             try
@@ -93,7 +93,7 @@ namespace qbPortWeaver
                 using var pipe = new NamedPipeClientStream(".", AppConstants.HelperServicePipeName, PipeDirection.Out);
                 await pipe.ConnectAsync(PipeConnectTimeoutMs).ConfigureAwait(false);
                 using var writer = new StreamWriter(pipe) { AutoFlush = true };
-                await writer.WriteLineAsync($"{action}:{target}:{AppConstants.GetLogFilePath()}").ConfigureAwait(false);
+                await writer.WriteLineAsync($"{action}|{target}|{AppConstants.GetLogFilePath()}").ConfigureAwait(false);
                 LogManager.Instance.LogMessage($"Sent '{action}' request for '{target}'", LogLevel.Info);
             }
             catch (Exception ex)

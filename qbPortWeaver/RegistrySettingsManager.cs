@@ -14,6 +14,7 @@ namespace qbPortWeaver
         public const string SectionGeneral     = "general";
         public const string SectionQBittorrent = "qBittorrent";
         public const string SectionExtra       = "extra";
+        public const string SectionMedia       = "media";
 
         public const string VpnProviderProtonVpn = "ProtonVPN";
         public const string VpnProviderPia       = "PIA";
@@ -44,6 +45,14 @@ namespace qbPortWeaver
         public const string KeyPostUpdateCmd = "postUpdateCmd";
         public const string KeyDebugMode     = "debugMode";
 
+        // Registry key names - media section
+        public const string KeyMediaEnabled       = "mediaEnabled";
+        public const string KeyTmdbApiKey         = "tmdbApiKey";
+        public const string KeyMediaMovieFolders  = "movieFolders";
+        public const string KeyMediaTvShowFolders = "tvShowFolders";
+        public const string KeyMediaCreateFolders = "createFolders";
+        public const string KeyMediaDryRun        = "dryRun";
+
         // Registry key names - general section (auto-recovery)
         // Registry string values are frozen for backward compatibility.
         public const string KeyAutoRecoveryEnabled      = "vpnAutoRecoveryEnabled";
@@ -58,8 +67,8 @@ namespace qbPortWeaver
                     [KeyVpnProvider]                    = VpnProviderProtonVpn,
                     [KeyUpdateIntervalSeconds]           = "180",
                     [KeyNatPmpAdapterName]              = "",
-                    [KeyAutoRecoveryEnabled]         = ValueFalse,
-                    [KeyAutoRecoveryTriggerCycles]   = "3"
+                    [KeyAutoRecoveryEnabled]            = ValueFalse,
+                    [KeyAutoRecoveryTriggerCycles]      = "3"
                 },
                 [SectionQBittorrent] = new(StringComparer.OrdinalIgnoreCase)
                 {
@@ -78,6 +87,15 @@ namespace qbPortWeaver
                 {
                     [KeyPostUpdateCmd] = "",
                     [KeyDebugMode]     = ValueFalse
+                },
+                [SectionMedia] = new(StringComparer.OrdinalIgnoreCase)
+                {
+                    [KeyMediaEnabled]       = ValueFalse,
+                    [KeyTmdbApiKey]         = "",
+                    [KeyMediaMovieFolders]  = "",
+                    [KeyMediaTvShowFolders] = "",
+                    [KeyMediaCreateFolders] = ValueFalse,
+                    [KeyMediaDryRun]        = ValueTrue
                 }
             };
 
@@ -130,12 +148,16 @@ namespace qbPortWeaver
             int.TryParse(GetValue(section, key), out int result) ? result : 0;
 
         /// <summary>Reads the qBittorrent password from the registry and decrypts it with DPAPI (CurrentUser scope). Returns an empty string if missing or decryption fails.</summary>
-        public static string GetPassword()
+        public static string GetPassword() =>
+            GetEncryptedValue(SectionQBittorrent, KeyQBittorrentPassword);
+
+        /// <summary>Reads a DPAPI-encrypted string value from the registry. Returns the hardcoded default if the key is missing, empty, or decryption fails.</summary>
+        public static string GetEncryptedValue(string section, string key)
         {
             try
             {
-                using var regKey = Registry.CurrentUser.OpenSubKey($@"{BaseKeyPath}\{SectionQBittorrent}");
-                if (regKey?.GetValue(KeyQBittorrentPassword) is string storedValue && storedValue.Length > 0)
+                using var regKey = Registry.CurrentUser.OpenSubKey($@"{BaseKeyPath}\{section}");
+                if (regKey?.GetValue(key) is string storedValue && storedValue.Length > 0)
                 {
                     try
                     {
@@ -145,17 +167,19 @@ namespace qbPortWeaver
                     }
                     catch (Exception)
                     {
-                        // Not a valid DPAPI blob - return empty rather than exposing garbled data
-                        LogManager.Instance.LogDebug("RegistrySettingsManager.GetPassword: stored value is not a valid DPAPI blob");
+                        // Not a valid DPAPI blob - return the raw value as-is for backward compatibility
+                        // (existing installations may have plaintext values that were stored before encryption was added)
+                        LogManager.Instance.LogDebug($"RegistrySettingsManager.GetEncryptedValue: [{section}] {key} is not a valid DPAPI blob, returning raw value");
+                        return storedValue;
                     }
                 }
             }
             catch (Exception ex)
             {
-                LogManager.Instance.LogDebug($"RegistrySettingsManager.GetPassword: {ex.Message}");
+                LogManager.Instance.LogDebug($"RegistrySettingsManager.GetEncryptedValue: [{section}] {key}: {ex.Message}");
             }
 
-            return GetDefault(SectionQBittorrent, KeyQBittorrentPassword);
+            return GetDefault(section, key);
         }
 
         /// <summary>Writes a string value to the registry under the given section and key.</summary>
@@ -178,20 +202,33 @@ namespace qbPortWeaver
             SetValue(section, key, value ? ValueTrue : ValueFalse);
 
         /// <summary>Encrypts <paramref name="plaintext"/> with DPAPI (CurrentUser scope) and writes the result to the registry.</summary>
-        public static void SetPassword(string plaintext)
+        public static void SetPassword(string plaintext) =>
+            SetEncryptedValue(SectionQBittorrent, KeyQBittorrentPassword, plaintext);
+
+        /// <summary>Encrypts <paramref name="plaintext"/> with DPAPI (CurrentUser scope) and writes the result to the registry under the given section and key.</summary>
+        public static void SetEncryptedValue(string section, string key, string plaintext)
         {
             try
             {
-                string encoded = EncryptPassword(plaintext);
-                using var regKey = Registry.CurrentUser.CreateSubKey($@"{BaseKeyPath}\{SectionQBittorrent}");
-                regKey.SetValue(KeyQBittorrentPassword, encoded, RegistryValueKind.String);
-                LogManager.Instance.LogDebug("RegistrySettingsManager.SetPassword: password saved (encrypted)");
+                string encoded = EncryptValue(plaintext);
+                using var regKey = Registry.CurrentUser.CreateSubKey($@"{BaseKeyPath}\{section}");
+                regKey.SetValue(key, encoded, RegistryValueKind.String);
+                LogManager.Instance.LogDebug($"RegistrySettingsManager.SetEncryptedValue: [{section}] {key} saved (encrypted)");
             }
             catch (Exception ex)
             {
-                LogManager.Instance.LogMessage($"Failed to save password: {ex.Message}", LogLevel.Warn);
+                LogManager.Instance.LogMessage($"Failed to save encrypted setting [{section}] {key}: {ex.Message}", LogLevel.Warn);
             }
         }
+
+        // Keys that are stored DPAPI-encrypted rather than as plaintext registry strings.
+        // Used by WriteDefaultsForSection to encrypt initial values, and could be extended
+        // to any future sensitive setting.
+        private static readonly HashSet<string> EncryptedKeys = new(StringComparer.OrdinalIgnoreCase)
+        {
+            KeyQBittorrentPassword,
+            KeyTmdbApiKey
+        };
 
         // Writes any missing keys for one registry section; returns true if anything was written
         private static bool WriteDefaultsForSection(RegistryKey regKey, string sectionName,
@@ -203,33 +240,29 @@ namespace qbPortWeaver
                 if (regKey.GetValue(kvp.Key) != null)
                     continue;
 
-                // The password is always stored encrypted; encrypt before the initial write.
-                if (sectionName.Equals(SectionQBittorrent, StringComparison.OrdinalIgnoreCase) &&
-                    kvp.Key.Equals(KeyQBittorrentPassword, StringComparison.OrdinalIgnoreCase))
-                {
-                    regKey.SetValue(kvp.Key, EncryptPassword(kvp.Value), RegistryValueKind.String);
-                }
-                else
-                {
-                    regKey.SetValue(kvp.Key, kvp.Value, RegistryValueKind.String);
-                }
+                // Sensitive keys are always stored encrypted; encrypt before the initial write.
+                regKey.SetValue(kvp.Key,
+                    EncryptedKeys.Contains(kvp.Key) ? EncryptValue(kvp.Value) : kvp.Value,
+                    RegistryValueKind.String);
 
                 anyWritten = true;
             }
             return anyWritten;
         }
 
-        // Encrypts a plaintext password with DPAPI and returns a Base64 string
-        private static string EncryptPassword(string plaintext)
+        // Encrypts a plaintext value with DPAPI and returns a Base64 string
+        private static string EncryptValue(string plaintext)
         {
             byte[] data = Encoding.UTF8.GetBytes(plaintext);
             byte[] encrypted = ProtectedData.Protect(data, null, DataProtectionScope.CurrentUser);
             return Convert.ToBase64String(encrypted);
         }
 
-        // Returns "***" for the password key to avoid writing plaintext credentials to the log
+        // Returns "***" for sensitive keys to avoid writing credentials to the log
         private static string MaskSensitiveValue(string key, string value) =>
-            key.Equals(KeyQBittorrentPassword, StringComparison.OrdinalIgnoreCase) ? "***" : value;
+            key.Equals(KeyQBittorrentPassword, StringComparison.OrdinalIgnoreCase) ||
+            key.Equals(KeyTmdbApiKey,          StringComparison.OrdinalIgnoreCase)
+                ? "***" : value;
 
         // Returns the hardcoded default for a setting; returns empty string if the section or key is not found
         private static string GetDefault(string section, string key)

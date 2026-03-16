@@ -136,7 +136,8 @@ jobs:
               -p:PublishSingleFile=true `
               -p:Version=$v `
               -p:FileVersion="$v.0" `
-              -p:AssemblyVersion="$v.0"
+              -p:AssemblyVersion="$v.0" `
+              /warnaserror
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
 
@@ -342,14 +343,21 @@ jobs:
           CHOCOLATEY_API_KEY: ${{ secrets.CHOCOLATEY_API_KEY }}
         run: |
           $ErrorActionPreference = 'Stop'
-          # Skip push if this version is already published (e.g. workflow_dispatch re-run)
-          $version = $env:RELEASE_VERSION
-          $alreadyPublished = try {
-            Invoke-WebRequest -Uri "https://community.chocolatey.org/api/v2/Packages(Id='qbportweaver',Version='$version')" `
+          # Skip push if this version is already published (e.g. workflow_dispatch re-run).
+          # 2xx  → already published, skip.
+          # 404  → not yet published, proceed.
+          # anything else (5xx, network error) → re-throw so the step fails loudly
+          #         rather than silently assuming "not published" and risking a failed push.
+          $version          = $env:RELEASE_VERSION
+          $alreadyPublished = $false
+          try {
+            Invoke-WebRequest `
+              -Uri "https://community.chocolatey.org/api/v2/Packages(Id='qbportweaver',Version='$version')" `
               -Method Head | Out-Null
-            $true
-          } catch { $false }
-
+            $alreadyPublished = $true
+          } catch {
+            if ($_.Exception.Response?.StatusCode -ne [System.Net.HttpStatusCode]::NotFound) { throw }
+          }
           if ($alreadyPublished) {
             Write-Host "qbportweaver v$version is already published on Chocolatey - skipping push."
           } else {

@@ -7,12 +7,12 @@ namespace qbPortWeaver.HelperService;
 // Listens on a named pipe and dispatches privileged session 0 actions requested by the
 // user-session tray app. Runs as a hosted background service inside the helper Windows service.
 //
-// Protocol (one text line per connection):
-//   <action>:<target>:<logFilePath>
+// Protocol (one text line per connection, pipe-delimited):
+//   <action>|<target>|<logFilePath>
 //
 // Supported actions:
-//   restart        — restart the Windows service identified by the provider token
-//   cycle-adapter  — cycle a network adapter (disable/enable); if the adapter name matches
+//   restart        - restart the Windows service identified by the provider token
+//   cycle-adapter  - cycle a network adapter (disable/enable); if the adapter name matches
 //                    a known provider, the corresponding service is also restarted
 //
 // The log file path is sent per-call so the helper writes into the same log file as the
@@ -75,8 +75,8 @@ internal sealed class HelperPipeServer : BackgroundService
         var message = await reader.ReadLineAsync(ct).ConfigureAwait(false);
         if (string.IsNullOrWhiteSpace(message)) return;
 
-        // Split into exactly 3 parts - the log file path may contain colons (e.g. C:\...)
-        var parts = message.Split(':', 3);
+        // Split on pipe character - avoids ambiguity with colons in Windows paths (e.g. C:\...)
+        var parts = message.Split('|', 3);
         if (parts.Length != 3)
         {
             _logger.LogWarning("Received malformed pipe message");

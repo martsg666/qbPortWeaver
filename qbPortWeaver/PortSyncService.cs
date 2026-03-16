@@ -2,8 +2,10 @@ using System.Diagnostics;
 
 namespace qbPortWeaver
 {
+    /// <summary>Outcome of a port sync cycle, used to drive the tray icon color and tooltip.</summary>
     public enum SyncState { Synced, VpnDisconnected, Error }
 
+    /// <summary>Snapshot of the tray icon state after a sync cycle, raised via <see cref="PortSyncService.SyncCompleted"/>.</summary>
     public sealed record TrayStatus(SyncState State, int? Port, string Message);
 
     public sealed class PortSyncService
@@ -132,8 +134,6 @@ namespace qbPortWeaver
         // Core logic separated so the outer method handles status writing via finally
         private async Task<int> RunCoreAsync(Dictionary<string, object?> status, CancellationToken cancellationToken)
         {
-            LogManager.Instance.LogMessage("Sync cycle started", LogLevel.Info);
-
             // Set debug mode as early as possible (reads fresh from registry each loop)
             LogManager.Instance.DebugMode = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionExtra, RegistrySettingsManager.KeyDebugMode);
 
@@ -250,8 +250,8 @@ namespace qbPortWeaver
                 WarnOnInterfaceMismatch:      RegistrySettingsManager.GetBool (RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyWarnOnInterfaceMismatch),
                 RestartOnDisconnect:          RegistrySettingsManager.GetBool (RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyRestartOnDisconnect),
                 PostUpdateCommand:            RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionExtra,       RegistrySettingsManager.KeyPostUpdateCmd),
-                AutoRecoveryEnabled:       RegistrySettingsManager.GetBool (RegistrySettingsManager.SectionGeneral,     RegistrySettingsManager.KeyAutoRecoveryEnabled),
-                AutoRecoveryTriggerCycles: RegistrySettingsManager.GetInt  (RegistrySettingsManager.SectionGeneral,     RegistrySettingsManager.KeyAutoRecoveryTriggerCycles)
+                AutoRecoveryEnabled:          RegistrySettingsManager.GetBool (RegistrySettingsManager.SectionGeneral,     RegistrySettingsManager.KeyAutoRecoveryEnabled),
+                AutoRecoveryTriggerCycles:    RegistrySettingsManager.GetInt  (RegistrySettingsManager.SectionGeneral,     RegistrySettingsManager.KeyAutoRecoveryTriggerCycles)
             );
         }
 
@@ -302,7 +302,7 @@ namespace qbPortWeaver
             // RunCoreAsync handles disconnection gracefully (apply default port or skip).
             if (_lastKnownNatPmpManager is not null)
             {
-                LogManager.Instance.LogDebug("PortSyncService.CreateNatPmpVpnManager: adapter not discoverable, using last known manager for disconnection handling");
+                LogManager.Instance.LogDebug("PortSyncService.CreateNatPmpVpnManager: Adapter not discoverable, using last known manager for disconnection handling");
                 return _lastKnownNatPmpManager;
             }
 
@@ -593,6 +593,5 @@ namespace qbPortWeaver
             status[StatusKeys.Message] = message;
             LogManager.Instance.LogMessage(message, level ?? (success ? LogLevel.Info : LogLevel.Error));
         }
-
     }
 }

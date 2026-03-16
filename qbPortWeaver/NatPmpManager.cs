@@ -2,7 +2,6 @@ using System.Net;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
 
-
 namespace qbPortWeaver
 {
     // NAT-PMP VPN manager. PortSyncService creates instances via TryCreateForAdapter() (sync cycle)

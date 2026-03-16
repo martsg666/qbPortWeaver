@@ -18,8 +18,11 @@ namespace qbPortWeaver
         // Services
         private readonly PortSyncService _portSyncService;
 
-        // Modeless log viewer (null when closed)
+        // Child forms (null when closed)
         private LogViewerForm? _logViewerForm;
+        private SettingsForm? _settingsForm;
+        private MediaManagerForm? _mediaManagerForm;
+        private AboutForm? _aboutForm;
 
         // Last sync status (written from background thread, read on UI thread)
         private volatile TrayStatus? _lastSyncStatus;
@@ -131,8 +134,11 @@ namespace qbPortWeaver
             // Hide tray icon immediately to avoid ghost icon
             _trayIcon.Visible = false;
 
-            // Close modeless log viewer if open
+            // Close all child forms
             _logViewerForm?.Close();
+            _settingsForm?.Close();
+            _mediaManagerForm?.Close();
+            _aboutForm?.Close();
 
             // Resources are disposed in Dispose(bool) via MainForm.Designer.cs
             base.OnFormClosing(e);
@@ -188,24 +194,18 @@ namespace qbPortWeaver
                 _trayIcon.ShowBalloonTip(AppConstants.BalloonTipDurationMs, AppConstants.AppName, "Logs cleared", ToolTipIcon.Info);
             });
             _trayMenu.Items.Add("Settings", null, (s, e) =>
-            {
-                using var frm = new SettingsForm();
-                if (frm.ShowDialog(this) == DialogResult.OK)
+                ShowOrActivate(() => _settingsForm, f => _settingsForm = f, () => new SettingsForm(), frm =>
                 {
-                    LogManager.Instance.LogMessage("Settings changed, triggering sync cycle", LogLevel.Info);
-                    InterruptDelay();
-                }
-            });
+                    if (frm.DialogResult == DialogResult.OK)
+                    {
+                        LogManager.Instance.LogMessage("Settings changed, triggering sync cycle", LogLevel.Info);
+                        InterruptDelay();
+                    }
+                }));
             _trayMenu.Items.Add("Media Manager", null, (s, e) =>
-            {
-                using var frm = new MediaManagerForm();
-                frm.ShowDialog(this);
-            });
+                ShowOrActivate(() => _mediaManagerForm, f => _mediaManagerForm = f, () => new MediaManagerForm()));
             _trayMenu.Items.Add("About", null, (s, e) =>
-            {
-                using var frm = new AboutForm();
-                frm.ShowDialog(this);
-            });
+                ShowOrActivate(() => _aboutForm, f => _aboutForm = f, () => new AboutForm()));
 
             _autoStartMenuItem = new ToolStripMenuItem("Start Automatically with Windows")
             {
@@ -454,21 +454,31 @@ namespace qbPortWeaver
                 action();
         }
 
-        // Opens the log viewer window; restores and activates it if already open
         private void ShowLogViewer()
+            => ShowOrActivate(() => _logViewerForm, f => _logViewerForm = f, () => new LogViewerForm(LogManager.Instance.LogFilePath));
+
+        // Brings an existing child form to front, or creates and shows a new one.
+        // The optional onClosed callback runs after the form is closed.
+        private static void ShowOrActivate<T>(Func<T?> getter, Action<T?> setter, Func<T> factory, Action<T>? onClosed = null) where T : Form
         {
-            if (_logViewerForm is { IsDisposed: false })
+            var existing = getter();
+            if (existing is { IsDisposed: false })
             {
-                if (_logViewerForm.WindowState == FormWindowState.Minimized)
-                    _logViewerForm.WindowState = FormWindowState.Normal;
-                _logViewerForm.BringToFront();
-                _logViewerForm.Activate();
+                if (existing.WindowState == FormWindowState.Minimized)
+                    existing.WindowState = FormWindowState.Normal;
+                existing.BringToFront();
+                existing.Activate();
                 return;
             }
 
-            _logViewerForm = new LogViewerForm(LogManager.Instance.LogFilePath);
-            _logViewerForm.FormClosed += (_, _) => _logViewerForm = null;
-            _logViewerForm.Show();
+            var frm = factory();
+            setter(frm);
+            frm.FormClosed += (_, _) =>
+            {
+                onClosed?.Invoke(frm);
+                setter(null);
+            };
+            frm.Show();
         }
 
         // P/Invoke declarations

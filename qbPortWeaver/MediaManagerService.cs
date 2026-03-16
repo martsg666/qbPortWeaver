@@ -94,18 +94,7 @@ namespace qbPortWeaver
                         LogLevel.Info);
                     try
                     {
-                        if (File.Exists(proposal.ProposedPath))
-                        {
-                            LogManager.Instance.LogMessage(
-                                $"{AppConstants.MediaManagerLogPrefix}Skipped rename - target already exists: '{Path.GetFileName(proposal.ProposedPath)}'",
-                                LogLevel.Warn);
-                            continue;
-                        }
-                        var targetDir = Path.GetDirectoryName(proposal.ProposedPath);
-                        if (!string.IsNullOrEmpty(targetDir))
-                            Directory.CreateDirectory(targetDir);
-                        File.Move(proposal.OriginalPath, proposal.ProposedPath);
-                        LogManager.Instance.LogDebug($"{AppConstants.MediaManagerLogPrefix}MediaManagerService.ApplyProposals: Renamed OK '{Path.GetFileName(proposal.ProposedPath)}'");
+                        MoveFile(proposal.OriginalPath, proposal.ProposedPath);
                     }
                     catch (Exception ex)
                     {
@@ -139,6 +128,7 @@ namespace qbPortWeaver
                 Directory.CreateDirectory(targetDir);
 
             File.Move(sourcePath, targetPath);
+            LogManager.Instance.LogDebug($"{AppConstants.MediaManagerLogPrefix}MediaManagerService.MoveFile: Renamed OK '{targetName}'");
         }
     }
 }

@@ -2,6 +2,7 @@ using System.Text.RegularExpressions;
 
 namespace qbPortWeaver
 {
+    /// <summary>Extracts movie titles, release years, and TV episode metadata from filenames for Plex-compatible renaming.</summary>
     public static partial class FileNameParser
     {
         private static readonly HashSet<string> VideoExtensions = new(StringComparer.OrdinalIgnoreCase)

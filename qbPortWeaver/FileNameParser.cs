@@ -98,31 +98,7 @@ namespace qbPortWeaver
             // first_air_date_year hint without polluting the title query.
             // Handles both "Yellowstone 2018" (bare year) and "Show Name (2018)" (year in parens).
             // Guard: don't strip the year if it IS the entire title (e.g. show "1883").
-            int? year = null;
-
-            var yearInParensMatch = YearInParensRegex().Match(rawTitle);
-            if (yearInParensMatch.Success)
-            {
-                var titlePart = rawTitle[..yearInParensMatch.Index].Trim();
-                if (!string.IsNullOrEmpty(titlePart))
-                {
-                    year     = int.TryParse(yearInParensMatch.Groups[1].Value, out int y) ? y : (int?)null;
-                    rawTitle = titlePart;
-                }
-            }
-            else
-            {
-                var yearMatch = StandaloneYearRegex().Match(rawTitle);
-                if (yearMatch.Success && yearMatch.Index + yearMatch.Length == rawTitle.Length)
-                {
-                    var titlePart = rawTitle[..yearMatch.Index].Trim();
-                    if (!string.IsNullOrEmpty(titlePart))
-                    {
-                        year     = int.TryParse(yearMatch.Value, out int y) ? y : (int?)null;
-                        rawTitle = titlePart;
-                    }
-                }
-            }
+            var year = TryStripTrailingYear(ref rawTitle);
 
             rawTitle = CleanTitle(rawTitle);
 
@@ -154,31 +130,8 @@ namespace qbPortWeaver
                     return (title, int.TryParse(yearInParensMatch.Groups[1].Value, out int y) ? y : (int?)null);
             }
 
-            var cleaned = name.Replace('.', ' ').Replace('_', ' ');
-
-            // Try to find a standalone 4-digit year (1900–2099).
-            // If the first match leaves an empty title (e.g. "1917 2019 BluRay") advance to
-            // the next occurrence so the year-as-title becomes part of the title string.
-            var yearMatch = StandaloneYearRegex().Match(cleaned);
-            string rawTitle;
-            int? parsedYear = null;
-
-            if (yearMatch.Success)
-            {
-                if (string.IsNullOrWhiteSpace(cleaned[..yearMatch.Index]))
-                {
-                    var next = StandaloneYearRegex().Match(cleaned, yearMatch.Index + yearMatch.Length);
-                    if (next.Success)
-                        yearMatch = next;
-                }
-
-                rawTitle   = cleaned[..yearMatch.Index];
-                parsedYear = int.TryParse(yearMatch.Value, out int y) ? y : (int?)null;
-            }
-            else
-            {
-                rawTitle = cleaned;
-            }
+            var cleaned  = name.Replace('.', ' ').Replace('_', ' ');
+            var rawTitle = FindStandaloneYear(cleaned, out int? parsedYear);
 
             rawTitle = CutAtTokens(rawTitle);
             rawTitle = CleanTitle(rawTitle);
@@ -200,6 +153,61 @@ namespace qbPortWeaver
             if (match.Success)
                 name = name[..match.Index].TrimEnd();
             return name;
+        }
+
+        // Strips a trailing year hint from rawTitle (year in parens or bare year at end-of-string).
+        // Returns the year if the remainder is non-empty, null otherwise.
+        // Guard: does not strip the year when it IS the entire title (e.g. show "1883").
+        private static int? TryStripTrailingYear(ref string rawTitle)
+        {
+            var yearInParensMatch = YearInParensRegex().Match(rawTitle);
+            if (yearInParensMatch.Success)
+            {
+                var titlePart = rawTitle[..yearInParensMatch.Index].Trim();
+                if (!string.IsNullOrEmpty(titlePart))
+                {
+                    rawTitle = titlePart;
+                    return int.TryParse(yearInParensMatch.Groups[1].Value, out int y) ? y : (int?)null;
+                }
+            }
+            else
+            {
+                var yearMatch = StandaloneYearRegex().Match(rawTitle);
+                if (yearMatch.Success && yearMatch.Index + yearMatch.Length == rawTitle.Length)
+                {
+                    var titlePart = rawTitle[..yearMatch.Index].Trim();
+                    if (!string.IsNullOrEmpty(titlePart))
+                    {
+                        rawTitle = titlePart;
+                        return int.TryParse(yearMatch.Value, out int y) ? y : (int?)null;
+                    }
+                }
+            }
+            return null;
+        }
+
+        // Finds the first standalone 4-digit year in a pre-cleaned (dots/underscores removed) title string.
+        // If the first match would leave an empty title (e.g. "1917 2019 BluRay"), advances to the next
+        // occurrence so the year-as-title becomes part of the title string.
+        // Returns the title portion before the year; sets parsedYear to null if no year was found.
+        private static string FindStandaloneYear(string cleaned, out int? parsedYear)
+        {
+            var yearMatch = StandaloneYearRegex().Match(cleaned);
+            if (!yearMatch.Success)
+            {
+                parsedYear = null;
+                return cleaned;
+            }
+
+            if (string.IsNullOrWhiteSpace(cleaned[..yearMatch.Index]))
+            {
+                var next = StandaloneYearRegex().Match(cleaned, yearMatch.Index + yearMatch.Length);
+                if (next.Success)
+                    yearMatch = next;
+            }
+
+            parsedYear = int.TryParse(yearMatch.Value, out int y) ? y : (int?)null;
+            return cleaned[..yearMatch.Index];
         }
 
         private static string CutAtTokens(string input)

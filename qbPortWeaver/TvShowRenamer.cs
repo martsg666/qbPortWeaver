@@ -176,43 +176,40 @@ namespace qbPortWeaver
         // Moves or renames the episode file to its Plex-compliant target path, creating season folders if needed.
         private void MoveEpisodeFile(string tvShowsRoot, string filePath, TvShowEpisodeInfo episodeInfo, string showFolderName, string episodeFileName)
         {
+            string targetPath;
+            string? targetDir = null;
+
             if (_createFolders)
             {
                 var seasonFolder = $"Season {episodeInfo.Season:D2}";
-                var targetDir    = Path.Combine(tvShowsRoot, showFolderName, seasonFolder);
-                var targetPath   = Path.Combine(targetDir, episodeFileName);
-
+                targetDir  = Path.Combine(tvShowsRoot, showFolderName, seasonFolder);
+                targetPath = Path.Combine(targetDir, episodeFileName);
                 LogManager.Instance.LogMessage($"{AppConstants.MediaManagerLogPrefix}Renaming to {showFolderName}/{seasonFolder}/{episodeFileName}", LogLevel.Info);
-
-                if (!_dryRun && !string.Equals(filePath, targetPath, StringComparison.OrdinalIgnoreCase))
-                {
-                    if (File.Exists(targetPath))
-                        LogManager.Instance.LogMessage($"{AppConstants.MediaManagerLogPrefix}Skipped rename - target already exists: '{episodeFileName}'", LogLevel.Warn);
-                    else
-                    {
-                        Directory.CreateDirectory(targetDir);
-                        File.Move(filePath, targetPath);
-                        LogManager.Instance.LogDebug($"{AppConstants.MediaManagerLogPrefix}TvShowRenamer.ProcessEpisodeFile: renamed");
-                    }
-                }
             }
             else
             {
-                var targetPath = Path.Combine(tvShowsRoot, episodeFileName);
-
+                targetPath = Path.Combine(tvShowsRoot, episodeFileName);
                 LogManager.Instance.LogMessage($"{AppConstants.MediaManagerLogPrefix}Renaming to {episodeFileName}", LogLevel.Info);
-
-                if (!_dryRun && !string.Equals(filePath, targetPath, StringComparison.OrdinalIgnoreCase))
-                {
-                    if (File.Exists(targetPath))
-                        LogManager.Instance.LogMessage($"{AppConstants.MediaManagerLogPrefix}Skipped rename - target already exists: '{episodeFileName}'", LogLevel.Warn);
-                    else
-                    {
-                        File.Move(filePath, targetPath);
-                        LogManager.Instance.LogDebug($"{AppConstants.MediaManagerLogPrefix}TvShowRenamer.ProcessEpisodeFile: renamed");
-                    }
-                }
             }
+
+            if (_dryRun || string.Equals(filePath, targetPath, StringComparison.OrdinalIgnoreCase)) return;
+
+            PerformEpisodeMove(filePath, targetPath, targetDir, episodeFileName);
+        }
+
+        private void PerformEpisodeMove(string sourcePath, string targetPath, string? targetDir, string episodeFileName)
+        {
+            if (File.Exists(targetPath))
+            {
+                LogManager.Instance.LogMessage($"{AppConstants.MediaManagerLogPrefix}Skipped rename - target already exists: '{episodeFileName}'", LogLevel.Warn);
+                return;
+            }
+
+            if (targetDir != null)
+                Directory.CreateDirectory(targetDir);
+
+            File.Move(sourcePath, targetPath);
+            LogManager.Instance.LogDebug($"{AppConstants.MediaManagerLogPrefix}TvShowRenamer.ProcessEpisodeFile: renamed");
         }
 
         private async Task<(TvShowInfo? Info, bool IsConfident)> LookupTvShowAsync(string name, int? year)

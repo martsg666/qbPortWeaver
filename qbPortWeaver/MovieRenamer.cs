@@ -267,7 +267,6 @@ namespace qbPortWeaver
         // Renames video files to Plex names and companion files that share the first video's base name
         private static void RenameFilesInFolder(string dirPath, List<string> videoFiles, string plexFolderName)
         {
-            // Rename video files first
             foreach (var file in videoFiles)
             {
                 var ext         = Path.GetExtension(file);
@@ -279,32 +278,33 @@ namespace qbPortWeaver
 
                 var newFilePath = Path.Combine(dirPath, newFileName);
                 if (!string.Equals(file, newFilePath, StringComparison.OrdinalIgnoreCase))
-                {
-                    if (File.Exists(newFilePath))
-                        LogManager.Instance.LogMessage($"{AppConstants.MediaManagerLogPrefix}Skipped rename - target already exists: '{newFileName}'", LogLevel.Warn);
-                    else
-                        File.Move(file, newFilePath);
-                }
+                    MoveFile(file, newFilePath, newFileName);
             }
 
-            // Rename subtitle/companion files that share the video base name
-            var firstVideoBase = Path.GetFileNameWithoutExtension(videoFiles[0]);
+            RenameCompanionFilesInFolder(dirPath, Path.GetFileNameWithoutExtension(videoFiles[0]), plexFolderName);
+        }
+
+        // Renames subtitle and other companion files whose name begins with firstVideoBase to the Plex folder name
+        private static void RenameCompanionFilesInFolder(string dirPath, string firstVideoBase, string plexFolderName)
+        {
             foreach (var file in Directory.GetFiles(dirPath).Where(f => !FileNameParser.IsVideoFile(f)))
             {
                 var fileName = Path.GetFileName(file);
-                if (fileName.StartsWith(firstVideoBase, StringComparison.OrdinalIgnoreCase))
-                {
-                    var suffix      = fileName[firstVideoBase.Length..];
-                    var newFilePath = Path.Combine(dirPath, plexFolderName + suffix);
-                    if (!string.Equals(file, newFilePath, StringComparison.OrdinalIgnoreCase))
-                    {
-                        if (File.Exists(newFilePath))
-                            LogManager.Instance.LogMessage($"{AppConstants.MediaManagerLogPrefix}Skipped rename - target already exists: '{plexFolderName + suffix}'", LogLevel.Warn);
-                        else
-                            File.Move(file, newFilePath);
-                    }
-                }
+                if (!fileName.StartsWith(firstVideoBase, StringComparison.OrdinalIgnoreCase)) continue;
+
+                var suffix      = fileName[firstVideoBase.Length..];
+                var newFilePath = Path.Combine(dirPath, plexFolderName + suffix);
+                if (!string.Equals(file, newFilePath, StringComparison.OrdinalIgnoreCase))
+                    MoveFile(file, newFilePath, plexFolderName + suffix);
             }
+        }
+
+        private static void MoveFile(string sourcePath, string targetPath, string targetName)
+        {
+            if (File.Exists(targetPath))
+                LogManager.Instance.LogMessage($"{AppConstants.MediaManagerLogPrefix}Skipped rename - target already exists: '{targetName}'", LogLevel.Warn);
+            else
+                File.Move(sourcePath, targetPath);
         }
 
         // Logs the planned rename for each video file in the folder

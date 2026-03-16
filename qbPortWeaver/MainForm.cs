@@ -190,7 +190,11 @@ namespace qbPortWeaver
             _trayMenu.Items.Add("Settings", null, (s, e) =>
             {
                 using var frm = new SettingsForm();
-                frm.ShowDialog(this);
+                if (frm.ShowDialog(this) == DialogResult.OK)
+                {
+                    LogManager.Instance.LogMessage("Settings changed, triggering sync cycle", LogLevel.Info);
+                    InterruptDelay();
+                }
             });
             _trayMenu.Items.Add("Media Manager", null, (s, e) =>
             {
@@ -232,8 +236,12 @@ namespace qbPortWeaver
         {
             _manualSyncTriggered = true;
             LogManager.Instance.LogMessage("Manual sync requested", LogLevel.Info);
+            InterruptDelay();
+        }
 
-            // Interrupt the wait inside the main loop immediately
+        // Interrupts the current inter-cycle delay so the next sync cycle starts immediately
+        private void InterruptDelay()
+        {
             try { _delayCts.Cancel(); }
             catch (ObjectDisposedException)
             {

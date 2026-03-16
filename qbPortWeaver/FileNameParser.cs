@@ -14,28 +14,35 @@ namespace qbPortWeaver
             // Resolution / quality
             "480p", "576p", "720p", "1080p", "1080i", "2160p", "4k", "fhd", "uhd",
             "hdr", "hdr10", "sdr", "dovi", "10bit", "10-bit", "3d",
+            "upscale", "upscaled",
             // Source
             "bluray", "blu-ray", "bdrip", "brrip", "bdremux", "remux",
-            "dvdrip", "dvdscr", "hdtv", "hdrip", "hdlight", "hdcam",
-            "webrip", "web-dl", "webdl", "web",
-            "cam", "screener", "telecine", "vod", "imax",
+            "dvdrip", "dvdscr", "dvdr", "dvd9", "dvd5",
+            "hdtv", "pdtv", "sdtv", "uhdtv", "hdrip", "hdlight", "hdcam",
+            "tvrip", "dvrip", "satrip",
+            "webrip", "web-dl", "webdl",
+            "cam", "scr", "screener", "telecine", "vod", "imax",
+            "r5", "r6", "workprint", "retail",
             // Streaming service prefixes (appear before WEB-DL)
-            "amzn", "nf", "dsnp", "dsny", "hmax", "atvp", "pcok", "pmtp", "crav", "hulu",
+            "amzn", "nf", "nflx", "dsnp", "dsny", "hmax", "hbomax",
+            "atvp", "pcok", "pmtp", "crav", "hulu",
             // Video codec
             "x264", "x265", "h264", "h265", "hevc", "avc", "xvid", "divx",
             "av1", "vp9", "vc-1", "vc1",
             // Audio codec
             "aac", "ac3", "dts", "dts-hd", "dts-x", "dtsx", "mp3", "flac",
             "truehd", "atmos", "ddp", "ddp5", "eac3", "opus", "lpcm", "pcm",
-            // Language
-            "multi", "truefrench", "french", "vff", "vfi", "vf2", "vfq",
+            // Language (note: "french" omitted -- too common in real titles, e.g. "The French Connection")
+            "multi", "truefrench", "vff", "vfi", "vf2", "vfq",
             "vost", "vostfr", "vof", "dubbed", "subbed",
-            // Edition / release flags
+            // Edition / release flags (note: "final" omitted -- appears in titles like "These Final Hours")
             "proper", "repack", "extended", "unrated", "uncut", "directors", "theatrical",
             "remastered", "remaster", "criterion", "limited", "internal",
-            "redux", "restored", "final", "hybrid", "mhd",
+            "redux", "restored", "hybrid", "mhd", "custom", "readnfo", "anniversary",
+            // French scene tags for complete series / integrals
+            "integral", "integrale", "complete",
             // Misc
-            "ntsc"
+            "ntsc", "pal"
         ];
 
         /// <summary>Strips characters that are invalid in file names and collapses runs of spaces. Replaces <c>:</c> with <c> -</c> to preserve subtitle separators.</summary>
@@ -75,7 +82,7 @@ namespace qbPortWeaver
             return PlexMovieNameRegex().IsMatch(name) || PlexEpisodeNameRegex().IsMatch(name);
         }
 
-        /// <summary>Parses a TV episode filename into show name, season, and episode number. Returns null if no episode pattern is found.</summary>
+        /// <summary>Parses a TV episode filename into show name, season, and episode number. Returns null if no episode pattern is found or if no usable show name could be extracted.</summary>
         public static TvShowEpisodeInfo? ParseTvShowEpisode(string name)
         {
             var ext = Path.GetExtension(name);
@@ -97,6 +104,10 @@ namespace qbPortWeaver
             var year = TryStripTrailingYear(ref rawTitle);
 
             rawTitle = CleanTitle(rawTitle);
+
+            // No usable show name before the episode pattern (e.g. "S01E01.1080p.x264.mkv")
+            if (string.IsNullOrWhiteSpace(rawTitle))
+                return null;
 
             int.TryParse(match.Groups[1].Value, out int season);
             int.TryParse(match.Groups[2].Value, out int episode);
@@ -121,15 +132,46 @@ namespace qbPortWeaver
             var yearInParensMatch = YearInParensRegex().Match(name);
             if (yearInParensMatch.Success)
             {
-                var title = CleanTitle(name[..yearInParensMatch.Index].Trim());
-                if (!string.IsNullOrWhiteSpace(title))
-                    return (title, int.TryParse(yearInParensMatch.Groups[1].Value, out int y) ? y : (int?)null);
+                var titleBefore = name[..yearInParensMatch.Index].Trim();
+                if (!string.IsNullOrWhiteSpace(titleBefore))
+                {
+                    var title = CleanTitle(titleBefore);
+                    if (!string.IsNullOrWhiteSpace(title))
+                        return (title, int.TryParse(yearInParensMatch.Groups[1].Value, out int y) ? y : (int?)null);
+                }
+
+                // Leading year: "(2000) Title..." → remember year, parse the rest
+                if (yearInParensMatch.Index == 0)
+                {
+                    int? leadingYear = int.TryParse(yearInParensMatch.Groups[1].Value, out int ly) ? ly : (int?)null;
+                    var rest = name[yearInParensMatch.Length..].Trim();
+                    if (!string.IsNullOrWhiteSpace(rest))
+                    {
+                        var restCleaned = rest.Replace('.', ' ').Replace('_', ' ');
+                        restCleaned = CutAtTokens(restCleaned);
+                        var restTitle = CleanTitle(restCleaned);
+                        if (!string.IsNullOrWhiteSpace(restTitle))
+                            return (restTitle, leadingYear);
+                    }
+                }
             }
 
             var cleaned  = name.Replace('.', ' ').Replace('_', ' ');
             var rawTitle = FindStandaloneYear(cleaned, out int? parsedYear);
 
-            rawTitle = CutAtTokens(rawTitle);
+            if (parsedYear is not null)
+            {
+                // Year found: strip cutoff tokens only from the pre-year title portion
+                // (avoids cutting the year itself when tokens like EXTENDED appear before it)
+                rawTitle = CutAtTokens(rawTitle);
+            }
+            else
+            {
+                // No year: strip cutoff tokens from full string, then retry year detection
+                cleaned = CutAtTokens(cleaned);
+                rawTitle = FindStandaloneYear(cleaned, out parsedYear);
+            }
+
             rawTitle = CleanTitle(rawTitle);
 
             return (rawTitle, parsedYear);
@@ -138,6 +180,7 @@ namespace qbPortWeaver
         private static string StripSitePrefix(string name)
         {
             var match = SitePrefixRegex().Match(name);
+            // Safe to use match.Length as start index because SitePrefixRegex is anchored to ^
             if (match.Success)
                 name = name[match.Length..].TrimStart();
             return name;
@@ -184,9 +227,11 @@ namespace qbPortWeaver
         }
 
         // Finds the first standalone 4-digit year in a pre-cleaned (dots/underscores removed) title string.
-        // If the first match would leave an empty title (e.g. "1917 2019 BluRay"), advances to the next
-        // occurrence so the year-as-title becomes part of the title string.
-        // Returns the title portion before the year; sets parsedYear to null if no year was found.
+        // Handles three special cases:
+        //   1) Year-as-title with second year:  "1917 2019"       → title "1917",              year 2019
+        //   2) Leading year with no second year: "2008 The Hulk"   → title "The Hulk",          year 2008
+        //   3) Back-to-back years:               "Title 2049 2017" → title "Title 2049",        year 2017
+        // Returns the title portion; sets parsedYear to null if no year was found.
         private static string FindStandaloneYear(string cleaned, out int? parsedYear)
         {
             var yearMatch = StandaloneYearRegex().Match(cleaned);
@@ -198,15 +243,38 @@ namespace qbPortWeaver
 
             if (string.IsNullOrWhiteSpace(cleaned[..yearMatch.Index]))
             {
+                // Year at position 0: title before it is empty
                 var next = StandaloneYearRegex().Match(cleaned, yearMatch.Index + yearMatch.Length);
                 if (next.Success)
+                {
+                    // Case 1: second year exists — advance so the first year becomes the title
                     yearMatch = next;
+                }
+                else
+                {
+                    // Case 2: no second year — use text after the year as the title
+                    parsedYear = int.TryParse(yearMatch.Value, out int y2) ? y2 : (int?)null;
+                    return cleaned[(yearMatch.Index + yearMatch.Length)..];
+                }
+            }
+            else
+            {
+                // Title before year is non-empty — check for back-to-back years
+                var next = StandaloneYearRegex().Match(cleaned, yearMatch.Index + yearMatch.Length);
+                if (next.Success && string.IsNullOrWhiteSpace(cleaned[(yearMatch.Index + yearMatch.Length)..next.Index]))
+                {
+                    // Case 3: two years with only whitespace between — first is part of title,
+                    // second is the release year (e.g. "Blade Runner 2049 2017")
+                    yearMatch = next;
+                }
             }
 
             parsedYear = int.TryParse(yearMatch.Value, out int y) ? y : (int?)null;
             return cleaned[..yearMatch.Index];
         }
 
+        // Walks the whitespace-split words and returns everything before the first cutoff token.
+        // Handles scene-style "Token-Group" compounds by checking the prefix before the first hyphen.
         private static string CutAtTokens(string input)
         {
             var words  = input.Split(' ', StringSplitOptions.RemoveEmptyEntries);
@@ -215,47 +283,79 @@ namespace qbPortWeaver
             {
                 if (CutoffTokens.Contains(word, StringComparer.OrdinalIgnoreCase))
                     break;
+
+                // Scene naming: "Token-GroupName" (e.g. "DVDR-Replica", "x264-SPARKS")
+                // Check the prefix before the first hyphen against cutoff tokens
+                var dashIndex = word.IndexOf('-');
+                if (dashIndex > 0 && CutoffTokens.Contains(word[..dashIndex], StringComparer.OrdinalIgnoreCase))
+                    break;
+
                 result.Add(word);
             }
             return string.Join(' ', result);
         }
 
+        // Final title cleanup: strips curly/square bracket tags, collapses whitespace,
+        // removes trailing incomplete parenthetical groups, and trims orphan punctuation.
         private static string CleanTitle(string title)
         {
             title = title.Trim(' ', '-', '.', '_');
             title = CurlyBraceTagRegex().Replace(title, "").Trim();
             title = SquareBracketTagRegex().Replace(title, "").Trim();
             title = MultiSpaceRegex().Replace(title, " ");
-            return title.Trim();
+            title = title.Trim();
+
+            // Strip trailing incomplete parenthetical group: "Title (junk stuff" → "Title"
+            var openParen = title.LastIndexOf('(');
+            if (openParen >= 0 && !title[openParen..].Contains(')'))
+            {
+                var trimmed = title[..openParen].TrimEnd();
+                if (!string.IsNullOrEmpty(trimmed))
+                    title = trimmed;
+            }
+
+            // Strip orphan trailing brackets left after tag/year removal (e.g. "One Shot [", "Smallville (")
+            return title.TrimEnd(' ', '-', '.', '_', '[', '(');
         }
 
+        // Matches a 4-digit year wrapped in parentheses: "(2009)", captures the year
         [GeneratedRegex(@"\((\d{4})\)")]
         private static partial Regex YearInParensRegex();
 
+        // Matches a 4-digit year (1900-2099) as a standalone word: "2009" but not "x2009" or "20091"
         [GeneratedRegex(@"\b(19|20)\d{2}\b")]
         private static partial Regex StandaloneYearRegex();
 
+        // Matches content inside curly braces: "{info}" (used for tag removal)
         [GeneratedRegex(@"\{[^}]*\}")]
         private static partial Regex CurlyBraceTagRegex();
 
+        // Matches content inside square brackets: "[info]" (used for tag removal)
         [GeneratedRegex(@"\[[^\]]*\]")]
         private static partial Regex SquareBracketTagRegex();
 
+        // Matches two or more consecutive whitespace characters (used for collapsing)
         [GeneratedRegex(@"\s{2,}")]
         private static partial Regex MultiSpaceRegex();
 
-        [GeneratedRegex(@"\[\s*[^\]]*\.[a-z]{2,3}\s*\]\s*", RegexOptions.IgnoreCase)]
+        // Anchored to start. Two alternatives:
+        //   1) Bracketed site tag:  [www.SiteName.com]  (TLD 2-3 chars)
+        //   2) Bare www prefix:     www.SiteName.com -  (TLD 2-5 chars, followed by a dash separator)
+        // Also handles ww. and www, (obfuscated separators)
+        [GeneratedRegex(@"^(?:\[\s*[^\]]*\.[a-z]{2,3}\s*\]\s*|ww[w]?[.,][\w.-]+\.[a-z]{2,5}\s*[-–—]\s*)", RegexOptions.IgnoreCase)]
         private static partial Regex SitePrefixRegex();
 
+        // Matches underscore-prefixed language codes at end of string: _VOSTFR, _VF-EN, _VO-FR, etc.
         [GeneratedRegex(@"[_]((?:FR|EN|VF|VO)[-]?(?:FR|EN|HP|DL|VF|VO)?(?:[-](?:FR|EN|HP|DL|VF|VO))*)$", RegexOptions.IgnoreCase)]
         private static partial Regex LanguageSuffixRegex();
 
-        // Primary: SxxExx / S1E1 (dominant scene and P2P standard)
-        [GeneratedRegex(@"S(\d{1,2})E(\d{1,2})", RegexOptions.IgnoreCase)]
+        // Primary TV pattern: SxxExx / S1E1 / S004E111 (scene, P2P, and anime), captures season and episode
+        [GeneratedRegex(@"S(\d{1,4})E(\d{1,4})", RegexOptions.IgnoreCase)]
         private static partial Regex TvShowEpisodeRegex();
 
-        // Legacy: 1x01 notation used by older releases
-        [GeneratedRegex(@"\b(\d{1,2})x(\d{2})\b", RegexOptions.IgnoreCase)]
+        // Legacy TV pattern: 1x01 notation used by older releases, captures season and episode.
+        // No leading \b so it matches even when glued to a word (e.g. "Castle1x01").
+        [GeneratedRegex(@"(\d{1,2})x(\d{2})\b", RegexOptions.IgnoreCase)]
         private static partial Regex TvShowEpisodeLegacyRegex();
 
         // Matches Plex movie format: "Title (Year)" optionally followed by " - partN" (multi-part files)

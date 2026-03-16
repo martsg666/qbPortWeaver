@@ -76,7 +76,7 @@ namespace qbPortWeaver
             public const string Status                  = "status";
             public const string Message                 = "message";
 
-            // Values for the Status key - "skipped" means VPN disconnected with no default port configured (cycle is a no-op)
+            // Values for the Status key - "skipped" means port sync was disabled or VPN disconnected with no default port (cycle is a no-op)
             public const string Success = "success";
             public const string Error   = "error";
             public const string Skipped = "skipped";

@@ -128,34 +128,12 @@ namespace qbPortWeaver
             name = StripSitePrefix(name);
             name = StripLanguageSuffix(name);
 
-            // Try explicit year in parentheses first: "Movie Name (2009)"
-            var yearInParensMatch = YearInParensRegex().Match(name);
-            if (yearInParensMatch.Success)
-            {
-                var titleBefore = name[..yearInParensMatch.Index].Trim();
-                if (!string.IsNullOrWhiteSpace(titleBefore))
-                {
-                    var title = CleanTitle(titleBefore);
-                    if (!string.IsNullOrWhiteSpace(title))
-                        return (title, int.TryParse(yearInParensMatch.Groups[1].Value, out int y) ? y : (int?)null);
-                }
+            // Try explicit year in parentheses first: "Movie Name (2009)" or "(2000) Title..."
+            var result = TryParseYearInParens(name);
+            if (result is not null)
+                return result.Value;
 
-                // Leading year: "(2000) Title..." → remember year, parse the rest
-                if (yearInParensMatch.Index == 0)
-                {
-                    int? leadingYear = int.TryParse(yearInParensMatch.Groups[1].Value, out int ly) ? ly : (int?)null;
-                    var rest = name[yearInParensMatch.Length..].Trim();
-                    if (!string.IsNullOrWhiteSpace(rest))
-                    {
-                        var restCleaned = rest.Replace('.', ' ').Replace('_', ' ');
-                        restCleaned = CutAtTokens(restCleaned);
-                        var restTitle = CleanTitle(restCleaned);
-                        if (!string.IsNullOrWhiteSpace(restTitle))
-                            return (restTitle, leadingYear);
-                    }
-                }
-            }
-
+            // Fallback: standalone year detection with two-pass cutoff strategy
             var cleaned  = name.Replace('.', ' ').Replace('_', ' ');
             var rawTitle = FindStandaloneYear(cleaned, out int? parsedYear);
 
@@ -175,6 +153,36 @@ namespace qbPortWeaver
             rawTitle = CleanTitle(rawTitle);
 
             return (rawTitle, parsedYear);
+        }
+
+        // Attempts to extract title and year from a parenthesized year pattern.
+        // Handles "Title (2009)" and leading "(2000) Title..." formats.
+        private static (string title, int? year)? TryParseYearInParens(string name)
+        {
+            var match = YearInParensRegex().Match(name);
+            if (!match.Success)
+                return null;
+
+            int? year = int.TryParse(match.Groups[1].Value, out int y) ? y : null;
+
+            // Standard case: "Title (2009)" -- title appears before the year
+            var titleBefore = CleanTitle(name[..match.Index].Trim());
+            if (!string.IsNullOrWhiteSpace(titleBefore))
+                return (titleBefore, year);
+
+            // Leading year case: "(2000) Title..." -- year at start, title follows
+            if (match.Index != 0)
+                return null;
+
+            var rest = name[match.Length..].Trim();
+            if (string.IsNullOrWhiteSpace(rest))
+                return null;
+
+            var restCleaned = rest.Replace('.', ' ').Replace('_', ' ');
+            restCleaned = CutAtTokens(restCleaned);
+            var restTitle = CleanTitle(restCleaned);
+
+            return string.IsNullOrWhiteSpace(restTitle) ? null : (restTitle, year);
         }
 
         private static string StripSitePrefix(string name)

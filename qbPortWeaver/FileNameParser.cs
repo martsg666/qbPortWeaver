@@ -160,6 +160,7 @@ namespace qbPortWeaver
         // Guard: does not strip the year when it IS the entire title (e.g. show "1883").
         private static int? TryStripTrailingYear(ref string rawTitle)
         {
+            // Try year in parens first: "Show Name (2018)"
             var yearInParensMatch = YearInParensRegex().Match(rawTitle);
             if (yearInParensMatch.Success)
             {
@@ -169,18 +170,18 @@ namespace qbPortWeaver
                     rawTitle = titlePart;
                     return int.TryParse(yearInParensMatch.Groups[1].Value, out int y) ? y : (int?)null;
                 }
+                return null;
             }
-            else
+
+            // Try bare year at end-of-string: "Yellowstone 2018"
+            var yearMatch = StandaloneYearRegex().Match(rawTitle);
+            if (yearMatch.Success && yearMatch.Index + yearMatch.Length == rawTitle.Length)
             {
-                var yearMatch = StandaloneYearRegex().Match(rawTitle);
-                if (yearMatch.Success && yearMatch.Index + yearMatch.Length == rawTitle.Length)
+                var titlePart = rawTitle[..yearMatch.Index].Trim();
+                if (!string.IsNullOrEmpty(titlePart))
                 {
-                    var titlePart = rawTitle[..yearMatch.Index].Trim();
-                    if (!string.IsNullOrEmpty(titlePart))
-                    {
-                        rawTitle = titlePart;
-                        return int.TryParse(yearMatch.Value, out int y) ? y : (int?)null;
-                    }
+                    rawTitle = titlePart;
+                    return int.TryParse(yearMatch.Value, out int y) ? y : (int?)null;
                 }
             }
             return null;

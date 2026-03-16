@@ -123,5 +123,22 @@ namespace qbPortWeaver
                 return [];
             return value.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         }
+
+        /// <summary>Moves a file to <paramref name="targetPath"/>, creating the target directory if needed. Logs a warning and skips the move if the target already exists.</summary>
+        internal static void MoveFile(string sourcePath, string targetPath)
+        {
+            var targetName = Path.GetFileName(targetPath);
+            if (File.Exists(targetPath))
+            {
+                LogManager.Instance.LogMessage($"{AppConstants.MediaManagerLogPrefix}Skipped rename - target already exists: '{targetName}'", LogLevel.Warn);
+                return;
+            }
+
+            var targetDir = Path.GetDirectoryName(targetPath);
+            if (!string.IsNullOrEmpty(targetDir))
+                Directory.CreateDirectory(targetDir);
+
+            File.Move(sourcePath, targetPath);
+        }
     }
 }

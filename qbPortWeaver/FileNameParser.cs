@@ -6,44 +6,51 @@ namespace qbPortWeaver
     {
         private static readonly HashSet<string> VideoExtensions = new(StringComparer.OrdinalIgnoreCase)
         {
-            ".mkv", ".mp4", ".avi", ".mov", ".wmv", ".flv", ".m4v", ".mpg", ".mpeg", ".ts", ".webm"
+            ".mkv", ".mp4", ".avi", ".mov", ".wmv", ".flv", ".m4v", ".mpg", ".mpeg", ".ts", ".vob", ".webm"
         };
 
-        private static readonly string[] CutoffTokens =
-        [
+        private static readonly HashSet<string> CutoffTokens = new(StringComparer.OrdinalIgnoreCase)
+        {
             // Resolution / quality
-            "480p", "576p", "720p", "1080p", "1080i", "2160p", "4k", "fhd", "uhd",
-            "hdr", "hdr10", "sdr", "dovi", "10bit", "10-bit", "3d",
+            "240p", "480p", "576p", "720p", "1080p", "1080i", "1440p", "2160p", "4k", "fhd", "uhd", "qhd",
+            "hdr", "hdr10", "hdr10plus", "hlg", "sdr", "dovi",
+            "8bit", "8-bit", "10bit", "10-bit", "12bit", "12-bit", "hi10p", "hi10",
+            "3d", "sbs", "hsbs", "half-ou", "mvc",
             "upscale", "upscaled",
             // Source
             "bluray", "blu-ray", "bdrip", "brrip", "bdremux", "remux",
             "dvdrip", "dvdscr", "dvdr", "dvd9", "dvd5",
             "hdtv", "pdtv", "sdtv", "uhdtv", "hdrip", "hdlight", "hdcam",
-            "tvrip", "dvrip", "satrip",
-            "webrip", "web-dl", "webdl",
-            "cam", "scr", "screener", "telecine", "vod", "imax",
+            "tvrip", "dvrip", "dvbrip", "satrip", "vhsrip", "ppvrip",
+            "webrip", "web-dl", "webdl", "web", "uhdrip",
+            "cam", "scr", "screener", "telecine", "ts", "tc", "hdts", "hdtc", "vod", "imax",
             "r5", "r6", "workprint", "retail",
             // Streaming service prefixes (appear before WEB-DL)
             "amzn", "nf", "nflx", "dsnp", "dsny", "hmax", "hbomax",
-            "atvp", "pcok", "pmtp", "crav", "hulu",
+            "atvp", "pcok", "pmtp", "crav", "hulu", "roku",
             // Video codec
             "x264", "x265", "h264", "h265", "hevc", "avc", "xvid", "divx",
-            "av1", "vp9", "vc-1", "vc1",
+            "av1", "vp9", "vc-1", "vc1", "mpeg", "mpeg2", "mpeg4",
             // Audio codec
-            "aac", "ac3", "dts", "dts-hd", "dts-x", "dtsx", "mp3", "flac",
-            "truehd", "atmos", "ddp", "ddp5", "eac3", "opus", "lpcm", "pcm",
+            "aac", "ac3", "dts", "dts-hd", "dts-es", "dts-x", "dtsx", "mp3", "flac",
+            "truehd", "atmos", "dd", "dd2", "dd5", "ddp", "ddp5", "eac3", "opus", "lpcm", "pcm",
+            "stereo", "mono",
             // Language (note: "french" omitted -- too common in real titles, e.g. "The French Connection")
-            "multi", "truefrench", "vff", "vfi", "vf2", "vfq",
-            "vost", "vostfr", "vof", "dubbed", "subbed",
+            "multi", "dual", "truefrench", "vff", "vfi", "vf2", "vfq",
+            "vost", "vostfr", "vof", "dubbed", "subbed", "korsub", "latino", "castellano",
             // Edition / release flags (note: "final" omitted -- appears in titles like "These Final Hours")
-            "proper", "repack", "extended", "unrated", "uncut", "directors", "theatrical",
+            "proper", "repack", "rerip", "extended", "unrated", "uncut", "directors", "theatrical",
             "remastered", "remaster", "criterion", "limited", "internal",
             "redux", "restored", "hybrid", "mhd", "custom", "readnfo", "anniversary",
             // French scene tags for complete series / integrals
             "integral", "integrale", "complete",
             // Misc
             "ntsc", "pal"
-        ];
+        };
+
+        /// <summary>Formats a TMDB title and year into a Plex-compliant name: <c>Title (Year)</c>, sanitised for use as a file or folder name.</summary>
+        public static string FormatPlexName(string title, int? year) =>
+            SanitizeFileName($"{title} ({year})");
 
         /// <summary>Strips characters that are invalid in file names and collapses runs of spaces. Replaces <c>:</c> with <c> -</c> to preserve subtitle separators.</summary>
         public static string SanitizeFileName(string name)
@@ -98,8 +105,9 @@ namespace qbPortWeaver
                 return null;
 
             var rawTitle = name[..match.Index];
-            rawTitle = rawTitle.Replace('.', ' ').Replace('_', ' ').Trim();
             rawTitle = StripLanguageSuffix(rawTitle);
+            rawTitle = rawTitle.Replace('.', ' ').Replace('_', ' ').Trim();
+            rawTitle = CutAtTokens(rawTitle);
 
             var year = TryStripTrailingYear(ref rawTitle);
 
@@ -289,13 +297,13 @@ namespace qbPortWeaver
             var result = new List<string>();
             foreach (var word in words)
             {
-                if (CutoffTokens.Contains(word, StringComparer.OrdinalIgnoreCase))
+                if (CutoffTokens.Contains(word))
                     break;
 
                 // Scene naming: "Token-GroupName" (e.g. "DVDR-Replica", "x264-SPARKS")
                 // Check the prefix before the first hyphen against cutoff tokens
                 var dashIndex = word.IndexOf('-');
-                if (dashIndex > 0 && CutoffTokens.Contains(word[..dashIndex], StringComparer.OrdinalIgnoreCase))
+                if (dashIndex > 0 && CutoffTokens.Contains(word[..dashIndex]))
                     break;
 
                 result.Add(word);
@@ -357,7 +365,9 @@ namespace qbPortWeaver
         [GeneratedRegex(@"[_]((?:FR|EN|VF|VO)[-]?(?:FR|EN|HP|DL|VF|VO)?(?:[-](?:FR|EN|HP|DL|VF|VO))*)$", RegexOptions.IgnoreCase)]
         private static partial Regex LanguageSuffixRegex();
 
-        // Primary TV pattern: SxxExx / S1E1 / S004E111 (scene, P2P, and anime), captures season and episode
+        // Primary TV pattern: SxxExx / S1E1 / S004E111 (scene, P2P, and anime), captures season and episode.
+        // Multi-episode names (S01E01-E03, S01E01E02) match on the first episode only — Plex expects
+        // individual episode files, so the caller treats the file as belonging to the first episode.
         [GeneratedRegex(@"S(\d{1,4})E(\d{1,4})", RegexOptions.IgnoreCase)]
         private static partial Regex TvShowEpisodeRegex();
 

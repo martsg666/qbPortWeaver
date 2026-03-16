@@ -89,7 +89,7 @@ namespace qbPortWeaver
             }
 
             var ext      = Path.GetExtension(filePath);
-            var plexName = FileNameParser.SanitizeFileName($"{info.Title} ({info.Year})");
+            var plexName = FileNameParser.FormatPlexName(info.Title, info.Year);
 
             string proposedPath = _createFolders
                 ? Path.Combine(root, plexName, $"{plexName}{ext}")
@@ -120,7 +120,7 @@ namespace qbPortWeaver
                 return;
             }
 
-            var plexFolderName = FileNameParser.SanitizeFileName($"{info.Title} ({info.Year})");
+            var plexFolderName = FileNameParser.FormatPlexName(info.Title, info.Year);
             var newDirPath     = Path.Combine(root, plexFolderName);
 
             foreach (var file in videoFiles)
@@ -161,7 +161,7 @@ namespace qbPortWeaver
             }
 
             var ext      = Path.GetExtension(filePath);
-            var plexName = FileNameParser.SanitizeFileName($"{info.Title} ({info.Year})");
+            var plexName = FileNameParser.FormatPlexName(info.Title, info.Year);
 
             string newFilePath = _createFolders
                 ? Path.Combine(root, plexName, $"{plexName}{ext}")
@@ -175,12 +175,7 @@ namespace qbPortWeaver
 
             LogManager.Instance.LogMessage($"{AppConstants.MediaManagerLogPrefix}Renaming to {Path.GetRelativePath(root, newFilePath)}", LogLevel.Info);
             if (!_dryRun)
-            {
-                if (_createFolders)
-                    Directory.CreateDirectory(Path.GetDirectoryName(newFilePath)!);
-                MoveFile(filePath, newFilePath, $"{plexName}{ext}");
-                LogManager.Instance.LogDebug($"{AppConstants.MediaManagerLogPrefix}MovieRenamer.ProcessStandaloneFile: Renamed");
-            }
+                MediaManagerService.MoveFile(filePath, newFilePath);
         }
 
         private async Task ProcessMovieFolderAsync(string root, string dirPath)
@@ -215,7 +210,7 @@ namespace qbPortWeaver
                 return;
             }
 
-            var plexFolderName = FileNameParser.SanitizeFileName($"{info.Title} ({info.Year})");
+            var plexFolderName = FileNameParser.FormatPlexName(info.Title, info.Year);
             var newDirPath     = Path.Combine(root, plexFolderName);
 
             LogPlannedRenames(videoFiles, plexFolderName);
@@ -255,7 +250,7 @@ namespace qbPortWeaver
 
                 var newFilePath = Path.Combine(dirPath, newFileName);
                 if (!string.Equals(file, newFilePath, StringComparison.OrdinalIgnoreCase))
-                    MoveFile(file, newFilePath, newFileName);
+                    MediaManagerService.MoveFile(file, newFilePath);
             }
 
             RenameCompanionFilesInFolder(dirPath, Path.GetFileNameWithoutExtension(videoFiles[0]), plexFolderName);
@@ -272,16 +267,8 @@ namespace qbPortWeaver
                 var suffix      = fileName[firstVideoBase.Length..];
                 var newFilePath = Path.Combine(dirPath, plexFolderName + suffix);
                 if (!string.Equals(file, newFilePath, StringComparison.OrdinalIgnoreCase))
-                    MoveFile(file, newFilePath, plexFolderName + suffix);
+                    MediaManagerService.MoveFile(file, newFilePath);
             }
-        }
-
-        private static void MoveFile(string sourcePath, string targetPath, string targetName)
-        {
-            if (File.Exists(targetPath))
-                LogManager.Instance.LogMessage($"{AppConstants.MediaManagerLogPrefix}Skipped rename - target already exists: '{targetName}'", LogLevel.Warn);
-            else
-                File.Move(sourcePath, targetPath);
         }
 
         // Logs the planned rename for each video file in the folder
@@ -313,7 +300,7 @@ namespace qbPortWeaver
                     if (info != null) isConfident = false;
                 }
 
-                (info, isConfident) = await TryFallbackLookupsAsync(title, year, noMatchSoFar: info == null, info, isConfident).ConfigureAwait(false);
+                (info, isConfident) = await TryFallbackLookupsAsync(title, year, info, isConfident).ConfigureAwait(false);
 
                 if (info == null)
                 {
@@ -332,13 +319,13 @@ namespace qbPortWeaver
         }
 
         // Applies two fallback TMDB lookup strategies to reduce unmatched results.
-        // After-dash strategy: only runs when noMatchSoFar=true (info was null after initial lookup).
-        // Trailing-number strategy: runs when info==null OR info.Year==null.
+        // After-dash strategy: only runs when info is null (no match from initial lookups).
+        // Trailing-number strategy: runs when info is null OR info.Year is null.
         private async Task<(MovieInfo? info, bool isConfident)> TryFallbackLookupsAsync(
-            string title, int? year, bool noMatchSoFar, MovieInfo? info, bool isConfident)
+            string title, int? year, MovieInfo? info, bool isConfident)
         {
             // Try the part after " - " (e.g. "Harry Potter 1 - The Sorcerer's Stone")
-            if (noMatchSoFar && title.Contains(" - "))
+            if (info == null && title.Contains(" - "))
             {
                 var afterDash = title[(title.IndexOf(" - ", StringComparison.Ordinal) + 3)..].Trim();
                 LogManager.Instance.LogDebug($"{AppConstants.MediaManagerLogPrefix}MovieRenamer.LookupMovie: Retrying with '{afterDash}'");
@@ -367,6 +354,7 @@ namespace qbPortWeaver
         }
 
         // Detects multi-part suffixes such as "cd1", "pt2", "disc3" and returns the normalised token.
+        // Requires a word boundary before the pattern to avoid matching mid-word (e.g. "Arcade2").
         private static string? ExtractPartSuffix(string fileName)
         {
             var name     = Path.GetFileNameWithoutExtension(fileName);
@@ -376,6 +364,9 @@ namespace qbPortWeaver
             {
                 var idx = name.LastIndexOf(pattern, StringComparison.OrdinalIgnoreCase);
                 if (idx < 0) continue;
+
+                // Ensure the match is at a word boundary, not embedded in a longer word
+                if (idx > 0 && char.IsLetter(name[idx - 1])) continue;
 
                 var after = name[(idx + pattern.Length)..].Trim();
                 if (after.Length > 0 && char.IsDigit(after[0]))

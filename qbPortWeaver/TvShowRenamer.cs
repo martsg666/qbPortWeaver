@@ -15,8 +15,8 @@ namespace qbPortWeaver
         private readonly bool _dryRun;
         private readonly bool _createFolders;
 
-        // Caches show lookups to avoid redundant TMDB API calls within one scan cycle
-        private readonly Dictionary<string, TvShowInfo> _showCache = new(StringComparer.OrdinalIgnoreCase);
+        // Caches show lookups (including confidence) to avoid redundant TMDB API calls within one scan cycle
+        private readonly Dictionary<string, (TvShowInfo Info, bool IsConfident)> _showCache = new(StringComparer.OrdinalIgnoreCase);
 
         public TvShowRenamer(TmdbClient tmdb, bool dryRun, bool createFolders)
         {
@@ -95,12 +95,17 @@ namespace qbPortWeaver
             var episodeInfo = FileNameParser.ParseTvShowEpisode(fileName);
             if (episodeInfo == null) return;
 
-            bool isConfident = true;
-            if (!_showCache.TryGetValue(episodeInfo.ShowName, out var showInfo))
+            TvShowInfo? showInfo;
+            bool isConfident;
+            if (_showCache.TryGetValue(episodeInfo.ShowName, out var cached))
+            {
+                (showInfo, isConfident) = cached;
+            }
+            else
             {
                 (showInfo, isConfident) = await LookupTvShowAsync(episodeInfo.ShowName, episodeInfo.Year).ConfigureAwait(false);
                 if (showInfo != null)
-                    _showCache[episodeInfo.ShowName] = showInfo;
+                    _showCache[episodeInfo.ShowName] = (showInfo, isConfident);
             }
             if (showInfo == null)
             {
@@ -109,7 +114,7 @@ namespace qbPortWeaver
             }
 
             var ext             = Path.GetExtension(filePath);
-            var showFolderName  = FileNameParser.SanitizeFileName($"{showInfo.Title} ({showInfo.Year})");
+            var showFolderName  = FileNameParser.FormatPlexName(showInfo.Title, showInfo.Year);
             var episodeFileName = $"{showFolderName} - S{episodeInfo.Season:D2}E{episodeInfo.Episode:D2}{ext}";
 
             string proposedPath = _createFolders
@@ -152,12 +157,17 @@ namespace qbPortWeaver
             LogManager.Instance.LogMessage($"{AppConstants.MediaManagerLogPrefix}Processing '{fileName}'", LogLevel.Info);
             LogManager.Instance.LogDebug($"{AppConstants.MediaManagerLogPrefix}TvShowRenamer.ProcessEpisodeFile: Parsed show='{episodeInfo.ShowName}' S{episodeInfo.Season:D2}E{episodeInfo.Episode:D2}");
 
-            bool isConfident = true;
-            if (!_showCache.TryGetValue(episodeInfo.ShowName, out var showInfo))
+            TvShowInfo? showInfo;
+            bool isConfident;
+            if (_showCache.TryGetValue(episodeInfo.ShowName, out var cached))
+            {
+                (showInfo, isConfident) = cached;
+            }
+            else
             {
                 (showInfo, isConfident) = await LookupTvShowAsync(episodeInfo.ShowName, episodeInfo.Year).ConfigureAwait(false);
                 if (showInfo != null)
-                    _showCache[episodeInfo.ShowName] = showInfo;
+                    _showCache[episodeInfo.ShowName] = (showInfo, isConfident);
             }
 
             if (showInfo == null) return;
@@ -168,7 +178,7 @@ namespace qbPortWeaver
             }
 
             var ext             = Path.GetExtension(filePath);
-            var showFolderName  = FileNameParser.SanitizeFileName($"{showInfo.Title} ({showInfo.Year})");
+            var showFolderName  = FileNameParser.FormatPlexName(showInfo.Title, showInfo.Year);
             var episodeFileName = $"{showFolderName} - S{episodeInfo.Season:D2}E{episodeInfo.Episode:D2}{ext}";
 
             MoveEpisodeFile(tvShowsRoot, filePath, episodeInfo, showFolderName, episodeFileName);
@@ -186,30 +196,24 @@ namespace qbPortWeaver
             LogManager.Instance.LogMessage($"{AppConstants.MediaManagerLogPrefix}Renaming to {Path.GetRelativePath(tvShowsRoot, targetPath)}", LogLevel.Info);
 
             if (!_dryRun)
-                MoveFile(filePath, targetPath, episodeFileName);
-        }
-
-        private static void MoveFile(string sourcePath, string targetPath, string episodeFileName)
-        {
-            if (File.Exists(targetPath))
-            {
-                LogManager.Instance.LogMessage($"{AppConstants.MediaManagerLogPrefix}Skipped rename - target already exists: '{episodeFileName}'", LogLevel.Warn);
-                return;
-            }
-
-            var targetDir = Path.GetDirectoryName(targetPath);
-            if (!string.IsNullOrEmpty(targetDir))
-                Directory.CreateDirectory(targetDir);
-
-            File.Move(sourcePath, targetPath);
-            LogManager.Instance.LogDebug($"{AppConstants.MediaManagerLogPrefix}TvShowRenamer.ProcessEpisodeFile: Renamed");
+                MediaManagerService.MoveFile(filePath, targetPath);
         }
 
         private async Task<(TvShowInfo? Info, bool IsConfident)> LookupTvShowAsync(string name, int? year)
         {
             try
             {
+                bool isConfident = true;
+
                 var info = await _tmdb.SearchTvShowAsync(name, year).ConfigureAwait(false);
+
+                // Retry without year: parsed year may be the season year rather than TMDB's first-air year
+                if (info == null && year.HasValue)
+                {
+                    info = await _tmdb.SearchTvShowAsync(name).ConfigureAwait(false);
+                    if (info != null) isConfident = false;
+                }
+
                 if (info == null)
                 {
                     LogManager.Instance.LogMessage($"{AppConstants.MediaManagerLogPrefix}No TMDB match found for show '{name}'", LogLevel.Warn);
@@ -217,7 +221,7 @@ namespace qbPortWeaver
                 }
 
                 LogManager.Instance.LogDebug($"{AppConstants.MediaManagerLogPrefix}TvShowRenamer.LookupTvShow: Matched '{info.Title}' ({info.Year}) [tmdb-{info.TmdbId}]");
-                return (info, true);
+                return (info, isConfident);
             }
             catch (HttpRequestException ex)
             {

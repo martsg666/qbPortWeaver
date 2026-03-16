@@ -29,7 +29,7 @@ namespace qbPortWeaver
             if (year.HasValue)
                 url += $"&year={year.Value}";
 
-            var response = await _http.GetFromJsonAsync<TmdbSearchResult>(url).ConfigureAwait(false);
+            var response = await _http.GetFromJsonAsync<TmdbMovieSearchResult>(url).ConfigureAwait(false);
             var result   = response?.Results?.FirstOrDefault();
             if (result == null)
                 return null;
@@ -41,7 +41,7 @@ namespace qbPortWeaver
         /// <summary>Searches for a TV show by title and optional first-air year. Returns the best match, or null if none found.</summary>
         public async Task<TvShowInfo?> SearchTvShowAsync(string query, int? year = null)
         {
-            var url      = $"search/tv?api_key={_apiKey}&query={Uri.EscapeDataString(query)}&language=en-US&page=1";
+            var url = $"search/tv?api_key={_apiKey}&query={Uri.EscapeDataString(query)}&language=en-US&page=1";
             if (year.HasValue)
                 url += $"&first_air_date_year={year.Value}";
             var response = await _http.GetFromJsonAsync<TmdbTvSearchResult>(url).ConfigureAwait(false);
@@ -52,14 +52,16 @@ namespace qbPortWeaver
             int? airYear = result.FirstAirDate?.Length >= 4 && int.TryParse(result.FirstAirDate[..4], out int y) ? y : null;
             return new TvShowInfo(result.Name, airYear, result.Id);
         }
-
     }
 
+    /// <summary>TMDB title, release year, and database ID for a movie.</summary>
     public sealed record MovieInfo(string Title, int? Year, int TmdbId);
 
+    /// <summary>TMDB title, first-air year, and database ID for a TV show.</summary>
     public sealed record TvShowInfo(string Title, int? Year, int TmdbId);
 
-    public sealed record TmdbSearchResult(
+    // TMDB API response shapes — internal to TmdbClient deserialization
+    public sealed record TmdbMovieSearchResult(
         [property: JsonPropertyName("results")] List<TmdbMovie>? Results);
 
     public sealed record TmdbMovie(

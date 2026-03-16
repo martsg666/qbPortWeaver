@@ -9,7 +9,6 @@ namespace qbPortWeaver
     {
         private const string MediaTypeMovie = "Movie";
 
-
         private readonly TmdbClient _tmdb;
         private readonly bool _dryRun;
         private readonly bool _createFolders;
@@ -176,7 +175,7 @@ namespace qbPortWeaver
                 if (!_dryRun)
                 {
                     Directory.CreateDirectory(newFolderPath);
-                    File.Move(filePath, newFilePath);
+                    MoveFile(filePath, newFilePath, $"{plexName}{ext}");
                     LogManager.Instance.LogDebug($"{AppConstants.MediaManagerLogPrefix}MovieRenamer.ProcessStandaloneFile: renamed");
                 }
             }
@@ -193,7 +192,7 @@ namespace qbPortWeaver
                 LogManager.Instance.LogMessage($"{AppConstants.MediaManagerLogPrefix}Renaming to {plexName}{ext}", LogLevel.Info);
                 if (!_dryRun)
                 {
-                    File.Move(filePath, newFilePath);
+                    MoveFile(filePath, newFilePath, $"{plexName}{ext}");
                     LogManager.Instance.LogDebug($"{AppConstants.MediaManagerLogPrefix}MovieRenamer.ProcessStandaloneFile: renamed");
                 }
             }
@@ -264,7 +263,7 @@ namespace qbPortWeaver
             }
         }
 
-        // Renames video files to Plex names and companion files that share the first video's base name
+        // Renames video files to Plex names, then renames companion files via RenameCompanionFilesInFolder
         private static void RenameFilesInFolder(string dirPath, List<string> videoFiles, string plexFolderName)
         {
             foreach (var file in videoFiles)

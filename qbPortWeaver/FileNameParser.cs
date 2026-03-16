@@ -94,10 +94,6 @@ namespace qbPortWeaver
             rawTitle = rawTitle.Replace('.', ' ').Replace('_', ' ').Trim();
             rawTitle = StripLanguageSuffix(rawTitle);
 
-            // Extract year from the show name portion so it can be passed to TMDB as a
-            // first_air_date_year hint without polluting the title query.
-            // Handles both "Yellowstone 2018" (bare year) and "Show Name (2018)" (year in parens).
-            // Guard: don't strip the year if it IS the entire title (e.g. show "1883").
             var year = TryStripTrailingYear(ref rawTitle);
 
             rawTitle = CleanTitle(rawTitle);
@@ -271,5 +267,6 @@ namespace qbPortWeaver
         private static partial Regex PlexEpisodeNameRegex();
     }
 
+    /// <summary>Parsed TV episode identity: show name, optional year hint, season number, and episode number.</summary>
     public sealed record TvShowEpisodeInfo(string ShowName, int? Year, int Season, int Episode);
 }

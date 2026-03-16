@@ -197,7 +197,7 @@ namespace qbPortWeaver
             PerformEpisodeMove(filePath, targetPath, targetDir, episodeFileName);
         }
 
-        private void PerformEpisodeMove(string sourcePath, string targetPath, string? targetDir, string episodeFileName)
+        private static void PerformEpisodeMove(string sourcePath, string targetPath, string? targetDir, string episodeFileName)
         {
             if (File.Exists(targetPath))
             {

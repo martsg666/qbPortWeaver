@@ -245,9 +245,11 @@ namespace qbPortWeaver
             return Convert.ToBase64String(encrypted);
         }
 
-        // Returns "***" for the password key to avoid writing plaintext credentials to the log
+        // Returns "***" for sensitive keys to avoid writing credentials to the log
         private static string MaskSensitiveValue(string key, string value) =>
-            key.Equals(KeyQBittorrentPassword, StringComparison.OrdinalIgnoreCase) ? "***" : value;
+            key.Equals(KeyQBittorrentPassword, StringComparison.OrdinalIgnoreCase) ||
+            key.Equals(KeyTmdbApiKey,          StringComparison.OrdinalIgnoreCase)
+                ? "***" : value;
 
         // Returns the hardcoded default for a setting; returns empty string if the section or key is not found
         private static string GetDefault(string section, string key)

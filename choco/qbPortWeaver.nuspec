@@ -16,7 +16,7 @@
     <docsUrl>https://github.com/martsg666/qbPortWeaver#readme</docsUrl>
     <bugTrackerUrl>https://github.com/martsg666/qbPortWeaver/issues</bugTrackerUrl>
     <requireLicenseAcceptance>false</requireLicenseAcceptance>
-    <summary>Synchronizes qBittorrent's listening port with the port assigned by your VPN provider</summary>
+    <summary>Synchronizes qBittorrent's listening port with the VPN-assigned port, and renames media files to Plex conventions</summary>
     <description><![CDATA[
 ## qbPortWeaver
 
@@ -30,6 +30,10 @@ Works out of the box with **ProtonVPN** (log file), **Private Internet Access** 
 
 Runs on a configurable interval and updates qBittorrent's listening port via its Web API whenever the VPN-assigned port changes. Can restart qBittorrent after a port change to ensure it takes effect immediately, force-start it if it is not running, and optionally restart it if the connection drops. A fallback port can be applied when the VPN is disconnected.
 
+### Media Manager
+
+Automatically renames movie and TV episode files to Plex-compatible naming conventions on each sync cycle. Queries The Movie Database (TMDB) to identify titles and release years, then renames files using Plex conventions (`Title (Year).ext` for movies, `Show (Year) - SxxExx.ext` for TV episodes). Optionally organises files into Plex-recommended subfolders. A dedicated Media Manager dialog (tray menu) lets you configure watched folders, preview renames before they run (Scan Now), and apply or correct them manually (Rename Now). Uncertain TMDB matches are highlighted for review. A free TMDB API key is required.
+
 ### Visibility and Safety
 
 The tray icon shows a color-coded status dot (green / orange / red) and the tooltip displays the current port at a glance. An interface mismatch warning alerts you if qBittorrent is not bound to the VPN adapter. A JSON status file is written after each sync cycle for external monitoring or scripting.
@@ -37,6 +41,7 @@ The tray icon shows a color-coded status dot (green / orange / red) and the tool
 ### Other Features
 
 - Built-in log viewer with color-coded levels and live tail
+- Auto-Recovery: automatically restarts VPN services or cycles the network adapter after repeated sync failures
 - Post-update shell command hook for custom automation
 - Automatic update checker against GitHub releases
 - Optional auto-start with Windows
@@ -45,7 +50,7 @@ For full setup instructions and recommended VPN configuration, see the documenta
     ]]></description>
     <releaseNotes>https://github.com/martsg666/qbPortWeaver/releases/tag/vTEMPLATE_VERSION</releaseNotes>
     <copyright>© 2026 martsg666</copyright>
-    <tags>qbittorrent vpn port-forwarding protonvpn pia private-internet-access nat-pmp system-tray torrent port-sync admin</tags>
+    <tags>qbittorrent vpn port-forwarding protonvpn pia private-internet-access nat-pmp system-tray torrent port-sync media-manager plex tmdb admin</tags>
     <licenseUrl>https://github.com/martsg666/qbPortWeaver/blob/master/LICENSE</licenseUrl>
     <iconUrl>https://cdn.jsdelivr.net/gh/martsg666/qbPortWeaver@vTEMPLATE_VERSION/qbPortWeaver.png</iconUrl>
   </metadata>

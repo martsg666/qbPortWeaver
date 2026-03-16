@@ -7,6 +7,10 @@ namespace qbPortWeaver
     /// </summary>
     public sealed class TvShowRenamer
     {
+        private const string MediaTypeTvShow  = "TV";
+
+        private const int    MaxSubfolderDepth = 10; // TV Shows/Show (Year)/Season XX = depth 2; 10 is a safe ceiling
+
         private readonly TmdbClient _tmdb;
         private readonly bool _dryRun;
         private readonly bool _createFolders;
@@ -31,7 +35,7 @@ namespace qbPortWeaver
             if (!Directory.Exists(tvShowsRoot))
                 return proposals;
 
-            foreach (var file in Directory.GetFiles(tvShowsRoot).Where(FileNameParser.IsVideoEpisode))
+            foreach (var file in Directory.GetFiles(tvShowsRoot).Where(FileNameParser.IsVideoTvShowEpisode))
                 await ScanEpisodeFileAsync(tvShowsRoot, file, proposals).ConfigureAwait(false);
 
             foreach (var dir in Directory.GetDirectories(tvShowsRoot))
@@ -42,17 +46,18 @@ namespace qbPortWeaver
             return proposals;
         }
 
+        /// <summary>Processes all TV episodes in a folder, applying Plex naming conventions and renaming or moving files. Skips uncertain TMDB matches — use <see cref="ScanTvShowsFolderAsync"/> to preview and review those first.</summary>
         public async Task ProcessTvShowsFolderAsync(string tvShowsRoot)
         {
             if (!Directory.Exists(tvShowsRoot))
             {
-                LogManager.Instance.LogMessage($"[MediaManager] TV folder not found: {tvShowsRoot}", LogLevel.Error);
+                LogManager.Instance.LogMessage($"{AppConstants.MediaManagerLogPrefix}TV folder not found: {tvShowsRoot}", LogLevel.Error);
                 return;
             }
 
-            LogManager.Instance.LogMessage($"[MediaManager] Scanning TV folder: {tvShowsRoot}", LogLevel.Info);
+            LogManager.Instance.LogMessage($"{AppConstants.MediaManagerLogPrefix}Scanning TV folder: {tvShowsRoot}", LogLevel.Info);
 
-            foreach (var file in Directory.GetFiles(tvShowsRoot).Where(FileNameParser.IsVideoEpisode))
+            foreach (var file in Directory.GetFiles(tvShowsRoot).Where(FileNameParser.IsVideoTvShowEpisode))
                 await ProcessEpisodeFileAsync(tvShowsRoot, file).ConfigureAwait(false);
 
             foreach (var dir in Directory.GetDirectories(tvShowsRoot))
@@ -61,15 +66,19 @@ namespace qbPortWeaver
             }
         }
 
-        private async Task ScanSubfolderAsync(string tvShowsRoot, string dirPath, List<RenameProposal> proposals)
+        private async Task ScanSubfolderAsync(string tvShowsRoot, string dirPath, List<RenameProposal> proposals, int depth = 0)
         {
-            foreach (var file in Directory.GetFiles(dirPath).Where(FileNameParser.IsVideoEpisode))
+            if (depth > MaxSubfolderDepth)
+            {
+                LogManager.Instance.LogMessage($"{AppConstants.MediaManagerLogPrefix}Skipping '{dirPath}' - exceeded max folder depth ({MaxSubfolderDepth})", LogLevel.Warn);
+                return;
+            }
+
+            foreach (var file in Directory.GetFiles(dirPath).Where(FileNameParser.IsVideoTvShowEpisode))
                 await ScanEpisodeFileAsync(tvShowsRoot, file, proposals).ConfigureAwait(false);
 
             foreach (var subDir in Directory.GetDirectories(dirPath))
-            {
-                await ScanSubfolderAsync(tvShowsRoot, subDir, proposals).ConfigureAwait(false);
-            }
+                await ScanSubfolderAsync(tvShowsRoot, subDir, proposals, depth + 1).ConfigureAwait(false);
         }
 
         private async Task ScanEpisodeFileAsync(string tvShowsRoot, string filePath, List<RenameProposal> proposals)
@@ -77,19 +86,19 @@ namespace qbPortWeaver
             var fileName = Path.GetFileName(filePath);
             if (!_createFolders && FileNameParser.IsPlexFormatted(fileName)) return;
 
-            var episodeInfo = FileNameParser.ParseTvEpisode(fileName);
+            var episodeInfo = FileNameParser.ParseTvShowEpisode(fileName);
             if (episodeInfo == null) return;
 
             bool isConfident = true;
             if (!_showCache.TryGetValue(episodeInfo.ShowName, out var showInfo))
             {
-                (showInfo, isConfident) = await LookupTvShowAsync(episodeInfo.ShowName).ConfigureAwait(false);
+                (showInfo, isConfident) = await LookupTvShowAsync(episodeInfo.ShowName, episodeInfo.Year).ConfigureAwait(false);
                 if (showInfo != null)
                     _showCache[episodeInfo.ShowName] = showInfo;
             }
             if (showInfo == null)
             {
-                proposals.Add(new RenameProposal("TV", filePath, string.Empty, IsConfident: false, IsMatched: false));
+                proposals.Add(new RenameProposal(MediaTypeTvShow, filePath, string.Empty, IsConfident: false, IsMatched: false));
                 return;
             }
 
@@ -102,18 +111,22 @@ namespace qbPortWeaver
                 : Path.Combine(tvShowsRoot, episodeFileName);
 
             if (!string.Equals(filePath, proposedPath, StringComparison.OrdinalIgnoreCase))
-                proposals.Add(new RenameProposal("TV", filePath, proposedPath, isConfident));
+                proposals.Add(new RenameProposal(MediaTypeTvShow, filePath, proposedPath, isConfident));
         }
 
-        private async Task ProcessSubfolderAsync(string tvShowsRoot, string dirPath)
+        private async Task ProcessSubfolderAsync(string tvShowsRoot, string dirPath, int depth = 0)
         {
-            foreach (var file in Directory.GetFiles(dirPath).Where(FileNameParser.IsVideoEpisode))
+            if (depth > MaxSubfolderDepth)
+            {
+                LogManager.Instance.LogMessage($"{AppConstants.MediaManagerLogPrefix}Skipping '{dirPath}' - exceeded max folder depth ({MaxSubfolderDepth})", LogLevel.Warn);
+                return;
+            }
+
+            foreach (var file in Directory.GetFiles(dirPath).Where(FileNameParser.IsVideoTvShowEpisode))
                 await ProcessEpisodeFileAsync(tvShowsRoot, file).ConfigureAwait(false);
 
             foreach (var subDir in Directory.GetDirectories(dirPath))
-            {
-                await ProcessSubfolderAsync(tvShowsRoot, subDir).ConfigureAwait(false);
-            }
+                await ProcessSubfolderAsync(tvShowsRoot, subDir, depth + 1).ConfigureAwait(false);
         }
 
         private async Task ProcessEpisodeFileAsync(string tvShowsRoot, string filePath)
@@ -123,25 +136,25 @@ namespace qbPortWeaver
             // Skip TMDB lookup entirely if the file is already Plex-formatted (and we're not reorganising into folders)
             if (!_createFolders && FileNameParser.IsPlexFormatted(fileName))
             {
-                LogManager.Instance.LogDebug($"[MediaManager] TvShowRenamer.ProcessEpisodeFile: already Plex-formatted, skipping '{fileName}'");
+                LogManager.Instance.LogDebug($"{AppConstants.MediaManagerLogPrefix}TvShowRenamer.ProcessEpisodeFile: already Plex-formatted, skipping '{fileName}'");
                 return;
             }
 
-            var episodeInfo = FileNameParser.ParseTvEpisode(fileName);
+            var episodeInfo = FileNameParser.ParseTvShowEpisode(fileName);
 
             if (episodeInfo == null)
             {
-                LogManager.Instance.LogMessage($"[MediaManager] Skipped '{fileName}' - not a recognised episode", LogLevel.Info);
+                LogManager.Instance.LogMessage($"{AppConstants.MediaManagerLogPrefix}Skipped '{fileName}' - not a recognised episode", LogLevel.Info);
                 return;
             }
 
-            LogManager.Instance.LogMessage($"[MediaManager] Processing '{fileName}'", LogLevel.Info);
-            LogManager.Instance.LogDebug($"[MediaManager] TvShowRenamer.ProcessEpisodeFile: parsed show='{episodeInfo.ShowName}' S{episodeInfo.Season:D2}E{episodeInfo.Episode:D2}");
+            LogManager.Instance.LogMessage($"{AppConstants.MediaManagerLogPrefix}Processing '{fileName}'", LogLevel.Info);
+            LogManager.Instance.LogDebug($"{AppConstants.MediaManagerLogPrefix}TvShowRenamer.ProcessEpisodeFile: parsed show='{episodeInfo.ShowName}' S{episodeInfo.Season:D2}E{episodeInfo.Episode:D2}");
 
             bool isConfident = true;
             if (!_showCache.TryGetValue(episodeInfo.ShowName, out var showInfo))
             {
-                (showInfo, isConfident) = await LookupTvShowAsync(episodeInfo.ShowName).ConfigureAwait(false);
+                (showInfo, isConfident) = await LookupTvShowAsync(episodeInfo.ShowName, episodeInfo.Year).ConfigureAwait(false);
                 if (showInfo != null)
                     _showCache[episodeInfo.ShowName] = showInfo;
             }
@@ -149,7 +162,7 @@ namespace qbPortWeaver
             if (showInfo == null) return;
             if (!isConfident)
             {
-                LogManager.Instance.LogMessage($"[MediaManager] Skipping '{fileName}' - uncertain TMDB match, review in Media Manager", LogLevel.Warn);
+                LogManager.Instance.LogMessage($"{AppConstants.MediaManagerLogPrefix}Skipping '{fileName}' - uncertain TMDB match, review in Media Manager", LogLevel.Warn);
                 return;
             }
 
@@ -161,7 +174,7 @@ namespace qbPortWeaver
         }
 
         // Moves or renames the episode file to its Plex-compliant target path, creating season folders if needed.
-        private void MoveEpisodeFile(string tvShowsRoot, string filePath, TvEpisodeInfo episodeInfo, string showFolderName, string episodeFileName)
+        private void MoveEpisodeFile(string tvShowsRoot, string filePath, TvShowEpisodeInfo episodeInfo, string showFolderName, string episodeFileName)
         {
             if (_createFolders)
             {
@@ -169,46 +182,56 @@ namespace qbPortWeaver
                 var targetDir    = Path.Combine(tvShowsRoot, showFolderName, seasonFolder);
                 var targetPath   = Path.Combine(targetDir, episodeFileName);
 
-                LogManager.Instance.LogMessage($"[MediaManager] Renaming to {showFolderName}/{seasonFolder}/{episodeFileName}", LogLevel.Info);
+                LogManager.Instance.LogMessage($"{AppConstants.MediaManagerLogPrefix}Renaming to {showFolderName}/{seasonFolder}/{episodeFileName}", LogLevel.Info);
 
                 if (!_dryRun && !string.Equals(filePath, targetPath, StringComparison.OrdinalIgnoreCase))
                 {
-                    Directory.CreateDirectory(targetDir);
-                    File.Move(filePath, targetPath);
-                    LogManager.Instance.LogDebug("[MediaManager] TvShowRenamer.ProcessEpisodeFile: renamed");
+                    if (File.Exists(targetPath))
+                        LogManager.Instance.LogMessage($"{AppConstants.MediaManagerLogPrefix}Skipped rename - target already exists: '{episodeFileName}'", LogLevel.Warn);
+                    else
+                    {
+                        Directory.CreateDirectory(targetDir);
+                        File.Move(filePath, targetPath);
+                        LogManager.Instance.LogDebug($"{AppConstants.MediaManagerLogPrefix}TvShowRenamer.ProcessEpisodeFile: renamed");
+                    }
                 }
             }
             else
             {
                 var targetPath = Path.Combine(tvShowsRoot, episodeFileName);
 
-                LogManager.Instance.LogMessage($"[MediaManager] Renaming to {episodeFileName}", LogLevel.Info);
+                LogManager.Instance.LogMessage($"{AppConstants.MediaManagerLogPrefix}Renaming to {episodeFileName}", LogLevel.Info);
 
                 if (!_dryRun && !string.Equals(filePath, targetPath, StringComparison.OrdinalIgnoreCase))
                 {
-                    File.Move(filePath, targetPath);
-                    LogManager.Instance.LogDebug("[MediaManager] TvShowRenamer.ProcessEpisodeFile: renamed");
+                    if (File.Exists(targetPath))
+                        LogManager.Instance.LogMessage($"{AppConstants.MediaManagerLogPrefix}Skipped rename - target already exists: '{episodeFileName}'", LogLevel.Warn);
+                    else
+                    {
+                        File.Move(filePath, targetPath);
+                        LogManager.Instance.LogDebug($"{AppConstants.MediaManagerLogPrefix}TvShowRenamer.ProcessEpisodeFile: renamed");
+                    }
                 }
             }
         }
 
-        private async Task<(TvShowInfo? Info, bool IsConfident)> LookupTvShowAsync(string name)
+        private async Task<(TvShowInfo? Info, bool IsConfident)> LookupTvShowAsync(string name, int? year)
         {
             try
             {
-                var info = await _tmdb.SearchTvShowAsync(name).ConfigureAwait(false);
+                var info = await _tmdb.SearchTvShowAsync(name, year).ConfigureAwait(false);
                 if (info == null)
                 {
-                    LogManager.Instance.LogMessage($"[MediaManager] No TMDB match found for show '{name}'", LogLevel.Warn);
+                    LogManager.Instance.LogMessage($"{AppConstants.MediaManagerLogPrefix}No TMDB match found for show '{name}'", LogLevel.Warn);
                     return (null, false);
                 }
 
-                LogManager.Instance.LogDebug($"[MediaManager] TvShowRenamer.LookupTvShow: matched '{info.Title}' ({info.Year}) [tmdb-{info.TmdbId}]");
+                LogManager.Instance.LogDebug($"{AppConstants.MediaManagerLogPrefix}TvShowRenamer.LookupTvShow: matched '{info.Title}' ({info.Year}) [tmdb-{info.TmdbId}]");
                 return (info, true);
             }
             catch (HttpRequestException ex)
             {
-                LogManager.Instance.LogMessage($"[MediaManager] TMDB TV show lookup failed: {ex.Message}", LogLevel.Error);
+                LogManager.Instance.LogMessage($"{AppConstants.MediaManagerLogPrefix}TMDB TV show lookup failed: {ex.Message}", LogLevel.Error);
                 return (null, false);
             }
         }

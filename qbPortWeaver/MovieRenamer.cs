@@ -9,6 +9,7 @@ namespace qbPortWeaver
     {
         private const string MediaTypeMovie = "Movie";
 
+
         private readonly TmdbClient _tmdb;
         private readonly bool _dryRun;
         private readonly bool _createFolders;
@@ -42,15 +43,16 @@ namespace qbPortWeaver
             return proposals;
         }
 
+        /// <summary>Processes all movies in a folder, applying Plex naming conventions and renaming or moving files. Skips uncertain TMDB matches — use <see cref="ScanMoviesFolderAsync"/> to preview and review those first.</summary>
         public async Task ProcessMoviesFolderAsync(string moviesRoot)
         {
             if (!Directory.Exists(moviesRoot))
             {
-                LogManager.Instance.LogMessage($"[MediaManager] Movie folder not found: {moviesRoot}", LogLevel.Error);
+                LogManager.Instance.LogMessage($"{AppConstants.MediaManagerLogPrefix}Movie folder not found: {moviesRoot}", LogLevel.Error);
                 return;
             }
 
-            LogManager.Instance.LogMessage($"[MediaManager] Scanning movie folder: {moviesRoot}", LogLevel.Info);
+            LogManager.Instance.LogMessage($"{AppConstants.MediaManagerLogPrefix}Scanning movie folder: {moviesRoot}", LogLevel.Info);
 
             foreach (var file in Directory.GetFiles(moviesRoot).Where(FileNameParser.IsVideoFile))
                 await ProcessStandaloneFileAsync(moviesRoot, file).ConfigureAwait(false);
@@ -133,7 +135,7 @@ namespace qbPortWeaver
             // Skip TMDB lookup entirely if the file is already Plex-formatted (and we're not reorganising into folders)
             if (!_createFolders && FileNameParser.IsPlexFormatted(fileName))
             {
-                LogManager.Instance.LogDebug($"[MediaManager] MovieRenamer.ProcessStandaloneFile: already Plex-formatted, skipping '{fileName}'");
+                LogManager.Instance.LogDebug($"{AppConstants.MediaManagerLogPrefix}MovieRenamer.ProcessStandaloneFile: already Plex-formatted, skipping '{fileName}'");
                 return;
             }
 
@@ -141,18 +143,18 @@ namespace qbPortWeaver
 
             if (string.IsNullOrWhiteSpace(title))
             {
-                LogManager.Instance.LogMessage($"[MediaManager] Skipped '{fileName}' - could not parse title", LogLevel.Info);
+                LogManager.Instance.LogMessage($"{AppConstants.MediaManagerLogPrefix}Skipped '{fileName}' - could not parse title", LogLevel.Info);
                 return;
             }
 
-            LogManager.Instance.LogMessage($"[MediaManager] Processing '{fileName}'", LogLevel.Info);
-            LogManager.Instance.LogDebug($"[MediaManager] MovieRenamer.ProcessStandaloneFile: parsed title='{title}', year={year?.ToString() ?? "unknown"}");
+            LogManager.Instance.LogMessage($"{AppConstants.MediaManagerLogPrefix}Processing '{fileName}'", LogLevel.Info);
+            LogManager.Instance.LogDebug($"{AppConstants.MediaManagerLogPrefix}MovieRenamer.ProcessStandaloneFile: parsed title='{title}', year={year?.ToString() ?? "unknown"}");
 
             var (info, isConfident) = await LookupMovieAsync(title, year).ConfigureAwait(false);
             if (info == null) return;
             if (!isConfident)
             {
-                LogManager.Instance.LogMessage($"[MediaManager] Skipping '{fileName}' - uncertain TMDB match, review in Media Manager", LogLevel.Warn);
+                LogManager.Instance.LogMessage($"{AppConstants.MediaManagerLogPrefix}Skipping '{fileName}' - uncertain TMDB match, review in Media Manager", LogLevel.Warn);
                 return;
             }
 
@@ -166,16 +168,16 @@ namespace qbPortWeaver
 
                 if (filePath == newFilePath)
                 {
-                    LogManager.Instance.LogDebug("[MediaManager] MovieRenamer.ProcessStandaloneFile: already correctly named");
+                    LogManager.Instance.LogDebug($"{AppConstants.MediaManagerLogPrefix}MovieRenamer.ProcessStandaloneFile: already correctly named");
                     return;
                 }
 
-                LogManager.Instance.LogMessage($"[MediaManager] Renaming to {plexName}/{plexName}{ext}", LogLevel.Info);
+                LogManager.Instance.LogMessage($"{AppConstants.MediaManagerLogPrefix}Renaming to {plexName}/{plexName}{ext}", LogLevel.Info);
                 if (!_dryRun)
                 {
                     Directory.CreateDirectory(newFolderPath);
                     File.Move(filePath, newFilePath);
-                    LogManager.Instance.LogDebug("[MediaManager] MovieRenamer.ProcessStandaloneFile: renamed");
+                    LogManager.Instance.LogDebug($"{AppConstants.MediaManagerLogPrefix}MovieRenamer.ProcessStandaloneFile: renamed");
                 }
             }
             else
@@ -184,15 +186,15 @@ namespace qbPortWeaver
 
                 if (filePath == newFilePath)
                 {
-                    LogManager.Instance.LogDebug("[MediaManager] MovieRenamer.ProcessStandaloneFile: already correctly named");
+                    LogManager.Instance.LogDebug($"{AppConstants.MediaManagerLogPrefix}MovieRenamer.ProcessStandaloneFile: already correctly named");
                     return;
                 }
 
-                LogManager.Instance.LogMessage($"[MediaManager] Renaming to {plexName}{ext}", LogLevel.Info);
+                LogManager.Instance.LogMessage($"{AppConstants.MediaManagerLogPrefix}Renaming to {plexName}{ext}", LogLevel.Info);
                 if (!_dryRun)
                 {
                     File.Move(filePath, newFilePath);
-                    LogManager.Instance.LogDebug("[MediaManager] MovieRenamer.ProcessStandaloneFile: renamed");
+                    LogManager.Instance.LogDebug($"{AppConstants.MediaManagerLogPrefix}MovieRenamer.ProcessStandaloneFile: renamed");
                 }
             }
         }
@@ -204,7 +206,7 @@ namespace qbPortWeaver
             // Skip TMDB lookup entirely if the folder is already Plex-formatted
             if (FileNameParser.IsPlexFormatted(dirName))
             {
-                LogManager.Instance.LogDebug($"[MediaManager] MovieRenamer.ProcessMovieFolder: already Plex-formatted, skipping folder '{dirName}'");
+                LogManager.Instance.LogDebug($"{AppConstants.MediaManagerLogPrefix}MovieRenamer.ProcessMovieFolder: already Plex-formatted, skipping folder '{dirName}'");
                 return;
             }
 
@@ -221,18 +223,18 @@ namespace qbPortWeaver
 
             if (string.IsNullOrWhiteSpace(title))
             {
-                LogManager.Instance.LogMessage($"[MediaManager] Skipped folder '{dirName}' - could not parse title", LogLevel.Info);
+                LogManager.Instance.LogMessage($"{AppConstants.MediaManagerLogPrefix}Skipped folder '{dirName}' - could not parse title", LogLevel.Info);
                 return;
             }
 
-            LogManager.Instance.LogMessage($"[MediaManager] Processing folder '{dirName}'", LogLevel.Info);
-            LogManager.Instance.LogDebug($"[MediaManager] MovieRenamer.ProcessMovieFolder: parsed title='{title}', year={year?.ToString() ?? "unknown"}");
+            LogManager.Instance.LogMessage($"{AppConstants.MediaManagerLogPrefix}Processing folder '{dirName}'", LogLevel.Info);
+            LogManager.Instance.LogDebug($"{AppConstants.MediaManagerLogPrefix}MovieRenamer.ProcessMovieFolder: parsed title='{title}', year={year?.ToString() ?? "unknown"}");
 
             var (info, isConfident) = await LookupMovieAsync(title, year).ConfigureAwait(false);
             if (info == null) return;
             if (!isConfident)
             {
-                LogManager.Instance.LogMessage($"[MediaManager] Skipping folder '{dirName}' - uncertain TMDB match, review in Media Manager", LogLevel.Warn);
+                LogManager.Instance.LogMessage($"{AppConstants.MediaManagerLogPrefix}Skipping folder '{dirName}' - uncertain TMDB match, review in Media Manager", LogLevel.Warn);
                 return;
             }
 
@@ -243,22 +245,22 @@ namespace qbPortWeaver
 
             if (string.Equals(dirPath, newDirPath, StringComparison.OrdinalIgnoreCase))
             {
-                LogManager.Instance.LogDebug("[MediaManager] MovieRenamer.ProcessMovieFolder: folder already correctly named");
+                LogManager.Instance.LogDebug($"{AppConstants.MediaManagerLogPrefix}MovieRenamer.ProcessMovieFolder: folder already correctly named");
                 return;
             }
 
-            LogManager.Instance.LogMessage($"[MediaManager] Renaming folder '{dirName}' -> '{plexFolderName}'", LogLevel.Info);
+            LogManager.Instance.LogMessage($"{AppConstants.MediaManagerLogPrefix}Renaming folder '{dirName}' -> '{plexFolderName}'", LogLevel.Info);
 
             if (_dryRun) return;
 
             RenameFilesInFolder(dirPath, videoFiles, plexFolderName);
 
             if (Directory.Exists(newDirPath))
-                LogManager.Instance.LogMessage($"[MediaManager] Skipped folder rename - target already exists: '{plexFolderName}'", LogLevel.Warn);
+                LogManager.Instance.LogMessage($"{AppConstants.MediaManagerLogPrefix}Skipped folder rename - target already exists: '{plexFolderName}'", LogLevel.Warn);
             else
             {
                 Directory.Move(dirPath, newDirPath);
-                LogManager.Instance.LogDebug("[MediaManager] MovieRenamer.ProcessMovieFolder: renamed");
+                LogManager.Instance.LogDebug($"{AppConstants.MediaManagerLogPrefix}MovieRenamer.ProcessMovieFolder: renamed");
             }
         }
 
@@ -277,7 +279,12 @@ namespace qbPortWeaver
 
                 var newFilePath = Path.Combine(dirPath, newFileName);
                 if (!string.Equals(file, newFilePath, StringComparison.OrdinalIgnoreCase))
-                    File.Move(file, newFilePath);
+                {
+                    if (File.Exists(newFilePath))
+                        LogManager.Instance.LogMessage($"{AppConstants.MediaManagerLogPrefix}Skipped rename - target already exists: '{newFileName}'", LogLevel.Warn);
+                    else
+                        File.Move(file, newFilePath);
+                }
             }
 
             // Rename subtitle/companion files that share the video base name
@@ -290,7 +297,12 @@ namespace qbPortWeaver
                     var suffix      = fileName[firstVideoBase.Length..];
                     var newFilePath = Path.Combine(dirPath, plexFolderName + suffix);
                     if (!string.Equals(file, newFilePath, StringComparison.OrdinalIgnoreCase))
-                        File.Move(file, newFilePath);
+                    {
+                        if (File.Exists(newFilePath))
+                            LogManager.Instance.LogMessage($"{AppConstants.MediaManagerLogPrefix}Skipped rename - target already exists: '{plexFolderName + suffix}'", LogLevel.Warn);
+                        else
+                            File.Move(file, newFilePath);
+                    }
                 }
             }
         }
@@ -306,7 +318,7 @@ namespace qbPortWeaver
                     ? $"{plexFolderName} - {partSuffix}{Path.GetExtension(file)}"
                     : $"{plexFolderName}{Path.GetExtension(file)}";
 
-                LogManager.Instance.LogMessage($"[MediaManager] Renaming '{oldFileName}' -> '{newFileName}'", LogLevel.Info);
+                LogManager.Instance.LogMessage($"{AppConstants.MediaManagerLogPrefix}Renaming '{oldFileName}' -> '{newFileName}'", LogLevel.Info);
             }
         }
 
@@ -328,16 +340,16 @@ namespace qbPortWeaver
 
                 if (info == null)
                 {
-                    LogManager.Instance.LogMessage($"[MediaManager] No TMDB match found for '{title}'", LogLevel.Warn);
+                    LogManager.Instance.LogMessage($"{AppConstants.MediaManagerLogPrefix}No TMDB match found for '{title}'", LogLevel.Warn);
                     return (null, false);
                 }
 
-                LogManager.Instance.LogDebug($"[MediaManager] MovieRenamer.LookupMovie: matched '{info.Title}' ({info.Year}) [tmdb-{info.TmdbId}]");
+                LogManager.Instance.LogDebug($"{AppConstants.MediaManagerLogPrefix}MovieRenamer.LookupMovie: matched '{info.Title}' ({info.Year}) [tmdb-{info.TmdbId}]");
                 return (info, isConfident);
             }
             catch (HttpRequestException ex)
             {
-                LogManager.Instance.LogMessage($"[MediaManager] TMDB movie lookup failed: {ex.Message}", LogLevel.Error);
+                LogManager.Instance.LogMessage($"{AppConstants.MediaManagerLogPrefix}TMDB movie lookup failed: {ex.Message}", LogLevel.Error);
                 return (null, false);
             }
         }
@@ -352,7 +364,7 @@ namespace qbPortWeaver
             if (noMatchSoFar && title.Contains(" - "))
             {
                 var afterDash = title[(title.IndexOf(" - ", StringComparison.Ordinal) + 3)..].Trim();
-                LogManager.Instance.LogDebug($"[MediaManager] MovieRenamer.LookupMovie: retrying with '{afterDash}'");
+                LogManager.Instance.LogDebug($"{AppConstants.MediaManagerLogPrefix}MovieRenamer.LookupMovie: retrying with '{afterDash}'");
                 info = await _tmdb.SearchMovieAsync(afterDash, year).ConfigureAwait(false);
                 if (info != null) isConfident = false;
             }
@@ -364,7 +376,7 @@ namespace qbPortWeaver
                 if (trimmed.Length > 2 && char.IsDigit(trimmed[^1]) && trimmed[^2] == ' ')
                 {
                     var withoutNum = trimmed[..^2].Trim();
-                    LogManager.Instance.LogDebug($"[MediaManager] MovieRenamer.LookupMovie: retrying without trailing number '{withoutNum}'");
+                    LogManager.Instance.LogDebug($"{AppConstants.MediaManagerLogPrefix}MovieRenamer.LookupMovie: retrying without trailing number '{withoutNum}'");
                     var altInfo = await _tmdb.SearchMovieAsync(withoutNum, year).ConfigureAwait(false);
                     if (altInfo?.Year != null)
                     {

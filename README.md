@@ -69,6 +69,9 @@ The application runs in the system tray, manages configuration and logging, and 
 - **Auto-Recovery**
   Automatically recovers when a configurable number of consecutive sync cycles fail - whether the VPN is disconnected or port detection fails despite the VPN being connected. For ProtonVPN and PIA (direct or NAT-PMP mode), the helper restarts the Windows service and the tray app restarts the client process. For NAT-PMP with a generic (non-ProtonVPN/PIA) gateway, the helper cycles the network adapter (disable/enable via netsh). All privileged operations are delegated to a lightweight helper Windows service (`qbPortWeaverHelper`) running as LocalSystem - no UAC prompt required.
 
+- **Media Manager**
+  Automatically renames movie and TV episode files to Plex-compatible naming conventions on each sync cycle. Queries [The Movie Database (TMDB)](https://www.themoviedb.org) to identify titles and release years, then renames files using Plex conventions (`Title (Year).ext` for movies, `Show (Year) - SxxExx.ext` for TV episodes). Optionally organises files into Plex-recommended subfolders (`Movies/Title (Year)/` and `TV Shows/Show (Year)/Season XX/`). A dedicated **Media Manager** dialog (tray menu → Media Manager) lets you configure watched folders, preview renames before they run (**Scan Now**), and apply or correct them manually (**Rename Now**). Uncertain TMDB matches are highlighted in red for review. A free TMDB API key is required.
+
 - **Automatic Update Checker**
   Checks GitHub for new releases on startup and every 12 hours, and offers to open the download page. The **About** dialog (tray menu → About) also shows the current and latest version, update status, and contributor links.
 
@@ -105,6 +108,19 @@ On first run, all settings are initialized with sensible defaults.
 | Auto-Recovery trigger cycles | Number of consecutive failed cycles before triggering auto-recovery | `3` |
 | Debug logging | Enable verbose debug logging to the log file | `False` |
 
+### Media Manager Settings
+
+Configured via tray menu -> **Media Manager**.
+
+| Setting | Description | Default |
+|---|---|---|
+| Enable Media Manager | Run the media renamer on each sync cycle | `False` |
+| TMDB API Key | API key for The Movie Database lookups (free at themoviedb.org/settings/api) | - |
+| Dry Run | Preview renames without touching any files | `True` |
+| Create Folders | Organise each title into its own Plex subfolder (`Title (Year)/` for movies, `Show (Year)/Season XX/` for TV) | `False` |
+| Movie Folders | List of folders scanned for movie files on each cycle | - |
+| TV Show Folders | List of folders scanned for TV episode files on each cycle | - |
+
 ---
 
 ## Usage
@@ -130,7 +146,8 @@ On first run, all settings are initialized with sensible defaults.
    - Runs the optional post-update command if configured. e.g., `powershell -File "C:\path\to\SampleSendMail.ps1"`
 7. If **Restart on disconnect** is enabled (and qBittorrent was not already restarted in step 6): checks qBittorrent's connection status and restarts it if disconnected.
 8. Writes the JSON status file (`%LocalAppData%\qbPortWeaver\qbPortWeaver.status.json`) and updates the tray icon and tooltip.
-9. Waits for the configured interval before repeating.
+9. If **Media Manager** is enabled: scans the configured movie and TV show folders, queries TMDB for each unrecognised title, and renames files to Plex-compatible names. In **dry-run** mode no files are touched; use **Scan Now** in the Media Manager dialog to preview results first. Uncertain TMDB matches are skipped automatically and flagged for manual review in the dialog.
+10. Waits for the configured interval before repeating.
 
 ### Tray Menu Options
 
@@ -138,6 +155,7 @@ On first run, all settings are initialized with sensible defaults.
 - **Show Logs** - opens the built-in Log Viewer (also opened by double-clicking the tray icon)
 - **Clear Logs** - deletes all log files and starts a fresh log
 - **Settings** - opens the Settings dialog
+- **Media Manager** - opens the Media Manager dialog to configure folders, preview renames (Scan Now), and apply them (Rename Now)
 - **About** - shows version info and update status
 - **Start Automatically with Windows** - toggles the Windows startup registry entry
 - **Exit** - shuts down the application

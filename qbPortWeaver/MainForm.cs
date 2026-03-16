@@ -269,6 +269,7 @@ namespace qbPortWeaver
                 while (!_shutdownCts.IsCancellationRequested)
                 {
                     await _updateSemaphore.WaitAsync(_shutdownCts.Token);
+                    LogManager.Instance.LogMessage("Sync cycle started", LogLevel.Info);
                     int updateInterval;
                     try
                     {

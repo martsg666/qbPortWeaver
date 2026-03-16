@@ -2,6 +2,7 @@ using System.Diagnostics;
 
 namespace qbPortWeaver
 {
+    /// <summary>Application-wide constants, file path helpers, and shared utility methods for qbPortWeaver.</summary>
     public static class AppConstants
     {
         // Application metadata
@@ -27,6 +28,10 @@ namespace qbPortWeaver
         // Must match HelperPipeServer.PipeName in qbPortWeaver.HelperService.
         public const string HelperServicePipeName = "qbPortWeaverHelper";
 
+        // Log prefix for the Media Manager subsystem - applied to all log messages originating from
+        // MovieRenamer, TvShowRenamer, and MediaManagerService.
+        public const string MediaManagerLogPrefix = "[MediaManager] ";
+
         // GitHub - only the owner is a literal; all URLs are derived
         public const string GitHubRepoOwner = "martsg666";
         public static readonly string GitHubRepoUrl = $"https://github.com/{GitHubRepoOwner}/{AppName}";
@@ -48,10 +53,12 @@ namespace qbPortWeaver
             "Proton", "Proton VPN", "Logs", "client-logs.txt"
         );
 
-        // Kills a process (including its entire process tree) and waits up to timeoutMs for exit.
-        // Escalation: Process.Kill → wait → taskkill /F /T → retry Process.Kill (handles processes
-        // that resist .NET's TerminateProcess, e.g. qBittorrent during active I/O).
-        // Returns true if the process exited (or had already exited), false if it may still be running.
+        /// <summary>
+        /// Kills a process (including its entire process tree) and waits up to <paramref name="timeoutMs"/> for exit.
+        /// Escalation: <c>Process.Kill</c> → wait → <c>taskkill /F /T</c> → retry <c>Process.Kill</c>
+        /// (handles processes that resist .NET's TerminateProcess, e.g. qBittorrent during active I/O).
+        /// Returns <see langword="true"/> if the process exited (or had already exited), <see langword="false"/> if it may still be running.
+        /// </summary>
         public static bool KillProcess(Process process, int timeoutMs = 5000)
         {
             try
@@ -102,7 +109,7 @@ namespace qbPortWeaver
             return process.WaitForExit(timeoutMs);
         }
 
-        // Opens a URL in the default browser using ShellExecute
+        /// <summary>Opens a URL in the default browser using ShellExecute.</summary>
         public static void OpenUrl(string url)
         {
             try

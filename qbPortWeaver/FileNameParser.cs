@@ -12,26 +12,30 @@ namespace qbPortWeaver
         private static readonly string[] CutoffTokens =
         [
             // Resolution / quality
-            "720p", "1080p", "2160p", "4k", "uhd", "hdr", "10bit", "3d",
+            "480p", "576p", "720p", "1080p", "1080i", "2160p", "4k", "fhd", "uhd",
+            "hdr", "hdr10", "sdr", "dovi", "10bit", "10-bit", "3d",
             // Source
             "bluray", "blu-ray", "bdrip", "brrip", "bdremux", "remux",
-            "dvdrip", "dvdscr", "hdtv", "hdrip", "hdlight",
+            "dvdrip", "dvdscr", "hdtv", "hdrip", "hdlight", "hdcam",
             "webrip", "web-dl", "webdl", "web",
             "cam", "screener", "telecine", "vod", "imax",
+            // Streaming service prefixes (appear before WEB-DL)
+            "amzn", "nf", "dsnp", "dsny", "hmax", "atvp", "pcok", "pmtp", "crav", "hulu",
             // Video codec
             "x264", "x265", "h264", "h265", "hevc", "avc", "xvid", "divx",
-            "av1", "vp9",
+            "av1", "vp9", "vc-1", "vc1",
             // Audio codec
-            "aac", "ac3", "dts", "dts-hd", "mp3", "flac", "truehd", "atmos", "ddp5", "eac3",
+            "aac", "ac3", "dts", "dts-hd", "dts-x", "dtsx", "mp3", "flac",
+            "truehd", "atmos", "ddp", "ddp5", "eac3", "opus", "lpcm", "pcm",
             // Language
             "multi", "truefrench", "french", "vff", "vfi", "vf2", "vfq",
-            "dubbed", "subbed",
+            "vost", "vostfr", "vof", "dubbed", "subbed",
             // Edition / release flags
             "proper", "repack", "extended", "unrated", "uncut", "directors", "theatrical",
             "remastered", "remaster", "criterion", "limited", "internal",
-            "final", "hybrid", "mhd",
+            "redux", "restored", "final", "hybrid", "mhd",
             // Misc
-            "pmtp", "ntsc"
+            "ntsc"
         ];
 
         /// <summary>Strips characters that are invalid in file names and collapses runs of spaces. Replaces <c>:</c> with <c> -</c> to preserve subtitle separators.</summary>
@@ -40,8 +44,7 @@ namespace qbPortWeaver
             name = name.Replace(":", " -");
             foreach (var c in Path.GetInvalidFileNameChars())
                 name = name.Replace(c, ' ');
-            while (name.Contains("  "))
-                name = name.Replace("  ", " ");
+            name = MultiSpaceRegex().Replace(name, " ");
             return name.Trim();
         }
 
@@ -49,13 +52,13 @@ namespace qbPortWeaver
         public static bool IsVideoFile(string path) =>
             VideoExtensions.Contains(Path.GetExtension(path));
 
-        /// <summary>Returns true if the filename contains a TV episode pattern (SxxExx).</summary>
-        public static bool IsTvEpisode(string name) =>
-            TvEpisodeRegex().IsMatch(name);
+        /// <summary>Returns true if the filename contains a TV episode pattern (SxxExx or NxNN).</summary>
+        public static bool IsTvShowEpisode(string name) =>
+            TvShowEpisodeRegex().IsMatch(name) || TvShowEpisodeLegacyRegex().IsMatch(name);
 
         /// <summary>Returns true if the file is a video file containing a TV episode pattern.</summary>
-        public static bool IsVideoEpisode(string path) =>
-            IsVideoFile(path) && IsTvEpisode(Path.GetFileName(path));
+        public static bool IsVideoTvShowEpisode(string path) =>
+            IsVideoFile(path) && IsTvShowEpisode(Path.GetFileName(path));
 
         /// <summary>
         /// Returns true if the file or folder name already follows Plex naming conventions and
@@ -73,7 +76,7 @@ namespace qbPortWeaver
         }
 
         /// <summary>Parses a TV episode filename into show name, season, and episode number. Returns null if no episode pattern is found.</summary>
-        public static TvEpisodeInfo? ParseTvEpisode(string name)
+        public static TvShowEpisodeInfo? ParseTvShowEpisode(string name)
         {
             var ext = Path.GetExtension(name);
             if (VideoExtensions.Contains(ext))
@@ -81,20 +84,55 @@ namespace qbPortWeaver
 
             name = StripSitePrefix(name);
 
-            var match = TvEpisodeRegex().Match(name);
+            var match = TvShowEpisodeRegex().Match(name);
+            if (!match.Success)
+                match = TvShowEpisodeLegacyRegex().Match(name);
             if (!match.Success)
                 return null;
 
             var rawTitle = name[..match.Index];
             rawTitle = rawTitle.Replace('.', ' ').Replace('_', ' ').Trim();
+            rawTitle = StripLanguageSuffix(rawTitle);
+
+            // Extract year from the show name portion so it can be passed to TMDB as a
+            // first_air_date_year hint without polluting the title query.
+            // Handles both "Yellowstone 2018" (bare year) and "Show Name (2018)" (year in parens).
+            // Guard: don't strip the year if it IS the entire title (e.g. show "1883").
+            int? year = null;
+
+            var yearInParensMatch = YearInParensRegex().Match(rawTitle);
+            if (yearInParensMatch.Success)
+            {
+                var titlePart = rawTitle[..yearInParensMatch.Index].Trim();
+                if (!string.IsNullOrEmpty(titlePart))
+                {
+                    year     = int.TryParse(yearInParensMatch.Groups[1].Value, out int y) ? y : (int?)null;
+                    rawTitle = titlePart;
+                }
+            }
+            else
+            {
+                var yearMatch = StandaloneYearRegex().Match(rawTitle);
+                if (yearMatch.Success && yearMatch.Index + yearMatch.Length == rawTitle.Length)
+                {
+                    var titlePart = rawTitle[..yearMatch.Index].Trim();
+                    if (!string.IsNullOrEmpty(titlePart))
+                    {
+                        year     = int.TryParse(yearMatch.Value, out int y) ? y : (int?)null;
+                        rawTitle = titlePart;
+                    }
+                }
+            }
+
             rawTitle = CleanTitle(rawTitle);
 
-            return new TvEpisodeInfo
-            {
-                ShowName = rawTitle,
-                Season   = int.Parse(match.Groups[1].Value),
-                Episode  = int.Parse(match.Groups[2].Value)
-            };
+            int.TryParse(match.Groups[1].Value, out int season);
+            int.TryParse(match.Groups[2].Value, out int episode);
+            return new TvShowEpisodeInfo(
+                ShowName: rawTitle,
+                Year:     year,
+                Season:   season,
+                Episode:  episode);
         }
 
         /// <summary>Extracts a probable movie title and optional release year from a filename or folder name.</summary>
@@ -113,20 +151,29 @@ namespace qbPortWeaver
             {
                 var title = CleanTitle(name[..yearInParensMatch.Index].Trim());
                 if (!string.IsNullOrWhiteSpace(title))
-                    return (title, int.Parse(yearInParensMatch.Groups[1].Value));
+                    return (title, int.TryParse(yearInParensMatch.Groups[1].Value, out int y) ? y : (int?)null);
             }
 
             var cleaned = name.Replace('.', ' ').Replace('_', ' ');
 
-            // Try to find a standalone 4-digit year (1900–2099)
+            // Try to find a standalone 4-digit year (1900–2099).
+            // If the first match leaves an empty title (e.g. "1917 2019 BluRay") advance to
+            // the next occurrence so the year-as-title becomes part of the title string.
             var yearMatch = StandaloneYearRegex().Match(cleaned);
             string rawTitle;
             int? parsedYear = null;
 
             if (yearMatch.Success)
             {
+                if (string.IsNullOrWhiteSpace(cleaned[..yearMatch.Index]))
+                {
+                    var next = StandaloneYearRegex().Match(cleaned, yearMatch.Index + yearMatch.Length);
+                    if (next.Success)
+                        yearMatch = next;
+                }
+
                 rawTitle   = cleaned[..yearMatch.Index];
-                parsedYear = int.Parse(yearMatch.Value);
+                parsedYear = int.TryParse(yearMatch.Value, out int y) ? y : (int?)null;
             }
             else
             {
@@ -198,22 +245,22 @@ namespace qbPortWeaver
         [GeneratedRegex(@"[_]((?:FR|EN|VF|VO)[-]?(?:FR|EN|HP|DL|VF|VO)?(?:[-](?:FR|EN|HP|DL|VF|VO))*)$", RegexOptions.IgnoreCase)]
         private static partial Regex LanguageSuffixRegex();
 
-        [GeneratedRegex(@"S(\d{2})E(\d{2})", RegexOptions.IgnoreCase)]
-        private static partial Regex TvEpisodeRegex();
+        // Primary: SxxExx / S1E1 (dominant scene and P2P standard)
+        [GeneratedRegex(@"S(\d{1,2})E(\d{1,2})", RegexOptions.IgnoreCase)]
+        private static partial Regex TvShowEpisodeRegex();
+
+        // Legacy: 1x01 notation used by older releases
+        [GeneratedRegex(@"\b(\d{1,2})x(\d{2})\b", RegexOptions.IgnoreCase)]
+        private static partial Regex TvShowEpisodeLegacyRegex();
 
         // Matches Plex movie format: "Title (Year)" optionally followed by " - partN" (multi-part files)
         [GeneratedRegex(@"^.+\s\(\d{4}\)(\s-\s(cd|disc|disk|dvd|part|pt)\d)?$", RegexOptions.IgnoreCase)]
         private static partial Regex PlexMovieNameRegex();
 
-        // Matches Plex TV episode format: "Show (Year) - SxxExx"
+        // Matches Plex TV episode format: "Show (Year) - SxxExx" (always zero-padded in output)
         [GeneratedRegex(@"^.+\s\(\d{4}\)\s-\sS\d{2}E\d{2}$", RegexOptions.IgnoreCase)]
         private static partial Regex PlexEpisodeNameRegex();
     }
 
-    public class TvEpisodeInfo
-    {
-        public string ShowName { get; set; } = "";
-        public int Season { get; set; }
-        public int Episode { get; set; }
-    }
+    public sealed record TvShowEpisodeInfo(string ShowName, int? Year, int Season, int Episode);
 }

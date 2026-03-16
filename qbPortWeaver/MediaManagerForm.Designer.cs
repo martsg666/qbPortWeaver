@@ -248,7 +248,7 @@ namespace qbPortWeaver
             colType.MinimumWidth  = 50;
             colType.Name          = "colType";
             colType.ReadOnly      = true;
-            colType.SortMode      = DataGridViewColumnSortMode.NotSortable;
+            colType.SortMode      = DataGridViewColumnSortMode.Automatic;
             //
             // colCurrent
             //
@@ -257,7 +257,7 @@ namespace qbPortWeaver
             colCurrent.MinimumWidth = 100;
             colCurrent.Name         = "colCurrent";
             colCurrent.ReadOnly     = true;
-            colCurrent.SortMode     = DataGridViewColumnSortMode.NotSortable;
+            colCurrent.SortMode     = DataGridViewColumnSortMode.Automatic;
             //
             // colProposed
             //
@@ -265,7 +265,7 @@ namespace qbPortWeaver
             colProposed.HeaderText   = "Proposed";
             colProposed.MinimumWidth = 100;
             colProposed.Name         = "colProposed";
-            colProposed.SortMode     = DataGridViewColumnSortMode.NotSortable;
+            colProposed.SortMode     = DataGridViewColumnSortMode.Automatic;
             //
             // btnOK
             //

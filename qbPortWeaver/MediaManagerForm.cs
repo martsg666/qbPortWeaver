@@ -1,5 +1,6 @@
 namespace qbPortWeaver
 {
+    /// <summary>Dialog for configuring the Media Manager feature, previewing proposed renames (Scan Now), and applying them (Rename Now).</summary>
     public partial class MediaManagerForm : Form
     {
         private enum RowConfidence { Confident, Uncertain, Unmatched }
@@ -82,7 +83,7 @@ namespace qbPortWeaver
         private void btnRemoveTvShowFolder_Click(object? sender, EventArgs e) => RemoveSelectedFolder(lstTvShowFolders);
 
         // Scan Now - previews renames using current (unsaved) form values, never touches files
-        private async void btnScanNow_Click(object? sender, EventArgs e)
+        private async void btnScanNow_Click(object? sender, EventArgs e) // async void is correct here (WinForms event handler)
         {
             var apiKey = txtTmdbApiKey.Text.Trim();
             if (string.IsNullOrWhiteSpace(apiKey))
@@ -145,7 +146,7 @@ namespace qbPortWeaver
         }
 
         // Rename Now - applies proposals from the grid, respecting any user edits to the Proposed column
-        private async void btnRenameNow_Click(object? sender, EventArgs e)
+        private async void btnRenameNow_Click(object? sender, EventArgs e) // async void is correct here (WinForms event handler)
         {
             // Count only matched rows (unmatched rows with no proposed name are skipped during apply)
             int proposalCount = dgvResults.Rows.Cast<DataGridViewRow>()

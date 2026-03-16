@@ -4,17 +4,22 @@ using System.Text.Json.Serialization;
 namespace qbPortWeaver
 {
     /// <summary>HTTP client for The Movie Database (TMDB) search API.</summary>
-    public sealed class TmdbClient : IDisposable
+    public sealed class TmdbClient
     {
         private const string TmdbBaseUrl = "https://api.themoviedb.org/3/"; // NOSONAR S1075 - fixed TMDB API endpoint, not a configurable path
 
-        private readonly HttpClient _http;
+        // Static shared instance: HttpClient is thread-safe and reusing it avoids per-cycle socket exhaustion.
+        private static readonly HttpClient _http = new()
+        {
+            BaseAddress = new Uri(TmdbBaseUrl),
+            Timeout     = TimeSpan.FromSeconds(AppConstants.HttpTimeoutSeconds)
+        };
+
         private readonly string _apiKey;
 
         public TmdbClient(string apiKey)
         {
             _apiKey = apiKey;
-            _http   = new HttpClient { BaseAddress = new Uri(TmdbBaseUrl) };
         }
 
         /// <summary>Searches for a movie by title and optional year. Returns the best match, or null if none found.</summary>
@@ -29,85 +34,44 @@ namespace qbPortWeaver
             if (result == null)
                 return null;
 
-            return new MovieInfo
-            {
-                Title  = result.Title,
-                Year   = result.ReleaseDate?.Length >= 4 && int.TryParse(result.ReleaseDate[..4], out int releaseYear) ? releaseYear : null,
-                TmdbId = result.Id
-            };
+            int? releaseYear = result.ReleaseDate?.Length >= 4 && int.TryParse(result.ReleaseDate[..4], out int y) ? y : null;
+            return new MovieInfo(result.Title, releaseYear, result.Id);
         }
 
-        /// <summary>Searches for a TV show by title. Returns the best match, or null if none found.</summary>
-        public async Task<TvShowInfo?> SearchTvShowAsync(string query)
+        /// <summary>Searches for a TV show by title and optional first-air year. Returns the best match, or null if none found.</summary>
+        public async Task<TvShowInfo?> SearchTvShowAsync(string query, int? year = null)
         {
             var url      = $"search/tv?api_key={_apiKey}&query={Uri.EscapeDataString(query)}&language=en-US&page=1";
+            if (year.HasValue)
+                url += $"&first_air_date_year={year.Value}";
             var response = await _http.GetFromJsonAsync<TmdbTvSearchResult>(url).ConfigureAwait(false);
             var result   = response?.Results?.FirstOrDefault();
             if (result == null)
                 return null;
 
-            return new TvShowInfo
-            {
-                Title  = result.Name,
-                Year   = result.FirstAirDate?.Length >= 4 && int.TryParse(result.FirstAirDate[..4], out int airYear) ? airYear : null,
-                TmdbId = result.Id
-            };
+            int? airYear = result.FirstAirDate?.Length >= 4 && int.TryParse(result.FirstAirDate[..4], out int y) ? y : null;
+            return new TvShowInfo(result.Name, airYear, result.Id);
         }
 
-        public void Dispose()
-        {
-            _http.Dispose();
-            GC.SuppressFinalize(this);
-        }
     }
 
-    public class MovieInfo
-    {
-        public string  Title            { get; set; } = "";
-        public int?    Year             { get; set; }
-        public int     TmdbId          { get; set; }
-    }
+    public sealed record MovieInfo(string Title, int? Year, int TmdbId);
 
-    public class TvShowInfo
-    {
-        public string Title  { get; set; } = "";
-        public int?   Year   { get; set; }
-        public int    TmdbId { get; set; }
-    }
+    public sealed record TvShowInfo(string Title, int? Year, int TmdbId);
 
-    public class TmdbSearchResult
-    {
-        [JsonPropertyName("results")]
-        public List<TmdbMovie>? Results { get; set; }
-    }
+    public sealed record TmdbSearchResult(
+        [property: JsonPropertyName("results")] List<TmdbMovie>? Results);
 
-    public class TmdbMovie
-    {
-        [JsonPropertyName("id")]
-        public int Id { get; set; }
+    public sealed record TmdbMovie(
+        [property: JsonPropertyName("id")]           int     Id,
+        [property: JsonPropertyName("title")]        string  Title,
+        [property: JsonPropertyName("release_date")] string? ReleaseDate);
 
-        [JsonPropertyName("title")]
-        public string Title { get; set; } = "";
+    public sealed record TmdbTvSearchResult(
+        [property: JsonPropertyName("results")] List<TmdbTvShow>? Results);
 
-        [JsonPropertyName("release_date")]
-        public string? ReleaseDate { get; set; }
-    }
-
-    public class TmdbTvSearchResult
-    {
-        [JsonPropertyName("results")]
-        public List<TmdbTvShow>? Results { get; set; }
-    }
-
-    public class TmdbTvShow
-    {
-        [JsonPropertyName("id")]
-        public int Id { get; set; }
-
-        [JsonPropertyName("name")]
-        public string Name { get; set; } = "";
-
-        [JsonPropertyName("first_air_date")]
-        public string? FirstAirDate { get; set; }
-    }
+    public sealed record TmdbTvShow(
+        [property: JsonPropertyName("id")]             int     Id,
+        [property: JsonPropertyName("name")]           string  Name,
+        [property: JsonPropertyName("first_air_date")] string? FirstAirDate);
 }

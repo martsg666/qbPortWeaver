@@ -25,7 +25,7 @@ The application runs in the system tray, manages configuration and logging, and 
   Runs quietly in the background with a system tray icon for quick access to logs, settings, and controls.
 
 - **Tray Status Indicator**
-  After each sync cycle the tray icon shows a colored status dot: **green** (ports aligned), **orange** (VPN not connected), **red** (error). Hovering over the icon displays the current port and status at a glance, without opening the log file.
+  After each sync cycle the tray icon shows a colored status dot: **green** (ports aligned), **orange** (VPN not connected), **red** (error), or **no dot** (port sync disabled). Hovering over the icon displays the current port and status at a glance, without opening the log file.
 
 - **Automatic Port Synchronization**
   Detects the current VPN port and updates qBittorrent's listening port automatically.
@@ -90,7 +90,7 @@ On first run, all settings are initialized with sensible defaults.
 
 | Setting | Description | Default |
 |---|---|---|
-| VPN Provider | `ProtonVPN`, `PIA`, or `NAT-PMP` | `ProtonVPN` |
+| VPN Provider | `Disabled`, `ProtonVPN`, `PIA`, or `NAT-PMP` | `Disabled` |
 | NAT-PMP Adapter | Network adapter to use for NAT-PMP port mapping (only enabled when NAT-PMP is selected) | - |
 | Update interval | How often to check and sync the port (seconds) | `180` |
 | URL | qBittorrent Web API URL | `http://127.0.0.1:8080` |
@@ -132,22 +132,23 @@ Configured via tray menu -> **Media Manager**.
 
 ### Synchronization Loop
 
-1. Checks whether the configured VPN provider is connected.
+1. If VPN Provider is set to **Disabled**, the entire port sync is skipped and the cycle proceeds directly to the Media Manager step. This is useful when you only want automatic media renaming without VPN port synchronization.
+2. Checks whether the configured VPN provider is connected.
    - If **not connected** and **Default port** is 0: skips the cycle and waits for the next interval.
    - If **not connected** and **Default port** is set: uses the default port as the target and continues.
    - If **Auto-Recovery** is enabled and the failed cycle count reaches the configured threshold: automatically triggers recovery (via the helper Windows service) - for ProtonVPN and PIA (direct or NAT-PMP mode), restarts the VPN service and client; for NAT-PMP with a generic gateway, cycles the network adapter.
-2. Reads the VPN-assigned port from the configured provider (skipped if using the default port fallback). If port detection fails despite the VPN being connected, the failed cycle counter increments and auto-recovery may trigger.
-3. Checks if qBittorrent is running (optionally force starts it if configured).
-4. Authenticates with qBittorrent and retrieves the current listening port and network interface.
-5. If **Warn on interface mismatch** is enabled: checks that qBittorrent's network interface matches the configured VPN provider and shows a tray warning if not.
-6. If ports differ:
+3. Reads the VPN-assigned port from the configured provider (skipped if using the default port fallback). If port detection fails despite the VPN being connected, the failed cycle counter increments and auto-recovery may trigger.
+4. Checks if qBittorrent is running (optionally force starts it if configured).
+5. Authenticates with qBittorrent and retrieves the current listening port and network interface.
+6. If **Warn on interface mismatch** is enabled: checks that qBittorrent's network interface matches the configured VPN provider and shows a tray warning if not.
+7. If ports differ:
    - Updates qBittorrent's port.
    - Restarts qBittorrent if configured.
    - Runs the optional post-update command if configured. e.g., `powershell -File "C:\path\to\SampleSendMail.ps1"`
-7. If **Restart on disconnect** is enabled (and qBittorrent was not already restarted in step 6): checks qBittorrent's connection status and restarts it if disconnected.
-8. Writes the JSON status file (`%LocalAppData%\qbPortWeaver\qbPortWeaver.status.json`) and updates the tray icon and tooltip.
-9. If **Media Manager** is enabled: scans the configured movie and TV show folders, queries TMDB for each unrecognised title, and renames files to Plex-compatible names. In **dry-run** mode no files are touched; use **Scan Now** in the Media Manager dialog to preview results first. Uncertain TMDB matches are skipped automatically and flagged for manual review in the dialog.
-10. Waits for the configured interval before repeating.
+8. If **Restart on disconnect** is enabled (and qBittorrent was not already restarted in step 7): checks qBittorrent's connection status and restarts it if disconnected.
+9. Writes the JSON status file (`%LocalAppData%\qbPortWeaver\qbPortWeaver.status.json`) and updates the tray icon and tooltip.
+10. If **Media Manager** is enabled: scans the configured movie and TV show folders, queries TMDB for each unrecognised title, and renames files to Plex-compatible names. In **dry-run** mode no files are touched; use **Scan Now** in the Media Manager dialog to preview results first. Uncertain TMDB matches are skipped automatically and flagged for manual review in the dialog.
+11. Waits for the configured interval before repeating.
 
 ### Tray Menu Options
 

@@ -16,6 +16,7 @@ namespace qbPortWeaver
         public const string SectionExtra       = "extra";
         public const string SectionMedia       = "media";
 
+        public const string VpnProviderDisabled  = "Disabled";
         public const string VpnProviderProtonVpn = "ProtonVPN";
         public const string VpnProviderPia       = "PIA";
         public const string VpnProviderNatPmp    = "NAT-PMP";
@@ -64,7 +65,7 @@ namespace qbPortWeaver
             {
                 [SectionGeneral] = new(StringComparer.OrdinalIgnoreCase)
                 {
-                    [KeyVpnProvider]                    = VpnProviderProtonVpn,
+                    [KeyVpnProvider]                    = VpnProviderDisabled,
                     [KeyUpdateIntervalSeconds]           = "180",
                     [KeyNatPmpAdapterName]              = "",
                     [KeyAutoRecoveryEnabled]            = ValueFalse,

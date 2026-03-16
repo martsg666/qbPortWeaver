@@ -3,7 +3,7 @@ using System.Diagnostics;
 namespace qbPortWeaver
 {
     /// <summary>Outcome of a port sync cycle, used to drive the tray icon color and tooltip.</summary>
-    public enum SyncState { Synced, VpnDisconnected, Error }
+    public enum SyncState { Synced, VpnDisconnected, Disabled, Error }
 
     /// <summary>Snapshot of the tray icon state after a sync cycle, raised via <see cref="PortSyncService.SyncCompleted"/>.</summary>
     public sealed record TrayStatus(SyncState State, int? Port, string Message);
@@ -121,11 +121,13 @@ namespace qbPortWeaver
                 bool vpnConnected = status[StatusKeys.VpnConnected]   is true;
                 int? port         = status[StatusKeys.QBittorrentPort] as int?;
                 string message    = status[StatusKeys.Message]         as string ?? string.Empty;
+                bool isDisabled   = status[StatusKeys.VpnProvider]    as string == RegistrySettingsManager.VpnProviderDisabled;
 
                 SyncState state;
-                if (!vpnConnected)     state = SyncState.VpnDisconnected;
-                else if (success)      state = SyncState.Synced;
-                else                   state = SyncState.Error;
+                if (isDisabled)            state = SyncState.Disabled;
+                else if (!vpnConnected)    state = SyncState.VpnDisconnected;
+                else if (success)          state = SyncState.Synced;
+                else                       state = SyncState.Error;
 
                 SyncCompleted?.Invoke(new TrayStatus(state, port, message));
             }
@@ -256,9 +258,17 @@ namespace qbPortWeaver
         }
 
         // Instantiates the appropriate VPN manager for the configured provider.
-        // Returns null (with status already set) if the provider cannot be initialised.
+        // Returns null (with status already set) if the provider is disabled or cannot be initialised.
         private async Task<IVpnManager?> CreateVpnManager(AppConfig cfg, Dictionary<string, object?> status)
         {
+            if (cfg.VpnProvider.Equals(RegistrySettingsManager.VpnProviderDisabled, StringComparison.OrdinalIgnoreCase))
+            {
+                LogManager.Instance.LogMessage("Port sync is disabled", LogLevel.Info);
+                status[StatusKeys.Status]  = StatusKeys.Skipped;
+                status[StatusKeys.Message] = "Port sync disabled";
+                return null;
+            }
+
             if (cfg.VpnProvider.Equals(RegistrySettingsManager.VpnProviderPia, StringComparison.OrdinalIgnoreCase))
                 return new PiaVpnManager();
 

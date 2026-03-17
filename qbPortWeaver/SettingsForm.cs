@@ -143,7 +143,10 @@ namespace qbPortWeaver
             }
             SaveSettings();
             DialogResult = DialogResult.OK;
+            Close();
         }
+
+        private void btnCancel_Click(object? sender, EventArgs e) => Close();
 
         private void cboVpnProvider_SelectedIndexChanged(object? sender, EventArgs e)
         {

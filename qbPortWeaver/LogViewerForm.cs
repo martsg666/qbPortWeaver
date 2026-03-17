@@ -326,15 +326,19 @@ namespace qbPortWeaver
                     NotifyFilter        = NotifyFilters.LastWrite | NotifyFilters.FileName,
                     EnableRaisingEvents = true
                 };
-                _watcher.Changed += (_, _) => OnLogFileUpdated();
-                _watcher.Created += (_, _) => OnLogFileUpdated();
-                _watcher.Deleted += (_, _) => OnLogFileDeleted();
+                _watcher.Changed += Watcher_Changed;
+                _watcher.Created += Watcher_Created;
+                _watcher.Deleted += Watcher_Deleted;
             }
             catch (Exception ex)
             {
                 AppendLine($"(Live updates unavailable: {ex.Message})", MetaColor);
             }
         }
+
+        private void Watcher_Changed(object sender, FileSystemEventArgs e) => OnLogFileUpdated();
+        private void Watcher_Created(object sender, FileSystemEventArgs e) => OnLogFileUpdated();
+        private void Watcher_Deleted(object sender, FileSystemEventArgs e) => OnLogFileDeleted();
 
         // Reads any new content appended since the last read and appends visible lines to the display.
         // Only scrolls to the bottom if the user was already there before the update.

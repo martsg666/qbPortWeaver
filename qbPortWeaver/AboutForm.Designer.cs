@@ -155,6 +155,7 @@ namespace qbPortWeaver
             btnClose.Size = new Size(82, 28);
             btnClose.TabIndex = 3;
             btnClose.Text = "Close";
+            btnClose.Click += btnClose_Click;
             // ── AboutForm ─────────────────────────────────────────────────
             AutoScaleDimensions = new SizeF(7F, 15F);
             AutoScaleMode = AutoScaleMode.Font;
@@ -172,6 +173,7 @@ namespace qbPortWeaver
             MinimizeBox = false;
             Name = "AboutForm";
             ShowIcon = false;
+            ShowInTaskbar = false;
             StartPosition = FormStartPosition.CenterScreen;
             Text = "qbPortWeaver | About"; // overridden in constructor with AppConstants.AppName
             ((System.ComponentModel.ISupportInitialize)picIcon).EndInit();

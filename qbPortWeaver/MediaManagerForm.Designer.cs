@@ -284,6 +284,7 @@ namespace qbPortWeaver
             btnCancel.Size         = new Size(82, 28);
             btnCancel.TabIndex     = 7;
             btnCancel.Text         = "Cancel";
+            btnCancel.Click       += btnCancel_Click;
             //
             // MediaManagerForm
             //
@@ -305,6 +306,7 @@ namespace qbPortWeaver
             MinimizeBox     = false;
             Name            = "MediaManagerForm";
             ShowIcon        = false;
+            ShowInTaskbar   = false;
             StartPosition   = FormStartPosition.CenterScreen;
             Text            = "qbPortWeaver | Media Manager";
             grpGeneral.ResumeLayout(false);

@@ -21,6 +21,8 @@ namespace qbPortWeaver
             _ = LoadGitHubDataAsync(); // fire-and-forget; exceptions are handled inside LoadGitHubDataAsync
         }
 
+        private void btnClose_Click(object? sender, EventArgs e) => Close();
+
         // Opens the release page if an update is available; otherwise re-runs the update check
         private void btnCheckForUpdates_Click(object? sender, EventArgs e)
         {

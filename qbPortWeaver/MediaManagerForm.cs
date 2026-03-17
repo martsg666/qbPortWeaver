@@ -7,6 +7,7 @@ namespace qbPortWeaver
         private sealed record RowData(RowConfidence Confidence, RenameProposal Proposal);
 
         private CancellationTokenSource? _scanCts;
+        private ToolStripMenuItem? _mnuPaste;
 
         public MediaManagerForm()
         {
@@ -65,6 +66,8 @@ namespace qbPortWeaver
             DialogResult = DialogResult.OK;
             Close();
         }
+
+        private void btnCancel_Click(object? sender, EventArgs e) => Close();
 
         private void SaveSettings()
         {
@@ -232,38 +235,50 @@ namespace qbPortWeaver
         private void SetupGridContextMenu()
         {
             var mnuCopy      = new ToolStripMenuItem("Copy");
-            var mnuPaste     = new ToolStripMenuItem("Paste");
+            _mnuPaste        = new ToolStripMenuItem("Paste");
             var mnuSelectAll = new ToolStripMenuItem("Select All");
 
-            mnuCopy.ShortcutKeyDisplayString      = "Ctrl+C";
-            mnuPaste.ShortcutKeyDisplayString     = "Ctrl+V";
-            mnuSelectAll.ShortcutKeyDisplayString = "Ctrl+A";
+            mnuCopy.ShortcutKeyDisplayString       = "Ctrl+C";
+            _mnuPaste.ShortcutKeyDisplayString     = "Ctrl+V";
+            mnuSelectAll.ShortcutKeyDisplayString  = "Ctrl+A";
 
-            mnuCopy.Click      += (_, _) => { if (dgvResults.CurrentCell?.Value is string v && v.Length > 0) Clipboard.SetText(v); };
-            mnuPaste.Click     += (_, _) => PasteToCurrentCell();
-            mnuSelectAll.Click += (_, _) => dgvResults.SelectAll();
+            mnuCopy.Click      += GridContextCopy_Click;
+            _mnuPaste.Click    += GridContextPaste_Click;
+            mnuSelectAll.Click += GridContextSelectAll_Click;
 
             var menu = new ContextMenuStrip(components);
-            menu.Items.AddRange([mnuCopy, mnuPaste, new ToolStripSeparator(), mnuSelectAll]);
+            menu.Items.AddRange([mnuCopy, _mnuPaste, new ToolStripSeparator(), mnuSelectAll]);
 
-            // Right-click first moves focus to the cell under the cursor, then the menu opens
-            dgvResults.MouseDown += (_, e) =>
-            {
-                if (e.Button != MouseButtons.Right) return;
-                var hit = dgvResults.HitTest(e.X, e.Y);
-                if (hit.RowIndex >= 0 && hit.ColumnIndex >= 0)
-                    dgvResults.CurrentCell = dgvResults[hit.ColumnIndex, hit.RowIndex];
-            };
-
-            menu.Opening += (_, _) =>
-            {
-                bool canPaste = dgvResults.CurrentCell?.ColumnIndex == colProposed.Index
-                                && !dgvResults.CurrentCell.ReadOnly
-                                && Clipboard.ContainsText();
-                mnuPaste.Enabled = canPaste;
-            };
-
+            dgvResults.MouseDown    += GridResults_MouseDown;
+            menu.Opening            += GridContextMenu_Opening;
             dgvResults.ContextMenuStrip = menu;
+        }
+
+        private void GridContextCopy_Click(object? sender, EventArgs e)
+        {
+            if (dgvResults.CurrentCell?.Value is string v && v.Length > 0)
+                Clipboard.SetText(v);
+        }
+
+        private void GridContextPaste_Click(object? sender, EventArgs e) => PasteToCurrentCell();
+
+        private void GridContextSelectAll_Click(object? sender, EventArgs e) => dgvResults.SelectAll();
+
+        // Right-click first moves focus to the cell under the cursor, then the menu opens
+        private void GridResults_MouseDown(object? sender, MouseEventArgs e)
+        {
+            if (e.Button != MouseButtons.Right) return;
+            var hit = dgvResults.HitTest(e.X, e.Y);
+            if (hit.RowIndex >= 0 && hit.ColumnIndex >= 0)
+                dgvResults.CurrentCell = dgvResults[hit.ColumnIndex, hit.RowIndex];
+        }
+
+        private void GridContextMenu_Opening(object? sender, System.ComponentModel.CancelEventArgs e)
+        {
+            bool canPaste = dgvResults.CurrentCell?.ColumnIndex == colProposed.Index
+                            && !dgvResults.CurrentCell.ReadOnly
+                            && Clipboard.ContainsText();
+            _mnuPaste!.Enabled = canPaste;
         }
 
         private void PasteToCurrentCell()

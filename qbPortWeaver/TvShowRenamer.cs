@@ -95,18 +95,7 @@ namespace qbPortWeaver
             var episodeInfo = FileNameParser.ParseTvShowEpisode(fileName);
             if (episodeInfo == null) return;
 
-            TvShowInfo? showInfo;
-            bool isConfident;
-            if (_showCache.TryGetValue(episodeInfo.ShowName, out var cached))
-            {
-                (showInfo, isConfident) = cached;
-            }
-            else
-            {
-                (showInfo, isConfident) = await LookupTvShowAsync(episodeInfo.ShowName, episodeInfo.Year).ConfigureAwait(false);
-                if (showInfo != null)
-                    _showCache[episodeInfo.ShowName] = (showInfo, isConfident);
-            }
+            var (showInfo, isConfident) = await GetOrLookupShowAsync(episodeInfo.ShowName, episodeInfo.Year).ConfigureAwait(false);
             if (showInfo == null)
             {
                 proposals.Add(new RenameProposal(MediaTypeTvShow, filePath, string.Empty, IsConfident: false, IsMatched: false));
@@ -157,18 +146,7 @@ namespace qbPortWeaver
             LogManager.Instance.LogMessage($"{AppConstants.MediaManagerLogPrefix}Processing '{fileName}'", LogLevel.Info);
             LogManager.Instance.LogDebug($"{AppConstants.MediaManagerLogPrefix}TvShowRenamer.ProcessEpisodeFile: Parsed show='{episodeInfo.ShowName}' S{episodeInfo.Season:D2}E{episodeInfo.Episode:D2}");
 
-            TvShowInfo? showInfo;
-            bool isConfident;
-            if (_showCache.TryGetValue(episodeInfo.ShowName, out var cached))
-            {
-                (showInfo, isConfident) = cached;
-            }
-            else
-            {
-                (showInfo, isConfident) = await LookupTvShowAsync(episodeInfo.ShowName, episodeInfo.Year).ConfigureAwait(false);
-                if (showInfo != null)
-                    _showCache[episodeInfo.ShowName] = (showInfo, isConfident);
-            }
+            var (showInfo, isConfident) = await GetOrLookupShowAsync(episodeInfo.ShowName, episodeInfo.Year).ConfigureAwait(false);
 
             if (showInfo == null) return;
             if (!isConfident)
@@ -197,6 +175,19 @@ namespace qbPortWeaver
 
             if (!_dryRun)
                 MediaManagerService.MoveFile(filePath, targetPath);
+        }
+
+        // Returns a cached show lookup or performs a new TMDB search and caches the result
+        private async Task<(TvShowInfo? Info, bool IsConfident)> GetOrLookupShowAsync(string showName, int? year)
+        {
+            if (_showCache.TryGetValue(showName, out var cached))
+                return cached;
+
+            var result = await LookupTvShowAsync(showName, year).ConfigureAwait(false);
+            if (result.Info != null)
+                _showCache[showName] = (result.Info, result.IsConfident);
+
+            return result;
         }
 
         private async Task<(TvShowInfo? Info, bool IsConfident)> LookupTvShowAsync(string name, int? year)

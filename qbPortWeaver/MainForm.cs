@@ -187,32 +187,18 @@ namespace qbPortWeaver
         {
             _trayMenu = new ContextMenuStrip();
             _trayMenu.Items.Add("Synchronize Port Now", null, SynchronizePortNow_Click);
-            _trayMenu.Items.Add("Show Logs", null, (s, e) => ShowLogViewer());
-            _trayMenu.Items.Add("Clear Logs", null, (s, e) =>
-            {
-                LogManager.Instance.ClearLogs();
-                _trayIcon.ShowBalloonTip(AppConstants.BalloonTipDurationMs, AppConstants.AppName, "Logs cleared", ToolTipIcon.Info);
-            });
-            _trayMenu.Items.Add("Settings", null, (s, e) =>
-                ShowOrActivate(() => _settingsForm, f => _settingsForm = f, () => new SettingsForm(), frm =>
-                {
-                    if (frm.DialogResult == DialogResult.OK)
-                    {
-                        LogManager.Instance.LogMessage("Settings changed, triggering sync cycle", LogLevel.Info);
-                        InterruptDelay();
-                    }
-                }));
-            _trayMenu.Items.Add("Media Manager", null, (s, e) =>
-                ShowOrActivate(() => _mediaManagerForm, f => _mediaManagerForm = f, () => new MediaManagerForm()));
-            _trayMenu.Items.Add("About", null, (s, e) =>
-                ShowOrActivate(() => _aboutForm, f => _aboutForm = f, () => new AboutForm()));
+            _trayMenu.Items.Add("Show Logs", null, ShowLogs_Click);
+            _trayMenu.Items.Add("Clear Logs", null, ClearLogs_Click);
+            _trayMenu.Items.Add("Settings", null, ShowSettings_Click);
+            _trayMenu.Items.Add("Media Manager", null, ShowMediaManager_Click);
+            _trayMenu.Items.Add("About", null, ShowAbout_Click);
 
             _autoStartMenuItem = new ToolStripMenuItem("Start Automatically with Windows")
             {
                 CheckOnClick = true,
                 Checked = StartupManager.IsStartupEnabled()
             };
-            _autoStartMenuItem.Click += (s, e) => StartupManager.SetStartup(_autoStartMenuItem.Checked);
+            _autoStartMenuItem.Click += AutoStart_Click;
             _trayMenu.Items.Add(_autoStartMenuItem);
 
             _trayMenu.Items.Add("Exit", null, Exit_Click);
@@ -224,11 +210,47 @@ namespace qbPortWeaver
                 Visible = true,
                 ContextMenuStrip = _trayMenu
             };
-            _trayIcon.MouseDoubleClick += (s, e) =>
+            _trayIcon.MouseDoubleClick += TrayIcon_MouseDoubleClick;
+        }
+
+        private void ShowLogs_Click(object? sender, EventArgs e) => ShowLogViewer();
+
+        private void ClearLogs_Click(object? sender, EventArgs e)
+        {
+            LogManager.Instance.ClearLogs();
+            _trayIcon.ShowBalloonTip(AppConstants.BalloonTipDurationMs, AppConstants.AppName, "Logs cleared", ToolTipIcon.Info);
+        }
+
+        private void ShowSettings_Click(object? sender, EventArgs e)
+        {
+            ShowOrActivate(() => _settingsForm, f => _settingsForm = f, () => new SettingsForm(), OnSettingsFormClosed);
+        }
+
+        private void OnSettingsFormClosed(SettingsForm frm)
+        {
+            if (frm.DialogResult == DialogResult.OK)
             {
-                if (e.Button == MouseButtons.Left)
-                    ShowLogViewer();
-            };
+                LogManager.Instance.LogMessage("Settings changed, triggering sync cycle", LogLevel.Info);
+                InterruptDelay();
+            }
+        }
+
+        private void ShowMediaManager_Click(object? sender, EventArgs e)
+        {
+            ShowOrActivate(() => _mediaManagerForm, f => _mediaManagerForm = f, () => new MediaManagerForm());
+        }
+
+        private void ShowAbout_Click(object? sender, EventArgs e)
+        {
+            ShowOrActivate(() => _aboutForm, f => _aboutForm = f, () => new AboutForm());
+        }
+
+        private void AutoStart_Click(object? sender, EventArgs e) => StartupManager.SetStartup(_autoStartMenuItem.Checked);
+
+        private void TrayIcon_MouseDoubleClick(object? sender, MouseEventArgs e)
+        {
+            if (e.Button == MouseButtons.Left)
+                ShowLogViewer();
         }
 
         // Triggers an immediate sync cycle by interrupting the current wait interval

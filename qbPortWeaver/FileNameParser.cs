@@ -7,16 +7,17 @@ namespace qbPortWeaver
     {
         private static readonly HashSet<string> VideoExtensions = new(StringComparer.OrdinalIgnoreCase)
         {
-            ".mkv", ".mp4", ".avi", ".mov", ".wmv", ".flv", ".m4v", ".mpg", ".mpeg", ".ts", ".vob", ".webm"
+            ".mkv", ".mp4", ".avi", ".mov", ".wmv", ".flv", ".m4v", ".mpg", ".mpeg", ".ts", ".m2ts", ".vob", ".webm"
         };
 
         private static readonly HashSet<string> CutoffTokens = new(StringComparer.OrdinalIgnoreCase)
         {
             // Resolution / quality
-            "240p", "480p", "576p", "720p", "1080p", "1080i", "1440p", "2160p", "4k", "fhd", "uhd", "qhd",
-            "hdr", "hdr10", "hdr10plus", "hlg", "sdr", "dovi", "dolbyvision",
+            "240p", "360p", "480i", "480p", "540i", "540p", "576i", "576p",
+            "720p", "1080p", "1080i", "1440p", "2160p", "4320p", "4k", "fhd", "uhd", "qhd",
+            "hdr", "hdr10", "hdr10plus", "hlg", "sdr", "dovi", "dolbyvision", "pq", "pq10",
             "8bit", "8-bit", "10bit", "10-bit", "12bit", "12-bit", "hi10p", "hi10",
-            "3d", "sbs", "hsbs", "half-ou", "mvc",
+            "3d", "sbs", "hsbs", "half-ou", "hou", "mvc",
             "upscale", "upscaled",
             // Source
             "bluray", "blu-ray", "bdrip", "brrip", "bdremux", "remux",
@@ -26,17 +27,19 @@ namespace qbPortWeaver
             "tvrip", "dvrip", "dvbrip", "satrip", "vhsrip", "ppvrip", "dsr", "dsrip",
             "webrip", "web-dl", "webdl", "web", "webmux", "uhdrip",
             "cam", "scr", "screener", "telecine", "telesync", "ts", "tc", "hdts", "hdtc", "vod", "imax",
-            "r5", "r6", "workprint", "retail",
+            "r5", "r6", "workprint", "wp", "retail",
+            "hddvd", "hd-dvd", "ldrip", "dcp",
             // Streaming service prefixes (appear before WEB-DL)
             "amzn", "nf", "nflx", "dsnp", "dsny", "hmax", "hbomax",
             "atvp", "pcok", "pmtp", "crav", "hulu", "roku",
             "bcore", "stan", "itun", "htsr", "dscp", "funi", "adn",
-            "sho", "starz", "itvx", "tubi", "pluto",
+            "sho", "starz", "itvx", "tubi", "pluto", "mubi",
             // Video codec
-            "x264", "x265", "h264", "h265", "hevc", "avc", "xvid", "divx",
-            "av1", "vp9", "vc-1", "vc1", "mpeg", "mpeg2", "mpeg4",
+            "x264", "x265", "x266", "h264", "h265", "hevc", "avc", "xvid", "divx",
+            "av1", "vp7", "vp8", "vp9", "vc-1", "vc1", "mpeg", "mpeg2", "mpeg4",
             // Audio codec
-            "aac", "ac3", "dts", "dts-hd", "dts-hdma", "dts-hdhr", "dts-es", "dts-x", "dtsx", "mp3", "flac",
+            "aac", "ac3", "dts", "dts-hd", "dts-hdma", "dts-hdhr", "dts-hdhra", "dts-es", "dts-x", "dtsx",
+            "mp2", "mp3", "flac", "vorbis",
             "truehd", "atmos", "dd", "dd2", "dd5", "ddp", "ddp5", "ddplus", "eac3", "opus", "lpcm", "pcm",
             "stereo", "mono", "2ch", "6ch", "8ch",
             // Language (note: "french" omitted -- too common in real titles, e.g. "The French Connection")
@@ -49,6 +52,7 @@ namespace qbPortWeaver
             "remastered", "remaster", "criterion", "limited", "internal",
             "redux", "restored", "hybrid", "mhd", "custom", "readnfo", "anniversary",
             "v2", "v3", "v4", "uncensored", "censored", "fanres", "fanedit",
+            "obfuscated", "convert", "preair", "extras", "bonus", "featurettes",
             // French scene tags for complete series / integrals
             "integral", "integrale", "complete",
             // Frame rate

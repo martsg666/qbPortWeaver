@@ -173,7 +173,8 @@ namespace qbPortWeaver
                 return;
             }
 
-            LogManager.Instance.LogMessage($"{AppConstants.MediaManagerLogPrefix}Renaming to {Path.GetRelativePath(root, newFilePath)}", LogLevel.Info);
+            string verb = _dryRun ? "Would rename" : "Renaming";
+            LogManager.Instance.LogMessage($"{AppConstants.MediaManagerLogPrefix}{verb} '{fileName}' -> {Path.GetRelativePath(root, newFilePath)}", LogLevel.Info);
             if (!_dryRun)
                 MediaManagerService.MoveFile(filePath, newFilePath);
         }

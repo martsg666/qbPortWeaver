@@ -171,7 +171,8 @@ namespace qbPortWeaver
 
             if (string.Equals(filePath, targetPath, StringComparison.OrdinalIgnoreCase)) return;
 
-            LogManager.Instance.LogMessage($"{AppConstants.MediaManagerLogPrefix}Renaming to {Path.GetRelativePath(tvShowsRoot, targetPath)}", LogLevel.Info);
+            string verb = _dryRun ? "Would rename" : "Renaming";
+            LogManager.Instance.LogMessage($"{AppConstants.MediaManagerLogPrefix}{verb} '{Path.GetFileName(filePath)}' -> {Path.GetRelativePath(tvShowsRoot, targetPath)}", LogLevel.Info);
 
             if (!_dryRun)
                 MediaManagerService.MoveFile(filePath, targetPath);

@@ -23,7 +23,7 @@ namespace qbPortWeaver
             bool createFolders      = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionMedia, RegistrySettingsManager.KeyMediaCreateFolders);
             bool deleteEmptyFolders = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionMedia, RegistrySettingsManager.KeyMediaDeleteEmptyFolders);
 
-            LogManager.Instance.LogMessage($"{AppConstants.MediaManagerLogPrefix}Scan started (dryRun={dryRun}, createFolders={createFolders})", LogLevel.Info);
+            LogManager.Instance.LogMessage($"{AppConstants.MediaManagerLogPrefix}Scan started (dryRun={dryRun}, createFolders={createFolders}, deleteEmptyFolders={deleteEmptyFolders})", LogLevel.Info);
 
             var tmdb         = new TmdbClient(apiKey);
             var movieRenamer = new MovieRenamer(tmdb, dryRun, createFolders);
@@ -128,41 +128,53 @@ namespace qbPortWeaver
             {
                 if (!Directory.Exists(dir)) continue;
 
-                var files = Directory.GetFiles(dir);
-                bool isEmpty = files.Length == 0 && Directory.GetDirectories(dir).Length == 0;
-                bool hasOnlyNfo = !isEmpty && files.Length > 0
-                    && Directory.GetDirectories(dir).Length == 0
-                    && files.All(f => Path.GetExtension(f).Equals(".nfo", StringComparison.OrdinalIgnoreCase));
+                var (removable, hasOnlyNfo) = IsRemovableFolder(dir);
+                if (!removable) continue;
 
-                if (!isEmpty && !hasOnlyNfo) continue;
-
+                string reason = hasOnlyNfo ? "nfo-only" : "empty";
                 if (dryRun)
                 {
-                    string reason = hasOnlyNfo ? "contains only .nfo files" : "empty";
-                    LogManager.Instance.LogMessage($"{AppConstants.MediaManagerLogPrefix}Would delete folder ({reason}): '{Path.GetFileName(dir)}'", LogLevel.Info);
+                    LogManager.Instance.LogMessage($"{AppConstants.MediaManagerLogPrefix}Would delete {reason} folder: '{Path.GetFileName(dir)}'", LogLevel.Info);
                 }
                 else
                 {
-                    try
-                    {
-                        if (hasOnlyNfo)
-                        {
-                            foreach (var nfo in files)
-                                File.Delete(nfo);
-                        }
-                        Directory.Delete(dir);
-                        LogManager.Instance.LogMessage($"{AppConstants.MediaManagerLogPrefix}Deleted empty folder: '{Path.GetFileName(dir)}'", LogLevel.Info);
-                    }
-                    catch (IOException ex)
-                    {
-                        LogManager.Instance.LogMessage($"{AppConstants.MediaManagerLogPrefix}Failed to delete folder '{Path.GetFileName(dir)}': {ex.Message}", LogLevel.Warn);
-                    }
+                    DeleteFolder(dir, hasOnlyNfo);
                 }
                 deleted++;
             }
 
             if (deleted > 0)
                 LogManager.Instance.LogDebug($"{AppConstants.MediaManagerLogPrefix}MediaManagerService.CleanupEmptyFolders: {deleted} folder(s) {(dryRun ? "would be deleted" : "deleted")} under '{rootFolder}'");
+        }
+
+        // Returns (true, hasOnlyNfo) when the folder is empty or contains only .nfo files and has no subdirectories
+        private static (bool Removable, bool HasOnlyNfo) IsRemovableFolder(string dir)
+        {
+            var files = Directory.GetFiles(dir);
+            if (Directory.GetDirectories(dir).Length > 0) return (false, false);
+            if (files.Length == 0) return (true, false);
+            bool allNfo = files.All(f => Path.GetExtension(f).Equals(".nfo", StringComparison.OrdinalIgnoreCase));
+            return (allNfo, allNfo);
+        }
+
+        // Deletes .nfo files (if any) then removes the directory
+        private static void DeleteFolder(string dir, bool hasNfoFiles)
+        {
+            try
+            {
+                if (hasNfoFiles)
+                {
+                    foreach (var nfo in Directory.GetFiles(dir))
+                        File.Delete(nfo);
+                }
+                Directory.Delete(dir);
+                string reason = hasNfoFiles ? "nfo-only" : "empty";
+                LogManager.Instance.LogMessage($"{AppConstants.MediaManagerLogPrefix}Deleted {reason} folder: '{Path.GetFileName(dir)}'", LogLevel.Info);
+            }
+            catch (IOException ex)
+            {
+                LogManager.Instance.LogMessage($"{AppConstants.MediaManagerLogPrefix}Failed to delete folder '{Path.GetFileName(dir)}': {ex.Message}", LogLevel.Warn);
+            }
         }
 
         private static string[] GetFolders(string key)

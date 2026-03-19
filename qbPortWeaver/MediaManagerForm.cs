@@ -28,7 +28,7 @@ namespace qbPortWeaver
             toolTip.SetToolTip(chkEnabled,            "Enable or disable Media Manager - when enabled, files are processed on each sync cycle");
             toolTip.SetToolTip(txtTmdbApiKey,         "Your TMDB API key - get one free at themoviedb.org/settings/api");
             toolTip.SetToolTip(lblTmdbApiKey,         "Your TMDB API key - get one free at themoviedb.org/settings/api");
-            toolTip.SetToolTip(chkDryRun,             "When checked, no files are renamed - use Scan Now to preview changes first");
+            toolTip.SetToolTip(chkDryRun,             "When checked, the automatic sync cycle will only log what it would rename without touching any files");
             toolTip.SetToolTip(chkCreateFolders,      "Move each title into its own Plex-recommended folder: Movies/Title (Year)/Title (Year).ext");
             toolTip.SetToolTip(chkDeleteEmptyFolders, "Delete folders left empty after renaming - folders containing only .nfo files are also removed");
             toolTip.SetToolTip(lstMovieFolders,       "Folders scanned for movie files on each cycle");

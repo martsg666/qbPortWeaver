@@ -70,7 +70,7 @@ The application runs in the system tray, manages configuration and logging, and 
   Automatically recovers when a configurable number of consecutive sync cycles fail - whether the VPN is disconnected or port detection fails despite the VPN being connected. For ProtonVPN and PIA (direct or NAT-PMP mode), the helper restarts the Windows service and the tray app restarts the client process. For NAT-PMP with a generic (non-ProtonVPN/PIA) gateway, the helper cycles the network adapter (disable/enable via netsh). All privileged operations are delegated to a lightweight helper Windows service (`qbPortWeaverHelper`) running as LocalSystem - no UAC prompt required.
 
 - **Media Manager**
-  Automatically renames movie and TV episode files to Plex-compatible naming conventions on each sync cycle. Queries [The Movie Database (TMDB)](https://www.themoviedb.org) to identify titles and release years, then renames files using Plex conventions (`Title (Year).ext` for movies, `Show (Year) - SxxExx.ext` for TV episodes). Optionally organises files into Plex-recommended subfolders (`Movies/Title (Year)/` and `TV Shows/Show (Year)/Season XX/`). A dedicated **Media Manager** dialog (tray menu → Media Manager) lets you configure watched folders, preview renames before they run (**Scan Now**), and apply or correct them manually (**Rename Now**). Uncertain TMDB matches are highlighted in red for review. A free TMDB API key is required.
+  Automatically renames movie and TV episode files to Plex-compatible naming conventions on each sync cycle. Queries [The Movie Database (TMDB)](https://www.themoviedb.org) to identify titles and release years, then renames files using Plex conventions (`Title (Year).ext` for movies, `Show (Year) - SxxExx.ext` for TV episodes). Optionally organises files into Plex-recommended subfolders (`Movies/Title (Year)/` and `TV Shows/Show (Year)/Season XX/`), and cleans up folders left empty after renaming (including folders containing only `.nfo` files). A dedicated **Media Manager** dialog (tray menu -> Media Manager) lets you configure watched folders, preview renames before they run (**Scan Now**), and apply or correct them manually (**Rename Now**). Uncertain TMDB matches are highlighted in red for review. A free TMDB API key is required.
 
 - **Automatic Update Checker**
   Checks GitHub for new releases on startup and every 12 hours, and offers to open the download page. The **About** dialog (tray menu → About) also shows the current and latest version, update status, and contributor links.
@@ -118,6 +118,7 @@ Configured via tray menu -> **Media Manager**.
 | TMDB API Key | API key for The Movie Database lookups (free at themoviedb.org/settings/api) | - |
 | Dry Run | Preview renames without touching any files | `True` |
 | Create Folders | Organise each title into its own Plex subfolder (`Title (Year)/` for movies, `Show (Year)/Season XX/` for TV) | `False` |
+| Delete Empty Folders | After renaming, delete subfolders that are empty or contain only `.nfo` files | `False` |
 | Movie Folders | List of folders scanned for movie files on each cycle | - |
 | TV Show Folders | List of folders scanned for TV episode files on each cycle | - |
 

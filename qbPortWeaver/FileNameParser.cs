@@ -14,44 +14,54 @@ namespace qbPortWeaver
         {
             // Resolution / quality
             "240p", "480p", "576p", "720p", "1080p", "1080i", "1440p", "2160p", "4k", "fhd", "uhd", "qhd",
-            "hdr", "hdr10", "hdr10plus", "hlg", "sdr", "dovi",
+            "hdr", "hdr10", "hdr10plus", "hlg", "sdr", "dovi", "dolbyvision",
             "8bit", "8-bit", "10bit", "10-bit", "12bit", "12-bit", "hi10p", "hi10",
             "3d", "sbs", "hsbs", "half-ou", "mvc",
             "upscale", "upscaled",
             // Source
             "bluray", "blu-ray", "bdrip", "brrip", "bdremux", "remux",
+            "bd25", "bd50", "bd66", "bd100", "bdscr",
             "dvdrip", "dvdscr", "dvdr", "dvd9", "dvd5",
-            "hdtv", "pdtv", "sdtv", "uhdtv", "hdrip", "hdlight", "hdcam",
-            "tvrip", "dvrip", "dvbrip", "satrip", "vhsrip", "ppvrip",
-            "webrip", "web-dl", "webdl", "web", "uhdrip",
-            "cam", "scr", "screener", "telecine", "ts", "tc", "hdts", "hdtc", "vod", "imax",
+            "hdtv", "pdtv", "sdtv", "uhdtv", "hdrip", "hdlight", "hdcam", "hqcam",
+            "tvrip", "dvrip", "dvbrip", "satrip", "vhsrip", "ppvrip", "dsr", "dsrip",
+            "webrip", "web-dl", "webdl", "web", "webmux", "uhdrip",
+            "cam", "scr", "screener", "telecine", "telesync", "ts", "tc", "hdts", "hdtc", "vod", "imax",
             "r5", "r6", "workprint", "retail",
             // Streaming service prefixes (appear before WEB-DL)
             "amzn", "nf", "nflx", "dsnp", "dsny", "hmax", "hbomax",
             "atvp", "pcok", "pmtp", "crav", "hulu", "roku",
+            "bcore", "stan", "itun", "htsr", "dscp", "funi", "adn",
+            "sho", "starz", "itvx", "tubi", "pluto",
             // Video codec
             "x264", "x265", "h264", "h265", "hevc", "avc", "xvid", "divx",
             "av1", "vp9", "vc-1", "vc1", "mpeg", "mpeg2", "mpeg4",
             // Audio codec
-            "aac", "ac3", "dts", "dts-hd", "dts-es", "dts-x", "dtsx", "mp3", "flac",
-            "truehd", "atmos", "dd", "dd2", "dd5", "ddp", "ddp5", "eac3", "opus", "lpcm", "pcm",
-            "stereo", "mono",
+            "aac", "ac3", "dts", "dts-hd", "dts-hdma", "dts-hdhr", "dts-es", "dts-x", "dtsx", "mp3", "flac",
+            "truehd", "atmos", "dd", "dd2", "dd5", "ddp", "ddp5", "ddplus", "eac3", "opus", "lpcm", "pcm",
+            "stereo", "mono", "2ch", "6ch", "8ch",
             // Language (note: "french" omitted -- too common in real titles, e.g. "The French Connection")
-            "multi", "dual", "truefrench", "vff", "vfi", "vf2", "vfq",
+            "multi", "dual", "dualaud", "truefrench", "vff", "vfi", "vf2", "vfq",
             "vost", "vostfr", "vof", "dubbed", "subbed", "korsub", "latino", "castellano",
+            // Subtitle
+            "multisubs", "multisub", "hardsub", "hardcoded", "softsub",
             // Edition / release flags (note: "final" omitted -- appears in titles like "These Final Hours")
             "proper", "repack", "rerip", "extended", "unrated", "uncut", "directors", "theatrical",
             "remastered", "remaster", "criterion", "limited", "internal",
             "redux", "restored", "hybrid", "mhd", "custom", "readnfo", "anniversary",
+            "v2", "v3", "v4", "uncensored", "censored", "fanres", "fanedit",
             // French scene tags for complete series / integrals
             "integral", "integrale", "complete",
-            // Misc
+            // Frame rate
+            "hfr", "24fps", "25fps", "30fps", "48fps", "60fps", "120fps",
+            // Scene fix / misc
+            "sample", "nfofix", "dirfix", "subfix", "syncfix",
+            "nuked", "commentary", "fullscreen", "widescreen", "ws",
             "ntsc", "pal"
         };
 
         /// <summary>Formats a TMDB title and year into a Plex-compliant name: <c>Title (Year)</c>, sanitised for use as a file or folder name.</summary>
         public static string FormatPlexName(string title, int? year) =>
-            SanitizeFileName($"{title} ({year})");
+            SanitizeFileName(year.HasValue ? $"{title} ({year.Value})" : title);
 
         /// <summary>Strips characters that are invalid in file names and collapses runs of spaces. Replaces <c>:</c> with <c> -</c> to preserve subtitle separators.</summary>
         public static string SanitizeFileName(string name)
@@ -128,7 +138,7 @@ namespace qbPortWeaver
         }
 
         /// <summary>Extracts a probable movie title and optional release year from a filename or folder name.</summary>
-        public static (string title, int? year) Parse(string name)
+        public static (string title, int? year) ParseMovie(string name)
         {
             var ext = Path.GetExtension(name);
             if (VideoExtensions.Contains(ext))
@@ -264,23 +274,23 @@ namespace qbPortWeaver
                 var next = StandaloneYearRegex().Match(cleaned, yearMatch.Index + yearMatch.Length);
                 if (next.Success)
                 {
-                    // Case 1: second year exists — advance so the first year becomes the title
+                    // Case 1: second year exists - advance so the first year becomes the title
                     yearMatch = next;
                 }
                 else
                 {
-                    // Case 2: no second year — use text after the year as the title
+                    // Case 2: no second year - use text after the year as the title
                     parsedYear = int.TryParse(yearMatch.Value, out int y2) ? y2 : (int?)null;
                     return cleaned[(yearMatch.Index + yearMatch.Length)..];
                 }
             }
             else
             {
-                // Title before year is non-empty — check for back-to-back years
+                // Title before year is non-empty - check for back-to-back years
                 var next = StandaloneYearRegex().Match(cleaned, yearMatch.Index + yearMatch.Length);
                 if (next.Success && string.IsNullOrWhiteSpace(cleaned[(yearMatch.Index + yearMatch.Length)..next.Index]))
                 {
-                    // Case 3: two years with only whitespace between — first is part of title,
+                    // Case 3: two years with only whitespace between - first is part of title,
                     // second is the release year (e.g. "Blade Runner 2049 2017")
                     yearMatch = next;
                 }
@@ -363,11 +373,11 @@ namespace qbPortWeaver
         private static partial Regex SitePrefixRegex();
 
         // Matches underscore-prefixed language codes at end of string: _VOSTFR, _VF-EN, _VO-FR, etc.
-        [GeneratedRegex(@"[_]((?:FR|EN|VF|VO)[-]?(?:FR|EN|HP|DL|VF|VO)?(?:[-](?:FR|EN|HP|DL|VF|VO))*)$", RegexOptions.IgnoreCase)]
+        [GeneratedRegex(@"[_]((?:FR|EN|VF|VO)[-]?(?:FR|EN|VF|VO)?(?:[-](?:FR|EN|VF|VO))*)$", RegexOptions.IgnoreCase)]
         private static partial Regex LanguageSuffixRegex();
 
         // Primary TV pattern: SxxExx / S1E1 / S004E111 (scene, P2P, and anime), captures season and episode.
-        // Multi-episode names (S01E01-E03, S01E01E02) match on the first episode only — Plex expects
+        // Multi-episode names (S01E01-E03, S01E01E02) match on the first episode only - Plex expects
         // individual episode files, so the caller treats the file as belonging to the first episode.
         [GeneratedRegex(@"S(\d{1,4})E(\d{1,4})", RegexOptions.IgnoreCase)]
         private static partial Regex TvShowEpisodeRegex();

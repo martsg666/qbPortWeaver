@@ -2,6 +2,7 @@ using System.Text.Json;
 
 namespace qbPortWeaver
 {
+    /// <summary>Writes the sync cycle status snapshot to a JSON file for external tooling.</summary>
     public static class StatusManager
     {
         private static readonly JsonSerializerOptions JsonOptions = new JsonSerializerOptions

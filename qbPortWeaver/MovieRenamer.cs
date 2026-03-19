@@ -42,7 +42,7 @@ namespace qbPortWeaver
             return proposals;
         }
 
-        /// <summary>Processes all movies in a folder, applying Plex naming conventions and renaming or moving files. Skips uncertain TMDB matches — use <see cref="ScanMoviesFolderAsync"/> to preview and review those first.</summary>
+        /// <summary>Processes all movies in a folder, applying Plex naming conventions and renaming or moving files. Skips uncertain TMDB matches - use <see cref="ScanMoviesFolderAsync"/> to preview and review those first.</summary>
         public async Task ProcessMoviesFolderAsync(string moviesRoot)
         {
             if (!Directory.Exists(moviesRoot))
@@ -78,7 +78,7 @@ namespace qbPortWeaver
             // In folder mode a flat Plex-named file still needs moving into its subfolder
             if (!_createFolders && FileNameParser.IsPlexFormatted(fileName)) return;
 
-            var (title, year) = FileNameParser.Parse(fileName);
+            var (title, year) = FileNameParser.ParseMovie(fileName);
             if (string.IsNullOrWhiteSpace(title)) return;
 
             var (info, isConfident) = await LookupMovieAsync(title, year).ConfigureAwait(false);
@@ -107,9 +107,9 @@ namespace qbPortWeaver
             var videoFiles = Directory.GetFiles(dirPath).Where(FileNameParser.IsVideoFile).ToList();
             if (videoFiles.Count == 0) return;
 
-            var (title, year) = FileNameParser.Parse(dirName);
+            var (title, year) = FileNameParser.ParseMovie(dirName);
             if (string.IsNullOrWhiteSpace(title))
-                (title, year) = FileNameParser.Parse(Path.GetFileName(videoFiles[0]));
+                (title, year) = FileNameParser.ParseMovie(Path.GetFileName(videoFiles[0]));
             if (string.IsNullOrWhiteSpace(title)) return;
 
             var (info, isConfident) = await LookupMovieAsync(title, year).ConfigureAwait(false);
@@ -141,7 +141,7 @@ namespace qbPortWeaver
         {
             var fileName = Path.GetFileName(filePath);
 
-            var (title, year) = FileNameParser.Parse(fileName);
+            var (title, year) = FileNameParser.ParseMovie(fileName);
 
             if (string.IsNullOrWhiteSpace(title))
             {
@@ -187,11 +187,11 @@ namespace qbPortWeaver
             if (videoFiles.Count == 0)
                 return;
 
-            var (title, year) = FileNameParser.Parse(dirName);
+            var (title, year) = FileNameParser.ParseMovie(dirName);
 
             // Fall back to first video filename if folder name yields nothing
             if (string.IsNullOrWhiteSpace(title))
-                (title, year) = FileNameParser.Parse(Path.GetFileName(videoFiles[0]));
+                (title, year) = FileNameParser.ParseMovie(Path.GetFileName(videoFiles[0]));
 
             if (string.IsNullOrWhiteSpace(title))
             {

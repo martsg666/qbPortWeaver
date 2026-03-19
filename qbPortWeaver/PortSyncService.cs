@@ -8,15 +8,16 @@ namespace qbPortWeaver
     /// <summary>Snapshot of the tray icon state after a sync cycle, raised via <see cref="PortSyncService.SyncCompleted"/>.</summary>
     public sealed record TrayStatus(SyncState State, int? Port, string Message);
 
+    /// <summary>Background service that synchronizes qBittorrent's listening port with the VPN-assigned port on each cycle.</summary>
     public sealed class PortSyncService
     {
         // qBittorrent API value returned by /api/v2/transfer/info when the client has no active connections
         private const string QBittorrentDisconnectedStatus = "disconnected";
 
-        // Event raised when a sync cycle completes (success or failure)
+        /// <summary>Raised when a sync cycle completes (success or failure) with the resulting tray status.</summary>
         public event Action<TrayStatus>? SyncCompleted;
 
-        // Event raised when qBittorrent's network interface does not match the configured VPN provider
+        /// <summary>Raised when qBittorrent's network interface does not match the configured VPN provider.</summary>
         public event Action<string>? InterfaceMismatchDetected;
 
         // Consecutive sync cycles in which the VPN was disconnected or port detection failed.
@@ -82,7 +83,7 @@ namespace qbPortWeaver
             public const string Skipped = "skipped";
         }
 
-        // Main port update logic, returns update interval in seconds
+        /// <summary>Runs one port sync cycle and returns the configured update interval in seconds.</summary>
         public async Task<int> RunAsync(CancellationToken cancellationToken = default)
         {
             // Initialize status with default values. This is written to the status file at the end of the method (in finally)

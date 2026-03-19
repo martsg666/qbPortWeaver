@@ -8,13 +8,16 @@ namespace qbPortWeaver.HelperService;
 // Retries briefly on sharing violation since the main app opens the same file with FileShare.Read.
 internal sealed class HelperLogger(string logFilePath)
 {
+    // Log prefix for the helper service subsystem - mirrors AppConstants.MediaManagerLogPrefix in the main app
+    private const string HelperServiceLogPrefix = "[HelperService] ";
+
     public void LogInfo(string message)  => WriteLog(message, "INFO ");
     public void LogWarn(string message)  => WriteLog(message, "WARN ");
     public void LogError(string message) => WriteLog(message, "ERROR");
 
     private void WriteLog(string message, string paddedLevel)
     {
-        string entry = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} | {paddedLevel} | [{HelperPipeServer.PipeName}] {message}{Environment.NewLine}";
+        string entry = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} | {paddedLevel} | {HelperServiceLogPrefix}{message}{Environment.NewLine}";
         for (int attempt = 0; attempt < 3; attempt++)
         {
             try

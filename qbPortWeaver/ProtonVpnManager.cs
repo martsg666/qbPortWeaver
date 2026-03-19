@@ -4,7 +4,7 @@ using System.Text.RegularExpressions;
 
 namespace qbPortWeaver
 {
-    // Detects ProtonVPN connectivity via network adapter enumeration and reads the forwarded port from ProtonVPN's log file
+    /// <summary>Detects ProtonVPN connectivity via network adapter enumeration and reads the forwarded port from the client log file.</summary>
     public sealed class ProtonVpnManager : IVpnManager
     {
         private const int    LogReadChunkSize = 4096;
@@ -15,6 +15,7 @@ namespace qbPortWeaver
         // differentiate external from internal port). Capture group 1 gives the forwarded port.
         private static readonly Regex PortRegex = new Regex(@"Port pair\s+(\d+)->(?:\d+)", RegexOptions.Compiled, TimeSpan.FromSeconds(1));
 
+        /// <inheritdoc />
         public string ProviderName => RegistrySettingsManager.VpnProviderProtonVpn;
 
         public ProtonVpnManager(string logFilePath)
@@ -22,6 +23,7 @@ namespace qbPortWeaver
             _logFilePath = logFilePath;
         }
 
+        /// <inheritdoc />
         public bool IsVpnConnected()
         {
             try
@@ -45,8 +47,10 @@ namespace qbPortWeaver
             }
         }
 
+        /// <inheritdoc />
         public Task<int?> GetVpnPortAsync() => Task.FromResult(GetVpnPortCore());
 
+        /// <inheritdoc />
         public string? GetRecoveryTarget() => ProviderName;
 
         private int? GetVpnPortCore()

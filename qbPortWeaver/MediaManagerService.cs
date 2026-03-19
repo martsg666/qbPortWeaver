@@ -19,8 +19,9 @@ namespace qbPortWeaver
                 return;
             }
 
-            bool dryRun        = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionMedia, RegistrySettingsManager.KeyMediaDryRun);
-            bool createFolders = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionMedia, RegistrySettingsManager.KeyMediaCreateFolders);
+            bool dryRun             = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionMedia, RegistrySettingsManager.KeyMediaDryRun);
+            bool createFolders      = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionMedia, RegistrySettingsManager.KeyMediaCreateFolders);
+            bool deleteEmptyFolders = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionMedia, RegistrySettingsManager.KeyMediaDeleteEmptyFolders);
 
             LogManager.Instance.LogMessage($"{AppConstants.MediaManagerLogPrefix}Scan started (dryRun={dryRun}, createFolders={createFolders})", LogLevel.Info);
 
@@ -38,6 +39,14 @@ namespace qbPortWeaver
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 await tvShowRenamer.ProcessTvShowsFolderAsync(folder).ConfigureAwait(false);
+            }
+
+            if (deleteEmptyFolders)
+            {
+                foreach (var folder in GetFolders(RegistrySettingsManager.KeyMediaMovieFolders))
+                    CleanupEmptyFolders(folder, dryRun);
+                foreach (var folder in GetFolders(RegistrySettingsManager.KeyMediaTvShowFolders))
+                    CleanupEmptyFolders(folder, dryRun);
             }
 
             LogManager.Instance.LogMessage($"{AppConstants.MediaManagerLogPrefix}Scan complete", LogLevel.Info);
@@ -105,6 +114,57 @@ namespace qbPortWeaver
                 }
             }, cancellationToken);
 
+        /// <summary>
+        /// Deletes subdirectories of <paramref name="rootFolder"/> that are empty or contain only <c>.nfo</c> files.
+        /// Walks bottom-up so nested empty folders are cleaned in a single pass. The root folder itself is never deleted.
+        /// </summary>
+        public static void CleanupEmptyFolders(string rootFolder, bool dryRun)
+        {
+            if (!Directory.Exists(rootFolder)) return;
+
+            int deleted = 0;
+            foreach (var dir in Directory.GetDirectories(rootFolder, "*", SearchOption.AllDirectories)
+                         .OrderByDescending(d => d.Length))
+            {
+                if (!Directory.Exists(dir)) continue;
+
+                var files = Directory.GetFiles(dir);
+                bool isEmpty = files.Length == 0 && Directory.GetDirectories(dir).Length == 0;
+                bool hasOnlyNfo = !isEmpty && files.Length > 0
+                    && Directory.GetDirectories(dir).Length == 0
+                    && files.All(f => Path.GetExtension(f).Equals(".nfo", StringComparison.OrdinalIgnoreCase));
+
+                if (!isEmpty && !hasOnlyNfo) continue;
+
+                if (dryRun)
+                {
+                    string reason = hasOnlyNfo ? "contains only .nfo files" : "empty";
+                    LogManager.Instance.LogMessage($"{AppConstants.MediaManagerLogPrefix}Would delete folder ({reason}): '{Path.GetFileName(dir)}'", LogLevel.Info);
+                }
+                else
+                {
+                    try
+                    {
+                        if (hasOnlyNfo)
+                        {
+                            foreach (var nfo in files)
+                                File.Delete(nfo);
+                        }
+                        Directory.Delete(dir);
+                        LogManager.Instance.LogMessage($"{AppConstants.MediaManagerLogPrefix}Deleted empty folder: '{Path.GetFileName(dir)}'", LogLevel.Info);
+                    }
+                    catch (IOException ex)
+                    {
+                        LogManager.Instance.LogMessage($"{AppConstants.MediaManagerLogPrefix}Failed to delete folder '{Path.GetFileName(dir)}': {ex.Message}", LogLevel.Warn);
+                    }
+                }
+                deleted++;
+            }
+
+            if (deleted > 0)
+                LogManager.Instance.LogDebug($"{AppConstants.MediaManagerLogPrefix}MediaManagerService.CleanupEmptyFolders: {deleted} folder(s) {(dryRun ? "would be deleted" : "deleted")} under '{rootFolder}'");
+        }
+
         private static string[] GetFolders(string key)
         {
             var value = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionMedia, key);
@@ -113,7 +173,7 @@ namespace qbPortWeaver
             return value.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         }
 
-        /// <summary>Moves a file to <paramref name="targetPath"/>, creating the target directory if needed. Logs a warning and skips the move if the target already exists.</summary>
+        // Moves a file to targetPath, creating the target directory if needed. Logs a warning and skips the move if the target already exists.
         internal static void MoveFile(string sourcePath, string targetPath)
         {
             var targetName = Path.GetFileName(targetPath);

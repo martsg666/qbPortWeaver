@@ -4,9 +4,11 @@ using System.Net.Sockets;
 
 namespace qbPortWeaver
 {
-    // NAT-PMP VPN manager. PortSyncService creates instances via TryCreateForAdapter() (sync cycle)
-    // or DiscoverAdapters() (SettingsForm). Renewal state (_lastExternalPort, _lastEpochSeconds) is
-    // transferred across cycles via CopyRenewalStateFrom() so port renewal works correctly.
+    /// <summary>
+    /// NAT-PMP VPN manager. PortSyncService creates instances via TryCreateForAdapter() (sync cycle)
+    /// or DiscoverAdapters() (SettingsForm). Renewal state is transferred across cycles via
+    /// CopyRenewalStateFrom() so port renewal works correctly.
+    /// </summary>
     public sealed class NatPmpManager : IVpnManager
     {
         private const int  NatPmpPort             = 5351;
@@ -22,11 +24,10 @@ namespace qbPortWeaver
         private ushort _lastExternalPort;  // zero until first mapping; suggested to gateway on renewal
         private uint   _lastEpochSeconds;  // SSOE (Seconds Since Opened Epoch) from the last successful NAT-PMP response
 
-        // Returns the adapter name, used as the VPN provider display name in log messages and status.
+        /// <inheritdoc />
         public string ProviderName => _adapter.Name;
 
-        // The lease lifetime (in seconds) granted by the gateway on the last successful port mapping; 0 until first mapping.
-        // Read by PortSyncService to warn when the configured sync interval exceeds the lease lifetime.
+        /// <summary>Lease lifetime in seconds granted by the gateway on the last successful port mapping; 0 until first mapping.</summary>
         public uint LastGrantedLifetime { get; private set; }
 
         private NatPmpManager(NetworkInterface adapter, IPAddress gateway, uint mappingLifetime)
@@ -106,10 +107,9 @@ namespace qbPortWeaver
             return externalIp is not null ? new NatPmpManager(nic, gateway, mappingLifetime) : null;
         }
 
-        // Re-enumerates network interfaces to check if the adapter is currently present and up.
-        // The stored _adapter object retains its last-seen OperationalStatus even after the
-        // adapter is removed (e.g. ProtonVPN removes the TUN adapter on disconnect), so a
-        // fresh enumeration is required for an accurate result.
+        /// <inheritdoc />
+        // Re-enumerates network interfaces because the stored _adapter object retains its
+        // last-seen OperationalStatus even after the adapter is removed on disconnect.
         public bool IsVpnConnected()
         {
             try
@@ -130,11 +130,10 @@ namespace qbPortWeaver
             }
         }
 
-        // Sends a NAT-PMP UDP port mapping request and returns the assigned external port.
-        // Primarily logs at INFO/WARN (not DEBUG) - lease time and failure details are not surfaced
-        // elsewhere in the sync cycle. The epoch delta is the exception, logged at DEBUG only.
-        // On renewal, suggests the previously assigned port (RFC 6886 §3.3) so the gateway keeps
-        // the same mapping across cycles, avoiding unnecessary qBittorrent restarts.
+        /// <inheritdoc />
+        // Logs at INFO/WARN (not DEBUG) because lease time and failure details are not surfaced
+        // elsewhere in the sync cycle. On renewal, suggests the previously assigned port
+        // (RFC 6886 §3.3) so the gateway keeps the same mapping across cycles.
         public async Task<int?> GetVpnPortAsync()
         {
             try
@@ -182,9 +181,9 @@ namespace qbPortWeaver
             }
         }
 
-        // Returns the adapter name as the recovery target. PortSyncService checks if the name
-        // matches a known provider (ProtonVPN, PIA) and triggers a service restart instead of
-        // an adapter cycle.
+        /// <inheritdoc />
+        // Returns the adapter name. PortSyncService checks if it matches a known provider
+        // (ProtonVPN, PIA) and triggers a service restart instead of an adapter cycle.
         public string? GetRecoveryTarget() => _adapter.Name;
 
         // Transfers renewal state from a previous instance so that port renewal works correctly

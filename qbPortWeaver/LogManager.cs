@@ -3,8 +3,10 @@ using System.Text;
 
 namespace qbPortWeaver
 {
+    /// <summary>Severity level for log entries.</summary>
     public enum LogLevel { Info, Warn, Error, Debug }
 
+    /// <summary>Singleton file-based logger with size-based rotation. Thread-safe.</summary>
     public sealed class LogManager
     {
         private const long MaxSize              = 5 * 1024 * 1024; // 5 MB
@@ -13,16 +15,23 @@ namespace qbPortWeaver
 
         // Static instance for global access - null until Initialize() is called
         private static LogManager? _instance;
+
+        /// <summary>Returns <see langword="true"/> after <see cref="Initialize"/> has been called.</summary>
         public static bool IsInitialized => _instance != null;
+
+        /// <summary>Returns the singleton instance. Throws <see cref="InvalidOperationException"/> if not yet initialized.</summary>
         public static LogManager Instance =>
             _instance ?? throw new InvalidOperationException(
                 $"{nameof(LogManager)} has not been initialized. Call {nameof(Initialize)} first.");
 
+        /// <summary>Absolute path to the active log file.</summary>
         public  string LogFilePath { get; }
         private readonly object _lock = new object();
         private int _writeCount;
 
         private volatile bool _debugMode;
+
+        /// <summary>When <see langword="true"/>, <see cref="LogDebug"/> writes entries; when <see langword="false"/>, debug calls are no-ops.</summary>
         public bool DebugMode
         {
             get => _debugMode;
@@ -122,7 +131,7 @@ namespace qbPortWeaver
             }
         }
 
-        /// <summary>Logs <paramref name="message"/> at debug level and returns <see langword="false"/>. Enables single-line catch blocks.</summary>
+        // Logs message at debug level and returns false, enabling single-line catch blocks
         internal static bool LogDebugFalse(string message)
         {
             Instance.LogDebug(message);

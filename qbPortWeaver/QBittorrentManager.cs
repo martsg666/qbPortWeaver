@@ -4,7 +4,7 @@ using System.Text.Json;
 
 namespace qbPortWeaver
 {
-    // Manages qBittorrent-related operations via Web API
+    /// <summary>Manages qBittorrent via its Web API: authentication, port configuration, and process lifecycle.</summary>
     public sealed class QBittorrentManager : IDisposable
     {
         private const int    ProcessStartDelayMs  = 2000;
@@ -36,8 +36,10 @@ namespace qbPortWeaver
             _httpClient = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(AppConstants.HttpTimeoutSeconds) };
         }
 
+        /// <summary>Disposes the underlying HTTP client.</summary>
         public void Dispose() => _httpClient.Dispose();
 
+        /// <summary>Returns <see langword="true"/> if the qBittorrent process is currently running.</summary>
         public bool IsRunning()
         {
             if (string.IsNullOrEmpty(_processName)) return false;
@@ -53,6 +55,7 @@ namespace qbPortWeaver
             }
         }
 
+        /// <summary>Launches qBittorrent and returns <see langword="true"/> if it starts successfully.</summary>
         public async Task<bool> ForceStartAsync(CancellationToken cancellationToken = default)
         {
             try
@@ -68,6 +71,7 @@ namespace qbPortWeaver
             }
         }
 
+        /// <summary>Kills all running qBittorrent processes and launches a new instance. Returns <see langword="true"/> on success.</summary>
         public async Task<bool> RestartAsync(CancellationToken cancellationToken = default)
         {
             try
@@ -101,7 +105,7 @@ namespace qbPortWeaver
             }
         }
 
-        // Gets listen_port and current_interface_name from qBittorrent preferences in a single request
+        /// <summary>Returns the listen port and current network interface name from qBittorrent preferences.</summary>
         public async Task<(int? ListenPort, string? CurrentInterfaceName)> GetPreferencesAsync()
         {
             if (!await EnsureAuthenticatedAsync().ConfigureAwait(false)) return (null, null);
@@ -153,6 +157,7 @@ namespace qbPortWeaver
             }
         }
 
+        /// <summary>Sets qBittorrent's listening port via the Web API. Returns <see langword="true"/> on success.</summary>
         public async Task<bool> SetListeningPortAsync(int port)
         {
             if (!await EnsureAuthenticatedAsync().ConfigureAwait(false)) return false;
@@ -180,7 +185,7 @@ namespace qbPortWeaver
             }
         }
 
-        // Returns the connection_status field from /api/v2/transfer/info ("connected", "firewalled", or "disconnected")
+        /// <summary>Returns the connection status from qBittorrent ("connected", "firewalled", or "disconnected").</summary>
         public async Task<string?> GetConnectionStatusAsync()
         {
             if (!await EnsureAuthenticatedAsync().ConfigureAwait(false)) return null;

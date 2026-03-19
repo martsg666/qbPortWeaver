@@ -26,8 +26,9 @@ namespace qbPortWeaver
             lblTmdbApiKey    = new Label();
             txtTmdbApiKey    = new TextBox();
             chkDryRun        = new CheckBox();
-            chkCreateFolders = new CheckBox();
-            tabFolders       = new TabControl();
+            chkCreateFolders      = new CheckBox();
+            chkDeleteEmptyFolders = new CheckBox();
+            tabFolders            = new TabControl();
             tabMovies        = new TabPage();
             lstMovieFolders      = new ListBox();
             btnAddMovieFolder    = new Button();
@@ -59,9 +60,10 @@ namespace qbPortWeaver
             grpGeneral.Controls.Add(txtTmdbApiKey);
             grpGeneral.Controls.Add(chkDryRun);
             grpGeneral.Controls.Add(chkCreateFolders);
+            grpGeneral.Controls.Add(chkDeleteEmptyFolders);
             grpGeneral.Location = new Point(8, 8);
             grpGeneral.Name     = "grpGeneral";
-            grpGeneral.Size     = new Size(684, 136);
+            grpGeneral.Size     = new Size(684, 161);
             grpGeneral.TabIndex = 0;
             grpGeneral.TabStop  = false;
             grpGeneral.Text     = "General";
@@ -106,11 +108,19 @@ namespace qbPortWeaver
             chkCreateFolders.TabIndex = 4;
             chkCreateFolders.Text     = "Create Plex folder structure when renaming";
             //
+            // chkDeleteEmptyFolders
+            //
+            chkDeleteEmptyFolders.AutoSize = true;
+            chkDeleteEmptyFolders.Location = new Point(12, 135);
+            chkDeleteEmptyFolders.Name     = "chkDeleteEmptyFolders";
+            chkDeleteEmptyFolders.TabIndex = 5;
+            chkDeleteEmptyFolders.Text     = "Delete empty folders after renaming (folders with only .nfo files are also removed)";
+            //
             // tabFolders
             //
             tabFolders.Controls.Add(tabMovies);
             tabFolders.Controls.Add(tabTvShows);
-            tabFolders.Location      = new Point(8, 152);
+            tabFolders.Location      = new Point(8, 177);
             tabFolders.Name          = "tabFolders";
             tabFolders.SelectedIndex = 0;
             tabFolders.Size          = new Size(684, 152);
@@ -194,7 +204,7 @@ namespace qbPortWeaver
             //
             // btnScanNow
             //
-            btnScanNow.Location = new Point(8, 312);
+            btnScanNow.Location = new Point(8, 337);
             btnScanNow.Name     = "btnScanNow";
             btnScanNow.Size     = new Size(90, 28);
             btnScanNow.TabIndex = 2;
@@ -204,7 +214,7 @@ namespace qbPortWeaver
             // btnRenameNow
             //
             btnRenameNow.Enabled  = false;
-            btnRenameNow.Location = new Point(106, 312);
+            btnRenameNow.Location = new Point(106, 337);
             btnRenameNow.Name     = "btnRenameNow";
             btnRenameNow.Size     = new Size(100, 28);
             btnRenameNow.TabIndex = 3;
@@ -213,7 +223,7 @@ namespace qbPortWeaver
             //
             // lblScanStatus
             //
-            lblScanStatus.Location  = new Point(214, 312);
+            lblScanStatus.Location  = new Point(214, 337);
             lblScanStatus.Name      = "lblScanStatus";
             lblScanStatus.Size      = new Size(478, 28);
             lblScanStatus.TabIndex  = 4;
@@ -230,7 +240,7 @@ namespace qbPortWeaver
             dgvResults.BorderStyle           = BorderStyle.Fixed3D;
             dgvResults.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.AutoSize;
             dgvResults.Columns.AddRange(colType, colCurrent, colProposed);
-            dgvResults.Location     = new Point(8, 348);
+            dgvResults.Location     = new Point(8, 373);
             dgvResults.Name         = "dgvResults";
             dgvResults.RowHeadersVisible = false;
             dgvResults.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
@@ -269,7 +279,7 @@ namespace qbPortWeaver
             //
             // btnOK
             //
-            btnOK.Location = new Point(510, 780);
+            btnOK.Location = new Point(510, 805);
             btnOK.Name     = "btnOK";
             btnOK.Size     = new Size(82, 28);
             btnOK.TabIndex = 6;
@@ -279,7 +289,7 @@ namespace qbPortWeaver
             // btnCancel
             //
             btnCancel.DialogResult = DialogResult.Cancel;
-            btnCancel.Location     = new Point(602, 780);
+            btnCancel.Location     = new Point(602, 805);
             btnCancel.Name         = "btnCancel";
             btnCancel.Size         = new Size(82, 28);
             btnCancel.TabIndex     = 7;
@@ -292,7 +302,7 @@ namespace qbPortWeaver
             AutoScaleDimensions = new SizeF(7F, 15F);
             AutoScaleMode       = AutoScaleMode.Font;
             CancelButton        = btnCancel;
-            ClientSize          = new Size(700, 820);
+            ClientSize          = new Size(700, 845);
             Controls.Add(grpGeneral);
             Controls.Add(tabFolders);
             Controls.Add(btnScanNow);
@@ -326,6 +336,7 @@ namespace qbPortWeaver
         private TextBox  txtTmdbApiKey;
         private CheckBox chkDryRun;
         private CheckBox chkCreateFolders;
+        private CheckBox chkDeleteEmptyFolders;
 
         private TabControl tabFolders;
 

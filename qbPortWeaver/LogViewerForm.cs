@@ -6,7 +6,7 @@ namespace qbPortWeaver
 {
     // Modeless log viewer with live tail updates and log-level colour coding.
     // Opened via the tray menu or tray icon double-click; only one instance is allowed at a time
-    // (enforced by MainForm.ShowLogViewer).
+    // (enforced by MainForm.ShowOrActivate).
     public partial class LogViewerForm : Form
     {
         private readonly string      _logFilePath;
@@ -18,6 +18,8 @@ namespace qbPortWeaver
         private FileSystemWatcher?   _watcher;
         private bool                 _isDarkMode;
         private Color[]              _themeColors    = null!; // initialized in OnLoad after _isDarkMode is set
+
+        public LogViewerForm() : this(string.Empty) { }
 
         public LogViewerForm(string logFilePath)
         {

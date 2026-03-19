@@ -46,7 +46,7 @@ namespace qbPortWeaver
             return proposals;
         }
 
-        /// <summary>Processes all TV episodes in a folder, applying Plex naming conventions and renaming or moving files. Skips uncertain TMDB matches — use <see cref="ScanTvShowsFolderAsync"/> to preview and review those first.</summary>
+        /// <summary>Processes all TV episodes in a folder, applying Plex naming conventions and renaming or moving files. Skips uncertain TMDB matches - use <see cref="ScanTvShowsFolderAsync"/> to preview and review those first.</summary>
         public async Task ProcessTvShowsFolderAsync(string tvShowsRoot)
         {
             if (!Directory.Exists(tvShowsRoot))

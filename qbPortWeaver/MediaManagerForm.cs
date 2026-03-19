@@ -30,6 +30,7 @@ namespace qbPortWeaver
             toolTip.SetToolTip(lblTmdbApiKey,         "Your TMDB API key - get one free at themoviedb.org/settings/api");
             toolTip.SetToolTip(chkDryRun,             "When checked, no files are renamed - use Scan Now to preview changes first");
             toolTip.SetToolTip(chkCreateFolders,      "Move each title into its own Plex-recommended folder: Movies/Title (Year)/Title (Year).ext");
+            toolTip.SetToolTip(chkDeleteEmptyFolders, "Delete folders left empty after renaming - folders containing only .nfo files are also removed");
             toolTip.SetToolTip(lstMovieFolders,       "Folders scanned for movie files on each cycle");
             toolTip.SetToolTip(btnAddMovieFolder,     "Add a folder to scan for movies");
             toolTip.SetToolTip(btnRemoveMovieFolder,  "Remove the selected folder from the list");
@@ -54,7 +55,8 @@ namespace qbPortWeaver
             chkEnabled.Checked       = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionMedia, RegistrySettingsManager.KeyMediaEnabled);
             txtTmdbApiKey.Text       = RegistrySettingsManager.GetEncryptedValue(RegistrySettingsManager.SectionMedia, RegistrySettingsManager.KeyTmdbApiKey);
             chkDryRun.Checked        = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionMedia, RegistrySettingsManager.KeyMediaDryRun);
-            chkCreateFolders.Checked = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionMedia, RegistrySettingsManager.KeyMediaCreateFolders);
+            chkCreateFolders.Checked      = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionMedia, RegistrySettingsManager.KeyMediaCreateFolders);
+            chkDeleteEmptyFolders.Checked = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionMedia, RegistrySettingsManager.KeyMediaDeleteEmptyFolders);
 
             LoadFolderList(lstMovieFolders,  RegistrySettingsManager.KeyMediaMovieFolders);
             LoadFolderList(lstTvShowFolders, RegistrySettingsManager.KeyMediaTvShowFolders);
@@ -74,7 +76,8 @@ namespace qbPortWeaver
             RegistrySettingsManager.SetBool(RegistrySettingsManager.SectionMedia,  RegistrySettingsManager.KeyMediaEnabled,      chkEnabled.Checked);
             RegistrySettingsManager.SetEncryptedValue(RegistrySettingsManager.SectionMedia, RegistrySettingsManager.KeyTmdbApiKey, txtTmdbApiKey.Text.Trim());
             RegistrySettingsManager.SetBool(RegistrySettingsManager.SectionMedia,  RegistrySettingsManager.KeyMediaDryRun,        chkDryRun.Checked);
-            RegistrySettingsManager.SetBool(RegistrySettingsManager.SectionMedia,  RegistrySettingsManager.KeyMediaCreateFolders, chkCreateFolders.Checked);
+            RegistrySettingsManager.SetBool(RegistrySettingsManager.SectionMedia,  RegistrySettingsManager.KeyMediaCreateFolders,      chkCreateFolders.Checked);
+            RegistrySettingsManager.SetBool(RegistrySettingsManager.SectionMedia,  RegistrySettingsManager.KeyMediaDeleteEmptyFolders, chkDeleteEmptyFolders.Checked);
 
             SaveFolderList(lstMovieFolders,  RegistrySettingsManager.KeyMediaMovieFolders);
             SaveFolderList(lstTvShowFolders, RegistrySettingsManager.KeyMediaTvShowFolders);
@@ -179,10 +182,18 @@ namespace qbPortWeaver
                 await MediaManagerService.ApplyProposalsAsync(toApply, ct);
 
                 // Re-scan to reflect the new state
-                var apiKey        = txtTmdbApiKey.Text.Trim();
+                var apiKey         = txtTmdbApiKey.Text.Trim();
                 bool createFolders = chkCreateFolders.Checked;
-                var movieFolders  = lstMovieFolders.Items.Cast<string>().ToArray();
-                var tvShowFolders = lstTvShowFolders.Items.Cast<string>().ToArray();
+                var movieFolders   = lstMovieFolders.Items.Cast<string>().ToArray();
+                var tvShowFolders  = lstTvShowFolders.Items.Cast<string>().ToArray();
+
+                if (chkDeleteEmptyFolders.Checked)
+                {
+                    foreach (var folder in movieFolders)
+                        MediaManagerService.CleanupEmptyFolders(folder, dryRun: false);
+                    foreach (var folder in tvShowFolders)
+                        MediaManagerService.CleanupEmptyFolders(folder, dryRun: false);
+                }
 
                 var remaining = await MediaManagerService.ScanAsync(apiKey, createFolders, movieFolders, tvShowFolders, ct);
                 PopulateGrid(remaining);
@@ -219,7 +230,7 @@ namespace qbPortWeaver
                 var editedName = row.Cells[colProposed.Index].Value?.ToString() ?? string.Empty;
                 if (string.IsNullOrWhiteSpace(editedName)) continue; // unmatched row with no user-supplied name
 
-                // Always use the original file's directory unless createFolders is still checked —
+                // Always use the original file's directory unless createFolders is still checked -
                 // the user may have toggled the checkbox between Scan and Rename Now.
                 var proposedDir  = chkCreateFolders.Checked && !string.IsNullOrEmpty(original.ProposedPath)
                                    ? Path.GetDirectoryName(original.ProposedPath) ?? string.Empty

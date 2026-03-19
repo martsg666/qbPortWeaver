@@ -60,7 +60,7 @@ namespace qbPortWeaver
     /// <summary>TMDB title, first-air year, and database ID for a TV show.</summary>
     public sealed record TvShowInfo(string Title, int? Year, int TmdbId);
 
-    // TMDB API response shapes (internal — only used for deserialization)
+    // TMDB API response shapes (internal - only used for deserialization)
     internal sealed record TmdbMovieSearchResult(
         [property: JsonPropertyName("results")] List<TmdbMovie>? Results);
 

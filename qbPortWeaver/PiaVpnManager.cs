@@ -3,7 +3,7 @@ using System.Diagnostics;
 
 namespace qbPortWeaver
 {
-    // Manages PIA (Private Internet Access) VPN operations
+    /// <summary>Detects PIA (Private Internet Access) connectivity and reads the forwarded port via <c>piactl</c>.</summary>
     public sealed class PiaVpnManager : IVpnManager
     {
         private const string PiaUninstallRegistryPath = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall";
@@ -12,8 +12,10 @@ namespace qbPortWeaver
         internal const string ClientProcessName        = "pia-client";
         private const int    ProcessTimeoutMs         = 5000;
 
+        /// <inheritdoc />
         public string ProviderName => RegistrySettingsManager.VpnProviderPia;
 
+        /// <inheritdoc />
         public bool IsVpnConnected()
         {
             try
@@ -39,8 +41,10 @@ namespace qbPortWeaver
             }
         }
 
+        /// <inheritdoc />
         public Task<int?> GetVpnPortAsync() => Task.FromResult(GetVpnPortCore());
 
+        /// <inheritdoc />
         public string? GetRecoveryTarget() => ProviderName;
 
         private static int? GetVpnPortCore()

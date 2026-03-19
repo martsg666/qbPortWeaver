@@ -4,6 +4,7 @@ using System.Text;
 
 namespace qbPortWeaver
 {
+    /// <summary>Reads and writes application settings from the Windows registry under <c>HKCU\Software\qbPortWeaver\Settings</c>.</summary>
     public static class RegistrySettingsManager
     {
         private const string BaseKeyPath = @"Software\qbPortWeaver\Settings";
@@ -51,8 +52,9 @@ namespace qbPortWeaver
         public const string KeyTmdbApiKey         = "tmdbApiKey";
         public const string KeyMediaMovieFolders  = "movieFolders";
         public const string KeyMediaTvShowFolders = "tvShowFolders";
-        public const string KeyMediaCreateFolders = "createFolders";
-        public const string KeyMediaDryRun        = "dryRun";
+        public const string KeyMediaCreateFolders      = "createFolders";
+        public const string KeyMediaDeleteEmptyFolders = "deleteEmptyFolders";
+        public const string KeyMediaDryRun             = "dryRun";
 
         // Registry key names - general section (auto-recovery)
         // Registry string values are frozen for backward compatibility.
@@ -95,8 +97,9 @@ namespace qbPortWeaver
                     [KeyTmdbApiKey]         = "",
                     [KeyMediaMovieFolders]  = "",
                     [KeyMediaTvShowFolders] = "",
-                    [KeyMediaCreateFolders] = ValueFalse,
-                    [KeyMediaDryRun]        = ValueTrue
+                    [KeyMediaCreateFolders]      = ValueFalse,
+                    [KeyMediaDeleteEmptyFolders] = ValueFalse,
+                    [KeyMediaDryRun]             = ValueTrue
                 }
             };
 

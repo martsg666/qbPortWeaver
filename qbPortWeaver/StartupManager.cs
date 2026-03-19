@@ -2,10 +2,12 @@ using Microsoft.Win32;
 
 namespace qbPortWeaver
 {
+    /// <summary>Manages the Windows startup registry entry so the application can launch at logon.</summary>
     public static class StartupManager
     {
         private const string RunRegistryKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
 
+        /// <summary>Returns <see langword="true"/> if the application is registered to start with Windows.</summary>
         public static bool IsStartupEnabled()
         {
             try
@@ -20,6 +22,7 @@ namespace qbPortWeaver
             }
         }
 
+        /// <summary>Adds or removes the application from the Windows startup registry key.</summary>
         public static void SetStartup(bool enable)
         {
             try

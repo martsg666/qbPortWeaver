@@ -60,7 +60,7 @@ namespace qbPortWeaver
                 await ProcessStandaloneFileAsync(moviesRoot, file).ConfigureAwait(false);
             }
             if (skippedFiles > 0)
-                LogManager.Instance.LogDebug($"Skipped {skippedFiles} already Plex-formatted file(s)", Subsystem.MediaManager);
+                LogManager.Instance.LogDebug($"MovieRenamer.ProcessMoviesFolderAsync: Skipped {skippedFiles} already Plex-formatted file(s)", Subsystem.MediaManager);
 
             int skippedFolders = 0;
             foreach (var dir in Directory.GetDirectories(moviesRoot))
@@ -69,10 +69,10 @@ namespace qbPortWeaver
                 await ProcessMovieFolderAsync(moviesRoot, dir).ConfigureAwait(false);
             }
             if (skippedFolders > 0)
-                LogManager.Instance.LogDebug($"Skipped {skippedFolders} already Plex-formatted folder(s)", Subsystem.MediaManager);
+                LogManager.Instance.LogDebug($"MovieRenamer.ProcessMoviesFolderAsync: Skipped {skippedFolders} already Plex-formatted folder(s)", Subsystem.MediaManager);
         }
 
-        private async Task ScanStandaloneFileAsync(string root, string filePath, List<RenameProposal> proposals)
+        private async Task ScanStandaloneFileAsync(string moviesRoot, string filePath, List<RenameProposal> proposals)
         {
             var fileName = Path.GetFileName(filePath);
             // In folder mode a flat Plex-named file still needs moving into its subfolder
@@ -92,14 +92,14 @@ namespace qbPortWeaver
             var plexName = FileNameParser.FormatPlexName(info.Title, info.Year);
 
             string proposedPath = _createFolders
-                ? Path.Combine(root, plexName, $"{plexName}{ext}")
-                : Path.Combine(root, $"{plexName}{ext}");
+                ? Path.Combine(moviesRoot, plexName, $"{plexName}{ext}")
+                : Path.Combine(moviesRoot, $"{plexName}{ext}");
 
             if (!string.Equals(filePath, proposedPath, StringComparison.OrdinalIgnoreCase))
                 proposals.Add(new RenameProposal(MediaTypeMovie, filePath, proposedPath, isConfident));
         }
 
-        private async Task ScanMovieFolderAsync(string root, string dirPath, List<RenameProposal> proposals)
+        private async Task ScanMovieFolderAsync(string moviesRoot, string dirPath, List<RenameProposal> proposals)
         {
             var dirName    = Path.GetFileName(dirPath);
             if (FileNameParser.IsPlexFormatted(dirName)) return;
@@ -121,7 +121,7 @@ namespace qbPortWeaver
             }
 
             var plexFolderName = FileNameParser.FormatPlexName(info.Title, info.Year);
-            var newDirPath     = Path.Combine(root, plexFolderName);
+            var newDirPath     = Path.Combine(moviesRoot, plexFolderName);
 
             foreach (var file in videoFiles)
             {
@@ -137,7 +137,7 @@ namespace qbPortWeaver
             }
         }
 
-        private async Task ProcessStandaloneFileAsync(string root, string filePath)
+        private async Task ProcessStandaloneFileAsync(string moviesRoot, string filePath)
         {
             var fileName = Path.GetFileName(filePath);
 
@@ -150,7 +150,7 @@ namespace qbPortWeaver
             }
 
             LogManager.Instance.LogMessage($"Processing '{fileName}'", LogLevel.Info, Subsystem.MediaManager);
-            LogManager.Instance.LogDebug($"MovieRenamer.ProcessStandaloneFile: Parsed title='{title}', year={year?.ToString() ?? "unknown"}", Subsystem.MediaManager);
+            LogManager.Instance.LogDebug($"MovieRenamer.ProcessStandaloneFileAsync: Parsed title='{title}', year={year?.ToString() ?? "unknown"}", Subsystem.MediaManager);
 
             var (info, isConfident) = await LookupMovieAsync(title, year).ConfigureAwait(false);
             if (info == null) return;
@@ -163,23 +163,14 @@ namespace qbPortWeaver
             var ext      = Path.GetExtension(filePath);
             var plexName = FileNameParser.FormatPlexName(info.Title, info.Year);
 
-            string newFilePath = _createFolders
-                ? Path.Combine(root, plexName, $"{plexName}{ext}")
-                : Path.Combine(root, $"{plexName}{ext}");
+            string targetPath = _createFolders
+                ? Path.Combine(moviesRoot, plexName, $"{plexName}{ext}")
+                : Path.Combine(moviesRoot, $"{plexName}{ext}");
 
-            if (string.Equals(filePath, newFilePath, StringComparison.OrdinalIgnoreCase))
-            {
-                LogManager.Instance.LogDebug($"MovieRenamer.ProcessStandaloneFile: Already correctly named", Subsystem.MediaManager);
-                return;
-            }
-
-            string verb = _dryRun ? "Would rename" : "Renaming";
-            LogManager.Instance.LogMessage($"{verb} '{fileName}' -> {Path.GetRelativePath(root, newFilePath)}", LogLevel.Info, Subsystem.MediaManager);
-            if (!_dryRun)
-                MediaManagerService.MoveFile(filePath, newFilePath);
+            MoveMovieFile(moviesRoot, filePath, targetPath);
         }
 
-        private async Task ProcessMovieFolderAsync(string root, string dirPath)
+        private async Task ProcessMovieFolderAsync(string moviesRoot, string dirPath)
         {
             var dirName    = Path.GetFileName(dirPath);
 
@@ -201,7 +192,7 @@ namespace qbPortWeaver
             }
 
             LogManager.Instance.LogMessage($"Processing folder '{dirName}'", LogLevel.Info, Subsystem.MediaManager);
-            LogManager.Instance.LogDebug($"MovieRenamer.ProcessMovieFolder: Parsed title='{title}', year={year?.ToString() ?? "unknown"}", Subsystem.MediaManager);
+            LogManager.Instance.LogDebug($"MovieRenamer.ProcessMovieFolderAsync: Parsed title='{title}', year={year?.ToString() ?? "unknown"}", Subsystem.MediaManager);
 
             var (info, isConfident) = await LookupMovieAsync(title, year).ConfigureAwait(false);
             if (info == null) return;
@@ -212,78 +203,47 @@ namespace qbPortWeaver
             }
 
             var plexFolderName = FileNameParser.FormatPlexName(info.Title, info.Year);
-            var newDirPath     = Path.Combine(root, plexFolderName);
+            var newDirPath     = Path.Combine(moviesRoot, plexFolderName);
 
-            LogPlannedRenames(videoFiles, plexFolderName);
-
-            if (string.Equals(dirPath, newDirPath, StringComparison.OrdinalIgnoreCase))
-            {
-                LogManager.Instance.LogDebug($"MovieRenamer.ProcessMovieFolder: Folder already correctly named", Subsystem.MediaManager);
-                return;
-            }
-
-            LogManager.Instance.LogMessage($"Renaming folder '{dirName}' -> '{plexFolderName}'", LogLevel.Info, Subsystem.MediaManager);
-
-            if (_dryRun) return;
-
-            RenameFilesInFolder(dirPath, videoFiles, plexFolderName);
-
-            if (Directory.Exists(newDirPath))
-                LogManager.Instance.LogMessage($"Skipped folder rename - target already exists: '{plexFolderName}'", LogLevel.Warn, Subsystem.MediaManager);
-            else
-            {
-                Directory.Move(dirPath, newDirPath);
-                LogManager.Instance.LogDebug($"MovieRenamer.ProcessMovieFolder: Renamed", Subsystem.MediaManager);
-            }
-        }
-
-        // Renames video files to Plex names, then renames companion files via RenameCompanionFilesInFolder
-        private static void RenameFilesInFolder(string dirPath, List<string> videoFiles, string plexFolderName)
-        {
+            // Move each video file individually into the new Plex-named folder
             foreach (var file in videoFiles)
             {
-                var ext         = Path.GetExtension(file);
-                var oldFileName = Path.GetFileName(file);
-                var partSuffix  = ExtractPartSuffix(oldFileName);
+                var ext        = Path.GetExtension(file);
+                var partSuffix = ExtractPartSuffix(Path.GetFileName(file));
                 var newFileName = partSuffix != null
                     ? $"{plexFolderName} - {partSuffix}{ext}"
                     : $"{plexFolderName}{ext}";
 
-                var newFilePath = Path.Combine(dirPath, newFileName);
-                if (!string.Equals(file, newFilePath, StringComparison.OrdinalIgnoreCase))
-                    MediaManagerService.MoveFile(file, newFilePath);
+                MoveMovieFile(moviesRoot, file, Path.Combine(newDirPath, newFileName));
             }
 
-            RenameCompanionFilesInFolder(dirPath, Path.GetFileNameWithoutExtension(videoFiles[0]), plexFolderName);
+            // Move companion files (subtitles etc.) alongside the video files
+            MoveCompanionFiles(moviesRoot, dirPath, Path.GetFileNameWithoutExtension(videoFiles[0]), plexFolderName);
         }
 
-        // Renames subtitle and other companion files whose name begins with firstVideoBase to the Plex folder name
-        private static void RenameCompanionFilesInFolder(string dirPath, string firstVideoBase, string plexFolderName)
+        // Moves or renames a movie file to its Plex-compliant target path, creating directories if needed.
+        private void MoveMovieFile(string moviesRoot, string filePath, string targetPath)
         {
-            foreach (var file in Directory.GetFiles(dirPath).Where(f => !FileNameParser.IsVideoFile(f)))
+            if (string.Equals(filePath, targetPath, StringComparison.OrdinalIgnoreCase)) return;
+
+            string verb = _dryRun ? "Would rename" : "Renaming";
+            LogManager.Instance.LogMessage($"{verb} '{Path.GetFileName(filePath)}' -> {Path.GetRelativePath(moviesRoot, targetPath)}", LogLevel.Info, Subsystem.MediaManager);
+
+            if (!_dryRun)
+                MediaManagerService.MoveFile(filePath, targetPath);
+        }
+
+        // Moves subtitle and other companion files whose name begins with firstVideoBase to the new Plex-named folder
+        private void MoveCompanionFiles(string moviesRoot, string sourceDir, string firstVideoBase, string plexFolderName)
+        {
+            foreach (var file in Directory.GetFiles(sourceDir).Where(f => !FileNameParser.IsVideoFile(f)))
             {
                 var fileName = Path.GetFileName(file);
                 if (!fileName.StartsWith(firstVideoBase, StringComparison.OrdinalIgnoreCase)) continue;
 
-                var suffix      = fileName[firstVideoBase.Length..];
-                var newFilePath = Path.Combine(dirPath, plexFolderName + suffix);
-                if (!string.Equals(file, newFilePath, StringComparison.OrdinalIgnoreCase))
-                    MediaManagerService.MoveFile(file, newFilePath);
-            }
-        }
-
-        // Logs the planned rename for each video file in the folder
-        private static void LogPlannedRenames(IEnumerable<string> videoFiles, string plexFolderName)
-        {
-            foreach (var file in videoFiles)
-            {
-                var oldFileName = Path.GetFileName(file);
-                var partSuffix  = ExtractPartSuffix(oldFileName);
-                var newFileName = partSuffix != null
-                    ? $"{plexFolderName} - {partSuffix}{Path.GetExtension(file)}"
-                    : $"{plexFolderName}{Path.GetExtension(file)}";
-
-                LogManager.Instance.LogMessage($"Renaming '{oldFileName}' -> '{newFileName}'", LogLevel.Info, Subsystem.MediaManager);
+                var suffix     = fileName[firstVideoBase.Length..];
+                var targetPath = Path.Combine(moviesRoot, plexFolderName, plexFolderName + suffix);
+                MoveMovieFile(moviesRoot, file, targetPath);
             }
         }
 
@@ -295,6 +255,7 @@ namespace qbPortWeaver
 
                 var info = await _tmdb.SearchMovieAsync(title, year).ConfigureAwait(false);
 
+                // Retry without year: parsed year may not match TMDB's release year
                 if (info == null && year.HasValue)
                 {
                     info = await _tmdb.SearchMovieAsync(title).ConfigureAwait(false);
@@ -305,11 +266,11 @@ namespace qbPortWeaver
 
                 if (info == null)
                 {
-                    LogManager.Instance.LogMessage($"No TMDB match found for '{title}'", LogLevel.Warn, Subsystem.MediaManager);
+                    LogManager.Instance.LogMessage($"No TMDB match found for movie '{title}'", LogLevel.Warn, Subsystem.MediaManager);
                     return (null, false);
                 }
 
-                LogManager.Instance.LogDebug($"MovieRenamer.LookupMovie: Matched '{info.Title}' ({info.Year}) [tmdb-{info.TmdbId}]", Subsystem.MediaManager);
+                LogManager.Instance.LogDebug($"MovieRenamer.LookupMovieAsync: Matched '{info.Title}' ({info.Year}) [tmdb-{info.TmdbId}]", Subsystem.MediaManager);
                 return (info, isConfident);
             }
             catch (HttpRequestException ex)
@@ -329,7 +290,7 @@ namespace qbPortWeaver
             if (info == null && title.Contains(" - "))
             {
                 var afterDash = title[(title.IndexOf(" - ", StringComparison.Ordinal) + 3)..].Trim();
-                LogManager.Instance.LogDebug($"MovieRenamer.LookupMovie: Retrying with '{afterDash}'", Subsystem.MediaManager);
+                LogManager.Instance.LogDebug($"MovieRenamer.TryFallbackLookupsAsync: Retrying with '{afterDash}'", Subsystem.MediaManager);
                 info = await _tmdb.SearchMovieAsync(afterDash, year).ConfigureAwait(false);
                 if (info != null) isConfident = false;
             }
@@ -341,7 +302,7 @@ namespace qbPortWeaver
                 if (trimmed.Length > 2 && char.IsDigit(trimmed[^1]) && trimmed[^2] == ' ')
                 {
                     var withoutNum = trimmed[..^2].Trim();
-                    LogManager.Instance.LogDebug($"MovieRenamer.LookupMovie: Retrying without trailing number '{withoutNum}'", Subsystem.MediaManager);
+                    LogManager.Instance.LogDebug($"MovieRenamer.TryFallbackLookupsAsync: Retrying without trailing number '{withoutNum}'", Subsystem.MediaManager);
                     var altInfo = await _tmdb.SearchMovieAsync(withoutNum, year).ConfigureAwait(false);
                     if (altInfo?.Year != null)
                     {

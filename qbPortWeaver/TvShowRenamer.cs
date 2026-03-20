@@ -2,8 +2,8 @@ namespace qbPortWeaver
 {
     /// <summary>
     /// Renames TV episode files to Plex naming convention:
-    /// TV Shows/Show Name (Year)/Season XX/Show Name (Year) - SXXEXX.ext  -with folder creation
-    /// TV Shows/Show Name (Year) - SXXEXX.ext                              -without folder creation
+    /// TV Shows/Show Name (Year)/Season XX/Show Name (Year) - SXXEXX.ext  - with folder creation
+    /// TV Shows/Show Name (Year) - SXXEXX.ext                              - without folder creation
     /// </summary>
     public sealed class TvShowRenamer
     {
@@ -32,6 +32,7 @@ namespace qbPortWeaver
         public async Task<List<RenameProposal>> ScanTvShowsFolderAsync(string tvShowsRoot)
         {
             var proposals = new List<RenameProposal>();
+
             if (!Directory.Exists(tvShowsRoot))
                 return proposals;
 
@@ -40,7 +41,7 @@ namespace qbPortWeaver
 
             foreach (var dir in Directory.GetDirectories(tvShowsRoot))
             {
-                await ScanSubfolderAsync(tvShowsRoot, dir, proposals).ConfigureAwait(false);
+                await ScanTvShowFolderAsync(tvShowsRoot, dir, proposals).ConfigureAwait(false);
             }
 
             return proposals;
@@ -64,15 +65,15 @@ namespace qbPortWeaver
                 await ProcessEpisodeFileAsync(tvShowsRoot, file).ConfigureAwait(false);
             }
             if (skippedFiles > 0)
-                LogManager.Instance.LogDebug($"Skipped {skippedFiles} already Plex-formatted episode(s)", Subsystem.MediaManager);
+                LogManager.Instance.LogDebug($"TvShowRenamer.ProcessTvShowsFolderAsync: Skipped {skippedFiles} already Plex-formatted episode(s)", Subsystem.MediaManager);
 
             foreach (var dir in Directory.GetDirectories(tvShowsRoot))
             {
-                await ProcessSubfolderAsync(tvShowsRoot, dir).ConfigureAwait(false);
+                await ProcessTvShowFolderAsync(tvShowsRoot, dir).ConfigureAwait(false);
             }
         }
 
-        private async Task ScanSubfolderAsync(string tvShowsRoot, string dirPath, List<RenameProposal> proposals, int depth = 0)
+        private async Task ScanTvShowFolderAsync(string tvShowsRoot, string dirPath, List<RenameProposal> proposals, int depth = 0)
         {
             if (depth > MaxSubfolderDepth)
             {
@@ -84,7 +85,7 @@ namespace qbPortWeaver
                 await ScanEpisodeFileAsync(tvShowsRoot, file, proposals).ConfigureAwait(false);
 
             foreach (var subDir in Directory.GetDirectories(dirPath))
-                await ScanSubfolderAsync(tvShowsRoot, subDir, proposals, depth + 1).ConfigureAwait(false);
+                await ScanTvShowFolderAsync(tvShowsRoot, subDir, proposals, depth + 1).ConfigureAwait(false);
         }
 
         private async Task ScanEpisodeFileAsync(string tvShowsRoot, string filePath, List<RenameProposal> proposals)
@@ -114,7 +115,7 @@ namespace qbPortWeaver
                 proposals.Add(new RenameProposal(MediaTypeTvShow, filePath, proposedPath, isConfident));
         }
 
-        private async Task ProcessSubfolderAsync(string tvShowsRoot, string dirPath, int depth = 0)
+        private async Task ProcessTvShowFolderAsync(string tvShowsRoot, string dirPath, int depth = 0)
         {
             if (depth > MaxSubfolderDepth)
             {
@@ -126,7 +127,7 @@ namespace qbPortWeaver
                 await ProcessEpisodeFileAsync(tvShowsRoot, file).ConfigureAwait(false);
 
             foreach (var subDir in Directory.GetDirectories(dirPath))
-                await ProcessSubfolderAsync(tvShowsRoot, subDir, depth + 1).ConfigureAwait(false);
+                await ProcessTvShowFolderAsync(tvShowsRoot, subDir, depth + 1).ConfigureAwait(false);
         }
 
         private async Task ProcessEpisodeFileAsync(string tvShowsRoot, string filePath)
@@ -144,7 +145,7 @@ namespace qbPortWeaver
             }
 
             LogManager.Instance.LogMessage($"Processing '{fileName}'", LogLevel.Info, Subsystem.MediaManager);
-            LogManager.Instance.LogDebug($"TvShowRenamer.ProcessEpisodeFile: Parsed show='{episodeInfo.ShowName}' S{episodeInfo.Season:D2}E{episodeInfo.Episode:D2}", Subsystem.MediaManager);
+            LogManager.Instance.LogDebug($"TvShowRenamer.ProcessEpisodeFileAsync: Parsed show='{episodeInfo.ShowName}' S{episodeInfo.Season:D2}E{episodeInfo.Episode:D2}", Subsystem.MediaManager);
 
             var (showInfo, isConfident) = await GetOrLookupShowAsync(episodeInfo.ShowName, episodeInfo.Year).ConfigureAwait(false);
 
@@ -191,28 +192,28 @@ namespace qbPortWeaver
             return result;
         }
 
-        private async Task<(TvShowInfo? Info, bool IsConfident)> LookupTvShowAsync(string name, int? year)
+        private async Task<(TvShowInfo? Info, bool IsConfident)> LookupTvShowAsync(string title, int? year)
         {
             try
             {
                 bool isConfident = true;
 
-                var info = await _tmdb.SearchTvShowAsync(name, year).ConfigureAwait(false);
+                var info = await _tmdb.SearchTvShowAsync(title, year).ConfigureAwait(false);
 
                 // Retry without year: parsed year may be the season year rather than TMDB's first-air year
                 if (info == null && year.HasValue)
                 {
-                    info = await _tmdb.SearchTvShowAsync(name).ConfigureAwait(false);
+                    info = await _tmdb.SearchTvShowAsync(title).ConfigureAwait(false);
                     if (info != null) isConfident = false;
                 }
 
                 if (info == null)
                 {
-                    LogManager.Instance.LogMessage($"No TMDB match found for show '{name}'", LogLevel.Warn, Subsystem.MediaManager);
+                    LogManager.Instance.LogMessage($"No TMDB match found for show '{title}'", LogLevel.Warn, Subsystem.MediaManager);
                     return (null, false);
                 }
 
-                LogManager.Instance.LogDebug($"TvShowRenamer.LookupTvShow: Matched '{info.Title}' ({info.Year}) [tmdb-{info.TmdbId}]", Subsystem.MediaManager);
+                LogManager.Instance.LogDebug($"TvShowRenamer.LookupTvShowAsync: Matched '{info.Title}' ({info.Year}) [tmdb-{info.TmdbId}]", Subsystem.MediaManager);
                 return (info, isConfident);
             }
             catch (HttpRequestException ex)

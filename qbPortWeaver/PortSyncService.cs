@@ -264,7 +264,7 @@ namespace qbPortWeaver
         {
             if (cfg.VpnProvider.Equals(RegistrySettingsManager.VpnProviderDisabled, StringComparison.OrdinalIgnoreCase))
             {
-                LogManager.Instance.LogMessage("Port sync is disabled", LogLevel.Info);
+                LogManager.Instance.LogMessage("Port sync disabled", LogLevel.Info);
                 status[StatusKeys.Status]  = StatusKeys.Skipped;
                 status[StatusKeys.Message] = "Port sync disabled";
                 return null;
@@ -360,7 +360,7 @@ namespace qbPortWeaver
             if (currentPort.Value == targetPort)
             {
                 status[StatusKeys.QBittorrentPort] = currentPort.Value;
-                LogManager.Instance.LogMessage("Ports match, no update needed", LogLevel.Info);
+                LogManager.Instance.LogMessage("Ports match - no update needed", LogLevel.Info);
             }
             else
             {
@@ -392,13 +392,13 @@ namespace qbPortWeaver
                 return false;
             }
 
-            LogManager.Instance.LogMessage("qBittorrent is not running, attempting to force start", LogLevel.Info);
+            LogManager.Instance.LogMessage("qBittorrent is not running - attempting to force start", LogLevel.Info);
             if (!await manager.ForceStartAsync(cancellationToken).ConfigureAwait(false))
             {
                 SetCompleted(status, false, "Failed to force start qBittorrent");
                 return false;
             }
-            LogManager.Instance.LogMessage("Successfully force started qBittorrent", LogLevel.Info);
+            LogManager.Instance.LogMessage("Successfully force-started qBittorrent", LogLevel.Info);
             return true;
         }
 
@@ -449,7 +449,7 @@ namespace qbPortWeaver
         // Returns false if any step fails.
         private static async Task<bool> ApplyPortUpdateAsync(QBittorrentManager manager, int targetPort, SyncConfig config, Dictionary<string, object?> status, CancellationToken cancellationToken)
         {
-            LogManager.Instance.LogMessage($"Ports do not match, updating qBittorrent port to {targetPort}", LogLevel.Info);
+            LogManager.Instance.LogMessage($"Ports do not match - updating qBittorrent port to {targetPort}", LogLevel.Info);
             if (!await manager.SetListeningPortAsync(targetPort).ConfigureAwait(false))
             {
                 SetCompleted(status, false, $"Failed to set qBittorrent port to {targetPort}");
@@ -489,7 +489,7 @@ namespace qbPortWeaver
             {
                 string cmdExe = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "cmd.exe");
                 Process.Start(AppConstants.CreateHiddenStartInfo(cmdExe, $"/C \"{cmd}\""))?.Dispose(); // NOSONAR S4721 - cmd is a user-configured registry value; execution of arbitrary commands is the intended behaviour
-                LogManager.Instance.LogMessage("Post-update command launched (fire-and-forget; result not tracked)", LogLevel.Info);
+                LogManager.Instance.LogMessage("Post-update command launched", LogLevel.Info);
             }
             catch (Exception ex)
             {
@@ -524,7 +524,7 @@ namespace qbPortWeaver
             int failedCount = _consecutiveFailedCycles;
             LogManager.Instance.LogMessage(
                 BuildCycleCountMessage($"Port detection failed on '{vpnManager.ProviderName}'", failedCount, cfg),
-                LogLevel.Info);
+                LogLevel.Warn);
             await TryTriggerRecoveryAsync(vpnManager, cfg).ConfigureAwait(false);
         }
 

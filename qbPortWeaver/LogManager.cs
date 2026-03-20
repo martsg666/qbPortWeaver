@@ -85,7 +85,7 @@ namespace qbPortWeaver
                     string paddedType = level.ToString().ToUpperInvariant().PadRight(5);
                     string logEntry = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} | {paddedType} | {subsystem.PadRight(Subsystem.MaxLength)} | {message}{Environment.NewLine}";
 
-                    using var fs = new FileStream(LogFilePath, FileMode.Append, FileAccess.Write, FileShare.Read);
+                    using var fs = new FileStream(LogFilePath, FileMode.Append, FileAccess.Write, FileShare.ReadWrite);
                     using var writer = new StreamWriter(fs, Encoding.UTF8);
                     writer.Write(logEntry);
                 }
@@ -103,7 +103,7 @@ namespace qbPortWeaver
             {
                 try
                 {
-                    using var fs = new FileStream(LogFilePath, FileMode.Append, FileAccess.Write, FileShare.Read);
+                    using var fs = new FileStream(LogFilePath, FileMode.Append, FileAccess.Write, FileShare.ReadWrite);
                     using var writer = new StreamWriter(fs, Encoding.UTF8);
                     writer.Write(Environment.NewLine);
                 }

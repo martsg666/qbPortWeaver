@@ -223,6 +223,18 @@ namespace qbPortWeaver
             return value.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         }
 
+        // Logs the rename and moves the file, or just logs a dry-run message. No-ops when source and target are the same path.
+        internal static void MoveFileWithLog(string sourcePath, string targetPath, string rootPath, bool dryRun)
+        {
+            if (string.Equals(sourcePath, targetPath, StringComparison.OrdinalIgnoreCase)) return;
+
+            string verb = dryRun ? "Would rename" : "Renaming";
+            LogManager.Instance.LogMessage($"{verb} '{Path.GetFileName(sourcePath)}' -> {Path.GetRelativePath(rootPath, targetPath)}", LogLevel.Info, Subsystem.MediaManager);
+
+            if (!dryRun)
+                MoveFile(sourcePath, targetPath);
+        }
+
         // Moves a file to targetPath, creating the target directory if needed. Logs a warning and skips the move if the target already exists.
         internal static void MoveFile(string sourcePath, string targetPath)
         {

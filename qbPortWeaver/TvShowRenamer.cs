@@ -170,13 +170,7 @@ namespace qbPortWeaver
                 ? Path.Combine(tvShowsRoot, showFolderName, $"Season {episodeInfo.Season:D2}", episodeFileName)
                 : Path.Combine(tvShowsRoot, episodeFileName);
 
-            if (string.Equals(filePath, targetPath, StringComparison.OrdinalIgnoreCase)) return;
-
-            string verb = _dryRun ? "Would rename" : "Renaming";
-            LogManager.Instance.LogMessage($"{verb} '{Path.GetFileName(filePath)}' -> {Path.GetRelativePath(tvShowsRoot, targetPath)}", LogLevel.Info, Subsystem.MediaManager);
-
-            if (!_dryRun)
-                MediaManagerService.MoveFile(filePath, targetPath);
+            MediaManagerService.MoveFileWithLog(filePath, targetPath, tvShowsRoot, _dryRun);
         }
 
         // Returns a cached show lookup or performs a new TMDB search and caches the result

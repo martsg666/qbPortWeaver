@@ -223,15 +223,7 @@ namespace qbPortWeaver
 
         // Moves or renames a movie file to its Plex-compliant target path, creating directories if needed.
         private void MoveMovieFile(string moviesRoot, string filePath, string targetPath)
-        {
-            if (string.Equals(filePath, targetPath, StringComparison.OrdinalIgnoreCase)) return;
-
-            string verb = _dryRun ? "Would rename" : "Renaming";
-            LogManager.Instance.LogMessage($"{verb} '{Path.GetFileName(filePath)}' -> {Path.GetRelativePath(moviesRoot, targetPath)}", LogLevel.Info, Subsystem.MediaManager);
-
-            if (!_dryRun)
-                MediaManagerService.MoveFile(filePath, targetPath);
-        }
+            => MediaManagerService.MoveFileWithLog(filePath, targetPath, moviesRoot, _dryRun);
 
         // Moves subtitle and other companion files whose name begins with firstVideoBase to the new Plex-named folder
         private void MoveCompanionFiles(string moviesRoot, string sourceDir, string firstVideoBase, string plexFolderName)

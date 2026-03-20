@@ -11,8 +11,8 @@ namespace qbPortWeaver
     /// </summary>
     internal static class AutoRecoveryManager
     {
-        internal const string ActionRestart      = "restart";
-        internal const string ActionCycleAdapter = "cycle-adapter";
+        internal const string ActionRestart      = "restart";       // Must match HelperPipeServer.ActionRestart in HelperService
+        internal const string ActionCycleAdapter = "cycle-adapter"; // Must match HelperPipeServer.ActionCycleAdapter in HelperService
 
         private const int ClientRestartDelayMs       = 2000;
         private const int PipeConnectTimeoutMs       = 5000;
@@ -75,7 +75,7 @@ namespace qbPortWeaver
                         if (exePath != null)
                         {
                             _cachedClientExePaths[processName] = exePath;
-                            LogManager.Instance.LogDebug($"AutoRecoveryManager.CacheRunningClientExePaths: Cached '{processName}' → {exePath}");
+                            LogManager.Instance.LogDebug($"AutoRecoveryManager.CacheRunningClientExePaths: Cached '{processName}' -> {exePath}");
                         }
                     }
                     finally

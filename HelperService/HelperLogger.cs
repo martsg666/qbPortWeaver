@@ -6,7 +6,7 @@ namespace qbPortWeaver.HelperService;
 /// Writes log entries to the shared qbPortWeaver log file in the same format as the main app's
 /// LogManager: "yyyy-MM-dd HH:mm:ss | LEVEL | message".
 /// Instantiated per connection with the log file path received from the tray app via the pipe.
-/// Retries briefly on sharing violation since the main app opens the same file with FileShare.Read.
+/// Retries briefly on sharing violations in case another process holds the file.
 /// </summary>
 internal sealed class HelperLogger(string logFilePath)
 {

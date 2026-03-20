@@ -225,7 +225,7 @@ namespace qbPortWeaver
                     if (!AppConstants.KillProcess(proc, ProcessKillTimeoutMs))
                         LogManager.Instance.LogMessage($"qBittorrent process (PID {proc.Id}) still running after kill attempts", LogLevel.Warn);
                 }
-                catch (Exception ex) { LogManager.Instance.LogDebug($"QBittorrentManager.KillProcessesByName: Failed to kill process: {ex.Message}"); }
+                catch (Exception ex) { LogManager.Instance.LogDebug($"QBittorrentManager.KillProcessesByName: Failed to kill process - {ex.Message}"); }
                 finally { proc.Dispose(); }
             }
         }

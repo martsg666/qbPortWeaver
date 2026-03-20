@@ -19,8 +19,8 @@ internal sealed class HelperPipeServer : BackgroundService
     internal const string PipeName = "qbPortWeaverHelper"; // Must match AppConstants.HelperServicePipeName in qbPortWeaver
     private  const string ExpectedLogFileName = "qbPortWeaver.log"; // Must match AppConstants.LogFileName in qbPortWeaver
 
-    private const string ActionRestart      = "restart";
-    private const string ActionCycleAdapter = "cycle-adapter";
+    private const string ActionRestart      = "restart";       // Must match AutoRecoveryManager.ActionRestart in qbPortWeaver
+    private const string ActionCycleAdapter = "cycle-adapter"; // Must match AutoRecoveryManager.ActionCycleAdapter in qbPortWeaver
 
     private readonly ILogger<HelperPipeServer> _logger;
 

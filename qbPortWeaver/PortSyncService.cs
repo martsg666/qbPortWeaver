@@ -141,7 +141,7 @@ namespace qbPortWeaver
             LogManager.Instance.DebugMode = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionExtra, RegistrySettingsManager.KeyDebugMode);
 
             var cfg = ReadConfig();
-            LogManager.Instance.LogDebug($"PortSyncService.ReadConfig: vpn={cfg.VpnProvider}, adapter={cfg.NatPmpAdapterName}, interval={cfg.UpdateInterval}s, " +
+            LogManager.Instance.LogDebug($"PortSyncService.RunCoreAsync: vpn={cfg.VpnProvider}, adapter={cfg.NatPmpAdapterName}, interval={cfg.UpdateInterval}s, " +
                 $"url={cfg.QBittorrentUrl}, user={cfg.QBittorrentUserName}, exe={cfg.QBittorrentExePath}, process={cfg.QBittorrentProcessName}, " +
                 $"restart={cfg.RestartQBittorrent}, forceStart={cfg.ForceStartQBittorrent}, defaultPort={cfg.DefaultPort}, " +
                 $"warnMismatch={cfg.WarnOnInterfaceMismatch}, restartOnDisconnect={cfg.RestartOnDisconnect}, " +

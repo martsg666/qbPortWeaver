@@ -4,9 +4,11 @@ using System.IO.Pipes;
 
 namespace qbPortWeaver
 {
-    // Handles auto-recovery from the user session.
-    // Privileged operations (service restart, adapter cycling) are delegated to the helper
-    // service via named pipe. Client process restart runs directly in the user session.
+    /// <summary>
+    /// Handles auto-recovery from the user session.
+    /// Privileged operations (service restart, adapter cycling) are delegated to the helper
+    /// service via named pipe. Client process restart runs directly in the user session.
+    /// </summary>
     internal static class AutoRecoveryManager
     {
         internal const string ActionRestart      = "restart";
@@ -18,19 +20,21 @@ namespace qbPortWeaver
 
         // Caches the EXE path for each client process name so recovery works even when
         // the process was killed externally before we could inspect it.
-        private static readonly ConcurrentDictionary<string, string> CachedClientExePaths = new(StringComparer.OrdinalIgnoreCase);
+        private static readonly ConcurrentDictionary<string, string> _cachedClientExePaths = new(StringComparer.OrdinalIgnoreCase);
 
         // Maps a provider token to the client process that must be restarted alongside the service.
-        private static readonly (string ProviderKeyword, string ClientProcessName)[] ClientProcessMap =
+        private static readonly (string ProviderKeyword, string ClientProcessName)[] _clientProcessMap =
         [
             (RegistrySettingsManager.VpnProviderProtonVpn, ProtonVpnManager.ClientProcessName),
             (RegistrySettingsManager.VpnProviderPia,       PiaVpnManager.ClientProcessName),
         ];
 
-        // Sends a recovery request to the helper service. For "restart" actions, also
-        // restarts the matching client process in the current user session after a delay
-        // to let the service come up first. For "cycle-adapter" (generic NAT-PMP gateways),
-        // only the adapter is cycled - no client process is involved.
+        /// <summary>
+        /// Sends a recovery request to the helper service. For "restart" actions, also
+        /// restarts the matching client process in the current user session after a delay
+        /// to let the service come up first. For "cycle-adapter" actions, only the adapter
+        /// is cycled - no client process is involved.
+        /// </summary>
         internal static async Task TriggerRecoveryAsync(string action, string target)
         {
             await SendToHelperServiceAsync(action, target).ConfigureAwait(false);
@@ -51,14 +55,16 @@ namespace qbPortWeaver
                 LogManager.Instance.LogMessage($"No client process matches '{target}' - skipping client restart", LogLevel.Warn);
         }
 
-        // Proactively discovers and caches EXE paths for all known client processes.
-        // Called during normal sync cycles (when the VPN is connected) so the path is
-        // available if the client is later killed externally before recovery runs.
+        /// <summary>
+        /// Proactively discovers and caches EXE paths for all known client processes.
+        /// Called during normal sync cycles so the path is available if the client is
+        /// later killed externally before recovery runs.
+        /// </summary>
         internal static void CacheRunningClientExePaths()
         {
-            foreach (var processName in ClientProcessMap
+            foreach (var processName in _clientProcessMap
                          .Select(e => e.ClientProcessName)
-                         .Where(name => !CachedClientExePaths.ContainsKey(name)))
+                         .Where(name => !_cachedClientExePaths.ContainsKey(name)))
             {
                 try
                 {
@@ -68,7 +74,7 @@ namespace qbPortWeaver
                         string? exePath = processes.FirstOrDefault()?.MainModule?.FileName;
                         if (exePath != null)
                         {
-                            CachedClientExePaths[processName] = exePath;
+                            _cachedClientExePaths[processName] = exePath;
                             LogManager.Instance.LogDebug($"AutoRecoveryManager.CacheRunningClientExePaths: Cached '{processName}' → {exePath}");
                         }
                     }
@@ -104,7 +110,7 @@ namespace qbPortWeaver
 
         // Matches the provider token (e.g. "ProtonVPN", "PIA") to the client process name.
         private static string? FindClientProcessName(string target) =>
-            ClientProcessMap
+            _clientProcessMap
                 .Where(e => target.Contains(e.ProviderKeyword, StringComparison.OrdinalIgnoreCase))
                 .Select(e => e.ClientProcessName)
                 .FirstOrDefault();
@@ -124,7 +130,7 @@ namespace qbPortWeaver
                 {
                     exePath = processes.FirstOrDefault()?.MainModule?.FileName;
                     if (exePath != null)
-                        CachedClientExePaths[processName] = exePath;
+                        _cachedClientExePaths[processName] = exePath;
                     foreach (var p in processes)
                     {
                         try
@@ -149,7 +155,7 @@ namespace qbPortWeaver
             }
 
             // Fall back to cached path if the process was already dead
-            if (exePath == null && CachedClientExePaths.TryGetValue(processName, out string? cached))
+            if (exePath == null && _cachedClientExePaths.TryGetValue(processName, out string? cached))
             {
                 exePath = cached;
                 LogManager.Instance.LogMessage($"Using cached EXE path for '{processName}': {exePath}", LogLevel.Info);

@@ -97,11 +97,11 @@ namespace qbPortWeaver
             chkDebug.TextAlign               = System.Drawing.ContentAlignment.MiddleCenter;
             chkDebug.UseVisualStyleBackColor = false;
 
-            // Wire filter events after setting Checked = true to avoid premature FilterButton_CheckedChanged
-            chkError.CheckedChanged += FilterButton_CheckedChanged;
-            chkWarn.CheckedChanged  += FilterButton_CheckedChanged;
-            chkInfo.CheckedChanged  += FilterButton_CheckedChanged;
-            chkDebug.CheckedChanged += FilterButton_CheckedChanged;
+            // Wire filter events after setting Checked = true to avoid premature filterButton_CheckedChanged
+            chkError.CheckedChanged += filterButton_CheckedChanged;
+            chkWarn.CheckedChanged  += filterButton_CheckedChanged;
+            chkInfo.CheckedChanged  += filterButton_CheckedChanged;
+            chkDebug.CheckedChanged += filterButton_CheckedChanged;
 
             // Search controls - anchored Right so they stay visible when the form is resized
             // Layout from right: [4] [btnNext:26] [btnPrev:26] [4] [lblMatchCount:64] [4] [txtSearch:220] [8]
@@ -114,8 +114,8 @@ namespace qbPortWeaver
             txtSearch.Location        = new System.Drawing.Point(752, 8);
             txtSearch.PlaceholderText = "Search…";
             txtSearch.Width           = 220; // height is auto-sized by font; vertically centered in OnLoad
-            txtSearch.TextChanged    += TxtSearch_TextChanged;
-            txtSearch.KeyDown        += TxtSearch_KeyDown;
+            txtSearch.TextChanged    += txtSearch_TextChanged;
+            txtSearch.KeyDown        += txtSearch_KeyDown;
 
             // btnClearSearch - overlays the right interior of txtSearch; sized and positioned in OnLoad.
             // Right-margin set to txtSearch.RightMargin - 2 so the button always stays 2px inside the box on resize.
@@ -129,7 +129,7 @@ namespace qbPortWeaver
             btnClearSearch.Text                      = "X";
             btnClearSearch.TextAlign                 = System.Drawing.ContentAlignment.MiddleCenter;
             btnClearSearch.Visible                   = false;
-            btnClearSearch.Click                    += BtnClearSearch_Click;
+            btnClearSearch.Click                    += btnClearSearch_Click;
 
             // btnPrev
             btnPrev.Anchor    = rightAnchor;
@@ -137,7 +137,7 @@ namespace qbPortWeaver
             btnPrev.Location  = new System.Drawing.Point(1044, 5);
             btnPrev.Size      = new System.Drawing.Size(26, 26);
             btnPrev.Text      = "▲";
-            btnPrev.Click    += BtnPrev_Click;
+            btnPrev.Click    += btnPrev_Click;
 
             // btnNext
             btnNext.Anchor    = rightAnchor;
@@ -145,7 +145,7 @@ namespace qbPortWeaver
             btnNext.Location  = new System.Drawing.Point(1070, 5);
             btnNext.Size      = new System.Drawing.Size(26, 26);
             btnNext.Text      = "▼";
-            btnNext.Click    += BtnNext_Click;
+            btnNext.Click    += btnNext_Click;
 
             // lblMatchCount
             lblMatchCount.Anchor    = rightAnchor;
@@ -168,11 +168,11 @@ namespace qbPortWeaver
             ctxCopy.Text      = "Copy";
             ctxCopyAll.Text   = "Copy All";
             ctxSelectAll.Text = "Select All";
-            ctxCopy.Click      += CtxCopy_Click;
-            ctxCopyAll.Click   += CtxCopyAll_Click;
-            ctxSelectAll.Click += CtxSelectAll_Click;
+            ctxCopy.Click      += ctxCopy_Click;
+            ctxCopyAll.Click   += ctxCopyAll_Click;
+            ctxSelectAll.Click += ctxSelectAll_Click;
             ctxLog.Items.AddRange(new System.Windows.Forms.ToolStripItem[] { ctxCopy, ctxCopyAll, ctxSelectAll });
-            ctxLog.Opening += CtxLog_Opening;
+            ctxLog.Opening += ctxLog_Opening;
             rtbLog.ContextMenuStrip = ctxLog;
 
             // rtbLog

@@ -81,7 +81,7 @@ namespace qbPortWeaver
         /// Returns <see langword="null"/> if the adapter is not found or not up, has no resolvable
         /// gateway, or does not respond to a NAT-PMP probe.
         /// </summary>
-        /// <param name="adapterName">The adapter description to match (case-insensitive).</param>
+        /// <param name="adapterName">The adapter name to match (case-insensitive).</param>
         /// <param name="mappingLifetime">Requested port mapping duration in seconds; the gateway may grant less.</param>
         public static async Task<NatPmpManager?> TryCreateForAdapter(string adapterName, uint mappingLifetime = DefaultMappingLifetime)
         {

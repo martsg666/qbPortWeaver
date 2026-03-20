@@ -1,5 +1,6 @@
 namespace qbPortWeaver
 {
+    /// <summary>Settings dialog for configuring VPN provider, qBittorrent connection, sync interval, and extra options.</summary>
     public partial class SettingsForm : Form
     {
         private const string DiscoveringAdaptersPlaceholder = "Discovering adapters\u2026";

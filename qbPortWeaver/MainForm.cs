@@ -2,6 +2,7 @@ using System.Runtime.InteropServices;
 
 namespace qbPortWeaver
 {
+    /// <summary>Main application form - hosts the system tray icon, context menu, and owns the background port-sync service.</summary>
     public partial class MainForm : Form
     {
         // Tray icon, menu and auto-start menu item

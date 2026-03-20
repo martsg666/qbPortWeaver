@@ -1,5 +1,6 @@
 namespace qbPortWeaver
 {
+    /// <summary>About dialog showing version info, update availability, and contributor credits.</summary>
     public partial class AboutForm : Form
     {
         // Set to the release URL when an update is available; null when up-to-date or not yet checked

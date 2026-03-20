@@ -253,30 +253,30 @@ namespace qbPortWeaver
             _mnuPaste.ShortcutKeyDisplayString     = "Ctrl+V";
             mnuSelectAll.ShortcutKeyDisplayString  = "Ctrl+A";
 
-            mnuCopy.Click      += GridContextCopy_Click;
-            _mnuPaste.Click    += GridContextPaste_Click;
-            mnuSelectAll.Click += GridContextSelectAll_Click;
+            mnuCopy.Click      += gridContextCopy_Click;
+            _mnuPaste.Click    += gridContextPaste_Click;
+            mnuSelectAll.Click += gridContextSelectAll_Click;
 
             var menu = new ContextMenuStrip(components);
             menu.Items.AddRange([mnuCopy, _mnuPaste, new ToolStripSeparator(), mnuSelectAll]);
 
-            dgvResults.MouseDown    += GridResults_MouseDown;
-            menu.Opening            += GridContextMenu_Opening;
+            dgvResults.MouseDown    += gridResults_MouseDown;
+            menu.Opening            += gridContextMenu_Opening;
             dgvResults.ContextMenuStrip = menu;
         }
 
-        private void GridContextCopy_Click(object? sender, EventArgs e)
+        private void gridContextCopy_Click(object? sender, EventArgs e)
         {
             if (dgvResults.CurrentCell?.Value is string v && v.Length > 0)
                 Clipboard.SetText(v);
         }
 
-        private void GridContextPaste_Click(object? sender, EventArgs e) => PasteToCurrentCell();
+        private void gridContextPaste_Click(object? sender, EventArgs e) => PasteToCurrentCell();
 
-        private void GridContextSelectAll_Click(object? sender, EventArgs e) => dgvResults.SelectAll();
+        private void gridContextSelectAll_Click(object? sender, EventArgs e) => dgvResults.SelectAll();
 
         // Right-click first moves focus to the cell under the cursor, then the menu opens
-        private void GridResults_MouseDown(object? sender, MouseEventArgs e)
+        private void gridResults_MouseDown(object? sender, MouseEventArgs e)
         {
             if (e.Button != MouseButtons.Right) return;
             var hit = dgvResults.HitTest(e.X, e.Y);
@@ -284,7 +284,7 @@ namespace qbPortWeaver
                 dgvResults.CurrentCell = dgvResults[hit.ColumnIndex, hit.RowIndex];
         }
 
-        private void GridContextMenu_Opening(object? sender, System.ComponentModel.CancelEventArgs e)
+        private void gridContextMenu_Opening(object? sender, System.ComponentModel.CancelEventArgs e)
         {
             bool canPaste = dgvResults.CurrentCell?.ColumnIndex == colProposed.Index
                             && !dgvResults.CurrentCell.ReadOnly

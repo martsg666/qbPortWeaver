@@ -142,7 +142,7 @@ namespace qbPortWeaver
         }
 
         /// <summary>Extracts a probable movie title and optional release year from a filename or folder name.</summary>
-        public static (string title, int? year) ParseMovie(string name)
+        public static (string Title, int? Year) ParseMovie(string name)
         {
             var ext = Path.GetExtension(name);
             if (VideoExtensions.Contains(ext))
@@ -180,7 +180,7 @@ namespace qbPortWeaver
 
         // Attempts to extract title and year from a parenthesized year pattern.
         // Handles "Title (2009)" and leading "(2000) Title..." formats.
-        private static (string title, int? year)? TryParseYearInParens(string name)
+        private static (string Title, int? Year)? TryParseYearInParens(string name)
         {
             var match = YearInParensRegex().Match(name);
             if (!match.Success)

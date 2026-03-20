@@ -120,7 +120,7 @@ namespace qbPortWeaver
         }
 
         // Called when any filter CheckBox changes - updates its style and rebuilds the display
-        private void FilterButton_CheckedChanged(object? sender, EventArgs e)
+        private void filterButton_CheckedChanged(object? sender, EventArgs e)
         {
             if (sender is CheckBox chk)
                 ApplyFilterButtonStyle(chk, GetButtonLevelColor(chk));
@@ -135,26 +135,26 @@ namespace qbPortWeaver
             return _themeColors[3];
         }
 
-        private void CtxLog_Opening(object? sender, System.ComponentModel.CancelEventArgs e)
+        private void ctxLog_Opening(object? sender, System.ComponentModel.CancelEventArgs e)
             => ctxCopy.Enabled = rtbLog.SelectionLength > 0;
 
-        private void CtxCopy_Click(object? sender, EventArgs e)      => rtbLog.Copy();
-        private void CtxCopyAll_Click(object? sender, EventArgs e)   => Clipboard.SetText(rtbLog.Text.Length > 0 ? rtbLog.Text : " ");
-        private void CtxSelectAll_Click(object? sender, EventArgs e) => rtbLog.SelectAll();
+        private void ctxCopy_Click(object? sender, EventArgs e)      => rtbLog.Copy();
+        private void ctxCopyAll_Click(object? sender, EventArgs e)   => Clipboard.SetText(rtbLog.Text.Length > 0 ? rtbLog.Text : " ");
+        private void ctxSelectAll_Click(object? sender, EventArgs e) => rtbLog.SelectAll();
 
-        private void BtnClearSearch_Click(object? sender, EventArgs e) => txtSearch.Clear();
-        private void BtnPrev_Click(object? sender, EventArgs e)        => SearchPrev();
-        private void BtnNext_Click(object? sender, EventArgs e)        => SearchNext();
+        private void btnClearSearch_Click(object? sender, EventArgs e) => txtSearch.Clear();
+        private void btnPrev_Click(object? sender, EventArgs e)        => SearchPrev();
+        private void btnNext_Click(object? sender, EventArgs e)        => SearchNext();
 
         // Triggered when the search text changes - shows/hides the clear button, then refreshes matches
-        private void TxtSearch_TextChanged(object? sender, EventArgs e)
+        private void txtSearch_TextChanged(object? sender, EventArgs e)
         {
             btnClearSearch.Visible = txtSearch.Text.Length > 0;
             RefreshSearch(navigateToFirst: true);
         }
 
         // Handles Enter (next), Shift+Enter (prev), and Escape (clear) in the search box
-        private void TxtSearch_KeyDown(object? sender, KeyEventArgs e)
+        private void txtSearch_KeyDown(object? sender, KeyEventArgs e)
         {
             if (e.KeyCode == Keys.Enter)
             {
@@ -328,9 +328,9 @@ namespace qbPortWeaver
                     NotifyFilter        = NotifyFilters.LastWrite | NotifyFilters.FileName,
                     EnableRaisingEvents = true
                 };
-                _watcher.Changed += Watcher_Changed;
-                _watcher.Created += Watcher_Created;
-                _watcher.Deleted += Watcher_Deleted;
+                _watcher.Changed += watcher_Changed;
+                _watcher.Created += watcher_Created;
+                _watcher.Deleted += watcher_Deleted;
             }
             catch (Exception ex)
             {
@@ -338,9 +338,9 @@ namespace qbPortWeaver
             }
         }
 
-        private void Watcher_Changed(object sender, FileSystemEventArgs e) => OnLogFileUpdated();
-        private void Watcher_Created(object sender, FileSystemEventArgs e) => OnLogFileUpdated();
-        private void Watcher_Deleted(object sender, FileSystemEventArgs e) => OnLogFileDeleted();
+        private void watcher_Changed(object sender, FileSystemEventArgs e) => OnLogFileUpdated();
+        private void watcher_Created(object sender, FileSystemEventArgs e) => OnLogFileUpdated();
+        private void watcher_Deleted(object sender, FileSystemEventArgs e) => OnLogFileDeleted();
 
         // Reads any new content appended since the last read and appends visible lines to the display.
         // Only scrolls to the bottom if the user was already there before the update.

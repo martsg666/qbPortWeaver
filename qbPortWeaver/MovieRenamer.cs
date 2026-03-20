@@ -31,7 +31,7 @@ namespace qbPortWeaver
             if (!Directory.Exists(moviesRoot))
                 return proposals;
 
-            foreach (var file in Directory.GetFiles(moviesRoot).Where(FileNameParser.IsVideoFile))
+            foreach (var file in Directory.GetFiles(moviesRoot).Where(f => FileNameParser.IsVideoFile(f) && !FileNameParser.IsTvShowEpisode(Path.GetFileName(f))))
                 await ScanStandaloneFileAsync(moviesRoot, file, proposals).ConfigureAwait(false);
 
             foreach (var dir in Directory.GetDirectories(moviesRoot))
@@ -54,7 +54,7 @@ namespace qbPortWeaver
             LogManager.Instance.LogMessage($"{AppConstants.MediaManagerLogPrefix}Scanning movie folder: {moviesRoot}", LogLevel.Info);
 
             int skippedFiles = 0;
-            foreach (var file in Directory.GetFiles(moviesRoot).Where(FileNameParser.IsVideoFile))
+            foreach (var file in Directory.GetFiles(moviesRoot).Where(f => FileNameParser.IsVideoFile(f) && !FileNameParser.IsTvShowEpisode(Path.GetFileName(f))))
             {
                 if (!_createFolders && FileNameParser.IsPlexFormatted(Path.GetFileName(file))) { skippedFiles++; continue; }
                 await ProcessStandaloneFileAsync(moviesRoot, file).ConfigureAwait(false);
@@ -322,7 +322,7 @@ namespace qbPortWeaver
         // Applies two fallback TMDB lookup strategies to reduce unmatched results.
         // After-dash strategy: only runs when info is null (no match from initial lookups).
         // Trailing-number strategy: runs when info is null OR info.Year is null.
-        private async Task<(MovieInfo? info, bool isConfident)> TryFallbackLookupsAsync(
+        private async Task<(MovieInfo? Info, bool IsConfident)> TryFallbackLookupsAsync(
             string title, int? year, MovieInfo? info, bool isConfident)
         {
             // Try the part after " - " (e.g. "Harry Potter 1 - The Sorcerer's Stone")

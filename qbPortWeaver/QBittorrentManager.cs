@@ -80,12 +80,12 @@ namespace qbPortWeaver
                 // launching the new instance, to avoid the new process inheriting a port or
                 // file lock held by a still-dying instance.
                 KillProcessesByName(_processName);
-                if (HasRunningProcesses(_processName))
+                if (IsRunning())
                 {
                     // First pass left survivors - wait briefly and retry with a fresh process list
                     await Task.Delay(1000, cancellationToken).ConfigureAwait(false);
                     KillProcessesByName(_processName);
-                    if (HasRunningProcesses(_processName))
+                    if (IsRunning())
                     {
                         LogManager.Instance.LogMessage("Failed to kill all qBittorrent processes - aborting restart", LogLevel.Error);
                         return false;
@@ -230,14 +230,6 @@ namespace qbPortWeaver
             }
         }
 
-        // Returns true if any process with the given name is currently running.
-        private static bool HasRunningProcesses(string processName)
-        {
-            var processes = Process.GetProcessesByName(processName);
-            bool any = processes.Length > 0;
-            foreach (var p in processes) p.Dispose();
-            return any;
-        }
 
         // Authenticates once per instance; subsequent calls reuse the existing session cookie
         private async Task<bool> EnsureAuthenticatedAsync()

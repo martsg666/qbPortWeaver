@@ -459,9 +459,6 @@ namespace qbPortWeaver
                 RefreshSearch(navigateToFirst: false);
         }
 
-        // Maps a log line to its display colour using the shared colour index
-        private Color GetLineColor(string line) => _themeColors[GetLineColorIndex(line)];
-
         // Returns the 0-based colour index for a log line, shared by the RTF builder and live-update renderer
         // Log format: "yyyy-MM-dd HH:mm:ss | LEVEL | message" (level padded to 5 chars)
         private static int GetLineColorIndex(string line)

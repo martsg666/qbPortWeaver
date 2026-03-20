@@ -10,7 +10,7 @@ namespace qbPortWeaver.HelperService;
 /// </summary>
 internal sealed class HelperLogger(string logFilePath)
 {
-    // Must match Subsystem.HelperService and Subsystem.MaxLength in the main app
+    // Must match LogManager.Subsystem.HelperService and LogManager.Subsystem.MaxLength in qbPortWeaver
     private const string SubsystemName        = "HelperService";
     private const int    SubsystemColumnWidth = 13;
 

@@ -17,7 +17,7 @@ namespace qbPortWeaver
         private bool                 _isDarkMode;
         private Color[]              _themeColors    = null!; // initialized in OnLoad after _isDarkMode is set
 
-        public LogViewerForm() : this(string.Empty) { }
+        private LogViewerForm() : this(string.Empty) { } // designer support only
 
         public LogViewerForm(string logFilePath)
         {

@@ -150,9 +150,19 @@ namespace qbPortWeaver
         {
             if (!Directory.Exists(rootFolder)) return;
 
+            string[] directories;
+            try
+            {
+                directories = Directory.GetDirectories(rootFolder, "*", SearchOption.AllDirectories);
+            }
+            catch (IOException ex)
+            {
+                LogManager.Instance.LogMessage($"{AppConstants.MediaManagerLogPrefix}Skipping folder cleanup for '{rootFolder}': {ex.Message}", LogLevel.Warn);
+                return;
+            }
+
             int deleted = 0;
-            foreach (var dir in Directory.GetDirectories(rootFolder, "*", SearchOption.AllDirectories)
-                         .OrderByDescending(d => d.Length))
+            foreach (var dir in directories.OrderByDescending(d => d.Length))
             {
                 if (!Directory.Exists(dir)) continue;
 

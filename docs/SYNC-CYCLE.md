@@ -166,7 +166,7 @@ Every cycle writes a JSON status file (`status.json` next to the log file) captu
   "portChanged": true,
   "updateIntervalSeconds": 180,
   "status": "success",
-  "message": "Completed successfully"
+  "message": "Sync cycle completed"
 }
 ```
 

@@ -10,8 +10,9 @@ namespace qbPortWeaver.HelperService;
 /// </summary>
 internal sealed class HelperLogger(string logFilePath)
 {
-    // Log prefix for the helper service subsystem - mirrors AppConstants.MediaManagerLogPrefix in the main app
-    private const string HelperServiceLogPrefix = "[HelperService] ";
+    // Must match Subsystem.HelperService and Subsystem.MaxLength in the main app
+    private const string SubsystemName        = "HelperService";
+    private const int    SubsystemColumnWidth = 13;
 
     public void LogInfo(string message)  => WriteLog(message, "INFO ");
     public void LogWarn(string message)  => WriteLog(message, "WARN ");
@@ -19,7 +20,7 @@ internal sealed class HelperLogger(string logFilePath)
 
     private void WriteLog(string message, string paddedLevel)
     {
-        string entry = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} | {paddedLevel} | {HelperServiceLogPrefix}{message}{Environment.NewLine}";
+        string entry = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} | {paddedLevel} | {SubsystemName.PadRight(SubsystemColumnWidth)} | {message}{Environment.NewLine}";
         for (int attempt = 0; attempt < 3; attempt++)
         {
             try

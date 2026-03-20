@@ -116,7 +116,7 @@ namespace qbPortWeaver
 
                 if (!response.IsSuccessStatusCode)
                 {
-                    LogManager.Instance.LogMessage($"qBittorrent preferences request failed (HTTP {(int)response.StatusCode} {response.StatusCode})", LogLevel.Error);
+                    LogManager.Instance.LogMessage($"Failed to get qBittorrent preferences (HTTP {(int)response.StatusCode} {response.StatusCode})", LogLevel.Error);
                     return (null, null);
                 }
 
@@ -173,7 +173,7 @@ namespace qbPortWeaver
                 using var response = await _httpClient.PostAsync($"{_url}{ApiSetPreferences}", content).ConfigureAwait(false);
                 if (!response.IsSuccessStatusCode)
                 {
-                    LogManager.Instance.LogMessage($"qBittorrent set port failed (HTTP {(int)response.StatusCode} {response.StatusCode})", LogLevel.Error);
+                    LogManager.Instance.LogMessage($"Failed to set qBittorrent port (HTTP {(int)response.StatusCode} {response.StatusCode})", LogLevel.Error);
                     return false;
                 }
                 return true;
@@ -196,7 +196,7 @@ namespace qbPortWeaver
 
                 if (!response.IsSuccessStatusCode)
                 {
-                    LogManager.Instance.LogMessage($"qBittorrent transfer/info request failed (HTTP {(int)response.StatusCode} {response.StatusCode})", LogLevel.Error);
+                    LogManager.Instance.LogMessage($"Failed to get qBittorrent transfer info (HTTP {(int)response.StatusCode} {response.StatusCode})", LogLevel.Error);
                     return null;
                 }
 
@@ -302,10 +302,10 @@ namespace qbPortWeaver
             if (ex is TaskCanceledException)
                 LogManager.Instance.LogMessage($"qBittorrent Web UI is not reachable (timed out) - check the URL in Settings ({_url})", LogLevel.Error);
             else if (ex is HttpRequestException)
-                LogManager.Instance.LogMessage($"qBittorrent Web UI connection failed: {ex.Message} - check the URL in Settings ({_url})", LogLevel.Error);
+                LogManager.Instance.LogMessage($"Failed to connect to qBittorrent Web UI: {ex.Message} - check the URL in Settings ({_url})", LogLevel.Error);
             else
             {
-                LogManager.Instance.LogMessage($"qBittorrent request failed unexpectedly in {methodName}: {ex.Message}", LogLevel.Warn);
+                LogManager.Instance.LogMessage($"Failed to complete qBittorrent request in {methodName}: {ex.Message}", LogLevel.Warn);
                 LogManager.Instance.LogDebug($"QBittorrentManager.{methodName}: {ex.GetType().Name}");
             }
         }

@@ -146,7 +146,7 @@ namespace qbPortWeaver
 
                 if (!result.Success)
                 {
-                    LogManager.Instance.LogMessage($"NAT-PMP port mapping failed on '{_adapter.Name}': {result.Error}", LogLevel.Warn);
+                    LogManager.Instance.LogMessage($"Failed to map NAT-PMP port on '{_adapter.Name}': {result.Error}", LogLevel.Warn);
                     return null;
                 }
 

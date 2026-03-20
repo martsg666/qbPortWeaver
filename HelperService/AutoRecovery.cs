@@ -39,22 +39,22 @@ internal static class AutoRecovery
             logger.LogInfo($"Restarting service '{serviceName}'");
 
             try { await StopServiceAsync(serviceName, logger).ConfigureAwait(false); }
-            catch (Exception ex) { logger.LogWarn($"Service '{serviceName}' stop failed: {ex.Message}"); }
+            catch (Exception ex) { logger.LogWarn($"Failed to stop service '{serviceName}': {ex.Message}"); }
 
             await Task.Delay(ServiceRestartDelayMs).ConfigureAwait(false);
 
             try { await StartServiceAsync(serviceName, logger).ConfigureAwait(false); }
             catch (Exception ex)
             {
-                logger.LogWarn($"Service '{serviceName}' start failed: {ex.Message}");
+                logger.LogWarn($"Failed to start service '{serviceName}': {ex.Message}");
                 return;
             }
 
-            logger.LogInfo($"Service '{serviceName}' restarted successfully");
+            logger.LogInfo($"Successfully restarted service '{serviceName}'");
         }
         catch (Exception ex)
         {
-            logger.LogError($"Service restart failed: {ex.Message}");
+            logger.LogError($"Failed to restart service: {ex.Message}");
         }
     }
 
@@ -87,11 +87,11 @@ internal static class AutoRecovery
                 logger.LogWarn($"Failed to re-enable adapter '{adapterName}'");
                 return;
             }
-            logger.LogInfo($"Adapter '{adapterName}' re-enabled successfully");
+            logger.LogInfo($"Successfully re-enabled adapter '{adapterName}'");
         }
         catch (Exception ex)
         {
-            logger.LogError($"Adapter cycle failed: {ex.Message}");
+            logger.LogError($"Failed to cycle adapter: {ex.Message}");
         }
     }
 
@@ -163,7 +163,7 @@ internal static class AutoRecovery
         {
             // sc.Stop() can throw if the service doesn't accept stop controls or is in
             // a transient state. Fall through to force-kill.
-            logger.LogWarn($"Service '{serviceName}' SCM stop failed: {ex.Message} - force-killing process");
+            logger.LogWarn($"Failed to stop service '{serviceName}' via SCM: {ex.Message} - force-killing process");
             KillServiceProcess(sc, logger);
             await WaitForStoppedOrWarnAsync(sc, serviceName, logger).ConfigureAwait(false);
             return;
@@ -303,7 +303,7 @@ internal static class AutoRecovery
                 }
                 catch (Exception ex)
                 {
-                    logger.LogWarn($"Service '{sc.ServiceName}' taskkill fallback failed (PID {pid}): {ex.Message}");
+                    logger.LogWarn($"Failed to kill service '{sc.ServiceName}' via taskkill (PID {pid}): {ex.Message}");
                 }
                 if (process.WaitForExit(ProcessKillTimeoutMs))
                 {
@@ -331,7 +331,7 @@ internal static class AutoRecovery
         }
         catch (Exception ex)
         {
-            logger.LogWarn($"Service '{sc.ServiceName}' force-kill failed: {ex.Message}");
+            logger.LogWarn($"Failed to force-kill service '{sc.ServiceName}': {ex.Message}");
         }
     }
 
@@ -381,7 +381,7 @@ internal static class AutoRecovery
         }
         catch (Exception ex)
         {
-            logger.LogWarn($"Netsh failed: {ex.Message}");
+            logger.LogWarn($"Failed to run netsh: {ex.Message}");
             return false;
         }
     }

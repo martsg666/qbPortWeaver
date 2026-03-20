@@ -21,32 +21,34 @@ namespace qbPortWeaver
             "upscale", "upscaled",
             // Source
             "bluray", "blu-ray", "bdrip", "brrip", "bdremux", "remux",
-            "bd25", "bd50", "bd66", "bd100", "bdscr",
-            "dvdrip", "dvdscr", "dvdr", "dvd9", "dvd5",
-            "hdtv", "pdtv", "sdtv", "uhdtv", "hdrip", "hdlight", "hdcam", "hqcam",
+            "bd25", "bd50", "bd66", "bd100", "bdscr", "bdiso", "bdmv",
+            "dvdrip", "dvdscr", "dvdscreener", "dvdr", "dvd9", "dvd5",
+            "hdtv", "hdtvrip", "pdtv", "sdtv", "uhdtv", "hdrip", "hdlight", "hdcam", "hqcam",
             "tvrip", "dvrip", "dvbrip", "satrip", "vhsrip", "ppvrip", "dsr", "dsrip",
-            "webrip", "web-dl", "webdl", "web", "webmux", "uhdrip",
-            "cam", "scr", "screener", "telecine", "telesync", "ts", "tc", "hdts", "hdtc", "vod", "imax",
+            "webrip", "web-dl", "webdl", "web", "webmux", "webscreener", "uhdrip",
+            "cam", "camrip", "scr", "screener", "telecine", "telesync", "ts", "tc", "hdts", "hdtc", "vod", "imax",
             "r5", "r6", "workprint", "wp", "retail",
             "hddvd", "hd-dvd", "ldrip", "dcp",
             // Streaming service prefixes (appear before WEB-DL)
-            "amzn", "nf", "nflx", "dsnp", "dsny", "hmax", "hbomax",
-            "atvp", "pcok", "pmtp", "crav", "hulu", "roku",
-            "bcore", "stan", "itun", "htsr", "dscp", "funi", "adn",
+            "amzn", "amz", "nf", "nflx", "dsnp", "dnsp", "dsny", "hmax", "hbomax", "hbo",
+            "atvp", "pcok", "pmtp", "pmnp", "para", "crav", "hulu", "roku",
+            "bcore", "stan", "itun", "htsr", "dscp", "funi", "adn", "ma",
             "sho", "starz", "itvx", "tubi", "pluto", "mubi",
             // Video codec
-            "x264", "x265", "x266", "h264", "h265", "hevc", "avc", "xvid", "divx",
-            "av1", "vp7", "vp8", "vp9", "vc-1", "vc1", "mpeg", "mpeg2", "mpeg4",
+            "x264", "x265", "x266", "h264", "h265", "h266", "hevc", "avc", "xvid", "divx",
+            "av1", "vp7", "vp8", "vp9", "vc-1", "vc1", "vvc", "mpeg", "mpeg2", "mpeg4",
             // Audio codec
-            "aac", "ac3", "dts", "dts-hd", "dts-hdma", "dts-hdhr", "dts-hdhra", "dts-es", "dts-x", "dtsx",
-            "mp2", "mp3", "flac", "vorbis",
-            "truehd", "atmos", "dd", "dd2", "dd5", "ddp", "ddp5", "ddplus", "eac3", "opus", "lpcm", "pcm",
+            "aac", "ac3", "dts", "dts-hd", "dts-hdma", "dts-ma", "dtsma", "dts-hdhr", "dts-hdhra", "dts-es", "dts-x", "dtsx",
+            "mp2", "mp3", "flac", "vorbis", "heaac", "he-aac",
+            "truehd", "atmos", "dd", "dd1", "dd2", "dd5", "dd7", "ddp", "ddp1", "ddp2", "ddp5", "ddp7", "ddplus",
+            "dolbydigital", "eac3", "opus", "lpcm", "pcm",
             "stereo", "mono", "2ch", "6ch", "8ch",
             // Language (note: "french" omitted -- too common in real titles, e.g. "The French Connection")
             "multi", "dual", "dualaud", "truefrench", "vff", "vfi", "vf2", "vfq",
             "vost", "vostfr", "vof", "dubbed", "subbed", "korsub", "latino", "castellano",
             // Subtitle
             "multisubs", "multisub", "hardsub", "hardcoded", "softsub",
+            "fansub", "fastsub", "subforced",
             // Edition / release flags (note: "final" omitted -- appears in titles like "These Final Hours")
             "proper", "repack", "rerip", "extended", "unrated", "uncut", "directors", "theatrical",
             "remastered", "remaster", "criterion", "limited", "internal",
@@ -57,6 +59,8 @@ namespace qbPortWeaver
             "integral", "integrale", "complete",
             // Frame rate
             "hfr", "24fps", "25fps", "30fps", "48fps", "60fps", "120fps",
+            // Edition / other
+            "untouched", "colorized", "samplefix",
             // Scene fix / misc
             "sample", "nfofix", "dirfix", "subfix", "syncfix",
             "nuked", "commentary", "fullscreen", "widescreen", "ws",

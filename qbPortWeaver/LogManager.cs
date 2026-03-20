@@ -6,6 +6,17 @@ namespace qbPortWeaver
     /// <summary>Severity level for log entries.</summary>
     public enum LogLevel { Info, Warn, Error, Debug }
 
+    /// <summary>Subsystem identifiers used as the source column in log entries.</summary>
+    public static class Subsystem
+    {
+        public const string MainApp       = "MainApp";
+        public const string MediaManager  = "MediaManager";
+        public const string HelperService = "HelperService";
+
+        /// <summary>Length of the longest subsystem name, used for column padding.</summary>
+        public const int MaxLength = 13; // "HelperService".Length
+    }
+
     /// <summary>Singleton file-based logger with size-based rotation. Thread-safe.</summary>
     public sealed class LogManager
     {
@@ -57,7 +68,7 @@ namespace qbPortWeaver
         }
 
         /// <summary>Writes a log entry at the given level. Thread-safe.</summary>
-        public void LogMessage(string message, LogLevel level)
+        public void LogMessage(string message, LogLevel level, string subsystem = Subsystem.MainApp)
         {
             lock (_lock)
             {
@@ -72,7 +83,7 @@ namespace qbPortWeaver
                     }
 
                     string paddedType = level.ToString().ToUpperInvariant().PadRight(5);
-                    string logEntry = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} | {paddedType} | {message}{Environment.NewLine}";
+                    string logEntry = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} | {paddedType} | {subsystem.PadRight(Subsystem.MaxLength)} | {message}{Environment.NewLine}";
 
                     using var fs = new FileStream(LogFilePath, FileMode.Append, FileAccess.Write, FileShare.Read);
                     using var writer = new StreamWriter(fs, Encoding.UTF8);
@@ -85,11 +96,29 @@ namespace qbPortWeaver
             }
         }
 
+        /// <summary>Writes a blank line to the log file. Thread-safe.</summary>
+        public void LogBlankLine()
+        {
+            lock (_lock)
+            {
+                try
+                {
+                    using var fs = new FileStream(LogFilePath, FileMode.Append, FileAccess.Write, FileShare.Read);
+                    using var writer = new StreamWriter(fs, Encoding.UTF8);
+                    writer.Write(Environment.NewLine);
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine($"LogManager.LogBlankLine: {ex.Message}");
+                }
+            }
+        }
+
         /// <summary>Writes a debug entry only when <see cref="DebugMode"/> is enabled. Thread-safe.</summary>
-        public void LogDebug(string message)
+        public void LogDebug(string message, string subsystem = Subsystem.MainApp)
         {
             if (!DebugMode) return;
-            LogMessage(message, LogLevel.Debug);
+            LogMessage(message, LogLevel.Debug, subsystem);
         }
 
         /// <summary>Deletes all log files and starts a fresh log. Thread-safe.</summary>
@@ -132,9 +161,9 @@ namespace qbPortWeaver
         }
 
         // Logs message at debug level and returns false, enabling single-line catch blocks
-        internal static bool LogDebugFalse(string message)
+        internal static bool LogDebugFalse(string message, string subsystem = Subsystem.MainApp)
         {
-            Instance.LogDebug(message);
+            Instance.LogDebug(message, subsystem);
             return false;
         }
 

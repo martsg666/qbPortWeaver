@@ -51,11 +51,11 @@ namespace qbPortWeaver
         {
             if (!Directory.Exists(tvShowsRoot))
             {
-                LogManager.Instance.LogMessage($"{AppConstants.MediaManagerLogPrefix}TV folder not found: {tvShowsRoot}", LogLevel.Error);
+                LogManager.Instance.LogMessage($"TV folder not found: {tvShowsRoot}", LogLevel.Error, Subsystem.MediaManager);
                 return;
             }
 
-            LogManager.Instance.LogMessage($"{AppConstants.MediaManagerLogPrefix}Scanning TV folder: {tvShowsRoot}", LogLevel.Info);
+            LogManager.Instance.LogMessage($"Scanning TV folder: {tvShowsRoot}", LogLevel.Info, Subsystem.MediaManager);
 
             int skippedFiles = 0;
             foreach (var file in Directory.GetFiles(tvShowsRoot).Where(FileNameParser.IsVideoTvShowEpisode))
@@ -64,7 +64,7 @@ namespace qbPortWeaver
                 await ProcessEpisodeFileAsync(tvShowsRoot, file).ConfigureAwait(false);
             }
             if (skippedFiles > 0)
-                LogManager.Instance.LogDebug($"{AppConstants.MediaManagerLogPrefix}Skipped {skippedFiles} already Plex-formatted episode(s)");
+                LogManager.Instance.LogDebug($"Skipped {skippedFiles} already Plex-formatted episode(s)", Subsystem.MediaManager);
 
             foreach (var dir in Directory.GetDirectories(tvShowsRoot))
             {
@@ -76,7 +76,7 @@ namespace qbPortWeaver
         {
             if (depth > MaxSubfolderDepth)
             {
-                LogManager.Instance.LogMessage($"{AppConstants.MediaManagerLogPrefix}Skipping '{dirPath}' - exceeded max folder depth ({MaxSubfolderDepth})", LogLevel.Warn);
+                LogManager.Instance.LogMessage($"Skipped '{dirPath}' - exceeded max folder depth ({MaxSubfolderDepth})", LogLevel.Warn, Subsystem.MediaManager);
                 return;
             }
 
@@ -118,7 +118,7 @@ namespace qbPortWeaver
         {
             if (depth > MaxSubfolderDepth)
             {
-                LogManager.Instance.LogMessage($"{AppConstants.MediaManagerLogPrefix}Skipping '{dirPath}' - exceeded max folder depth ({MaxSubfolderDepth})", LogLevel.Warn);
+                LogManager.Instance.LogMessage($"Skipped '{dirPath}' - exceeded max folder depth ({MaxSubfolderDepth})", LogLevel.Warn, Subsystem.MediaManager);
                 return;
             }
 
@@ -139,19 +139,19 @@ namespace qbPortWeaver
 
             if (episodeInfo == null)
             {
-                LogManager.Instance.LogMessage($"{AppConstants.MediaManagerLogPrefix}Skipped '{fileName}' - not a recognised episode", LogLevel.Info);
+                LogManager.Instance.LogMessage($"Skipped '{fileName}' - not a recognised episode", LogLevel.Info, Subsystem.MediaManager);
                 return;
             }
 
-            LogManager.Instance.LogMessage($"{AppConstants.MediaManagerLogPrefix}Processing '{fileName}'", LogLevel.Info);
-            LogManager.Instance.LogDebug($"{AppConstants.MediaManagerLogPrefix}TvShowRenamer.ProcessEpisodeFile: Parsed show='{episodeInfo.ShowName}' S{episodeInfo.Season:D2}E{episodeInfo.Episode:D2}");
+            LogManager.Instance.LogMessage($"Processing '{fileName}'", LogLevel.Info, Subsystem.MediaManager);
+            LogManager.Instance.LogDebug($"TvShowRenamer.ProcessEpisodeFile: Parsed show='{episodeInfo.ShowName}' S{episodeInfo.Season:D2}E{episodeInfo.Episode:D2}", Subsystem.MediaManager);
 
             var (showInfo, isConfident) = await GetOrLookupShowAsync(episodeInfo.ShowName, episodeInfo.Year).ConfigureAwait(false);
 
             if (showInfo == null) return;
             if (!isConfident)
             {
-                LogManager.Instance.LogMessage($"{AppConstants.MediaManagerLogPrefix}Skipping '{fileName}' - uncertain TMDB match, review in Media Manager", LogLevel.Warn);
+                LogManager.Instance.LogMessage($"Skipped '{fileName}' - uncertain TMDB match, review in Media Manager", LogLevel.Warn, Subsystem.MediaManager);
                 return;
             }
 
@@ -172,7 +172,7 @@ namespace qbPortWeaver
             if (string.Equals(filePath, targetPath, StringComparison.OrdinalIgnoreCase)) return;
 
             string verb = _dryRun ? "Would rename" : "Renaming";
-            LogManager.Instance.LogMessage($"{AppConstants.MediaManagerLogPrefix}{verb} '{Path.GetFileName(filePath)}' -> {Path.GetRelativePath(tvShowsRoot, targetPath)}", LogLevel.Info);
+            LogManager.Instance.LogMessage($"{verb} '{Path.GetFileName(filePath)}' -> {Path.GetRelativePath(tvShowsRoot, targetPath)}", LogLevel.Info, Subsystem.MediaManager);
 
             if (!_dryRun)
                 MediaManagerService.MoveFile(filePath, targetPath);
@@ -208,16 +208,16 @@ namespace qbPortWeaver
 
                 if (info == null)
                 {
-                    LogManager.Instance.LogMessage($"{AppConstants.MediaManagerLogPrefix}No TMDB match found for show '{name}'", LogLevel.Warn);
+                    LogManager.Instance.LogMessage($"No TMDB match found for show '{name}'", LogLevel.Warn, Subsystem.MediaManager);
                     return (null, false);
                 }
 
-                LogManager.Instance.LogDebug($"{AppConstants.MediaManagerLogPrefix}TvShowRenamer.LookupTvShow: Matched '{info.Title}' ({info.Year}) [tmdb-{info.TmdbId}]");
+                LogManager.Instance.LogDebug($"TvShowRenamer.LookupTvShow: Matched '{info.Title}' ({info.Year}) [tmdb-{info.TmdbId}]", Subsystem.MediaManager);
                 return (info, isConfident);
             }
             catch (HttpRequestException ex)
             {
-                LogManager.Instance.LogMessage($"{AppConstants.MediaManagerLogPrefix}TMDB TV show lookup failed: {ex.Message}", LogLevel.Error);
+                LogManager.Instance.LogMessage($"Failed to look up TMDB TV show: {ex.Message}", LogLevel.Error, Subsystem.MediaManager);
                 return (null, false);
             }
         }

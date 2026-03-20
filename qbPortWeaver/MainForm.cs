@@ -300,6 +300,7 @@ namespace qbPortWeaver
                 while (!_shutdownCts.IsCancellationRequested)
                 {
                     await _updateSemaphore.WaitAsync(_shutdownCts.Token);
+                    LogManager.Instance.LogBlankLine();
                     LogManager.Instance.LogMessage("Sync cycle started", LogLevel.Info);
                     int updateInterval;
                     try
@@ -317,7 +318,7 @@ namespace qbPortWeaver
                     {
                         _manualSyncTriggered = false;
                         updateInterval = AppConstants.ManualSyncWaitSeconds;
-                        LogManager.Instance.LogMessage("Manual sync complete", LogLevel.Info);
+                        LogManager.Instance.LogMessage("Manual sync completed", LogLevel.Info);
                     }
 
                     if (await ShutdownRequestedDuringDelayAsync(updateInterval))

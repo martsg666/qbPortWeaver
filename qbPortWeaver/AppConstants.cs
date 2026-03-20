@@ -28,10 +28,6 @@ namespace qbPortWeaver
         // Must match HelperPipeServer.PipeName in qbPortWeaver.HelperService.
         public const string HelperServicePipeName = "qbPortWeaverHelper";
 
-        // Log prefix for the Media Manager subsystem - applied to all log messages originating from
-        // MovieRenamer, TvShowRenamer, and MediaManagerService.
-        public const string MediaManagerLogPrefix = "[MediaManager] ";
-
         // GitHub - only the owner is a literal; all URLs are derived
         public const string GitHubRepoOwner = "martsg666";
         public static readonly string GitHubRepoUrl = $"https://github.com/{GitHubRepoOwner}/{AppName}";

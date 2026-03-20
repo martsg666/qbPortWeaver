@@ -374,7 +374,7 @@ namespace qbPortWeaver
             if (config.RestartOnDisconnect && !alreadyRestarted)
                 await CheckAndRestartIfDisconnectedAsync(manager, cancellationToken).ConfigureAwait(false);
 
-            SetCompleted(status, true, "Completed successfully");
+            SetCompleted(status, true, "Sync cycle completed");
         }
 
         // Returns true if qBittorrent is running (or was successfully force-started), false otherwise
@@ -498,7 +498,7 @@ namespace qbPortWeaver
             }
             catch (Exception ex)
             {
-                LogManager.Instance.LogMessage($"Post-update command failed: {ex.Message}", LogLevel.Warn);
+                LogManager.Instance.LogMessage($"Failed to run post-update command: {ex.Message}", LogLevel.Warn);
             }
         }
 
@@ -596,13 +596,16 @@ namespace qbPortWeaver
             return $"{prefix} ({count} consecutive {cycles}{recoverySuffix})";
         }
 
-        // Sets the completion status and logs the message.
+        // Sets the completion status, logs the message, and adds a closing bookend.
         // Pass an explicit level to override the default (Info on success, Error on failure).
         private static void SetCompleted(Dictionary<string, object?> status, bool success, string message, LogLevel? level = null)
         {
             status[StatusKeys.Status]  = success ? StatusKeys.Success : StatusKeys.Error;
             status[StatusKeys.Message] = message;
-            LogManager.Instance.LogMessage(message, level ?? (success ? LogLevel.Info : LogLevel.Error));
+            LogLevel effectiveLevel = level ?? (success ? LogLevel.Info : LogLevel.Error);
+            LogManager.Instance.LogMessage(message, effectiveLevel);
+            if (!success)
+                LogManager.Instance.LogMessage("Sync cycle failed", LogLevel.Error);
         }
     }
 }

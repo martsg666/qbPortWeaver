@@ -15,7 +15,7 @@ namespace qbPortWeaver
             var apiKey = RegistrySettingsManager.GetEncryptedValue(RegistrySettingsManager.SectionMedia, RegistrySettingsManager.KeyTmdbApiKey);
             if (string.IsNullOrWhiteSpace(apiKey))
             {
-                LogManager.Instance.LogMessage($"{AppConstants.MediaManagerLogPrefix}TMDB API key not configured - skipping scan", LogLevel.Warn);
+                LogManager.Instance.LogMessage("TMDB API key not configured - skipping scan", LogLevel.Warn, Subsystem.MediaManager);
                 return;
             }
 
@@ -23,7 +23,7 @@ namespace qbPortWeaver
             bool createFolders      = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionMedia, RegistrySettingsManager.KeyMediaCreateFolders);
             bool deleteEmptyFolders = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionMedia, RegistrySettingsManager.KeyMediaDeleteEmptyFolders);
 
-            LogManager.Instance.LogMessage($"{AppConstants.MediaManagerLogPrefix}Scan started (dryRun={dryRun}, createFolders={createFolders}, deleteEmptyFolders={deleteEmptyFolders})", LogLevel.Info);
+            LogManager.Instance.LogMessage($"Scan started (dryRun={dryRun}, createFolders={createFolders}, deleteEmptyFolders={deleteEmptyFolders})", LogLevel.Info, Subsystem.MediaManager);
 
             var tmdb         = new TmdbClient(apiKey);
             var movieRenamer = new MovieRenamer(tmdb, dryRun, createFolders);
@@ -38,7 +38,7 @@ namespace qbPortWeaver
                 }
                 catch (IOException ex)
                 {
-                    LogManager.Instance.LogMessage($"{AppConstants.MediaManagerLogPrefix}Skipping movie folder '{folder}': {ex.Message}", LogLevel.Warn);
+                    LogManager.Instance.LogMessage($"Skipped movie folder '{folder}': {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
                 }
             }
 
@@ -51,7 +51,7 @@ namespace qbPortWeaver
                 }
                 catch (IOException ex)
                 {
-                    LogManager.Instance.LogMessage($"{AppConstants.MediaManagerLogPrefix}Skipping TV folder '{folder}': {ex.Message}", LogLevel.Warn);
+                    LogManager.Instance.LogMessage($"Skipped TV folder '{folder}': {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
                 }
             }
 
@@ -63,7 +63,7 @@ namespace qbPortWeaver
                     CleanupEmptyFolders(folder, dryRun);
             }
 
-            LogManager.Instance.LogMessage($"{AppConstants.MediaManagerLogPrefix}Scan complete", LogLevel.Info);
+            LogManager.Instance.LogMessage("Scan completed", LogLevel.Info, Subsystem.MediaManager);
         }
 
         /// <summary>
@@ -93,7 +93,7 @@ namespace qbPortWeaver
                 }
                 catch (IOException ex)
                 {
-                    LogManager.Instance.LogMessage($"{AppConstants.MediaManagerLogPrefix}Skipping movie folder '{folder}': {ex.Message}", LogLevel.Warn);
+                    LogManager.Instance.LogMessage($"Skipped movie folder '{folder}': {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
                 }
             }
 
@@ -106,7 +106,7 @@ namespace qbPortWeaver
                 }
                 catch (IOException ex)
                 {
-                    LogManager.Instance.LogMessage($"{AppConstants.MediaManagerLogPrefix}Skipping TV folder '{folder}': {ex.Message}", LogLevel.Warn);
+                    LogManager.Instance.LogMessage($"Skipped TV folder '{folder}': {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
                 }
             }
 
@@ -127,8 +127,8 @@ namespace qbPortWeaver
                 {
                     cancellationToken.ThrowIfCancellationRequested();
                     LogManager.Instance.LogMessage(
-                        $"{AppConstants.MediaManagerLogPrefix}Renaming '{proposal.OriginalPath}' -> '{proposal.ProposedPath}'",
-                        LogLevel.Info);
+                        $"Renaming '{proposal.OriginalPath}' -> '{proposal.ProposedPath}'",
+                        LogLevel.Info, Subsystem.MediaManager);
                     try
                     {
                         MoveFile(proposal.OriginalPath, proposal.ProposedPath);
@@ -136,8 +136,8 @@ namespace qbPortWeaver
                     catch (Exception ex)
                     {
                         LogManager.Instance.LogMessage(
-                            $"{AppConstants.MediaManagerLogPrefix}Failed to rename '{Path.GetFileName(proposal.OriginalPath)}': {ex.Message}",
-                            LogLevel.Error);
+                            $"Failed to rename '{Path.GetFileName(proposal.OriginalPath)}': {ex.Message}",
+                            LogLevel.Error, Subsystem.MediaManager);
                     }
                 }
             }, cancellationToken);
@@ -157,7 +157,7 @@ namespace qbPortWeaver
             }
             catch (IOException ex)
             {
-                LogManager.Instance.LogMessage($"{AppConstants.MediaManagerLogPrefix}Skipping folder cleanup for '{rootFolder}': {ex.Message}", LogLevel.Warn);
+                LogManager.Instance.LogMessage($"Skipped folder cleanup for '{rootFolder}': {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
                 return;
             }
 
@@ -172,7 +172,7 @@ namespace qbPortWeaver
                 string reason = hasOnlyNfo ? "nfo-only" : "empty";
                 if (dryRun)
                 {
-                    LogManager.Instance.LogMessage($"{AppConstants.MediaManagerLogPrefix}Would delete {reason} folder: '{Path.GetFileName(dir)}'", LogLevel.Info);
+                    LogManager.Instance.LogMessage($"Would delete {reason} folder: '{Path.GetFileName(dir)}'", LogLevel.Info, Subsystem.MediaManager);
                 }
                 else
                 {
@@ -182,7 +182,7 @@ namespace qbPortWeaver
             }
 
             if (deleted > 0)
-                LogManager.Instance.LogDebug($"{AppConstants.MediaManagerLogPrefix}MediaManagerService.CleanupEmptyFolders: {deleted} folder(s) {(dryRun ? "would be deleted" : "deleted")} under '{rootFolder}'");
+                LogManager.Instance.LogDebug($"MediaManagerService.CleanupEmptyFolders: {deleted} folder(s) {(dryRun ? "would be deleted" : "deleted")} under '{rootFolder}'", Subsystem.MediaManager);
         }
 
         // Returns (true, hasOnlyNfo) when the folder is empty or contains only .nfo files and has no subdirectories
@@ -207,11 +207,11 @@ namespace qbPortWeaver
                 }
                 Directory.Delete(dir);
                 string reason = hasNfoFiles ? "nfo-only" : "empty";
-                LogManager.Instance.LogMessage($"{AppConstants.MediaManagerLogPrefix}Deleted {reason} folder: '{Path.GetFileName(dir)}'", LogLevel.Info);
+                LogManager.Instance.LogMessage($"Deleted {reason} folder: '{Path.GetFileName(dir)}'", LogLevel.Info, Subsystem.MediaManager);
             }
             catch (IOException ex)
             {
-                LogManager.Instance.LogMessage($"{AppConstants.MediaManagerLogPrefix}Failed to delete folder '{Path.GetFileName(dir)}': {ex.Message}", LogLevel.Warn);
+                LogManager.Instance.LogMessage($"Failed to delete folder '{Path.GetFileName(dir)}': {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
             }
         }
 
@@ -229,7 +229,7 @@ namespace qbPortWeaver
             var targetName = Path.GetFileName(targetPath);
             if (File.Exists(targetPath))
             {
-                LogManager.Instance.LogMessage($"{AppConstants.MediaManagerLogPrefix}Skipped rename - target already exists: '{targetName}'", LogLevel.Warn);
+                LogManager.Instance.LogMessage($"Skipped rename - target already exists: '{targetName}'", LogLevel.Warn, Subsystem.MediaManager);
                 return;
             }
 
@@ -238,7 +238,7 @@ namespace qbPortWeaver
                 Directory.CreateDirectory(targetDir);
 
             File.Move(sourcePath, targetPath);
-            LogManager.Instance.LogDebug($"{AppConstants.MediaManagerLogPrefix}MediaManagerService.MoveFile: Renamed OK '{targetName}'");
+            LogManager.Instance.LogDebug($"MediaManagerService.MoveFile: Successfully renamed '{targetName}'", Subsystem.MediaManager);
         }
     }
 }

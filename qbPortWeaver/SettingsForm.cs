@@ -236,7 +236,7 @@ namespace qbPortWeaver
             try
             {
                 // No ConfigureAwait(false) - continuation must run on the UI thread to update controls.
-                var adapters = await NatPmpManager.DiscoverAdapters();
+                var adapters = await NatPmpManager.DiscoverAdaptersAsync();
 
                 // Guard against the form being closed while adapter discovery was in flight
                 if (IsDisposed) return;

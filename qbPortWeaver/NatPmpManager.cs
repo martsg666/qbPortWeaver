@@ -5,8 +5,8 @@ using System.Net.Sockets;
 namespace qbPortWeaver
 {
     /// <summary>
-    /// NAT-PMP VPN manager. PortSyncService creates instances via TryCreateForAdapter() (sync cycle)
-    /// or DiscoverAdapters() (SettingsForm). Renewal state is transferred across cycles via
+    /// NAT-PMP VPN manager. PortSyncService creates instances via TryCreateForAdapterAsync() (sync cycle)
+    /// or DiscoverAdaptersAsync() (SettingsForm). Renewal state is transferred across cycles via
     /// CopyRenewalStateFrom() so port renewal works correctly.
     /// </summary>
     public sealed class NatPmpManager : IVpnManager
@@ -44,7 +44,7 @@ namespace qbPortWeaver
         /// gateway responds are returned. Used by SettingsForm to populate the adapter list.
         /// </summary>
         /// <param name="mappingLifetime">Requested port mapping duration in seconds; the gateway may grant less.</param>
-        public static async Task<IReadOnlyList<NatPmpManager>> DiscoverAdapters(uint mappingLifetime = DefaultMappingLifetime)
+        public static async Task<IReadOnlyList<NatPmpManager>> DiscoverAdaptersAsync(uint mappingLifetime = DefaultMappingLifetime)
         {
             var candidates = new List<(NetworkInterface Nic, IPAddress Gateway)>();
 
@@ -63,7 +63,7 @@ namespace qbPortWeaver
             var probeResults = await Task.WhenAll(candidates.Select(async c =>
             {
                 IPAddress? externalIp = await RequestExternalAddressAsync(c.Gateway).ConfigureAwait(false);
-                LogProbeResultDebug("DiscoverAdapters", c.Nic.Name, c.Gateway, externalIp);
+                LogProbeResultDebug("DiscoverAdaptersAsync", c.Nic.Name, c.Gateway, externalIp);
                 return (c.Nic, c.Gateway, Supported: externalIp is not null);
             })).ConfigureAwait(false);
 
@@ -76,33 +76,33 @@ namespace qbPortWeaver
         /// <summary>
         /// Probes only the named adapter rather than all adapters. Used by the sync cycle so that
         /// unrelated adapters (e.g. ZeroTier, Ethernet) are never probed unnecessarily.
-        /// Unlike <see cref="DiscoverAdapters"/>, uses <see cref="MaxAttempts"/> retries with
+        /// Unlike <see cref="DiscoverAdaptersAsync"/>, uses <see cref="MaxAttempts"/> retries with
         /// exponential backoff since probing a single known adapter is worth retrying on transient packet loss.
         /// Returns <see langword="null"/> if the adapter is not found or not up, has no resolvable
         /// gateway, or does not respond to a NAT-PMP probe.
         /// </summary>
         /// <param name="adapterName">The adapter name to match (case-insensitive).</param>
         /// <param name="mappingLifetime">Requested port mapping duration in seconds; the gateway may grant less.</param>
-        public static async Task<NatPmpManager?> TryCreateForAdapter(string adapterName, uint mappingLifetime = DefaultMappingLifetime)
+        public static async Task<NatPmpManager?> TryCreateForAdapterAsync(string adapterName, uint mappingLifetime = DefaultMappingLifetime)
         {
             NetworkInterface? nic = GetActiveNetworkInterfaces()
                 .FirstOrDefault(n => n.Name.Equals(adapterName, StringComparison.OrdinalIgnoreCase));
 
             if (nic is null)
             {
-                LogManager.Instance.LogDebug($"NatPmpManager.TryCreateForAdapter: '{adapterName}' not found or not up");
+                LogManager.Instance.LogDebug($"NatPmpManager.TryCreateForAdapterAsync: '{adapterName}' not found or not up");
                 return null;
             }
 
             IPAddress? gateway = ResolveGateway(nic.GetIPProperties());
             if (gateway is null)
             {
-                LogManager.Instance.LogDebug($"NatPmpManager.TryCreateForAdapter: '{adapterName}' - no resolvable gateway");
+                LogManager.Instance.LogDebug($"NatPmpManager.TryCreateForAdapterAsync: '{adapterName}' - no resolvable gateway");
                 return null;
             }
 
             IPAddress? externalIp = await RequestExternalAddressAsync(gateway, MaxAttempts).ConfigureAwait(false);
-            LogProbeResultDebug("TryCreateForAdapter", adapterName, gateway, externalIp);
+            LogProbeResultDebug("TryCreateForAdapterAsync", adapterName, gateway, externalIp);
 
             return externalIp is not null ? new NatPmpManager(nic, gateway, mappingLifetime) : null;
         }

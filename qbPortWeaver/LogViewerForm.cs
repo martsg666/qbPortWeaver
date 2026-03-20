@@ -4,9 +4,7 @@ using Microsoft.Win32;
 
 namespace qbPortWeaver
 {
-    // Modeless log viewer with live tail updates and log-level colour coding.
-    // Opened via the tray menu or tray icon double-click; only one instance is allowed at a time
-    // (enforced by MainForm.ShowOrActivate).
+    /// <summary>Modeless log viewer with live tail updates and log-level colour coding. Opened via the tray menu or tray icon double-click; only one instance is allowed at a time (enforced by MainForm.ShowOrActivate).</summary>
     public partial class LogViewerForm : Form
     {
         private readonly string      _logFilePath;

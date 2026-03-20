@@ -24,7 +24,7 @@ namespace qbPortWeaver
         // Serialised by MainForm._updateSemaphore (same guarantee as _lastKnownNatPmpManager).
         private int _consecutiveFailedCycles;
 
-        // Fallback for when TryCreateForAdapter cannot reach the configured adapter (e.g. VPN is
+        // Fallback for when TryCreateForAdapterAsync cannot reach the configured adapter (e.g. VPN is
         // between disconnect and reconnect) - returned so IsVpnConnected() reports false and
         // RunCoreAsync handles disconnection gracefully. Cleared when the adapter name changes in settings.
         // Thread-safety: only accessed inside RunCoreAsync, serialised by MainForm._updateSemaphore.
@@ -296,12 +296,12 @@ namespace qbPortWeaver
                 !_lastKnownNatPmpManager.ProviderName.Equals(cfg.NatPmpAdapterName, StringComparison.OrdinalIgnoreCase))
                 _lastKnownNatPmpManager = null;
 
-            var selected = await NatPmpManager.TryCreateForAdapter(cfg.NatPmpAdapterName).ConfigureAwait(false);
+            var selected = await NatPmpManager.TryCreateForAdapterAsync(cfg.NatPmpAdapterName).ConfigureAwait(false);
 
             if (selected is not null)
             {
                 // Transfer renewal state from the previous instance so port renewal works correctly
-                // when TryCreateForAdapter() returns a fresh NatPmpManager instance each cycle.
+                // when TryCreateForAdapterAsync() returns a fresh NatPmpManager instance each cycle.
                 if (_lastKnownNatPmpManager is not null)
                     selected.CopyRenewalStateFrom(_lastKnownNatPmpManager);
                 _lastKnownNatPmpManager = selected;

@@ -81,7 +81,7 @@ flowchart TD
     A -- Yes --> B{Adapter name changed since last cycle?}
     B -- Yes --> DISCARD[Discard cached fallback manager]
     B -- No --> C
-    DISCARD --> C[TryCreateForAdapter]
+    DISCARD --> C[TryCreateForAdapterAsync]
     C --> D{Adapter found?}
     D -- Yes --> COPY[Copy renewal state from previous instance]
     COPY --> RETURN([Return new manager])

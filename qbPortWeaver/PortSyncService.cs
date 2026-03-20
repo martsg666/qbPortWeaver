@@ -8,7 +8,7 @@ namespace qbPortWeaver
     /// <summary>Snapshot of the tray icon state after a sync cycle, raised via <see cref="PortSyncService.SyncCompleted"/>.</summary>
     public sealed record TrayStatus(SyncState State, int? Port, string Message);
 
-    /// <summary>Background service that synchronizes qBittorrent's listening port with the VPN-assigned port on each cycle.</summary>
+    /// <summary>Background service that syncs qBittorrent's listening port with the VPN-assigned port on each cycle.</summary>
     public sealed class PortSyncService
     {
         // qBittorrent API value returned by /api/v2/transfer/info when the client has no active connections
@@ -122,7 +122,7 @@ namespace qbPortWeaver
                 bool vpnConnected = status[StatusKeys.VpnConnected]   is true;
                 int? port         = status[StatusKeys.QBittorrentPort] as int?;
                 string message    = status[StatusKeys.Message]         as string ?? string.Empty;
-                bool isDisabled   = status[StatusKeys.VpnProvider]    as string == RegistrySettingsManager.VpnProviderDisabled;
+                bool isDisabled   = string.Equals(status[StatusKeys.VpnProvider] as string, RegistrySettingsManager.VpnProviderDisabled, StringComparison.OrdinalIgnoreCase);
 
                 SyncState state;
                 if (isDisabled)            state = SyncState.Disabled;
@@ -488,12 +488,7 @@ namespace qbPortWeaver
             try
             {
                 string cmdExe = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "cmd.exe");
-                var startInfo = new ProcessStartInfo(cmdExe, $"/C \"{cmd}\"")
-                {
-                    UseShellExecute = false,
-                    CreateNoWindow  = true
-                };
-                Process.Start(startInfo)?.Dispose(); // NOSONAR S4721 - cmd is a user-configured registry value; execution of arbitrary commands is the intended behaviour
+                Process.Start(AppConstants.CreateHiddenStartInfo(cmdExe, $"/C \"{cmd}\""))?.Dispose(); // NOSONAR S4721 - cmd is a user-configured registry value; execution of arbitrary commands is the intended behaviour
                 LogManager.Instance.LogMessage("Post-update command launched (fire-and-forget; result not tracked)", LogLevel.Info);
             }
             catch (Exception ex)

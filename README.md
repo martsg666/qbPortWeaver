@@ -2,7 +2,7 @@
 
 ## Overview
 
-**qbPortWeaver** is a Windows application designed to synchronize the listening port of **qBittorrent** with the port assigned by your VPN provider (**ProtonVPN**, **Private Internet Access**, or any **NAT-PMP capable VPN gateway or router**).
+**qbPortWeaver** is a Windows application designed to sync the listening port of **qBittorrent** with the port assigned by your VPN provider (**ProtonVPN**, **Private Internet Access**, or any **NAT-PMP capable VPN gateway or router**).
 This ensures your torrent client always uses the VPN-provided port, improving privacy and connectivity.
 
 The application runs in the system tray, manages configuration and logging, and automatically updates qBittorrent's port when changes are detected.
@@ -27,7 +27,7 @@ The application runs in the system tray, manages configuration and logging, and 
 - **Tray Status Indicator**
   After each sync cycle the tray icon shows a colored status dot: **green** (ports aligned), **orange** (VPN not connected), **red** (error), or **no dot** (port sync disabled). Hovering over the icon displays the current port and status at a glance, without opening the log file.
 
-- **Automatic Port Synchronization**
+- **Automatic Port Sync**
   Detects the current VPN port and updates qBittorrent's listening port automatically.
 
 - **Multi-VPN Support**
@@ -131,9 +131,9 @@ Configured via tray menu -> **Media Manager**.
 - The application starts minimized and runs in the system tray.
 - On first run, open **Settings** from the tray menu to configure the application.
 
-### Synchronization Loop
+### Sync Loop
 
-1. If VPN Provider is set to **Disabled**, the entire port sync is skipped and the cycle proceeds directly to the Media Manager step. This is useful when you only want automatic media renaming without VPN port synchronization.
+1. If VPN Provider is set to **Disabled**, the entire port sync is skipped and the cycle proceeds directly to the Media Manager step. This is useful when you only want automatic media renaming without VPN port sync.
 2. Checks whether the configured VPN provider is connected.
    - If **not connected** and **Default port** is 0: skips the cycle and waits for the next interval.
    - If **not connected** and **Default port** is set: uses the default port as the target and continues.
@@ -153,7 +153,7 @@ Configured via tray menu -> **Media Manager**.
 
 ### Tray Menu Options
 
-- **Synchronize Port Now** - triggers an immediate sync cycle, skipping the current wait interval
+- **Sync Port Now** - triggers an immediate sync cycle, skipping the current wait interval
 - **Show Logs** - opens the built-in Log Viewer (also opened by double-clicking the tray icon)
 - **Clear Logs** - deletes all log files and starts a fresh log
 - **Settings** - opens the Settings dialog
@@ -368,7 +368,7 @@ The modular architecture makes it easy to:
 - Various stability improvements
 
 ### v1.1.0
-- Added **Synchronize Port Now** tray menu option for on-demand port sync
+- Added **Sync Port Now** tray menu option for on-demand port sync
 
 ### v1.0.0
 - Initial release

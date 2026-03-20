@@ -1,6 +1,6 @@
 # qbPortWeaver - Sync Cycle Flow
 
-This document describes the core port synchronization logic implemented in `PortSyncService.cs`. The sync cycle runs on a configurable interval (default 180s) and is serialized by a semaphore in `MainForm` - only one cycle runs at a time.
+This document describes the core port sync logic implemented in `PortSyncService.cs`. The sync cycle runs on a configurable interval (default 180s) and is serialized by a semaphore in `MainForm` - only one cycle runs at a time.
 
 ## High-Level Overview
 

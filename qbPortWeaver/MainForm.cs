@@ -187,7 +187,7 @@ namespace qbPortWeaver
         private void InitializeTrayIcon()
         {
             _trayMenu = new ContextMenuStrip();
-            _trayMenu.Items.Add("Synchronize Port Now", null, synchronizePortNow_Click);
+            _trayMenu.Items.Add("Sync Port Now", null, syncPortNow_Click);
             _trayMenu.Items.Add("Show Logs", null, showLogs_Click);
             _trayMenu.Items.Add("Clear Logs", null, clearLogs_Click);
             _trayMenu.Items.Add("Settings", null, showSettings_Click);
@@ -255,7 +255,7 @@ namespace qbPortWeaver
         }
 
         // Triggers an immediate sync cycle by interrupting the current wait interval
-        private void synchronizePortNow_Click(object? sender, EventArgs e)
+        private void syncPortNow_Click(object? sender, EventArgs e)
         {
             _manualSyncTriggered = true;
             LogManager.Instance.LogMessage("Manual sync requested", LogLevel.Info);

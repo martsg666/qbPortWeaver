@@ -16,7 +16,7 @@
     <docsUrl>https://github.com/martsg666/qbPortWeaver#readme</docsUrl>
     <bugTrackerUrl>https://github.com/martsg666/qbPortWeaver/issues</bugTrackerUrl>
     <requireLicenseAcceptance>false</requireLicenseAcceptance>
-    <summary>Synchronizes qBittorrent's listening port with the VPN-assigned port, and renames media files to Plex conventions</summary>
+    <summary>Syncs qBittorrent's listening port with the VPN-assigned port, and renames media files to Plex conventions</summary>
     <description><![CDATA[
 ## qbPortWeaver
 

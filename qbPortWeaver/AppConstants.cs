@@ -74,13 +74,9 @@ namespace qbPortWeaver
             // Process.Kill failed to terminate in time - fall back to taskkill /F /T
             try
             {
-                using var taskkill = Process.Start(new ProcessStartInfo(
+                using var taskkill = Process.Start(CreateHiddenStartInfo(
                     Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "taskkill.exe"),
-                    $"/F /T /PID {process.Id}")
-                {
-                    UseShellExecute = false,
-                    CreateNoWindow  = true
-                });
+                    $"/F /T /PID {process.Id}"));
                 taskkill?.WaitForExit(timeoutMs);
             }
             catch (Exception ex)
@@ -104,6 +100,10 @@ namespace qbPortWeaver
             }
             return process.WaitForExit(timeoutMs);
         }
+
+        /// <summary>Creates a ProcessStartInfo configured to run a hidden, windowless process.</summary>
+        public static ProcessStartInfo CreateHiddenStartInfo(string fileName, string arguments) =>
+            new(fileName, arguments) { UseShellExecute = false, CreateNoWindow = true };
 
         /// <summary>Opens a URL in the default browser using ShellExecute.</summary>
         public static void OpenUrl(string url)

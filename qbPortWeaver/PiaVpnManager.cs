@@ -86,12 +86,8 @@ namespace qbPortWeaver
                     return null;
                 }
 
-                var startInfo = new ProcessStartInfo(piactlPath, arguments)
-                {
-                    UseShellExecute        = false,
-                    RedirectStandardOutput = true,
-                    CreateNoWindow         = true
-                };
+                var startInfo = AppConstants.CreateHiddenStartInfo(piactlPath, arguments);
+                startInfo.RedirectStandardOutput = true;
 
                 using var process = Process.Start(startInfo);
                 if (process == null)

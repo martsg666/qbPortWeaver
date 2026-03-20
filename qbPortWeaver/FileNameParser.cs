@@ -5,12 +5,12 @@ namespace qbPortWeaver
     /// <summary>Extracts movie titles, release years, and TV episode metadata from filenames for Plex-compatible renaming.</summary>
     public static partial class FileNameParser
     {
-        private static readonly HashSet<string> VideoExtensions = new(StringComparer.OrdinalIgnoreCase)
+        private static readonly HashSet<string> _videoExtensions = new(StringComparer.OrdinalIgnoreCase)
         {
             ".mkv", ".mp4", ".avi", ".mov", ".wmv", ".flv", ".m4v", ".mpg", ".mpeg", ".ts", ".m2ts", ".vob", ".webm"
         };
 
-        private static readonly HashSet<string> CutoffTokens = new(StringComparer.OrdinalIgnoreCase)
+        private static readonly HashSet<string> _cutoffTokens = new(StringComparer.OrdinalIgnoreCase)
         {
             // Resolution / quality
             "240p", "360p", "480i", "480p", "540i", "540p", "576i", "576p",
@@ -79,7 +79,7 @@ namespace qbPortWeaver
 
         /// <summary>Returns true if the file has a recognised video extension.</summary>
         public static bool IsVideoFile(string path) =>
-            VideoExtensions.Contains(Path.GetExtension(path));
+            _videoExtensions.Contains(Path.GetExtension(path));
 
         /// <summary>Returns true if the filename contains a TV episode pattern (SxxExx or NxNN).</summary>
         public static bool IsTvShowEpisode(string name) =>
@@ -98,7 +98,7 @@ namespace qbPortWeaver
         public static bool IsPlexFormatted(string name)
         {
             var ext = Path.GetExtension(name);
-            if (VideoExtensions.Contains(ext))
+            if (_videoExtensions.Contains(ext))
                 name = Path.GetFileNameWithoutExtension(name);
 
             return PlexMovieNameRegex().IsMatch(name) || PlexEpisodeNameRegex().IsMatch(name);
@@ -108,7 +108,7 @@ namespace qbPortWeaver
         public static TvShowEpisodeInfo? ParseTvShowEpisode(string name)
         {
             var ext = Path.GetExtension(name);
-            if (VideoExtensions.Contains(ext))
+            if (_videoExtensions.Contains(ext))
                 name = Path.GetFileNameWithoutExtension(name);
 
             name = StripSitePrefix(name);
@@ -145,7 +145,7 @@ namespace qbPortWeaver
         public static (string Title, int? Year) ParseMovie(string name)
         {
             var ext = Path.GetExtension(name);
-            if (VideoExtensions.Contains(ext))
+            if (_videoExtensions.Contains(ext))
                 name = Path.GetFileNameWithoutExtension(name);
 
             name = StripSitePrefix(name);
@@ -312,13 +312,13 @@ namespace qbPortWeaver
             var result = new List<string>();
             foreach (var word in words)
             {
-                if (CutoffTokens.Contains(word))
+                if (_cutoffTokens.Contains(word))
                     break;
 
                 // Scene naming: "Token-GroupName" (e.g. "DVDR-Replica", "x264-SPARKS")
                 // Check the prefix before the first hyphen against cutoff tokens
                 var dashIndex = word.IndexOf('-');
-                if (dashIndex > 0 && CutoffTokens.Contains(word[..dashIndex]))
+                if (dashIndex > 0 && _cutoffTokens.Contains(word[..dashIndex]))
                     break;
 
                 result.Add(word);

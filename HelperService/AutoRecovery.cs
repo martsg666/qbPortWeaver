@@ -4,12 +4,12 @@ using System.ServiceProcess;
 
 namespace qbPortWeaver.HelperService;
 
-// Executes privileged recovery actions inside the SYSTEM Windows service.
-// Called by HelperPipeServer when the user-session tray app signals a recovery request.
-//
-// Supported actions:
-//   restart        - stop/start a Windows service by name
-//   cycle-adapter  - disable/enable a network adapter via netsh
+/// <summary>
+/// Executes privileged recovery actions inside the SYSTEM Windows service.
+/// Called by HelperPipeServer when the user-session tray app signals a recovery request.
+/// Supported actions: restart (stop/start a Windows service by name) and
+/// cycle-adapter (disable/enable a network adapter via netsh).
+/// </summary>
 internal static class AutoRecovery
 {
     private const int ProcessKillTimeoutMs      = 5000;
@@ -20,7 +20,7 @@ internal static class AutoRecovery
 
     // Maps provider keywords to the Windows service to restart.
     // Used by HelperPipeServer for the "restart" action (exact token lookup via FindServiceForToken).
-    internal static readonly Dictionary<string, string> ProviderServiceMap = new(StringComparer.OrdinalIgnoreCase)
+    private static readonly Dictionary<string, string> _providerServiceMap = new(StringComparer.OrdinalIgnoreCase)
     {
         ["ProtonVPN"] = "ProtonVPN Service",
         ["PIA"]       = "PrivateInternetAccessService",
@@ -97,7 +97,7 @@ internal static class AutoRecovery
 
     // Exact-match lookup used by HelperPipeServer for the "restart" action.
     internal static string? FindServiceForToken(string providerToken) =>
-        ProviderServiceMap.TryGetValue(providerToken, out string? serviceName) ? serviceName : null;
+        _providerServiceMap.TryGetValue(providerToken, out string? serviceName) ? serviceName : null;
 
     // Stops a service cleanly via the SCM, with escalating force if it doesn't respond.
     // Escalation: SCM stop → wait → KillServiceProcess (3-stage: Process.Kill → taskkill /F /T → retry).

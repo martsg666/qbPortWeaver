@@ -2,10 +2,12 @@ using System.Text;
 
 namespace qbPortWeaver.HelperService;
 
-// Writes log entries to the shared qbPortWeaver log file in the same format as the main app's
-// LogManager: "yyyy-MM-dd HH:mm:ss | LEVEL | message"
-// Instantiated per connection with the log file path received from the tray app via the pipe.
-// Retries briefly on sharing violation since the main app opens the same file with FileShare.Read.
+/// <summary>
+/// Writes log entries to the shared qbPortWeaver log file in the same format as the main app's
+/// LogManager: "yyyy-MM-dd HH:mm:ss | LEVEL | message".
+/// Instantiated per connection with the log file path received from the tray app via the pipe.
+/// Retries briefly on sharing violation since the main app opens the same file with FileShare.Read.
+/// </summary>
 internal sealed class HelperLogger(string logFilePath)
 {
     // Log prefix for the helper service subsystem - mirrors AppConstants.MediaManagerLogPrefix in the main app

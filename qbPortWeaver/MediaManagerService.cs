@@ -32,13 +32,27 @@ namespace qbPortWeaver
             foreach (var folder in GetFolders(RegistrySettingsManager.KeyMediaMovieFolders))
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                await movieRenamer.ProcessMoviesFolderAsync(folder).ConfigureAwait(false);
+                try
+                {
+                    await movieRenamer.ProcessMoviesFolderAsync(folder).ConfigureAwait(false);
+                }
+                catch (IOException ex)
+                {
+                    LogManager.Instance.LogMessage($"{AppConstants.MediaManagerLogPrefix}Skipping movie folder '{folder}': {ex.Message}", LogLevel.Warn);
+                }
             }
 
             foreach (var folder in GetFolders(RegistrySettingsManager.KeyMediaTvShowFolders))
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                await tvShowRenamer.ProcessTvShowsFolderAsync(folder).ConfigureAwait(false);
+                try
+                {
+                    await tvShowRenamer.ProcessTvShowsFolderAsync(folder).ConfigureAwait(false);
+                }
+                catch (IOException ex)
+                {
+                    LogManager.Instance.LogMessage($"{AppConstants.MediaManagerLogPrefix}Skipping TV folder '{folder}': {ex.Message}", LogLevel.Warn);
+                }
             }
 
             if (deleteEmptyFolders)
@@ -73,13 +87,27 @@ namespace qbPortWeaver
             foreach (var folder in movieFolders)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                proposals.AddRange(await movieRenamer.ScanMoviesFolderAsync(folder).ConfigureAwait(false));
+                try
+                {
+                    proposals.AddRange(await movieRenamer.ScanMoviesFolderAsync(folder).ConfigureAwait(false));
+                }
+                catch (IOException ex)
+                {
+                    LogManager.Instance.LogMessage($"{AppConstants.MediaManagerLogPrefix}Skipping movie folder '{folder}': {ex.Message}", LogLevel.Warn);
+                }
             }
 
             foreach (var folder in tvShowFolders)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                proposals.AddRange(await tvShowRenamer.ScanTvShowsFolderAsync(folder).ConfigureAwait(false));
+                try
+                {
+                    proposals.AddRange(await tvShowRenamer.ScanTvShowsFolderAsync(folder).ConfigureAwait(false));
+                }
+                catch (IOException ex)
+                {
+                    LogManager.Instance.LogMessage($"{AppConstants.MediaManagerLogPrefix}Skipping TV folder '{folder}': {ex.Message}", LogLevel.Warn);
+                }
             }
 
             return proposals;

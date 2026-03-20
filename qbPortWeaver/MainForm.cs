@@ -187,22 +187,22 @@ namespace qbPortWeaver
         private void InitializeTrayIcon()
         {
             _trayMenu = new ContextMenuStrip();
-            _trayMenu.Items.Add("Synchronize Port Now", null, SynchronizePortNow_Click);
-            _trayMenu.Items.Add("Show Logs", null, ShowLogs_Click);
-            _trayMenu.Items.Add("Clear Logs", null, ClearLogs_Click);
-            _trayMenu.Items.Add("Settings", null, ShowSettings_Click);
-            _trayMenu.Items.Add("Media Manager", null, ShowMediaManager_Click);
-            _trayMenu.Items.Add("About", null, ShowAbout_Click);
+            _trayMenu.Items.Add("Synchronize Port Now", null, synchronizePortNow_Click);
+            _trayMenu.Items.Add("Show Logs", null, showLogs_Click);
+            _trayMenu.Items.Add("Clear Logs", null, clearLogs_Click);
+            _trayMenu.Items.Add("Settings", null, showSettings_Click);
+            _trayMenu.Items.Add("Media Manager", null, showMediaManager_Click);
+            _trayMenu.Items.Add("About", null, showAbout_Click);
 
             _autoStartMenuItem = new ToolStripMenuItem("Start Automatically with Windows")
             {
                 CheckOnClick = true,
                 Checked = StartupManager.IsStartupEnabled()
             };
-            _autoStartMenuItem.Click += AutoStart_Click;
+            _autoStartMenuItem.Click += autoStart_Click;
             _trayMenu.Items.Add(_autoStartMenuItem);
 
-            _trayMenu.Items.Add("Exit", null, Exit_Click);
+            _trayMenu.Items.Add("Exit", null, exit_Click);
 
             _trayIcon = new NotifyIcon
             {
@@ -211,18 +211,18 @@ namespace qbPortWeaver
                 Visible = true,
                 ContextMenuStrip = _trayMenu
             };
-            _trayIcon.MouseDoubleClick += TrayIcon_MouseDoubleClick;
+            _trayIcon.MouseDoubleClick += trayIcon_MouseDoubleClick;
         }
 
-        private void ShowLogs_Click(object? sender, EventArgs e) => ShowLogViewer();
+        private void showLogs_Click(object? sender, EventArgs e) => ShowLogViewer();
 
-        private void ClearLogs_Click(object? sender, EventArgs e)
+        private void clearLogs_Click(object? sender, EventArgs e)
         {
             LogManager.Instance.ClearLogs();
             _trayIcon.ShowBalloonTip(AppConstants.BalloonTipDurationMs, AppConstants.AppName, "Logs cleared", ToolTipIcon.Info);
         }
 
-        private void ShowSettings_Click(object? sender, EventArgs e)
+        private void showSettings_Click(object? sender, EventArgs e)
         {
             ShowOrActivate(() => _settingsForm, f => _settingsForm = f, () => new SettingsForm(), OnSettingsFormClosed);
         }
@@ -236,26 +236,26 @@ namespace qbPortWeaver
             }
         }
 
-        private void ShowMediaManager_Click(object? sender, EventArgs e)
+        private void showMediaManager_Click(object? sender, EventArgs e)
         {
             ShowOrActivate(() => _mediaManagerForm, f => _mediaManagerForm = f, () => new MediaManagerForm());
         }
 
-        private void ShowAbout_Click(object? sender, EventArgs e)
+        private void showAbout_Click(object? sender, EventArgs e)
         {
             ShowOrActivate(() => _aboutForm, f => _aboutForm = f, () => new AboutForm());
         }
 
-        private void AutoStart_Click(object? sender, EventArgs e) => StartupManager.SetStartup(_autoStartMenuItem.Checked);
+        private void autoStart_Click(object? sender, EventArgs e) => StartupManager.SetStartup(_autoStartMenuItem.Checked);
 
-        private void TrayIcon_MouseDoubleClick(object? sender, MouseEventArgs e)
+        private void trayIcon_MouseDoubleClick(object? sender, MouseEventArgs e)
         {
             if (e.Button == MouseButtons.Left)
                 ShowLogViewer();
         }
 
         // Triggers an immediate sync cycle by interrupting the current wait interval
-        private void SynchronizePortNow_Click(object? sender, EventArgs e)
+        private void synchronizePortNow_Click(object? sender, EventArgs e)
         {
             _manualSyncTriggered = true;
             LogManager.Instance.LogMessage("Manual sync requested", LogLevel.Info);
@@ -272,7 +272,7 @@ namespace qbPortWeaver
             }
         }
 
-        private void Exit_Click(object? sender, EventArgs e)
+        private void exit_Click(object? sender, EventArgs e)
         {
             this.Close();
         }

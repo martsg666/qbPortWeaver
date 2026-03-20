@@ -13,7 +13,7 @@ namespace qbPortWeaver
         private readonly string _logFilePath;
         // Log format: "Port pair X->Y" where X and Y are always identical (ProtonVPN does not
         // differentiate external from internal port). Capture group 1 gives the forwarded port.
-        private static readonly Regex PortRegex = new Regex(@"Port pair\s+(\d+)->(?:\d+)", RegexOptions.Compiled, TimeSpan.FromSeconds(1));
+        private static readonly Regex _portRegex = new Regex(@"Port pair\s+(\d+)->(?:\d+)", RegexOptions.Compiled, TimeSpan.FromSeconds(1));
 
         /// <inheritdoc />
         public string ProviderName => RegistrySettingsManager.VpnProviderProtonVpn;
@@ -118,7 +118,7 @@ namespace qbPortWeaver
                 {
                     string line = lines[i].TrimEnd('\r');
                     if (line.Length == 0) continue;
-                    var match = PortRegex.Match(line);
+                    var match = _portRegex.Match(line);
                     if (match.Success && int.TryParse(match.Groups[1].Value, out int port))
                         return port;
                 }
@@ -127,7 +127,7 @@ namespace qbPortWeaver
             // Check the very first line of the file
             if (lineFragment.Length > 0)
             {
-                var match = PortRegex.Match(lineFragment.TrimEnd('\r'));
+                var match = _portRegex.Match(lineFragment.TrimEnd('\r'));
                 if (match.Success && int.TryParse(match.Groups[1].Value, out int port))
                     return port;
             }

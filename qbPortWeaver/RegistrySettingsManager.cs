@@ -62,7 +62,7 @@ namespace qbPortWeaver
         public const string KeyAutoRecoveryTriggerCycles = "vpnAutoRecoveryTriggerCycles";
 
         // Default values for all settings (single source of truth)
-        internal static readonly Dictionary<string, Dictionary<string, string>> Defaults =
+        private static readonly Dictionary<string, Dictionary<string, string>> _defaults =
             new(StringComparer.OrdinalIgnoreCase)
             {
                 [SectionGeneral] = new(StringComparer.OrdinalIgnoreCase)
@@ -107,7 +107,7 @@ namespace qbPortWeaver
         public static void EnsureDefaults()
         {
             bool anyWritten = false;
-            foreach (var section in Defaults)
+            foreach (var section in _defaults)
             {
                 try
                 {
@@ -228,7 +228,7 @@ namespace qbPortWeaver
         // Keys that are stored DPAPI-encrypted rather than as plaintext registry strings.
         // Used by WriteDefaultsForSection to encrypt initial values, and could be extended
         // to any future sensitive setting.
-        private static readonly HashSet<string> EncryptedKeys = new(StringComparer.OrdinalIgnoreCase)
+        private static readonly HashSet<string> _encryptedKeys = new(StringComparer.OrdinalIgnoreCase)
         {
             KeyQBittorrentPassword,
             KeyTmdbApiKey
@@ -246,7 +246,7 @@ namespace qbPortWeaver
 
                 // Sensitive keys are always stored encrypted; encrypt before the initial write.
                 regKey.SetValue(kvp.Key,
-                    EncryptedKeys.Contains(kvp.Key) ? EncryptValue(kvp.Value) : kvp.Value,
+                    _encryptedKeys.Contains(kvp.Key) ? EncryptValue(kvp.Value) : kvp.Value,
                     RegistryValueKind.String);
 
                 anyWritten = true;
@@ -271,7 +271,7 @@ namespace qbPortWeaver
         // Returns the hardcoded default for a setting; returns empty string if the section or key is not found
         private static string GetDefault(string section, string key)
         {
-            if (Defaults.TryGetValue(section, out var sectionDefaults) &&
+            if (_defaults.TryGetValue(section, out var sectionDefaults) &&
                 sectionDefaults.TryGetValue(key, out var value))
                 return value;
             return string.Empty;

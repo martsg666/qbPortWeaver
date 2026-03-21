@@ -89,6 +89,13 @@ namespace qbPortWeaver
         public static bool IsTvShowEpisode(string name) =>
             TvShowEpisodeRegex().IsMatch(name) || TvShowEpisodeLegacyRegex().IsMatch(name);
 
+        /// <summary>
+        /// Returns true if the name looks like a TV show - either an individual episode (SxxExx or NxNN)
+        /// or a season pack in SxxExx format (S01, S02, etc. without an episode number).
+        /// </summary>
+        public static bool IsTvShow(string name) =>
+            IsTvShowEpisode(name) || TvShowSeasonOnlyRegex().IsMatch(name);
+
         /// <summary>Returns true if the file is a video file containing a TV episode pattern.</summary>
         public static bool IsVideoTvShowEpisode(string path) =>
             IsVideoFile(path) && IsTvShowEpisode(Path.GetFileName(path));
@@ -394,6 +401,12 @@ namespace qbPortWeaver
         // No leading \b so it matches even when glued to a word (e.g. "Castle1x01").
         [GeneratedRegex(@"(\d{1,2})x(\d{2})\b", RegexOptions.IgnoreCase)]
         private static partial Regex TvShowEpisodeLegacyRegex();
+
+        // Season-only TV pattern: S01, S2, S004, etc. without an episode number.
+        // Matches season packs and complete-season folders. Uses \b on both sides so "S01" in
+        // "S01E01" does NOT match (\b requires a word/non-word boundary and "1E" are both word chars).
+        [GeneratedRegex(@"\bS\d{1,4}\b", RegexOptions.IgnoreCase)]
+        private static partial Regex TvShowSeasonOnlyRegex();
 
         // Matches Plex movie format: "Title (Year)" optionally followed by " - partN" (multi-part files)
         [GeneratedRegex(@"^.+\s\(\d{4}\)(\s-\s(cd|disc|disk|dvd|part|pt)\d)?$", RegexOptions.IgnoreCase)]

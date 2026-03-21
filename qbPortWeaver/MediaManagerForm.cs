@@ -39,7 +39,7 @@ namespace qbPortWeaver
             toolTip.SetToolTip(btnRemoveTvShowFolder, "Remove the selected folder from the list");
             toolTip.SetToolTip(btnScanNow,            "Preview which files would be renamed - no files are touched");
             toolTip.SetToolTip(btnRenameNow,          "Apply the renames shown in the grid - files will be moved or renamed immediately");
-            toolTip.SetToolTip(dgvResults,            "Files that would be renamed. Rows in red are uncertain TMDB matches - double-click the Proposed cell to correct the name before renaming.");
+            toolTip.SetToolTip(dgvResults,            "Files that would be renamed. Uncheck a row to exclude it from renaming. Rows in red are uncertain TMDB matches - double-click the Proposed cell to correct the name before renaming.");
         }
 
         protected override void OnFormClosed(FormClosedEventArgs e)
@@ -154,9 +154,10 @@ namespace qbPortWeaver
         // Rename Now - applies proposals from the grid, respecting any user edits to the Proposed column
         private async void btnRenameNow_Click(object? sender, EventArgs e) // async void is correct here (WinForms event handler)
         {
-            // Count only matched rows (unmatched rows with no proposed name are skipped during apply)
+            // Count only checked rows with a proposed name (unchecked rows are excluded from renaming)
             int proposalCount = dgvResults.Rows.Cast<DataGridViewRow>()
-                .Count(r => !string.IsNullOrWhiteSpace(r.Cells[colProposed.Index].Value?.ToString()));
+                .Count(r => r.Cells[colInclude.Index].Value is true
+                            && !string.IsNullOrWhiteSpace(r.Cells[colProposed.Index].Value?.ToString()));
 
             var confirm = MessageBox.Show(
                 $"{proposalCount} file{(proposalCount == 1 ? "" : "s")} will be renamed. This cannot be undone.\n\nContinue?",
@@ -226,6 +227,7 @@ namespace qbPortWeaver
             foreach (DataGridViewRow row in dgvResults.Rows)
             {
                 if (row.Tag is not RowData { Proposal: var original }) continue;
+                if (row.Cells[colInclude.Index].Value is not true) continue; // user excluded this row
 
                 var editedName = row.Cells[colProposed.Index].Value?.ToString() ?? string.Empty;
                 if (string.IsNullOrWhiteSpace(editedName)) continue; // unmatched row with no user-supplied name
@@ -317,6 +319,13 @@ namespace qbPortWeaver
             }
         }
 
+        // Commits checkbox edits immediately so the value is available without leaving the row
+        private void dgvResults_CellContentClick(object? sender, DataGridViewCellEventArgs e)
+        {
+            if (e.RowIndex >= 0 && e.ColumnIndex == colInclude.Index)
+                dgvResults.CommitEdit(DataGridViewDataErrorContexts.Commit);
+        }
+
         // Colors rows by match confidence: orange = no TMDB match, red = uncertain match
         private void dgvResults_CellFormatting(object? sender, DataGridViewCellFormattingEventArgs e)
         {
@@ -351,6 +360,7 @@ namespace qbPortWeaver
                     confidence = RowConfidence.Unmatched;
 
                 int idx = dgvResults.Rows.Add(
+                    true,
                     p.MediaType,
                     Path.GetFileName(p.OriginalPath),
                     p.IsMatched ? Path.GetFileName(p.ProposedPath) : string.Empty);

@@ -41,6 +41,7 @@ namespace qbPortWeaver
             btnRenameNow   = new Button();
             lblScanStatus  = new Label();
             dgvResults     = new DataGridView();
+            colInclude     = new DataGridViewCheckBoxColumn();
             colType        = new DataGridViewTextBoxColumn();
             colCurrent     = new DataGridViewTextBoxColumn();
             colProposed    = new DataGridViewTextBoxColumn();
@@ -239,7 +240,7 @@ namespace qbPortWeaver
             dgvResults.BackgroundColor       = SystemColors.Window;
             dgvResults.BorderStyle           = BorderStyle.Fixed3D;
             dgvResults.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.AutoSize;
-            dgvResults.Columns.AddRange(colType, colCurrent, colProposed);
+            dgvResults.Columns.AddRange(colInclude, colType, colCurrent, colProposed);
             dgvResults.Location     = new Point(8, 373);
             dgvResults.Name         = "dgvResults";
             dgvResults.RowHeadersVisible = false;
@@ -248,8 +249,17 @@ namespace qbPortWeaver
             dgvResults.ClipboardCopyMode = DataGridViewClipboardCopyMode.EnableWithoutHeaderText;
             dgvResults.TabIndex          = 5;
             dgvResults.TabStop           = false;
-            dgvResults.CellFormatting   += dgvResults_CellFormatting;
+            dgvResults.CellFormatting    += dgvResults_CellFormatting;
+            dgvResults.CellContentClick += dgvResults_CellContentClick;
             dgvResults.KeyDown          += dgvResults_KeyDown;
+            //
+            // colInclude
+            //
+            colInclude.FillWeight   = 5;
+            colInclude.HeaderText   = "";
+            colInclude.MinimumWidth = 30;
+            colInclude.Name         = "colInclude";
+            colInclude.SortMode     = DataGridViewColumnSortMode.Automatic;
             //
             // colType
             //
@@ -354,6 +364,7 @@ namespace qbPortWeaver
         private Button           btnRenameNow;
         private Label            lblScanStatus;
         private DataGridView     dgvResults;
+        private DataGridViewCheckBoxColumn colInclude;
         private DataGridViewTextBoxColumn colType;
         private DataGridViewTextBoxColumn colCurrent;
         private DataGridViewTextBoxColumn colProposed;

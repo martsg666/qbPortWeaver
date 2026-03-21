@@ -31,10 +31,10 @@ namespace qbPortWeaver
             if (!Directory.Exists(moviesRoot))
                 return proposals;
 
-            foreach (var file in Directory.GetFiles(moviesRoot).Where(f => FileNameParser.IsVideoFile(f) && !FileNameParser.IsTvShowEpisode(Path.GetFileName(f))))
+            foreach (var file in Directory.GetFiles(moviesRoot).Where(f => FileNameParser.IsVideoFile(f) && !FileNameParser.IsTvShow(Path.GetFileName(f))))
                 await ScanStandaloneFileAsync(moviesRoot, file, proposals).ConfigureAwait(false);
 
-            foreach (var dir in Directory.GetDirectories(moviesRoot))
+            foreach (var dir in Directory.GetDirectories(moviesRoot).Where(d => !FileNameParser.IsTvShow(Path.GetFileName(d))))
             {
                 await ScanMovieFolderAsync(moviesRoot, dir, proposals).ConfigureAwait(false);
             }
@@ -54,7 +54,7 @@ namespace qbPortWeaver
             LogManager.Instance.LogMessage($"Scanning movie folder: {moviesRoot}", LogLevel.Info, Subsystem.MediaManager);
 
             int skippedFiles = 0;
-            foreach (var file in Directory.GetFiles(moviesRoot).Where(f => FileNameParser.IsVideoFile(f) && !FileNameParser.IsTvShowEpisode(Path.GetFileName(f))))
+            foreach (var file in Directory.GetFiles(moviesRoot).Where(f => FileNameParser.IsVideoFile(f) && !FileNameParser.IsTvShow(Path.GetFileName(f))))
             {
                 if (!_createFolders && FileNameParser.IsPlexFormatted(Path.GetFileName(file))) { skippedFiles++; continue; }
                 await ProcessStandaloneFileAsync(moviesRoot, file).ConfigureAwait(false);
@@ -65,7 +65,9 @@ namespace qbPortWeaver
             int skippedFolders = 0;
             foreach (var dir in Directory.GetDirectories(moviesRoot))
             {
-                if (FileNameParser.IsPlexFormatted(Path.GetFileName(dir))) { skippedFolders++; continue; }
+                var dirName = Path.GetFileName(dir);
+                if (FileNameParser.IsPlexFormatted(dirName)) { skippedFolders++; continue; }
+                if (FileNameParser.IsTvShow(dirName)) continue;
                 await ProcessMovieFolderAsync(moviesRoot, dir).ConfigureAwait(false);
             }
             if (skippedFolders > 0)
@@ -104,7 +106,7 @@ namespace qbPortWeaver
             var dirName    = Path.GetFileName(dirPath);
             if (FileNameParser.IsPlexFormatted(dirName)) return;
 
-            var videoFiles = Directory.GetFiles(dirPath).Where(FileNameParser.IsVideoFile).ToList();
+            var videoFiles = Directory.GetFiles(dirPath).Where(f => FileNameParser.IsVideoFile(f) && !FileNameParser.IsTvShow(Path.GetFileName(f))).ToList();
             if (videoFiles.Count == 0) return;
 
             var (title, year) = FileNameParser.ParseMovie(dirName);
@@ -174,7 +176,7 @@ namespace qbPortWeaver
         {
             var dirName    = Path.GetFileName(dirPath);
 
-            var videoFiles = Directory.GetFiles(dirPath).Where(FileNameParser.IsVideoFile).ToList();
+            var videoFiles = Directory.GetFiles(dirPath).Where(f => FileNameParser.IsVideoFile(f) && !FileNameParser.IsTvShow(Path.GetFileName(f))).ToList();
 
             if (videoFiles.Count == 0)
                 return;

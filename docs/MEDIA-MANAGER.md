@@ -14,6 +14,18 @@ MediaManagerService          Orchestrator - wires renamers, cleanup, and the UI 
 
 `MediaManagerForm` is the WinForms dialog that drives the scan/preview/rename workflow via `MediaManagerService.ScanAsync` and `ApplyProposalsAsync`.
 
+### Recommended Folder Layout
+
+Use separate root folders for movies and TV shows rather than mixing them in a single folder:
+
+```
+Media/
+  Movies/          <-- add to Movie Folders
+  TV Shows/        <-- add to TV Show Folders
+```
+
+When the same folder appears in both lists, both renamers scan it. The movie renamer skips files and subfolders that look like TV shows (`SxxExx` episodes and `Sxx` season packs), but ambiguous names can still produce duplicate proposals. Splitting into dedicated folders avoids this entirely and matches the Plex library structure.
+
 ## Plex Naming Targets
 
 | Type | With folder creation | Without folder creation |
@@ -216,6 +228,8 @@ The dialog provides two workflows:
 
 **Rename Now** -- reads proposals from the grid (honouring any user edits to the Proposed column), shows a confirmation dialog, then calls `ApplyProposalsAsync`. Always performs real renames regardless of the dry-run setting. If `deleteEmptyFolders` is checked, runs cleanup after renames, then re-scans to show remaining items.
 
+Each row has an **Include checkbox** (checked by default). Uncheck a row to exclude it from renaming -- unchecked rows are skipped by Rename Now and excluded from the confirmation count.
+
 The dry-run checkbox only affects the automatic sync cycle.
 
 ## Known Limitations
@@ -230,34 +244,38 @@ The dry-run checkbox only affects the automatic sync cycle.
 ```
 MediaManagerService.RunAsync
   +-- MovieRenamer.ProcessMoviesFolderAsync
+  |     Filters: IsVideoFile && !IsTvShow (files), !IsTvShow (dirs)
   |     +-- ProcessStandaloneFileAsync (flat files in root)
   |     |     +-- FileNameParser.ParseMovie
   |     |     +-- LookupMovieAsync --> TmdbClient.SearchMovieAsync
   |     |     |     +-- TryFallbackLookupsAsync (after-dash, trailing number)
-  |     |     +-- MediaManagerService.MoveFile
-  |     +-- ProcessMovieFolderAsync (subfolders)
+  |     |     +-- MoveMovieFile --> MediaManagerService.MoveFileWithLog
+  |     +-- ProcessMovieFolderAsync (subfolders, skips IsTvShow dirs)
   |           +-- FileNameParser.ParseMovie (folder name, then first file)
   |           +-- LookupMovieAsync
-  |           +-- RenameFilesInFolder
-  |           |     +-- RenameCompanionFilesInFolder
-  |           +-- Directory.Move (rename folder)
+  |           +-- MoveMovieFile (for each video file)
+  |           +-- MoveCompanionFiles (subtitles etc.)
   +-- TvShowRenamer.ProcessTvShowsFolderAsync
-  |     +-- ProcessSubfolderAsync (recursive, max depth 10)
+  |     +-- ProcessTvShowFolderAsync (recursive, max depth 10)
   |           +-- ProcessEpisodeFileAsync
+  |                 Filter: IsVideoTvShowEpisode
   |                 +-- FileNameParser.ParseTvShowEpisode
   |                 +-- GetOrLookupShowAsync (cached) --> LookupTvShowAsync --> TmdbClient.SearchTvShowAsync
-  |                 +-- MoveEpisodeFile --> MediaManagerService.MoveFile
+  |                 +-- MoveEpisodeFile --> MediaManagerService.MoveFileWithLog
   +-- CleanupEmptyFolders
         +-- IsRemovableFolder
         +-- DeleteFolder
 
 MediaManagerService.ScanAsync (UI path)
   +-- MovieRenamer.ScanMoviesFolderAsync
+  |     Filters: IsVideoFile && !IsTvShow (files), !IsTvShow (dirs)
   |     +-- ScanStandaloneFileAsync
-  |     +-- ScanMovieFolderAsync
+  |     +-- ScanMovieFolderAsync (skips IsTvShow dirs)
   +-- TvShowRenamer.ScanTvShowsFolderAsync
-        +-- ScanSubfolderAsync --> ScanEpisodeFileAsync
+  |     +-- ScanTvShowFolderAsync --> ScanEpisodeFileAsync
+  |           Filter: IsVideoTvShowEpisode
+  +-- Results displayed in grid with Include checkbox per row
 
 MediaManagerService.ApplyProposalsAsync (UI path)
-  +-- MoveFile (for each proposal)
+  +-- MoveFile (for each checked proposal)
 ```

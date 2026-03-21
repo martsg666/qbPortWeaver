@@ -7,7 +7,7 @@ namespace qbPortWeaver
     /// </summary>
     public sealed class TvShowRenamer
     {
-        private const string MediaTypeTvShow  = "TV";
+        private const string MediaTypeTvShow  = "TV Show";
 
         private const int    MaxSubfolderDepth = 10; // TV Shows/Show (Year)/Season XX = depth 2; 10 is a safe ceiling
 

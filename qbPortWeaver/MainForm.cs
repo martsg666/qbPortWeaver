@@ -93,7 +93,20 @@ namespace qbPortWeaver
             }
             catch (Exception ex)
             {
-                HandleMainLoopException(ex);
+                LogManager.Instance.LogMessage($"Fatal startup error: {ex}", LogLevel.Error);
+                try
+                {
+                    InvokeOnUiThread(() =>
+                    {
+                        MessageBox.Show($"Fatal startup error: {ex.Message}\n\nThe application will now exit.",
+                            AppConstants.AppName, MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        Application.Exit();
+                    });
+                }
+                catch (Exception)
+                {
+                    Application.Exit();
+                }
             }
         }
 
@@ -292,17 +305,18 @@ namespace qbPortWeaver
             InvokeOnUiThread(() => _trayIcon.ShowBalloonTip(AppConstants.BalloonTipDurationMs, AppConstants.AppName, message, ToolTipIcon.Warning));
         }
 
-        // Runs the port-sync loop until shutdown is requested
+        // Runs the port-sync loop until shutdown is requested.
+        // Exceptions are caught per-cycle so one bad cycle never kills the app.
         private async Task RunMainLoopAsync()
         {
-            try
+            while (!_shutdownCts.IsCancellationRequested)
             {
-                while (!_shutdownCts.IsCancellationRequested)
+                int updateInterval = AppConstants.DefaultUpdateIntervalSeconds;
+                try
                 {
                     await _updateSemaphore.WaitAsync(_shutdownCts.Token);
                     LogManager.Instance.LogBlankLine();
                     LogManager.Instance.LogMessage("Sync cycle started", LogLevel.Info);
-                    int updateInterval;
                     try
                     {
                         updateInterval = await _portSyncService.RunAsync(_shutdownCts.Token);
@@ -324,17 +338,19 @@ namespace qbPortWeaver
                     if (await ShutdownRequestedDuringDelayAsync(updateInterval))
                         return;
                 }
+                catch (OperationCanceledException) when (_shutdownCts.IsCancellationRequested)
+                {
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    LogManager.Instance.LogMessage($"Sync cycle failed, retrying in {updateInterval}s: {ex.Message}", LogLevel.Error);
+                    try { await Task.Delay(updateInterval * AppConstants.MillisecondsPerSecond, _shutdownCts.Token); }
+                    catch (Exception) { break; }
+                }
+            }
 
-                LogManager.Instance.LogMessage("Main loop exited gracefully", LogLevel.Info);
-            }
-            catch (OperationCanceledException)
-            {
-                LogManager.Instance.LogMessage("Main loop exited (operation cancelled)", LogLevel.Info);
-            }
-            catch (Exception ex)
-            {
-                HandleMainLoopException(ex);
-            }
+            LogManager.Instance.LogMessage("Main loop exited gracefully", LogLevel.Info);
         }
 
         // Waits for the next cycle interval, handling manual-update interrupts.
@@ -364,33 +380,6 @@ namespace qbPortWeaver
             _delayCts = new CancellationTokenSource();
             oldToken.Dispose();
             return false;
-        }
-
-        // Handles an unexpected exception from the main loop, showing an error dialog unless shutting down
-        private void HandleMainLoopException(Exception ex)
-        {
-            if (_shutdownCts.IsCancellationRequested)
-            {
-                LogManager.Instance.LogMessage($"Main loop exited during shutdown: {ex.Message}", LogLevel.Info);
-                return;
-            }
-
-            LogManager.Instance.LogMessage($"Main loop crashed: {ex}", LogLevel.Error);
-
-            string message = $"Critical error in main loop: {ex.Message}\n\nThe application will now exit.";
-            try
-            {
-                InvokeOnUiThread(() =>
-                {
-                    MessageBox.Show(message, AppConstants.AppName, MessageBoxButtons.OK, MessageBoxIcon.Error);
-                    Application.Exit();
-                });
-            }
-            catch (Exception)
-            {
-                // Form is already disposed, just exit
-                Application.Exit();
-            }
         }
 
         // Event handler for the periodic update-check timer - async void is correct here (event handler)

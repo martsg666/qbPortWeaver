@@ -2,51 +2,30 @@
 {
     partial class MainForm
     {
-        /// <summary>
-        ///  Required designer variable.
-        /// </summary>
         private System.ComponentModel.IContainer components = null;
 
-        /// <summary>
-        ///  Clean up any resources being used.
-        /// </summary>
-        /// <param name="disposing">true if managed resources should be disposed; otherwise, false.</param>
         protected override void Dispose(bool disposing)
         {
             if (disposing)
             {
-                // Dispose components container
-                components?.Dispose();
+                _delayCts?.Cancel();
+                _delayCts?.Dispose();
+                _shutdownCts?.Cancel();
+                _shutdownCts?.Dispose();
 
-                // Dispose custom resources
-                try
-                {
-                    _trayIcon?.Dispose();
-                    _trayMenu?.Dispose();
-                    _iconBase?.Dispose();
-                    _iconOk?.Dispose();
-                    _iconWarning?.Dispose();
-                    _iconError?.Dispose();
-                    _updateCheckTimer?.Dispose();
-                    _updateSemaphore?.Dispose();
-                    _delayCts?.Dispose();
-                    _shutdownCts?.Dispose();
-                }
-                catch (Exception ex)
-                {
-                    if (LogManager.IsInitialized)
-                        LogManager.Instance.LogDebug($"MainForm.Dispose: {ex.Message}");
-                }
+                _trayIcon?.Dispose();
+                _trayMenu?.Dispose();
+                _iconBase?.Dispose();
+                _iconOk?.Dispose();
+                _iconWarning?.Dispose();
+                _iconError?.Dispose();
+                _updateCheckTimer?.Dispose();
+                _updateSemaphore?.Dispose();
+                components?.Dispose();
             }
             base.Dispose(disposing);
         }
 
-        #region Windows Form Designer generated code
-
-        /// <summary>
-        ///  Required method for Designer support - do not modify
-        ///  the contents of this method with the code editor.
-        /// </summary>
         private void InitializeComponent()
         {
             SuspendLayout();
@@ -63,7 +42,5 @@
             Load += MainForm_Load;
             ResumeLayout(false);
         }
-
-        #endregion
     }
 }

@@ -50,7 +50,7 @@ internal static class AutoRecovery
                 return;
             }
 
-            logger.LogInfo($"Successfully restarted service '{serviceName}'");
+            logger.LogInfo($"Restarted service '{serviceName}'");
         }
         catch (Exception ex)
         {
@@ -87,7 +87,7 @@ internal static class AutoRecovery
                 logger.LogWarn($"Failed to re-enable adapter '{adapterName}'");
                 return;
             }
-            logger.LogInfo($"Successfully re-enabled adapter '{adapterName}'");
+            logger.LogInfo($"Re-enabled adapter '{adapterName}'");
         }
         catch (Exception ex)
         {
@@ -285,7 +285,7 @@ internal static class AutoRecovery
 
                 if (process.WaitForExit(ProcessKillTimeoutMs))
                 {
-                    logger.LogInfo($"Service '{sc.ServiceName}' process force-killed (PID {pid})");
+                    logger.LogWarn($"Service '{sc.ServiceName}' process force-killed (PID {pid})");
                     return;
                 }
 
@@ -307,7 +307,7 @@ internal static class AutoRecovery
                 }
                 if (process.WaitForExit(ProcessKillTimeoutMs))
                 {
-                    logger.LogInfo($"Service '{sc.ServiceName}' process force-killed via taskkill (PID {pid})");
+                    logger.LogWarn($"Service '{sc.ServiceName}' process force-killed via taskkill (PID {pid})");
                     return;
                 }
 
@@ -315,12 +315,12 @@ internal static class AutoRecovery
                 try { process.Kill(entireProcessTree: true); }
                 catch (InvalidOperationException)
                 {
-                    logger.LogInfo($"Service '{sc.ServiceName}' process force-killed (PID {pid})");
+                    logger.LogWarn($"Service '{sc.ServiceName}' process force-killed (PID {pid})");
                     return;
                 }
 
                 if (process.WaitForExit(ProcessKillTimeoutMs))
-                    logger.LogInfo($"Service '{sc.ServiceName}' process force-killed (PID {pid})");
+                    logger.LogWarn($"Service '{sc.ServiceName}' process force-killed (PID {pid})");
                 else
                     logger.LogWarn($"Service '{sc.ServiceName}' process (PID {pid}) still running after all kill attempts");
             }
@@ -366,14 +366,14 @@ internal static class AutoRecovery
                 // netsh is a short-lived system utility that always responds to Process.Kill -
                 // no taskkill fallback needed here.
                 process.Kill(entireProcessTree: true);
-                logger.LogWarn($"Netsh timed out and was killed");
+                logger.LogWarn("netsh timed out and was killed");
                 return false;
             }
 
             if (process.ExitCode != 0)
             {
                 string output = !string.IsNullOrWhiteSpace(stderr) ? stderr.Trim() : stdout.Trim();
-                logger.LogWarn($"Netsh exited with code {process.ExitCode}: {output}");
+                logger.LogWarn($"netsh exited with code {process.ExitCode}: {output}");
                 return false;
             }
 

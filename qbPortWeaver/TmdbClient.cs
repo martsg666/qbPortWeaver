@@ -3,10 +3,11 @@ using System.Text.Json.Serialization;
 
 namespace qbPortWeaver
 {
-    /// <summary>HTTP client for The Movie Database (TMDB) search API.</summary>
+    /// <summary>HTTP client for The Movie Database (TMDB) search API. Applies a per-request delay to stay within TMDB's rate limit (~40 requests/10 seconds).</summary>
     public sealed class TmdbClient
     {
         private const string TmdbBaseUrl = "https://api.themoviedb.org/3/"; // NOSONAR S1075 - fixed TMDB API endpoint, not a configurable path
+        private const int    RateLimitDelayMs = 260; // ~3.8 req/s, comfortably under TMDB's ~4 req/s limit
 
         // Static shared instance: HttpClient is thread-safe and reusing it avoids per-cycle socket exhaustion.
         private static readonly HttpClient _httpClient = new()
@@ -14,6 +15,9 @@ namespace qbPortWeaver
             BaseAddress = new Uri(TmdbBaseUrl),
             Timeout     = TimeSpan.FromSeconds(AppConstants.HttpTimeoutSeconds)
         };
+
+        // Serialises concurrent requests to enforce the rate limit
+        private static readonly SemaphoreSlim _rateLimiter = new(1, 1);
 
         private readonly string _apiKey;
 
@@ -29,7 +33,7 @@ namespace qbPortWeaver
             if (year.HasValue)
                 url += $"&year={year.Value}";
 
-            var response = await _httpClient.GetFromJsonAsync<TmdbMovieSearchResult>(url).ConfigureAwait(false);
+            var response = await GetWithRateLimitAsync<TmdbMovieSearchResult>(url).ConfigureAwait(false);
             var result   = response?.Results?.FirstOrDefault();
             if (result == null)
                 return null;
@@ -44,13 +48,30 @@ namespace qbPortWeaver
             var url = $"search/tv?api_key={_apiKey}&query={Uri.EscapeDataString(query)}&language=en-US&page=1";
             if (year.HasValue)
                 url += $"&first_air_date_year={year.Value}";
-            var response = await _httpClient.GetFromJsonAsync<TmdbTvSearchResult>(url).ConfigureAwait(false);
+
+            var response = await GetWithRateLimitAsync<TmdbTvSearchResult>(url).ConfigureAwait(false);
             var result   = response?.Results?.FirstOrDefault();
             if (result == null)
                 return null;
 
             int? airYear = result.FirstAirDate?.Length >= 4 && int.TryParse(result.FirstAirDate[..4], out int y) ? y : null;
             return new TvShowInfo(result.Name, airYear, result.Id);
+        }
+
+        // Enforces a minimum delay between TMDB API calls to avoid HTTP 429 rate limiting.
+        // The delay runs inside the semaphore hold so the next caller waits for the cooldown to finish.
+        private static async Task<T?> GetWithRateLimitAsync<T>(string url)
+        {
+            await _rateLimiter.WaitAsync().ConfigureAwait(false);
+            try
+            {
+                return await _httpClient.GetFromJsonAsync<T>(url).ConfigureAwait(false);
+            }
+            finally
+            {
+                try { await Task.Delay(RateLimitDelayMs).ConfigureAwait(false); }
+                finally { _rateLimiter.Release(); }
+            }
         }
     }
 

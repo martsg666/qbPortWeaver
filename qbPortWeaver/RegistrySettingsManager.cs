@@ -50,11 +50,17 @@ namespace qbPortWeaver
         // Registry key names - media section
         public const string KeyMediaEnabled       = "mediaEnabled";
         public const string KeyTmdbApiKey         = "tmdbApiKey";
-        public const string KeyMediaMovieFolders  = "movieFolders";
-        public const string KeyMediaTvShowFolders = "tvShowFolders";
+        public const string KeyMediaSourceFolders      = "sourceFolders";
         public const string KeyMediaCreateFolders      = "createFolders";
         public const string KeyMediaDeleteEmptyFolders = "deleteEmptyFolders";
         public const string KeyMediaDryRun             = "dryRun";
+        public const string KeyMediaMoviesLibraryPath  = "moviesLibraryPath";
+        public const string KeyMediaTvShowsLibraryPath = "tvShowsLibraryPath";
+        public const string KeyMediaImportMode         = "importMode";
+
+        public const string ImportModeHardlink = "Hardlink";
+        public const string ImportModeCopy     = "Copy";
+        public const string ImportModeMove     = "Move";
 
         // Registry key names - general section (auto-recovery)
         // Registry string values are frozen for backward compatibility.
@@ -95,11 +101,13 @@ namespace qbPortWeaver
                 {
                     [KeyMediaEnabled]       = ValueFalse,
                     [KeyTmdbApiKey]         = "",
-                    [KeyMediaMovieFolders]  = "",
-                    [KeyMediaTvShowFolders] = "",
+                    [KeyMediaSourceFolders]      = "",
                     [KeyMediaCreateFolders]      = ValueFalse,
                     [KeyMediaDeleteEmptyFolders] = ValueFalse,
-                    [KeyMediaDryRun]             = ValueTrue
+                    [KeyMediaDryRun]             = ValueTrue,
+                    [KeyMediaMoviesLibraryPath]  = "",
+                    [KeyMediaTvShowsLibraryPath] = "",
+                    [KeyMediaImportMode]         = ImportModeHardlink
                 }
             };
 

@@ -9,6 +9,7 @@ namespace qbPortWeaver
             if (disposing)
             {
                 _watcher?.Dispose();
+                _searchDebounceTimer?.Dispose();
 
                 // Dispose explicitly created fonts (WinForms controls do not own their Font)
                 rtbLog?.Font?.Dispose();

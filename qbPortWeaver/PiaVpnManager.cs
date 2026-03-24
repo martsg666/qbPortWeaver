@@ -113,7 +113,7 @@ namespace qbPortWeaver
             }
             catch (Exception ex)
             {
-                LogManager.Instance.LogDebug($"PiaVpnManager.RunPiactl: Failed to run '{arguments}' - {ex.Message}");
+                LogManager.Instance.LogDebug($"PiaVpnManager.RunPiactl: Failed to run '{arguments}': {ex.Message}");
                 return null;
             }
         }

@@ -85,6 +85,21 @@ namespace qbPortWeaver
         public static bool IsVideoFile(string path) =>
             _videoExtensions.Contains(Path.GetExtension(path));
 
+        /// <summary>Returns true if the file has a subtitle extension recognised by Plex (.srt, .sub, .ass, etc.).</summary>
+        public static bool IsSubtitleFile(string path)
+        {
+            var ext = Path.GetExtension(path);
+            return ext.Equals(".srt", StringComparison.OrdinalIgnoreCase)
+                || ext.Equals(".sub", StringComparison.OrdinalIgnoreCase)
+                || ext.Equals(".idx", StringComparison.OrdinalIgnoreCase)
+                || ext.Equals(".ass", StringComparison.OrdinalIgnoreCase)
+                || ext.Equals(".ssa", StringComparison.OrdinalIgnoreCase)
+                || ext.Equals(".vtt", StringComparison.OrdinalIgnoreCase)
+                || ext.Equals(".smi", StringComparison.OrdinalIgnoreCase)
+                || ext.Equals(".pgs", StringComparison.OrdinalIgnoreCase)
+                || ext.Equals(".sup", StringComparison.OrdinalIgnoreCase);
+        }
+
         /// <summary>Returns true if the filename contains a TV episode pattern (SxxExx or NxNN).</summary>
         public static bool IsTvShowEpisode(string name) =>
             TvShowEpisodeRegex().IsMatch(name) || TvShowEpisodeLegacyRegex().IsMatch(name);

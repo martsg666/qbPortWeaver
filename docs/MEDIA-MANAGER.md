@@ -1,30 +1,36 @@
 # qbPortWeaver - Media Manager
 
-The Media Manager subsystem automatically renames movie and TV show files to [Plex naming conventions](https://support.plex.tv/articles/naming-and-organizing-your-tv-show-files/), using TMDB metadata for authoritative titles and years. It runs as part of the sync cycle (when enabled) or on-demand from the Media Manager dialog.
+The Media Manager subsystem automatically imports movie and TV show files into Plex-compatible library folders using [Plex naming conventions](https://support.plex.tv/articles/naming-and-organizing-your-tv-show-files/), with TMDB metadata for authoritative titles and years. Files are transferred via hardlink (with automatic fallback to copy for cross-volume scenarios), copy, or move. It runs as part of the sync cycle (when enabled) or on-demand from the Media Manager dialog.
 
 ## Architecture
 
 ```
-MediaManagerService          Orchestrator - wires renamers, cleanup, and the UI scan/apply paths
-  ├── MovieRenamer           Processes movie files and folders against TMDB
-  ├── TvShowRenamer          Processes TV episode files against TMDB (with per-cycle show cache)
-  ├── FileNameParser         Stateless parser - extracts titles, years, and episode info from filenames
-  └── TmdbClient             HTTP client for TMDB search API (movie + TV)
+MediaManagerService          Orchestrator - single-pass source enumeration, wires processors, cleanup, UI scan/apply
+  ├── MovieProcessor           Processes movie files and folders against TMDB (static lookup cache)
+  ├── TvShowProcessor          Processes TV episode files against TMDB (static lookup cache)
+  ├── FileImporter             File transfer (hardlink/copy/move) + library size index for duplicate detection
+  ├── FileNameParser           Stateless parser - extracts titles, years, and episode info from filenames
+  └── TmdbClient               HTTP client for TMDB search API (movie + TV) with rate limiting
 ```
 
-`MediaManagerForm` is the WinForms dialog that drives the scan/preview/rename workflow via `MediaManagerService.ScanAsync` and `ApplyProposalsAsync`.
+`MediaManagerForm` is the WinForms dialog that drives the scan/preview/import workflow via `MediaManagerService.ScanAsync` and `ApplyProposalsAsync`.
 
 ### Recommended Folder Layout
 
-Use separate root folders for movies and TV shows rather than mixing them in a single folder:
+Source folders (download/seeding folders) are scanned by both the movie and TV show processors. The movie processor skips files and subfolders that look like TV shows (`SxxExx` episodes and `Sxx` season packs), so mixing content in a single folder works well.
+
+Optionally configure separate library folders for movies and TV shows to import files into a Plex-compatible structure:
 
 ```
-Media/
-  Movies/          <-- add to Movie Folders
-  TV Shows/        <-- add to TV Show Folders
+Source (download/seeding):
+  D:\Torrents\Downloaded\     <-- add to Source Folders
+
+Library (optional):
+  \\NAS\Media\Movies\         <-- Movies Library
+  \\NAS\Media\TV Shows\       <-- TV Shows Library
 ```
 
-When the same folder appears in both lists, both renamers scan it. The movie renamer skips files and subfolders that look like TV shows (`SxxExx` episodes and `Sxx` season packs), but ambiguous names can still produce duplicate proposals. Splitting into dedicated folders avoids this entirely and matches the Plex library structure.
+When library paths are configured, files are imported (hardlink/copy/move) into the library while originals remain in the source folder for seeding. At least one library path (movies or TV shows) must be configured for the Media Manager to operate.
 
 ## Plex Naming Targets
 
@@ -41,17 +47,21 @@ flowchart TD
     START([MediaManagerService.RunAsync]) --> ENABLED{Feature enabled?}
     ENABLED -- No --> SKIP([Return immediately])
     ENABLED -- Yes --> KEY{TMDB API key set?}
-    KEY -- No --> WARN([Log warning, return])
-    KEY -- Yes --> CONFIG[Read dryRun, createFolders, deleteEmptyFolders]
-    CONFIG --> MOVIES[Process movie folders via MovieRenamer]
-    MOVIES --> TV[Process TV folders via TvShowRenamer]
+    KEY -- No --> SKIP2([Log debug, return])
+    KEY -- Yes --> LIBS{Library paths configured?}
+    LIBS -- No --> SKIP3([Log debug, return])
+    LIBS -- Yes --> CONFIG[Read dryRun, createFolders, deleteEmptyFolders, importMode]
+    CONFIG --> INDEX[BuildLibraryIndex - cached, built once per session]
+    INDEX --> CLASSIFY[ClassifySourceFolder - single enumeration per source folder]
+    CLASSIFY --> MOVIES[Process pre-classified movies via MovieProcessor]
+    MOVIES --> TV[Process pre-classified TV shows via TvShowProcessor]
     TV --> CLEANUP{deleteEmptyFolders?}
     CLEANUP -- Yes --> DELETE[CleanupEmptyFolders for all folders]
     CLEANUP -- No --> DONE
     DELETE --> DONE([Scan complete])
 ```
 
-**Dry-run mode:** When enabled, the renamers log "Would rename" instead of "Renaming" and skip the actual file move. Folder cleanup logs "Would delete" but does not check whether folders *would become* empty from simulated renames -- it only reports folders that are already empty or nfo-only on disk.
+**Dry-run mode:** When enabled, the processors log "Would import" instead of "Importing" and skip the actual file transfer. Folder cleanup logs "Would delete" but does not check whether folders *would become* empty from simulated imports -- it only reports folders that are already empty or nfo-only on disk.
 
 ## File Name Parser
 
@@ -185,7 +195,7 @@ After cutoff and year extraction, `CleanTitle` performs:
 
 ## TMDB Lookup Strategy
 
-Both renamers follow the same lookup pattern:
+Both processors follow the same lookup pattern:
 
 ```
 Search TMDB with (title, year)
@@ -210,7 +220,7 @@ Search TMDB with (title, year)
 
 ## Folder Cleanup
 
-`CleanupEmptyFolders` runs after renames (when enabled) and walks subdirectories bottom-up:
+`CleanupEmptyFolders` runs after imports (when enabled) and walks source subdirectories bottom-up:
 
 | Folder state | Action |
 |-------------|--------|
@@ -226,9 +236,9 @@ The dialog provides two workflows:
 
 **Scan Now** -- reads current (unsaved) form values, calls `ScanAsync`, and populates the grid with proposals. No files are touched. The dry-run checkbox has no effect on this path.
 
-**Rename Now** -- reads proposals from the grid (honouring any user edits to the Proposed column), shows a confirmation dialog, then calls `ApplyProposalsAsync`. Always performs real renames regardless of the dry-run setting. If `deleteEmptyFolders` is checked, runs cleanup after renames, then re-scans to show remaining items.
+**Import Now** -- reads proposals from the grid (honouring any user edits to the Proposed column), shows a confirmation dialog, then calls `ApplyProposalsAsync`. Always performs real imports regardless of the dry-run setting. If `deleteEmptyFolders` is checked, runs cleanup after imports, then re-scans to show remaining items.
 
-Each row has an **Include checkbox** (checked by default). Uncheck a row to exclude it from renaming -- unchecked rows are skipped by Rename Now and excluded from the confirmation count.
+Each row has an **Include checkbox** (checked by default). Click the column header to toggle all rows at once. Uncheck a row to exclude it from importing -- unchecked rows are skipped by Import Now and excluded from the confirmation count.
 
 The dry-run checkbox only affects the automatic sync cycle.
 
@@ -243,39 +253,45 @@ The dry-run checkbox only affects the automatic sync cycle.
 
 ```
 MediaManagerService.RunAsync
-  +-- MovieRenamer.ProcessMoviesFolderAsync
-  |     Filters: IsVideoFile && !IsTvShow (files), !IsTvShow (dirs)
+  +-- ClassifySourceFolder (single enumeration per source folder)
+  +-- FileImporter.BuildLibraryIndex (once per app session, cached)
+  +-- MovieProcessor.ProcessMoviesAsync (pre-classified files and dirs)
   |     +-- ProcessStandaloneFileAsync (flat files in root)
+  |     |     +-- FileImporter.IsAlreadyInLibrary (fingerprint-based skip)
   |     |     +-- FileNameParser.ParseMovie
-  |     |     +-- LookupMovieAsync --> TmdbClient.SearchMovieAsync
+  |     |     +-- GetOrLookupMovieAsync (cached) --> LookupMovieAsync --> TmdbClient.SearchMovieAsync
   |     |     |     +-- TryFallbackLookupsAsync (after-dash, trailing number)
-  |     |     +-- MoveMovieFile --> MediaManagerService.MoveFileWithLog
-  |     +-- ProcessMovieFolderAsync (subfolders, skips IsTvShow dirs)
+  |     |     +-- MediaManagerService.ImportFileWithLog
+  |     +-- ProcessMovieFolderAsync (subfolders)
+  |           +-- FileImporter.IsAlreadyInLibrary (skips folder if all files present)
   |           +-- FileNameParser.ParseMovie (folder name, then first file)
-  |           +-- LookupMovieAsync
-  |           +-- MoveMovieFile (for each video file)
-  |           +-- MoveCompanionFiles (subtitles etc.)
-  +-- TvShowRenamer.ProcessTvShowsFolderAsync
+  |           +-- GetOrLookupMovieAsync
+  |           +-- MediaManagerService.ImportFileWithLog (for each video file)
+  |           +-- MediaManagerService.ImportCompanionFiles (subtitles only)
+  +-- TvShowProcessor.ProcessTvShowsAsync (pre-classified files and dirs)
   |     +-- ProcessTvShowFolderAsync (recursive, max depth 10)
   |           +-- ProcessEpisodeFileAsync
+  |                 +-- FileImporter.IsAlreadyInLibrary (fingerprint-based skip)
   |                 Filter: IsVideoTvShowEpisode
   |                 +-- FileNameParser.ParseTvShowEpisode
   |                 +-- GetOrLookupShowAsync (cached) --> LookupTvShowAsync --> TmdbClient.SearchTvShowAsync
-  |                 +-- MoveEpisodeFile --> MediaManagerService.MoveFileWithLog
+  |                 +-- MediaManagerService.ImportFileWithLog
+  |                 +-- MediaManagerService.ImportCompanionFiles (subtitles only)
   +-- CleanupEmptyFolders
         +-- IsRemovableFolder
         +-- DeleteFolder
 
 MediaManagerService.ScanAsync (UI path)
-  +-- MovieRenamer.ScanMoviesFolderAsync
-  |     Filters: IsVideoFile && !IsTvShow (files), !IsTvShow (dirs)
-  |     +-- ScanStandaloneFileAsync
-  |     +-- ScanMovieFolderAsync (skips IsTvShow dirs)
-  +-- TvShowRenamer.ScanTvShowsFolderAsync
-  |     +-- ScanTvShowFolderAsync --> ScanEpisodeFileAsync
+  +-- ClassifySourceFolder (single enumeration per source folder)
+  +-- FileImporter.BuildLibraryIndex (force rebuild)
+  +-- MovieProcessor.ScanMoviesAsync (pre-classified files and dirs)
+  |     +-- ScanStandaloneFileAsync (+IsAlreadyInLibrary, +IsDuplicateFile)
+  |     +-- ScanMovieFolderAsync (+IsAlreadyInLibrary for all files)
+  +-- TvShowProcessor.ScanTvShowsAsync (pre-classified files and dirs)
+  |     +-- ScanTvShowFolderAsync --> ScanEpisodeFileAsync (+IsAlreadyInLibrary, +IsDuplicateFile)
   |           Filter: IsVideoTvShowEpisode
   +-- Results displayed in grid with Include checkbox per row
 
 MediaManagerService.ApplyProposalsAsync (UI path)
-  +-- MoveFile (for each checked proposal)
+  +-- FileImporter.ImportFile --> FileImporter.AddToLibraryIndex
 ```

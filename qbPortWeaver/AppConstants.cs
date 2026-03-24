@@ -81,7 +81,7 @@ namespace qbPortWeaver
             }
             catch (Exception ex)
             {
-                LogManager.Instance.LogDebug($"AppConstants.KillProcess: Failed to run taskkill fallback - {ex.Message}");
+                LogManager.Instance.LogDebug($"AppConstants.KillProcess: Failed to run taskkill fallback: {ex.Message}");
             }
             if (process.WaitForExit(timeoutMs)) return true;
 

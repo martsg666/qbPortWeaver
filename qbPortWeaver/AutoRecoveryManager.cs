@@ -138,7 +138,7 @@ namespace qbPortWeaver
                             if (!AppConstants.KillProcess(p))
                                 LogManager.Instance.LogMessage($"Client process '{processName}' (PID {p.Id}) still running after kill attempts", LogLevel.Warn);
                         }
-                        catch (Exception ex) { LogManager.Instance.LogDebug($"AutoRecoveryManager.RestartClientProcessAsync: Kill '{processName}' - {ex.Message} - ignored"); }
+                        catch (Exception ex) { LogManager.Instance.LogDebug($"AutoRecoveryManager.RestartClientProcessAsync: Kill '{processName}': {ex.Message}"); }
                     }
                     LogManager.Instance.LogMessage(exePath != null
                         ? $"Killed client process '{processName}'"
@@ -158,7 +158,7 @@ namespace qbPortWeaver
             if (exePath == null && _cachedClientExePaths.TryGetValue(processName, out string? cached))
             {
                 exePath = cached;
-                LogManager.Instance.LogMessage($"Using cached EXE path for '{processName}': {exePath}", LogLevel.Info);
+                LogManager.Instance.LogDebug($"AutoRecoveryManager.RestartClientProcessAsync: Using cached EXE path for '{processName}': {exePath}");
             }
 
             if (exePath == null)
@@ -175,7 +175,7 @@ namespace qbPortWeaver
             }
             catch (Exception ex)
             {
-                LogManager.Instance.LogMessage($"Failed to restart client process '{processName}': {ex.Message}", LogLevel.Warn);
+                LogManager.Instance.LogMessage($"Failed to restart client process '{processName}': {ex.Message}", LogLevel.Error);
             }
         }
     }

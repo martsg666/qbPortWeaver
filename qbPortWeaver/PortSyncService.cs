@@ -130,7 +130,8 @@ namespace qbPortWeaver
                 else if (success)          state = SyncState.Synced;
                 else                       state = SyncState.Error;
 
-                SyncCompleted?.Invoke(new TrayStatus(state, port, message));
+                try { SyncCompleted?.Invoke(new TrayStatus(state, port, message)); }
+                catch (Exception ex) { LogManager.Instance.LogMessage($"SyncCompleted handler failed: {ex.Message}", LogLevel.Warn); }
             }
         }
 
@@ -141,11 +142,14 @@ namespace qbPortWeaver
             LogManager.Instance.DebugMode = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionExtra, RegistrySettingsManager.KeyDebugMode);
 
             var cfg = ReadConfig();
-            LogManager.Instance.LogDebug($"PortSyncService.RunCoreAsync: vpn={cfg.VpnProvider}, adapter={cfg.NatPmpAdapterName}, interval={cfg.UpdateInterval}s, " +
-                $"url={cfg.QBittorrentUrl}, user={cfg.QBittorrentUserName}, exe={cfg.QBittorrentExePath}, process={cfg.QBittorrentProcessName}, " +
-                $"restart={cfg.RestartQBittorrent}, forceStart={cfg.ForceStartQBittorrent}, defaultPort={cfg.DefaultPort}, " +
-                $"warnMismatch={cfg.WarnOnInterfaceMismatch}, restartOnDisconnect={cfg.RestartOnDisconnect}, " +
-                $"postCmd={cfg.PostUpdateCommand}, recovery={cfg.AutoRecoveryEnabled}, recoveryCycles={cfg.AutoRecoveryTriggerCycles}");
+            LogManager.Instance.LogDebug($"PortSyncService.RunCoreAsync: {RegistrySettingsManager.KeyVpnProvider}={cfg.VpnProvider}, " +
+                $"{RegistrySettingsManager.KeyNatPmpAdapterName}={cfg.NatPmpAdapterName}, {RegistrySettingsManager.KeyUpdateIntervalSeconds}={cfg.UpdateInterval}s, " +
+                $"{RegistrySettingsManager.KeyQBittorrentUrl}={cfg.QBittorrentUrl}, {RegistrySettingsManager.KeyQBittorrentUserName}={cfg.QBittorrentUserName}, " +
+                $"{RegistrySettingsManager.KeyQBittorrentExePath}={cfg.QBittorrentExePath}, {RegistrySettingsManager.KeyQBittorrentProcessName}={cfg.QBittorrentProcessName}, " +
+                $"{RegistrySettingsManager.KeyRestartQBittorrent}={cfg.RestartQBittorrent}, {RegistrySettingsManager.KeyForceStartQBittorrent}={cfg.ForceStartQBittorrent}, " +
+                $"{RegistrySettingsManager.KeyDefaultPort}={cfg.DefaultPort}, {RegistrySettingsManager.KeyWarnOnInterfaceMismatch}={cfg.WarnOnInterfaceMismatch}, " +
+                $"{RegistrySettingsManager.KeyRestartOnDisconnect}={cfg.RestartOnDisconnect}, {RegistrySettingsManager.KeyPostUpdateCmd}={cfg.PostUpdateCommand}, " +
+                $"{RegistrySettingsManager.KeyAutoRecoveryEnabled}={cfg.AutoRecoveryEnabled}, {RegistrySettingsManager.KeyAutoRecoveryTriggerCycles}={cfg.AutoRecoveryTriggerCycles}");
             status[StatusKeys.VpnProvider]           = cfg.VpnProvider;
             status[StatusKeys.UpdateIntervalSeconds] = cfg.UpdateInterval;
 
@@ -398,7 +402,7 @@ namespace qbPortWeaver
                 SetCompleted(status, false, "Failed to force start qBittorrent");
                 return false;
             }
-            LogManager.Instance.LogMessage("Successfully force-started qBittorrent", LogLevel.Info);
+            LogManager.Instance.LogMessage("Force-started qBittorrent", LogLevel.Info);
             return true;
         }
 
@@ -455,7 +459,7 @@ namespace qbPortWeaver
                 SetCompleted(status, false, $"Failed to set qBittorrent port to {targetPort}");
                 return false;
             }
-            LogManager.Instance.LogMessage($"Successfully set qBittorrent port to {targetPort}", LogLevel.Info);
+            LogManager.Instance.LogMessage($"qBittorrent port set to {targetPort}", LogLevel.Info);
 
             status[StatusKeys.QBittorrentPort] = targetPort;
             status[StatusKeys.PortChanged]     = true;
@@ -468,7 +472,7 @@ namespace qbPortWeaver
                     SetCompleted(status, false, "Failed to restart qBittorrent");
                     return false;
                 }
-                LogManager.Instance.LogMessage("Successfully restarted qBittorrent", LogLevel.Info);
+                LogManager.Instance.LogMessage("Restarted qBittorrent", LogLevel.Info);
             }
 
             // Run post-update command if configured (fire-and-forget)
@@ -511,9 +515,9 @@ namespace qbPortWeaver
 
             LogManager.Instance.LogMessage("qBittorrent connection status is disconnected - restarting", LogLevel.Warn);
             if (!await manager.RestartAsync(cancellationToken).ConfigureAwait(false))
-                LogManager.Instance.LogMessage("Failed to restart qBittorrent after connection disconnect", LogLevel.Warn);
+                LogManager.Instance.LogMessage("Failed to restart qBittorrent after connection disconnect", LogLevel.Error);
             else
-                LogManager.Instance.LogMessage("Successfully restarted qBittorrent after connection disconnect", LogLevel.Info);
+                LogManager.Instance.LogMessage("Restarted qBittorrent after connection disconnect", LogLevel.Info);
         }
 
         // Increments the failure counter and triggers recovery when port detection

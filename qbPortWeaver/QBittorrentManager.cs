@@ -24,6 +24,12 @@ namespace qbPortWeaver
         private readonly HttpClient _httpClient;
         private bool _isAuthenticated;
 
+        /// <summary>Creates a new manager bound to the specified qBittorrent Web API endpoint and local process.</summary>
+        /// <param name="url">Base URL of the qBittorrent Web UI (e.g. <c>http://localhost:8080</c>).</param>
+        /// <param name="userName">Web UI login username.</param>
+        /// <param name="password">Web UI login password.</param>
+        /// <param name="processName">Process name used to detect whether qBittorrent is running (e.g. <c>qbittorrent</c>).</param>
+        /// <param name="exePath">Full path to the qBittorrent executable, used for force-start.</param>
         public QBittorrentManager(string url, string userName, string password, string processName, string exePath)
         {
             _url = (url ?? string.Empty).TrimEnd('/');
@@ -225,7 +231,7 @@ namespace qbPortWeaver
                     if (!AppConstants.KillProcess(proc, ProcessKillTimeoutMs))
                         LogManager.Instance.LogMessage($"qBittorrent process (PID {proc.Id}) still running after kill attempts", LogLevel.Warn);
                 }
-                catch (Exception ex) { LogManager.Instance.LogDebug($"QBittorrentManager.KillProcessesByName: Failed to kill process - {ex.Message}"); }
+                catch (Exception ex) { LogManager.Instance.LogDebug($"QBittorrentManager.KillProcessesByName: Failed to kill process: {ex.Message}"); }
                 finally { proc.Dispose(); }
             }
         }

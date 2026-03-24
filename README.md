@@ -37,7 +37,7 @@ The application runs in the system tray, manages configuration and logging, and 
   All configuration options are editable through a dedicated Settings form (tray menu → Settings), with inline descriptions and tooltips for each option.
 
 - **Log Viewer**
-  Built-in log viewer (tray menu → Show Logs, or double-click the tray icon) displays the log file with color-coded entries by level (error, warn, info, debug) and follows new entries in real time. Supports Windows dark mode.
+  Built-in log viewer (tray menu → Show Logs, or double-click the tray icon) displays the log file with color-coded entries by level (error, warn, info, debug) and follows new entries in real time. Includes a search bar with match highlighting and prev/next navigation, toggle buttons to filter by log level, and an auto-scroll toggle. Supports Windows dark mode.
 
 - **Logging**
   Logs all operations and errors, with automatic log size management (5 MB per file, up to 3 rotated files). Clear logs directly from the tray menu.
@@ -70,7 +70,7 @@ The application runs in the system tray, manages configuration and logging, and 
   Automatically recovers when a configurable number of consecutive sync cycles fail - whether the VPN is disconnected or port detection fails despite the VPN being connected. For ProtonVPN and PIA (direct or NAT-PMP mode), the helper restarts the Windows service and the tray app restarts the client process. For NAT-PMP with a generic (non-ProtonVPN/PIA) gateway, the helper cycles the network adapter (disable/enable via netsh). All privileged operations are delegated to a lightweight helper Windows service (`qbPortWeaverHelper`) running as LocalSystem - no UAC prompt required.
 
 - **Media Manager**
-  Automatically renames movie and TV episode files to Plex-compatible naming conventions on each sync cycle. Queries [The Movie Database (TMDB)](https://www.themoviedb.org) to identify titles and release years, then renames files using Plex conventions (`Title (Year).ext` for movies, `Show (Year) - SxxExx.ext` for TV episodes). Optionally organises files into Plex-recommended subfolders (`Movies/Title (Year)/` and `TV Shows/Show (Year)/Season XX/`), and cleans up folders left empty after renaming (including folders containing only `.nfo` files). A dedicated **Media Manager** dialog (tray menu -> Media Manager) lets you configure watched folders, preview renames before they run (**Scan Now**), and apply or correct them manually (**Rename Now**). Uncertain TMDB matches are highlighted in red for review. A free TMDB API key is required.
+  Automatically imports movie and TV episode files into Plex-compatible library folders on each sync cycle. Queries [The Movie Database (TMDB)](https://www.themoviedb.org) to identify titles and release years, then imports files using Plex naming conventions (`Title (Year).ext` for movies, `Show (Year) - SxxExx.ext` for TV episodes) via hardlink (with automatic fallback to copy for cross-volume scenarios), copy, or move. Optionally organises files into Plex-recommended subfolders (`Movies/Title (Year)/` and `TV Shows/Show (Year)/Season XX/`), and cleans up source folders left empty after importing (including folders containing only `.nfo` files). A dedicated **Media Manager** dialog (tray menu -> Media Manager) lets you configure source and library folders, preview imports before they run (**Scan Now**), and apply or correct them manually (**Import Now**). Uncertain TMDB matches are highlighted in red for review. A free TMDB API key is required.
 
 - **Automatic Update Checker**
   Checks GitHub for new releases on startup and every 12 hours, and offers to open the download page. The **About** dialog (tray menu → About) also shows the current and latest version, update status, and contributor links.
@@ -114,13 +114,15 @@ Configured via tray menu -> **Media Manager**.
 
 | Setting | Description | Default |
 |---|---|---|
-| Enable Media Manager | Run the media renamer on each sync cycle | `False` |
+| Enable Media Manager | Run the media importer on each sync cycle | `False` |
 | TMDB API Key | API key for The Movie Database lookups (free at themoviedb.org/settings/api) | - |
-| Dry Run | Preview renames without touching any files | `True` |
+| Dry Run | Preview imports without touching any files | `True` |
+| Import Mode | How files are transferred to the library: `Hardlink` (default, falls back to copy for cross-volume), `Copy`, or `Move` | `Hardlink` |
 | Create Folders | Organise each title into its own Plex subfolder (`Title (Year)/` for movies, `Show (Year)/Season XX/` for TV) | `False` |
-| Delete Empty Folders | After renaming, delete subfolders that are empty or contain only `.nfo` files | `False` |
-| Movie Folders | List of folders scanned for movie files on each cycle | - |
-| TV Show Folders | List of folders scanned for TV episode files on each cycle | - |
+| Delete Empty Folders | After importing, delete source subfolders that are empty or contain only `.nfo` files | `False` |
+| Source Folders | Download/seeding folders scanned for movie and TV episode files on each cycle | - |
+| Movies Library | Target library folder for imported movies (leave empty to skip movie processing) | - |
+| TV Shows Library | Target library folder for imported TV shows (leave empty to skip TV show processing) | - |
 
 ---
 
@@ -133,7 +135,7 @@ Configured via tray menu -> **Media Manager**.
 
 ### Sync Loop
 
-1. If VPN Provider is set to **Disabled**, the entire port sync is skipped and the cycle proceeds directly to the Media Manager step. This is useful when you only want automatic media renaming without VPN port sync.
+1. If VPN Provider is set to **Disabled**, the entire port sync is skipped and the cycle proceeds directly to the Media Manager step. This is useful when you only want automatic media importing without VPN port sync.
 2. Checks whether the configured VPN provider is connected.
    - If **not connected** and **Default port** is 0: skips the cycle and waits for the next interval.
    - If **not connected** and **Default port** is set: uses the default port as the target and continues.
@@ -148,7 +150,7 @@ Configured via tray menu -> **Media Manager**.
    - Runs the optional post-update command if configured. e.g., `powershell -File "C:\path\to\SampleSendMail.ps1"`
 8. If **Restart on disconnect** is enabled (and qBittorrent was not already restarted in step 7): checks qBittorrent's connection status and restarts it if disconnected.
 9. Writes the JSON status file (`%LocalAppData%\qbPortWeaver\qbPortWeaver.status.json`) and updates the tray icon and tooltip.
-10. If **Media Manager** is enabled: scans the configured movie and TV show folders, queries TMDB for each unrecognised title, and renames files to Plex-compatible names. In **dry-run** mode no files are touched; use **Scan Now** in the Media Manager dialog to preview results first. Uncertain TMDB matches are skipped automatically and flagged for manual review in the dialog.
+10. If **Media Manager** is enabled: scans the configured source folders, queries TMDB for each unrecognised title, and imports files into the library with Plex-compatible names. In **dry-run** mode no files are touched; use **Scan Now** in the Media Manager dialog to preview results first. Uncertain TMDB matches are skipped automatically and flagged for manual review in the dialog.
 11. Waits for the configured interval before repeating.
 
 ### Tray Menu Options
@@ -157,7 +159,7 @@ Configured via tray menu -> **Media Manager**.
 - **Show Logs** - opens the built-in Log Viewer (also opened by double-clicking the tray icon)
 - **Clear Logs** - deletes all log files and starts a fresh log
 - **Settings** - opens the Settings dialog
-- **Media Manager** - opens the Media Manager dialog to configure folders, preview renames (Scan Now), and apply them (Rename Now)
+- **Media Manager** - opens the Media Manager dialog to configure source and library folders, preview imports (Scan Now), and apply them (Import Now)
 - **About** - shows version info and update status
 - **Start Automatically with Windows** - toggles the Windows startup registry entry
 - **Exit** - shuts down the application
@@ -234,7 +236,7 @@ NAT-PMP (RFC 6886) is a protocol for requesting port mappings directly from a ga
 
 - All actions and errors are logged to `%LocalAppData%\qbPortWeaver\qbPortWeaver.log`.
 - Log files are automatically rotated when exceeding **5 MB**, keeping up to 3 files (current + 2 backups).
-- Open the **Log Viewer** from the tray menu (Show Logs) or by double-clicking the tray icon. It shows color-coded entries (red for errors, gold for warnings, blue for info, orange for debug) and tails new entries live. It follows your Windows dark/light theme preference.
+- Open the **Log Viewer** from the tray menu (Show Logs) or by double-clicking the tray icon. It shows color-coded entries (red for errors, gold for warnings, blue for info, orange for debug) and tails new entries live. Use the search bar to find and highlight matches with prev/next navigation, or the level filter buttons to show only the levels you care about. It follows your Windows dark/light theme preference.
 
 ---
 

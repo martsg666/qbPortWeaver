@@ -7,11 +7,11 @@ namespace qbPortWeaver
         protected override void Dispose(bool disposing)
         {
             if (disposing)
+            {
                 components?.Dispose();
+            }
             base.Dispose(disposing);
         }
-
-        #region Windows Form Designer generated code
 
         private void InitializeComponent()
         {
@@ -450,8 +450,6 @@ namespace qbPortWeaver
             grpExtra.PerformLayout();
             ResumeLayout(false);
         }
-
-        #endregion
 
         private GroupBox    grpGeneral;
         private Label       lblVpnProvider;

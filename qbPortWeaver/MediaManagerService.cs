@@ -1,10 +1,11 @@
 namespace qbPortWeaver
 {
-    /// <summary>Orchestrates media file renaming on each sync cycle when the Media Manager feature is enabled.</summary>
+    /// <summary>Orchestrates media file imports on each sync cycle when the Media Manager feature is enabled.</summary>
     public static class MediaManagerService
     {
         /// <summary>
-        /// Runs one media scan cycle. Returns immediately if the feature is disabled or the TMDB API key is not configured.
+        /// Runs one media import cycle. Returns immediately if the feature is disabled, the TMDB API key is not configured,
+        /// or no library paths are set.
         /// Throws <see cref="OperationCanceledException"/> if <paramref name="cancellationToken"/> is cancelled.
         /// </summary>
         public static async Task RunAsync(CancellationToken cancellationToken)
@@ -15,128 +16,181 @@ namespace qbPortWeaver
             var apiKey = RegistrySettingsManager.GetEncryptedValue(RegistrySettingsManager.SectionMedia, RegistrySettingsManager.KeyTmdbApiKey);
             if (string.IsNullOrWhiteSpace(apiKey))
             {
-                LogManager.Instance.LogMessage("TMDB API key not configured - skipping scan", LogLevel.Warn, Subsystem.MediaManager);
+                LogManager.Instance.LogDebug("MediaManagerService.RunAsync: TMDB API key not configured - skipping scan", Subsystem.MediaManager);
+                return;
+            }
+
+            string moviesLibraryPath  = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionMedia, RegistrySettingsManager.KeyMediaMoviesLibraryPath);
+            string tvShowsLibraryPath = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionMedia, RegistrySettingsManager.KeyMediaTvShowsLibraryPath);
+
+            if (string.IsNullOrWhiteSpace(moviesLibraryPath) && string.IsNullOrWhiteSpace(tvShowsLibraryPath))
+            {
+                LogManager.Instance.LogDebug("MediaManagerService.RunAsync: No library paths configured - skipping scan", Subsystem.MediaManager);
                 return;
             }
 
             bool dryRun             = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionMedia, RegistrySettingsManager.KeyMediaDryRun);
             bool createFolders      = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionMedia, RegistrySettingsManager.KeyMediaCreateFolders);
             bool deleteEmptyFolders = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionMedia, RegistrySettingsManager.KeyMediaDeleteEmptyFolders);
+            var importMode = ParseImportMode(RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionMedia, RegistrySettingsManager.KeyMediaImportMode));
 
-            LogManager.Instance.LogMessage($"Scan started (dryRun={dryRun}, createFolders={createFolders}, deleteEmptyFolders={deleteEmptyFolders})", LogLevel.Info, Subsystem.MediaManager);
+            LogManager.Instance.LogMessage($"Scan started (dryRun={dryRun}, createFolders={createFolders}, deleteEmptyFolders={deleteEmptyFolders}, importMode={importMode})", LogLevel.Info, Subsystem.MediaManager);
 
-            var tmdb         = new TmdbClient(apiKey);
-            var movieRenamer = new MovieRenamer(tmdb, dryRun, createFolders);
-            var tvShowRenamer = new TvShowRenamer(tmdb, dryRun, createFolders);
+            FileImporter.LoadSourceCache();
+            FileImporter.BuildLibraryIndex(force: false, moviesLibraryPath, tvShowsLibraryPath);
 
-            foreach (var folder in GetFolders(RegistrySettingsManager.KeyMediaMovieFolders))
+            var tmdb = new TmdbClient(apiKey);
+
+            foreach (var folder in GetFolders(RegistrySettingsManager.KeyMediaSourceFolders))
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                try
-                {
-                    await movieRenamer.ProcessMoviesFolderAsync(folder).ConfigureAwait(false);
-                }
-                catch (IOException ex)
-                {
-                    LogManager.Instance.LogMessage($"Skipped movie folder '{folder}': {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
-                }
-            }
 
-            foreach (var folder in GetFolders(RegistrySettingsManager.KeyMediaTvShowFolders))
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                try
+                if (!Directory.Exists(folder))
                 {
-                    await tvShowRenamer.ProcessTvShowsFolderAsync(folder).ConfigureAwait(false);
+                    LogManager.Instance.LogMessage($"Source folder not found: {folder}", LogLevel.Error, Subsystem.MediaManager);
+                    continue;
                 }
-                catch (IOException ex)
+
+                LogManager.Instance.LogMessage($"Scanning source folder: {folder}", LogLevel.Info, Subsystem.MediaManager);
+                var (movieFiles, movieDirs, tvFiles, tvDirs) = ClassifySourceFolder(folder);
+
+                if (!string.IsNullOrWhiteSpace(moviesLibraryPath) && (movieFiles.Length > 0 || movieDirs.Length > 0))
                 {
-                    LogManager.Instance.LogMessage($"Skipped TV folder '{folder}': {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
+                    var movieProcessor = new MovieProcessor(tmdb, dryRun, createFolders, moviesLibraryPath, importMode);
+                    try
+                    {
+                        await movieProcessor.ProcessMoviesAsync(folder, movieFiles, movieDirs).ConfigureAwait(false);
+                    }
+                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                    {
+                        LogManager.Instance.LogMessage($"Skipped folder '{folder}' (movies): {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
+                    }
+                }
+
+                if (!string.IsNullOrWhiteSpace(tvShowsLibraryPath) && (tvFiles.Length > 0 || tvDirs.Length > 0))
+                {
+                    var tvShowProcessor = new TvShowProcessor(tmdb, dryRun, createFolders, tvShowsLibraryPath, importMode);
+                    try
+                    {
+                        await tvShowProcessor.ProcessTvShowsAsync(folder, tvFiles, tvDirs).ConfigureAwait(false);
+                    }
+                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                    {
+                        LogManager.Instance.LogMessage($"Skipped folder '{folder}' (TV shows): {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
+                    }
                 }
             }
 
             if (deleteEmptyFolders)
             {
-                foreach (var folder in GetFolders(RegistrySettingsManager.KeyMediaMovieFolders))
-                    CleanupEmptyFolders(folder, dryRun);
-                foreach (var folder in GetFolders(RegistrySettingsManager.KeyMediaTvShowFolders))
-                    CleanupEmptyFolders(folder, dryRun);
+                foreach (var folder in GetFolders(RegistrySettingsManager.KeyMediaSourceFolders))
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    try { CleanupEmptyFolders(folder, dryRun); }
+                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                    {
+                        LogManager.Instance.LogMessage($"Skipped folder cleanup for '{folder}': {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
+                    }
+                }
             }
 
+            FileImporter.SaveSourceCache();
+            FileImporter.SaveLibraryCache();
             LogManager.Instance.LogMessage("Scan completed", LogLevel.Info, Subsystem.MediaManager);
         }
 
         /// <summary>
-        /// Returns rename proposals for all configured folders without modifying any files.
+        /// Returns import proposals for all configured source folders without modifying any files.
+        /// Only processors whose library path is configured will produce proposals.
         /// Throws <see cref="OperationCanceledException"/> if <paramref name="cancellationToken"/> is cancelled.
         /// </summary>
         /// <param name="apiKey">TMDB API key used to look up movie and TV show metadata.</param>
-        /// <param name="createFolders">When true, proposals include moving files into Plex-recommended subfolders.</param>
-        /// <param name="movieFolders">Root folders to scan for movie files.</param>
-        /// <param name="tvShowFolders">Root folders to scan for TV episode files.</param>
+        /// <param name="createFolders">When true, proposals include Plex-recommended subfolders in the library.</param>
+        /// <param name="sourceFolders">Download or seeding folders to scan for both movies and TV shows.</param>
+        /// <param name="moviesLibraryPath">Library folder for movies. Empty to skip movie processing.</param>
+        /// <param name="tvShowsLibraryPath">Library folder for TV shows. Empty to skip TV show processing.</param>
         /// <param name="cancellationToken">Token to cancel the scan between folders.</param>
-        public static async Task<List<RenameProposal>> ScanAsync(string apiKey, bool createFolders, string[] movieFolders, string[] tvShowFolders, CancellationToken cancellationToken)
+        public static async Task<List<MediaProposal>> ScanAsync(string apiKey, bool createFolders, string[] sourceFolders,
+            string moviesLibraryPath, string tvShowsLibraryPath, CancellationToken cancellationToken)
         {
-            var proposals = new List<RenameProposal>();
+            var proposals = new List<MediaProposal>();
+
+            FileImporter.LoadSourceCache();
+            FileImporter.BuildLibraryIndex(force: true, moviesLibraryPath, tvShowsLibraryPath);
 
             var tmdb = new TmdbClient(apiKey);
-            // dryRun is irrelevant for scan - scan methods never touch files
-            var movieRenamer  = new MovieRenamer(tmdb, dryRun: true, createFolders);
-            var tvShowRenamer = new TvShowRenamer(tmdb, dryRun: true, createFolders);
 
-            foreach (var folder in movieFolders)
+            foreach (var folder in sourceFolders)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                try
+
+                if (!Directory.Exists(folder)) continue;
+
+                var (movieFiles, movieDirs, tvFiles, tvDirs) = ClassifySourceFolder(folder);
+
+                if (!string.IsNullOrWhiteSpace(moviesLibraryPath) && (movieFiles.Length > 0 || movieDirs.Length > 0))
                 {
-                    proposals.AddRange(await movieRenamer.ScanMoviesFolderAsync(folder).ConfigureAwait(false));
+                    var movieProcessor = new MovieProcessor(tmdb, dryRun: true, createFolders, moviesLibraryPath);
+                    try
+                    {
+                        proposals.AddRange(await movieProcessor.ScanMoviesAsync(movieFiles, movieDirs).ConfigureAwait(false));
+                    }
+                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                    {
+                        LogManager.Instance.LogMessage($"Skipped folder '{folder}' (movies): {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
+                    }
                 }
-                catch (IOException ex)
+
+                if (!string.IsNullOrWhiteSpace(tvShowsLibraryPath) && (tvFiles.Length > 0 || tvDirs.Length > 0))
                 {
-                    LogManager.Instance.LogMessage($"Skipped movie folder '{folder}': {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
+                    var tvShowProcessor = new TvShowProcessor(tmdb, dryRun: true, createFolders, tvShowsLibraryPath);
+                    try
+                    {
+                        proposals.AddRange(await tvShowProcessor.ScanTvShowsAsync(tvFiles, tvDirs).ConfigureAwait(false));
+                    }
+                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                    {
+                        LogManager.Instance.LogMessage($"Skipped folder '{folder}' (TV shows): {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
+                    }
                 }
             }
 
-            foreach (var folder in tvShowFolders)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                try
-                {
-                    proposals.AddRange(await tvShowRenamer.ScanTvShowsFolderAsync(folder).ConfigureAwait(false));
-                }
-                catch (IOException ex)
-                {
-                    LogManager.Instance.LogMessage($"Skipped TV folder '{folder}': {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
-                }
-            }
-
+            FileImporter.SaveSourceCache();
+            FileImporter.SaveLibraryCache();
             return proposals;
         }
 
         /// <summary>
-        /// Applies a set of rename proposals, respecting any user edits made to the proposed paths in the UI grid.
+        /// Applies a set of import proposals, transferring files from source folders into the library.
         /// Proposals are typically produced by <see cref="ScanAsync"/> but may have been modified by the user before calling this method.
         /// Throws <see cref="OperationCanceledException"/> if <paramref name="cancellationToken"/> is cancelled.
         /// </summary>
-        /// <param name="proposals">The rename proposals to apply. Each proposal's <see cref="RenameProposal.ProposedPath"/> is used as the rename target.</param>
-        /// <param name="cancellationToken">Token to cancel the operation between renames.</param>
-        public static Task ApplyProposalsAsync(IEnumerable<RenameProposal> proposals, CancellationToken cancellationToken)
+        /// <param name="proposals">The import proposals to apply. Each proposal's <see cref="MediaProposal.ProposedPath"/> is the library target.</param>
+        /// <param name="importMode">Determines how files are transferred: hardlink, copy, or move.</param>
+        /// <param name="cancellationToken">Token to cancel the operation between imports.</param>
+        public static Task ApplyProposalsAsync(IEnumerable<MediaProposal> proposals, ImportMode importMode,
+            CancellationToken cancellationToken, IProgress<(int Current, int Total, string FileName)>? progress = null)
             => Task.Run(() =>
             {
-                foreach (var proposal in proposals)
+                var list = proposals as IList<MediaProposal> ?? proposals.ToList();
+                int total = list.Count;
+                int current = 0;
+                foreach (var proposal in list)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
+                    current++;
+                    progress?.Report((current, total, Path.GetFileName(proposal.OriginalPath)));
                     LogManager.Instance.LogMessage(
-                        $"Renaming '{proposal.OriginalPath}' -> '{proposal.ProposedPath}'",
+                        $"Importing '{proposal.OriginalPath}' -> '{proposal.ProposedPath}'",
                         LogLevel.Info, Subsystem.MediaManager);
                     try
                     {
-                        MoveFile(proposal.OriginalPath, proposal.ProposedPath);
+                        FileImporter.ImportFile(proposal.OriginalPath, proposal.ProposedPath, importMode);
                     }
                     catch (Exception ex)
                     {
                         LogManager.Instance.LogMessage(
-                            $"Failed to rename '{Path.GetFileName(proposal.OriginalPath)}': {ex.Message}",
+                            $"Failed to import '{Path.GetFileName(proposal.OriginalPath)}': {ex.Message}",
                             LogLevel.Error, Subsystem.MediaManager);
                     }
                 }
@@ -155,7 +209,7 @@ namespace qbPortWeaver
             {
                 directories = Directory.GetDirectories(rootFolder, "*", SearchOption.AllDirectories);
             }
-            catch (IOException ex)
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
                 LogManager.Instance.LogMessage($"Skipped folder cleanup for '{rootFolder}': {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
                 return;
@@ -166,7 +220,17 @@ namespace qbPortWeaver
             {
                 if (!Directory.Exists(dir)) continue;
 
-                var (removable, hasOnlyNfo) = IsRemovableFolder(dir);
+                bool removable;
+                bool hasOnlyNfo;
+                try
+                {
+                    (removable, hasOnlyNfo) = IsRemovableFolder(dir);
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    LogManager.Instance.LogMessage($"Skipped folder check for '{Path.GetFileName(dir)}': {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
+                    continue;
+                }
                 if (!removable) continue;
 
                 string reason = hasOnlyNfo ? "nfo-only" : "empty";
@@ -209,10 +273,29 @@ namespace qbPortWeaver
                 string reason = hasNfoFiles ? "nfo-only" : "empty";
                 LogManager.Instance.LogMessage($"Deleted {reason} folder: '{Path.GetFileName(dir)}'", LogLevel.Info, Subsystem.MediaManager);
             }
-            catch (IOException ex)
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
                 LogManager.Instance.LogMessage($"Failed to delete folder '{Path.GetFileName(dir)}': {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
             }
+        }
+
+        // Enumerates a source folder once and classifies root-level items into movies vs TV shows.
+        // Files: video files are split by IsTvShow/IsVideoTvShowEpisode.
+        // Directories: movieDirs excludes folders with episode/season patterns in their name.
+        // tvDirs intentionally includes ALL directories because many TV show folders lack episode
+        // patterns in their name (e.g. "Breaking Bad Season 1"). The TV processor will recurse
+        // into each and only process files that match episode patterns.
+        private static (string[] MovieFiles, string[] MovieDirs, string[] TvFiles, string[] TvDirs) ClassifySourceFolder(string folder)
+        {
+            var files = Directory.GetFiles(folder);
+            var dirs  = Directory.GetDirectories(folder);
+
+            var movieFiles = files.Where(f => FileNameParser.IsVideoFile(f) && !FileNameParser.IsTvShow(Path.GetFileName(f))).ToArray();
+            var tvFiles    = files.Where(FileNameParser.IsVideoTvShowEpisode).ToArray();
+            var movieDirs  = dirs.Where(d => !FileNameParser.IsTvShow(Path.GetFileName(d))).ToArray();
+            var tvDirs     = dirs.ToArray();
+
+            return (movieFiles, movieDirs, tvFiles, tvDirs);
         }
 
         private static string[] GetFolders(string key)
@@ -223,34 +306,51 @@ namespace qbPortWeaver
             return value.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         }
 
-        // Logs the rename and moves the file, or just logs a dry-run message. No-ops when source and target are the same path.
-        internal static void MoveFileWithLog(string sourcePath, string targetPath, string rootPath, bool dryRun)
+        // Logs the import and performs the file operation, or just logs a dry-run message. No-ops when source and target are the same path or already imported.
+        internal static void ImportFileWithLog(string sourcePath, string targetPath, string sourceFolder, bool dryRun, ImportMode importMode)
         {
             if (string.Equals(sourcePath, targetPath, StringComparison.OrdinalIgnoreCase)) return;
 
-            string verb = dryRun ? "Would rename" : "Renaming";
-            LogManager.Instance.LogMessage($"{verb} '{Path.GetFileName(sourcePath)}' -> {Path.GetRelativePath(rootPath, targetPath)}", LogLevel.Info, Subsystem.MediaManager);
+            if (FileImporter.IsDuplicateFile(sourcePath, targetPath))
+                return;
+
+            string verb = dryRun ? "Would import" : "Importing";
+            LogManager.Instance.LogMessage($"{verb} '{Path.GetFileName(sourcePath)}' -> {Path.GetRelativePath(sourceFolder, targetPath)}", LogLevel.Info, Subsystem.MediaManager);
 
             if (!dryRun)
-                MoveFile(sourcePath, targetPath);
+                FileImporter.ImportFile(sourcePath, targetPath, importMode);
         }
 
-        // Moves a file to targetPath, creating the target directory if needed. Logs a warning and skips the move if the target already exists.
-        internal static void MoveFile(string sourcePath, string targetPath)
+        // Imports companion subtitle files that share the same base name as the video file
+        internal static void ImportCompanionFiles(string sourceFolder, string videoPath, string targetVideoPath, bool dryRun, ImportMode importMode)
         {
-            var targetName = Path.GetFileName(targetPath);
-            if (File.Exists(targetPath))
+            var videoDir   = Path.GetDirectoryName(videoPath);
+            var videoBase  = Path.GetFileNameWithoutExtension(videoPath);
+            var targetDir  = Path.GetDirectoryName(targetVideoPath);
+            var targetBase = Path.GetFileNameWithoutExtension(targetVideoPath);
+
+            if (string.IsNullOrEmpty(videoDir) || string.IsNullOrEmpty(targetDir)) return;
+
+            string[] files;
+            try { files = Directory.GetFiles(videoDir); }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
-                LogManager.Instance.LogMessage($"Skipped rename - target already exists: '{targetName}'", LogLevel.Warn, Subsystem.MediaManager);
+                LogManager.Instance.LogMessage($"Skipped companion files in '{Path.GetFileName(videoDir)}': {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
                 return;
             }
 
-            var targetDir = Path.GetDirectoryName(targetPath);
-            if (!string.IsNullOrEmpty(targetDir))
-                Directory.CreateDirectory(targetDir);
+            foreach (var file in files.Where(FileNameParser.IsSubtitleFile))
+            {
+                var fileName = Path.GetFileName(file);
+                if (!fileName.StartsWith(videoBase, StringComparison.OrdinalIgnoreCase)) continue;
 
-            File.Move(sourcePath, targetPath);
-            LogManager.Instance.LogDebug($"MediaManagerService.MoveFile: Successfully renamed '{targetName}'", Subsystem.MediaManager);
+                var suffix     = fileName[videoBase.Length..];
+                var targetPath = Path.Combine(targetDir, targetBase + suffix);
+                ImportFileWithLog(file, targetPath, sourceFolder, dryRun, importMode);
+            }
         }
+
+        internal static ImportMode ParseImportMode(string value) =>
+            Enum.TryParse<ImportMode>(value, ignoreCase: true, out var mode) ? mode : ImportMode.Hardlink;
     }
 }

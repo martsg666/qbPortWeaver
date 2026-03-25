@@ -21,17 +21,44 @@ The application runs in the system tray, manages configuration and logging, and 
 
 ## Features
 
-- **Tray Icon Interface**
-  Runs quietly in the background with a system tray icon for quick access to logs, settings, and controls.
-
-- **Tray Status Indicator**
-  After each sync cycle the tray icon shows a colored status dot: **green** (ports aligned), **orange** (VPN not connected), **red** (error), or **no dot** (port sync disabled). Hovering over the icon displays the current port and status at a glance, without opening the log file.
-
 - **Automatic Port Sync**
   Detects the current VPN port and updates qBittorrent's listening port automatically.
 
 - **Multi-VPN Support**
   Supports **ProtonVPN** (via log file parsing or NAT-PMP), **Private Internet Access** (via `piactl` CLI), and any **NAT-PMP capable VPN gateway or router** (via RFC 6886 UDP port mapping). Configurable through the Settings dialog.
+
+- **Default Port Fallback**
+  When VPN is not connected, optionally sets qBittorrent's listening port to a configured default. Useful if you have a port forwarded in your router for direct connections without VPN.
+
+- **qBittorrent Control**
+  Authenticates with qBittorrent's Web API, updates preferences, and restarts the client if required.
+
+- **Restart qBittorrent After Port Change**
+  Optionally restart qBittorrent after updating the port to ensure changes take effect immediately.
+
+- **Force Start qBittorrent**
+  Optionally force start qBittorrent if it is not running.
+
+- **Restart qBittorrent on Disconnect**
+  Optionally restart qBittorrent when its connection status changes to disconnected. Requires the Executable and Process name to be configured.
+
+- **VPN Interface Mismatch Warning**
+  Shows a tray balloon tip and logs a warning if qBittorrent's network interface does not match the configured VPN provider, or if qBittorrent is bound to all interfaces (which may cause traffic leaks).
+
+- **Auto-Recovery**
+  Automatically recovers when a configurable number of consecutive sync cycles fail - whether the VPN is disconnected or port detection fails despite the VPN being connected. For ProtonVPN and PIA (direct or NAT-PMP mode), the helper restarts the Windows service and the tray app restarts the client process. For NAT-PMP with a generic (non-ProtonVPN/PIA) gateway, the helper cycles the network adapter (disable/enable via netsh). All privileged operations are delegated to a lightweight helper Windows service (`qbPortWeaverHelper`) running as LocalSystem - no UAC prompt required.
+
+- **Post-Update Command**
+  Optionally run a custom command after a successful port update (fire-and-forget). See SampleSendMail.ps1 for an example of sending an email notification with status details.
+
+- **Media Manager**
+  Automatically imports movie and TV episode files into Plex-compatible library folders on each sync cycle. Queries [The Movie Database (TMDB)](https://www.themoviedb.org) to identify titles and release years, then imports files using Plex naming conventions (`Title (Year).ext` for movies, `Show (Year) - SxxExx.ext` for TV episodes) via hardlink (with automatic fallback to copy for cross-volume scenarios), copy, or move. Optionally organises files into Plex-recommended subfolders (`Movies/Title (Year)/` and `TV Shows/Show (Year)/Season XX/`), and cleans up source folders left empty after importing (including folders containing only `.nfo` files). A dedicated **Media Manager** dialog (tray menu → Media Manager) lets you configure source and library folders, preview imports before they run (**Scan Now**), and apply or correct them manually (**Import Now**). Uncertain TMDB matches are highlighted in red for review. A free TMDB API key is required.
+
+- **Tray Icon Interface**
+  Runs quietly in the background with a system tray icon for quick access to logs, settings, and controls.
+
+- **Tray Status Indicator**
+  After each sync cycle the tray icon shows a colored status dot: **green** (ports aligned), **orange** (VPN not connected), **red** (error), or **no dot** (port sync disabled). Hovering over the icon displays the current port and status at a glance, without opening the log file.
 
 - **Settings Dialog**
   All configuration options are editable through a dedicated Settings form (tray menu → Settings), with inline descriptions and tooltips for each option.
@@ -42,35 +69,8 @@ The application runs in the system tray, manages configuration and logging, and 
 - **Logging**
   Logs all operations and errors, with automatic log size management (5 MB per file, up to 3 rotated files). Clear logs directly from the tray menu.
 
-- **qBittorrent Control**
-  Authenticates with qBittorrent's Web API, updates preferences, and restarts the client if required.
-
 - **Last-Run Status File**
   Writes a JSON status file (`%LocalAppData%\qbPortWeaver\qbPortWeaver.status.json`) after each sync cycle, exposing VPN port, qBittorrent port, timestamps, and completion status for external scripts.
-
-- **Restart qBittorrent After Port Change**
-  Optionally restart qBittorrent after updating the port to ensure changes take effect immediately.
-
-- **Force Start qBittorrent**
-  Optionally force start qBittorrent if it is not running.
-
-- **Default Port Fallback**
-  When VPN is not connected, optionally sets qBittorrent's listening port to a configured default. Useful if you have a port forwarded in your router for direct connections without VPN.
-
-- **VPN Interface Mismatch Warning**
-  Shows a tray balloon tip and logs a warning if qBittorrent's network interface does not match the configured VPN provider, or if qBittorrent is bound to all interfaces (which may cause traffic leaks).
-
-- **Restart qBittorrent on Disconnect**
-  Optionally restart qBittorrent when its connection status changes to disconnected. Requires the Executable and Process name to be configured.
-
-- **Post-Update Command**
-  Optionally run a custom command after a successful port update (fire-and-forget). See SampleSendMail.ps1 for an example of sending an email notification with status details.
-
-- **Auto-Recovery**
-  Automatically recovers when a configurable number of consecutive sync cycles fail - whether the VPN is disconnected or port detection fails despite the VPN being connected. For ProtonVPN and PIA (direct or NAT-PMP mode), the helper restarts the Windows service and the tray app restarts the client process. For NAT-PMP with a generic (non-ProtonVPN/PIA) gateway, the helper cycles the network adapter (disable/enable via netsh). All privileged operations are delegated to a lightweight helper Windows service (`qbPortWeaverHelper`) running as LocalSystem - no UAC prompt required.
-
-- **Media Manager**
-  Automatically imports movie and TV episode files into Plex-compatible library folders on each sync cycle. Queries [The Movie Database (TMDB)](https://www.themoviedb.org) to identify titles and release years, then imports files using Plex naming conventions (`Title (Year).ext` for movies, `Show (Year) - SxxExx.ext` for TV episodes) via hardlink (with automatic fallback to copy for cross-volume scenarios), copy, or move. Optionally organises files into Plex-recommended subfolders (`Movies/Title (Year)/` and `TV Shows/Show (Year)/Season XX/`), and cleans up source folders left empty after importing (including folders containing only `.nfo` files). A dedicated **Media Manager** dialog (tray menu -> Media Manager) lets you configure source and library folders, preview imports before they run (**Scan Now**), and apply or correct them manually (**Import Now**). Uncertain TMDB matches are highlighted in red for review. A free TMDB API key is required.
 
 - **Automatic Update Checker**
   Checks GitHub for new releases on startup and every 12 hours, and offers to open the download page. The **About** dialog (tray menu → About) also shows the current and latest version, update status, and contributor links.
@@ -110,7 +110,7 @@ On first run, all settings are initialized with sensible defaults.
 
 ### Media Manager Settings
 
-Configured via tray menu -> **Media Manager**.
+Configured via tray menu → **Media Manager**.
 
 | Setting | Description | Default |
 |---|---|---|
@@ -159,7 +159,7 @@ Configured via tray menu -> **Media Manager**.
 - **Show Logs** - opens the built-in Log Viewer (also opened by double-clicking the tray icon)
 - **Clear Logs** - deletes all log files and starts a fresh log
 - **Settings** - opens the Settings dialog
-- **Media Manager** - opens the Media Manager dialog to configure source and library folders, preview imports (Scan Now), and apply them (Import Now)
+- **Media Manager** - opens the Media Manager dialog to configure source and library folders, preview imports (Scan Now), apply them (Import Now), and clear fingerprint caches (Clear Cache)
 - **About** - shows version info and update status
 - **Start Automatically with Windows** - toggles the Windows startup registry entry
 - **Exit** - shuts down the application
@@ -242,10 +242,26 @@ NAT-PMP (RFC 6886) is a protocol for requesting port mappings directly from a ga
 
 ## Error Handling
 
+The application is designed to always recover. A failing cycle never crashes the app; errors are logged and the loop retries on the next interval.
+
+### Port Sync
+
 - If the VPN provider is not connected and no default port is configured, the cycle is skipped and the issue is logged.
 - If the VPN provider is not connected and a default port is configured, the default port is applied instead.
-- If the VPN port cannot be determined, the issue is logged and the update is skipped.
+- If the VPN port cannot be determined, the issue is logged and the update is skipped. If Auto-Recovery is enabled, repeated failures trigger automatic recovery.
 - If qBittorrent is not running and cannot be force started or updated, errors are logged and the loop continues after the next interval.
+
+### Media Manager
+
+- If a TMDB API call fails (network error, invalid key), the file is skipped and the error is logged. Other files in the same scan continue processing.
+- If a source or library folder is inaccessible (permissions, network share offline), that folder is skipped with a warning. Remaining folders are still processed.
+- If file import fails (I/O error, disk full), the individual file is skipped. The scan continues with the next file.
+- If the fingerprint cache is corrupt or unreadable, it is discarded and rebuilt from scratch on the next scan.
+
+### UI
+
+- If the Settings, Media Manager, or About dialog encounters an error, it is displayed in the status label or logged. The main application loop is never affected.
+- If the Log Viewer cannot read the log file, it degrades gracefully without crashing.
 
 ---
 

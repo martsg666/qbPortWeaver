@@ -90,10 +90,14 @@ namespace qbPortWeaver
             var fileName = Path.GetFileName(filePath);
 
             var episodeInfo = FileNameParser.ParseTvShowEpisode(fileName);
-            if (episodeInfo == null) return;
+            if (episodeInfo is null)
+            {
+                LogManager.Instance.LogDebug($"TvShowProcessor.ScanEpisodeFileAsync: Skipped '{fileName}' - not a recognised episode", Subsystem.MediaManager);
+                return;
+            }
 
             var (showInfo, isConfident) = await GetOrLookupShowAsync(episodeInfo.ShowName, episodeInfo.Year).ConfigureAwait(false);
-            if (showInfo == null)
+            if (showInfo is null)
             {
                 proposals.Add(new MediaProposal(MediaTypeTvShow, filePath, string.Empty, IsConfident: false, IsMatched: false));
                 return;
@@ -126,8 +130,13 @@ namespace qbPortWeaver
                 return;
             }
 
-            foreach (var file in files.Where(FileNameParser.IsVideoTvShowEpisode))
-                await ScanEpisodeFileAsync(file, proposals).ConfigureAwait(false);
+            var episodeFiles = files.Where(FileNameParser.IsVideoTvShowEpisode).ToList();
+
+            if (episodeFiles.Count > 0 && !episodeFiles.All(FileImporter.IsAlreadyInLibrary))
+            {
+                foreach (var file in episodeFiles)
+                    await ScanEpisodeFileAsync(file, proposals).ConfigureAwait(false);
+            }
 
             foreach (var subDir in Directory.GetDirectories(dirPath))
                 await ScanTvShowFolderAsync(subDir, proposals, depth + 1).ConfigureAwait(false);
@@ -141,7 +150,7 @@ namespace qbPortWeaver
 
             var episodeInfo = FileNameParser.ParseTvShowEpisode(fileName);
 
-            if (episodeInfo == null)
+            if (episodeInfo is null)
             {
                 LogManager.Instance.LogDebug($"TvShowProcessor.ProcessEpisodeFileAsync: Skipped '{fileName}' - not a recognised episode", Subsystem.MediaManager);
                 return;
@@ -149,7 +158,7 @@ namespace qbPortWeaver
 
             var (showInfo, isConfident) = await GetOrLookupShowAsync(episodeInfo.ShowName, episodeInfo.Year).ConfigureAwait(false);
 
-            if (showInfo == null) return;
+            if (showInfo is null) return;
             if (!isConfident)
             {
                 LogManager.Instance.LogMessage($"Skipped '{fileName}' - uncertain TMDB match, review in Media Manager", LogLevel.Warn, Subsystem.MediaManager);
@@ -181,8 +190,13 @@ namespace qbPortWeaver
                 return;
             }
 
-            foreach (var file in files.Where(FileNameParser.IsVideoTvShowEpisode))
-                await ProcessEpisodeFileAsync(sourceFolder, file).ConfigureAwait(false);
+            var episodeFiles = files.Where(FileNameParser.IsVideoTvShowEpisode).ToList();
+
+            if (episodeFiles.Count > 0 && !episodeFiles.All(FileImporter.IsAlreadyInLibrary))
+            {
+                foreach (var file in episodeFiles)
+                    await ProcessEpisodeFileAsync(sourceFolder, file).ConfigureAwait(false);
+            }
 
             foreach (var subDir in Directory.GetDirectories(dirPath))
                 await ProcessTvShowFolderAsync(sourceFolder, subDir, depth + 1).ConfigureAwait(false);
@@ -224,13 +238,13 @@ namespace qbPortWeaver
                 var info = await _tmdb.SearchTvShowAsync(title, year).ConfigureAwait(false);
 
                 // Retry without year: parsed year may be the season year rather than TMDB's first-air year
-                if (info == null && year.HasValue)
+                if (info is null && year.HasValue)
                 {
                     info = await _tmdb.SearchTvShowAsync(title).ConfigureAwait(false);
-                    if (info != null) isConfident = false;
+                    if (info is not null) isConfident = false;
                 }
 
-                if (info == null)
+                if (info is null)
                 {
                     LogManager.Instance.LogMessage($"No TMDB match found for show '{title}'", LogLevel.Warn, Subsystem.MediaManager);
                     return (null, false);

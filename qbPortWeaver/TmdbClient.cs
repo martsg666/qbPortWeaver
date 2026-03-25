@@ -29,13 +29,13 @@ namespace qbPortWeaver
         /// <summary>Searches for a movie by title and optional year. Returns the best match, or null if none found.</summary>
         public async Task<MovieInfo?> SearchMovieAsync(string query, int? year = null)
         {
-            var url = $"search/movie?api_key={_apiKey}&query={Uri.EscapeDataString(query)}&language=en-US&page=1";
+            var url = $"search/movie?api_key={_apiKey}&query={Uri.EscapeDataString(query)}&language=en-US&page=1"; // NOSONAR S4790 - TMDB API v3 requires the key as a query parameter; transmitted over HTTPS only
             if (year.HasValue)
                 url += $"&year={year.Value}";
 
             var response = await GetWithRateLimitAsync<TmdbMovieSearchResult>(url).ConfigureAwait(false);
             var result   = response?.Results?.FirstOrDefault();
-            if (result == null)
+            if (result is null)
                 return null;
 
             int? releaseYear = result.ReleaseDate?.Length >= 4 && int.TryParse(result.ReleaseDate[..4], out int y) ? y : null;
@@ -45,13 +45,13 @@ namespace qbPortWeaver
         /// <summary>Searches for a TV show by title and optional first-air year. Returns the best match, or null if none found.</summary>
         public async Task<TvShowInfo?> SearchTvShowAsync(string query, int? year = null)
         {
-            var url = $"search/tv?api_key={_apiKey}&query={Uri.EscapeDataString(query)}&language=en-US&page=1";
+            var url = $"search/tv?api_key={_apiKey}&query={Uri.EscapeDataString(query)}&language=en-US&page=1"; // NOSONAR S4790 - TMDB API v3 requires the key as a query parameter; transmitted over HTTPS only
             if (year.HasValue)
                 url += $"&first_air_date_year={year.Value}";
 
             var response = await GetWithRateLimitAsync<TmdbTvSearchResult>(url).ConfigureAwait(false);
             var result   = response?.Results?.FirstOrDefault();
-            if (result == null)
+            if (result is null)
                 return null;
 
             int? airYear = result.FirstAirDate?.Length >= 4 && int.TryParse(result.FirstAirDate[..4], out int y) ? y : null;

@@ -43,7 +43,7 @@ namespace qbPortWeaver
                 return;
 
             string? clientProcessName = FindClientProcessName(target);
-            if (clientProcessName != null)
+            if (clientProcessName is not null)
             {
                 // Give the helper service time to stop/restart the VPN service before
                 // we kill and relaunch the client process - the client should come up
@@ -72,7 +72,7 @@ namespace qbPortWeaver
                     try
                     {
                         string? exePath = processes.FirstOrDefault()?.MainModule?.FileName;
-                        if (exePath != null)
+                        if (exePath is not null)
                         {
                             _cachedClientExePaths[processName] = exePath;
                             LogManager.Instance.LogDebug($"AutoRecoveryManager.CacheRunningClientExePaths: Cached '{processName}' -> {exePath}");
@@ -129,7 +129,7 @@ namespace qbPortWeaver
                 try
                 {
                     exePath = processes.FirstOrDefault()?.MainModule?.FileName;
-                    if (exePath != null)
+                    if (exePath is not null)
                         _cachedClientExePaths[processName] = exePath;
                     foreach (var p in processes)
                     {
@@ -140,7 +140,7 @@ namespace qbPortWeaver
                         }
                         catch (Exception ex) { LogManager.Instance.LogDebug($"AutoRecoveryManager.RestartClientProcessAsync: Kill '{processName}': {ex.Message}"); }
                     }
-                    LogManager.Instance.LogMessage(exePath != null
+                    LogManager.Instance.LogMessage(exePath is not null
                         ? $"Killed client process '{processName}'"
                         : $"Client process '{processName}' was not running", LogLevel.Info);
                 }
@@ -155,13 +155,13 @@ namespace qbPortWeaver
             }
 
             // Fall back to cached path if the process was already dead
-            if (exePath == null && _cachedClientExePaths.TryGetValue(processName, out string? cached))
+            if (exePath is null && _cachedClientExePaths.TryGetValue(processName, out string? cached))
             {
                 exePath = cached;
                 LogManager.Instance.LogDebug($"AutoRecoveryManager.RestartClientProcessAsync: Using cached EXE path for '{processName}': {exePath}");
             }
 
-            if (exePath == null)
+            if (exePath is null)
             {
                 LogManager.Instance.LogMessage($"No EXE path available for '{processName}' - cannot restart client process", LogLevel.Warn);
                 return;

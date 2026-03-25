@@ -142,7 +142,7 @@ namespace qbPortWeaver
                         listenPort = parsed;
                 }
 
-                if (listenPort == null)
+                if (listenPort is null)
                 {
                     string portDiag = root.TryGetProperty("listen_port", out var diagElement)
                         ? $"listen_port kind={diagElement.ValueKind} value={diagElement}"

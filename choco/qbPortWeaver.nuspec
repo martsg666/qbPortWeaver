@@ -16,7 +16,7 @@
     <docsUrl>https://github.com/martsg666/qbPortWeaver#readme</docsUrl>
     <bugTrackerUrl>https://github.com/martsg666/qbPortWeaver/issues</bugTrackerUrl>
     <requireLicenseAcceptance>false</requireLicenseAcceptance>
-    <summary>Syncs qBittorrent's listening port with the VPN-assigned port, and renames media files to Plex conventions</summary>
+    <summary>Syncs qBittorrent's listening port with the VPN-assigned port, and imports media files into Plex-compatible library folders</summary>
     <description><![CDATA[
 ## qbPortWeaver
 
@@ -32,7 +32,7 @@ Runs on a configurable interval and updates qBittorrent's listening port via its
 
 ### Media Manager
 
-Automatically renames movie and TV episode files to Plex-compatible naming conventions on each sync cycle. Queries The Movie Database (TMDB) to identify titles and release years, then renames files using Plex conventions (`Title (Year).ext` for movies, `Show (Year) - SxxExx.ext` for TV episodes). Optionally organises files into Plex-recommended subfolders. A dedicated Media Manager dialog (tray menu) lets you configure watched folders, preview renames before they run (Scan Now), and apply or correct them manually (Rename Now). Uncertain TMDB matches are highlighted for review. A free TMDB API key is required.
+Automatically imports movie and TV episode files into Plex-compatible library folders on each sync cycle. Queries The Movie Database (TMDB) to identify titles and release years, then imports files using Plex naming conventions (`Title (Year).ext` for movies, `Show (Year) - SxxExx.ext` for TV episodes) via hardlink, copy, or move. Optionally organises files into Plex-recommended subfolders. A dedicated Media Manager dialog (tray menu) lets you configure source folders, preview imports before they run (Scan Now), and apply or correct them manually (Import Now). Uncertain TMDB matches are highlighted for review. A free TMDB API key is required.
 
 ### Visibility and Safety
 
@@ -50,7 +50,7 @@ For full setup instructions and recommended VPN configuration, see the documenta
     ]]></description>
     <releaseNotes>https://github.com/martsg666/qbPortWeaver/releases/tag/vTEMPLATE_VERSION</releaseNotes>
     <copyright>© 2026 martsg666</copyright>
-    <tags>qbittorrent vpn port-forwarding protonvpn pia private-internet-access nat-pmp system-tray torrent port-sync media-manager plex tmdb admin</tags>
+    <tags>qbittorrent vpn port-forwarding protonvpn pia private-internet-access nat-pmp system-tray torrent port-sync media-manager media-importer plex tmdb hardlink auto-recovery</tags>
     <licenseUrl>https://github.com/martsg666/qbPortWeaver/blob/master/LICENSE</licenseUrl>
     <iconUrl>https://cdn.jsdelivr.net/gh/martsg666/qbPortWeaver@vTEMPLATE_VERSION/qbPortWeaver.png</iconUrl>
   </metadata>

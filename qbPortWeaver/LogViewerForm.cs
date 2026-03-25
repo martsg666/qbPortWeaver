@@ -23,10 +23,10 @@ namespace qbPortWeaver
         private static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
 
         [DllImport("user32.dll", CharSet = CharSet.Auto)]
-        private static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, ref POINT lParam);
+        private static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, ref NativePoint lParam);
 
         [StructLayout(LayoutKind.Sequential)]
-        private struct POINT { public int X, Y; }
+        private struct NativePoint { public int X, Y; }
 
         private LogViewerForm() : this(string.Empty) { } // designer support only
 
@@ -71,7 +71,7 @@ namespace qbPortWeaver
         {
             // Disable watcher events before the form is fully disposed to prevent callbacks on a dead form.
             // Disposal is handled in Dispose(bool) in the Designer file.
-            if (_watcher != null)
+            if (_watcher is not null)
                 _watcher.EnableRaisingEvents = false;
             base.OnFormClosed(e);
         }
@@ -162,7 +162,7 @@ namespace qbPortWeaver
         {
             btnClearSearch.Visible = txtSearch.Text.Length > 0;
 
-            if (_searchDebounceTimer == null)
+            if (_searchDebounceTimer is null)
             {
                 _searchDebounceTimer = new System.Windows.Forms.Timer { Interval = 250 };
                 _searchDebounceTimer.Tick += (_, _) => { _searchDebounceTimer!.Stop(); RebuildDisplay(); };
@@ -533,7 +533,7 @@ namespace qbPortWeaver
             // Text is appended at the end, so existing character positions remain valid.
             int   savedSelStart = rtbLog.SelectionStart;
             int   savedSelLen   = rtbLog.SelectionLength;
-            POINT scrollPos     = default;
+            NativePoint scrollPos     = default;
             if (!wasAtBottom)
                 SendMessage(rtbLog.Handle, EM_GETSCROLLPOS, IntPtr.Zero, ref scrollPos);
 

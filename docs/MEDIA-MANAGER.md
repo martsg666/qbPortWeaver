@@ -8,7 +8,7 @@ The Media Manager subsystem automatically imports movie and TV show files into P
 MediaManagerService          Orchestrator - single-pass source enumeration, wires processors, cleanup, UI scan/apply
   ├── MovieProcessor           Processes movie files and folders against TMDB (static lookup cache)
   ├── TvShowProcessor          Processes TV episode files against TMDB (static lookup cache)
-  ├── FileImporter             File transfer (hardlink/copy/move) + library size index for duplicate detection
+  ├── FileImporter             File transfer (hardlink/copy/move) + library fingerprint index for duplicate detection
   ├── FileNameParser           Stateless parser - extracts titles, years, and episode info from filenames
   └── TmdbClient               HTTP client for TMDB search API (movie + TV) with rate limiting
 ```
@@ -238,6 +238,8 @@ The dialog provides two workflows:
 
 **Import Now** -- reads proposals from the grid (honouring any user edits to the Proposed column), shows a confirmation dialog, then calls `ApplyProposalsAsync`. Always performs real imports regardless of the dry-run setting. If `deleteEmptyFolders` is checked, runs cleanup after imports, then re-scans to show remaining items.
 
+**Clear Cache** -- deletes both the source and library fingerprint caches from disk and clears the in-memory state, forcing a full re-hash on the next scan. Useful when library folders have been reorganised or if cached fingerprints are suspected to be stale. The grid is cleared and Import Now is disabled until the next scan.
+
 Each row has an **Include checkbox** (checked by default). Click the column header to toggle all rows at once. Uncheck a row to exclude it from importing -- unchecked rows are skipped by Import Now and excluded from the confirmation count.
 
 The dry-run checkbox only affects the automatic sync cycle.
@@ -262,15 +264,24 @@ MediaManagerService.RunAsync
   |     |     +-- GetOrLookupMovieAsync (cached) --> LookupMovieAsync --> TmdbClient.SearchMovieAsync
   |     |     |     +-- TryFallbackLookupsAsync (after-dash, trailing number)
   |     |     +-- MediaManagerService.ImportFileWithLog
-  |     +-- ProcessMovieFolderAsync (subfolders)
+  |     |     +-- MediaManagerService.ImportCompanionFiles (subtitles only)
+  |     +-- ProcessMovieFolderAsync (subfolders, recursive, max depth 10)
   |           +-- FileImporter.IsAlreadyInLibrary (skips folder if all files present)
-  |           +-- FileNameParser.ParseMovie (folder name, then first file)
-  |           +-- GetOrLookupMovieAsync
-  |           +-- MediaManagerService.ImportFileWithLog (for each video file)
-  |           +-- MediaManagerService.ImportCompanionFiles (subtitles only)
+  |           +-- ClassifyVideoFiles (split self-describing vs folder-dependent)
+  |           +-- [Self-describing files] ProcessSingleMovieFileAsync (per file)
+  |           |     +-- FileImporter.IsAlreadyInLibrary
+  |           |     +-- GetOrLookupMovieAsync (individual TMDB lookup per file)
+  |           |     +-- MediaManagerService.ImportFileWithLog
+  |           |     +-- MediaManagerService.ImportCompanionFiles (subtitles only)
+  |           +-- [Folder-dependent files] ProcessFolderDependentFilesAsync
+  |                 +-- FileNameParser.ParseMovie (folder name)
+  |                 +-- GetOrLookupMovieAsync (shared lookup for all files)
+  |                 +-- MediaManagerService.ImportFileWithLog (for each file)
+  |                 +-- ImportFolderCompanionFiles (subtitles renamed to Plex folder name)
   +-- TvShowProcessor.ProcessTvShowsAsync (pre-classified files and dirs)
   |     +-- ProcessTvShowFolderAsync (recursive, max depth 10)
-  |           +-- ProcessEpisodeFileAsync
+  |           +-- FileImporter.IsAlreadyInLibrary (skips folder if all episodes present)
+  |           +-- ProcessEpisodeFileAsync (per file)
   |                 +-- FileImporter.IsAlreadyInLibrary (fingerprint-based skip)
   |                 Filter: IsVideoTvShowEpisode
   |                 +-- FileNameParser.ParseTvShowEpisode
@@ -287,8 +298,12 @@ MediaManagerService.ScanAsync (UI path)
   +-- MovieProcessor.ScanMoviesAsync (pre-classified files and dirs)
   |     +-- ScanStandaloneFileAsync (+IsAlreadyInLibrary, +IsDuplicateFile)
   |     +-- ScanMovieFolderAsync (+IsAlreadyInLibrary for all files)
+  |           +-- ClassifyVideoFiles (split self-describing vs folder-dependent)
+  |           +-- ScanSingleMovieFileAsync (per self-describing file)
+  |           +-- ScanFolderDependentFilesAsync (folder-name-based lookup)
   +-- TvShowProcessor.ScanTvShowsAsync (pre-classified files and dirs)
-  |     +-- ScanTvShowFolderAsync --> ScanEpisodeFileAsync (+IsAlreadyInLibrary, +IsDuplicateFile)
+  |     +-- ScanTvShowFolderAsync (+IsAlreadyInLibrary for all episodes)
+  |           +-- ScanEpisodeFileAsync (+IsAlreadyInLibrary, +IsDuplicateFile)
   |           Filter: IsVideoTvShowEpisode
   +-- Results displayed in grid with Include checkbox per row
 

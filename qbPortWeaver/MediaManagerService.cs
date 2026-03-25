@@ -35,6 +35,17 @@ namespace qbPortWeaver
             var importMode = ParseImportMode(RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionMedia, RegistrySettingsManager.KeyMediaImportMode));
 
             LogManager.Instance.LogMessage($"Scan started (dryRun={dryRun}, createFolders={createFolders}, deleteEmptyFolders={deleteEmptyFolders}, importMode={importMode})", LogLevel.Info, Subsystem.MediaManager);
+            LogManager.Instance.LogDebug(
+                $"MediaManagerService.RunAsync [media]: {RegistrySettingsManager.KeyMediaEnabled}=true, " +
+                $"{RegistrySettingsManager.KeyTmdbApiKey}=***, " +
+                $"{RegistrySettingsManager.KeyMediaSourceFolders}={string.Join(";", GetFolders(RegistrySettingsManager.KeyMediaSourceFolders))}, " +
+                $"{RegistrySettingsManager.KeyMediaMoviesLibraryPath}={moviesLibraryPath}, " +
+                $"{RegistrySettingsManager.KeyMediaTvShowsLibraryPath}={tvShowsLibraryPath}, " +
+                $"{RegistrySettingsManager.KeyMediaDryRun}={dryRun}, " +
+                $"{RegistrySettingsManager.KeyMediaCreateFolders}={createFolders}, " +
+                $"{RegistrySettingsManager.KeyMediaDeleteEmptyFolders}={deleteEmptyFolders}, " +
+                $"{RegistrySettingsManager.KeyMediaImportMode}={importMode}",
+                Subsystem.MediaManager);
 
             FileImporter.LoadSourceCache();
             FileImporter.BuildLibraryIndex(force: false, moviesLibraryPath, tvShowsLibraryPath);
@@ -44,59 +55,70 @@ namespace qbPortWeaver
             foreach (var folder in GetFolders(RegistrySettingsManager.KeyMediaSourceFolders))
             {
                 cancellationToken.ThrowIfCancellationRequested();
-
-                if (!Directory.Exists(folder))
-                {
-                    LogManager.Instance.LogMessage($"Source folder not found: {folder}", LogLevel.Error, Subsystem.MediaManager);
-                    continue;
-                }
-
-                LogManager.Instance.LogMessage($"Scanning source folder: {folder}", LogLevel.Info, Subsystem.MediaManager);
-                var (movieFiles, movieDirs, tvFiles, tvDirs) = ClassifySourceFolder(folder);
-
-                if (!string.IsNullOrWhiteSpace(moviesLibraryPath) && (movieFiles.Length > 0 || movieDirs.Length > 0))
-                {
-                    var movieProcessor = new MovieProcessor(tmdb, dryRun, createFolders, moviesLibraryPath, importMode);
-                    try
-                    {
-                        await movieProcessor.ProcessMoviesAsync(folder, movieFiles, movieDirs).ConfigureAwait(false);
-                    }
-                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-                    {
-                        LogManager.Instance.LogMessage($"Skipped folder '{folder}' (movies): {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
-                    }
-                }
-
-                if (!string.IsNullOrWhiteSpace(tvShowsLibraryPath) && (tvFiles.Length > 0 || tvDirs.Length > 0))
-                {
-                    var tvShowProcessor = new TvShowProcessor(tmdb, dryRun, createFolders, tvShowsLibraryPath, importMode);
-                    try
-                    {
-                        await tvShowProcessor.ProcessTvShowsAsync(folder, tvFiles, tvDirs).ConfigureAwait(false);
-                    }
-                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-                    {
-                        LogManager.Instance.LogMessage($"Skipped folder '{folder}' (TV shows): {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
-                    }
-                }
+                await ProcessSourceFolderAsync(folder, tmdb, dryRun, createFolders, importMode, moviesLibraryPath, tvShowsLibraryPath).ConfigureAwait(false);
             }
 
             if (deleteEmptyFolders)
-            {
-                foreach (var folder in GetFolders(RegistrySettingsManager.KeyMediaSourceFolders))
-                {
-                    cancellationToken.ThrowIfCancellationRequested();
-                    try { CleanupEmptyFolders(folder, dryRun); }
-                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-                    {
-                        LogManager.Instance.LogMessage($"Skipped folder cleanup for '{folder}': {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
-                    }
-                }
-            }
+                CleanupSourceFolders(dryRun, cancellationToken);
 
             FileImporter.SaveSourceCache();
             FileImporter.SaveLibraryCache();
             LogManager.Instance.LogMessage("Scan completed", LogLevel.Info, Subsystem.MediaManager);
+        }
+
+        // Classifies and processes a single source folder, running both movie and TV show processors.
+        private static async Task ProcessSourceFolderAsync(
+            string folder, TmdbClient tmdb, bool dryRun, bool createFolders, ImportMode importMode,
+            string moviesLibraryPath, string tvShowsLibraryPath)
+        {
+            if (!Directory.Exists(folder))
+            {
+                LogManager.Instance.LogMessage($"Source folder not found: {folder}", LogLevel.Error, Subsystem.MediaManager);
+                return;
+            }
+
+            LogManager.Instance.LogMessage($"Scanning source folder: {folder}", LogLevel.Info, Subsystem.MediaManager);
+            var (movieFiles, movieDirs, tvFiles, tvDirs) = ClassifySourceFolder(folder);
+
+            if (!string.IsNullOrWhiteSpace(moviesLibraryPath) && (movieFiles.Length > 0 || movieDirs.Length > 0))
+            {
+                var movieProcessor = new MovieProcessor(tmdb, dryRun, createFolders, moviesLibraryPath, importMode);
+                try
+                {
+                    await movieProcessor.ProcessMoviesAsync(folder, movieFiles, movieDirs).ConfigureAwait(false);
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    LogManager.Instance.LogMessage($"Skipped folder '{folder}' (movies): {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
+                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(tvShowsLibraryPath) && (tvFiles.Length > 0 || tvDirs.Length > 0))
+            {
+                var tvShowProcessor = new TvShowProcessor(tmdb, dryRun, createFolders, tvShowsLibraryPath, importMode);
+                try
+                {
+                    await tvShowProcessor.ProcessTvShowsAsync(folder, tvFiles, tvDirs).ConfigureAwait(false);
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    LogManager.Instance.LogMessage($"Skipped folder '{folder}' (TV shows): {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
+                }
+            }
+        }
+
+        // Runs folder cleanup for all configured source folders.
+        private static void CleanupSourceFolders(bool dryRun, CancellationToken cancellationToken)
+        {
+            foreach (var folder in GetFolders(RegistrySettingsManager.KeyMediaSourceFolders))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                try { CleanupEmptyFolders(folder, dryRun); }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    LogManager.Instance.LogMessage($"Skipped folder cleanup for '{folder}': {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
+                }
+            }
         }
 
         /// <summary>
@@ -123,41 +145,47 @@ namespace qbPortWeaver
             foreach (var folder in sourceFolders)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-
-                if (!Directory.Exists(folder)) continue;
-
-                var (movieFiles, movieDirs, tvFiles, tvDirs) = ClassifySourceFolder(folder);
-
-                if (!string.IsNullOrWhiteSpace(moviesLibraryPath) && (movieFiles.Length > 0 || movieDirs.Length > 0))
-                {
-                    var movieProcessor = new MovieProcessor(tmdb, dryRun: true, createFolders, moviesLibraryPath);
-                    try
-                    {
-                        proposals.AddRange(await movieProcessor.ScanMoviesAsync(movieFiles, movieDirs).ConfigureAwait(false));
-                    }
-                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-                    {
-                        LogManager.Instance.LogMessage($"Skipped folder '{folder}' (movies): {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
-                    }
-                }
-
-                if (!string.IsNullOrWhiteSpace(tvShowsLibraryPath) && (tvFiles.Length > 0 || tvDirs.Length > 0))
-                {
-                    var tvShowProcessor = new TvShowProcessor(tmdb, dryRun: true, createFolders, tvShowsLibraryPath);
-                    try
-                    {
-                        proposals.AddRange(await tvShowProcessor.ScanTvShowsAsync(tvFiles, tvDirs).ConfigureAwait(false));
-                    }
-                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-                    {
-                        LogManager.Instance.LogMessage($"Skipped folder '{folder}' (TV shows): {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
-                    }
-                }
+                if (Directory.Exists(folder))
+                    await ScanSourceFolderAsync(folder, tmdb, createFolders, moviesLibraryPath, tvShowsLibraryPath, proposals).ConfigureAwait(false);
             }
 
             FileImporter.SaveSourceCache();
             FileImporter.SaveLibraryCache();
             return proposals;
+        }
+
+        // Classifies and scans a single source folder, appending proposals for both movies and TV shows.
+        private static async Task ScanSourceFolderAsync(
+            string folder, TmdbClient tmdb, bool createFolders,
+            string moviesLibraryPath, string tvShowsLibraryPath, List<MediaProposal> proposals)
+        {
+            var (movieFiles, movieDirs, tvFiles, tvDirs) = ClassifySourceFolder(folder);
+
+            if (!string.IsNullOrWhiteSpace(moviesLibraryPath) && (movieFiles.Length > 0 || movieDirs.Length > 0))
+            {
+                var movieProcessor = new MovieProcessor(tmdb, dryRun: true, createFolders, moviesLibraryPath);
+                try
+                {
+                    proposals.AddRange(await movieProcessor.ScanMoviesAsync(movieFiles, movieDirs).ConfigureAwait(false));
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    LogManager.Instance.LogMessage($"Skipped folder '{folder}' (movies): {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
+                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(tvShowsLibraryPath) && (tvFiles.Length > 0 || tvDirs.Length > 0))
+            {
+                var tvShowProcessor = new TvShowProcessor(tmdb, dryRun: true, createFolders, tvShowsLibraryPath);
+                try
+                {
+                    proposals.AddRange(await tvShowProcessor.ScanTvShowsAsync(tvFiles, tvDirs).ConfigureAwait(false));
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    LogManager.Instance.LogMessage($"Skipped folder '{folder}' (TV shows): {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
+                }
+            }
         }
 
         /// <summary>
@@ -218,35 +246,39 @@ namespace qbPortWeaver
             int deleted = 0;
             foreach (var dir in directories.OrderByDescending(d => d.Length))
             {
-                if (!Directory.Exists(dir)) continue;
-
-                bool removable;
-                bool hasOnlyNfo;
-                try
-                {
-                    (removable, hasOnlyNfo) = IsRemovableFolder(dir);
-                }
-                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-                {
-                    LogManager.Instance.LogMessage($"Skipped folder check for '{Path.GetFileName(dir)}': {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
-                    continue;
-                }
-                if (!removable) continue;
-
-                string reason = hasOnlyNfo ? "nfo-only" : "empty";
-                if (dryRun)
-                {
-                    LogManager.Instance.LogMessage($"Would delete {reason} folder: '{Path.GetFileName(dir)}'", LogLevel.Info, Subsystem.MediaManager);
-                }
-                else
-                {
-                    DeleteFolder(dir, hasOnlyNfo);
-                }
-                deleted++;
+                if (TryCleanupFolder(dir, dryRun))
+                    deleted++;
             }
 
             if (deleted > 0)
                 LogManager.Instance.LogDebug($"MediaManagerService.CleanupEmptyFolders: {deleted} folder(s) {(dryRun ? "would be deleted" : "deleted")} under '{rootFolder}'", Subsystem.MediaManager);
+        }
+
+        // Checks whether a single directory is removable and deletes (or dry-run logs) it. Returns true if the folder was processed.
+        private static bool TryCleanupFolder(string dir, bool dryRun)
+        {
+            if (!Directory.Exists(dir)) return false;
+
+            bool removable;
+            bool hasOnlyNfo;
+            try
+            {
+                (removable, hasOnlyNfo) = IsRemovableFolder(dir);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                LogManager.Instance.LogMessage($"Skipped folder check for '{Path.GetFileName(dir)}': {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
+                return false;
+            }
+            if (!removable) return false;
+
+            string reason = hasOnlyNfo ? "nfo-only" : "empty";
+            if (dryRun)
+                LogManager.Instance.LogMessage($"Would delete {reason} folder: '{Path.GetFileName(dir)}'", LogLevel.Info, Subsystem.MediaManager);
+            else
+                DeleteFolder(dir, hasOnlyNfo);
+
+            return true;
         }
 
         // Returns (true, hasOnlyNfo) when the folder is empty or contains only .nfo files and has no subdirectories

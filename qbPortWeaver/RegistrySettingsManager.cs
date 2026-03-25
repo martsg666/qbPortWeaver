@@ -249,7 +249,7 @@ namespace qbPortWeaver
             bool anyWritten = false;
             foreach (var kvp in sectionDefaults)
             {
-                if (regKey.GetValue(kvp.Key) != null)
+                if (regKey.GetValue(kvp.Key) is not null)
                     continue;
 
                 // Sensitive keys are always stored encrypted; encrypt before the initial write.

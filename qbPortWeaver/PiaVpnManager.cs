@@ -21,7 +21,7 @@ namespace qbPortWeaver
             try
             {
                 string? output = RunPiactl("get connectionstate");
-                if (output == null)
+                if (output is null)
                 {
                     LogManager.Instance.LogDebug("PiaVpnManager.IsVpnConnected: piactl returned no output");
                     return false;
@@ -52,7 +52,7 @@ namespace qbPortWeaver
             try
             {
                 string? output = RunPiactl("get portforward");
-                if (output == null)
+                if (output is null)
                 {
                     LogManager.Instance.LogDebug("PiaVpnManager.GetVpnPortCore: piactl returned no output");
                     return null;
@@ -80,7 +80,7 @@ namespace qbPortWeaver
             try
             {
                 string? piactlPath = GetPiactlPath();
-                if (piactlPath == null)
+                if (piactlPath is null)
                 {
                     LogManager.Instance.LogDebug("PiaVpnManager.RunPiactl: Failed to resolve piactl path");
                     return null;
@@ -90,7 +90,7 @@ namespace qbPortWeaver
                 startInfo.RedirectStandardOutput = true;
 
                 using var process = Process.Start(startInfo);
-                if (process == null)
+                if (process is null)
                 {
                     LogManager.Instance.LogDebug("PiaVpnManager.RunPiactl: Failed to start piactl process");
                     return null;
@@ -124,7 +124,7 @@ namespace qbPortWeaver
             try
             {
                 using var uninstallKey = Registry.LocalMachine.OpenSubKey(PiaUninstallRegistryPath);
-                if (uninstallKey == null)
+                if (uninstallKey is null)
                 {
                     LogManager.Instance.LogDebug("PiaVpnManager.GetPiactlPath: Failed to open Uninstall registry key");
                     return null;
@@ -133,11 +133,11 @@ namespace qbPortWeaver
                 foreach (string subKeyName in uninstallKey.GetSubKeyNames())
                 {
                     using var subKey = uninstallKey.OpenSubKey(subKeyName);
-                    if (subKey == null)
+                    if (subKey is null)
                         continue;
 
                     string? displayName = subKey.GetValue("DisplayName") as string;
-                    if (displayName == null || !displayName.Equals(PiaDisplayName, StringComparison.OrdinalIgnoreCase))
+                    if (displayName is null || !displayName.Equals(PiaDisplayName, StringComparison.OrdinalIgnoreCase))
                         continue;
 
                     string? installLocation = subKey.GetValue("InstallLocation") as string;

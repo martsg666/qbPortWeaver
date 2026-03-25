@@ -42,6 +42,7 @@ namespace qbPortWeaver
             toolTip.SetToolTip(btnRemoveSourceFolder, "Remove the selected folder from the list");
             toolTip.SetToolTip(btnScanNow,            "Preview which files would be imported - no files are touched");
             toolTip.SetToolTip(btnImportNow,           "Import the files shown in the grid into the library");
+            toolTip.SetToolTip(btnClearCache,          "Delete cached fingerprints so the next scan re-hashes every file from scratch");
             toolTip.SetToolTip(dgvResults,            "Files that would be imported. Uncheck a row to exclude it. Rows in red are uncertain TMDB matches - double-click the Proposed cell to correct the name before importing.");
         }
 
@@ -95,6 +96,14 @@ namespace qbPortWeaver
 
         private void btnAddSourceFolder_Click(object? sender, EventArgs e)    => AddFolder(lstSourceFolders);
         private void btnRemoveSourceFolder_Click(object? sender, EventArgs e) => RemoveSelectedFolder(lstSourceFolders);
+        private void btnClearCache_Click(object? sender, EventArgs e)
+        {
+            FileImporter.ClearAllCaches();
+            dgvResults.Rows.Clear();
+            btnImportNow.Enabled = false;
+            lblScanStatus.Text = "Cache cleared - run Scan Now to re-index.";
+        }
+
         private void btnBrowseMoviesLibrary_Click(object? sender, EventArgs e)  => BrowseForFolder(txtMoviesLibraryPath);
         private void btnBrowseTvShowsLibrary_Click(object? sender, EventArgs e) => BrowseForFolder(txtTvShowsLibraryPath);
 
@@ -173,7 +182,6 @@ namespace qbPortWeaver
             _scanCts?.Cancel();
             _scanCts?.Dispose();
             _scanCts = new CancellationTokenSource();
-            var ct = _scanCts.Token;
 
             SetBusy(true);
             btnImportNow.Enabled = false;
@@ -181,57 +189,7 @@ namespace qbPortWeaver
 
             try
             {
-                var toApply    = BuildProposalsFromGrid();
-                var importMode = MediaManagerService.ParseImportMode(cboImportMode.SelectedItem?.ToString() ?? RegistrySettingsManager.ImportModeHardlink);
-
-                var progress = new Progress<(int Current, int Total, string FileName)>(p =>
-                {
-                    if (!IsDisposed)
-                    {
-                        string name = p.FileName.Length > MaxStatusFileNameLength
-                            ? string.Concat(p.FileName.AsSpan(0, MaxStatusFileNameLength - 3), "...")
-                            : p.FileName;
-                        lblScanStatus.Text = $"Importing {p.Current}/{p.Total} - {name}";
-                    }
-                });
-                await MediaManagerService.ApplyProposalsAsync(toApply, importMode, ct, progress);
-
-                if (IsDisposed) return;
-
-                // Clean up empty source folders off the UI thread
-                var sourceFolders = lstSourceFolders.Items.Cast<string>().ToArray();
-                if (chkDeleteEmptyFolders.Checked)
-                {
-                    lblScanStatus.Text = "Cleaning up empty folders\u2026";
-                    await Task.Run(() =>
-                    {
-                        foreach (var folder in sourceFolders)
-                        {
-                            ct.ThrowIfCancellationRequested();
-                            MediaManagerService.CleanupEmptyFolders(folder, dryRun: false);
-                        }
-                    }, ct);
-                }
-
-                if (IsDisposed) return;
-
-                // Re-scan to reflect the new state
-                lblScanStatus.Text = "Re-scanning\u2026";
-                var apiKey             = txtTmdbApiKey.Text.Trim();
-                bool createFolders     = chkCreateFolders.Checked;
-                var moviesLibraryPath  = txtMoviesLibraryPath.Text.Trim();
-                var tvShowsLibraryPath = txtTvShowsLibraryPath.Text.Trim();
-
-                var remaining = await MediaManagerService.ScanAsync(apiKey, createFolders, sourceFolders, moviesLibraryPath, tvShowsLibraryPath, ct);
-
-                if (IsDisposed) return;
-                PopulateGrid(remaining);
-
-                string remainingLabel = $"{remaining.Count} file{(remaining.Count == 1 ? "" : "s")}";
-                lblScanStatus.Text   = remaining.Count == 0
-                    ? "Done - all files imported successfully."
-                    : $"Done - {remainingLabel} could not be imported.";
-                btnImportNow.Enabled = remaining.Count > 0;
+                await RunImportAndRescanAsync(_scanCts.Token);
             }
             catch (OperationCanceledException)
             {
@@ -245,6 +203,57 @@ namespace qbPortWeaver
             {
                 if (!IsDisposed) SetBusy(false);
             }
+        }
+
+        // Applies proposals, optionally cleans up empty folders, then re-scans to refresh the grid.
+        private async Task RunImportAndRescanAsync(CancellationToken ct)
+        {
+            var toApply    = BuildProposalsFromGrid();
+            var importMode = MediaManagerService.ParseImportMode(cboImportMode.SelectedItem?.ToString() ?? RegistrySettingsManager.ImportModeHardlink);
+
+            var progress = new Progress<(int Current, int Total, string FileName)>(p =>
+            {
+                if (!IsDisposed)
+                {
+                    string name = p.FileName.Length > MaxStatusFileNameLength
+                        ? string.Concat(p.FileName.AsSpan(0, MaxStatusFileNameLength - 3), "...")
+                        : p.FileName;
+                    lblScanStatus.Text = $"Importing {p.Current}/{p.Total} - {name}";
+                }
+            });
+            await MediaManagerService.ApplyProposalsAsync(toApply, importMode, ct, progress);
+
+            if (IsDisposed) return;
+
+            var sourceFolders = lstSourceFolders.Items.Cast<string>().ToArray();
+            if (chkDeleteEmptyFolders.Checked)
+            {
+                lblScanStatus.Text = "Cleaning up empty folders\u2026";
+                await Task.Run(() =>
+                {
+                    foreach (var folder in sourceFolders)
+                    {
+                        ct.ThrowIfCancellationRequested();
+                        MediaManagerService.CleanupEmptyFolders(folder, dryRun: false);
+                    }
+                }, ct);
+            }
+
+            if (IsDisposed) return;
+
+            lblScanStatus.Text = "Re-scanning\u2026";
+            var remaining = await MediaManagerService.ScanAsync(
+                txtTmdbApiKey.Text.Trim(), chkCreateFolders.Checked, sourceFolders,
+                txtMoviesLibraryPath.Text.Trim(), txtTvShowsLibraryPath.Text.Trim(), ct);
+
+            if (IsDisposed) return;
+            PopulateGrid(remaining);
+
+            string remainingLabel = $"{remaining.Count} file{(remaining.Count == 1 ? "" : "s")}";
+            lblScanStatus.Text   = remaining.Count == 0
+                ? "Done - all files imported successfully."
+                : $"Done - {remainingLabel} could not be imported.";
+            btnImportNow.Enabled = remaining.Count > 0;
         }
 
         // Builds updated proposals from the grid, honouring any edits the user made to the Proposed column.
@@ -386,6 +395,7 @@ namespace qbPortWeaver
         private void SetBusy(bool busy)
         {
             btnScanNow.Enabled       = !busy;
+            btnClearCache.Enabled    = !busy;
             grpSourceFolders.Enabled = !busy;
         }
 

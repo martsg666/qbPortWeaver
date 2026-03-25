@@ -41,6 +41,7 @@ namespace qbPortWeaver
             btnRemoveSourceFolder = new Button();
             btnScanNow     = new Button();
             btnImportNow   = new Button();
+            btnClearCache  = new Button();
             lblScanStatus  = new Label();
             dgvResults     = new DataGridView();
             colInclude     = new DataGridViewCheckBoxColumn();
@@ -259,12 +260,21 @@ namespace qbPortWeaver
             btnImportNow.Text     = "Import Now";
             btnImportNow.Click   += btnImportNow_Click;
             //
+            // btnClearCache
+            //
+            btnClearCache.Location = new Point(214, 430);
+            btnClearCache.Name     = "btnClearCache";
+            btnClearCache.Size     = new Size(100, 28);
+            btnClearCache.TabIndex = 5;
+            btnClearCache.Text     = "Clear Cache";
+            btnClearCache.Click   += btnClearCache_Click;
+            //
             // lblScanStatus
             //
-            lblScanStatus.Location  = new Point(214, 430);
+            lblScanStatus.Location  = new Point(322, 430);
             lblScanStatus.Name      = "lblScanStatus";
-            lblScanStatus.Size      = new Size(478, 28);
-            lblScanStatus.TabIndex  = 5;
+            lblScanStatus.Size      = new Size(370, 28);
+            lblScanStatus.TabIndex  = 6;
             lblScanStatus.TextAlign = ContentAlignment.MiddleLeft;
             lblScanStatus.ForeColor = SystemColors.GrayText;
             //
@@ -356,6 +366,7 @@ namespace qbPortWeaver
             Controls.Add(grpSourceFolders);
             Controls.Add(btnScanNow);
             Controls.Add(btnImportNow);
+            Controls.Add(btnClearCache);
             Controls.Add(lblScanStatus);
             Controls.Add(dgvResults);
             Controls.Add(btnOK);
@@ -402,6 +413,7 @@ namespace qbPortWeaver
 
         private Button           btnScanNow;
         private Button           btnImportNow;
+        private Button           btnClearCache;
         private Label            lblScanStatus;
         private DataGridView     dgvResults;
         private DataGridViewCheckBoxColumn colInclude;

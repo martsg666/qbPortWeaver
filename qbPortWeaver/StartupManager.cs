@@ -13,7 +13,7 @@ namespace qbPortWeaver
             try
             {
                 using var key = Registry.CurrentUser.OpenSubKey(RunRegistryKey);
-                return key?.GetValue(AppConstants.AppName) != null;
+                return key?.GetValue(AppConstants.AppName) is not null;
             }
             catch (Exception ex)
             {
@@ -28,7 +28,7 @@ namespace qbPortWeaver
             try
             {
                 using var key = Registry.CurrentUser.OpenSubKey(RunRegistryKey, true);
-                if (key == null)
+                if (key is null)
                 {
                     LogManager.Instance.LogMessage("Failed to update startup setting: could not open registry Run key", LogLevel.Warn);
                     return;

@@ -28,7 +28,7 @@ namespace qbPortWeaver
         private static LogManager? _instance;
 
         /// <summary>Returns <see langword="true"/> after <see cref="Initialize"/> has been called.</summary>
-        public static bool IsInitialized => _instance != null;
+        public static bool IsInitialized => _instance is not null;
 
         /// <summary>Returns the singleton instance. Throws <see cref="InvalidOperationException"/> if not yet initialized.</summary>
         public static LogManager Instance =>
@@ -56,7 +56,7 @@ namespace qbPortWeaver
         /// </summary>
         public static LogManager Initialize(string logFilePath)
         {
-            if (_instance != null)
+            if (_instance is not null)
                 throw new InvalidOperationException($"{nameof(LogManager)} has already been initialized");
             _instance = new LogManager(logFilePath);
             return _instance;

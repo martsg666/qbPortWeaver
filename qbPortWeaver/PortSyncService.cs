@@ -60,7 +60,7 @@ namespace qbPortWeaver
             bool RestartOnDisconnect
         );
 
-        // Compile-time-safe keys and values for the status dictionary written to the JSON status file
+        /// <summary>Compile-time-safe keys and values for the status dictionary written to the JSON status file.</summary>
         private static class StatusKeys
         {
             // Keys
@@ -142,14 +142,26 @@ namespace qbPortWeaver
             LogManager.Instance.DebugMode = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionExtra, RegistrySettingsManager.KeyDebugMode);
 
             var cfg = ReadConfig();
-            LogManager.Instance.LogDebug($"PortSyncService.RunCoreAsync: {RegistrySettingsManager.KeyVpnProvider}={cfg.VpnProvider}, " +
-                $"{RegistrySettingsManager.KeyNatPmpAdapterName}={cfg.NatPmpAdapterName}, {RegistrySettingsManager.KeyUpdateIntervalSeconds}={cfg.UpdateInterval}s, " +
-                $"{RegistrySettingsManager.KeyQBittorrentUrl}={cfg.QBittorrentUrl}, {RegistrySettingsManager.KeyQBittorrentUserName}={cfg.QBittorrentUserName}, " +
-                $"{RegistrySettingsManager.KeyQBittorrentExePath}={cfg.QBittorrentExePath}, {RegistrySettingsManager.KeyQBittorrentProcessName}={cfg.QBittorrentProcessName}, " +
-                $"{RegistrySettingsManager.KeyRestartQBittorrent}={cfg.RestartQBittorrent}, {RegistrySettingsManager.KeyForceStartQBittorrent}={cfg.ForceStartQBittorrent}, " +
-                $"{RegistrySettingsManager.KeyDefaultPort}={cfg.DefaultPort}, {RegistrySettingsManager.KeyWarnOnInterfaceMismatch}={cfg.WarnOnInterfaceMismatch}, " +
-                $"{RegistrySettingsManager.KeyRestartOnDisconnect}={cfg.RestartOnDisconnect}, {RegistrySettingsManager.KeyPostUpdateCmd}={cfg.PostUpdateCommand}, " +
-                $"{RegistrySettingsManager.KeyAutoRecoveryEnabled}={cfg.AutoRecoveryEnabled}, {RegistrySettingsManager.KeyAutoRecoveryTriggerCycles}={cfg.AutoRecoveryTriggerCycles}");
+            LogManager.Instance.LogDebug(
+                $"PortSyncService.RunCoreAsync [general]: {RegistrySettingsManager.KeyVpnProvider}={cfg.VpnProvider}, " +
+                $"{RegistrySettingsManager.KeyNatPmpAdapterName}={cfg.NatPmpAdapterName}, " +
+                $"{RegistrySettingsManager.KeyUpdateIntervalSeconds}={cfg.UpdateInterval}s, " +
+                $"{RegistrySettingsManager.KeyAutoRecoveryEnabled}={cfg.AutoRecoveryEnabled}, " +
+                $"{RegistrySettingsManager.KeyAutoRecoveryTriggerCycles}={cfg.AutoRecoveryTriggerCycles}");
+            LogManager.Instance.LogDebug(
+                $"PortSyncService.RunCoreAsync [qBittorrent]: {RegistrySettingsManager.KeyQBittorrentUrl}={cfg.QBittorrentUrl}, " +
+                $"{RegistrySettingsManager.KeyQBittorrentUserName}={cfg.QBittorrentUserName}, " +
+                $"{RegistrySettingsManager.KeyQBittorrentPassword}=***, " +
+                $"{RegistrySettingsManager.KeyQBittorrentExePath}={cfg.QBittorrentExePath}, " +
+                $"{RegistrySettingsManager.KeyQBittorrentProcessName}={cfg.QBittorrentProcessName}, " +
+                $"{RegistrySettingsManager.KeyRestartQBittorrent}={cfg.RestartQBittorrent}, " +
+                $"{RegistrySettingsManager.KeyForceStartQBittorrent}={cfg.ForceStartQBittorrent}, " +
+                $"{RegistrySettingsManager.KeyDefaultPort}={cfg.DefaultPort}, " +
+                $"{RegistrySettingsManager.KeyWarnOnInterfaceMismatch}={cfg.WarnOnInterfaceMismatch}, " +
+                $"{RegistrySettingsManager.KeyRestartOnDisconnect}={cfg.RestartOnDisconnect}");
+            LogManager.Instance.LogDebug(
+                $"PortSyncService.RunCoreAsync [extra]: {RegistrySettingsManager.KeyPostUpdateCmd}={cfg.PostUpdateCommand}, " +
+                $"{RegistrySettingsManager.KeyDebugMode}={LogManager.Instance.DebugMode}");
             status[StatusKeys.VpnProvider]           = cfg.VpnProvider;
             status[StatusKeys.UpdateIntervalSeconds] = cfg.UpdateInterval;
 
@@ -358,7 +370,7 @@ namespace qbPortWeaver
             LogManager.Instance.LogMessage($"qBittorrent port found: {currentPort.Value}", LogLevel.Info);
 
             // Warn if qBittorrent's network interface doesn't match the configured VPN provider
-            if (config.VpnProviderName != null && config.WarnOnInterfaceMismatch)
+            if (config.VpnProviderName is not null && config.WarnOnInterfaceMismatch)
                 CheckInterfaceMatch(currentInterfaceName, config.VpnProviderName);
 
             if (currentPort.Value == targetPort)
@@ -409,7 +421,7 @@ namespace qbPortWeaver
         // Checks if qBittorrent's network interface matches the expected VPN provider and logs a warning if not
         private void CheckInterfaceMatch(string? interfaceName, string vpnProviderName)
         {
-            if (interfaceName == null)
+            if (interfaceName is null)
             {
                 LogManager.Instance.LogDebug("PortSyncService.CheckInterfaceMatch: current_interface_name not returned by qBittorrent, skipping check");
                 return;

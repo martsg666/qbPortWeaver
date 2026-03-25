@@ -120,7 +120,7 @@ namespace qbPortWeaver
                 try
                 {
                     using var regKey = Registry.CurrentUser.CreateSubKey($@"{BaseKeyPath}\{section.Key}");
-                    anyWritten |= WriteDefaultsForSection(regKey, section.Key, section.Value);
+                    anyWritten |= WriteDefaultsForSection(regKey, section.Value);
                 }
                 catch (Exception ex)
                 {
@@ -243,7 +243,7 @@ namespace qbPortWeaver
         };
 
         // Writes any missing keys for one registry section; returns true if anything was written
-        private static bool WriteDefaultsForSection(RegistryKey regKey, string sectionName,
+        private static bool WriteDefaultsForSection(RegistryKey regKey,
             Dictionary<string, string> sectionDefaults)
         {
             bool anyWritten = false;

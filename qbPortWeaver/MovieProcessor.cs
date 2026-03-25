@@ -96,39 +96,13 @@ namespace qbPortWeaver
                 return;
             }
 
-            var (info, isConfident) = await GetOrLookupMovieAsync(title, year).ConfigureAwait(false);
-            if (info is null)
-            {
-                proposals.Add(new MediaProposal(MediaTypeMovie, filePath, string.Empty, IsConfident: false, IsMatched: false));
-                return;
-            }
-
-            var proposedPath = BuildStandaloneMoviePath(filePath, info);
-
-            if (FileImporter.IsDuplicateFile(filePath, proposedPath)) return;
-
-            if (!string.Equals(filePath, proposedPath, StringComparison.OrdinalIgnoreCase))
-                proposals.Add(new MediaProposal(MediaTypeMovie, filePath, proposedPath, isConfident));
+            await AddMovieScanProposal(filePath, title, year, proposals).ConfigureAwait(false);
         }
 
         private async Task ScanMovieFolderAsync(string dirPath, List<MediaProposal> proposals, int depth = 0)
         {
-            if (depth > MaxSubfolderDepth)
-            {
-                LogManager.Instance.LogMessage($"Skipped '{dirPath}' - exceeded max folder depth ({MaxSubfolderDepth})", LogLevel.Warn, Subsystem.MediaManager);
-                return;
-            }
-
-            string[] files;
-            try
-            {
-                files = Directory.GetFiles(dirPath);
-            }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-            {
-                LogManager.Instance.LogMessage($"Skipped movie folder '{Path.GetFileName(dirPath)}': {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
-                return;
-            }
+            var files = MediaManagerService.GetFolderFiles(dirPath, depth, MaxSubfolderDepth, "movie");
+            if (files is null) return;
 
             var videoFiles = files.Where(f => FileNameParser.IsVideoFile(f) && !FileNameParser.IsTvShow(Path.GetFileName(f))).ToList();
 
@@ -180,22 +154,8 @@ namespace qbPortWeaver
 
         private async Task ProcessMovieFolderAsync(string sourceFolder, string dirPath, int depth = 0)
         {
-            if (depth > MaxSubfolderDepth)
-            {
-                LogManager.Instance.LogMessage($"Skipped '{dirPath}' - exceeded max folder depth ({MaxSubfolderDepth})", LogLevel.Warn, Subsystem.MediaManager);
-                return;
-            }
-
-            string[] files;
-            try
-            {
-                files = Directory.GetFiles(dirPath);
-            }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-            {
-                LogManager.Instance.LogMessage($"Skipped movie folder '{Path.GetFileName(dirPath)}': {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
-                return;
-            }
+            var files = MediaManagerService.GetFolderFiles(dirPath, depth, MaxSubfolderDepth, "movie");
+            if (files is null) return;
 
             var videoFiles = files.Where(f => FileNameParser.IsVideoFile(f) && !FileNameParser.IsTvShow(Path.GetFileName(f))).ToList();
 
@@ -244,6 +204,12 @@ namespace qbPortWeaver
         {
             if (FileImporter.IsAlreadyInLibrary(filePath)) return;
 
+            await AddMovieScanProposal(filePath, title, year, proposals).ConfigureAwait(false);
+        }
+
+        // Shared proposal builder for standalone and self-describing movie files
+        private async Task AddMovieScanProposal(string filePath, string title, int? year, List<MediaProposal> proposals)
+        {
             var (info, isConfident) = await GetOrLookupMovieAsync(title, year).ConfigureAwait(false);
             if (info is null)
             {
@@ -259,22 +225,32 @@ namespace qbPortWeaver
                 proposals.Add(new MediaProposal(MediaTypeMovie, filePath, proposedPath, isConfident));
         }
 
-        // Scans folder-dependent files (no parseable title) using the parent folder name for TMDB lookup
-        private async Task ScanFolderDependentFilesAsync(string dirPath, List<string> folderDependent, List<MediaProposal> proposals)
+        // Shared opening logic for folder-dependent scan and process methods: validates the file list,
+        // parses the folder name, and performs the TMDB lookup. Returns null if the folder should be skipped.
+        private async Task<(MovieInfo? Info, bool IsConfident)?> ResolveFolderMovieAsync(string dirPath, List<string> folderDependent)
         {
-            if (folderDependent.Count == 0) return;
-            if (folderDependent.All(FileImporter.IsAlreadyInLibrary)) return;
+            if (folderDependent.Count == 0) return null;
+            if (folderDependent.All(FileImporter.IsAlreadyInLibrary)) return null;
 
             var dirName = Path.GetFileName(dirPath);
             var (title, year) = FileNameParser.ParseMovie(dirName);
 
             if (string.IsNullOrWhiteSpace(title))
             {
-                LogManager.Instance.LogDebug($"MovieProcessor.ScanFolderDependentFilesAsync: Skipped folder '{dirName}' - could not parse title", Subsystem.MediaManager);
-                return;
+                LogManager.Instance.LogDebug($"MovieProcessor.ResolveFolderMovieAsync: Skipped folder '{dirName}' - could not parse title", Subsystem.MediaManager);
+                return null;
             }
 
-            var (info, isConfident) = await GetOrLookupMovieAsync(title, year).ConfigureAwait(false);
+            return await GetOrLookupMovieAsync(title, year).ConfigureAwait(false);
+        }
+
+        // Scans folder-dependent files (no parseable title) using the parent folder name for TMDB lookup
+        private async Task ScanFolderDependentFilesAsync(string dirPath, List<string> folderDependent, List<MediaProposal> proposals)
+        {
+            var resolved = await ResolveFolderMovieAsync(dirPath, folderDependent).ConfigureAwait(false);
+            if (resolved is null) return;
+
+            var (info, isConfident) = resolved.Value;
             if (info is null)
             {
                 foreach (var file in folderDependent)
@@ -315,23 +291,14 @@ namespace qbPortWeaver
         // Processes folder-dependent files using the parent folder name for TMDB lookup
         private async Task ProcessFolderDependentFilesAsync(string sourceFolder, string dirPath, List<string> folderDependent)
         {
-            if (folderDependent.Count == 0) return;
-            if (folderDependent.All(FileImporter.IsAlreadyInLibrary)) return;
+            var resolved = await ResolveFolderMovieAsync(dirPath, folderDependent).ConfigureAwait(false);
+            if (resolved is null) return;
 
-            var dirName = Path.GetFileName(dirPath);
-            var (title, year) = FileNameParser.ParseMovie(dirName);
-
-            if (string.IsNullOrWhiteSpace(title))
-            {
-                LogManager.Instance.LogDebug($"MovieProcessor.ProcessFolderDependentFilesAsync: Skipped folder '{dirName}' - could not parse title", Subsystem.MediaManager);
-                return;
-            }
-
-            var (info, isConfident) = await GetOrLookupMovieAsync(title, year).ConfigureAwait(false);
+            var (info, isConfident) = resolved.Value;
             if (info is null) return;
             if (!isConfident)
             {
-                LogManager.Instance.LogMessage($"Skipped folder '{dirName}' - uncertain TMDB match, review in Media Manager", LogLevel.Warn, Subsystem.MediaManager);
+                LogManager.Instance.LogMessage($"Skipped folder '{Path.GetFileName(dirPath)}' - uncertain TMDB match, review in Media Manager", LogLevel.Warn, Subsystem.MediaManager);
                 return;
             }
 

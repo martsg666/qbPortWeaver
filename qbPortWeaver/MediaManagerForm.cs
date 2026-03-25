@@ -132,8 +132,7 @@ namespace qbPortWeaver
                 return;
             }
 
-            _scanCts?.Cancel();
-            _scanCts?.Dispose();
+            if (_scanCts is not null) { await _scanCts.CancelAsync(); _scanCts.Dispose(); }
             _scanCts = new CancellationTokenSource();
             var ct = _scanCts.Token;
 
@@ -179,8 +178,7 @@ namespace qbPortWeaver
 
             if (confirm != DialogResult.Yes) return;
 
-            _scanCts?.Cancel();
-            _scanCts?.Dispose();
+            if (_scanCts is not null) { await _scanCts.CancelAsync(); _scanCts.Dispose(); }
             _scanCts = new CancellationTokenSource();
 
             SetBusy(true);
@@ -296,7 +294,10 @@ namespace qbPortWeaver
             mnuSelectAll.Click += gridContextSelectAll_Click;
 
             var menu = new ContextMenuStrip(components);
-            menu.Items.AddRange([mnuCopy, _mnuPaste, new ToolStripSeparator(), mnuSelectAll]);
+            menu.Items.Add(mnuCopy);
+            menu.Items.Add(_mnuPaste);
+            menu.Items.Add(new ToolStripSeparator());
+            menu.Items.Add(mnuSelectAll);
 
             dgvResults.MouseDown    += gridResults_MouseDown;
             menu.Opening            += gridContextMenu_Opening;

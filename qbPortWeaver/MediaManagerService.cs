@@ -243,12 +243,8 @@ namespace qbPortWeaver
                 return;
             }
 
-            int deleted = 0;
-            foreach (var dir in directories.OrderByDescending(d => d.Length))
-            {
-                if (TryCleanupFolder(dir, dryRun))
-                    deleted++;
-            }
+            int deleted = directories.OrderByDescending(d => d.Length)
+                .Count(dir => TryCleanupFolder(dir, dryRun));
 
             if (deleted > 0)
                 LogManager.Instance.LogDebug($"MediaManagerService.CleanupEmptyFolders: {deleted} folder(s) {(dryRun ? "would be deleted" : "deleted")} under '{rootFolder}'", Subsystem.MediaManager);
@@ -379,6 +375,26 @@ namespace qbPortWeaver
                 var suffix     = fileName[videoBase.Length..];
                 var targetPath = Path.Combine(targetDir, targetBase + suffix);
                 ImportFileWithLog(file, targetPath, sourceFolder, dryRun, importMode);
+            }
+        }
+
+        // Returns the files in a directory, or null if the folder was skipped (depth exceeded or access error).
+        internal static string[]? GetFolderFiles(string dirPath, int depth, int maxDepth, string mediaType)
+        {
+            if (depth > maxDepth)
+            {
+                LogManager.Instance.LogMessage($"Skipped '{dirPath}' - exceeded max folder depth ({maxDepth})", LogLevel.Warn, Subsystem.MediaManager);
+                return null;
+            }
+
+            try
+            {
+                return Directory.GetFiles(dirPath);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                LogManager.Instance.LogMessage($"Skipped {mediaType} folder '{Path.GetFileName(dirPath)}': {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
+                return null;
             }
         }
 

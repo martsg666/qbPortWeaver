@@ -231,11 +231,8 @@ namespace qbPortWeaver
             int cached = 0;
             int computed = 0;
 
-            foreach (var path in libraryPaths)
-            {
-                if (!string.IsNullOrWhiteSpace(path) && Directory.Exists(path))
-                    IndexLibraryPath(path, fingerprints, seenPaths, ref cached, ref computed);
-            }
+            foreach (var path in libraryPaths.Where(p => !string.IsNullOrWhiteSpace(p) && Directory.Exists(p)))
+                IndexLibraryPath(path, fingerprints, seenPaths, ref cached, ref computed);
 
             PruneLibraryCache(seenPaths);
 

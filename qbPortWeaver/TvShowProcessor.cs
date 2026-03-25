@@ -113,22 +113,8 @@ namespace qbPortWeaver
 
         private async Task ScanTvShowFolderAsync(string dirPath, List<MediaProposal> proposals, int depth = 0)
         {
-            if (depth > MaxSubfolderDepth)
-            {
-                LogManager.Instance.LogMessage($"Skipped '{dirPath}' - exceeded max folder depth ({MaxSubfolderDepth})", LogLevel.Warn, Subsystem.MediaManager);
-                return;
-            }
-
-            string[] files;
-            try
-            {
-                files = Directory.GetFiles(dirPath);
-            }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-            {
-                LogManager.Instance.LogMessage($"Skipped TV folder '{Path.GetFileName(dirPath)}': {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
-                return;
-            }
+            var files = MediaManagerService.GetFolderFiles(dirPath, depth, MaxSubfolderDepth, "TV");
+            if (files is null) return;
 
             var episodeFiles = files.Where(FileNameParser.IsVideoTvShowEpisode).ToList();
 
@@ -173,22 +159,8 @@ namespace qbPortWeaver
 
         private async Task ProcessTvShowFolderAsync(string sourceFolder, string dirPath, int depth = 0)
         {
-            if (depth > MaxSubfolderDepth)
-            {
-                LogManager.Instance.LogMessage($"Skipped '{dirPath}' - exceeded max folder depth ({MaxSubfolderDepth})", LogLevel.Warn, Subsystem.MediaManager);
-                return;
-            }
-
-            string[] files;
-            try
-            {
-                files = Directory.GetFiles(dirPath);
-            }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-            {
-                LogManager.Instance.LogMessage($"Skipped TV folder '{Path.GetFileName(dirPath)}': {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
-                return;
-            }
+            var files = MediaManagerService.GetFolderFiles(dirPath, depth, MaxSubfolderDepth, "TV");
+            if (files is null) return;
 
             var episodeFiles = files.Where(FileNameParser.IsVideoTvShowEpisode).ToList();
 

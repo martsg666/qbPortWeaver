@@ -1,5 +1,6 @@
 namespace qbPortWeaver
 {
+    /// <summary>Settings dialog for configuring VPN provider, qBittorrent connection, sync interval, and extra options.</summary>
     public partial class SettingsForm : Form
     {
         private const string DiscoveringAdaptersPlaceholder = "Discovering adapters\u2026";
@@ -21,7 +22,7 @@ namespace qbPortWeaver
         // Wire up tooltips for each setting control
         private void SetupTooltips()
         {
-            toolTip.SetToolTip(cboVpnProvider,              "VPN provider used for port detection (ProtonVPN, PIA, or NAT-PMP)");
+            toolTip.SetToolTip(cboVpnProvider,              "VPN provider used for port detection (Disabled, ProtonVPN, PIA, or NAT-PMP)");
             toolTip.SetToolTip(cboNatPmpAdapter,             "Network adapter to use for NAT-PMP port mapping (only applies when NAT-PMP is selected)");
             toolTip.SetToolTip(btnRefreshAdapters,           "Refresh the adapter list");
             toolTip.SetToolTip(nudUpdateInterval,            "How often to check and sync the port, in seconds");
@@ -49,6 +50,7 @@ namespace qbPortWeaver
             cboVpnProvider.Items.Clear();
             cboVpnProvider.Items.AddRange(new object[]
             {
+                RegistrySettingsManager.VpnProviderDisabled,
                 RegistrySettingsManager.VpnProviderProtonVpn,
                 RegistrySettingsManager.VpnProviderPia,
                 RegistrySettingsManager.VpnProviderNatPmp
@@ -99,7 +101,7 @@ namespace qbPortWeaver
         private void SaveSettings()
         {
             // General
-            RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyVpnProvider,          cboVpnProvider.SelectedItem?.ToString() ?? RegistrySettingsManager.VpnProviderProtonVpn);
+            RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyVpnProvider,          cboVpnProvider.SelectedItem?.ToString() ?? RegistrySettingsManager.VpnProviderDisabled);
             RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyUpdateIntervalSeconds, ((int)nudUpdateInterval.Value).ToString());
             // If discovery is still pending (combo disabled), preserve the existing value to avoid
             // saving the "Discovering adapters…" placeholder text as the adapter name
@@ -142,16 +144,22 @@ namespace qbPortWeaver
             }
             SaveSettings();
             DialogResult = DialogResult.OK;
+            Close();
         }
+
+        private void btnCancel_Click(object? sender, EventArgs e) => Close();
 
         private void cboVpnProvider_SelectedIndexChanged(object? sender, EventArgs e)
         {
+            bool isDisabled = cboVpnProvider.SelectedItem?.ToString() == RegistrySettingsManager.VpnProviderDisabled;
+            SetPortSyncControlsEnabled(!isDisabled);
+
             // Only enable the adapter combo and refresh button if NAT-PMP is selected AND discovery has finished
             // (discovery replaces the placeholder and re-enables them via PopulateNatPmpAdaptersAsync)
             bool isNatPmp = cboVpnProvider.SelectedItem?.ToString() == RegistrySettingsManager.VpnProviderNatPmp;
             bool discoveryPending = cboNatPmpAdapter.Items.Count == 1 &&
                                     cboNatPmpAdapter.Items[0]?.ToString() == DiscoveringAdaptersPlaceholder;
-            SetAdapterControlsEnabled(isNatPmp && !discoveryPending);
+            SetAdapterControlsEnabled(!isDisabled && isNatPmp && !discoveryPending);
         }
 
         private void btnRefreshAdapters_Click(object? sender, EventArgs e)
@@ -199,6 +207,24 @@ namespace qbPortWeaver
             lblRecoveryCyclesUnit.Enabled = enabled;
         }
 
+        // Enables or disables all port-sync-related controls (everything except VPN provider, update interval, and debug mode)
+        private void SetPortSyncControlsEnabled(bool enabled)
+        {
+            // General section - NAT-PMP adapter and auto-recovery
+            lblNatPmpAdapter.Enabled      = enabled;
+            chkAutoRecovery.Enabled       = enabled;
+            lblRecoveryCycles.Enabled     = enabled && chkAutoRecovery.Checked;
+            nudRecoveryCycles.Enabled     = enabled && chkAutoRecovery.Checked;
+            lblRecoveryCyclesUnit.Enabled = enabled && chkAutoRecovery.Checked;
+
+            // qBittorrent section
+            grpQBittorrent.Enabled = enabled;
+
+            // Extra section - post-update command (debug mode stays enabled)
+            lblPostUpdateCmd.Enabled = enabled;
+            txtPostUpdateCmd.Enabled = enabled;
+        }
+
         private void SetAdapterControlsEnabled(bool enabled)
         {
             cboNatPmpAdapter.Enabled   = enabled;
@@ -210,7 +236,7 @@ namespace qbPortWeaver
             try
             {
                 // No ConfigureAwait(false) - continuation must run on the UI thread to update controls.
-                var adapters = await NatPmpManager.DiscoverAdapters();
+                var adapters = await NatPmpManager.DiscoverAdaptersAsync();
 
                 // Guard against the form being closed while adapter discovery was in flight
                 if (IsDisposed) return;

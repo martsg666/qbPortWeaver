@@ -7,11 +7,11 @@ namespace qbPortWeaver
         protected override void Dispose(bool disposing)
         {
             if (disposing)
+            {
                 components?.Dispose();
+            }
             base.Dispose(disposing);
         }
-
-        #region Windows Form Designer generated code
 
         private void InitializeComponent()
         {
@@ -417,6 +417,7 @@ namespace qbPortWeaver
             btnCancel.Size = new Size(82, 28);
             btnCancel.TabIndex = 4;
             btnCancel.Text = "Cancel";
+            btnCancel.Click += btnCancel_Click;
             // 
             // SettingsForm
             // 
@@ -435,6 +436,7 @@ namespace qbPortWeaver
             MinimizeBox = false;
             Name = "SettingsForm";
             ShowIcon = false;
+            ShowInTaskbar = false;
             StartPosition = FormStartPosition.CenterScreen;
             Text = "qbPortWeaver | Settings";
             grpGeneral.ResumeLayout(false);
@@ -448,8 +450,6 @@ namespace qbPortWeaver
             grpExtra.PerformLayout();
             ResumeLayout(false);
         }
-
-        #endregion
 
         private GroupBox    grpGeneral;
         private Label       lblVpnProvider;

@@ -3,7 +3,7 @@ using System.Diagnostics;
 
 namespace qbPortWeaver
 {
-    // Manages PIA (Private Internet Access) VPN operations
+    /// <summary>Detects PIA (Private Internet Access) connectivity and reads the forwarded port via <c>piactl</c>.</summary>
     public sealed class PiaVpnManager : IVpnManager
     {
         private const string PiaUninstallRegistryPath = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall";
@@ -12,14 +12,16 @@ namespace qbPortWeaver
         internal const string ClientProcessName        = "pia-client";
         private const int    ProcessTimeoutMs         = 5000;
 
+        /// <inheritdoc />
         public string ProviderName => RegistrySettingsManager.VpnProviderPia;
 
+        /// <inheritdoc />
         public bool IsVpnConnected()
         {
             try
             {
                 string? output = RunPiactl("get connectionstate");
-                if (output == null)
+                if (output is null)
                 {
                     LogManager.Instance.LogDebug("PiaVpnManager.IsVpnConnected: piactl returned no output");
                     return false;
@@ -39,8 +41,10 @@ namespace qbPortWeaver
             }
         }
 
+        /// <inheritdoc />
         public Task<int?> GetVpnPortAsync() => Task.FromResult(GetVpnPortCore());
 
+        /// <inheritdoc />
         public string? GetRecoveryTarget() => ProviderName;
 
         private static int? GetVpnPortCore()
@@ -48,7 +52,7 @@ namespace qbPortWeaver
             try
             {
                 string? output = RunPiactl("get portforward");
-                if (output == null)
+                if (output is null)
                 {
                     LogManager.Instance.LogDebug("PiaVpnManager.GetVpnPortCore: piactl returned no output");
                     return null;
@@ -76,21 +80,17 @@ namespace qbPortWeaver
             try
             {
                 string? piactlPath = GetPiactlPath();
-                if (piactlPath == null)
+                if (piactlPath is null)
                 {
                     LogManager.Instance.LogDebug("PiaVpnManager.RunPiactl: Failed to resolve piactl path");
                     return null;
                 }
 
-                var startInfo = new ProcessStartInfo(piactlPath, arguments)
-                {
-                    UseShellExecute        = false,
-                    RedirectStandardOutput = true,
-                    CreateNoWindow         = true
-                };
+                var startInfo = AppConstants.CreateHiddenStartInfo(piactlPath, arguments);
+                startInfo.RedirectStandardOutput = true;
 
                 using var process = Process.Start(startInfo);
-                if (process == null)
+                if (process is null)
                 {
                     LogManager.Instance.LogDebug("PiaVpnManager.RunPiactl: Failed to start piactl process");
                     return null;
@@ -113,7 +113,7 @@ namespace qbPortWeaver
             }
             catch (Exception ex)
             {
-                LogManager.Instance.LogDebug($"PiaVpnManager.RunPiactl: Failed to run '{arguments}' - {ex.Message}");
+                LogManager.Instance.LogDebug($"PiaVpnManager.RunPiactl: Failed to run '{arguments}': {ex.Message}");
                 return null;
             }
         }
@@ -124,7 +124,7 @@ namespace qbPortWeaver
             try
             {
                 using var uninstallKey = Registry.LocalMachine.OpenSubKey(PiaUninstallRegistryPath);
-                if (uninstallKey == null)
+                if (uninstallKey is null)
                 {
                     LogManager.Instance.LogDebug("PiaVpnManager.GetPiactlPath: Failed to open Uninstall registry key");
                     return null;
@@ -133,11 +133,11 @@ namespace qbPortWeaver
                 foreach (string subKeyName in uninstallKey.GetSubKeyNames())
                 {
                     using var subKey = uninstallKey.OpenSubKey(subKeyName);
-                    if (subKey == null)
+                    if (subKey is null)
                         continue;
 
                     string? displayName = subKey.GetValue("DisplayName") as string;
-                    if (displayName == null || !displayName.Equals(PiaDisplayName, StringComparison.OrdinalIgnoreCase))
+                    if (displayName is null || !displayName.Equals(PiaDisplayName, StringComparison.OrdinalIgnoreCase))
                         continue;
 
                     string? installLocation = subKey.GetValue("InstallLocation") as string;

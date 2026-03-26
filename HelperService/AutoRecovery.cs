@@ -4,12 +4,12 @@ using System.ServiceProcess;
 
 namespace qbPortWeaver.HelperService;
 
-// Executes privileged recovery actions inside the SYSTEM Windows service.
-// Called by HelperPipeServer when the user-session tray app signals a recovery request.
-//
-// Supported actions:
-//   restart        - stop/start a Windows service by name
-//   cycle-adapter  - disable/enable a network adapter via netsh
+/// <summary>
+/// Executes privileged recovery actions inside the SYSTEM Windows service.
+/// Called by HelperPipeServer when the user-session tray app signals a recovery request.
+/// Supported actions: restart (stop/start a Windows service by name) and
+/// cycle-adapter (disable/enable a network adapter via netsh).
+/// </summary>
 internal static class AutoRecovery
 {
     private const int ProcessKillTimeoutMs      = 5000;
@@ -20,7 +20,7 @@ internal static class AutoRecovery
 
     // Maps provider keywords to the Windows service to restart.
     // Used by HelperPipeServer for the "restart" action (exact token lookup via FindServiceForToken).
-    internal static readonly Dictionary<string, string> ProviderServiceMap = new(StringComparer.OrdinalIgnoreCase)
+    private static readonly Dictionary<string, string> _providerServiceMap = new(StringComparer.OrdinalIgnoreCase)
     {
         ["ProtonVPN"] = "ProtonVPN Service",
         ["PIA"]       = "PrivateInternetAccessService",
@@ -39,22 +39,22 @@ internal static class AutoRecovery
             logger.LogInfo($"Restarting service '{serviceName}'");
 
             try { await StopServiceAsync(serviceName, logger).ConfigureAwait(false); }
-            catch (Exception ex) { logger.LogWarn($"Service '{serviceName}' stop failed: {ex.Message}"); }
+            catch (Exception ex) { logger.LogWarn($"Failed to stop service '{serviceName}': {ex.Message}"); }
 
             await Task.Delay(ServiceRestartDelayMs).ConfigureAwait(false);
 
             try { await StartServiceAsync(serviceName, logger).ConfigureAwait(false); }
             catch (Exception ex)
             {
-                logger.LogWarn($"Service '{serviceName}' start failed: {ex.Message}");
+                logger.LogWarn($"Failed to start service '{serviceName}': {ex.Message}");
                 return;
             }
 
-            logger.LogInfo($"Service '{serviceName}' restarted successfully");
+            logger.LogInfo($"Restarted service '{serviceName}'");
         }
         catch (Exception ex)
         {
-            logger.LogError($"Service restart failed: {ex.Message}");
+            logger.LogError($"Failed to restart service: {ex.Message}");
         }
     }
 
@@ -87,17 +87,17 @@ internal static class AutoRecovery
                 logger.LogWarn($"Failed to re-enable adapter '{adapterName}'");
                 return;
             }
-            logger.LogInfo($"Adapter '{adapterName}' re-enabled successfully");
+            logger.LogInfo($"Re-enabled adapter '{adapterName}'");
         }
         catch (Exception ex)
         {
-            logger.LogError($"Adapter cycle failed: {ex.Message}");
+            logger.LogError($"Failed to cycle adapter: {ex.Message}");
         }
     }
 
     // Exact-match lookup used by HelperPipeServer for the "restart" action.
     internal static string? FindServiceForToken(string providerToken) =>
-        ProviderServiceMap.TryGetValue(providerToken, out string? serviceName) ? serviceName : null;
+        _providerServiceMap.TryGetValue(providerToken, out string? serviceName) ? serviceName : null;
 
     // Stops a service cleanly via the SCM, with escalating force if it doesn't respond.
     // Escalation: SCM stop → wait → KillServiceProcess (3-stage: Process.Kill → taskkill /F /T → retry).
@@ -163,7 +163,7 @@ internal static class AutoRecovery
         {
             // sc.Stop() can throw if the service doesn't accept stop controls or is in
             // a transient state. Fall through to force-kill.
-            logger.LogWarn($"Service '{serviceName}' SCM stop failed: {ex.Message} - force-killing process");
+            logger.LogWarn($"Failed to stop service '{serviceName}' via SCM: {ex.Message} - force-killing process");
             KillServiceProcess(sc, logger);
             await WaitForStoppedOrWarnAsync(sc, serviceName, logger).ConfigureAwait(false);
             return;
@@ -285,7 +285,7 @@ internal static class AutoRecovery
 
                 if (process.WaitForExit(ProcessKillTimeoutMs))
                 {
-                    logger.LogInfo($"Service '{sc.ServiceName}' process force-killed (PID {pid})");
+                    logger.LogWarn($"Service '{sc.ServiceName}' process force-killed (PID {pid})");
                     return;
                 }
 
@@ -303,11 +303,11 @@ internal static class AutoRecovery
                 }
                 catch (Exception ex)
                 {
-                    logger.LogWarn($"Service '{sc.ServiceName}' taskkill fallback failed (PID {pid}): {ex.Message}");
+                    logger.LogWarn($"Failed to kill service '{sc.ServiceName}' via taskkill (PID {pid}): {ex.Message}");
                 }
                 if (process.WaitForExit(ProcessKillTimeoutMs))
                 {
-                    logger.LogInfo($"Service '{sc.ServiceName}' process force-killed via taskkill (PID {pid})");
+                    logger.LogWarn($"Service '{sc.ServiceName}' process force-killed via taskkill (PID {pid})");
                     return;
                 }
 
@@ -315,12 +315,12 @@ internal static class AutoRecovery
                 try { process.Kill(entireProcessTree: true); }
                 catch (InvalidOperationException)
                 {
-                    logger.LogInfo($"Service '{sc.ServiceName}' process force-killed (PID {pid})");
+                    logger.LogWarn($"Service '{sc.ServiceName}' process force-killed (PID {pid})");
                     return;
                 }
 
                 if (process.WaitForExit(ProcessKillTimeoutMs))
-                    logger.LogInfo($"Service '{sc.ServiceName}' process force-killed (PID {pid})");
+                    logger.LogWarn($"Service '{sc.ServiceName}' process force-killed (PID {pid})");
                 else
                     logger.LogWarn($"Service '{sc.ServiceName}' process (PID {pid}) still running after all kill attempts");
             }
@@ -331,7 +331,7 @@ internal static class AutoRecovery
         }
         catch (Exception ex)
         {
-            logger.LogWarn($"Service '{sc.ServiceName}' force-kill failed: {ex.Message}");
+            logger.LogWarn($"Failed to force-kill service '{sc.ServiceName}': {ex.Message}");
         }
     }
 
@@ -366,14 +366,14 @@ internal static class AutoRecovery
                 // netsh is a short-lived system utility that always responds to Process.Kill -
                 // no taskkill fallback needed here.
                 process.Kill(entireProcessTree: true);
-                logger.LogWarn($"Netsh timed out and was killed");
+                logger.LogWarn("netsh timed out and was killed");
                 return false;
             }
 
             if (process.ExitCode != 0)
             {
                 string output = !string.IsNullOrWhiteSpace(stderr) ? stderr.Trim() : stdout.Trim();
-                logger.LogWarn($"Netsh exited with code {process.ExitCode}: {output}");
+                logger.LogWarn($"netsh exited with code {process.ExitCode}: {output}");
                 return false;
             }
 
@@ -381,7 +381,7 @@ internal static class AutoRecovery
         }
         catch (Exception ex)
         {
-            logger.LogWarn($"Netsh failed: {ex.Message}");
+            logger.LogWarn($"Failed to run netsh: {ex.Message}");
             return false;
         }
     }

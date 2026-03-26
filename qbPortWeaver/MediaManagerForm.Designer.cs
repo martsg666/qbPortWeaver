@@ -15,8 +15,6 @@ namespace qbPortWeaver
             base.Dispose(disposing);
         }
 
-        #region Windows Form Designer generated code
-
         private void InitializeComponent()
         {
             components       = new System.ComponentModel.Container();
@@ -26,29 +24,35 @@ namespace qbPortWeaver
             lblTmdbApiKey    = new Label();
             txtTmdbApiKey    = new TextBox();
             chkDryRun        = new CheckBox();
-            chkCreateFolders = new CheckBox();
-            tabFolders       = new TabControl();
-            tabMovies        = new TabPage();
-            lstMovieFolders      = new ListBox();
-            btnAddMovieFolder    = new Button();
-            btnRemoveMovieFolder = new Button();
-            tabTvShows       = new TabPage();
-            lstTvShowFolders      = new ListBox();
-            btnAddTvShowFolder    = new Button();
-            btnRemoveTvShowFolder = new Button();
+            chkCreateFolders      = new CheckBox();
+            chkDeleteEmptyFolders = new CheckBox();
+            lblImportMode         = new Label();
+            cboImportMode         = new ComboBox();
+            grpLibrary                 = new GroupBox();
+            lblMoviesLibraryPath       = new Label();
+            txtMoviesLibraryPath       = new TextBox();
+            btnBrowseMoviesLibrary     = new Button();
+            lblTvShowsLibraryPath      = new Label();
+            txtTvShowsLibraryPath      = new TextBox();
+            btnBrowseTvShowsLibrary    = new Button();
+            grpSourceFolders      = new GroupBox();
+            lstSourceFolders      = new ListBox();
+            btnAddSourceFolder    = new Button();
+            btnRemoveSourceFolder = new Button();
             btnScanNow     = new Button();
-            btnRenameNow   = new Button();
+            btnImportNow   = new Button();
+            btnClearCache  = new Button();
             lblScanStatus  = new Label();
             dgvResults     = new DataGridView();
+            colInclude     = new DataGridViewCheckBoxColumn();
             colType        = new DataGridViewTextBoxColumn();
             colCurrent     = new DataGridViewTextBoxColumn();
             colProposed    = new DataGridViewTextBoxColumn();
             btnOK          = new Button();
             btnCancel      = new Button();
             grpGeneral.SuspendLayout();
-            tabFolders.SuspendLayout();
-            tabMovies.SuspendLayout();
-            tabTvShows.SuspendLayout();
+            grpLibrary.SuspendLayout();
+            grpSourceFolders.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)dgvResults).BeginInit();
             SuspendLayout();
             //
@@ -59,9 +63,12 @@ namespace qbPortWeaver
             grpGeneral.Controls.Add(txtTmdbApiKey);
             grpGeneral.Controls.Add(chkDryRun);
             grpGeneral.Controls.Add(chkCreateFolders);
+            grpGeneral.Controls.Add(chkDeleteEmptyFolders);
+            grpGeneral.Controls.Add(lblImportMode);
+            grpGeneral.Controls.Add(cboImportMode);
             grpGeneral.Location = new Point(8, 8);
             grpGeneral.Name     = "grpGeneral";
-            grpGeneral.Size     = new Size(684, 136);
+            grpGeneral.Size     = new Size(684, 190);
             grpGeneral.TabIndex = 0;
             grpGeneral.TabStop  = false;
             grpGeneral.Text     = "General";
@@ -96,7 +103,7 @@ namespace qbPortWeaver
             chkDryRun.Location = new Point(12, 85);
             chkDryRun.Name     = "chkDryRun";
             chkDryRun.TabIndex = 3;
-            chkDryRun.Text     = "Dry run (preview only - no files will be renamed)";
+            chkDryRun.Text     = "Dry run (preview only - no files will be imported)";
             //
             // chkCreateFolders
             //
@@ -104,119 +111,170 @@ namespace qbPortWeaver
             chkCreateFolders.Location = new Point(12, 110);
             chkCreateFolders.Name     = "chkCreateFolders";
             chkCreateFolders.TabIndex = 4;
-            chkCreateFolders.Text     = "Create Plex folder structure when renaming";
+            chkCreateFolders.Text     = "Create Plex folder structure when importing";
             //
-            // tabFolders
+            // chkDeleteEmptyFolders
             //
-            tabFolders.Controls.Add(tabMovies);
-            tabFolders.Controls.Add(tabTvShows);
-            tabFolders.Location      = new Point(8, 152);
-            tabFolders.Name          = "tabFolders";
-            tabFolders.SelectedIndex = 0;
-            tabFolders.Size          = new Size(684, 152);
-            tabFolders.TabIndex      = 1;
+            chkDeleteEmptyFolders.AutoSize = true;
+            chkDeleteEmptyFolders.Location = new Point(12, 135);
+            chkDeleteEmptyFolders.Name     = "chkDeleteEmptyFolders";
+            chkDeleteEmptyFolders.TabIndex = 5;
+            chkDeleteEmptyFolders.Text     = "Delete empty source folders after importing (folders with only .nfo files are also removed)";
             //
-            // tabMovies
+            // lblImportMode
             //
-            tabMovies.Controls.Add(lstMovieFolders);
-            tabMovies.Controls.Add(btnAddMovieFolder);
-            tabMovies.Controls.Add(btnRemoveMovieFolder);
-            tabMovies.Location            = new Point(4, 24);
-            tabMovies.Name                = "tabMovies";
-            tabMovies.Padding             = new Padding(3);
-            tabMovies.Size                = new Size(676, 124);
-            tabMovies.TabIndex            = 0;
-            tabMovies.Text                = "Movies";
-            tabMovies.UseVisualStyleBackColor = true;
+            lblImportMode.Location  = new Point(12, 162);
+            lblImportMode.Name      = "lblImportMode";
+            lblImportMode.Size      = new Size(130, 23);
+            lblImportMode.TabIndex  = 6;
+            lblImportMode.Text      = "Import Mode:";
+            lblImportMode.TextAlign = ContentAlignment.MiddleLeft;
             //
-            // lstMovieFolders
+            // cboImportMode
             //
-            lstMovieFolders.Location = new Point(8, 8);
-            lstMovieFolders.Name     = "lstMovieFolders";
-            lstMovieFolders.Size     = new Size(660, 82);
-            lstMovieFolders.TabIndex = 0;
+            cboImportMode.DropDownStyle = ComboBoxStyle.DropDownList;
+            cboImportMode.Items.AddRange(new object[] { "Hardlink", "Copy", "Move" });
+            cboImportMode.Location = new Point(148, 162);
+            cboImportMode.Name     = "cboImportMode";
+            cboImportMode.Size     = new Size(120, 23);
+            cboImportMode.TabIndex = 7;
             //
-            // btnAddMovieFolder
+            // grpLibrary
             //
-            btnAddMovieFolder.Location = new Point(8, 96);
-            btnAddMovieFolder.Name     = "btnAddMovieFolder";
-            btnAddMovieFolder.Size     = new Size(75, 23);
-            btnAddMovieFolder.TabIndex = 1;
-            btnAddMovieFolder.Text     = "Add...";
-            btnAddMovieFolder.Click   += btnAddMovieFolder_Click;
+            grpLibrary.Controls.Add(lblMoviesLibraryPath);
+            grpLibrary.Controls.Add(txtMoviesLibraryPath);
+            grpLibrary.Controls.Add(btnBrowseMoviesLibrary);
+            grpLibrary.Controls.Add(lblTvShowsLibraryPath);
+            grpLibrary.Controls.Add(txtTvShowsLibraryPath);
+            grpLibrary.Controls.Add(btnBrowseTvShowsLibrary);
+            grpLibrary.Location = new Point(8, 206);
+            grpLibrary.Name     = "grpLibrary";
+            grpLibrary.Size     = new Size(684, 82);
+            grpLibrary.TabIndex = 1;
+            grpLibrary.TabStop  = false;
+            grpLibrary.Text     = "Library Folders";
             //
-            // btnRemoveMovieFolder
+            // lblMoviesLibraryPath
             //
-            btnRemoveMovieFolder.Location = new Point(88, 96);
-            btnRemoveMovieFolder.Name     = "btnRemoveMovieFolder";
-            btnRemoveMovieFolder.Size     = new Size(75, 23);
-            btnRemoveMovieFolder.TabIndex = 2;
-            btnRemoveMovieFolder.Text     = "Remove";
-            btnRemoveMovieFolder.Click   += btnRemoveMovieFolder_Click;
+            lblMoviesLibraryPath.Location  = new Point(12, 24);
+            lblMoviesLibraryPath.Name      = "lblMoviesLibraryPath";
+            lblMoviesLibraryPath.Size      = new Size(130, 23);
+            lblMoviesLibraryPath.TabIndex  = 0;
+            lblMoviesLibraryPath.Text      = "Movies Library:";
+            lblMoviesLibraryPath.TextAlign = ContentAlignment.MiddleLeft;
             //
-            // tabTvShows
+            // txtMoviesLibraryPath
             //
-            tabTvShows.Controls.Add(lstTvShowFolders);
-            tabTvShows.Controls.Add(btnAddTvShowFolder);
-            tabTvShows.Controls.Add(btnRemoveTvShowFolder);
-            tabTvShows.Location            = new Point(4, 24);
-            tabTvShows.Name                = "tabTvShows";
-            tabTvShows.Padding             = new Padding(3);
-            tabTvShows.Size                = new Size(676, 124);
-            tabTvShows.TabIndex            = 1;
-            tabTvShows.Text                = "TV Shows";
-            tabTvShows.UseVisualStyleBackColor = true;
+            txtMoviesLibraryPath.Location = new Point(148, 24);
+            txtMoviesLibraryPath.Name     = "txtMoviesLibraryPath";
+            txtMoviesLibraryPath.Size     = new Size(480, 23);
+            txtMoviesLibraryPath.TabIndex = 1;
             //
-            // lstTvShowFolders
+            // btnBrowseMoviesLibrary
             //
-            lstTvShowFolders.Location = new Point(8, 8);
-            lstTvShowFolders.Name     = "lstTvShowFolders";
-            lstTvShowFolders.Size     = new Size(660, 82);
-            lstTvShowFolders.TabIndex = 0;
+            btnBrowseMoviesLibrary.Location = new Point(634, 24);
+            btnBrowseMoviesLibrary.Name     = "btnBrowseMoviesLibrary";
+            btnBrowseMoviesLibrary.Size     = new Size(40, 23);
+            btnBrowseMoviesLibrary.TabIndex = 2;
+            btnBrowseMoviesLibrary.Text     = "...";
+            btnBrowseMoviesLibrary.Click   += btnBrowseMoviesLibrary_Click;
             //
-            // btnAddTvShowFolder
+            // lblTvShowsLibraryPath
             //
-            btnAddTvShowFolder.Location = new Point(8, 96);
-            btnAddTvShowFolder.Name     = "btnAddTvShowFolder";
-            btnAddTvShowFolder.Size     = new Size(75, 23);
-            btnAddTvShowFolder.TabIndex = 1;
-            btnAddTvShowFolder.Text     = "Add...";
-            btnAddTvShowFolder.Click   += btnAddTvShowFolder_Click;
+            lblTvShowsLibraryPath.Location  = new Point(12, 53);
+            lblTvShowsLibraryPath.Name      = "lblTvShowsLibraryPath";
+            lblTvShowsLibraryPath.Size      = new Size(130, 23);
+            lblTvShowsLibraryPath.TabIndex  = 3;
+            lblTvShowsLibraryPath.Text      = "TV Shows Library:";
+            lblTvShowsLibraryPath.TextAlign = ContentAlignment.MiddleLeft;
             //
-            // btnRemoveTvShowFolder
+            // txtTvShowsLibraryPath
             //
-            btnRemoveTvShowFolder.Location = new Point(88, 96);
-            btnRemoveTvShowFolder.Name     = "btnRemoveTvShowFolder";
-            btnRemoveTvShowFolder.Size     = new Size(75, 23);
-            btnRemoveTvShowFolder.TabIndex = 2;
-            btnRemoveTvShowFolder.Text     = "Remove";
-            btnRemoveTvShowFolder.Click   += btnRemoveTvShowFolder_Click;
+            txtTvShowsLibraryPath.Location = new Point(148, 53);
+            txtTvShowsLibraryPath.Name     = "txtTvShowsLibraryPath";
+            txtTvShowsLibraryPath.Size     = new Size(480, 23);
+            txtTvShowsLibraryPath.TabIndex = 4;
+            //
+            // btnBrowseTvShowsLibrary
+            //
+            btnBrowseTvShowsLibrary.Location = new Point(634, 53);
+            btnBrowseTvShowsLibrary.Name     = "btnBrowseTvShowsLibrary";
+            btnBrowseTvShowsLibrary.Size     = new Size(40, 23);
+            btnBrowseTvShowsLibrary.TabIndex = 5;
+            btnBrowseTvShowsLibrary.Text     = "...";
+            btnBrowseTvShowsLibrary.Click   += btnBrowseTvShowsLibrary_Click;
+            //
+            // grpSourceFolders
+            //
+            grpSourceFolders.Controls.Add(lstSourceFolders);
+            grpSourceFolders.Controls.Add(btnAddSourceFolder);
+            grpSourceFolders.Controls.Add(btnRemoveSourceFolder);
+            grpSourceFolders.Location = new Point(8, 296);
+            grpSourceFolders.Name     = "grpSourceFolders";
+            grpSourceFolders.Size     = new Size(684, 126);
+            grpSourceFolders.TabIndex = 2;
+            grpSourceFolders.TabStop  = false;
+            grpSourceFolders.Text     = "Source Folders (download / seeding folders to scan for movies and TV shows)";
+            //
+            // lstSourceFolders
+            //
+            lstSourceFolders.Location = new Point(12, 24);
+            lstSourceFolders.Name     = "lstSourceFolders";
+            lstSourceFolders.Size     = new Size(660, 67);
+            lstSourceFolders.TabIndex = 0;
+            //
+            // btnAddSourceFolder
+            //
+            btnAddSourceFolder.Location = new Point(12, 97);
+            btnAddSourceFolder.Name     = "btnAddSourceFolder";
+            btnAddSourceFolder.Size     = new Size(75, 23);
+            btnAddSourceFolder.TabIndex = 1;
+            btnAddSourceFolder.Text     = "Add...";
+            btnAddSourceFolder.Click   += btnAddSourceFolder_Click;
+            //
+            // btnRemoveSourceFolder
+            //
+            btnRemoveSourceFolder.Location = new Point(92, 97);
+            btnRemoveSourceFolder.Name     = "btnRemoveSourceFolder";
+            btnRemoveSourceFolder.Size     = new Size(75, 23);
+            btnRemoveSourceFolder.TabIndex = 2;
+            btnRemoveSourceFolder.Text     = "Remove";
+            btnRemoveSourceFolder.Click   += btnRemoveSourceFolder_Click;
             //
             // btnScanNow
             //
-            btnScanNow.Location = new Point(8, 312);
+            btnScanNow.Location = new Point(8, 430);
             btnScanNow.Name     = "btnScanNow";
             btnScanNow.Size     = new Size(90, 28);
-            btnScanNow.TabIndex = 2;
+            btnScanNow.TabIndex = 3;
             btnScanNow.Text     = "Scan Now";
             btnScanNow.Click   += btnScanNow_Click;
             //
-            // btnRenameNow
+            // btnImportNow
             //
-            btnRenameNow.Enabled  = false;
-            btnRenameNow.Location = new Point(106, 312);
-            btnRenameNow.Name     = "btnRenameNow";
-            btnRenameNow.Size     = new Size(100, 28);
-            btnRenameNow.TabIndex = 3;
-            btnRenameNow.Text     = "Rename Now";
-            btnRenameNow.Click   += btnRenameNow_Click;
+            btnImportNow.Enabled  = false;
+            btnImportNow.Location = new Point(106, 430);
+            btnImportNow.Name     = "btnImportNow";
+            btnImportNow.Size     = new Size(100, 28);
+            btnImportNow.TabIndex = 4;
+            btnImportNow.Text     = "Import Now";
+            btnImportNow.Click   += btnImportNow_Click;
+            //
+            // btnClearCache
+            //
+            btnClearCache.Location = new Point(214, 430);
+            btnClearCache.Name     = "btnClearCache";
+            btnClearCache.Size     = new Size(100, 28);
+            btnClearCache.TabIndex = 5;
+            btnClearCache.Text     = "Clear Cache";
+            btnClearCache.Click   += btnClearCache_Click;
             //
             // lblScanStatus
             //
-            lblScanStatus.Location  = new Point(214, 312);
+            lblScanStatus.Location  = new Point(322, 430);
             lblScanStatus.Name      = "lblScanStatus";
-            lblScanStatus.Size      = new Size(478, 28);
-            lblScanStatus.TabIndex  = 4;
+            lblScanStatus.Size      = new Size(370, 28);
+            lblScanStatus.TabIndex  = 6;
             lblScanStatus.TextAlign = ContentAlignment.MiddleLeft;
             lblScanStatus.ForeColor = SystemColors.GrayText;
             //
@@ -229,17 +287,27 @@ namespace qbPortWeaver
             dgvResults.BackgroundColor       = SystemColors.Window;
             dgvResults.BorderStyle           = BorderStyle.Fixed3D;
             dgvResults.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.AutoSize;
-            dgvResults.Columns.AddRange(colType, colCurrent, colProposed);
-            dgvResults.Location     = new Point(8, 348);
+            dgvResults.Columns.AddRange(colInclude, colType, colCurrent, colProposed);
+            dgvResults.Location     = new Point(8, 466);
             dgvResults.Name         = "dgvResults";
             dgvResults.RowHeadersVisible = false;
             dgvResults.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
-            dgvResults.Size         = new Size(684, 420);
+            dgvResults.Size         = new Size(684, 360);
             dgvResults.ClipboardCopyMode = DataGridViewClipboardCopyMode.EnableWithoutHeaderText;
-            dgvResults.TabIndex          = 5;
+            dgvResults.TabIndex          = 6;
             dgvResults.TabStop           = false;
-            dgvResults.CellFormatting   += dgvResults_CellFormatting;
-            dgvResults.KeyDown          += dgvResults_KeyDown;
+            dgvResults.CellFormatting          += dgvResults_CellFormatting;
+            dgvResults.CellContentClick        += dgvResults_CellContentClick;
+            dgvResults.ColumnHeaderMouseClick  += dgvResults_ColumnHeaderMouseClick;
+            dgvResults.KeyDown                 += dgvResults_KeyDown;
+            //
+            // colInclude
+            //
+            colInclude.FillWeight   = 5;
+            colInclude.HeaderText   = "";
+            colInclude.MinimumWidth = 30;
+            colInclude.Name         = "colInclude";
+            colInclude.SortMode     = DataGridViewColumnSortMode.NotSortable;
             //
             // colType
             //
@@ -269,21 +337,22 @@ namespace qbPortWeaver
             //
             // btnOK
             //
-            btnOK.Location = new Point(510, 780);
+            btnOK.Location = new Point(510, 838);
             btnOK.Name     = "btnOK";
             btnOK.Size     = new Size(82, 28);
-            btnOK.TabIndex = 6;
+            btnOK.TabIndex = 7;
             btnOK.Text     = "OK";
             btnOK.Click   += btnOK_Click;
             //
             // btnCancel
             //
             btnCancel.DialogResult = DialogResult.Cancel;
-            btnCancel.Location     = new Point(602, 780);
+            btnCancel.Location     = new Point(602, 838);
             btnCancel.Name         = "btnCancel";
             btnCancel.Size         = new Size(82, 28);
-            btnCancel.TabIndex     = 7;
+            btnCancel.TabIndex     = 8;
             btnCancel.Text         = "Cancel";
+            btnCancel.Click       += btnCancel_Click;
             //
             // MediaManagerForm
             //
@@ -291,11 +360,13 @@ namespace qbPortWeaver
             AutoScaleDimensions = new SizeF(7F, 15F);
             AutoScaleMode       = AutoScaleMode.Font;
             CancelButton        = btnCancel;
-            ClientSize          = new Size(700, 820);
+            ClientSize          = new Size(700, 878);
             Controls.Add(grpGeneral);
-            Controls.Add(tabFolders);
+            Controls.Add(grpLibrary);
+            Controls.Add(grpSourceFolders);
             Controls.Add(btnScanNow);
-            Controls.Add(btnRenameNow);
+            Controls.Add(btnImportNow);
+            Controls.Add(btnClearCache);
             Controls.Add(lblScanStatus);
             Controls.Add(dgvResults);
             Controls.Add(btnOK);
@@ -305,18 +376,17 @@ namespace qbPortWeaver
             MinimizeBox     = false;
             Name            = "MediaManagerForm";
             ShowIcon        = false;
+            ShowInTaskbar   = false;
             StartPosition   = FormStartPosition.CenterScreen;
             Text            = "qbPortWeaver | Media Manager";
             grpGeneral.ResumeLayout(false);
             grpGeneral.PerformLayout();
-            tabFolders.ResumeLayout(false);
-            tabMovies.ResumeLayout(false);
-            tabTvShows.ResumeLayout(false);
+            grpLibrary.ResumeLayout(false);
+            grpLibrary.PerformLayout();
+            grpSourceFolders.ResumeLayout(false);
             ((System.ComponentModel.ISupportInitialize)dgvResults).EndInit();
             ResumeLayout(false);
         }
-
-        #endregion
 
         private GroupBox grpGeneral;
         private CheckBox chkEnabled;
@@ -324,23 +394,29 @@ namespace qbPortWeaver
         private TextBox  txtTmdbApiKey;
         private CheckBox chkDryRun;
         private CheckBox chkCreateFolders;
+        private CheckBox chkDeleteEmptyFolders;
+        private Label    lblImportMode;
+        private ComboBox cboImportMode;
 
-        private TabControl tabFolders;
+        private GroupBox grpLibrary;
+        private Label    lblMoviesLibraryPath;
+        private TextBox  txtMoviesLibraryPath;
+        private Button   btnBrowseMoviesLibrary;
+        private Label    lblTvShowsLibraryPath;
+        private TextBox  txtTvShowsLibraryPath;
+        private Button   btnBrowseTvShowsLibrary;
 
-        private TabPage  tabMovies;
-        private ListBox  lstMovieFolders;
-        private Button   btnAddMovieFolder;
-        private Button   btnRemoveMovieFolder;
-
-        private TabPage  tabTvShows;
-        private ListBox  lstTvShowFolders;
-        private Button   btnAddTvShowFolder;
-        private Button   btnRemoveTvShowFolder;
+        private GroupBox grpSourceFolders;
+        private ListBox  lstSourceFolders;
+        private Button   btnAddSourceFolder;
+        private Button   btnRemoveSourceFolder;
 
         private Button           btnScanNow;
-        private Button           btnRenameNow;
+        private Button           btnImportNow;
+        private Button           btnClearCache;
         private Label            lblScanStatus;
         private DataGridView     dgvResults;
+        private DataGridViewCheckBoxColumn colInclude;
         private DataGridViewTextBoxColumn colType;
         private DataGridViewTextBoxColumn colCurrent;
         private DataGridViewTextBoxColumn colProposed;

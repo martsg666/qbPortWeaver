@@ -2,12 +2,13 @@ using System.Net;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
 
-
 namespace qbPortWeaver
 {
-    // NAT-PMP VPN manager. PortSyncService creates instances via TryCreateForAdapter() (sync cycle)
-    // or DiscoverAdapters() (SettingsForm). Renewal state (_lastExternalPort, _lastEpochSeconds) is
-    // transferred across cycles via CopyRenewalStateFrom() so port renewal works correctly.
+    /// <summary>
+    /// NAT-PMP VPN manager. PortSyncService creates instances via TryCreateForAdapterAsync() (sync cycle)
+    /// or DiscoverAdaptersAsync() (SettingsForm). Renewal state is transferred across cycles via
+    /// CopyRenewalStateFrom() so port renewal works correctly.
+    /// </summary>
     public sealed class NatPmpManager : IVpnManager
     {
         private const int  NatPmpPort             = 5351;
@@ -23,11 +24,10 @@ namespace qbPortWeaver
         private ushort _lastExternalPort;  // zero until first mapping; suggested to gateway on renewal
         private uint   _lastEpochSeconds;  // SSOE (Seconds Since Opened Epoch) from the last successful NAT-PMP response
 
-        // Returns the adapter name, used as the VPN provider display name in log messages and status.
+        /// <inheritdoc />
         public string ProviderName => _adapter.Name;
 
-        // The lease lifetime (in seconds) granted by the gateway on the last successful port mapping; 0 until first mapping.
-        // Read by PortSyncService to warn when the configured sync interval exceeds the lease lifetime.
+        /// <summary>Lease lifetime in seconds granted by the gateway on the last successful port mapping; 0 until first mapping.</summary>
         public uint LastGrantedLifetime { get; private set; }
 
         private NatPmpManager(NetworkInterface adapter, IPAddress gateway, uint mappingLifetime)
@@ -44,7 +44,7 @@ namespace qbPortWeaver
         /// gateway responds are returned. Used by SettingsForm to populate the adapter list.
         /// </summary>
         /// <param name="mappingLifetime">Requested port mapping duration in seconds; the gateway may grant less.</param>
-        public static async Task<IReadOnlyList<NatPmpManager>> DiscoverAdapters(uint mappingLifetime = DefaultMappingLifetime)
+        public static async Task<IReadOnlyList<NatPmpManager>> DiscoverAdaptersAsync(uint mappingLifetime = DefaultMappingLifetime)
         {
             var candidates = new List<(NetworkInterface Nic, IPAddress Gateway)>();
 
@@ -63,7 +63,7 @@ namespace qbPortWeaver
             var probeResults = await Task.WhenAll(candidates.Select(async c =>
             {
                 IPAddress? externalIp = await RequestExternalAddressAsync(c.Gateway).ConfigureAwait(false);
-                LogProbeResultDebug("DiscoverAdapters", c.Nic.Name, c.Gateway, externalIp);
+                LogProbeResultDebug("DiscoverAdaptersAsync", c.Nic.Name, c.Gateway, externalIp);
                 return (c.Nic, c.Gateway, Supported: externalIp is not null);
             })).ConfigureAwait(false);
 
@@ -76,41 +76,40 @@ namespace qbPortWeaver
         /// <summary>
         /// Probes only the named adapter rather than all adapters. Used by the sync cycle so that
         /// unrelated adapters (e.g. ZeroTier, Ethernet) are never probed unnecessarily.
-        /// Unlike <see cref="DiscoverAdapters"/>, uses <see cref="MaxAttempts"/> retries with
+        /// Unlike <see cref="DiscoverAdaptersAsync"/>, uses <see cref="MaxAttempts"/> retries with
         /// exponential backoff since probing a single known adapter is worth retrying on transient packet loss.
         /// Returns <see langword="null"/> if the adapter is not found or not up, has no resolvable
         /// gateway, or does not respond to a NAT-PMP probe.
         /// </summary>
-        /// <param name="adapterName">The adapter description to match (case-insensitive).</param>
+        /// <param name="adapterName">The adapter name to match (case-insensitive).</param>
         /// <param name="mappingLifetime">Requested port mapping duration in seconds; the gateway may grant less.</param>
-        public static async Task<NatPmpManager?> TryCreateForAdapter(string adapterName, uint mappingLifetime = DefaultMappingLifetime)
+        public static async Task<NatPmpManager?> TryCreateForAdapterAsync(string adapterName, uint mappingLifetime = DefaultMappingLifetime)
         {
             NetworkInterface? nic = GetActiveNetworkInterfaces()
                 .FirstOrDefault(n => n.Name.Equals(adapterName, StringComparison.OrdinalIgnoreCase));
 
             if (nic is null)
             {
-                LogManager.Instance.LogDebug($"NatPmpManager.TryCreateForAdapter: '{adapterName}' not found or not up");
+                LogManager.Instance.LogDebug($"NatPmpManager.TryCreateForAdapterAsync: '{adapterName}' not found or not up");
                 return null;
             }
 
             IPAddress? gateway = ResolveGateway(nic.GetIPProperties());
             if (gateway is null)
             {
-                LogManager.Instance.LogDebug($"NatPmpManager.TryCreateForAdapter: '{adapterName}' - no resolvable gateway");
+                LogManager.Instance.LogDebug($"NatPmpManager.TryCreateForAdapterAsync: '{adapterName}' - no resolvable gateway");
                 return null;
             }
 
             IPAddress? externalIp = await RequestExternalAddressAsync(gateway, MaxAttempts).ConfigureAwait(false);
-            LogProbeResultDebug("TryCreateForAdapter", adapterName, gateway, externalIp);
+            LogProbeResultDebug("TryCreateForAdapterAsync", adapterName, gateway, externalIp);
 
             return externalIp is not null ? new NatPmpManager(nic, gateway, mappingLifetime) : null;
         }
 
-        // Re-enumerates network interfaces to check if the adapter is currently present and up.
-        // The stored _adapter object retains its last-seen OperationalStatus even after the
-        // adapter is removed (e.g. ProtonVPN removes the TUN adapter on disconnect), so a
-        // fresh enumeration is required for an accurate result.
+        /// <inheritdoc />
+        // Re-enumerates network interfaces because the stored _adapter object retains its
+        // last-seen OperationalStatus even after the adapter is removed on disconnect.
         public bool IsVpnConnected()
         {
             try
@@ -131,11 +130,10 @@ namespace qbPortWeaver
             }
         }
 
-        // Sends a NAT-PMP UDP port mapping request and returns the assigned external port.
-        // Primarily logs at INFO/WARN (not DEBUG) - lease time and failure details are not surfaced
-        // elsewhere in the sync cycle. The epoch delta is the exception, logged at DEBUG only.
-        // On renewal, suggests the previously assigned port (RFC 6886 §3.3) so the gateway keeps
-        // the same mapping across cycles, avoiding unnecessary qBittorrent restarts.
+        /// <inheritdoc />
+        // Logs at INFO/WARN (not DEBUG) because lease time and failure details are not surfaced
+        // elsewhere in the sync cycle. On renewal, suggests the previously assigned port
+        // (RFC 6886 §3.3) so the gateway keeps the same mapping across cycles.
         public async Task<int?> GetVpnPortAsync()
         {
             try
@@ -148,7 +146,7 @@ namespace qbPortWeaver
 
                 if (!result.Success)
                 {
-                    LogManager.Instance.LogMessage($"NAT-PMP port mapping failed on '{_adapter.Name}': {result.Error}", LogLevel.Warn);
+                    LogManager.Instance.LogMessage($"Failed to map NAT-PMP port on '{_adapter.Name}': {result.Error}", LogLevel.Warn);
                     return null;
                 }
 
@@ -183,9 +181,9 @@ namespace qbPortWeaver
             }
         }
 
-        // Returns the adapter name as the recovery target. PortSyncService checks if the name
-        // matches a known provider (ProtonVPN, PIA) and triggers a service restart instead of
-        // an adapter cycle.
+        /// <inheritdoc />
+        // Returns the adapter name. PortSyncService checks if it matches a known provider
+        // (ProtonVPN, PIA) and triggers a service restart instead of an adapter cycle.
         public string? GetRecoveryTarget() => _adapter.Name;
 
         // Transfers renewal state from a previous instance so that port renewal works correctly

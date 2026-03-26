@@ -2,6 +2,7 @@ using System.Runtime.InteropServices;
 
 namespace qbPortWeaver
 {
+    /// <summary>Main application form - hosts the system tray icon, context menu, and owns the background port-sync service.</summary>
     public partial class MainForm : Form
     {
         // Tray icon, menu and auto-start menu item
@@ -18,8 +19,11 @@ namespace qbPortWeaver
         // Services
         private readonly PortSyncService _portSyncService;
 
-        // Modeless log viewer (null when closed)
+        // Child forms (null when closed)
         private LogViewerForm? _logViewerForm;
+        private SettingsForm? _settingsForm;
+        private MediaManagerForm? _mediaManagerForm;
+        private AboutForm? _aboutForm;
 
         // Last sync status (written from background thread, read on UI thread)
         private volatile TrayStatus? _lastSyncStatus;
@@ -89,7 +93,20 @@ namespace qbPortWeaver
             }
             catch (Exception ex)
             {
-                HandleMainLoopException(ex);
+                LogManager.Instance.LogMessage($"Fatal startup error: {ex}", LogLevel.Error);
+                try
+                {
+                    InvokeOnUiThread(() =>
+                    {
+                        MessageBox.Show($"Fatal startup error: {ex.Message}\n\nThe application will now exit.",
+                            AppConstants.AppName, MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        Application.Exit();
+                    });
+                }
+                catch (Exception)
+                {
+                    Application.Exit();
+                }
             }
         }
 
@@ -131,8 +148,11 @@ namespace qbPortWeaver
             // Hide tray icon immediately to avoid ghost icon
             _trayIcon.Visible = false;
 
-            // Close modeless log viewer if open
+            // Close all child forms
             _logViewerForm?.Close();
+            _settingsForm?.Close();
+            _mediaManagerForm?.Close();
+            _aboutForm?.Close();
 
             // Resources are disposed in Dispose(bool) via MainForm.Designer.cs
             base.OnFormClosing(e);
@@ -180,38 +200,22 @@ namespace qbPortWeaver
         private void InitializeTrayIcon()
         {
             _trayMenu = new ContextMenuStrip();
-            _trayMenu.Items.Add("Synchronize Port Now", null, SynchronizePortNow_Click);
-            _trayMenu.Items.Add("Show Logs", null, (s, e) => ShowLogViewer());
-            _trayMenu.Items.Add("Clear Logs", null, (s, e) =>
-            {
-                LogManager.Instance.ClearLogs();
-                _trayIcon.ShowBalloonTip(AppConstants.BalloonTipDurationMs, AppConstants.AppName, "Logs cleared", ToolTipIcon.Info);
-            });
-            _trayMenu.Items.Add("Settings", null, (s, e) =>
-            {
-                using var frm = new SettingsForm();
-                frm.ShowDialog(this);
-            });
-            _trayMenu.Items.Add("Media Manager", null, (s, e) =>
-            {
-                using var frm = new MediaManagerForm();
-                frm.ShowDialog(this);
-            });
-            _trayMenu.Items.Add("About", null, (s, e) =>
-            {
-                using var frm = new AboutForm();
-                frm.ShowDialog(this);
-            });
+            _trayMenu.Items.Add("Sync Port Now", null, syncPortNow_Click);
+            _trayMenu.Items.Add("Show Logs", null, showLogs_Click);
+            _trayMenu.Items.Add("Clear Logs", null, clearLogs_Click);
+            _trayMenu.Items.Add("Settings", null, showSettings_Click);
+            _trayMenu.Items.Add("Media Manager", null, showMediaManager_Click);
+            _trayMenu.Items.Add("About", null, showAbout_Click);
 
             _autoStartMenuItem = new ToolStripMenuItem("Start Automatically with Windows")
             {
                 CheckOnClick = true,
                 Checked = StartupManager.IsStartupEnabled()
             };
-            _autoStartMenuItem.Click += (s, e) => StartupManager.SetStartup(_autoStartMenuItem.Checked);
+            _autoStartMenuItem.Click += autoStart_Click;
             _trayMenu.Items.Add(_autoStartMenuItem);
 
-            _trayMenu.Items.Add("Exit", null, Exit_Click);
+            _trayMenu.Items.Add("Exit", null, exit_Click);
 
             _trayIcon = new NotifyIcon
             {
@@ -220,20 +224,60 @@ namespace qbPortWeaver
                 Visible = true,
                 ContextMenuStrip = _trayMenu
             };
-            _trayIcon.MouseDoubleClick += (s, e) =>
+            _trayIcon.MouseDoubleClick += trayIcon_MouseDoubleClick;
+        }
+
+        private void showLogs_Click(object? sender, EventArgs e) => ShowLogViewer();
+
+        private void clearLogs_Click(object? sender, EventArgs e)
+        {
+            LogManager.Instance.ClearLogs();
+            _trayIcon.ShowBalloonTip(AppConstants.BalloonTipDurationMs, AppConstants.AppName, "Logs cleared", ToolTipIcon.Info);
+        }
+
+        private void showSettings_Click(object? sender, EventArgs e)
+        {
+            ShowOrActivate(() => _settingsForm, f => _settingsForm = f, () => new SettingsForm(), OnSettingsFormClosed);
+        }
+
+        private void OnSettingsFormClosed(SettingsForm frm)
+        {
+            if (frm.DialogResult == DialogResult.OK)
             {
-                if (e.Button == MouseButtons.Left)
-                    ShowLogViewer();
-            };
+                LogManager.Instance.LogMessage("Settings changed, triggering sync cycle", LogLevel.Info);
+                InterruptDelay();
+            }
+        }
+
+        private void showMediaManager_Click(object? sender, EventArgs e)
+        {
+            ShowOrActivate(() => _mediaManagerForm, f => _mediaManagerForm = f, () => new MediaManagerForm());
+        }
+
+        private void showAbout_Click(object? sender, EventArgs e)
+        {
+            ShowOrActivate(() => _aboutForm, f => _aboutForm = f, () => new AboutForm());
+        }
+
+        private void autoStart_Click(object? sender, EventArgs e) => StartupManager.SetStartup(_autoStartMenuItem.Checked);
+
+        private void trayIcon_MouseDoubleClick(object? sender, MouseEventArgs e)
+        {
+            if (e.Button == MouseButtons.Left)
+                ShowLogViewer();
         }
 
         // Triggers an immediate sync cycle by interrupting the current wait interval
-        private void SynchronizePortNow_Click(object? sender, EventArgs e)
+        private void syncPortNow_Click(object? sender, EventArgs e)
         {
             _manualSyncTriggered = true;
             LogManager.Instance.LogMessage("Manual sync requested", LogLevel.Info);
+            InterruptDelay();
+        }
 
-            // Interrupt the wait inside the main loop immediately
+        // Interrupts the current inter-cycle delay so the next sync cycle starts immediately
+        private void InterruptDelay()
+        {
             try { _delayCts.Cancel(); }
             catch (ObjectDisposedException)
             {
@@ -241,7 +285,7 @@ namespace qbPortWeaver
             }
         }
 
-        private void Exit_Click(object? sender, EventArgs e)
+        private void exit_Click(object? sender, EventArgs e)
         {
             this.Close();
         }
@@ -261,16 +305,18 @@ namespace qbPortWeaver
             InvokeOnUiThread(() => _trayIcon.ShowBalloonTip(AppConstants.BalloonTipDurationMs, AppConstants.AppName, message, ToolTipIcon.Warning));
         }
 
-        // Runs the port-sync loop until shutdown is requested
+        // Runs the port-sync loop until shutdown is requested.
+        // Exceptions are caught per-cycle so one bad cycle never kills the app.
         private async Task RunMainLoopAsync()
         {
-            try
+            while (!_shutdownCts.IsCancellationRequested)
             {
-                while (!_shutdownCts.IsCancellationRequested)
+                int updateInterval = AppConstants.DefaultUpdateIntervalSeconds;
+                try
                 {
                     await _updateSemaphore.WaitAsync(_shutdownCts.Token);
+                    LogManager.Instance.LogBlankLine();
                     LogManager.Instance.LogMessage("Sync cycle started", LogLevel.Info);
-                    int updateInterval;
                     try
                     {
                         updateInterval = await _portSyncService.RunAsync(_shutdownCts.Token);
@@ -286,23 +332,25 @@ namespace qbPortWeaver
                     {
                         _manualSyncTriggered = false;
                         updateInterval = AppConstants.ManualSyncWaitSeconds;
-                        LogManager.Instance.LogMessage("Manual sync complete", LogLevel.Info);
+                        LogManager.Instance.LogMessage("Manual sync completed", LogLevel.Info);
                     }
 
                     if (await ShutdownRequestedDuringDelayAsync(updateInterval))
                         return;
                 }
+                catch (OperationCanceledException) when (_shutdownCts.IsCancellationRequested)
+                {
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    LogManager.Instance.LogMessage($"Sync cycle failed, retrying in {updateInterval}s: {ex.Message}", LogLevel.Error);
+                    try { await Task.Delay(updateInterval * AppConstants.MillisecondsPerSecond, _shutdownCts.Token); }
+                    catch (Exception) { break; }
+                }
+            }
 
-                LogManager.Instance.LogMessage("Main loop exited gracefully", LogLevel.Info);
-            }
-            catch (OperationCanceledException)
-            {
-                LogManager.Instance.LogMessage("Main loop exited (operation cancelled)", LogLevel.Info);
-            }
-            catch (Exception ex)
-            {
-                HandleMainLoopException(ex);
-            }
+            LogManager.Instance.LogMessage("Main loop exited gracefully", LogLevel.Info);
         }
 
         // Waits for the next cycle interval, handling manual-update interrupts.
@@ -332,33 +380,6 @@ namespace qbPortWeaver
             _delayCts = new CancellationTokenSource();
             oldToken.Dispose();
             return false;
-        }
-
-        // Handles an unexpected exception from the main loop, showing an error dialog unless shutting down
-        private void HandleMainLoopException(Exception ex)
-        {
-            if (_shutdownCts.IsCancellationRequested)
-            {
-                LogManager.Instance.LogMessage($"Main loop exited during shutdown: {ex.Message}", LogLevel.Info);
-                return;
-            }
-
-            LogManager.Instance.LogMessage($"Main loop crashed: {ex}", LogLevel.Error);
-
-            string message = $"Critical error in main loop: {ex.Message}\n\nThe application will now exit.";
-            try
-            {
-                InvokeOnUiThread(() =>
-                {
-                    MessageBox.Show(message, AppConstants.AppName, MessageBoxButtons.OK, MessageBoxIcon.Error);
-                    Application.Exit();
-                });
-            }
-            catch (Exception)
-            {
-                // Form is already disposed, just exit
-                Application.Exit();
-            }
         }
 
         // Event handler for the periodic update-check timer - async void is correct here (event handler)
@@ -410,7 +431,8 @@ namespace qbPortWeaver
                 SyncState.Synced          => _iconOk      ?? _iconBase!,
                 SyncState.VpnDisconnected => _iconWarning ?? _iconBase!,
                 SyncState.Error           => _iconError   ?? _iconBase!,
-                _                         =>                 _iconBase!
+                SyncState.Disabled        =>                  _iconBase!,
+                _                         =>                  _iconBase!
             };
         }
 
@@ -419,9 +441,10 @@ namespace qbPortWeaver
         {
             string statusLine = _lastSyncStatus switch
             {
-                { State: SyncState.Synced, Port: int p }                  => $"Port {p} | Synced",
+                { State: SyncState.Synced, Port: int p }              => $"Port {p} | Synced",
                 { State: SyncState.VpnDisconnected, Port: int p }     => $"VPN not connected | Default port {p}",
                 { State: SyncState.VpnDisconnected }                  => "VPN not connected",
+                { State: SyncState.Disabled }                         => "Port sync disabled",
                 { State: SyncState.Error, Message: var m }            => $"Error | {m}",
                 _                                                      => "Starting\u2026"
             };
@@ -444,21 +467,31 @@ namespace qbPortWeaver
                 action();
         }
 
-        // Opens the log viewer window; restores and activates it if already open
         private void ShowLogViewer()
+            => ShowOrActivate(() => _logViewerForm, f => _logViewerForm = f, () => new LogViewerForm(LogManager.Instance.LogFilePath));
+
+        // Brings an existing child form to front, or creates and shows a new one.
+        // The optional onClosed callback runs after the form is closed.
+        private static void ShowOrActivate<T>(Func<T?> getter, Action<T?> setter, Func<T> factory, Action<T>? onClosed = null) where T : Form
         {
-            if (_logViewerForm is { IsDisposed: false })
+            var existing = getter();
+            if (existing is { IsDisposed: false })
             {
-                if (_logViewerForm.WindowState == FormWindowState.Minimized)
-                    _logViewerForm.WindowState = FormWindowState.Normal;
-                _logViewerForm.BringToFront();
-                _logViewerForm.Activate();
+                if (existing.WindowState == FormWindowState.Minimized)
+                    existing.WindowState = FormWindowState.Normal;
+                existing.BringToFront();
+                existing.Activate();
                 return;
             }
 
-            _logViewerForm = new LogViewerForm(LogManager.Instance.LogFilePath);
-            _logViewerForm.FormClosed += (_, _) => _logViewerForm = null;
-            _logViewerForm.Show();
+            var frm = factory();
+            setter(frm);
+            frm.FormClosed += (_, _) =>
+            {
+                onClosed?.Invoke(frm);
+                setter(null);
+            };
+            frm.Show();
         }
 
         // P/Invoke declarations

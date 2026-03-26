@@ -28,10 +28,6 @@ namespace qbPortWeaver
         // Must match HelperPipeServer.PipeName in qbPortWeaver.HelperService.
         public const string HelperServicePipeName = "qbPortWeaverHelper";
 
-        // Log prefix for the Media Manager subsystem - applied to all log messages originating from
-        // MovieRenamer, TvShowRenamer, and MediaManagerService.
-        public const string MediaManagerLogPrefix = "[MediaManager] ";
-
         // GitHub - only the owner is a literal; all URLs are derived
         public const string GitHubRepoOwner = "martsg666";
         public static readonly string GitHubRepoUrl = $"https://github.com/{GitHubRepoOwner}/{AppName}";
@@ -78,18 +74,14 @@ namespace qbPortWeaver
             // Process.Kill failed to terminate in time - fall back to taskkill /F /T
             try
             {
-                using var taskkill = Process.Start(new ProcessStartInfo(
+                using var taskkill = Process.Start(CreateHiddenStartInfo(
                     Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "taskkill.exe"),
-                    $"/F /T /PID {process.Id}")
-                {
-                    UseShellExecute = false,
-                    CreateNoWindow  = true
-                });
+                    $"/F /T /PID {process.Id}"));
                 taskkill?.WaitForExit(timeoutMs);
             }
             catch (Exception ex)
             {
-                LogManager.Instance.LogDebug($"AppConstants.KillProcess: taskkill fallback failed: {ex.Message}");
+                LogManager.Instance.LogDebug($"AppConstants.KillProcess: Failed to run taskkill fallback: {ex.Message}");
             }
             if (process.WaitForExit(timeoutMs)) return true;
 
@@ -108,6 +100,10 @@ namespace qbPortWeaver
             }
             return process.WaitForExit(timeoutMs);
         }
+
+        /// <summary>Creates a ProcessStartInfo configured to run a hidden, windowless process.</summary>
+        public static ProcessStartInfo CreateHiddenStartInfo(string fileName, string arguments) =>
+            new(fileName, arguments) { UseShellExecute = false, CreateNoWindow = true };
 
         /// <summary>Opens a URL in the default browser using ShellExecute.</summary>
         public static void OpenUrl(string url)

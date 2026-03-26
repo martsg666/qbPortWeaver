@@ -3,37 +3,45 @@ using System.Text.Json;
 
 namespace qbPortWeaver
 {
+    /// <summary>Latest release metadata from GitHub, including whether it is newer than the running version.</summary>
+    /// <param name="TagName">Git tag name (e.g. "v2.1.0").</param>
+    /// <param name="ReleaseUrl">URL of the GitHub release page.</param>
+    /// <param name="IsNewer">True when the release version is greater than <see cref="AppConstants.AppVersion"/>.</param>
     public sealed record LatestReleaseInfo(string TagName, string ReleaseUrl, bool IsNewer)
     {
-        // TagName with leading 'v'/'V' stripped (e.g. "v2.1.0" → "2.1.0")
+        /// <summary>Tag name with the leading 'v'/'V' stripped (e.g. "v2.1.0" becomes "2.1.0").</summary>
         public string Version => TagName.TrimStart('v', 'V');
     }
 
+    /// <summary>A GitHub contributor's login and profile URL.</summary>
+    /// <param name="Login">GitHub username.</param>
+    /// <param name="ProfileUrl">URL of the contributor's GitHub profile.</param>
     public sealed record ContributorInfo(string Login, string ProfileUrl);
 
+    /// <summary>Queries the GitHub API for release and contributor information.</summary>
     public static class UpdateChecker
     {
         private const string JsonPropTagName = "tag_name";
         private const string JsonPropHtmlUrl = "html_url";
 
-        private static readonly string GitHubBaseApiUrl = $"https://api.github.com/repos/{AppConstants.GitHubRepoOwner}/{AppConstants.AppName}";
-        private static readonly string GitHubApiUrl     = GitHubBaseApiUrl + "/releases/latest";
+        private static readonly string _gitHubBaseApiUrl = $"https://api.github.com/repos/{AppConstants.GitHubRepoOwner}/{AppConstants.AppName}";
+        private static readonly string _gitHubApiUrl     = _gitHubBaseApiUrl + "/releases/latest";
 
         private static readonly HttpClient _httpClient = CreateHttpClient(); // Not disposed - static lifetime matches process lifetime (recommended pattern for HttpClient)
 
-        // Returns the latest release version string and URL if a newer version exists; null if up-to-date or on any error
+        /// <summary>Returns the latest release version and URL if a newer version exists; null if up-to-date or on any error.</summary>
         public static async Task<(string Version, string Url)?> GetAvailableUpdateAsync()
         {
-            var info = await GetLatestReleaseInfoAsync();
+            var info = await GetLatestReleaseInfoAsync().ConfigureAwait(false);
             return info?.IsNewer == true ? (info.Version, info.ReleaseUrl) : null;
         }
 
-        // Returns full release info from GitHub including whether a newer version exists; null on any error
+        /// <summary>Returns full release info from GitHub including whether a newer version exists; null on any error.</summary>
         public static async Task<LatestReleaseInfo?> GetLatestReleaseInfoAsync()
         {
             try
             {
-                using var response = await _httpClient.GetAsync(GitHubApiUrl).ConfigureAwait(false);
+                using var response = await _httpClient.GetAsync(_gitHubApiUrl).ConfigureAwait(false);
                 response.EnsureSuccessStatusCode();
 
                 using var stream = await response.Content.ReadAsStreamAsync().ConfigureAwait(false);
@@ -61,13 +69,12 @@ namespace qbPortWeaver
             }
         }
 
-        // Returns all unique human contributors to the repo. Bots are excluded.
-        // Returns an empty list on any error.
+        /// <summary>Returns all unique human contributors to the repo, with the owner listed first. Bots are excluded. Returns an empty list on any error.</summary>
         public static async Task<IReadOnlyList<ContributorInfo>> GetReleaseContributorsAsync()
         {
             try
             {
-                using var response = await _httpClient.GetAsync(GitHubBaseApiUrl + "/contributors?per_page=100").ConfigureAwait(false);
+                using var response = await _httpClient.GetAsync(_gitHubBaseApiUrl + "/contributors?per_page=100").ConfigureAwait(false);
                 response.EnsureSuccessStatusCode();
 
                 using var stream = await response.Content.ReadAsStreamAsync().ConfigureAwait(false);

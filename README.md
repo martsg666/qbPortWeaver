@@ -2,7 +2,7 @@
 
 ## Overview
 
-**qbPortWeaver** is a Windows application designed to synchronize the listening port of **qBittorrent** with the port assigned by your VPN provider (**ProtonVPN**, **Private Internet Access**, or any **NAT-PMP capable VPN gateway or router**).
+**qbPortWeaver** is a Windows application designed to sync the listening port of **qBittorrent** with the port assigned by your VPN provider (**ProtonVPN**, **Private Internet Access**, or any **NAT-PMP capable VPN gateway or router**).
 This ensures your torrent client always uses the VPN-provided port, improving privacy and connectivity.
 
 The application runs in the system tray, manages configuration and logging, and automatically updates qBittorrent's port when changes are detected.
@@ -21,32 +21,17 @@ The application runs in the system tray, manages configuration and logging, and 
 
 ## Features
 
-- **Tray Icon Interface**
-  Runs quietly in the background with a system tray icon for quick access to logs, settings, and controls.
-
-- **Tray Status Indicator**
-  After each sync cycle the tray icon shows a colored status dot: **green** (ports aligned), **orange** (VPN not connected), **red** (error). Hovering over the icon displays the current port and status at a glance, without opening the log file.
-
-- **Automatic Port Synchronization**
+- **Automatic Port Sync**
   Detects the current VPN port and updates qBittorrent's listening port automatically.
 
 - **Multi-VPN Support**
   Supports **ProtonVPN** (via log file parsing or NAT-PMP), **Private Internet Access** (via `piactl` CLI), and any **NAT-PMP capable VPN gateway or router** (via RFC 6886 UDP port mapping). Configurable through the Settings dialog.
 
-- **Settings Dialog**
-  All configuration options are editable through a dedicated Settings form (tray menu → Settings), with inline descriptions and tooltips for each option.
-
-- **Log Viewer**
-  Built-in log viewer (tray menu → Show Logs, or double-click the tray icon) displays the log file with color-coded entries by level (error, warn, info, debug) and follows new entries in real time. Supports Windows dark mode.
-
-- **Logging**
-  Logs all operations and errors, with automatic log size management (5 MB per file, up to 3 rotated files). Clear logs directly from the tray menu.
+- **Default Port Fallback**
+  When VPN is not connected, optionally sets qBittorrent's listening port to a configured default. Useful if you have a port forwarded in your router for direct connections without VPN.
 
 - **qBittorrent Control**
   Authenticates with qBittorrent's Web API, updates preferences, and restarts the client if required.
-
-- **Last-Run Status File**
-  Writes a JSON status file (`%LocalAppData%\qbPortWeaver\qbPortWeaver.status.json`) after each sync cycle, exposing VPN port, qBittorrent port, timestamps, and completion status for external scripts.
 
 - **Restart qBittorrent After Port Change**
   Optionally restart qBittorrent after updating the port to ensure changes take effect immediately.
@@ -54,23 +39,38 @@ The application runs in the system tray, manages configuration and logging, and 
 - **Force Start qBittorrent**
   Optionally force start qBittorrent if it is not running.
 
-- **Default Port Fallback**
-  When VPN is not connected, optionally sets qBittorrent's listening port to a configured default. Useful if you have a port forwarded in your router for direct connections without VPN.
+- **Restart qBittorrent on Disconnect**
+  Optionally restart qBittorrent when its connection status changes to disconnected. Requires the Executable and Process name to be configured.
 
 - **VPN Interface Mismatch Warning**
   Shows a tray balloon tip and logs a warning if qBittorrent's network interface does not match the configured VPN provider, or if qBittorrent is bound to all interfaces (which may cause traffic leaks).
 
-- **Restart qBittorrent on Disconnect**
-  Optionally restart qBittorrent when its connection status changes to disconnected. Requires the Executable and Process name to be configured.
+- **Auto-Recovery**
+  Automatically recovers when a configurable number of consecutive sync cycles fail - whether the VPN is disconnected or port detection fails despite the VPN being connected. For ProtonVPN and PIA (direct or NAT-PMP mode), the helper restarts the Windows service and the tray app restarts the client process. For NAT-PMP with a generic (non-ProtonVPN/PIA) gateway, the helper cycles the network adapter (disable/enable via netsh). All privileged operations are delegated to a lightweight helper Windows service (`qbPortWeaverHelper`) running as LocalSystem - no UAC prompt required.
 
 - **Post-Update Command**
   Optionally run a custom command after a successful port update (fire-and-forget). See SampleSendMail.ps1 for an example of sending an email notification with status details.
 
-- **Auto-Recovery**
-  Automatically recovers when a configurable number of consecutive sync cycles fail - whether the VPN is disconnected or port detection fails despite the VPN being connected. For ProtonVPN and PIA (direct or NAT-PMP mode), the helper restarts the Windows service and the tray app restarts the client process. For NAT-PMP with a generic (non-ProtonVPN/PIA) gateway, the helper cycles the network adapter (disable/enable via netsh). All privileged operations are delegated to a lightweight helper Windows service (`qbPortWeaverHelper`) running as LocalSystem - no UAC prompt required.
-
 - **Media Manager**
-  Automatically renames movie and TV episode files to Plex-compatible naming conventions on each sync cycle. Queries [The Movie Database (TMDB)](https://www.themoviedb.org) to identify titles and release years, then renames files using Plex conventions (`Title (Year).ext` for movies, `Show (Year) - SxxExx.ext` for TV episodes). Optionally organises files into Plex-recommended subfolders (`Movies/Title (Year)/` and `TV Shows/Show (Year)/Season XX/`). A dedicated **Media Manager** dialog (tray menu → Media Manager) lets you configure watched folders, preview renames before they run (**Scan Now**), and apply or correct them manually (**Rename Now**). Uncertain TMDB matches are highlighted in red for review. A free TMDB API key is required.
+  Automatically imports movie and TV episode files into Plex-compatible library folders on each sync cycle. Queries [The Movie Database (TMDB)](https://www.themoviedb.org) to identify titles and release years, then imports files using Plex naming conventions (`Title (Year).ext` for movies, `Show (Year) - SxxExx.ext` for TV episodes) via hardlink (with automatic fallback to copy for cross-volume scenarios), copy, or move. Optionally organises files into Plex-recommended subfolders (`Movies/Title (Year)/` and `TV Shows/Show (Year)/Season XX/`), and cleans up source folders left empty after importing (including folders containing only `.nfo` files). A dedicated **Media Manager** dialog (tray menu → Media Manager) lets you configure source and library folders, preview imports before they run (**Scan Now**), and apply or correct them manually (**Import Now**). Uncertain TMDB matches are highlighted in red for review. A free TMDB API key is required.
+
+- **Tray Icon Interface**
+  Runs quietly in the background with a system tray icon for quick access to logs, settings, and controls.
+
+- **Tray Status Indicator**
+  After each sync cycle the tray icon shows a colored status dot: **green** (ports aligned), **orange** (VPN not connected), **red** (error), or **no dot** (port sync disabled). Hovering over the icon displays the current port and status at a glance, without opening the log file.
+
+- **Settings Dialog**
+  All configuration options are editable through a dedicated Settings form (tray menu → Settings), with inline descriptions and tooltips for each option.
+
+- **Log Viewer**
+  Built-in log viewer (tray menu → Show Logs, or double-click the tray icon) displays the log file with color-coded entries by level (error, warn, info, debug) and follows new entries in real time. Includes a search bar with match highlighting and prev/next navigation, toggle buttons to filter by log level, and an auto-scroll toggle. Supports Windows dark mode.
+
+- **Logging**
+  Logs all operations and errors, with automatic log size management (5 MB per file, up to 3 rotated files). Clear logs directly from the tray menu.
+
+- **Last-Run Status File**
+  Writes a JSON status file (`%LocalAppData%\qbPortWeaver\qbPortWeaver.status.json`) after each sync cycle, exposing VPN port, qBittorrent port, timestamps, and completion status for external scripts.
 
 - **Automatic Update Checker**
   Checks GitHub for new releases on startup and every 12 hours, and offers to open the download page. The **About** dialog (tray menu → About) also shows the current and latest version, update status, and contributor links.
@@ -90,7 +90,7 @@ On first run, all settings are initialized with sensible defaults.
 
 | Setting | Description | Default |
 |---|---|---|
-| VPN Provider | `ProtonVPN`, `PIA`, or `NAT-PMP` | `ProtonVPN` |
+| VPN Provider | `Disabled`, `ProtonVPN`, `PIA`, or `NAT-PMP` | `Disabled` |
 | NAT-PMP Adapter | Network adapter to use for NAT-PMP port mapping (only enabled when NAT-PMP is selected) | - |
 | Update interval | How often to check and sync the port (seconds) | `180` |
 | URL | qBittorrent Web API URL | `http://127.0.0.1:8080` |
@@ -110,16 +110,19 @@ On first run, all settings are initialized with sensible defaults.
 
 ### Media Manager Settings
 
-Configured via tray menu -> **Media Manager**.
+Configured via tray menu → **Media Manager**.
 
 | Setting | Description | Default |
 |---|---|---|
-| Enable Media Manager | Run the media renamer on each sync cycle | `False` |
+| Enable Media Manager | Run the media importer on each sync cycle | `False` |
 | TMDB API Key | API key for The Movie Database lookups (free at themoviedb.org/settings/api) | - |
-| Dry Run | Preview renames without touching any files | `True` |
+| Dry Run | Preview imports without touching any files | `True` |
+| Import Mode | How files are transferred to the library: `Hardlink` (default, falls back to copy for cross-volume), `Copy`, or `Move` | `Hardlink` |
 | Create Folders | Organise each title into its own Plex subfolder (`Title (Year)/` for movies, `Show (Year)/Season XX/` for TV) | `False` |
-| Movie Folders | List of folders scanned for movie files on each cycle | - |
-| TV Show Folders | List of folders scanned for TV episode files on each cycle | - |
+| Delete Empty Folders | After importing, delete source subfolders that are empty or contain only `.nfo` files | `False` |
+| Source Folders | Download/seeding folders scanned for movie and TV episode files on each cycle | - |
+| Movies Library | Target library folder for imported movies (leave empty to skip movie processing) | - |
+| TV Shows Library | Target library folder for imported TV shows (leave empty to skip TV show processing) | - |
 
 ---
 
@@ -130,32 +133,33 @@ Configured via tray menu -> **Media Manager**.
 - The application starts minimized and runs in the system tray.
 - On first run, open **Settings** from the tray menu to configure the application.
 
-### Synchronization Loop
+### Sync Loop
 
-1. Checks whether the configured VPN provider is connected.
+1. If VPN Provider is set to **Disabled**, the entire port sync is skipped and the cycle proceeds directly to the Media Manager step. This is useful when you only want automatic media importing without VPN port sync.
+2. Checks whether the configured VPN provider is connected.
    - If **not connected** and **Default port** is 0: skips the cycle and waits for the next interval.
    - If **not connected** and **Default port** is set: uses the default port as the target and continues.
    - If **Auto-Recovery** is enabled and the failed cycle count reaches the configured threshold: automatically triggers recovery (via the helper Windows service) - for ProtonVPN and PIA (direct or NAT-PMP mode), restarts the VPN service and client; for NAT-PMP with a generic gateway, cycles the network adapter.
-2. Reads the VPN-assigned port from the configured provider (skipped if using the default port fallback). If port detection fails despite the VPN being connected, the failed cycle counter increments and auto-recovery may trigger.
-3. Checks if qBittorrent is running (optionally force starts it if configured).
-4. Authenticates with qBittorrent and retrieves the current listening port and network interface.
-5. If **Warn on interface mismatch** is enabled: checks that qBittorrent's network interface matches the configured VPN provider and shows a tray warning if not.
-6. If ports differ:
+3. Reads the VPN-assigned port from the configured provider (skipped if using the default port fallback). If port detection fails despite the VPN being connected, the failed cycle counter increments and auto-recovery may trigger.
+4. Checks if qBittorrent is running (optionally force starts it if configured).
+5. Authenticates with qBittorrent and retrieves the current listening port and network interface.
+6. If **Warn on interface mismatch** is enabled: checks that qBittorrent's network interface matches the configured VPN provider and shows a tray warning if not.
+7. If ports differ:
    - Updates qBittorrent's port.
    - Restarts qBittorrent if configured.
    - Runs the optional post-update command if configured. e.g., `powershell -File "C:\path\to\SampleSendMail.ps1"`
-7. If **Restart on disconnect** is enabled (and qBittorrent was not already restarted in step 6): checks qBittorrent's connection status and restarts it if disconnected.
-8. Writes the JSON status file (`%LocalAppData%\qbPortWeaver\qbPortWeaver.status.json`) and updates the tray icon and tooltip.
-9. If **Media Manager** is enabled: scans the configured movie and TV show folders, queries TMDB for each unrecognised title, and renames files to Plex-compatible names. In **dry-run** mode no files are touched; use **Scan Now** in the Media Manager dialog to preview results first. Uncertain TMDB matches are skipped automatically and flagged for manual review in the dialog.
-10. Waits for the configured interval before repeating.
+8. If **Restart on disconnect** is enabled (and qBittorrent was not already restarted in step 7): checks qBittorrent's connection status and restarts it if disconnected.
+9. Writes the JSON status file (`%LocalAppData%\qbPortWeaver\qbPortWeaver.status.json`) and updates the tray icon and tooltip.
+10. If **Media Manager** is enabled: scans the configured source folders, queries TMDB for each unrecognised title, and imports files into the library with Plex-compatible names. In **dry-run** mode no files are touched; use **Scan Now** in the Media Manager dialog to preview results first. Uncertain TMDB matches are skipped automatically and flagged for manual review in the dialog.
+11. Waits for the configured interval before repeating.
 
 ### Tray Menu Options
 
-- **Synchronize Port Now** - triggers an immediate sync cycle, skipping the current wait interval
+- **Sync Port Now** - triggers an immediate sync cycle, skipping the current wait interval
 - **Show Logs** - opens the built-in Log Viewer (also opened by double-clicking the tray icon)
 - **Clear Logs** - deletes all log files and starts a fresh log
 - **Settings** - opens the Settings dialog
-- **Media Manager** - opens the Media Manager dialog to configure folders, preview renames (Scan Now), and apply them (Rename Now)
+- **Media Manager** - opens the Media Manager dialog to configure source and library folders, preview imports (Scan Now), apply them (Import Now), and clear fingerprint caches (Clear Cache)
 - **About** - shows version info and update status
 - **Start Automatically with Windows** - toggles the Windows startup registry entry
 - **Exit** - shuts down the application
@@ -232,16 +236,32 @@ NAT-PMP (RFC 6886) is a protocol for requesting port mappings directly from a ga
 
 - All actions and errors are logged to `%LocalAppData%\qbPortWeaver\qbPortWeaver.log`.
 - Log files are automatically rotated when exceeding **5 MB**, keeping up to 3 files (current + 2 backups).
-- Open the **Log Viewer** from the tray menu (Show Logs) or by double-clicking the tray icon. It shows color-coded entries (red for errors, gold for warnings, blue for info, orange for debug) and tails new entries live. It follows your Windows dark/light theme preference.
+- Open the **Log Viewer** from the tray menu (Show Logs) or by double-clicking the tray icon. It shows color-coded entries (red for errors, gold for warnings, blue for info, orange for debug) and tails new entries live. Use the search bar to find and highlight matches with prev/next navigation, or the level filter buttons to show only the levels you care about. It follows your Windows dark/light theme preference.
 
 ---
 
 ## Error Handling
 
+The application is designed to always recover. A failing cycle never crashes the app; errors are logged and the loop retries on the next interval.
+
+### Port Sync
+
 - If the VPN provider is not connected and no default port is configured, the cycle is skipped and the issue is logged.
 - If the VPN provider is not connected and a default port is configured, the default port is applied instead.
-- If the VPN port cannot be determined, the issue is logged and the update is skipped.
+- If the VPN port cannot be determined, the issue is logged and the update is skipped. If Auto-Recovery is enabled, repeated failures trigger automatic recovery.
 - If qBittorrent is not running and cannot be force started or updated, errors are logged and the loop continues after the next interval.
+
+### Media Manager
+
+- If a TMDB API call fails (network error, invalid key), the file is skipped and the error is logged. Other files in the same scan continue processing.
+- If a source or library folder is inaccessible (permissions, network share offline), that folder is skipped with a warning. Remaining folders are still processed.
+- If file import fails (I/O error, disk full), the individual file is skipped. The scan continues with the next file.
+- If the fingerprint cache is corrupt or unreadable, it is discarded and rebuilt from scratch on the next scan.
+
+### UI
+
+- If the Settings, Media Manager, or About dialog encounters an error, it is displayed in the status label or logged. The main application loop is never affected.
+- If the Log Viewer cannot read the log file, it degrades gracefully without crashing.
 
 ---
 
@@ -366,7 +386,7 @@ The modular architecture makes it easy to:
 - Various stability improvements
 
 ### v1.1.0
-- Added **Synchronize Port Now** tray menu option for on-demand port sync
+- Added **Sync Port Now** tray menu option for on-demand port sync
 
 ### v1.0.0
 - Initial release

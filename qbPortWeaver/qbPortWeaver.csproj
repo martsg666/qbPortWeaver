@@ -8,7 +8,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <ApplicationIcon>qbPortWeaver.ico</ApplicationIcon>
     <AssemblyTitle>qbPortWeaver</AssemblyTitle>
-    <Description>Synchronizes the listening port of qBittorrent with the port assigned by your VPN provider (ProtonVPN, PIA, or any NAT-PMP capable adapter)</Description>
+    <Description>Syncs the listening port of qBittorrent with the port assigned by your VPN provider (ProtonVPN, PIA, or any NAT-PMP capable adapter)</Description>
     <Company>martsg666</Company>
     <Product>qbPortWeaver</Product>
     <Authors>martsg666</Authors>
@@ -18,9 +18,19 @@
     <AssemblyVersion>2.4.1.0</AssemblyVersion>
     <SignAssembly>False</SignAssembly>
     <PackageReadmeFile>README.md</PackageReadmeFile>
+    <!-- Suppress known SonarAnalyzer false positives (each has a matching // NOSONAR comment):
+         S1075 - TMDB base URL is intentionally hardcoded (TmdbClient.cs)
+         S2068 - registry key name contains "Password", value is masked (PortSyncService.cs)
+         S4721 - post-update command is user-configured, arbitrary execution is intended (PortSyncService.cs)
+         S4790 - TMDB API v3 requires key as query parameter, HTTPS only (TmdbClient.cs) -->
+    <NoWarn>S1075;S2068;S4721;S4790</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="SonarAnalyzer.CSharp" Version="10.21.0.135717">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
     <PackageReference Include="System.ServiceProcess.ServiceController" Version="10.0.0" />
   </ItemGroup>
 

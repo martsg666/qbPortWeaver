@@ -2,16 +2,18 @@ using Microsoft.Win32;
 
 namespace qbPortWeaver
 {
+    /// <summary>Manages the Windows startup registry entry so the application can launch at logon.</summary>
     public static class StartupManager
     {
         private const string RunRegistryKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
 
+        /// <summary>Returns <see langword="true"/> if the application is registered to start with Windows.</summary>
         public static bool IsStartupEnabled()
         {
             try
             {
                 using var key = Registry.CurrentUser.OpenSubKey(RunRegistryKey);
-                return key?.GetValue(AppConstants.AppName) != null;
+                return key?.GetValue(AppConstants.AppName) is not null;
             }
             catch (Exception ex)
             {
@@ -20,12 +22,13 @@ namespace qbPortWeaver
             }
         }
 
+        /// <summary>Adds or removes the application from the Windows startup registry key.</summary>
         public static void SetStartup(bool enable)
         {
             try
             {
                 using var key = Registry.CurrentUser.OpenSubKey(RunRegistryKey, true);
-                if (key == null)
+                if (key is null)
                 {
                     LogManager.Instance.LogMessage("Failed to update startup setting: could not open registry Run key", LogLevel.Warn);
                     return;

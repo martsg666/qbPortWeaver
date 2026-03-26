@@ -1,6 +1,6 @@
 # qbPortWeaver - Sync Cycle Flow
 
-This document describes the core port synchronization logic implemented in `PortSyncService.cs`. The sync cycle runs on a configurable interval (default 180s) and is serialized by a semaphore in `MainForm` - only one cycle runs at a time.
+This document describes the core port sync logic implemented in `PortSyncService.cs`. The sync cycle runs on a configurable interval (default 180s) and is serialized by a semaphore in `MainForm` - only one cycle runs at a time.
 
 ## High-Level Overview
 
@@ -8,7 +8,10 @@ This document describes the core port synchronization logic implemented in `Port
 flowchart TD
     START([Sync cycle starts]) --> CONFIG[Read config from registry]
     CONFIG --> VPN[Create VPN manager]
-    VPN --> CONNECTED{VPN connected?}
+    VPN --> DISABLED{Provider disabled?}
+    DISABLED -- Yes --> SKIP_DISABLED([SKIP: Port sync disabled])
+    DISABLED -- No --> CONNECTED{VPN connected?}
+    SKIP_DISABLED --> FINALLY
 
     CONNECTED -- Yes --> CACHE_EXE{Auto-recovery enabled?}
     CONNECTED -- No --> DISCONNECTED[Handle disconnection]
@@ -61,11 +64,12 @@ The sync cycle instantiates a provider-specific `IVpnManager` based on the confi
 
 | Provider   | Manager class      | Port detection method                          |
 |------------|--------------------|-------------------------------------------------|
+| Disabled   | _(none)_           | Port sync is skipped entirely; cycle proceeds to Media Manager |
 | ProtonVPN  | `ProtonVpnManager` | Parses the ProtonVPN log file for the last assigned port |
 | PIA        | `PiaVpnManager`    | Runs `piactl get portforward` and parses stdout |
 | NAT-PMP    | `NatPmpManager`    | Sends a UDP port mapping request (RFC 6886) to the gateway |
 
-Unknown provider values fall back to ProtonVPN with a warning.
+Unknown provider values fall back to ProtonVPN with a warning. `Disabled` is the default for new installations.
 
 ### NAT-PMP Manager Creation
 
@@ -77,7 +81,7 @@ flowchart TD
     A -- Yes --> B{Adapter name changed since last cycle?}
     B -- Yes --> DISCARD[Discard cached fallback manager]
     B -- No --> C
-    DISCARD --> C[TryCreateForAdapter]
+    DISCARD --> C[TryCreateForAdapterAsync]
     C --> D{Adapter found?}
     D -- Yes --> COPY[Copy renewal state from previous instance]
     COPY --> RETURN([Return new manager])
@@ -162,7 +166,7 @@ Every cycle writes a JSON status file (`status.json` next to the log file) captu
   "portChanged": true,
   "updateIntervalSeconds": 180,
   "status": "success",
-  "message": "Completed successfully"
+  "message": "Sync cycle completed"
 }
 ```
 

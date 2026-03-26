@@ -4,26 +4,23 @@ using System.Security.Principal;
 
 namespace qbPortWeaver.HelperService;
 
-// Listens on a named pipe and dispatches privileged session 0 actions requested by the
-// user-session tray app. Runs as a hosted background service inside the helper Windows service.
-//
-// Protocol (one text line per connection, pipe-delimited):
-//   <action>|<target>|<logFilePath>
-//
-// Supported actions:
-//   restart        - restart the Windows service identified by the provider token
-//   cycle-adapter  - cycle a network adapter (disable/enable); if the adapter name matches
-//                    a known provider, the corresponding service is also restarted
-//
-// The log file path is sent per-call so the helper writes into the same log file as the
-// tray app, regardless of which user profile is active.
+/// <summary>
+/// Listens on a named pipe and dispatches privileged session 0 actions requested by the
+/// user-session tray app. Runs as a hosted background service inside the helper Windows service.
+/// Protocol: one text line per connection, pipe-delimited: action|target|logFilePath.
+/// Supported actions: restart (restart the Windows service identified by the provider token)
+/// and cycle-adapter (cycle a network adapter; if the adapter name matches a known provider,
+/// the corresponding service is also restarted).
+/// The log file path is sent per-call so the helper writes into the same log file as the
+/// tray app, regardless of which user profile is active.
+/// </summary>
 internal sealed class HelperPipeServer : BackgroundService
 {
     internal const string PipeName = "qbPortWeaverHelper"; // Must match AppConstants.HelperServicePipeName in qbPortWeaver
     private  const string ExpectedLogFileName = "qbPortWeaver.log"; // Must match AppConstants.LogFileName in qbPortWeaver
 
-    private const string ActionRestart      = "restart";
-    private const string ActionCycleAdapter = "cycle-adapter";
+    private const string ActionRestart      = "restart";       // Must match AutoRecoveryManager.ActionRestart in qbPortWeaver
+    private const string ActionCycleAdapter = "cycle-adapter"; // Must match AutoRecoveryManager.ActionCycleAdapter in qbPortWeaver
 
     private readonly ILogger<HelperPipeServer> _logger;
 

@@ -75,7 +75,8 @@ try {
             -p:PublishSingleFile=true `
             -p:Version=$Version `
             -p:FileVersion="$Version.0" `
-            -p:AssemblyVersion="$Version.0"
+            -p:AssemblyVersion="$Version.0" `
+            /warnaserror
 
         if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed for $proj" }
     }

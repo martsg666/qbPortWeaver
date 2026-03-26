@@ -1,12 +1,16 @@
 namespace qbPortWeaver
 {
-    /// <summary>Dialog for configuring the Media Manager feature, previewing proposed renames (Scan Now), and applying them (Rename Now).</summary>
+    /// <summary>Dialog for configuring the Media Manager feature, previewing proposed imports (Scan Now), and applying them (Import Now).</summary>
     public partial class MediaManagerForm : Form
     {
+        private const int MaxStatusFileNameLength = 40;
+
         private enum RowConfidence { Confident, Uncertain, Unmatched }
-        private sealed record RowData(RowConfidence Confidence, RenameProposal Proposal);
+        private sealed record RowData(RowConfidence Confidence, MediaProposal Proposal);
 
         private CancellationTokenSource? _scanCts;
+        private ToolStripMenuItem? _mnuPaste;
+        private bool _allIncluded = true;
 
         public MediaManagerForm()
         {
@@ -24,20 +28,22 @@ namespace qbPortWeaver
 
         private void SetupTooltips()
         {
-            toolTip.SetToolTip(chkEnabled,            "Enable or disable Media Manager - when enabled, files are processed on each sync cycle");
+            toolTip.SetToolTip(chkEnabled,            "Enable or disable Media Manager - when enabled, files are imported on each sync cycle");
             toolTip.SetToolTip(txtTmdbApiKey,         "Your TMDB API key - get one free at themoviedb.org/settings/api");
             toolTip.SetToolTip(lblTmdbApiKey,         "Your TMDB API key - get one free at themoviedb.org/settings/api");
-            toolTip.SetToolTip(chkDryRun,             "When checked, no files are renamed - use Scan Now to preview changes first");
-            toolTip.SetToolTip(chkCreateFolders,      "Move each title into its own Plex-recommended folder: Movies/Title (Year)/Title (Year).ext");
-            toolTip.SetToolTip(lstMovieFolders,       "Folders scanned for movie files on each cycle");
-            toolTip.SetToolTip(btnAddMovieFolder,     "Add a folder to scan for movies");
-            toolTip.SetToolTip(btnRemoveMovieFolder,  "Remove the selected folder from the list");
-            toolTip.SetToolTip(lstTvShowFolders,      "Folders scanned for TV episode files on each cycle");
-            toolTip.SetToolTip(btnAddTvShowFolder,    "Add a folder to scan for TV shows");
-            toolTip.SetToolTip(btnRemoveTvShowFolder, "Remove the selected folder from the list");
-            toolTip.SetToolTip(btnScanNow,            "Preview which files would be renamed - no files are touched");
-            toolTip.SetToolTip(btnRenameNow,          "Apply the renames shown in the grid - files will be moved or renamed immediately");
-            toolTip.SetToolTip(dgvResults,            "Files that would be renamed. Rows in red are uncertain TMDB matches - double-click the Proposed cell to correct the name before renaming.");
+            toolTip.SetToolTip(chkDryRun,             "When checked, the automatic sync cycle will only log what it would import without touching any files");
+            toolTip.SetToolTip(chkCreateFolders,      "Import each title into its own Plex-recommended folder: Movies/Title (Year)/Title (Year).ext");
+            toolTip.SetToolTip(chkDeleteEmptyFolders, "Delete source folders left empty after importing - folders containing only .nfo files are also removed");
+            toolTip.SetToolTip(cboImportMode,         "Hardlink: links without copying (same volume required). Copy: duplicates the file. Move: relocates the file (breaks seeding).");
+            toolTip.SetToolTip(txtMoviesLibraryPath,  "Target library folder for imported movies");
+            toolTip.SetToolTip(txtTvShowsLibraryPath, "Target library folder for imported TV shows");
+            toolTip.SetToolTip(lstSourceFolders,      "Download or seeding folders scanned for movies and TV shows on each cycle");
+            toolTip.SetToolTip(btnAddSourceFolder,    "Add a folder to scan");
+            toolTip.SetToolTip(btnRemoveSourceFolder, "Remove the selected folder from the list");
+            toolTip.SetToolTip(btnScanNow,            "Preview which files would be imported - no files are touched");
+            toolTip.SetToolTip(btnImportNow,           "Import the files shown in the grid into the library");
+            toolTip.SetToolTip(btnClearCache,          "Delete cached fingerprints so the next scan re-hashes every file from scratch");
+            toolTip.SetToolTip(dgvResults,            "Files that would be imported. Uncheck a row to exclude it. Rows in red are uncertain TMDB matches - double-click the Proposed cell to correct the name before importing.");
         }
 
         protected override void OnFormClosed(FormClosedEventArgs e)
@@ -53,10 +59,16 @@ namespace qbPortWeaver
             chkEnabled.Checked       = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionMedia, RegistrySettingsManager.KeyMediaEnabled);
             txtTmdbApiKey.Text       = RegistrySettingsManager.GetEncryptedValue(RegistrySettingsManager.SectionMedia, RegistrySettingsManager.KeyTmdbApiKey);
             chkDryRun.Checked        = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionMedia, RegistrySettingsManager.KeyMediaDryRun);
-            chkCreateFolders.Checked = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionMedia, RegistrySettingsManager.KeyMediaCreateFolders);
+            chkCreateFolders.Checked      = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionMedia, RegistrySettingsManager.KeyMediaCreateFolders);
+            chkDeleteEmptyFolders.Checked = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionMedia, RegistrySettingsManager.KeyMediaDeleteEmptyFolders);
 
-            LoadFolderList(lstMovieFolders,  RegistrySettingsManager.KeyMediaMovieFolders);
-            LoadFolderList(lstTvShowFolders, RegistrySettingsManager.KeyMediaTvShowFolders);
+            var importMode = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionMedia, RegistrySettingsManager.KeyMediaImportMode);
+            cboImportMode.SelectedItem = cboImportMode.Items.Contains(importMode) ? importMode : RegistrySettingsManager.ImportModeHardlink;
+
+            txtMoviesLibraryPath.Text  = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionMedia, RegistrySettingsManager.KeyMediaMoviesLibraryPath);
+            txtTvShowsLibraryPath.Text = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionMedia, RegistrySettingsManager.KeyMediaTvShowsLibraryPath);
+
+            LoadFolderList(lstSourceFolders, RegistrySettingsManager.KeyMediaSourceFolders);
         }
 
         private void btnOK_Click(object? sender, EventArgs e)
@@ -66,23 +78,36 @@ namespace qbPortWeaver
             Close();
         }
 
+        private void btnCancel_Click(object? sender, EventArgs e) => Close();
+
         private void SaveSettings()
         {
             RegistrySettingsManager.SetBool(RegistrySettingsManager.SectionMedia,  RegistrySettingsManager.KeyMediaEnabled,      chkEnabled.Checked);
             RegistrySettingsManager.SetEncryptedValue(RegistrySettingsManager.SectionMedia, RegistrySettingsManager.KeyTmdbApiKey, txtTmdbApiKey.Text.Trim());
             RegistrySettingsManager.SetBool(RegistrySettingsManager.SectionMedia,  RegistrySettingsManager.KeyMediaDryRun,        chkDryRun.Checked);
-            RegistrySettingsManager.SetBool(RegistrySettingsManager.SectionMedia,  RegistrySettingsManager.KeyMediaCreateFolders, chkCreateFolders.Checked);
+            RegistrySettingsManager.SetBool(RegistrySettingsManager.SectionMedia,  RegistrySettingsManager.KeyMediaCreateFolders,      chkCreateFolders.Checked);
+            RegistrySettingsManager.SetBool(RegistrySettingsManager.SectionMedia,  RegistrySettingsManager.KeyMediaDeleteEmptyFolders, chkDeleteEmptyFolders.Checked);
+            RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionMedia,  RegistrySettingsManager.KeyMediaImportMode,         cboImportMode.SelectedItem?.ToString() ?? RegistrySettingsManager.ImportModeHardlink);
+            RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionMedia,  RegistrySettingsManager.KeyMediaMoviesLibraryPath,  txtMoviesLibraryPath.Text.Trim());
+            RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionMedia,  RegistrySettingsManager.KeyMediaTvShowsLibraryPath, txtTvShowsLibraryPath.Text.Trim());
 
-            SaveFolderList(lstMovieFolders,  RegistrySettingsManager.KeyMediaMovieFolders);
-            SaveFolderList(lstTvShowFolders, RegistrySettingsManager.KeyMediaTvShowFolders);
+            SaveFolderList(lstSourceFolders, RegistrySettingsManager.KeyMediaSourceFolders);
         }
 
-        private void btnAddMovieFolder_Click(object? sender, EventArgs e)     => AddFolder(lstMovieFolders);
-        private void btnRemoveMovieFolder_Click(object? sender, EventArgs e)  => RemoveSelectedFolder(lstMovieFolders);
-        private void btnAddTvShowFolder_Click(object? sender, EventArgs e)    => AddFolder(lstTvShowFolders);
-        private void btnRemoveTvShowFolder_Click(object? sender, EventArgs e) => RemoveSelectedFolder(lstTvShowFolders);
+        private void btnAddSourceFolder_Click(object? sender, EventArgs e)    => AddFolder(lstSourceFolders);
+        private void btnRemoveSourceFolder_Click(object? sender, EventArgs e) => RemoveSelectedFolder(lstSourceFolders);
+        private void btnClearCache_Click(object? sender, EventArgs e)
+        {
+            FileImporter.ClearAllCaches();
+            dgvResults.Rows.Clear();
+            btnImportNow.Enabled = false;
+            lblScanStatus.Text = "Cache cleared - run Scan Now to re-index.";
+        }
 
-        // Scan Now - previews renames using current (unsaved) form values, never touches files
+        private void btnBrowseMoviesLibrary_Click(object? sender, EventArgs e)  => BrowseForFolder(txtMoviesLibraryPath);
+        private void btnBrowseTvShowsLibrary_Click(object? sender, EventArgs e) => BrowseForFolder(txtTvShowsLibraryPath);
+
+        // Scan Now - previews imports using current (unsaved) form values, never touches files
         private async void btnScanNow_Click(object? sender, EventArgs e) // async void is correct here (WinForms event handler)
         {
             var apiKey = txtTmdbApiKey.Text.Trim();
@@ -92,17 +117,22 @@ namespace qbPortWeaver
                 return;
             }
 
-            var movieFolders  = lstMovieFolders.Items.Cast<string>().ToArray();
-            var tvShowFolders = lstTvShowFolders.Items.Cast<string>().ToArray();
-
-            if (movieFolders.Length == 0 && tvShowFolders.Length == 0)
+            var moviesLibraryPath  = txtMoviesLibraryPath.Text.Trim();
+            var tvShowsLibraryPath = txtTvShowsLibraryPath.Text.Trim();
+            if (string.IsNullOrWhiteSpace(moviesLibraryPath) && string.IsNullOrWhiteSpace(tvShowsLibraryPath))
             {
-                lblScanStatus.Text = "No folders configured.";
+                lblScanStatus.Text = "At least one library path required.";
                 return;
             }
 
-            _scanCts?.Cancel();
-            _scanCts?.Dispose();
+            var sourceFolders = lstSourceFolders.Items.Cast<string>().ToArray();
+            if (sourceFolders.Length == 0)
+            {
+                lblScanStatus.Text = "No source folders configured.";
+                return;
+            }
+
+            if (_scanCts is not null) { await _scanCts.CancelAsync(); _scanCts.Dispose(); }
             _scanCts = new CancellationTokenSource();
             var ct = _scanCts.Token;
 
@@ -113,114 +143,134 @@ namespace qbPortWeaver
             try
             {
                 bool createFolders = chkCreateFolders.Checked;
-                var proposals = await MediaManagerService.ScanAsync(apiKey, createFolders, movieFolders, tvShowFolders, ct);
+                var proposals = await MediaManagerService.ScanAsync(apiKey, createFolders, sourceFolders, moviesLibraryPath, tvShowsLibraryPath, ct);
 
                 PopulateGrid(proposals);
-
-                int unmatched     = proposals.Count(p => !p.IsMatched);
-                int toRename      = proposals.Count - unmatched;
-                string renameStr  = $"{toRename} file{(toRename == 1 ? "" : "s")}";
-                string unmatchedStr = $"{unmatched} file{(unmatched == 1 ? "" : "s")}";
-                lblScanStatus.Text = (toRename, unmatched) switch
-                {
-                    (0, 0) => "All files already correctly named.",
-                    (0, _) => $"{unmatchedStr} had no TMDB match - enter proposed names manually.",
-                    (_, 0) => $"{renameStr} would be renamed.",
-                    _      => $"{renameStr} would be renamed, {unmatchedStr} had no TMDB match."
-                };
-
-                btnRenameNow.Enabled = proposals.Count > 0;
+                UpdateScanStatus();
             }
             catch (OperationCanceledException)
             {
-                lblScanStatus.Text = "Scan cancelled.";
+                if (!IsDisposed) lblScanStatus.Text = "Scan cancelled.";
             }
             catch (Exception ex)
             {
-                lblScanStatus.Text = $"Error: {ex.Message}";
+                if (!IsDisposed) lblScanStatus.Text = $"Error: {ex.Message}";
             }
             finally
             {
-                SetBusy(false);
+                if (!IsDisposed) SetBusy(false);
             }
         }
 
-        // Rename Now - applies proposals from the grid, respecting any user edits to the Proposed column
-        private async void btnRenameNow_Click(object? sender, EventArgs e) // async void is correct here (WinForms event handler)
+        // Import Now - applies proposals from the grid, respecting any user edits to the Proposed column
+        private async void btnImportNow_Click(object? sender, EventArgs e) // async void is correct here (WinForms event handler)
         {
-            // Count only matched rows (unmatched rows with no proposed name are skipped during apply)
+            // Count only checked rows with a proposed name (unchecked rows are excluded)
             int proposalCount = dgvResults.Rows.Cast<DataGridViewRow>()
-                .Count(r => !string.IsNullOrWhiteSpace(r.Cells[colProposed.Index].Value?.ToString()));
+                .Count(r => r.Cells[colInclude.Index].Value is true
+                            && !string.IsNullOrWhiteSpace(r.Cells[colProposed.Index].Value?.ToString()));
 
             var confirm = MessageBox.Show(
-                $"{proposalCount} file{(proposalCount == 1 ? "" : "s")} will be renamed. This cannot be undone.\n\nContinue?",
+                $"{proposalCount} file{(proposalCount == 1 ? "" : "s")} will be imported. This cannot be undone.\n\nContinue?",
                 "qbPortWeaver | Media Manager",
                 MessageBoxButtons.YesNo,
                 MessageBoxIcon.Warning);
 
             if (confirm != DialogResult.Yes) return;
 
-            _scanCts?.Cancel();
-            _scanCts?.Dispose();
+            if (_scanCts is not null) { await _scanCts.CancelAsync(); _scanCts.Dispose(); }
             _scanCts = new CancellationTokenSource();
-            var ct = _scanCts.Token;
 
             SetBusy(true);
-            btnRenameNow.Enabled = false;
-            lblScanStatus.Text   = "Renaming\u2026";
+            btnImportNow.Enabled = false;
+            lblScanStatus.Text   = "Importing\u2026";
 
             try
             {
-                var toApply = BuildProposalsFromGrid();
-
-                await MediaManagerService.ApplyProposalsAsync(toApply, ct);
-
-                // Re-scan to reflect the new state
-                var apiKey        = txtTmdbApiKey.Text.Trim();
-                bool createFolders = chkCreateFolders.Checked;
-                var movieFolders  = lstMovieFolders.Items.Cast<string>().ToArray();
-                var tvShowFolders = lstTvShowFolders.Items.Cast<string>().ToArray();
-
-                var remaining = await MediaManagerService.ScanAsync(apiKey, createFolders, movieFolders, tvShowFolders, ct);
-                PopulateGrid(remaining);
-
-                string remainingLabel = $"{remaining.Count} file{(remaining.Count == 1 ? "" : "s")}";
-                lblScanStatus.Text   = remaining.Count == 0
-                    ? "Done - all files renamed successfully."
-                    : $"Done - {remainingLabel} could not be renamed.";
-                btnRenameNow.Enabled = remaining.Count > 0;
+                await RunImportAndRescanAsync(_scanCts.Token);
             }
             catch (OperationCanceledException)
             {
-                lblScanStatus.Text = "Rename cancelled.";
+                if (!IsDisposed) lblScanStatus.Text = "Import cancelled.";
             }
             catch (Exception ex)
             {
-                lblScanStatus.Text = $"Error: {ex.Message}";
+                if (!IsDisposed) lblScanStatus.Text = $"Error: {ex.Message}";
             }
             finally
             {
-                SetBusy(false);
+                if (!IsDisposed) SetBusy(false);
             }
         }
 
-        // Builds updated proposals from the grid, honouring any edits the user made to the Proposed column.
-        // Each row carries its own RenameProposal in Tag so row order is irrelevant.
-        private List<RenameProposal> BuildProposalsFromGrid()
+        // Applies proposals, optionally cleans up empty folders, then re-scans to refresh the grid.
+        private async Task RunImportAndRescanAsync(CancellationToken ct)
         {
-            var toApply = new List<RenameProposal>();
+            var toApply    = BuildProposalsFromGrid();
+            var importMode = MediaManagerService.ParseImportMode(cboImportMode.SelectedItem?.ToString() ?? RegistrySettingsManager.ImportModeHardlink);
+
+            var progress = new Progress<(int Current, int Total, string FileName)>(p =>
+            {
+                if (!IsDisposed)
+                {
+                    string name = p.FileName.Length > MaxStatusFileNameLength
+                        ? string.Concat(p.FileName.AsSpan(0, MaxStatusFileNameLength - 3), "...")
+                        : p.FileName;
+                    lblScanStatus.Text = $"Importing {p.Current}/{p.Total} - {name}";
+                }
+            });
+            await MediaManagerService.ApplyProposalsAsync(toApply, importMode, ct, progress);
+
+            if (IsDisposed) return;
+
+            var sourceFolders = lstSourceFolders.Items.Cast<string>().ToArray();
+            if (chkDeleteEmptyFolders.Checked)
+            {
+                lblScanStatus.Text = "Cleaning up empty folders\u2026";
+                await Task.Run(() =>
+                {
+                    foreach (var folder in sourceFolders)
+                    {
+                        ct.ThrowIfCancellationRequested();
+                        MediaManagerService.CleanupEmptyFolders(folder, dryRun: false);
+                    }
+                }, ct);
+            }
+
+            if (IsDisposed) return;
+
+            lblScanStatus.Text = "Re-scanning\u2026";
+            var remaining = await MediaManagerService.ScanAsync(
+                txtTmdbApiKey.Text.Trim(), chkCreateFolders.Checked, sourceFolders,
+                txtMoviesLibraryPath.Text.Trim(), txtTvShowsLibraryPath.Text.Trim(), ct);
+
+            if (IsDisposed) return;
+            PopulateGrid(remaining);
+
+            string remainingLabel = $"{remaining.Count} file{(remaining.Count == 1 ? "" : "s")}";
+            lblScanStatus.Text   = remaining.Count == 0
+                ? "Done - all files imported successfully."
+                : $"Done - {remainingLabel} could not be imported.";
+            btnImportNow.Enabled = remaining.Count > 0;
+        }
+
+        // Builds updated proposals from the grid, honouring any edits the user made to the Proposed column.
+        // Each row carries its own MediaProposal in Tag so row order is irrelevant.
+        private List<MediaProposal> BuildProposalsFromGrid()
+        {
+            var toApply = new List<MediaProposal>();
             foreach (DataGridViewRow row in dgvResults.Rows)
             {
                 if (row.Tag is not RowData { Proposal: var original }) continue;
+                if (row.Cells[colInclude.Index].Value is not true) continue; // user excluded this row
 
                 var editedName = row.Cells[colProposed.Index].Value?.ToString() ?? string.Empty;
                 if (string.IsNullOrWhiteSpace(editedName)) continue; // unmatched row with no user-supplied name
 
-                // Always use the original file's directory unless createFolders is still checked —
-                // the user may have toggled the checkbox between Scan and Rename Now.
-                var proposedDir  = chkCreateFolders.Checked && !string.IsNullOrEmpty(original.ProposedPath)
+                // Use the proposed directory from the scan (which targets the library)
+                var proposedDir  = !string.IsNullOrEmpty(original.ProposedPath)
                                    ? Path.GetDirectoryName(original.ProposedPath) ?? string.Empty
-                                   : Path.GetDirectoryName(original.OriginalPath) ?? string.Empty;
+                                   : string.Empty;
                 var proposedPath = Path.Combine(proposedDir, editedName);
 
                 if (!string.Equals(original.OriginalPath, proposedPath, StringComparison.OrdinalIgnoreCase))
@@ -232,38 +282,53 @@ namespace qbPortWeaver
         private void SetupGridContextMenu()
         {
             var mnuCopy      = new ToolStripMenuItem("Copy");
-            var mnuPaste     = new ToolStripMenuItem("Paste");
+            _mnuPaste        = new ToolStripMenuItem("Paste");
             var mnuSelectAll = new ToolStripMenuItem("Select All");
 
-            mnuCopy.ShortcutKeyDisplayString      = "Ctrl+C";
-            mnuPaste.ShortcutKeyDisplayString     = "Ctrl+V";
-            mnuSelectAll.ShortcutKeyDisplayString = "Ctrl+A";
+            mnuCopy.ShortcutKeyDisplayString       = "Ctrl+C";
+            _mnuPaste.ShortcutKeyDisplayString     = "Ctrl+V";
+            mnuSelectAll.ShortcutKeyDisplayString  = "Ctrl+A";
 
-            mnuCopy.Click      += (_, _) => { if (dgvResults.CurrentCell?.Value is string v && v.Length > 0) Clipboard.SetText(v); };
-            mnuPaste.Click     += (_, _) => PasteToCurrentCell();
-            mnuSelectAll.Click += (_, _) => dgvResults.SelectAll();
+            mnuCopy.Click      += gridContextCopy_Click;
+            _mnuPaste.Click    += gridContextPaste_Click;
+            mnuSelectAll.Click += gridContextSelectAll_Click;
 
             var menu = new ContextMenuStrip(components);
-            menu.Items.AddRange([mnuCopy, mnuPaste, new ToolStripSeparator(), mnuSelectAll]);
+            menu.Items.Add(mnuCopy);
+            menu.Items.Add(_mnuPaste);
+            menu.Items.Add(new ToolStripSeparator());
+            menu.Items.Add(mnuSelectAll);
 
-            // Right-click first moves focus to the cell under the cursor, then the menu opens
-            dgvResults.MouseDown += (_, e) =>
-            {
-                if (e.Button != MouseButtons.Right) return;
-                var hit = dgvResults.HitTest(e.X, e.Y);
-                if (hit.RowIndex >= 0 && hit.ColumnIndex >= 0)
-                    dgvResults.CurrentCell = dgvResults[hit.ColumnIndex, hit.RowIndex];
-            };
-
-            menu.Opening += (_, _) =>
-            {
-                bool canPaste = dgvResults.CurrentCell?.ColumnIndex == colProposed.Index
-                                && !dgvResults.CurrentCell.ReadOnly
-                                && Clipboard.ContainsText();
-                mnuPaste.Enabled = canPaste;
-            };
-
+            dgvResults.MouseDown    += gridResults_MouseDown;
+            menu.Opening            += gridContextMenu_Opening;
             dgvResults.ContextMenuStrip = menu;
+        }
+
+        private void gridContextCopy_Click(object? sender, EventArgs e)
+        {
+            if (dgvResults.CurrentCell?.Value is string v && v.Length > 0)
+                Clipboard.SetText(v);
+        }
+
+        private void gridContextPaste_Click(object? sender, EventArgs e) => PasteToCurrentCell();
+
+        private void gridContextSelectAll_Click(object? sender, EventArgs e) => dgvResults.SelectAll();
+
+        // Right-click first moves focus to the cell under the cursor, then the menu opens
+        private void gridResults_MouseDown(object? sender, MouseEventArgs e)
+        {
+            if (e.Button != MouseButtons.Right) return;
+            var hit = dgvResults.HitTest(e.X, e.Y);
+            if (hit.RowIndex >= 0 && hit.ColumnIndex >= 0)
+                dgvResults.CurrentCell = dgvResults[hit.ColumnIndex, hit.RowIndex];
+        }
+
+        private void gridContextMenu_Opening(object? sender, System.ComponentModel.CancelEventArgs e)
+        {
+            bool canPaste = dgvResults.CurrentCell?.ColumnIndex == colProposed.Index
+                            && !dgvResults.CurrentCell.ReadOnly
+                            && Clipboard.ContainsText();
+            _mnuPaste!.Enabled = canPaste;
         }
 
         private void PasteToCurrentCell()
@@ -291,6 +356,27 @@ namespace qbPortWeaver
             }
         }
 
+        // Commits checkbox edits immediately so the value is available without leaving the row
+        private void dgvResults_CellContentClick(object? sender, DataGridViewCellEventArgs e)
+        {
+            if (e.RowIndex >= 0 && e.ColumnIndex == colInclude.Index)
+            {
+                dgvResults.CommitEdit(DataGridViewDataErrorContexts.Commit);
+                UpdateScanStatus();
+            }
+        }
+
+        // Clicking the Include column header toggles all checkboxes on/off
+        private void dgvResults_ColumnHeaderMouseClick(object? sender, DataGridViewCellMouseEventArgs e)
+        {
+            if (e.ColumnIndex != colInclude.Index) return;
+
+            _allIncluded = !_allIncluded;
+            foreach (DataGridViewRow row in dgvResults.Rows)
+                row.Cells[colInclude.Index].Value = _allIncluded;
+            UpdateScanStatus();
+        }
+
         // Colors rows by match confidence: orange = no TMDB match, red = uncertain match
         private void dgvResults_CellFormatting(object? sender, DataGridViewCellFormattingEventArgs e)
         {
@@ -305,17 +391,50 @@ namespace qbPortWeaver
             e.CellStyle.SelectionForeColor = color;
         }
 
-        // Disables Scan Now and the folder tabs while an async operation is running.
-        // btnRenameNow is managed separately by each handler to preserve its proposals-count state.
+        // Disables Scan Now and the source folders while an async operation is running.
+        // btnImportNow is managed separately by each handler to preserve its proposals-count state.
         private void SetBusy(bool busy)
         {
-            btnScanNow.Enabled  = !busy;
-            tabFolders.Enabled  = !busy;
+            btnScanNow.Enabled       = !busy;
+            btnClearCache.Enabled    = !busy;
+            grpSourceFolders.Enabled = !busy;
         }
 
-        private void PopulateGrid(List<RenameProposal> proposals)
+        // Updates the status label and Import Now button based on checked rows
+        private void UpdateScanStatus()
+        {
+            int included = 0;
+            int unmatched = 0;
+
+            foreach (DataGridViewRow row in dgvResults.Rows)
+            {
+                if (row.Tag is not RowData { Proposal: var p }) continue;
+                bool isChecked = row.Cells[colInclude.Index].Value is true;
+
+                if (!p.IsMatched)
+                    unmatched++;
+                else if (isChecked)
+                    included++;
+            }
+
+            string includeStr   = $"{included} file{(included == 1 ? "" : "s")}";
+            string unmatchedStr = $"{unmatched} file{(unmatched == 1 ? "" : "s")}";
+
+            lblScanStatus.Text = (included, unmatched) switch
+            {
+                (0, 0) => "All files already imported.",
+                (0, _) => $"{unmatchedStr} had no TMDB match - enter proposed names manually.",
+                (_, 0) => $"{includeStr} would be imported.",
+                _      => $"{includeStr} would be imported, {unmatchedStr} had no TMDB match."
+            };
+
+            btnImportNow.Enabled = included > 0 || unmatched > 0;
+        }
+
+        private void PopulateGrid(List<MediaProposal> proposals)
         {
             dgvResults.Rows.Clear();
+            _allIncluded = true;
             foreach (var p in proposals)
             {
                 RowConfidence confidence;
@@ -325,6 +444,7 @@ namespace qbPortWeaver
                     confidence = RowConfidence.Unmatched;
 
                 int idx = dgvResults.Rows.Add(
+                    true,
                     p.MediaType,
                     Path.GetFileName(p.OriginalPath),
                     p.IsMatched ? Path.GetFileName(p.ProposedPath) : string.Empty);
@@ -332,11 +452,22 @@ namespace qbPortWeaver
             }
         }
 
+        private static void BrowseForFolder(TextBox target)
+        {
+            using var dlg = new FolderBrowserDialog
+            {
+                Description            = "Select a library folder",
+                UseDescriptionForTitle = true
+            };
+            if (dlg.ShowDialog() == DialogResult.OK)
+                target.Text = dlg.SelectedPath;
+        }
+
         private static void AddFolder(ListBox listBox)
         {
             using var dlg = new FolderBrowserDialog
             {
-                Description            = "Select a media folder",
+                Description            = "Select a source folder",
                 UseDescriptionForTitle = true
             };
             if (dlg.ShowDialog() == DialogResult.OK && !listBox.Items.Contains(dlg.SelectedPath))

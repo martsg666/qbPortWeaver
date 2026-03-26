@@ -4,6 +4,7 @@ using System.Text;
 
 namespace qbPortWeaver
 {
+    /// <summary>Reads and writes application settings from the Windows registry under <c>HKCU\Software\qbPortWeaver\Settings</c>.</summary>
     public static class RegistrySettingsManager
     {
         private const string BaseKeyPath = @"Software\qbPortWeaver\Settings";
@@ -16,6 +17,7 @@ namespace qbPortWeaver
         public const string SectionExtra       = "extra";
         public const string SectionMedia       = "media";
 
+        public const string VpnProviderDisabled  = "Disabled";
         public const string VpnProviderProtonVpn = "ProtonVPN";
         public const string VpnProviderPia       = "PIA";
         public const string VpnProviderNatPmp    = "NAT-PMP";
@@ -48,10 +50,17 @@ namespace qbPortWeaver
         // Registry key names - media section
         public const string KeyMediaEnabled       = "mediaEnabled";
         public const string KeyTmdbApiKey         = "tmdbApiKey";
-        public const string KeyMediaMovieFolders  = "movieFolders";
-        public const string KeyMediaTvShowFolders = "tvShowFolders";
-        public const string KeyMediaCreateFolders = "createFolders";
-        public const string KeyMediaDryRun        = "dryRun";
+        public const string KeyMediaSourceFolders      = "sourceFolders";
+        public const string KeyMediaCreateFolders      = "createFolders";
+        public const string KeyMediaDeleteEmptyFolders = "deleteEmptyFolders";
+        public const string KeyMediaDryRun             = "dryRun";
+        public const string KeyMediaMoviesLibraryPath  = "moviesLibraryPath";
+        public const string KeyMediaTvShowsLibraryPath = "tvShowsLibraryPath";
+        public const string KeyMediaImportMode         = "importMode";
+
+        public const string ImportModeHardlink = "Hardlink";
+        public const string ImportModeCopy     = "Copy";
+        public const string ImportModeMove     = "Move";
 
         // Registry key names - general section (auto-recovery)
         // Registry string values are frozen for backward compatibility.
@@ -59,12 +68,12 @@ namespace qbPortWeaver
         public const string KeyAutoRecoveryTriggerCycles = "vpnAutoRecoveryTriggerCycles";
 
         // Default values for all settings (single source of truth)
-        internal static readonly Dictionary<string, Dictionary<string, string>> Defaults =
+        private static readonly Dictionary<string, Dictionary<string, string>> _defaults =
             new(StringComparer.OrdinalIgnoreCase)
             {
                 [SectionGeneral] = new(StringComparer.OrdinalIgnoreCase)
                 {
-                    [KeyVpnProvider]                    = VpnProviderProtonVpn,
+                    [KeyVpnProvider]                    = VpnProviderDisabled,
                     [KeyUpdateIntervalSeconds]           = "180",
                     [KeyNatPmpAdapterName]              = "",
                     [KeyAutoRecoveryEnabled]            = ValueFalse,
@@ -92,10 +101,13 @@ namespace qbPortWeaver
                 {
                     [KeyMediaEnabled]       = ValueFalse,
                     [KeyTmdbApiKey]         = "",
-                    [KeyMediaMovieFolders]  = "",
-                    [KeyMediaTvShowFolders] = "",
-                    [KeyMediaCreateFolders] = ValueFalse,
-                    [KeyMediaDryRun]        = ValueTrue
+                    [KeyMediaSourceFolders]      = "",
+                    [KeyMediaCreateFolders]      = ValueFalse,
+                    [KeyMediaDeleteEmptyFolders] = ValueFalse,
+                    [KeyMediaDryRun]             = ValueTrue,
+                    [KeyMediaMoviesLibraryPath]  = "",
+                    [KeyMediaTvShowsLibraryPath] = "",
+                    [KeyMediaImportMode]         = ImportModeHardlink
                 }
             };
 
@@ -103,16 +115,16 @@ namespace qbPortWeaver
         public static void EnsureDefaults()
         {
             bool anyWritten = false;
-            foreach (var section in Defaults)
+            foreach (var section in _defaults)
             {
                 try
                 {
                     using var regKey = Registry.CurrentUser.CreateSubKey($@"{BaseKeyPath}\{section.Key}");
-                    anyWritten |= WriteDefaultsForSection(regKey, section.Key, section.Value);
+                    anyWritten |= WriteDefaultsForSection(regKey, section.Value);
                 }
                 catch (Exception ex)
                 {
-                    LogManager.Instance.LogDebug($"RegistrySettingsManager.EnsureDefaults: [{section.Key}]: {ex.Message}");
+                    LogManager.Instance.LogDebug($"RegistrySettingsManager.EnsureDefaults: [{section.Key}] - {ex.Message}");
                 }
             }
 
@@ -131,7 +143,7 @@ namespace qbPortWeaver
             }
             catch (Exception ex)
             {
-                LogManager.Instance.LogDebug($"RegistrySettingsManager.GetValue: [{section}] {key}: {ex.Message}");
+                LogManager.Instance.LogDebug($"RegistrySettingsManager.GetValue: [{section}] {key} - {ex.Message}");
             }
 
             string fallback = GetDefault(section, key);
@@ -176,7 +188,7 @@ namespace qbPortWeaver
             }
             catch (Exception ex)
             {
-                LogManager.Instance.LogDebug($"RegistrySettingsManager.GetEncryptedValue: [{section}] {key}: {ex.Message}");
+                LogManager.Instance.LogDebug($"RegistrySettingsManager.GetEncryptedValue: [{section}] {key} - {ex.Message}");
             }
 
             return GetDefault(section, key);
@@ -224,25 +236,25 @@ namespace qbPortWeaver
         // Keys that are stored DPAPI-encrypted rather than as plaintext registry strings.
         // Used by WriteDefaultsForSection to encrypt initial values, and could be extended
         // to any future sensitive setting.
-        private static readonly HashSet<string> EncryptedKeys = new(StringComparer.OrdinalIgnoreCase)
+        private static readonly HashSet<string> _encryptedKeys = new(StringComparer.OrdinalIgnoreCase)
         {
             KeyQBittorrentPassword,
             KeyTmdbApiKey
         };
 
         // Writes any missing keys for one registry section; returns true if anything was written
-        private static bool WriteDefaultsForSection(RegistryKey regKey, string sectionName,
+        private static bool WriteDefaultsForSection(RegistryKey regKey,
             Dictionary<string, string> sectionDefaults)
         {
             bool anyWritten = false;
             foreach (var kvp in sectionDefaults)
             {
-                if (regKey.GetValue(kvp.Key) != null)
+                if (regKey.GetValue(kvp.Key) is not null)
                     continue;
 
                 // Sensitive keys are always stored encrypted; encrypt before the initial write.
                 regKey.SetValue(kvp.Key,
-                    EncryptedKeys.Contains(kvp.Key) ? EncryptValue(kvp.Value) : kvp.Value,
+                    _encryptedKeys.Contains(kvp.Key) ? EncryptValue(kvp.Value) : kvp.Value,
                     RegistryValueKind.String);
 
                 anyWritten = true;
@@ -267,7 +279,7 @@ namespace qbPortWeaver
         // Returns the hardcoded default for a setting; returns empty string if the section or key is not found
         private static string GetDefault(string section, string key)
         {
-            if (Defaults.TryGetValue(section, out var sectionDefaults) &&
+            if (_defaults.TryGetValue(section, out var sectionDefaults) &&
                 sectionDefaults.TryGetValue(key, out var value))
                 return value;
             return string.Empty;

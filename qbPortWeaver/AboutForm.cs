@@ -1,5 +1,6 @@
 namespace qbPortWeaver
 {
+    /// <summary>About dialog showing version info, update availability, and contributor credits.</summary>
     public partial class AboutForm : Form
     {
         // Set to the release URL when an update is available; null when up-to-date or not yet checked
@@ -21,10 +22,12 @@ namespace qbPortWeaver
             _ = LoadGitHubDataAsync(); // fire-and-forget; exceptions are handled inside LoadGitHubDataAsync
         }
 
+        private void btnClose_Click(object? sender, EventArgs e) => Close();
+
         // Opens the release page if an update is available; otherwise re-runs the update check
         private void btnCheckForUpdates_Click(object? sender, EventArgs e)
         {
-            if (_releaseUrl != null)
+            if (_releaseUrl is not null)
                 AppConstants.OpenUrl(_releaseUrl);
             else
                 _ = LoadGitHubDataAsync(); // fire-and-forget; exceptions are handled inside LoadGitHubDataAsync
@@ -70,7 +73,7 @@ namespace qbPortWeaver
                     lnkAuthor.Text = AppConstants.GitHubRepoOwner;
 
                 var info = await releaseTask;
-                if (info == null)
+                if (info is null)
                 {
                     lblLatestVersionValue.Text      = "Unable to check";
                     lblLatestVersionValue.ForeColor = SystemColors.ControlText;

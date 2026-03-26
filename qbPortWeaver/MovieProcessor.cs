@@ -19,7 +19,7 @@ namespace qbPortWeaver
         private readonly ImportMode _importMode;
 
         // Caches movie lookups (including confidence) to avoid redundant TMDB API calls across scan cycles.
-        // Key includes year to distinguish same-titled movies (e.g. "The Thing|1982" vs "The Thing|2011").
+        // Key includes year to distinguish same-titled movies (e.g. "Title|1982" vs "Title|2011").
         // ConcurrentDictionary: sync cycle and UI scan can overlap.
         private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, (MovieInfo? Info, bool IsConfident)> _movieCache = new(StringComparer.OrdinalIgnoreCase);
 
@@ -410,7 +410,7 @@ namespace qbPortWeaver
         private async Task<(MovieInfo? Info, bool IsConfident)> TryFallbackLookupsAsync(
             string title, int? year, MovieInfo? info, bool isConfident)
         {
-            // Try the part after " - " (e.g. "Harry Potter 1 - The Sorcerer's Stone")
+            // Try the part after " - " (e.g. "Series 1 - The Subtitle")
             if (info is null && title.Contains(" - "))
             {
                 var afterDash = title[(title.IndexOf(" - ", StringComparison.Ordinal) + 3)..].Trim();
@@ -419,7 +419,7 @@ namespace qbPortWeaver
                 if (info is not null) isConfident = false;
             }
 
-            // Try without trailing number (e.g. "Shrek 1" -> "Shrek")
+            // Try without trailing number (e.g. "Title 1" -> "Title")
             if (info is null || (info.Year is null && title.Length > 2))
             {
                 var trimmed = title.TrimEnd();

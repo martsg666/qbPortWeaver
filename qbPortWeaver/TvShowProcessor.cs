@@ -19,7 +19,7 @@ namespace qbPortWeaver
         private readonly ImportMode _importMode;
 
         // Caches show lookups (including confidence) to avoid redundant TMDB API calls across scan cycles.
-        // Key includes year to distinguish same-titled shows (e.g. "Battlestar Galactica|1978" vs "Battlestar Galactica|2003").
+        // Key includes year to distinguish same-titled shows (e.g. "Show|1978" vs "Show|2003").
         // ConcurrentDictionary: sync cycle and UI scan can overlap.
         private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, (TvShowInfo? Info, bool IsConfident)> _showCache = new(StringComparer.OrdinalIgnoreCase);
 

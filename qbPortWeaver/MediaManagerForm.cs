@@ -34,10 +34,10 @@ namespace qbPortWeaver
             toolTip.SetToolTip(chkDryRun,             "When checked, the automatic sync cycle will only log what it would import without touching any files");
             toolTip.SetToolTip(chkCreateFolders,      "Import each title into its own Plex-recommended folder: Movies/Title (Year)/Title (Year).ext");
             toolTip.SetToolTip(chkDeleteEmptyFolders, "Delete source folders left empty after importing - folders containing only .nfo files are also removed");
-            toolTip.SetToolTip(cboImportMode,         "Hardlink: links without copying (same volume required). Copy: duplicates the file. Move: relocates the file (breaks seeding).");
+            toolTip.SetToolTip(cboImportMode,         "Hardlink: links without copying (same volume required). Copy: duplicates the file. Move: relocates the file.");
             toolTip.SetToolTip(txtMoviesLibraryPath,  "Target library folder for imported movies");
             toolTip.SetToolTip(txtTvShowsLibraryPath, "Target library folder for imported TV shows");
-            toolTip.SetToolTip(lstSourceFolders,      "Download or seeding folders scanned for movies and TV shows on each cycle");
+            toolTip.SetToolTip(lstSourceFolders,      "Source folders scanned for movies and TV shows on each cycle");
             toolTip.SetToolTip(btnAddSourceFolder,    "Add a folder to scan");
             toolTip.SetToolTip(btnRemoveSourceFolder, "Remove the selected folder from the list");
             toolTip.SetToolTip(btnScanNow,            "Preview which files would be imported - no files are touched");

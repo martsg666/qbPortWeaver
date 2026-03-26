@@ -3,7 +3,7 @@
 ## Overview
 
 **qbPortWeaver** is a Windows application designed to sync the listening port of **qBittorrent** with the port assigned by your VPN provider (**ProtonVPN**, **Private Internet Access**, or any **NAT-PMP capable VPN gateway or router**).
-This ensures your torrent client always uses the VPN-provided port, improving privacy and connectivity.
+This ensures your client always uses the VPN-provided port, improving privacy and connectivity.
 
 The application runs in the system tray, manages configuration and logging, and automatically updates qBittorrent's port when changes are detected.
 
@@ -120,7 +120,7 @@ Configured via tray menu → **Media Manager**.
 | Import Mode | How files are transferred to the library: `Hardlink` (default, falls back to copy for cross-volume), `Copy`, or `Move` | `Hardlink` |
 | Create Folders | Organise each title into its own Plex subfolder (`Title (Year)/` for movies, `Show (Year)/Season XX/` for TV) | `False` |
 | Delete Empty Folders | After importing, delete source subfolders that are empty or contain only `.nfo` files | `False` |
-| Source Folders | Download/seeding folders scanned for movie and TV episode files on each cycle | - |
+| Source Folders | Folders scanned for movie and TV episode files on each cycle | - |
 | Movies Library | Target library folder for imported movies (leave empty to skip movie processing) | - |
 | TV Shows Library | Target library folder for imported TV shows (leave empty to skip TV show processing) | - |
 
@@ -337,7 +337,7 @@ master  ────────────────────────
 The modular architecture makes it easy to:
 
 - Add support for other VPN providers
-- Integrate additional torrent clients
+- Integrate additional clients
 - Extend configuration or logging features
 
 ---

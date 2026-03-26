@@ -128,7 +128,7 @@ namespace qbPortWeaver
         /// </summary>
         /// <param name="apiKey">TMDB API key used to look up movie and TV show metadata.</param>
         /// <param name="createFolders">When true, proposals include Plex-recommended subfolders in the library.</param>
-        /// <param name="sourceFolders">Download or seeding folders to scan for both movies and TV shows.</param>
+        /// <param name="sourceFolders">Source folders to scan for both movies and TV shows.</param>
         /// <param name="moviesLibraryPath">Library folder for movies. Empty to skip movie processing.</param>
         /// <param name="tvShowsLibraryPath">Library folder for TV shows. Empty to skip TV show processing.</param>
         /// <param name="cancellationToken">Token to cancel the scan between folders.</param>
@@ -311,7 +311,7 @@ namespace qbPortWeaver
         // Files: video files are split by IsTvShow/IsVideoTvShowEpisode.
         // Directories: movieDirs excludes folders with episode/season patterns in their name.
         // tvDirs intentionally includes ALL directories because many TV show folders lack episode
-        // patterns in their name (e.g. "Breaking Bad Season 1"). The TV processor will recurse
+        // patterns in their name (e.g. "Show Name Season 1"). The TV processor will recurse
         // into each and only process files that match episode patterns.
         private static (string[] MovieFiles, string[] MovieDirs, string[] TvFiles, string[] TvDirs) ClassifySourceFolder(string folder)
         {

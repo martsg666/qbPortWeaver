@@ -60,13 +60,13 @@ namespace qbPortWeaver
             "redux", "restored", "hybrid", "mhd", "custom", "readnfo", "anniversary",
             "v2", "v3", "v4", "uncensored", "censored", "fanres", "fanedit",
             "obfuscated", "convert", "preair", "extras", "bonus", "featurettes",
-            // French scene tags for complete series / integrals
+            // French tags for complete series / integrals
             "integral", "integrale", "complete",
             // Frame rate
             "hfr", "24fps", "25fps", "30fps", "48fps", "60fps", "120fps",
             // Edition / other
             "untouched", "colorized", "samplefix",
-            // Scene fix / misc
+            // Fix / misc
             "sample", "nfofix", "dirfix", "subfix", "syncfix",
             "nuked", "commentary", "fullscreen", "widescreen", "ws",
             "ntsc", "pal"
@@ -247,7 +247,7 @@ namespace qbPortWeaver
 
         // Strips a trailing year hint from rawTitle (year in parens or bare year at end-of-string).
         // Returns the year if the remainder is non-empty, null otherwise.
-        // Guard: does not strip the year when it IS the entire title (e.g. show "1883").
+        // Guard: does not strip the year when it IS the entire title (e.g. "1883").
         private static int? TryStripTrailingYear(ref string rawTitle)
         {
             // Try year in parens first: "Show Name (2018)"
@@ -263,7 +263,7 @@ namespace qbPortWeaver
                 return null;
             }
 
-            // Try bare year at end-of-string: "Yellowstone 2018"
+            // Try bare year at end-of-string: "Title 2018"
             var yearMatch = StandaloneYearRegex().Match(rawTitle);
             if (yearMatch.Success && yearMatch.Index + yearMatch.Length == rawTitle.Length)
             {
@@ -315,7 +315,7 @@ namespace qbPortWeaver
                 if (next.Success && string.IsNullOrWhiteSpace(cleaned[(yearMatch.Index + yearMatch.Length)..next.Index]))
                 {
                     // Case 3: two years with only whitespace between - first is part of title,
-                    // second is the release year (e.g. "Blade Runner 2049 2017")
+                    // second is the release year (e.g. "Title 2049 2017")
                     yearMatch = next;
                 }
             }
@@ -325,7 +325,7 @@ namespace qbPortWeaver
         }
 
         // Walks the whitespace-split words and returns everything before the first cutoff token.
-        // Handles scene-style "Token-Group" compounds by checking the prefix before the first hyphen.
+        // Handles "Token-Group" compounds by checking the prefix before the first hyphen.
         private static string CutAtTokens(string input)
         {
             var words  = input.Split(' ', StringSplitOptions.RemoveEmptyEntries);
@@ -335,7 +335,7 @@ namespace qbPortWeaver
                 if (_cutoffTokens.Contains(word))
                     break;
 
-                // Scene naming: "Token-GroupName" (e.g. "DVDR-Replica", "x264-SPARKS")
+                // Compound naming: "Token-GroupName" (e.g. "x264-GRP")
                 // Check the prefix before the first hyphen against cutoff tokens
                 var dashIndex = word.IndexOf('-');
                 if (dashIndex > 0 && _cutoffTokens.Contains(word[..dashIndex]))
@@ -365,7 +365,7 @@ namespace qbPortWeaver
                     title = trimmed;
             }
 
-            // Strip orphan trailing brackets left after tag/year removal (e.g. "One Shot [", "Smallville (")
+            // Strip orphan trailing brackets left after tag/year removal (e.g. "Title [", "Title (")
             return title.TrimEnd(' ', '-', '.', '_', '[', '(');
         }
 
@@ -400,14 +400,14 @@ namespace qbPortWeaver
         [GeneratedRegex(@"[_]((?:FR|EN|VF|VO)[-]?(?:FR|EN|VF|VO)?(?:[-](?:FR|EN|VF|VO))*)$", RegexOptions.IgnoreCase)]
         private static partial Regex LanguageSuffixRegex();
 
-        // Primary TV pattern: SxxExx / S1E1 / S004E111 (scene, P2P, and anime), captures season and episode.
+        // Primary TV pattern: SxxExx / S1E1 / S004E111, captures season and episode.
         // Multi-episode names (S01E01-E03, S01E01E02) match on the first episode only - Plex expects
         // individual episode files, so the caller treats the file as belonging to the first episode.
         [GeneratedRegex(@"S(\d{1,4})E(\d{1,4})", RegexOptions.IgnoreCase)]
         private static partial Regex TvShowEpisodeRegex();
 
         // Legacy TV pattern: 1x01 notation used by older releases, captures season and episode.
-        // No leading \b so it matches even when glued to a word (e.g. "Castle1x01").
+        // No leading \b so it matches even when glued to a word (e.g. "Show1x01").
         [GeneratedRegex(@"(\d{1,2})x(\d{2})\b", RegexOptions.IgnoreCase)]
         private static partial Regex TvShowEpisodeLegacyRegex();
 

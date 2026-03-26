@@ -214,7 +214,7 @@ namespace qbPortWeaver
             grpSourceFolders.Size     = new Size(684, 126);
             grpSourceFolders.TabIndex = 2;
             grpSourceFolders.TabStop  = false;
-            grpSourceFolders.Text     = "Source Folders (download / seeding folders to scan for movies and TV shows)";
+            grpSourceFolders.Text     = "Source Folders";
             //
             // lstSourceFolders
             //

@@ -1,0 +1,63 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <ApplicationIcon>qbPortWeaver.ico</ApplicationIcon>
+    <AssemblyTitle>qbPortWeaver</AssemblyTitle>
+    <Description>Syncs the listening port of qBittorrent with the port assigned by your VPN provider (ProtonVPN, PIA, or any NAT-PMP capable adapter)</Description>
+    <Company>martsg666</Company>
+    <Product>qbPortWeaver</Product>
+    <Authors>martsg666</Authors>
+    <Copyright>© 2026 martsg666</Copyright>
+    <Version>2.4.1</Version>
+    <FileVersion>2.4.1.0</FileVersion>
+    <AssemblyVersion>2.4.1.0</AssemblyVersion>
+    <SignAssembly>False</SignAssembly>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <!-- Suppress known SonarAnalyzer false positives (each has a matching // NOSONAR comment):
+         S1075 - TMDB base URL is intentionally hardcoded (TmdbClient.cs)
+         S2068 - registry key name contains "Password", value is masked (PortSyncService.cs)
+         S4721 - post-update command is user-configured, arbitrary execution is intended (PortSyncService.cs)
+         S4790 - TMDB API v3 requires key as query parameter, HTTPS only (TmdbClient.cs) -->
+    <NoWarn>S1075;S2068;S4721;S4790</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="SonarAnalyzer.CSharp" Version="10.21.0.135717">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="System.ServiceProcess.ServiceController" Version="10.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Update="Properties\Resources.Designer.cs">
+      <DesignTime>True</DesignTime>
+      <AutoGen>True</AutoGen>
+      <DependentUpon>Resources.resx</DependentUpon>
+    </Compile>
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Update="Properties\Resources.resx">
+      <Generator>ResXFileCodeGenerator</Generator>
+      <LastGenOutput>Resources.Designer.cs</LastGenOutput>
+    </EmbeddedResource>
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="qbPortWeaver.ico">
+      <Pack>True</Pack>
+      <PackagePath>\</PackagePath>
+    </None>
+    <None Include="..\README.md">
+      <Pack>True</Pack>
+      <PackagePath>\</PackagePath>
+    </None>
+  </ItemGroup>
+
+</Project>

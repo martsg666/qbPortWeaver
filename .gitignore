@@ -364,6 +364,7 @@ FodyWeavers.xsd
 
 # Claude Code
 CLAUDE.md
+.claude/
 
 # Build folder
 \!Build/

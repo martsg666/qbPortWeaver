@@ -20,7 +20,7 @@ $ErrorActionPreference = 'Stop'
 
 $repoRoot   = Split-Path -Parent $PSScriptRoot
 $chocoSrc   = Join-Path $repoRoot 'choco'
-$csprojPath = Join-Path $repoRoot 'qbPortWeaver.csproj'
+$csprojPath = Join-Path $repoRoot 'qbPortWeaver\qbPortWeaver.csproj'
 $stagingDir = Join-Path ([System.IO.Path]::GetTempPath()) "qbPortWeaver-choco-test-$([System.Guid]::NewGuid().ToString('N'))"
 
 function Write-Step([string]$msg) { Write-Host "`n==> $msg" -ForegroundColor Cyan }
@@ -73,7 +73,7 @@ try {
             $unreplaced = $true
         }
     }
-    if ($unreplaced) { throw 'Unreplaced TEMPLATE_ placeholders found — stamping failed.' }
+    if ($unreplaced) { throw 'Unreplaced TEMPLATE_ placeholders found - stamping failed.' }
 
     Write-Step 'Installing community validation extension and packing...'
     choco install chocolatey-community-validation.extension -y --no-progress
@@ -84,8 +84,8 @@ try {
 
     Write-Step 'Installing Chocolatey package...'
     # --ignore-checksums: Chocolatey's checksum verification is unreliable with
-    # file:// URLs. Integrity is not a concern here — the MSI was built locally.
-    choco install qbportweaver --source $stagingDir -y --ignore-checksums
+    # file:// URLs. Integrity is not a concern here - the MSI was built locally.
+    choco install qbportweaver --version $version --source $stagingDir -y --ignore-checksums --force
     if ($LASTEXITCODE -ne 0) { throw 'choco install failed.' }
 
     Write-Host "`nDone." -ForegroundColor Green

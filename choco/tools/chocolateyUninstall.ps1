@@ -14,7 +14,7 @@ $packageArgs = @{
 if ($key.Count -eq 1) {
   $key | ForEach-Object {
     # PSChildName is the ProductCode GUID. It must go in silentArgs (unquoted),
-    # not in 'file' — Chocolatey quotes the 'file' parameter, which msiexec rejects.
+    # not in 'file' - Chocolatey quotes the 'file' parameter, which msiexec rejects.
     $packageArgs['silentArgs'] = "$($_.PSChildName) /qn /norestart"
     $packageArgs['file']       = ''
     Uninstall-ChocolateyPackage @packageArgs

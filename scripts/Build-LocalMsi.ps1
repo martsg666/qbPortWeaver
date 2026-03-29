@@ -4,12 +4,12 @@
 
 .DESCRIPTION
     Mirrors the CI build-release-publish.yml pipeline locally:
-      1. Publishes the .NET app as a self-contained single-file win-x64 executable
+      1. Publishes both projects as self-contained single-file win-x64 executables
       2. Builds the MSI installer using WiX Toolset v4
 
-    Use this script to build the MSI locally — a regular Visual Studio
+    Use this script to build the MSI locally - a regular Visual Studio
     Release build does NOT produce the self-contained single-file output that
-    the WiX source expects under bin\Release\<tfm>\win-x64\publish\.
+    the WiX source expects under qbPortWeaver\bin\Release\<tfm>\win-x64\publish\.
 
     WiX Toolset v4 is installed/updated automatically by this script.
     To install manually: dotnet tool update --global wix --version "4.0.6"
@@ -41,12 +41,12 @@ function Write-Step([string]$msg) { Write-Host "`n==> $msg" -ForegroundColor Cya
 function Write-Ok([string]$msg)   { Write-Host "    $msg"   -ForegroundColor Green }
 
 # ---------------------------------------------------------------------------
-# Step 1: Resolve version — read from qbPortWeaver.csproj if not provided
+# Step 1: Resolve version - read from qbPortWeaver.csproj if not provided
 # ---------------------------------------------------------------------------
 Write-Step 'Resolving version...'
 
 if (-not $Version) {
-    $csprojPath = Join-Path $repoRoot 'qbPortWeaver.csproj'
+    $csprojPath = Join-Path $repoRoot 'qbPortWeaver\qbPortWeaver.csproj'
     $match = Select-String -Path $csprojPath -Pattern '<Version>([^<]+)</Version>'
     if (-not $match) {
         throw "Could not find <Version> in qbPortWeaver.csproj. Pass -Version explicitly."
@@ -57,35 +57,42 @@ if (-not $Version) {
 Write-Ok "Version : $Version"
 
 # ---------------------------------------------------------------------------
-# Step 2: Publish as self-contained single-file win-x64
+# Step 2: Publish both projects as self-contained single-file win-x64 executables
 #         This matches the CI build-release-publish.yml publish step exactly.
-#         Output lands in: bin\Release\<tfm>\win-x64\publish\
+#         Output lands in: <project>\bin\Release\<tfm>\win-x64\publish\
 # ---------------------------------------------------------------------------
-Write-Step 'Publishing self-contained single-file executable...'
+Write-Step 'Publishing self-contained single-file executables...'
+
+$tfm = (Select-String -Path (Join-Path $repoRoot 'qbPortWeaver\qbPortWeaver.csproj') -Pattern '<TargetFramework>([^<]+)</TargetFramework>').Matches[0].Groups[1].Value
 
 Push-Location $repoRoot
 try {
-    dotnet publish qbPortWeaver.csproj `
-        --configuration Release `
-        --runtime win-x64 `
-        --self-contained true `
-        -p:PublishSingleFile=true `
-        -p:Version=$Version `
-        -p:FileVersion="$Version.0" `
-        -p:AssemblyVersion="$Version.0"
+    foreach ($proj in @('qbPortWeaver\qbPortWeaver.csproj', 'HelperService\qbPortWeaver.HelperService.csproj')) {
+        dotnet publish $proj `
+            --configuration Release `
+            --runtime win-x64 `
+            --self-contained true `
+            -p:PublishSingleFile=true `
+            -p:Version=$Version `
+            -p:FileVersion="$Version.0" `
+            -p:AssemblyVersion="$Version.0" `
+            /warnaserror
 
-    if ($LASTEXITCODE -ne 0) { throw 'dotnet publish failed.' }
+        if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed for $proj" }
+    }
 } finally {
     Pop-Location
 }
 
-$tfm          = (Select-String -Path (Join-Path $repoRoot 'qbPortWeaver.csproj') -Pattern '<TargetFramework>([^<]+)</TargetFramework>').Matches[0].Groups[1].Value
-$publishedExe = Join-Path $repoRoot "bin\Release\$tfm\win-x64\publish\qbPortWeaver.exe"
-if (-not (Test-Path $publishedExe)) {
-    throw "Expected publish output not found: $publishedExe"
-}
+$publishedExes = @(
+    Join-Path $repoRoot "qbPortWeaver\bin\Release\$tfm\win-x64\publish\qbPortWeaver.exe"
+    Join-Path $repoRoot "HelperService\bin\Release\$tfm\win-x64\publish\qbPortWeaver.HelperService.exe"
+)
 
-Write-Ok "Published : $publishedExe"
+foreach ($exe in $publishedExes) {
+    if (-not (Test-Path $exe)) { throw "Expected publish output not found: $exe" }
+    Write-Ok "Published : $exe"
+}
 
 # ---------------------------------------------------------------------------
 # Step 3: Build the MSI installer using WiX Toolset v4
@@ -93,7 +100,7 @@ Write-Ok "Published : $publishedExe"
 # ---------------------------------------------------------------------------
 Write-Step 'Building MSI installer with WiX Toolset v4...'
 
-# Ensure WiX is installed (update is idempotent — installs if missing, updates if present)
+# Ensure WiX is installed (update is idempotent - installs if missing, updates if present)
 dotnet tool update --global wix --version "4.0.6"
 if ($LASTEXITCODE -ne 0) { throw 'Failed to install/update WiX Toolset.' }
 

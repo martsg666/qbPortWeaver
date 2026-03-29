@@ -43,6 +43,7 @@ namespace qbPortWeaver
             btnImportNow   = new Button();
             btnClearCache  = new Button();
             lblScanStatus  = new Label();
+            prgScan        = new ProgressBar();
             dgvResults     = new DataGridView();
             colInclude     = new DataGridViewCheckBoxColumn();
             colType        = new DataGridViewTextBoxColumn();
@@ -92,10 +93,11 @@ namespace qbPortWeaver
             //
             // txtTmdbApiKey
             //
-            txtTmdbApiKey.Location = new Point(148, 53);
-            txtTmdbApiKey.Name     = "txtTmdbApiKey";
-            txtTmdbApiKey.Size     = new Size(524, 23);
-            txtTmdbApiKey.TabIndex = 2;
+            txtTmdbApiKey.Location     = new Point(148, 53);
+            txtTmdbApiKey.Name         = "txtTmdbApiKey";
+            txtTmdbApiKey.PasswordChar = '*';
+            txtTmdbApiKey.Size         = new Size(524, 23);
+            txtTmdbApiKey.TabIndex     = 2;
             //
             // chkDryRun
             //
@@ -127,7 +129,7 @@ namespace qbPortWeaver
             lblImportMode.Name      = "lblImportMode";
             lblImportMode.Size      = new Size(130, 23);
             lblImportMode.TabIndex  = 6;
-            lblImportMode.Text      = "Import Mode:";
+            lblImportMode.Text      = "Import mode:";
             lblImportMode.TextAlign = ContentAlignment.MiddleLeft;
             //
             // cboImportMode
@@ -160,7 +162,7 @@ namespace qbPortWeaver
             lblMoviesLibraryPath.Name      = "lblMoviesLibraryPath";
             lblMoviesLibraryPath.Size      = new Size(130, 23);
             lblMoviesLibraryPath.TabIndex  = 0;
-            lblMoviesLibraryPath.Text      = "Movies Library:";
+            lblMoviesLibraryPath.Text      = "Movies library:";
             lblMoviesLibraryPath.TextAlign = ContentAlignment.MiddleLeft;
             //
             // txtMoviesLibraryPath
@@ -185,7 +187,7 @@ namespace qbPortWeaver
             lblTvShowsLibraryPath.Name      = "lblTvShowsLibraryPath";
             lblTvShowsLibraryPath.Size      = new Size(130, 23);
             lblTvShowsLibraryPath.TabIndex  = 3;
-            lblTvShowsLibraryPath.Text      = "TV Shows Library:";
+            lblTvShowsLibraryPath.Text      = "TV shows library:";
             lblTvShowsLibraryPath.TextAlign = ContentAlignment.MiddleLeft;
             //
             // txtTvShowsLibraryPath
@@ -274,9 +276,17 @@ namespace qbPortWeaver
             lblScanStatus.Location  = new Point(322, 430);
             lblScanStatus.Name      = "lblScanStatus";
             lblScanStatus.Size      = new Size(370, 28);
-            lblScanStatus.TabIndex  = 6;
+            lblScanStatus.TabIndex  = 9;
             lblScanStatus.TextAlign = ContentAlignment.MiddleLeft;
             lblScanStatus.ForeColor = SystemColors.GrayText;
+            //
+            // prgScan
+            //
+            prgScan.Location = new Point(8, 464);
+            prgScan.Name     = "prgScan";
+            prgScan.Size     = new Size(684, 16);
+            prgScan.TabIndex = 10;
+            prgScan.Visible  = false;
             //
             // dgvResults
             //
@@ -288,13 +298,13 @@ namespace qbPortWeaver
             dgvResults.BorderStyle           = BorderStyle.Fixed3D;
             dgvResults.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.AutoSize;
             dgvResults.Columns.AddRange(colInclude, colType, colCurrent, colProposed);
-            dgvResults.Location     = new Point(8, 466);
+            dgvResults.Location     = new Point(8, 488);
             dgvResults.Name         = "dgvResults";
             dgvResults.RowHeadersVisible = false;
             dgvResults.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
             dgvResults.Size         = new Size(684, 360);
             dgvResults.ClipboardCopyMode = DataGridViewClipboardCopyMode.EnableWithoutHeaderText;
-            dgvResults.TabIndex          = 6;
+            dgvResults.TabIndex          = 11;
             dgvResults.TabStop           = false;
             dgvResults.CellFormatting          += dgvResults_CellFormatting;
             dgvResults.CellContentClick        += dgvResults_CellContentClick;
@@ -337,20 +347,20 @@ namespace qbPortWeaver
             //
             // btnOK
             //
-            btnOK.Location = new Point(510, 838);
+            btnOK.Location = new Point(510, 860);
             btnOK.Name     = "btnOK";
             btnOK.Size     = new Size(82, 28);
-            btnOK.TabIndex = 7;
+            btnOK.TabIndex = 6;
             btnOK.Text     = "OK";
             btnOK.Click   += btnOK_Click;
             //
             // btnCancel
             //
             btnCancel.DialogResult = DialogResult.Cancel;
-            btnCancel.Location     = new Point(602, 838);
+            btnCancel.Location     = new Point(602, 860);
             btnCancel.Name         = "btnCancel";
             btnCancel.Size         = new Size(82, 28);
-            btnCancel.TabIndex     = 8;
+            btnCancel.TabIndex     = 7;
             btnCancel.Text         = "Cancel";
             btnCancel.Click       += btnCancel_Click;
             //
@@ -360,7 +370,7 @@ namespace qbPortWeaver
             AutoScaleDimensions = new SizeF(7F, 15F);
             AutoScaleMode       = AutoScaleMode.Font;
             CancelButton        = btnCancel;
-            ClientSize          = new Size(700, 878);
+            ClientSize          = new Size(700, 900);
             Controls.Add(grpGeneral);
             Controls.Add(grpLibrary);
             Controls.Add(grpSourceFolders);
@@ -368,6 +378,7 @@ namespace qbPortWeaver
             Controls.Add(btnImportNow);
             Controls.Add(btnClearCache);
             Controls.Add(lblScanStatus);
+            Controls.Add(prgScan);
             Controls.Add(dgvResults);
             Controls.Add(btnOK);
             Controls.Add(btnCancel);
@@ -411,6 +422,7 @@ namespace qbPortWeaver
         private Button   btnAddSourceFolder;
         private Button   btnRemoveSourceFolder;
 
+        private ProgressBar      prgScan;
         private Button           btnScanNow;
         private Button           btnImportNow;
         private Button           btnClearCache;

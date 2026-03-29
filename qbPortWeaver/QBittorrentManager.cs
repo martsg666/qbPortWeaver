@@ -236,7 +236,6 @@ namespace qbPortWeaver
             }
         }
 
-
         // Authenticates once per instance; subsequent calls reuse the existing session cookie
         private async Task<bool> EnsureAuthenticatedAsync()
         {

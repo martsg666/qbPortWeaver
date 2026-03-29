@@ -48,13 +48,13 @@ namespace qbPortWeaver
             "truehd", "atmos", "dd", "dd1", "dd2", "dd5", "dd7", "ddp", "ddp1", "ddp2", "ddp5", "ddp7", "ddplus",
             "dolbydigital", "eac3", "opus", "lpcm", "pcm",
             "stereo", "mono", "2ch", "6ch", "8ch",
-            // Language (note: "french" omitted -- too common in real titles, e.g. "The French Connection")
+            // Language (note: "french" omitted -- too common in real titles)
             "multi", "dual", "dualaud", "truefrench", "vff", "vfi", "vf2", "vfq",
             "vost", "vostfr", "vof", "dubbed", "subbed", "korsub", "latino", "castellano",
             // Subtitle
             "multisubs", "multisub", "hardsub", "hardcoded", "softsub",
             "fansub", "fastsub", "subforced",
-            // Edition / release flags (note: "final" omitted -- appears in titles like "These Final Hours")
+            // Edition / release flags (note: "final" omitted -- too common in real titles)
             "proper", "repack", "rerip", "extended", "unrated", "uncut", "directors", "theatrical",
             "remastered", "remaster", "criterion", "limited", "internal",
             "redux", "restored", "hybrid", "mhd", "custom", "readnfo", "anniversary",
@@ -71,6 +71,47 @@ namespace qbPortWeaver
             "nuked", "commentary", "fullscreen", "widescreen", "ws",
             "ntsc", "pal"
         };
+
+        /// <summary>
+        /// Returns true when a TMDB result with no year in the filename is a high-confidence match.
+        /// Requires a meaningful vote count and a normalised title match to filter out obscure or incorrect entries.
+        /// </summary>
+        internal static bool IsStrongNoYearMatch(string searchedTitle, string returnedTitle, int voteCount, int minVoteCount) =>
+            voteCount >= minVoteCount &&
+            string.Equals(NormalizeTitleForMatch(returnedTitle), NormalizeTitleForMatch(searchedTitle), StringComparison.OrdinalIgnoreCase);
+
+        // Normalises a title for loose comparison: lowercases, drops non-whitespace punctuation
+        // that sits between two alphanumeric characters (apostrophes, hyphens in compound words),
+        // and collapses all other non-alphanumeric characters to a single space.
+        // Examples: "Show Name" → "show name", "Title (Year)" → "title year"
+        internal static string NormalizeTitleForMatch(string title)
+        {
+            var sb = new System.Text.StringBuilder(title.Length);
+            bool lastWasSpace = true; // start true to avoid a leading space
+            for (int i = 0; i < title.Length; i++)
+            {
+                var c = title[i];
+                if (char.IsLetterOrDigit(c))
+                {
+                    sb.Append(char.ToLowerInvariant(c));
+                    lastWasSpace = false;
+                }
+                else if (!char.IsWhiteSpace(c)
+                         && i > 0 && i < title.Length - 1
+                         && char.IsLetterOrDigit(title[i - 1])
+                         && char.IsLetterOrDigit(title[i + 1]))
+                {
+                    // Non-whitespace punctuation flanked by word chars: drop entirely.
+                    // Keeps lastWasSpace unchanged so no separator is inserted.
+                }
+                else if (!lastWasSpace)
+                {
+                    sb.Append(' ');
+                    lastWasSpace = true;
+                }
+            }
+            return sb.ToString().TrimEnd();
+        }
 
         /// <summary>Formats a TMDB title and year into a Plex-compliant name: <c>Title (Year)</c>, sanitised for use as a file or folder name.</summary>
         public static string FormatPlexName(string title, int? year) =>
@@ -148,7 +189,7 @@ namespace qbPortWeaver
 
             rawTitle = CleanTitle(rawTitle);
 
-            // No usable show name before the episode pattern (e.g. "S01E01.1080p.x264.mkv")
+            // No usable show name before the episode pattern (e.g. filename starts directly with S01E01)
             if (string.IsNullOrWhiteSpace(rawTitle))
                 return null;
 
@@ -335,7 +376,7 @@ namespace qbPortWeaver
                 if (_cutoffTokens.Contains(word))
                     break;
 
-                // Compound naming: "Token-GroupName" (e.g. "x264-GRP")
+                // Compound naming: "Token-Suffix" (e.g. a cutoff token followed by a hyphen and trailing text)
                 // Check the prefix before the first hyphen against cutoff tokens
                 var dashIndex = word.IndexOf('-');
                 if (dashIndex > 0 && _cutoffTokens.Contains(word[..dashIndex]))

@@ -223,6 +223,7 @@ namespace qbPortWeaver
             if (!force && _libraryFingerprints is not null)
                 return;
 
+            LogManager.Instance.LogMessage("Building library index...", LogLevel.Info, Subsystem.MediaManager);
             LoadLibraryCache();
 
             var sw = System.Diagnostics.Stopwatch.StartNew();
@@ -238,9 +239,9 @@ namespace qbPortWeaver
 
             sw.Stop();
             _libraryFingerprints = fingerprints;
-            LogManager.Instance.LogDebug(
-                $"FileImporter.BuildLibraryIndex: Indexed {fingerprints.Count} unique fingerprints in {sw.ElapsedMilliseconds}ms (cached={cached}, computed={computed})",
-                Subsystem.MediaManager);
+            LogManager.Instance.LogMessage(
+                $"Library index built: {fingerprints.Count} files in {sw.ElapsedMilliseconds}ms (cached={cached}, computed={computed})",
+                LogLevel.Info, Subsystem.MediaManager);
         }
 
         // Enumerates a single library path and fingerprints each file, using the cache where possible.
@@ -329,9 +330,8 @@ namespace qbPortWeaver
                     }
                 }
             }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) // NOSONAR S108 S2486 - best-effort cache update; next full rebuild will recover
             {
-                // Best-effort: next full rebuild will pick it up
             }
         }
 
@@ -493,9 +493,13 @@ namespace qbPortWeaver
 
             try
             {
-                var json = JsonSerializer.Serialize(cache, new JsonSerializerOptions { WriteIndented = true });
+                string json;
+                lock (_libraryLock)
+                {
+                    json = JsonSerializer.Serialize(cache, new JsonSerializerOptions { WriteIndented = true });
+                    _libraryCacheDirty = false;
+                }
                 File.WriteAllText(GetCacheFilePath(LibraryCacheFileName), json);
-                _libraryCacheDirty = false;
 
                 LogManager.Instance.LogDebug($"FileImporter.SaveLibraryCache: Saved {cache.Count} entries", Subsystem.MediaManager);
             }

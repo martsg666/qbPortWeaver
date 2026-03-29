@@ -9,6 +9,7 @@ namespace qbPortWeaver
         public AboutForm()
         {
             InitializeComponent();
+            lblAppName.Text             = AppConstants.AppName;
             lblAppVersion.Text          = $"Version {AppConstants.AppVersion}";
             lblCurrentVersionValue.Text = AppConstants.AppVersion;
             lnkGitHub.Text              = $"{AppConstants.GitHubRepoOwner}/{AppConstants.AppName}";
@@ -19,10 +20,21 @@ namespace qbPortWeaver
         protected override void OnLoad(EventArgs e)
         {
             base.OnLoad(e);
+            if (AppConstants.IsDarkModeEnabled())
+            {
+                lnkAuthor.LinkColor = Color.CornflowerBlue;
+                lnkGitHub.LinkColor = Color.CornflowerBlue;
+            }
             _ = LoadGitHubDataAsync(); // fire-and-forget; exceptions are handled inside LoadGitHubDataAsync
         }
 
         private void btnClose_Click(object? sender, EventArgs e) => Close();
+
+        private void btnWhatsNew_Click(object? sender, EventArgs e)
+        {
+            using var form = new WhatsNewForm();
+            form.ShowDialog(this);
+        }
 
         // Opens the release page if an update is available; otherwise re-runs the update check
         private void btnCheckForUpdates_Click(object? sender, EventArgs e)

@@ -40,6 +40,7 @@ namespace qbPortWeaver
             toolTip.SetToolTip(chkRestartOnDisconnect,       "Automatically restart qBittorrent if the connection goes offline or disconnects");
             toolTip.SetToolTip(txtPostUpdateCmd,             "Shell command to run after a successful port update (leave empty to disable)");
             toolTip.SetToolTip(chkDebugMode,                 "Write verbose debug entries to the log file");
+            toolTip.SetToolTip(cboColorTheme,                 "Application color theme (System, Dark, or Light) - a restart prompt will appear if changed");
             toolTip.SetToolTip(chkAutoRecovery,           "Automatically recover after N consecutive failed sync cycles (VPN disconnected or port detection failure)");
             toolTip.SetToolTip(nudRecoveryCycles,         "Number of consecutive failed cycles before recovery is triggered");
         }
@@ -94,6 +95,15 @@ namespace qbPortWeaver
                 (int)nudDefaultPort.Minimum, (int)nudDefaultPort.Maximum);
 
             // Extra
+            cboColorTheme.Items.Clear();
+            cboColorTheme.Items.AddRange(new object[]
+            {
+                RegistrySettingsManager.ColorThemeSystem,
+                RegistrySettingsManager.ColorThemeDark,
+                RegistrySettingsManager.ColorThemeLight
+            });
+            cboColorTheme.SelectedItem = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionExtra, RegistrySettingsManager.KeyColorTheme);
+            if (cboColorTheme.SelectedIndex < 0) cboColorTheme.SelectedIndex = 0;
             txtPostUpdateCmd.Text = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionExtra, RegistrySettingsManager.KeyPostUpdateCmd);
             chkDebugMode.Checked  = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionExtra, RegistrySettingsManager.KeyDebugMode);
         }
@@ -125,6 +135,7 @@ namespace qbPortWeaver
             RegistrySettingsManager.SetBool (RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyRestartOnDisconnect,     chkRestartOnDisconnect.Checked);
 
             // Extra
+            RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionExtra, RegistrySettingsManager.KeyColorTheme,     cboColorTheme.SelectedItem?.ToString() ?? RegistrySettingsManager.ColorThemeSystem);
             RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionExtra, RegistrySettingsManager.KeyPostUpdateCmd, txtPostUpdateCmd.Text.Trim());
             RegistrySettingsManager.SetBool (RegistrySettingsManager.SectionExtra, RegistrySettingsManager.KeyDebugMode,     chkDebugMode.Checked);
         }
@@ -142,9 +153,24 @@ namespace qbPortWeaver
                     MessageBoxIcon.Warning);
                 return;
             }
+
+            string previousColorTheme  = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionExtra, RegistrySettingsManager.KeyColorTheme);
+            string selectedColorTheme  = cboColorTheme.SelectedItem?.ToString() ?? RegistrySettingsManager.ColorThemeSystem;
             SaveSettings();
             DialogResult = DialogResult.OK;
             Close();
+
+            // Color theme takes effect at startup via Application.SetColorMode - restart if it changed
+            if (selectedColorTheme != previousColorTheme)
+            {
+                var result = MessageBox.Show(
+                    "The color theme change takes effect after restarting.\n\nRestart now?",
+                    AppConstants.AppName,
+                    MessageBoxButtons.YesNo,
+                    MessageBoxIcon.Question);
+                if (result == DialogResult.Yes)
+                    Application.Restart();
+            }
         }
 
         private void btnCancel_Click(object? sender, EventArgs e) => Close();
@@ -220,7 +246,7 @@ namespace qbPortWeaver
             // qBittorrent section
             grpQBittorrent.Enabled = enabled;
 
-            // Extra section - post-update command (debug mode stays enabled)
+            // Extra section - post-update command (color mode and debug mode stay enabled)
             lblPostUpdateCmd.Enabled = enabled;
             txtPostUpdateCmd.Enabled = enabled;
         }

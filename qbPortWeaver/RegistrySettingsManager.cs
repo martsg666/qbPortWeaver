@@ -7,7 +7,8 @@ namespace qbPortWeaver
     /// <summary>Reads and writes application settings from the Windows registry under <c>HKCU\Software\qbPortWeaver\Settings</c>.</summary>
     public static class RegistrySettingsManager
     {
-        private const string BaseKeyPath = @"Software\qbPortWeaver\Settings";
+        internal const string BaseKeyPath = @"Software\" + AppConstants.AppName + @"\Settings";
+        private const string AppKeyPath  = @"Software\" + AppConstants.AppName;
         // Explicit string literals guarantee stable boolean registry serialization independent of framework internals.
         private const string ValueTrue   = "True";
         private const string ValueFalse  = "False";
@@ -46,6 +47,12 @@ namespace qbPortWeaver
         // Registry key names - extra section
         public const string KeyPostUpdateCmd = "postUpdateCmd";
         public const string KeyDebugMode     = "debugMode";
+        public const string KeyColorTheme     = "colorMode";
+
+        // Color theme values
+        public const string ColorThemeSystem = "System";
+        public const string ColorThemeDark   = "Dark";
+        public const string ColorThemeLight  = "Light";
 
         // Registry key names - media section
         public const string KeyMediaEnabled       = "mediaEnabled";
@@ -61,6 +68,9 @@ namespace qbPortWeaver
         public const string ImportModeHardlink = "Hardlink";
         public const string ImportModeCopy     = "Copy";
         public const string ImportModeMove     = "Move";
+
+        // Registry key name - app level (not in a section)
+        public const string KeyLastSeenVersion  = "lastSeenVersion";
 
         // Registry key names - general section (auto-recovery)
         // Registry string values are frozen for backward compatibility.
@@ -95,7 +105,8 @@ namespace qbPortWeaver
                 [SectionExtra] = new(StringComparer.OrdinalIgnoreCase)
                 {
                     [KeyPostUpdateCmd] = "",
-                    [KeyDebugMode]     = ValueFalse
+                    [KeyDebugMode]     = ValueFalse,
+                    [KeyColorTheme]     = ColorThemeSystem
                 },
                 [SectionMedia] = new(StringComparer.OrdinalIgnoreCase)
                 {
@@ -110,6 +121,35 @@ namespace qbPortWeaver
                     [KeyMediaImportMode]         = ImportModeHardlink
                 }
             };
+
+        /// <summary>Reads a string value from the app-level registry key (<c>HKCU\Software\qbPortWeaver</c>), above the settings sections. Returns an empty string if the key is missing.</summary>
+        public static string GetAppValue(string key)
+        {
+            try
+            {
+                using var regKey = Registry.CurrentUser.OpenSubKey(AppKeyPath);
+                return regKey?.GetValue(key) as string ?? string.Empty;
+            }
+            catch (Exception ex)
+            {
+                LogManager.Instance.LogDebug($"RegistrySettingsManager.GetAppValue: {key} - {ex.Message}");
+                return string.Empty;
+            }
+        }
+
+        /// <summary>Writes a string value to the app-level registry key (<c>HKCU\Software\qbPortWeaver</c>), above the settings sections.</summary>
+        public static void SetAppValue(string key, string value)
+        {
+            try
+            {
+                using var regKey = Registry.CurrentUser.CreateSubKey(AppKeyPath);
+                regKey.SetValue(key, value, RegistryValueKind.String);
+            }
+            catch (Exception ex)
+            {
+                LogManager.Instance.LogDebug($"RegistrySettingsManager.SetAppValue: {key} - {ex.Message}");
+            }
+        }
 
         /// <summary>Ensures all settings keys exist in the registry, writing hardcoded defaults for any that are missing.</summary>
         public static void EnsureDefaults()

@@ -105,6 +105,17 @@ namespace qbPortWeaver
         public static ProcessStartInfo CreateHiddenStartInfo(string fileName, string arguments) =>
             new(fileName, arguments) { UseShellExecute = false, CreateNoWindow = true };
 
+        // UI helpers
+
+        /// <summary>
+        /// Returns <see langword="true"/> if the effective color theme is dark.
+        /// Checks <see cref="SystemColors.Control"/> brightness, which reflects the mode
+        /// applied by <see cref="Application.SetColorMode"/> at startup
+        /// (<see cref="SystemColorMode.System"/>, <see cref="SystemColorMode.Dark"/>, or <see cref="SystemColorMode.Classic"/>).
+        /// </summary>
+        public static bool IsDarkModeEnabled() =>
+            SystemColors.Control.GetBrightness() < 0.5f;
+
         /// <summary>Opens a URL in the default browser using ShellExecute.</summary>
         public static void OpenUrl(string url)
         {

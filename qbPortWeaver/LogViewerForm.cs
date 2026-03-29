@@ -1,7 +1,6 @@
 using System.ComponentModel;
 using System.Runtime.InteropServices;
 using System.Text;
-using Microsoft.Win32;
 
 namespace qbPortWeaver
 {
@@ -39,7 +38,7 @@ namespace qbPortWeaver
         protected override void OnLoad(EventArgs e)
         {
             base.OnLoad(e);
-            _isDarkMode  = IsDarkModeEnabled();
+            _isDarkMode  = AppConstants.IsDarkModeEnabled();
             _themeColors = _isDarkMode
                 ? [Color.OrangeRed, Color.Gold, Color.DodgerBlue, Color.DarkOrange, Color.Gainsboro]
                 : [Color.Crimson, Color.Goldenrod, Color.SteelBlue, Color.DarkOrange, SystemColors.WindowText];
@@ -119,13 +118,6 @@ namespace qbPortWeaver
             chk.FlatAppearance.BorderColor      = chk.Checked ? levelColor : dimmed;
             chk.FlatAppearance.CheckedBackColor = _isDarkMode ? Color.FromArgb(55, 55, 55) : Color.FromArgb(225, 225, 235);
             chk.BackColor                       = pnlToolbar.BackColor;
-        }
-
-        // Returns true if the user has enabled dark mode in Windows personalisation settings
-        private static bool IsDarkModeEnabled()
-        {
-            using var key = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize");
-            return (key?.GetValue("AppsUseLightTheme") as int?) == 0;
         }
 
         // Called when any filter CheckBox changes - updates its style and rebuilds the display

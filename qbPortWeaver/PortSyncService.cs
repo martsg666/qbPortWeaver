@@ -609,6 +609,7 @@ namespace qbPortWeaver
 
         // Sets the completion status, logs the message, and adds a closing bookend.
         // Pass an explicit level to override the default (Info on success, Error on failure).
+        // The bookend uses the same effective level so a Warn-level soft failure does not escalate to Error.
         private static void SetCompleted(Dictionary<string, object?> status, bool success, string message, LogLevel? level = null)
         {
             status[StatusKeys.Status]  = success ? StatusKeys.Success : StatusKeys.Error;
@@ -616,7 +617,7 @@ namespace qbPortWeaver
             LogLevel effectiveLevel = level ?? (success ? LogLevel.Info : LogLevel.Error);
             LogManager.Instance.LogMessage(message, effectiveLevel);
             if (!success)
-                LogManager.Instance.LogMessage("Sync cycle failed", LogLevel.Error);
+                LogManager.Instance.LogMessage("Sync cycle failed", effectiveLevel);
         }
     }
 }

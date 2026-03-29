@@ -8,9 +8,8 @@ namespace qbPortWeaver
     /// </summary>
     public sealed class TvShowProcessor
     {
-        private const string MediaTypeTvShow  = "TV Show";
-
-        private const int    MaxSubfolderDepth = 10; // TV Shows/Show (Year)/Season XX = depth 2; 10 is a safe ceiling
+        private const string MediaTypeTvShow            = "TV Show";
+        private const int    MinVoteCountForNoYearMatch = 50;
 
         private readonly TmdbClient _tmdb;
         private readonly bool _dryRun;
@@ -42,12 +41,16 @@ namespace qbPortWeaver
         /// Scans pre-classified TV episode files and directories and returns import proposals without modifying any files.
         /// Only items not yet present in the library are included.
         /// </summary>
-        public async Task<List<MediaProposal>> ScanTvShowsAsync(string[] tvFiles, string[] tvDirs)
+        public async Task<List<MediaProposal>> ScanTvShowsAsync(string[] tvFiles, string[] tvDirs, Action? onItemProcessed = null)
         {
             var proposals = new List<MediaProposal>();
 
             foreach (var file in tvFiles)
-                await ScanEpisodeFileAsync(file, proposals).ConfigureAwait(false);
+            {
+                if (!FileImporter.IsAlreadyInLibrary(file))
+                    await ScanEpisodeFileAsync(file, proposals).ConfigureAwait(false);
+                onItemProcessed?.Invoke();
+            }
 
             foreach (var dir in tvDirs)
             {
@@ -59,16 +62,21 @@ namespace qbPortWeaver
                 {
                     LogManager.Instance.LogMessage($"Skipped TV folder '{Path.GetFileName(dir)}': {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
                 }
+                onItemProcessed?.Invoke();
             }
 
             return proposals;
         }
 
         /// <summary>Processes pre-classified TV episode files and directories, importing them into the library with Plex naming conventions. Skips uncertain TMDB matches - use <see cref="ScanTvShowsAsync"/> to preview and review those first.</summary>
-        public async Task ProcessTvShowsAsync(string sourceFolder, string[] tvFiles, string[] tvDirs)
+        public async Task ProcessTvShowsAsync(string sourceFolder, string[] tvFiles, string[] tvDirs, Action? onItemProcessed = null)
         {
             foreach (var file in tvFiles)
-                await ProcessEpisodeFileAsync(sourceFolder, file).ConfigureAwait(false);
+            {
+                if (!FileImporter.IsAlreadyInLibrary(file))
+                    await ProcessEpisodeFileAsync(sourceFolder, file).ConfigureAwait(false);
+                onItemProcessed?.Invoke();
+            }
 
             foreach (var dir in tvDirs)
             {
@@ -80,13 +88,12 @@ namespace qbPortWeaver
                 {
                     LogManager.Instance.LogMessage($"Skipped TV folder '{Path.GetFileName(dir)}': {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
                 }
+                onItemProcessed?.Invoke();
             }
         }
 
         private async Task ScanEpisodeFileAsync(string filePath, List<MediaProposal> proposals)
         {
-            if (FileImporter.IsAlreadyInLibrary(filePath)) return;
-
             var fileName = Path.GetFileName(filePath);
 
             var episodeInfo = FileNameParser.ParseTvShowEpisode(fileName);
@@ -113,12 +120,14 @@ namespace qbPortWeaver
 
         private async Task ScanTvShowFolderAsync(string dirPath, List<MediaProposal> proposals, int depth = 0)
         {
-            var files = MediaManagerService.GetFolderFiles(dirPath, depth, MaxSubfolderDepth, "TV");
+            var files = MediaManagerService.GetFolderFiles(dirPath, depth, MediaManagerService.MaxSubfolderDepth, "TV");
             if (files is null) return;
 
-            var episodeFiles = files.Where(FileNameParser.IsVideoTvShowEpisode).ToList();
+            var episodeFiles = files
+                .Where(f => FileNameParser.IsVideoTvShowEpisode(f) && !FileImporter.IsAlreadyInLibrary(f))
+                .ToList();
 
-            if (episodeFiles.Count > 0 && !episodeFiles.All(FileImporter.IsAlreadyInLibrary))
+            if (episodeFiles.Count > 0)
             {
                 foreach (var file in episodeFiles)
                     await ScanEpisodeFileAsync(file, proposals).ConfigureAwait(false);
@@ -130,8 +139,6 @@ namespace qbPortWeaver
 
         private async Task ProcessEpisodeFileAsync(string sourceFolder, string filePath)
         {
-            if (FileImporter.IsAlreadyInLibrary(filePath)) return;
-
             var fileName = Path.GetFileName(filePath);
 
             var episodeInfo = FileNameParser.ParseTvShowEpisode(fileName);
@@ -154,17 +161,19 @@ namespace qbPortWeaver
             var targetPath = BuildEpisodePath(filePath, showInfo, episodeInfo);
             MediaManagerService.ImportFileWithLog(filePath, targetPath, sourceFolder, _dryRun, _importMode);
 
-            ImportCompanionFiles(sourceFolder, filePath, targetPath);
+            ImportCompanionFiles(sourceFolder, filePath, targetPath, _dryRun, _importMode);
         }
 
         private async Task ProcessTvShowFolderAsync(string sourceFolder, string dirPath, int depth = 0)
         {
-            var files = MediaManagerService.GetFolderFiles(dirPath, depth, MaxSubfolderDepth, "TV");
+            var files = MediaManagerService.GetFolderFiles(dirPath, depth, MediaManagerService.MaxSubfolderDepth, "TV");
             if (files is null) return;
 
-            var episodeFiles = files.Where(FileNameParser.IsVideoTvShowEpisode).ToList();
+            var episodeFiles = files
+                .Where(f => FileNameParser.IsVideoTvShowEpisode(f) && !FileImporter.IsAlreadyInLibrary(f))
+                .ToList();
 
-            if (episodeFiles.Count > 0 && !episodeFiles.All(FileImporter.IsAlreadyInLibrary))
+            if (episodeFiles.Count > 0)
             {
                 foreach (var file in episodeFiles)
                     await ProcessEpisodeFileAsync(sourceFolder, file).ConfigureAwait(false);
@@ -186,8 +195,8 @@ namespace qbPortWeaver
                 : Path.Combine(_libraryPath, episodeFileName);
         }
 
-        private void ImportCompanionFiles(string sourceFolder, string videoPath, string targetVideoPath) =>
-            MediaManagerService.ImportCompanionFiles(sourceFolder, videoPath, targetVideoPath, _dryRun, _importMode);
+        private static void ImportCompanionFiles(string sourceFolder, string videoPath, string targetVideoPath, bool dryRun, ImportMode importMode) =>
+            MediaManagerService.ImportCompanionFiles(sourceFolder, videoPath, targetVideoPath, dryRun, importMode);
 
         // Returns a cached show lookup or performs a new TMDB search and caches the result
         private async Task<(TvShowInfo? Info, bool IsConfident)> GetOrLookupShowAsync(string showName, int? year)
@@ -209,12 +218,19 @@ namespace qbPortWeaver
 
                 var info = await _tmdb.SearchTvShowAsync(title, year).ConfigureAwait(false);
 
+                // Without a year in the filename we cannot corroborate the match by year alone.
+                // Require an exact title match and a meaningful vote count to stay confident.
+                if (info is not null && !year.HasValue)
+                    isConfident = FileNameParser.IsStrongNoYearMatch(title, info.Title, info.VoteCount, MinVoteCountForNoYearMatch);
+
                 // Retry without year: parsed year may be the season year rather than TMDB's first-air year
                 if (info is null && year.HasValue)
                 {
                     info = await _tmdb.SearchTvShowAsync(title).ConfigureAwait(false);
                     if (info is not null) isConfident = false;
                 }
+
+                (info, isConfident) = await TryFallbackLookupsAsync(title, year, info, isConfident).ConfigureAwait(false);
 
                 if (info is null)
                 {
@@ -230,6 +246,52 @@ namespace qbPortWeaver
                 LogManager.Instance.LogMessage($"Failed to look up TMDB TV show: {ex.Message}", LogLevel.Error, Subsystem.MediaManager);
                 return (null, false);
             }
+        }
+
+        // Applies two fallback TMDB lookup strategies to reduce unmatched results.
+        // After-dash strategy: only runs when info is null (no match from initial lookups).
+        // Trailing-number strategy: runs when info is null OR info.Year is null.
+        private async Task<(TvShowInfo? Info, bool IsConfident)> TryFallbackLookupsAsync(
+            string title, int? year, TvShowInfo? info, bool isConfident)
+        {
+            // Try the part after " - " (e.g. "Series 1 - The Subtitle")
+            var afterDash = info is null && title.Contains(" - ")
+                ? title[(title.IndexOf(" - ", StringComparison.Ordinal) + 3)..].Trim()
+                : "";
+
+            if (afterDash.Length > 0)
+            {
+                LogManager.Instance.LogDebug($"TvShowProcessor.TryFallbackLookupsAsync: Retrying with '{afterDash}'", Subsystem.MediaManager);
+                info = await _tmdb.SearchTvShowAsync(afterDash, year).ConfigureAwait(false);
+                if (info is not null) isConfident = false;
+            }
+
+            // Try without trailing number (e.g. "Title 1" -> "Title")
+            if (info is null || (info.Year is null && title.Length > 2))
+            {
+                var altInfo = await TryWithoutTrailingNumberAsync(title, year).ConfigureAwait(false);
+                if (altInfo is not null)
+                {
+                    info        = altInfo;
+                    isConfident = false;
+                }
+            }
+
+            return (info, isConfident);
+        }
+
+        // Strips a single trailing digit preceded by a space (e.g. "Title 2" -> "Title")
+        // and searches TMDB. Returns the match only if it includes a year (quality gate).
+        private async Task<TvShowInfo?> TryWithoutTrailingNumberAsync(string title, int? year)
+        {
+            var trimmed = title.TrimEnd();
+            if (trimmed.Length <= 2 || !char.IsDigit(trimmed[^1]) || trimmed[^2] != ' ')
+                return null;
+
+            var withoutNum = trimmed[..^2].Trim();
+            LogManager.Instance.LogDebug($"TvShowProcessor.TryWithoutTrailingNumberAsync: Retrying without trailing number '{withoutNum}'", Subsystem.MediaManager);
+            var altInfo = await _tmdb.SearchTvShowAsync(withoutNum, year).ConfigureAwait(false);
+            return altInfo?.Year is not null ? altInfo : null;
         }
     }
 }

@@ -11,6 +11,7 @@ namespace qbPortWeaver
         private CancellationTokenSource? _scanCts;
         private ToolStripMenuItem? _mnuPaste;
         private bool _allIncluded = true;
+        private bool _isBusy;
 
         public MediaManagerForm()
         {
@@ -44,6 +45,25 @@ namespace qbPortWeaver
             toolTip.SetToolTip(btnImportNow,           "Import the files shown in the grid into the library");
             toolTip.SetToolTip(btnClearCache,          "Delete cached fingerprints so the next scan re-hashes every file from scratch");
             toolTip.SetToolTip(dgvResults,            "Files that would be imported. Uncheck a row to exclude it. Rows in red are uncertain TMDB matches - double-click the Proposed cell to correct the name before importing.");
+        }
+
+        protected override void OnFormClosing(FormClosingEventArgs e)
+        {
+            if (_isBusy)
+            {
+                var result = MessageBox.Show(
+                    "A scan or import is in progress.\n\nClosing will cancel the operation. Any files already imported will remain in the library.\n\nClose anyway?",
+                    "qbPortWeaver | Media Manager",
+                    MessageBoxButtons.YesNo,
+                    MessageBoxIcon.Warning);
+
+                if (result != DialogResult.Yes)
+                {
+                    e.Cancel = true;
+                    return;
+                }
+            }
+            base.OnFormClosing(e);
         }
 
         protected override void OnFormClosed(FormClosedEventArgs e)
@@ -101,7 +121,8 @@ namespace qbPortWeaver
             FileImporter.ClearAllCaches();
             dgvResults.Rows.Clear();
             btnImportNow.Enabled = false;
-            lblScanStatus.Text = "Cache cleared - run Scan Now to re-index.";
+            prgScan.Visible      = false;
+            lblScanStatus.Text   = "Cache cleared - run Scan Now to re-index.";
         }
 
         private void btnBrowseMoviesLibrary_Click(object? sender, EventArgs e)  => BrowseForFolder(txtMoviesLibraryPath);
@@ -132,18 +153,17 @@ namespace qbPortWeaver
                 return;
             }
 
-            if (_scanCts is not null) { await _scanCts.CancelAsync(); _scanCts.Dispose(); }
-            _scanCts = new CancellationTokenSource();
-            var ct = _scanCts.Token;
+            var ct = await ResetCancellationTokenAsync();
 
             SetBusy(true);
+            BeginProgress();
             lblScanStatus.Text = "Scanning\u2026";
             dgvResults.Rows.Clear();
 
             try
             {
                 bool createFolders = chkCreateFolders.Checked;
-                var proposals = await MediaManagerService.ScanAsync(apiKey, createFolders, sourceFolders, moviesLibraryPath, tvShowsLibraryPath, ct);
+                var proposals = await MediaManagerService.ScanAsync(apiKey, createFolders, sourceFolders, moviesLibraryPath, tvShowsLibraryPath, ct, CreateScanProgress("Scanning\u2026"));
 
                 PopulateGrid(proposals);
                 UpdateScanStatus();
@@ -158,7 +178,11 @@ namespace qbPortWeaver
             }
             finally
             {
-                if (!IsDisposed) SetBusy(false);
+                if (!IsDisposed)
+                {
+                    FinishProgress();
+                    SetBusy(false);
+                }
             }
         }
 
@@ -178,16 +202,17 @@ namespace qbPortWeaver
 
             if (confirm != DialogResult.Yes) return;
 
-            if (_scanCts is not null) { await _scanCts.CancelAsync(); _scanCts.Dispose(); }
-            _scanCts = new CancellationTokenSource();
+            var ct = await ResetCancellationTokenAsync();
 
             SetBusy(true);
+            BeginProgress();
             btnImportNow.Enabled = false;
             lblScanStatus.Text   = "Importing\u2026";
+            lblScanStatus.Refresh();
 
             try
             {
-                await RunImportAndRescanAsync(_scanCts.Token);
+                await RunImportAndRescanAsync(ct);
             }
             catch (OperationCanceledException)
             {
@@ -199,7 +224,11 @@ namespace qbPortWeaver
             }
             finally
             {
-                if (!IsDisposed) SetBusy(false);
+                if (!IsDisposed)
+                {
+                    FinishProgress();
+                    SetBusy(false);
+                }
             }
         }
 
@@ -211,13 +240,14 @@ namespace qbPortWeaver
 
             var progress = new Progress<(int Current, int Total, string FileName)>(p =>
             {
-                if (!IsDisposed)
-                {
-                    string name = p.FileName.Length > MaxStatusFileNameLength
-                        ? string.Concat(p.FileName.AsSpan(0, MaxStatusFileNameLength - 3), "...")
-                        : p.FileName;
-                    lblScanStatus.Text = $"Importing {p.Current}/{p.Total} - {name}";
-                }
+                if (IsDisposed) return;
+                prgScan.Style   = ProgressBarStyle.Blocks;
+                prgScan.Maximum = p.Total > 0 ? p.Total : 1;
+                prgScan.Value   = Math.Min(p.Current, prgScan.Maximum);
+                string name = p.FileName.Length > MaxStatusFileNameLength
+                    ? string.Concat(p.FileName.AsSpan(0, MaxStatusFileNameLength - 3), "...")
+                    : p.FileName;
+                lblScanStatus.Text = $"Importing {p.Current}/{p.Total} - {name}";
             });
             await MediaManagerService.ApplyProposalsAsync(toApply, importMode, ct, progress);
 
@@ -240,9 +270,10 @@ namespace qbPortWeaver
             if (IsDisposed) return;
 
             lblScanStatus.Text = "Re-scanning\u2026";
+            BeginProgress();
             var remaining = await MediaManagerService.ScanAsync(
                 txtTmdbApiKey.Text.Trim(), chkCreateFolders.Checked, sourceFolders,
-                txtMoviesLibraryPath.Text.Trim(), txtTvShowsLibraryPath.Text.Trim(), ct);
+                txtMoviesLibraryPath.Text.Trim(), txtTvShowsLibraryPath.Text.Trim(), ct, CreateScanProgress("Re-scanning\u2026"));
 
             if (IsDisposed) return;
             PopulateGrid(remaining);
@@ -267,10 +298,14 @@ namespace qbPortWeaver
                 var editedName = row.Cells[colProposed.Index].Value?.ToString() ?? string.Empty;
                 if (string.IsNullOrWhiteSpace(editedName)) continue; // unmatched row with no user-supplied name
 
-                // Use the proposed directory from the scan (which targets the library)
-                var proposedDir  = !string.IsNullOrEmpty(original.ProposedPath)
-                                   ? Path.GetDirectoryName(original.ProposedPath) ?? string.Empty
-                                   : string.Empty;
+                // Use the proposed directory from the scan (which targets the library).
+                // Skip rows where no library directory is known - this covers unmatched rows where
+                // the user typed a filename but no library path can be determined.
+                var proposedDir = !string.IsNullOrEmpty(original.ProposedPath)
+                                  ? Path.GetDirectoryName(original.ProposedPath) ?? string.Empty
+                                  : string.Empty;
+                if (string.IsNullOrEmpty(proposedDir)) continue;
+
                 var proposedPath = Path.Combine(proposedDir, editedName);
 
                 if (!string.Equals(original.OriginalPath, proposedPath, StringComparison.OrdinalIgnoreCase))
@@ -391,13 +426,54 @@ namespace qbPortWeaver
             e.CellStyle.SelectionForeColor = color;
         }
 
+        private async Task<CancellationToken> ResetCancellationTokenAsync()
+        {
+            if (_scanCts is not null) { await _scanCts.CancelAsync(); _scanCts.Dispose(); }
+            _scanCts = new CancellationTokenSource();
+            return _scanCts.Token;
+        }
+
+        private IProgress<(int Current, int Total)> CreateScanProgress(string verb)
+            => new Progress<(int Current, int Total)>(p =>
+            {
+                if (IsDisposed) return;
+                prgScan.Style      = ProgressBarStyle.Blocks;
+                prgScan.Maximum    = p.Total > 0 ? p.Total : 1;
+                prgScan.Value      = Math.Min(p.Current, prgScan.Maximum);
+                lblScanStatus.Text = $"{verb} {p.Current}/{p.Total}";
+            });
+
+        private void BeginProgress()
+        {
+            prgScan.Style   = ProgressBarStyle.Marquee;
+            prgScan.Value   = 0;
+            prgScan.Visible = true;
+        }
+
+        private void FinishProgress()
+        {
+            prgScan.Style = ProgressBarStyle.Blocks;
+            prgScan.Value = prgScan.Maximum;
+        }
+
         // Disables Scan Now and the source folders while an async operation is running.
         // btnImportNow is managed separately by each handler to preserve its proposals-count state.
         private void SetBusy(bool busy)
         {
-            btnScanNow.Enabled       = !busy;
-            btnClearCache.Enabled    = !busy;
-            grpSourceFolders.Enabled = !busy;
+            _isBusy                         = busy;
+            btnScanNow.Enabled              = !busy;
+            btnClearCache.Enabled           = !busy;
+            btnAddSourceFolder.Enabled      = !busy;
+            btnRemoveSourceFolder.Enabled   = !busy;
+            txtMoviesLibraryPath.Enabled    = !busy;
+            txtTvShowsLibraryPath.Enabled   = !busy;
+            btnBrowseMoviesLibrary.Enabled  = !busy;
+            btnBrowseTvShowsLibrary.Enabled = !busy;
+            chkCreateFolders.Enabled        = !busy;
+            cboImportMode.Enabled           = !busy;
+            chkDryRun.Enabled               = !busy;
+            chkDeleteEmptyFolders.Enabled   = !busy;
+            dgvResults.Enabled              = !busy;
         }
 
         // Updates the status label and Import Now button based on checked rows

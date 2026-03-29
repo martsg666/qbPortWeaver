@@ -51,6 +51,8 @@ namespace qbPortWeaver
             lblPostUpdateCmd = new Label();
             txtPostUpdateCmd = new TextBox();
             chkDebugMode = new CheckBox();
+            lblColorTheme = new Label();
+            cboColorTheme = new ComboBox();
             btnOK = new Button();
             btnCancel = new Button();
             toolTip = new ToolTip(components);
@@ -89,7 +91,7 @@ namespace qbPortWeaver
             lblVpnProvider.Name = "lblVpnProvider";
             lblVpnProvider.Size = new Size(130, 23);
             lblVpnProvider.TabIndex = 0;
-            lblVpnProvider.Text = "VPN Provider:";
+            lblVpnProvider.Text = "VPN provider:";
             lblVpnProvider.TextAlign = ContentAlignment.MiddleLeft;
             // 
             // cboVpnProvider
@@ -107,7 +109,7 @@ namespace qbPortWeaver
             lblNatPmpAdapter.Name = "lblNatPmpAdapter";
             lblNatPmpAdapter.Size = new Size(130, 23);
             lblNatPmpAdapter.TabIndex = 5;
-            lblNatPmpAdapter.Text = "NAT-PMP Adapter:";
+            lblNatPmpAdapter.Text = "NAT-PMP adapter:";
             lblNatPmpAdapter.TextAlign = ContentAlignment.MiddleLeft;
             // 
             // cboNatPmpAdapter
@@ -365,67 +367,86 @@ namespace qbPortWeaver
             // 
             // grpExtra
             // 
+            grpExtra.Controls.Add(lblColorTheme);
+            grpExtra.Controls.Add(cboColorTheme);
             grpExtra.Controls.Add(lblPostUpdateCmd);
             grpExtra.Controls.Add(txtPostUpdateCmd);
             grpExtra.Controls.Add(chkDebugMode);
             grpExtra.Location = new Point(8, 499);
             grpExtra.Name = "grpExtra";
-            grpExtra.Size = new Size(480, 97);
+            grpExtra.Size = new Size(480, 126);
             grpExtra.TabIndex = 2;
             grpExtra.TabStop = false;
             grpExtra.Text = "Extra";
-            // 
+            //
+            // lblColorTheme
+            //
+            lblColorTheme.Location = new Point(12, 24);
+            lblColorTheme.Name = "lblColorTheme";
+            lblColorTheme.Size = new Size(130, 23);
+            lblColorTheme.TabIndex = 0;
+            lblColorTheme.Text = "Color theme:";
+            lblColorTheme.TextAlign = ContentAlignment.MiddleLeft;
+            //
+            // cboColorTheme
+            //
+            cboColorTheme.DropDownStyle = ComboBoxStyle.DropDownList;
+            cboColorTheme.Location = new Point(148, 24);
+            cboColorTheme.Name = "cboColorTheme";
+            cboColorTheme.Size = new Size(150, 23);
+            cboColorTheme.TabIndex = 1;
+            //
             // lblPostUpdateCmd
-            // 
-            lblPostUpdateCmd.Location = new Point(12, 27);
+            //
+            lblPostUpdateCmd.Location = new Point(12, 53);
             lblPostUpdateCmd.Name = "lblPostUpdateCmd";
             lblPostUpdateCmd.Size = new Size(130, 23);
-            lblPostUpdateCmd.TabIndex = 0;
-            lblPostUpdateCmd.Text = "Post-update command:";
+            lblPostUpdateCmd.TabIndex = 2;
+            lblPostUpdateCmd.Text = "Post-update:";
             lblPostUpdateCmd.TextAlign = ContentAlignment.MiddleLeft;
-            // 
+            //
             // txtPostUpdateCmd
-            // 
-            txtPostUpdateCmd.Location = new Point(148, 24);
+            //
+            txtPostUpdateCmd.Location = new Point(148, 53);
             txtPostUpdateCmd.Name = "txtPostUpdateCmd";
             txtPostUpdateCmd.Size = new Size(320, 23);
-            txtPostUpdateCmd.TabIndex = 1;
-            // 
+            txtPostUpdateCmd.TabIndex = 3;
+            //
             // chkDebugMode
-            // 
+            //
             chkDebugMode.AutoSize = true;
-            chkDebugMode.Location = new Point(12, 53);
+            chkDebugMode.Location = new Point(12, 82);
             chkDebugMode.Name = "chkDebugMode";
             chkDebugMode.Size = new Size(142, 19);
-            chkDebugMode.TabIndex = 2;
+            chkDebugMode.TabIndex = 4;
             chkDebugMode.Text = "Enable debug logging";
-            // 
+            //
             // btnOK
-            // 
-            btnOK.Location = new Point(308, 608);
+            //
+            btnOK.Location = new Point(308, 637);
             btnOK.Name = "btnOK";
             btnOK.Size = new Size(82, 28);
             btnOK.TabIndex = 3;
             btnOK.Text = "OK";
             btnOK.Click += btnOK_Click;
-            // 
+            //
             // btnCancel
-            // 
+            //
             btnCancel.DialogResult = DialogResult.Cancel;
-            btnCancel.Location = new Point(400, 608);
+            btnCancel.Location = new Point(400, 637);
             btnCancel.Name = "btnCancel";
             btnCancel.Size = new Size(82, 28);
             btnCancel.TabIndex = 4;
             btnCancel.Text = "Cancel";
             btnCancel.Click += btnCancel_Click;
-            // 
+            //
             // SettingsForm
-            // 
+            //
             AcceptButton = btnOK;
             AutoScaleDimensions = new SizeF(7F, 15F);
             AutoScaleMode = AutoScaleMode.Font;
             CancelButton = btnCancel;
-            ClientSize = new Size(498, 648);
+            ClientSize = new Size(498, 677);
             Controls.Add(grpGeneral);
             Controls.Add(grpQBittorrent);
             Controls.Add(grpExtra);
@@ -484,6 +505,8 @@ namespace qbPortWeaver
         private Label       lblPostUpdateCmd;
         private TextBox     txtPostUpdateCmd;
         private CheckBox    chkDebugMode;
+        private Label       lblColorTheme;
+        private ComboBox    cboColorTheme;
 
         private CheckBox      chkAutoRecovery;
         private Label         lblRecoveryCycles;

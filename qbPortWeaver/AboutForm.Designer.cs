@@ -34,6 +34,7 @@ namespace qbPortWeaver
             lblGitHubLabel = new Label();
             lnkGitHub = new LinkLabel();
             btnCheckForUpdates = new Button();
+            btnWhatsNew = new Button();
             btnClose = new Button();
             ((System.ComponentModel.ISupportInitialize)picIcon).BeginInit();
             grpVersion.SuspendLayout();
@@ -68,7 +69,7 @@ namespace qbPortWeaver
             grpVersion.Location = new Point(8, 74);
             grpVersion.Name = "grpVersion";
             grpVersion.Size = new Size(364, 107);
-            grpVersion.TabIndex = 3;
+            grpVersion.TabIndex = 0;
             grpVersion.TabStop = false;
             grpVersion.Text = "Version";
             lblCurrentVersionLabel.Location = new Point(12, 24);
@@ -115,16 +116,17 @@ namespace qbPortWeaver
             grpLinks.Location = new Point(8, 193);
             grpLinks.Name = "grpLinks";
             grpLinks.Size = new Size(364, 96);
-            grpLinks.TabIndex = 4;
+            grpLinks.TabIndex = 1;
             grpLinks.TabStop = false;
             grpLinks.Text = "Links";
-            lblAuthorLabel.Location = new Point(12, 24);
-            lblAuthorLabel.Name = "lblAuthorLabel";
-            lblAuthorLabel.Size = new Size(130, 23);
-            lblAuthorLabel.TabIndex = 0;
-            lblAuthorLabel.Text = "Contributors:";
-            lnkAuthor.LinkArea = new LinkArea(0, 0);
-            lnkAuthor.Location = new Point(148, 22);
+            lblAuthorLabel.Location  = new Point(12, 24);
+            lblAuthorLabel.Name      = "lblAuthorLabel";
+            lblAuthorLabel.Size      = new Size(130, 23);
+            lblAuthorLabel.TabIndex  = 0;
+            lblAuthorLabel.Text      = "Contributors:";
+            lblAuthorLabel.TextAlign = ContentAlignment.TopLeft;
+            lnkAuthor.LinkArea       = new LinkArea(0, 0);
+            lnkAuthor.Location       = new Point(148, 24);
             lnkAuthor.Name = "lnkAuthor";
             lnkAuthor.Size = new Size(200, 44);
             lnkAuthor.TabIndex = 1;
@@ -144,18 +146,24 @@ namespace qbPortWeaver
             lnkGitHub.LinkClicked += lnkGitHub_LinkClicked;
             // ── Buttons ───────────────────────────────────────────────────
             btnCheckForUpdates.Location = new Point(8, 301);
-            btnCheckForUpdates.Name = "btnCheckForUpdates";
-            btnCheckForUpdates.Size = new Size(145, 28);
+            btnCheckForUpdates.Name     = "btnCheckForUpdates";
+            btnCheckForUpdates.Size     = new Size(128, 28);
             btnCheckForUpdates.TabIndex = 2;
-            btnCheckForUpdates.Text = "Check for Updates";
-            btnCheckForUpdates.Click += btnCheckForUpdates_Click;
-            btnClose.DialogResult = DialogResult.Cancel;
-            btnClose.Location = new Point(286, 301);
-            btnClose.Name = "btnClose";
-            btnClose.Size = new Size(82, 28);
-            btnClose.TabIndex = 3;
-            btnClose.Text = "Close";
-            btnClose.Click += btnClose_Click;
+            btnCheckForUpdates.Text     = "Check for Updates";
+            btnCheckForUpdates.Click   += btnCheckForUpdates_Click;
+            btnWhatsNew.Location        = new Point(148, 301);
+            btnWhatsNew.Name            = "btnWhatsNew";
+            btnWhatsNew.Size            = new Size(96, 28);
+            btnWhatsNew.TabIndex        = 3;
+            btnWhatsNew.Text            = "What's New";
+            btnWhatsNew.Click          += btnWhatsNew_Click;
+            btnClose.DialogResult       = DialogResult.Cancel;
+            btnClose.Location           = new Point(286, 301);
+            btnClose.Name               = "btnClose";
+            btnClose.Size               = new Size(82, 28);
+            btnClose.TabIndex           = 4;
+            btnClose.Text               = "Close";
+            btnClose.Click             += btnClose_Click;
             // ── AboutForm ─────────────────────────────────────────────────
             AutoScaleDimensions = new SizeF(7F, 15F);
             AutoScaleMode = AutoScaleMode.Font;
@@ -167,6 +175,7 @@ namespace qbPortWeaver
             Controls.Add(grpVersion);
             Controls.Add(grpLinks);
             Controls.Add(btnCheckForUpdates);
+            Controls.Add(btnWhatsNew);
             Controls.Add(btnClose);
             FormBorderStyle = FormBorderStyle.FixedDialog;
             MaximizeBox = false;
@@ -175,7 +184,7 @@ namespace qbPortWeaver
             ShowIcon = false;
             ShowInTaskbar = false;
             StartPosition = FormStartPosition.CenterScreen;
-            Text = "qbPortWeaver | About"; // overridden in constructor with AppConstants.AppName
+            Text = "qbPortWeaver | About"; // overridden in constructor
             ((System.ComponentModel.ISupportInitialize)picIcon).EndInit();
             grpVersion.ResumeLayout(false);
             grpLinks.ResumeLayout(false);
@@ -198,6 +207,7 @@ namespace qbPortWeaver
         private Label       lblGitHubLabel;
         private LinkLabel   lnkGitHub;
         private Button      btnCheckForUpdates;
+        private Button      btnWhatsNew;
         private Button      btnClose;
     }
 }

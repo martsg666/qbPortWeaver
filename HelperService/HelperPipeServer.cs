@@ -84,13 +84,13 @@ internal sealed class HelperPipeServer : BackgroundService
         var target      = parts[1];
         var logFilePath = parts[2];
 
-        // Validate the log file name to prevent a caller-controlled path being written
-        // by this SYSTEM-level process to an arbitrary location. We can only check the
-        // filename here - the directory is user-session-specific and not resolvable from
-        // Session 0 without knowing the active user's SID.
-        if (!Path.GetFileName(logFilePath).Equals(ExpectedLogFileName, StringComparison.OrdinalIgnoreCase))
+        // Validate the log file path to prevent a caller-controlled path being written
+        // by this SYSTEM-level process to an arbitrary location. We check both the filename
+        // and that the directory is under some user's AppData\Local\qbPortWeaver folder.
+        if (!Path.GetFileName(logFilePath).Equals(ExpectedLogFileName, StringComparison.OrdinalIgnoreCase)
+            || logFilePath.IndexOf(@"\AppData\Local\qbPortWeaver\", StringComparison.OrdinalIgnoreCase) < 0)
         {
-            _logger.LogWarning("Rejected unexpected log file name in path '{Path}'", logFilePath);
+            _logger.LogWarning("Rejected unexpected log file path '{Path}'", logFilePath);
             return;
         }
 

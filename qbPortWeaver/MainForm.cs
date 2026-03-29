@@ -80,6 +80,14 @@ namespace qbPortWeaver
                 // Perform initial log rotation check
                 LogManager.Instance.CheckAndRotateLogFile();
 
+                // Show What's New on first run after an upgrade
+                if (RegistrySettingsManager.GetAppValue(RegistrySettingsManager.KeyLastSeenVersion) != AppConstants.AppVersion)
+                {
+                    using var whatsNew = new WhatsNewForm();
+                    await whatsNew.ShowDialogAsync();
+                    RegistrySettingsManager.SetAppValue(RegistrySettingsManager.KeyLastSeenVersion, AppConstants.AppVersion);
+                }
+
                 // Check for updates on GitHub (startup check)
                 await PerformUpdateCheckAsync();
 
@@ -144,6 +152,10 @@ namespace qbPortWeaver
         {
             // Signal the main loop to stop
             _shutdownCts.Cancel();
+
+            // Stop the update check timer before closing child forms to prevent it firing during teardown
+            _updateCheckTimer?.Stop();
+            _updateCheckTimer?.Dispose();
 
             // Hide tray icon immediately to avoid ghost icon
             _trayIcon.Visible = false;
@@ -287,7 +299,7 @@ namespace qbPortWeaver
 
         private void exit_Click(object? sender, EventArgs e)
         {
-            this.Close();
+            Close();
         }
 
         // Called by PortSyncService when a sync cycle completes
@@ -461,8 +473,8 @@ namespace qbPortWeaver
         // Marshals an action to the UI thread, using Invoke if called from a background thread
         private void InvokeOnUiThread(Action action)
         {
-            if (this.InvokeRequired)
-                this.Invoke(action);
+            if (InvokeRequired)
+                Invoke(action);
             else
                 action();
         }

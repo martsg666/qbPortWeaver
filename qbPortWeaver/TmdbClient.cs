@@ -39,7 +39,7 @@ namespace qbPortWeaver
                 return null;
 
             int? releaseYear = result.ReleaseDate?.Length >= 4 && int.TryParse(result.ReleaseDate[..4], out int y) ? y : null;
-            return new MovieInfo(result.Title, releaseYear, result.Id);
+            return new MovieInfo(result.Title, releaseYear, result.Id, result.VoteCount);
         }
 
         /// <summary>Searches for a TV show by title and optional first-air year. Returns the best match, or null if none found.</summary>
@@ -55,7 +55,7 @@ namespace qbPortWeaver
                 return null;
 
             int? airYear = result.FirstAirDate?.Length >= 4 && int.TryParse(result.FirstAirDate[..4], out int y) ? y : null;
-            return new TvShowInfo(result.Name, airYear, result.Id);
+            return new TvShowInfo(result.Name, airYear, result.Id, result.VoteCount);
         }
 
         // Enforces a minimum delay between TMDB API calls to avoid HTTP 429 rate limiting.
@@ -75,11 +75,11 @@ namespace qbPortWeaver
         }
     }
 
-    /// <summary>TMDB title, release year, and database ID for a movie.</summary>
-    public sealed record MovieInfo(string Title, int? Year, int TmdbId);
+    /// <summary>TMDB title, release year, database ID, and vote count for a movie.</summary>
+    public sealed record MovieInfo(string Title, int? Year, int TmdbId, int VoteCount = 0);
 
-    /// <summary>TMDB title, first-air year, and database ID for a TV show.</summary>
-    public sealed record TvShowInfo(string Title, int? Year, int TmdbId);
+    /// <summary>TMDB title, first-air year, database ID, and vote count for a TV show.</summary>
+    public sealed record TvShowInfo(string Title, int? Year, int TmdbId, int VoteCount = 0);
 
     // TMDB API response shapes (internal - only used for deserialization)
     internal sealed record TmdbMovieSearchResult(
@@ -88,7 +88,8 @@ namespace qbPortWeaver
     internal sealed record TmdbMovie(
         [property: JsonPropertyName("id")]           int     Id,
         [property: JsonPropertyName("title")]        string  Title,
-        [property: JsonPropertyName("release_date")] string? ReleaseDate);
+        [property: JsonPropertyName("release_date")] string? ReleaseDate,
+        [property: JsonPropertyName("vote_count")]   int     VoteCount = 0);
 
     internal sealed record TmdbTvSearchResult(
         [property: JsonPropertyName("results")] List<TmdbTvShow>? Results);
@@ -96,5 +97,6 @@ namespace qbPortWeaver
     internal sealed record TmdbTvShow(
         [property: JsonPropertyName("id")]             int     Id,
         [property: JsonPropertyName("name")]           string  Name,
-        [property: JsonPropertyName("first_air_date")] string? FirstAirDate);
+        [property: JsonPropertyName("first_air_date")] string? FirstAirDate,
+        [property: JsonPropertyName("vote_count")]     int     VoteCount = 0);
 }

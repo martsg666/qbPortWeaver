@@ -8,9 +8,8 @@ namespace qbPortWeaver
     /// </summary>
     public sealed class MovieProcessor
     {
-        private const string MediaTypeMovie = "Movie";
-
-        private const int    MaxSubfolderDepth = 10; // Movie/Title (Year) = depth 1; 10 is a safe ceiling
+        private const string MediaTypeMovie             = "Movie";
+        private const int    MinVoteCountForNoYearMatch = 50;
 
         private readonly TmdbClient _tmdb;
         private readonly bool _dryRun;
@@ -42,12 +41,16 @@ namespace qbPortWeaver
         /// Scans pre-classified movie files and directories and returns import proposals without modifying any files.
         /// Only items not yet present in the library are included.
         /// </summary>
-        public async Task<List<MediaProposal>> ScanMoviesAsync(string[] movieFiles, string[] movieDirs)
+        public async Task<List<MediaProposal>> ScanMoviesAsync(string[] movieFiles, string[] movieDirs, Action? onItemProcessed = null)
         {
             var proposals = new List<MediaProposal>();
 
             foreach (var file in movieFiles)
-                await ScanStandaloneFileAsync(file, proposals).ConfigureAwait(false);
+            {
+                if (!FileImporter.IsAlreadyInLibrary(file))
+                    await ScanStandaloneFileAsync(file, proposals).ConfigureAwait(false);
+                onItemProcessed?.Invoke();
+            }
 
             foreach (var dir in movieDirs)
             {
@@ -59,16 +62,21 @@ namespace qbPortWeaver
                 {
                     LogManager.Instance.LogMessage($"Skipped movie folder '{Path.GetFileName(dir)}': {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
                 }
+                onItemProcessed?.Invoke();
             }
 
             return proposals;
         }
 
         /// <summary>Processes pre-classified movie files and directories, importing them into the library with Plex naming conventions. Skips uncertain TMDB matches - use <see cref="ScanMoviesAsync"/> to preview and review those first.</summary>
-        public async Task ProcessMoviesAsync(string sourceFolder, string[] movieFiles, string[] movieDirs)
+        public async Task ProcessMoviesAsync(string sourceFolder, string[] movieFiles, string[] movieDirs, Action? onItemProcessed = null)
         {
             foreach (var file in movieFiles)
-                await ProcessStandaloneFileAsync(sourceFolder, file).ConfigureAwait(false);
+            {
+                if (!FileImporter.IsAlreadyInLibrary(file))
+                    await ProcessStandaloneFileAsync(sourceFolder, file).ConfigureAwait(false);
+                onItemProcessed?.Invoke();
+            }
 
             foreach (var dir in movieDirs)
             {
@@ -80,13 +88,12 @@ namespace qbPortWeaver
                 {
                     LogManager.Instance.LogMessage($"Skipped movie folder '{Path.GetFileName(dir)}': {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
                 }
+                onItemProcessed?.Invoke();
             }
         }
 
         private async Task ScanStandaloneFileAsync(string filePath, List<MediaProposal> proposals)
         {
-            if (FileImporter.IsAlreadyInLibrary(filePath)) return;
-
             var fileName = Path.GetFileName(filePath);
 
             var (title, year) = FileNameParser.ParseMovie(fileName);
@@ -101,12 +108,14 @@ namespace qbPortWeaver
 
         private async Task ScanMovieFolderAsync(string dirPath, List<MediaProposal> proposals, int depth = 0)
         {
-            var files = MediaManagerService.GetFolderFiles(dirPath, depth, MaxSubfolderDepth, "movie");
+            var files = MediaManagerService.GetFolderFiles(dirPath, depth, MediaManagerService.MaxSubfolderDepth, "movie");
             if (files is null) return;
 
-            var videoFiles = files.Where(f => FileNameParser.IsVideoFile(f) && !FileNameParser.IsTvShow(Path.GetFileName(f))).ToList();
+            var videoFiles = files
+                .Where(f => FileNameParser.IsVideoFile(f) && !FileNameParser.IsTvShow(Path.GetFileName(f)) && !FileImporter.IsAlreadyInLibrary(f))
+                .ToList();
 
-            if (videoFiles.Count > 0 && !videoFiles.All(FileImporter.IsAlreadyInLibrary))
+            if (videoFiles.Count > 0)
             {
                 // Split files into self-describing (parseable title from filename) and folder-dependent.
                 // Self-describing files are looked up individually, like the TV show processor does per episode.
@@ -114,7 +123,7 @@ namespace qbPortWeaver
                 var (selfDescribing, folderDependent) = ClassifyVideoFiles(videoFiles);
 
                 foreach (var (file, title, year) in selfDescribing)
-                    await ScanSingleMovieFileAsync(file, title, year, proposals).ConfigureAwait(false);
+                    await AddMovieScanProposal(file, title, year, proposals).ConfigureAwait(false);
 
                 await ScanFolderDependentFilesAsync(dirPath, folderDependent, proposals).ConfigureAwait(false);
             }
@@ -126,8 +135,6 @@ namespace qbPortWeaver
 
         private async Task ProcessStandaloneFileAsync(string sourceFolder, string filePath)
         {
-            if (FileImporter.IsAlreadyInLibrary(filePath)) return;
-
             var fileName = Path.GetFileName(filePath);
 
             var (title, year) = FileNameParser.ParseMovie(fileName);
@@ -149,17 +156,19 @@ namespace qbPortWeaver
             var targetPath = BuildStandaloneMoviePath(filePath, info);
             MediaManagerService.ImportFileWithLog(filePath, targetPath, sourceFolder, _dryRun, _importMode);
 
-            ImportCompanionFiles(sourceFolder, filePath, targetPath);
+            ImportCompanionFiles(sourceFolder, filePath, targetPath, _dryRun, _importMode);
         }
 
         private async Task ProcessMovieFolderAsync(string sourceFolder, string dirPath, int depth = 0)
         {
-            var files = MediaManagerService.GetFolderFiles(dirPath, depth, MaxSubfolderDepth, "movie");
+            var files = MediaManagerService.GetFolderFiles(dirPath, depth, MediaManagerService.MaxSubfolderDepth, "movie");
             if (files is null) return;
 
-            var videoFiles = files.Where(f => FileNameParser.IsVideoFile(f) && !FileNameParser.IsTvShow(Path.GetFileName(f))).ToList();
+            var videoFiles = files
+                .Where(f => FileNameParser.IsVideoFile(f) && !FileNameParser.IsTvShow(Path.GetFileName(f)) && !FileImporter.IsAlreadyInLibrary(f))
+                .ToList();
 
-            if (videoFiles.Count > 0 && !videoFiles.All(FileImporter.IsAlreadyInLibrary))
+            if (videoFiles.Count > 0)
             {
                 var (selfDescribing, folderDependent) = ClassifyVideoFiles(videoFiles);
 
@@ -199,14 +208,6 @@ namespace qbPortWeaver
             return (selfDescribing, folderDependent);
         }
 
-        // Scans a single self-describing movie file from within a folder (has its own parseable title)
-        private async Task ScanSingleMovieFileAsync(string filePath, string title, int? year, List<MediaProposal> proposals)
-        {
-            if (FileImporter.IsAlreadyInLibrary(filePath)) return;
-
-            await AddMovieScanProposal(filePath, title, year, proposals).ConfigureAwait(false);
-        }
-
         // Shared proposal builder for standalone and self-describing movie files
         private async Task AddMovieScanProposal(string filePath, string title, int? year, List<MediaProposal> proposals)
         {
@@ -230,7 +231,6 @@ namespace qbPortWeaver
         private async Task<(MovieInfo? Info, bool IsConfident)?> ResolveFolderMovieAsync(string dirPath, List<string> folderDependent)
         {
             if (folderDependent.Count == 0) return null;
-            if (folderDependent.All(FileImporter.IsAlreadyInLibrary)) return null;
 
             var dirName = Path.GetFileName(dirPath);
             var (title, year) = FileNameParser.ParseMovie(dirName);
@@ -272,8 +272,6 @@ namespace qbPortWeaver
         // Processes a single self-describing movie file from within a folder
         private async Task ProcessSingleMovieFileAsync(string sourceFolder, string filePath, string title, int? year)
         {
-            if (FileImporter.IsAlreadyInLibrary(filePath)) return;
-
             var (info, isConfident) = await GetOrLookupMovieAsync(title, year).ConfigureAwait(false);
             if (info is null) return;
             if (!isConfident)
@@ -285,7 +283,7 @@ namespace qbPortWeaver
             var targetPath = BuildStandaloneMoviePath(filePath, info);
             MediaManagerService.ImportFileWithLog(filePath, targetPath, sourceFolder, _dryRun, _importMode);
 
-            ImportCompanionFiles(sourceFolder, filePath, targetPath);
+            ImportCompanionFiles(sourceFolder, filePath, targetPath, _dryRun, _importMode);
         }
 
         // Processes folder-dependent files using the parent folder name for TMDB lookup
@@ -331,8 +329,8 @@ namespace qbPortWeaver
             return Path.Combine(_libraryPath, plexFolderName, newFileName);
         }
 
-        private void ImportCompanionFiles(string sourceFolder, string videoPath, string targetVideoPath) =>
-            MediaManagerService.ImportCompanionFiles(sourceFolder, videoPath, targetVideoPath, _dryRun, _importMode);
+        private static void ImportCompanionFiles(string sourceFolder, string videoPath, string targetVideoPath, bool dryRun, ImportMode importMode) =>
+            MediaManagerService.ImportCompanionFiles(sourceFolder, videoPath, targetVideoPath, dryRun, importMode);
 
         // Imports subtitle files from a movie folder, renaming them to match the Plex folder name
         private void ImportFolderCompanionFiles(string sourceFolder, string sourceDir, string firstVideoBase, string plexFolderName)
@@ -379,6 +377,11 @@ namespace qbPortWeaver
 
                 var info = await _tmdb.SearchMovieAsync(title, year).ConfigureAwait(false);
 
+                // Without a year in the filename we cannot corroborate the match by year alone.
+                // Require an exact title match and a meaningful vote count to stay confident.
+                if (info is not null && !year.HasValue)
+                    isConfident = FileNameParser.IsStrongNoYearMatch(title, info.Title, info.VoteCount, MinVoteCountForNoYearMatch);
+
                 // Retry without year: parsed year may not match TMDB's release year
                 if (info is null && year.HasValue)
                 {
@@ -411,9 +414,12 @@ namespace qbPortWeaver
             string title, int? year, MovieInfo? info, bool isConfident)
         {
             // Try the part after " - " (e.g. "Series 1 - The Subtitle")
-            if (info is null && title.Contains(" - "))
+            var afterDash = info is null && title.Contains(" - ")
+                ? title[(title.IndexOf(" - ", StringComparison.Ordinal) + 3)..].Trim()
+                : "";
+
+            if (afterDash.Length > 0)
             {
-                var afterDash = title[(title.IndexOf(" - ", StringComparison.Ordinal) + 3)..].Trim();
                 LogManager.Instance.LogDebug($"MovieProcessor.TryFallbackLookupsAsync: Retrying with '{afterDash}'", Subsystem.MediaManager);
                 info = await _tmdb.SearchMovieAsync(afterDash, year).ConfigureAwait(false);
                 if (info is not null) isConfident = false;
@@ -422,21 +428,29 @@ namespace qbPortWeaver
             // Try without trailing number (e.g. "Title 1" -> "Title")
             if (info is null || (info.Year is null && title.Length > 2))
             {
-                var trimmed = title.TrimEnd();
-                if (trimmed.Length > 2 && char.IsDigit(trimmed[^1]) && trimmed[^2] == ' ')
+                var altInfo = await TryWithoutTrailingNumberAsync(title, year).ConfigureAwait(false);
+                if (altInfo is not null)
                 {
-                    var withoutNum = trimmed[..^2].Trim();
-                    LogManager.Instance.LogDebug($"MovieProcessor.TryFallbackLookupsAsync: Retrying without trailing number '{withoutNum}'", Subsystem.MediaManager);
-                    var altInfo = await _tmdb.SearchMovieAsync(withoutNum, year).ConfigureAwait(false);
-                    if (altInfo?.Year is not null)
-                    {
-                        info        = altInfo;
-                        isConfident = false;
-                    }
+                    info        = altInfo;
+                    isConfident = false;
                 }
             }
 
             return (info, isConfident);
+        }
+
+        // Strips a single trailing digit preceded by a space (e.g. "Title 2" -> "Title")
+        // and searches TMDB. Returns the match only if it includes a year (quality gate).
+        private async Task<MovieInfo?> TryWithoutTrailingNumberAsync(string title, int? year)
+        {
+            var trimmed = title.TrimEnd();
+            if (trimmed.Length <= 2 || !char.IsDigit(trimmed[^1]) || trimmed[^2] != ' ')
+                return null;
+
+            var withoutNum = trimmed[..^2].Trim();
+            LogManager.Instance.LogDebug($"MovieProcessor.TryWithoutTrailingNumberAsync: Retrying without trailing number '{withoutNum}'", Subsystem.MediaManager);
+            var altInfo = await _tmdb.SearchMovieAsync(withoutNum, year).ConfigureAwait(false);
+            return altInfo?.Year is not null ? altInfo : null;
         }
 
         // Detects multi-part suffixes such as "cd1", "pt2", "disc3" and returns the normalised token.

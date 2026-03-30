@@ -155,8 +155,8 @@ Every cycle writes a JSON status file (`status.json` next to the log file) captu
 
 ```json
 {
-  "appVersion": "2.4.1",
-  "timestamp": "2026-03-12T10:30:00+01:00",
+  "appVersion": "2.x.y",
+  "timestamp": "2026-01-01T12:00:00+00:00",
   "vpnProvider": "ProtonVPN",
   "vpnConnected": true,
   "vpnPort": 51234,

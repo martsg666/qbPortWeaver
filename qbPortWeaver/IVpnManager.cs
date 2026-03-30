@@ -5,7 +5,7 @@ namespace qbPortWeaver
         /// <summary>
         /// Display name of the provider or gateway used for port detection.
         /// For ProtonVPN and PIA this is the provider name (e.g. "ProtonVPN", "PIA").
-        /// For NAT-PMP this is the network adapter description of the responding gateway.
+        /// For NAT-PMP this is the network adapter name of the responding gateway.
         /// </summary>
         string ProviderName { get; }
 

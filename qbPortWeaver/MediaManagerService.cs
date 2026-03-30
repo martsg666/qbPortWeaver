@@ -55,14 +55,12 @@ namespace qbPortWeaver
             var tmdb = new TmdbClient(apiKey);
 
             // Pre-classify all folders so we know the total item count for progress logging
-            var configured = GetFolders(RegistrySettingsManager.KeyMediaSourceFolders);
-            foreach (var f in configured.Where(f => !Directory.Exists(f)))
-                LogManager.Instance.LogMessage($"Source folder not found: '{f}'", LogLevel.Error, Subsystem.MediaManager);
-
-            var classified = configured
-                .Where(Directory.Exists)
-                .Select(f => (Folder: f, Items: ClassifySourceFolder(f)))
-                .ToList();
+            var classified = new List<(string Folder, (string[] MovieFiles, string[] MovieDirs, string[] TvFiles, string[] TvDirs) Items)>();
+            foreach (var f in GetFolders(RegistrySettingsManager.KeyMediaSourceFolders))
+            {
+                if (!Directory.Exists(f)) { LogManager.Instance.LogMessage($"Source folder not found: '{f}'", LogLevel.Error, Subsystem.MediaManager); continue; }
+                classified.Add((f, ClassifySourceFolder(f)));
+            }
 
             int total   = classified.Sum(c => c.Items.MovieFiles.Length + c.Items.MovieDirs.Length + c.Items.TvFiles.Length + c.Items.TvDirs.Length);
             int current = 0;
@@ -73,14 +71,19 @@ namespace qbPortWeaver
             using var logCts  = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             var logTask = LogScanProgressAsync(() => (Volatile.Read(ref current), total), logCts.Token);
 
-            foreach (var (folder, items) in classified)
+            try
             {
-                cancellationToken.ThrowIfCancellationRequested();
-                await ProcessSourceFolderAsync(folder, items, ctx, OnItemProcessed).ConfigureAwait(false);
+                foreach (var (folder, items) in classified)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    await ProcessSourceFolderAsync(folder, items, ctx, OnItemProcessed).ConfigureAwait(false);
+                }
             }
-
-            await logCts.CancelAsync().ConfigureAwait(false);
-            try { await logTask.ConfigureAwait(false); } catch (OperationCanceledException) { } // NOSONAR S2486 - logTask is cancelled intentionally via logCts; no action needed
+            finally
+            {
+                await logCts.CancelAsync().ConfigureAwait(false);
+                try { await logTask.ConfigureAwait(false); } catch (OperationCanceledException) { } // NOSONAR S2486 - logTask is cancelled intentionally via logCts; no action needed
+            }
 
             if (deleteEmptyFolders)
                 CleanupSourceFolders(dryRun, cancellationToken);
@@ -376,7 +379,7 @@ namespace qbPortWeaver
         // into each and only process files that match episode patterns.
         private static (string[] MovieFiles, string[] MovieDirs, string[] TvFiles, string[] TvDirs) ClassifySourceFolder(string folder)
         {
-            var files = Directory.GetFiles(folder);
+            var files = Directory.GetFiles(folder).Where(FileImporter.IsFileWriteComplete).ToArray();
             var dirs  = Directory.GetDirectories(folder);
 
             var movieFiles = files.Where(f => FileNameParser.IsVideoFile(f) && !FileNameParser.IsTvShow(Path.GetFileName(f))).ToArray();
@@ -450,7 +453,7 @@ namespace qbPortWeaver
 
             try
             {
-                return Directory.GetFiles(dirPath);
+                return Directory.GetFiles(dirPath).Where(FileImporter.IsFileWriteComplete).ToArray();
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {

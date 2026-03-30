@@ -228,6 +228,7 @@ namespace qbPortWeaver
                 {
                     FinishProgress();
                     SetBusy(false);
+                    UpdateScanStatus();
                 }
             }
         }

@@ -72,6 +72,10 @@ namespace qbPortWeaver
             // Disposal is handled in Dispose(bool) in the Designer file.
             if (_watcher is not null)
                 _watcher.EnableRaisingEvents = false;
+
+            _searchDebounceTimer?.Stop();
+            _searchDebounceTimer?.Dispose();
+
             base.OnFormClosed(e);
         }
 

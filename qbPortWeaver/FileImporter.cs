@@ -13,16 +13,21 @@ namespace qbPortWeaver
 
         // Library cache: persisted path -> metadata so unchanged library files are not re-hashed across sessions.
         private static Dictionary<string, CacheEntry>? _libraryCache;
-        private static bool _libraryCacheDirty;
+        private static volatile bool _libraryCacheDirty;
 
         // Source scan cache: maps source file paths to their fingerprint so unchanged files are not re-hashed each cycle.
         private static Dictionary<string, CacheEntry>? _sourceCache;
         private static readonly object _sourceCacheLock = new();
-        private static bool _sourceCacheDirty;
+        private static volatile bool _sourceCacheDirty;
+
+        // Serialises concurrent file writes from the sync loop and the UI scan path.
+        private static readonly object _cacheFileLock = new();
 
         private const int FingerprintChunkBytes = 64 * 1024; // 64 KB per chunk (head + tail)
         private const string SourceCacheFileName  = "qbPortWeaver.mediascan.json";
         private const string LibraryCacheFileName = "qbPortWeaver.medialibrary.json";
+
+        private static readonly JsonSerializerOptions _jsonWriteOptions = new() { WriteIndented = true };
 
         private sealed record CacheEntry(long Size, long LastWriteTimeTicks, string Fingerprint);
 
@@ -186,6 +191,27 @@ namespace qbPortWeaver
         /// and last 64 KB. For files up to 128 KB the entire content is hashed. Reading only 128 KB keeps this fast
         /// even for multi-gigabyte video files on spinning disks or network shares.
         /// </summary>
+        // Returns true if the file can be opened exclusively (FileShare.None), meaning no other process
+        // holds a conflicting handle. This detects files that are still being written or copied.
+        // UnauthorizedAccessException is treated as complete: the file exists but we lack write
+        // permission (e.g. read-only attribute, network share ACL) — it is not being actively written to.
+        internal static bool IsFileWriteComplete(string path)
+        {
+            try
+            {
+                using var stream = new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+                return true;
+            }
+            catch (IOException)
+            {
+                return false;
+            }
+            catch (UnauthorizedAccessException)
+            {
+                return true;
+            }
+        }
+
         internal static string ComputeFingerprint(string path)
         {
             var fi = new FileInfo(path);
@@ -254,7 +280,8 @@ namespace qbPortWeaver
         {
             try
             {
-                foreach (var fi in new DirectoryInfo(path).EnumerateFiles("*", SearchOption.AllDirectories))
+                foreach (var fi in new DirectoryInfo(path).EnumerateFiles("*", SearchOption.AllDirectories)
+                    .Where(f => IsFileWriteComplete(f.FullName)))
                 {
                     seenPaths.Add(fi.FullName);
                     try
@@ -440,9 +467,12 @@ namespace qbPortWeaver
                 lock (_sourceCacheLock)
                     _sourceCache = toSave;
 
-                var json = JsonSerializer.Serialize(toSave, new JsonSerializerOptions { WriteIndented = true });
-                File.WriteAllText(GetCacheFilePath(SourceCacheFileName), json);
-                _sourceCacheDirty = false;
+                var json = JsonSerializer.Serialize(toSave, _jsonWriteOptions);
+                lock (_cacheFileLock)
+                {
+                    File.WriteAllText(GetCacheFilePath(SourceCacheFileName), json);
+                    _sourceCacheDirty = false;
+                }
 
                 LogManager.Instance.LogDebug($"FileImporter.SaveSourceCache: Saved {toSave.Count} entries", Subsystem.MediaManager);
             }
@@ -495,11 +525,13 @@ namespace qbPortWeaver
             {
                 string json;
                 lock (_libraryLock)
+                    json = JsonSerializer.Serialize(cache, _jsonWriteOptions);
+
+                lock (_cacheFileLock)
                 {
-                    json = JsonSerializer.Serialize(cache, new JsonSerializerOptions { WriteIndented = true });
+                    File.WriteAllText(GetCacheFilePath(LibraryCacheFileName), json);
                     _libraryCacheDirty = false;
                 }
-                File.WriteAllText(GetCacheFilePath(LibraryCacheFileName), json);
 
                 LogManager.Instance.LogDebug($"FileImporter.SaveLibraryCache: Saved {cache.Count} entries", Subsystem.MediaManager);
             }

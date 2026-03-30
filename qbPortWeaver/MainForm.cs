@@ -80,6 +80,9 @@ namespace qbPortWeaver
                 // Perform initial log rotation check
                 LogManager.Instance.CheckAndRotateLogFile();
 
+                // Start main loop immediately so port syncing is not blocked by dialogs
+                _ = Task.Run(RunMainLoopAsync); // fire-and-forget; exceptions are handled inside RunMainLoopAsync
+
                 // Show What's New on first run after an upgrade
                 if (RegistrySettingsManager.GetAppValue(RegistrySettingsManager.KeyLastSeenVersion) != AppConstants.AppVersion)
                 {
@@ -95,9 +98,6 @@ namespace qbPortWeaver
                 _updateCheckTimer = new System.Windows.Forms.Timer { Interval = AppConstants.AutoUpdateCheckIntervalMs };
                 _updateCheckTimer.Tick += OnUpdateCheckTimerTick;
                 _updateCheckTimer.Start();
-
-                // Start main loop (intentional fire-and-forget)
-                _ = Task.Run(RunMainLoopAsync); // fire-and-forget; exceptions are handled inside RunMainLoopAsync
             }
             catch (Exception ex)
             {

@@ -465,6 +465,26 @@ namespace qbPortWeaver
         // Matches Plex TV episode format: "Show (Year) - SxxExx" (always zero-padded in output)
         [GeneratedRegex(@"^.+\s\(\d{4}\)\s-\sS\d{2}E\d{2}$", RegexOptions.IgnoreCase)]
         private static partial Regex PlexEpisodeNameRegex();
+
+        // Returns the substring after the first " - " separator, or null if the pattern is not present.
+        // Used by MovieProcessor and TvShowProcessor as a fallback lookup strategy.
+        internal static string? ExtractAfterDash(string title)
+        {
+            int idx = title.IndexOf(" - ", StringComparison.Ordinal);
+            if (idx < 0) return null;
+            var after = title[(idx + 3)..].Trim();
+            return after.Length > 0 ? after : null;
+        }
+
+        // Strips a single trailing digit preceded by a space (e.g. "Title 2" -> "Title"), or returns null
+        // if the pattern is not present. Used by MovieProcessor and TvShowProcessor as a fallback lookup strategy.
+        internal static string? StripTrailingNumber(string title)
+        {
+            var trimmed = title.TrimEnd();
+            if (trimmed.Length <= 2 || !char.IsDigit(trimmed[^1]) || trimmed[^2] != ' ')
+                return null;
+            return trimmed[..^2].Trim();
+        }
     }
 
     /// <summary>Parsed TV episode identity: show name, optional year hint, season number, and episode number.</summary>

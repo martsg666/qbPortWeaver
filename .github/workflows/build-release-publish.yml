@@ -282,7 +282,7 @@ jobs:
       - name: Install Chocolatey Community Validation Extension
         shell: pwsh
         run: |
-          choco install chocolatey-community-validation.extension -y --no-progress
+          choco install chocolatey-community-validation.extension --version 0.2.0 -y --no-progress
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       # -----------------------------------------------------------------------

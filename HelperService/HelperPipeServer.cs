@@ -98,6 +98,16 @@ internal sealed class HelperPipeServer : BackgroundService
             return;
         }
 
+        // Path.GetFullPath resolves ".." but NOT symlinks on Windows. On systems with Developer Mode
+        // enabled, a standard user can create symlinks, so a symlink at the log file path or its
+        // containing directory would pass name/directory validation but redirect writes to an
+        // attacker-chosen location under SYSTEM privileges.
+        if (IsReparsePoint(logFilePath))
+        {
+            _logger.LogWarning("Rejected log file path containing a reparse point '{Path}'", logFilePath);
+            return;
+        }
+
         var logger = new HelperLogger(logFilePath);
 
         switch (action)
@@ -125,5 +135,19 @@ internal sealed class HelperPipeServer : BackgroundService
                 _logger.LogWarning("Rejected unknown action '{Action}'", action);
                 break;
         }
+    }
+
+    // Returns true if the file or its containing directory is a symlink or other reparse point.
+    // Checks only two levels: the file itself and its immediate parent directory, which covers
+    // the expected attack vector (symlink planted at the log file path or the app data folder).
+    private static bool IsReparsePoint(string filePath)
+    {
+        if (File.Exists(filePath) && (File.GetAttributes(filePath) & FileAttributes.ReparsePoint) != 0)
+            return true;
+
+        var dir = Path.GetDirectoryName(filePath);
+        return dir is not null
+            && Directory.Exists(dir)
+            && (File.GetAttributes(dir) & FileAttributes.ReparsePoint) != 0;
     }
 }

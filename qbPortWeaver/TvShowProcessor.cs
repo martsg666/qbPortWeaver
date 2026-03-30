@@ -20,6 +20,9 @@ namespace qbPortWeaver
         // Caches show lookups (including confidence) to avoid redundant TMDB API calls across scan cycles.
         // Key includes year to distinguish same-titled shows (e.g. "Show|1978" vs "Show|2003").
         // ConcurrentDictionary: sync cycle and UI scan can overlap.
+        // Intentionally never cleared: the process lifetime is short (tray app session) and TMDB
+        // metadata does not change meaningfully within a session. Null results are also cached to
+        // avoid hammering the API for titles that consistently return no match.
         private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, (TvShowInfo? Info, bool IsConfident)> _showCache = new(StringComparer.OrdinalIgnoreCase);
 
         /// <summary>Creates a TV show processor that imports episodes into the specified library folder.</summary>
@@ -255,11 +258,9 @@ namespace qbPortWeaver
             string title, int? year, TvShowInfo? info, bool isConfident)
         {
             // Try the part after " - " (e.g. "Series 1 - The Subtitle")
-            var afterDash = info is null && title.Contains(" - ")
-                ? title[(title.IndexOf(" - ", StringComparison.Ordinal) + 3)..].Trim()
-                : "";
+            var afterDash = info is null ? FileNameParser.ExtractAfterDash(title) : null;
 
-            if (afterDash.Length > 0)
+            if (afterDash is not null)
             {
                 LogManager.Instance.LogDebug($"TvShowProcessor.TryFallbackLookupsAsync: Retrying with '{afterDash}'", Subsystem.MediaManager);
                 info = await _tmdb.SearchTvShowAsync(afterDash, year).ConfigureAwait(false);
@@ -284,11 +285,9 @@ namespace qbPortWeaver
         // and searches TMDB. Returns the match only if it includes a year (quality gate).
         private async Task<TvShowInfo?> TryWithoutTrailingNumberAsync(string title, int? year)
         {
-            var trimmed = title.TrimEnd();
-            if (trimmed.Length <= 2 || !char.IsDigit(trimmed[^1]) || trimmed[^2] != ' ')
-                return null;
+            var withoutNum = FileNameParser.StripTrailingNumber(title);
+            if (withoutNum is null) return null;
 
-            var withoutNum = trimmed[..^2].Trim();
             LogManager.Instance.LogDebug($"TvShowProcessor.TryWithoutTrailingNumberAsync: Retrying without trailing number '{withoutNum}'", Subsystem.MediaManager);
             var altInfo = await _tmdb.SearchTvShowAsync(withoutNum, year).ConfigureAwait(false);
             return altInfo?.Year is not null ? altInfo : null;

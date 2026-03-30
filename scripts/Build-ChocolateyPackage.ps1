@@ -198,7 +198,7 @@ try {
 
     # Install the community validation extension if not already present (idempotent).
     # When installed, it automatically validates the package during choco pack.
-    choco install chocolatey-community-validation.extension -y --no-progress
+    choco install chocolatey-community-validation.extension --version 0.2.0 -y --no-progress
     if ($LASTEXITCODE -ne 0) { throw 'Failed to install chocolatey-community-validation.extension.' }
 
     choco pack $nuspecPath --output-directory $outputDir

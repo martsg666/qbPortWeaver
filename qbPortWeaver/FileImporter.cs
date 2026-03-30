@@ -19,6 +19,8 @@ namespace qbPortWeaver
         private static Dictionary<string, CacheEntry>? _sourceCache;
         private static readonly object _sourceCacheLock = new();
         private static volatile bool _sourceCacheDirty;
+        private static int _sourceCachedCount;
+        private static int _sourceComputedCount;
 
         // Serialises concurrent file writes from the sync loop and the UI scan path.
         private static readonly object _cacheFileLock = new();
@@ -187,19 +189,19 @@ namespace qbPortWeaver
         }
 
         /// <summary>
-        /// Computes a lightweight fingerprint for a file: the file size combined with a SHA-256 hash of the first
-        /// and last 64 KB. For files up to 128 KB the entire content is hashed. Reading only 128 KB keeps this fast
-        /// even for multi-gigabyte video files on spinning disks or network shares.
+        /// Returns <see langword="true"/> if the file is not exclusively locked for writing by another process.
+        /// Uses <see cref="FileAccess.Read"/> and <see cref="FileShare.ReadWrite"/>: processes that hold a read
+        /// handle allow concurrent reads, so those files pass this check. Only a write-exclusive lock
+        /// (<see cref="FileShare.None"/> on the writer's handle) causes the open to fail, correctly identifying
+        /// a file that is still being written.
+        /// <see cref="UnauthorizedAccessException"/> is treated as complete: the file exists but we lack
+        /// permission (e.g. read-only attribute, network share ACL) and is not being actively written to.
         /// </summary>
-        // Returns true if the file can be opened exclusively (FileShare.None), meaning no other process
-        // holds a conflicting handle. This detects files that are still being written or copied.
-        // UnauthorizedAccessException is treated as complete: the file exists but we lack write
-        // permission (e.g. read-only attribute, network share ACL) — it is not being actively written to.
         internal static bool IsFileWriteComplete(string path)
         {
             try
             {
-                using var stream = new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+                using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
                 return true;
             }
             catch (IOException)
@@ -212,6 +214,11 @@ namespace qbPortWeaver
             }
         }
 
+        /// <summary>
+        /// Computes a lightweight fingerprint for a file: the file size combined with a SHA-256 hash of the first
+        /// and last 64 KB. For files up to 128 KB the entire content is hashed. Reading only 128 KB keeps this fast
+        /// even for multi-gigabyte video files on spinning disks or network shares.
+        /// </summary>
         internal static string ComputeFingerprint(string path)
         {
             var fi = new FileInfo(path);
@@ -240,15 +247,11 @@ namespace qbPortWeaver
         /// <summary>
         /// Walks the library folders and builds a fingerprint index so <see cref="IsAlreadyInLibrary"/> can detect
         /// files that were previously imported (regardless of the name they were imported under).
-        /// No-ops if the index is already built unless <paramref name="force"/> is true.
         /// Uses a persisted cache so only new or modified library files are fingerprinted; deleted files are pruned.
-        /// After the initial build, call <see cref="AddToLibraryIndex"/> after each import to keep it current.
+        /// Called once per scan cycle to ensure the index reflects the current library state.
         /// </summary>
-        internal static void BuildLibraryIndex(bool force, params string[] libraryPaths)
+        internal static void BuildLibraryIndex(params string[] libraryPaths)
         {
-            if (!force && _libraryFingerprints is not null)
-                return;
-
             LogManager.Instance.LogMessage("Building library index...", LogLevel.Info, Subsystem.MediaManager);
             LoadLibraryCache();
 
@@ -280,8 +283,7 @@ namespace qbPortWeaver
         {
             try
             {
-                foreach (var fi in new DirectoryInfo(path).EnumerateFiles("*", SearchOption.AllDirectories)
-                    .Where(f => IsFileWriteComplete(f.FullName)))
+                foreach (var fi in new DirectoryInfo(path).EnumerateFiles("*", SearchOption.AllDirectories))
                 {
                     seenPaths.Add(fi.FullName);
                     try
@@ -380,6 +382,7 @@ namespace qbPortWeaver
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
+                LogManager.Instance.LogDebug($"FileImporter.IsAlreadyInLibrary: Could not read '{Path.GetFileName(sourcePath)}': {ex.Message}", Subsystem.MediaManager);
                 return false;
             }
         }
@@ -396,11 +399,13 @@ namespace qbPortWeaver
                         && entry.Size == fi.Length
                         && entry.LastWriteTimeTicks == fi.LastWriteTimeUtc.Ticks)
                     {
+                        Interlocked.Increment(ref _sourceCachedCount);
                         return entry.Fingerprint;
                     }
                 }
 
                 string fp = ComputeFingerprint(fi.FullName);
+                Interlocked.Increment(ref _sourceComputedCount);
                 lock (_sourceCacheLock)
                 {
                     cache[fi.FullName] = new CacheEntry(fi.Length, fi.LastWriteTimeUtc.Ticks, fp);
@@ -409,6 +414,7 @@ namespace qbPortWeaver
                 return fp;
             }
 
+            Interlocked.Increment(ref _sourceComputedCount);
             return ComputeFingerprint(fi.FullName);
         }
 
@@ -418,14 +424,21 @@ namespace qbPortWeaver
         /// </summary>
         internal static void LoadSourceCache()
         {
+            // Reset per-cycle scan stats (even if cache is already in memory from a prior cycle)
+            Interlocked.Exchange(ref _sourceCachedCount, 0);
+            Interlocked.Exchange(ref _sourceComputedCount, 0);
+
             if (_sourceCache is not null) return;
 
+            var sw = System.Diagnostics.Stopwatch.StartNew();
             try
             {
                 var filePath = GetCacheFilePath(SourceCacheFileName);
                 if (!File.Exists(filePath))
                 {
                     _sourceCache = new(StringComparer.OrdinalIgnoreCase);
+                    sw.Stop();
+                    LogManager.Instance.LogMessage($"Source index loaded: 0 entries in {sw.ElapsedMilliseconds}ms", LogLevel.Info, Subsystem.MediaManager);
                     return;
                 }
 
@@ -436,10 +449,13 @@ namespace qbPortWeaver
                     : new(StringComparer.OrdinalIgnoreCase);
                 _sourceCacheDirty = false;
 
+                sw.Stop();
                 LogManager.Instance.LogDebug($"FileImporter.LoadSourceCache: Loaded {_sourceCache.Count} entries", Subsystem.MediaManager);
+                LogManager.Instance.LogMessage($"Source index loaded: {_sourceCache.Count} entries in {sw.ElapsedMilliseconds}ms", LogLevel.Info, Subsystem.MediaManager);
             }
             catch (Exception ex)
             {
+                sw.Stop();
                 LogManager.Instance.LogMessage($"Source scan cache could not be loaded, starting fresh: {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
                 _sourceCache = new(StringComparer.OrdinalIgnoreCase);
             }
@@ -452,7 +468,13 @@ namespace qbPortWeaver
         internal static void SaveSourceCache()
         {
             var cache = _sourceCache;
-            if (cache is null || !_sourceCacheDirty) return;
+            if (cache is null) return;
+
+            int total = _sourceCachedCount + _sourceComputedCount;
+            if (total > 0)
+                LogManager.Instance.LogMessage(
+                    $"Source files: {total} checked (cached={_sourceCachedCount}, computed={_sourceComputedCount})",
+                    LogLevel.Info, Subsystem.MediaManager);
 
             try
             {
@@ -460,17 +482,21 @@ namespace qbPortWeaver
                 lock (_sourceCacheLock)
                     snapshot = new Dictionary<string, CacheEntry>(cache, StringComparer.OrdinalIgnoreCase);
 
-                var toSave = snapshot
-                    .Where(kv => File.Exists(kv.Key))
-                    .ToDictionary(kv => kv.Key, kv => kv.Value, StringComparer.OrdinalIgnoreCase);
+                // If every cached entry was visited this cycle, none can be stale - skip File.Exists entirely.
+                // If the counts differ, at least one entry was not visited (possibly deleted from source).
+                int visited = _sourceCachedCount + _sourceComputedCount;
+                bool mightHaveStaleEntries = snapshot.Count > visited;
 
-                lock (_sourceCacheLock)
-                    _sourceCache = toSave;
+                if (!_sourceCacheDirty && !mightHaveStaleEntries) return;
+
+                var toSave = mightHaveStaleEntries
+                    ? snapshot.Where(kv => File.Exists(kv.Key)).ToDictionary(kv => kv.Key, kv => kv.Value, StringComparer.OrdinalIgnoreCase)
+                    : snapshot;
 
                 var json = JsonSerializer.Serialize(toSave, _jsonWriteOptions);
                 lock (_cacheFileLock)
                 {
-                    File.WriteAllText(GetCacheFilePath(SourceCacheFileName), json);
+                    WriteAtomic(GetCacheFilePath(SourceCacheFileName), json);
                     _sourceCacheDirty = false;
                 }
 
@@ -529,7 +555,7 @@ namespace qbPortWeaver
 
                 lock (_cacheFileLock)
                 {
-                    File.WriteAllText(GetCacheFilePath(LibraryCacheFileName), json);
+                    WriteAtomic(GetCacheFilePath(LibraryCacheFileName), json);
                     _libraryCacheDirty = false;
                 }
 
@@ -568,11 +594,23 @@ namespace qbPortWeaver
 
         private static void TryDeleteFile(string path)
         {
-            try { if (File.Exists(path)) File.Delete(path); }
+            try
+            {
+                if (File.Exists(path)) File.Delete(path);
+            }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
                 LogManager.Instance.LogDebug($"FileImporter.TryDeleteFile: Could not delete '{path}': {ex.Message}", Subsystem.MediaManager);
             }
+        }
+
+        // Writes content to a temp file then atomically renames it over the target.
+        // If the process is killed mid-write, only the .tmp file is lost and the original is untouched.
+        private static void WriteAtomic(string path, string content)
+        {
+            var temp = path + ".tmp";
+            File.WriteAllText(temp, content);
+            File.Move(temp, path, overwrite: true);
         }
 
         private static string GetCacheFilePath(string fileName) =>

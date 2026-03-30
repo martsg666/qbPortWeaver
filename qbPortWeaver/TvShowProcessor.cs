@@ -48,6 +48,8 @@ namespace qbPortWeaver
         {
             var proposals = new List<MediaProposal>();
 
+            EvictNullShowCache();
+
             foreach (var file in tvFiles)
             {
                 if (!FileImporter.IsAlreadyInLibrary(file))
@@ -74,6 +76,8 @@ namespace qbPortWeaver
         /// <summary>Processes pre-classified TV episode files and directories, importing them into the library with Plex naming conventions. Skips uncertain TMDB matches - use <see cref="ScanTvShowsAsync"/> to preview and review those first.</summary>
         public async Task ProcessTvShowsAsync(string sourceFolder, string[] tvFiles, string[] tvDirs, Action? onItemProcessed = null)
         {
+            EvictNullShowCache();
+
             foreach (var file in tvFiles)
             {
                 if (!FileImporter.IsAlreadyInLibrary(file))
@@ -201,6 +205,15 @@ namespace qbPortWeaver
         private static void ImportCompanionFiles(string sourceFolder, string videoPath, string targetVideoPath, bool dryRun, ImportMode importMode) =>
             MediaManagerService.ImportCompanionFiles(sourceFolder, videoPath, targetVideoPath, dryRun, importMode);
 
+        // Evicts cached null results so transient API failures are retried each scan.
+        // Within a scan, null results are still cached to avoid duplicate lookups.
+        private static void EvictNullShowCache()
+        {
+            foreach (var key in _showCache.Keys.ToList())
+                if (_showCache.TryGetValue(key, out var cached) && cached.Info is null)
+                    _showCache.TryRemove(key, out _);
+        }
+
         // Returns a cached show lookup or performs a new TMDB search and caches the result
         private async Task<(TvShowInfo? Info, bool IsConfident)> GetOrLookupShowAsync(string showName, int? year)
         {
@@ -268,6 +281,10 @@ namespace qbPortWeaver
             }
 
             // Try without trailing number (e.g. "Title 1" -> "Title")
+            // Also runs when info is not null but lacks a year: a year-less TMDB result is low-quality
+            // (ambiguous match), so we attempt a stripped title in case TMDB returns a better-quality
+            // result that includes a year. If found, it replaces the existing match with isConfident=false
+            // so the user can review it in the Media Manager before the file is imported.
             if (info is null || (info.Year is null && title.Length > 2))
             {
                 var altInfo = await TryWithoutTrailingNumberAsync(title, year).ConfigureAwait(false);

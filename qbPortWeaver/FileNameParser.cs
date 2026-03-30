@@ -433,7 +433,7 @@ namespace qbPortWeaver
         // Anchored to start. Two alternatives:
         //   1) Bracketed site tag:  [www.SiteName.com]  (TLD 2-3 chars)
         //   2) Bare www prefix:     www.SiteName.com -  (TLD 2-5 chars, followed by a dash separator)
-        // Also handles ww. and www, (obfuscated separators)
+        // Also handles ww. and www, (non-standard dot separators)
         [GeneratedRegex(@"^(?:\[\s*[^\]]*\.[a-z]{2,3}\s*\]\s*|ww[w]?[.,][\w.-]+\.[a-z]{2,5}\s*[-–—]\s*)", RegexOptions.IgnoreCase)]
         private static partial Regex SitePrefixRegex();
 

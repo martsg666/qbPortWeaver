@@ -36,6 +36,7 @@ namespace qbPortWeaver
             bool deleteEmptyFolders = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionMedia, RegistrySettingsManager.KeyMediaDeleteEmptyFolders);
             var importMode = ParseImportMode(RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionMedia, RegistrySettingsManager.KeyMediaImportMode));
 
+            var scanSw = System.Diagnostics.Stopwatch.StartNew();
             LogManager.Instance.LogMessage($"Scan started (dryRun={dryRun}, createFolders={createFolders}, deleteEmptyFolders={deleteEmptyFolders}, importMode={importMode})", LogLevel.Info, Subsystem.MediaManager);
             LogManager.Instance.LogDebug(
                 $"MediaManagerService.RunAsync [media]: {RegistrySettingsManager.KeyMediaEnabled}=true, " +
@@ -50,7 +51,7 @@ namespace qbPortWeaver
                 Subsystem.MediaManager);
 
             FileImporter.LoadSourceCache();
-            FileImporter.BuildLibraryIndex(force: false, moviesLibraryPath, tvShowsLibraryPath);
+            FileImporter.BuildLibraryIndex(moviesLibraryPath, tvShowsLibraryPath);
 
             var tmdb = new TmdbClient(apiKey);
 
@@ -58,7 +59,11 @@ namespace qbPortWeaver
             var classified = new List<(string Folder, (string[] MovieFiles, string[] MovieDirs, string[] TvFiles, string[] TvDirs) Items)>();
             foreach (var f in GetFolders(RegistrySettingsManager.KeyMediaSourceFolders))
             {
-                if (!Directory.Exists(f)) { LogManager.Instance.LogMessage($"Source folder not found: '{f}'", LogLevel.Error, Subsystem.MediaManager); continue; }
+                if (!Directory.Exists(f))
+                {
+                    LogManager.Instance.LogMessage($"Source folder not found: '{f}'", LogLevel.Error, Subsystem.MediaManager);
+                    continue;
+                }
                 classified.Add((f, ClassifySourceFolder(f)));
             }
 
@@ -90,7 +95,8 @@ namespace qbPortWeaver
 
             FileImporter.SaveSourceCache();
             FileImporter.SaveLibraryCache();
-            LogManager.Instance.LogMessage("Scan completed", LogLevel.Info, Subsystem.MediaManager);
+            scanSw.Stop();
+            LogManager.Instance.LogMessage($"Scan completed in {scanSw.ElapsedMilliseconds}ms", LogLevel.Info, Subsystem.MediaManager);
         }
 
         // Logs scan progress every 15 seconds until cancelled.
@@ -111,7 +117,7 @@ namespace qbPortWeaver
             ImportContext ctx,
             Action? onItemProcessed = null)
         {
-            LogManager.Instance.LogMessage($"Scanning source folder: {folder}", LogLevel.Info, Subsystem.MediaManager);
+            LogManager.Instance.LogMessage($"Scanning source folder: '{folder}'", LogLevel.Info, Subsystem.MediaManager);
 
             if (!string.IsNullOrWhiteSpace(ctx.MoviesLibraryPath) && (items.MovieFiles.Length > 0 || items.MovieDirs.Length > 0))
             {
@@ -172,10 +178,13 @@ namespace qbPortWeaver
         {
             var proposals = new List<MediaProposal>();
 
+            var scanSw = System.Diagnostics.Stopwatch.StartNew();
+            LogManager.Instance.LogMessage($"Scan started (preview, createFolders={createFolders})", LogLevel.Info, Subsystem.MediaManager);
+
             await Task.Run(() =>
             {
                 FileImporter.LoadSourceCache();
-                FileImporter.BuildLibraryIndex(force: true, moviesLibraryPath, tvShowsLibraryPath);
+                FileImporter.BuildLibraryIndex(moviesLibraryPath, tvShowsLibraryPath);
             }, cancellationToken).ConfigureAwait(false);
 
             var tmdb = new TmdbClient(apiKey);
@@ -212,6 +221,8 @@ namespace qbPortWeaver
 
             FileImporter.SaveSourceCache();
             FileImporter.SaveLibraryCache();
+            scanSw.Stop();
+            LogManager.Instance.LogMessage($"Scan completed in {scanSw.ElapsedMilliseconds}ms", LogLevel.Info, Subsystem.MediaManager);
             return proposals;
         }
 
@@ -223,7 +234,7 @@ namespace qbPortWeaver
             List<MediaProposal> proposals,
             Action? onItemProcessed = null)
         {
-            LogManager.Instance.LogMessage($"Scanning source folder: {folder}", LogLevel.Info, Subsystem.MediaManager);
+            LogManager.Instance.LogMessage($"Scanning source folder: '{folder}'", LogLevel.Info, Subsystem.MediaManager);
 
             if (!string.IsNullOrWhiteSpace(ctx.MoviesLibraryPath) && (items.MovieFiles.Length > 0 || items.MovieDirs.Length > 0))
             {
@@ -404,7 +415,10 @@ namespace qbPortWeaver
             if (string.Equals(sourcePath, targetPath, StringComparison.OrdinalIgnoreCase)) return;
 
             if (FileImporter.IsDuplicateFile(sourcePath, targetPath))
+            {
+                LogManager.Instance.LogDebug($"MediaManagerService.ImportFileWithLog: Already in library '{Path.GetFileName(sourcePath)}'", Subsystem.MediaManager);
                 return;
+            }
 
             string verb = dryRun ? "Would import" : "Importing";
             LogManager.Instance.LogMessage($"{verb} '{Path.GetFileName(sourcePath)}' -> {Path.GetRelativePath(sourceFolder, targetPath)}", LogLevel.Info, Subsystem.MediaManager);

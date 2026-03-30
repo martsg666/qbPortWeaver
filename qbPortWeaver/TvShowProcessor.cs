@@ -17,14 +17,6 @@ namespace qbPortWeaver
         private readonly string _libraryPath;
         private readonly ImportMode _importMode;
 
-        // Caches show lookups (including confidence) to avoid redundant TMDB API calls across scan cycles.
-        // Key includes year to distinguish same-titled shows (e.g. "Show|1978" vs "Show|2003").
-        // ConcurrentDictionary: sync cycle and UI scan can overlap.
-        // Intentionally never cleared: the process lifetime is short (tray app session) and TMDB
-        // metadata does not change meaningfully within a session. Null results are also cached to
-        // avoid hammering the API for titles that consistently return no match.
-        private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, (TvShowInfo? Info, bool IsConfident)> _showCache = new(StringComparer.OrdinalIgnoreCase);
-
         /// <summary>Creates a TV show processor that imports episodes into the specified library folder.</summary>
         /// <param name="tmdb">TMDB client for TV show metadata lookups.</param>
         /// <param name="dryRun">When true, logs what would happen without importing any files.</param>
@@ -41,60 +33,32 @@ namespace qbPortWeaver
         }
 
         /// <summary>
-        /// Scans pre-classified TV episode files and directories and returns import proposals without modifying any files.
+        /// Scans pre-classified TV episode files and returns import proposals without modifying any files.
         /// Only items not yet present in the library are included.
         /// </summary>
-        public async Task<List<MediaProposal>> ScanTvShowsAsync(string[] tvFiles, string[] tvDirs, Action? onItemProcessed = null)
+        public async Task<List<MediaProposal>> ScanTvShowsAsync(string[] tvFiles, Action? onItemProcessed = null)
         {
             var proposals = new List<MediaProposal>();
 
-            EvictNullShowCache();
+            TmdbCacheManager.EvictNullShows();
 
             foreach (var file in tvFiles)
             {
-                if (!FileImporter.IsAlreadyInLibrary(file))
-                    await ScanEpisodeFileAsync(file, proposals).ConfigureAwait(false);
-                onItemProcessed?.Invoke();
-            }
-
-            foreach (var dir in tvDirs)
-            {
-                try
-                {
-                    await ScanTvShowFolderAsync(dir, proposals).ConfigureAwait(false);
-                }
-                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-                {
-                    LogManager.Instance.LogMessage($"Skipped TV folder '{Path.GetFileName(dir)}': {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
-                }
+                await ScanEpisodeFileAsync(file, proposals).ConfigureAwait(false);
                 onItemProcessed?.Invoke();
             }
 
             return proposals;
         }
 
-        /// <summary>Processes pre-classified TV episode files and directories, importing them into the library with Plex naming conventions. Skips uncertain TMDB matches - use <see cref="ScanTvShowsAsync"/> to preview and review those first.</summary>
-        public async Task ProcessTvShowsAsync(string sourceFolder, string[] tvFiles, string[] tvDirs, Action? onItemProcessed = null)
+        /// <summary>Processes pre-classified TV episode files, importing them into the library with Plex naming conventions. Skips uncertain TMDB matches - use <see cref="ScanTvShowsAsync"/> to preview and review those first.</summary>
+        public async Task ProcessTvShowsAsync(string sourceFolder, string[] tvFiles, Action? onItemProcessed = null)
         {
-            EvictNullShowCache();
+            TmdbCacheManager.EvictNullShows();
 
             foreach (var file in tvFiles)
             {
-                if (!FileImporter.IsAlreadyInLibrary(file))
-                    await ProcessEpisodeFileAsync(sourceFolder, file).ConfigureAwait(false);
-                onItemProcessed?.Invoke();
-            }
-
-            foreach (var dir in tvDirs)
-            {
-                try
-                {
-                    await ProcessTvShowFolderAsync(sourceFolder, dir).ConfigureAwait(false);
-                }
-                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-                {
-                    LogManager.Instance.LogMessage($"Skipped TV folder '{Path.GetFileName(dir)}': {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
-                }
+                await ProcessEpisodeFileAsync(sourceFolder, file).ConfigureAwait(false);
                 onItemProcessed?.Invoke();
             }
         }
@@ -125,25 +89,6 @@ namespace qbPortWeaver
                 proposals.Add(new MediaProposal(MediaTypeTvShow, filePath, proposedPath, isConfident));
         }
 
-        private async Task ScanTvShowFolderAsync(string dirPath, List<MediaProposal> proposals, int depth = 0)
-        {
-            var files = MediaManagerService.GetFolderFiles(dirPath, depth, MediaManagerService.MaxSubfolderDepth, "TV");
-            if (files is null) return;
-
-            var episodeFiles = files
-                .Where(f => FileNameParser.IsVideoTvShowEpisode(f) && !FileImporter.IsAlreadyInLibrary(f))
-                .ToList();
-
-            if (episodeFiles.Count > 0)
-            {
-                foreach (var file in episodeFiles)
-                    await ScanEpisodeFileAsync(file, proposals).ConfigureAwait(false);
-            }
-
-            foreach (var subDir in Directory.GetDirectories(dirPath))
-                await ScanTvShowFolderAsync(subDir, proposals, depth + 1).ConfigureAwait(false);
-        }
-
         private async Task ProcessEpisodeFileAsync(string sourceFolder, string filePath)
         {
             var fileName = Path.GetFileName(filePath);
@@ -171,25 +116,6 @@ namespace qbPortWeaver
             ImportCompanionFiles(sourceFolder, filePath, targetPath, _dryRun, _importMode);
         }
 
-        private async Task ProcessTvShowFolderAsync(string sourceFolder, string dirPath, int depth = 0)
-        {
-            var files = MediaManagerService.GetFolderFiles(dirPath, depth, MediaManagerService.MaxSubfolderDepth, "TV");
-            if (files is null) return;
-
-            var episodeFiles = files
-                .Where(f => FileNameParser.IsVideoTvShowEpisode(f) && !FileImporter.IsAlreadyInLibrary(f))
-                .ToList();
-
-            if (episodeFiles.Count > 0)
-            {
-                foreach (var file in episodeFiles)
-                    await ProcessEpisodeFileAsync(sourceFolder, file).ConfigureAwait(false);
-            }
-
-            foreach (var subDir in Directory.GetDirectories(dirPath))
-                await ProcessTvShowFolderAsync(sourceFolder, subDir, depth + 1).ConfigureAwait(false);
-        }
-
         // Builds the library target path for an episode file
         private string BuildEpisodePath(string filePath, TvShowInfo showInfo, TvShowEpisodeInfo episodeInfo)
         {
@@ -205,24 +131,15 @@ namespace qbPortWeaver
         private static void ImportCompanionFiles(string sourceFolder, string videoPath, string targetVideoPath, bool dryRun, ImportMode importMode) =>
             MediaManagerService.ImportCompanionFiles(sourceFolder, videoPath, targetVideoPath, dryRun, importMode);
 
-        // Evicts cached null results so transient API failures are retried each scan.
-        // Within a scan, null results are still cached to avoid duplicate lookups.
-        private static void EvictNullShowCache()
-        {
-            foreach (var key in _showCache.Keys.ToList())
-                if (_showCache.TryGetValue(key, out var cached) && cached.Info is null)
-                    _showCache.TryRemove(key, out _);
-        }
-
         // Returns a cached show lookup or performs a new TMDB search and caches the result
         private async Task<(TvShowInfo? Info, bool IsConfident)> GetOrLookupShowAsync(string showName, int? year)
         {
             var cacheKey = $"{showName}|{year}";
-            if (_showCache.TryGetValue(cacheKey, out var cached))
+            if (TmdbCacheManager.TryGetShow(cacheKey, out var cached))
                 return cached;
 
             var result = await LookupTvShowAsync(showName, year).ConfigureAwait(false);
-            _showCache.TryAdd(cacheKey, result);
+            TmdbCacheManager.TryAddShow(cacheKey, result);
             return result;
         }
 

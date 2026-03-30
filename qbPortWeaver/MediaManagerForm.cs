@@ -43,7 +43,7 @@ namespace qbPortWeaver
             toolTip.SetToolTip(btnRemoveSourceFolder, "Remove the selected folder from the list");
             toolTip.SetToolTip(btnScanNow,            "Preview which files would be imported - no files are touched");
             toolTip.SetToolTip(btnImportNow,           "Import the files shown in the grid into the library");
-            toolTip.SetToolTip(btnClearCache,          "Delete cached fingerprints so the next scan re-hashes every file from scratch");
+            toolTip.SetToolTip(btnClearCache,          "Delete cached fingerprints and TMDB lookups so the next scan starts fresh");
             toolTip.SetToolTip(dgvResults,            "Files that would be imported. Uncheck a row to exclude it. Rows in red are uncertain TMDB matches - double-click the Proposed cell to correct the name before importing.");
         }
 
@@ -118,7 +118,7 @@ namespace qbPortWeaver
         private void btnRemoveSourceFolder_Click(object? sender, EventArgs e) => RemoveSelectedFolder(lstSourceFolders);
         private void btnClearCache_Click(object? sender, EventArgs e)
         {
-            FileImporter.ClearAllCaches();
+            MediaManagerService.ClearAllCaches();
             dgvResults.Rows.Clear();
             btnImportNow.Enabled = false;
             prgScan.Visible      = false;

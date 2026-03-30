@@ -29,7 +29,7 @@ namespace qbPortWeaver
         private const string SourceCacheFileName  = "qbPortWeaver.mediascan.json";
         private const string LibraryCacheFileName = "qbPortWeaver.medialibrary.json";
 
-        private static readonly JsonSerializerOptions _jsonWriteOptions = new() { WriteIndented = true };
+        internal static readonly JsonSerializerOptions JsonWriteOptions = new() { WriteIndented = true };
 
         private sealed record CacheEntry(long Size, long LastWriteTimeTicks, string Fingerprint);
 
@@ -189,6 +189,31 @@ namespace qbPortWeaver
         }
 
         /// <summary>
+        /// Returns <see langword="true"/> if the file is ready to process.
+        /// If the file's size and last-write timestamp match the source scan cache it was confirmed write-complete
+        /// on the previous scan and is approved without opening the file (no network round-trip).
+        /// Files not in the cache fall back to <see cref="IsFileWriteComplete"/>.
+        /// <para>Callers should supply a <see cref="FileInfo"/> obtained from <see cref="DirectoryInfo.EnumerateFiles(string,EnumerationOptions)"/>
+        /// so that <see cref="FileInfo.Length"/> and <see cref="FileInfo.LastWriteTimeUtc"/> are already
+        /// populated from the directory listing and do not trigger additional I/O.</para>
+        /// </summary>
+        internal static bool IsFileReadyForImport(FileInfo fi)
+        {
+            var cache = _sourceCache;
+            if (cache is not null)
+            {
+                lock (_sourceCacheLock)
+                {
+                    if (cache.TryGetValue(fi.FullName, out var entry)
+                        && entry.Size == fi.Length
+                        && entry.LastWriteTimeTicks == fi.LastWriteTimeUtc.Ticks)
+                        return true;
+                }
+            }
+            return IsFileWriteComplete(fi.FullName);
+        }
+
+        /// <summary>
         /// Returns <see langword="true"/> if the file is not exclusively locked for writing by another process.
         /// Uses <see cref="FileAccess.Read"/> and <see cref="FileShare.ReadWrite"/>: processes that hold a read
         /// handle allow concurrent reads, so those files pass this check. Only a write-exclusive lock
@@ -244,6 +269,36 @@ namespace qbPortWeaver
             return $"{size}:{Convert.ToHexString(SHA256.HashData(data))}";
         }
 
+        // Loads the library fingerprint cache from disk. Initialises an empty cache on first run or if the file is corrupt.
+        private static void LoadLibraryCache()
+        {
+            if (_libraryCache is not null) return;
+
+            try
+            {
+                var filePath = GetCacheFilePath(LibraryCacheFileName);
+                if (!File.Exists(filePath))
+                {
+                    _libraryCache = new(StringComparer.OrdinalIgnoreCase);
+                    return;
+                }
+
+                var json = File.ReadAllText(filePath);
+                var entries = JsonSerializer.Deserialize<Dictionary<string, CacheEntry>>(json);
+                _libraryCache = entries is not null
+                    ? new Dictionary<string, CacheEntry>(entries, StringComparer.OrdinalIgnoreCase)
+                    : new(StringComparer.OrdinalIgnoreCase);
+                _libraryCacheDirty = false;
+
+                LogManager.Instance.LogDebug($"FileImporter.LoadLibraryCache: Loaded {_libraryCache.Count} entries", Subsystem.MediaManager);
+            }
+            catch (Exception ex)
+            {
+                LogManager.Instance.LogMessage($"Library cache could not be loaded, starting fresh: {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
+                _libraryCache = new(StringComparer.OrdinalIgnoreCase);
+            }
+        }
+
         /// <summary>
         /// Walks the library folders and builds a fingerprint index so <see cref="IsAlreadyInLibrary"/> can detect
         /// files that were previously imported (regardless of the name they were imported under).
@@ -276,14 +331,19 @@ namespace qbPortWeaver
         // Enumerates a single library path and fingerprints each file, using the cache where possible.
         // EnumerateFiles on DirectoryInfo returns FileInfo objects whose Length and LastWriteTimeUtc
         // are populated from the directory enumeration data -- no extra per-file network round-trip
-        // on NAS/SMB shares.
+        // on NAS/SMB shares. IgnoreInaccessible = true silently skips permission-denied subfolders
+        // instead of aborting the entire library path.
         private static void IndexLibraryPath(
             string path, HashSet<string> fingerprints, HashSet<string> seenPaths,
             ref int cached, ref int computed)
         {
             try
             {
-                foreach (var fi in new DirectoryInfo(path).EnumerateFiles("*", SearchOption.AllDirectories))
+                foreach (var fi in new DirectoryInfo(path).EnumerateFiles("*", new EnumerationOptions
+                {
+                    RecurseSubdirectories = true,
+                    IgnoreInaccessible    = true
+                }))
                 {
                     seenPaths.Add(fi.FullName);
                     try
@@ -365,21 +425,32 @@ namespace qbPortWeaver
         }
 
         /// <summary>Returns <see langword="true"/> if a file with the same fingerprint already exists somewhere in the library.</summary>
-        internal static bool IsAlreadyInLibrary(string sourcePath)
+        /// <param name="fi">
+        /// Prefer passing a <see cref="FileInfo"/> obtained from a directory enumeration so that
+        /// <see cref="FileInfo.Length"/> and <see cref="FileInfo.LastWriteTimeUtc"/> are already populated
+        /// and no additional SMB stat call is required.
+        /// </param>
+        internal static bool IsAlreadyInLibrary(FileInfo fi)
         {
             var fps = _libraryFingerprints;
             if (fps is null) return false;
             try
             {
-                var fi = new FileInfo(sourcePath);
                 string fingerprint = GetOrComputeSourceFingerprint(fi);
-                bool found;
                 lock (_libraryLock)
-                    found = fps.Contains(fingerprint);
-                if (!found)
-                    LogManager.Instance.LogDebug($"FileImporter.IsAlreadyInLibrary: No match - '{Path.GetFileName(sourcePath)}' fingerprint={fingerprint}", Subsystem.MediaManager);
-                return found;
+                    return fps.Contains(fingerprint);
             }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                LogManager.Instance.LogDebug($"FileImporter.IsAlreadyInLibrary: Could not read '{fi.Name}': {ex.Message}", Subsystem.MediaManager);
+                return false;
+            }
+        }
+
+        /// <summary>Returns <see langword="true"/> if a file with the same fingerprint already exists somewhere in the library.</summary>
+        internal static bool IsAlreadyInLibrary(string sourcePath)
+        {
+            try   { return IsAlreadyInLibrary(new FileInfo(sourcePath)); }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
                 LogManager.Instance.LogDebug($"FileImporter.IsAlreadyInLibrary: Could not read '{Path.GetFileName(sourcePath)}': {ex.Message}", Subsystem.MediaManager);
@@ -493,7 +564,7 @@ namespace qbPortWeaver
                     ? snapshot.Where(kv => File.Exists(kv.Key)).ToDictionary(kv => kv.Key, kv => kv.Value, StringComparer.OrdinalIgnoreCase)
                     : snapshot;
 
-                var json = JsonSerializer.Serialize(toSave, _jsonWriteOptions);
+                var json = JsonSerializer.Serialize(toSave, JsonWriteOptions);
                 lock (_cacheFileLock)
                 {
                     WriteAtomic(GetCacheFilePath(SourceCacheFileName), json);
@@ -505,36 +576,6 @@ namespace qbPortWeaver
             catch (Exception ex)
             {
                 LogManager.Instance.LogMessage($"Failed to save source scan cache: {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
-            }
-        }
-
-        // Loads the library fingerprint cache from disk. Initialises an empty cache on first run or if the file is corrupt.
-        private static void LoadLibraryCache()
-        {
-            if (_libraryCache is not null) return;
-
-            try
-            {
-                var filePath = GetCacheFilePath(LibraryCacheFileName);
-                if (!File.Exists(filePath))
-                {
-                    _libraryCache = new(StringComparer.OrdinalIgnoreCase);
-                    return;
-                }
-
-                var json = File.ReadAllText(filePath);
-                var entries = JsonSerializer.Deserialize<Dictionary<string, CacheEntry>>(json);
-                _libraryCache = entries is not null
-                    ? new Dictionary<string, CacheEntry>(entries, StringComparer.OrdinalIgnoreCase)
-                    : new(StringComparer.OrdinalIgnoreCase);
-                _libraryCacheDirty = false;
-
-                LogManager.Instance.LogDebug($"FileImporter.LoadLibraryCache: Loaded {_libraryCache.Count} entries", Subsystem.MediaManager);
-            }
-            catch (Exception ex)
-            {
-                LogManager.Instance.LogMessage($"Library cache could not be loaded, starting fresh: {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
-                _libraryCache = new(StringComparer.OrdinalIgnoreCase);
             }
         }
 
@@ -551,7 +592,7 @@ namespace qbPortWeaver
             {
                 string json;
                 lock (_libraryLock)
-                    json = JsonSerializer.Serialize(cache, _jsonWriteOptions);
+                    json = JsonSerializer.Serialize(cache, JsonWriteOptions);
 
                 lock (_cacheFileLock)
                 {
@@ -592,7 +633,7 @@ namespace qbPortWeaver
             LogManager.Instance.LogMessage("Fingerprint caches cleared", LogLevel.Info, Subsystem.MediaManager);
         }
 
-        private static void TryDeleteFile(string path)
+        internal static void TryDeleteFile(string path)
         {
             try
             {
@@ -606,14 +647,14 @@ namespace qbPortWeaver
 
         // Writes content to a temp file then atomically renames it over the target.
         // If the process is killed mid-write, only the .tmp file is lost and the original is untouched.
-        private static void WriteAtomic(string path, string content)
+        internal static void WriteAtomic(string path, string content)
         {
             var temp = path + ".tmp";
             File.WriteAllText(temp, content);
             File.Move(temp, path, overwrite: true);
         }
 
-        private static string GetCacheFilePath(string fileName) =>
+        internal static string GetCacheFilePath(string fileName) =>
             Path.Combine(Path.GetDirectoryName(AppConstants.GetLogFilePath())!, fileName);
     }
 }

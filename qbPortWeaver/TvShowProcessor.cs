@@ -8,8 +8,7 @@ namespace qbPortWeaver
     /// </summary>
     public sealed class TvShowProcessor
     {
-        private const string MediaTypeTvShow            = "TV Show";
-        private const int    MinVoteCountForNoYearMatch = 50;
+        private const string MediaTypeTvShow = "TV Show";
 
         private readonly TmdbClient _tmdb;
         private readonly bool _dryRun;
@@ -40,8 +39,6 @@ namespace qbPortWeaver
         {
             var proposals = new List<MediaProposal>();
 
-            TmdbCacheManager.EvictNullShows();
-
             foreach (var file in tvFiles)
             {
                 await ScanEpisodeFileAsync(file, proposals).ConfigureAwait(false);
@@ -52,17 +49,13 @@ namespace qbPortWeaver
         }
 
         /// <summary>Processes pre-classified TV episode files, importing them into the library with Plex naming conventions. Skips uncertain TMDB matches - use <see cref="ScanTvShowsAsync"/> to preview and review those first.</summary>
-        public async Task ProcessTvShowsAsync(string sourceFolder, string[] tvFiles, Action? onItemProcessed = null)
+        public async Task ProcessTvShowsAsync(string sourceFolder, string[] tvFiles)
         {
-            TmdbCacheManager.EvictNullShows();
-
             foreach (var file in tvFiles)
-            {
                 await ProcessEpisodeFileAsync(sourceFolder, file).ConfigureAwait(false);
-                onItemProcessed?.Invoke();
-            }
         }
 
+        // Scans a single TV episode file and adds a proposal if it can be matched and imported
         private async Task ScanEpisodeFileAsync(string filePath, List<MediaProposal> proposals)
         {
             var fileName = Path.GetFileName(filePath);
@@ -89,12 +82,12 @@ namespace qbPortWeaver
                 proposals.Add(new MediaProposal(MediaTypeTvShow, filePath, proposedPath, isConfident));
         }
 
+        // Processes a single TV episode file
         private async Task ProcessEpisodeFileAsync(string sourceFolder, string filePath)
         {
             var fileName = Path.GetFileName(filePath);
 
             var episodeInfo = FileNameParser.ParseTvShowEpisode(fileName);
-
             if (episodeInfo is null)
             {
                 LogManager.Instance.LogDebug($"TvShowProcessor.ProcessEpisodeFileAsync: Skipped '{fileName}' - not a recognised episode", Subsystem.MediaManager);
@@ -113,7 +106,7 @@ namespace qbPortWeaver
             var targetPath = BuildEpisodePath(filePath, showInfo, episodeInfo);
             MediaManagerService.ImportFileWithLog(filePath, targetPath, sourceFolder, _dryRun, _importMode);
 
-            ImportCompanionFiles(sourceFolder, filePath, targetPath, _dryRun, _importMode);
+            MediaManagerService.ImportCompanionFiles(sourceFolder, filePath, targetPath, _dryRun, _importMode);
         }
 
         // Builds the library target path for an episode file
@@ -128,17 +121,14 @@ namespace qbPortWeaver
                 : Path.Combine(_libraryPath, episodeFileName);
         }
 
-        private static void ImportCompanionFiles(string sourceFolder, string videoPath, string targetVideoPath, bool dryRun, ImportMode importMode) =>
-            MediaManagerService.ImportCompanionFiles(sourceFolder, videoPath, targetVideoPath, dryRun, importMode);
-
         // Returns a cached show lookup or performs a new TMDB search and caches the result
-        private async Task<(TvShowInfo? Info, bool IsConfident)> GetOrLookupShowAsync(string showName, int? year)
+        private async Task<(TvShowInfo? Info, bool IsConfident)> GetOrLookupShowAsync(string title, int? year)
         {
-            var cacheKey = $"{showName}|{year}";
+            var cacheKey = $"{title}|{year}";
             if (TmdbCacheManager.TryGetShow(cacheKey, out var cached))
                 return cached;
 
-            var result = await LookupTvShowAsync(showName, year).ConfigureAwait(false);
+            var result = await LookupTvShowAsync(title, year).ConfigureAwait(false);
             TmdbCacheManager.TryAddShow(cacheKey, result);
             return result;
         }
@@ -154,7 +144,7 @@ namespace qbPortWeaver
                 // Without a year in the filename we cannot corroborate the match by year alone.
                 // Require an exact title match and a meaningful vote count to stay confident.
                 if (info is not null && !year.HasValue)
-                    isConfident = FileNameParser.IsStrongNoYearMatch(title, info.Title, info.VoteCount, MinVoteCountForNoYearMatch);
+                    isConfident = FileNameParser.IsStrongNoYearMatch(title, info.Title, info.VoteCount);
 
                 // Retry without year: parsed year may be the season year rather than TMDB's first-air year
                 if (info is null && year.HasValue)
@@ -167,7 +157,7 @@ namespace qbPortWeaver
 
                 if (info is null)
                 {
-                    LogManager.Instance.LogMessage($"No TMDB match found for show '{title}'", LogLevel.Warn, Subsystem.MediaManager);
+                    LogManager.Instance.LogMessage($"No TMDB match found for TV show '{title}'", LogLevel.Warn, Subsystem.MediaManager);
                     return (null, false);
                 }
 

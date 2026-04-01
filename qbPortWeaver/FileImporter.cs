@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text.Json;
@@ -21,6 +22,11 @@ namespace qbPortWeaver
         private static volatile bool _sourceCacheDirty;
         private static int _sourceCachedCount;
         private static int _sourceComputedCount;
+
+        // In-flight deduplication: if two threads race on the same source file (e.g. RunAsync and ScanAsync
+        // both classifying with a cold cache), GetOrAdd returns the same Lazy so both share one NAS read.
+        private static readonly ConcurrentDictionary<string, Lazy<string>> _sourceInFlight =
+            new(StringComparer.OrdinalIgnoreCase);
 
         // Serialises concurrent file writes from the sync loop and the UI scan path.
         private static readonly object _cacheFileLock = new();
@@ -269,6 +275,35 @@ namespace qbPortWeaver
             return $"{size}:{Convert.ToHexString(SHA256.HashData(data))}";
         }
 
+        /// <summary>
+        /// Walks the library folders and builds a fingerprint index so <see cref="IsAlreadyInLibrary"/> can detect
+        /// files that were previously imported (regardless of the name they were imported under).
+        /// Uses a persisted cache so only new or modified library files are fingerprinted; deleted files are pruned.
+        /// Called once per scan cycle to ensure the index reflects the current library state.
+        /// </summary>
+        internal static void BuildLibraryIndex(params string[] libraryPaths)
+        {
+            LogManager.Instance.LogMessage("Building library index...", LogLevel.Info, Subsystem.MediaManager);
+            LoadLibraryCache();
+
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            var fingerprints = new HashSet<string>(StringComparer.Ordinal);
+            var seenPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            int cached = 0;
+            int computed = 0;
+
+            foreach (var path in libraryPaths.Where(p => !string.IsNullOrWhiteSpace(p) && Directory.Exists(p)))
+                IndexLibraryPath(path, fingerprints, seenPaths, ref cached, ref computed);
+
+            PruneLibraryCache(seenPaths);
+
+            sw.Stop();
+            _libraryFingerprints = fingerprints;
+            LogManager.Instance.LogMessage(
+                $"Library index built: {fingerprints.Count} files in {sw.ElapsedMilliseconds}ms (cached={cached}, computed={computed})",
+                LogLevel.Info, Subsystem.MediaManager);
+        }
+
         // Loads the library fingerprint cache from disk. Initialises an empty cache on first run or if the file is corrupt.
         private static void LoadLibraryCache()
         {
@@ -297,35 +332,6 @@ namespace qbPortWeaver
                 LogManager.Instance.LogMessage($"Library cache could not be loaded, starting fresh: {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
                 _libraryCache = new(StringComparer.OrdinalIgnoreCase);
             }
-        }
-
-        /// <summary>
-        /// Walks the library folders and builds a fingerprint index so <see cref="IsAlreadyInLibrary"/> can detect
-        /// files that were previously imported (regardless of the name they were imported under).
-        /// Uses a persisted cache so only new or modified library files are fingerprinted; deleted files are pruned.
-        /// Called once per scan cycle to ensure the index reflects the current library state.
-        /// </summary>
-        internal static void BuildLibraryIndex(params string[] libraryPaths)
-        {
-            LogManager.Instance.LogMessage("Building library index...", LogLevel.Info, Subsystem.MediaManager);
-            LoadLibraryCache();
-
-            var sw = System.Diagnostics.Stopwatch.StartNew();
-            var fingerprints = new HashSet<string>(StringComparer.Ordinal);
-            var seenPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            int cached = 0;
-            int computed = 0;
-
-            foreach (var path in libraryPaths.Where(p => !string.IsNullOrWhiteSpace(p) && Directory.Exists(p)))
-                IndexLibraryPath(path, fingerprints, seenPaths, ref cached, ref computed);
-
-            PruneLibraryCache(seenPaths);
-
-            sw.Stop();
-            _libraryFingerprints = fingerprints;
-            LogManager.Instance.LogMessage(
-                $"Library index built: {fingerprints.Count} files in {sw.ElapsedMilliseconds}ms (cached={cached}, computed={computed})",
-                LogLevel.Info, Subsystem.MediaManager);
         }
 
         // Enumerates a single library path and fingerprints each file, using the cache where possible.
@@ -459,6 +465,8 @@ namespace qbPortWeaver
         }
 
         // Returns the fingerprint for a source file, using the in-memory cache when the file has not changed.
+        // Uses _sourceInFlight to deduplicate concurrent computation: if two threads race on the same file,
+        // the second waits on the Lazy rather than issuing a redundant NAS read.
         private static string GetOrComputeSourceFingerprint(FileInfo fi)
         {
             var cache = _sourceCache;
@@ -475,8 +483,19 @@ namespace qbPortWeaver
                     }
                 }
 
-                string fp = ComputeFingerprint(fi.FullName);
-                Interlocked.Increment(ref _sourceComputedCount);
+                // Create before GetOrAdd so we can tell whether this thread won the race.
+                var newLazy = new Lazy<string>(() => ComputeFingerprint(fi.FullName));
+                var lazy    = _sourceInFlight.GetOrAdd(fi.FullName, newLazy);
+                string fp   = lazy.Value;
+                // Remove only our Lazy instance so a newer entry for the same path is left untouched.
+                _sourceInFlight.TryRemove(new KeyValuePair<string, Lazy<string>>(fi.FullName, lazy));
+
+                // Winner did the NAS read; loser waited on the Lazy and reused the result.
+                if (ReferenceEquals(lazy, newLazy))
+                    Interlocked.Increment(ref _sourceComputedCount);
+                else
+                    Interlocked.Increment(ref _sourceCachedCount);
+
                 lock (_sourceCacheLock)
                 {
                     cache[fi.FullName] = new CacheEntry(fi.Length, fi.LastWriteTimeUtc.Ticks, fp);
@@ -493,6 +512,9 @@ namespace qbPortWeaver
         /// Loads the source scan cache from disk. No-op if already loaded.
         /// The cache maps source file paths to their fingerprints so unchanged files are not re-hashed on subsequent cycles.
         /// </summary>
+        internal static (int Cached, int Computed) GetSourceCacheStats() =>
+            (_sourceCachedCount, _sourceComputedCount);
+
         internal static void LoadSourceCache()
         {
             // Reset per-cycle scan stats (even if cache is already in memory from a prior cycle)
@@ -540,12 +562,6 @@ namespace qbPortWeaver
         {
             var cache = _sourceCache;
             if (cache is null) return;
-
-            int total = _sourceCachedCount + _sourceComputedCount;
-            if (total > 0)
-                LogManager.Instance.LogMessage(
-                    $"Source files: {total} checked (cached={_sourceCachedCount}, computed={_sourceComputedCount})",
-                    LogLevel.Info, Subsystem.MediaManager);
 
             try
             {
@@ -619,6 +635,7 @@ namespace qbPortWeaver
                 _sourceCache = null;
                 _sourceCacheDirty = false;
             }
+            _sourceInFlight.Clear();
 
             lock (_libraryLock)
             {

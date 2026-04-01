@@ -71,13 +71,10 @@ namespace qbPortWeaver
         internal static void Save()
         {
             if (!_showCacheDirty && !_movieCacheDirty) return;
-            int shows  = 0;
-            int movies = 0;
-            if (_showCacheDirty)  { shows  = SaveToDisk(_showCache,  ShowCacheFileName,  "show");  _showCacheDirty  = false; }
-            if (_movieCacheDirty) { movies = SaveToDisk(_movieCache, MovieCacheFileName, "movie"); _movieCacheDirty = false; }
-            LogManager.Instance.LogMessage(
-                $"TMDB cache saved: {shows} show entries, {movies} movie entries",
-                LogLevel.Info, Subsystem.MediaManager);
+            var parts = new List<string>(2);
+            if (_showCacheDirty)  { parts.Add($"{SaveToDisk(_showCache,  ShowCacheFileName,  "show")} show entries");  _showCacheDirty  = false; }
+            if (_movieCacheDirty) { parts.Add($"{SaveToDisk(_movieCache, MovieCacheFileName, "movie")} movie entries"); _movieCacheDirty = false; }
+            LogManager.Instance.LogMessage($"TMDB cache saved: {string.Join(", ", parts)}", LogLevel.Info, Subsystem.MediaManager);
         }
 
         /// <summary>Clears both caches from memory and deletes the on-disk cache files.</summary>

@@ -76,7 +76,7 @@ namespace qbPortWeaver
         /// Returns true when a TMDB result with no year in the filename is a high-confidence match.
         /// Requires a meaningful vote count and a normalised title match to filter out obscure or incorrect entries.
         /// </summary>
-        internal static bool IsStrongNoYearMatch(string searchedTitle, string returnedTitle, int voteCount, int minVoteCount) =>
+        internal static bool IsStrongNoYearMatch(string searchedTitle, string returnedTitle, int voteCount, int minVoteCount = 50) =>
             voteCount >= minVoteCount &&
             string.Equals(NormalizeTitleForMatch(returnedTitle), NormalizeTitleForMatch(searchedTitle), StringComparison.OrdinalIgnoreCase);
 

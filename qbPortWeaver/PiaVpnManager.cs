@@ -104,7 +104,7 @@ namespace qbPortWeaver
                 {
                     // Cleanup only - no new process follows, so KillProcess's retry wait is not needed here.
                     try { process.Kill(entireProcessTree: true); }
-                    catch (InvalidOperationException) { } // already exited between timeout and Kill()
+                    catch (InvalidOperationException) { /* already exited between timeout and Kill() */ }
                     LogManager.Instance.LogDebug("PiaVpnManager.RunPiactl: piactl timed out and was killed");
                     return null;
                 }

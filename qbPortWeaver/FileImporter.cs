@@ -6,11 +6,14 @@ using System.Text.Json;
 namespace qbPortWeaver
 {
     /// <summary>Imports media files into the library via hardlink, copy, or move, with automatic hardlink-to-copy fallback.</summary>
-    internal static class FileImporter
+    internal static partial class FileImporter
     {
         // Library index: fingerprints (size + partial SHA-256) of every file in the library folders.
+        private const int LibraryIndexFreshnessSeconds = 15; // minimum interval between full library index rebuilds
         private static HashSet<string>? _libraryFingerprints;
         private static readonly object _libraryLock = new();
+        private static readonly SemaphoreSlim _libraryBuildSemaphore = new(1, 1);
+        private static DateTimeOffset _libraryLastBuilt = DateTimeOffset.MinValue;
 
         // Library cache: persisted path -> metadata so unchanged library files are not re-hashed across sessions.
         private static Dictionary<string, CacheEntry>? _libraryCache;
@@ -24,7 +27,7 @@ namespace qbPortWeaver
         private static int _sourceComputedCount;
 
         // In-flight deduplication: if two threads race on the same source file (e.g. RunAsync and ScanAsync
-        // both classifying with a cold cache), GetOrAdd returns the same Lazy so both share one NAS read.
+        // both classifying with a cold cache), GetOrAdd returns the same Lazy so both share one read.
         private static readonly ConcurrentDictionary<string, Lazy<string>> _sourceInFlight =
             new(StringComparer.OrdinalIgnoreCase);
 
@@ -32,34 +35,12 @@ namespace qbPortWeaver
         private static readonly object _cacheFileLock = new();
 
         private const int FingerprintChunkBytes = 64 * 1024; // 64 KB per chunk (head + tail)
-        private const string SourceCacheFileName  = "qbPortWeaver.mediascan.json";
+        private const string SourceCacheFileName  = "qbPortWeaver.mediasource.json";
         private const string LibraryCacheFileName = "qbPortWeaver.medialibrary.json";
 
         internal static readonly JsonSerializerOptions JsonWriteOptions = new() { WriteIndented = true };
 
         private sealed record CacheEntry(long Size, long LastWriteTimeTicks, string Fingerprint);
-
-        // CreateHardLink: lpFileName is the NEW link (destination), lpExistingFileName is the existing file (source).
-        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
-        private static extern bool CreateHardLink(string lpFileName, string lpExistingFileName, nint lpSecurityAttributes);
-
-        [StructLayout(LayoutKind.Sequential)]
-        private struct ByHandleFileInformation
-        {
-            public uint FileAttributes;
-            public System.Runtime.InteropServices.ComTypes.FILETIME CreationTime;
-            public System.Runtime.InteropServices.ComTypes.FILETIME LastAccessTime;
-            public System.Runtime.InteropServices.ComTypes.FILETIME LastWriteTime;
-            public uint VolumeSerialNumber;
-            public uint FileSizeHigh;
-            public uint FileSizeLow;
-            public uint NumberOfLinks;
-            public uint FileIndexHigh;
-            public uint FileIndexLow;
-        }
-
-        [DllImport("kernel32.dll", SetLastError = true)]
-        private static extern bool GetFileInformationByHandle(Microsoft.Win32.SafeHandles.SafeFileHandle hFile, out ByHandleFileInformation lpFileInformation);
 
         /// <summary>Attempts to create a hardlink at <paramref name="destinationPath"/> pointing to <paramref name="sourcePath"/>.
         /// Uses the extended-length path prefix to support paths longer than MAX_PATH (260 characters).</summary>
@@ -76,7 +57,7 @@ namespace qbPortWeaver
         }
 
         // Verifies that two paths refer to the same file by comparing volume serial number and file index.
-        // Returns false if the files have different identities (NAS silently created a copy instead of a hardlink).
+        // Returns false if the files have different identities (some filesystems silently create a copy instead of a hardlink).
         private static bool VerifyHardLink(string sourcePath, string destinationPath)
         {
             try
@@ -152,7 +133,7 @@ namespace qbPortWeaver
                         }
                         else
                         {
-                            LogManager.Instance.LogMessage($"Hardlink not verified for '{Path.GetFileName(destinationPath)}' (NAS created a copy instead), replacing with proper copy", LogLevel.Warn, Subsystem.MediaManager);
+                            LogManager.Instance.LogMessage($"Hardlink not verified for '{Path.GetFileName(destinationPath)}' (filesystem created a copy instead), replacing with proper copy", LogLevel.Warn, Subsystem.MediaManager);
                             File.Delete(destinationPath);
                             File.Copy(sourcePath, destinationPath, overwrite: false);
                             LogManager.Instance.LogDebug($"FileImporter.ImportFile: Copied (verified fallback) '{Path.GetFileName(destinationPath)}'", Subsystem.MediaManager);
@@ -183,15 +164,23 @@ namespace qbPortWeaver
             AddToLibraryIndex(destinationPath);
         }
 
-        /// <summary>Returns <see langword="true"/> if the destination file already exists and has the same size as the source.</summary>
+        /// <summary>Returns <see langword="true"/> if the destination file already exists and has the same fingerprint as the source.</summary>
         internal static bool IsDuplicateFile(string sourcePath, string destinationPath)
         {
             if (!File.Exists(destinationPath))
                 return false;
 
-            var sourceInfo = new FileInfo(sourcePath);
-            var destInfo   = new FileInfo(destinationPath);
-            return sourceInfo.Length == destInfo.Length;
+            try
+            {
+                return ComputeFingerprint(sourcePath) == ComputeFingerprint(destinationPath);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                // If fingerprinting fails, fall back to size comparison to avoid silently skipping the import
+                var sourceInfo = new FileInfo(sourcePath);
+                var destInfo   = new FileInfo(destinationPath);
+                return sourceInfo.Length == destInfo.Length;
+            }
         }
 
         /// <summary>
@@ -279,29 +268,46 @@ namespace qbPortWeaver
         /// Walks the library folders and builds a fingerprint index so <see cref="IsAlreadyInLibrary"/> can detect
         /// files that were previously imported (regardless of the name they were imported under).
         /// Uses a persisted cache so only new or modified library files are fingerprinted; deleted files are pruned.
+        /// If called concurrently (e.g. from both the sync loop and a UI scan), the second caller waits for the
+        /// first to finish and reuses the result if the index was built within the last 15 seconds.
         /// Called once per scan cycle to ensure the index reflects the current library state.
         /// </summary>
-        internal static void BuildLibraryIndex(params string[] libraryPaths)
+        internal static void BuildLibraryIndex(string moviesLibraryPath, string tvShowsLibraryPath, CancellationToken cancellationToken = default)
         {
-            LogManager.Instance.LogMessage("Building library index...", LogLevel.Info, Subsystem.MediaManager);
-            LoadLibraryCache();
+            _libraryBuildSemaphore.Wait(cancellationToken);
+            try
+            {
+                if (_libraryFingerprints is not null && DateTimeOffset.UtcNow - _libraryLastBuilt < TimeSpan.FromSeconds(LibraryIndexFreshnessSeconds))
+                {
+                    LogManager.Instance.LogDebug($"FileImporter.BuildLibraryIndex: Reusing index built within the last {LibraryIndexFreshnessSeconds}s", Subsystem.MediaManager);
+                    return;
+                }
 
-            var sw = System.Diagnostics.Stopwatch.StartNew();
-            var fingerprints = new HashSet<string>(StringComparer.Ordinal);
-            var seenPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            int cached = 0;
-            int computed = 0;
+                LogManager.Instance.LogMessage("Building library index", LogLevel.Info, Subsystem.MediaManager);
+                LoadLibraryCache();
 
-            foreach (var path in libraryPaths.Where(p => !string.IsNullOrWhiteSpace(p) && Directory.Exists(p)))
-                IndexLibraryPath(path, fingerprints, seenPaths, ref cached, ref computed);
+                var sw = System.Diagnostics.Stopwatch.StartNew();
+                var fingerprints = new HashSet<string>(StringComparer.Ordinal);
+                var seenPaths    = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                int cached = 0;
+                int computed = 0;
 
-            PruneLibraryCache(seenPaths);
+                foreach (var path in new[] { moviesLibraryPath, tvShowsLibraryPath }.Where(p => !string.IsNullOrWhiteSpace(p) && Directory.Exists(p)))
+                    IndexLibraryPath(path, fingerprints, seenPaths, ref cached, ref computed);
 
-            sw.Stop();
-            _libraryFingerprints = fingerprints;
-            LogManager.Instance.LogMessage(
-                $"Library index built: {fingerprints.Count} files in {sw.ElapsedMilliseconds}ms (cached={cached}, computed={computed})",
-                LogLevel.Info, Subsystem.MediaManager);
+                PruneLibraryCache(seenPaths);
+
+                sw.Stop();
+                _libraryFingerprints = fingerprints;
+                _libraryLastBuilt    = DateTimeOffset.UtcNow;
+                LogManager.Instance.LogMessage(
+                    $"Library index built: {fingerprints.Count} files in {sw.ElapsedMilliseconds}ms (cached={cached}, computed={computed})",
+                    LogLevel.Info, Subsystem.MediaManager);
+            }
+            finally
+            {
+                _libraryBuildSemaphore.Release();
+            }
         }
 
         // Loads the library fingerprint cache from disk. Initialises an empty cache on first run or if the file is corrupt.
@@ -336,9 +342,8 @@ namespace qbPortWeaver
 
         // Enumerates a single library path and fingerprints each file, using the cache where possible.
         // EnumerateFiles on DirectoryInfo returns FileInfo objects whose Length and LastWriteTimeUtc
-        // are populated from the directory enumeration data -- no extra per-file network round-trip
-        // on NAS/SMB shares. IgnoreInaccessible = true silently skips permission-denied subfolders
-        // instead of aborting the entire library path.
+        // are populated from the directory enumeration data — no extra stat per file.
+        // IgnoreInaccessible = true silently skips permission-denied subfolders instead of aborting the entire library path.
         private static void IndexLibraryPath(
             string path, HashSet<string> fingerprints, HashSet<string> seenPaths,
             ref int cached, ref int computed)
@@ -373,9 +378,10 @@ namespace qbPortWeaver
         // Returns a cached library fingerprint if metadata matches, otherwise computes and caches it.
         private static string GetOrComputeLibraryFingerprint(FileInfo fi, out bool wasCached)
         {
-            var cache = _libraryCache!;
+            var cache = _libraryCache;
 
-            if (cache.TryGetValue(fi.FullName, out var entry)
+            if (cache is not null
+                && cache.TryGetValue(fi.FullName, out var entry)
                 && entry.Size == fi.Length
                 && entry.LastWriteTimeTicks == fi.LastWriteTimeUtc.Ticks)
             {
@@ -384,8 +390,11 @@ namespace qbPortWeaver
             }
 
             string fp = ComputeFingerprint(fi.FullName);
-            cache[fi.FullName] = new CacheEntry(fi.Length, fi.LastWriteTimeUtc.Ticks, fp);
-            _libraryCacheDirty = true;
+            if (cache is not null)
+            {
+                cache[fi.FullName] = new CacheEntry(fi.Length, fi.LastWriteTimeUtc.Ticks, fp);
+                _libraryCacheDirty = true;
+            }
             wasCached = false;
             return fp;
         }
@@ -425,8 +434,9 @@ namespace qbPortWeaver
                     }
                 }
             }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) // NOSONAR S108 S2486 - best-effort cache update; next full rebuild will recover
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
+                LogManager.Instance.LogDebug($"FileImporter.AddToLibraryIndex: Could not index '{Path.GetFileName(importedFilePath)}': {ex.Message}", Subsystem.MediaManager);
             }
         }
 
@@ -466,7 +476,7 @@ namespace qbPortWeaver
 
         // Returns the fingerprint for a source file, using the in-memory cache when the file has not changed.
         // Uses _sourceInFlight to deduplicate concurrent computation: if two threads race on the same file,
-        // the second waits on the Lazy rather than issuing a redundant NAS read.
+        // the second waits on the Lazy rather than issuing a redundant read.
         private static string GetOrComputeSourceFingerprint(FileInfo fi)
         {
             var cache = _sourceCache;
@@ -490,7 +500,7 @@ namespace qbPortWeaver
                 // Remove only our Lazy instance so a newer entry for the same path is left untouched.
                 _sourceInFlight.TryRemove(new KeyValuePair<string, Lazy<string>>(fi.FullName, lazy));
 
-                // Winner did the NAS read; loser waited on the Lazy and reused the result.
+                // Winner computed the fingerprint; loser waited on the Lazy and reused the result.
                 if (ReferenceEquals(lazy, newLazy))
                     Interlocked.Increment(ref _sourceComputedCount);
                 else
@@ -508,13 +518,14 @@ namespace qbPortWeaver
             return ComputeFingerprint(fi.FullName);
         }
 
+        /// <summary>Returns the number of source fingerprints served from cache and the number freshly computed during the current scan cycle.</summary>
+        internal static (int Cached, int Computed) GetSourceCacheStats() =>
+            (_sourceCachedCount, _sourceComputedCount);
+
         /// <summary>
         /// Loads the source scan cache from disk. No-op if already loaded.
         /// The cache maps source file paths to their fingerprints so unchanged files are not re-hashed on subsequent cycles.
         /// </summary>
-        internal static (int Cached, int Computed) GetSourceCacheStats() =>
-            (_sourceCachedCount, _sourceComputedCount);
-
         internal static void LoadSourceCache()
         {
             // Reset per-cycle scan stats (even if cache is already in memory from a prior cycle)
@@ -531,7 +542,7 @@ namespace qbPortWeaver
                 {
                     _sourceCache = new(StringComparer.OrdinalIgnoreCase);
                     sw.Stop();
-                    LogManager.Instance.LogMessage($"Source index loaded: 0 entries in {sw.ElapsedMilliseconds}ms", LogLevel.Info, Subsystem.MediaManager);
+                    LogManager.Instance.LogMessage($"Source cache loaded: 0 entries in {sw.ElapsedMilliseconds}ms", LogLevel.Info, Subsystem.MediaManager);
                     return;
                 }
 
@@ -544,7 +555,7 @@ namespace qbPortWeaver
 
                 sw.Stop();
                 LogManager.Instance.LogDebug($"FileImporter.LoadSourceCache: Loaded {_sourceCache.Count} entries", Subsystem.MediaManager);
-                LogManager.Instance.LogMessage($"Source index loaded: {_sourceCache.Count} entries in {sw.ElapsedMilliseconds}ms", LogLevel.Info, Subsystem.MediaManager);
+                LogManager.Instance.LogMessage($"Source cache loaded: {_sourceCache.Count} entries in {sw.ElapsedMilliseconds}ms", LogLevel.Info, Subsystem.MediaManager);
             }
             catch (Exception ex)
             {
@@ -566,15 +577,20 @@ namespace qbPortWeaver
             try
             {
                 Dictionary<string, CacheEntry> snapshot;
+                bool wasDirty;
                 lock (_sourceCacheLock)
-                    snapshot = new Dictionary<string, CacheEntry>(cache, StringComparer.OrdinalIgnoreCase);
+                {
+                    snapshot  = new Dictionary<string, CacheEntry>(cache, StringComparer.OrdinalIgnoreCase);
+                    wasDirty  = _sourceCacheDirty;
+                    _sourceCacheDirty = false; // reset inside lock so concurrent writes after this point re-set it
+                }
 
                 // If every cached entry was visited this cycle, none can be stale - skip File.Exists entirely.
                 // If the counts differ, at least one entry was not visited (possibly deleted from source).
                 int visited = _sourceCachedCount + _sourceComputedCount;
                 bool mightHaveStaleEntries = snapshot.Count > visited;
 
-                if (!_sourceCacheDirty && !mightHaveStaleEntries) return;
+                if (!wasDirty && !mightHaveStaleEntries) return;
 
                 var toSave = mightHaveStaleEntries
                     ? snapshot.Where(kv => File.Exists(kv.Key)).ToDictionary(kv => kv.Key, kv => kv.Value, StringComparer.OrdinalIgnoreCase)
@@ -582,10 +598,7 @@ namespace qbPortWeaver
 
                 var json = JsonSerializer.Serialize(toSave, JsonWriteOptions);
                 lock (_cacheFileLock)
-                {
                     WriteAtomic(GetCacheFilePath(SourceCacheFileName), json);
-                    _sourceCacheDirty = false;
-                }
 
                 LogManager.Instance.LogDebug($"FileImporter.SaveSourceCache: Saved {toSave.Count} entries", Subsystem.MediaManager);
             }
@@ -640,9 +653,10 @@ namespace qbPortWeaver
             lock (_libraryLock)
             {
                 _libraryFingerprints = null;
-                _libraryCache = null;
-                _libraryCacheDirty = false;
+                _libraryCache        = null;
+                _libraryCacheDirty   = false;
             }
+            _libraryLastBuilt = DateTimeOffset.MinValue;
 
             TryDeleteFile(GetCacheFilePath(SourceCacheFileName));
             TryDeleteFile(GetCacheFilePath(LibraryCacheFileName));
@@ -673,5 +687,28 @@ namespace qbPortWeaver
 
         internal static string GetCacheFilePath(string fileName) =>
             Path.Combine(Path.GetDirectoryName(AppConstants.GetLogFilePath())!, fileName);
+
+        // CreateHardLink: lpFileName is the NEW link (destination), lpExistingFileName is the existing file (source).
+        [LibraryImport("kernel32.dll", EntryPoint = "CreateHardLinkW", SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static partial bool CreateHardLink(string lpFileName, string lpExistingFileName, nint lpSecurityAttributes);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern bool GetFileInformationByHandle(Microsoft.Win32.SafeHandles.SafeFileHandle hFile, out ByHandleFileInformation lpFileInformation);
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct ByHandleFileInformation
+        {
+            public uint FileAttributes;
+            public System.Runtime.InteropServices.ComTypes.FILETIME CreationTime;
+            public System.Runtime.InteropServices.ComTypes.FILETIME LastAccessTime;
+            public System.Runtime.InteropServices.ComTypes.FILETIME LastWriteTime;
+            public uint VolumeSerialNumber;
+            public uint FileSizeHigh;
+            public uint FileSizeLow;
+            public uint NumberOfLinks;
+            public uint FileIndexHigh;
+            public uint FileIndexLow;
+        }
     }
 }

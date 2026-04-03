@@ -12,7 +12,7 @@ namespace qbPortWeaver
         /// <summary>
         /// Returns <c>true</c> if the provider or gateway is currently reachable and active.
         /// For ProtonVPN and PIA this means the VPN tunnel adapter is up.
-        /// For NAT-PMP this means the configured adapter is up and its gateway is responding.
+        /// For NAT-PMP this means the configured network adapter is up (gateway responsiveness is verified at creation time).
         /// </summary>
         bool IsVpnConnected();
 

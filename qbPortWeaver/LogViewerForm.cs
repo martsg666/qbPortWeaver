@@ -27,6 +27,15 @@ namespace qbPortWeaver
         [StructLayout(LayoutKind.Sequential)]
         private struct NativePoint { public int X, Y; }
 
+        private static class WinMsg
+        {
+            public const int WM_SETREDRAW    = 0x000B;
+            public const int WM_VSCROLL      = 0x0115;
+            public const int SB_BOTTOM       = 7;
+            public const int EM_GETSCROLLPOS = 0x04DD;
+            public const int EM_SETSCROLLPOS = 0x04DE;
+        }
+
         private LogViewerForm() : this(string.Empty) { } // designer support only
 
         public LogViewerForm(string logFilePath)
@@ -264,7 +273,7 @@ namespace qbPortWeaver
         // Called after RebuildDisplay (clean slate) and AppendNewLines (re-paints all matches
         // including previously highlighted ones, which is harmless since the colour is the same).
         // Capped at 500 highlights to avoid freezing on very large result sets.
-        // Callers must bracket this method with WM_SETREDRAW(false)/WM_SETREDRAW(true)
+        // Callers must bracket this method with WinMsg.WM_SETREDRAW(false)/WinMsg.WM_SETREDRAW(true)
         // and call Invalidate() afterward to avoid flicker during the Select loop.
         private void ApplySearchHighlights()
         {
@@ -292,7 +301,6 @@ namespace qbPortWeaver
         // then re-applies search highlights. Preserves scroll: only scrolls to bottom if the user was there.
         private void RebuildDisplay()
         {
-            const int WM_SETREDRAW = 0x000B;
 
             bool     wasAtBottom = IsAtBottom();
             bool[]   filters     = [chkError.Checked, chkWarn.Checked, chkInfo.Checked, chkDebug.Checked];
@@ -301,11 +309,11 @@ namespace qbPortWeaver
             if (wasAtBottom) ScrollToBottom();
             RefreshSearch(navigateToFirst: true);
 
-            SendMessage(rtbLog.Handle, WM_SETREDRAW, IntPtr.Zero, IntPtr.Zero);
+            SendMessage(rtbLog.Handle, WinMsg.WM_SETREDRAW, IntPtr.Zero, IntPtr.Zero);
             try { ApplySearchHighlights(); }
             finally
             {
-                SendMessage(rtbLog.Handle, WM_SETREDRAW, (IntPtr)1, IntPtr.Zero);
+                SendMessage(rtbLog.Handle, WinMsg.WM_SETREDRAW, (IntPtr)1, IntPtr.Zero);
                 rtbLog.Invalidate();
             }
         }
@@ -326,9 +334,7 @@ namespace qbPortWeaver
 
         private void ScrollToBottom()
         {
-            const int WM_VSCROLL = 0x0115;
-            const int SB_BOTTOM  = 7;
-            SendMessage(rtbLog.Handle, WM_VSCROLL, (IntPtr)SB_BOTTOM, IntPtr.Zero);
+            SendMessage(rtbLog.Handle, WinMsg.WM_VSCROLL, (IntPtr)WinMsg.SB_BOTTOM, IntPtr.Zero);
         }
 
         // Ensures the existing text ends with \n so the next SelectedRtf insert starts on
@@ -512,9 +518,6 @@ namespace qbPortWeaver
         // Must be called on the UI thread.
         private void AppendNewLines(string[] newLines)
         {
-            const int WM_SETREDRAW    = 0x000B;
-            const int EM_GETSCROLLPOS = 0x04DD;
-            const int EM_SETSCROLLPOS = 0x04DE;
 
             bool   wasAtBottom = IsAtBottom();
             bool[] filters     = [chkError.Checked, chkWarn.Checked, chkInfo.Checked, chkDebug.Checked];
@@ -531,10 +534,10 @@ namespace qbPortWeaver
             int   savedSelLen   = rtbLog.SelectionLength;
             NativePoint scrollPos     = default;
             if (!wasAtBottom)
-                SendMessage(rtbLog.Handle, EM_GETSCROLLPOS, IntPtr.Zero, ref scrollPos);
+                SendMessage(rtbLog.Handle, WinMsg.EM_GETSCROLLPOS, IntPtr.Zero, ref scrollPos);
 
             // Suppress painting so intermediate states (caret at end, highlight loop) don't flicker.
-            SendMessage(rtbLog.Handle, WM_SETREDRAW, IntPtr.Zero, IntPtr.Zero);
+            SendMessage(rtbLog.Handle, WinMsg.WM_SETREDRAW, IntPtr.Zero, IntPtr.Zero);
             try
             {
                 EnsureTrailingNewline();
@@ -555,9 +558,9 @@ namespace qbPortWeaver
                 if (wasAtBottom)
                     ScrollToBottom();
                 else
-                    SendMessage(rtbLog.Handle, EM_SETSCROLLPOS, IntPtr.Zero, ref scrollPos);
+                    SendMessage(rtbLog.Handle, WinMsg.EM_SETSCROLLPOS, IntPtr.Zero, ref scrollPos);
 
-                SendMessage(rtbLog.Handle, WM_SETREDRAW, (IntPtr)1, IntPtr.Zero);
+                SendMessage(rtbLog.Handle, WinMsg.WM_SETREDRAW, (IntPtr)1, IntPtr.Zero);
                 rtbLog.Invalidate();
             }
         }

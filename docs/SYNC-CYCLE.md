@@ -207,3 +207,85 @@ RunAsync
          │   └─ QBittorrentManager.RestartAsync
          └─ SetCompleted
 ```
+
+---
+
+## Media Manager
+
+The Media Manager runs on every sync cycle immediately after port sync completes. When VPN Provider is set to **Disabled**, port sync is skipped entirely and the Media Manager runs as the only step.
+
+### Scan Phases
+
+The Media Manager scan is split into two phases that partially overlap for performance.
+
+```
+                           ┌─ BuildLibraryIndex ──────────────────────────────┐
+                           │  Walk library folders, compute fingerprints,      │  Run
+  Task.Run ───────────────►│  load/prune persisted cache.                      │  concurrently
+                           │  Semaphore + 15s timestamp prevents duplicate     │
+                           └──────────────────────────────────────────────────►│
+                                                                               │
+  Phase 1: EnumerateSourceFoldersAsync ─────────────────────────────────────► │
+    For each source folder (concurrent), call DirectoryInfo.EnumerateFiles.    │
+    FileInfo metadata (size, last-write) comes from the directory listing -    │
+    no extra stat per file. Filters to video files that are ready for import.  │
+                                                                               │
+                           Phase 2: FingerprintSourceFoldersAsync ─────────── ▼ (waits for both)
+                             For each enumerated file, reads 128 KB (first +
+                             last 64 KB) and computes a size:SHA-256 fingerprint.
+                             Parallel.ForEach (degree 8) keeps storage throughput
+                             high. Files whose fingerprint is in the library index
+                             are skipped as already imported. The rest are split
+                             into movie files and TV episode files.
+```
+
+### Lazy Fingerprint Deduplication
+
+If `RunAsync` and `ScanAsync` overlap (e.g. a manual **Scan Now** triggered while a sync cycle is running), both call `FingerprintSourceFoldersAsync` concurrently. A `ConcurrentDictionary<string, Lazy<string>>` ensures that when two threads race on the same source file, only one issues the 128 KB read while the other waits on the same `Lazy<string>` and reuses the result.
+
+### Cache Layers
+
+| Cache | File | Key |
+|---|---|---|
+| Source scan | `qbPortWeaver.mediasource.json` | Source file path → size + last-write + fingerprint |
+| Library | `qbPortWeaver.medialibrary.json` | Library file path → size + last-write + fingerprint |
+| TMDB movies | `qbPortWeaver.tmdb.movies.json` | Title + year → TMDB movie result |
+| TMDB TV shows | `qbPortWeaver.tmdb.tvshows.json` | Title + year → TMDB TV show result |
+
+On a warm cache scan (no files changed since the last cycle), fingerprinting is skipped entirely for both source and library files; candidates are approved in microseconds from the in-memory cache.
+
+### Method Call Map
+
+```
+MediaManagerService.RunAsync / ScanAsync
+ ├─ FileImporter.LoadSourceCache           (load source fingerprint cache from disk)
+ ├─ TmdbCacheManager.Load / Evict         (load TMDB result cache from disk)
+ │
+ ├─ [concurrent] FileImporter.BuildLibraryIndex
+ │   ├─ LoadLibraryCache
+ │   ├─ IndexLibraryPath (per library folder)
+ │   │   └─ GetOrComputeLibraryFingerprint (per file)
+ │   └─ PruneLibraryCache
+ │
+ ├─ [concurrent] EnumerateSourceFoldersAsync  [Phase 1]
+ │   └─ EnumerateSourceFolder (per folder, concurrent)
+ │
+ ├─ FingerprintSourceFoldersAsync  [Phase 2 - waits for Phase 1 + library index]
+ │   └─ FingerprintCandidates (per folder, Parallel.ForEach degree 8)
+ │       └─ FileImporter.IsAlreadyInLibrary (per file)
+ │           └─ GetOrComputeSourceFingerprint (with Lazy deduplication)
+ │
+ ├─ ProcessSourceFolderAsync / ScanSourceFolderAsync (per folder, concurrent)
+ │   ├─ MovieProcessor.ProcessMoviesAsync / ScanMoviesAsync
+ │   │   ├─ ClassifyVideoFiles (self-describing vs folder-dependent)
+ │   │   ├─ GetOrLookupMovieAsync → LookupMovieAsync → TryFallbackLookupsAsync
+ │   │   └─ MediaManagerService.ImportFileWithLog / MediaProposal
+ │   └─ TvShowProcessor.ProcessTvShowsAsync / ScanTvShowsAsync
+ │       ├─ FileNameParser.ParseTvShowEpisode (per file)
+ │       ├─ GetOrLookupShowAsync → LookupTvShowAsync → TryFallbackLookupsAsync
+ │       └─ MediaManagerService.ImportFileWithLog / MediaProposal
+ │
+ ├─ TmdbCacheManager.Save
+ ├─ FileImporter.SaveSourceCache
+ └─ FileImporter.SaveLibraryCache
+```

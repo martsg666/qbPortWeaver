@@ -312,9 +312,7 @@ namespace qbPortWeaver
 
         // Returns "***" for sensitive keys to avoid writing credentials to the log
         private static string MaskSensitiveValue(string key, string value) =>
-            key.Equals(KeyQBittorrentPassword, StringComparison.OrdinalIgnoreCase) ||
-            key.Equals(KeyTmdbApiKey,          StringComparison.OrdinalIgnoreCase)
-                ? "***" : value;
+            _encryptedKeys.Contains(key) ? "***" : value;
 
         // Returns the hardcoded default for a setting; returns empty string if the section or key is not found
         private static string GetDefault(string section, string key)

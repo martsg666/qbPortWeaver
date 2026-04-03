@@ -204,7 +204,7 @@ namespace qbPortWeaver
             }
             finally
             {
-                NativeMethods.DestroyIcon(hIcon);
+                DestroyIcon(hIcon);
             }
         }
 
@@ -383,8 +383,8 @@ namespace qbPortWeaver
                     LogManager.Instance.LogMessage("Shutdown requested, exiting main loop", LogLevel.Info);
                     return true;
                 }
-                // Manual sync interrupts delay - loop will restart immediately
-                LogManager.Instance.LogMessage("Delay interrupted by manual sync", LogLevel.Info);
+                // Delay interrupted (manual sync or settings change) - loop will restart immediately
+                LogManager.Instance.LogMessage("Delay interrupted, starting next cycle", LogLevel.Info);
             }
 
             // Reset token for next loop iteration (properly dispose old one)
@@ -409,7 +409,7 @@ namespace qbPortWeaver
                 {
                     if (update.Value.Version == _lastNotifiedVersion)
                     {
-                        LogManager.Instance.LogMessage($"New version {update.Value.Version} available (already notified)", LogLevel.Info);
+                        LogManager.Instance.LogDebug($"MainForm.PerformUpdateCheckAsync: Version {update.Value.Version} available (already notified)");
                         return;
                     }
 
@@ -506,11 +506,8 @@ namespace qbPortWeaver
             frm.Show();
         }
 
-        // P/Invoke declarations
-        private static class NativeMethods
-        {
-            [DllImport("user32.dll", SetLastError = true)]
-            public static extern bool DestroyIcon(IntPtr hIcon);
-        }
+        [LibraryImport("user32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static partial bool DestroyIcon(IntPtr hIcon);
     }
 }

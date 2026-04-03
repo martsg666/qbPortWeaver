@@ -53,7 +53,7 @@ namespace qbPortWeaver
             {
                 var result = MessageBox.Show(
                     "A scan or import is in progress.\n\nClosing will cancel the operation. Any files already imported will remain in the library.\n\nClose anyway?",
-                    "qbPortWeaver | Media Manager",
+                    $"{AppConstants.AppName} | Media Manager",
                     MessageBoxButtons.YesNo,
                     MessageBoxIcon.Warning);
 
@@ -163,7 +163,7 @@ namespace qbPortWeaver
             try
             {
                 bool createFolders = chkCreateFolders.Checked;
-                var proposals = await MediaManagerService.ScanAsync(apiKey, createFolders, sourceFolders, moviesLibraryPath, tvShowsLibraryPath, ct, CreateScanProgress("Scanning\u2026"));
+                var proposals = await MediaManagerService.ScanAsync(apiKey, createFolders, sourceFolders, moviesLibraryPath, tvShowsLibraryPath, CreateScanProgress("Scanning\u2026"), ct);
 
                 PopulateGrid(proposals);
                 UpdateScanStatus();
@@ -196,7 +196,7 @@ namespace qbPortWeaver
 
             var confirm = MessageBox.Show(
                 $"{proposalCount} file{(proposalCount == 1 ? "" : "s")} will be imported. This cannot be undone.\n\nContinue?",
-                "qbPortWeaver | Media Manager",
+                $"{AppConstants.AppName} | Media Manager",
                 MessageBoxButtons.YesNo,
                 MessageBoxIcon.Warning);
 
@@ -250,7 +250,7 @@ namespace qbPortWeaver
                     : p.FileName;
                 lblScanStatus.Text = $"Importing {p.Current}/{p.Total} - {name}";
             });
-            await MediaManagerService.ApplyProposalsAsync(toApply, importMode, ct, progress);
+            await MediaManagerService.ApplyProposalsAsync(toApply, importMode, progress, ct);
 
             if (IsDisposed) return;
 
@@ -274,7 +274,7 @@ namespace qbPortWeaver
             BeginProgress();
             var remaining = await MediaManagerService.ScanAsync(
                 txtTmdbApiKey.Text.Trim(), chkCreateFolders.Checked, sourceFolders,
-                txtMoviesLibraryPath.Text.Trim(), txtTvShowsLibraryPath.Text.Trim(), ct, CreateScanProgress("Re-scanning\u2026"));
+                txtMoviesLibraryPath.Text.Trim(), txtTvShowsLibraryPath.Text.Trim(), CreateScanProgress("Re-scanning\u2026"), ct);
 
             if (IsDisposed) return;
             PopulateGrid(remaining);
@@ -457,7 +457,7 @@ namespace qbPortWeaver
             prgScan.Value = prgScan.Maximum;
         }
 
-        // Disables Scan Now and the source folders while an async operation is running.
+        // Disables input controls while an async operation is running.
         // btnImportNow is managed separately by each handler to preserve its proposals-count state.
         private void SetBusy(bool busy)
         {

@@ -63,7 +63,7 @@ namespace qbPortWeaver
             var episodeInfo = FileNameParser.ParseTvShowEpisode(fileName);
             if (episodeInfo is null)
             {
-                LogManager.Instance.LogDebug($"TvShowProcessor.ScanEpisodeFileAsync: Skipped '{fileName}' - not a recognised episode", Subsystem.MediaManager);
+                LogManager.Instance.LogDebug($"TvShowProcessor.ScanEpisodeFileAsync: Skipped '{fileName}' - not a recognized episode", Subsystem.MediaManager);
                 return;
             }
 
@@ -90,7 +90,7 @@ namespace qbPortWeaver
             var episodeInfo = FileNameParser.ParseTvShowEpisode(fileName);
             if (episodeInfo is null)
             {
-                LogManager.Instance.LogDebug($"TvShowProcessor.ProcessEpisodeFileAsync: Skipped '{fileName}' - not a recognised episode", Subsystem.MediaManager);
+                LogManager.Instance.LogDebug($"TvShowProcessor.ProcessEpisodeFileAsync: Skipped '{fileName}' - not a recognized episode", Subsystem.MediaManager);
                 return;
             }
 
@@ -166,7 +166,7 @@ namespace qbPortWeaver
             }
             catch (HttpRequestException ex)
             {
-                LogManager.Instance.LogMessage($"Failed to look up TMDB TV show: {ex.Message}", LogLevel.Error, Subsystem.MediaManager);
+                LogManager.Instance.LogMessage($"Failed to look up TMDB TV show: {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
                 return (null, false);
             }
         }

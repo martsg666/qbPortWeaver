@@ -5,6 +5,7 @@
     <TargetFramework>net10.0-windows</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <AssemblyTitle>qbPortWeaver Helper Service</AssemblyTitle>
     <Description>Helper for qbPortWeaver - executes privileged session 0 actions on behalf of the user-session tray app</Description>
     <Company>martsg666</Company>

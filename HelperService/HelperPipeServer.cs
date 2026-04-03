@@ -9,8 +9,7 @@ namespace qbPortWeaver.HelperService;
 /// user-session tray app. Runs as a hosted background service inside the helper Windows service.
 /// Protocol: one text line per connection, pipe-delimited: action|target|logFilePath.
 /// Supported actions: restart (restart the Windows service identified by the provider token)
-/// and cycle-adapter (cycle a network adapter; if the adapter name matches a known provider,
-/// the corresponding service is also restarted).
+/// and cycle-adapter (disable and re-enable a network adapter via netsh).
 /// The log file path is sent per-call so the helper writes into the same log file as the
 /// tray app, regardless of which user profile is active.
 /// </summary>
@@ -70,7 +69,7 @@ internal sealed class HelperPipeServer : BackgroundService
 
         await pipe.WaitForConnectionAsync(ct).ConfigureAwait(false);
 
-        using var reader = new StreamReader(pipe);
+        using var reader = new StreamReader(pipe, leaveOpen: true);
         var message = await reader.ReadLineAsync(ct).ConfigureAwait(false);
         if (string.IsNullOrWhiteSpace(message)) return;
 

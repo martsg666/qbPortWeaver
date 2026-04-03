@@ -154,6 +154,19 @@ namespace qbPortWeaver
                 return;
             }
 
+            string urlText = txtQBittorrentURL.Text.Trim();
+            if (!string.IsNullOrEmpty(urlText) &&
+                (!Uri.TryCreate(urlText, UriKind.Absolute, out var uri) ||
+                 (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps)))
+            {
+                MessageBox.Show(
+                    "The qBittorrent URL is not valid. Enter a URL starting with http:// or https://",
+                    AppConstants.AppName,
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
+                return;
+            }
+
             string previousColorTheme  = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionExtra, RegistrySettingsManager.KeyColorTheme);
             string selectedColorTheme  = cboColorTheme.SelectedItem?.ToString() ?? RegistrySettingsManager.ColorThemeSystem;
             SaveSettings();

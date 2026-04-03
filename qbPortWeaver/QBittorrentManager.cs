@@ -258,7 +258,7 @@ namespace qbPortWeaver
 
                 if (response.StatusCode == HttpStatusCode.Forbidden)
                 {
-                    LogManager.Instance.LogMessage("qBittorrent returned HTTP 403 Forbidden - IP banned due to too many failed login attempts. Restart qBittorrent to clear the ban.", LogLevel.Error);
+                    LogManager.Instance.LogMessage("qBittorrent returned HTTP 403 Forbidden - IP banned due to too many failed login attempts. Restart qBittorrent to clear the ban", LogLevel.Error);
                     return false;
                 }
 
@@ -302,7 +302,7 @@ namespace qbPortWeaver
                 LogManager.Instance.LogMessage($"Failed to connect to qBittorrent Web UI: {ex.Message} - check the URL in Settings ({_url})", LogLevel.Error);
             else
             {
-                LogManager.Instance.LogMessage($"Failed to complete qBittorrent request in {methodName}: {ex.Message}", LogLevel.Warn);
+                LogManager.Instance.LogMessage($"Failed to complete qBittorrent request in {methodName}: {ex.Message}", LogLevel.Error);
                 LogManager.Instance.LogDebug($"QBittorrentManager.{methodName}: {ex.GetType().Name}");
             }
         }

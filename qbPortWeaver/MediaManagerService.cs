@@ -7,12 +7,17 @@ namespace qbPortWeaver
     {
         internal const int MaxSubfolderDepth = 10; // passed as EnumerationOptions.MaxRecursionDepth
 
+        // Maximum number of concurrent fingerprint reads during Phase 2.
+        // I/O-bound work: storage throughput is the constraint, not CPU count.
+        // 8 concurrent reads balances throughput vs not overwhelming slower storage.
+        private const int FingerprintParallelism = 8;
+
         /// <summary>
         /// Runs one media import cycle. Returns immediately if the feature is disabled, the TMDB API key is not configured,
         /// or no library paths are set.
         /// Throws <see cref="OperationCanceledException"/> if <paramref name="cancellationToken"/> is cancelled.
         /// </summary>
-        public static async Task RunAsync(CancellationToken cancellationToken)
+        public static async Task RunAsync(CancellationToken cancellationToken = default)
         {
             if (!RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionMedia, RegistrySettingsManager.KeyMediaEnabled))
                 return;
@@ -52,10 +57,10 @@ namespace qbPortWeaver
                 $"{RegistrySettingsManager.KeyMediaImportMode}={importMode}",
                 Subsystem.MediaManager);
 
+            // Fast: load source and TMDB caches into memory (in-memory no-op after first cycle)
             await Task.Run(() =>
             {
                 FileImporter.LoadSourceCache();
-                FileImporter.BuildLibraryIndex(moviesLibraryPath, tvShowsLibraryPath);
                 TmdbCacheManager.Load();
                 TmdbCacheManager.EvictNullMovies();
                 TmdbCacheManager.EvictNullShows();
@@ -63,15 +68,22 @@ namespace qbPortWeaver
 
             var tmdb = new TmdbClient(apiKey);
 
-            // Enumerate and pre-filter source folders: excludes files still being written and files already in the library
+            // Enumerate valid source folders
             var validFolders = new List<string>();
             foreach (var f in GetFolders(RegistrySettingsManager.KeyMediaSourceFolders))
             {
-                if (!Directory.Exists(f)) { LogManager.Instance.LogMessage($"Source folder not found: '{f}'", LogLevel.Error, Subsystem.MediaManager); continue; }
+                if (!Directory.Exists(f)) { LogManager.Instance.LogMessage($"Source folder not found: '{f}'", LogLevel.Warn, Subsystem.MediaManager); continue; }
                 validFolders.Add(f);
             }
-            var classified = await ClassifySourceFoldersAsync(validFolders, cancellationToken).ConfigureAwait(false);
-            int total = classified.Sum(c => c.Items.MovieFiles.Length + c.Items.TvFiles.Length);
+
+            // Overlap: library index enumeration and source folder enumeration are both directory listings on
+            // different paths and can run concurrently. Phase 2 fingerprinting waits for both to complete
+            // since it requires the library index to be ready.
+            var libraryTask = Task.Run(() => FileImporter.BuildLibraryIndex(moviesLibraryPath, tvShowsLibraryPath, cancellationToken), cancellationToken);
+            var enumerated  = await EnumerateSourceFoldersAsync(validFolders, cancellationToken).ConfigureAwait(false);
+            await libraryTask.ConfigureAwait(false);
+            var classified  = await FingerprintSourceFoldersAsync(enumerated, cancellationToken).ConfigureAwait(false);
+            int total       = classified.Sum(c => c.Items.MovieFiles.Length + c.Items.TvFiles.Length);
 
             var ctx = new ImportContext(tmdb, dryRun, createFolders, importMode, moviesLibraryPath, tvShowsLibraryPath);
 
@@ -155,19 +167,19 @@ namespace qbPortWeaver
         /// <param name="sourceFolders">Source folders to scan for both movies and TV shows.</param>
         /// <param name="moviesLibraryPath">Library folder for movies. Empty to skip movie processing.</param>
         /// <param name="tvShowsLibraryPath">Library folder for TV shows. Empty to skip TV show processing.</param>
-        /// <param name="cancellationToken">Token to cancel the scan between folders.</param>
         /// <param name="progress">Optional progress sink; reports current and total item counts as each item is processed.</param>
+        /// <param name="cancellationToken">Token to cancel the scan between folders.</param>
         public static async Task<List<MediaProposal>> ScanAsync(string apiKey, bool createFolders, string[] sourceFolders,
-            string moviesLibraryPath, string tvShowsLibraryPath, CancellationToken cancellationToken,
-            IProgress<(int Current, int Total)>? progress = null)
+            string moviesLibraryPath, string tvShowsLibraryPath,
+            IProgress<(int Current, int Total)>? progress = null, CancellationToken cancellationToken = default)
         {
             var scanSw = System.Diagnostics.Stopwatch.StartNew();
             LogManager.Instance.LogMessage($"Scan started (mode=preview, createFolders={createFolders})", LogLevel.Info, Subsystem.MediaManager);
 
+            // Fast: load source and TMDB caches into memory (in-memory no-op after first cycle)
             await Task.Run(() =>
             {
                 FileImporter.LoadSourceCache();
-                FileImporter.BuildLibraryIndex(moviesLibraryPath, tvShowsLibraryPath);
                 TmdbCacheManager.Load();
                 TmdbCacheManager.EvictNullMovies();
                 TmdbCacheManager.EvictNullShows();
@@ -175,15 +187,22 @@ namespace qbPortWeaver
 
             var tmdb = new TmdbClient(apiKey);
 
-            // Enumerate and pre-filter source folders: excludes files still being written and files already in the library
+            // Enumerate valid source folders
             var validFolders = new List<string>();
             foreach (var f in sourceFolders)
             {
-                if (!Directory.Exists(f)) { LogManager.Instance.LogMessage($"Source folder not found: '{f}'", LogLevel.Error, Subsystem.MediaManager); continue; }
+                if (!Directory.Exists(f)) { LogManager.Instance.LogMessage($"Source folder not found: '{f}'", LogLevel.Warn, Subsystem.MediaManager); continue; }
                 validFolders.Add(f);
             }
-            var classified = await ClassifySourceFoldersAsync(validFolders, cancellationToken).ConfigureAwait(false);
-            int total = classified.Sum(c => c.Items.MovieFiles.Length + c.Items.TvFiles.Length);
+
+            // Overlap: library index enumeration and source folder enumeration are both directory listings on
+            // different paths and can run concurrently. Phase 2 fingerprinting waits for both to complete
+            // since it requires the library index to be ready.
+            var libraryTask = Task.Run(() => FileImporter.BuildLibraryIndex(moviesLibraryPath, tvShowsLibraryPath, cancellationToken), cancellationToken);
+            var enumerated  = await EnumerateSourceFoldersAsync(validFolders, cancellationToken).ConfigureAwait(false);
+            await libraryTask.ConfigureAwait(false);
+            var classified  = await FingerprintSourceFoldersAsync(enumerated, cancellationToken).ConfigureAwait(false);
+            int total       = classified.Sum(c => c.Items.MovieFiles.Length + c.Items.TvFiles.Length);
 
             int current = 0;
             void OnItemProcessed()
@@ -262,10 +281,10 @@ namespace qbPortWeaver
         /// </summary>
         /// <param name="proposals">The import proposals to apply. Each proposal's <see cref="MediaProposal.ProposedPath"/> is the library target.</param>
         /// <param name="importMode">Determines how files are transferred: hardlink, copy, or move.</param>
-        /// <param name="cancellationToken">Token to cancel the operation between imports.</param>
         /// <param name="progress">Optional progress sink; reports current item count, total, and filename as each file is imported.</param>
+        /// <param name="cancellationToken">Token to cancel the operation between imports.</param>
         public static Task ApplyProposalsAsync(IEnumerable<MediaProposal> proposals, ImportMode importMode,
-            CancellationToken cancellationToken, IProgress<(int Current, int Total, string FileName)>? progress = null)
+            IProgress<(int Current, int Total, string FileName)>? progress = null, CancellationToken cancellationToken = default)
             => Task.Run(() =>
             {
                 var list = proposals as IList<MediaProposal> ?? proposals.ToList();
@@ -375,49 +394,37 @@ namespace qbPortWeaver
             }
         }
 
-        // Classifies source files across all valid folders in parallel, logging progress and timing.
-        private static async Task<List<(string Folder, (string[] MovieFiles, string[] TvFiles) Items)>> ClassifySourceFoldersAsync(
+        // Phase 1: enumerates each source folder and returns a candidate FileInfo list.
+        // Uses directory metadata (Length, LastWriteTimeUtc) populated by EnumerateFiles — no extra stat per file.
+        // Safe to run concurrently with BuildLibraryIndex since it does not call IsAlreadyInLibrary.
+        private static async Task<List<(string Folder, List<FileInfo> Candidates)>> EnumerateSourceFoldersAsync(
             List<string> validFolders, CancellationToken cancellationToken)
         {
-            LogManager.Instance.LogMessage($"Classifying source files across {validFolders.Count} folder(s)...", LogLevel.Info, Subsystem.MediaManager);
-            var classifySw = System.Diagnostics.Stopwatch.StartNew();
-
-            var classified = (await Task.WhenAll(validFolders.Select(f =>
+            LogManager.Instance.LogMessage($"Enumerating source files across {validFolders.Count} folder(s)", LogLevel.Info, Subsystem.MediaManager);
+            return (await Task.WhenAll(validFolders.Select(f =>
                 Task.Run(() =>
                 {
-                    LogManager.Instance.LogMessage($"Classifying source folder: '{f}'", LogLevel.Info, Subsystem.MediaManager);
+                    LogManager.Instance.LogMessage($"Enumerating source folder: '{f}'", LogLevel.Info, Subsystem.MediaManager);
                     try
                     {
-                        return (Folder: f, Items: ClassifySourceFolder(f, cancellationToken));
+                        return (Folder: f, Candidates: EnumerateSourceFolder(f));
                     }
                     catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
                     {
                         LogManager.Instance.LogMessage($"Skipped source folder '{f}': {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
-                        return (Folder: f, Items: (MovieFiles: Array.Empty<string>(), TvFiles: Array.Empty<string>()));
+                        return (Folder: f, Candidates: new List<FileInfo>());
                     }
                 }, cancellationToken)
             )).ConfigureAwait(false)).ToList();
-
-            int movieTotal = classified.Sum(c => c.Items.MovieFiles.Length);
-            int tvTotal    = classified.Sum(c => c.Items.TvFiles.Length);
-            classifySw.Stop();
-            var (sourceCached, sourceComputed) = FileImporter.GetSourceCacheStats();
-            LogManager.Instance.LogMessage(
-                $"Source files classified: {movieTotal + tvTotal} ({movieTotal} movies, {tvTotal} TV episodes) in {classifySw.ElapsedMilliseconds}ms (cached={sourceCached}, computed={sourceComputed})",
-                LogLevel.Info, Subsystem.MediaManager);
-
-            return classified;
         }
 
-        // Walks the entire source folder tree in a single pass and classifies all video files into movies vs TV shows.
-        // Split into two phases: enumerate first (sequential — uses directory metadata, no extra stat calls),
-        // then fingerprint in parallel (up to 4 concurrent NAS reads) so the expensive 128 KB reads overlap.
+        // Enumerates video files in a source folder that are ready for import.
+        // FileInfo metadata (Length, LastWriteTimeUtc) comes from the directory listing — no extra stat per file.
         // MaxRecursionDepth = MaxSubfolderDepth preserves the existing depth cap.
         // IgnoreInaccessible = true silently skips permission-denied folders.
-        private static (string[] MovieFiles, string[] TvFiles) ClassifySourceFolder(string folder, CancellationToken cancellationToken = default)
+        private static List<FileInfo> EnumerateSourceFolder(string folder)
         {
-            // Phase 1: enumerate (fast — FileInfo metadata comes from the directory listing, no per-file NAS round-trip)
-            var candidates = new DirectoryInfo(folder)
+            return new DirectoryInfo(folder)
                 .EnumerateFiles("*", new EnumerationOptions
                 {
                     RecurseSubdirectories = true,
@@ -426,16 +433,58 @@ namespace qbPortWeaver
                 })
                 .Where(fi => FileNameParser.IsVideoFile(fi.FullName) && FileImporter.IsFileReadyForImport(fi))
                 .ToList();
+        }
 
-            // Phase 2: fingerprint (parallel — each file requires a 128 KB NAS read; bounded to 4 concurrent reads)
+        // Phase 2: fingerprints candidates in parallel and classifies them into movies and TV episodes.
+        // Requires BuildLibraryIndex to have completed before calling — IsAlreadyInLibrary uses the index.
+        // Folders are processed sequentially so that a single Parallel.ForEach (degree FingerprintParallelism)
+        // is active at a time — processing folders concurrently would multiply the parallelism by the folder count.
+        private static Task<List<(string Folder, (string[] MovieFiles, string[] TvFiles) Items)>> FingerprintSourceFoldersAsync(
+            List<(string Folder, List<FileInfo> Candidates)> enumerated, CancellationToken cancellationToken)
+        {
+            return Task.Run(() =>
+            {
+                var classifySw = System.Diagnostics.Stopwatch.StartNew();
+                var classified = new List<(string Folder, (string[] MovieFiles, string[] TvFiles) Items)>(enumerated.Count);
+
+                foreach (var e in enumerated)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    try
+                    {
+                        classified.Add((e.Folder, FingerprintCandidates(e.Candidates, cancellationToken)));
+                    }
+                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                    {
+                        LogManager.Instance.LogMessage($"Skipped source folder '{e.Folder}': {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
+                        classified.Add((e.Folder, (MovieFiles: Array.Empty<string>(), TvFiles: Array.Empty<string>())));
+                    }
+                }
+
+                int movieTotal = classified.Sum(c => c.Items.MovieFiles.Length);
+                int tvTotal    = classified.Sum(c => c.Items.TvFiles.Length);
+                classifySw.Stop();
+                var (sourceCached, sourceComputed) = FileImporter.GetSourceCacheStats();
+                LogManager.Instance.LogMessage(
+                    $"Source files classified: {movieTotal + tvTotal} ({movieTotal} movies, {tvTotal} TV episodes) in {classifySw.ElapsedMilliseconds}ms (cached={sourceCached}, computed={sourceComputed})",
+                    LogLevel.Info, Subsystem.MediaManager);
+
+                return classified;
+            }, cancellationToken);
+        }
+
+        // Fingerprints candidates in parallel and splits them into movie and TV episode file paths.
+        // Each candidate requires a 128 KB read to compute its fingerprint; reads are bounded by FingerprintParallelism.
+        private static (string[] MovieFiles, string[] TvFiles) FingerprintCandidates(List<FileInfo> candidates, CancellationToken cancellationToken)
+        {
             var videoFiles = new ConcurrentBag<FileInfo>();
             Parallel.ForEach(candidates,
-                new ParallelOptions { MaxDegreeOfParallelism = 4, CancellationToken = cancellationToken },
+                new ParallelOptions { MaxDegreeOfParallelism = FingerprintParallelism, CancellationToken = cancellationToken },
                 fi => { if (!FileImporter.IsAlreadyInLibrary(fi)) videoFiles.Add(fi); });
 
-            var movieFiles = videoFiles.Where(fi => !FileNameParser.IsTvShow(fi.Name)).Select(fi => fi.FullName).ToArray();
-            var tvFiles    = videoFiles.Where(fi => FileNameParser.IsVideoTvShowEpisode(fi.FullName)).Select(fi => fi.FullName).ToArray();
-
+            var videoList  = videoFiles.ToList(); // materialize once; ConcurrentBag re-enumerates on each traversal
+            var movieFiles = videoList.Where(fi => !FileNameParser.IsTvShow(fi.Name)).Select(fi => fi.FullName).ToArray();
+            var tvFiles    = videoList.Where(fi => FileNameParser.IsVideoTvShowEpisode(fi.FullName)).Select(fi => fi.FullName).ToArray();
             return (movieFiles, tvFiles);
         }
 

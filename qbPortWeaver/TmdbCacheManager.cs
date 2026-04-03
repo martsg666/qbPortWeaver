@@ -11,7 +11,7 @@ namespace qbPortWeaver
     internal static class TmdbCacheManager
     {
         private const int    TtlDays            = 30;
-        private const string ShowCacheFileName  = "qbPortWeaver.tmdb.shows.json";
+        private const string ShowCacheFileName  = "qbPortWeaver.tmdb.tvshows.json";
         private const string MovieCacheFileName = "qbPortWeaver.tmdb.movies.json";
 
         // ConcurrentDictionary: sync cycle and UI scan can overlap.
@@ -24,7 +24,7 @@ namespace qbPortWeaver
         private static volatile bool _showCacheDirty;
         private static volatile bool _movieCacheDirty;
 
-        // Serialised on-disk format: only non-null results are persisted.
+        // Serialized on-disk format: only non-null results are persisted.
         private sealed record TmdbEntry<T>(T? Info, bool IsConfident, DateTime CachedAt) where T : class;
 
         internal static bool TryGetShow(string key, out (TvShowInfo? Info, bool IsConfident) result)
@@ -72,8 +72,8 @@ namespace qbPortWeaver
         {
             if (!_showCacheDirty && !_movieCacheDirty) return;
             var parts = new List<string>(2);
-            if (_showCacheDirty)  { parts.Add($"{SaveToDisk(_showCache,  ShowCacheFileName,  "show")} show entries");  _showCacheDirty  = false; }
-            if (_movieCacheDirty) { parts.Add($"{SaveToDisk(_movieCache, MovieCacheFileName, "movie")} movie entries"); _movieCacheDirty = false; }
+            if (_showCacheDirty)  { int n = SaveToDisk(_showCache,  ShowCacheFileName,  "show");  if (n >= 0) { parts.Add($"{n} show entries");  _showCacheDirty  = false; } }
+            if (_movieCacheDirty) { int n = SaveToDisk(_movieCache, MovieCacheFileName, "movie"); if (n >= 0) { parts.Add($"{n} movie entries"); _movieCacheDirty = false; } }
             LogManager.Instance.LogMessage($"TMDB cache saved: {string.Join(", ", parts)}", LogLevel.Info, Subsystem.MediaManager);
         }
 
@@ -159,7 +159,7 @@ namespace qbPortWeaver
                 LogManager.Instance.LogMessage(
                     $"Failed to save TMDB {label} cache: {ex.Message}",
                     LogLevel.Warn, Subsystem.MediaManager);
-                return 0;
+                return -1; // signal failure so the caller does not clear the dirty flag
             }
         }
     }

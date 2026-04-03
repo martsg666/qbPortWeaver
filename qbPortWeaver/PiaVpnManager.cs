@@ -12,6 +12,10 @@ namespace qbPortWeaver
         internal const string ClientProcessName        = "pia-client";
         private const int    ProcessTimeoutMs         = 5000;
 
+        // Cached piactl.exe path; null = not found, string.Empty = not yet resolved.
+        // The install path never changes at runtime so we resolve it once and reuse it.
+        private static string? _piactlPathCache = string.Empty;
+
         /// <inheritdoc />
         public string ProviderName => RegistrySettingsManager.VpnProviderPia;
 
@@ -99,7 +103,8 @@ namespace qbPortWeaver
                 if (!process.WaitForExit(ProcessTimeoutMs))
                 {
                     // Cleanup only - no new process follows, so KillProcess's retry wait is not needed here.
-                    process.Kill(entireProcessTree: true);
+                    try { process.Kill(entireProcessTree: true); }
+                    catch (InvalidOperationException) { } // already exited between timeout and Kill()
                     LogManager.Instance.LogDebug("PiaVpnManager.RunPiactl: piactl timed out and was killed");
                     return null;
                 }
@@ -118,9 +123,10 @@ namespace qbPortWeaver
             }
         }
 
-        // Resolves the piactl.exe path from PIA's install location in the registry
+        // Resolves the piactl.exe path from PIA's install location in the registry, caching the result.
         private static string? GetPiactlPath()
         {
+            if (_piactlPathCache != string.Empty) return _piactlPathCache; // already resolved (null = not found)
             try
             {
                 using var uninstallKey = Registry.LocalMachine.OpenSubKey(PiaUninstallRegistryPath);
@@ -144,27 +150,27 @@ namespace qbPortWeaver
                     if (string.IsNullOrEmpty(installLocation))
                     {
                         LogManager.Instance.LogDebug("PiaVpnManager.GetPiactlPath: PIA found in registry but InstallLocation is empty");
-                        return null;
+                        return _piactlPathCache = null;
                     }
 
                     string piactlPath = Path.Combine(installLocation, PiactlFileName);
                     if (!File.Exists(piactlPath))
                     {
                         LogManager.Instance.LogDebug($"PiaVpnManager.GetPiactlPath: piactl not found at: {piactlPath}");
-                        return null;
+                        return _piactlPathCache = null;
                     }
 
                     LogManager.Instance.LogDebug($"PiaVpnManager.GetPiactlPath: Found piactl at: {piactlPath}");
-                    return piactlPath;
+                    return _piactlPathCache = piactlPath;
                 }
 
                 LogManager.Instance.LogDebug("PiaVpnManager.GetPiactlPath: PIA not found in registry");
-                return null;
+                return _piactlPathCache = null;
             }
             catch (Exception ex)
             {
                 LogManager.Instance.LogDebug($"PiaVpnManager.GetPiactlPath: {ex.Message}");
-                return null;
+                return null; // transient error - don't cache, retry next cycle
             }
         }
     }

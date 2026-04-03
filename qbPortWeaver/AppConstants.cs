@@ -18,7 +18,7 @@ namespace qbPortWeaver
         public const int AutoUpdateCheckIntervalMs    = 12 * 60 * 60 * MillisecondsPerSecond;
 
         // UI
-        public const int MaxTooltipLength  = 63;
+        public const int MaxTooltipLength  = 63; // NotifyIcon.Text is capped at 63 characters by Windows
         public const int BalloonTipDurationMs = 750;
 
         // HTTP - shared timeout used by all outbound HTTP clients
@@ -81,7 +81,7 @@ namespace qbPortWeaver
             }
             catch (Exception ex)
             {
-                LogManager.Instance.LogDebug($"AppConstants.KillProcess: Failed to run taskkill fallback: {ex.Message}");
+                LogManager.Instance.LogMessage($"Failed to run taskkill fallback: {ex.Message}", LogLevel.Warn);
             }
             if (process.WaitForExit(timeoutMs)) return true;
 

@@ -80,10 +80,12 @@ namespace qbPortWeaver
             voteCount >= minVoteCount &&
             string.Equals(NormalizeTitleForMatch(returnedTitle), NormalizeTitleForMatch(searchedTitle), StringComparison.OrdinalIgnoreCase);
 
-        // Normalises a title for loose comparison: lowercases, drops non-whitespace punctuation
-        // that sits between two alphanumeric characters (apostrophes, hyphens in compound words),
-        // and collapses all other non-alphanumeric characters to a single space.
-        // Examples: "Show Name" → "show name", "Title (Year)" → "title year"
+        /// <summary>
+        /// Normalises a title for loose comparison: lowercases, drops non-whitespace punctuation
+        /// that sits between two alphanumeric characters (apostrophes, hyphens in compound words),
+        /// and collapses all other non-alphanumeric characters to a single space.
+        /// Examples: "Show Name" -> "show name", "Title (Year)" -> "title year"
+        /// </summary>
         internal static string NormalizeTitleForMatch(string title)
         {
             var sb = new System.Text.StringBuilder(title.Length);
@@ -117,21 +119,27 @@ namespace qbPortWeaver
         public static string FormatPlexName(string title, int? year) =>
             SanitizeFileName(year.HasValue ? $"{title} ({year.Value})" : title);
 
+        // Cached set of invalid filename characters for O(1) lookup in SanitizeFileName
+        private static readonly HashSet<char> _invalidFileNameChars = new(Path.GetInvalidFileNameChars());
+
         /// <summary>Strips characters that are invalid in file names and collapses runs of spaces. Replaces <c>:</c> with <c> -</c> to preserve subtitle separators.</summary>
         public static string SanitizeFileName(string name)
         {
-            name = name.Replace(":", " -");
-            foreach (var c in Path.GetInvalidFileNameChars())
-                name = name.Replace(c, ' ');
-            name = MultiSpaceRegex().Replace(name, " ");
-            return name.Trim();
+            var sb = new System.Text.StringBuilder(name.Length + 2); // +2 for potential colon expansion
+            for (int i = 0; i < name.Length; i++)
+            {
+                char c = name[i];
+                if (c == ':') { sb.Append(" -"); continue; }
+                sb.Append(_invalidFileNameChars.Contains(c) ? ' ' : c);
+            }
+            return MultiSpaceRegex().Replace(sb.ToString(), " ").Trim();
         }
 
-        /// <summary>Returns true if the file has a recognised video extension.</summary>
+        /// <summary>Returns true if the file has a recognized video extension.</summary>
         public static bool IsVideoFile(string path) =>
             _videoExtensions.Contains(Path.GetExtension(path));
 
-        /// <summary>Returns true if the file has a subtitle extension recognised by Plex (.srt, .sub, .ass, etc.).</summary>
+        /// <summary>Returns true if the file has a subtitle extension recognized by Plex (.srt, .sub, .ass, etc.).</summary>
         public static bool IsSubtitleFile(string path) =>
             _subtitleExtensions.Contains(Path.GetExtension(path));
 
@@ -466,8 +474,10 @@ namespace qbPortWeaver
         [GeneratedRegex(@"^.+\s\(\d{4}\)\s-\sS\d{2}E\d{2}$", RegexOptions.IgnoreCase)]
         private static partial Regex PlexEpisodeNameRegex();
 
-        // Returns the substring after the first " - " separator, or null if the pattern is not present.
-        // Used by MovieProcessor and TvShowProcessor as a fallback lookup strategy.
+        /// <summary>
+        /// Returns the substring after the first " - " separator, or null if the pattern is not present.
+        /// Used by MovieProcessor and TvShowProcessor as a fallback lookup strategy.
+        /// </summary>
         internal static string? ExtractAfterDash(string title)
         {
             int idx = title.IndexOf(" - ", StringComparison.Ordinal);
@@ -476,8 +486,10 @@ namespace qbPortWeaver
             return after.Length > 0 ? after : null;
         }
 
-        // Strips a single trailing digit preceded by a space (e.g. "Title 2" -> "Title"), or returns null
-        // if the pattern is not present. Used by MovieProcessor and TvShowProcessor as a fallback lookup strategy.
+        /// <summary>
+        /// Strips a single trailing digit preceded by a space (e.g. "Title 2" -> "Title"), or null
+        /// if the pattern is not present. Used by MovieProcessor and TvShowProcessor as a fallback lookup strategy.
+        /// </summary>
         internal static string? StripTrailingNumber(string title)
         {
             var trimmed = title.TrimEnd();

@@ -522,7 +522,7 @@ namespace qbPortWeaver
             if (connectionStatus is null)
                 return;
 
-            LogManager.Instance.LogMessage($"qBittorrent connection status: {connectionStatus}", LogLevel.Info);
+            LogManager.Instance.LogDebug($"PortSyncService.CheckAndRestartIfDisconnectedAsync: qBittorrent connection status: {connectionStatus}");
 
             if (!connectionStatus.Equals(QBittorrentDisconnectedStatus, StringComparison.OrdinalIgnoreCase))
                 return;

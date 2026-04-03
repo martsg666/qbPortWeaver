@@ -1,3 +1,4 @@
+using System.Buffers.Binary;
 using System.Net;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
@@ -157,9 +158,12 @@ namespace qbPortWeaver
                         $"NAT-PMP epoch reset on '{_adapter.Name}' (was {_lastEpochSeconds}s, now {result.EpochSeconds}s) - gateway restarted, fresh port assigned",
                         LogLevel.Info);
 
-                string epochDelta = (_lastEpochSeconds > 0 && result.EpochSeconds >= _lastEpochSeconds)
-                    ? $" (+{result.EpochSeconds - _lastEpochSeconds}s)" : "";
-                LogManager.Instance.LogDebug($"NatPmpManager.GetVpnPortAsync: SSOE {result.EpochSeconds}s{epochDelta}");
+                if (LogManager.Instance.DebugMode)
+                {
+                    string epochDelta = (_lastEpochSeconds > 0 && result.EpochSeconds >= _lastEpochSeconds)
+                        ? $" (+{result.EpochSeconds - _lastEpochSeconds}s)" : "";
+                    LogManager.Instance.LogDebug($"NatPmpManager.GetVpnPortAsync: SSOE {result.EpochSeconds}s{epochDelta}");
+                }
 
                 _lastEpochSeconds  = result.EpochSeconds;
                 _lastExternalPort  = result.ExternalPort;
@@ -246,10 +250,10 @@ namespace qbPortWeaver
         }
 
         private static ushort ReadUShortBE(byte[] data, int offset)
-            => (ushort)((data[offset] << 8) | data[offset + 1]);
+            => BinaryPrimitives.ReadUInt16BigEndian(data.AsSpan(offset));
 
         private static uint ReadUIntBE(byte[] data, int offset)
-            => (uint)((data[offset] << 24) | (data[offset + 1] << 16) | (data[offset + 2] << 8) | data[offset + 3]);
+            => BinaryPrimitives.ReadUInt32BigEndian(data.AsSpan(offset));
 
         // Sends a NAT-PMP external address request (RFC 6886 opcode 0) and returns the public IP.
         // maxAttempts=1 for discovery (best-effort, all adapters probed in parallel)

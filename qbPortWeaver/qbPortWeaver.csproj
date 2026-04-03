@@ -27,6 +27,7 @@
          S4721 - post-update command is user-configured, arbitrary execution is intended (PortSyncService.cs)
          S4790 - TMDB API v3 requires key as query parameter, HTTPS only (TmdbClient.cs) -->
     <NoWarn>S108;S1075;S2068;S2221;S2486;S4721;S4790</NoWarn>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
   <ItemGroup>

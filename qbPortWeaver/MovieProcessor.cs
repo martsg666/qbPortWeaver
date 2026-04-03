@@ -284,7 +284,7 @@ namespace qbPortWeaver
             }
             catch (HttpRequestException ex)
             {
-                LogManager.Instance.LogMessage($"Failed to look up TMDB movie: {ex.Message}", LogLevel.Error, Subsystem.MediaManager);
+                LogManager.Instance.LogMessage($"Failed to look up TMDB movie: {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
                 return (null, false);
             }
         }

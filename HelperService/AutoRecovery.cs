@@ -10,7 +10,7 @@ namespace qbPortWeaver.HelperService;
 /// Supported actions: restart (stop/start a Windows service by name) and
 /// cycle-adapter (disable/enable a network adapter via netsh).
 /// </summary>
-internal static class AutoRecovery
+internal static partial class AutoRecovery
 {
     private const int ProcessKillTimeoutMs      = 5000;
     private const int ServiceRestartDelayMs     = 5000;
@@ -283,52 +283,62 @@ internal static class AutoRecovery
                 int pid = Marshal.PtrToStructure<ServiceStatusProcess>(buf).dwProcessId;
                 if (pid <= 0) return;
 
-                using var process = Process.GetProcessById(pid);
+                Process process;
+                try { process = Process.GetProcessById(pid); }
+                catch (ArgumentException) { return; } // already exited between SCM query and here
 
-                // Stage 1: Process.Kill
-                try { process.Kill(entireProcessTree: true); }
-                catch (InvalidOperationException) { return; } // already exited
-
-                if (process.WaitForExit(ProcessKillTimeoutMs))
+                using (process)
                 {
-                    logger.LogWarn($"Service '{sc.ServiceName}' process force-killed (PID {pid})");
-                    return;
-                }
+                    // Stage 1: Process.Kill
+                    try { process.Kill(entireProcessTree: true); }
+                    catch (InvalidOperationException) { return; } // already exited
+                    catch (System.ComponentModel.Win32Exception) { return; } // access denied or process protected
 
-                // Stage 2: taskkill /F /T
-                try
-                {
-                    using var taskkill = Process.Start(new ProcessStartInfo(
-                        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "taskkill.exe"),
-                        $"/F /T /PID {pid}")
+                    if (process.WaitForExit(ProcessKillTimeoutMs))
                     {
-                        UseShellExecute = false,
-                        CreateNoWindow  = true
-                    });
-                    taskkill?.WaitForExit(ProcessKillTimeoutMs);
-                }
-                catch (Exception ex)
-                {
-                    logger.LogWarn($"Failed to kill service '{sc.ServiceName}' via taskkill (PID {pid}): {ex.Message}");
-                }
-                if (process.WaitForExit(ProcessKillTimeoutMs))
-                {
-                    logger.LogWarn($"Service '{sc.ServiceName}' process force-killed via taskkill (PID {pid})");
-                    return;
-                }
+                        logger.LogWarn($"Service '{sc.ServiceName}' process force-killed via Process.Kill (PID {pid})");
+                        return;
+                    }
 
-                // Stage 3: retry Process.Kill after taskkill may have weakened the process tree
-                try { process.Kill(entireProcessTree: true); }
-                catch (InvalidOperationException)
-                {
-                    logger.LogWarn($"Service '{sc.ServiceName}' process force-killed (PID {pid})");
-                    return;
-                }
+                    // Stage 2: taskkill /F /T
+                    try
+                    {
+                        using var taskkill = Process.Start(new ProcessStartInfo(
+                            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "taskkill.exe"),
+                            $"/F /T /PID {pid}")
+                        {
+                            UseShellExecute = false,
+                            CreateNoWindow  = true
+                        });
+                        taskkill?.WaitForExit(ProcessKillTimeoutMs);
+                    }
+                    catch (Exception ex)
+                    {
+                        logger.LogWarn($"Failed to kill service '{sc.ServiceName}' via taskkill (PID {pid}): {ex.Message}");
+                    }
+                    if (process.WaitForExit(ProcessKillTimeoutMs))
+                    {
+                        logger.LogWarn($"Service '{sc.ServiceName}' process force-killed via taskkill (PID {pid})");
+                        return;
+                    }
 
-                if (process.WaitForExit(ProcessKillTimeoutMs))
-                    logger.LogWarn($"Service '{sc.ServiceName}' process force-killed (PID {pid})");
-                else
-                    logger.LogWarn($"Service '{sc.ServiceName}' process (PID {pid}) still running after all kill attempts");
+                    // Stage 3: retry Process.Kill after taskkill may have weakened the process tree
+                    try { process.Kill(entireProcessTree: true); }
+                    catch (InvalidOperationException)
+                    {
+                        logger.LogWarn($"Service '{sc.ServiceName}' process force-killed via Process.Kill retry (PID {pid})");
+                        return;
+                    }
+                    catch (System.ComponentModel.Win32Exception)
+                    {
+                        return; // access denied or process protected
+                    }
+
+                    if (process.WaitForExit(ProcessKillTimeoutMs))
+                        logger.LogWarn($"Service '{sc.ServiceName}' process force-killed via Process.Kill retry (PID {pid})");
+                    else
+                        logger.LogWarn($"Service '{sc.ServiceName}' process (PID {pid}) still running after all kill attempts");
+                }
             }
             finally
             {
@@ -358,13 +368,16 @@ internal static class AutoRecovery
             using var process = Process.Start(startInfo);
             if (process is null)
             {
-                logger.LogWarn($"Failed to start netsh");
+                logger.LogWarn("Failed to start netsh");
                 return false;
             }
 
-            // Read stdout/stderr before WaitForExit to avoid deadlock on full buffers
-            string stdout = await process.StandardOutput.ReadToEndAsync().ConfigureAwait(false);
-            string stderr = await process.StandardError.ReadToEndAsync().ConfigureAwait(false);
+            // Read stdout and stderr concurrently before WaitForExit to avoid deadlock on full pipe buffers
+            Task<string> stdoutTask = process.StandardOutput.ReadToEndAsync();
+            Task<string> stderrTask = process.StandardError.ReadToEndAsync();
+            await Task.WhenAll(stdoutTask, stderrTask).ConfigureAwait(false);
+            string stdout = stdoutTask.Result;
+            string stderr = stderrTask.Result;
 
             bool exited = await Task.Run(() => process.WaitForExit(NetshTimeoutMs)).ConfigureAwait(false);
             if (!exited)
@@ -394,8 +407,9 @@ internal static class AutoRecovery
 
     private const int ScStatusProcessInfo = 0; // SC_STATUS_PROCESS_INFO - only valid infoLevel for QueryServiceStatusEx
 
-    [DllImport("advapi32.dll", SetLastError = true)]
-    private static extern bool QueryServiceStatusEx(
+    [LibraryImport("advapi32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool QueryServiceStatusEx(
         IntPtr hService, int infoLevel, IntPtr buffer, int bufSize, out int bytesNeeded);
 
     [StructLayout(LayoutKind.Sequential)]

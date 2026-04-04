@@ -103,7 +103,7 @@ namespace qbPortWeaver
 
             var proposedPath = BuildStandaloneMoviePath(filePath, info);
 
-            if (FileImporter.IsDuplicateFile(filePath, proposedPath)) return;
+            if (MediaImporter.IsDuplicateFile(filePath, proposedPath)) return;
 
             if (!string.Equals(filePath, proposedPath, StringComparison.OrdinalIgnoreCase))
                 proposals.Add(new MediaProposal(MediaTypeMovie, filePath, proposedPath, isConfident));
@@ -145,7 +145,7 @@ namespace qbPortWeaver
             {
                 var proposedPath = BuildFolderMoviePath(file, info);
 
-                if (FileImporter.IsDuplicateFile(file, proposedPath)) continue;
+                if (MediaImporter.IsDuplicateFile(file, proposedPath)) continue;
 
                 if (!string.Equals(file, proposedPath, StringComparison.OrdinalIgnoreCase))
                     proposals.Add(new MediaProposal(MediaTypeMovie, file, proposedPath, isConfident));
@@ -271,7 +271,7 @@ namespace qbPortWeaver
                     if (info is not null) isConfident = false;
                 }
 
-                (info, isConfident) = await TryFallbackLookupsAsync(title, year, info, isConfident).ConfigureAwait(false);
+                (info, isConfident) = await FileNameParser.TryFallbackLookupsAsync(title, year, info, isConfident, _tmdb.SearchMovieAsync, i => i.Year is not null).ConfigureAwait(false);
 
                 if (info is null)
                 {
@@ -287,52 +287,6 @@ namespace qbPortWeaver
                 LogManager.Instance.LogMessage($"Failed to look up TMDB movie: {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
                 return (null, false);
             }
-        }
-
-        // Applies two fallback TMDB lookup strategies to reduce unmatched results.
-        // After-dash strategy: only runs when info is null (no match from initial lookups).
-        // Trailing-number strategy: runs when info is null OR info.Year is null.
-        private async Task<(MovieInfo? Info, bool IsConfident)> TryFallbackLookupsAsync(
-            string title, int? year, MovieInfo? info, bool isConfident)
-        {
-            // Try the part after " - " (e.g. "Series 1 - The Subtitle")
-            var afterDash = info is null ? FileNameParser.ExtractAfterDash(title) : null;
-
-            if (afterDash is not null)
-            {
-                LogManager.Instance.LogDebug($"MovieProcessor.TryFallbackLookupsAsync: Retrying with '{afterDash}'", Subsystem.MediaManager);
-                info = await _tmdb.SearchMovieAsync(afterDash, year).ConfigureAwait(false);
-                if (info is not null) isConfident = false;
-            }
-
-            // Try without trailing number (e.g. "Title 1" -> "Title")
-            // Also runs when info is not null but lacks a year: a year-less TMDB result is low-quality
-            // (ambiguous match), so we attempt a stripped title in case TMDB returns a better-quality
-            // result that includes a year. If found, it replaces the existing match with isConfident=false
-            // so the user can review it in the Media Manager before the file is imported.
-            if (info is null || (info.Year is null && title.Length > 2))
-            {
-                var altInfo = await TryWithoutTrailingNumberAsync(title, year).ConfigureAwait(false);
-                if (altInfo is not null)
-                {
-                    info        = altInfo;
-                    isConfident = false;
-                }
-            }
-
-            return (info, isConfident);
-        }
-
-        // Strips a single trailing digit preceded by a space (e.g. "Title 2" -> "Title")
-        // and searches TMDB. Returns the match only if it includes a year (quality gate).
-        private async Task<MovieInfo?> TryWithoutTrailingNumberAsync(string title, int? year)
-        {
-            var withoutNum = FileNameParser.StripTrailingNumber(title);
-            if (withoutNum is null) return null;
-
-            LogManager.Instance.LogDebug($"MovieProcessor.TryWithoutTrailingNumberAsync: Retrying without trailing number '{withoutNum}'", Subsystem.MediaManager);
-            var altInfo = await _tmdb.SearchMovieAsync(withoutNum, year).ConfigureAwait(false);
-            return altInfo?.Year is not null ? altInfo : null;
         }
 
         // Detects multi-part suffixes such as "cd1", "pt2", "disc3" and returns the normalised token.

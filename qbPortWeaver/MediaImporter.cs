@@ -5,11 +5,15 @@ using System.Text.Json;
 
 namespace qbPortWeaver
 {
-    /// <summary>Imports media files into the library via hardlink, copy, or move, with automatic hardlink-to-copy fallback.</summary>
-    internal static partial class FileImporter
+    /// <summary>File-level infrastructure for the media import pipeline: file transfer (hardlink/copy/move), library fingerprint index, source and library cache management, and file utilities.</summary>
+    internal static partial class MediaImporter
     {
         // Library index: fingerprints (size + partial SHA-256) of every file in the library folders.
         private const int LibraryIndexFreshnessSeconds = 15; // minimum interval between full library index rebuilds
+        // Maximum concurrent fingerprint reads for both source and library fingerprinting.
+        // I/O-bound: storage throughput is the constraint, not CPU count.
+        // 8 concurrent reads balances throughput vs not overwhelming slower storage.
+        internal const int FingerprintParallelism = 8;
         private static HashSet<string>? _libraryFingerprints;
         private static readonly object _libraryLock = new();
         private static readonly SemaphoreSlim _libraryBuildSemaphore = new(1, 1);
@@ -51,7 +55,7 @@ namespace qbPortWeaver
             if (!result)
             {
                 int error = Marshal.GetLastWin32Error();
-                LogManager.Instance.LogDebug($"FileImporter.TryCreateHardLink: Failed (Win32 error {error}) - '{Path.GetFileName(sourcePath)}'", Subsystem.MediaManager);
+                LogManager.Instance.LogDebug($"MediaImporter.TryCreateHardLink: Failed (Win32 error {error}) - '{Path.GetFileName(sourcePath)}'", Subsystem.MediaManager);
             }
             return result;
         }
@@ -77,7 +81,7 @@ namespace qbPortWeaver
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
-                LogManager.Instance.LogDebug($"FileImporter.VerifyHardLink: Could not verify - {ex.Message}", Subsystem.MediaManager);
+                LogManager.Instance.LogDebug($"MediaImporter.VerifyHardLink: Could not verify - {ex.Message}", Subsystem.MediaManager);
                 return false;
             }
         }
@@ -105,7 +109,7 @@ namespace qbPortWeaver
 
             if (IsDuplicateFile(sourcePath, destinationPath))
             {
-                LogManager.Instance.LogDebug($"FileImporter.ImportFile: Skipped - target already exists with same size: '{Path.GetFileName(destinationPath)}'", Subsystem.MediaManager);
+                LogManager.Instance.LogDebug($"MediaImporter.ImportFile: Skipped - target already exists with same size: '{Path.GetFileName(destinationPath)}'", Subsystem.MediaManager);
                 return;
             }
 
@@ -129,32 +133,32 @@ namespace qbPortWeaver
                     {
                         if (VerifyHardLink(sourcePath, destinationPath))
                         {
-                            LogManager.Instance.LogDebug($"FileImporter.ImportFile: Hardlinked '{Path.GetFileName(destinationPath)}'", Subsystem.MediaManager);
+                            LogManager.Instance.LogDebug($"MediaImporter.ImportFile: Hardlinked '{Path.GetFileName(destinationPath)}'", Subsystem.MediaManager);
                         }
                         else
                         {
                             LogManager.Instance.LogMessage($"Hardlink not verified for '{Path.GetFileName(destinationPath)}' (filesystem created a copy instead), replacing with proper copy", LogLevel.Warn, Subsystem.MediaManager);
                             File.Delete(destinationPath);
                             File.Copy(sourcePath, destinationPath, overwrite: false);
-                            LogManager.Instance.LogDebug($"FileImporter.ImportFile: Copied (verified fallback) '{Path.GetFileName(destinationPath)}'", Subsystem.MediaManager);
+                            LogManager.Instance.LogDebug($"MediaImporter.ImportFile: Copied (verified fallback) '{Path.GetFileName(destinationPath)}'", Subsystem.MediaManager);
                         }
                     }
                     else
                     {
                         LogManager.Instance.LogMessage("Hardlink failed, falling back to copy", LogLevel.Warn, Subsystem.MediaManager);
                         File.Copy(sourcePath, destinationPath, overwrite: false);
-                        LogManager.Instance.LogDebug($"FileImporter.ImportFile: Copied (fallback) '{Path.GetFileName(destinationPath)}'", Subsystem.MediaManager);
+                        LogManager.Instance.LogDebug($"MediaImporter.ImportFile: Copied (fallback) '{Path.GetFileName(destinationPath)}'", Subsystem.MediaManager);
                     }
                     break;
 
                 case ImportMode.Copy:
                     File.Copy(sourcePath, destinationPath, overwrite: false);
-                    LogManager.Instance.LogDebug($"FileImporter.ImportFile: Copied '{Path.GetFileName(destinationPath)}'", Subsystem.MediaManager);
+                    LogManager.Instance.LogDebug($"MediaImporter.ImportFile: Copied '{Path.GetFileName(destinationPath)}'", Subsystem.MediaManager);
                     break;
 
                 case ImportMode.Move:
                     File.Move(sourcePath, destinationPath);
-                    LogManager.Instance.LogDebug($"FileImporter.ImportFile: Moved '{Path.GetFileName(destinationPath)}'", Subsystem.MediaManager);
+                    LogManager.Instance.LogDebug($"MediaImporter.ImportFile: Moved '{Path.GetFileName(destinationPath)}'", Subsystem.MediaManager);
                     break;
 
                 default:
@@ -279,7 +283,7 @@ namespace qbPortWeaver
             {
                 if (_libraryFingerprints is not null && DateTimeOffset.UtcNow - _libraryLastBuilt < TimeSpan.FromSeconds(LibraryIndexFreshnessSeconds))
                 {
-                    LogManager.Instance.LogDebug($"FileImporter.BuildLibraryIndex: Reusing index built within the last {LibraryIndexFreshnessSeconds}s", Subsystem.MediaManager);
+                    LogManager.Instance.LogDebug($"MediaImporter.BuildLibraryIndex: Reusing index built within the last {LibraryIndexFreshnessSeconds}s", Subsystem.MediaManager);
                     return;
                 }
 
@@ -289,11 +293,22 @@ namespace qbPortWeaver
                 var sw = System.Diagnostics.Stopwatch.StartNew();
                 var fingerprints = new HashSet<string>(StringComparer.Ordinal);
                 var seenPaths    = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                int cached = 0;
-                int computed = 0;
+                int cached = 0, computed = 0;
 
                 foreach (var path in new[] { moviesLibraryPath, tvShowsLibraryPath }.Where(p => !string.IsNullOrWhiteSpace(p) && Directory.Exists(p)))
-                    IndexLibraryPath(path, fingerprints, seenPaths, ref cached, ref computed);
+                {
+                    List<FileInfo> files;
+                    try   { files = EnumerateLibraryFolder(path); }
+                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                    {
+                        LogManager.Instance.LogMessage($"Library index: skipped '{path}': {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
+                        continue;
+                    }
+
+                    var (c, comp) = FingerprintLibraryFiles(files, fingerprints, seenPaths, cancellationToken);
+                    cached   += c;
+                    computed += comp;
+                }
 
                 PruneLibraryCache(seenPaths);
 
@@ -331,7 +346,7 @@ namespace qbPortWeaver
                     : new(StringComparer.OrdinalIgnoreCase);
                 _libraryCacheDirty = false;
 
-                LogManager.Instance.LogDebug($"FileImporter.LoadLibraryCache: Loaded {_libraryCache.Count} entries", Subsystem.MediaManager);
+                LogManager.Instance.LogDebug($"MediaImporter.LoadLibraryCache: Loaded {_libraryCache.Count} entries", Subsystem.MediaManager);
             }
             catch (Exception ex)
             {
@@ -340,39 +355,52 @@ namespace qbPortWeaver
             }
         }
 
-        // Enumerates a single library path and fingerprints each file, using the cache where possible.
-        // EnumerateFiles on DirectoryInfo returns FileInfo objects whose Length and LastWriteTimeUtc
-        // are populated from the directory enumeration data — no extra stat per file.
-        // IgnoreInaccessible = true silently skips permission-denied subfolders instead of aborting the entire library path.
-        private static void IndexLibraryPath(
-            string path, HashSet<string> fingerprints, HashSet<string> seenPaths,
-            ref int cached, ref int computed)
-        {
-            try
+        // Enumerates all files in a library folder.
+        // FileInfo metadata (Length, LastWriteTimeUtc) comes from the directory listing — no extra stat per file.
+        // IgnoreInaccessible = true silently skips permission-denied folders.
+        private static List<FileInfo> EnumerateLibraryFolder(string folder) =>
+            new DirectoryInfo(folder).EnumerateFiles("*", new EnumerationOptions
             {
-                foreach (var fi in new DirectoryInfo(path).EnumerateFiles("*", new EnumerationOptions
+                RecurseSubdirectories = true,
+                IgnoreInaccessible    = true
+            }).ToList();
+
+        // Fingerprints a pre-enumerated list of library files in parallel, using the cache where possible.
+        // Each file requires a 128 KB read to compute its fingerprint; reads are bounded by FingerprintParallelism.
+        private static (int Cached, int Computed) FingerprintLibraryFiles(
+            List<FileInfo> files, HashSet<string> fingerprints, HashSet<string> seenPaths,
+            CancellationToken cancellationToken)
+        {
+            var results = new ConcurrentBag<(string Fingerprint, bool WasCached)>();
+            var seen    = new ConcurrentBag<string>();
+
+            Parallel.ForEach(files,
+                new ParallelOptions { MaxDegreeOfParallelism = FingerprintParallelism, CancellationToken = cancellationToken },
+                fi =>
                 {
-                    RecurseSubdirectories = true,
-                    IgnoreInaccessible    = true
-                }))
-                {
-                    seenPaths.Add(fi.FullName);
+                    seen.Add(fi.FullName);
                     try
                     {
                         string fp = GetOrComputeLibraryFingerprint(fi, out bool wasCached);
-                        fingerprints.Add(fp);
-                        if (wasCached) cached++; else computed++;
+                        results.Add((fp, wasCached));
                     }
                     catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
                     {
-                        LogManager.Instance.LogDebug($"FileImporter.IndexLibraryPath: Skipped '{fi.Name}': {ex.Message}", Subsystem.MediaManager);
+                        LogManager.Instance.LogDebug($"MediaImporter.FingerprintLibraryFiles: Skipped '{fi.Name}': {ex.Message}", Subsystem.MediaManager);
                     }
-                }
-            }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                });
+
+            // Merge into caller-provided collections (single-threaded; no concurrent access from here)
+            int cached = 0, computed = 0;
+            foreach (var (fp, wasCached) in results)
             {
-                LogManager.Instance.LogMessage($"Library index: skipped '{path}': {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
+                fingerprints.Add(fp);
+                if (wasCached) cached++; else computed++;
             }
+            foreach (var p in seen)
+                seenPaths.Add(p);
+
+            return (cached, computed);
         }
 
         // Returns a cached library fingerprint if metadata matches, otherwise computes and caches it.
@@ -422,7 +450,7 @@ namespace qbPortWeaver
                 _libraryCacheDirty = true;
             }
 
-            LogManager.Instance.LogDebug($"FileImporter.PruneLibraryCache: Removed {stale.Count} stale entries", Subsystem.MediaManager);
+            LogManager.Instance.LogDebug($"MediaImporter.PruneLibraryCache: Removed {stale.Count} stale entries", Subsystem.MediaManager);
         }
 
         /// <summary>Adds a file's fingerprint to the library index and cache after a successful import. No-op if the index hasn't been built yet.</summary>
@@ -448,7 +476,7 @@ namespace qbPortWeaver
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
-                LogManager.Instance.LogDebug($"FileImporter.AddToLibraryIndex: Could not index '{Path.GetFileName(importedFilePath)}': {ex.Message}", Subsystem.MediaManager);
+                LogManager.Instance.LogDebug($"MediaImporter.AddToLibraryIndex: Could not index '{Path.GetFileName(importedFilePath)}': {ex.Message}", Subsystem.MediaManager);
             }
         }
 
@@ -470,7 +498,7 @@ namespace qbPortWeaver
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
-                LogManager.Instance.LogDebug($"FileImporter.IsAlreadyInLibrary: Could not read '{fi.Name}': {ex.Message}", Subsystem.MediaManager);
+                LogManager.Instance.LogDebug($"MediaImporter.IsAlreadyInLibrary: Could not read '{fi.Name}': {ex.Message}", Subsystem.MediaManager);
                 return false;
             }
         }
@@ -481,7 +509,7 @@ namespace qbPortWeaver
             try   { return IsAlreadyInLibrary(new FileInfo(sourcePath)); }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
-                LogManager.Instance.LogDebug($"FileImporter.IsAlreadyInLibrary: Could not read '{Path.GetFileName(sourcePath)}': {ex.Message}", Subsystem.MediaManager);
+                LogManager.Instance.LogDebug($"MediaImporter.IsAlreadyInLibrary: Could not read '{Path.GetFileName(sourcePath)}': {ex.Message}", Subsystem.MediaManager);
                 return false;
             }
         }
@@ -566,7 +594,7 @@ namespace qbPortWeaver
                 _sourceCacheDirty = false;
 
                 sw.Stop();
-                LogManager.Instance.LogDebug($"FileImporter.LoadSourceCache: Loaded {_sourceCache.Count} entries", Subsystem.MediaManager);
+                LogManager.Instance.LogDebug($"MediaImporter.LoadSourceCache: Loaded {_sourceCache.Count} entries", Subsystem.MediaManager);
                 LogManager.Instance.LogMessage($"Source cache loaded: {_sourceCache.Count} entries in {sw.ElapsedMilliseconds}ms", LogLevel.Info, Subsystem.MediaManager);
             }
             catch (Exception ex)
@@ -612,7 +640,7 @@ namespace qbPortWeaver
                 lock (_cacheFileLock)
                     WriteAtomic(GetCacheFilePath(SourceCacheFileName), json);
 
-                LogManager.Instance.LogDebug($"FileImporter.SaveSourceCache: Saved {toSave.Count} entries", Subsystem.MediaManager);
+                LogManager.Instance.LogDebug($"MediaImporter.SaveSourceCache: Saved {toSave.Count} entries", Subsystem.MediaManager);
             }
             catch (Exception ex)
             {
@@ -642,7 +670,7 @@ namespace qbPortWeaver
                 lock (_cacheFileLock)
                     WriteAtomic(GetCacheFilePath(LibraryCacheFileName), json);
 
-                LogManager.Instance.LogDebug($"FileImporter.SaveLibraryCache: Saved {cache.Count} entries", Subsystem.MediaManager);
+                LogManager.Instance.LogDebug($"MediaImporter.SaveLibraryCache: Saved {cache.Count} entries", Subsystem.MediaManager);
             }
             catch (Exception ex)
             {
@@ -685,7 +713,7 @@ namespace qbPortWeaver
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
-                LogManager.Instance.LogDebug($"FileImporter.TryDeleteFile: Could not delete '{path}': {ex.Message}", Subsystem.MediaManager);
+                LogManager.Instance.LogDebug($"MediaImporter.TryDeleteFile: Could not delete '{path}': {ex.Message}", Subsystem.MediaManager);
             }
         }
 

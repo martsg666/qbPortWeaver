@@ -203,6 +203,11 @@ namespace qbPortWeaver
 
             int.TryParse(match.Groups[1].Value, out int season);
             int.TryParse(match.Groups[2].Value, out int episode);
+
+            // Season or episode 0 is not a valid episode (e.g. S00E00 matches the regex but is not importable)
+            if (season == 0 || episode == 0)
+                return null;
+
             return new TvShowEpisodeInfo(
                 ShowName: rawTitle,
                 Year:     year,
@@ -488,7 +493,7 @@ namespace qbPortWeaver
 
         /// <summary>
         /// Strips a single trailing digit preceded by a space (e.g. "Title 2" -> "Title"), or null
-        /// if the pattern is not present. Used by MovieProcessor and TvShowProcessor as a fallback lookup strategy.
+        /// if the pattern is not present. Used by <see cref="TryFallbackLookupsAsync{T}"/> as a fallback lookup strategy.
         /// </summary>
         internal static string? StripTrailingNumber(string title)
         {
@@ -496,6 +501,41 @@ namespace qbPortWeaver
             if (trimmed.Length <= 2 || !char.IsDigit(trimmed[^1]) || trimmed[^2] != ' ')
                 return null;
             return trimmed[..^2].Trim();
+        }
+
+        // Applies two fallback TMDB lookup strategies using a caller-supplied search function.
+        // After-dash strategy: retries with the part after " - " when info is null (no initial match).
+        // Trailing-number strategy: retries without trailing digit when info is null OR hasYear returns false
+        // (a year-less result is ambiguous; a stripped-title result that includes a year is higher quality).
+        internal static async Task<(T? Info, bool IsConfident)> TryFallbackLookupsAsync<T>(
+            string title, int? year, T? info, bool isConfident,
+            Func<string, int?, Task<T?>> search,
+            Func<T, bool> hasYear) where T : class
+        {
+            var afterDash = info is null ? ExtractAfterDash(title) : null;
+            if (afterDash is not null)
+            {
+                LogManager.Instance.LogDebug($"FileNameParser.TryFallbackLookupsAsync: Retrying with after-dash title '{afterDash}'", Subsystem.MediaManager);
+                info = await search(afterDash, year).ConfigureAwait(false);
+                if (info is not null) isConfident = false;
+            }
+
+            if (info is null || (!hasYear(info) && title.Length > 2))
+            {
+                var withoutNum = StripTrailingNumber(title);
+                if (withoutNum is not null)
+                {
+                    LogManager.Instance.LogDebug($"FileNameParser.TryFallbackLookupsAsync: Retrying without trailing number '{withoutNum}'", Subsystem.MediaManager);
+                    var altInfo = await search(withoutNum, year).ConfigureAwait(false);
+                    if (altInfo is not null && hasYear(altInfo))
+                    {
+                        info        = altInfo;
+                        isConfident = false;
+                    }
+                }
+            }
+
+            return (info, isConfident);
         }
     }
 

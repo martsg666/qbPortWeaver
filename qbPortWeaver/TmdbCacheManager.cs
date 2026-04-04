@@ -85,8 +85,8 @@ namespace qbPortWeaver
             _showCacheDirty  = false;
             _movieCacheDirty = false;
             Interlocked.Exchange(ref _loaded, 0);
-            FileImporter.TryDeleteFile(FileImporter.GetCacheFilePath(ShowCacheFileName));
-            FileImporter.TryDeleteFile(FileImporter.GetCacheFilePath(MovieCacheFileName));
+            MediaImporter.TryDeleteFile(MediaImporter.GetCacheFilePath(ShowCacheFileName));
+            MediaImporter.TryDeleteFile(MediaImporter.GetCacheFilePath(MovieCacheFileName));
             LogManager.Instance.LogMessage("TMDB caches cleared", LogLevel.Info, Subsystem.MediaManager);
         }
 
@@ -100,7 +100,7 @@ namespace qbPortWeaver
         private static void LoadFromDisk<T>(
             ConcurrentDictionary<string, (T? Info, bool IsConfident)> cache, string fileName, string label) where T : class
         {
-            var filePath = FileImporter.GetCacheFilePath(fileName);
+            var filePath = MediaImporter.GetCacheFilePath(fileName);
             if (!File.Exists(filePath)) return;
 
             try
@@ -145,8 +145,8 @@ namespace qbPortWeaver
                         kv => new TmdbEntry<T>(kv.Value.Info, kv.Value.IsConfident, now),
                         StringComparer.OrdinalIgnoreCase);
 
-                var json = JsonSerializer.Serialize(toSave, FileImporter.JsonWriteOptions);
-                FileImporter.WriteAtomic(FileImporter.GetCacheFilePath(fileName), json);
+                var json = JsonSerializer.Serialize(toSave, MediaImporter.JsonWriteOptions);
+                MediaImporter.WriteAtomic(MediaImporter.GetCacheFilePath(fileName), json);
 
                 LogManager.Instance.LogDebug(
                     $"TmdbCacheManager.SaveToDisk: Saved {toSave.Count} {label} entries",

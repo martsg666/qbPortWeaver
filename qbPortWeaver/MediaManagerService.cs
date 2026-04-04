@@ -7,11 +7,6 @@ namespace qbPortWeaver
     {
         internal const int MaxSubfolderDepth = 10; // passed as EnumerationOptions.MaxRecursionDepth
 
-        // Maximum number of concurrent fingerprint reads during Phase 2.
-        // I/O-bound work: storage throughput is the constraint, not CPU count.
-        // 8 concurrent reads balances throughput vs not overwhelming slower storage.
-        private const int FingerprintParallelism = 8;
-
         /// <summary>
         /// Runs one media import cycle. Returns immediately if the feature is disabled, the TMDB API key is not configured,
         /// or no library paths are set.
@@ -60,7 +55,7 @@ namespace qbPortWeaver
             // Fast: load source and TMDB caches into memory (in-memory no-op after first cycle)
             await Task.Run(() =>
             {
-                FileImporter.LoadSourceCache();
+                MediaImporter.LoadSourceCache();
                 TmdbCacheManager.Load();
                 TmdbCacheManager.EvictNullMovies();
                 TmdbCacheManager.EvictNullShows();
@@ -79,7 +74,7 @@ namespace qbPortWeaver
             // Overlap: library index enumeration and source folder enumeration are both directory listings on
             // different paths and can run concurrently. Phase 2 fingerprinting waits for both to complete
             // since it requires the library index to be ready.
-            var libraryTask = Task.Run(() => FileImporter.BuildLibraryIndex(moviesLibraryPath, tvShowsLibraryPath, cancellationToken), cancellationToken);
+            var libraryTask = Task.Run(() => MediaImporter.BuildLibraryIndex(moviesLibraryPath, tvShowsLibraryPath, cancellationToken), cancellationToken);
             var enumerated  = await EnumerateSourceFoldersAsync(validFolders, cancellationToken).ConfigureAwait(false);
             await libraryTask.ConfigureAwait(false);
             var classified  = await FingerprintSourceFoldersAsync(enumerated, cancellationToken).ConfigureAwait(false);
@@ -97,8 +92,8 @@ namespace qbPortWeaver
                 CleanupSourceFolders(dryRun, cancellationToken);
 
             TmdbCacheManager.Save();
-            FileImporter.SaveSourceCache();
-            FileImporter.SaveLibraryCache();
+            MediaImporter.SaveSourceCache();
+            MediaImporter.SaveLibraryCache();
             scanSw.Stop();
             LogManager.Instance.LogMessage($"Scan completed: {total} candidate file(s) in {scanSw.ElapsedMilliseconds}ms", LogLevel.Info, Subsystem.MediaManager);
         }
@@ -179,7 +174,7 @@ namespace qbPortWeaver
             // Fast: load source and TMDB caches into memory (in-memory no-op after first cycle)
             await Task.Run(() =>
             {
-                FileImporter.LoadSourceCache();
+                MediaImporter.LoadSourceCache();
                 TmdbCacheManager.Load();
                 TmdbCacheManager.EvictNullMovies();
                 TmdbCacheManager.EvictNullShows();
@@ -198,7 +193,7 @@ namespace qbPortWeaver
             // Overlap: library index enumeration and source folder enumeration are both directory listings on
             // different paths and can run concurrently. Phase 2 fingerprinting waits for both to complete
             // since it requires the library index to be ready.
-            var libraryTask = Task.Run(() => FileImporter.BuildLibraryIndex(moviesLibraryPath, tvShowsLibraryPath, cancellationToken), cancellationToken);
+            var libraryTask = Task.Run(() => MediaImporter.BuildLibraryIndex(moviesLibraryPath, tvShowsLibraryPath, cancellationToken), cancellationToken);
             var enumerated  = await EnumerateSourceFoldersAsync(validFolders, cancellationToken).ConfigureAwait(false);
             await libraryTask.ConfigureAwait(false);
             var classified  = await FingerprintSourceFoldersAsync(enumerated, cancellationToken).ConfigureAwait(false);
@@ -221,8 +216,8 @@ namespace qbPortWeaver
             var proposals = results.SelectMany(r => r).ToList();
 
             TmdbCacheManager.Save();
-            FileImporter.SaveSourceCache();
-            FileImporter.SaveLibraryCache();
+            MediaImporter.SaveSourceCache();
+            MediaImporter.SaveLibraryCache();
             scanSw.Stop();
             LogManager.Instance.LogMessage($"Scan completed: {proposals.Count} proposal(s) found in {scanSw.ElapsedMilliseconds}ms", LogLevel.Info, Subsystem.MediaManager);
             return proposals;
@@ -300,7 +295,7 @@ namespace qbPortWeaver
                         LogLevel.Info, Subsystem.MediaManager);
                     try
                     {
-                        FileImporter.ImportFile(proposal.OriginalPath, proposal.ProposedPath, importMode);
+                        MediaImporter.ImportFile(proposal.OriginalPath, proposal.ProposedPath, importMode);
                     }
                     catch (Exception ex)
                     {
@@ -431,13 +426,13 @@ namespace qbPortWeaver
                     MaxRecursionDepth     = MaxSubfolderDepth,
                     IgnoreInaccessible    = true
                 })
-                .Where(fi => FileNameParser.IsVideoFile(fi.FullName) && FileImporter.IsFileReadyForImport(fi))
+                .Where(fi => FileNameParser.IsVideoFile(fi.FullName) && MediaImporter.IsFileReadyForImport(fi))
                 .ToList();
         }
 
         // Phase 2: fingerprints candidates in parallel and classifies them into movies and TV episodes.
         // Requires BuildLibraryIndex to have completed before calling — IsAlreadyInLibrary uses the index.
-        // Folders are processed sequentially so that a single Parallel.ForEach (degree FingerprintParallelism)
+        // Folders are processed sequentially so that a single Parallel.ForEach (degree MediaImporter.FingerprintParallelism)
         // is active at a time — processing folders concurrently would multiply the parallelism by the folder count.
         private static Task<List<(string Folder, (string[] MovieFiles, string[] TvFiles) Items)>> FingerprintSourceFoldersAsync(
             List<(string Folder, List<FileInfo> Candidates)> enumerated, CancellationToken cancellationToken)
@@ -464,7 +459,7 @@ namespace qbPortWeaver
                 int movieTotal = classified.Sum(c => c.Items.MovieFiles.Length);
                 int tvTotal    = classified.Sum(c => c.Items.TvFiles.Length);
                 classifySw.Stop();
-                var (sourceCached, sourceComputed) = FileImporter.GetSourceCacheStats();
+                var (sourceCached, sourceComputed) = MediaImporter.GetSourceCacheStats();
                 LogManager.Instance.LogMessage(
                     $"Source files classified: {movieTotal + tvTotal} ({movieTotal} movies, {tvTotal} TV episodes) in {classifySw.ElapsedMilliseconds}ms (cached={sourceCached}, computed={sourceComputed})",
                     LogLevel.Info, Subsystem.MediaManager);
@@ -473,19 +468,26 @@ namespace qbPortWeaver
             }, cancellationToken);
         }
 
-        // Fingerprints candidates in parallel and splits them into movie and TV episode file paths.
-        // Each candidate requires a 128 KB read to compute its fingerprint; reads are bounded by FingerprintParallelism.
+        // Fingerprints candidates in parallel, filters out files already in the library, and classifies
+        // the remainder into movie and TV episode file paths in a single pass.
+        // Each candidate requires a 128 KB read to compute its fingerprint; reads are bounded by MediaImporter.FingerprintParallelism.
         private static (string[] MovieFiles, string[] TvFiles) FingerprintCandidates(List<FileInfo> candidates, CancellationToken cancellationToken)
         {
-            var videoFiles = new ConcurrentBag<FileInfo>();
-            Parallel.ForEach(candidates,
-                new ParallelOptions { MaxDegreeOfParallelism = FingerprintParallelism, CancellationToken = cancellationToken },
-                fi => { if (!FileImporter.IsAlreadyInLibrary(fi)) videoFiles.Add(fi); });
+            var movies  = new ConcurrentBag<string>();
+            var tvShows = new ConcurrentBag<string>();
 
-            var videoList  = videoFiles.ToList(); // materialize once; ConcurrentBag re-enumerates on each traversal
-            var movieFiles = videoList.Where(fi => !FileNameParser.IsTvShow(fi.Name)).Select(fi => fi.FullName).ToArray();
-            var tvFiles    = videoList.Where(fi => FileNameParser.IsVideoTvShowEpisode(fi.FullName)).Select(fi => fi.FullName).ToArray();
-            return (movieFiles, tvFiles);
+            Parallel.ForEach(candidates,
+                new ParallelOptions { MaxDegreeOfParallelism = MediaImporter.FingerprintParallelism, CancellationToken = cancellationToken },
+                fi =>
+                {
+                    if (MediaImporter.IsAlreadyInLibrary(fi)) return;
+                    if (!FileNameParser.IsTvShow(fi.Name))
+                        movies.Add(fi.FullName);
+                    else if (FileNameParser.IsVideoTvShowEpisode(fi.FullName))
+                        tvShows.Add(fi.FullName);
+                });
+
+            return (movies.ToArray(), tvShows.ToArray());
         }
 
         private static string[] GetFolders(string key)
@@ -501,7 +503,7 @@ namespace qbPortWeaver
         {
             if (string.Equals(sourcePath, targetPath, StringComparison.OrdinalIgnoreCase)) return;
 
-            if (FileImporter.IsDuplicateFile(sourcePath, targetPath))
+            if (MediaImporter.IsDuplicateFile(sourcePath, targetPath))
             {
                 LogManager.Instance.LogDebug($"MediaManagerService.ImportFileWithLog: Target already exists '{Path.GetFileName(sourcePath)}'", Subsystem.MediaManager);
                 return;
@@ -511,7 +513,7 @@ namespace qbPortWeaver
             LogManager.Instance.LogMessage($"{verb} '{Path.GetFileName(sourcePath)}' -> {Path.GetRelativePath(sourceFolder, targetPath)}", LogLevel.Info, Subsystem.MediaManager);
 
             if (!dryRun)
-                FileImporter.ImportFile(sourcePath, targetPath, importMode);
+                MediaImporter.ImportFile(sourcePath, targetPath, importMode);
         }
 
         // Imports companion subtitle files that share the same base name as the video file
@@ -546,7 +548,7 @@ namespace qbPortWeaver
         /// <summary>Clears all media manager caches from memory and disk, forcing a full re-index and TMDB re-lookup on the next scan.</summary>
         public static void ClearAllCaches()
         {
-            FileImporter.ClearAllCaches();
+            MediaImporter.ClearAllCaches();
             TmdbCacheManager.Clear();
         }
 

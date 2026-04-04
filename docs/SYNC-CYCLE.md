@@ -220,8 +220,8 @@ The Media Manager scan is split into two phases that partially overlap for perfo
 
 ```
                            ┌─ BuildLibraryIndex ──────────────────────────────┐
-                           │  Walk library folders, compute fingerprints,      │  Run
-  Task.Run ───────────────►│  load/prune persisted cache.                      │  concurrently
+                           │  Walk library folders, fingerprint in parallel    │  Run
+  Task.Run ───────────────►│  (degree 8), load/prune persisted cache.          │  concurrently
                            │  Semaphore + 15s timestamp prevents duplicate     │
                            └──────────────────────────────────────────────────►│
                                                                                │
@@ -258,12 +258,13 @@ On a warm cache scan (no files changed since the last cycle), fingerprinting is 
 
 ```
 MediaManagerService.RunAsync / ScanAsync
- ├─ FileImporter.LoadSourceCache           (load source fingerprint cache from disk)
+ ├─ MediaImporter.LoadSourceCache           (load source fingerprint cache from disk)
  ├─ TmdbCacheManager.Load / Evict         (load TMDB result cache from disk)
  │
- ├─ [concurrent] FileImporter.BuildLibraryIndex
+ ├─ [concurrent] MediaImporter.BuildLibraryIndex
  │   ├─ LoadLibraryCache
- │   ├─ IndexLibraryPath (per library folder)
+ │   ├─ EnumerateLibraryFolder (per library folder)
+ │   ├─ FingerprintLibraryFiles (per library folder, Parallel.ForEach degree 8)
  │   │   └─ GetOrComputeLibraryFingerprint (per file)
  │   └─ PruneLibraryCache
  │
@@ -272,20 +273,20 @@ MediaManagerService.RunAsync / ScanAsync
  │
  ├─ FingerprintSourceFoldersAsync  [Phase 2 - waits for Phase 1 + library index]
  │   └─ FingerprintCandidates (per folder, Parallel.ForEach degree 8)
- │       └─ FileImporter.IsAlreadyInLibrary (per file)
+ │       └─ MediaImporter.IsAlreadyInLibrary (per file)
  │           └─ GetOrComputeSourceFingerprint (with Lazy deduplication)
  │
  ├─ ProcessSourceFolderAsync / ScanSourceFolderAsync (per folder, concurrent)
  │   ├─ MovieProcessor.ProcessMoviesAsync / ScanMoviesAsync
  │   │   ├─ ClassifyVideoFiles (self-describing vs folder-dependent)
- │   │   ├─ GetOrLookupMovieAsync → LookupMovieAsync → TryFallbackLookupsAsync
+ │   │   ├─ GetOrLookupMovieAsync → LookupMovieAsync → FileNameParser.TryFallbackLookupsAsync
  │   │   └─ MediaManagerService.ImportFileWithLog / MediaProposal
  │   └─ TvShowProcessor.ProcessTvShowsAsync / ScanTvShowsAsync
  │       ├─ FileNameParser.ParseTvShowEpisode (per file)
- │       ├─ GetOrLookupShowAsync → LookupTvShowAsync → TryFallbackLookupsAsync
+ │       ├─ GetOrLookupShowAsync → LookupTvShowAsync → FileNameParser.TryFallbackLookupsAsync
  │       └─ MediaManagerService.ImportFileWithLog / MediaProposal
  │
  ├─ TmdbCacheManager.Save
- ├─ FileImporter.SaveSourceCache
- └─ FileImporter.SaveLibraryCache
+ ├─ MediaImporter.SaveSourceCache
+ └─ MediaImporter.SaveLibraryCache
 ```

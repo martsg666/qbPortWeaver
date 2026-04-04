@@ -488,7 +488,7 @@ namespace qbPortWeaver
                 if (row.Tag is not RowData { Proposal: var p }) continue;
                 bool isChecked = row.Cells[colInclude.Index].Value is true;
 
-                if (!p.IsMatched)
+                if (isChecked && !p.IsMatched)
                     unmatched++;
                 else if (isChecked)
                     included++;

@@ -352,7 +352,11 @@ namespace qbPortWeaver
 
                 var after = name[(idx + pattern.Length)..].Trim();
                 if (after.Length > 0 && char.IsDigit(after[0]))
-                    return $"{pattern}{after[0]}";
+                {
+                    int numEnd = 0;
+                    while (numEnd < after.Length && char.IsDigit(after[numEnd])) numEnd++;
+                    return $"{pattern}{after[..numEnd]}";
+                }
             }
 
             return null;

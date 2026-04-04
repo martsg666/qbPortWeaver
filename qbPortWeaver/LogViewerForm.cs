@@ -18,11 +18,11 @@ namespace qbPortWeaver
         private Color[]              _themeColors    = null!; // initialized in OnLoad after _isDarkMode is set
         private System.Windows.Forms.Timer? _searchDebounceTimer;
 
-        [DllImport("user32.dll", CharSet = CharSet.Auto)]
-        private static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
+        [LibraryImport("user32.dll", EntryPoint = "SendMessageW")]
+        private static partial IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
 
-        [DllImport("user32.dll", CharSet = CharSet.Auto)]
-        private static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, ref NativePoint lParam);
+        [LibraryImport("user32.dll", EntryPoint = "SendMessageW")]
+        private static partial IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, ref NativePoint lParam);
 
         [StructLayout(LayoutKind.Sequential)]
         private struct NativePoint { public int X, Y; }
@@ -301,7 +301,6 @@ namespace qbPortWeaver
         // then re-applies search highlights. Preserves scroll: only scrolls to bottom if the user was there.
         private void RebuildDisplay()
         {
-
             bool     wasAtBottom = IsAtBottom();
             bool[]   filters     = [chkError.Checked, chkWarn.Checked, chkInfo.Checked, chkDebug.Checked];
             string[] filtered    = _allLines.Where(l => IsLineVisibleWithFilters(l, filters)).ToArray();
@@ -518,7 +517,6 @@ namespace qbPortWeaver
         // Must be called on the UI thread.
         private void AppendNewLines(string[] newLines)
         {
-
             bool   wasAtBottom = IsAtBottom();
             bool[] filters     = [chkError.Checked, chkWarn.Checked, chkInfo.Checked, chkDebug.Checked];
 
@@ -630,7 +628,7 @@ namespace qbPortWeaver
                     case '{':  sb.Append("\\{");  break;
                     case '}':  sb.Append("\\}");  break;
                     default:
-                        if (c > 127) sb.Append($"\\u{(int)c} ");
+                        if (c > 127) sb.Append($"\\u{(int)(short)c} ");
                         else sb.Append(c);
                         break;
                 }

@@ -132,7 +132,7 @@ namespace qbPortWeaver
                 if (c == ':') { sb.Append(" -"); continue; }
                 sb.Append(_invalidFileNameChars.Contains(c) ? ' ' : c);
             }
-            return MultiSpaceRegex().Replace(sb.ToString(), " ").Trim();
+            return MultiSpaceRegex().Replace(sb.ToString(), " ").Trim().TrimEnd('-').Trim();
         }
 
         /// <summary>Returns true if the file has a recognized video extension.</summary>

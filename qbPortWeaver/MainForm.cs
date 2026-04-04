@@ -293,7 +293,7 @@ namespace qbPortWeaver
             try { _delayCts.Cancel(); }
             catch (ObjectDisposedException)
             {
-                // Expected: if the delay completed naturally, the token is already disposed before Cancel() is called.
+                // Defensive: Cancel() throws if the CTS was disposed between the read of _delayCts and this call.
             }
         }
 

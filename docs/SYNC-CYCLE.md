@@ -103,8 +103,8 @@ When the VPN is detected as disconnected - or port detection fails despite the V
 2. **Auto-recovery** - if enabled, once the counter reaches the configured threshold, the cycle:
    - Resets the counter (to prevent repeated triggers)
    - Determines the recovery action and target based on the provider type:
-     - **ProtonVPN / PIA (direct):** action = `restart`, target = provider token (e.g. "ProtonVPN", "PIA") - the helper maps the token to the actual Windows service name and restarts it
-     - **NAT-PMP:** action = `cycle-adapter`, target = adapter name (e.g. "ProtonVPN TUN") - the helper cycles the adapter first (disable/enable via netsh to clear stale state), then if the adapter name matches a known provider, restarts its Windows service so the VPN re-initialises on a clean adapter
+     - **ProtonVPN / PIA (direct or NAT-PMP mode):** action = `restart`, target = provider token (e.g. "ProtonVPN", "PIA") - the helper maps the token to the actual Windows service name and restarts it
+     - **NAT-PMP with a generic gateway:** action = `cycle-adapter`, target = adapter name - the helper disables and re-enables the adapter via netsh
    - Sends the recovery request to the helper service (runs as SYSTEM) via named pipe
    - If the target matches a known provider's client process, restarts it in the user session
 

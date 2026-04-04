@@ -380,20 +380,28 @@ namespace qbPortWeaver
         {
             var cache = _libraryCache;
 
-            if (cache is not null
-                && cache.TryGetValue(fi.FullName, out var entry)
-                && entry.Size == fi.Length
-                && entry.LastWriteTimeTicks == fi.LastWriteTimeUtc.Ticks)
+            if (cache is not null)
             {
-                wasCached = true;
-                return entry.Fingerprint;
+                lock (_libraryLock)
+                {
+                    if (cache.TryGetValue(fi.FullName, out var entry)
+                        && entry.Size == fi.Length
+                        && entry.LastWriteTimeTicks == fi.LastWriteTimeUtc.Ticks)
+                    {
+                        wasCached = true;
+                        return entry.Fingerprint;
+                    }
+                }
             }
 
             string fp = ComputeFingerprint(fi.FullName);
             if (cache is not null)
             {
-                cache[fi.FullName] = new CacheEntry(fi.Length, fi.LastWriteTimeUtc.Ticks, fp);
-                _libraryCacheDirty = true;
+                lock (_libraryLock)
+                {
+                    cache[fi.FullName] = new CacheEntry(fi.Length, fi.LastWriteTimeUtc.Ticks, fp);
+                    _libraryCacheDirty = true;
+                }
             }
             wasCached = false;
             return fp;
@@ -403,12 +411,16 @@ namespace qbPortWeaver
         private static void PruneLibraryCache(HashSet<string> seenPaths)
         {
             var cache = _libraryCache!;
-            var stale = cache.Keys.Where(k => !seenPaths.Contains(k)).ToList();
-            if (stale.Count == 0) return;
+            List<string> stale;
+            lock (_libraryLock)
+            {
+                stale = cache.Keys.Where(k => !seenPaths.Contains(k)).ToList();
+                if (stale.Count == 0) return;
 
-            foreach (var key in stale)
-                cache.Remove(key);
-            _libraryCacheDirty = true;
+                foreach (var key in stale)
+                    cache.Remove(key);
+                _libraryCacheDirty = true;
+            }
 
             LogManager.Instance.LogDebug($"FileImporter.PruneLibraryCache: Removed {stale.Count} stale entries", Subsystem.MediaManager);
         }

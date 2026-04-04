@@ -278,7 +278,7 @@ namespace qbPortWeaver
                 var body = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
                 if (!body.Contains(AuthOkResponse, StringComparison.OrdinalIgnoreCase))
                 {
-                    LogManager.Instance.LogMessage("qBittorrent authentication failed: wrong username or password - check the credentials in Settings", LogLevel.Error);
+                    LogManager.Instance.LogMessage($"qBittorrent authentication failed: wrong username or password (username: '{_userName}') - check the credentials in Settings", LogLevel.Error);
                     return false;
                 }
 

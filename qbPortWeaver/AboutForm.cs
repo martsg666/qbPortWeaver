@@ -42,7 +42,10 @@ namespace qbPortWeaver
             if (_releaseUrl is not null)
                 AppConstants.OpenUrl(_releaseUrl);
             else
+            {
+                btnCheckForUpdates.Enabled = false;
                 _ = LoadGitHubDataAsync(); // fire-and-forget; exceptions are handled inside LoadGitHubDataAsync
+            }
         }
 
         // Each link region carries its contributor profile URL as LinkData

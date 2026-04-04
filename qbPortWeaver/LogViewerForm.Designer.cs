@@ -112,7 +112,7 @@ namespace qbPortWeaver
             // Subsystem filter - positioned after the level buttons with a small gap
             cboSubsystem.Anchor        = System.Windows.Forms.AnchorStyles.Left | System.Windows.Forms.AnchorStyles.Top;
             cboSubsystem.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
-            cboSubsystem.Items.AddRange(new object[] { "All", Subsystem.MainApp, Subsystem.MediaManager });
+            cboSubsystem.Items.AddRange(new object[] { "All", Subsystem.MainApp, Subsystem.MediaManager, Subsystem.HelperService });
             cboSubsystem.Location      = new System.Drawing.Point(300, 6);
             cboSubsystem.Size          = new System.Drawing.Size(130, 23);
             cboSubsystem.TabIndex      = 4;

@@ -99,7 +99,7 @@ namespace qbPortWeaver
 
         /// <summary>
         /// Imports a file from <paramref name="sourcePath"/> to <paramref name="destinationPath"/> using the specified <paramref name="importMode"/>.
-        /// Creates the target directory if needed. Skips files that already exist at the destination with the same size.
+        /// Creates the target directory if needed. Skips files that already exist at the destination with the same fingerprint.
         /// In <see cref="ImportMode.Hardlink"/> mode, automatically falls back to copy if the hardlink fails.
         /// </summary>
         internal static void ImportFile(string sourcePath, string destinationPath, ImportMode importMode)
@@ -287,7 +287,11 @@ namespace qbPortWeaver
                     return;
                 }
 
-                LogManager.Instance.LogMessage("Building library index", LogLevel.Info, Subsystem.MediaManager);
+                var libraryPaths = new[] { moviesLibraryPath, tvShowsLibraryPath }
+                    .Where(p => !string.IsNullOrWhiteSpace(p) && Directory.Exists(p))
+                    .ToArray();
+
+                LogManager.Instance.LogMessage($"Building library index across {libraryPaths.Length} folder(s)", LogLevel.Info, Subsystem.MediaManager);
                 LoadLibraryCache();
 
                 var sw = System.Diagnostics.Stopwatch.StartNew();
@@ -295,13 +299,14 @@ namespace qbPortWeaver
                 var seenPaths    = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                 int cached = 0, computed = 0;
 
-                foreach (var path in new[] { moviesLibraryPath, tvShowsLibraryPath }.Where(p => !string.IsNullOrWhiteSpace(p) && Directory.Exists(p)))
+                foreach (var path in libraryPaths)
                 {
+                    LogManager.Instance.LogMessage($"Enumerating library folder: '{path}'", LogLevel.Info, Subsystem.MediaManager);
                     List<FileInfo> files;
                     try   { files = EnumerateLibraryFolder(path); }
                     catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
                     {
-                        LogManager.Instance.LogMessage($"Library index: skipped '{path}': {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
+                        LogManager.Instance.LogMessage($"Skipped library folder '{path}': {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
                         continue;
                     }
 

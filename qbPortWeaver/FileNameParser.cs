@@ -481,7 +481,7 @@ namespace qbPortWeaver
 
         /// <summary>
         /// Returns the substring after the first " - " separator, or null if the pattern is not present.
-        /// Used by MovieProcessor and TvShowProcessor as a fallback lookup strategy.
+        /// Used by <see cref="TryFallbackLookupsAsync{T}"/> as a fallback lookup strategy.
         /// </summary>
         internal static string? ExtractAfterDash(string title)
         {

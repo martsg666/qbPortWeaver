@@ -109,15 +109,15 @@ namespace qbPortWeaver
 
             if (IsDuplicateFile(sourcePath, destinationPath))
             {
-                LogManager.Instance.LogDebug($"MediaImporter.ImportFile: Skipped - target already exists with same size: '{Path.GetFileName(destinationPath)}'", Subsystem.MediaManager);
+                LogManager.Instance.LogDebug($"MediaImporter.ImportFile: Skipped - target already exists with same fingerprint: '{Path.GetFileName(destinationPath)}'", Subsystem.MediaManager);
                 return;
             }
 
-            // Destination exists but different size: two different source files resolved to the same target path
+            // Destination exists but different content: two different source files resolved to the same target path
             if (File.Exists(destinationPath))
             {
                 LogManager.Instance.LogMessage(
-                    $"Destination conflict: '{Path.GetFileName(destinationPath)}' already exists with a different size (source: {new FileInfo(sourcePath).Length}, dest: {new FileInfo(destinationPath).Length}). Skipping to avoid overwriting.",
+                    $"Destination conflict: '{Path.GetFileName(destinationPath)}' already exists with different content (source: {new FileInfo(sourcePath).Length} bytes, dest: {new FileInfo(destinationPath).Length} bytes). Skipping to avoid overwriting.",
                     LogLevel.Warn, Subsystem.MediaManager);
                 return;
             }

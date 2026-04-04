@@ -632,15 +632,12 @@ namespace qbPortWeaver
             try
             {
                 string json;
-                bool wasDirty;
                 lock (_libraryLock)
                 {
-                    wasDirty           = _libraryCacheDirty;
-                    _libraryCacheDirty = false; // reset inside the lock so concurrent writes after this point re-set it
+                    if (!_libraryCacheDirty) return; // double-check inside the lock: another thread may have saved and reset the flag
+                    _libraryCacheDirty = false; // reset before serializing so concurrent writes after this point re-set it
                     json               = JsonSerializer.Serialize(cache, JsonWriteOptions);
                 }
-
-                if (!wasDirty) return;
 
                 lock (_cacheFileLock)
                     WriteAtomic(GetCacheFilePath(LibraryCacheFileName), json);

@@ -258,7 +258,13 @@ namespace qbPortWeaver
 
                 if (response.StatusCode == HttpStatusCode.Forbidden)
                 {
-                    LogManager.Instance.LogMessage("qBittorrent returned HTTP 403 Forbidden - IP banned due to too many failed login attempts. Restart qBittorrent to clear the ban.", LogLevel.Error);
+                    LogManager.Instance.LogMessage("qBittorrent returned HTTP 403 Forbidden - IP banned due to too many failed login attempts. Restart qBittorrent to clear the ban", LogLevel.Error);
+                    return false;
+                }
+
+                if (response.StatusCode == HttpStatusCode.Unauthorized)
+                {
+                    LogManager.Instance.LogMessage("qBittorrent returned HTTP 401 Unauthorized - check whether a reverse proxy with authentication is running in front of qBittorrent", LogLevel.Error);
                     return false;
                 }
 
@@ -272,7 +278,7 @@ namespace qbPortWeaver
                 var body = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
                 if (!body.Contains(AuthOkResponse, StringComparison.OrdinalIgnoreCase))
                 {
-                    LogManager.Instance.LogMessage("qBittorrent authentication failed: wrong username or password - check the credentials in Settings", LogLevel.Error);
+                    LogManager.Instance.LogMessage($"qBittorrent authentication failed: wrong username or password (username: '{_userName}') - check the credentials in Settings", LogLevel.Error);
                     return false;
                 }
 
@@ -302,7 +308,7 @@ namespace qbPortWeaver
                 LogManager.Instance.LogMessage($"Failed to connect to qBittorrent Web UI: {ex.Message} - check the URL in Settings ({_url})", LogLevel.Error);
             else
             {
-                LogManager.Instance.LogMessage($"Failed to complete qBittorrent request in {methodName}: {ex.Message}", LogLevel.Warn);
+                LogManager.Instance.LogMessage($"Failed to complete qBittorrent request in {methodName}: {ex.Message}", LogLevel.Error);
                 LogManager.Instance.LogDebug($"QBittorrentManager.{methodName}: {ex.GetType().Name}");
             }
         }

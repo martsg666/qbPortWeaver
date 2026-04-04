@@ -76,7 +76,7 @@ try {
     if ($unreplaced) { throw 'Unreplaced TEMPLATE_ placeholders found - stamping failed.' }
 
     Write-Step 'Installing community validation extension and packing...'
-    choco install chocolatey-community-validation.extension -y --no-progress
+    choco install chocolatey-community-validation.extension --version 0.2.0 -y --no-progress
     if ($LASTEXITCODE -ne 0) { throw 'Failed to install chocolatey-community-validation.extension.' }
 
     choco pack $nuspecPath --output-directory $stagingDir

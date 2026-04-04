@@ -24,6 +24,9 @@ namespace qbPortWeaver
         private const int  MaxLogFiles          = 3;   // Keep only 3 logfiles total (including current)
         private const int  RotationCheckInterval = 100; // Check rotation every N writes
 
+        // Pre-padded level labels indexed by LogLevel enum value (Info=0, Warn=1, Error=2, Debug=3)
+        private static readonly string[] _levelLabels = ["INFO ", "WARN ", "ERROR", "DEBUG"];
+
         // Static instance for global access - null until Initialize() is called
         private static LogManager? _instance;
 
@@ -82,7 +85,7 @@ namespace qbPortWeaver
                         RotateIfNeeded();
                     }
 
-                    string paddedType = level.ToString().ToUpperInvariant().PadRight(5);
+                    string paddedType = _levelLabels[(int)level];
                     string logEntry = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} | {paddedType} | {subsystem.PadRight(Subsystem.MaxLength)} | {message}{Environment.NewLine}";
 
                     using var fs = new FileStream(LogFilePath, FileMode.Append, FileAccess.Write, FileShare.ReadWrite);
@@ -151,7 +154,7 @@ namespace qbPortWeaver
             LogMessage("Logs cleared by user", LogLevel.Info);
         }
 
-        // Checks the log file size and rotates it if it exceeds the maximum. Thread-safe.
+        /// <summary>Checks the log file size and rotates it if it exceeds the maximum. Thread-safe.</summary>
         internal void CheckAndRotateLogFile()
         {
             lock (_lock)
@@ -160,7 +163,7 @@ namespace qbPortWeaver
             }
         }
 
-        // Logs message at debug level and returns false, enabling single-line catch blocks
+        /// <summary>Logs a debug message and returns <see langword="false"/>, enabling single-line catch blocks.</summary>
         internal static bool LogDebugFalse(string message, string subsystem = Subsystem.MainApp)
         {
             Instance.LogDebug(message, subsystem);

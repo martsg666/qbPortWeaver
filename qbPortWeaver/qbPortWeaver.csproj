@@ -19,14 +19,15 @@
     <SignAssembly>False</SignAssembly>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <!-- Suppress known SonarAnalyzer false positives (each has a matching // NOSONAR comment):
-         S108  - empty catch body is intentional best-effort cache update (FileImporter.cs)
+         S108  - comment-only catch bodies are intentional no-ops (LogViewerForm.cs, PiaVpnManager.cs, StatusManager.cs)
          S1075 - TMDB base URL is intentionally hardcoded (TmdbClient.cs)
          S2068 - registry key name contains "Password", value is masked (PortSyncService.cs)
          S2221 - bare catch before LogManager is initialized; any failure must fall back safely (Program.cs)
-         S2486 - same as S108, SonarCloud cloud rule counterpart (FileImporter.cs, MediaManagerService.cs)
+         S2486 - same as S108, SonarCloud cloud rule counterpart (LogViewerForm.cs, PiaVpnManager.cs, StatusManager.cs)
          S4721 - post-update command is user-configured, arbitrary execution is intended (PortSyncService.cs)
          S4790 - TMDB API v3 requires key as query parameter, HTTPS only (TmdbClient.cs) -->
     <NoWarn>S108;S1075;S2068;S2221;S2486;S4721;S4790</NoWarn>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
   <ItemGroup>

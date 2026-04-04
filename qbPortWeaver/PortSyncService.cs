@@ -254,6 +254,8 @@ namespace qbPortWeaver
             int updateInterval = RegistrySettingsManager.GetInt(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyUpdateIntervalSeconds);
             if (updateInterval < AppConstants.MinUpdateIntervalSeconds) updateInterval = AppConstants.DefaultUpdateIntervalSeconds;
 
+            int autoRecoveryTriggerCycles = Math.Max(1, RegistrySettingsManager.GetInt(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyAutoRecoveryTriggerCycles));
+
             return new AppConfig(
                 VpnProvider:                  RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral,     RegistrySettingsManager.KeyVpnProvider),
                 NatPmpAdapterName:            RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral,     RegistrySettingsManager.KeyNatPmpAdapterName),
@@ -270,7 +272,7 @@ namespace qbPortWeaver
                 RestartOnDisconnect:          RegistrySettingsManager.GetBool (RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyRestartOnDisconnect),
                 PostUpdateCommand:            RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionExtra,       RegistrySettingsManager.KeyPostUpdateCmd),
                 AutoRecoveryEnabled:          RegistrySettingsManager.GetBool (RegistrySettingsManager.SectionGeneral,     RegistrySettingsManager.KeyAutoRecoveryEnabled),
-                AutoRecoveryTriggerCycles:    RegistrySettingsManager.GetInt  (RegistrySettingsManager.SectionGeneral,     RegistrySettingsManager.KeyAutoRecoveryTriggerCycles)
+                AutoRecoveryTriggerCycles:    autoRecoveryTriggerCycles
             );
         }
 
@@ -520,7 +522,7 @@ namespace qbPortWeaver
             if (connectionStatus is null)
                 return;
 
-            LogManager.Instance.LogMessage($"qBittorrent connection status: {connectionStatus}", LogLevel.Info);
+            LogManager.Instance.LogDebug($"PortSyncService.CheckAndRestartIfDisconnectedAsync: qBittorrent connection status: {connectionStatus}");
 
             if (!connectionStatus.Equals(QBittorrentDisconnectedStatus, StringComparison.OrdinalIgnoreCase))
                 return;

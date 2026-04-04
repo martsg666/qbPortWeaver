@@ -80,6 +80,9 @@ namespace qbPortWeaver
                 // Perform initial log rotation check
                 LogManager.Instance.CheckAndRotateLogFile();
 
+                // Start main loop immediately so port syncing is not blocked by dialogs
+                _ = Task.Run(RunMainLoopAsync); // fire-and-forget; exceptions are handled inside RunMainLoopAsync
+
                 // Show What's New on first run after an upgrade
                 if (RegistrySettingsManager.GetAppValue(RegistrySettingsManager.KeyLastSeenVersion) != AppConstants.AppVersion)
                 {
@@ -95,9 +98,6 @@ namespace qbPortWeaver
                 _updateCheckTimer = new System.Windows.Forms.Timer { Interval = AppConstants.AutoUpdateCheckIntervalMs };
                 _updateCheckTimer.Tick += OnUpdateCheckTimerTick;
                 _updateCheckTimer.Start();
-
-                // Start main loop (intentional fire-and-forget)
-                _ = Task.Run(RunMainLoopAsync); // fire-and-forget; exceptions are handled inside RunMainLoopAsync
             }
             catch (Exception ex)
             {
@@ -204,7 +204,7 @@ namespace qbPortWeaver
             }
             finally
             {
-                NativeMethods.DestroyIcon(hIcon);
+                DestroyIcon(hIcon);
             }
         }
 
@@ -293,7 +293,7 @@ namespace qbPortWeaver
             try { _delayCts.Cancel(); }
             catch (ObjectDisposedException)
             {
-                // Expected: if the delay completed naturally, the token is already disposed before Cancel() is called.
+                // Defensive: Cancel() throws if the CTS was disposed between the read of _delayCts and this call.
             }
         }
 
@@ -383,8 +383,8 @@ namespace qbPortWeaver
                     LogManager.Instance.LogMessage("Shutdown requested, exiting main loop", LogLevel.Info);
                     return true;
                 }
-                // Manual sync interrupts delay - loop will restart immediately
-                LogManager.Instance.LogMessage("Delay interrupted by manual sync", LogLevel.Info);
+                // Delay interrupted (manual sync or settings change) - loop will restart immediately
+                LogManager.Instance.LogMessage("Delay interrupted, starting next cycle", LogLevel.Info);
             }
 
             // Reset token for next loop iteration (properly dispose old one)
@@ -409,7 +409,7 @@ namespace qbPortWeaver
                 {
                     if (update.Value.Version == _lastNotifiedVersion)
                     {
-                        LogManager.Instance.LogMessage($"New version {update.Value.Version} available (already notified)", LogLevel.Info);
+                        LogManager.Instance.LogDebug($"MainForm.PerformUpdateCheckAsync: Version {update.Value.Version} available (already notified)");
                         return;
                     }
 
@@ -506,11 +506,8 @@ namespace qbPortWeaver
             frm.Show();
         }
 
-        // P/Invoke declarations
-        private static class NativeMethods
-        {
-            [DllImport("user32.dll", SetLastError = true)]
-            public static extern bool DestroyIcon(IntPtr hIcon);
-        }
+        [LibraryImport("user32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static partial bool DestroyIcon(IntPtr hIcon);
     }
 }

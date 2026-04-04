@@ -42,7 +42,10 @@ namespace qbPortWeaver
             if (_releaseUrl is not null)
                 AppConstants.OpenUrl(_releaseUrl);
             else
+            {
+                btnCheckForUpdates.Enabled = false;
                 _ = LoadGitHubDataAsync(); // fire-and-forget; exceptions are handled inside LoadGitHubDataAsync
+            }
         }
 
         // Each link region carries its contributor profile URL as LinkData
@@ -52,7 +55,6 @@ namespace qbPortWeaver
                 AppConstants.OpenUrl(url);
         }
 
-        // Opens the project repository in the default browser
         private void lnkGitHub_LinkClicked(object? sender, LinkLabelLinkClickedEventArgs e)
         {
             AppConstants.OpenUrl(AppConstants.GitHubRepoUrl);
@@ -78,13 +80,13 @@ namespace qbPortWeaver
                 // Guard against the form being closed while the GitHub requests were in flight
                 if (IsDisposed) return;
 
-                var contributors = await contributorsTask;
+                var contributors = contributorsTask.Result;
                 if (contributors.Count > 0)
                     SetContributorLinks(contributors);
                 else
                     lnkAuthor.Text = AppConstants.GitHubRepoOwner;
 
-                var info = await releaseTask;
+                var info = releaseTask.Result;
                 if (info is null)
                 {
                     lblLatestVersionValue.Text      = "Unable to check";
@@ -134,7 +136,7 @@ namespace qbPortWeaver
             foreach (var c in contributors)
             {
                 lnkAuthor.Links.Add(offset, c.Login.Length, c.ProfileUrl);
-                offset += c.Login.Length + 2; // +2 for ", "
+                offset += c.Login.Length + ", ".Length;
             }
         }
     }

@@ -76,14 +76,16 @@ namespace qbPortWeaver
         /// Returns true when a TMDB result with no year in the filename is a high-confidence match.
         /// Requires a meaningful vote count and a normalised title match to filter out obscure or incorrect entries.
         /// </summary>
-        internal static bool IsStrongNoYearMatch(string searchedTitle, string returnedTitle, int voteCount, int minVoteCount) =>
+        internal static bool IsStrongNoYearMatch(string searchedTitle, string returnedTitle, int voteCount, int minVoteCount = 50) =>
             voteCount >= minVoteCount &&
             string.Equals(NormalizeTitleForMatch(returnedTitle), NormalizeTitleForMatch(searchedTitle), StringComparison.OrdinalIgnoreCase);
 
-        // Normalises a title for loose comparison: lowercases, drops non-whitespace punctuation
-        // that sits between two alphanumeric characters (apostrophes, hyphens in compound words),
-        // and collapses all other non-alphanumeric characters to a single space.
-        // Examples: "Show Name" → "show name", "Title (Year)" → "title year"
+        /// <summary>
+        /// Normalises a title for loose comparison: lowercases, drops non-whitespace punctuation
+        /// that sits between two alphanumeric characters (apostrophes, hyphens in compound words),
+        /// and collapses all other non-alphanumeric characters to a single space.
+        /// Examples: "Show Name" -> "show name", "Title (Year)" -> "title year"
+        /// </summary>
         internal static string NormalizeTitleForMatch(string title)
         {
             var sb = new System.Text.StringBuilder(title.Length);
@@ -117,21 +119,27 @@ namespace qbPortWeaver
         public static string FormatPlexName(string title, int? year) =>
             SanitizeFileName(year.HasValue ? $"{title} ({year.Value})" : title);
 
+        // Cached set of invalid filename characters for O(1) lookup in SanitizeFileName
+        private static readonly HashSet<char> _invalidFileNameChars = new(Path.GetInvalidFileNameChars());
+
         /// <summary>Strips characters that are invalid in file names and collapses runs of spaces. Replaces <c>:</c> with <c> -</c> to preserve subtitle separators.</summary>
         public static string SanitizeFileName(string name)
         {
-            name = name.Replace(":", " -");
-            foreach (var c in Path.GetInvalidFileNameChars())
-                name = name.Replace(c, ' ');
-            name = MultiSpaceRegex().Replace(name, " ");
-            return name.Trim();
+            var sb = new System.Text.StringBuilder(name.Length + 2); // +2 for potential colon expansion
+            for (int i = 0; i < name.Length; i++)
+            {
+                char c = name[i];
+                if (c == ':') { sb.Append(" -"); continue; }
+                sb.Append(_invalidFileNameChars.Contains(c) ? ' ' : c);
+            }
+            return MultiSpaceRegex().Replace(sb.ToString(), " ").Trim().TrimEnd('-').Trim();
         }
 
-        /// <summary>Returns true if the file has a recognised video extension.</summary>
+        /// <summary>Returns true if the file has a recognized video extension.</summary>
         public static bool IsVideoFile(string path) =>
             _videoExtensions.Contains(Path.GetExtension(path));
 
-        /// <summary>Returns true if the file has a subtitle extension recognised by Plex (.srt, .sub, .ass, etc.).</summary>
+        /// <summary>Returns true if the file has a subtitle extension recognized by Plex (.srt, .sub, .ass, etc.).</summary>
         public static bool IsSubtitleFile(string path) =>
             _subtitleExtensions.Contains(Path.GetExtension(path));
 
@@ -195,6 +203,11 @@ namespace qbPortWeaver
 
             int.TryParse(match.Groups[1].Value, out int season);
             int.TryParse(match.Groups[2].Value, out int episode);
+
+            // Season or episode 0 is not a valid episode (e.g. S00E00 matches the regex but is not importable)
+            if (season == 0 || episode == 0)
+                return null;
+
             return new TvShowEpisodeInfo(
                 ShowName: rawTitle,
                 Year:     year,
@@ -433,7 +446,7 @@ namespace qbPortWeaver
         // Anchored to start. Two alternatives:
         //   1) Bracketed site tag:  [www.SiteName.com]  (TLD 2-3 chars)
         //   2) Bare www prefix:     www.SiteName.com -  (TLD 2-5 chars, followed by a dash separator)
-        // Also handles ww. and www, (obfuscated separators)
+        // Also handles ww. and www, (non-standard dot separators)
         [GeneratedRegex(@"^(?:\[\s*[^\]]*\.[a-z]{2,3}\s*\]\s*|ww[w]?[.,][\w.-]+\.[a-z]{2,5}\s*[-–—]\s*)", RegexOptions.IgnoreCase)]
         private static partial Regex SitePrefixRegex();
 
@@ -465,6 +478,65 @@ namespace qbPortWeaver
         // Matches Plex TV episode format: "Show (Year) - SxxExx" (always zero-padded in output)
         [GeneratedRegex(@"^.+\s\(\d{4}\)\s-\sS\d{2}E\d{2}$", RegexOptions.IgnoreCase)]
         private static partial Regex PlexEpisodeNameRegex();
+
+        /// <summary>
+        /// Returns the substring after the first " - " separator, or null if the pattern is not present.
+        /// Used by <see cref="TryFallbackLookupsAsync{T}"/> as a fallback lookup strategy.
+        /// </summary>
+        internal static string? ExtractAfterDash(string title)
+        {
+            int idx = title.IndexOf(" - ", StringComparison.Ordinal);
+            if (idx < 0) return null;
+            var after = title[(idx + 3)..].Trim();
+            return after.Length > 0 ? after : null;
+        }
+
+        /// <summary>
+        /// Strips a single trailing digit preceded by a space (e.g. "Title 2" -> "Title"), or null
+        /// if the pattern is not present. Used by <see cref="TryFallbackLookupsAsync{T}"/> as a fallback lookup strategy.
+        /// </summary>
+        internal static string? StripTrailingNumber(string title)
+        {
+            var trimmed = title.TrimEnd();
+            if (trimmed.Length <= 2 || !char.IsDigit(trimmed[^1]) || trimmed[^2] != ' ')
+                return null;
+            return trimmed[..^2].Trim();
+        }
+
+        // Applies two fallback TMDB lookup strategies using a caller-supplied search function.
+        // After-dash strategy: retries with the part after " - " when info is null (no initial match).
+        // Trailing-number strategy: retries without trailing digit when info is null OR hasYear returns false
+        // (a year-less result is ambiguous; a stripped-title result that includes a year is higher quality).
+        internal static async Task<(T? Info, bool IsConfident)> TryFallbackLookupsAsync<T>(
+            string title, int? year, T? info, bool isConfident,
+            Func<string, int?, Task<T?>> search,
+            Func<T, bool> hasYear) where T : class
+        {
+            var afterDash = info is null ? ExtractAfterDash(title) : null;
+            if (afterDash is not null)
+            {
+                LogManager.Instance.LogDebug($"FileNameParser.TryFallbackLookupsAsync: Retrying with after-dash title '{afterDash}'", Subsystem.MediaManager);
+                info = await search(afterDash, year).ConfigureAwait(false);
+                if (info is not null) isConfident = false;
+            }
+
+            if (info is null || (!hasYear(info) && title.Length > 2))
+            {
+                var withoutNum = StripTrailingNumber(title);
+                if (withoutNum is not null)
+                {
+                    LogManager.Instance.LogDebug($"FileNameParser.TryFallbackLookupsAsync: Retrying without trailing number '{withoutNum}'", Subsystem.MediaManager);
+                    var altInfo = await search(withoutNum, year).ConfigureAwait(false);
+                    if (altInfo is not null && hasYear(altInfo))
+                    {
+                        info        = altInfo;
+                        isConfident = false;
+                    }
+                }
+            }
+
+            return (info, isConfident);
+        }
     }
 
     /// <summary>Parsed TV episode identity: show name, optional year hint, season number, and episode number.</summary>

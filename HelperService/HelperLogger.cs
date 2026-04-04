@@ -4,7 +4,7 @@ namespace qbPortWeaver.HelperService;
 
 /// <summary>
 /// Writes log entries to the shared qbPortWeaver log file in the same format as the main app's
-/// LogManager: "yyyy-MM-dd HH:mm:ss | LEVEL | message".
+/// LogManager: "yyyy-MM-dd HH:mm:ss | LEVEL | Subsystem | message".
 /// Instantiated per connection with the log file path received from the tray app via the pipe.
 /// Retries briefly on sharing violations in case another process holds the file.
 /// </summary>

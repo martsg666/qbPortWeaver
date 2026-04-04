@@ -30,9 +30,12 @@ namespace qbPortWeaver
             lblFeatures.Text   = ReleaseFeaturesText;
             Text               = $"{AppConstants.AppName} | What's New";
 
-            // Set the link region to cover only "star it on GitHub" within the full sentence
+            // Set the link region to cover only "star it on GitHub" within the full sentence.
+            // Debug.Assert catches a mismatch between linkText and CommunityText at development
+            // time; without it, IndexOf returning -1 would silently make the entire label a link.
             const string linkText = "star it on GitHub";
             int linkStart = lnkCommunity.Text.IndexOf(linkText, StringComparison.Ordinal);
+            System.Diagnostics.Debug.Assert(linkStart >= 0, $"WhatsNewForm: link text '{linkText}' not found in CommunityText");
             if (linkStart >= 0)
                 lnkCommunity.LinkArea = new LinkArea(linkStart, linkText.Length);
 

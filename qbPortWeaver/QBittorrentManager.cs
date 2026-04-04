@@ -262,6 +262,12 @@ namespace qbPortWeaver
                     return false;
                 }
 
+                if (response.StatusCode == HttpStatusCode.Unauthorized)
+                {
+                    LogManager.Instance.LogMessage("qBittorrent returned HTTP 401 Unauthorized - check whether a reverse proxy with authentication is running in front of qBittorrent", LogLevel.Error);
+                    return false;
+                }
+
                 if (!response.IsSuccessStatusCode)
                 {
                     LogManager.Instance.LogMessage($"qBittorrent authentication failed (HTTP {(int)response.StatusCode} {response.StatusCode}) - check the URL in Settings ({_url})", LogLevel.Error);

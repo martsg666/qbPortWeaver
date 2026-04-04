@@ -620,14 +620,18 @@ namespace qbPortWeaver
             try
             {
                 string json;
+                bool wasDirty;
                 lock (_libraryLock)
-                    json = JsonSerializer.Serialize(cache, JsonWriteOptions);
+                {
+                    wasDirty           = _libraryCacheDirty;
+                    _libraryCacheDirty = false; // reset inside the lock so concurrent writes after this point re-set it
+                    json               = JsonSerializer.Serialize(cache, JsonWriteOptions);
+                }
+
+                if (!wasDirty) return;
 
                 lock (_cacheFileLock)
-                {
                     WriteAtomic(GetCacheFilePath(LibraryCacheFileName), json);
-                    _libraryCacheDirty = false;
-                }
 
                 LogManager.Instance.LogDebug($"FileImporter.SaveLibraryCache: Saved {cache.Count} entries", Subsystem.MediaManager);
             }
@@ -693,22 +697,29 @@ namespace qbPortWeaver
         [return: MarshalAs(UnmanagedType.Bool)]
         private static partial bool CreateHardLink(string lpFileName, string lpExistingFileName, nint lpSecurityAttributes);
 
-        [DllImport("kernel32.dll", SetLastError = true)]
-        private static extern bool GetFileInformationByHandle(Microsoft.Win32.SafeHandles.SafeFileHandle hFile, out ByHandleFileInformation lpFileInformation);
+        [LibraryImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static partial bool GetFileInformationByHandle(Microsoft.Win32.SafeHandles.SafeFileHandle hFile, out ByHandleFileInformation lpFileInformation);
+
+        // Plain two-int struct matching the Win32 FILETIME layout.
+        // Replaces ComTypes.FILETIME so the [LibraryImport] source generator can analyse
+        // ByHandleFileInformation as a fully blittable type (ComTypes.FILETIME blocks SYSLIB1051).
+        [StructLayout(LayoutKind.Sequential)]
+        private struct FileTime { public int Low; public int High; }
 
         [StructLayout(LayoutKind.Sequential)]
         private struct ByHandleFileInformation
         {
-            public uint FileAttributes;
-            public System.Runtime.InteropServices.ComTypes.FILETIME CreationTime;
-            public System.Runtime.InteropServices.ComTypes.FILETIME LastAccessTime;
-            public System.Runtime.InteropServices.ComTypes.FILETIME LastWriteTime;
-            public uint VolumeSerialNumber;
-            public uint FileSizeHigh;
-            public uint FileSizeLow;
-            public uint NumberOfLinks;
-            public uint FileIndexHigh;
-            public uint FileIndexLow;
+            public uint     FileAttributes;
+            public FileTime CreationTime;
+            public FileTime LastAccessTime;
+            public FileTime LastWriteTime;
+            public uint     VolumeSerialNumber;
+            public uint     FileSizeHigh;
+            public uint     FileSizeLow;
+            public uint     NumberOfLinks;
+            public uint     FileIndexHigh;
+            public uint     FileIndexLow;
         }
     }
 }

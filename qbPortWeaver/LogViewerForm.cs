@@ -591,12 +591,13 @@ namespace qbPortWeaver
         }
 
         // Static - safe to call from background threads (no UI state access).
-        // Meta/unclassified lines (index >= 4) always pass both level and subsystem filters.
+        // Meta/unclassified lines (index >= 4) pass level filters but are hidden when a
+        // subsystem filter is active (blank cycle separators create large gaps otherwise).
         private static bool IsLineVisibleWithFilters(string line, bool[] filters, string? subsystemFilter)
         {
             int idx = GetLineColorIndex(line);
-            if (idx >= filters.Length) return true;  // meta/unclassified line
-            if (!filters[idx]) return false;         // level filtered out
+            if (idx >= filters.Length) return subsystemFilter is null;  // meta/unclassified: show only when "All"
+            if (!filters[idx]) return false;                            // level filtered out
             if (subsystemFilter is not null && !line.Contains($"| {subsystemFilter}", StringComparison.Ordinal)) return false;
             return true;
         }

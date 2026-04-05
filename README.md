@@ -291,7 +291,7 @@ master  ────────────────────────
 The modular architecture makes it easy to:
 
 - Add support for other VPN providers
-- Integrate additional torrent clients
+- Integrate additional clients
 - Extend configuration or logging features
 
 ---

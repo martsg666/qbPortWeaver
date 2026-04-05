@@ -209,14 +209,6 @@ jobs:
             -replace 'TEMPLATE_CHECKSUM', $checksum |
             Set-Content $installPath -Encoding utf8
 
-          # VERIFICATION.txt — version, URL, and checksum
-          $verifyPath = 'choco\tools\VERIFICATION.txt'
-          (Get-Content $verifyPath -Encoding utf8) `
-            -replace 'TEMPLATE_VERSION',  $version `
-            -replace 'TEMPLATE_URL',      $downloadUrl `
-            -replace 'TEMPLATE_CHECKSUM', $checksum |
-            Set-Content $verifyPath -Encoding utf8
-
           Write-Host "Chocolatey package files updated for v$version"
 
       # -----------------------------------------------------------------------
@@ -228,8 +220,7 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $files = @(
             'choco\qbPortWeaver.nuspec',
-            'choco\tools\chocolateyInstall.ps1',
-            'choco\tools\VERIFICATION.txt'
+            'choco\tools\chocolateyInstall.ps1'
           )
           $found = $false
           foreach ($file in $files) {

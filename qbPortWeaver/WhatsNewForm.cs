@@ -19,8 +19,8 @@ namespace qbPortWeaver
             "Automatically imports and organizes media files into library folders " +
             "on each sync cycle, using TMDB metadata for naming (movies and TV shows).\r\n\r\n" +
             "Log Viewer\r\n" +
-            "Color-coded live log with level filters, color theme support, and " +
-            "in-text search with match count and navigation.";
+            "Color-coded live log with level filters, subsystem filter, color " +
+            "theme support, and in-text search with match count and navigation.";
 
         public WhatsNewForm()
         {

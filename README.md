@@ -3,7 +3,7 @@
 ## Overview
 
 **qbPortWeaver** is a Windows application designed to synchronize the listening port of **qBittorrent** with the port assigned by your VPN provider (**ProtonVPN** or **Private Internet Access**).
-This ensures your torrent client always uses the VPN-provided port, improving privacy and connectivity.
+This ensures your client always uses the VPN-provided port, improving privacy and connectivity.
 
 The application runs in the system tray, manages configuration and logging, and automatically updates qBittorrent's port when changes are detected.
 
@@ -142,7 +142,7 @@ On first run, all settings are initialized with sensible defaults.
 The modular architecture makes it easy to:
 
 - Add support for other VPN providers
-- Integrate additional torrent clients
+- Integrate additional clients
 - Extend configuration or logging features
 
 ---

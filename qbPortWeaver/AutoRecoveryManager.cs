@@ -111,7 +111,7 @@ namespace qbPortWeaver
         // Matches the provider token (e.g. "ProtonVPN", "PIA") to the client process name.
         private static string? FindClientProcessName(string target) =>
             _clientProcessMap
-                .Where(e => target.Contains(e.ProviderKeyword, StringComparison.OrdinalIgnoreCase))
+                .Where(e => e.ProviderKeyword.Equals(target, StringComparison.OrdinalIgnoreCase))
                 .Select(e => e.ClientProcessName)
                 .FirstOrDefault();
 

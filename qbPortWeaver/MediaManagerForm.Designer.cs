@@ -213,7 +213,7 @@ namespace qbPortWeaver
             grpSourceFolders.Controls.Add(btnRemoveSourceFolder);
             grpSourceFolders.Location = new Point(8, 296);
             grpSourceFolders.Name     = "grpSourceFolders";
-            grpSourceFolders.Size     = new Size(684, 126);
+            grpSourceFolders.Size     = new Size(684, 110);
             grpSourceFolders.TabIndex = 2;
             grpSourceFolders.TabStop  = false;
             grpSourceFolders.Text     = "Source Folders";
@@ -222,12 +222,12 @@ namespace qbPortWeaver
             //
             lstSourceFolders.Location = new Point(12, 24);
             lstSourceFolders.Name     = "lstSourceFolders";
-            lstSourceFolders.Size     = new Size(660, 67);
+            lstSourceFolders.Size     = new Size(660, 60);
             lstSourceFolders.TabIndex = 0;
             //
             // btnAddSourceFolder
             //
-            btnAddSourceFolder.Location = new Point(12, 97);
+            btnAddSourceFolder.Location = new Point(12, 80);
             btnAddSourceFolder.Name     = "btnAddSourceFolder";
             btnAddSourceFolder.Size     = new Size(75, 23);
             btnAddSourceFolder.TabIndex = 1;
@@ -236,7 +236,7 @@ namespace qbPortWeaver
             //
             // btnRemoveSourceFolder
             //
-            btnRemoveSourceFolder.Location = new Point(92, 97);
+            btnRemoveSourceFolder.Location = new Point(92, 80);
             btnRemoveSourceFolder.Name     = "btnRemoveSourceFolder";
             btnRemoveSourceFolder.Size     = new Size(75, 23);
             btnRemoveSourceFolder.TabIndex = 2;
@@ -245,7 +245,7 @@ namespace qbPortWeaver
             //
             // btnScanNow
             //
-            btnScanNow.Location = new Point(8, 430);
+            btnScanNow.Location = new Point(8, 414);
             btnScanNow.Name     = "btnScanNow";
             btnScanNow.Size     = new Size(90, 28);
             btnScanNow.TabIndex = 3;
@@ -255,7 +255,7 @@ namespace qbPortWeaver
             // btnImportNow
             //
             btnImportNow.Enabled  = false;
-            btnImportNow.Location = new Point(106, 430);
+            btnImportNow.Location = new Point(106, 414);
             btnImportNow.Name     = "btnImportNow";
             btnImportNow.Size     = new Size(100, 28);
             btnImportNow.TabIndex = 4;
@@ -264,7 +264,7 @@ namespace qbPortWeaver
             //
             // btnClearCache
             //
-            btnClearCache.Location = new Point(214, 430);
+            btnClearCache.Location = new Point(214, 414);
             btnClearCache.Name     = "btnClearCache";
             btnClearCache.Size     = new Size(100, 28);
             btnClearCache.TabIndex = 5;
@@ -273,7 +273,7 @@ namespace qbPortWeaver
             //
             // lblScanStatus
             //
-            lblScanStatus.Location  = new Point(322, 430);
+            lblScanStatus.Location  = new Point(322, 414);
             lblScanStatus.Name      = "lblScanStatus";
             lblScanStatus.Size      = new Size(370, 28);
             lblScanStatus.TabIndex  = 6;
@@ -282,7 +282,7 @@ namespace qbPortWeaver
             //
             // prgScan
             //
-            prgScan.Location = new Point(8, 464);
+            prgScan.Location = new Point(8, 442);
             prgScan.Name     = "prgScan";
             prgScan.Size     = new Size(684, 16);
             prgScan.TabIndex = 7;
@@ -298,11 +298,11 @@ namespace qbPortWeaver
             dgvResults.BorderStyle           = BorderStyle.Fixed3D;
             dgvResults.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.AutoSize;
             dgvResults.Columns.AddRange(colInclude, colType, colCurrent, colProposed);
-            dgvResults.Location     = new Point(8, 488);
+            dgvResults.Location     = new Point(8, 460);
             dgvResults.Name         = "dgvResults";
             dgvResults.RowHeadersVisible = false;
             dgvResults.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
-            dgvResults.Size         = new Size(684, 360);
+            dgvResults.Size         = new Size(684, 170);
             dgvResults.ClipboardCopyMode = DataGridViewClipboardCopyMode.EnableWithoutHeaderText;
             dgvResults.TabIndex          = 8;
             dgvResults.TabStop           = false;
@@ -347,7 +347,7 @@ namespace qbPortWeaver
             //
             // btnOK
             //
-            btnOK.Location = new Point(510, 860);
+            btnOK.Location = new Point(520, 638);
             btnOK.Name     = "btnOK";
             btnOK.Size     = new Size(82, 28);
             btnOK.TabIndex = 9;
@@ -357,7 +357,7 @@ namespace qbPortWeaver
             // btnCancel
             //
             btnCancel.DialogResult = DialogResult.Cancel;
-            btnCancel.Location     = new Point(602, 860);
+            btnCancel.Location     = new Point(610, 638);
             btnCancel.Name         = "btnCancel";
             btnCancel.Size         = new Size(82, 28);
             btnCancel.TabIndex     = 10;
@@ -370,7 +370,7 @@ namespace qbPortWeaver
             AutoScaleDimensions = new SizeF(7F, 15F);
             AutoScaleMode       = AutoScaleMode.Font;
             CancelButton        = btnCancel;
-            ClientSize          = new Size(700, 900);
+            ClientSize          = new Size(700, 680);
             Controls.Add(grpGeneral);
             Controls.Add(grpLibrary);
             Controls.Add(grpSourceFolders);

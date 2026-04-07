@@ -214,7 +214,7 @@ namespace qbPortWeaver
             // LogViewerForm
             AutoScaleDimensions = new System.Drawing.SizeF(7F, 15F);
             AutoScaleMode       = System.Windows.Forms.AutoScaleMode.Font;
-            ClientSize          = new System.Drawing.Size(1100, 560);
+            ClientSize          = new System.Drawing.Size(1100, 680);
             Controls.Add(rtbLog);
             Controls.Add(pnlToolbar);
             MinimumSize         = new System.Drawing.Size(600, 300);

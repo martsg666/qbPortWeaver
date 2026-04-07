@@ -158,7 +158,7 @@ namespace qbPortWeaver
             btnWhatsNew.Text            = "What's New";
             btnWhatsNew.Click          += btnWhatsNew_Click;
             btnClose.DialogResult       = DialogResult.Cancel;
-            btnClose.Location           = new Point(286, 301);
+            btnClose.Location           = new Point(290, 301);
             btnClose.Name               = "btnClose";
             btnClose.Size               = new Size(82, 28);
             btnClose.TabIndex           = 4;
@@ -168,7 +168,7 @@ namespace qbPortWeaver
             AutoScaleDimensions = new SizeF(7F, 15F);
             AutoScaleMode = AutoScaleMode.Font;
             CancelButton = btnClose;
-            ClientSize = new Size(380, 337);
+            ClientSize = new Size(380, 340);
             Controls.Add(picIcon);
             Controls.Add(lblAppName);
             Controls.Add(lblAppVersion);

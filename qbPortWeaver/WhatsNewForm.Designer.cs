@@ -36,7 +36,7 @@ namespace qbPortWeaver
             grpCommunity.Controls.Add(lnkCommunity);
             grpCommunity.Location = new Point(8, 48);
             grpCommunity.Name     = "grpCommunity";
-            grpCommunity.Size     = new Size(376, 90);
+            grpCommunity.Size     = new Size(384, 90);
             grpCommunity.TabIndex = 1;
             grpCommunity.TabStop  = false;
             grpCommunity.Text     = "Community";
@@ -44,7 +44,7 @@ namespace qbPortWeaver
             lnkCommunity.AutoSize     = false;
             lnkCommunity.Location     = new Point(12, 18);
             lnkCommunity.Name         = "lnkCommunity";
-            lnkCommunity.Size         = new Size(352, 56);
+            lnkCommunity.Size         = new Size(360, 56);
             lnkCommunity.TabIndex     = 0;
             lnkCommunity.Text         = "";
             lnkCommunity.LinkClicked += lnkCommunity_LinkClicked;
@@ -53,7 +53,7 @@ namespace qbPortWeaver
             grpFeatures.Controls.Add(lblFeatures);
             grpFeatures.Location = new Point(8, 146);
             grpFeatures.Name     = "grpFeatures";
-            grpFeatures.Size     = new Size(376, 258);
+            grpFeatures.Size     = new Size(384, 258);
             grpFeatures.TabIndex = 2;
             grpFeatures.TabStop  = false;
             grpFeatures.Text     = "New in this release";
@@ -61,13 +61,13 @@ namespace qbPortWeaver
             lblFeatures.AutoSize = false;
             lblFeatures.Location = new Point(12, 20);
             lblFeatures.Name     = "lblFeatures";
-            lblFeatures.Size     = new Size(352, 228);
+            lblFeatures.Size     = new Size(360, 228);
             lblFeatures.TabIndex = 0;
             lblFeatures.Text     = "";
 
             // ── Buttons ───────────────────────────────────────────────────
             btnClose.DialogResult = DialogResult.Cancel;
-            btnClose.Location     = new Point(302, 416);
+            btnClose.Location     = new Point(310, 416);
             btnClose.Name         = "btnClose";
             btnClose.Size         = new Size(82, 28);
             btnClose.TabIndex     = 3;
@@ -78,7 +78,7 @@ namespace qbPortWeaver
             AutoScaleDimensions = new SizeF(7F, 15F);
             AutoScaleMode       = AutoScaleMode.Font;
             CancelButton        = btnClose;
-            ClientSize          = new Size(400, 456);
+            ClientSize          = new Size(400, 460);
             Controls.Add(lblTitle);
             Controls.Add(grpCommunity);
             Controls.Add(grpFeatures);

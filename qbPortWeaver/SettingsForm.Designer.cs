@@ -80,7 +80,7 @@ namespace qbPortWeaver
             grpGeneral.Controls.Add(lblRecoveryCyclesUnit);
             grpGeneral.Location = new Point(8, 8);
             grpGeneral.Name = "grpGeneral";
-            grpGeneral.Size = new Size(480, 167);
+            grpGeneral.Size = new Size(484, 167);
             grpGeneral.TabIndex = 0;
             grpGeneral.TabStop = false;
             grpGeneral.Text = "General";
@@ -217,7 +217,7 @@ namespace qbPortWeaver
             grpQBittorrent.Controls.Add(chkRestartOnDisconnect);
             grpQBittorrent.Location = new Point(8, 181);
             grpQBittorrent.Name = "grpQBittorrent";
-            grpQBittorrent.Size = new Size(480, 312);
+            grpQBittorrent.Size = new Size(484, 312);
             grpQBittorrent.TabIndex = 1;
             grpQBittorrent.TabStop = false;
             grpQBittorrent.Text = "qBittorrent";
@@ -374,7 +374,7 @@ namespace qbPortWeaver
             grpExtra.Controls.Add(chkDebugMode);
             grpExtra.Location = new Point(8, 499);
             grpExtra.Name = "grpExtra";
-            grpExtra.Size = new Size(480, 126);
+            grpExtra.Size = new Size(484, 126);
             grpExtra.TabIndex = 2;
             grpExtra.TabStop = false;
             grpExtra.Text = "Extra";
@@ -423,7 +423,7 @@ namespace qbPortWeaver
             //
             // btnOK
             //
-            btnOK.Location = new Point(308, 637);
+            btnOK.Location = new Point(320, 637);
             btnOK.Name = "btnOK";
             btnOK.Size = new Size(82, 28);
             btnOK.TabIndex = 3;
@@ -433,7 +433,7 @@ namespace qbPortWeaver
             // btnCancel
             //
             btnCancel.DialogResult = DialogResult.Cancel;
-            btnCancel.Location = new Point(400, 637);
+            btnCancel.Location = new Point(410, 637);
             btnCancel.Name = "btnCancel";
             btnCancel.Size = new Size(82, 28);
             btnCancel.TabIndex = 4;
@@ -446,7 +446,7 @@ namespace qbPortWeaver
             AutoScaleDimensions = new SizeF(7F, 15F);
             AutoScaleMode = AutoScaleMode.Font;
             CancelButton = btnCancel;
-            ClientSize = new Size(498, 677);
+            ClientSize = new Size(500, 680);
             Controls.Add(grpGeneral);
             Controls.Add(grpQBittorrent);
             Controls.Add(grpExtra);

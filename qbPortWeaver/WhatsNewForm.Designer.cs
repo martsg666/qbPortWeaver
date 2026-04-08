@@ -26,9 +26,9 @@ namespace qbPortWeaver
 
             // ── Header ────────────────────────────────────────────────────
             lblTitle.Font     = new Font("Segoe UI", 13F, FontStyle.Bold);
-            lblTitle.Location = new Point(16, 14);
+            lblTitle.Location = new Point(8, 14);
             lblTitle.Name     = "lblTitle";
-            lblTitle.Size     = new Size(368, 26);
+            lblTitle.Size     = new Size(384, 26);
             lblTitle.TabIndex = 0;
             lblTitle.Text     = "What's New";
 
@@ -78,7 +78,7 @@ namespace qbPortWeaver
             AutoScaleDimensions = new SizeF(7F, 15F);
             AutoScaleMode       = AutoScaleMode.Font;
             CancelButton        = btnClose;
-            ClientSize          = new Size(400, 460);
+            ClientSize          = new Size(400, 455);
             Controls.Add(lblTitle);
             Controls.Add(grpCommunity);
             Controls.Add(grpFeatures);

@@ -316,7 +316,7 @@ namespace qbPortWeaver
             dgvResults.Name         = "dgvResults";
             dgvResults.RowHeadersVisible = false;
             dgvResults.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
-            dgvResults.Size         = new Size(684, 166);
+            dgvResults.Size         = new Size(684, 165);
             dgvResults.ClipboardCopyMode = DataGridViewClipboardCopyMode.EnableWithoutHeaderText;
             dgvResults.TabIndex          = 8;
             dgvResults.TabStop           = false;
@@ -362,7 +362,7 @@ namespace qbPortWeaver
             // btnOK
             //
             btnOK.Anchor   = AnchorStyles.Bottom | AnchorStyles.Right;
-            btnOK.Location = new Point(520, 638);
+            btnOK.Location = new Point(520, 641);
             btnOK.Name     = "btnOK";
             btnOK.Size     = new Size(82, 28);
             btnOK.TabIndex = 9;
@@ -373,7 +373,7 @@ namespace qbPortWeaver
             //
             btnCancel.DialogResult = DialogResult.Cancel;
             btnCancel.Anchor       = AnchorStyles.Bottom | AnchorStyles.Right;
-            btnCancel.Location     = new Point(610, 638);
+            btnCancel.Location     = new Point(610, 641);
             btnCancel.Name         = "btnCancel";
             btnCancel.Size         = new Size(82, 28);
             btnCancel.TabIndex     = 10;

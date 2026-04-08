@@ -22,6 +22,7 @@ namespace qbPortWeaver
         protected override void OnLoad(EventArgs e)
         {
             base.OnLoad(e);
+            MinimumSize = Size; // lock minimum to initial window size so controls are never clipped
             SetupTooltips();
             SetupGridContextMenu();
             LoadSettings();

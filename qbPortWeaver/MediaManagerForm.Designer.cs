@@ -67,6 +67,7 @@ namespace qbPortWeaver
             grpGeneral.Controls.Add(chkDeleteEmptyFolders);
             grpGeneral.Controls.Add(lblImportMode);
             grpGeneral.Controls.Add(cboImportMode);
+            grpGeneral.Anchor   = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
             grpGeneral.Location = new Point(8, 8);
             grpGeneral.Name     = "grpGeneral";
             grpGeneral.Size     = new Size(684, 190);
@@ -93,6 +94,7 @@ namespace qbPortWeaver
             //
             // txtTmdbApiKey
             //
+            txtTmdbApiKey.Anchor       = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
             txtTmdbApiKey.Location     = new Point(148, 53);
             txtTmdbApiKey.Name         = "txtTmdbApiKey";
             txtTmdbApiKey.PasswordChar = '*';
@@ -149,6 +151,7 @@ namespace qbPortWeaver
             grpLibrary.Controls.Add(lblTvShowsLibraryPath);
             grpLibrary.Controls.Add(txtTvShowsLibraryPath);
             grpLibrary.Controls.Add(btnBrowseTvShowsLibrary);
+            grpLibrary.Anchor   = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
             grpLibrary.Location = new Point(8, 206);
             grpLibrary.Name     = "grpLibrary";
             grpLibrary.Size     = new Size(684, 82);
@@ -167,6 +170,7 @@ namespace qbPortWeaver
             //
             // txtMoviesLibraryPath
             //
+            txtMoviesLibraryPath.Anchor   = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
             txtMoviesLibraryPath.Location = new Point(148, 24);
             txtMoviesLibraryPath.Name     = "txtMoviesLibraryPath";
             txtMoviesLibraryPath.Size     = new Size(480, 23);
@@ -174,6 +178,7 @@ namespace qbPortWeaver
             //
             // btnBrowseMoviesLibrary
             //
+            btnBrowseMoviesLibrary.Anchor   = AnchorStyles.Top | AnchorStyles.Right;
             btnBrowseMoviesLibrary.Location = new Point(634, 24);
             btnBrowseMoviesLibrary.Name     = "btnBrowseMoviesLibrary";
             btnBrowseMoviesLibrary.Size     = new Size(40, 23);
@@ -192,6 +197,7 @@ namespace qbPortWeaver
             //
             // txtTvShowsLibraryPath
             //
+            txtTvShowsLibraryPath.Anchor   = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
             txtTvShowsLibraryPath.Location = new Point(148, 53);
             txtTvShowsLibraryPath.Name     = "txtTvShowsLibraryPath";
             txtTvShowsLibraryPath.Size     = new Size(480, 23);
@@ -199,6 +205,7 @@ namespace qbPortWeaver
             //
             // btnBrowseTvShowsLibrary
             //
+            btnBrowseTvShowsLibrary.Anchor   = AnchorStyles.Top | AnchorStyles.Right;
             btnBrowseTvShowsLibrary.Location = new Point(634, 53);
             btnBrowseTvShowsLibrary.Name     = "btnBrowseTvShowsLibrary";
             btnBrowseTvShowsLibrary.Size     = new Size(40, 23);
@@ -211,23 +218,26 @@ namespace qbPortWeaver
             grpSourceFolders.Controls.Add(lstSourceFolders);
             grpSourceFolders.Controls.Add(btnAddSourceFolder);
             grpSourceFolders.Controls.Add(btnRemoveSourceFolder);
+            grpSourceFolders.Anchor   = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
             grpSourceFolders.Location = new Point(8, 296);
             grpSourceFolders.Name     = "grpSourceFolders";
-            grpSourceFolders.Size     = new Size(684, 110);
+            grpSourceFolders.Size     = new Size(684, 114);
             grpSourceFolders.TabIndex = 2;
             grpSourceFolders.TabStop  = false;
             grpSourceFolders.Text     = "Source Folders";
             //
             // lstSourceFolders
             //
+            lstSourceFolders.Anchor   = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
             lstSourceFolders.Location = new Point(12, 24);
             lstSourceFolders.Name     = "lstSourceFolders";
-            lstSourceFolders.Size     = new Size(660, 60);
+            lstSourceFolders.Size     = new Size(660, 56);
             lstSourceFolders.TabIndex = 0;
             //
             // btnAddSourceFolder
             //
-            btnAddSourceFolder.Location = new Point(12, 80);
+            btnAddSourceFolder.Anchor   = AnchorStyles.Bottom | AnchorStyles.Left;
+            btnAddSourceFolder.Location = new Point(12, 84);
             btnAddSourceFolder.Name     = "btnAddSourceFolder";
             btnAddSourceFolder.Size     = new Size(75, 23);
             btnAddSourceFolder.TabIndex = 1;
@@ -236,7 +246,8 @@ namespace qbPortWeaver
             //
             // btnRemoveSourceFolder
             //
-            btnRemoveSourceFolder.Location = new Point(92, 80);
+            btnRemoveSourceFolder.Anchor   = AnchorStyles.Bottom | AnchorStyles.Left;
+            btnRemoveSourceFolder.Location = new Point(92, 84);
             btnRemoveSourceFolder.Name     = "btnRemoveSourceFolder";
             btnRemoveSourceFolder.Size     = new Size(75, 23);
             btnRemoveSourceFolder.TabIndex = 2;
@@ -245,7 +256,7 @@ namespace qbPortWeaver
             //
             // btnScanNow
             //
-            btnScanNow.Location = new Point(8, 414);
+            btnScanNow.Location = new Point(8, 418);
             btnScanNow.Name     = "btnScanNow";
             btnScanNow.Size     = new Size(90, 28);
             btnScanNow.TabIndex = 3;
@@ -255,7 +266,7 @@ namespace qbPortWeaver
             // btnImportNow
             //
             btnImportNow.Enabled  = false;
-            btnImportNow.Location = new Point(106, 414);
+            btnImportNow.Location = new Point(106, 418);
             btnImportNow.Name     = "btnImportNow";
             btnImportNow.Size     = new Size(100, 28);
             btnImportNow.TabIndex = 4;
@@ -264,7 +275,7 @@ namespace qbPortWeaver
             //
             // btnClearCache
             //
-            btnClearCache.Location = new Point(214, 414);
+            btnClearCache.Location = new Point(214, 418);
             btnClearCache.Name     = "btnClearCache";
             btnClearCache.Size     = new Size(100, 28);
             btnClearCache.TabIndex = 5;
@@ -273,7 +284,8 @@ namespace qbPortWeaver
             //
             // lblScanStatus
             //
-            lblScanStatus.Location  = new Point(322, 414);
+            lblScanStatus.Anchor    = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+            lblScanStatus.Location  = new Point(322, 418);
             lblScanStatus.Name      = "lblScanStatus";
             lblScanStatus.Size      = new Size(370, 28);
             lblScanStatus.TabIndex  = 6;
@@ -282,7 +294,8 @@ namespace qbPortWeaver
             //
             // prgScan
             //
-            prgScan.Location = new Point(8, 442);
+            prgScan.Anchor   = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+            prgScan.Location = new Point(8, 446);
             prgScan.Name     = "prgScan";
             prgScan.Size     = new Size(684, 16);
             prgScan.TabIndex = 7;
@@ -298,11 +311,12 @@ namespace qbPortWeaver
             dgvResults.BorderStyle           = BorderStyle.Fixed3D;
             dgvResults.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.AutoSize;
             dgvResults.Columns.AddRange(colInclude, colType, colCurrent, colProposed);
-            dgvResults.Location     = new Point(8, 460);
+            dgvResults.Anchor       = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Bottom;
+            dgvResults.Location     = new Point(8, 464);
             dgvResults.Name         = "dgvResults";
             dgvResults.RowHeadersVisible = false;
             dgvResults.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
-            dgvResults.Size         = new Size(684, 170);
+            dgvResults.Size         = new Size(684, 166);
             dgvResults.ClipboardCopyMode = DataGridViewClipboardCopyMode.EnableWithoutHeaderText;
             dgvResults.TabIndex          = 8;
             dgvResults.TabStop           = false;
@@ -347,6 +361,7 @@ namespace qbPortWeaver
             //
             // btnOK
             //
+            btnOK.Anchor   = AnchorStyles.Bottom | AnchorStyles.Right;
             btnOK.Location = new Point(520, 638);
             btnOK.Name     = "btnOK";
             btnOK.Size     = new Size(82, 28);
@@ -357,6 +372,7 @@ namespace qbPortWeaver
             // btnCancel
             //
             btnCancel.DialogResult = DialogResult.Cancel;
+            btnCancel.Anchor       = AnchorStyles.Bottom | AnchorStyles.Right;
             btnCancel.Location     = new Point(610, 638);
             btnCancel.Name         = "btnCancel";
             btnCancel.Size         = new Size(82, 28);
@@ -382,8 +398,7 @@ namespace qbPortWeaver
             Controls.Add(dgvResults);
             Controls.Add(btnOK);
             Controls.Add(btnCancel);
-            FormBorderStyle = FormBorderStyle.FixedDialog;
-            MaximizeBox     = false;
+            FormBorderStyle = FormBorderStyle.Sizable;
             MinimizeBox     = false;
             Name            = "MediaManagerForm";
             ShowIcon        = false;

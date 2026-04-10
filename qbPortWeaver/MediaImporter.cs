@@ -81,7 +81,7 @@ namespace qbPortWeaver
             }
             else
             {
-                LogManager.Instance.LogMessage("Hardlink failed, falling back to copy", LogLevel.Warn, Subsystem.MediaManager);
+                LogManager.Instance.LogMessage($"Hardlink failed for '{Path.GetFileName(destinationPath)}', falling back to copy", LogLevel.Warn, Subsystem.MediaManager);
                 File.Copy(sourcePath, destinationPath, overwrite: false);
                 LogManager.Instance.LogDebug($"MediaImporter.ImportFile: Copied (fallback) '{Path.GetFileName(destinationPath)}'", Subsystem.MediaManager);
             }

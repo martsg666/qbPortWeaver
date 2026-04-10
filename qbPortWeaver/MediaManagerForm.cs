@@ -204,7 +204,9 @@ namespace qbPortWeaver
             foreach (var (showKey, showRows) in GroupTvRowsByShow(tvRows))
             {
                 ct.ThrowIfCancellationRequested();
-                var (showInfo, showConfident) = await LookupTvShowForRecheckAsync(tmdb, showKey, tvLib);
+                var (showInfo, showConfident) = string.IsNullOrWhiteSpace(tvLib)
+                    ? (null, false)
+                    : await SearchTmdbByPlexNameAsync<TvShowInfo>(showKey, tmdb.SearchTvShowAsync, i => i.Title, i => i.Year, i => i.VoteCount, i => i.TmdbId, "TV show");
                 foreach (var row in showRows)
                 {
                     if (IsDisposed) return null;
@@ -223,7 +225,7 @@ namespace qbPortWeaver
                 if (!string.IsNullOrWhiteSpace(moviesLib))
                 {
                     var editedName = row.Cells[colProposed.Index].Value?.ToString() ?? string.Empty;
-                    var (movieInfo, movieConfident) = await LookupMovieForRecheckAsync(tmdb, editedName);
+                    var (movieInfo, movieConfident) = await SearchTmdbByPlexNameAsync<MovieInfo>(editedName, tmdb.SearchMovieAsync, i => i.Title, i => i.Year, i => i.VoteCount, i => i.TmdbId, "movie");
                     if (movieInfo is not null)
                         ApplyMovieRecheckResult(row, movieInfo, moviesLib, createFolders, editedName, movieConfident);
                 }
@@ -263,52 +265,32 @@ namespace qbPortWeaver
             return groups;
         }
 
-        private static async Task<(TvShowInfo? Info, bool IsConfident)> LookupTvShowForRecheckAsync(TmdbClient tmdb, string showKey, string tvLib)
+        // Parses a Plex-formatted name into title+year and searches TMDB with confidence tracking.
+        // Returns (null, false) if the name is blank, unparseable, or has no TMDB match.
+        private static async Task<(T? Info, bool IsConfident)> SearchTmdbByPlexNameAsync<T>(
+            string name, Func<string, int?, Task<T?>> search,
+            Func<T, string> getTitle, Func<T, int?> getYear, Func<T, int> getVoteCount, Func<T, int> getTmdbId,
+            string mediaLabel) where T : class
         {
-            if (string.IsNullOrWhiteSpace(tvLib)) return (null, false);
-            var (title, year) = FileNameParser.ParseMovie(showKey); // ParseMovie handles "Title (Year)" format used for show folder names
+            if (string.IsNullOrWhiteSpace(name)) return (null, false);
+            var (title, year) = FileNameParser.ParseMovie(name);
             if (string.IsNullOrWhiteSpace(title)) return (null, false);
             try
             {
                 var (info, isConfident) = await TmdbClient.SearchWithConfidenceAsync(
-                    title, year, tmdb.SearchTvShowAsync, i => i.Year is not null, i => i.Title, i => i.VoteCount).ConfigureAwait(false);
+                    title, year, search, i => getYear(i) is not null, getTitle, getVoteCount).ConfigureAwait(false);
 
                 if (info is null)
                 {
-                    LogManager.Instance.LogDebug($"MediaManagerForm.LookupTvShowForRecheckAsync: No TMDB match for '{title}'", Subsystem.MediaManager);
+                    LogManager.Instance.LogDebug($"MediaManagerForm.SearchTmdbByPlexNameAsync: No TMDB match found for {mediaLabel} '{title}'", Subsystem.MediaManager);
                     return (null, false);
                 }
-                LogManager.Instance.LogDebug($"MediaManagerForm.LookupTvShowForRecheckAsync: Matched '{info.Title}' ({info.Year}) [tmdb-{info.TmdbId}]", Subsystem.MediaManager);
+                LogManager.Instance.LogDebug($"MediaManagerForm.SearchTmdbByPlexNameAsync: Matched {mediaLabel} '{getTitle(info)}' ({getYear(info)}) [tmdb-{getTmdbId(info)}]", Subsystem.MediaManager);
                 return (info, isConfident);
             }
             catch (HttpRequestException ex)
             {
-                LogManager.Instance.LogMessage($"Re-check TV show lookup failed for '{title}': {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
-                return (null, false);
-            }
-        }
-
-        private static async Task<(MovieInfo? Info, bool IsConfident)> LookupMovieForRecheckAsync(TmdbClient tmdb, string editedName)
-        {
-            if (string.IsNullOrWhiteSpace(editedName)) return (null, false);
-            var (title, year) = FileNameParser.ParseMovie(editedName);
-            if (string.IsNullOrWhiteSpace(title)) return (null, false);
-            try
-            {
-                var (info, isConfident) = await TmdbClient.SearchWithConfidenceAsync(
-                    title, year, tmdb.SearchMovieAsync, i => i.Year is not null, i => i.Title, i => i.VoteCount).ConfigureAwait(false);
-
-                if (info is null)
-                {
-                    LogManager.Instance.LogDebug($"MediaManagerForm.LookupMovieForRecheckAsync: No TMDB match for '{title}'", Subsystem.MediaManager);
-                    return (null, false);
-                }
-                LogManager.Instance.LogDebug($"MediaManagerForm.LookupMovieForRecheckAsync: Matched '{info.Title}' ({info.Year}) [tmdb-{info.TmdbId}]", Subsystem.MediaManager);
-                return (info, isConfident);
-            }
-            catch (HttpRequestException ex)
-            {
-                LogManager.Instance.LogMessage($"Re-check movie lookup failed for '{title}': {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
+                LogManager.Instance.LogMessage($"Re-check {mediaLabel} lookup failed for '{title}': {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
                 return (null, false);
             }
         }

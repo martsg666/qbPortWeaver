@@ -255,23 +255,8 @@ namespace qbPortWeaver
         {
             try
             {
-                bool isConfident = true;
-
-                var info = await _tmdb.SearchMovieAsync(title, year).ConfigureAwait(false);
-
-                // Without a year in the filename we cannot corroborate the match by year alone.
-                // Require an exact title match and a meaningful vote count to stay confident.
-                if (info is not null && !year.HasValue)
-                    isConfident = FileNameParser.IsStrongNoYearMatch(title, info.Title, info.VoteCount);
-
-                // Retry without year: parsed year may not match TMDB's release year
-                if (info is null && year.HasValue)
-                {
-                    info = await _tmdb.SearchMovieAsync(title).ConfigureAwait(false);
-                    if (info is not null) isConfident = false;
-                }
-
-                (info, isConfident) = await FileNameParser.TryFallbackLookupsAsync(title, year, info, isConfident, _tmdb.SearchMovieAsync, i => i.Year is not null).ConfigureAwait(false);
+                var (info, isConfident) = await TmdbClient.SearchWithConfidenceAsync(
+                    title, year, _tmdb.SearchMovieAsync, i => i.Year is not null, i => i.Title, i => i.VoteCount).ConfigureAwait(false);
 
                 if (info is null)
                 {

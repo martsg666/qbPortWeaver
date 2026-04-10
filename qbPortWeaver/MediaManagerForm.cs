@@ -263,7 +263,6 @@ namespace qbPortWeaver
             return groups;
         }
 
-        // Mirrors TvShowProcessor.LookupTvShowAsync: search, no-year confidence check, retry without year, fallback strategies.
         private static async Task<(TvShowInfo? Info, bool IsConfident)> LookupTvShowForRecheckAsync(TmdbClient tmdb, string showKey, string tvLib)
         {
             if (string.IsNullOrWhiteSpace(tvLib)) return (null, false);
@@ -271,20 +270,8 @@ namespace qbPortWeaver
             if (string.IsNullOrWhiteSpace(title)) return (null, false);
             try
             {
-                bool isConfident = true;
-
-                var info = await tmdb.SearchTvShowAsync(title, year).ConfigureAwait(false);
-
-                if (info is not null && !year.HasValue)
-                    isConfident = FileNameParser.IsStrongNoYearMatch(title, info.Title, info.VoteCount);
-
-                if (info is null && year.HasValue)
-                {
-                    info = await tmdb.SearchTvShowAsync(title).ConfigureAwait(false);
-                    if (info is not null) isConfident = false;
-                }
-
-                (info, isConfident) = await FileNameParser.TryFallbackLookupsAsync(title, year, info, isConfident, tmdb.SearchTvShowAsync, i => i.Year is not null).ConfigureAwait(false);
+                var (info, isConfident) = await TmdbClient.SearchWithConfidenceAsync(
+                    title, year, tmdb.SearchTvShowAsync, i => i.Year is not null, i => i.Title, i => i.VoteCount).ConfigureAwait(false);
 
                 if (info is null)
                 {
@@ -301,7 +288,6 @@ namespace qbPortWeaver
             }
         }
 
-        // Mirrors MovieProcessor.LookupMovieAsync: search, no-year confidence check, retry without year, fallback strategies.
         private static async Task<(MovieInfo? Info, bool IsConfident)> LookupMovieForRecheckAsync(TmdbClient tmdb, string editedName)
         {
             if (string.IsNullOrWhiteSpace(editedName)) return (null, false);
@@ -309,20 +295,8 @@ namespace qbPortWeaver
             if (string.IsNullOrWhiteSpace(title)) return (null, false);
             try
             {
-                bool isConfident = true;
-
-                var info = await tmdb.SearchMovieAsync(title, year).ConfigureAwait(false);
-
-                if (info is not null && !year.HasValue)
-                    isConfident = FileNameParser.IsStrongNoYearMatch(title, info.Title, info.VoteCount);
-
-                if (info is null && year.HasValue)
-                {
-                    info = await tmdb.SearchMovieAsync(title).ConfigureAwait(false);
-                    if (info is not null) isConfident = false;
-                }
-
-                (info, isConfident) = await FileNameParser.TryFallbackLookupsAsync(title, year, info, isConfident, tmdb.SearchMovieAsync, i => i.Year is not null).ConfigureAwait(false);
+                var (info, isConfident) = await TmdbClient.SearchWithConfidenceAsync(
+                    title, year, tmdb.SearchMovieAsync, i => i.Year is not null, i => i.Title, i => i.VoteCount).ConfigureAwait(false);
 
                 if (info is null)
                 {

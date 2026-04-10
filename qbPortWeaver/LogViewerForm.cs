@@ -104,6 +104,9 @@ namespace qbPortWeaver
             ApplyFilterButtonStyle(chkInfo,  _themeColors[2]);
             ApplyFilterButtonStyle(chkDebug, _themeColors[3]);
 
+            cboSubsystem.BackColor = bg;
+            cboSubsystem.ForeColor = fg;
+
             txtSearch.BackColor = bg;
             txtSearch.ForeColor = fg;
 
@@ -139,6 +142,16 @@ namespace qbPortWeaver
             if (sender is CheckBox chk)
                 ApplyFilterButtonStyle(chk, GetButtonLevelColor(chk));
             RebuildDisplay();
+        }
+
+        // Called when the subsystem filter ComboBox changes - rebuilds the display
+        private void cboSubsystem_SelectedIndexChanged(object? sender, EventArgs e) => RebuildDisplay();
+
+        // Returns the selected subsystem filter, or null when "All" is selected (no filter)
+        private string? GetSubsystemFilter()
+        {
+            var selected = cboSubsystem.SelectedItem?.ToString();
+            return selected is null or "All" ? null : selected;
         }
 
         private Color GetButtonLevelColor(CheckBox chk)
@@ -301,9 +314,10 @@ namespace qbPortWeaver
         // then re-applies search highlights. Preserves scroll: only scrolls to bottom if the user was there.
         private void RebuildDisplay()
         {
-            bool     wasAtBottom = IsAtBottom();
-            bool[]   filters     = [chkError.Checked, chkWarn.Checked, chkInfo.Checked, chkDebug.Checked];
-            string[] filtered    = _allLines.Where(l => IsLineVisibleWithFilters(l, filters)).ToArray();
+            bool     wasAtBottom      = IsAtBottom();
+            bool[]   filters          = [chkError.Checked, chkWarn.Checked, chkInfo.Checked, chkDebug.Checked];
+            string?  subsystemFilter  = GetSubsystemFilter();
+            string[] filtered         = _allLines.Where(l => IsLineVisibleWithFilters(l, filters, subsystemFilter)).ToArray();
             rtbLog.Rtf = BuildRtf(filtered, _themeColors);
             if (wasAtBottom) ScrollToBottom();
             RefreshSearch(navigateToFirst: true);
@@ -366,8 +380,9 @@ namespace qbPortWeaver
                 }
 
                 // Capture UI-thread state before entering the background task
-                Color[] colors  = _themeColors;
-                bool[]  filters = [chkError.Checked, chkWarn.Checked, chkInfo.Checked, chkDebug.Checked];
+                Color[] colors          = _themeColors;
+                bool[]  filters         = [chkError.Checked, chkWarn.Checked, chkInfo.Checked, chkDebug.Checked];
+                string? subsystemFilter = GetSubsystemFilter();
 
                 (string rtf, long position, string[] allLines) = await Task.Run(() =>
                 {
@@ -379,7 +394,7 @@ namespace qbPortWeaver
                                                  .Split('\n', StringSplitOptions.RemoveEmptyEntries)
                                                  .Select(l => l.TrimEnd('\r'))
                                                  .ToArray();
-                        string[] filtered = lines.Where(l => IsLineVisibleWithFilters(l, filters)).ToArray();
+                        string[] filtered = lines.Where(l => IsLineVisibleWithFilters(l, filters, subsystemFilter)).ToArray();
                         return (BuildRtf(filtered, colors), fs.Position, lines);
                     }
                 });
@@ -517,12 +532,13 @@ namespace qbPortWeaver
         // Must be called on the UI thread.
         private void AppendNewLines(string[] newLines)
         {
-            bool   wasAtBottom = IsAtBottom();
-            bool[] filters     = [chkError.Checked, chkWarn.Checked, chkInfo.Checked, chkDebug.Checked];
+            bool    wasAtBottom      = IsAtBottom();
+            bool[]  filters          = [chkError.Checked, chkWarn.Checked, chkInfo.Checked, chkDebug.Checked];
+            string? subsystemFilter  = GetSubsystemFilter();
 
             _allLines.AddRange(newLines);
 
-            string[] visibleNew = newLines.Where(l => IsLineVisibleWithFilters(l, filters)).ToArray();
+            string[] visibleNew = newLines.Where(l => IsLineVisibleWithFilters(l, filters, subsystemFilter)).ToArray();
             if (visibleNew.Length == 0)
                 return;
 
@@ -564,7 +580,7 @@ namespace qbPortWeaver
         }
 
         // Returns the 0-based colour index for a log line, used by BuildRtf and IsLineVisibleWithFilters.
-        // Log format: "yyyy-MM-dd HH:mm:ss | LEVEL | message" (level padded to 5 chars)
+        // Log format: "yyyy-MM-dd HH:mm:ss | LEVEL | Subsystem     | message" (level padded to 5 chars)
         private static int GetLineColorIndex(string line)
         {
             if (line.Contains("| ERROR |", StringComparison.Ordinal)) return 0;
@@ -575,11 +591,15 @@ namespace qbPortWeaver
         }
 
         // Static - safe to call from background threads (no UI state access).
-        // Meta/unclassified lines (index >= 4) are always shown.
-        private static bool IsLineVisibleWithFilters(string line, bool[] filters)
+        // Meta/unclassified lines (index >= 4) pass level filters but are hidden when a
+        // subsystem filter is active (blank cycle separators create large gaps otherwise).
+        private static bool IsLineVisibleWithFilters(string line, bool[] filters, string? subsystemFilter)
         {
             int idx = GetLineColorIndex(line);
-            return idx >= filters.Length || filters[idx];
+            if (idx >= filters.Length) return subsystemFilter is null;  // meta/unclassified: show only when "All"
+            if (!filters[idx]) return false;                            // level filtered out
+            if (subsystemFilter is not null && !line.Contains($"| {subsystemFilter}", StringComparison.Ordinal)) return false;
+            return true;
         }
 
         // Convenience colour for meta/status messages (not log entries)

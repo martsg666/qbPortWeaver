@@ -86,7 +86,7 @@ namespace qbPortWeaver
                     [KeyVpnProvider]                    = VpnProviderDisabled,
                     [KeyUpdateIntervalSeconds]           = "180",
                     [KeyNatPmpAdapterName]              = "",
-                    [KeyAutoRecoveryEnabled]            = ValueFalse,
+                    [KeyAutoRecoveryEnabled]            = ValueTrue,
                     [KeyAutoRecoveryTriggerCycles]      = "3"
                 },
                 [SectionQBittorrent] = new(StringComparer.OrdinalIgnoreCase)
@@ -97,10 +97,10 @@ namespace qbPortWeaver
                     [KeyQBittorrentExePath]      = @"C:\Program Files\qBittorrent\qbittorrent.exe",
                     [KeyQBittorrentProcessName]  = "qbittorrent",
                     [KeyRestartQBittorrent]      = ValueTrue,
-                    [KeyForceStartQBittorrent]   = ValueFalse,
+                    [KeyForceStartQBittorrent]   = ValueTrue,
                     [KeyDefaultPort]             = "0",
                     [KeyWarnOnInterfaceMismatch] = ValueTrue,
-                    [KeyRestartOnDisconnect]     = ValueFalse
+                    [KeyRestartOnDisconnect]     = ValueTrue
                 },
                 [SectionExtra] = new(StringComparer.OrdinalIgnoreCase)
                 {
@@ -113,7 +113,7 @@ namespace qbPortWeaver
                     [KeyMediaEnabled]       = ValueFalse,
                     [KeyTmdbApiKey]         = "",
                     [KeyMediaSourceFolders]      = "",
-                    [KeyMediaCreateFolders]      = ValueFalse,
+                    [KeyMediaCreateFolders]      = ValueTrue,
                     [KeyMediaDeleteEmptyFolders] = ValueFalse,
                     [KeyMediaDryRun]             = ValueTrue,
                     [KeyMediaMoviesLibraryPath]  = "",

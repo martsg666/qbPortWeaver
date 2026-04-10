@@ -58,6 +58,40 @@ namespace qbPortWeaver
             return new TvShowInfo(result.Name, airYear, result.Id, result.VoteCount);
         }
 
+        /// <summary>
+        /// Searches TMDB with confidence tracking: primary search, no-year confidence check,
+        /// retry without year, and fallback strategies (after-dash, trailing-number).
+        /// Shared by both processors and the re-check UI to avoid duplicating lookup logic.
+        /// </summary>
+        internal static async Task<(T? Info, bool IsConfident)> SearchWithConfidenceAsync<T>(
+            string title, int? year,
+            Func<string, int?, Task<T?>> search,
+            Func<T, bool> hasYear,
+            Func<T, string> getTitle,
+            Func<T, int> getVoteCount) where T : class
+        {
+            bool isConfident = true;
+
+            var info = await search(title, year).ConfigureAwait(false);
+
+            // Without a year in the filename we cannot corroborate the match by year alone.
+            // Require an exact title match and a meaningful vote count to stay confident.
+            if (info is not null && !year.HasValue)
+                isConfident = FileNameParser.IsStrongNoYearMatch(title, getTitle(info), getVoteCount(info));
+
+            // Retry without year: parsed year may not match TMDB's release/first-air year
+            if (info is null && year.HasValue)
+            {
+                info = await search(title, null).ConfigureAwait(false);
+                if (info is not null) isConfident = false;
+            }
+
+            (info, isConfident) = await FileNameParser.TryFallbackLookupsAsync(
+                title, year, info, isConfident, search, hasYear).ConfigureAwait(false);
+
+            return (info, isConfident);
+        }
+
         // Enforces a minimum delay between TMDB API calls to avoid HTTP 429 rate limiting.
         // The delay runs inside the semaphore hold so the next caller waits for the cooldown to finish.
         private static async Task<T?> GetWithRateLimitAsync<T>(string url)

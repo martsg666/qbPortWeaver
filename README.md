@@ -64,7 +64,7 @@ The application runs in the system tray, manages configuration and logging, and 
   All configuration options are editable through a dedicated Settings form (tray menu → Settings), with inline descriptions and tooltips for each option.
 
 - **Log Viewer**
-  Built-in log viewer (tray menu → Show Logs, or double-click the tray icon) displays the log file with color-coded entries by level (error, warn, info, debug) and follows new entries in real time. Includes a search bar with match highlighting and prev/next navigation, toggle buttons to filter by log level, and an auto-scroll toggle. Adapts to the application color theme (System, Dark, or Light).
+  Built-in log viewer (tray menu → Show Logs, or double-click the tray icon) displays the log file with color-coded entries by level (error, warn, info, debug) and follows new entries in real time. Includes a search bar with match highlighting and prev/next navigation, toggle buttons to filter by log level, and a subsystem filter to isolate entries from a specific component. Adapts to the application color theme (System, Dark, or Light).
 
 - **Logging**
   Logs all operations and errors, with automatic log size management (5 MB per file, up to 3 rotated files). Clear logs directly from the tray menu.
@@ -237,7 +237,7 @@ NAT-PMP (RFC 6886) is a protocol for requesting port mappings directly from a ga
 
 - All actions and errors are logged to `%LocalAppData%\qbPortWeaver\qbPortWeaver.log`.
 - Log files are automatically rotated when exceeding **5 MB**, keeping up to 3 files (current + 2 backups).
-- Open the **Log Viewer** from the tray menu (Show Logs) or by double-clicking the tray icon. It shows color-coded entries (red for errors, gold for warnings, blue for info, orange for debug) and tails new entries live. Use the search bar to find and highlight matches with prev/next navigation, or the level filter buttons to show only the levels you care about. The viewer adapts to the application color theme configured in Settings.
+- Open the **Log Viewer** from the tray menu (Show Logs) or by double-clicking the tray icon. It shows color-coded entries (red for errors, gold for warnings, blue for info, orange for debug) and tails new entries live. Use the search bar to find and highlight matches with prev/next navigation, the level filter buttons to show only the levels you care about, or the subsystem dropdown to isolate entries from a specific component. The viewer adapts to the application color theme configured in Settings.
 
 ---
 

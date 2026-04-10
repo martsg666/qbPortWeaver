@@ -56,18 +56,14 @@ Copy-Item -Recurse -Path $chocoSrc -Destination $stagingDir
 try {
     $nuspecPath  = Join-Path $stagingDir 'qbPortWeaver.nuspec'
     $installPath = Join-Path $stagingDir 'tools\chocolateyInstall.ps1'
-    $verifyPath  = Join-Path $stagingDir 'tools\VERIFICATION.txt'
 
     (Get-Content $nuspecPath  -Encoding utf8) -replace 'TEMPLATE_VERSION',  $version   | Set-Content $nuspecPath  -Encoding utf8
     (Get-Content $installPath -Encoding utf8) -replace 'TEMPLATE_URL',      $localUrl `
                                -replace 'TEMPLATE_CHECKSUM', $checksum                 | Set-Content $installPath -Encoding utf8
-    (Get-Content $verifyPath  -Encoding utf8) -replace 'TEMPLATE_VERSION',  $version `
-                               -replace 'TEMPLATE_URL',      $localUrl `
-                               -replace 'TEMPLATE_CHECKSUM', $checksum                 | Set-Content $verifyPath  -Encoding utf8
 
     # Verify no TEMPLATE_ placeholders survived the substitution
     $unreplaced = $false
-    foreach ($f in @($nuspecPath, $installPath, $verifyPath)) {
+    foreach ($f in @($nuspecPath, $installPath)) {
         if (Select-String -Path $f -Pattern 'TEMPLATE_' -Quiet) {
             Write-Host "    Unreplaced TEMPLATE_ placeholder in: $f" -ForegroundColor Red
             $unreplaced = $true

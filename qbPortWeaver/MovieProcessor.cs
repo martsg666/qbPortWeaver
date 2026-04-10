@@ -8,7 +8,7 @@ namespace qbPortWeaver
     /// </summary>
     public sealed class MovieProcessor
     {
-        private const string MediaTypeMovie = "Movie";
+        private const string MediaTypeMovie = MediaProposal.TypeMovie;
 
         private readonly TmdbClient _tmdb;
         private readonly bool _dryRun;
@@ -179,7 +179,7 @@ namespace qbPortWeaver
             if (info is null) return;
             if (!isConfident)
             {
-                LogManager.Instance.LogMessage($"Skipped folder '{Path.GetFileName(dirPath)}' - uncertain TMDB match, review in Media Manager", LogLevel.Warn, Subsystem.MediaManager);
+                LogManager.Instance.LogMessage($"Skipped folder '{dirPath}' - uncertain TMDB match, review in Media Manager", LogLevel.Warn, Subsystem.MediaManager);
                 return;
             }
 
@@ -224,7 +224,7 @@ namespace qbPortWeaver
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
-                LogManager.Instance.LogMessage($"Skipped companion files in '{Path.GetFileName(sourceDir)}': {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
+                LogManager.Instance.LogMessage($"Skipped companion files in '{sourceDir}': {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
                 return;
             }
 
@@ -255,23 +255,8 @@ namespace qbPortWeaver
         {
             try
             {
-                bool isConfident = true;
-
-                var info = await _tmdb.SearchMovieAsync(title, year).ConfigureAwait(false);
-
-                // Without a year in the filename we cannot corroborate the match by year alone.
-                // Require an exact title match and a meaningful vote count to stay confident.
-                if (info is not null && !year.HasValue)
-                    isConfident = FileNameParser.IsStrongNoYearMatch(title, info.Title, info.VoteCount);
-
-                // Retry without year: parsed year may not match TMDB's release year
-                if (info is null && year.HasValue)
-                {
-                    info = await _tmdb.SearchMovieAsync(title).ConfigureAwait(false);
-                    if (info is not null) isConfident = false;
-                }
-
-                (info, isConfident) = await FileNameParser.TryFallbackLookupsAsync(title, year, info, isConfident, _tmdb.SearchMovieAsync, i => i.Year is not null).ConfigureAwait(false);
+                var (info, isConfident) = await TmdbClient.SearchWithConfidenceAsync(
+                    title, year, _tmdb.SearchMovieAsync, i => i.Year is not null, i => i.Title, i => i.VoteCount).ConfigureAwait(false);
 
                 if (info is null)
                 {
@@ -304,13 +289,10 @@ namespace qbPortWeaver
                 // Ensure the match is at a word boundary, not embedded in a longer word
                 if (idx > 0 && char.IsLetter(name[idx - 1])) continue;
 
-                var after = name[(idx + pattern.Length)..].Trim();
-                if (after.Length > 0 && char.IsDigit(after[0]))
-                {
-                    int numEnd = 0;
-                    while (numEnd < after.Length && char.IsDigit(after[numEnd])) numEnd++;
+                var after  = name[(idx + pattern.Length)..].Trim();
+                int numEnd = after.TakeWhile(char.IsDigit).Count();
+                if (numEnd > 0)
                     return $"{pattern}{after[..numEnd]}";
-                }
             }
 
             return null;

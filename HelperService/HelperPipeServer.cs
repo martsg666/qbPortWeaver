@@ -1,6 +1,7 @@
 using System.IO.Pipes;
 using System.Security.AccessControl;
 using System.Security.Principal;
+using Microsoft.Win32;
 
 namespace qbPortWeaver.HelperService;
 
@@ -87,10 +88,16 @@ internal sealed class HelperPipeServer : BackgroundService
 
         // Canonicalize to resolve any ".." segments before validation, preventing path traversal.
         // Validate the log file path to prevent a caller-controlled path being written
-        // by this SYSTEM-level process to an arbitrary location. We check both the filename
-        // and that the directory is under some user's AppData\Local\qbPortWeaver folder.
+        // by this SYSTEM-level process to an arbitrary location. We check the filename,
+        // that the path is rooted under the Windows user profiles directory, and that it
+        // falls within the expected app data subfolder.
         logFilePath = Path.GetFullPath(logFilePath);
+        var profilesDir = (Registry.GetValue(
+            @"HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList",
+            "ProfilesDirectory", null) as string) ?? @"%SystemDrive%\Users";
+        var usersRoot = Path.GetFullPath(Environment.ExpandEnvironmentVariables(profilesDir));
         if (!Path.GetFileName(logFilePath).Equals(ExpectedLogFileName, StringComparison.OrdinalIgnoreCase)
+            || !logFilePath.StartsWith(usersRoot + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)
             || logFilePath.IndexOf(@"\AppData\Local\qbPortWeaver\", StringComparison.OrdinalIgnoreCase) < 0)
         {
             _logger.LogWarning("Rejected unexpected log file path '{Path}'", logFilePath);
@@ -98,9 +105,10 @@ internal sealed class HelperPipeServer : BackgroundService
         }
 
         // Path.GetFullPath resolves ".." but NOT symlinks on Windows. On systems with Developer Mode
-        // enabled, a standard user can create symlinks, so a symlink at the log file path or its
-        // containing directory would pass name/directory validation but redirect writes to an
-        // attacker-chosen location under SYSTEM privileges.
+        // enabled, a standard user can create symlinks, so a symlink anywhere along the path would
+        // pass name/directory validation but redirect writes to an attacker-chosen location under
+        // SYSTEM privileges. Walk the entire path to the drive root to catch reparse points at
+        // any level (e.g. AppData, AppData\Local, or the user profile directory itself).
         if (IsReparsePoint(logFilePath))
         {
             _logger.LogWarning("Rejected log file path containing a reparse point '{Path}'", logFilePath);
@@ -136,17 +144,22 @@ internal sealed class HelperPipeServer : BackgroundService
         }
     }
 
-    // Returns true if the file or its containing directory is a symlink or other reparse point.
-    // Checks only two levels: the file itself and its immediate parent directory, which covers
-    // the expected attack vector (symlink planted at the log file path or the app data folder).
+    // Returns true if a reparse point (symlink, junction, etc.) exists anywhere along the path
+    // from the file up to the drive root. This prevents an attacker from planting a symlink at
+    // any intermediate directory (e.g. AppData, AppData\Local) to redirect SYSTEM writes.
     private static bool IsReparsePoint(string filePath)
     {
-        if (File.Exists(filePath) && (File.GetAttributes(filePath) & FileAttributes.ReparsePoint) != 0)
-            return true;
+        var current = filePath;
+        while (true)
+        {
+            if ((File.Exists(current) || Directory.Exists(current))
+                && (File.GetAttributes(current) & FileAttributes.ReparsePoint) != 0)
+                return true;
 
-        var dir = Path.GetDirectoryName(filePath);
-        return dir is not null
-            && Directory.Exists(dir)
-            && (File.GetAttributes(dir) & FileAttributes.ReparsePoint) != 0;
+            var parent = Path.GetDirectoryName(current);
+            if (parent is null || parent == current) break; // reached drive root
+            current = parent;
+        }
+        return false;
     }
 }

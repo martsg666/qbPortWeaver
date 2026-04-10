@@ -9,7 +9,7 @@ namespace qbPortWeaver
     internal static partial class MediaImporter
     {
         // Library index: fingerprints (size + partial SHA-256) of every file in the library folders.
-        private const int LibraryIndexFreshnessSeconds = 15; // minimum interval between full library index rebuilds
+        private const int FullRebuildIntervalCycles = 10; // force a full library index rebuild every N cycles to catch external changes (e.g. deletions in Plex)
         // Maximum concurrent fingerprint reads for both source and library fingerprinting.
         // I/O-bound: storage throughput is the constraint, not CPU count.
         // 8 concurrent reads balances throughput vs not overwhelming slower storage.
@@ -17,7 +17,7 @@ namespace qbPortWeaver
         private static HashSet<string>? _libraryFingerprints;
         private static readonly object _libraryLock = new();
         private static readonly SemaphoreSlim _libraryBuildSemaphore = new(1, 1);
-        private static DateTimeOffset _libraryLastBuilt = DateTimeOffset.MinValue;
+        private static int _libraryBuildCycleCount;
 
         // Library cache: persisted path -> metadata so unchanged library files are not re-hashed across sessions.
         private static Dictionary<string, CacheEntry>? _libraryCache;
@@ -61,6 +61,32 @@ namespace qbPortWeaver
         }
 
         // Verifies that two paths refer to the same file by comparing volume serial number and file index.
+        // Attempts a hardlink from sourcePath to destinationPath, verifies the link identity,
+        // and falls back to a file copy if the hardlink fails or the filesystem silently copies instead.
+        private static void ImportWithHardlink(string sourcePath, string destinationPath)
+        {
+            if (TryCreateHardLink(sourcePath, destinationPath))
+            {
+                if (VerifyHardLink(sourcePath, destinationPath))
+                {
+                    LogManager.Instance.LogDebug($"MediaImporter.ImportFile: Hardlinked '{Path.GetFileName(destinationPath)}'", Subsystem.MediaManager);
+                }
+                else
+                {
+                    LogManager.Instance.LogMessage($"Hardlink not verified for '{Path.GetFileName(destinationPath)}' (filesystem created a copy instead), replacing with proper copy", LogLevel.Warn, Subsystem.MediaManager);
+                    File.Delete(destinationPath);
+                    File.Copy(sourcePath, destinationPath, overwrite: false);
+                    LogManager.Instance.LogDebug($"MediaImporter.ImportFile: Copied (verified fallback) '{Path.GetFileName(destinationPath)}'", Subsystem.MediaManager);
+                }
+            }
+            else
+            {
+                LogManager.Instance.LogMessage($"Hardlink failed for '{Path.GetFileName(destinationPath)}', falling back to copy", LogLevel.Warn, Subsystem.MediaManager);
+                File.Copy(sourcePath, destinationPath, overwrite: false);
+                LogManager.Instance.LogDebug($"MediaImporter.ImportFile: Copied (fallback) '{Path.GetFileName(destinationPath)}'", Subsystem.MediaManager);
+            }
+        }
+
         // Returns false if the files have different identities (some filesystems silently create a copy instead of a hardlink).
         private static bool VerifyHardLink(string sourcePath, string destinationPath)
         {
@@ -109,15 +135,15 @@ namespace qbPortWeaver
 
             if (IsDuplicateFile(sourcePath, destinationPath))
             {
-                LogManager.Instance.LogDebug($"MediaImporter.ImportFile: Skipped - target already exists with same size: '{Path.GetFileName(destinationPath)}'", Subsystem.MediaManager);
+                LogManager.Instance.LogDebug($"MediaImporter.ImportFile: Skipped - target already exists with same fingerprint: '{Path.GetFileName(destinationPath)}'", Subsystem.MediaManager);
                 return;
             }
 
-            // Destination exists but different size: two different source files resolved to the same target path
+            // Destination exists but different content: two different source files resolved to the same target path
             if (File.Exists(destinationPath))
             {
                 LogManager.Instance.LogMessage(
-                    $"Destination conflict: '{Path.GetFileName(destinationPath)}' already exists with a different size (source: {new FileInfo(sourcePath).Length}, dest: {new FileInfo(destinationPath).Length}). Skipping to avoid overwriting.",
+                    $"Destination conflict: '{Path.GetFileName(destinationPath)}' already exists with different content (source: {new FileInfo(sourcePath).Length} bytes, dest: {new FileInfo(destinationPath).Length} bytes). Skipping to avoid overwriting.",
                     LogLevel.Warn, Subsystem.MediaManager);
                 return;
             }
@@ -129,26 +155,7 @@ namespace qbPortWeaver
             switch (importMode)
             {
                 case ImportMode.Hardlink:
-                    if (TryCreateHardLink(sourcePath, destinationPath))
-                    {
-                        if (VerifyHardLink(sourcePath, destinationPath))
-                        {
-                            LogManager.Instance.LogDebug($"MediaImporter.ImportFile: Hardlinked '{Path.GetFileName(destinationPath)}'", Subsystem.MediaManager);
-                        }
-                        else
-                        {
-                            LogManager.Instance.LogMessage($"Hardlink not verified for '{Path.GetFileName(destinationPath)}' (filesystem created a copy instead), replacing with proper copy", LogLevel.Warn, Subsystem.MediaManager);
-                            File.Delete(destinationPath);
-                            File.Copy(sourcePath, destinationPath, overwrite: false);
-                            LogManager.Instance.LogDebug($"MediaImporter.ImportFile: Copied (verified fallback) '{Path.GetFileName(destinationPath)}'", Subsystem.MediaManager);
-                        }
-                    }
-                    else
-                    {
-                        LogManager.Instance.LogMessage("Hardlink failed, falling back to copy", LogLevel.Warn, Subsystem.MediaManager);
-                        File.Copy(sourcePath, destinationPath, overwrite: false);
-                        LogManager.Instance.LogDebug($"MediaImporter.ImportFile: Copied (fallback) '{Path.GetFileName(destinationPath)}'", Subsystem.MediaManager);
-                    }
+                    ImportWithHardlink(sourcePath, destinationPath);
                     break;
 
                 case ImportMode.Copy:
@@ -273,19 +280,24 @@ namespace qbPortWeaver
         /// files that were previously imported (regardless of the name they were imported under).
         /// Uses a persisted cache so only new or modified library files are fingerprinted; deleted files are pruned.
         /// If called concurrently (e.g. from both the sync loop and a UI scan), the second caller waits for the
-        /// first to finish and reuses the result if the index was built within the last 15 seconds.
-        /// Called once per scan cycle to ensure the index reflects the current library state.
+        /// first to finish. When <paramref name="allowReuse"/> is true, the existing index is reused for up to
+        /// <see cref="FullRebuildIntervalCycles"/> cycles before forcing a full rebuild to catch external changes.
         /// </summary>
-        internal static void BuildLibraryIndex(string moviesLibraryPath, string tvShowsLibraryPath, CancellationToken cancellationToken = default)
+        internal static void BuildLibraryIndex(string moviesLibraryPath, string tvShowsLibraryPath, bool allowReuse = false, CancellationToken cancellationToken = default)
         {
             _libraryBuildSemaphore.Wait(cancellationToken);
             try
             {
-                if (_libraryFingerprints is not null && DateTimeOffset.UtcNow - _libraryLastBuilt < TimeSpan.FromSeconds(LibraryIndexFreshnessSeconds))
+                bool forceRebuild = _libraryBuildCycleCount >= FullRebuildIntervalCycles;
+                if (!forceRebuild && allowReuse && _libraryFingerprints is not null)
                 {
-                    LogManager.Instance.LogDebug($"MediaImporter.BuildLibraryIndex: Reusing index built within the last {LibraryIndexFreshnessSeconds}s", Subsystem.MediaManager);
+                    LogManager.Instance.LogDebug($"MediaImporter.BuildLibraryIndex: Reusing index (cycle {_libraryBuildCycleCount}/{FullRebuildIntervalCycles})", Subsystem.MediaManager);
+                    _libraryBuildCycleCount++;
                     return;
                 }
+                if (forceRebuild)
+                    LogManager.Instance.LogDebug($"MediaImporter.BuildLibraryIndex: Forcing periodic rebuild (every {FullRebuildIntervalCycles} cycles)", Subsystem.MediaManager);
+                _libraryBuildCycleCount = 1;
 
                 var libraryPaths = new[] { moviesLibraryPath, tvShowsLibraryPath }
                     .Where(p => !string.IsNullOrWhiteSpace(p) && Directory.Exists(p))
@@ -319,7 +331,6 @@ namespace qbPortWeaver
 
                 sw.Stop();
                 _libraryFingerprints = fingerprints;
-                _libraryLastBuilt    = DateTimeOffset.UtcNow;
                 LogManager.Instance.LogMessage(
                     $"Library index built: {fingerprints.Count} files in {sw.ElapsedMilliseconds}ms (cached={cached}, computed={computed})",
                     LogLevel.Info, Subsystem.MediaManager);
@@ -702,7 +713,7 @@ namespace qbPortWeaver
                 _libraryCache        = null;
                 _libraryCacheDirty   = false;
             }
-            _libraryLastBuilt = DateTimeOffset.MinValue;
+            _libraryBuildCycleCount = 0;
 
             TryDeleteFile(GetCacheFilePath(SourceCacheFileName));
             TryDeleteFile(GetCacheFilePath(LibraryCacheFileName));

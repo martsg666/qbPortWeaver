@@ -113,7 +113,7 @@ namespace qbPortWeaver
             grpLinks.Controls.Add(lnkAuthor);
             grpLinks.Controls.Add(lblGitHubLabel);
             grpLinks.Controls.Add(lnkGitHub);
-            grpLinks.Location = new Point(8, 193);
+            grpLinks.Location = new Point(8, 189);
             grpLinks.Name = "grpLinks";
             grpLinks.Size = new Size(364, 96);
             grpLinks.TabIndex = 1;
@@ -145,20 +145,20 @@ namespace qbPortWeaver
             lnkGitHub.TextAlign = ContentAlignment.MiddleLeft;
             lnkGitHub.LinkClicked += lnkGitHub_LinkClicked;
             // ── Buttons ───────────────────────────────────────────────────
-            btnCheckForUpdates.Location = new Point(8, 301);
+            btnCheckForUpdates.Location = new Point(8, 297);
             btnCheckForUpdates.Name     = "btnCheckForUpdates";
             btnCheckForUpdates.Size     = new Size(128, 28);
             btnCheckForUpdates.TabIndex = 2;
             btnCheckForUpdates.Text     = "Check for Updates";
             btnCheckForUpdates.Click   += btnCheckForUpdates_Click;
-            btnWhatsNew.Location        = new Point(148, 301);
+            btnWhatsNew.Location        = new Point(148, 297);
             btnWhatsNew.Name            = "btnWhatsNew";
             btnWhatsNew.Size            = new Size(96, 28);
             btnWhatsNew.TabIndex        = 3;
             btnWhatsNew.Text            = "What's New";
             btnWhatsNew.Click          += btnWhatsNew_Click;
             btnClose.DialogResult       = DialogResult.Cancel;
-            btnClose.Location           = new Point(286, 301);
+            btnClose.Location           = new Point(290, 297);
             btnClose.Name               = "btnClose";
             btnClose.Size               = new Size(82, 28);
             btnClose.TabIndex           = 4;
@@ -168,7 +168,7 @@ namespace qbPortWeaver
             AutoScaleDimensions = new SizeF(7F, 15F);
             AutoScaleMode = AutoScaleMode.Font;
             CancelButton = btnClose;
-            ClientSize = new Size(380, 337);
+            ClientSize = new Size(380, 336);
             Controls.Add(picIcon);
             Controls.Add(lblAppName);
             Controls.Add(lblAppVersion);

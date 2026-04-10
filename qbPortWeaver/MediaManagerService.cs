@@ -74,7 +74,8 @@ namespace qbPortWeaver
             // Overlap: library index enumeration and source folder enumeration are both directory listings on
             // different paths and can run concurrently. Phase 2 fingerprinting waits for both to complete
             // since it requires the library index to be ready.
-            var libraryTask = Task.Run(() => MediaImporter.BuildLibraryIndex(moviesLibraryPath, tvShowsLibraryPath, cancellationToken), cancellationToken);
+            int syncInterval = RegistrySettingsManager.GetInt(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyUpdateIntervalSeconds);
+            var libraryTask = Task.Run(() => MediaImporter.BuildLibraryIndex(moviesLibraryPath, tvShowsLibraryPath, syncInterval, cancellationToken), cancellationToken);
             var enumerated  = await EnumerateSourceFoldersAsync(validFolders, cancellationToken).ConfigureAwait(false);
             await libraryTask.ConfigureAwait(false);
             var classified  = await FingerprintSourceFoldersAsync(enumerated, cancellationToken).ConfigureAwait(false);
@@ -193,7 +194,8 @@ namespace qbPortWeaver
             // Overlap: library index enumeration and source folder enumeration are both directory listings on
             // different paths and can run concurrently. Phase 2 fingerprinting waits for both to complete
             // since it requires the library index to be ready.
-            var libraryTask = Task.Run(() => MediaImporter.BuildLibraryIndex(moviesLibraryPath, tvShowsLibraryPath, cancellationToken), cancellationToken);
+            // UI-initiated scans always rebuild the library index (freshnessSeconds: 0) to ensure fresh results.
+            var libraryTask = Task.Run(() => MediaImporter.BuildLibraryIndex(moviesLibraryPath, tvShowsLibraryPath, cancellationToken: cancellationToken), cancellationToken);
             var enumerated  = await EnumerateSourceFoldersAsync(validFolders, cancellationToken).ConfigureAwait(false);
             await libraryTask.ConfigureAwait(false);
             var classified  = await FingerprintSourceFoldersAsync(enumerated, cancellationToken).ConfigureAwait(false);

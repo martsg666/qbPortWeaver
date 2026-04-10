@@ -9,7 +9,7 @@ namespace qbPortWeaver
     internal static partial class MediaImporter
     {
         // Library index: fingerprints (size + partial SHA-256) of every file in the library folders.
-        private const int LibraryIndexFreshnessSeconds = 15; // minimum interval between full library index rebuilds
+        private const int FullRebuildIntervalCycles = 10; // force a full library index rebuild every N cycles to catch external changes (e.g. deletions in Plex)
         // Maximum concurrent fingerprint reads for both source and library fingerprinting.
         // I/O-bound: storage throughput is the constraint, not CPU count.
         // 8 concurrent reads balances throughput vs not overwhelming slower storage.
@@ -18,6 +18,7 @@ namespace qbPortWeaver
         private static readonly object _libraryLock = new();
         private static readonly SemaphoreSlim _libraryBuildSemaphore = new(1, 1);
         private static DateTimeOffset _libraryLastBuilt = DateTimeOffset.MinValue;
+        private static int _libraryBuildCycleCount;
 
         // Library cache: persisted path -> metadata so unchanged library files are not re-hashed across sessions.
         private static Dictionary<string, CacheEntry>? _libraryCache;
@@ -283,16 +284,22 @@ namespace qbPortWeaver
         /// first to finish and reuses the result if the index was built within the last 15 seconds.
         /// Called once per scan cycle to ensure the index reflects the current library state.
         /// </summary>
-        internal static void BuildLibraryIndex(string moviesLibraryPath, string tvShowsLibraryPath, CancellationToken cancellationToken = default)
+        internal static void BuildLibraryIndex(string moviesLibraryPath, string tvShowsLibraryPath, int freshnessSeconds = 0, CancellationToken cancellationToken = default)
         {
             _libraryBuildSemaphore.Wait(cancellationToken);
             try
             {
-                if (_libraryFingerprints is not null && DateTimeOffset.UtcNow - _libraryLastBuilt < TimeSpan.FromSeconds(LibraryIndexFreshnessSeconds))
+                bool forceRebuild = _libraryBuildCycleCount >= FullRebuildIntervalCycles;
+                if (!forceRebuild && _libraryFingerprints is not null && freshnessSeconds > 0
+                    && DateTimeOffset.UtcNow - _libraryLastBuilt < TimeSpan.FromSeconds(freshnessSeconds))
                 {
-                    LogManager.Instance.LogDebug($"MediaImporter.BuildLibraryIndex: Reusing index built within the last {LibraryIndexFreshnessSeconds}s", Subsystem.MediaManager);
+                    LogManager.Instance.LogDebug($"MediaImporter.BuildLibraryIndex: Reusing index (cycle {_libraryBuildCycleCount}/{FullRebuildIntervalCycles})", Subsystem.MediaManager);
+                    _libraryBuildCycleCount++;
                     return;
                 }
+                if (forceRebuild)
+                    LogManager.Instance.LogDebug($"MediaImporter.BuildLibraryIndex: Forcing periodic rebuild (every {FullRebuildIntervalCycles} cycles)", Subsystem.MediaManager);
+                _libraryBuildCycleCount = 1;
 
                 var libraryPaths = new[] { moviesLibraryPath, tvShowsLibraryPath }
                     .Where(p => !string.IsNullOrWhiteSpace(p) && Directory.Exists(p))
@@ -710,6 +717,7 @@ namespace qbPortWeaver
                 _libraryCacheDirty   = false;
             }
             _libraryLastBuilt = DateTimeOffset.MinValue;
+            _libraryBuildCycleCount = 0;
 
             TryDeleteFile(GetCacheFilePath(SourceCacheFileName));
             TryDeleteFile(GetCacheFilePath(LibraryCacheFileName));

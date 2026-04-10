@@ -52,7 +52,7 @@ The application runs in the system tray, manages configuration and logging, and 
   Optionally run a custom command after a successful port update (fire-and-forget). See SampleSendMail.ps1 for an example of sending an email notification with status details.
 
 - **Media Manager**
-  Automatically imports movie and TV episode files into Plex-compatible library folders on each sync cycle. Queries [The Movie Database (TMDB)](https://www.themoviedb.org) to identify titles and release years, then imports files using Plex naming conventions (`Title (Year).ext` for movies, `Show (Year) - SxxExx.ext` for TV episodes) via hardlink (with automatic fallback to copy for cross-volume scenarios), copy, or move. Optionally organises files into Plex-recommended subfolders (`Movies/Title (Year)/` and `TV Shows/Show (Year)/Season XX/`), and cleans up source folders left empty after importing (including folders containing only `.nfo` files). A dedicated **Media Manager** dialog (tray menu → Media Manager) lets you configure source and library folders, preview imports before they run (**Scan Now**), and apply or correct them manually (**Import Now**). Uncertain TMDB matches are highlighted in red for review. A free TMDB API key is required.
+  Automatically imports movie and TV episode files into Plex-compatible library folders on each sync cycle. Queries [The Movie Database (TMDB)](https://www.themoviedb.org) to identify titles and release years, then imports files using Plex naming conventions (`Title (Year).ext` for movies, `Show (Year) - SxxExx.ext` for TV episodes) via hardlink (with automatic fallback to copy for cross-volume scenarios), copy, or move. Optionally organises files into Plex-recommended subfolders (`Movies/Title (Year)/` and `TV Shows/Show (Year)/Season XX/`), and cleans up source folders left empty after importing (including folders containing only `.nfo` files). A dedicated **Media Manager** dialog (tray menu → Media Manager) lets you configure source and library folders, preview imports before they run (**Scan Now**), and apply or correct them manually (**Import Now**). Uncertain TMDB matches are highlighted for review. A free TMDB API key is required.
 
 - **Tray Icon Interface**
   Runs quietly in the background with a system tray icon for quick access to logs, settings, and controls.
@@ -99,12 +99,12 @@ On first run, all settings are initialized with sensible defaults.
 | Executable | Path to qBittorrent executable | `C:\Program Files\qBittorrent\qbittorrent.exe` |
 | Process name | qBittorrent process name (used to detect if it's running) | `qbittorrent` |
 | Restart after port change | Restart qBittorrent after updating the port (recommended) | `True` |
-| Force start if not running | Automatically launch qBittorrent if it is not running | `False` |
+| Force start if not running | Automatically launch qBittorrent if it is not running | `True` |
 | Default port (0 = disabled) | Fallback port to apply when VPN is not connected | `0` |
 | Warn on interface mismatch | Warn if qBittorrent's network interface doesn't match the VPN | `True` |
-| Restart on disconnect | Restart qBittorrent when its connection status changes to disconnected (requires Executable and Process name) | `False` |
+| Restart on disconnect | Restart qBittorrent when its connection status changes to disconnected (requires Executable and Process name) | `True` |
 | Post-update command | Command to run after a successful port update (leave empty to disable) | - |
-| Auto-Recovery | Automatically recover after N consecutive failed sync cycles (VPN disconnected or port detection failure) | `False` |
+| Auto-Recovery | Automatically recover after N consecutive failed sync cycles (VPN disconnected or port detection failure) | `True` |
 | Auto-Recovery trigger cycles | Number of consecutive failed cycles before triggering auto-recovery | `3` |
 | Color theme | Application color theme: `System` (follows Windows), `Dark`, or `Light`. Requires a restart to take effect | `System` |
 | Debug logging | Enable verbose debug logging to the log file | `False` |
@@ -119,7 +119,7 @@ Configured via tray menu → **Media Manager**.
 | TMDB API Key | API key for The Movie Database lookups (free at themoviedb.org/settings/api) | - |
 | Dry Run | Preview imports without touching any files | `True` |
 | Import Mode | How files are transferred to the library: `Hardlink` (default, falls back to copy for cross-volume), `Copy`, or `Move` | `Hardlink` |
-| Create Folders | Organise each title into its own Plex subfolder (`Title (Year)/` for movies, `Show (Year)/Season XX/` for TV) | `False` |
+| Create Folders | Organise each title into its own Plex subfolder (`Title (Year)/` for movies, `Show (Year)/Season XX/` for TV) | `True` |
 | Delete Empty Folders | After importing, delete source subfolders that are empty or contain only `.nfo` files | `False` |
 | Source Folders | Folders scanned for movie and TV episode files on each cycle | - |
 | Movies Library | Target library folder for imported movies (leave empty to skip movie processing) | - |

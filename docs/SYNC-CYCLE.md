@@ -222,7 +222,8 @@ The Media Manager scan is split into two phases that partially overlap for perfo
                            ┌─ BuildLibraryIndex ──────────────────────────────┐
                            │  Walk library folders, fingerprint in parallel    │  Run
   Task.Run ───────────────►│  (degree 8), load/prune persisted cache.          │  concurrently
-                           │  Semaphore + 15s timestamp prevents duplicate     │
+                           │  Semaphore prevents duplicate builds. Sync cycles │
+                           │  reuse cached index; full rebuild every 10 cycles.│
                            └──────────────────────────────────────────────────►│
                                                                                │
   Phase 1: EnumerateSourceFoldersAsync ─────────────────────────────────────► │
@@ -279,11 +280,13 @@ MediaManagerService.RunAsync / ScanAsync
  ├─ ProcessSourceFolderAsync / ScanSourceFolderAsync (per folder, concurrent)
  │   ├─ MovieProcessor.ProcessMoviesAsync / ScanMoviesAsync
  │   │   ├─ ClassifyVideoFiles (self-describing vs folder-dependent)
- │   │   ├─ GetOrLookupMovieAsync → LookupMovieAsync → FileNameParser.TryFallbackLookupsAsync
+ │   │   ├─ GetOrLookupMovieAsync → LookupMovieAsync
+ │   │   │   └─ TmdbClient.SearchWithConfidenceAsync → FileNameParser.TryFallbackLookupsAsync
  │   │   └─ MediaManagerService.ImportFileWithLog / MediaProposal
  │   └─ TvShowProcessor.ProcessTvShowsAsync / ScanTvShowsAsync
  │       ├─ FileNameParser.ParseTvShowEpisode (per file)
- │       ├─ GetOrLookupShowAsync → LookupTvShowAsync → FileNameParser.TryFallbackLookupsAsync
+ │       ├─ GetOrLookupShowAsync → LookupTvShowAsync
+ │       │   └─ TmdbClient.SearchWithConfidenceAsync → FileNameParser.TryFallbackLookupsAsync
  │       └─ MediaManagerService.ImportFileWithLog / MediaProposal
  │
  ├─ TmdbCacheManager.Save

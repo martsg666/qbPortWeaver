@@ -200,7 +200,26 @@ namespace qbPortWeaver
             prgScan.Value   = 0;
             int done = 0;
 
-            // TV shows: one TMDB call per show, applied to all episodes in that group
+            if (await RecheckTvShowRowsAsync(tmdb, tvLib, tvRows, createFolders, total, done, ct) is not int tvDone)
+                return null; // disposed
+
+            if (await RecheckMovieRowsAsync(tmdb, moviesLib, movieRows, createFolders, total, tvDone, ct) is null)
+                return null; // disposed
+
+            if (IsDisposed) return null;
+
+            dgvResults.Refresh(); // force full repaint so CellFormatting fires for all visible cells
+            int verified = tvRows.Concat(movieRows)
+                .Count(r => ((RowData)r.Tag!).Confidence == RowConfidence.Confident);
+            return verified == total
+                ? "Re-check complete - all rows verified."
+                : $"Re-check complete - {verified}/{total} rows verified.";
+        }
+
+        // Re-checks TV show rows grouped by show name. Returns updated done count, or null if the form was disposed.
+        private async Task<int?> RecheckTvShowRowsAsync(TmdbClient tmdb, string tvLib,
+            List<DataGridViewRow> tvRows, bool createFolders, int total, int done, CancellationToken ct)
+        {
             foreach (var (showKey, showRows) in GroupTvRowsByShow(tvRows))
             {
                 ct.ThrowIfCancellationRequested();
@@ -216,8 +235,13 @@ namespace qbPortWeaver
                     lblScanStatus.Text = $"Re-checking\u2026 {done}/{total}";
                 }
             }
+            return done;
+        }
 
-            // Movies: one TMDB call per row
+        // Re-checks movie rows individually. Returns updated done count, or null if the form was disposed.
+        private async Task<int?> RecheckMovieRowsAsync(TmdbClient tmdb, string moviesLib,
+            List<DataGridViewRow> movieRows, bool createFolders, int total, int done, CancellationToken ct)
+        {
             foreach (var row in movieRows)
             {
                 ct.ThrowIfCancellationRequested();
@@ -232,15 +256,7 @@ namespace qbPortWeaver
                 prgScan.Value      = Math.Min(++done, prgScan.Maximum);
                 lblScanStatus.Text = $"Re-checking\u2026 {done}/{total}";
             }
-
-            if (IsDisposed) return null;
-
-            dgvResults.Refresh(); // force full repaint so CellFormatting fires for all visible cells
-            int verified = tvRows.Concat(movieRows)
-                .Count(r => ((RowData)r.Tag!).Confidence == RowConfidence.Confident);
-            return verified == total
-                ? "Re-check complete - all rows verified."
-                : $"Re-check complete - {verified}/{total} rows verified.";
+            return done;
         }
 
         // Returns uncertain/unmatched rows of the given media type.
@@ -704,27 +720,33 @@ namespace qbPortWeaver
 
             foreach (DataGridViewRow row in dgvResults.Rows)
             {
-                if (row.Index == editedRowIndex) continue;
-                if (row.Tag is not RowData rd) continue;
-                if (rd.Proposal.MediaType != MediaProposal.TypeTvShow) continue;
+                if (row.Index != editedRowIndex)
+                    TryUpdateSiblingShowFolder(row, editedShowName, newShowFolder);
+            }
+        }
 
-                var siblingShowName = FileNameParser.ParseTvShowEpisode(
-                    Path.GetFileName(rd.Proposal.OriginalPath))?.ShowName;
-                if (!string.Equals(siblingShowName, editedShowName, StringComparison.OrdinalIgnoreCase)) continue;
+        // Updates a single sibling row's show folder if it belongs to the same TV show.
+        private void TryUpdateSiblingShowFolder(DataGridViewRow row, string editedShowName, string newShowFolder)
+        {
+            if (row.Tag is not RowData rd) return;
+            if (rd.Proposal.MediaType != MediaProposal.TypeTvShow) return;
 
-                var currentProposed   = row.Cells[colProposed.Index].Value?.ToString() ?? string.Empty;
-                var currentShowFolder = ExtractTvShowFolder(currentProposed);
-                if (currentShowFolder is null) continue;
-                if (string.Equals(currentShowFolder, newShowFolder, StringComparison.OrdinalIgnoreCase)) continue;
+            var siblingShowName = FileNameParser.ParseTvShowEpisode(
+                Path.GetFileName(rd.Proposal.OriginalPath))?.ShowName;
+            if (!string.Equals(siblingShowName, editedShowName, StringComparison.OrdinalIgnoreCase)) return;
 
-                // Replace the show folder portion; keep the episode code and extension unchanged
-                row.Cells[colProposed.Index].Value = newShowFolder + currentProposed[currentShowFolder.Length..];
+            var currentProposed   = row.Cells[colProposed.Index].Value?.ToString() ?? string.Empty;
+            var currentShowFolder = ExtractTvShowFolder(currentProposed);
+            if (currentShowFolder is null) return;
+            if (string.Equals(currentShowFolder, newShowFolder, StringComparison.OrdinalIgnoreCase)) return;
 
-                if (rd.Confidence == RowConfidence.Confident)
-                {
-                    row.Tag = rd with { Confidence = RowConfidence.Uncertain };
-                    dgvResults.InvalidateRow(row.Index);
-                }
+            // Replace the show folder portion; keep the episode code and extension unchanged
+            row.Cells[colProposed.Index].Value = newShowFolder + currentProposed[currentShowFolder.Length..];
+
+            if (rd.Confidence == RowConfidence.Confident)
+            {
+                row.Tag = rd with { Confidence = RowConfidence.Uncertain };
+                dgvResults.InvalidateRow(row.Index);
             }
         }
 

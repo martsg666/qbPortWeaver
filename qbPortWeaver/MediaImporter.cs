@@ -17,7 +17,6 @@ namespace qbPortWeaver
         private static HashSet<string>? _libraryFingerprints;
         private static readonly object _libraryLock = new();
         private static readonly SemaphoreSlim _libraryBuildSemaphore = new(1, 1);
-        private static DateTimeOffset _libraryLastBuilt = DateTimeOffset.MinValue;
         private static int _libraryBuildCycleCount;
 
         // Library cache: persisted path -> metadata so unchanged library files are not re-hashed across sessions.
@@ -281,17 +280,16 @@ namespace qbPortWeaver
         /// files that were previously imported (regardless of the name they were imported under).
         /// Uses a persisted cache so only new or modified library files are fingerprinted; deleted files are pruned.
         /// If called concurrently (e.g. from both the sync loop and a UI scan), the second caller waits for the
-        /// first to finish and reuses the result if the index was built within the last 15 seconds.
-        /// Called once per scan cycle to ensure the index reflects the current library state.
+        /// first to finish. When <paramref name="allowReuse"/> is true, the existing index is reused for up to
+        /// <see cref="FullRebuildIntervalCycles"/> cycles before forcing a full rebuild to catch external changes.
         /// </summary>
-        internal static void BuildLibraryIndex(string moviesLibraryPath, string tvShowsLibraryPath, int freshnessSeconds = 0, CancellationToken cancellationToken = default)
+        internal static void BuildLibraryIndex(string moviesLibraryPath, string tvShowsLibraryPath, bool allowReuse = false, CancellationToken cancellationToken = default)
         {
             _libraryBuildSemaphore.Wait(cancellationToken);
             try
             {
                 bool forceRebuild = _libraryBuildCycleCount >= FullRebuildIntervalCycles;
-                if (!forceRebuild && _libraryFingerprints is not null && freshnessSeconds > 0
-                    && DateTimeOffset.UtcNow - _libraryLastBuilt < TimeSpan.FromSeconds(freshnessSeconds))
+                if (!forceRebuild && allowReuse && _libraryFingerprints is not null)
                 {
                     LogManager.Instance.LogDebug($"MediaImporter.BuildLibraryIndex: Reusing index (cycle {_libraryBuildCycleCount}/{FullRebuildIntervalCycles})", Subsystem.MediaManager);
                     _libraryBuildCycleCount++;
@@ -333,7 +331,6 @@ namespace qbPortWeaver
 
                 sw.Stop();
                 _libraryFingerprints = fingerprints;
-                _libraryLastBuilt    = DateTimeOffset.UtcNow;
                 LogManager.Instance.LogMessage(
                     $"Library index built: {fingerprints.Count} files in {sw.ElapsedMilliseconds}ms (cached={cached}, computed={computed})",
                     LogLevel.Info, Subsystem.MediaManager);
@@ -716,7 +713,6 @@ namespace qbPortWeaver
                 _libraryCache        = null;
                 _libraryCacheDirty   = false;
             }
-            _libraryLastBuilt = DateTimeOffset.MinValue;
             _libraryBuildCycleCount = 0;
 
             TryDeleteFile(GetCacheFilePath(SourceCacheFileName));

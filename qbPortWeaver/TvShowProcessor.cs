@@ -109,12 +109,16 @@ namespace qbPortWeaver
             MediaManagerService.ImportCompanionFiles(sourceFolder, filePath, targetPath, _dryRun, _importMode);
         }
 
-        // Builds the library target path for an episode file
+        // Builds the library target path for an episode file.
+        // Multi-episode files (e.g. S01E01E02) are named with both episode numbers: "Show (Year) - S01E01E02.ext"
         private string BuildEpisodePath(string filePath, TvShowInfo showInfo, TvShowEpisodeInfo episodeInfo)
         {
-            var ext             = Path.GetExtension(filePath);
-            var showFolderName  = FileNameParser.FormatPlexName(showInfo.Title, showInfo.Year);
-            var episodeFileName = $"{showFolderName} - S{episodeInfo.Season:D2}E{episodeInfo.Episode:D2}{ext}";
+            var ext            = Path.GetExtension(filePath);
+            var showFolderName = FileNameParser.FormatPlexName(showInfo.Title, showInfo.Year);
+            var episodeCode    = episodeInfo.EndEpisode.HasValue
+                ? $"S{episodeInfo.Season:D2}E{episodeInfo.Episode:D2}E{episodeInfo.EndEpisode.Value:D2}"
+                : $"S{episodeInfo.Season:D2}E{episodeInfo.Episode:D2}";
+            var episodeFileName = $"{showFolderName} - {episodeCode}{ext}";
 
             return _createFolders
                 ? Path.Combine(_libraryPath, showFolderName, $"Season {episodeInfo.Season:D2}", episodeFileName)
@@ -155,6 +159,5 @@ namespace qbPortWeaver
                 return (null, false);
             }
         }
-
     }
 }

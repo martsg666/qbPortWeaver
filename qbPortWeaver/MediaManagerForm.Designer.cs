@@ -42,6 +42,7 @@ namespace qbPortWeaver
             btnScanNow     = new Button();
             btnImportNow   = new Button();
             btnClearCache  = new Button();
+            btnRecheck     = new Button();
             lblScanStatus  = new Label();
             prgScan        = new ProgressBar();
             dgvResults     = new DataGridView();
@@ -282,23 +283,32 @@ namespace qbPortWeaver
             btnClearCache.Text     = "Clear Cache";
             btnClearCache.Click   += btnClearCache_Click;
             //
+            // btnRecheck
+            //
+            btnRecheck.Location = new Point(322, 418);
+            btnRecheck.Name     = "btnRecheck";
+            btnRecheck.Size     = new Size(90, 28);
+            btnRecheck.TabIndex = 6;
+            btnRecheck.Text     = "Re-check";
+            btnRecheck.Click   += btnRecheck_Click;
+            //
             // lblScanStatus
             //
             lblScanStatus.Anchor    = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
-            lblScanStatus.Location  = new Point(322, 418);
+            lblScanStatus.Location  = new Point(420, 418);
             lblScanStatus.Name      = "lblScanStatus";
-            lblScanStatus.Size      = new Size(370, 28);
-            lblScanStatus.TabIndex  = 6;
+            lblScanStatus.Size      = new Size(272, 28);
+            lblScanStatus.TabIndex  = 7;
             lblScanStatus.TextAlign = ContentAlignment.MiddleLeft;
             lblScanStatus.ForeColor = SystemColors.GrayText;
             //
             // prgScan
             //
             prgScan.Anchor   = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
-            prgScan.Location = new Point(8, 446);
+            prgScan.Location = new Point(8, 450);
             prgScan.Name     = "prgScan";
             prgScan.Size     = new Size(684, 16);
-            prgScan.TabIndex = 7;
+            prgScan.TabIndex = 8;
             prgScan.Visible  = false;
             //
             // dgvResults
@@ -312,16 +322,17 @@ namespace qbPortWeaver
             dgvResults.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.AutoSize;
             dgvResults.Columns.AddRange(colInclude, colType, colCurrent, colProposed);
             dgvResults.Anchor       = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Bottom;
-            dgvResults.Location     = new Point(8, 464);
+            dgvResults.Location     = new Point(8, 468);
             dgvResults.Name         = "dgvResults";
             dgvResults.RowHeadersVisible = false;
             dgvResults.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
-            dgvResults.Size         = new Size(684, 165);
+            dgvResults.Size         = new Size(684, 161);
             dgvResults.ClipboardCopyMode = DataGridViewClipboardCopyMode.EnableWithoutHeaderText;
-            dgvResults.TabIndex          = 8;
+            dgvResults.TabIndex          = 9;
             dgvResults.TabStop           = false;
             dgvResults.CellFormatting          += dgvResults_CellFormatting;
             dgvResults.CellContentClick        += dgvResults_CellContentClick;
+            dgvResults.CellEndEdit             += dgvResults_CellEndEdit;
             dgvResults.ColumnHeaderMouseClick  += dgvResults_ColumnHeaderMouseClick;
             dgvResults.KeyDown                 += dgvResults_KeyDown;
             //
@@ -365,7 +376,7 @@ namespace qbPortWeaver
             btnOK.Location = new Point(520, 641);
             btnOK.Name     = "btnOK";
             btnOK.Size     = new Size(82, 28);
-            btnOK.TabIndex = 9;
+            btnOK.TabIndex = 10;
             btnOK.Text     = "OK";
             btnOK.Click   += btnOK_Click;
             //
@@ -376,7 +387,7 @@ namespace qbPortWeaver
             btnCancel.Location     = new Point(610, 641);
             btnCancel.Name         = "btnCancel";
             btnCancel.Size         = new Size(82, 28);
-            btnCancel.TabIndex     = 10;
+            btnCancel.TabIndex     = 11;
             btnCancel.Text         = "Cancel";
             btnCancel.Click       += btnCancel_Click;
             //
@@ -393,6 +404,7 @@ namespace qbPortWeaver
             Controls.Add(btnScanNow);
             Controls.Add(btnImportNow);
             Controls.Add(btnClearCache);
+            Controls.Add(btnRecheck);
             Controls.Add(lblScanStatus);
             Controls.Add(prgScan);
             Controls.Add(dgvResults);
@@ -441,6 +453,7 @@ namespace qbPortWeaver
         private Button           btnScanNow;
         private Button           btnImportNow;
         private Button           btnClearCache;
+        private Button           btnRecheck;
         private Label            lblScanStatus;
         private DataGridView     dgvResults;
         private DataGridViewCheckBoxColumn colInclude;

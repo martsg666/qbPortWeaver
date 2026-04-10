@@ -8,7 +8,7 @@ namespace qbPortWeaver
     /// </summary>
     public sealed class MovieProcessor
     {
-        private const string MediaTypeMovie = "Movie";
+        private const string MediaTypeMovie = MediaProposal.TypeMovie;
 
         private readonly TmdbClient _tmdb;
         private readonly bool _dryRun;
@@ -179,7 +179,7 @@ namespace qbPortWeaver
             if (info is null) return;
             if (!isConfident)
             {
-                LogManager.Instance.LogMessage($"Skipped folder '{Path.GetFileName(dirPath)}' - uncertain TMDB match, review in Media Manager", LogLevel.Warn, Subsystem.MediaManager);
+                LogManager.Instance.LogMessage($"Skipped folder '{dirPath}' - uncertain TMDB match, review in Media Manager", LogLevel.Warn, Subsystem.MediaManager);
                 return;
             }
 
@@ -224,7 +224,7 @@ namespace qbPortWeaver
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
-                LogManager.Instance.LogMessage($"Skipped companion files in '{Path.GetFileName(sourceDir)}': {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
+                LogManager.Instance.LogMessage($"Skipped companion files in '{sourceDir}': {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
                 return;
             }
 
@@ -304,13 +304,10 @@ namespace qbPortWeaver
                 // Ensure the match is at a word boundary, not embedded in a longer word
                 if (idx > 0 && char.IsLetter(name[idx - 1])) continue;
 
-                var after = name[(idx + pattern.Length)..].Trim();
-                if (after.Length > 0 && char.IsDigit(after[0]))
-                {
-                    int numEnd = 0;
-                    while (numEnd < after.Length && char.IsDigit(after[numEnd])) numEnd++;
+                var after  = name[(idx + pattern.Length)..].Trim();
+                int numEnd = after.TakeWhile(char.IsDigit).Count();
+                if (numEnd > 0)
                     return $"{pattern}{after[..numEnd]}";
-                }
             }
 
             return null;

@@ -20,7 +20,7 @@ namespace qbPortWeaver
             var apiKey = RegistrySettingsManager.GetEncryptedValue(RegistrySettingsManager.SectionMedia, RegistrySettingsManager.KeyTmdbApiKey);
             if (string.IsNullOrWhiteSpace(apiKey))
             {
-                LogManager.Instance.LogDebug("MediaManagerService.RunAsync: TMDB API key not configured - skipping scan", Subsystem.MediaManager);
+                LogManager.Instance.LogMessage("TMDB API key not configured - skipping scan", LogLevel.Warn, Subsystem.MediaManager);
                 return;
             }
 
@@ -29,7 +29,7 @@ namespace qbPortWeaver
 
             if (string.IsNullOrWhiteSpace(moviesLibraryPath) && string.IsNullOrWhiteSpace(tvShowsLibraryPath))
             {
-                LogManager.Instance.LogDebug("MediaManagerService.RunAsync: No library paths configured - skipping scan", Subsystem.MediaManager);
+                LogManager.Instance.LogMessage("No library paths configured - skipping scan", LogLevel.Warn, Subsystem.MediaManager);
                 return;
             }
 
@@ -291,7 +291,7 @@ namespace qbPortWeaver
                     current++;
                     progress?.Report((current, total, Path.GetFileName(proposal.OriginalPath)));
                     LogManager.Instance.LogMessage(
-                        $"Importing '{proposal.OriginalPath}' -> '{proposal.ProposedPath}'",
+                        $"Importing '{Path.GetFileName(proposal.OriginalPath)}' -> '{proposal.ProposedPath}'",
                         LogLevel.Info, Subsystem.MediaManager);
                     try
                     {
@@ -345,14 +345,14 @@ namespace qbPortWeaver
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
-                LogManager.Instance.LogMessage($"Skipped folder check for '{Path.GetFileName(dir)}': {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
+                LogManager.Instance.LogMessage($"Skipped folder check for '{dir}': {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
                 return false;
             }
             if (!removable) return false;
 
             string reason = hasOnlyNfo ? "nfo-only" : "empty";
             if (dryRun)
-                LogManager.Instance.LogMessage($"Would delete {reason} folder: '{Path.GetFileName(dir)}'", LogLevel.Info, Subsystem.MediaManager);
+                LogManager.Instance.LogMessage($"Would delete {reason} folder: '{dir}'", LogLevel.Info, Subsystem.MediaManager);
             else
                 DeleteFolder(dir, hasOnlyNfo);
 
@@ -381,11 +381,11 @@ namespace qbPortWeaver
                 }
                 Directory.Delete(dir);
                 string reason = hasNfoFiles ? "nfo-only" : "empty";
-                LogManager.Instance.LogMessage($"Deleted {reason} folder: '{Path.GetFileName(dir)}'", LogLevel.Info, Subsystem.MediaManager);
+                LogManager.Instance.LogMessage($"Deleted {reason} folder: '{dir}'", LogLevel.Info, Subsystem.MediaManager);
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
-                LogManager.Instance.LogMessage($"Failed to delete folder '{Path.GetFileName(dir)}': {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
+                LogManager.Instance.LogMessage($"Failed to delete folder '{dir}': {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
             }
         }
 
@@ -530,7 +530,7 @@ namespace qbPortWeaver
             try { files = Directory.GetFiles(videoDir); }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
-                LogManager.Instance.LogMessage($"Skipped companion files in '{Path.GetFileName(videoDir)}': {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
+                LogManager.Instance.LogMessage($"Skipped companion files in '{videoDir}': {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
                 return;
             }
 

@@ -61,6 +61,32 @@ namespace qbPortWeaver
         }
 
         // Verifies that two paths refer to the same file by comparing volume serial number and file index.
+        // Attempts a hardlink from sourcePath to destinationPath, verifies the link identity,
+        // and falls back to a file copy if the hardlink fails or the filesystem silently copies instead.
+        private static void ImportWithHardlink(string sourcePath, string destinationPath)
+        {
+            if (TryCreateHardLink(sourcePath, destinationPath))
+            {
+                if (VerifyHardLink(sourcePath, destinationPath))
+                {
+                    LogManager.Instance.LogDebug($"MediaImporter.ImportFile: Hardlinked '{Path.GetFileName(destinationPath)}'", Subsystem.MediaManager);
+                }
+                else
+                {
+                    LogManager.Instance.LogMessage($"Hardlink not verified for '{Path.GetFileName(destinationPath)}' (filesystem created a copy instead), replacing with proper copy", LogLevel.Warn, Subsystem.MediaManager);
+                    File.Delete(destinationPath);
+                    File.Copy(sourcePath, destinationPath, overwrite: false);
+                    LogManager.Instance.LogDebug($"MediaImporter.ImportFile: Copied (verified fallback) '{Path.GetFileName(destinationPath)}'", Subsystem.MediaManager);
+                }
+            }
+            else
+            {
+                LogManager.Instance.LogMessage("Hardlink failed, falling back to copy", LogLevel.Warn, Subsystem.MediaManager);
+                File.Copy(sourcePath, destinationPath, overwrite: false);
+                LogManager.Instance.LogDebug($"MediaImporter.ImportFile: Copied (fallback) '{Path.GetFileName(destinationPath)}'", Subsystem.MediaManager);
+            }
+        }
+
         // Returns false if the files have different identities (some filesystems silently create a copy instead of a hardlink).
         private static bool VerifyHardLink(string sourcePath, string destinationPath)
         {
@@ -129,26 +155,7 @@ namespace qbPortWeaver
             switch (importMode)
             {
                 case ImportMode.Hardlink:
-                    if (TryCreateHardLink(sourcePath, destinationPath))
-                    {
-                        if (VerifyHardLink(sourcePath, destinationPath))
-                        {
-                            LogManager.Instance.LogDebug($"MediaImporter.ImportFile: Hardlinked '{Path.GetFileName(destinationPath)}'", Subsystem.MediaManager);
-                        }
-                        else
-                        {
-                            LogManager.Instance.LogMessage($"Hardlink not verified for '{Path.GetFileName(destinationPath)}' (filesystem created a copy instead), replacing with proper copy", LogLevel.Warn, Subsystem.MediaManager);
-                            File.Delete(destinationPath);
-                            File.Copy(sourcePath, destinationPath, overwrite: false);
-                            LogManager.Instance.LogDebug($"MediaImporter.ImportFile: Copied (verified fallback) '{Path.GetFileName(destinationPath)}'", Subsystem.MediaManager);
-                        }
-                    }
-                    else
-                    {
-                        LogManager.Instance.LogMessage("Hardlink failed, falling back to copy", LogLevel.Warn, Subsystem.MediaManager);
-                        File.Copy(sourcePath, destinationPath, overwrite: false);
-                        LogManager.Instance.LogDebug($"MediaImporter.ImportFile: Copied (fallback) '{Path.GetFileName(destinationPath)}'", Subsystem.MediaManager);
-                    }
+                    ImportWithHardlink(sourcePath, destinationPath);
                     break;
 
                 case ImportMode.Copy:

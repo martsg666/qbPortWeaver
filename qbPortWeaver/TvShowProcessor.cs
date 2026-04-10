@@ -8,7 +8,7 @@ namespace qbPortWeaver
     /// </summary>
     public sealed class TvShowProcessor
     {
-        private const string MediaTypeTvShow = "TV Show";
+        private const string MediaTypeTvShow = MediaProposal.TypeTvShow;
 
         private readonly TmdbClient _tmdb;
         private readonly bool _dryRun;

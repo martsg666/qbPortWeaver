@@ -475,7 +475,6 @@ namespace qbPortWeaver
 
     }
 
-    /// <summary>Parsed TV episode identity: show name, optional year hint, season number, and episode number.</summary>
     /// <summary>Parsed TV episode identity: show name, optional year hint, season number, first episode number, and optional end episode for multi-episode files.</summary>
     public sealed record TvShowEpisodeInfo(string ShowName, int? Year, int Season, int Episode, int? EndEpisode = null);
 }

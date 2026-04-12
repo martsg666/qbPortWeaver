@@ -38,12 +38,13 @@ namespace qbPortWeaver
             bool deleteEmptyFolders = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionMedia, RegistrySettingsManager.KeyMediaDeleteEmptyFolders);
             var importMode = ParseImportMode(RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionMedia, RegistrySettingsManager.KeyMediaImportMode));
 
+            var sourceFolders = GetFolders(RegistrySettingsManager.KeyMediaSourceFolders);
             var scanSw = System.Diagnostics.Stopwatch.StartNew();
             LogManager.Instance.LogMessage($"Scan started (mode=import, dryRun={dryRun}, createFolders={createFolders}, deleteEmptyFolders={deleteEmptyFolders}, importMode={importMode})", LogLevel.Info, Subsystem.MediaManager);
             LogManager.Instance.LogDebug(
                 $"MediaManagerService.RunAsync [media]: {RegistrySettingsManager.KeyMediaEnabled}=true, " +
                 $"{RegistrySettingsManager.KeyTmdbApiKey}=***, " +
-                $"{RegistrySettingsManager.KeyMediaSourceFolders}={string.Join(";", GetFolders(RegistrySettingsManager.KeyMediaSourceFolders))}, " +
+                $"{RegistrySettingsManager.KeyMediaSourceFolders}={string.Join(";", sourceFolders)}, " +
                 $"{RegistrySettingsManager.KeyMediaMoviesLibraryPath}={moviesLibraryPath}, " +
                 $"{RegistrySettingsManager.KeyMediaTvShowsLibraryPath}={tvShowsLibraryPath}, " +
                 $"{RegistrySettingsManager.KeyMediaDryRun}={dryRun}, " +
@@ -65,7 +66,7 @@ namespace qbPortWeaver
 
             // Enumerate valid source folders
             var validFolders = new List<string>();
-            foreach (var f in GetFolders(RegistrySettingsManager.KeyMediaSourceFolders))
+            foreach (var f in sourceFolders)
             {
                 if (!Directory.Exists(f)) { LogManager.Instance.LogMessage($"Source folder not found: '{f}'", LogLevel.Warn, Subsystem.MediaManager); continue; }
                 validFolders.Add(f);
@@ -89,7 +90,7 @@ namespace qbPortWeaver
             })).ConfigureAwait(false);
 
             if (deleteEmptyFolders && total > 0)
-                CleanupSourceFolders(dryRun, cancellationToken);
+                CleanupSourceFolders(sourceFolders, dryRun, cancellationToken);
 
             TmdbCacheManager.Save();
             MediaImporter.SaveSourceCache();
@@ -139,9 +140,9 @@ namespace qbPortWeaver
         }
 
         // Runs folder cleanup for all configured source folders.
-        private static void CleanupSourceFolders(bool dryRun, CancellationToken cancellationToken)
+        private static void CleanupSourceFolders(string[] sourceFolders, bool dryRun, CancellationToken cancellationToken)
         {
-            foreach (var folder in GetFolders(RegistrySettingsManager.KeyMediaSourceFolders))
+            foreach (var folder in sourceFolders)
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 try { CleanupEmptyFolders(folder, dryRun); }
@@ -242,7 +243,7 @@ namespace qbPortWeaver
             // Scan is always preview-only; actual import is applied separately via ApplyProposalsAsync
             if (!string.IsNullOrWhiteSpace(ctx.MoviesLibraryPath) && items.MovieFiles.Length > 0)
             {
-                var movieProcessor = new MovieProcessor(ctx.Tmdb, dryRun: true, ctx.CreateFolders, ctx.MoviesLibraryPath);
+                var movieProcessor = new MovieProcessor(ctx.Tmdb, dryRun: true, ctx.CreateFolders, ctx.MoviesLibraryPath, ctx.ImportMode);
                 try
                 {
                     proposals.AddRange(await movieProcessor.ScanMoviesAsync(items.MovieFiles, onItemProcessed).ConfigureAwait(false));
@@ -255,7 +256,7 @@ namespace qbPortWeaver
 
             if (!string.IsNullOrWhiteSpace(ctx.TvShowsLibraryPath) && items.TvFiles.Length > 0)
             {
-                var tvShowProcessor = new TvShowProcessor(ctx.Tmdb, dryRun: true, ctx.CreateFolders, ctx.TvShowsLibraryPath);
+                var tvShowProcessor = new TvShowProcessor(ctx.Tmdb, dryRun: true, ctx.CreateFolders, ctx.TvShowsLibraryPath, ctx.ImportMode);
                 try
                 {
                     proposals.AddRange(await tvShowProcessor.ScanTvShowsAsync(items.TvFiles, onItemProcessed).ConfigureAwait(false));

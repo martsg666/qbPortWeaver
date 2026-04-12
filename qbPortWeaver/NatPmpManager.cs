@@ -98,7 +98,7 @@ namespace qbPortWeaver
             IPAddress? gateway = ResolveGateway(nic.GetIPProperties());
             if (gateway is null)
             {
-                LogManager.Instance.LogDebug($"NatPmpManager.TryCreateForAdapterAsync: '{adapterName}' - no resolvable gateway");
+                LogManager.Instance.LogDebug($"NatPmpManager.TryCreateForAdapterAsync: '{adapterName}' no resolvable gateway");
                 return null;
             }
 

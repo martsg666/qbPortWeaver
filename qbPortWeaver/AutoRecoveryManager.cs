@@ -85,7 +85,7 @@ namespace qbPortWeaver
                 }
                 catch (Exception ex)
                 {
-                    LogManager.Instance.LogDebug($"AutoRecoveryManager.CacheRunningClientExePaths: '{processName}' - {ex.Message}");
+                    LogManager.Instance.LogDebug($"AutoRecoveryManager.CacheRunningClientExePaths: '{processName}': {ex.Message}");
                 }
             }
         }

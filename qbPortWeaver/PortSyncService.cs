@@ -189,7 +189,7 @@ namespace qbPortWeaver
                     LogManager.Instance.LogMessage($"{vpnManager.ProviderName} default port is 0 - skipping port update", LogLevel.Info);
                     return cfg.UpdateInterval;
                 }
-                LogManager.Instance.LogMessage($"{vpnManager.ProviderName} applying default port {cfg.DefaultPort}", LogLevel.Info);
+                LogManager.Instance.LogMessage($"{vpnManager.ProviderName} default port is {cfg.DefaultPort} - applying", LogLevel.Info);
                 targetPort              = cfg.DefaultPort;
                 vpnProviderName         = null;
                 warnOnInterfaceMismatch = false;

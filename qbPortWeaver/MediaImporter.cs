@@ -107,7 +107,7 @@ namespace qbPortWeaver
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
-                LogManager.Instance.LogDebug($"MediaImporter.VerifyHardLink: Could not verify - {ex.Message}", Subsystem.MediaManager);
+                LogManager.Instance.LogDebug($"MediaImporter.VerifyHardLink: Could not verify: {ex.Message}", Subsystem.MediaManager);
                 return false;
             }
         }

@@ -8,8 +8,6 @@ namespace qbPortWeaver
     /// </summary>
     public sealed class TvShowProcessor
     {
-        private const string MediaTypeTvShow = MediaProposal.TypeTvShow;
-
         private readonly TmdbClient _tmdb;
         private readonly bool _dryRun;
         private readonly bool _createFolders;
@@ -70,7 +68,7 @@ namespace qbPortWeaver
             var (showInfo, isConfident) = await GetOrLookupShowAsync(episodeInfo.ShowName, episodeInfo.Year).ConfigureAwait(false);
             if (showInfo is null)
             {
-                proposals.Add(new MediaProposal(MediaTypeTvShow, filePath, string.Empty, IsConfident: false, IsMatched: false));
+                proposals.Add(new MediaProposal(MediaProposal.TypeTvShow, filePath, string.Empty, IsConfident: false, IsMatched: false));
                 return;
             }
 
@@ -79,7 +77,7 @@ namespace qbPortWeaver
             if (MediaImporter.IsDuplicateFile(filePath, proposedPath)) return;
 
             if (!string.Equals(filePath, proposedPath, StringComparison.OrdinalIgnoreCase))
-                proposals.Add(new MediaProposal(MediaTypeTvShow, filePath, proposedPath, isConfident));
+                proposals.Add(new MediaProposal(MediaProposal.TypeTvShow, filePath, proposedPath, isConfident));
         }
 
         // Processes a single TV episode file

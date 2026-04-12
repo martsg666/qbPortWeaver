@@ -262,8 +262,7 @@ namespace qbPortWeaver
         // Returns uncertain/unmatched rows of the given media type.
         private List<DataGridViewRow> GetRecheckRows(string mediaType) =>
             dgvResults.Rows.Cast<DataGridViewRow>()
-                .Where(r => r.Tag is RowData { Confidence: not RowConfidence.Confident }
-                            && ((RowData)r.Tag!).Proposal.MediaType == mediaType)
+                .Where(r => r.Tag is RowData { Confidence: not RowConfidence.Confident } rd && rd.Proposal.MediaType == mediaType)
                 .ToList();
 
         // Groups TV show rows by their extracted show-folder name for batch TMDB lookup.
@@ -321,9 +320,12 @@ namespace qbPortWeaver
                 return;
             }
 
-            var ext             = Path.GetExtension(editedName);
-            var showFolderName  = FileNameParser.FormatPlexName(showInfo.Title, showInfo.Year);
-            var episodeFileName = $"{showFolderName} - S{episodeInfo.Season:D2}E{episodeInfo.Episode:D2}{ext}";
+            var ext            = Path.GetExtension(editedName);
+            var showFolderName = FileNameParser.FormatPlexName(showInfo.Title, showInfo.Year);
+            var episodeCode    = episodeInfo.EndEpisode.HasValue
+                ? $"S{episodeInfo.Season:D2}E{episodeInfo.Episode:D2}E{episodeInfo.EndEpisode.Value:D2}"
+                : $"S{episodeInfo.Season:D2}E{episodeInfo.Episode:D2}";
+            var episodeFileName = $"{showFolderName} - {episodeCode}{ext}";
             var proposedPath    = createFolders
                 ? Path.Combine(tvLib, showFolderName, $"Season {episodeInfo.Season:D2}", episodeFileName)
                 : Path.Combine(tvLib, episodeFileName);

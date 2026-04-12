@@ -252,11 +252,9 @@ namespace qbPortWeaver
         /// </summary>
         internal static string ComputeFingerprint(string path)
         {
-            var fi = new FileInfo(path);
-            long size = fi.Length;
-            if (size == 0) return "0";
-
             using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+            long size = stream.Length;
+            if (size == 0) return "0";
 
             byte[] data;
             if (size <= FingerprintChunkBytes * 2)
@@ -709,11 +707,11 @@ namespace qbPortWeaver
 
             lock (_libraryLock)
             {
-                _libraryFingerprints = null;
-                _libraryCache        = null;
-                _libraryCacheDirty   = false;
+                _libraryFingerprints    = null;
+                _libraryCache           = null;
+                _libraryCacheDirty      = false;
+                _libraryBuildCycleCount = 0;
             }
-            _libraryBuildCycleCount = 0;
 
             TryDeleteFile(GetCacheFilePath(SourceCacheFileName));
             TryDeleteFile(GetCacheFilePath(LibraryCacheFileName));

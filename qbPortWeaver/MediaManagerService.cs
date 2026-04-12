@@ -53,33 +53,8 @@ namespace qbPortWeaver
                 $"{RegistrySettingsManager.KeyMediaImportMode}={importMode}",
                 Subsystem.MediaManager);
 
-            // Fast: load source and TMDB caches into memory (in-memory no-op after first cycle)
-            await Task.Run(() =>
-            {
-                MediaImporter.LoadSourceCache();
-                TmdbCacheManager.Load();
-                TmdbCacheManager.EvictNullMovies();
-                TmdbCacheManager.EvictNullShows();
-            }, cancellationToken).ConfigureAwait(false);
-
-            var tmdb = new TmdbClient(apiKey);
-
-            // Enumerate valid source folders
-            var validFolders = new List<string>();
-            foreach (var f in sourceFolders)
-            {
-                if (!Directory.Exists(f)) { LogManager.Instance.LogMessage($"Source folder not found: '{f}'", LogLevel.Warn, Subsystem.MediaManager); continue; }
-                validFolders.Add(f);
-            }
-
-            // Overlap: library index enumeration and source folder enumeration are both directory listings on
-            // different paths and can run concurrently. Phase 2 fingerprinting waits for both to complete
-            // since it requires the library index to be ready.
-            var libraryTask = Task.Run(() => MediaImporter.BuildLibraryIndex(moviesLibraryPath, tvShowsLibraryPath, allowReuse: true, cancellationToken), cancellationToken);
-            var enumerated  = await EnumerateSourceFoldersAsync(validFolders, cancellationToken).ConfigureAwait(false);
-            await libraryTask.ConfigureAwait(false);
-            var classified  = await FingerprintSourceFoldersAsync(enumerated, cancellationToken).ConfigureAwait(false);
-            int total       = classified.Sum(c => c.Items.MovieFiles.Length + c.Items.TvFiles.Length);
+            var (tmdb, classified, total) = await PrepareClassifiedSourcesAsync(
+                apiKey, sourceFolders, moviesLibraryPath, tvShowsLibraryPath, allowLibraryReuse: true, cancellationToken).ConfigureAwait(false);
 
             var ctx = new ImportContext(tmdb, dryRun, createFolders, importMode, moviesLibraryPath, tvShowsLibraryPath);
 
@@ -172,34 +147,9 @@ namespace qbPortWeaver
             var scanSw = System.Diagnostics.Stopwatch.StartNew();
             LogManager.Instance.LogMessage($"Scan started (mode=preview, createFolders={createFolders})", LogLevel.Info, Subsystem.MediaManager);
 
-            // Fast: load source and TMDB caches into memory (in-memory no-op after first cycle)
-            await Task.Run(() =>
-            {
-                MediaImporter.LoadSourceCache();
-                TmdbCacheManager.Load();
-                TmdbCacheManager.EvictNullMovies();
-                TmdbCacheManager.EvictNullShows();
-            }, cancellationToken).ConfigureAwait(false);
-
-            var tmdb = new TmdbClient(apiKey);
-
-            // Enumerate valid source folders
-            var validFolders = new List<string>();
-            foreach (var f in sourceFolders)
-            {
-                if (!Directory.Exists(f)) { LogManager.Instance.LogMessage($"Source folder not found: '{f}'", LogLevel.Warn, Subsystem.MediaManager); continue; }
-                validFolders.Add(f);
-            }
-
-            // Overlap: library index enumeration and source folder enumeration are both directory listings on
-            // different paths and can run concurrently. Phase 2 fingerprinting waits for both to complete
-            // since it requires the library index to be ready.
-            // UI-initiated scans always rebuild the library index (allowReuse defaults to false) to ensure fresh results.
-            var libraryTask = Task.Run(() => MediaImporter.BuildLibraryIndex(moviesLibraryPath, tvShowsLibraryPath, cancellationToken: cancellationToken), cancellationToken);
-            var enumerated  = await EnumerateSourceFoldersAsync(validFolders, cancellationToken).ConfigureAwait(false);
-            await libraryTask.ConfigureAwait(false);
-            var classified  = await FingerprintSourceFoldersAsync(enumerated, cancellationToken).ConfigureAwait(false);
-            int total       = classified.Sum(c => c.Items.MovieFiles.Length + c.Items.TvFiles.Length);
+            // UI-initiated scans always rebuild the library index (allowLibraryReuse: false) to ensure fresh results.
+            var (tmdb, classified, total) = await PrepareClassifiedSourcesAsync(
+                apiKey, sourceFolders, moviesLibraryPath, tvShowsLibraryPath, allowLibraryReuse: false, cancellationToken).ConfigureAwait(false);
 
             int current = 0;
             void OnItemProcessed()
@@ -389,6 +339,41 @@ namespace qbPortWeaver
             {
                 LogManager.Instance.LogMessage($"Failed to delete folder '{dir}': {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
             }
+        }
+
+        // Loads caches, validates source folders, then runs the library index build and source enumeration
+        // concurrently (both are directory listings on different paths). Fingerprints candidates once the
+        // library index is ready. allowLibraryReuse: true for background sync cycles (reuses index up to
+        // FullRebuildIntervalCycles); false for UI-initiated scans (always rebuilds for fresh results).
+        private static async Task<(TmdbClient Tmdb, List<(string Folder, (string[] MovieFiles, string[] TvFiles) Items)> Classified, int Total)>
+            PrepareClassifiedSourcesAsync(
+                string apiKey, string[] sourceFolders, string moviesLibraryPath, string tvShowsLibraryPath,
+                bool allowLibraryReuse, CancellationToken cancellationToken)
+        {
+            await Task.Run(() =>
+            {
+                MediaImporter.LoadSourceCache();
+                TmdbCacheManager.Load();
+                TmdbCacheManager.EvictNullMovies();
+                TmdbCacheManager.EvictNullShows();
+            }, cancellationToken).ConfigureAwait(false);
+
+            var tmdb = new TmdbClient(apiKey);
+
+            var validFolders = new List<string>();
+            foreach (var f in sourceFolders)
+            {
+                if (!Directory.Exists(f)) { LogManager.Instance.LogMessage($"Source folder not found: '{f}'", LogLevel.Warn, Subsystem.MediaManager); continue; }
+                validFolders.Add(f);
+            }
+
+            var libraryTask = Task.Run(() => MediaImporter.BuildLibraryIndex(moviesLibraryPath, tvShowsLibraryPath, allowReuse: allowLibraryReuse, cancellationToken), cancellationToken);
+            var enumerated  = await EnumerateSourceFoldersAsync(validFolders, cancellationToken).ConfigureAwait(false);
+            await libraryTask.ConfigureAwait(false);
+            var classified  = await FingerprintSourceFoldersAsync(enumerated, cancellationToken).ConfigureAwait(false);
+            int total       = classified.Sum(c => c.Items.MovieFiles.Length + c.Items.TvFiles.Length);
+
+            return (tmdb, classified, total);
         }
 
         // Phase 1: enumerates each source folder and returns a candidate FileInfo list.

@@ -8,8 +8,6 @@ namespace qbPortWeaver
     /// </summary>
     public sealed class MovieProcessor
     {
-        private const string MediaTypeMovie = MediaProposal.TypeMovie;
-
         private readonly TmdbClient _tmdb;
         private readonly bool _dryRun;
         private readonly bool _createFolders;
@@ -97,7 +95,7 @@ namespace qbPortWeaver
             var (info, isConfident) = await GetOrLookupMovieAsync(title, year).ConfigureAwait(false);
             if (info is null)
             {
-                proposals.Add(new MediaProposal(MediaTypeMovie, filePath, string.Empty, IsConfident: false, IsMatched: false));
+                proposals.Add(new MediaProposal(MediaProposal.TypeMovie, filePath, string.Empty, IsConfident: false, IsMatched: false));
                 return;
             }
 
@@ -106,7 +104,7 @@ namespace qbPortWeaver
             if (MediaImporter.IsDuplicateFile(filePath, proposedPath)) return;
 
             if (!string.Equals(filePath, proposedPath, StringComparison.OrdinalIgnoreCase))
-                proposals.Add(new MediaProposal(MediaTypeMovie, filePath, proposedPath, isConfident));
+                proposals.Add(new MediaProposal(MediaProposal.TypeMovie, filePath, proposedPath, isConfident));
         }
 
         // Shared opening logic for folder-dependent scan and process methods: validates the file list,
@@ -137,7 +135,7 @@ namespace qbPortWeaver
             if (info is null)
             {
                 foreach (var file in folderDependent)
-                    proposals.Add(new MediaProposal(MediaTypeMovie, file, string.Empty, IsConfident: false, IsMatched: false));
+                    proposals.Add(new MediaProposal(MediaProposal.TypeMovie, file, string.Empty, IsConfident: false, IsMatched: false));
                 return;
             }
 
@@ -148,7 +146,7 @@ namespace qbPortWeaver
                 if (MediaImporter.IsDuplicateFile(file, proposedPath)) continue;
 
                 if (!string.Equals(file, proposedPath, StringComparison.OrdinalIgnoreCase))
-                    proposals.Add(new MediaProposal(MediaTypeMovie, file, proposedPath, isConfident));
+                    proposals.Add(new MediaProposal(MediaProposal.TypeMovie, file, proposedPath, isConfident));
             }
         }
 

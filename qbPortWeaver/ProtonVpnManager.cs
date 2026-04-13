@@ -5,19 +5,23 @@ using System.Text.RegularExpressions;
 namespace qbPortWeaver
 {
     /// <summary>Detects ProtonVPN connectivity via network adapter enumeration and reads the forwarded port from the client log file.</summary>
-    public sealed class ProtonVpnManager : IVpnManager
+    public sealed partial class ProtonVpnManager : IVpnManager
     {
         private const int    LogReadChunkSize = 4096;
         internal const string ClientProcessName = "ProtonVPN.Client";
 
         private readonly string _logFilePath;
+
         // Log format: "Port pair X->Y" where X and Y are always identical (ProtonVPN does not
         // differentiate external from internal port). Capture group 1 gives the forwarded port.
-        private static readonly Regex _portRegex = new Regex(@"Port pair\s+(\d+)->(?:\d+)", RegexOptions.Compiled, TimeSpan.FromSeconds(1));
+        // No nested quantifiers, so no backtracking risk - no match timeout required.
+        [GeneratedRegex(@"Port pair\s+(\d+)->(?:\d+)")]
+        private static partial Regex PortPairRegex();
 
         /// <inheritdoc />
         public string ProviderName => RegistrySettingsManager.VpnProviderProtonVpn;
 
+        /// <summary>Creates a manager that reads the forwarded port from the ProtonVPN client log file at <paramref name="logFilePath"/>.</summary>
         public ProtonVpnManager(string logFilePath)
         {
             _logFilePath = logFilePath;
@@ -52,6 +56,13 @@ namespace qbPortWeaver
 
         /// <inheritdoc />
         public string? GetRecoveryTarget() => ProviderName;
+
+        /// <inheritdoc />
+        public string GetRecoveryAction() => AutoRecoveryManager.ActionRestart;
+
+        /// <inheritdoc />
+        public bool IsAdapterMatch(string interfaceName)
+            => interfaceName.Contains("ProtonVPN", StringComparison.OrdinalIgnoreCase);
 
         private int? GetVpnPortCore()
         {
@@ -91,6 +102,9 @@ namespace qbPortWeaver
 
         // Scans the log file from the end in chunks and returns the most recent matched port.
         // Opens with FileShare.ReadWrite so ProtonVPN can keep writing while we read.
+        // Note: if a chunk boundary falls mid-multi-byte UTF-8 character, GetString produces a
+        // replacement char on that boundary. This is harmless because the target pattern
+        // "Port pair N->N" is pure ASCII and ProtonVPN logs use ASCII-only content.
         private int? ReadLastPortFromLog()
         {
             using var fs = new FileStream(_logFilePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
@@ -118,7 +132,7 @@ namespace qbPortWeaver
                 {
                     string line = lines[i].TrimEnd('\r');
                     if (line.Length == 0) continue;
-                    var match = _portRegex.Match(line);
+                    var match = PortPairRegex().Match(line);
                     if (match.Success && int.TryParse(match.Groups[1].Value, out int port))
                         return port;
                 }
@@ -127,7 +141,7 @@ namespace qbPortWeaver
             // Check the very first line of the file
             if (lineFragment.Length > 0)
             {
-                var match = _portRegex.Match(lineFragment.TrimEnd('\r'));
+                var match = PortPairRegex().Match(lineFragment.TrimEnd('\r'));
                 if (match.Success && int.TryParse(match.Groups[1].Value, out int port))
                     return port;
             }

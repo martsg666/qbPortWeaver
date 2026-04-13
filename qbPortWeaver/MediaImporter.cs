@@ -30,7 +30,7 @@ namespace qbPortWeaver
         private static int _sourceCachedCount;
         private static int _sourceComputedCount;
 
-        // In-flight deduplication: if two threads race on the same source file (e.g. RunAsync and ScanAsync
+        // In-flight deduplication: if two threads race on the same source file (e.g. ImportAsync and ScanAsync
         // both classifying with a cold cache), GetOrAdd returns the same Lazy so both share one read.
         private static readonly ConcurrentDictionary<string, Lazy<string>> _sourceInFlight =
             new(StringComparer.OrdinalIgnoreCase);
@@ -42,7 +42,7 @@ namespace qbPortWeaver
         private const string SourceCacheFileName  = "qbPortWeaver.mediasource.json";
         private const string LibraryCacheFileName = "qbPortWeaver.medialibrary.json";
 
-        internal static readonly JsonSerializerOptions JsonWriteOptions = new() { WriteIndented = true };
+        private static readonly JsonSerializerOptions _jsonWriteOptions = new() { WriteIndented = true };
 
         private sealed record CacheEntry(long Size, long LastWriteTimeTicks, string Fingerprint);
 
@@ -73,7 +73,7 @@ namespace qbPortWeaver
                 }
                 else
                 {
-                    LogManager.Instance.LogMessage($"Hardlink not verified for '{Path.GetFileName(destinationPath)}' (filesystem created a copy instead), replacing with proper copy", LogLevel.Warn, Subsystem.MediaManager);
+                    LogManager.Instance.LogMessage($"Hardlink not verified for '{Path.GetFileName(destinationPath)}' (filesystem created a copy instead), replacing with proper copy", LogLevel.Info, Subsystem.MediaManager);
                     File.Delete(destinationPath);
                     File.Copy(sourcePath, destinationPath, overwrite: false);
                     LogManager.Instance.LogDebug($"MediaImporter.ImportFile: Copied (verified fallback) '{Path.GetFileName(destinationPath)}'", Subsystem.MediaManager);
@@ -81,7 +81,7 @@ namespace qbPortWeaver
             }
             else
             {
-                LogManager.Instance.LogMessage($"Hardlink failed for '{Path.GetFileName(destinationPath)}', falling back to copy", LogLevel.Warn, Subsystem.MediaManager);
+                LogManager.Instance.LogMessage($"Hardlink failed for '{Path.GetFileName(destinationPath)}', falling back to copy", LogLevel.Info, Subsystem.MediaManager);
                 File.Copy(sourcePath, destinationPath, overwrite: false);
                 LogManager.Instance.LogDebug($"MediaImporter.ImportFile: Copied (fallback) '{Path.GetFileName(destinationPath)}'", Subsystem.MediaManager);
             }
@@ -107,7 +107,7 @@ namespace qbPortWeaver
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
-                LogManager.Instance.LogDebug($"MediaImporter.VerifyHardLink: Could not verify - {ex.Message}", Subsystem.MediaManager);
+                LogManager.Instance.LogDebug($"MediaImporter.VerifyHardLink: Could not verify: {ex.Message}", Subsystem.MediaManager);
                 return false;
             }
         }
@@ -252,11 +252,9 @@ namespace qbPortWeaver
         /// </summary>
         internal static string ComputeFingerprint(string path)
         {
-            var fi = new FileInfo(path);
-            long size = fi.Length;
-            if (size == 0) return "0";
-
             using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+            long size = stream.Length;
+            if (size == 0) return "0";
 
             byte[] data;
             if (size <= FingerprintChunkBytes * 2)
@@ -372,7 +370,7 @@ namespace qbPortWeaver
         }
 
         // Enumerates all files in a library folder.
-        // FileInfo metadata (Length, LastWriteTimeUtc) comes from the directory listing — no extra stat per file.
+        // FileInfo metadata (Length, LastWriteTimeUtc) comes from the directory listing - no extra stat per file.
         // IgnoreInaccessible = true silently skips permission-denied folders.
         private static List<FileInfo> EnumerateLibraryFolder(string folder) =>
             new DirectoryInfo(folder).EnumerateFiles("*", new EnumerationOptions
@@ -652,9 +650,9 @@ namespace qbPortWeaver
                     ? snapshot.Where(kv => File.Exists(kv.Key)).ToDictionary(kv => kv.Key, kv => kv.Value, StringComparer.OrdinalIgnoreCase)
                     : snapshot;
 
-                var json = JsonSerializer.Serialize(toSave, JsonWriteOptions);
+                var json = JsonSerializer.Serialize(toSave, _jsonWriteOptions);
                 lock (_cacheFileLock)
-                    WriteAtomic(GetCacheFilePath(SourceCacheFileName), json);
+                    AppConstants.WriteAtomic(GetCacheFilePath(SourceCacheFileName), json);
 
                 LogManager.Instance.LogDebug($"MediaImporter.SaveSourceCache: Saved {toSave.Count} entries", Subsystem.MediaManager);
             }
@@ -680,11 +678,11 @@ namespace qbPortWeaver
                 {
                     if (!_libraryCacheDirty) return; // double-check inside the lock: another thread may have saved and reset the flag
                     _libraryCacheDirty = false; // reset before serializing so concurrent writes after this point re-set it
-                    json               = JsonSerializer.Serialize(cache, JsonWriteOptions);
+                    json               = JsonSerializer.Serialize(cache, _jsonWriteOptions);
                 }
 
                 lock (_cacheFileLock)
-                    WriteAtomic(GetCacheFilePath(LibraryCacheFileName), json);
+                    AppConstants.WriteAtomic(GetCacheFilePath(LibraryCacheFileName), json);
 
                 LogManager.Instance.LogDebug($"MediaImporter.SaveLibraryCache: Saved {cache.Count} entries", Subsystem.MediaManager);
             }
@@ -709,11 +707,11 @@ namespace qbPortWeaver
 
             lock (_libraryLock)
             {
-                _libraryFingerprints = null;
-                _libraryCache        = null;
-                _libraryCacheDirty   = false;
+                _libraryFingerprints    = null;
+                _libraryCache           = null;
+                _libraryCacheDirty      = false;
+                _libraryBuildCycleCount = 0;
             }
-            _libraryBuildCycleCount = 0;
 
             TryDeleteFile(GetCacheFilePath(SourceCacheFileName));
             TryDeleteFile(GetCacheFilePath(LibraryCacheFileName));
@@ -721,29 +719,10 @@ namespace qbPortWeaver
             LogManager.Instance.LogMessage("Fingerprint caches cleared", LogLevel.Info, Subsystem.MediaManager);
         }
 
-        internal static void TryDeleteFile(string path)
-        {
-            try
-            {
-                if (File.Exists(path)) File.Delete(path);
-            }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-            {
-                LogManager.Instance.LogDebug($"MediaImporter.TryDeleteFile: Could not delete '{path}': {ex.Message}", Subsystem.MediaManager);
-            }
-        }
-
-        // Writes content to a temp file then atomically renames it over the target.
-        // If the process is killed mid-write, only the .tmp file is lost and the original is untouched.
-        internal static void WriteAtomic(string path, string content)
-        {
-            var temp = path + ".tmp";
-            File.WriteAllText(temp, content);
-            File.Move(temp, path, overwrite: true);
-        }
+        private static void TryDeleteFile(string path) => AppConstants.TryDeleteFile(path);
 
         internal static string GetCacheFilePath(string fileName) =>
-            Path.Combine(Path.GetDirectoryName(AppConstants.GetLogFilePath())!, fileName);
+            AppConstants.GetDataFilePath(fileName);
 
         // CreateHardLink: lpFileName is the NEW link (destination), lpExistingFileName is the existing file (source).
         [LibraryImport("kernel32.dll", EntryPoint = "CreateHardLinkW", SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]

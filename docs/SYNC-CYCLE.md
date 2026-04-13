@@ -205,7 +205,7 @@ RunAsync
          │   └─ RunPostUpdateCommand
          ├─ CheckAndRestartIfDisconnectedAsync (skipped if already restarted)
          │   └─ QBittorrentManager.RestartAsync
-         └─ SetCompleted
+         └─ SetSyncResult
 ```
 
 ---
@@ -222,7 +222,8 @@ The Media Manager scan is split into two phases that partially overlap for perfo
                            ┌─ BuildLibraryIndex ──────────────────────────────┐
                            │  Walk library folders, fingerprint in parallel    │  Run
   Task.Run ───────────────►│  (degree 8), load/prune persisted cache.          │  concurrently
-                           │  Semaphore + 15s timestamp prevents duplicate     │
+                           │  Semaphore prevents duplicate builds. Sync cycles │
+                           │  reuse cached index; full rebuild every 10 cycles.│
                            └──────────────────────────────────────────────────►│
                                                                                │
   Phase 1: EnumerateSourceFoldersAsync ─────────────────────────────────────► │
@@ -241,7 +242,7 @@ The Media Manager scan is split into two phases that partially overlap for perfo
 
 ### Lazy Fingerprint Deduplication
 
-If `RunAsync` and `ScanAsync` overlap (e.g. a manual **Scan Now** triggered while a sync cycle is running), both call `FingerprintSourceFoldersAsync` concurrently. A `ConcurrentDictionary<string, Lazy<string>>` ensures that when two threads race on the same source file, only one issues the 128 KB read while the other waits on the same `Lazy<string>` and reuses the result.
+If `ImportAsync` and `ScanAsync` overlap (e.g. a manual **Scan Now** triggered while a sync cycle is running), both call `FingerprintSourceFoldersAsync` concurrently. A `ConcurrentDictionary<string, Lazy<string>>` ensures that when two threads race on the same source file, only one issues the 128 KB read while the other waits on the same `Lazy<string>` and reuses the result.
 
 ### Cache Layers
 
@@ -257,7 +258,7 @@ On a warm cache scan (no files changed since the last cycle), fingerprinting is 
 ### Method Call Map
 
 ```
-MediaManagerService.RunAsync / ScanAsync
+MediaManagerService.ImportAsync / ScanAsync
  ├─ MediaImporter.LoadSourceCache           (load source fingerprint cache from disk)
  ├─ TmdbCacheManager.Load / Evict         (load TMDB result cache from disk)
  │
@@ -279,11 +280,13 @@ MediaManagerService.RunAsync / ScanAsync
  ├─ ProcessSourceFolderAsync / ScanSourceFolderAsync (per folder, concurrent)
  │   ├─ MovieProcessor.ProcessMoviesAsync / ScanMoviesAsync
  │   │   ├─ ClassifyVideoFiles (self-describing vs folder-dependent)
- │   │   ├─ GetOrLookupMovieAsync → LookupMovieAsync → FileNameParser.TryFallbackLookupsAsync
+ │   │   ├─ GetOrLookupMovieAsync → LookupMovieAsync
+ │   │   │   └─ TmdbClient.SearchWithConfidenceAsync (confidence tracking + fallback strategies)
  │   │   └─ MediaManagerService.ImportFileWithLog / MediaProposal
  │   └─ TvShowProcessor.ProcessTvShowsAsync / ScanTvShowsAsync
  │       ├─ FileNameParser.ParseTvShowEpisode (per file)
- │       ├─ GetOrLookupShowAsync → LookupTvShowAsync → FileNameParser.TryFallbackLookupsAsync
+ │       ├─ GetOrLookupShowAsync → LookupTvShowAsync
+ │       │   └─ TmdbClient.SearchWithConfidenceAsync (confidence tracking + fallback strategies)
  │       └─ MediaManagerService.ImportFileWithLog / MediaProposal
  │
  ├─ TmdbCacheManager.Save

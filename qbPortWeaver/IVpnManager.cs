@@ -28,8 +28,26 @@ namespace qbPortWeaver
         /// Returns the recovery target sent to the helper service for auto-recovery, or <c>null</c>
         /// if recovery is not supported.
         /// For ProtonVPN and PIA this is the provider token (e.g. "ProtonVPN", "PIA").
-        /// For NAT-PMP this is the network adapter name (e.g. "ProtonVPN TUN").
+        /// For NAT-PMP this is the provider token when the adapter belongs to a known provider,
+        /// or the adapter name when it does not (e.g. a standalone NAT-PMP gateway).
         /// </summary>
         string? GetRecoveryTarget();
+
+        /// <summary>
+        /// Returns the auto-recovery action to request from the helper service.
+        /// For ProtonVPN and PIA this is always <see cref="AutoRecoveryManager.ActionRestart"/>.
+        /// For NAT-PMP this is <see cref="AutoRecoveryManager.ActionRestart"/> when the adapter belongs
+        /// to a known provider, or <see cref="AutoRecoveryManager.ActionCycleAdapter"/> otherwise.
+        /// </summary>
+        string GetRecoveryAction();
+
+        /// <summary>
+        /// Returns <c>true</c> if <paramref name="interfaceName"/> matches this provider's adapter naming convention.
+        /// For ProtonVPN this means the name contains "ProtonVPN".
+        /// For PIA this means the name contains "PIA".
+        /// For NAT-PMP this is a bidirectional contains check against the configured adapter name,
+        /// since the name in settings and the Windows connection name may differ in length.
+        /// </summary>
+        bool IsAdapterMatch(string interfaceName);
     }
 }

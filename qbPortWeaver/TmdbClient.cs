@@ -21,6 +21,7 @@ namespace qbPortWeaver
 
         private readonly string _apiKey;
 
+        /// <summary>Creates a TMDB client authenticated with the given API key.</summary>
         public TmdbClient(string apiKey)
         {
             _apiKey = apiKey;
@@ -77,7 +78,7 @@ namespace qbPortWeaver
             // Without a year in the filename we cannot corroborate the match by year alone.
             // Require an exact title match and a meaningful vote count to stay confident.
             if (info is not null && !year.HasValue)
-                isConfident = FileNameParser.IsStrongNoYearMatch(title, getTitle(info), getVoteCount(info));
+                isConfident = IsStrongNoYearMatch(title, getTitle(info), getVoteCount(info));
 
             // Retry without year: parsed year may not match TMDB's release/first-air year
             if (info is null && year.HasValue)
@@ -86,7 +87,7 @@ namespace qbPortWeaver
                 if (info is not null) isConfident = false;
             }
 
-            (info, isConfident) = await FileNameParser.TryFallbackLookupsAsync(
+            (info, isConfident) = await TryFallbackLookupsAsync(
                 title, year, info, isConfident, search, hasYear).ConfigureAwait(false);
 
             return (info, isConfident);
@@ -103,9 +104,70 @@ namespace qbPortWeaver
             }
             finally
             {
+                // Delay inside the semaphore hold so the next caller waits for the cooldown.
+                // Inner finally ensures Release() runs even if Task.Delay is interrupted.
                 try { await Task.Delay(RateLimitDelayMs).ConfigureAwait(false); }
                 finally { _rateLimiter.Release(); }
             }
+        }
+
+        // Returns true when a TMDB result found without a year in the filename is a high-confidence match.
+        // Requires a meaningful vote count and a normalised title match to filter out obscure or incorrect entries.
+        private static bool IsStrongNoYearMatch(string searchedTitle, string returnedTitle, int voteCount, int minVoteCount = 50) =>
+            voteCount >= minVoteCount &&
+            string.Equals(FileNameParser.NormalizeTitleForMatch(returnedTitle), FileNameParser.NormalizeTitleForMatch(searchedTitle), StringComparison.OrdinalIgnoreCase);
+
+        // Applies two fallback lookup strategies when the primary search fails or returns a low-confidence result.
+        // After-dash strategy: retries with the part after " - " when info is null (no initial match).
+        // Trailing-number strategy: retries without trailing digit when info is null OR hasYear returns false
+        // (a year-less result is ambiguous; a stripped-title result that includes a year is higher quality).
+        private static async Task<(T? Info, bool IsConfident)> TryFallbackLookupsAsync<T>(
+            string title, int? year, T? info, bool isConfident,
+            Func<string, int?, Task<T?>> search,
+            Func<T, bool> hasYear) where T : class
+        {
+            var afterDash = info is null ? ExtractAfterDash(title) : null;
+            if (afterDash is not null)
+            {
+                LogManager.Instance.LogDebug($"TmdbClient.TryFallbackLookupsAsync: Retrying with after-dash title '{afterDash}'", Subsystem.MediaManager);
+                info = await search(afterDash, year).ConfigureAwait(false);
+                if (info is not null) isConfident = false;
+            }
+
+            if (info is null || (!hasYear(info) && title.Length > 2))
+            {
+                var withoutNum = StripTrailingNumber(title);
+                if (withoutNum is not null)
+                {
+                    LogManager.Instance.LogDebug($"TmdbClient.TryFallbackLookupsAsync: Retrying without trailing number '{withoutNum}'", Subsystem.MediaManager);
+                    var altInfo = await search(withoutNum, year).ConfigureAwait(false);
+                    if (altInfo is not null && hasYear(altInfo))
+                    {
+                        info        = altInfo;
+                        isConfident = false;
+                    }
+                }
+            }
+
+            return (info, isConfident);
+        }
+
+        // Returns the substring after the first " - " separator, or null if not present.
+        private static string? ExtractAfterDash(string title)
+        {
+            int idx = title.IndexOf(" - ", StringComparison.Ordinal);
+            if (idx < 0) return null;
+            var after = title[(idx + 3)..].Trim();
+            return after.Length > 0 ? after : null;
+        }
+
+        // Strips a single trailing digit preceded by a space (e.g. "Title 2" -> "Title"), or null if not present.
+        private static string? StripTrailingNumber(string title)
+        {
+            var trimmed = title.TrimEnd();
+            if (trimmed.Length <= 2 || !char.IsDigit(trimmed[^1]) || trimmed[^2] != ' ')
+                return null;
+            return trimmed[..^2].Trim();
         }
     }
 

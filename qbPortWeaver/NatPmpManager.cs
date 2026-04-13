@@ -25,12 +25,6 @@ namespace qbPortWeaver
         private ushort _lastExternalPort;  // zero until first mapping; suggested to gateway on renewal
         private uint   _lastEpochSeconds;  // SSOE (Seconds Since Opened Epoch) from the last successful NAT-PMP response
 
-        /// <inheritdoc />
-        public string ProviderName => _adapter.Name;
-
-        /// <summary>Lease lifetime in seconds granted by the gateway on the last successful port mapping; 0 until first mapping.</summary>
-        public uint LastGrantedLifetime { get; private set; }
-
         private NatPmpManager(NetworkInterface adapter, IPAddress gateway, uint mappingLifetime)
         {
             _adapter         = adapter;
@@ -98,7 +92,7 @@ namespace qbPortWeaver
             IPAddress? gateway = ResolveGateway(nic.GetIPProperties());
             if (gateway is null)
             {
-                LogManager.Instance.LogDebug($"NatPmpManager.TryCreateForAdapterAsync: '{adapterName}' - no resolvable gateway");
+                LogManager.Instance.LogDebug($"NatPmpManager.TryCreateForAdapterAsync: '{adapterName}' no resolvable gateway");
                 return null;
             }
 
@@ -107,6 +101,12 @@ namespace qbPortWeaver
 
             return externalIp is not null ? new NatPmpManager(nic, gateway, mappingLifetime) : null;
         }
+
+        /// <inheritdoc />
+        public string ProviderName => _adapter.Name;
+
+        /// <summary>Lease lifetime in seconds granted by the gateway on the last successful port mapping; 0 until first mapping.</summary>
+        public uint LastGrantedLifetime { get; private set; }
 
         /// <inheritdoc />
         // Re-enumerates network interfaces because the stored _adapter object retains its
@@ -186,9 +186,37 @@ namespace qbPortWeaver
         }
 
         /// <inheritdoc />
-        // Returns the adapter name. PortSyncService checks if it matches a known provider
-        // (ProtonVPN, PIA) and triggers a service restart instead of an adapter cycle.
-        public string? GetRecoveryTarget() => _adapter.Name;
+        // Returns the provider token when the adapter belongs to a known provider (for service restart),
+        // or the adapter name for standalone NAT-PMP gateways (for adapter cycling).
+        public string? GetRecoveryTarget() => FindProviderToken(_adapter.Name) ?? _adapter.Name;
+
+        /// <inheritdoc />
+        public string GetRecoveryAction() =>
+            FindProviderToken(_adapter.Name) is not null
+                ? AutoRecoveryManager.ActionRestart
+                : AutoRecoveryManager.ActionCycleAdapter;
+
+        /// <inheritdoc />
+        // Uses bidirectional Contains because the adapter name in settings may differ in length
+        // from the Windows connection name (e.g. "ProtonVPN TUN" vs "ProtonVPN").
+        public bool IsAdapterMatch(string interfaceName)
+            => interfaceName.Contains(_adapter.Name, StringComparison.OrdinalIgnoreCase) ||
+               _adapter.Name.Contains(interfaceName, StringComparison.OrdinalIgnoreCase);
+
+        /// <summary>
+        /// Returns the VPN provider token if <paramref name="adapterName"/> matches a known provider keyword,
+        /// or <c>null</c> if it does not. Used to decide whether to trigger a service restart or an adapter cycle.
+        /// </summary>
+        internal static string? FindProviderToken(string adapterName)
+        {
+            ReadOnlySpan<string> providers = [RegistrySettingsManager.VpnProviderProtonVpn, RegistrySettingsManager.VpnProviderPia];
+            foreach (string provider in providers)
+            {
+                if (adapterName.Contains(provider, StringComparison.OrdinalIgnoreCase))
+                    return provider;
+            }
+            return null;
+        }
 
         // Transfers renewal state from a previous instance so that port renewal works correctly
         // when a fresh NatPmpManager instance is created each cycle.

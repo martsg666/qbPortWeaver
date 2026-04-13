@@ -3,7 +3,7 @@
     Builds a local qbPortWeaver MSI installer for testing purposes.
 
 .DESCRIPTION
-    Mirrors the CI build-release-publish.yml pipeline locally:
+    Mirrors the CI build-release.yml pipeline locally:
       1. Publishes both projects as self-contained single-file win-x64 executables
       2. Builds the MSI installer using WiX Toolset v4
 
@@ -58,7 +58,7 @@ Write-Ok "Version : $Version"
 
 # ---------------------------------------------------------------------------
 # Step 2: Publish both projects as self-contained single-file win-x64 executables
-#         This matches the CI build-release-publish.yml publish step exactly.
+#         This matches the CI build-release.yml publish step exactly.
 #         Output lands in: <project>\bin\Release\<tfm>\win-x64\publish\
 # ---------------------------------------------------------------------------
 Write-Step 'Publishing self-contained single-file executables...'

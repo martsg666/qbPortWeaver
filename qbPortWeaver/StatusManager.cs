@@ -14,19 +14,15 @@ namespace qbPortWeaver
         public static void Write(IReadOnlyDictionary<string, object?> status)
         {
             string filePath = AppConstants.GetStatusFilePath();
-            string tempPath = filePath + ".tmp";
 
             try
             {
                 string json = JsonSerializer.Serialize(status, _jsonOptions);
-                File.WriteAllText(tempPath, json);
-                File.Move(tempPath, filePath, overwrite: true);
+                AppConstants.WriteAtomic(filePath, json);
             }
             catch (Exception ex)
             {
                 LogManager.Instance.LogMessage($"Failed to write status file: {ex.Message}", LogLevel.Warn);
-                try { File.Delete(tempPath); }
-                catch (Exception) { /* Best-effort cleanup; ignore if temp file cannot be deleted. */ }
             }
         }
     }

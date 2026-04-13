@@ -73,14 +73,6 @@ namespace qbPortWeaver
         };
 
         /// <summary>
-        /// Returns true when a TMDB result with no year in the filename is a high-confidence match.
-        /// Requires a meaningful vote count and a normalised title match to filter out obscure or incorrect entries.
-        /// </summary>
-        internal static bool IsStrongNoYearMatch(string searchedTitle, string returnedTitle, int voteCount, int minVoteCount = 50) =>
-            voteCount >= minVoteCount &&
-            string.Equals(NormalizeTitleForMatch(returnedTitle), NormalizeTitleForMatch(searchedTitle), StringComparison.OrdinalIgnoreCase);
-
-        /// <summary>
         /// Normalises a title for loose comparison: lowercases, drops non-whitespace punctuation
         /// that sits between two alphanumeric characters (apostrophes, hyphens in compound words),
         /// and collapses all other non-alphanumeric characters to a single space.
@@ -203,16 +195,18 @@ namespace qbPortWeaver
 
             int.TryParse(match.Groups[1].Value, out int season);
             int.TryParse(match.Groups[2].Value, out int episode);
+            int? endEpisode = match.Groups[3].Success && int.TryParse(match.Groups[3].Value, out int ep2) ? ep2 : null;
 
             // Season or episode 0 is not a valid episode (e.g. S00E00 matches the regex but is not importable)
             if (season == 0 || episode == 0)
                 return null;
 
             return new TvShowEpisodeInfo(
-                ShowName: rawTitle,
-                Year:     year,
-                Season:   season,
-                Episode:  episode);
+                ShowName:   rawTitle,
+                Year:       year,
+                Season:     season,
+                Episode:    episode,
+                EndEpisode: endEpisode);
         }
 
         /// <summary>Extracts a probable movie title and optional release year from a filename or folder name.</summary>
@@ -454,10 +448,10 @@ namespace qbPortWeaver
         [GeneratedRegex(@"[_]((?:FR|EN|VF|VO)[-]?(?:FR|EN|VF|VO)?(?:[-](?:FR|EN|VF|VO))*)$", RegexOptions.IgnoreCase)]
         private static partial Regex LanguageSuffixRegex();
 
-        // Primary TV pattern: SxxExx / S1E1 / S004E111, captures season and episode.
-        // Multi-episode names (S01E01-E03, S01E01E02) match on the first episode only - Plex expects
-        // individual episode files, so the caller treats the file as belonging to the first episode.
-        [GeneratedRegex(@"S(\d{1,4})E(\d{1,4})", RegexOptions.IgnoreCase)]
+        // Primary TV pattern: SxxExx / S1E1 / S004E111, captures season, first episode, and optional end episode.
+        // Handles multi-episode files: S01E01E02 (glued) and S01E01-E02 (hyphen-separated).
+        // Group 1 = season, Group 2 = first episode, Group 3 = end episode (optional).
+        [GeneratedRegex(@"S(\d{1,4})E(\d{1,4})(?:-?E(\d{1,4}))?", RegexOptions.IgnoreCase)]
         private static partial Regex TvShowEpisodeRegex();
 
         // Legacy TV pattern: 1x01 notation used by older releases, captures season and episode.
@@ -475,70 +469,12 @@ namespace qbPortWeaver
         [GeneratedRegex(@"^.+\s\(\d{4}\)(\s-\s(cd|disc|disk|dvd|part|pt)\d)?$", RegexOptions.IgnoreCase)]
         private static partial Regex PlexMovieNameRegex();
 
-        // Matches Plex TV episode format: "Show (Year) - SxxExx" (always zero-padded in output)
-        [GeneratedRegex(@"^.+\s\(\d{4}\)\s-\sS\d{2}E\d{2}$", RegexOptions.IgnoreCase)]
+        // Matches Plex TV episode format: "Show (Year) - SxxExx" or "Show (Year) - SxxExxExx" (multi-episode)
+        [GeneratedRegex(@"^.+\s\(\d{4}\)\s-\sS\d{2}E\d{2}(E\d{2})?$", RegexOptions.IgnoreCase)]
         private static partial Regex PlexEpisodeNameRegex();
 
-        /// <summary>
-        /// Returns the substring after the first " - " separator, or null if the pattern is not present.
-        /// Used by <see cref="TryFallbackLookupsAsync{T}"/> as a fallback lookup strategy.
-        /// </summary>
-        internal static string? ExtractAfterDash(string title)
-        {
-            int idx = title.IndexOf(" - ", StringComparison.Ordinal);
-            if (idx < 0) return null;
-            var after = title[(idx + 3)..].Trim();
-            return after.Length > 0 ? after : null;
-        }
-
-        /// <summary>
-        /// Strips a single trailing digit preceded by a space (e.g. "Title 2" -> "Title"), or null
-        /// if the pattern is not present. Used by <see cref="TryFallbackLookupsAsync{T}"/> as a fallback lookup strategy.
-        /// </summary>
-        internal static string? StripTrailingNumber(string title)
-        {
-            var trimmed = title.TrimEnd();
-            if (trimmed.Length <= 2 || !char.IsDigit(trimmed[^1]) || trimmed[^2] != ' ')
-                return null;
-            return trimmed[..^2].Trim();
-        }
-
-        // Applies two fallback TMDB lookup strategies using a caller-supplied search function.
-        // After-dash strategy: retries with the part after " - " when info is null (no initial match).
-        // Trailing-number strategy: retries without trailing digit when info is null OR hasYear returns false
-        // (a year-less result is ambiguous; a stripped-title result that includes a year is higher quality).
-        internal static async Task<(T? Info, bool IsConfident)> TryFallbackLookupsAsync<T>(
-            string title, int? year, T? info, bool isConfident,
-            Func<string, int?, Task<T?>> search,
-            Func<T, bool> hasYear) where T : class
-        {
-            var afterDash = info is null ? ExtractAfterDash(title) : null;
-            if (afterDash is not null)
-            {
-                LogManager.Instance.LogDebug($"FileNameParser.TryFallbackLookupsAsync: Retrying with after-dash title '{afterDash}'", Subsystem.MediaManager);
-                info = await search(afterDash, year).ConfigureAwait(false);
-                if (info is not null) isConfident = false;
-            }
-
-            if (info is null || (!hasYear(info) && title.Length > 2))
-            {
-                var withoutNum = StripTrailingNumber(title);
-                if (withoutNum is not null)
-                {
-                    LogManager.Instance.LogDebug($"FileNameParser.TryFallbackLookupsAsync: Retrying without trailing number '{withoutNum}'", Subsystem.MediaManager);
-                    var altInfo = await search(withoutNum, year).ConfigureAwait(false);
-                    if (altInfo is not null && hasYear(altInfo))
-                    {
-                        info        = altInfo;
-                        isConfident = false;
-                    }
-                }
-            }
-
-            return (info, isConfident);
-        }
     }
 
-    /// <summary>Parsed TV episode identity: show name, optional year hint, season number, and episode number.</summary>
-    public sealed record TvShowEpisodeInfo(string ShowName, int? Year, int Season, int Episode);
+    /// <summary>Parsed TV episode identity: show name, optional year hint, season number, first episode number, and optional end episode for multi-episode files.</summary>
+    public sealed record TvShowEpisodeInfo(string ShowName, int? Year, int Season, int Episode, int? EndEpisode = null);
 }

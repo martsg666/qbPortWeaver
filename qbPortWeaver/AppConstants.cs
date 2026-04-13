@@ -44,6 +44,31 @@ namespace qbPortWeaver
         public static string GetLogFilePath()    => Path.Combine(AppDataFolder, LogFileName);
         public static string GetStatusFilePath() => Path.Combine(AppDataFolder, StatusFileName);
 
+        /// <summary>Returns the full path for a named data file stored in the application data folder.</summary>
+        internal static string GetDataFilePath(string fileName) => Path.Combine(AppDataFolder, fileName);
+
+        /// <summary>Deletes a file if it exists, swallowing IO and permission errors.</summary>
+        internal static void TryDeleteFile(string path)
+        {
+            try
+            {
+                if (File.Exists(path)) File.Delete(path);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                LogManager.Instance.LogDebug($"AppConstants.TryDeleteFile: Could not delete '{path}': {ex.Message}");
+            }
+        }
+
+        /// <summary>Writes content to a temp file then atomically renames it over the target.
+        /// If the process is killed mid-write, only the .tmp file is lost and the original is untouched.</summary>
+        internal static void WriteAtomic(string path, string content)
+        {
+            var temp = path + ".tmp";
+            File.WriteAllText(temp, content);
+            File.Move(temp, path, overwrite: true);
+        }
+
         public static string GetProtonVPNLogFilePath() => Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "Proton", "Proton VPN", "Logs", "client-logs.txt"

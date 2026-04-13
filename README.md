@@ -292,8 +292,8 @@ master  ────────────────────────
            ├── fix/some-bug   → PR → merge into 2.5.0         └─► CI/CD pipeline triggers
            └── feature/new-ui → PR → merge into 2.5.0               ├─ dotnet publish (self-contained win-x64)
                                                                       ├─ WiX MSI build
-                                                                      ├─ GitHub Release created + MSI uploaded
-                                                                      └─ Chocolatey package pushed
+                                                                      ├─ GitHub Release created
+                                                                      └─ MSI + .nupkg uploaded to release
 ```
 
 #### Workflow steps
@@ -316,7 +316,7 @@ master  ────────────────────────
    git tag v2.5.0 origin/2.5.0
    git push origin v2.5.0
    ```
-   Pushing the tag automatically triggers the **Build, Release, and Publish** pipeline, which builds the app, compiles the MSI installer, creates the GitHub Release, and publishes to Chocolatey.
+   Pushing the tag automatically triggers the **Build and Release** pipeline, which builds the app, compiles the MSI installer, creates the GitHub Release, and uploads the MSI and Chocolatey package as release assets. Once the previous Chocolatey version is approved, run the **Publish to Chocolatey** workflow manually from the Actions tab.
 
 4. **Merge the release branch into `master`** after the pipeline completes successfully:
    ```

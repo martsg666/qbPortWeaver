@@ -370,7 +370,7 @@ namespace qbPortWeaver
         }
 
         // Enumerates all files in a library folder.
-        // FileInfo metadata (Length, LastWriteTimeUtc) comes from the directory listing — no extra stat per file.
+        // FileInfo metadata (Length, LastWriteTimeUtc) comes from the directory listing - no extra stat per file.
         // IgnoreInaccessible = true silently skips permission-denied folders.
         private static List<FileInfo> EnumerateLibraryFolder(string folder) =>
             new DirectoryInfo(folder).EnumerateFiles("*", new EnumerationOptions

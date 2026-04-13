@@ -350,7 +350,7 @@ namespace qbPortWeaver
         }
 
         // Phase 1: enumerates each source folder and returns a candidate FileInfo list.
-        // Uses directory metadata (Length, LastWriteTimeUtc) populated by EnumerateFiles — no extra stat per file.
+        // Uses directory metadata (Length, LastWriteTimeUtc) populated by EnumerateFiles - no extra stat per file.
         // Safe to run concurrently with BuildLibraryIndex since it does not call IsAlreadyInLibrary.
         private static async Task<List<(string Folder, List<FileInfo> Candidates)>> EnumerateSourceFoldersAsync(
             List<string> validFolders, CancellationToken cancellationToken)
@@ -374,7 +374,7 @@ namespace qbPortWeaver
         }
 
         // Enumerates video files in a source folder that are ready for import.
-        // FileInfo metadata (Length, LastWriteTimeUtc) comes from the directory listing — no extra stat per file.
+        // FileInfo metadata (Length, LastWriteTimeUtc) comes from the directory listing - no extra stat per file.
         // MaxRecursionDepth = MaxSubfolderDepth preserves the existing depth cap.
         // IgnoreInaccessible = true silently skips permission-denied folders.
         private static List<FileInfo> EnumerateSourceFolder(string folder)
@@ -391,9 +391,9 @@ namespace qbPortWeaver
         }
 
         // Phase 2: fingerprints candidates in parallel and classifies them into movies and TV episodes.
-        // Requires BuildLibraryIndex to have completed before calling — IsAlreadyInLibrary uses the index.
+        // Requires BuildLibraryIndex to have completed before calling - IsAlreadyInLibrary uses the index.
         // Folders are processed sequentially so that a single Parallel.ForEach (degree MediaImporter.FingerprintParallelism)
-        // is active at a time — processing folders concurrently would multiply the parallelism by the folder count.
+        // is active at a time - processing folders concurrently would multiply the parallelism by the folder count.
         private static Task<List<(string Folder, (string[] MovieFiles, string[] TvFiles) Items)>> FingerprintSourceFoldersAsync(
             List<(string Folder, List<FileInfo> Candidates)> enumerated, CancellationToken cancellationToken)
         {

@@ -14,7 +14,7 @@ namespace qbPortWeaver
 
         // Log format: "Port pair X->Y" where X and Y are always identical (ProtonVPN does not
         // differentiate external from internal port). Capture group 1 gives the forwarded port.
-        // No nested quantifiers, so no backtracking risk — no match timeout required.
+        // No nested quantifiers, so no backtracking risk - no match timeout required.
         [GeneratedRegex(@"Port pair\s+(\d+)->(?:\d+)")]
         private static partial Regex PortPairRegex();
 

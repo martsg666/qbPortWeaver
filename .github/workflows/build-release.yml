@@ -1,4 +1,4 @@
-name: Build, Release, and Publish
+name: Build and Release
 
 # Triggers on any tag push matching v* (e.g. v2.2.0).
 # Can also be run manually to rebuild and republish an existing tag.
@@ -22,7 +22,7 @@ permissions:
   contents: write  # required to create releases and upload assets
 
 jobs:
-  build-release-publish:
+  build-release:
     runs-on: windows-latest
     timeout-minutes: 30
 
@@ -55,21 +55,7 @@ jobs:
           Write-Host "Building version: $version  (tag: $tag)"
 
       # -----------------------------------------------------------------------
-      # 2. Validate required secrets are present before spending time on the build
-      # -----------------------------------------------------------------------
-      - name: Validate required secrets
-        shell: pwsh
-        env:
-          CHOCOLATEY_API_KEY: ${{ secrets.CHOCOLATEY_API_KEY }}
-        run: |
-          $ErrorActionPreference = 'Stop'
-          if (-not $env:CHOCOLATEY_API_KEY) {
-            throw "CHOCOLATEY_API_KEY secret is not configured. Add it in Settings > Secrets before running this workflow."
-          }
-          Write-Host "Required secrets validated."
-
-      # -----------------------------------------------------------------------
-      # 3. Checkout - full history lets --generate-notes span all commits
+      # 2. Checkout - full history lets --generate-notes span all commits
       # -----------------------------------------------------------------------
       - name: Checkout repository
         # Pinned to a specific commit SHA rather than a floating tag (e.g. @v4) so that
@@ -82,7 +68,7 @@ jobs:
           ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
 
       # -----------------------------------------------------------------------
-      # 4. Set up the .NET SDK
+      # 3. Set up the .NET SDK
       # -----------------------------------------------------------------------
       - name: Setup .NET
         # Pinned to a specific commit SHA - see checkout step for rationale.
@@ -91,7 +77,7 @@ jobs:
           dotnet-version: '10.x'
 
       # -----------------------------------------------------------------------
-      # 5. Verify that <Version> in both .csproj files matches the tag version.
+      # 4. Verify that <Version> in both .csproj files matches the tag version.
       #    Catches cases where a .csproj was not updated before tagging.
       # -----------------------------------------------------------------------
       - name: Verify csproj version matches tag
@@ -115,7 +101,7 @@ jobs:
           }
 
       # -----------------------------------------------------------------------
-      # 6. Publish both projects (self-contained single-file, version stamped from the tag)
+      # 5. Publish both projects (self-contained single-file, version stamped from the tag)
       # -----------------------------------------------------------------------
       - name: Publish application
         shell: pwsh
@@ -142,7 +128,7 @@ jobs:
           }
 
       # -----------------------------------------------------------------------
-      # 7. Install WiX Toolset v4 (pinned to 4.0.6)
+      # 6. Install WiX Toolset v4 (pinned to 4.0.6)
       # -----------------------------------------------------------------------
       - name: Install WiX Toolset
         shell: pwsh
@@ -156,7 +142,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       # -----------------------------------------------------------------------
-      # 8. Build the MSI installer
+      # 7. Build the MSI installer
       # -----------------------------------------------------------------------
       - name: Build MSI installer
         id: msi
@@ -188,7 +174,7 @@ jobs:
           Write-Host "Installer ready: $setupMsi"
 
       # -----------------------------------------------------------------------
-      # 9. Compute SHA256 checksum of the local MSI
+      # 8. Compute SHA256 checksum of the local MSI
       #    (computed here so we avoid re-downloading from the release later)
       # -----------------------------------------------------------------------
       - name: Compute installer checksum
@@ -214,7 +200,7 @@ jobs:
           "CHECKSUM=$checksum"    | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
       # -----------------------------------------------------------------------
-      # 10. Stamp version, URL, and checksum into the Chocolatey package files
+      # 9. Stamp version, URL, and checksum into the Chocolatey package files
       # -----------------------------------------------------------------------
       - name: Update Chocolatey package files
         shell: pwsh
@@ -244,7 +230,7 @@ jobs:
           Write-Host "Chocolatey package files updated for v$version"
 
       # -----------------------------------------------------------------------
-      # 11. Validate that all TEMPLATE_ placeholders were replaced
+      # 10. Validate that all TEMPLATE_ placeholders were replaced
       # -----------------------------------------------------------------------
       - name: Validate placeholder substitution
         shell: pwsh
@@ -266,7 +252,7 @@ jobs:
           Write-Host "All placeholders replaced successfully."
 
       # -----------------------------------------------------------------------
-      # 12. Install community validation extension and pack the Chocolatey package
+      # 11. Install community validation extension and pack the Chocolatey package
       #     The extension hooks into choco pack and validates automatically in v2.x -
       #     there is no separate choco validate command.
       # -----------------------------------------------------------------------
@@ -277,7 +263,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       # -----------------------------------------------------------------------
-      # 13. Pack the Chocolatey package
+      # 12. Pack the Chocolatey package
       # -----------------------------------------------------------------------
       - name: Pack Chocolatey package
         id: pack
@@ -296,7 +282,9 @@ jobs:
           "NUPKG_PATH=$($nupkg.FullName)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
       # -----------------------------------------------------------------------
-      # 14. Create GitHub Release with auto-generated notes, or update existing
+      # 13. Create GitHub Release with auto-generated notes, or update existing.
+      #     Uploads both the MSI installer and the Chocolatey package (.nupkg)
+      #     so the publish workflow can download the .nupkg directly from the release.
       # -----------------------------------------------------------------------
       - name: Create or update GitHub Release
         shell: pwsh
@@ -304,58 +292,23 @@ jobs:
           GH_TOKEN:    ${{ secrets.GITHUB_TOKEN }}
           RELEASE_TAG: ${{ steps.version.outputs.TAG }}
           SETUP_PATH:  ${{ steps.msi.outputs.SETUP_PATH }}
+          NUPKG_PATH:  ${{ steps.pack.outputs.NUPKG_PATH }}
         run: |
           $ErrorActionPreference = 'Stop'
           $tag   = $env:RELEASE_TAG
-          $asset = $env:SETUP_PATH
+          $msi   = $env:SETUP_PATH
+          $nupkg = $env:NUPKG_PATH
 
           # Check whether the release already exists (e.g. manual re-run)
           gh release view $tag 2>&1 | Out-Null
           if ($LASTEXITCODE -eq 0) {
-            Write-Host "Release $tag already exists - uploading asset"
-            gh release upload $tag $asset --clobber
+            Write-Host "Release $tag already exists - uploading assets"
+            gh release upload $tag $msi $nupkg --clobber
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           } else {
             Write-Host "Creating release $tag"
-            gh release create $tag $asset `
+            gh release create $tag $msi $nupkg `
               --title "qbPortWeaver $tag" `
               --generate-notes
-            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          }
-
-      # -----------------------------------------------------------------------
-      # 15. Push to Chocolatey Community Repository
-      # -----------------------------------------------------------------------
-      - name: Push to Chocolatey Community Repository
-        shell: pwsh
-        env:
-          NUPKG_PATH:         ${{ steps.pack.outputs.NUPKG_PATH }}
-          RELEASE_VERSION:    ${{ steps.version.outputs.VERSION }}
-          CHOCOLATEY_API_KEY: ${{ secrets.CHOCOLATEY_API_KEY }}
-        run: |
-          $ErrorActionPreference = 'Stop'
-          # Skip push if this version is already published (e.g. workflow_dispatch re-run).
-          # 2xx  → already published, skip.
-          # 404  → not yet published, proceed.
-          # anything else (5xx, network error) → re-throw so the step fails loudly
-          #         rather than silently assuming "not published" and risking a failed push.
-          $version          = $env:RELEASE_VERSION
-          $alreadyPublished = $false
-          try {
-            Invoke-WebRequest `
-              -Uri "https://community.chocolatey.org/api/v2/Packages(Id='qbportweaver',Version='$version')" `
-              -Method Head | Out-Null
-            $alreadyPublished = $true
-          } catch {
-            if ($_.Exception.Response?.StatusCode -ne [System.Net.HttpStatusCode]::NotFound) { throw }
-          }
-          if ($alreadyPublished) {
-            Write-Host "qbportweaver v$version is already published on Chocolatey - skipping push."
-          } else {
-            $nupkg = $env:NUPKG_PATH
-            Write-Host "Pushing: $(Split-Path $nupkg -Leaf)"
-            choco push $nupkg `
-              --source https://push.chocolatey.org/ `
-              --api-key $env:CHOCOLATEY_API_KEY
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }

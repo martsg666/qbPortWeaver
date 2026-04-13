@@ -3,7 +3,7 @@
     Builds qbPortWeaver from source and produces a Chocolatey .nupkg ready for publishing.
 
 .DESCRIPTION
-    This script mirrors the CI build-release-publish.yml pipeline locally:
+    This script mirrors the CI build-release.yml pipeline locally:
       1. Resolves the version from qbPortWeaver.csproj (or -Version parameter)
       2. Publishes both projects as self-contained single-file win-x64 executables
       3. Builds the MSI installer using WiX Toolset v4
@@ -78,7 +78,7 @@ Write-Ok "Tag     : $tag"
 
 # ---------------------------------------------------------------------------
 # Step 2: Publish both projects as self-contained single-file win-x64 executables
-#         This matches the CI build-release-publish.yml publish step exactly.
+#         This matches the CI build-release.yml publish step exactly.
 #         Output lands in: <project>\bin\Release\<tfm>\win-x64\publish\
 # ---------------------------------------------------------------------------
 Write-Step 'Publishing self-contained single-file executables...'

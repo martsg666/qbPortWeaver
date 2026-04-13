@@ -15,7 +15,7 @@ namespace qbPortWeaver
         private bool _allIncluded = true;
         private bool _isBusy;
 
-        // Row confidence colors — set once in OnLoad based on active theme
+        // Row confidence colors - set once in OnLoad based on active theme
         private Color _colorUncertain;
         private Color _colorUnmatched;
 
@@ -178,7 +178,7 @@ namespace qbPortWeaver
         }
 
         // Re-verifies uncertain and unmatched rows using the current Proposed filenames.
-        // TV show rows are grouped by show name — one TMDB call per show, not per episode.
+        // TV show rows are grouped by show name - one TMDB call per show, not per episode.
         // Rows where TMDB still cannot find a match are left unchanged.
         private async Task<string?> RecheckRowsAsync(string apiKey, CancellationToken ct)
         {
@@ -535,7 +535,7 @@ namespace qbPortWeaver
                 if (string.IsNullOrEmpty(proposedDir)) continue;
 
                 // Rebuild the containing folder(s) from the edited filename so that the show/movie
-                // folder stays consistent with the new name — not the stale name from the original scan.
+                // folder stays consistent with the new name - not the stale name from the original scan.
                 var resolvedDir  = RebuildProposedDir(proposedDir, editedName);
                 var proposedPath = Path.Combine(resolvedDir, editedName);
 
@@ -566,7 +566,7 @@ namespace qbPortWeaver
                 }
             }
 
-            // Movie with title subfolder: folder name ends with "(YYYY)" — confirms it was named after the title,
+            // Movie with title subfolder: folder name ends with "(YYYY)" - confirms it was named after the title,
             // not a flat library root. Regex avoids matching generic folder names like "Movies" or "TV Shows".
             if (TitleYearFolderRegex().IsMatch(lastSegment))
             {

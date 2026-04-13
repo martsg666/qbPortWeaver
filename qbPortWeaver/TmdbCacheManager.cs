@@ -33,7 +33,7 @@ namespace qbPortWeaver
         internal static void TryAddShow(string key, (TvShowInfo? Info, bool IsConfident) value)
         {
             // Always cache in memory (including null results) to avoid re-hitting the API within the same session.
-            // Only mark dirty for non-null results — nulls are not persisted so they are retried on next start.
+            // Only mark dirty for non-null results - nulls are not persisted so they are retried on next start.
             if (_showCache.TryAdd(key, value) && value.Info is not null)
                 _showCacheDirty = true;
         }
@@ -44,7 +44,7 @@ namespace qbPortWeaver
         internal static void TryAddMovie(string key, (MovieInfo? Info, bool IsConfident) value)
         {
             // Always cache in memory (including null results) to avoid re-hitting the API within the same session.
-            // Only mark dirty for non-null results — nulls are not persisted so they are retried on next start.
+            // Only mark dirty for non-null results - nulls are not persisted so they are retried on next start.
             if (_movieCache.TryAdd(key, value) && value.Info is not null)
                 _movieCacheDirty = true;
         }

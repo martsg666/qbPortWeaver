@@ -62,7 +62,7 @@ namespace qbPortWeaver
         /// <summary>
         /// Searches TMDB with confidence tracking: primary search, no-year confidence check,
         /// retry without year, and fallback strategies (after-dash, trailing-number).
-        /// Shared by both processors and the re-check UI to avoid duplicating lookup logic.
+        /// Shared by both processors and the re-match UI to avoid duplicating lookup logic.
         /// </summary>
         internal static async Task<(T? Info, bool IsConfident)> SearchWithConfidenceAsync<T>(
             string title, int? year,

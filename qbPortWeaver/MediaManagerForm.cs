@@ -320,7 +320,7 @@ namespace qbPortWeaver
             var episodeInfo = FileNameParser.ParseTvShowEpisode(editedName);
             if (episodeInfo is null)
             {
-                LogManager.Instance.LogDebug($"MediaManagerForm.ApplyTvRecheckResult: could not parse episode info from '{editedName}' - row skipped", Subsystem.MediaManager);
+                LogManager.Instance.LogDebug($"MediaManagerForm.ApplyTvRematchResult: could not parse episode info from '{editedName}' - row skipped", Subsystem.MediaManager);
                 return;
             }
 

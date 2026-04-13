@@ -474,7 +474,8 @@ namespace qbPortWeaver
             return value.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         }
 
-        // Logs the import and performs the file operation, or just logs a dry-run message. No-ops when source and target are the same path or the target file already exists at the destination.
+        /// <summary>Logs and performs the file transfer, or logs a dry-run message without touching files.
+        /// No-ops when source and target are the same path, or the target already exists with the same fingerprint.</summary>
         internal static void ImportFileWithLog(string sourcePath, string targetPath, string sourceFolder, bool dryRun, ImportMode importMode)
         {
             if (string.Equals(sourcePath, targetPath, StringComparison.OrdinalIgnoreCase)) return;

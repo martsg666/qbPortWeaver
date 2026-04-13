@@ -42,7 +42,7 @@ namespace qbPortWeaver
         private const string SourceCacheFileName  = "qbPortWeaver.mediasource.json";
         private const string LibraryCacheFileName = "qbPortWeaver.medialibrary.json";
 
-        internal static readonly JsonSerializerOptions JsonWriteOptions = new() { WriteIndented = true };
+        private static readonly JsonSerializerOptions _jsonWriteOptions = new() { WriteIndented = true };
 
         private sealed record CacheEntry(long Size, long LastWriteTimeTicks, string Fingerprint);
 
@@ -650,9 +650,9 @@ namespace qbPortWeaver
                     ? snapshot.Where(kv => File.Exists(kv.Key)).ToDictionary(kv => kv.Key, kv => kv.Value, StringComparer.OrdinalIgnoreCase)
                     : snapshot;
 
-                var json = JsonSerializer.Serialize(toSave, JsonWriteOptions);
+                var json = JsonSerializer.Serialize(toSave, _jsonWriteOptions);
                 lock (_cacheFileLock)
-                    WriteAtomic(GetCacheFilePath(SourceCacheFileName), json);
+                    AppConstants.WriteAtomic(GetCacheFilePath(SourceCacheFileName), json);
 
                 LogManager.Instance.LogDebug($"MediaImporter.SaveSourceCache: Saved {toSave.Count} entries", Subsystem.MediaManager);
             }
@@ -678,11 +678,11 @@ namespace qbPortWeaver
                 {
                     if (!_libraryCacheDirty) return; // double-check inside the lock: another thread may have saved and reset the flag
                     _libraryCacheDirty = false; // reset before serializing so concurrent writes after this point re-set it
-                    json               = JsonSerializer.Serialize(cache, JsonWriteOptions);
+                    json               = JsonSerializer.Serialize(cache, _jsonWriteOptions);
                 }
 
                 lock (_cacheFileLock)
-                    WriteAtomic(GetCacheFilePath(LibraryCacheFileName), json);
+                    AppConstants.WriteAtomic(GetCacheFilePath(LibraryCacheFileName), json);
 
                 LogManager.Instance.LogDebug($"MediaImporter.SaveLibraryCache: Saved {cache.Count} entries", Subsystem.MediaManager);
             }
@@ -719,29 +719,10 @@ namespace qbPortWeaver
             LogManager.Instance.LogMessage("Fingerprint caches cleared", LogLevel.Info, Subsystem.MediaManager);
         }
 
-        internal static void TryDeleteFile(string path)
-        {
-            try
-            {
-                if (File.Exists(path)) File.Delete(path);
-            }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-            {
-                LogManager.Instance.LogDebug($"MediaImporter.TryDeleteFile: Could not delete '{path}': {ex.Message}", Subsystem.MediaManager);
-            }
-        }
-
-        // Writes content to a temp file then atomically renames it over the target.
-        // If the process is killed mid-write, only the .tmp file is lost and the original is untouched.
-        internal static void WriteAtomic(string path, string content)
-        {
-            var temp = path + ".tmp";
-            File.WriteAllText(temp, content);
-            File.Move(temp, path, overwrite: true);
-        }
+        private static void TryDeleteFile(string path) => AppConstants.TryDeleteFile(path);
 
         internal static string GetCacheFilePath(string fileName) =>
-            Path.Combine(Path.GetDirectoryName(AppConstants.GetLogFilePath())!, fileName);
+            AppConstants.GetDataFilePath(fileName);
 
         // CreateHardLink: lpFileName is the NEW link (destination), lpExistingFileName is the existing file (source).
         [LibraryImport("kernel32.dll", EntryPoint = "CreateHardLinkW", SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]

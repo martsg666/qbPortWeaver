@@ -37,8 +37,9 @@ namespace qbPortWeaver
             _password = password;
             _processName = processName;
             _exePath = exePath;
-            var cookies = new CookieContainer();
-            var handler = new HttpClientHandler { CookieContainer = cookies };
+            // Per-instance HttpClient (not static) because each manager needs its own CookieContainer
+            // to hold the qBittorrent auth session cookie. The instance is short-lived (one sync cycle).
+            var handler = new HttpClientHandler { CookieContainer = new CookieContainer() };
             _httpClient = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(AppConstants.HttpTimeoutSeconds) };
         }
 

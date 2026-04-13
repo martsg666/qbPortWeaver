@@ -102,6 +102,9 @@ namespace qbPortWeaver
 
         // Scans the log file from the end in chunks and returns the most recent matched port.
         // Opens with FileShare.ReadWrite so ProtonVPN can keep writing while we read.
+        // Note: if a chunk boundary falls mid-multi-byte UTF-8 character, GetString produces a
+        // replacement char on that boundary. This is harmless because the target pattern
+        // "Port pair N->N" is pure ASCII and ProtonVPN logs use ASCII-only content.
         private int? ReadLastPortFromLog()
         {
             using var fs = new FileStream(_logFilePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);

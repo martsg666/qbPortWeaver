@@ -39,11 +39,14 @@ namespace qbPortWeaver
             lstSourceFolders      = new ListBox();
             btnAddSourceFolder    = new Button();
             btnRemoveSourceFolder = new Button();
-            btnScanNow     = new Button();
-            btnImportNow   = new Button();
-            btnClearCache  = new Button();
-            btnRecheck     = new Button();
-            lblScanStatus  = new Label();
+            btnScanNow        = new Button();
+            btnImportNow      = new Button();
+            btnClearCache     = new Button();
+            btnRematch        = new Button();
+            lblScanStatus       = new Label();
+            chkShowOnlyReview   = new CheckBox();
+            lblLegendUncertain  = new Label();
+            lblLegendUnmatched  = new Label();
             prgScan        = new ProgressBar();
             dgvResults     = new DataGridView();
             colInclude     = new DataGridViewCheckBoxColumn();
@@ -283,14 +286,14 @@ namespace qbPortWeaver
             btnClearCache.Text     = "Clear Cache";
             btnClearCache.Click   += btnClearCache_Click;
             //
-            // btnRecheck
+            // btnRematch
             //
-            btnRecheck.Location = new Point(322, 418);
-            btnRecheck.Name     = "btnRecheck";
-            btnRecheck.Size     = new Size(90, 28);
-            btnRecheck.TabIndex = 6;
-            btnRecheck.Text     = "Re-check";
-            btnRecheck.Click   += btnRecheck_Click;
+            btnRematch.Location = new Point(322, 418);
+            btnRematch.Name     = "btnRematch";
+            btnRematch.Size     = new Size(90, 28);
+            btnRematch.TabIndex = 6;
+            btnRematch.Text     = "Re-match";
+            btnRematch.Click   += btnRematch_Click;
             //
             // lblScanStatus
             //
@@ -301,6 +304,36 @@ namespace qbPortWeaver
             lblScanStatus.TabIndex  = 7;
             lblScanStatus.TextAlign = ContentAlignment.MiddleLeft;
             lblScanStatus.ForeColor = SystemColors.GrayText;
+            //
+            // chkShowOnlyReview
+            //
+            chkShowOnlyReview.Anchor   = AnchorStyles.Bottom | AnchorStyles.Left;
+            chkShowOnlyReview.Location = new Point(8, 717);
+            chkShowOnlyReview.Name     = "chkShowOnlyReview";
+            chkShowOnlyReview.AutoSize = true;
+            chkShowOnlyReview.TabIndex = 10;
+            chkShowOnlyReview.Text     = "Show only uncertain and unmatched rows";
+            chkShowOnlyReview.CheckedChanged += chkShowOnlyReview_CheckedChanged;
+            //
+            // lblLegendUncertain
+            //
+            lblLegendUncertain.Anchor    = AnchorStyles.Bottom | AnchorStyles.Left;
+            lblLegendUncertain.Location  = new Point(8, 744);
+            lblLegendUncertain.Name      = "lblLegendUncertain";
+            lblLegendUncertain.Size      = new Size(130, 28);
+            lblLegendUncertain.TabIndex  = 11;
+            lblLegendUncertain.Text      = "\u25cf Uncertain match";
+            lblLegendUncertain.TextAlign = ContentAlignment.MiddleLeft;
+            //
+            // lblLegendUnmatched
+            //
+            lblLegendUnmatched.Anchor    = AnchorStyles.Bottom | AnchorStyles.Left;
+            lblLegendUnmatched.Location  = new Point(150, 744);
+            lblLegendUnmatched.Name      = "lblLegendUnmatched";
+            lblLegendUnmatched.Size      = new Size(170, 28);
+            lblLegendUnmatched.TabIndex  = 12;
+            lblLegendUnmatched.Text      = "\u25cf No TMDB match found";
+            lblLegendUnmatched.TextAlign = ContentAlignment.MiddleLeft;
             //
             // prgScan
             //
@@ -326,7 +359,7 @@ namespace qbPortWeaver
             dgvResults.Name         = "dgvResults";
             dgvResults.RowHeadersVisible = false;
             dgvResults.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
-            dgvResults.Size         = new Size(684, 161);
+            dgvResults.Size         = new Size(684, 241);
             dgvResults.ClipboardCopyMode = DataGridViewClipboardCopyMode.EnableWithoutHeaderText;
             dgvResults.TabIndex          = 9;
             dgvResults.TabStop           = false;
@@ -373,10 +406,10 @@ namespace qbPortWeaver
             // btnOK
             //
             btnOK.Anchor   = AnchorStyles.Bottom | AnchorStyles.Right;
-            btnOK.Location = new Point(520, 641);
+            btnOK.Location = new Point(520, 744);
             btnOK.Name     = "btnOK";
             btnOK.Size     = new Size(82, 28);
-            btnOK.TabIndex = 10;
+            btnOK.TabIndex = 13;
             btnOK.Text     = "OK";
             btnOK.Click   += btnOK_Click;
             //
@@ -384,10 +417,10 @@ namespace qbPortWeaver
             //
             btnCancel.DialogResult = DialogResult.Cancel;
             btnCancel.Anchor       = AnchorStyles.Bottom | AnchorStyles.Right;
-            btnCancel.Location     = new Point(610, 641);
+            btnCancel.Location     = new Point(610, 744);
             btnCancel.Name         = "btnCancel";
             btnCancel.Size         = new Size(82, 28);
-            btnCancel.TabIndex     = 11;
+            btnCancel.TabIndex     = 14;
             btnCancel.Text         = "Cancel";
             btnCancel.Click       += btnCancel_Click;
             //
@@ -397,15 +430,18 @@ namespace qbPortWeaver
             AutoScaleDimensions = new SizeF(7F, 15F);
             AutoScaleMode       = AutoScaleMode.Font;
             CancelButton        = btnCancel;
-            ClientSize          = new Size(700, 680);
+            ClientSize          = new Size(700, 783);
             Controls.Add(grpGeneral);
             Controls.Add(grpLibrary);
             Controls.Add(grpSourceFolders);
             Controls.Add(btnScanNow);
             Controls.Add(btnImportNow);
             Controls.Add(btnClearCache);
-            Controls.Add(btnRecheck);
+            Controls.Add(btnRematch);
             Controls.Add(lblScanStatus);
+            Controls.Add(chkShowOnlyReview);
+            Controls.Add(lblLegendUncertain);
+            Controls.Add(lblLegendUnmatched);
             Controls.Add(prgScan);
             Controls.Add(dgvResults);
             Controls.Add(btnOK);
@@ -453,8 +489,11 @@ namespace qbPortWeaver
         private Button           btnScanNow;
         private Button           btnImportNow;
         private Button           btnClearCache;
-        private Button           btnRecheck;
+        private Button           btnRematch;
         private Label            lblScanStatus;
+        private CheckBox         chkShowOnlyReview;
+        private Label            lblLegendUncertain;
+        private Label            lblLegendUnmatched;
         private DataGridView     dgvResults;
         private DataGridViewCheckBoxColumn colInclude;
         private DataGridViewTextBoxColumn colType;

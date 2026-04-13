@@ -14,6 +14,7 @@ namespace qbPortWeaver
         private ToolStripMenuItem? _mnuPaste;
         private bool _allIncluded = true;
         private bool _isBusy;
+        private bool _showOnlyReviewNeeded;
 
         // Row confidence colors - set once in OnLoad based on active theme
         private Color _colorUncertain;
@@ -32,6 +33,8 @@ namespace qbPortWeaver
             bool dark      = AppConstants.IsDarkModeEnabled();
             _colorUncertain = dark ? Color.Gold       : Color.Goldenrod;
             _colorUnmatched = dark ? Color.OrangeRed  : Color.Crimson;
+            lblLegendUncertain.ForeColor = _colorUncertain;
+            lblLegendUnmatched.ForeColor = _colorUnmatched;
             SetupTooltips();
             SetupGridContextMenu();
             LoadSettings();
@@ -56,8 +59,9 @@ namespace qbPortWeaver
             toolTip.SetToolTip(btnScanNow,            "Preview which files would be imported - no files are touched");
             toolTip.SetToolTip(btnImportNow,           "Import the files shown in the grid into the library");
             toolTip.SetToolTip(btnClearCache,          "Delete cached fingerprints and TMDB lookups so the next scan starts fresh");
-            toolTip.SetToolTip(btnRecheck,             "Re-verify uncertain and unmatched rows against TMDB using the current Proposed filenames");
+            toolTip.SetToolTip(btnRematch,             "Re-run TMDB matching for uncertain and unmatched rows using the current Proposed filenames");
             toolTip.SetToolTip(dgvResults,            "Files that would be imported. Uncheck a row to exclude it. Colored rows are uncertain TMDB matches - double-click the Proposed cell to correct the name before importing.");
+            toolTip.SetToolTip(chkShowOnlyReview,     "Show only uncertain TMDB matches (gold) and rows with no TMDB match found (red) - hides confident matches.");
         }
 
         protected override void OnFormClosing(FormClosingEventArgs e)
@@ -138,7 +142,7 @@ namespace qbPortWeaver
             lblScanStatus.Text   = "Cache cleared - run Scan Now to re-index.";
         }
 
-        private async void btnRecheck_Click(object? sender, EventArgs e) // async void is correct here (WinForms event handler)
+        private async void btnRematch_Click(object? sender, EventArgs e) // async void is correct here (WinForms event handler)
         {
             var apiKey = txtTmdbApiKey.Text.Trim();
             if (string.IsNullOrWhiteSpace(apiKey))
@@ -150,16 +154,16 @@ namespace qbPortWeaver
             var ct = await ResetCancellationTokenAsync();
             SetBusy(true);
             BeginProgress();
-            lblScanStatus.Text = "Re-checking\u2026";
+            lblScanStatus.Text = "Re-matching\u2026";
 
             string? completionStatus = null;
             try
             {
-                completionStatus = await RecheckRowsAsync(apiKey, ct);
+                completionStatus = await RematchRowsAsync(apiKey, ct);
             }
             catch (OperationCanceledException)
             {
-                if (!IsDisposed) lblScanStatus.Text = "Re-check cancelled.";
+                if (!IsDisposed) lblScanStatus.Text = "Re-match cancelled.";
             }
             catch (Exception ex)
             {
@@ -180,7 +184,7 @@ namespace qbPortWeaver
         // Re-verifies uncertain and unmatched rows using the current Proposed filenames.
         // TV show rows are grouped by show name - one TMDB call per show, not per episode.
         // Rows where TMDB still cannot find a match are left unchanged.
-        private async Task<string?> RecheckRowsAsync(string apiKey, CancellationToken ct)
+        private async Task<string?> RematchRowsAsync(string apiKey, CancellationToken ct)
         {
             var tmdb           = new TmdbClient(apiKey);
             bool createFolders = chkCreateFolders.Checked;
@@ -188,22 +192,22 @@ namespace qbPortWeaver
             var tvLib          = txtTvShowsLibraryPath.Text.Trim();
 
             // Split by media type upfront so the progress total is exact regardless of future types
-            var tvRows    = GetRecheckRows(MediaProposal.TypeTvShow);
-            var movieRows = GetRecheckRows(MediaProposal.TypeMovie);
+            var tvRows    = GetRematchRows(MediaProposal.TypeTvShow);
+            var movieRows = GetRematchRows(MediaProposal.TypeMovie);
             int total     = tvRows.Count + movieRows.Count;
 
             if (total == 0)
-                return "No uncertain rows to re-check.";
+                return "No uncertain rows to re-match.";
 
             prgScan.Style   = ProgressBarStyle.Blocks;
             prgScan.Maximum = total;
             prgScan.Value   = 0;
             int done = 0;
 
-            if (await RecheckTvShowRowsAsync(tmdb, tvLib, tvRows, createFolders, total, done, ct) is not int tvDone)
+            if (await RematchTvShowRowsAsync(tmdb, tvLib, tvRows, createFolders, total, done, ct) is not int tvDone)
                 return null; // disposed
 
-            if (await RecheckMovieRowsAsync(tmdb, moviesLib, movieRows, createFolders, total, tvDone, ct) is null)
+            if (await RematchMovieRowsAsync(tmdb, moviesLib, movieRows, createFolders, total, tvDone, ct) is null)
                 return null; // disposed
 
             if (IsDisposed) return null;
@@ -212,12 +216,12 @@ namespace qbPortWeaver
             int verified = tvRows.Concat(movieRows)
                 .Count(r => ((RowData)r.Tag!).Confidence == RowConfidence.Confident);
             return verified == total
-                ? "Re-check complete - all rows verified."
-                : $"Re-check complete - {verified}/{total} rows verified.";
+                ? "Re-match complete - all rows verified."
+                : $"Re-match complete - {verified}/{total} rows verified.";
         }
 
-        // Re-checks TV show rows grouped by show name. Returns updated done count, or null if the form was disposed.
-        private async Task<int?> RecheckTvShowRowsAsync(TmdbClient tmdb, string tvLib,
+        // Re-matches TV show rows grouped by show name. Returns updated done count, or null if the form was disposed.
+        private async Task<int?> RematchTvShowRowsAsync(TmdbClient tmdb, string tvLib,
             List<DataGridViewRow> tvRows, bool createFolders, int total, int done, CancellationToken ct)
         {
             foreach (var (showKey, showRows) in GroupTvRowsByShow(tvRows))
@@ -230,16 +234,16 @@ namespace qbPortWeaver
                 {
                     if (IsDisposed) return null;
                     if (showInfo is not null)
-                        ApplyTvRecheckResult(row, showInfo, tvLib, createFolders, showConfident);
+                        ApplyTvRematchResult(row, showInfo, tvLib, createFolders, showConfident);
                     prgScan.Value      = Math.Min(++done, prgScan.Maximum);
-                    lblScanStatus.Text = $"Re-checking\u2026 {done}/{total}";
+                    lblScanStatus.Text = $"Re-matching\u2026 {done}/{total}";
                 }
             }
             return done;
         }
 
-        // Re-checks movie rows individually. Returns updated done count, or null if the form was disposed.
-        private async Task<int?> RecheckMovieRowsAsync(TmdbClient tmdb, string moviesLib,
+        // Re-matches movie rows individually. Returns updated done count, or null if the form was disposed.
+        private async Task<int?> RematchMovieRowsAsync(TmdbClient tmdb, string moviesLib,
             List<DataGridViewRow> movieRows, bool createFolders, int total, int done, CancellationToken ct)
         {
             foreach (var row in movieRows)
@@ -251,16 +255,16 @@ namespace qbPortWeaver
                     var editedName = row.Cells[colProposed.Index].Value?.ToString() ?? string.Empty;
                     var (movieInfo, movieConfident) = await SearchTmdbByPlexNameAsync<MovieInfo>(editedName, tmdb.SearchMovieAsync, i => i.Title, i => i.Year, i => i.VoteCount, i => i.TmdbId, "movie");
                     if (movieInfo is not null)
-                        ApplyMovieRecheckResult(row, movieInfo, moviesLib, createFolders, editedName, movieConfident);
+                        ApplyMovieRematchResult(row, movieInfo, moviesLib, createFolders, editedName, movieConfident);
                 }
                 prgScan.Value      = Math.Min(++done, prgScan.Maximum);
-                lblScanStatus.Text = $"Re-checking\u2026 {done}/{total}";
+                lblScanStatus.Text = $"Re-matching\u2026 {done}/{total}";
             }
             return done;
         }
 
         // Returns uncertain/unmatched rows of the given media type.
-        private List<DataGridViewRow> GetRecheckRows(string mediaType) =>
+        private List<DataGridViewRow> GetRematchRows(string mediaType) =>
             dgvResults.Rows.Cast<DataGridViewRow>()
                 .Where(r => r.Tag is RowData { Confidence: not RowConfidence.Confident } rd && rd.Proposal.MediaType == mediaType)
                 .ToList();
@@ -305,12 +309,12 @@ namespace qbPortWeaver
             }
             catch (HttpRequestException ex)
             {
-                LogManager.Instance.LogMessage($"Re-check {mediaLabel} lookup failed for '{title}': {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
+                LogManager.Instance.LogMessage($"Re-match {mediaLabel} lookup failed for '{title}': {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
                 return (null, false);
             }
         }
 
-        private void ApplyTvRecheckResult(DataGridViewRow row, TvShowInfo showInfo, string tvLib, bool createFolders, bool isConfident)
+        private void ApplyTvRematchResult(DataGridViewRow row, TvShowInfo showInfo, string tvLib, bool createFolders, bool isConfident)
         {
             var editedName  = row.Cells[colProposed.Index].Value?.ToString() ?? string.Empty;
             var episodeInfo = FileNameParser.ParseTvShowEpisode(editedName);
@@ -333,7 +337,7 @@ namespace qbPortWeaver
             UpdateRow(row, proposedPath, episodeFileName, isConfident);
         }
 
-        private void ApplyMovieRecheckResult(DataGridViewRow row, MovieInfo movieInfo, string moviesLib, bool createFolders, string editedName, bool isConfident)
+        private void ApplyMovieRematchResult(DataGridViewRow row, MovieInfo movieInfo, string moviesLib, bool createFolders, string editedName, bool isConfident)
         {
             var ext          = Path.GetExtension(editedName);
             var plexName     = FileNameParser.FormatPlexName(movieInfo.Title, movieInfo.Year);
@@ -664,6 +668,10 @@ namespace qbPortWeaver
             if (!e.Control) return;
             switch (e.KeyCode)
             {
+                case Keys.C:
+                    gridContextCopy_Click(sender, e);
+                    e.Handled = true;
+                    break;
                 case Keys.V:
                     PasteToCurrentCell();
                     e.Handled = true;
@@ -686,9 +694,9 @@ namespace qbPortWeaver
         }
 
         // When the user edits a Proposed cell:
-        //   - Demotes a previously confirmed row back to Uncertain so Re-check will pick it up again.
+        //   - Demotes a previously confirmed row back to Uncertain so Re-match will pick it up again.
         //   - For TV show rows, propagates the corrected show folder to all sibling episodes so that
-        //     Re-check groups them together and looks them up under the new name.
+        //     Re-match groups them together and looks them up under the new name.
         private void dgvResults_CellEndEdit(object? sender, DataGridViewCellEventArgs e)
         {
             if (e.RowIndex < 0 || e.ColumnIndex != colProposed.Index) return;
@@ -707,7 +715,7 @@ namespace qbPortWeaver
         }
 
         // Propagates the show folder from an edited TV Show row to all sibling rows that share the
-        // same original source show name, so Re-check groups them together under the corrected name.
+        // same original source show name, so Re-match groups them together under the corrected name.
         // Siblings are identified by the show name parsed from their original source filename.
         private void PropagateTvShowNameToSiblings(int editedRowIndex)
         {
@@ -813,7 +821,7 @@ namespace qbPortWeaver
         {
             _isBusy                         = busy;
             btnScanNow.Enabled              = !busy;
-            btnRecheck.Enabled              = !busy;
+            btnRematch.Enabled              = !busy;
             btnClearCache.Enabled           = !busy;
             btnAddSourceFolder.Enabled      = !busy;
             btnRemoveSourceFolder.Enabled   = !busy;
@@ -825,6 +833,7 @@ namespace qbPortWeaver
             cboImportMode.Enabled           = !busy;
             chkDryRun.Enabled               = !busy;
             chkDeleteEmptyFolders.Enabled   = !busy;
+            chkShowOnlyReview.Enabled       = !busy;
             dgvResults.Enabled              = !busy;
         }
 
@@ -856,7 +865,7 @@ namespace qbPortWeaver
                 _      => $"{includeStr} would be imported, {unmatchedStr} had no TMDB match."
             };
 
-            btnImportNow.Enabled = included > 0 || unmatched > 0;
+            btnImportNow.Enabled = included > 0;
         }
 
         private void PopulateGrid(List<MediaProposal> proposals)
@@ -877,6 +886,23 @@ namespace qbPortWeaver
                     Path.GetFileName(p.OriginalPath),
                     p.IsMatched ? Path.GetFileName(p.ProposedPath) : string.Empty);
                 dgvResults.Rows[idx].Tag = new RowData(confidence, p);
+            }
+            ApplyGridFilter();
+        }
+
+        private void chkShowOnlyReview_CheckedChanged(object? sender, EventArgs e)
+        {
+            _showOnlyReviewNeeded = chkShowOnlyReview.Checked;
+            ApplyGridFilter();
+        }
+
+        // Hides confident rows when the "Review needed only" filter is active.
+        private void ApplyGridFilter()
+        {
+            foreach (DataGridViewRow row in dgvResults.Rows)
+            {
+                bool isConfident = row.Tag is RowData { Confidence: RowConfidence.Confident };
+                row.Visible = !_showOnlyReviewNeeded || !isConfident;
             }
         }
 

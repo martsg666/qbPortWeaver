@@ -342,6 +342,8 @@ namespace qbPortWeaver
             string disconnectedMsg = $"NAT-PMP adapter '{cfg.NatPmpAdapterName}' not found - VPN may be disconnected";
             LogManager.Instance.LogMessage(BuildCycleCountMessage(disconnectedMsg, count, cfg), LogLevel.Info);
 
+            // No IVpnManager instance is available here (adapter not found, no fallback manager),
+            // so we resolve the action and target directly instead of going through the interface.
             string adapterName = cfg.NatPmpAdapterName;
             string? providerToken = NatPmpManager.FindProviderToken(adapterName);
             await TryTriggerRecoveryAsync(

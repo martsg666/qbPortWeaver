@@ -25,12 +25,6 @@ namespace qbPortWeaver
         private ushort _lastExternalPort;  // zero until first mapping; suggested to gateway on renewal
         private uint   _lastEpochSeconds;  // SSOE (Seconds Since Opened Epoch) from the last successful NAT-PMP response
 
-        /// <inheritdoc />
-        public string ProviderName => _adapter.Name;
-
-        /// <summary>Lease lifetime in seconds granted by the gateway on the last successful port mapping; 0 until first mapping.</summary>
-        public uint LastGrantedLifetime { get; private set; }
-
         private NatPmpManager(NetworkInterface adapter, IPAddress gateway, uint mappingLifetime)
         {
             _adapter         = adapter;
@@ -107,6 +101,12 @@ namespace qbPortWeaver
 
             return externalIp is not null ? new NatPmpManager(nic, gateway, mappingLifetime) : null;
         }
+
+        /// <inheritdoc />
+        public string ProviderName => _adapter.Name;
+
+        /// <summary>Lease lifetime in seconds granted by the gateway on the last successful port mapping; 0 until first mapping.</summary>
+        public uint LastGrantedLifetime { get; private set; }
 
         /// <inheritdoc />
         // Re-enumerates network interfaces because the stored _adapter object retains its

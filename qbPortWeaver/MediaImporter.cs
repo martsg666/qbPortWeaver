@@ -30,7 +30,7 @@ namespace qbPortWeaver
         private static int _sourceCachedCount;
         private static int _sourceComputedCount;
 
-        // In-flight deduplication: if two threads race on the same source file (e.g. RunAsync and ScanAsync
+        // In-flight deduplication: if two threads race on the same source file (e.g. ImportAsync and ScanAsync
         // both classifying with a cold cache), GetOrAdd returns the same Lazy so both share one read.
         private static readonly ConcurrentDictionary<string, Lazy<string>> _sourceInFlight =
             new(StringComparer.OrdinalIgnoreCase);
@@ -73,7 +73,7 @@ namespace qbPortWeaver
                 }
                 else
                 {
-                    LogManager.Instance.LogMessage($"Hardlink not verified for '{Path.GetFileName(destinationPath)}' (filesystem created a copy instead), replacing with proper copy", LogLevel.Warn, Subsystem.MediaManager);
+                    LogManager.Instance.LogMessage($"Hardlink not verified for '{Path.GetFileName(destinationPath)}' (filesystem created a copy instead), replacing with proper copy", LogLevel.Info, Subsystem.MediaManager);
                     File.Delete(destinationPath);
                     File.Copy(sourcePath, destinationPath, overwrite: false);
                     LogManager.Instance.LogDebug($"MediaImporter.ImportFile: Copied (verified fallback) '{Path.GetFileName(destinationPath)}'", Subsystem.MediaManager);
@@ -81,7 +81,7 @@ namespace qbPortWeaver
             }
             else
             {
-                LogManager.Instance.LogMessage($"Hardlink failed for '{Path.GetFileName(destinationPath)}', falling back to copy", LogLevel.Warn, Subsystem.MediaManager);
+                LogManager.Instance.LogMessage($"Hardlink failed for '{Path.GetFileName(destinationPath)}', falling back to copy", LogLevel.Info, Subsystem.MediaManager);
                 File.Copy(sourcePath, destinationPath, overwrite: false);
                 LogManager.Instance.LogDebug($"MediaImporter.ImportFile: Copied (fallback) '{Path.GetFileName(destinationPath)}'", Subsystem.MediaManager);
             }

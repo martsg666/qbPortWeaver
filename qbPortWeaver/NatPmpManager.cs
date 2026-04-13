@@ -186,9 +186,37 @@ namespace qbPortWeaver
         }
 
         /// <inheritdoc />
-        // Returns the adapter name. PortSyncService checks if it matches a known provider
-        // (ProtonVPN, PIA) and triggers a service restart instead of an adapter cycle.
-        public string? GetRecoveryTarget() => _adapter.Name;
+        // Returns the provider token when the adapter belongs to a known provider (for service restart),
+        // or the adapter name for standalone NAT-PMP gateways (for adapter cycling).
+        public string? GetRecoveryTarget() => FindProviderToken(_adapter.Name) ?? _adapter.Name;
+
+        /// <inheritdoc />
+        public string GetRecoveryAction() =>
+            FindProviderToken(_adapter.Name) is not null
+                ? AutoRecoveryManager.ActionRestart
+                : AutoRecoveryManager.ActionCycleAdapter;
+
+        /// <inheritdoc />
+        // Uses bidirectional Contains because the adapter name in settings may differ in length
+        // from the Windows connection name (e.g. "ProtonVPN TUN" vs "ProtonVPN").
+        public bool IsAdapterMatch(string interfaceName)
+            => interfaceName.Contains(_adapter.Name, StringComparison.OrdinalIgnoreCase) ||
+               _adapter.Name.Contains(interfaceName, StringComparison.OrdinalIgnoreCase);
+
+        /// <summary>
+        /// Returns the VPN provider token if <paramref name="adapterName"/> matches a known provider keyword,
+        /// or <c>null</c> if it does not. Used to decide whether to trigger a service restart or an adapter cycle.
+        /// </summary>
+        internal static string? FindProviderToken(string adapterName)
+        {
+            ReadOnlySpan<string> providers = [RegistrySettingsManager.VpnProviderProtonVpn, RegistrySettingsManager.VpnProviderPia];
+            foreach (string provider in providers)
+            {
+                if (adapterName.Contains(provider, StringComparison.OrdinalIgnoreCase))
+                    return provider;
+            }
+            return null;
+        }
 
         // Transfers renewal state from a previous instance so that port renewal works correctly
         // when a fresh NatPmpManager instance is created each cycle.

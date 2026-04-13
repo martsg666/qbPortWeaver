@@ -57,6 +57,13 @@ namespace qbPortWeaver
         /// <inheritdoc />
         public string? GetRecoveryTarget() => ProviderName;
 
+        /// <inheritdoc />
+        public string GetRecoveryAction() => AutoRecoveryManager.ActionRestart;
+
+        /// <inheritdoc />
+        public bool IsAdapterMatch(string interfaceName)
+            => interfaceName.Contains("ProtonVPN", StringComparison.OrdinalIgnoreCase);
+
         private int? GetVpnPortCore()
         {
             try

@@ -205,7 +205,7 @@ RunAsync
          │   └─ RunPostUpdateCommand
          ├─ CheckAndRestartIfDisconnectedAsync (skipped if already restarted)
          │   └─ QBittorrentManager.RestartAsync
-         └─ SetCompleted
+         └─ SetSyncResult
 ```
 
 ---
@@ -242,7 +242,7 @@ The Media Manager scan is split into two phases that partially overlap for perfo
 
 ### Lazy Fingerprint Deduplication
 
-If `RunAsync` and `ScanAsync` overlap (e.g. a manual **Scan Now** triggered while a sync cycle is running), both call `FingerprintSourceFoldersAsync` concurrently. A `ConcurrentDictionary<string, Lazy<string>>` ensures that when two threads race on the same source file, only one issues the 128 KB read while the other waits on the same `Lazy<string>` and reuses the result.
+If `ImportAsync` and `ScanAsync` overlap (e.g. a manual **Scan Now** triggered while a sync cycle is running), both call `FingerprintSourceFoldersAsync` concurrently. A `ConcurrentDictionary<string, Lazy<string>>` ensures that when two threads race on the same source file, only one issues the 128 KB read while the other waits on the same `Lazy<string>` and reuses the result.
 
 ### Cache Layers
 
@@ -258,7 +258,7 @@ On a warm cache scan (no files changed since the last cycle), fingerprinting is 
 ### Method Call Map
 
 ```
-MediaManagerService.RunAsync / ScanAsync
+MediaManagerService.ImportAsync / ScanAsync
  ├─ MediaImporter.LoadSourceCache           (load source fingerprint cache from disk)
  ├─ TmdbCacheManager.Load / Evict         (load TMDB result cache from disk)
  │

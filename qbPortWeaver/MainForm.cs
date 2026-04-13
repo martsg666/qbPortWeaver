@@ -332,7 +332,7 @@ namespace qbPortWeaver
                     try
                     {
                         updateInterval = await _portSyncService.RunAsync(_shutdownCts.Token);
-                        await MediaManagerService.RunAsync(_shutdownCts.Token);
+                        await MediaManagerService.ImportAsync(_shutdownCts.Token);
                     }
                     finally
                     {

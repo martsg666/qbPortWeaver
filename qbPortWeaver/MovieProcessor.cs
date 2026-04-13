@@ -177,7 +177,7 @@ namespace qbPortWeaver
             if (info is null) return;
             if (!isConfident)
             {
-                LogManager.Instance.LogMessage($"Skipped folder '{dirPath}' - uncertain TMDB match, review in Media Manager", LogLevel.Warn, Subsystem.MediaManager);
+                LogManager.Instance.LogMessage($"Skipped folder '{Path.GetFileName(dirPath)}' - uncertain TMDB match, review in Media Manager", LogLevel.Warn, Subsystem.MediaManager);
                 return;
             }
 

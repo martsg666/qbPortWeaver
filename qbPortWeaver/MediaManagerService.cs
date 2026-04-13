@@ -8,11 +8,12 @@ namespace qbPortWeaver
         internal const int MaxSubfolderDepth = 10; // passed as EnumerationOptions.MaxRecursionDepth
 
         /// <summary>
-        /// Runs one media import cycle. Returns immediately if the feature is disabled, the TMDB API key is not configured,
+        /// Runs one media import cycle, moving or linking files into the configured library.
+        /// Returns immediately if the feature is disabled, the TMDB API key is not configured,
         /// or no library paths are set.
         /// Throws <see cref="OperationCanceledException"/> if <paramref name="cancellationToken"/> is cancelled.
         /// </summary>
-        public static async Task RunAsync(CancellationToken cancellationToken = default)
+        public static async Task ImportAsync(CancellationToken cancellationToken = default)
         {
             if (!RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionMedia, RegistrySettingsManager.KeyMediaEnabled))
                 return;
@@ -42,7 +43,7 @@ namespace qbPortWeaver
             var scanSw = System.Diagnostics.Stopwatch.StartNew();
             LogManager.Instance.LogMessage($"Scan started (mode=import, dryRun={dryRun}, createFolders={createFolders}, deleteEmptyFolders={deleteEmptyFolders}, importMode={importMode})", LogLevel.Info, Subsystem.MediaManager);
             LogManager.Instance.LogDebug(
-                $"MediaManagerService.RunAsync [media]: {RegistrySettingsManager.KeyMediaEnabled}=true, " +
+                $"MediaManagerService.ImportAsync [media]: {RegistrySettingsManager.KeyMediaEnabled}=true, " +
                 $"{RegistrySettingsManager.KeyTmdbApiKey}=***, " +
                 $"{RegistrySettingsManager.KeyMediaSourceFolders}={string.Join(";", sourceFolders)}, " +
                 $"{RegistrySettingsManager.KeyMediaMoviesLibraryPath}={moviesLibraryPath}, " +
@@ -90,27 +91,13 @@ namespace qbPortWeaver
             if (!string.IsNullOrWhiteSpace(ctx.MoviesLibraryPath) && items.MovieFiles.Length > 0)
             {
                 var movieProcessor = new MovieProcessor(ctx.Tmdb, ctx.DryRun, ctx.CreateFolders, ctx.MoviesLibraryPath, ctx.ImportMode);
-                try
-                {
-                    await movieProcessor.ProcessMoviesAsync(folder, items.MovieFiles).ConfigureAwait(false);
-                }
-                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-                {
-                    LogManager.Instance.LogMessage($"Skipped folder '{folder}' (movies): {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
-                }
+                await TryRunAsync(() => movieProcessor.ProcessMoviesAsync(folder, items.MovieFiles), folder);
             }
 
             if (!string.IsNullOrWhiteSpace(ctx.TvShowsLibraryPath) && items.TvFiles.Length > 0)
             {
                 var tvShowProcessor = new TvShowProcessor(ctx.Tmdb, ctx.DryRun, ctx.CreateFolders, ctx.TvShowsLibraryPath, ctx.ImportMode);
-                try
-                {
-                    await tvShowProcessor.ProcessTvShowsAsync(folder, items.TvFiles).ConfigureAwait(false);
-                }
-                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-                {
-                    LogManager.Instance.LogMessage($"Skipped folder '{folder}' (TV shows): {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
-                }
+                await TryRunAsync(() => tvShowProcessor.ProcessTvShowsAsync(folder, items.TvFiles), folder);
             }
         }
 
@@ -194,27 +181,13 @@ namespace qbPortWeaver
             if (!string.IsNullOrWhiteSpace(ctx.MoviesLibraryPath) && items.MovieFiles.Length > 0)
             {
                 var movieProcessor = new MovieProcessor(ctx.Tmdb, dryRun: true, ctx.CreateFolders, ctx.MoviesLibraryPath, ctx.ImportMode);
-                try
-                {
-                    proposals.AddRange(await movieProcessor.ScanMoviesAsync(items.MovieFiles, onItemProcessed).ConfigureAwait(false));
-                }
-                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-                {
-                    LogManager.Instance.LogMessage($"Skipped folder '{folder}' (movies): {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
-                }
+                proposals.AddRange(await TryRunAsync(() => movieProcessor.ScanMoviesAsync(items.MovieFiles, onItemProcessed), folder));
             }
 
             if (!string.IsNullOrWhiteSpace(ctx.TvShowsLibraryPath) && items.TvFiles.Length > 0)
             {
                 var tvShowProcessor = new TvShowProcessor(ctx.Tmdb, dryRun: true, ctx.CreateFolders, ctx.TvShowsLibraryPath, ctx.ImportMode);
-                try
-                {
-                    proposals.AddRange(await tvShowProcessor.ScanTvShowsAsync(items.TvFiles, onItemProcessed).ConfigureAwait(false));
-                }
-                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-                {
-                    LogManager.Instance.LogMessage($"Skipped folder '{folder}' (TV shows): {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
-                }
+                proposals.AddRange(await TryRunAsync(() => tvShowProcessor.ScanTvShowsAsync(items.TvFiles, onItemProcessed), folder));
             }
 
             LogManager.Instance.LogMessage($"Scanned source folder '{folder}': {proposals.Count} proposal(s)", LogLevel.Info, Subsystem.MediaManager);
@@ -475,6 +448,22 @@ namespace qbPortWeaver
                 });
 
             return (movies.ToArray(), tvShows.ToArray());
+        }
+
+        // Runs a processor operation and swallows IO/permission errors, logging the folder that was skipped.
+        private static async Task TryRunAsync(Func<Task> process, string folder)
+        {
+            try { await process().ConfigureAwait(false); }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            { LogManager.Instance.LogMessage($"Skipped source folder '{folder}': {ex.Message}", LogLevel.Warn, Subsystem.MediaManager); }
+        }
+
+        // Scan variant: returns an empty list on IO/permission errors instead of propagating.
+        private static async Task<List<T>> TryRunAsync<T>(Func<Task<List<T>>> scan, string folder)
+        {
+            try { return await scan().ConfigureAwait(false); }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            { LogManager.Instance.LogMessage($"Skipped source folder '{folder}': {ex.Message}", LogLevel.Warn, Subsystem.MediaManager); return []; }
         }
 
         private static string[] GetFolders(string key)

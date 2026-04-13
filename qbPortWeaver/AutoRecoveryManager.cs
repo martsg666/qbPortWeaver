@@ -140,9 +140,10 @@ namespace qbPortWeaver
                         }
                         catch (Exception ex) { LogManager.Instance.LogDebug($"AutoRecoveryManager.RestartClientProcessAsync: Kill '{processName}': {ex.Message}"); }
                     }
-                    LogManager.Instance.LogMessage(exePath is not null
-                        ? $"Killed client process '{processName}'"
-                        : $"Client process '{processName}' was not running", LogLevel.Info);
+                    if (exePath is not null)
+                        LogManager.Instance.LogMessage($"Killed client process '{processName}'", LogLevel.Info);
+                    else
+                        LogManager.Instance.LogDebug($"AutoRecoveryManager.RestartClientProcessAsync: Client process '{processName}' was not running");
                 }
                 finally
                 {

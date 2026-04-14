@@ -312,7 +312,7 @@ namespace qbPortWeaver
             chkShowOnlyReview.Name     = "chkShowOnlyReview";
             chkShowOnlyReview.AutoSize = true;
             chkShowOnlyReview.TabIndex = 10;
-            chkShowOnlyReview.Text     = "Show only uncertain and unmatched rows";
+            chkShowOnlyReview.Text     = "Show only rows with uncertain or no TMDB match";
             chkShowOnlyReview.CheckedChanged += chkShowOnlyReview_CheckedChanged;
             //
             // lblLegendUncertain
@@ -322,7 +322,7 @@ namespace qbPortWeaver
             lblLegendUncertain.Name      = "lblLegendUncertain";
             lblLegendUncertain.Size      = new Size(130, 28);
             lblLegendUncertain.TabIndex  = 11;
-            lblLegendUncertain.Text      = "\u25cf Uncertain match";
+            lblLegendUncertain.Text      = "\u25cf Uncertain TMDB match";
             lblLegendUncertain.TextAlign = ContentAlignment.MiddleLeft;
             //
             // lblLegendUnmatched

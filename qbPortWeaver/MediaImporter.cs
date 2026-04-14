@@ -713,13 +713,11 @@ namespace qbPortWeaver
                 _libraryBuildCycleCount = 0;
             }
 
-            TryDeleteFile(GetCacheFilePath(SourceCacheFileName));
-            TryDeleteFile(GetCacheFilePath(LibraryCacheFileName));
+            AppConstants.TryDeleteFile(GetCacheFilePath(SourceCacheFileName));
+            AppConstants.TryDeleteFile(GetCacheFilePath(LibraryCacheFileName));
 
             LogManager.Instance.LogMessage("Fingerprint caches cleared", LogLevel.Info, Subsystem.MediaManager);
         }
-
-        private static void TryDeleteFile(string path) => AppConstants.TryDeleteFile(path);
 
         internal static string GetCacheFilePath(string fileName) =>
             AppConstants.GetDataFilePath(fileName);

@@ -142,26 +142,29 @@ namespace qbPortWeaver
             LogManager.Instance.DebugMode = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionExtra, RegistrySettingsManager.KeyDebugMode);
 
             var cfg = ReadConfig();
-            LogManager.Instance.LogDebug(
-                $"PortSyncService.RunCoreAsync [general]: {RegistrySettingsManager.KeyVpnProvider}={cfg.VpnProvider}, " +
-                $"{RegistrySettingsManager.KeyNatPmpAdapterName}={cfg.NatPmpAdapterName}, " +
-                $"{RegistrySettingsManager.KeyUpdateIntervalSeconds}={cfg.UpdateInterval}s, " +
-                $"{RegistrySettingsManager.KeyAutoRecoveryEnabled}={cfg.AutoRecoveryEnabled}, " +
-                $"{RegistrySettingsManager.KeyAutoRecoveryTriggerCycles}={cfg.AutoRecoveryTriggerCycles}");
-            LogManager.Instance.LogDebug(
-                $"PortSyncService.RunCoreAsync [qBittorrent]: {RegistrySettingsManager.KeyQBittorrentUrl}={cfg.QBittorrentUrl}, " +
-                $"{RegistrySettingsManager.KeyQBittorrentUserName}={cfg.QBittorrentUserName}, " +
-                $"{RegistrySettingsManager.KeyQBittorrentPassword}=***, " + // NOSONAR S2068 - value is masked, not a real credential
-                $"{RegistrySettingsManager.KeyQBittorrentExePath}={cfg.QBittorrentExePath}, " +
-                $"{RegistrySettingsManager.KeyQBittorrentProcessName}={cfg.QBittorrentProcessName}, " +
-                $"{RegistrySettingsManager.KeyRestartQBittorrent}={cfg.RestartQBittorrent}, " +
-                $"{RegistrySettingsManager.KeyForceStartQBittorrent}={cfg.ForceStartQBittorrent}, " +
-                $"{RegistrySettingsManager.KeyDefaultPort}={cfg.DefaultPort}, " +
-                $"{RegistrySettingsManager.KeyWarnOnInterfaceMismatch}={cfg.WarnOnInterfaceMismatch}, " +
-                $"{RegistrySettingsManager.KeyRestartOnDisconnect}={cfg.RestartOnDisconnect}");
-            LogManager.Instance.LogDebug(
-                $"PortSyncService.RunCoreAsync [extra]: {RegistrySettingsManager.KeyPostUpdateCmd}={cfg.PostUpdateCommand}, " +
-                $"{RegistrySettingsManager.KeyDebugMode}={LogManager.Instance.DebugMode}");
+            if (LogManager.Instance.DebugMode)
+            {
+                LogManager.Instance.LogDebug(
+                    $"PortSyncService.RunCoreAsync [general]: {RegistrySettingsManager.KeyVpnProvider}={cfg.VpnProvider}, " +
+                    $"{RegistrySettingsManager.KeyNatPmpAdapterName}={cfg.NatPmpAdapterName}, " +
+                    $"{RegistrySettingsManager.KeyUpdateIntervalSeconds}={cfg.UpdateInterval}s, " +
+                    $"{RegistrySettingsManager.KeyAutoRecoveryEnabled}={cfg.AutoRecoveryEnabled}, " +
+                    $"{RegistrySettingsManager.KeyAutoRecoveryTriggerCycles}={cfg.AutoRecoveryTriggerCycles}");
+                LogManager.Instance.LogDebug(
+                    $"PortSyncService.RunCoreAsync [qBittorrent]: {RegistrySettingsManager.KeyQBittorrentUrl}={cfg.QBittorrentUrl}, " +
+                    $"{RegistrySettingsManager.KeyQBittorrentUserName}={cfg.QBittorrentUserName}, " +
+                    $"{RegistrySettingsManager.KeyQBittorrentPassword}=***, " + // NOSONAR S2068 - value is masked, not a real credential
+                    $"{RegistrySettingsManager.KeyQBittorrentExePath}={cfg.QBittorrentExePath}, " +
+                    $"{RegistrySettingsManager.KeyQBittorrentProcessName}={cfg.QBittorrentProcessName}, " +
+                    $"{RegistrySettingsManager.KeyRestartQBittorrent}={cfg.RestartQBittorrent}, " +
+                    $"{RegistrySettingsManager.KeyForceStartQBittorrent}={cfg.ForceStartQBittorrent}, " +
+                    $"{RegistrySettingsManager.KeyDefaultPort}={cfg.DefaultPort}, " +
+                    $"{RegistrySettingsManager.KeyWarnOnInterfaceMismatch}={cfg.WarnOnInterfaceMismatch}, " +
+                    $"{RegistrySettingsManager.KeyRestartOnDisconnect}={cfg.RestartOnDisconnect}");
+                LogManager.Instance.LogDebug(
+                    $"PortSyncService.RunCoreAsync [extra]: {RegistrySettingsManager.KeyPostUpdateCmd}={cfg.PostUpdateCommand}, " +
+                    $"{RegistrySettingsManager.KeyDebugMode}={LogManager.Instance.DebugMode}");
+            }
             status[StatusKeys.VpnProvider]           = cfg.VpnProvider;
             status[StatusKeys.UpdateIntervalSeconds] = cfg.UpdateInterval;
 
@@ -189,7 +192,7 @@ namespace qbPortWeaver
                     LogManager.Instance.LogMessage($"{vpnManager.ProviderName} default port is 0 - skipping port update", LogLevel.Info);
                     return cfg.UpdateInterval;
                 }
-                LogManager.Instance.LogMessage($"{vpnManager.ProviderName} default port is {cfg.DefaultPort} - applying", LogLevel.Info);
+                LogManager.Instance.LogMessage($"{vpnManager.ProviderName} default port is {cfg.DefaultPort} - applying to qBittorrent", LogLevel.Info);
                 targetPort          = cfg.DefaultPort;
                 syncVpnManager      = null;
                 warnOnInterfaceMismatch = false;

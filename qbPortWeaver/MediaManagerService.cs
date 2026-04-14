@@ -42,17 +42,18 @@ namespace qbPortWeaver
             var sourceFolders = GetFolders(RegistrySettingsManager.KeyMediaSourceFolders);
             var scanSw = System.Diagnostics.Stopwatch.StartNew();
             LogManager.Instance.LogMessage($"Scan started (mode=import, dryRun={dryRun}, createFolders={createFolders}, deleteEmptyFolders={deleteEmptyFolders}, importMode={importMode})", LogLevel.Info, Subsystem.MediaManager);
-            LogManager.Instance.LogDebug(
-                $"MediaManagerService.ImportAsync [media]: {RegistrySettingsManager.KeyMediaEnabled}=true, " +
-                $"{RegistrySettingsManager.KeyTmdbApiKey}=***, " +
-                $"{RegistrySettingsManager.KeyMediaSourceFolders}={string.Join(";", sourceFolders)}, " +
-                $"{RegistrySettingsManager.KeyMediaMoviesLibraryPath}={moviesLibraryPath}, " +
-                $"{RegistrySettingsManager.KeyMediaTvShowsLibraryPath}={tvShowsLibraryPath}, " +
-                $"{RegistrySettingsManager.KeyMediaDryRun}={dryRun}, " +
-                $"{RegistrySettingsManager.KeyMediaCreateFolders}={createFolders}, " +
-                $"{RegistrySettingsManager.KeyMediaDeleteEmptyFolders}={deleteEmptyFolders}, " +
-                $"{RegistrySettingsManager.KeyMediaImportMode}={importMode}",
-                Subsystem.MediaManager);
+            if (LogManager.Instance.DebugMode)
+                LogManager.Instance.LogDebug(
+                    $"MediaManagerService.ImportAsync [media]: {RegistrySettingsManager.KeyMediaEnabled}=true, " +
+                    $"{RegistrySettingsManager.KeyTmdbApiKey}=***, " +
+                    $"{RegistrySettingsManager.KeyMediaSourceFolders}={string.Join(";", sourceFolders)}, " +
+                    $"{RegistrySettingsManager.KeyMediaMoviesLibraryPath}={moviesLibraryPath}, " +
+                    $"{RegistrySettingsManager.KeyMediaTvShowsLibraryPath}={tvShowsLibraryPath}, " +
+                    $"{RegistrySettingsManager.KeyMediaDryRun}={dryRun}, " +
+                    $"{RegistrySettingsManager.KeyMediaCreateFolders}={createFolders}, " +
+                    $"{RegistrySettingsManager.KeyMediaDeleteEmptyFolders}={deleteEmptyFolders}, " +
+                    $"{RegistrySettingsManager.KeyMediaImportMode}={importMode}",
+                    Subsystem.MediaManager);
 
             var (tmdb, classified, total) = await PrepareClassifiedSourcesAsync(
                 apiKey, sourceFolders, moviesLibraryPath, tvShowsLibraryPath, allowLibraryReuse: true, cancellationToken).ConfigureAwait(false);

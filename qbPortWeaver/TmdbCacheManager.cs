@@ -78,8 +78,16 @@ namespace qbPortWeaver
         {
             if (!_showCacheDirty && !_movieCacheDirty) return;
             var parts = new List<string>(2);
-            if (_showCacheDirty)  { int n = SaveToDisk(_showCache,  ShowCacheFileName,  "show");  if (n >= 0) { parts.Add($"{n} show entries");  _showCacheDirty  = false; } }
-            if (_movieCacheDirty) { int n = SaveToDisk(_movieCache, MovieCacheFileName, "movie"); if (n >= 0) { parts.Add($"{n} movie entries"); _movieCacheDirty = false; } }
+            if (_showCacheDirty)
+            {
+                int n = SaveToDisk(_showCache, ShowCacheFileName, "show");
+                if (n >= 0) { parts.Add($"{n} show entries"); _showCacheDirty = false; }
+            }
+            if (_movieCacheDirty)
+            {
+                int n = SaveToDisk(_movieCache, MovieCacheFileName, "movie");
+                if (n >= 0) { parts.Add($"{n} movie entries"); _movieCacheDirty = false; }
+            }
             LogManager.Instance.LogMessage($"TMDB cache saved: {string.Join(", ", parts)}", LogLevel.Info, Subsystem.MediaManager);
         }
 

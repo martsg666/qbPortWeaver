@@ -315,14 +315,10 @@ namespace qbPortWeaver
             // [0] version=0  [1] opcode=1 (UDP)  [2-3] reserved
             // [4-5] internal port=0  [6-7] suggested external port  [8-11] lifetime
             byte[] request = new byte[12];
-            request[0]  = 0x00;
-            request[1]  = 0x01;
-            request[6]  = (byte)(suggestedExternalPort >> 8);
-            request[7]  = (byte)(suggestedExternalPort & 0xFF);
-            request[8]  = (byte)(lifetime >> 24);
-            request[9]  = (byte)(lifetime >> 16);
-            request[10] = (byte)(lifetime >> 8);
-            request[11] = (byte)(lifetime & 0xFF);
+            request[0] = 0x00;
+            request[1] = 0x01;
+            BinaryPrimitives.WriteUInt16BigEndian(request.AsSpan(6), suggestedExternalPort);
+            BinaryPrimitives.WriteUInt32BigEndian(request.AsSpan(8), lifetime);
 
             byte[]? data = await SendReceiveAsync(gateway, request).ConfigureAwait(false);
             if (data is null)

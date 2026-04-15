@@ -11,33 +11,33 @@ namespace qbPortWeaver
     internal static class TmdbCacheManager
     {
         private const int    TtlDays            = 30;
-        private const string ShowCacheFileName  = "qbPortWeaver.tmdb.tvshows.json";
+        private const string TvShowCacheFileName  = "qbPortWeaver.tmdb.tvshows.json";
         private const string MovieCacheFileName = "qbPortWeaver.tmdb.movies.json";
 
         private static readonly JsonSerializerOptions _jsonWriteOptions = new() { WriteIndented = true };
 
         // ConcurrentDictionary: sync cycle and UI scan can overlap.
         private static readonly ConcurrentDictionary<string, (TvShowInfo? Info, bool IsConfident)>
-            _showCache  = new(StringComparer.OrdinalIgnoreCase);
+            _tvShowCache  = new(StringComparer.OrdinalIgnoreCase);
         private static readonly ConcurrentDictionary<string, (MovieInfo? Info, bool IsConfident)>
             _movieCache = new(StringComparer.OrdinalIgnoreCase);
 
         private static int _loaded; // 0 = not loaded, 1 = loaded; Interlocked
-        private static volatile bool _showCacheDirty;
+        private static volatile bool _tvShowCacheDirty;
         private static volatile bool _movieCacheDirty;
 
         // Serialized on-disk format: only non-null results are persisted.
         private sealed record TmdbEntry<T>(T? Info, bool IsConfident, DateTime CachedAt) where T : class;
 
-        internal static bool TryGetShow(string key, out (TvShowInfo? Info, bool IsConfident) result)
-            => _showCache.TryGetValue(key, out result);
+        internal static bool TryGetTvShow(string key, out (TvShowInfo? Info, bool IsConfident) result)
+            => _tvShowCache.TryGetValue(key, out result);
 
-        internal static void TryAddShow(string key, (TvShowInfo? Info, bool IsConfident) value)
+        internal static void TryAddTvShow(string key, (TvShowInfo? Info, bool IsConfident) value)
         {
             // Always cache in memory (including null results) to avoid re-hitting the API within the same session.
             // Only mark dirty for non-null results - nulls are not persisted so they are retried on next start.
-            if (_showCache.TryAdd(key, value) && value.Info is not null)
-                _showCacheDirty = true;
+            if (_tvShowCache.TryAdd(key, value) && value.Info is not null)
+                _tvShowCacheDirty = true;
         }
 
         internal static bool TryGetMovie(string key, out (MovieInfo? Info, bool IsConfident) result)
@@ -51,8 +51,8 @@ namespace qbPortWeaver
                 _movieCacheDirty = true;
         }
 
-        /// <summary>Evicts cached null show results so transient API failures are retried next cycle.</summary>
-        internal static void EvictNullShows() => EvictNullsFromCache(_showCache);
+        /// <summary>Evicts cached null TV show results so transient API failures are retried next cycle.</summary>
+        internal static void EvictNullTvShows() => EvictNullsFromCache(_tvShowCache);
 
         /// <summary>Evicts cached null movie results so transient API failures are retried next cycle.</summary>
         internal static void EvictNullMovies() => EvictNullsFromCache(_movieCache);
@@ -65,23 +65,23 @@ namespace qbPortWeaver
         {
             if (Interlocked.CompareExchange(ref _loaded, 1, 0) != 0) return;
             var sw = System.Diagnostics.Stopwatch.StartNew();
-            LoadFromDisk(_showCache, ShowCacheFileName, "show");
+            LoadFromDisk(_tvShowCache, TvShowCacheFileName, "TV show");
             LoadFromDisk(_movieCache, MovieCacheFileName, "movie");
             sw.Stop();
             LogManager.Instance.LogMessage(
-                $"TMDB cache loaded: {_showCache.Count} show entries, {_movieCache.Count} movie entries in {sw.ElapsedMilliseconds}ms",
+                $"TMDB cache loaded: {_tvShowCache.Count} TV show entries, {_movieCache.Count} movie entries in {sw.ElapsedMilliseconds}ms",
                 LogLevel.Info, Subsystem.MediaManager);
         }
 
         /// <summary>Persists both TMDB caches to disk. Each cache is saved independently; no-op for a cache that has not changed.</summary>
         internal static void Save()
         {
-            if (!_showCacheDirty && !_movieCacheDirty) return;
+            if (!_tvShowCacheDirty && !_movieCacheDirty) return;
             var parts = new List<string>(2);
-            if (_showCacheDirty)
+            if (_tvShowCacheDirty)
             {
-                int n = SaveToDisk(_showCache, ShowCacheFileName, "show");
-                if (n >= 0) { parts.Add($"{n} show entries"); _showCacheDirty = false; }
+                int n = SaveToDisk(_tvShowCache, TvShowCacheFileName, "TV show");
+                if (n >= 0) { parts.Add($"{n} TV show entries"); _tvShowCacheDirty = false; }
             }
             if (_movieCacheDirty)
             {
@@ -94,12 +94,12 @@ namespace qbPortWeaver
         /// <summary>Clears both caches from memory and deletes the on-disk cache files.</summary>
         internal static void Clear()
         {
-            _showCache.Clear();
+            _tvShowCache.Clear();
             _movieCache.Clear();
-            _showCacheDirty  = false;
+            _tvShowCacheDirty  = false;
             _movieCacheDirty = false;
             Interlocked.Exchange(ref _loaded, 0);
-            AppConstants.TryDeleteFile(AppConstants.GetDataFilePath(ShowCacheFileName));
+            AppConstants.TryDeleteFile(AppConstants.GetDataFilePath(TvShowCacheFileName));
             AppConstants.TryDeleteFile(AppConstants.GetDataFilePath(MovieCacheFileName));
             LogManager.Instance.LogMessage("TMDB caches cleared", LogLevel.Info, Subsystem.MediaManager);
         }

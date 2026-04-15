@@ -41,7 +41,7 @@ namespace qbPortWeaver
 
             foreach (var (file, title, year) in selfDescribing)
             {
-                await AddMovieScanProposalAsync(file, title, year, proposals).ConfigureAwait(false);
+                await ScanMovieFileAsync(file, title, year, proposals).ConfigureAwait(false);
                 onItemProcessed?.Invoke();
             }
 
@@ -60,7 +60,7 @@ namespace qbPortWeaver
             var (selfDescribing, folderDependent) = ClassifyVideoFiles(movieFiles);
 
             foreach (var (file, title, year) in selfDescribing)
-                await ProcessSingleMovieFileAsync(sourceFolder, file, title, year).ConfigureAwait(false);
+                await ProcessMovieFileAsync(sourceFolder, file, title, year).ConfigureAwait(false);
 
             foreach (var group in folderDependent.GroupBy(f => Path.GetDirectoryName(f)!, StringComparer.OrdinalIgnoreCase))
                 await ProcessFolderDependentFilesAsync(sourceFolder, group.Key, group.ToList()).ConfigureAwait(false);
@@ -89,8 +89,8 @@ namespace qbPortWeaver
             return (selfDescribing, folderDependent);
         }
 
-        // Proposal builder for self-describing movie files
-        private async Task AddMovieScanProposalAsync(string filePath, string title, int? year, List<MediaProposal> proposals)
+        // Scans a single self-describing movie file and adds proposals for unmatched or new items
+        private async Task ScanMovieFileAsync(string filePath, string title, int? year, List<MediaProposal> proposals)
         {
             var (info, isConfident) = await GetOrLookupMovieAsync(title, year).ConfigureAwait(false);
             if (info is null)
@@ -150,8 +150,8 @@ namespace qbPortWeaver
             }
         }
 
-        // Processes a single self-describing movie file
-        private async Task ProcessSingleMovieFileAsync(string sourceFolder, string filePath, string title, int? year)
+        // Imports a single self-describing movie file into the library
+        private async Task ProcessMovieFileAsync(string sourceFolder, string filePath, string title, int? year)
         {
             var (info, isConfident) = await GetOrLookupMovieAsync(title, year).ConfigureAwait(false);
             if (info is null) return;

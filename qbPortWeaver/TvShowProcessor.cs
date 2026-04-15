@@ -53,7 +53,7 @@ namespace qbPortWeaver
                 await ProcessEpisodeFileAsync(sourceFolder, file).ConfigureAwait(false);
         }
 
-        // Scans a single TV episode file and adds a proposal if it can be matched and imported
+        // Scans a single TV episode file and adds proposals for unmatched or new items
         private async Task ScanEpisodeFileAsync(string filePath, List<MediaProposal> proposals)
         {
             var fileName = Path.GetFileName(filePath);
@@ -65,7 +65,7 @@ namespace qbPortWeaver
                 return;
             }
 
-            var (showInfo, isConfident) = await GetOrLookupShowAsync(episodeInfo.ShowName, episodeInfo.Year).ConfigureAwait(false);
+            var (showInfo, isConfident) = await GetOrLookupTvShowAsync(episodeInfo.ShowName, episodeInfo.Year).ConfigureAwait(false);
             if (showInfo is null)
             {
                 proposals.Add(new MediaProposal(MediaProposal.TypeTvShow, filePath, string.Empty, IsConfident: false, IsMatched: false));
@@ -80,7 +80,7 @@ namespace qbPortWeaver
                 proposals.Add(new MediaProposal(MediaProposal.TypeTvShow, filePath, proposedPath, isConfident));
         }
 
-        // Processes a single TV episode file
+        // Imports a single TV episode file into the library
         private async Task ProcessEpisodeFileAsync(string sourceFolder, string filePath)
         {
             var fileName = Path.GetFileName(filePath);
@@ -92,7 +92,7 @@ namespace qbPortWeaver
                 return;
             }
 
-            var (showInfo, isConfident) = await GetOrLookupShowAsync(episodeInfo.ShowName, episodeInfo.Year).ConfigureAwait(false);
+            var (showInfo, isConfident) = await GetOrLookupTvShowAsync(episodeInfo.ShowName, episodeInfo.Year).ConfigureAwait(false);
 
             if (showInfo is null) return;
             if (!isConfident)
@@ -123,15 +123,15 @@ namespace qbPortWeaver
                 : Path.Combine(_libraryPath, episodeFileName);
         }
 
-        // Returns a cached show lookup or performs a new TMDB search and caches the result
-        private async Task<(TvShowInfo? Info, bool IsConfident)> GetOrLookupShowAsync(string title, int? year)
+        // Returns a cached TV show lookup or performs a new TMDB search and caches the result
+        private async Task<(TvShowInfo? Info, bool IsConfident)> GetOrLookupTvShowAsync(string title, int? year)
         {
             var cacheKey = $"{title}|{year}";
-            if (TmdbCacheManager.TryGetShow(cacheKey, out var cached))
+            if (TmdbCacheManager.TryGetTvShow(cacheKey, out var cached))
                 return cached;
 
             var result = await LookupTvShowAsync(title, year).ConfigureAwait(false);
-            TmdbCacheManager.TryAddShow(cacheKey, result);
+            TmdbCacheManager.TryAddTvShow(cacheKey, result);
             return result;
         }
 

@@ -178,16 +178,15 @@ namespace qbPortWeaver
             }
             LogManager.Instance.LogMessage($"Scanning source folder: '{folder}'", LogLevel.Info, Subsystem.MediaManager);
 
-            // Scan is always preview-only; actual import is applied separately via ApplyProposalsAsync
             if (!string.IsNullOrWhiteSpace(ctx.MoviesLibraryPath) && items.MovieFiles.Length > 0)
             {
-                var movieProcessor = new MovieProcessor(ctx.Tmdb, dryRun: true, ctx.CreateFolders, ctx.MoviesLibraryPath, ctx.ImportMode);
+                var movieProcessor = new MovieProcessor(ctx.Tmdb, ctx.DryRun, ctx.CreateFolders, ctx.MoviesLibraryPath, ctx.ImportMode);
                 proposals.AddRange(await TryRunAsync(() => movieProcessor.ScanMoviesAsync(items.MovieFiles, onItemProcessed), folder));
             }
 
             if (!string.IsNullOrWhiteSpace(ctx.TvShowsLibraryPath) && items.TvFiles.Length > 0)
             {
-                var tvShowProcessor = new TvShowProcessor(ctx.Tmdb, dryRun: true, ctx.CreateFolders, ctx.TvShowsLibraryPath, ctx.ImportMode);
+                var tvShowProcessor = new TvShowProcessor(ctx.Tmdb, ctx.DryRun, ctx.CreateFolders, ctx.TvShowsLibraryPath, ctx.ImportMode);
                 proposals.AddRange(await TryRunAsync(() => tvShowProcessor.ScanTvShowsAsync(items.TvFiles, onItemProcessed), folder));
             }
 
@@ -329,7 +328,7 @@ namespace qbPortWeaver
                 MediaImporter.LoadSourceCache();
                 TmdbCacheManager.Load();
                 TmdbCacheManager.EvictNullMovies();
-                TmdbCacheManager.EvictNullShows();
+                TmdbCacheManager.EvictNullTvShows();
             }, cancellationToken).ConfigureAwait(false);
 
             var tmdb = new TmdbClient(apiKey);

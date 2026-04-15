@@ -23,7 +23,7 @@ namespace qbPortWeaver
         private static Dictionary<string, CacheEntry>? _libraryCache;
         private static volatile bool _libraryCacheDirty;
 
-        // Source scan cache: maps source file paths to their fingerprint so unchanged files are not re-hashed each cycle.
+        // Source cache: maps source file paths to their fingerprint so unchanged files are not re-hashed each cycle.
         private static Dictionary<string, CacheEntry>? _sourceCache;
         private static readonly object _sourceCacheLock = new();
         private static volatile bool _sourceCacheDirty;
@@ -196,7 +196,7 @@ namespace qbPortWeaver
 
         /// <summary>
         /// Returns <see langword="true"/> if the file is ready to process.
-        /// If the file's size and last-write timestamp match the source scan cache it was confirmed write-complete
+        /// If the file's size and last-write timestamp match the source cache it was confirmed write-complete
         /// on the previous scan and is approved without opening the file (no network round-trip).
         /// Files not in the cache fall back to <see cref="IsFileWriteComplete"/>.
         /// <para>Callers should supply a <see cref="FileInfo"/> obtained from <see cref="DirectoryInfo.EnumerateFiles(string,EnumerationOptions)"/>
@@ -339,7 +339,7 @@ namespace qbPortWeaver
             }
         }
 
-        // Loads the library fingerprint cache from disk. Initialises an empty cache on first run or if the file is corrupt.
+        // Loads the library cache from disk. Initialises an empty cache on first run or if the file is corrupt.
         private static void LoadLibraryCache()
         {
             if (_libraryCache is not null) return;
@@ -577,7 +577,7 @@ namespace qbPortWeaver
             (_sourceCachedCount, _sourceComputedCount);
 
         /// <summary>
-        /// Loads the source scan cache from disk. No-op if already loaded.
+        /// Loads the source cache from disk. No-op if already loaded.
         /// The cache maps source file paths to their fingerprints so unchanged files are not re-hashed on subsequent cycles.
         /// </summary>
         internal static void LoadSourceCache()
@@ -614,13 +614,13 @@ namespace qbPortWeaver
             catch (Exception ex)
             {
                 sw.Stop();
-                LogManager.Instance.LogMessage($"Source scan cache could not be loaded, starting fresh: {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
+                LogManager.Instance.LogMessage($"Source cache could not be loaded, starting fresh: {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
                 _sourceCache = new(StringComparer.OrdinalIgnoreCase);
             }
         }
 
         /// <summary>
-        /// Persists the source scan cache to disk, pruning entries for files that no longer exist.
+        /// Persists the source cache to disk, pruning entries for files that no longer exist.
         /// No-op if the cache has not changed since the last save (or load).
         /// </summary>
         internal static void SaveSourceCache()
@@ -650,46 +650,51 @@ namespace qbPortWeaver
                     ? snapshot.Where(kv => File.Exists(kv.Key)).ToDictionary(kv => kv.Key, kv => kv.Value, StringComparer.OrdinalIgnoreCase)
                     : snapshot;
 
-                var json = JsonSerializer.Serialize(toSave, _jsonWriteOptions);
-                lock (_cacheFileLock)
-                    AppConstants.WriteAtomic(GetCacheFilePath(SourceCacheFileName), json);
-
-                LogManager.Instance.LogDebug($"MediaImporter.SaveSourceCache: Saved {toSave.Count} entries", Subsystem.MediaManager);
+                WriteCacheToDisk(toSave, SourceCacheFileName, "SaveSourceCache");
             }
             catch (Exception ex)
             {
-                LogManager.Instance.LogMessage($"Failed to save source scan cache: {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
+                LogManager.Instance.LogMessage($"Failed to save source cache: {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
             }
         }
 
         /// <summary>
-        /// Persists the library fingerprint cache to disk.
+        /// Persists the library cache to disk.
         /// No-op if the cache has not changed since the last save (or load).
         /// </summary>
         internal static void SaveLibraryCache()
         {
             var cache = _libraryCache;
-            if (cache is null || !_libraryCacheDirty) return;
+            if (cache is null) return;
 
             try
             {
-                string json;
+                Dictionary<string, CacheEntry> snapshot;
+                bool wasDirty;
                 lock (_libraryLock)
                 {
-                    if (!_libraryCacheDirty) return; // double-check inside the lock: another thread may have saved and reset the flag
-                    _libraryCacheDirty = false; // reset before serializing so concurrent writes after this point re-set it
-                    json               = JsonSerializer.Serialize(cache, _jsonWriteOptions);
+                    snapshot       = new Dictionary<string, CacheEntry>(cache, StringComparer.OrdinalIgnoreCase);
+                    wasDirty       = _libraryCacheDirty;
+                    _libraryCacheDirty = false; // reset inside lock so concurrent writes after this point re-set it
                 }
 
-                lock (_cacheFileLock)
-                    AppConstants.WriteAtomic(GetCacheFilePath(LibraryCacheFileName), json);
+                if (!wasDirty) return;
 
-                LogManager.Instance.LogDebug($"MediaImporter.SaveLibraryCache: Saved {cache.Count} entries", Subsystem.MediaManager);
+                WriteCacheToDisk(snapshot, LibraryCacheFileName, "SaveLibraryCache");
             }
             catch (Exception ex)
             {
                 LogManager.Instance.LogMessage($"Failed to save library cache: {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
             }
+        }
+
+        // Serialises and atomically writes a cache snapshot to disk.
+        private static void WriteCacheToDisk(IDictionary<string, CacheEntry> entries, string fileName, string debugLabel)
+        {
+            var json = JsonSerializer.Serialize(entries, _jsonWriteOptions);
+            lock (_cacheFileLock)
+                AppConstants.WriteAtomic(GetCacheFilePath(fileName), json);
+            LogManager.Instance.LogDebug($"MediaImporter.{debugLabel}: Saved {entries.Count} entries", Subsystem.MediaManager);
         }
 
         /// <summary>

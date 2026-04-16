@@ -87,10 +87,7 @@ namespace qbPortWeaver
 
                     string paddedType = _levelLabels[(int)level];
                     string logEntry = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} | {paddedType} | {subsystem.PadRight(Subsystem.MaxLength)} | {message}{Environment.NewLine}";
-
-                    using var fs = new FileStream(LogFilePath, FileMode.Append, FileAccess.Write, FileShare.ReadWrite);
-                    using var writer = new StreamWriter(fs, Encoding.UTF8);
-                    writer.Write(logEntry);
+                    WriteRaw(logEntry);
                 }
                 catch (Exception ex)
                 {
@@ -106,9 +103,7 @@ namespace qbPortWeaver
             {
                 try
                 {
-                    using var fs = new FileStream(LogFilePath, FileMode.Append, FileAccess.Write, FileShare.ReadWrite);
-                    using var writer = new StreamWriter(fs, Encoding.UTF8);
-                    writer.Write(Environment.NewLine);
+                    WriteRaw(Environment.NewLine);
                 }
                 catch (Exception ex)
                 {
@@ -168,6 +163,14 @@ namespace qbPortWeaver
         {
             Instance.LogDebug(message, subsystem);
             return false;
+        }
+
+        // Appends text to the log file. Must be called while holding _lock.
+        private void WriteRaw(string text)
+        {
+            using var fs = new FileStream(LogFilePath, FileMode.Append, FileAccess.Write, FileShare.ReadWrite);
+            using var writer = new StreamWriter(fs, Encoding.UTF8);
+            writer.Write(text);
         }
 
         // Internal rotation check - must be called while holding _lock

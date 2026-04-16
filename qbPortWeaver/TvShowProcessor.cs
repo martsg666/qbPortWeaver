@@ -6,29 +6,13 @@ namespace qbPortWeaver
     /// Library/Show Name (Year) - SXXEXX.ext                              - without folder creation
     /// Files are transferred via hardlink, copy, or move depending on the configured import mode.
     /// </summary>
-    public sealed class TvShowProcessor
+    /// <param name="tmdb">TMDB client for TV show metadata lookups.</param>
+    /// <param name="dryRun">When true, logs what would happen without importing any files.</param>
+    /// <param name="createFolders">When true, imports files into Plex-recommended season subfolders.</param>
+    /// <param name="libraryPath">Target library folder for imported TV shows.</param>
+    /// <param name="importMode">Determines how files are transferred: hardlink, copy, or move.</param>
+    public sealed class TvShowProcessor(TmdbClient tmdb, bool dryRun, bool createFolders, string libraryPath, ImportMode importMode = ImportMode.Hardlink)
     {
-        private readonly TmdbClient _tmdb;
-        private readonly bool _dryRun;
-        private readonly bool _createFolders;
-        private readonly string _libraryPath;
-        private readonly ImportMode _importMode;
-
-        /// <summary>Creates a TV show processor that imports episodes into the specified library folder.</summary>
-        /// <param name="tmdb">TMDB client for TV show metadata lookups.</param>
-        /// <param name="dryRun">When true, logs what would happen without importing any files.</param>
-        /// <param name="createFolders">When true, imports files into Plex-recommended season subfolders.</param>
-        /// <param name="libraryPath">Target library folder for imported TV shows.</param>
-        /// <param name="importMode">Determines how files are transferred: hardlink, copy, or move.</param>
-        public TvShowProcessor(TmdbClient tmdb, bool dryRun, bool createFolders, string libraryPath, ImportMode importMode = ImportMode.Hardlink)
-        {
-            _tmdb          = tmdb;
-            _dryRun        = dryRun;
-            _createFolders = createFolders;
-            _libraryPath   = libraryPath;
-            _importMode    = importMode;
-        }
-
         /// <summary>
         /// Scans pre-classified TV episode files and returns import proposals without modifying any files.
         /// Only items not yet present in the library are included.
@@ -72,7 +56,7 @@ namespace qbPortWeaver
                 return;
             }
 
-            var proposedPath = BuildEpisodePath(filePath, info, episodeInfo, _libraryPath, _createFolders);
+            var proposedPath = BuildEpisodePath(filePath, info, episodeInfo, libraryPath, createFolders);
 
             if (MediaImporter.IsDuplicateFile(filePath, proposedPath)) return;
 
@@ -101,10 +85,10 @@ namespace qbPortWeaver
                 return;
             }
 
-            var targetPath = BuildEpisodePath(filePath, info, episodeInfo, _libraryPath, _createFolders);
-            MediaManagerService.ImportFile(filePath, targetPath, sourceFolder, _dryRun, _importMode);
+            var targetPath = BuildEpisodePath(filePath, info, episodeInfo, libraryPath, createFolders);
+            MediaManagerService.ImportFile(filePath, targetPath, sourceFolder, dryRun, importMode);
 
-            MediaManagerService.ImportCompanionFiles(sourceFolder, filePath, targetPath, _dryRun, _importMode);
+            MediaManagerService.ImportCompanionFiles(sourceFolder, filePath, targetPath, dryRun, importMode);
         }
 
         // Builds the library target path for an episode file.
@@ -141,7 +125,7 @@ namespace qbPortWeaver
             try
             {
                 var (info, isConfident) = await TmdbClient.SearchWithConfidenceAsync(
-                    title, year, _tmdb.SearchTvShowAsync, i => i.Year is not null, i => i.Title, i => i.VoteCount).ConfigureAwait(false);
+                    title, year, tmdb.SearchTvShowAsync, i => i.Year is not null, i => i.Title, i => i.VoteCount).ConfigureAwait(false);
 
                 if (info is null)
                 {

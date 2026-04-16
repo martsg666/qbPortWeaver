@@ -343,35 +343,40 @@ namespace qbPortWeaver
         private static void LoadLibraryCache()
         {
             if (_libraryCache is not null) return;
+            _libraryCache      = LoadCacheFromDisk(LibraryCacheFileName, "Library cache", "LoadLibraryCache");
+            _libraryCacheDirty = false;
+        }
 
+        // Loads a JSON-persisted cache from disk, returning an empty cache on missing file or corruption.
+        private static Dictionary<string, CacheEntry> LoadCacheFromDisk(string fileName, string label, string debugLabel)
+        {
             var sw = System.Diagnostics.Stopwatch.StartNew();
             try
             {
-                var filePath = GetCacheFilePath(LibraryCacheFileName);
+                var filePath = GetCacheFilePath(fileName);
                 if (!File.Exists(filePath))
                 {
-                    _libraryCache = new(StringComparer.OrdinalIgnoreCase);
                     sw.Stop();
-                    LogManager.Instance.LogMessage($"Library cache loaded: 0 entries in {sw.ElapsedMilliseconds}ms", LogLevel.Info, Subsystem.MediaManager);
-                    return;
+                    LogManager.Instance.LogMessage($"{label} loaded: 0 entries in {sw.ElapsedMilliseconds}ms", LogLevel.Info, Subsystem.MediaManager);
+                    return new(StringComparer.OrdinalIgnoreCase);
                 }
 
-                var json = File.ReadAllText(filePath);
+                var json    = File.ReadAllText(filePath);
                 var entries = JsonSerializer.Deserialize<Dictionary<string, CacheEntry>>(json);
-                _libraryCache = entries is not null
+                var cache   = entries is not null
                     ? new Dictionary<string, CacheEntry>(entries, StringComparer.OrdinalIgnoreCase)
                     : new(StringComparer.OrdinalIgnoreCase);
-                _libraryCacheDirty = false;
 
                 sw.Stop();
-                LogManager.Instance.LogDebug($"MediaImporter.LoadLibraryCache: Loaded {_libraryCache.Count} entries", Subsystem.MediaManager);
-                LogManager.Instance.LogMessage($"Library cache loaded: {_libraryCache.Count} entries in {sw.ElapsedMilliseconds}ms", LogLevel.Info, Subsystem.MediaManager);
+                LogManager.Instance.LogDebug($"MediaImporter.{debugLabel}: Loaded {cache.Count} entries", Subsystem.MediaManager);
+                LogManager.Instance.LogMessage($"{label} loaded: {cache.Count} entries in {sw.ElapsedMilliseconds}ms", LogLevel.Info, Subsystem.MediaManager);
+                return cache;
             }
             catch (Exception ex)
             {
                 sw.Stop();
-                LogManager.Instance.LogMessage($"Library cache could not be loaded, starting fresh: {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
-                _libraryCache = new(StringComparer.OrdinalIgnoreCase);
+                LogManager.Instance.LogMessage($"{label} could not be loaded, starting fresh: {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
+                return new(StringComparer.OrdinalIgnoreCase);
             }
         }
 
@@ -583,36 +588,8 @@ namespace qbPortWeaver
             Interlocked.Exchange(ref _sourceComputedCount, 0);
 
             if (_sourceCache is not null) return;
-
-            var sw = System.Diagnostics.Stopwatch.StartNew();
-            try
-            {
-                var filePath = GetCacheFilePath(SourceCacheFileName);
-                if (!File.Exists(filePath))
-                {
-                    _sourceCache = new(StringComparer.OrdinalIgnoreCase);
-                    sw.Stop();
-                    LogManager.Instance.LogMessage($"Source cache loaded: 0 entries in {sw.ElapsedMilliseconds}ms", LogLevel.Info, Subsystem.MediaManager);
-                    return;
-                }
-
-                var json = File.ReadAllText(filePath);
-                var entries = JsonSerializer.Deserialize<Dictionary<string, CacheEntry>>(json);
-                _sourceCache = entries is not null
-                    ? new Dictionary<string, CacheEntry>(entries, StringComparer.OrdinalIgnoreCase)
-                    : new(StringComparer.OrdinalIgnoreCase);
-                _sourceCacheDirty = false;
-
-                sw.Stop();
-                LogManager.Instance.LogDebug($"MediaImporter.LoadSourceCache: Loaded {_sourceCache.Count} entries", Subsystem.MediaManager);
-                LogManager.Instance.LogMessage($"Source cache loaded: {_sourceCache.Count} entries in {sw.ElapsedMilliseconds}ms", LogLevel.Info, Subsystem.MediaManager);
-            }
-            catch (Exception ex)
-            {
-                sw.Stop();
-                LogManager.Instance.LogMessage($"Source cache could not be loaded, starting fresh: {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
-                _sourceCache = new(StringComparer.OrdinalIgnoreCase);
-            }
+            _sourceCache      = LoadCacheFromDisk(SourceCacheFileName, "Source cache", "LoadSourceCache");
+            _sourceCacheDirty = false;
         }
 
         /// <summary>

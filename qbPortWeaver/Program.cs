@@ -3,7 +3,7 @@ namespace qbPortWeaver
     internal static class Program
     {
         [STAThread]
-        static void Main(string[] args)
+        static void Main()
         {
             Application.SetColorMode(ReadColorTheme());
             ApplicationConfiguration.Initialize();
@@ -15,7 +15,7 @@ namespace qbPortWeaver
             // The OS transfers ownership to us when the mutex is abandoned, so the catch is safe.
             using var mutex = new Mutex(false, "Global\\qbPortWeaver_SingleInstance");
             bool isNewInstance;
-            try   { isNewInstance = mutex.WaitOne(0, false); }
+            try   { isNewInstance = mutex.WaitOne(0); }
             catch (AbandonedMutexException) { isNewInstance = true; }
 
             if (!isNewInstance)

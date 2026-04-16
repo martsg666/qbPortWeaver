@@ -172,10 +172,7 @@ namespace qbPortWeaver
             try
             {
                 var jsonBody = $"{{\"listen_port\": {port}}}";
-                using var content = new FormUrlEncodedContent(new[]
-                {
-                    new KeyValuePair<string, string>("json", jsonBody)
-                });
+                using var content = new FormUrlEncodedContent([new("json", jsonBody)]);
 
                 using var response = await _httpClient.PostAsync($"{_url}{ApiSetPreferences}", content).ConfigureAwait(false);
                 if (!response.IsSuccessStatusCode)
@@ -249,11 +246,11 @@ namespace qbPortWeaver
         {
             try
             {
-                using var content = new FormUrlEncodedContent(new[]
-                {
-                    new KeyValuePair<string, string>("username", _userName),
-                    new KeyValuePair<string, string>("password", _password)
-                });
+                using var content = new FormUrlEncodedContent(
+                [
+                    new("username", _userName),
+                    new("password", _password)
+                ]);
 
                 using var response = await _httpClient.PostAsync($"{_url}{ApiAuthLogin}", content).ConfigureAwait(false);
 

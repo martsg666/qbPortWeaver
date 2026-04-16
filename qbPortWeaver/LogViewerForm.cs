@@ -77,13 +77,12 @@ namespace qbPortWeaver
 
         protected override void OnFormClosed(FormClosedEventArgs e)
         {
-            // Disable watcher events before the form is fully disposed to prevent callbacks on a dead form.
-            // Disposal is handled in Dispose(bool) in the Designer file.
+            // Stop events/ticks before the form is fully disposed to prevent callbacks on a dead form.
+            // Actual disposal is handled in Dispose(bool) in the Designer file.
             if (_watcher is not null)
                 _watcher.EnableRaisingEvents = false;
 
             _searchDebounceTimer?.Stop();
-            _searchDebounceTimer?.Dispose();
 
             base.OnFormClosed(e);
         }
@@ -390,10 +389,7 @@ namespace qbPortWeaver
                     {
                         using var fs     = new FileStream(_logFilePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
                         using var reader = new StreamReader(fs, Encoding.UTF8);
-                        string[] lines   = reader.ReadToEnd()
-                                                 .Split('\n', StringSplitOptions.RemoveEmptyEntries)
-                                                 .Select(l => l.TrimEnd('\r'))
-                                                 .ToArray();
+                        string[] lines    = ParseLogLines(reader.ReadToEnd());
                         string[] filtered = lines.Where(l => IsLineVisibleWithFilters(l, filters, subsystemFilter)).ToArray();
                         return (BuildRtf(filtered, colors), fs.Position, lines);
                     }
@@ -487,9 +483,7 @@ namespace qbPortWeaver
                     // 'r' line in the viewer (last bytes of the prior entry re-read as a new line).
                     _lastReadPosition = fs.Position - Encoding.UTF8.GetByteCount(raw[(lastNl + 1)..]);
 
-                    newLines = complete.Split('\n', StringSplitOptions.RemoveEmptyEntries)
-                                       .Select(l => l.TrimEnd('\r'))
-                                       .ToArray();
+                    newLines = ParseLogLines(complete);
                 }
 
                 if (newLines.Length == 0 || IsDisposed)
@@ -578,6 +572,12 @@ namespace qbPortWeaver
                 rtbLog.Invalidate();
             }
         }
+
+        // Splits raw log content on newlines and strips trailing \r so CRLF and LF files produce identical lines.
+        private static string[] ParseLogLines(string raw) =>
+            raw.Split('\n', StringSplitOptions.RemoveEmptyEntries)
+               .Select(l => l.TrimEnd('\r'))
+               .ToArray();
 
         // Returns the 0-based colour index for a log line, used by BuildRtf and IsLineVisibleWithFilters.
         // Log format: "yyyy-MM-dd HH:mm:ss | LEVEL | Subsystem     | message" (level padded to 5 chars)

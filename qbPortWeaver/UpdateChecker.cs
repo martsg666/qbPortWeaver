@@ -54,13 +54,13 @@ namespace qbPortWeaver
 
                 string tagName    = tagElement.GetString() ?? "";
                 string releaseUrl = urlElement.GetString() ?? "";
+                string versionStr = tagName.TrimStart('v', 'V');
 
-                var info = new LatestReleaseInfo(tagName, releaseUrl, false);
-                bool isNewer = Version.TryParse(info.Version, out var latest) &&
+                bool isNewer = Version.TryParse(versionStr, out var latest) &&
                                Version.TryParse(AppConstants.AppVersion, out var current) &&
                                latest > current;
 
-                return info with { IsNewer = isNewer };
+                return new LatestReleaseInfo(tagName, releaseUrl, isNewer);
             }
             catch (Exception ex)
             {

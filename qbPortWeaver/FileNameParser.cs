@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.RegularExpressions;
 
 namespace qbPortWeaver
@@ -80,7 +81,7 @@ namespace qbPortWeaver
         /// </summary>
         internal static string NormalizeTitleForMatch(string title)
         {
-            var sb = new System.Text.StringBuilder(title.Length);
+            var sb = new StringBuilder(title.Length);
             bool lastWasSpace = true; // start true to avoid a leading space
             for (int i = 0; i < title.Length; i++)
             {
@@ -117,7 +118,7 @@ namespace qbPortWeaver
         /// <summary>Strips characters that are invalid in file names and collapses runs of spaces. Replaces <c>:</c> with <c> -</c> to preserve subtitle separators.</summary>
         public static string SanitizeFileName(string name)
         {
-            var sb = new System.Text.StringBuilder(name.Length + 2); // +2 for potential colon expansion
+            var sb = new StringBuilder(name.Length + 2); // +2 for potential colon expansion
             for (int i = 0; i < name.Length; i++)
             {
                 char c = name[i];
@@ -158,20 +159,18 @@ namespace qbPortWeaver
         /// </summary>
         public static bool IsPlexFormatted(string name)
         {
-            var ext = Path.GetExtension(name);
-            if (_videoExtensions.Contains(ext))
-                name = Path.GetFileNameWithoutExtension(name);
-
+            name = StripVideoExtension(name);
             return PlexMovieNameRegex().IsMatch(name) || PlexEpisodeNameRegex().IsMatch(name);
         }
+
+        // Returns the filename without its extension if it is a recognized video file; otherwise returns the name unchanged.
+        private static string StripVideoExtension(string name) =>
+            _videoExtensions.Contains(Path.GetExtension(name)) ? Path.GetFileNameWithoutExtension(name) : name;
 
         /// <summary>Parses a TV episode filename into show name, season, and episode number. Returns null if no episode pattern is found or if no usable show name could be extracted.</summary>
         public static TvShowEpisodeInfo? ParseTvShowEpisode(string name)
         {
-            var ext = Path.GetExtension(name);
-            if (_videoExtensions.Contains(ext))
-                name = Path.GetFileNameWithoutExtension(name);
-
+            name = StripVideoExtension(name);
             name = StripSitePrefix(name);
 
             var match = TvShowEpisodeRegex().Match(name);
@@ -212,10 +211,7 @@ namespace qbPortWeaver
         /// <summary>Extracts a probable movie title and optional release year from a filename or folder name.</summary>
         public static (string Title, int? Year) ParseMovie(string name)
         {
-            var ext = Path.GetExtension(name);
-            if (_videoExtensions.Contains(ext))
-                name = Path.GetFileNameWithoutExtension(name);
-
+            name = StripVideoExtension(name);
             name = StripSitePrefix(name);
             name = StripLanguageSuffix(name);
 

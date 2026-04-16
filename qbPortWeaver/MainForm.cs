@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Runtime.InteropServices;
 
 namespace qbPortWeaver
@@ -16,8 +17,9 @@ namespace qbPortWeaver
         private Icon? _iconWarning;
         private Icon? _iconError;
 
-        // Services
-        private readonly PortSyncService _portSyncService;
+        // Services (assigned in the ctor after the designer guard; null! initializer keeps the field
+        // non-nullable for runtime callers while satisfying flow analysis on the design-time early-return path)
+        private readonly PortSyncService _portSyncService = null!;
 
         // Child forms (null when closed)
         private LogViewerForm? _logViewerForm;
@@ -29,17 +31,17 @@ namespace qbPortWeaver
         private volatile TrayStatus? _lastSyncStatus;
 
         // Cancellation token for the inter-cycle delay - cancelled by manual sync requests to skip the wait
-        private volatile CancellationTokenSource _delayCts = new CancellationTokenSource();
+        private volatile CancellationTokenSource _delayCts = new();
 
         // Semaphore to prevent concurrent sync cycles. Also serialises access to
         // PortSyncService instance state (e.g. _lastKnownNatPmpManager) - see PortSyncService.cs.
-        private readonly SemaphoreSlim _updateSemaphore = new SemaphoreSlim(1, 1);
+        private readonly SemaphoreSlim _updateSemaphore = new(1, 1);
 
         // Manual sync triggered flag (thread-safe with volatile)
         private volatile bool _manualSyncTriggered;
 
         // Shutdown cancellation token to signal graceful exit
-        private readonly CancellationTokenSource _shutdownCts = new CancellationTokenSource();
+        private readonly CancellationTokenSource _shutdownCts = new();
 
         // Guard so SetVisibleCore fires OnLoad exactly once
         private bool _formLoaded;
@@ -53,6 +55,10 @@ namespace qbPortWeaver
         public MainForm()
         {
             InitializeComponent();
+
+            // Guard against the Visual Studio designer instantiating MainForm: runtime-only side effects
+            // (log file creation, registry writes, live tray icon) must not fire at design time.
+            if (LicenseManager.UsageMode == LicenseUsageMode.Designtime) return;
 
             LogManager.Initialize(AppConstants.GetLogFilePath());
 
@@ -297,10 +303,7 @@ namespace qbPortWeaver
             }
         }
 
-        private void exit_Click(object? sender, EventArgs e)
-        {
-            Close();
-        }
+        private void exit_Click(object? sender, EventArgs e) => Close();
 
         // Called by PortSyncService when a sync cycle completes
         private void OnSyncCompleted(TrayStatus status)

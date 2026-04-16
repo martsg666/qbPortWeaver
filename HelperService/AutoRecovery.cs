@@ -130,8 +130,7 @@ internal static partial class AutoRecovery
             logger.LogInfo($"Service '{serviceName}' is already stopping - waiting");
             try
             {
-                await Task.Run(() => sc.WaitForStatus(ServiceControllerStatus.Stopped,
-                    TimeSpan.FromMilliseconds(ServiceOperationTimeoutMs))).ConfigureAwait(false);
+                await WaitForStatusAsync(sc, ServiceControllerStatus.Stopped).ConfigureAwait(false);
                 logger.LogInfo($"Service '{serviceName}' stopped");
                 return;
             }
@@ -152,8 +151,7 @@ internal static partial class AutoRecovery
             logger.LogInfo($"Service '{serviceName}' is starting - waiting before stopping");
             try
             {
-                await Task.Run(() => sc.WaitForStatus(ServiceControllerStatus.Running,
-                    TimeSpan.FromMilliseconds(ServiceOperationTimeoutMs))).ConfigureAwait(false);
+                await WaitForStatusAsync(sc, ServiceControllerStatus.Running).ConfigureAwait(false);
             }
             catch (System.ServiceProcess.TimeoutException)
             {
@@ -177,8 +175,7 @@ internal static partial class AutoRecovery
 
         try
         {
-            await Task.Run(() => sc.WaitForStatus(ServiceControllerStatus.Stopped,
-                TimeSpan.FromMilliseconds(ServiceOperationTimeoutMs))).ConfigureAwait(false);
+            await WaitForStatusAsync(sc, ServiceControllerStatus.Stopped).ConfigureAwait(false);
             logger.LogInfo($"Service '{serviceName}' stopped");
         }
         catch (System.ServiceProcess.TimeoutException)
@@ -194,8 +191,7 @@ internal static partial class AutoRecovery
     {
         try
         {
-            await Task.Run(() => sc.WaitForStatus(ServiceControllerStatus.Stopped,
-                TimeSpan.FromMilliseconds(ServiceOperationTimeoutMs))).ConfigureAwait(false);
+            await WaitForStatusAsync(sc, ServiceControllerStatus.Stopped).ConfigureAwait(false);
             logger.LogInfo($"Service '{serviceName}' force-stopped");
         }
         catch (System.ServiceProcess.TimeoutException)
@@ -222,8 +218,7 @@ internal static partial class AutoRecovery
             logger.LogInfo($"Service '{serviceName}' is already starting (likely SCM auto-recovery) - waiting");
             try
             {
-                await Task.Run(() => sc.WaitForStatus(ServiceControllerStatus.Running,
-                    TimeSpan.FromMilliseconds(ServiceOperationTimeoutMs))).ConfigureAwait(false);
+                await WaitForStatusAsync(sc, ServiceControllerStatus.Running).ConfigureAwait(false);
                 logger.LogInfo($"Service '{serviceName}' started (by SCM)");
             }
             catch (System.ServiceProcess.TimeoutException)
@@ -242,8 +237,7 @@ internal static partial class AutoRecovery
             logger.LogInfo($"Service '{serviceName}' is still stopping - waiting");
             try
             {
-                await Task.Run(() => sc.WaitForStatus(ServiceControllerStatus.Stopped,
-                    TimeSpan.FromMilliseconds(ServiceOperationTimeoutMs))).ConfigureAwait(false);
+                await WaitForStatusAsync(sc, ServiceControllerStatus.Stopped).ConfigureAwait(false);
             }
             catch (System.ServiceProcess.TimeoutException)
             {
@@ -254,8 +248,7 @@ internal static partial class AutoRecovery
         sc.Start();
         try
         {
-            await Task.Run(() => sc.WaitForStatus(ServiceControllerStatus.Running,
-                TimeSpan.FromMilliseconds(ServiceOperationTimeoutMs))).ConfigureAwait(false);
+            await WaitForStatusAsync(sc, ServiceControllerStatus.Running).ConfigureAwait(false);
             logger.LogInfo($"Service '{serviceName}' started");
         }
         catch (System.ServiceProcess.TimeoutException)
@@ -263,6 +256,10 @@ internal static partial class AutoRecovery
             logger.LogWarn($"Service '{serviceName}' start timed out - service may still be starting");
         }
     }
+
+    // Wraps the synchronous ServiceController.WaitForStatus in Task.Run so it doesn't block a BackgroundService thread.
+    private static Task WaitForStatusAsync(ServiceController sc, ServiceControllerStatus status) =>
+        Task.Run(() => sc.WaitForStatus(status, TimeSpan.FromMilliseconds(ServiceOperationTimeoutMs)));
 
     // Called by StopServiceAsync when the service doesn't respond to a clean stop
     // or is stuck in a pending state. Resolves the service's host PID via

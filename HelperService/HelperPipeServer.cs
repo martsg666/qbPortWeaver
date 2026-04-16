@@ -14,7 +14,7 @@ namespace qbPortWeaver.HelperService;
 /// The log file path is sent per-call so the helper writes into the same log file as the
 /// tray app, regardless of which user profile is active.
 /// </summary>
-internal sealed class HelperPipeServer : BackgroundService
+internal sealed class HelperPipeServer(ILogger<HelperPipeServer> logger) : BackgroundService
 {
     internal const string PipeName = "qbPortWeaverHelper"; // Must match AppConstants.HelperServicePipeName in qbPortWeaver
     private  const string ExpectedLogFileName = "qbPortWeaver.log"; // Must match AppConstants.LogFileName in qbPortWeaver
@@ -22,13 +22,9 @@ internal sealed class HelperPipeServer : BackgroundService
     private const string ActionRestart      = "restart";       // Must match AutoRecoveryManager.ActionRestart in qbPortWeaver
     private const string ActionCycleAdapter = "cycle-adapter"; // Must match AutoRecoveryManager.ActionCycleAdapter in qbPortWeaver
 
-    private readonly ILogger<HelperPipeServer> _logger;
-
-    public HelperPipeServer(ILogger<HelperPipeServer> logger) => _logger = logger;
-
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        _logger.LogInformation("qbPortWeaver Helper Service started");
+        logger.LogInformation("qbPortWeaver Helper Service started");
         while (!stoppingToken.IsCancellationRequested)
         {
             try
@@ -41,11 +37,11 @@ internal sealed class HelperPipeServer : BackgroundService
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Pipe server error - retrying");
+                logger.LogError(ex, "Pipe server error - retrying");
                 await Task.Delay(1000, stoppingToken).ConfigureAwait(false);
             }
         }
-        _logger.LogInformation("qbPortWeaver Helper Service stopped");
+        logger.LogInformation("qbPortWeaver Helper Service stopped");
     }
 
     private async Task ServeOneConnectionAsync(CancellationToken ct)
@@ -78,7 +74,7 @@ internal sealed class HelperPipeServer : BackgroundService
         var parts = message.Split('|', 3);
         if (parts.Length != 3)
         {
-            _logger.LogWarning("Received malformed pipe message");
+            logger.LogWarning("Received malformed pipe message");
             return;
         }
 
@@ -100,7 +96,7 @@ internal sealed class HelperPipeServer : BackgroundService
             || !logFilePath.StartsWith(usersRoot + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)
             || logFilePath.IndexOf(@"\AppData\Local\qbPortWeaver\", StringComparison.OrdinalIgnoreCase) < 0)
         {
-            _logger.LogWarning("Rejected unexpected log file path '{Path}'", logFilePath);
+            logger.LogWarning("Rejected unexpected log file path '{Path}'", logFilePath);
             return;
         }
 
@@ -111,11 +107,11 @@ internal sealed class HelperPipeServer : BackgroundService
         // any level (e.g. AppData, AppData\Local, or the user profile directory itself).
         if (IsReparsePoint(logFilePath))
         {
-            _logger.LogWarning("Rejected log file path containing a reparse point '{Path}'", logFilePath);
+            logger.LogWarning("Rejected log file path containing a reparse point '{Path}'", logFilePath);
             return;
         }
 
-        var logger = new HelperLogger(logFilePath);
+        var helperLogger = new HelperLogger(logFilePath);
 
         switch (action)
         {
@@ -123,23 +119,23 @@ internal sealed class HelperPipeServer : BackgroundService
                 string? serviceName = AutoRecovery.FindServiceForToken(target);
                 if (serviceName is null)
                 {
-                    _logger.LogWarning("Rejected restart request for unknown provider token '{Token}'", target);
+                    logger.LogWarning("Rejected restart request for unknown provider token '{Token}'", target);
                     return;
                 }
-                await AutoRecovery.RestartServiceAsync(serviceName, logger).ConfigureAwait(false);
+                await AutoRecovery.RestartServiceAsync(serviceName, helperLogger).ConfigureAwait(false);
                 break;
 
             case ActionCycleAdapter:
                 if (string.IsNullOrWhiteSpace(target))
                 {
-                    _logger.LogWarning("Rejected cycle-adapter request with empty adapter name");
+                    logger.LogWarning("Rejected cycle-adapter request with empty adapter name");
                     return;
                 }
-                await AutoRecovery.CycleAdapterAsync(target, logger).ConfigureAwait(false);
+                await AutoRecovery.CycleAdapterAsync(target, helperLogger).ConfigureAwait(false);
                 break;
 
             default:
-                _logger.LogWarning("Rejected unknown action '{Action}'", action);
+                logger.LogWarning("Rejected unknown action '{Action}'", action);
                 break;
         }
     }

@@ -1,5 +1,9 @@
 namespace qbPortWeaver
 {
+    /// <summary>
+    /// Provider-agnostic contract for reading the forwarded port and driving auto-recovery
+    /// for a VPN tunnel (ProtonVPN, PIA) or NAT-PMP gateway.
+    /// </summary>
     public interface IVpnManager
     {
         /// <summary>

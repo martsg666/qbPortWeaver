@@ -282,12 +282,12 @@ MediaManagerService.ImportAsync / ScanAsync
  │   │   ├─ ClassifyVideoFiles (self-describing vs folder-dependent)
  │   │   ├─ GetOrLookupMovieAsync → LookupMovieAsync
  │   │   │   └─ TmdbClient.SearchWithConfidenceAsync (confidence tracking + fallback strategies)
- │   │   └─ MediaManagerService.ImportFileWithLog / MediaProposal
+ │   │   └─ MediaManagerService.ImportFile / MediaProposal
  │   └─ TvShowProcessor.ProcessTvShowsAsync / ScanTvShowsAsync
  │       ├─ FileNameParser.ParseTvShowEpisode (per file)
- │       ├─ GetOrLookupShowAsync → LookupTvShowAsync
+ │       ├─ GetOrLookupTvShowAsync → LookupTvShowAsync
  │       │   └─ TmdbClient.SearchWithConfidenceAsync (confidence tracking + fallback strategies)
- │       └─ MediaManagerService.ImportFileWithLog / MediaProposal
+ │       └─ MediaManagerService.ImportFile / MediaProposal
  │
  ├─ TmdbCacheManager.Save
  ├─ MediaImporter.SaveSourceCache

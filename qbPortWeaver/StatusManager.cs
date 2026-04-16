@@ -5,10 +5,7 @@ namespace qbPortWeaver
     /// <summary>Writes the sync cycle status snapshot to a JSON file for external tooling.</summary>
     public static class StatusManager
     {
-        private static readonly JsonSerializerOptions _jsonOptions = new JsonSerializerOptions
-        {
-            WriteIndented = true
-        };
+        private static readonly JsonSerializerOptions _jsonOptions = new() { WriteIndented = true };
 
         /// <summary>Serializes <paramref name="status"/> to the JSON status file using an atomic temp-file write.</summary>
         public static void Write(IReadOnlyDictionary<string, object?> status)

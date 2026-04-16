@@ -87,18 +87,17 @@ namespace qbPortWeaver
                     lnkAuthor.Text = AppConstants.GitHubRepoOwner;
 
                 var info = releaseTask.Result;
+                lblLatestVersionValue.ForeColor = SystemColors.ControlText;
                 if (info is null)
                 {
-                    lblLatestVersionValue.Text      = "Unable to check";
-                    lblLatestVersionValue.ForeColor = SystemColors.ControlText;
-                    lblStatusValue.Text             = "Check failed";
-                    lblStatusValue.ForeColor        = SystemColors.ControlText;
-                    btnCheckForUpdates.Text         = "Check for Updates";
+                    lblLatestVersionValue.Text = "Unable to check";
+                    lblStatusValue.Text        = "Check failed";
+                    lblStatusValue.ForeColor   = SystemColors.ControlText;
+                    btnCheckForUpdates.Text    = "Check for Updates";
                 }
                 else
                 {
-                    lblLatestVersionValue.Text      = info.Version;
-                    lblLatestVersionValue.ForeColor = SystemColors.ControlText;
+                    lblLatestVersionValue.Text = info.Version;
 
                     if (info.IsNewer)
                     {

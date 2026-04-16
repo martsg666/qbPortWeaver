@@ -34,10 +34,10 @@ namespace qbPortWeaver
             // Debug.Assert catches a mismatch between linkText and CommunityText at development
             // time; without it, IndexOf returning -1 would silently make the entire label a link.
             const string linkText = "star it on GitHub";
-            int linkStart = lnkCommunity.Text.IndexOf(linkText, StringComparison.Ordinal);
+            int linkStart = CommunityText.IndexOf(linkText, StringComparison.Ordinal);
             System.Diagnostics.Debug.Assert(linkStart >= 0, $"WhatsNewForm: link text '{linkText}' not found in CommunityText");
             if (linkStart >= 0)
-                lnkCommunity.LinkArea = new LinkArea(linkStart, linkText.Length);
+                lnkCommunity.LinkArea = new(linkStart, linkText.Length);
 
             if (AppConstants.IsDarkModeEnabled())
                 lnkCommunity.LinkColor = Color.CornflowerBlue;

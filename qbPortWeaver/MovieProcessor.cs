@@ -6,29 +6,13 @@ namespace qbPortWeaver
     /// Library/Title (Year).ext               - without folder creation
     /// Files are transferred via hardlink, copy, or move depending on the configured import mode.
     /// </summary>
-    public sealed class MovieProcessor
+    /// <param name="tmdb">TMDB client for movie metadata lookups.</param>
+    /// <param name="dryRun">When true, logs what would happen without importing any files.</param>
+    /// <param name="createFolders">When true, imports files into Plex-recommended subfolders.</param>
+    /// <param name="libraryPath">Target library folder for imported movies.</param>
+    /// <param name="importMode">Determines how files are transferred: hardlink, copy, or move.</param>
+    public sealed class MovieProcessor(TmdbClient tmdb, bool dryRun, bool createFolders, string libraryPath, ImportMode importMode = ImportMode.Hardlink)
     {
-        private readonly TmdbClient _tmdb;
-        private readonly bool _dryRun;
-        private readonly bool _createFolders;
-        private readonly string _libraryPath;
-        private readonly ImportMode _importMode;
-
-        /// <summary>Creates a movie processor that imports files into the specified library folder.</summary>
-        /// <param name="tmdb">TMDB client for movie metadata lookups.</param>
-        /// <param name="dryRun">When true, logs what would happen without importing any files.</param>
-        /// <param name="createFolders">When true, imports files into Plex-recommended subfolders.</param>
-        /// <param name="libraryPath">Target library folder for imported movies.</param>
-        /// <param name="importMode">Determines how files are transferred: hardlink, copy, or move.</param>
-        public MovieProcessor(TmdbClient tmdb, bool dryRun, bool createFolders, string libraryPath, ImportMode importMode = ImportMode.Hardlink)
-        {
-            _tmdb          = tmdb;
-            _dryRun        = dryRun;
-            _createFolders = createFolders;
-            _libraryPath   = libraryPath;
-            _importMode    = importMode;
-        }
-
         /// <summary>
         /// Scans pre-classified movie files and returns import proposals without modifying any files.
         /// Only items not yet present in the library are included.
@@ -41,7 +25,7 @@ namespace qbPortWeaver
 
             foreach (var (file, title, year) in selfDescribing)
             {
-                await AddMovieScanProposalAsync(file, title, year, proposals).ConfigureAwait(false);
+                await ScanMovieFileAsync(file, title, year, proposals).ConfigureAwait(false);
                 onItemProcessed?.Invoke();
             }
 
@@ -60,7 +44,7 @@ namespace qbPortWeaver
             var (selfDescribing, folderDependent) = ClassifyVideoFiles(movieFiles);
 
             foreach (var (file, title, year) in selfDescribing)
-                await ProcessSingleMovieFileAsync(sourceFolder, file, title, year).ConfigureAwait(false);
+                await ProcessMovieFileAsync(sourceFolder, file, title, year).ConfigureAwait(false);
 
             foreach (var group in folderDependent.GroupBy(f => Path.GetDirectoryName(f)!, StringComparer.OrdinalIgnoreCase))
                 await ProcessFolderDependentFilesAsync(sourceFolder, group.Key, group.ToList()).ConfigureAwait(false);
@@ -89,8 +73,8 @@ namespace qbPortWeaver
             return (selfDescribing, folderDependent);
         }
 
-        // Proposal builder for self-describing movie files
-        private async Task AddMovieScanProposalAsync(string filePath, string title, int? year, List<MediaProposal> proposals)
+        // Scans a single self-describing movie file and adds proposals for unmatched or new items
+        private async Task ScanMovieFileAsync(string filePath, string title, int? year, List<MediaProposal> proposals)
         {
             var (info, isConfident) = await GetOrLookupMovieAsync(title, year).ConfigureAwait(false);
             if (info is null)
@@ -99,7 +83,7 @@ namespace qbPortWeaver
                 return;
             }
 
-            var proposedPath = BuildStandaloneMoviePath(filePath, info);
+            var proposedPath = BuildStandaloneMoviePath(filePath, info, libraryPath, createFolders);
 
             if (MediaImporter.IsDuplicateFile(filePath, proposedPath)) return;
 
@@ -150,8 +134,8 @@ namespace qbPortWeaver
             }
         }
 
-        // Processes a single self-describing movie file
-        private async Task ProcessSingleMovieFileAsync(string sourceFolder, string filePath, string title, int? year)
+        // Imports a single self-describing movie file into the library
+        private async Task ProcessMovieFileAsync(string sourceFolder, string filePath, string title, int? year)
         {
             var (info, isConfident) = await GetOrLookupMovieAsync(title, year).ConfigureAwait(false);
             if (info is null) return;
@@ -161,10 +145,10 @@ namespace qbPortWeaver
                 return;
             }
 
-            var targetPath = BuildStandaloneMoviePath(filePath, info);
-            MediaManagerService.ImportFileWithLog(filePath, targetPath, sourceFolder, _dryRun, _importMode);
+            var targetPath = BuildStandaloneMoviePath(filePath, info, libraryPath, createFolders);
+            MediaManagerService.ImportFile(filePath, targetPath, sourceFolder, dryRun, importMode);
 
-            MediaManagerService.ImportCompanionFiles(sourceFolder, filePath, targetPath, _dryRun, _importMode);
+            MediaManagerService.ImportCompanionFiles(sourceFolder, filePath, targetPath, dryRun, importMode);
         }
 
         // Processes folder-dependent files using the parent folder name for TMDB lookup
@@ -182,20 +166,21 @@ namespace qbPortWeaver
             }
 
             foreach (var file in folderDependent)
-                MediaManagerService.ImportFileWithLog(file, BuildFolderMoviePath(file, info), sourceFolder, _dryRun, _importMode);
+                MediaManagerService.ImportFile(file, BuildFolderMoviePath(file, info), sourceFolder, dryRun, importMode);
 
             var plexFolderName = FileNameParser.FormatPlexName(info.Title, info.Year);
-            ImportFolderCompanionFiles(sourceFolder, dirPath, Path.GetFileNameWithoutExtension(folderDependent[0]), plexFolderName);
+            ImportFolderCompanionFiles(sourceFolder, dirPath, folderDependent, plexFolderName);
         }
 
-        // Builds the library target path for a standalone movie file
-        private string BuildStandaloneMoviePath(string filePath, MovieInfo info)
+        // Builds the library target path for a standalone movie file.
+        // Exposed for MediaManagerForm rematch logic to share the same naming convention.
+        internal static string BuildStandaloneMoviePath(string filePath, MovieInfo info, string libraryPath, bool createFolders)
         {
             var ext      = Path.GetExtension(filePath);
             var plexName = FileNameParser.FormatPlexName(info.Title, info.Year);
-            return _createFolders
-                ? Path.Combine(_libraryPath, plexName, $"{plexName}{ext}")
-                : Path.Combine(_libraryPath, $"{plexName}{ext}");
+            return createFolders
+                ? Path.Combine(libraryPath, plexName, $"{plexName}{ext}")
+                : Path.Combine(libraryPath, $"{plexName}{ext}");
         }
 
         // Builds the library target path for a movie file inside a folder (supports multi-part suffixes).
@@ -206,14 +191,20 @@ namespace qbPortWeaver
             var ext            = Path.GetExtension(filePath);
             var plexFolderName = FileNameParser.FormatPlexName(info.Title, info.Year);
             var partSuffix     = ExtractPartSuffix(Path.GetFileName(filePath));
-            var newFileName    = partSuffix is not null
-                ? $"{plexFolderName} - {partSuffix}{ext}"
-                : $"{plexFolderName}{ext}";
-            return Path.Combine(_libraryPath, plexFolderName, newFileName);
+            return Path.Combine(libraryPath, plexFolderName, BuildFolderMovieFileName(plexFolderName, partSuffix, ext));
         }
 
-        // Imports subtitle files from a movie folder, renaming them to match the Plex folder name
-        private void ImportFolderCompanionFiles(string sourceFolder, string sourceDir, string firstVideoBase, string plexFolderName)
+        // Shared naming convention for folder-movie files and their companion subtitles.
+        // Produces "Title (Year) - cd1.ext" for multi-part files, "Title (Year).ext" otherwise.
+        private static string BuildFolderMovieFileName(string plexFolderName, string? partSuffix, string extension) =>
+            partSuffix is not null
+                ? $"{plexFolderName} - {partSuffix}{extension}"
+                : $"{plexFolderName}{extension}";
+
+        // Imports subtitle files from a movie folder, renaming each to match its corresponding video.
+        // Multi-part folders produce per-part subtitles (e.g. cd1.srt -> Title (Year) - cd1.srt) so each
+        // subtitle lines up with the video it belongs to.
+        private void ImportFolderCompanionFiles(string sourceFolder, string sourceDir, List<string> videoFiles, string plexFolderName)
         {
             string[] files;
             try
@@ -226,14 +217,23 @@ namespace qbPortWeaver
                 return;
             }
 
-            foreach (var file in files.Where(FileNameParser.IsSubtitleFile))
-            {
-                var fileName = Path.GetFileName(file);
-                if (!fileName.StartsWith(firstVideoBase, StringComparison.OrdinalIgnoreCase)) continue;
+            var subtitles = files.Where(FileNameParser.IsSubtitleFile).ToArray();
+            if (subtitles.Length == 0) return;
 
-                var suffix     = fileName[firstVideoBase.Length..];
-                var targetPath = Path.Combine(_libraryPath, plexFolderName, plexFolderName + suffix);
-                MediaManagerService.ImportFileWithLog(file, targetPath, sourceFolder, _dryRun, _importMode);
+            foreach (var video in videoFiles)
+            {
+                var videoBase  = Path.GetFileNameWithoutExtension(video);
+                var partSuffix = ExtractPartSuffix(Path.GetFileName(video));
+
+                foreach (var subtitle in subtitles)
+                {
+                    var subName = Path.GetFileName(subtitle);
+                    if (!subName.StartsWith(videoBase, StringComparison.OrdinalIgnoreCase)) continue;
+
+                    var suffix     = subName[videoBase.Length..];
+                    var targetPath = Path.Combine(libraryPath, plexFolderName, BuildFolderMovieFileName(plexFolderName, partSuffix, suffix));
+                    MediaManagerService.ImportFile(subtitle, targetPath, sourceFolder, dryRun, importMode);
+                }
             }
         }
 
@@ -254,7 +254,7 @@ namespace qbPortWeaver
             try
             {
                 var (info, isConfident) = await TmdbClient.SearchWithConfidenceAsync(
-                    title, year, _tmdb.SearchMovieAsync, i => i.Year is not null, i => i.Title, i => i.VoteCount).ConfigureAwait(false);
+                    title, year, tmdb.SearchMovieAsync, i => i.Year is not null, i => i.Title, i => i.VoteCount).ConfigureAwait(false);
 
                 if (info is null)
                 {

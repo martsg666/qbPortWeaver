@@ -4,7 +4,7 @@ using System.Text.Json.Serialization;
 namespace qbPortWeaver
 {
     /// <summary>HTTP client for The Movie Database (TMDB) search API. Applies a per-request delay to stay within TMDB's rate limit (~40 requests/10 seconds).</summary>
-    public sealed class TmdbClient
+    public sealed class TmdbClient(string apiKey)
     {
         private const string TmdbBaseUrl = "https://api.themoviedb.org/3/"; // NOSONAR S1075 - fixed TMDB API endpoint, not a configurable path
         private const int    RateLimitDelayMs = 260; // ~3.8 req/s, comfortably under TMDB's ~4 req/s limit
@@ -19,18 +19,10 @@ namespace qbPortWeaver
         // Serialises concurrent requests to enforce the rate limit
         private static readonly SemaphoreSlim _rateLimiter = new(1, 1);
 
-        private readonly string _apiKey;
-
-        /// <summary>Creates a TMDB client authenticated with the given API key.</summary>
-        public TmdbClient(string apiKey)
-        {
-            _apiKey = apiKey;
-        }
-
         /// <summary>Searches for a movie by title and optional year. Returns the best match, or null if none found.</summary>
         public async Task<MovieInfo?> SearchMovieAsync(string query, int? year = null)
         {
-            var url = $"search/movie?api_key={_apiKey}&query={Uri.EscapeDataString(query)}&language=en-US&page=1"; // NOSONAR S4790 - TMDB API v3 requires the key as a query parameter; transmitted over HTTPS only
+            var url = $"search/movie?api_key={apiKey}&query={Uri.EscapeDataString(query)}&language=en-US&page=1"; // NOSONAR S4790 - TMDB API v3 requires the key as a query parameter; transmitted over HTTPS only
             if (year.HasValue)
                 url += $"&year={year.Value}";
 
@@ -39,14 +31,13 @@ namespace qbPortWeaver
             if (result is null)
                 return null;
 
-            int? releaseYear = result.ReleaseDate?.Length >= 4 && int.TryParse(result.ReleaseDate[..4], out int y) ? y : null;
-            return new MovieInfo(result.Title, releaseYear, result.Id, result.VoteCount);
+            return new MovieInfo(result.Title, ParseYearFromDate(result.ReleaseDate), result.Id, result.VoteCount);
         }
 
         /// <summary>Searches for a TV show by title and optional first-air year. Returns the best match, or null if none found.</summary>
         public async Task<TvShowInfo?> SearchTvShowAsync(string query, int? year = null)
         {
-            var url = $"search/tv?api_key={_apiKey}&query={Uri.EscapeDataString(query)}&language=en-US&page=1"; // NOSONAR S4790 - TMDB API v3 requires the key as a query parameter; transmitted over HTTPS only
+            var url = $"search/tv?api_key={apiKey}&query={Uri.EscapeDataString(query)}&language=en-US&page=1"; // NOSONAR S4790 - TMDB API v3 requires the key as a query parameter; transmitted over HTTPS only
             if (year.HasValue)
                 url += $"&first_air_date_year={year.Value}";
 
@@ -55,14 +46,17 @@ namespace qbPortWeaver
             if (result is null)
                 return null;
 
-            int? airYear = result.FirstAirDate?.Length >= 4 && int.TryParse(result.FirstAirDate[..4], out int y) ? y : null;
-            return new TvShowInfo(result.Name, airYear, result.Id, result.VoteCount);
+            return new TvShowInfo(result.Name, ParseYearFromDate(result.FirstAirDate), result.Id, result.VoteCount);
         }
+
+        // Extracts the year from a TMDB date string (format "YYYY-MM-DD"), or null if the string is missing or malformed.
+        private static int? ParseYearFromDate(string? date) =>
+            date?.Length >= 4 && int.TryParse(date[..4], out int y) ? y : null;
 
         /// <summary>
         /// Searches TMDB with confidence tracking: primary search, no-year confidence check,
         /// retry without year, and fallback strategies (after-dash, trailing-number).
-        /// Shared by both processors and the re-check UI to avoid duplicating lookup logic.
+        /// Shared by both processors and the re-match UI to avoid duplicating lookup logic.
         /// </summary>
         internal static async Task<(T? Info, bool IsConfident)> SearchWithConfidenceAsync<T>(
             string title, int? year,

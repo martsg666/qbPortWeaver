@@ -1,0 +1,115 @@
+name: Publish to Chocolatey
+
+# Run manually once the previous Chocolatey package version has been approved.
+# Downloads the pre-built .nupkg from the GitHub Release and pushes it to the
+# Chocolatey Community Repository.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to publish - must include the v prefix (e.g. v1.2.3)'
+        required: true
+        type: string
+
+permissions:
+  contents: read  # required to download release assets
+
+jobs:
+  publish-chocolatey:
+    runs-on: windows-latest
+    timeout-minutes: 15
+
+    steps:
+      # -----------------------------------------------------------------------
+      # 1. Derive the semver version from the tag (strip leading 'v')
+      # -----------------------------------------------------------------------
+      - name: Resolve tag and version
+        id: version
+        shell: pwsh
+        env:
+          GH_INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $tag = $env:GH_INPUT_TAG
+          if (-not $tag.StartsWith('v')) {
+            throw "Tag must start with 'v' (e.g. v2.4.0). Got: $tag"
+          }
+          $version = $tag.TrimStart('v')
+          "TAG=$tag"         | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "VERSION=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          Write-Host "Publishing version: $version  (tag: $tag)"
+
+      # -----------------------------------------------------------------------
+      # 2. Validate required secrets are present before attempting the push
+      # -----------------------------------------------------------------------
+      - name: Validate required secrets
+        shell: pwsh
+        env:
+          CHOCOLATEY_API_KEY: ${{ secrets.CHOCOLATEY_API_KEY }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (-not $env:CHOCOLATEY_API_KEY) {
+            throw "CHOCOLATEY_API_KEY secret is not configured. Add it in Settings > Secrets before running this workflow."
+          }
+          Write-Host "Required secrets validated."
+
+      # -----------------------------------------------------------------------
+      # 3. Download the pre-built .nupkg from the GitHub Release
+      # -----------------------------------------------------------------------
+      - name: Download nupkg from GitHub Release
+        id: download
+        shell: pwsh
+        env:
+          GH_TOKEN:        ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG:     ${{ steps.version.outputs.TAG }}
+          RELEASE_VERSION: ${{ steps.version.outputs.VERSION }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $tag     = $env:RELEASE_TAG
+          $version = $env:RELEASE_VERSION
+          $nupkg   = "qbportweaver.$version.nupkg"
+
+          gh release download $tag --pattern $nupkg --dir .
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+          if (-not (Test-Path $nupkg)) { throw "nupkg not found after download: $nupkg" }
+          Write-Host "Downloaded: $nupkg"
+          "NUPKG_PATH=$((Get-Item $nupkg).FullName)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+      # -----------------------------------------------------------------------
+      # 4. Push to Chocolatey Community Repository
+      #    Checks if already published first to make re-runs safe.
+      # -----------------------------------------------------------------------
+      - name: Push to Chocolatey Community Repository
+        shell: pwsh
+        env:
+          NUPKG_PATH:         ${{ steps.download.outputs.NUPKG_PATH }}
+          RELEASE_VERSION:    ${{ steps.version.outputs.VERSION }}
+          CHOCOLATEY_API_KEY: ${{ secrets.CHOCOLATEY_API_KEY }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          # Skip push if this version is already published (e.g. workflow re-run).
+          # 2xx  -> already published, skip.
+          # 404  -> not yet published, proceed.
+          # anything else (5xx, network error) -> re-throw so the step fails loudly
+          #         rather than silently assuming "not published" and risking a failed push.
+          $version          = $env:RELEASE_VERSION
+          $alreadyPublished = $false
+          try {
+            Invoke-WebRequest `
+              -Uri "https://community.chocolatey.org/api/v2/Packages(Id='qbportweaver',Version='$version')" `
+              -Method Head | Out-Null
+            $alreadyPublished = $true
+          } catch {
+            if ($_.Exception.Response?.StatusCode -ne [System.Net.HttpStatusCode]::NotFound) { throw }
+          }
+          if ($alreadyPublished) {
+            Write-Host "qbportweaver v$version is already published on Chocolatey - skipping push."
+          } else {
+            $nupkg = $env:NUPKG_PATH
+            Write-Host "Pushing: $(Split-Path $nupkg -Leaf)"
+            choco push $nupkg `
+              --source https://push.chocolatey.org/ `
+              --api-key $env:CHOCOLATEY_API_KEY
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }

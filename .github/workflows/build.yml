@@ -1,0 +1,34 @@
+name: Build Check
+
+# Runs on every branch push and pull request to catch compile errors before release.
+# Tag pushes are handled exclusively by build-release.yml.
+on:
+  push:
+    tags-ignore:
+      - '**'  # tag pushes are handled exclusively by build-release.yml
+  pull_request:
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true  # cancel superseded builds on the same branch
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        # Pinned to a specific commit SHA rather than a floating tag (e.g. @v4) so that
+        # a compromised or force-pushed tag cannot silently introduce malicious code into
+        # the pipeline. Update the SHA intentionally when upgrading the action.
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+
+      - name: Setup .NET
+        # Pinned to a specific commit SHA - see checkout step for rationale.
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9  # v4
+        with:
+          dotnet-version: '10.x'
+
+      - name: Build
+        run: dotnet build qbPortWeaver.slnx --configuration Release /warnaserror

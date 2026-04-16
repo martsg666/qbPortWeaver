@@ -20,7 +20,7 @@ $ErrorActionPreference = 'Stop'
 
 $repoRoot   = Split-Path -Parent $PSScriptRoot
 $chocoSrc   = Join-Path $repoRoot 'choco'
-$csprojPath = Join-Path $repoRoot 'qbPortWeaver.csproj'
+$csprojPath = Join-Path $repoRoot 'qbPortWeaver\qbPortWeaver.csproj'
 $stagingDir = Join-Path ([System.IO.Path]::GetTempPath()) "qbPortWeaver-choco-test-$([System.Guid]::NewGuid().ToString('N'))"
 
 function Write-Step([string]$msg) { Write-Host "`n==> $msg" -ForegroundColor Cyan }
@@ -56,27 +56,23 @@ Copy-Item -Recurse -Path $chocoSrc -Destination $stagingDir
 try {
     $nuspecPath  = Join-Path $stagingDir 'qbPortWeaver.nuspec'
     $installPath = Join-Path $stagingDir 'tools\chocolateyInstall.ps1'
-    $verifyPath  = Join-Path $stagingDir 'tools\VERIFICATION.txt'
 
     (Get-Content $nuspecPath  -Encoding utf8) -replace 'TEMPLATE_VERSION',  $version   | Set-Content $nuspecPath  -Encoding utf8
     (Get-Content $installPath -Encoding utf8) -replace 'TEMPLATE_URL',      $localUrl `
                                -replace 'TEMPLATE_CHECKSUM', $checksum                 | Set-Content $installPath -Encoding utf8
-    (Get-Content $verifyPath  -Encoding utf8) -replace 'TEMPLATE_VERSION',  $version `
-                               -replace 'TEMPLATE_URL',      $localUrl `
-                               -replace 'TEMPLATE_CHECKSUM', $checksum                 | Set-Content $verifyPath  -Encoding utf8
 
     # Verify no TEMPLATE_ placeholders survived the substitution
     $unreplaced = $false
-    foreach ($f in @($nuspecPath, $installPath, $verifyPath)) {
+    foreach ($f in @($nuspecPath, $installPath)) {
         if (Select-String -Path $f -Pattern 'TEMPLATE_' -Quiet) {
             Write-Host "    Unreplaced TEMPLATE_ placeholder in: $f" -ForegroundColor Red
             $unreplaced = $true
         }
     }
-    if ($unreplaced) { throw 'Unreplaced TEMPLATE_ placeholders found — stamping failed.' }
+    if ($unreplaced) { throw 'Unreplaced TEMPLATE_ placeholders found - stamping failed.' }
 
     Write-Step 'Installing community validation extension and packing...'
-    choco install chocolatey-community-validation.extension -y --no-progress
+    choco install chocolatey-community-validation.extension --version 0.2.0 -y --no-progress
     if ($LASTEXITCODE -ne 0) { throw 'Failed to install chocolatey-community-validation.extension.' }
 
     choco pack $nuspecPath --output-directory $stagingDir
@@ -84,8 +80,8 @@ try {
 
     Write-Step 'Installing Chocolatey package...'
     # --ignore-checksums: Chocolatey's checksum verification is unreliable with
-    # file:// URLs. Integrity is not a concern here — the MSI was built locally.
-    choco install qbportweaver --source $stagingDir -y --ignore-checksums
+    # file:// URLs. Integrity is not a concern here - the MSI was built locally.
+    choco install qbportweaver --version $version --source $stagingDir -y --ignore-checksums --force
     if ($LASTEXITCODE -ne 0) { throw 'choco install failed.' }
 
     Write-Host "`nDone." -ForegroundColor Green

@@ -1,0 +1,314 @@
+name: Build and Release
+
+# Triggers on any tag push matching v* (e.g. v2.2.0).
+# Can also be run manually to rebuild and republish an existing tag.
+on:
+  push:
+    tags:
+      - 'v*'
+
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to build - must include the v prefix (e.g. v1.2.3)'
+        required: true
+        type: string
+
+concurrency:
+  group: release-${{ github.ref_name }}
+  cancel-in-progress: false  # queue rather than cancel so no release is skipped
+
+permissions:
+  contents: write  # required to create releases and upload assets
+
+jobs:
+  build-release:
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      # -----------------------------------------------------------------------
+      # 1. Derive the semver version from the tag (strip leading 'v')
+      # -----------------------------------------------------------------------
+      - name: Resolve tag and version
+        id: version
+        shell: pwsh
+        env:
+          GH_EVENT_NAME: ${{ github.event_name }}
+          GH_INPUT_TAG:  ${{ inputs.tag }}
+          GH_REF_NAME:   ${{ github.ref_name }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:GH_EVENT_NAME -eq 'workflow_dispatch') {
+            $tag = $env:GH_INPUT_TAG
+            if (-not $tag.StartsWith('v')) {
+              throw "Tag must start with 'v' (e.g. v2.4.0). Got: $tag"
+            }
+            git ls-remote --exit-code --tags origin $tag | Out-Null
+            if ($LASTEXITCODE -ne 0) { throw "Tag '$tag' does not exist in the remote repository." }
+          } else {
+            $tag = $env:GH_REF_NAME
+          }
+          $version = $tag.TrimStart('v')
+          "TAG=$tag"         | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "VERSION=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          Write-Host "Building version: $version  (tag: $tag)"
+
+      # -----------------------------------------------------------------------
+      # 2. Checkout - full history lets --generate-notes span all commits
+      # -----------------------------------------------------------------------
+      - name: Checkout repository
+        # Pinned to a specific commit SHA rather than a floating tag (e.g. @v4) so that
+        # a compromised or force-pushed tag cannot silently introduce malicious code into
+        # the pipeline. Update the SHA intentionally when upgrading the action.
+        # Maintenance: review and rotate these SHAs periodically to pick up security patches.
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
+
+      # -----------------------------------------------------------------------
+      # 3. Set up the .NET SDK
+      # -----------------------------------------------------------------------
+      - name: Setup .NET
+        # Pinned to a specific commit SHA - see checkout step for rationale.
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9  # v4
+        with:
+          dotnet-version: '10.x'
+
+      # -----------------------------------------------------------------------
+      # 4. Verify that <Version> in both .csproj files matches the tag version.
+      #    Catches cases where a .csproj was not updated before tagging.
+      # -----------------------------------------------------------------------
+      - name: Verify csproj version matches tag
+        shell: pwsh
+        env:
+          BUILD_VERSION: ${{ steps.version.outputs.VERSION }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $tagVersion = $env:BUILD_VERSION
+          $csproj = @(
+            'qbPortWeaver\qbPortWeaver.csproj'
+            'HelperService\qbPortWeaver.HelperService.csproj'
+          )
+          foreach ($proj in $csproj) {
+            $match   = Select-String -Path $proj -Pattern '<Version>([^<]+)</Version>'
+            $version = $match.Matches[0].Groups[1].Value
+            if ($version -ne $tagVersion) {
+              throw "Version mismatch: tag is '$tagVersion' but $proj has '$version'. Update <Version> before tagging."
+            }
+            Write-Host "Version check passed: $proj ($version)"
+          }
+
+      # -----------------------------------------------------------------------
+      # 5. Publish both projects (self-contained single-file, version stamped from the tag)
+      # -----------------------------------------------------------------------
+      - name: Publish application
+        shell: pwsh
+        env:
+          BUILD_VERSION: ${{ steps.version.outputs.VERSION }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $v = $env:BUILD_VERSION
+          $projects = @(
+            'qbPortWeaver\qbPortWeaver.csproj'
+            'HelperService\qbPortWeaver.HelperService.csproj'
+          )
+          foreach ($proj in $projects) {
+            dotnet publish $proj `
+              --configuration Release `
+              --runtime win-x64 `
+              --self-contained true `
+              -p:PublishSingleFile=true `
+              -p:Version=$v `
+              -p:FileVersion="$v.0" `
+              -p:AssemblyVersion="$v.0" `
+              /warnaserror
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+
+      # -----------------------------------------------------------------------
+      # 6. Install WiX Toolset v4 (pinned to 4.0.6)
+      # -----------------------------------------------------------------------
+      - name: Install WiX Toolset
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          dotnet tool update --global wix --version "4.0.6"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          wix extension add WixToolset.UI.wixext/4.0.6 WixToolset.Util.wixext/4.0.6 --global
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          wix --version
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      # -----------------------------------------------------------------------
+      # 7. Build the MSI installer
+      # -----------------------------------------------------------------------
+      - name: Build MSI installer
+        id: msi
+        shell: pwsh
+        env:
+          BUILD_VERSION: ${{ steps.version.outputs.VERSION }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $version = $env:BUILD_VERSION
+          $tfm     = (Select-String -Path 'qbPortWeaver\qbPortWeaver.csproj' -Pattern '<TargetFramework>([^<]+)</TargetFramework>').Matches[0].Groups[1].Value
+
+          wix build installer\qbPortWeaver.wxs `
+            -arch x64 `
+            -ext WixToolset.UI.wixext `
+            -ext WixToolset.Util.wixext `
+            -b installer\ `
+            -d ProductVersion=$version `
+            -d TFM=$tfm `
+            -out "installer\qbPortWeaver_${version}_Setup.msi"
+
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+          $setupMsi = "installer\qbPortWeaver_${version}_Setup.msi"
+          if (-not (Test-Path $setupMsi)) {
+            throw "Expected installer not found: $setupMsi"
+          }
+
+          "SETUP_PATH=$setupMsi" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          Write-Host "Installer ready: $setupMsi"
+
+      # -----------------------------------------------------------------------
+      # 8. Compute SHA256 checksum of the local MSI
+      #    (computed here so we avoid re-downloading from the release later)
+      # -----------------------------------------------------------------------
+      - name: Compute installer checksum
+        id: checksum
+        shell: pwsh
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.VERSION }}
+          RELEASE_TAG:     ${{ steps.version.outputs.TAG }}
+          SETUP_PATH:      ${{ steps.msi.outputs.SETUP_PATH }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $version   = $env:RELEASE_VERSION
+          $tag       = $env:RELEASE_TAG
+          $assetName = "qbPortWeaver_${version}_Setup.msi"
+          $url       = "https://github.com/$env:GITHUB_REPOSITORY/releases/download/$tag/$assetName"
+          $checksum  = (Get-FileHash -Path $env:SETUP_PATH -Algorithm SHA256).Hash.ToUpper()
+
+          Write-Host "Asset : $assetName"
+          Write-Host "URL   : $url"
+          Write-Host "SHA256: $checksum"
+
+          "DOWNLOAD_URL=$url"     | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "CHECKSUM=$checksum"    | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+      # -----------------------------------------------------------------------
+      # 9. Stamp version, URL, and checksum into the Chocolatey package files
+      # -----------------------------------------------------------------------
+      - name: Update Chocolatey package files
+        shell: pwsh
+        env:
+          RELEASE_VERSION:    ${{ steps.version.outputs.VERSION }}
+          ASSET_DOWNLOAD_URL: ${{ steps.checksum.outputs.DOWNLOAD_URL }}
+          ASSET_CHECKSUM:     ${{ steps.checksum.outputs.CHECKSUM }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $version     = $env:RELEASE_VERSION
+          $downloadUrl = $env:ASSET_DOWNLOAD_URL
+          $checksum    = $env:ASSET_CHECKSUM
+
+          # nuspec - version and release notes URL
+          $nuspecPath = 'choco\qbPortWeaver.nuspec'
+          (Get-Content $nuspecPath -Encoding utf8) `
+            -replace 'TEMPLATE_VERSION', $version |
+            Set-Content $nuspecPath -Encoding utf8
+
+          # chocolateyInstall.ps1 - download URL and checksum
+          $installPath = 'choco\tools\chocolateyInstall.ps1'
+          (Get-Content $installPath -Encoding utf8) `
+            -replace 'TEMPLATE_URL',      $downloadUrl `
+            -replace 'TEMPLATE_CHECKSUM', $checksum |
+            Set-Content $installPath -Encoding utf8
+
+          Write-Host "Chocolatey package files updated for v$version"
+
+      # -----------------------------------------------------------------------
+      # 10. Validate that all TEMPLATE_ placeholders were replaced
+      # -----------------------------------------------------------------------
+      - name: Validate placeholder substitution
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $files = @(
+            'choco\qbPortWeaver.nuspec',
+            'choco\tools\chocolateyInstall.ps1'
+          )
+          $found = $false
+          foreach ($file in $files) {
+            if (Select-String -Path $file -Pattern 'TEMPLATE_' -Quiet) {
+              Write-Host "Unreplaced TEMPLATE_ placeholder found in: $file" -ForegroundColor Red
+              Select-String -Path $file -Pattern 'TEMPLATE_' | ForEach-Object { Write-Host "  $_" -ForegroundColor Red }
+              $found = $true
+            }
+          }
+          if ($found) { exit 1 }
+          Write-Host "All placeholders replaced successfully."
+
+      # -----------------------------------------------------------------------
+      # 11. Install community validation extension and pack the Chocolatey package
+      #     The extension hooks into choco pack and validates automatically in v2.x -
+      #     there is no separate choco validate command.
+      # -----------------------------------------------------------------------
+      - name: Install Chocolatey Community Validation Extension
+        shell: pwsh
+        run: |
+          choco install chocolatey-community-validation.extension --version 0.2.0 -y --no-progress
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      # -----------------------------------------------------------------------
+      # 12. Pack the Chocolatey package
+      # -----------------------------------------------------------------------
+      - name: Pack Chocolatey package
+        id: pack
+        shell: pwsh
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.VERSION }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $version = $env:RELEASE_VERSION
+          choco pack choco\qbPortWeaver.nuspec --output-directory .
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          # Use the explicit versioned filename rather than a wildcard to avoid
+          # accidentally picking up a stale .nupkg from a prior step in this job
+          $nupkg = Get-Item "qbportweaver.$version.nupkg"
+          Write-Host "Created: $($nupkg.Name)"
+          "NUPKG_PATH=$($nupkg.FullName)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+      # -----------------------------------------------------------------------
+      # 13. Create GitHub Release with auto-generated notes, or update existing.
+      #     Uploads both the MSI installer and the Chocolatey package (.nupkg)
+      #     so the publish workflow can download the .nupkg directly from the release.
+      # -----------------------------------------------------------------------
+      - name: Create or update GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN:    ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ steps.version.outputs.TAG }}
+          SETUP_PATH:  ${{ steps.msi.outputs.SETUP_PATH }}
+          NUPKG_PATH:  ${{ steps.pack.outputs.NUPKG_PATH }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $tag   = $env:RELEASE_TAG
+          $msi   = $env:SETUP_PATH
+          $nupkg = $env:NUPKG_PATH
+
+          # Check whether the release already exists (e.g. manual re-run)
+          gh release view $tag 2>&1 | Out-Null
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host "Release $tag already exists - uploading assets"
+            gh release upload $tag $msi $nupkg --clobber
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          } else {
+            Write-Host "Creating release $tag"
+            gh release create $tag $msi $nupkg `
+              --title "qbPortWeaver $tag" `
+              --generate-notes
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }

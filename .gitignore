@@ -364,11 +364,12 @@ FodyWeavers.xsd
 
 # Claude Code
 CLAUDE.md
+.claude/
 
 # Build folder
 \!Build/
 
-# Generated installer binaries (produced by Build-Local.ps1 or WiX; distributed via GitHub Releases)
+# Generated installer binaries (produced by Build-LocalMsi.ps1 or WiX; distributed via GitHub Releases)
 installer/*.exe
 installer/*.msi
 installer/*.wixpdb

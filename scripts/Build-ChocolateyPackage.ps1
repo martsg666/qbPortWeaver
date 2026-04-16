@@ -3,17 +3,17 @@
     Builds qbPortWeaver from source and produces a Chocolatey .nupkg ready for publishing.
 
 .DESCRIPTION
-    This script mirrors the CI build-release-publish.yml pipeline locally:
+    This script mirrors the CI build-release.yml pipeline locally:
       1. Resolves the version from qbPortWeaver.csproj (or -Version parameter)
-      2. Publishes the .NET app as a self-contained single-file win-x64 executable
+      2. Publishes both projects as self-contained single-file win-x64 executables
       3. Builds the MSI installer using WiX Toolset v4
       4. Computes the SHA256 checksum of the local MSI
       5. Stamps the version, expected GitHub download URL, and checksum into a
          temporary copy of the choco/ package source files
       6. Installs the community validation extension (idempotent) and runs
-         `choco pack` — the extension hooks in and validates automatically
+         `choco pack` - the extension hooks in and validates automatically
 
-    The choco/ source files are NOT permanently modified — all edits are written
+    The choco/ source files are NOT permanently modified - all edits are written
     to a temp staging directory that is cleaned up after packing.
 
     WiX Toolset v4 is installed/updated automatically by this script.
@@ -61,7 +61,7 @@ function Write-Ok([string]$msg)   { Write-Host "    $msg"   -ForegroundColor Gre
 Write-Step 'Resolving version...'
 
 if (-not $Version) {
-    $csprojPath = Join-Path $repoRoot 'qbPortWeaver.csproj'
+    $csprojPath = Join-Path $repoRoot 'qbPortWeaver\qbPortWeaver.csproj'
     $match = Select-String -Path $csprojPath -Pattern '<Version>([^<]+)</Version>'
     if (-not $match) {
         throw "Could not find <Version> in qbPortWeaver.csproj. Pass -Version explicitly."
@@ -77,35 +77,42 @@ Write-Ok "Version : $Version"
 Write-Ok "Tag     : $tag"
 
 # ---------------------------------------------------------------------------
-# Step 2: Publish as self-contained single-file win-x64
-#         This matches the CI build-release-publish.yml publish step exactly.
-#         Output lands in: bin\Release\<tfm>\win-x64\publish\
+# Step 2: Publish both projects as self-contained single-file win-x64 executables
+#         This matches the CI build-release.yml publish step exactly.
+#         Output lands in: <project>\bin\Release\<tfm>\win-x64\publish\
 # ---------------------------------------------------------------------------
-Write-Step 'Publishing self-contained single-file executable...'
+Write-Step 'Publishing self-contained single-file executables...'
+
+$tfm = (Select-String -Path (Join-Path $repoRoot 'qbPortWeaver\qbPortWeaver.csproj') -Pattern '<TargetFramework>([^<]+)</TargetFramework>').Matches[0].Groups[1].Value
 
 Push-Location $repoRoot
 try {
-    dotnet publish qbPortWeaver.csproj `
-        --configuration Release `
-        --runtime win-x64 `
-        --self-contained true `
-        -p:PublishSingleFile=true `
-        -p:Version=$Version `
-        -p:FileVersion="$Version.0" `
-        -p:AssemblyVersion="$Version.0"
+    foreach ($proj in @('qbPortWeaver\qbPortWeaver.csproj', 'HelperService\qbPortWeaver.HelperService.csproj')) {
+        dotnet publish $proj `
+            --configuration Release `
+            --runtime win-x64 `
+            --self-contained true `
+            -p:PublishSingleFile=true `
+            -p:Version=$Version `
+            -p:FileVersion="$Version.0" `
+            -p:AssemblyVersion="$Version.0" `
+            /warnaserror
 
-    if ($LASTEXITCODE -ne 0) { throw 'dotnet publish failed.' }
+        if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed for $proj" }
+    }
 } finally {
     Pop-Location
 }
 
-$tfm          = (Select-String -Path (Join-Path $repoRoot 'qbPortWeaver.csproj') -Pattern '<TargetFramework>([^<]+)</TargetFramework>').Matches[0].Groups[1].Value
-$publishedExe = Join-Path $repoRoot "bin\Release\$tfm\win-x64\publish\qbPortWeaver.exe"
-if (-not (Test-Path $publishedExe)) {
-    throw "Expected publish output not found: $publishedExe"
-}
+$publishedExes = @(
+    Join-Path $repoRoot "qbPortWeaver\bin\Release\$tfm\win-x64\publish\qbPortWeaver.exe"
+    Join-Path $repoRoot "HelperService\bin\Release\$tfm\win-x64\publish\qbPortWeaver.HelperService.exe"
+)
 
-Write-Ok "Published : $publishedExe"
+foreach ($exe in $publishedExes) {
+    if (-not (Test-Path $exe)) { throw "Expected publish output not found: $exe" }
+    Write-Ok "Published : $exe"
+}
 
 # ---------------------------------------------------------------------------
 # Step 3: Build the MSI installer using WiX Toolset v4
@@ -113,7 +120,7 @@ Write-Ok "Published : $publishedExe"
 # ---------------------------------------------------------------------------
 Write-Step 'Building MSI installer with WiX Toolset v4...'
 
-# Install/update WiX (idempotent — installs if missing, updates if present)
+# Install/update WiX (idempotent - installs if missing, updates if present)
 dotnet tool update --global wix --version "4.0.6"
 if ($LASTEXITCODE -ne 0) { throw 'Failed to install/update WiX Toolset.' }
 
@@ -161,37 +168,33 @@ Copy-Item -Recurse -Path $chocoSrc -Destination $stagingDir
 try {
     $nuspecPath  = Join-Path $stagingDir 'qbPortWeaver.nuspec'
     $installPath = Join-Path $stagingDir 'tools\chocolateyInstall.ps1'
-    $verifyPath  = Join-Path $stagingDir 'tools\VERIFICATION.txt'
 
     (Get-Content $nuspecPath  -Encoding utf8) -replace 'TEMPLATE_VERSION',  $Version      | Set-Content $nuspecPath  -Encoding utf8
     (Get-Content $installPath -Encoding utf8) -replace 'TEMPLATE_URL',      $downloadUrl `
                                -replace 'TEMPLATE_CHECKSUM', $checksum      | Set-Content $installPath -Encoding utf8
-    (Get-Content $verifyPath  -Encoding utf8) -replace 'TEMPLATE_VERSION',  $Version `
-                               -replace 'TEMPLATE_URL',      $downloadUrl `
-                               -replace 'TEMPLATE_CHECKSUM', $checksum      | Set-Content $verifyPath  -Encoding utf8
 
     Write-Ok "Placeholders stamped"
 
     # Verify no TEMPLATE_ placeholders survived the substitution
     $unreplaced = $false
-    foreach ($f in @($nuspecPath, $installPath, $verifyPath)) {
+    foreach ($f in @($nuspecPath, $installPath)) {
         if (Select-String -Path $f -Pattern 'TEMPLATE_' -Quiet) {
             Write-Host "    Unreplaced TEMPLATE_ placeholder in: $f" -ForegroundColor Red
             $unreplaced = $true
         }
     }
-    if ($unreplaced) { throw 'Unreplaced TEMPLATE_ placeholders found — stamping failed.' }
+    if ($unreplaced) { throw 'Unreplaced TEMPLATE_ placeholders found - stamping failed.' }
 
     # ---------------------------------------------------------------------------
     # Step 6: Install community validation extension + pack
     #         The extension hooks into choco pack and runs validation rules
-    #         automatically — no separate validate command needed in v2.x.
+    #         automatically - no separate validate command needed in v2.x.
     # ---------------------------------------------------------------------------
     Write-Step 'Installing community validation extension and packing...'
 
     # Install the community validation extension if not already present (idempotent).
     # When installed, it automatically validates the package during choco pack.
-    choco install chocolatey-community-validation.extension -y --no-progress
+    choco install chocolatey-community-validation.extension --version 0.2.0 -y --no-progress
     if ($LASTEXITCODE -ne 0) { throw 'Failed to install chocolatey-community-validation.extension.' }
 
     choco pack $nuspecPath --output-directory $outputDir

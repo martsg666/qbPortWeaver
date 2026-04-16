@@ -47,7 +47,7 @@ namespace qbPortWeaver
         // Registry key names - extra section
         public const string KeyPostUpdateCmd = "postUpdateCmd";
         public const string KeyDebugMode     = "debugMode";
-        public const string KeyColorTheme     = "colorMode";
+        public const string KeyColorTheme    = "colorMode";
 
         // Color theme values
         public const string ColorThemeSystem = "System";
@@ -84,7 +84,7 @@ namespace qbPortWeaver
                 [SectionGeneral] = new(StringComparer.OrdinalIgnoreCase)
                 {
                     [KeyVpnProvider]                    = VpnProviderDisabled,
-                    [KeyUpdateIntervalSeconds]           = "180",
+                    [KeyUpdateIntervalSeconds]          = "180",
                     [KeyNatPmpAdapterName]              = "",
                     [KeyAutoRecoveryEnabled]            = ValueTrue,
                     [KeyAutoRecoveryTriggerCycles]      = "3"
@@ -106,12 +106,12 @@ namespace qbPortWeaver
                 {
                     [KeyPostUpdateCmd] = "",
                     [KeyDebugMode]     = ValueFalse,
-                    [KeyColorTheme]     = ColorThemeSystem
+                    [KeyColorTheme]    = ColorThemeSystem
                 },
                 [SectionMedia] = new(StringComparer.OrdinalIgnoreCase)
                 {
-                    [KeyMediaEnabled]       = ValueFalse,
-                    [KeyTmdbApiKey]         = "",
+                    [KeyMediaEnabled]            = ValueFalse,
+                    [KeyTmdbApiKey]              = "",
                     [KeyMediaSourceFolders]      = "",
                     [KeyMediaCreateFolders]      = ValueTrue,
                     [KeyMediaDeleteEmptyFolders] = ValueFalse,

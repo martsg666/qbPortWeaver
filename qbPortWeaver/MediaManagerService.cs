@@ -371,7 +371,7 @@ namespace qbPortWeaver
                     catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
                     {
                         LogManager.Instance.LogMessage($"Skipped source folder '{f}': {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
-                        return (Folder: f, Candidates: new List<FileInfo>());
+                        return (Folder: f, Candidates: []);
                     }
                 }, cancellationToken)
             )).ConfigureAwait(false)).ToList();
@@ -416,12 +416,12 @@ namespace qbPortWeaver
                     catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
                     {
                         LogManager.Instance.LogMessage($"Skipped source folder '{e.Folder}': {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
-                        classified.Add((e.Folder, (MovieFiles: Array.Empty<string>(), TvShowFiles: Array.Empty<string>())));
+                        classified.Add((e.Folder, (MovieFiles: [], TvShowFiles: [])));
                     }
                 }
 
-                int movieTotal = classified.Sum(c => c.Items.MovieFiles.Length);
-                int tvShowTotal    = classified.Sum(c => c.Items.TvShowFiles.Length);
+                int movieTotal  = classified.Sum(c => c.Items.MovieFiles.Length);
+                int tvShowTotal = classified.Sum(c => c.Items.TvShowFiles.Length);
                 classifySw.Stop();
                 var (sourceCached, sourceComputed) = MediaImporter.GetSourceCacheStats();
                 LogManager.Instance.LogMessage(
@@ -437,8 +437,8 @@ namespace qbPortWeaver
         // Each candidate requires a 128 KB read to compute its fingerprint; reads are bounded by MediaImporter.FingerprintParallelism.
         private static (string[] MovieFiles, string[] TvShowFiles) FingerprintCandidates(List<FileInfo> candidates, CancellationToken cancellationToken)
         {
-            var movieFiles = new ConcurrentBag<string>();
-            var tvShowFiles    = new ConcurrentBag<string>();
+            var movieFiles  = new ConcurrentBag<string>();
+            var tvShowFiles = new ConcurrentBag<string>();
 
             Parallel.ForEach(candidates,
                 new ParallelOptions { MaxDegreeOfParallelism = MediaImporter.FingerprintParallelism, CancellationToken = cancellationToken },

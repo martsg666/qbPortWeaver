@@ -10,9 +10,9 @@ namespace qbPortWeaver
     /// </summary>
     internal static class TmdbCacheManager
     {
-        private const int    TtlDays            = 30;
-        private const string TvShowCacheFileName  = "qbPortWeaver.tmdb.tvshows.json";
-        private const string MovieCacheFileName = "qbPortWeaver.tmdb.movies.json";
+        private const int    TtlDays             = 30;
+        private const string TvShowCacheFileName = "qbPortWeaver.tmdb.tvshows.json";
+        private const string MovieCacheFileName  = "qbPortWeaver.tmdb.movies.json";
 
         private static readonly JsonSerializerOptions _jsonWriteOptions = new() { WriteIndented = true };
 
@@ -97,8 +97,8 @@ namespace qbPortWeaver
         {
             _tvShowCache.Clear();
             _movieCache.Clear();
-            _tvShowCacheDirty  = false;
-            _movieCacheDirty = false;
+            _tvShowCacheDirty = false;
+            _movieCacheDirty  = false;
             Interlocked.Exchange(ref _loaded, 0);
             AppConstants.TryDeleteFile(AppConstants.GetDataFilePath(TvShowCacheFileName));
             AppConstants.TryDeleteFile(AppConstants.GetDataFilePath(MovieCacheFileName));

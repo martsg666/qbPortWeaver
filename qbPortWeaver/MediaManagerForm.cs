@@ -189,12 +189,12 @@ namespace qbPortWeaver
             var tmdb           = new TmdbClient(apiKey);
             bool createFolders = chkCreateFolders.Checked;
             var moviesLib      = txtMoviesLibraryPath.Text.Trim();
-            var tvShowLib          = txtTvShowsLibraryPath.Text.Trim();
+            var tvShowLib      = txtTvShowsLibraryPath.Text.Trim();
 
             // Split by media type upfront so the progress total is exact regardless of future types
-            var tvShowRows    = GetRematchRows(MediaProposal.TypeTvShow);
-            var movieRows = GetRematchRows(MediaProposal.TypeMovie);
-            int total     = tvShowRows.Count + movieRows.Count;
+            var tvShowRows = GetRematchRows(MediaProposal.TypeTvShow);
+            var movieRows  = GetRematchRows(MediaProposal.TypeMovie);
+            int total      = tvShowRows.Count + movieRows.Count;
 
             if (total == 0)
                 return "No uncertain rows to re-match.";

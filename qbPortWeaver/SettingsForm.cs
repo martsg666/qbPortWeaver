@@ -40,22 +40,22 @@ namespace qbPortWeaver
             toolTip.SetToolTip(chkRestartOnDisconnect,       "Automatically restart qBittorrent if the connection goes offline or disconnects");
             toolTip.SetToolTip(txtPostUpdateCmd,             "Shell command to run after a successful port update (leave empty to disable)");
             toolTip.SetToolTip(chkDebugMode,                 "Write verbose debug entries to the log file");
-            toolTip.SetToolTip(cboColorTheme,                 "Application color theme (System, Dark, or Light) - a restart prompt will appear if changed");
-            toolTip.SetToolTip(chkAutoRecovery,           "Automatically recover after N consecutive failed sync cycles (VPN disconnected or port detection failure)");
-            toolTip.SetToolTip(nudRecoveryCycles,         "Number of consecutive failed cycles before recovery is triggered");
+            toolTip.SetToolTip(cboColorTheme,                "Application color theme (System, Dark, or Light) - a restart prompt will appear if changed");
+            toolTip.SetToolTip(chkAutoRecovery,              "Automatically recover after N consecutive failed sync cycles (VPN disconnected or port detection failure)");
+            toolTip.SetToolTip(nudRecoveryCycles,            "Number of consecutive failed cycles before recovery is triggered");
         }
 
         private void LoadSettings()
         {
             // General
             cboVpnProvider.Items.Clear();
-            cboVpnProvider.Items.AddRange(new object[]
-            {
+            cboVpnProvider.Items.AddRange(
+            [
                 RegistrySettingsManager.VpnProviderDisabled,
                 RegistrySettingsManager.VpnProviderProtonVpn,
                 RegistrySettingsManager.VpnProviderPia,
                 RegistrySettingsManager.VpnProviderNatPmp
-            });
+            ]);
             cboVpnProvider.SelectedItem = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyVpnProvider);
             if (cboVpnProvider.SelectedIndex < 0)
                 cboVpnProvider.SelectedIndex = 0;
@@ -96,12 +96,12 @@ namespace qbPortWeaver
 
             // Extra
             cboColorTheme.Items.Clear();
-            cboColorTheme.Items.AddRange(new object[]
-            {
+            cboColorTheme.Items.AddRange(
+            [
                 RegistrySettingsManager.ColorThemeSystem,
                 RegistrySettingsManager.ColorThemeDark,
                 RegistrySettingsManager.ColorThemeLight
-            });
+            ]);
             cboColorTheme.SelectedItem = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionExtra, RegistrySettingsManager.KeyColorTheme);
             if (cboColorTheme.SelectedIndex < 0) cboColorTheme.SelectedIndex = 0;
             txtPostUpdateCmd.Text = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionExtra, RegistrySettingsManager.KeyPostUpdateCmd);

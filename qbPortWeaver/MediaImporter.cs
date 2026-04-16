@@ -220,11 +220,11 @@ namespace qbPortWeaver
         }
 
         /// <summary>
-        /// Returns <see langword="true"/> if the file is not exclusively locked for writing by another process.
-        /// Uses <see cref="FileAccess.Read"/> and <see cref="FileShare.ReadWrite"/>: processes that hold a read
-        /// handle allow concurrent reads, so those files pass this check. Only a write-exclusive lock
-        /// (<see cref="FileShare.None"/> on the writer's handle) causes the open to fail, correctly identifying
-        /// a file that is still being written.
+        /// Returns <see langword="true"/> if no other process currently holds a write-capable handle to the file.
+        /// Opens with <see cref="FileAccess.Read"/> and <see cref="FileShare.Read"/>: the open fails with
+        /// <see cref="IOException"/> (sharing violation) whenever any other handle on the file permits writes,
+        /// which is the case while the file is still being written. Processes that opened the file read-only
+        /// allow concurrent reads and pass this check.
         /// <see cref="UnauthorizedAccessException"/> is treated as complete: the file exists but we lack
         /// permission (e.g. read-only attribute, network share ACL) and is not being actively written to.
         /// </summary>
@@ -232,7 +232,7 @@ namespace qbPortWeaver
         {
             try
             {
-                using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+                using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
                 return true;
             }
             catch (IOException)

@@ -92,13 +92,13 @@ namespace qbPortWeaver
             if (!string.IsNullOrWhiteSpace(ctx.MoviesLibraryPath) && items.MovieFiles.Length > 0)
             {
                 var movieProcessor = new MovieProcessor(ctx.Tmdb, ctx.DryRun, ctx.CreateFolders, ctx.MoviesLibraryPath, ctx.ImportMode);
-                await TryRunAsync(() => movieProcessor.ProcessMoviesAsync(folder, items.MovieFiles), folder);
+                await TryRunAsync(() => movieProcessor.ProcessMoviesAsync(folder, items.MovieFiles), folder).ConfigureAwait(false);
             }
 
             if (!string.IsNullOrWhiteSpace(ctx.TvShowsLibraryPath) && items.TvShowFiles.Length > 0)
             {
                 var tvShowProcessor = new TvShowProcessor(ctx.Tmdb, ctx.DryRun, ctx.CreateFolders, ctx.TvShowsLibraryPath, ctx.ImportMode);
-                await TryRunAsync(() => tvShowProcessor.ProcessTvShowsAsync(folder, items.TvShowFiles), folder);
+                await TryRunAsync(() => tvShowProcessor.ProcessTvShowsAsync(folder, items.TvShowFiles), folder).ConfigureAwait(false);
             }
 
             int totalFiles = items.MovieFiles.Length + items.TvShowFiles.Length;
@@ -184,13 +184,13 @@ namespace qbPortWeaver
             if (!string.IsNullOrWhiteSpace(ctx.MoviesLibraryPath) && items.MovieFiles.Length > 0)
             {
                 var movieProcessor = new MovieProcessor(ctx.Tmdb, ctx.DryRun, ctx.CreateFolders, ctx.MoviesLibraryPath, ctx.ImportMode);
-                proposals.AddRange(await TryRunAsync(() => movieProcessor.ScanMoviesAsync(items.MovieFiles, onItemProcessed), folder));
+                proposals.AddRange(await TryRunAsync(() => movieProcessor.ScanMoviesAsync(items.MovieFiles, onItemProcessed), folder).ConfigureAwait(false));
             }
 
             if (!string.IsNullOrWhiteSpace(ctx.TvShowsLibraryPath) && items.TvShowFiles.Length > 0)
             {
                 var tvShowProcessor = new TvShowProcessor(ctx.Tmdb, ctx.DryRun, ctx.CreateFolders, ctx.TvShowsLibraryPath, ctx.ImportMode);
-                proposals.AddRange(await TryRunAsync(() => tvShowProcessor.ScanTvShowsAsync(items.TvShowFiles, onItemProcessed), folder));
+                proposals.AddRange(await TryRunAsync(() => tvShowProcessor.ScanTvShowsAsync(items.TvShowFiles, onItemProcessed), folder).ConfigureAwait(false));
             }
 
             LogManager.Instance.LogMessage($"Scanned source folder '{folder}': {proposals.Count} proposal(s)", LogLevel.Info, Subsystem.MediaManager);

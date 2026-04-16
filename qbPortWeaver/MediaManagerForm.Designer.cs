@@ -308,7 +308,7 @@ namespace qbPortWeaver
             // chkShowOnlyReview
             //
             chkShowOnlyReview.Anchor   = AnchorStyles.Bottom | AnchorStyles.Left;
-            chkShowOnlyReview.Location = new Point(8, 717);
+            chkShowOnlyReview.Location = new Point(8, 712);
             chkShowOnlyReview.Name     = "chkShowOnlyReview";
             chkShowOnlyReview.AutoSize = true;
             chkShowOnlyReview.TabIndex = 10;
@@ -317,23 +317,23 @@ namespace qbPortWeaver
             //
             // lblLegendUncertain
             //
-            lblLegendUncertain.Anchor    = AnchorStyles.Bottom | AnchorStyles.Left;
-            lblLegendUncertain.Location  = new Point(8, 744);
+            lblLegendUncertain.Anchor    = AnchorStyles.Bottom | AnchorStyles.Right;
+            lblLegendUncertain.Location  = new Point(438, 715);
             lblLegendUncertain.Name      = "lblLegendUncertain";
-            lblLegendUncertain.Size      = new Size(130, 28);
+            lblLegendUncertain.Size      = new Size(130, 20);
+            lblLegendUncertain.TextAlign = ContentAlignment.MiddleRight;
             lblLegendUncertain.TabIndex  = 11;
-            lblLegendUncertain.Text      = "\u25cf Uncertain TMDB match";
-            lblLegendUncertain.TextAlign = ContentAlignment.MiddleLeft;
+            lblLegendUncertain.Text      = "\u25cf Uncertain TMDB";
             //
             // lblLegendUnmatched
             //
-            lblLegendUnmatched.Anchor    = AnchorStyles.Bottom | AnchorStyles.Left;
-            lblLegendUnmatched.Location  = new Point(150, 744);
+            lblLegendUnmatched.Anchor    = AnchorStyles.Bottom | AnchorStyles.Right;
+            lblLegendUnmatched.Location  = new Point(572, 715);
             lblLegendUnmatched.Name      = "lblLegendUnmatched";
-            lblLegendUnmatched.Size      = new Size(170, 28);
+            lblLegendUnmatched.Size      = new Size(120, 20);
+            lblLegendUnmatched.TextAlign = ContentAlignment.MiddleRight;
             lblLegendUnmatched.TabIndex  = 12;
-            lblLegendUnmatched.Text      = "\u25cf No TMDB match found";
-            lblLegendUnmatched.TextAlign = ContentAlignment.MiddleLeft;
+            lblLegendUnmatched.Text      = "\u25cf No TMDB match";
             //
             // prgScan
             //

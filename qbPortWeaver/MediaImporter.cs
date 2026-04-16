@@ -69,21 +69,21 @@ namespace qbPortWeaver
             {
                 if (VerifyHardLink(sourcePath, destinationPath))
                 {
-                    LogManager.Instance.LogDebug($"MediaImporter.ImportFile: Hardlinked '{Path.GetFileName(destinationPath)}'", Subsystem.MediaManager);
+                    LogManager.Instance.LogDebug($"MediaImporter.AddFileToLibrary: Hardlinked '{Path.GetFileName(destinationPath)}'", Subsystem.MediaManager);
                 }
                 else
                 {
                     LogManager.Instance.LogMessage($"Hardlink not verified for '{Path.GetFileName(destinationPath)}' (filesystem created a copy instead), replacing with proper copy", LogLevel.Info, Subsystem.MediaManager);
                     File.Delete(destinationPath);
                     File.Copy(sourcePath, destinationPath, overwrite: false);
-                    LogManager.Instance.LogDebug($"MediaImporter.ImportFile: Copied (verified fallback) '{Path.GetFileName(destinationPath)}'", Subsystem.MediaManager);
+                    LogManager.Instance.LogDebug($"MediaImporter.AddFileToLibrary: Copied (verified fallback) '{Path.GetFileName(destinationPath)}'", Subsystem.MediaManager);
                 }
             }
             else
             {
                 LogManager.Instance.LogMessage($"Hardlink failed for '{Path.GetFileName(destinationPath)}', falling back to copy", LogLevel.Info, Subsystem.MediaManager);
                 File.Copy(sourcePath, destinationPath, overwrite: false);
-                LogManager.Instance.LogDebug($"MediaImporter.ImportFile: Copied (fallback) '{Path.GetFileName(destinationPath)}'", Subsystem.MediaManager);
+                LogManager.Instance.LogDebug($"MediaImporter.AddFileToLibrary: Copied (fallback) '{Path.GetFileName(destinationPath)}'", Subsystem.MediaManager);
             }
         }
 
@@ -124,18 +124,18 @@ namespace qbPortWeaver
         }
 
         /// <summary>
-        /// Imports a file from <paramref name="sourcePath"/> to <paramref name="destinationPath"/> using the specified <paramref name="importMode"/>.
+        /// Adds a file to the library by transferring it from <paramref name="sourcePath"/> to <paramref name="destinationPath"/> using the specified <paramref name="importMode"/>.
         /// Creates the target directory if needed. Skips files that already exist at the destination with the same fingerprint.
         /// In <see cref="ImportMode.Hardlink"/> mode, automatically falls back to copy if the hardlink fails.
         /// </summary>
-        internal static void ImportFile(string sourcePath, string destinationPath, ImportMode importMode)
+        internal static void AddFileToLibrary(string sourcePath, string destinationPath, ImportMode importMode)
         {
             if (string.Equals(sourcePath, destinationPath, StringComparison.OrdinalIgnoreCase))
                 return;
 
             if (IsDuplicateFile(sourcePath, destinationPath))
             {
-                LogManager.Instance.LogDebug($"MediaImporter.ImportFile: Skipped - target already exists with same fingerprint: '{Path.GetFileName(destinationPath)}'", Subsystem.MediaManager);
+                LogManager.Instance.LogDebug($"MediaImporter.AddFileToLibrary: Skipped '{Path.GetFileName(destinationPath)}' - target already exists with same fingerprint", Subsystem.MediaManager);
                 return;
             }
 
@@ -160,12 +160,12 @@ namespace qbPortWeaver
 
                 case ImportMode.Copy:
                     File.Copy(sourcePath, destinationPath, overwrite: false);
-                    LogManager.Instance.LogDebug($"MediaImporter.ImportFile: Copied '{Path.GetFileName(destinationPath)}'", Subsystem.MediaManager);
+                    LogManager.Instance.LogDebug($"MediaImporter.AddFileToLibrary: Copied '{Path.GetFileName(destinationPath)}'", Subsystem.MediaManager);
                     break;
 
                 case ImportMode.Move:
                     File.Move(sourcePath, destinationPath);
-                    LogManager.Instance.LogDebug($"MediaImporter.ImportFile: Moved '{Path.GetFileName(destinationPath)}'", Subsystem.MediaManager);
+                    LogManager.Instance.LogDebug($"MediaImporter.AddFileToLibrary: Moved '{Path.GetFileName(destinationPath)}'", Subsystem.MediaManager);
                     break;
 
                 default:
@@ -344,12 +344,15 @@ namespace qbPortWeaver
         {
             if (_libraryCache is not null) return;
 
+            var sw = System.Diagnostics.Stopwatch.StartNew();
             try
             {
                 var filePath = GetCacheFilePath(LibraryCacheFileName);
                 if (!File.Exists(filePath))
                 {
                     _libraryCache = new(StringComparer.OrdinalIgnoreCase);
+                    sw.Stop();
+                    LogManager.Instance.LogMessage($"Library cache loaded: 0 entries in {sw.ElapsedMilliseconds}ms", LogLevel.Info, Subsystem.MediaManager);
                     return;
                 }
 
@@ -360,10 +363,13 @@ namespace qbPortWeaver
                     : new(StringComparer.OrdinalIgnoreCase);
                 _libraryCacheDirty = false;
 
+                sw.Stop();
                 LogManager.Instance.LogDebug($"MediaImporter.LoadLibraryCache: Loaded {_libraryCache.Count} entries", Subsystem.MediaManager);
+                LogManager.Instance.LogMessage($"Library cache loaded: {_libraryCache.Count} entries in {sw.ElapsedMilliseconds}ms", LogLevel.Info, Subsystem.MediaManager);
             }
             catch (Exception ex)
             {
+                sw.Stop();
                 LogManager.Instance.LogMessage($"Library cache could not be loaded, starting fresh: {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
                 _libraryCache = new(StringComparer.OrdinalIgnoreCase);
             }
@@ -372,6 +378,7 @@ namespace qbPortWeaver
         // Enumerates all files in a library folder.
         // FileInfo metadata (Length, LastWriteTimeUtc) comes from the directory listing - no extra stat per file.
         // IgnoreInaccessible = true silently skips permission-denied folders.
+        // No MaxRecursionDepth: Plex libraries are shallow by convention (Title/Season/file), so no cap needed.
         private static List<FileInfo> EnumerateLibraryFolder(string folder) =>
             new DirectoryInfo(folder).EnumerateFiles("*", new EnumerationOptions
             {
@@ -517,17 +524,6 @@ namespace qbPortWeaver
             }
         }
 
-        /// <summary>Returns <see langword="true"/> if a file with the same fingerprint already exists somewhere in the library.</summary>
-        internal static bool IsAlreadyInLibrary(string sourcePath)
-        {
-            try   { return IsAlreadyInLibrary(new FileInfo(sourcePath)); }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-            {
-                LogManager.Instance.LogDebug($"MediaImporter.IsAlreadyInLibrary: Could not read '{Path.GetFileName(sourcePath)}': {ex.Message}", Subsystem.MediaManager);
-                return false;
-            }
-        }
-
         // Returns the fingerprint for a source file, using the in-memory cache when the file has not changed.
         // Uses _sourceInFlight to deduplicate concurrent computation: if two threads race on the same file,
         // the second waits on the Lazy rather than issuing a redundant read.
@@ -654,6 +650,8 @@ namespace qbPortWeaver
             }
             catch (Exception ex)
             {
+                // Restore the dirty flag so the next cycle retries the save.
+                lock (_sourceCacheLock) _sourceCacheDirty = true;
                 LogManager.Instance.LogMessage($"Failed to save source cache: {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
             }
         }
@@ -684,6 +682,8 @@ namespace qbPortWeaver
             }
             catch (Exception ex)
             {
+                // Restore the dirty flag so the next cycle retries the save.
+                lock (_libraryLock) _libraryCacheDirty = true;
                 LogManager.Instance.LogMessage($"Failed to save library cache: {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
             }
         }

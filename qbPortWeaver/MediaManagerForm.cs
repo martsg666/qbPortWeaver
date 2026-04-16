@@ -189,12 +189,12 @@ namespace qbPortWeaver
             var tmdb           = new TmdbClient(apiKey);
             bool createFolders = chkCreateFolders.Checked;
             var moviesLib      = txtMoviesLibraryPath.Text.Trim();
-            var tvLib          = txtTvShowsLibraryPath.Text.Trim();
+            var tvShowLib          = txtTvShowsLibraryPath.Text.Trim();
 
             // Split by media type upfront so the progress total is exact regardless of future types
-            var tvRows    = GetRematchRows(MediaProposal.TypeTvShow);
+            var tvShowRows    = GetRematchRows(MediaProposal.TypeTvShow);
             var movieRows = GetRematchRows(MediaProposal.TypeMovie);
-            int total     = tvRows.Count + movieRows.Count;
+            int total     = tvShowRows.Count + movieRows.Count;
 
             if (total == 0)
                 return "No uncertain rows to re-match.";
@@ -204,16 +204,16 @@ namespace qbPortWeaver
             prgScan.Value   = 0;
             int done = 0;
 
-            if (await RematchTvShowRowsAsync(tmdb, tvLib, tvRows, createFolders, total, done, ct) is not int tvDone)
+            if (await RematchTvShowRowsAsync(tmdb, tvShowLib, tvShowRows, createFolders, total, done, ct) is not int tvShowDone)
                 return null; // disposed
 
-            if (await RematchMovieRowsAsync(tmdb, moviesLib, movieRows, createFolders, total, tvDone, ct) is null)
+            if (await RematchMovieRowsAsync(tmdb, moviesLib, movieRows, createFolders, total, tvShowDone, ct) is null)
                 return null; // disposed
 
             if (IsDisposed) return null;
 
             dgvResults.Refresh(); // force full repaint so CellFormatting fires for all visible cells
-            int verified = tvRows.Concat(movieRows)
+            int verified = tvShowRows.Concat(movieRows)
                 .Count(r => ((RowData)r.Tag!).Confidence == RowConfidence.Confident);
             return verified == total
                 ? "Re-match complete - all rows verified."
@@ -221,20 +221,20 @@ namespace qbPortWeaver
         }
 
         // Re-matches TV show rows grouped by show name. Returns updated done count, or null if the form was disposed.
-        private async Task<int?> RematchTvShowRowsAsync(TmdbClient tmdb, string tvLib,
-            List<DataGridViewRow> tvRows, bool createFolders, int total, int done, CancellationToken ct)
+        private async Task<int?> RematchTvShowRowsAsync(TmdbClient tmdb, string tvShowLib,
+            List<DataGridViewRow> tvShowRows, bool createFolders, int total, int done, CancellationToken ct)
         {
-            foreach (var (showKey, showRows) in GroupTvRowsByShow(tvRows))
+            foreach (var (showKey, showRows) in GroupTvShowRowsByShow(tvShowRows))
             {
                 ct.ThrowIfCancellationRequested();
-                var (showInfo, showConfident) = string.IsNullOrWhiteSpace(tvLib)
+                var (showInfo, showConfident) = string.IsNullOrWhiteSpace(tvShowLib)
                     ? (null, false)
                     : await SearchTmdbByPlexNameAsync<TvShowInfo>(showKey, tmdb.SearchTvShowAsync, i => i.Title, i => i.Year, i => i.VoteCount, i => i.TmdbId, "TV show");
                 foreach (var row in showRows)
                 {
                     if (IsDisposed) return null;
                     if (showInfo is not null)
-                        ApplyTvRematchResult(row, showInfo, tvLib, createFolders, showConfident);
+                        ApplyTvRematchResult(row, showInfo, tvShowLib, createFolders, showConfident);
                     prgScan.Value      = Math.Min(++done, prgScan.Maximum);
                     lblScanStatus.Text = $"Re-matching\u2026 {done}/{total}";
                 }
@@ -270,10 +270,10 @@ namespace qbPortWeaver
                 .ToList();
 
         // Groups TV show rows by their extracted show-folder name for batch TMDB lookup.
-        private Dictionary<string, List<DataGridViewRow>> GroupTvRowsByShow(List<DataGridViewRow> tvRows)
+        private Dictionary<string, List<DataGridViewRow>> GroupTvShowRowsByShow(List<DataGridViewRow> tvShowRows)
         {
             var groups = new Dictionary<string, List<DataGridViewRow>>(StringComparer.OrdinalIgnoreCase);
-            foreach (var row in tvRows)
+            foreach (var row in tvShowRows)
             {
                 var editedName = row.Cells[colProposed.Index].Value?.ToString() ?? string.Empty;
                 var key        = ExtractTvShowFolder(editedName) ?? editedName;
@@ -314,7 +314,7 @@ namespace qbPortWeaver
             }
         }
 
-        private void ApplyTvRematchResult(DataGridViewRow row, TvShowInfo showInfo, string tvLib, bool createFolders, bool isConfident)
+        private void ApplyTvRematchResult(DataGridViewRow row, TvShowInfo info, string tvShowLib, bool createFolders, bool isConfident)
         {
             var editedName  = row.Cells[colProposed.Index].Value?.ToString() ?? string.Empty;
             var episodeInfo = FileNameParser.ParseTvShowEpisode(editedName);
@@ -324,28 +324,14 @@ namespace qbPortWeaver
                 return;
             }
 
-            var ext            = Path.GetExtension(editedName);
-            var showFolderName = FileNameParser.FormatPlexName(showInfo.Title, showInfo.Year);
-            var episodeCode    = episodeInfo.EndEpisode.HasValue
-                ? $"S{episodeInfo.Season:D2}E{episodeInfo.Episode:D2}E{episodeInfo.EndEpisode.Value:D2}"
-                : $"S{episodeInfo.Season:D2}E{episodeInfo.Episode:D2}";
-            var episodeFileName = $"{showFolderName} - {episodeCode}{ext}";
-            var proposedPath    = createFolders
-                ? Path.Combine(tvLib, showFolderName, $"Season {episodeInfo.Season:D2}", episodeFileName)
-                : Path.Combine(tvLib, episodeFileName);
-
-            UpdateRow(row, proposedPath, episodeFileName, isConfident);
+            var proposedPath = TvShowProcessor.BuildEpisodePath(editedName, info, episodeInfo, tvShowLib, createFolders);
+            UpdateRow(row, proposedPath, Path.GetFileName(proposedPath), isConfident);
         }
 
-        private void ApplyMovieRematchResult(DataGridViewRow row, MovieInfo movieInfo, string moviesLib, bool createFolders, string editedName, bool isConfident)
+        private void ApplyMovieRematchResult(DataGridViewRow row, MovieInfo info, string moviesLib, bool createFolders, string editedName, bool isConfident)
         {
-            var ext          = Path.GetExtension(editedName);
-            var plexName     = FileNameParser.FormatPlexName(movieInfo.Title, movieInfo.Year);
-            var proposedPath = createFolders
-                ? Path.Combine(moviesLib, plexName, $"{plexName}{ext}")
-                : Path.Combine(moviesLib, $"{plexName}{ext}");
-
-            UpdateRow(row, proposedPath, $"{plexName}{ext}", isConfident);
+            var proposedPath = MovieProcessor.BuildStandaloneMoviePath(editedName, info, moviesLib, createFolders);
+            UpdateRow(row, proposedPath, Path.GetFileName(proposedPath), isConfident);
         }
 
         private void UpdateRow(DataGridViewRow row, string proposedPath, string displayName, bool isConfident)

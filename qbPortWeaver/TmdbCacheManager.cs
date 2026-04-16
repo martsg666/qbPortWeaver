@@ -88,7 +88,8 @@ namespace qbPortWeaver
                 int n = SaveToDisk(_movieCache, MovieCacheFileName, "movie");
                 if (n >= 0) { parts.Add($"{n} movie entries"); _movieCacheDirty = false; }
             }
-            LogManager.Instance.LogMessage($"TMDB cache saved: {string.Join(", ", parts)}", LogLevel.Info, Subsystem.MediaManager);
+            if (parts.Count > 0)
+                LogManager.Instance.LogMessage($"TMDB cache saved: {string.Join(", ", parts)}", LogLevel.Info, Subsystem.MediaManager);
         }
 
         /// <summary>Clears both caches from memory and deletes the on-disk cache files.</summary>

@@ -9,18 +9,7 @@ namespace qbPortWeaver
             "The GitHub repository was recently set to private for a period, and all stars were " +
             "lost. If you find qbPortWeaver useful, please star it on GitHub.";
 
-        private const string ReleaseFeaturesText =
-            "VPN Auto-Recovery\r\n" +
-            "Automatically recovers when port sync fails for a configurable number " +
-            "of consecutive cycles. Restarts the VPN Windows service and client " +
-            "(ProtonVPN/PIA), or cycles the network adapter (NAT-PMP). Configure " +
-            "the trigger count in Settings > General.\r\n\r\n" +
-            "Media Manager\r\n" +
-            "Automatically imports and organizes media files into library folders " +
-            "on each sync cycle, using TMDB metadata for naming (movies and TV shows).\r\n\r\n" +
-            "Log Viewer\r\n" +
-            "Color-coded live log with level filters, subsystem filter, color " +
-            "theme support, and in-text search with match count and navigation.";
+        private const string ReleaseFeaturesText = "";
 
         public WhatsNewForm()
         {

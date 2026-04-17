@@ -89,16 +89,17 @@ namespace qbPortWeaver
                 // Start main loop immediately so port syncing is not blocked by dialogs
                 _ = Task.Run(RunMainLoopAsync); // fire-and-forget; exceptions are handled inside RunMainLoopAsync
 
-                // Show What's New on first run after an upgrade
+                // Show What's New on first run after an upgrade (non-modal - does not block port sync)
                 if (RegistrySettingsManager.GetAppValue(RegistrySettingsManager.KeyLastSeenVersion) != AppConstants.AppVersion)
                 {
-                    using var whatsNew = new WhatsNewForm();
-                    await whatsNew.ShowDialogAsync();
-                    RegistrySettingsManager.SetAppValue(RegistrySettingsManager.KeyLastSeenVersion, AppConstants.AppVersion);
+                    var whatsNew = new WhatsNewForm();
+                    whatsNew.FormClosed += (_, _) =>
+                        RegistrySettingsManager.SetAppValue(RegistrySettingsManager.KeyLastSeenVersion, AppConstants.AppVersion);
+                    whatsNew.Show(); // NOSONAR S6966 - non-modal is intentional; ShowAsync would block until closed
                 }
 
-                // Check for updates on GitHub (startup check)
-                await PerformUpdateCheckAsync();
+                // Check for updates on GitHub (non-modal - does not block port sync)
+                _ = PerformUpdateCheckAsync();
 
                 // Schedule periodic update checks every 12 hours
                 _updateCheckTimer = new System.Windows.Forms.Timer { Interval = AppConstants.AutoUpdateCheckIntervalMs };
@@ -418,14 +419,7 @@ namespace qbPortWeaver
 
                     _lastNotifiedVersion = update.Value.Version;
                     LogManager.Instance.LogMessage($"New application version available: {update.Value.Version}", LogLevel.Info);
-                    var result = MessageBox.Show(
-                        $"A new version of {AppConstants.AppName} is available: {update.Value.Version}\n\nWould you like to open the download page?",
-                        $"{AppConstants.AppName} - Update Available",
-                        MessageBoxButtons.YesNo,
-                        MessageBoxIcon.Information);
-
-                    if (result == DialogResult.Yes)
-                        AppConstants.OpenUrl(update.Value.Url);
+                    new UpdateAvailableForm(update.Value.Version, update.Value.Url).Show(); // NOSONAR S6966 - non-modal is intentional; ShowAsync would block until closed
                 }
                 else
                 {

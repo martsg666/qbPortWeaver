@@ -1,6 +1,6 @@
 namespace qbPortWeaver
 {
-    /// <summary>Settings dialog for configuring VPN provider, qBittorrent connection, sync interval, and extra options.</summary>
+    /// <summary>Settings dialog for configuring VPN provider, BitTorrent client connection, sync interval, and extra options.</summary>
     public partial class SettingsForm : Form
     {
         private const string DiscoveringAdaptersPlaceholder = "Discovering adapters\u2026";
@@ -26,6 +26,7 @@ namespace qbPortWeaver
             toolTip.SetToolTip(cboNatPmpAdapter,             "Network adapter to use for NAT-PMP port mapping (only applies when NAT-PMP is selected)");
             toolTip.SetToolTip(btnRefreshAdapters,           "Refresh the adapter list");
             toolTip.SetToolTip(nudUpdateInterval,            "How often to check and sync the port, in seconds");
+            toolTip.SetToolTip(cboBitTorrentClient,          "BitTorrent client to control (qBittorrent or Transmission)");
             toolTip.SetToolTip(txtQBittorrentURL,            "URL for the qBittorrent Web UI (e.g. http://127.0.0.1:8080)");
             toolTip.SetToolTip(txtQBittorrentUserName,       "Username for the qBittorrent Web UI");
             toolTip.SetToolTip(txtQBittorrentPassword,       "Password for the qBittorrent Web UI");
@@ -38,6 +39,17 @@ namespace qbPortWeaver
             toolTip.SetToolTip(lblDefaultPort,               "Port to apply when the VPN is disconnected (0 = do nothing when disconnected)");
             toolTip.SetToolTip(chkWarnOnInterfaceMismatch,   "Show a warning when qBittorrent's network interface does not match the configured VPN provider");
             toolTip.SetToolTip(chkRestartOnDisconnect,       "Automatically restart qBittorrent if the connection goes offline or disconnects");
+            toolTip.SetToolTip(radTransmissionServiceMode,   "Use Transmission running as a Windows service (e.g. transmission-daemon installed via the official installer)");
+            toolTip.SetToolTip(radTransmissionProcessMode,   "Use Transmission running as a regular user process (e.g. transmission-qt started from the Start Menu)");
+            toolTip.SetToolTip(txtTransmissionURL,           "URL for the Transmission RPC endpoint (e.g. http://127.0.0.1:9091)");
+            toolTip.SetToolTip(txtTransmissionUserName,      "Username for the Transmission RPC (leave empty if authentication is disabled)");
+            toolTip.SetToolTip(txtTransmissionPassword,      "Password for the Transmission RPC (leave empty if authentication is disabled)");
+            toolTip.SetToolTip(txtTransmissionServiceName,   "Windows service name for Transmission (used in Service mode to detect status and trigger restarts)");
+            toolTip.SetToolTip(txtTransmissionProcessName,   "Process name used to detect if Transmission is running in Process mode (e.g. transmission-qt)");
+            toolTip.SetToolTip(txtTransmissionExePath,       "Path to the Transmission executable, used to start or restart the application in Process mode");
+            toolTip.SetToolTip(btnBrowseTransmissionExePath, "Browse for the Transmission executable");
+            toolTip.SetToolTip(chkRestartTransmission,       "Restart the Transmission service after a port change (only applies in Service mode)");
+            toolTip.SetToolTip(chkForceStartTransmission,    "Automatically launch Transmission if it is not already running");
             toolTip.SetToolTip(txtPostUpdateCmd,             "Shell command to run after a successful port update (leave empty to disable)");
             toolTip.SetToolTip(chkDebugMode,                 "Write verbose debug entries to the log file");
             toolTip.SetToolTip(cboColorTheme,                "Application color theme (System, Dark, or Light) - a restart prompt will appear if changed");
@@ -59,6 +71,15 @@ namespace qbPortWeaver
             cboVpnProvider.SelectedItem = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyVpnProvider);
             if (cboVpnProvider.SelectedIndex < 0)
                 cboVpnProvider.SelectedIndex = 0;
+
+            cboBitTorrentClient.Items.Clear();
+            cboBitTorrentClient.Items.AddRange(
+            [
+                RegistrySettingsManager.BitTorrentClientQBittorrent,
+                RegistrySettingsManager.BitTorrentClientTransmission
+            ]);
+            cboBitTorrentClient.SelectedItem = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyBitTorrentClient);
+            if (cboBitTorrentClient.SelectedIndex < 0) cboBitTorrentClient.SelectedIndex = 0;
 
             // NAT-PMP adapter - discovered asynchronously to avoid blocking the UI
             cboNatPmpAdapter.Items.Clear();
@@ -94,6 +115,22 @@ namespace qbPortWeaver
                 RegistrySettingsManager.GetInt(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyDefaultPort),
                 (int)nudDefaultPort.Minimum, (int)nudDefaultPort.Maximum);
 
+            // Transmission
+            string transmissionMode = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionTransmission, RegistrySettingsManager.KeyTransmissionMode);
+            bool isProcessMode = transmissionMode.Equals(RegistrySettingsManager.TransmissionModeProcess, StringComparison.OrdinalIgnoreCase);
+            radTransmissionServiceMode.Checked = !isProcessMode;
+            radTransmissionProcessMode.Checked = isProcessMode;
+            txtTransmissionURL.Text         = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionTransmission, RegistrySettingsManager.KeyTransmissionUrl);
+            txtTransmissionUserName.Text    = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionTransmission, RegistrySettingsManager.KeyTransmissionUserName);
+            txtTransmissionPassword.Text    = RegistrySettingsManager.GetTransmissionPassword();
+            txtTransmissionServiceName.Text = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionTransmission, RegistrySettingsManager.KeyTransmissionServiceName);
+            txtTransmissionProcessName.Text = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionTransmission, RegistrySettingsManager.KeyTransmissionProcessName);
+            txtTransmissionExePath.Text     = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionTransmission, RegistrySettingsManager.KeyTransmissionExePath);
+            chkRestartTransmission.Checked    = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionTransmission, RegistrySettingsManager.KeyRestartTransmission);
+            chkForceStartTransmission.Checked = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionTransmission, RegistrySettingsManager.KeyForceStartTransmission);
+
+            UpdateClientGroupVisibility();
+
             // Extra
             cboColorTheme.Items.Clear();
             cboColorTheme.Items.AddRange(
@@ -112,6 +149,7 @@ namespace qbPortWeaver
         {
             // General
             RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyVpnProvider,          cboVpnProvider.SelectedItem?.ToString() ?? RegistrySettingsManager.VpnProviderDisabled);
+            RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyBitTorrentClient,      cboBitTorrentClient.SelectedItem?.ToString() ?? RegistrySettingsManager.BitTorrentClientQBittorrent);
             RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyUpdateIntervalSeconds, ((int)nudUpdateInterval.Value).ToString());
             // If discovery is still pending (combo disabled), preserve the existing value to avoid
             // saving the "Discovering adapters…" placeholder text as the adapter name
@@ -134,6 +172,17 @@ namespace qbPortWeaver
             RegistrySettingsManager.SetBool (RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyWarnOnInterfaceMismatch, chkWarnOnInterfaceMismatch.Checked);
             RegistrySettingsManager.SetBool (RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyRestartOnDisconnect,     chkRestartOnDisconnect.Checked);
 
+            // Transmission
+            RegistrySettingsManager.SetValue        (RegistrySettingsManager.SectionTransmission, RegistrySettingsManager.KeyTransmissionMode,        radTransmissionProcessMode.Checked ? RegistrySettingsManager.TransmissionModeProcess : RegistrySettingsManager.TransmissionModeService);
+            RegistrySettingsManager.SetValue        (RegistrySettingsManager.SectionTransmission, RegistrySettingsManager.KeyTransmissionUrl,         txtTransmissionURL.Text.Trim());
+            RegistrySettingsManager.SetValue        (RegistrySettingsManager.SectionTransmission, RegistrySettingsManager.KeyTransmissionUserName,    txtTransmissionUserName.Text.Trim());
+            RegistrySettingsManager.SetTransmissionPassword(txtTransmissionPassword.Text);
+            RegistrySettingsManager.SetValue        (RegistrySettingsManager.SectionTransmission, RegistrySettingsManager.KeyTransmissionServiceName, txtTransmissionServiceName.Text.Trim());
+            RegistrySettingsManager.SetValue        (RegistrySettingsManager.SectionTransmission, RegistrySettingsManager.KeyTransmissionProcessName, txtTransmissionProcessName.Text.Trim());
+            RegistrySettingsManager.SetValue        (RegistrySettingsManager.SectionTransmission, RegistrySettingsManager.KeyTransmissionExePath,     txtTransmissionExePath.Text.Trim());
+            RegistrySettingsManager.SetBool         (RegistrySettingsManager.SectionTransmission, RegistrySettingsManager.KeyRestartTransmission,     chkRestartTransmission.Checked);
+            RegistrySettingsManager.SetBool         (RegistrySettingsManager.SectionTransmission, RegistrySettingsManager.KeyForceStartTransmission,  chkForceStartTransmission.Checked);
+
             // Extra
             RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionExtra, RegistrySettingsManager.KeyColorTheme,     cboColorTheme.SelectedItem?.ToString() ?? RegistrySettingsManager.ColorThemeSystem);
             RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionExtra, RegistrySettingsManager.KeyPostUpdateCmd, txtPostUpdateCmd.Text.Trim());
@@ -154,13 +203,15 @@ namespace qbPortWeaver
                 return;
             }
 
-            string urlText = txtQBittorrentURL.Text.Trim();
+            bool isTransmission = cboBitTorrentClient.SelectedItem?.ToString() == RegistrySettingsManager.BitTorrentClientTransmission;
+            string urlText    = isTransmission ? txtTransmissionURL.Text.Trim() : txtQBittorrentURL.Text.Trim();
+            string clientName = isTransmission ? "Transmission" : "qBittorrent";
             if (!string.IsNullOrEmpty(urlText) &&
                 (!Uri.TryCreate(urlText, UriKind.Absolute, out var uri) ||
                  (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps)))
             {
                 MessageBox.Show(
-                    "The qBittorrent URL is not valid. Enter a URL starting with http:// or https://",
+                    $"The {clientName} URL is not valid. Enter a URL starting with http:// or https://",
                     AppConstants.AppName,
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Warning);
@@ -188,6 +239,33 @@ namespace qbPortWeaver
         }
 
         private void btnCancel_Click(object? sender, EventArgs e) => Close();
+
+        private void cboBitTorrentClient_SelectedIndexChanged(object? sender, EventArgs e) =>
+            UpdateClientGroupVisibility();
+
+        private void UpdateClientGroupVisibility()
+        {
+            bool isTransmission     = cboBitTorrentClient.SelectedItem?.ToString() == RegistrySettingsManager.BitTorrentClientTransmission;
+            grpQBittorrent.Visible  = !isTransmission;
+            grpTransmission.Visible = isTransmission;
+        }
+
+        private void radTransmissionServiceMode_CheckedChanged(object? sender, EventArgs e) =>
+            UpdateTransmissionModeControls();
+
+        private void UpdateTransmissionModeControls()
+        {
+            bool isService = radTransmissionServiceMode.Checked;
+            lblTransmissionServiceName.Visible   = isService;
+            txtTransmissionServiceName.Visible   = isService;
+            lblTransmissionProcessName.Visible   = !isService;
+            txtTransmissionProcessName.Visible   = !isService;
+            lblTransmissionExePath.Enabled       = !isService;
+            txtTransmissionExePath.Enabled       = !isService;
+            btnBrowseTransmissionExePath.Enabled = !isService;
+            // Restart is a no-op in process mode (port is live immediately via RPC)
+            chkRestartTransmission.Visible       = isService;
+        }
 
         private void cboVpnProvider_SelectedIndexChanged(object? sender, EventArgs e)
         {
@@ -236,6 +314,24 @@ namespace qbPortWeaver
                 txtQBittorrentExePath.Text = dlg.FileName;
         }
 
+        private void btnBrowseTransmissionExePath_Click(object? sender, EventArgs e)
+        {
+            using var dlg = new OpenFileDialog
+            {
+                Title  = "Select Transmission Executable",
+                Filter = "Executable files (*.exe)|*.exe|All files (*.*)|*.*"
+            };
+
+            if (!string.IsNullOrWhiteSpace(txtTransmissionExePath.Text) &&
+                File.Exists(txtTransmissionExePath.Text))
+            {
+                dlg.InitialDirectory = Path.GetDirectoryName(txtTransmissionExePath.Text) ?? string.Empty;
+            }
+
+            if (dlg.ShowDialog() == DialogResult.OK)
+                txtTransmissionExePath.Text = dlg.FileName;
+        }
+
         private void chkAutoRecovery_CheckedChanged(object? sender, EventArgs e) =>
             UpdateAutoRecoverySubControls();
 
@@ -257,8 +353,9 @@ namespace qbPortWeaver
             nudRecoveryCycles.Enabled     = enabled && chkAutoRecovery.Checked;
             lblRecoveryCyclesUnit.Enabled = enabled && chkAutoRecovery.Checked;
 
-            // qBittorrent section
-            grpQBittorrent.Enabled = enabled;
+            // qBittorrent / Transmission section
+            grpQBittorrent.Enabled  = enabled;
+            grpTransmission.Enabled = enabled;
 
             // Extra section - post-update command (color mode and debug mode stay enabled)
             lblPostUpdateCmd.Enabled = enabled;

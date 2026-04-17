@@ -9,7 +9,7 @@ namespace qbPortWeaver.HelperService;
 /// Listens on a named pipe and dispatches privileged session 0 actions requested by the
 /// user-session tray app. Runs as a hosted background service inside the helper Windows service.
 /// Protocol: one text line per connection, pipe-delimited: action|target|logFilePath.
-/// Supported actions: restart (restart the Windows service identified by the provider token)
+/// Supported actions: restart (restart the Windows service identified by the service token)
 /// and cycle-adapter (disable and re-enable a network adapter via netsh).
 /// The log file path is sent per-call so the helper writes into the same log file as the
 /// tray app, regardless of which user profile is active.
@@ -119,7 +119,7 @@ internal sealed class HelperPipeServer(ILogger<HelperPipeServer> logger) : Backg
                 string? serviceName = AutoRecovery.FindServiceForToken(target);
                 if (serviceName is null)
                 {
-                    logger.LogWarning("Rejected restart request for unknown provider token '{Token}'", target);
+                    logger.LogWarning("Rejected restart request for unknown service token '{Token}'", target);
                     return;
                 }
                 await AutoRecovery.RestartServiceAsync(serviceName, helperLogger).ConfigureAwait(false);

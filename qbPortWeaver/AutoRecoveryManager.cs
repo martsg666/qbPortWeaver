@@ -1,6 +1,5 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
-using System.IO.Pipes;
 
 namespace qbPortWeaver
 {
@@ -11,12 +10,8 @@ namespace qbPortWeaver
     /// </summary>
     internal static class AutoRecoveryManager
     {
-        internal const string ActionRestart      = "restart";       // Must match HelperPipeServer.ActionRestart in HelperService
-        internal const string ActionCycleAdapter = "cycle-adapter"; // Must match HelperPipeServer.ActionCycleAdapter in HelperService
-
-        private const int ClientRestartDelayMs       = 2000;
-        private const int PipeConnectTimeoutMs       = 5000;
-        private const int ServiceHeadStartDelayMs    = 20000;
+        private const int ClientRestartDelayMs    = 2000;
+        private const int ServiceHeadStartDelayMs = 20000;
 
         // Caches the EXE path for each client process name so recovery works even when
         // the process was killed externally before we could inspect it.
@@ -37,10 +32,13 @@ namespace qbPortWeaver
         /// </summary>
         internal static async Task TriggerRecoveryAsync(string action, string target)
         {
-            await SendToHelperServiceAsync(action, target).ConfigureAwait(false);
-
-            if (action != ActionRestart)
+            if (action != HelperServiceClient.ActionRestart)
+            {
+                await HelperServiceClient.SendCycleAdapterAsync(target).ConfigureAwait(false);
                 return;
+            }
+
+            await HelperServiceClient.SendRestartAsync(target).ConfigureAwait(false);
 
             string? clientProcessName = FindClientProcessName(target);
             if (clientProcessName is not null)
@@ -87,24 +85,6 @@ namespace qbPortWeaver
                 {
                     LogManager.Instance.LogDebug($"AutoRecoveryManager.CacheRunningClientExePaths: '{processName}': {ex.Message}");
                 }
-            }
-        }
-
-        // Sends a recovery request to the SYSTEM helper service via named pipe.
-        // Protocol (pipe-delimited): <action>|<target>|<logFilePath>
-        private static async Task SendToHelperServiceAsync(string action, string target)
-        {
-            try
-            {
-                using var pipe = new NamedPipeClientStream(".", AppConstants.HelperServicePipeName, PipeDirection.Out);
-                await pipe.ConnectAsync(PipeConnectTimeoutMs).ConfigureAwait(false);
-                using var writer = new StreamWriter(pipe) { AutoFlush = true };
-                await writer.WriteLineAsync($"{action}|{target}|{AppConstants.GetLogFilePath()}").ConfigureAwait(false);
-                LogManager.Instance.LogMessage($"Sent '{action}' request for '{target}'", LogLevel.Info);
-            }
-            catch (Exception ex)
-            {
-                LogManager.Instance.LogMessage($"Failed to reach helper service: {ex.Message}", LogLevel.Warn);
             }
         }
 

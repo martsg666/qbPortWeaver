@@ -18,12 +18,18 @@ internal static partial class AutoRecovery
     private const int AdapterCycleDelayMs       = 3000;
     private const int NetshTimeoutMs            = 15000;
 
-    // Maps provider keywords to the Windows service to restart.
+    // Maps VPN provider tokens to the Windows service name to restart.
     // Used by HelperPipeServer for the "restart" action (exact token lookup via FindServiceForToken).
-    private static readonly Dictionary<string, string> _providerServiceMap = new(StringComparer.OrdinalIgnoreCase)
+    private static readonly Dictionary<string, string> _vpnServiceMap = new(StringComparer.OrdinalIgnoreCase)
     {
         ["ProtonVPN"] = "ProtonVPN Service",
         ["PIA"]       = "PrivateInternetAccessService",
+    };
+
+    // Maps BitTorrent client tokens to the Windows service name to restart.
+    private static readonly Dictionary<string, string> _clientServiceMap = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["Transmission"] = "Transmission",
     };
 
     internal static async Task RestartServiceAsync(string serviceName, HelperLogger logger)
@@ -102,8 +108,10 @@ internal static partial class AutoRecovery
     }
 
     // Exact-match lookup used by HelperPipeServer for the "restart" action.
-    internal static string? FindServiceForToken(string providerToken) =>
-        _providerServiceMap.TryGetValue(providerToken, out string? serviceName) ? serviceName : null;
+    internal static string? FindServiceForToken(string token) =>
+        _vpnServiceMap.TryGetValue(token, out string? name) || _clientServiceMap.TryGetValue(token, out name)
+            ? name
+            : null;
 
     // Stops a service cleanly via the SCM, with escalating force if it doesn't respond.
     // Escalation: SCM stop → wait → KillServiceProcess (3-stage: Process.Kill → taskkill /F /T → retry).

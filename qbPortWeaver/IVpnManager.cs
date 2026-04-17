@@ -39,9 +39,9 @@ namespace qbPortWeaver
 
         /// <summary>
         /// Returns the auto-recovery action to request from the helper service.
-        /// For ProtonVPN and PIA this is always <see cref="AutoRecoveryManager.ActionRestart"/>.
-        /// For NAT-PMP this is <see cref="AutoRecoveryManager.ActionRestart"/> when the adapter belongs
-        /// to a known provider, or <see cref="AutoRecoveryManager.ActionCycleAdapter"/> otherwise.
+        /// For ProtonVPN and PIA this is always <see cref="HelperServiceClient.ActionRestart"/>.
+        /// For NAT-PMP this is <see cref="HelperServiceClient.ActionRestart"/> when the adapter belongs
+        /// to a known provider, or <see cref="HelperServiceClient.ActionCycleAdapter"/> otherwise.
         /// </summary>
         string GetRecoveryAction();
 

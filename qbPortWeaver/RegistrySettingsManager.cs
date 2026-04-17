@@ -7,15 +7,16 @@ namespace qbPortWeaver
     /// <summary>Reads and writes application settings from the Windows registry under <c>HKCU\Software\qbPortWeaver\Settings</c>.</summary>
     public static class RegistrySettingsManager
     {
-        internal const string BaseKeyPath = @"Software\" + AppConstants.AppName + @"\Settings";
+        internal const string BaseKeyPath = @"Software\" + AppConstants.AppName + @"\settings";
         private const string AppKeyPath  = @"Software\" + AppConstants.AppName;
         // Explicit string literals guarantee stable boolean registry serialization independent of framework internals.
         private const string ValueTrue   = "True";
         private const string ValueFalse  = "False";
 
-        public const string SectionGeneral     = "general";
-        public const string SectionQBittorrent = "qBittorrent";
-        public const string SectionExtra       = "extra";
+        public const string SectionGeneral      = "general";
+        public const string SectionQBittorrent  = "qbittorrent";
+        public const string SectionTransmission = "transmission";
+        public const string SectionExtra        = "extra";
         public const string SectionMedia       = "media";
 
         public const string VpnProviderDisabled  = "Disabled";
@@ -23,14 +24,17 @@ namespace qbPortWeaver
         public const string VpnProviderPia       = "PIA";
         public const string VpnProviderNatPmp    = "NAT-PMP";
 
+        public const string BitTorrentClientQBittorrent = "qBittorrent";
+        public const string BitTorrentClientTransmission = "Transmission";
+
         // Registry key name strings are frozen - changing them would silently break existing installations
-        // by orphaning previously saved values. Casing inconsistencies (e.g. "restartqBittorrent" vs
-        // "qBittorrentURL") are historical and must be preserved for backward compatibility.
+        // by orphaning previously saved values.
 
         // Registry key names - general section
         public const string KeyVpnProvider          = "vpnProvider";
         public const string KeyUpdateIntervalSeconds = "updateIntervalSeconds";
         public const string KeyNatPmpAdapterName    = "natPmpAdapterName";
+        public const string KeyBitTorrentClient     = "bitTorrentClient";
 
         // Registry key names - qBittorrent section
         public const string KeyQBittorrentUrl          = "qBittorrentURL";
@@ -43,6 +47,21 @@ namespace qbPortWeaver
         public const string KeyDefaultPort             = "defaultPort";
         public const string KeyWarnOnInterfaceMismatch = "warnOnInterfaceMismatch";
         public const string KeyRestartOnDisconnect     = "restartOnDisconnect";
+
+        // Registry key names - transmission section
+        public const string KeyTransmissionUrl         = "transmissionURL";
+        public const string KeyTransmissionUserName    = "transmissionUserName";
+        public const string KeyTransmissionPassword    = "transmissionPassword";
+        public const string KeyTransmissionMode        = "transmissionMode";
+        public const string KeyTransmissionServiceName = "transmissionServiceName";
+        public const string KeyTransmissionProcessName = "transmissionProcessName";
+        public const string KeyTransmissionExePath     = "transmissionExePath";
+        public const string KeyRestartTransmission     = "restartTransmission";
+        public const string KeyForceStartTransmission  = "forceStartTransmission";
+
+        // Transmission mode values
+        public const string TransmissionModeService = "Service";
+        public const string TransmissionModeProcess = "Process";
 
         // Registry key names - extra section
         public const string KeyPostUpdateCmd = "postUpdateCmd";
@@ -87,7 +106,8 @@ namespace qbPortWeaver
                     [KeyUpdateIntervalSeconds]          = "180",
                     [KeyNatPmpAdapterName]              = "",
                     [KeyAutoRecoveryEnabled]            = ValueTrue,
-                    [KeyAutoRecoveryTriggerCycles]      = "3"
+                    [KeyAutoRecoveryTriggerCycles]      = "3",
+                    [KeyBitTorrentClient]               = BitTorrentClientQBittorrent
                 },
                 [SectionQBittorrent] = new(StringComparer.OrdinalIgnoreCase)
                 {
@@ -101,6 +121,18 @@ namespace qbPortWeaver
                     [KeyDefaultPort]             = "0",
                     [KeyWarnOnInterfaceMismatch] = ValueTrue,
                     [KeyRestartOnDisconnect]     = ValueTrue
+                },
+                [SectionTransmission] = new(StringComparer.OrdinalIgnoreCase)
+                {
+                    [KeyTransmissionUrl]         = "http://127.0.0.1:9091",
+                    [KeyTransmissionUserName]    = "",
+                    [KeyTransmissionPassword]    = "",
+                    [KeyTransmissionMode]        = TransmissionModeService,
+                    [KeyTransmissionServiceName] = "Transmission",
+                    [KeyTransmissionProcessName] = "transmission-qt",
+                    [KeyTransmissionExePath]     = @"C:\Program Files\Transmission\transmission-qt.exe",
+                    [KeyRestartTransmission]     = ValueTrue,
+                    [KeyForceStartTransmission]  = ValueTrue
                 },
                 [SectionExtra] = new(StringComparer.OrdinalIgnoreCase)
                 {
@@ -203,6 +235,10 @@ namespace qbPortWeaver
         public static string GetPassword() =>
             GetEncryptedValue(SectionQBittorrent, KeyQBittorrentPassword);
 
+        /// <summary>Reads the Transmission password from the registry and decrypts it with DPAPI (CurrentUser scope). Returns an empty string if missing or decryption fails.</summary>
+        public static string GetTransmissionPassword() =>
+            GetEncryptedValue(SectionTransmission, KeyTransmissionPassword);
+
         /// <summary>Reads a DPAPI-encrypted string value from the registry. Returns the hardcoded default if the key is missing, empty, or decryption fails.</summary>
         public static string GetEncryptedValue(string section, string key)
         {
@@ -257,6 +293,10 @@ namespace qbPortWeaver
         public static void SetPassword(string plaintext) =>
             SetEncryptedValue(SectionQBittorrent, KeyQBittorrentPassword, plaintext);
 
+        /// <summary>Encrypts <paramref name="plaintext"/> with DPAPI (CurrentUser scope) and writes the result to the registry.</summary>
+        public static void SetTransmissionPassword(string plaintext) =>
+            SetEncryptedValue(SectionTransmission, KeyTransmissionPassword, plaintext);
+
         /// <summary>Encrypts <paramref name="plaintext"/> with DPAPI (CurrentUser scope) and writes the result to the registry under the given section and key.</summary>
         public static void SetEncryptedValue(string section, string key, string plaintext)
         {
@@ -279,6 +319,7 @@ namespace qbPortWeaver
         private static readonly HashSet<string> _encryptedKeys = new(StringComparer.OrdinalIgnoreCase)
         {
             KeyQBittorrentPassword,
+            KeyTransmissionPassword,
             KeyTmdbApiKey
         };
 

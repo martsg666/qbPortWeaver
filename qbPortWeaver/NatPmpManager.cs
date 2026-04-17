@@ -193,8 +193,8 @@ namespace qbPortWeaver
         /// <inheritdoc />
         public string GetRecoveryAction() =>
             FindProviderToken(_adapter.Name) is not null
-                ? AutoRecoveryManager.ActionRestart
-                : AutoRecoveryManager.ActionCycleAdapter;
+                ? HelperServiceClient.ActionRestart
+                : HelperServiceClient.ActionCycleAdapter;
 
         /// <inheritdoc />
         // Uses bidirectional Contains because the adapter name in settings may differ in length

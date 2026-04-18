@@ -5,6 +5,7 @@ namespace qbPortWeaver
     {
         private const string DiscoveringAdaptersPlaceholder = "Discovering adapters\u2026";
         private const string NoAdaptersFoundPlaceholder     = "No NAT-PMP adapters found";
+        private const string DefaultPortTooltip             = "Port to apply when the VPN is disconnected (0 = do nothing when disconnected)";
 
         public SettingsForm()
         {
@@ -35,8 +36,8 @@ namespace qbPortWeaver
             toolTip.SetToolTip(txtQBittorrentProcessName,    "Process name used to detect if qBittorrent is running (usually qbittorrent)");
             toolTip.SetToolTip(chkRestartQBittorrent,        "Restart qBittorrent after updating the port - required for the change to take effect");
             toolTip.SetToolTip(chkForceStartQBittorrent,     "Automatically launch qBittorrent if it is not already running");
-            toolTip.SetToolTip(nudDefaultPort,               "Port to apply when the VPN is disconnected (0 = do nothing when disconnected)");
-            toolTip.SetToolTip(lblDefaultPort,               "Port to apply when the VPN is disconnected (0 = do nothing when disconnected)");
+            toolTip.SetToolTip(nudDefaultPort,               DefaultPortTooltip);
+            toolTip.SetToolTip(lblDefaultPort,               DefaultPortTooltip);
             toolTip.SetToolTip(chkWarnOnInterfaceMismatch,   "Show a warning when qBittorrent's network interface does not match the configured VPN provider");
             toolTip.SetToolTip(chkRestartOnDisconnect,       "Automatically restart qBittorrent when its connection status becomes disconnected");
             toolTip.SetToolTip(txtTransmissionURL,           "URL for the Transmission RPC endpoint (e.g. http://127.0.0.1:9091)");
@@ -48,8 +49,8 @@ namespace qbPortWeaver
             toolTip.SetToolTip(btnBrowseTransmissionExePath, "Browse for the Transmission executable");
             toolTip.SetToolTip(chkRestartTransmission,       "Restart Transmission after updating the port - required for the change to take effect");
             toolTip.SetToolTip(chkForceStartTransmission,    "Automatically launch Transmission if it is not already running");
-            toolTip.SetToolTip(nudTransmissionDefaultPort,   "Port to apply when the VPN is disconnected (0 = do nothing when disconnected)");
-            toolTip.SetToolTip(lblTransmissionDefaultPort,   "Port to apply when the VPN is disconnected (0 = do nothing when disconnected)");
+            toolTip.SetToolTip(nudTransmissionDefaultPort,   DefaultPortTooltip);
+            toolTip.SetToolTip(lblTransmissionDefaultPort,   DefaultPortTooltip);
             toolTip.SetToolTip(txtDelugeURL,                 "URL for the Deluge Web UI (e.g. http://127.0.0.1:8112)");
             toolTip.SetToolTip(txtDelugePassword,            "Password for the Deluge Web UI");
             toolTip.SetToolTip(txtDelugeExePath,             "Path to the Deluge executable, used to start or restart the application");
@@ -57,8 +58,8 @@ namespace qbPortWeaver
             toolTip.SetToolTip(txtDelugeProcessName,         "Process name used to detect if Deluge is running (usually deluge)");
             toolTip.SetToolTip(chkRestartDeluge,             "Restart Deluge after updating the port - required for the change to take effect");
             toolTip.SetToolTip(chkForceStartDeluge,          "Automatically launch Deluge if it is not already running");
-            toolTip.SetToolTip(nudDelugeDefaultPort,         "Port to apply when the VPN is disconnected (0 = do nothing when disconnected)");
-            toolTip.SetToolTip(lblDelugeDefaultPort,         "Port to apply when the VPN is disconnected (0 = do nothing when disconnected)");
+            toolTip.SetToolTip(nudDelugeDefaultPort,         DefaultPortTooltip);
+            toolTip.SetToolTip(lblDelugeDefaultPort,         DefaultPortTooltip);
             toolTip.SetToolTip(txtPostUpdateCmd,             "Shell command to run after a successful port update (leave empty to disable)");
             toolTip.SetToolTip(chkDebugMode,                 "Write verbose debug entries to the log file");
             toolTip.SetToolTip(cboColorTheme,                "Application color theme (System, Dark, or Light) - a restart prompt will appear if changed");

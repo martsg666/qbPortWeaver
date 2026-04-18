@@ -4,7 +4,7 @@ using System.Net;
 namespace qbPortWeaver
 {
     /// <summary>Base class providing shared process-lifecycle and HTTP infrastructure for BitTorrent clients.</summary>
-    public abstract class BitTorrentClientBase : IBitTorrentClient
+    public abstract class BitTorrentClientBase : IBitTorrentClient // NOSONAR S3881 — all subclasses are sealed with no additional disposable resources
     {
         protected const int ProcessStartDelayMs     = 2000;
         protected const int ProcessKillTimeoutMs    = 5000;
@@ -15,7 +15,9 @@ namespace qbPortWeaver
         protected readonly string _processName;
         protected readonly string _exePath;
         protected readonly HttpClient _httpClient;
+        protected bool _isAuthenticated;
 
+        /// <summary>Initialises the shared fields used by all BitTorrent client implementations.</summary>
         /// <param name="url">Base URL of the client's Web UI or RPC endpoint.</param>
         /// <param name="processName">Process name used for <see cref="IsRunning"/> checks. Pass an empty string if process mode is not used.</param>
         /// <param name="exePath">Full path to the client executable, used for force-start and restart.</param>
@@ -35,7 +37,7 @@ namespace qbPortWeaver
         public abstract bool SupportsInterfaceMismatchWarning { get; }
 
         /// <inheritdoc/>
-        public void Dispose() => _httpClient.Dispose(); // NOSONAR S3881 — all subclasses are sealed with no additional disposable resources
+        public void Dispose() => _httpClient.Dispose();
 
         /// <inheritdoc/>
         public virtual bool IsRunning()
@@ -71,7 +73,30 @@ namespace qbPortWeaver
         }
 
         /// <inheritdoc/>
-        public abstract Task<bool> RestartAsync(CancellationToken cancellationToken = default);
+        /// <remarks>Kills all running processes and launches a new instance. Subclasses may override
+        /// <see cref="PreRestartAsync"/> to inject work (e.g. a config-flush wait) before the kill step.</remarks>
+        public virtual async Task<bool> RestartAsync(CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                await PreRestartAsync(cancellationToken).ConfigureAwait(false);
+                // Kill all running processes and verify none remain before launching the new instance,
+                // to avoid the new process inheriting a port or file lock held by a still-dying instance.
+                if (!await KillAndVerifyAsync(cancellationToken).ConfigureAwait(false)) return false;
+                ResetAuthState();
+                Process.Start(CreateStartInfo())?.Dispose();
+                await Task.Delay(ProcessInitDelayMs, cancellationToken).ConfigureAwait(false);
+                return IsRunning();
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                LogManager.Instance.LogMessage($"Failed to restart {ClientName}: {ex.Message} - check the Executable path in Settings ({_exePath})", LogLevel.Error);
+                return false;
+            }
+        }
+
+        // Override to inject work before the kill step in RestartAsync (e.g. waiting for a config flush).
+        protected virtual Task PreRestartAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 
         /// <inheritdoc/>
         public abstract Task<(int? ListenPort, string? CurrentInterfaceName)> GetPreferencesAsync();
@@ -83,7 +108,18 @@ namespace qbPortWeaver
         public abstract Task<string?> GetConnectionStatusAsync();
 
         // Resets the per-instance auth token so the next API call re-authenticates against the freshly started process.
-        protected abstract void ResetAuthState();
+        protected virtual void ResetAuthState() => _isAuthenticated = false;
+
+        // Performs the client-specific authentication handshake. Called once per instance by EnsureAuthenticatedAsync.
+        protected abstract Task<bool> AuthenticateAsync();
+
+        // Authenticates once per instance; subsequent calls reuse the existing session.
+        protected async Task<bool> EnsureAuthenticatedAsync()
+        {
+            if (_isAuthenticated) return true;
+            _isAuthenticated = await AuthenticateAsync().ConfigureAwait(false);
+            return _isAuthenticated;
+        }
 
         // Label inserted into HTTP error messages to identify the endpoint type ("Web UI" or "RPC").
         protected virtual string ApiLabel => "Web UI";

@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Net;
 using System.Text.Json;
 
@@ -15,7 +14,6 @@ namespace qbPortWeaver
 
         private readonly string _userName;
         private readonly string _password;
-        private bool _isAuthenticated;
 
         /// <inheritdoc/>
         public override string ClientName => "qBittorrent";
@@ -34,28 +32,6 @@ namespace qbPortWeaver
         {
             _userName = userName;
             _password = password;
-        }
-
-        /// <inheritdoc/>
-        /// <remarks>Kills all running qBittorrent processes and launches a new instance.</remarks>
-        public override async Task<bool> RestartAsync(CancellationToken cancellationToken = default)
-        {
-            try
-            {
-                // Kill all running qBittorrent processes and verify none remain before
-                // launching the new instance, to avoid the new process inheriting a port or
-                // file lock held by a still-dying instance.
-                if (!await KillAndVerifyAsync(cancellationToken).ConfigureAwait(false)) return false;
-                ResetAuthState();
-                Process.Start(CreateStartInfo())?.Dispose();
-                await Task.Delay(ProcessInitDelayMs, cancellationToken).ConfigureAwait(false);
-                return IsRunning();
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException)
-            {
-                LogManager.Instance.LogMessage($"Failed to restart {ClientName}: {ex.Message} - check the Executable path in Settings ({_exePath})", LogLevel.Error);
-                return false;
-            }
         }
 
         /// <inheritdoc/>
@@ -82,7 +58,7 @@ namespace qbPortWeaver
                 if (root.TryGetProperty("listen_port", out var portElement))
                 {
                     // listen_port may be a JSON number or string depending on qBittorrent version
-                    int parsed = 0;
+                    int parsed;
                     if (portElement.ValueKind == JsonValueKind.Number && portElement.TryGetInt32(out parsed))
                         listenPort = parsed;
                     else if (portElement.ValueKind == JsonValueKind.String && int.TryParse(portElement.GetString(), out parsed))
@@ -166,18 +142,7 @@ namespace qbPortWeaver
             }
         }
 
-        /// <inheritdoc/>
-        protected override void ResetAuthState() => _isAuthenticated = false;
-
-        // Authenticates once per instance; subsequent calls reuse the existing session cookie
-        private async Task<bool> EnsureAuthenticatedAsync()
-        {
-            if (_isAuthenticated) return true;
-            _isAuthenticated = await AuthenticateAsync().ConfigureAwait(false);
-            return _isAuthenticated;
-        }
-
-        private async Task<bool> AuthenticateAsync()
+        protected override async Task<bool> AuthenticateAsync()
         {
             try
             {

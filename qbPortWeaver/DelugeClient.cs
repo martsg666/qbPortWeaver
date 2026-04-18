@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
 
@@ -13,7 +12,6 @@ namespace qbPortWeaver
         private const string RpcPath           = "/json";
 
         private readonly string _password;
-        private bool _isAuthenticated;
         private int _nextId = 1;
 
         /// <inheritdoc/>
@@ -31,31 +29,6 @@ namespace qbPortWeaver
             : base(url, processName, exePath, CreateCookieHttpClient())
         {
             _password = password;
-        }
-
-        /// <inheritdoc/>
-        /// <remarks>Waits for Deluge's debounced config flush, then kills all running processes and launches a new instance.</remarks>
-        public override async Task<bool> RestartAsync(CancellationToken cancellationToken = default)
-        {
-            try
-            {
-                // core.set_config debounces disk writes by ~5 s. Wait before killing so the
-                // new port survives the restart (without this, Deluge reads the old core.conf).
-                await Task.Delay(ConfigFlushWaitMs, cancellationToken).ConfigureAwait(false);
-                // Kill all running Deluge processes and verify none remain before launching the
-                // new instance, to avoid the new process inheriting a port or file lock held by
-                // a still-dying instance.
-                if (!await KillAndVerifyAsync(cancellationToken).ConfigureAwait(false)) return false;
-                ResetAuthState();
-                Process.Start(CreateStartInfo())?.Dispose();
-                await Task.Delay(ProcessInitDelayMs, cancellationToken).ConfigureAwait(false);
-                return IsRunning();
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException)
-            {
-                LogManager.Instance.LogMessage($"Failed to restart {ClientName}: {ex.Message} - check the Executable path in Settings ({_exePath})", LogLevel.Error);
-                return false;
-            }
         }
 
         /// <inheritdoc/>
@@ -85,24 +58,7 @@ namespace qbPortWeaver
                     return (null, null);
                 }
 
-                int? listenPort = null;
-                bool randomPort = result.TryGetProperty("random_port", out var randomPortEl) &&
-                                  randomPortEl.ValueKind == JsonValueKind.True;
-
-                if (randomPort)
-                {
-                    if (result.TryGetProperty("listen_random_port", out var randomPortValEl) &&
-                        randomPortValEl.TryGetInt32(out int parsed))
-                        listenPort = parsed;
-                }
-                else
-                {
-                    if (result.TryGetProperty("listen_ports", out var listenPortsEl) &&
-                        listenPortsEl.ValueKind == JsonValueKind.Array &&
-                        listenPortsEl.GetArrayLength() > 0 &&
-                        listenPortsEl[0].TryGetInt32(out int parsed))
-                        listenPort = parsed;
-                }
+                int? listenPort = ParseListenPort(result);
 
                 if (listenPort is null)
                     LogManager.Instance.LogDebug("DelugeClient.GetPreferencesAsync: listen port not parsed in RPC response");
@@ -162,18 +118,34 @@ namespace qbPortWeaver
         /// <remarks>Deluge does not expose a connection status endpoint; always returns <see langword="null"/>.</remarks>
         public override Task<string?> GetConnectionStatusAsync() => Task.FromResult<string?>(null);
 
-        /// <inheritdoc/>
-        protected override void ResetAuthState() => _isAuthenticated = false;
+        // core.set_config debounces disk writes by ~5 s. Wait before the kill step so the
+        // new port survives the restart (without this, Deluge reads the old core.conf).
+        protected override Task PreRestartAsync(CancellationToken cancellationToken) =>
+            Task.Delay(ConfigFlushWaitMs, cancellationToken);
 
-        // Authenticates once per instance; subsequent calls reuse the existing session cookie
-        private async Task<bool> EnsureAuthenticatedAsync()
+        private static int? ParseListenPort(JsonElement result)
         {
-            if (_isAuthenticated) return true;
-            _isAuthenticated = await AuthenticateAsync().ConfigureAwait(false);
-            return _isAuthenticated;
+            bool randomPort = result.TryGetProperty("random_port", out var randomPortEl) &&
+                              randomPortEl.ValueKind == JsonValueKind.True;
+
+            if (randomPort)
+            {
+                if (result.TryGetProperty("listen_random_port", out var randomPortValEl) &&
+                    randomPortValEl.TryGetInt32(out int parsed))
+                    return parsed;
+            }
+            else
+            {
+                if (result.TryGetProperty("listen_ports", out var listenPortsEl) &&
+                    listenPortsEl.ValueKind == JsonValueKind.Array &&
+                    listenPortsEl.GetArrayLength() > 0 &&
+                    listenPortsEl[0].TryGetInt32(out int parsed))
+                    return parsed;
+            }
+            return null;
         }
 
-        private async Task<bool> AuthenticateAsync()
+        protected override async Task<bool> AuthenticateAsync()
         {
             try
             {

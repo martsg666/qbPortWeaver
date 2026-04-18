@@ -156,7 +156,7 @@ namespace qbPortWeaver
                 var json = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
                 using var doc = JsonDocument.Parse(json);
                 if (!doc.RootElement.TryGetProperty("result", out var result) ||
-                    result.GetString()?.Equals("success", StringComparison.OrdinalIgnoreCase) != true)
+                    !string.Equals(result.GetString(), "success", StringComparison.OrdinalIgnoreCase))
                 {
                     LogManager.Instance.LogMessage("Transmission RPC returned non-success result for session-set", LogLevel.Error);
                     return false;
@@ -178,6 +178,9 @@ namespace qbPortWeaver
 
         /// <inheritdoc/>
         protected override void ResetAuthState() => _sessionId = null;
+
+        // Transmission uses X-Transmission-Session-Id header exchange in SendRpcAsync instead of a login step.
+        protected override Task<bool> AuthenticateAsync() => Task.FromResult(true);
 
         private async Task<bool> RestartServiceModeAsync(string serviceName, CancellationToken cancellationToken)
         {

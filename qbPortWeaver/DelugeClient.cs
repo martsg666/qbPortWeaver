@@ -1,35 +1,26 @@
 using System.Diagnostics;
-using System.Net;
 using System.Text;
 using System.Text.Json;
 
 namespace qbPortWeaver
 {
     /// <summary>Manages Deluge via its Web JSON-RPC API: authentication, port configuration, and process lifecycle.</summary>
-    public sealed class DelugeClient : IBitTorrentClient
+    public sealed class DelugeClient : BitTorrentClientBase
     {
-        private const int    ProcessStartDelayMs     = 2000;
-        private const int    ProcessKillTimeoutMs    = 5000;
-        private const int    ProcessKillRetryDelayMs = 1000;
-        private const int    ProcessInitDelayMs      = 1000;
         // Deluge's config writer debounces disk flushes by 5 s. Waiting longer than
         // that before killing the process ensures core.conf is on disk before restart.
-        private const int    ConfigFlushWaitMs       = 6000;
-        private const string RpcPath                 = "/json";
+        private const int    ConfigFlushWaitMs = 6000;
+        private const string RpcPath           = "/json";
 
-        private readonly string _url;
         private readonly string _password;
-        private readonly string _processName;
-        private readonly string _exePath;
-        private readonly HttpClient _httpClient;
         private bool _isAuthenticated;
         private int _nextId = 1;
 
         /// <inheritdoc/>
-        public string ClientName => "Deluge";
+        public override string ClientName => "Deluge";
 
         /// <inheritdoc/>
-        public bool SupportsInterfaceMismatchWarning => false;
+        public override bool SupportsInterfaceMismatchWarning => false;
 
         /// <summary>Creates a new client bound to the specified Deluge Web UI endpoint and local process.</summary>
         /// <param name="url">Base URL of the Deluge Web UI (e.g. <c>http://localhost:8112</c>).</param>
@@ -37,56 +28,14 @@ namespace qbPortWeaver
         /// <param name="processName">Process name used to detect whether Deluge is running (e.g. <c>deluge</c>).</param>
         /// <param name="exePath">Full path to the Deluge executable, used for force-start.</param>
         public DelugeClient(string url, string password, string processName, string exePath)
+            : base(url, processName, exePath, CreateCookieHttpClient())
         {
-            _url         = (url ?? string.Empty).TrimEnd('/');
-            _password    = password;
-            _processName = processName;
-            _exePath     = exePath;
-            // Per-instance HttpClient (not static) because each client needs its own CookieContainer
-            // to hold the Deluge session cookie. The instance is short-lived (one sync cycle).
-            var handler = new HttpClientHandler { CookieContainer = new CookieContainer() };
-            _httpClient = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(AppConstants.HttpTimeoutSeconds) };
-        }
-
-        /// <inheritdoc/>
-        public void Dispose() => _httpClient.Dispose();
-
-        /// <inheritdoc/>
-        public bool IsRunning()
-        {
-            if (string.IsNullOrEmpty(_processName)) return false;
-
-            var processes = Process.GetProcessesByName(_processName);
-            try
-            {
-                return processes.Length > 0;
-            }
-            finally
-            {
-                foreach (var proc in processes) proc.Dispose();
-            }
-        }
-
-        /// <inheritdoc/>
-        public async Task<bool> ForceStartAsync(CancellationToken cancellationToken = default)
-        {
-            try
-            {
-                _isAuthenticated = false;
-                Process.Start(CreateStartInfo())?.Dispose();
-                await Task.Delay(ProcessStartDelayMs, cancellationToken).ConfigureAwait(false);
-                return IsRunning();
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException)
-            {
-                LogManager.Instance.LogMessage($"Failed to start Deluge: {ex.Message} - check the Executable path in Settings ({_exePath})", LogLevel.Error);
-                return false;
-            }
+            _password = password;
         }
 
         /// <inheritdoc/>
         /// <remarks>Waits for Deluge's debounced config flush, then kills all running processes and launches a new instance.</remarks>
-        public async Task<bool> RestartAsync(CancellationToken cancellationToken = default)
+        public override async Task<bool> RestartAsync(CancellationToken cancellationToken = default)
         {
             try
             {
@@ -96,33 +45,21 @@ namespace qbPortWeaver
                 // Kill all running Deluge processes and verify none remain before launching the
                 // new instance, to avoid the new process inheriting a port or file lock held by
                 // a still-dying instance.
-                AppConstants.KillProcessesByName(_processName, ProcessKillTimeoutMs, ClientName);
-                if (IsRunning())
-                {
-                    // First pass left survivors - wait briefly and retry with a fresh process list
-                    await Task.Delay(ProcessKillRetryDelayMs, cancellationToken).ConfigureAwait(false);
-                    AppConstants.KillProcessesByName(_processName, ProcessKillTimeoutMs, ClientName);
-                    if (IsRunning())
-                    {
-                        LogManager.Instance.LogMessage("Failed to kill all Deluge processes - aborting restart", LogLevel.Error);
-                        return false;
-                    }
-                }
-
-                _isAuthenticated = false;
+                if (!await KillAndVerifyAsync(cancellationToken).ConfigureAwait(false)) return false;
+                ResetAuthState();
                 Process.Start(CreateStartInfo())?.Dispose();
                 await Task.Delay(ProcessInitDelayMs, cancellationToken).ConfigureAwait(false);
                 return IsRunning();
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                LogManager.Instance.LogMessage($"Failed to restart Deluge: {ex.Message} - check the Executable path in Settings ({_exePath})", LogLevel.Error);
+                LogManager.Instance.LogMessage($"Failed to restart {ClientName}: {ex.Message} - check the Executable path in Settings ({_exePath})", LogLevel.Error);
                 return false;
             }
         }
 
         /// <inheritdoc/>
-        public async Task<(int? ListenPort, string? CurrentInterfaceName)> GetPreferencesAsync()
+        public override async Task<(int? ListenPort, string? CurrentInterfaceName)> GetPreferencesAsync()
         {
             if (!await EnsureAuthenticatedAsync().ConfigureAwait(false)) return (null, null);
 
@@ -184,7 +121,7 @@ namespace qbPortWeaver
         }
 
         /// <inheritdoc/>
-        public async Task<bool> SetListeningPortAsync(int port)
+        public override async Task<bool> SetListeningPortAsync(int port)
         {
             if (!await EnsureAuthenticatedAsync().ConfigureAwait(false)) return false;
 
@@ -223,7 +160,10 @@ namespace qbPortWeaver
 
         /// <inheritdoc/>
         /// <remarks>Deluge does not expose a connection status endpoint; always returns <see langword="null"/>.</remarks>
-        public Task<string?> GetConnectionStatusAsync() => Task.FromResult<string?>(null);
+        public override Task<string?> GetConnectionStatusAsync() => Task.FromResult<string?>(null);
+
+        /// <inheritdoc/>
+        protected override void ResetAuthState() => _isAuthenticated = false;
 
         // Authenticates once per instance; subsequent calls reuse the existing session cookie
         private async Task<bool> EnsureAuthenticatedAsync()
@@ -269,28 +209,6 @@ namespace qbPortWeaver
             {
                 LogHttpException("AuthenticateAsync", ex);
                 return false;
-            }
-        }
-
-        // Builds the ProcessStartInfo used to launch or re-launch Deluge
-        private ProcessStartInfo CreateStartInfo() =>
-            new ProcessStartInfo(_exePath)
-            {
-                UseShellExecute  = true,
-                WorkingDirectory = Path.GetDirectoryName(_exePath) ?? string.Empty
-            };
-
-        // Classifies and logs an HTTP-related exception
-        private void LogHttpException(string methodName, Exception ex)
-        {
-            if (ex is TaskCanceledException)
-                LogManager.Instance.LogMessage($"Deluge Web UI is not reachable (timed out) - check the URL in Settings ({_url})", LogLevel.Error);
-            else if (ex is HttpRequestException)
-                LogManager.Instance.LogMessage($"Failed to connect to Deluge Web UI: {ex.Message} - check the URL in Settings ({_url})", LogLevel.Error);
-            else
-            {
-                LogManager.Instance.LogMessage($"Failed to complete Deluge request in {methodName}: {ex.Message}", LogLevel.Error);
-                LogManager.Instance.LogDebug($"DelugeClient.{methodName}: {ex.GetType().Name}");
             }
         }
     }

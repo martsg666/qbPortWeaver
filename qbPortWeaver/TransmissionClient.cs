@@ -7,38 +7,33 @@ using System.Text.Json;
 namespace qbPortWeaver
 {
     /// <summary>Manages Transmission via its RPC API: authentication, port configuration, and process lifecycle.</summary>
-    public sealed class TransmissionClient : IBitTorrentClient
+    public sealed class TransmissionClient : BitTorrentClientBase
     {
-        private const int    ProcessStartDelayMs      = 2000;
-        private const int    ProcessKillTimeoutMs     = 5000;
-        private const int    ProcessKillRetryDelayMs  = 1000;
-        private const int    ProcessInitDelayMs       = 1000;
-        private const int    GracefulShutdownWaitMs   = 5000;
-        private const int    WindowCloseWaitMs        = 3000;
-        private const int    ServiceRestartTimeoutMs  = 40000;
-        private const int    ServiceStopTimeoutMs     = 15000;
-        private const int    ServiceRestartPollMs     = 1000;
+        private const int    GracefulShutdownWaitMs  = 5000;
+        private const int    WindowCloseWaitMs       = 3000;
+        private const int    ServiceRestartTimeoutMs = 40000;
+        private const int    ServiceStopTimeoutMs    = 15000;
+        private const int    ServiceRestartPollMs    = 1000;
         private const string RpcPath                 = "/transmission/rpc";
         private const string SessionIdHeader         = "X-Transmission-Session-Id";
         // Stable token sent to the helper service for service-mode restarts.
         // Decoupled from _serviceNameOverride so a user-configured name doesn't break the pipe lookup.
         private const string RestartServiceToken = RegistrySettingsManager.BitTorrentClientTransmission;
 
-        private readonly string _url;
         private readonly string _serviceNameOverride;
-        private readonly string _processName;
-        private readonly string _exePath;
-        private readonly HttpClient _httpClient;
         private string? _sessionId;
         private string? _cachedConfigDir;     // set when TryCacheConfigDirAsync succeeds
         private string? _resolvedServiceName; // lazily discovered: override → search → null
         private bool    _serviceNameResolved;
 
         /// <inheritdoc/>
-        public string ClientName => "Transmission";
+        public override string ClientName => "Transmission";
 
         /// <inheritdoc/>
-        public bool SupportsInterfaceMismatchWarning => false;
+        public override bool SupportsInterfaceMismatchWarning => false;
+
+        /// <inheritdoc/>
+        protected override string ApiLabel => "RPC";
 
         /// <summary>Creates a new client bound to the specified Transmission RPC endpoint.</summary>
         /// <param name="url">Base URL of the Transmission RPC endpoint (e.g. <c>http://localhost:9091</c>).</param>
@@ -48,23 +43,13 @@ namespace qbPortWeaver
         /// <param name="processName">Process name used to detect Transmission when running as a user-space process (e.g. <c>transmission-qt</c>).</param>
         /// <param name="exePath">Full path to the Transmission executable, used for force-start in user-space mode.</param>
         public TransmissionClient(string url, string userName, string password, string serviceNameOverride, string processName, string exePath)
+            : base(url, processName, exePath, CreateBasicAuthHttpClient(userName, password))
         {
-            _url                 = (url ?? string.Empty).TrimEnd('/');
             _serviceNameOverride = serviceNameOverride;
-            _processName         = processName;
-            _exePath             = exePath;
-
-            string credentials = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{userName}:{password}"));
-            _httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(AppConstants.HttpTimeoutSeconds) };
-            _httpClient.DefaultRequestHeaders.Authorization =
-                new System.Net.Http.Headers.AuthenticationHeaderValue("Basic", credentials);
         }
 
         /// <inheritdoc/>
-        public void Dispose() => _httpClient.Dispose();
-
-        /// <inheritdoc/>
-        public bool IsRunning()
+        public override bool IsRunning()
         {
             string? serviceName = GetEffectiveServiceName();
             if (serviceName is not null)
@@ -78,45 +63,24 @@ namespace qbPortWeaver
                 catch { } // NOSONAR S108
             }
 
-            if (string.IsNullOrEmpty(_processName)) return false;
-
-            var processes = Process.GetProcessesByName(_processName);
-            try
-            {
-                return processes.Length > 0;
-            }
-            finally
-            {
-                foreach (var proc in processes) proc.Dispose();
-            }
+            return base.IsRunning();
         }
 
         /// <inheritdoc/>
-        public async Task<bool> ForceStartAsync(CancellationToken cancellationToken = default)
+        public override async Task<bool> ForceStartAsync(CancellationToken cancellationToken = default)
         {
             string? serviceName = GetEffectiveServiceName();
             if (serviceName is not null)
                 return await RestartServiceModeAsync(serviceName, cancellationToken).ConfigureAwait(false);
 
-            try
-            {
-                _sessionId = null;
-                Process.Start(CreateStartInfo())?.Dispose();
-                await Task.Delay(ProcessStartDelayMs, cancellationToken).ConfigureAwait(false);
-                return IsRunning();
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException)
-            {
-                LogManager.Instance.LogMessage($"Failed to start Transmission: {ex.Message} - check the Executable path in Settings ({_exePath})", LogLevel.Error);
-                return false;
-            }
+            return await base.ForceStartAsync(cancellationToken).ConfigureAwait(false);
         }
 
         /// <inheritdoc/>
         /// <remarks>Auto-detects mode from <c>config-dir</c> and service discovery. Service mode: stops and
         /// restarts the Windows service via the helper service. Process mode: closes the Qt client window
         /// cleanly (so it saves settings on exit), then relaunches the executable.</remarks>
-        public Task<bool> RestartAsync(CancellationToken cancellationToken = default)
+        public override Task<bool> RestartAsync(CancellationToken cancellationToken = default)
         {
             string? serviceName = GetEffectiveServiceName();
             // Use service mode if a service is found AND config-dir is either unknown (no prior SetListeningPortAsync)
@@ -129,7 +93,7 @@ namespace qbPortWeaver
         }
 
         /// <inheritdoc/>
-        public async Task<(int? ListenPort, string? CurrentInterfaceName)> GetPreferencesAsync()
+        public override async Task<(int? ListenPort, string? CurrentInterfaceName)> GetPreferencesAsync()
         {
             try
             {
@@ -175,7 +139,7 @@ namespace qbPortWeaver
         }
 
         /// <inheritdoc/>
-        public async Task<bool> SetListeningPortAsync(int port)
+        public override async Task<bool> SetListeningPortAsync(int port)
         {
             try
             {
@@ -210,13 +174,16 @@ namespace qbPortWeaver
 
         /// <inheritdoc/>
         /// <remarks>Transmission does not expose a connection status endpoint; always returns <see langword="null"/>.</remarks>
-        public Task<string?> GetConnectionStatusAsync() => Task.FromResult<string?>(null);
+        public override Task<string?> GetConnectionStatusAsync() => Task.FromResult<string?>(null);
+
+        /// <inheritdoc/>
+        protected override void ResetAuthState() => _sessionId = null;
 
         private async Task<bool> RestartServiceModeAsync(string serviceName, CancellationToken cancellationToken)
         {
             try
             {
-                _sessionId = null;
+                ResetAuthState();
                 await HelperServiceClient.SendRestartAsync(RestartServiceToken).ConfigureAwait(false);
 
                 // The helper service restarts the service via named pipe (fire-and-forget from
@@ -273,29 +240,17 @@ namespace qbPortWeaver
 
                 // Wait for graceful exit, then hard-kill any survivors
                 await Task.Delay(WindowCloseWaitMs, cancellationToken).ConfigureAwait(false);
-                if (IsRunning())
-                {
-                    AppConstants.KillProcessesByName(_processName, ProcessKillTimeoutMs, ClientName);
-                    if (IsRunning())
-                    {
-                        await Task.Delay(ProcessKillRetryDelayMs, cancellationToken).ConfigureAwait(false);
-                        AppConstants.KillProcessesByName(_processName, ProcessKillTimeoutMs, ClientName);
-                        if (IsRunning())
-                        {
-                            LogManager.Instance.LogMessage("Failed to kill all Transmission processes - aborting restart", LogLevel.Error);
-                            return false;
-                        }
-                    }
-                }
+                if (IsRunning() && !await KillAndVerifyAsync(cancellationToken).ConfigureAwait(false))
+                    return false;
 
-                _sessionId = null;
+                ResetAuthState();
                 Process.Start(CreateStartInfo())?.Dispose();
                 await Task.Delay(ProcessInitDelayMs, cancellationToken).ConfigureAwait(false);
                 return IsRunning();
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                LogManager.Instance.LogMessage($"Failed to restart Transmission: {ex.Message} - check the Executable path in Settings ({_exePath})", LogLevel.Error);
+                LogManager.Instance.LogMessage($"Failed to restart {ClientName}: {ex.Message} - check the Executable path in Settings ({_exePath})", LogLevel.Error);
                 return false;
             }
         }
@@ -415,26 +370,14 @@ namespace qbPortWeaver
             }
         }
 
-        // Builds the ProcessStartInfo for user-space process launch
-        private ProcessStartInfo CreateStartInfo() =>
-            new ProcessStartInfo(_exePath)
-            {
-                UseShellExecute  = true,
-                WorkingDirectory = Path.GetDirectoryName(_exePath) ?? string.Empty
-            };
-
-        // Classifies and logs an HTTP-related exception
-        private void LogHttpException(string methodName, Exception ex)
+        // Creates an HttpClient with Basic auth for the Transmission RPC endpoint.
+        private static HttpClient CreateBasicAuthHttpClient(string userName, string password)
         {
-            if (ex is TaskCanceledException)
-                LogManager.Instance.LogMessage($"Transmission RPC is not reachable (timed out) - check the URL in Settings ({_url})", LogLevel.Error);
-            else if (ex is HttpRequestException)
-                LogManager.Instance.LogMessage($"Failed to connect to Transmission RPC: {ex.Message} - check the URL in Settings ({_url})", LogLevel.Error);
-            else
-            {
-                LogManager.Instance.LogMessage($"Failed to complete Transmission request in {methodName}: {ex.Message}", LogLevel.Error);
-                LogManager.Instance.LogDebug($"TransmissionClient.{methodName}: {ex.GetType().Name}");
-            }
+            string credentials = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{userName}:{password}"));
+            var client = new HttpClient { Timeout = TimeSpan.FromSeconds(AppConstants.HttpTimeoutSeconds) };
+            client.DefaultRequestHeaders.Authorization =
+                new System.Net.Http.Headers.AuthenticationHeaderValue("Basic", credentials);
+            return client;
         }
     }
 }

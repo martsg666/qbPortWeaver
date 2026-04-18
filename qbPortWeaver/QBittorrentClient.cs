@@ -39,12 +39,12 @@ namespace qbPortWeaver
         /// <param name="exePath">Full path to the qBittorrent executable, used for force-start.</param>
         public QBittorrentClient(string url, string userName, string password, string processName, string exePath)
         {
-            _url = (url ?? string.Empty).TrimEnd('/');
-            _userName = userName;
-            _password = password;
+            _url         = (url ?? string.Empty).TrimEnd('/');
+            _userName    = userName;
+            _password    = password;
             _processName = processName;
-            _exePath = exePath;
-            // Per-instance HttpClient (not static) because each manager needs its own CookieContainer
+            _exePath     = exePath;
+            // Per-instance HttpClient (not static) because each client needs its own CookieContainer
             // to hold the qBittorrent auth session cookie. The instance is short-lived (one sync cycle).
             var handler = new HttpClientHandler { CookieContainer = new CookieContainer() };
             _httpClient = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(AppConstants.HttpTimeoutSeconds) };
@@ -74,6 +74,7 @@ namespace qbPortWeaver
         {
             try
             {
+                _isAuthenticated = false;
                 Process.Start(CreateStartInfo())?.Dispose();
                 await Task.Delay(ProcessStartDelayMs, cancellationToken).ConfigureAwait(false);
                 return IsRunning();
@@ -94,12 +95,12 @@ namespace qbPortWeaver
                 // Kill all running qBittorrent processes and verify none remain before
                 // launching the new instance, to avoid the new process inheriting a port or
                 // file lock held by a still-dying instance.
-                KillProcessesByName(_processName);
+                AppConstants.KillProcessesByName(_processName, ProcessKillTimeoutMs, ClientName);
                 if (IsRunning())
                 {
                     // First pass left survivors - wait briefly and retry with a fresh process list
                     await Task.Delay(ProcessKillRetryDelayMs, cancellationToken).ConfigureAwait(false);
-                    KillProcessesByName(_processName);
+                    AppConstants.KillProcessesByName(_processName, ProcessKillTimeoutMs, ClientName);
                     if (IsRunning())
                     {
                         LogManager.Instance.LogMessage("Failed to kill all qBittorrent processes - aborting restart", LogLevel.Error);
@@ -107,10 +108,9 @@ namespace qbPortWeaver
                     }
                 }
 
+                _isAuthenticated = false;
                 Process.Start(CreateStartInfo())?.Dispose();
                 await Task.Delay(ProcessInitDelayMs, cancellationToken).ConfigureAwait(false);
-                _isAuthenticated = false;
-
                 return IsRunning();
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
@@ -179,7 +179,7 @@ namespace qbPortWeaver
 
             try
             {
-                var jsonBody = $"{{\"listen_port\": {port}}}";
+                var jsonBody = $"{{\"listen_port\":{port},\"upnp\":false,\"natpmp\":false}}";
                 using var content = new FormUrlEncodedContent([new("json", jsonBody)]);
 
                 using var response = await _httpClient.PostAsync($"{_url}{ApiSetPreferences}", content).ConfigureAwait(false);
@@ -225,21 +225,6 @@ namespace qbPortWeaver
             {
                 LogHttpException("GetConnectionStatusAsync", ex);
                 return null;
-            }
-        }
-
-        // Attempts to kill all processes matching the given name.
-        private static void KillProcessesByName(string processName)
-        {
-            foreach (var proc in Process.GetProcessesByName(processName))
-            {
-                try
-                {
-                    if (!AppConstants.KillProcess(proc, ProcessKillTimeoutMs))
-                        LogManager.Instance.LogMessage($"qBittorrent process (PID {proc.Id}) still running after kill attempts", LogLevel.Warn);
-                }
-                catch (Exception ex) { LogManager.Instance.LogDebug($"QBittorrentClient.KillProcessesByName: Failed to kill process: {ex.Message}"); }
-                finally { proc.Dispose(); }
             }
         }
 

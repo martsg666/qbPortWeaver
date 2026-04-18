@@ -6,13 +6,13 @@ $SmtpServer = "smtp.gmail.com"
 $SmtpPort = 587
 $From = "FROM_EMAIL@gmail.com"
 $To = "TO_EMAIL@gmail.com"
-$Subject = "qbPortWeaver - Port Changed to $($status.qBittorrentPort)"
+$Subject = "qbPortWeaver - Port Changed to $($status.clientPort)"
 $Body = @"
 VPN Provider: $($status.vpnProvider)
 VPN Connected: $($status.vpnConnected)
 VPN Port: $($status.vpnPort)
-qBittorrent Previous Port: $($status.qBittorrentPreviousPort)
-qBittorrent Port: $($status.qBittorrentPort)
+Client Previous Port: $($status.clientPreviousPort)
+Client Port: $($status.clientPort)
 Port Changed: $($status.portChanged)
 Status: $($status.status)
 Message: $($status.message)

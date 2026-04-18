@@ -126,6 +126,21 @@ namespace qbPortWeaver
             return process.WaitForExit(timeoutMs);
         }
 
+        /// <summary>Kills all running processes matching <paramref name="processName"/> and logs outcomes per process.</summary>
+        internal static void KillProcessesByName(string processName, int killTimeoutMs, string clientName)
+        {
+            foreach (var proc in Process.GetProcessesByName(processName))
+            {
+                try
+                {
+                    if (!KillProcess(proc, killTimeoutMs))
+                        LogManager.Instance.LogMessage($"{clientName} process (PID {proc.Id}) still running after kill attempts", LogLevel.Warn);
+                }
+                catch (Exception ex) { LogManager.Instance.LogDebug($"{clientName}.KillProcessesByName: Failed to kill process: {ex.Message}"); }
+                finally { proc.Dispose(); }
+            }
+        }
+
         /// <summary>Creates a ProcessStartInfo configured to run a hidden, windowless process.</summary>
         public static ProcessStartInfo CreateHiddenStartInfo(string fileName, string arguments) =>
             new(fileName, arguments) { UseShellExecute = false, CreateNoWindow = true };

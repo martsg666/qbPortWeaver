@@ -16,8 +16,9 @@ namespace qbPortWeaver
         public const string SectionGeneral      = "general";
         public const string SectionQBittorrent  = "qbittorrent";
         public const string SectionTransmission = "transmission";
+        public const string SectionDeluge       = "deluge";
         public const string SectionExtra        = "extra";
-        public const string SectionMedia       = "media";
+        public const string SectionMedia        = "media";
 
         public const string VpnProviderDisabled  = "Disabled";
         public const string VpnProviderProtonVpn = "ProtonVPN";
@@ -26,6 +27,7 @@ namespace qbPortWeaver
 
         public const string BitTorrentClientQBittorrent = "qBittorrent";
         public const string BitTorrentClientTransmission = "Transmission";
+        public const string BitTorrentClientDeluge       = "Deluge";
 
         // Registry key name strings are frozen - changing them would silently break existing installations
         // by orphaning previously saved values.
@@ -52,16 +54,19 @@ namespace qbPortWeaver
         public const string KeyTransmissionUrl         = "transmissionURL";
         public const string KeyTransmissionUserName    = "transmissionUserName";
         public const string KeyTransmissionPassword    = "transmissionPassword";
-        public const string KeyTransmissionMode        = "transmissionMode";
         public const string KeyTransmissionServiceName = "transmissionServiceName";
         public const string KeyTransmissionProcessName = "transmissionProcessName";
         public const string KeyTransmissionExePath     = "transmissionExePath";
         public const string KeyRestartTransmission     = "restartTransmission";
         public const string KeyForceStartTransmission  = "forceStartTransmission";
 
-        // Transmission mode values
-        public const string TransmissionModeService = "Service";
-        public const string TransmissionModeProcess = "Process";
+        // Registry key names - deluge section
+        public const string KeyDelugeUrl         = "delugeURL";
+        public const string KeyDelugePassword    = "delugePassword";
+        public const string KeyDelugeProcessName = "delugeProcessName";
+        public const string KeyDelugeExePath     = "delugeExePath";
+        public const string KeyRestartDeluge     = "restartDeluge";
+        public const string KeyForceStartDeluge  = "forceStartDeluge";
 
         // Registry key names - extra section
         public const string KeyPostUpdateCmd = "postUpdateCmd";
@@ -127,12 +132,22 @@ namespace qbPortWeaver
                     [KeyTransmissionUrl]         = "http://127.0.0.1:9091",
                     [KeyTransmissionUserName]    = "",
                     [KeyTransmissionPassword]    = "",
-                    [KeyTransmissionMode]        = TransmissionModeService,
-                    [KeyTransmissionServiceName] = "Transmission",
+                    [KeyTransmissionServiceName] = "",
                     [KeyTransmissionProcessName] = "transmission-qt",
                     [KeyTransmissionExePath]     = @"C:\Program Files\Transmission\transmission-qt.exe",
                     [KeyRestartTransmission]     = ValueTrue,
-                    [KeyForceStartTransmission]  = ValueTrue
+                    [KeyForceStartTransmission]  = ValueTrue,
+                    [KeyDefaultPort]             = "0"
+                },
+                [SectionDeluge] = new(StringComparer.OrdinalIgnoreCase)
+                {
+                    [KeyDelugeUrl]         = "http://127.0.0.1:8112",
+                    [KeyDelugePassword]    = "",
+                    [KeyDelugeProcessName] = "deluge",
+                    [KeyDelugeExePath]     = @"C:\Program Files\Deluge\deluge.exe",
+                    [KeyRestartDeluge]     = ValueTrue,
+                    [KeyForceStartDeluge]  = ValueTrue,
+                    [KeyDefaultPort]       = "0"
                 },
                 [SectionExtra] = new(StringComparer.OrdinalIgnoreCase)
                 {
@@ -239,6 +254,10 @@ namespace qbPortWeaver
         public static string GetTransmissionPassword() =>
             GetEncryptedValue(SectionTransmission, KeyTransmissionPassword);
 
+        /// <summary>Reads the Deluge password from the registry and decrypts it with DPAPI (CurrentUser scope). Returns an empty string if missing or decryption fails.</summary>
+        public static string GetDelugePassword() =>
+            GetEncryptedValue(SectionDeluge, KeyDelugePassword);
+
         /// <summary>Reads a DPAPI-encrypted string value from the registry. Returns the hardcoded default if the key is missing, empty, or decryption fails.</summary>
         public static string GetEncryptedValue(string section, string key)
         {
@@ -297,6 +316,10 @@ namespace qbPortWeaver
         public static void SetTransmissionPassword(string plaintext) =>
             SetEncryptedValue(SectionTransmission, KeyTransmissionPassword, plaintext);
 
+        /// <summary>Encrypts <paramref name="plaintext"/> with DPAPI (CurrentUser scope) and writes the result to the registry.</summary>
+        public static void SetDelugePassword(string plaintext) =>
+            SetEncryptedValue(SectionDeluge, KeyDelugePassword, plaintext);
+
         /// <summary>Encrypts <paramref name="plaintext"/> with DPAPI (CurrentUser scope) and writes the result to the registry under the given section and key.</summary>
         public static void SetEncryptedValue(string section, string key, string plaintext)
         {
@@ -320,6 +343,7 @@ namespace qbPortWeaver
         {
             KeyQBittorrentPassword,
             KeyTransmissionPassword,
+            KeyDelugePassword,
             KeyTmdbApiKey
         };
 

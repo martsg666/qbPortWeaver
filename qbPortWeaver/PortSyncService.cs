@@ -196,10 +196,6 @@ namespace qbPortWeaver
                 // port detection failures also accumulate toward the auto-recovery threshold.
                 status[StatusKeys.VpnConnected] = true;
 
-                // Cache VPN client EXE paths while the process is running so auto-recovery
-                // can restart the client even if it was killed externally before we inspect it.
-                if (cfg.AutoRecoveryEnabled)
-                    AutoRecoveryManager.CacheRunningClientExePaths();
                 LogManager.Instance.LogMessage($"{vpnManager.ProviderName} is connected", LogLevel.Info);
 
                 int? vpnPort = await vpnManager.GetVpnPortAsync().ConfigureAwait(false);

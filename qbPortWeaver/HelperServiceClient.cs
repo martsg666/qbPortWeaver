@@ -10,9 +10,9 @@ namespace qbPortWeaver
 
         private const int PipeConnectTimeoutMs = 5000;
 
-        /// <summary>Asks the helper service to stop and restart the Windows service identified by <paramref name="token"/>.</summary>
-        internal static Task SendRestartAsync(string token) =>
-            SendAsync(ActionRestart, token);
+        /// <summary>Asks the helper service to stop and restart the Windows service with the given <paramref name="serviceName"/>.</summary>
+        internal static Task SendRestartAsync(string serviceName) =>
+            SendAsync(ActionRestart, serviceName);
 
         /// <summary>Asks the helper service to disable and re-enable the named network adapter.</summary>
         internal static Task SendCycleAdapterAsync(string adapterName) =>

@@ -14,15 +14,11 @@ namespace qbPortWeaver
         private const int    ServiceRestartTimeoutMs = 40000;
         private const int    ServiceStopTimeoutMs    = 15000;
         private const int    ServiceRestartPollMs    = 1000;
-        private const string RpcPath                 = "/transmission/rpc";
-        private const string SessionIdHeader         = "X-Transmission-Session-Id";
-        // Stable token sent to the helper service for service-mode restarts.
-        // Decoupled from _serviceNameOverride so a user-configured name doesn't break the pipe lookup.
-        private const string RestartServiceToken = RegistrySettingsManager.BitTorrentClientTransmission;
+        private const string RpcPath        = "/transmission/rpc";
+        private const string SessionIdHeader = "X-Transmission-Session-Id";
 
         private readonly string _serviceNameOverride;
         private string? _sessionId;
-        private string? _cachedConfigDir;     // set when TryCacheConfigDirAsync succeeds
         private string? _resolvedServiceName; // lazily discovered: override → search → null
         private bool    _serviceNameResolved;
 
@@ -77,19 +73,17 @@ namespace qbPortWeaver
         }
 
         /// <inheritdoc/>
-        /// <remarks>Auto-detects mode from <c>config-dir</c> and service discovery. Service mode: stops and
-        /// restarts the Windows service via the helper service. Process mode: closes the Qt client window
-        /// cleanly (so it saves settings on exit), then relaunches the executable.</remarks>
-        public override Task<bool> RestartAsync(CancellationToken cancellationToken = default)
+        /// <remarks>Auto-detects mode from <c>config-dir</c> and service discovery. Service mode: a
+        /// Windows service containing "Transmission" is installed and <c>config-dir</c> is under
+        /// <c>%ProgramData%</c>, confirming the daemon is active. Process mode: no service found,
+        /// or config-dir is user-specific (the Qt desktop client is running instead).</remarks>
+        public override async Task<bool> RestartAsync(CancellationToken cancellationToken = default)
         {
             string? serviceName = GetEffectiveServiceName();
-            // Use service mode if a service is found AND config-dir is either unknown (no prior SetListeningPortAsync)
-            // or system-wide (ProgramData), confirming the daemon is running rather than the Qt client.
-            bool isService = serviceName is not null &&
-                             (_cachedConfigDir is null || IsConfigDirSystemWide());
+            bool isService = serviceName is not null && await IsConfigDirSystemWideAsync().ConfigureAwait(false);
             return isService
-                ? RestartServiceModeAsync(serviceName!, cancellationToken)
-                : RestartProcessModeAsync(cancellationToken);
+                ? await RestartServiceModeAsync(serviceName!, cancellationToken).ConfigureAwait(false)
+                : await RestartProcessModeAsync(cancellationToken).ConfigureAwait(false);
         }
 
         /// <inheritdoc/>
@@ -168,7 +162,6 @@ namespace qbPortWeaver
                 return false;
             }
 
-            await TryCacheConfigDirAsync().ConfigureAwait(false);
             return true;
         }
 
@@ -177,7 +170,11 @@ namespace qbPortWeaver
         public override Task<string?> GetConnectionStatusAsync() => Task.FromResult<string?>(null);
 
         /// <inheritdoc/>
-        protected override void ResetAuthState() => _sessionId = null;
+        protected override void ResetAuthState()
+        {
+            base.ResetAuthState();
+            _sessionId = null;
+        }
 
         // Transmission uses X-Transmission-Session-Id header exchange in SendRpcAsync instead of a login step.
         protected override Task<bool> AuthenticateAsync() => Task.FromResult(true);
@@ -187,7 +184,7 @@ namespace qbPortWeaver
             try
             {
                 ResetAuthState();
-                await HelperServiceClient.SendRestartAsync(RestartServiceToken).ConfigureAwait(false);
+                await HelperServiceClient.SendRestartAsync(serviceName).ConfigureAwait(false);
 
                 // The helper service restarts the service via named pipe (fire-and-forget from
                 // this side). Phase 1: wait for the service to stop. Phase 2: wait for it to
@@ -301,31 +298,35 @@ namespace qbPortWeaver
             }
         }
 
-        // Fetches config-dir via RPC and caches it for service/process mode detection in RestartAsync.
-        private async Task TryCacheConfigDirAsync()
+        // Fetches config-dir live via RPC and returns true if it is under %ProgramData%,
+        // which confirms the daemon (service) is running rather than the Qt desktop client.
+        private async Task<bool> IsConfigDirSystemWideAsync()
         {
             try
             {
                 const string body = """{"method":"session-get","arguments":{"fields":["config-dir"]}}""";
                 using var response = await SendRpcAsync(body).ConfigureAwait(false);
-                if (response is null || !response.IsSuccessStatusCode) return;
+                if (response is null || !response.IsSuccessStatusCode) return false;
 
                 var json = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
                 using var doc = JsonDocument.Parse(json);
                 if (!doc.RootElement.TryGetProperty("arguments", out var args) ||
                     !args.TryGetProperty("config-dir", out var configDirEl))
                 {
-                    LogManager.Instance.LogDebug("TransmissionClient.TryCacheConfigDirAsync: config-dir not found in session-get response");
-                    return;
+                    LogManager.Instance.LogDebug("TransmissionClient.IsConfigDirSystemWideAsync: config-dir not found in session-get response");
+                    return false;
                 }
 
                 string? configDir = configDirEl.GetString();
-                if (!string.IsNullOrEmpty(configDir))
-                    _cachedConfigDir = configDir;
+                if (string.IsNullOrEmpty(configDir)) return false;
+
+                string programData = Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData);
+                return configDir.StartsWith(programData, StringComparison.OrdinalIgnoreCase);
             }
             catch (Exception ex)
             {
-                LogManager.Instance.LogDebug($"TransmissionClient.TryCacheConfigDirAsync: {ex.Message}");
+                LogManager.Instance.LogDebug($"TransmissionClient.IsConfigDirSystemWideAsync: {ex.Message}");
+                return false;
             }
         }
 
@@ -343,35 +344,7 @@ namespace qbPortWeaver
             return _resolvedServiceName;
         }
 
-        // Returns true if the cached config-dir is a system-wide path (ProgramData), indicating
-        // the daemon is running rather than the Qt client.
-        private bool IsConfigDirSystemWide()
-        {
-            if (_cachedConfigDir is null) return false;
-            string programData = Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData);
-            return _cachedConfigDir.StartsWith(programData, StringComparison.OrdinalIgnoreCase);
-        }
-
-        // Searches all installed Windows services for one with "transmission" in its name or display name.
-        private static string? FindTransmissionServiceName()
-        {
-            ServiceController[]? services = null;
-            try
-            {
-                services = ServiceController.GetServices();
-                return services
-                    .FirstOrDefault(s =>
-                        s.ServiceName.Contains("transmission", StringComparison.OrdinalIgnoreCase) ||
-                        s.DisplayName.Contains("transmission", StringComparison.OrdinalIgnoreCase))
-                    ?.ServiceName;
-            }
-            catch { return null; } // NOSONAR S108
-            finally
-            {
-                if (services is not null)
-                    foreach (var s in services) s.Dispose();
-            }
-        }
+        private static string? FindTransmissionServiceName() => AppConstants.FindServiceName("transmission");
 
         // Creates an HttpClient with Basic auth for the Transmission RPC endpoint.
         private static HttpClient CreateBasicAuthHttpClient(string userName, string password)

@@ -1,4 +1,6 @@
+using Microsoft.Win32;
 using System.Diagnostics;
+using System.ServiceProcess;
 
 namespace qbPortWeaver
 {
@@ -139,6 +141,61 @@ namespace qbPortWeaver
                 catch (Exception ex) { LogManager.Instance.LogDebug($"{clientName}.KillProcessesByName: Failed to kill process: {ex.Message}"); }
                 finally { proc.Dispose(); }
             }
+        }
+
+        /// <summary>
+        /// Searches all installed Windows services for one whose <c>ServiceName</c> or <c>DisplayName</c>
+        /// contains <paramref name="searchTerm"/> and returns the <c>ServiceName</c>, or
+        /// <see langword="null"/> if no match is found.
+        /// </summary>
+        internal static string? FindServiceName(string searchTerm)
+        {
+            ServiceController[]? services = null;
+            try
+            {
+                services = ServiceController.GetServices();
+                return services
+                    .FirstOrDefault(s =>
+                        s.ServiceName.Contains(searchTerm, StringComparison.OrdinalIgnoreCase) ||
+                        s.DisplayName.Contains(searchTerm, StringComparison.OrdinalIgnoreCase))
+                    ?.ServiceName;
+            }
+            catch { return null; } // NOSONAR S108
+            finally
+            {
+                if (services is not null)
+                    foreach (var s in services) s.Dispose();
+            }
+        }
+
+        /// <summary>
+        /// Reads the <c>ImagePath</c> for the named Windows service from the registry and returns
+        /// the directory containing the service executable, or <see langword="null"/> if the
+        /// service key is absent or the path cannot be resolved.
+        /// Handles quoted paths and trailing arguments: <c>"C:\path\exe.exe" -arg</c>.
+        /// </summary>
+        internal static string? GetServiceExeDirectory(string serviceName)
+        {
+            try
+            {
+                using var key = Registry.LocalMachine.OpenSubKey($@"SYSTEM\CurrentControlSet\Services\{serviceName}");
+                if (key?.GetValue("ImagePath") is not string imagePath) return null;
+
+                imagePath = Environment.ExpandEnvironmentVariables(imagePath.Trim());
+                if (imagePath.StartsWith('"'))
+                {
+                    int end = imagePath.IndexOf('"', 1);
+                    imagePath = end > 0 ? imagePath[1..end] : imagePath[1..];
+                }
+                else
+                {
+                    int space = imagePath.IndexOf(' ');
+                    if (space > 0) imagePath = imagePath[..space];
+                }
+
+                return Path.GetDirectoryName(Path.GetFullPath(imagePath));
+            }
+            catch { return null; }
         }
 
         /// <summary>Creates a ProcessStartInfo configured to run a hidden, windowless process.</summary>

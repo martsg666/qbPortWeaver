@@ -9,8 +9,8 @@ namespace qbPortWeaver.HelperService;
 /// Listens on a named pipe and dispatches privileged session 0 actions requested by the
 /// user-session tray app. Runs as a hosted background service inside the helper Windows service.
 /// Protocol: one text line per connection, pipe-delimited: action|target|logFilePath.
-/// Supported actions: restart (restart the Windows service identified by the service token)
-/// and cycle-adapter (disable and re-enable a network adapter via netsh).
+/// Supported actions: restart (restart a Windows service by name) and
+/// cycle-adapter (disable and re-enable a network adapter via netsh).
 /// The log file path is sent per-call so the helper writes into the same log file as the
 /// tray app, regardless of which user profile is active.
 /// </summary>
@@ -19,8 +19,8 @@ internal sealed class HelperPipeServer(ILogger<HelperPipeServer> logger) : Backg
     internal const string PipeName = "qbPortWeaverHelper"; // Must match AppConstants.HelperServicePipeName in qbPortWeaver
     private  const string ExpectedLogFileName = "qbPortWeaver.log"; // Must match AppConstants.LogFileName in qbPortWeaver
 
-    private const string ActionRestart      = "restart";       // Must match AutoRecoveryManager.ActionRestart in qbPortWeaver
-    private const string ActionCycleAdapter = "cycle-adapter"; // Must match AutoRecoveryManager.ActionCycleAdapter in qbPortWeaver
+    private const string ActionRestart      = "restart";       // Must match HelperServiceClient.ActionRestart in qbPortWeaver
+    private const string ActionCycleAdapter = "cycle-adapter"; // Must match HelperServiceClient.ActionCycleAdapter in qbPortWeaver
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -116,13 +116,12 @@ internal sealed class HelperPipeServer(ILogger<HelperPipeServer> logger) : Backg
         switch (action)
         {
             case ActionRestart:
-                string? serviceName = AutoRecovery.FindServiceForToken(target);
-                if (serviceName is null)
+                if (string.IsNullOrWhiteSpace(target))
                 {
-                    logger.LogWarning("Rejected restart request for unknown service token '{Token}'", target);
+                    logger.LogWarning("Rejected restart request with empty service name");
                     return;
                 }
-                await AutoRecovery.RestartServiceAsync(serviceName, helperLogger).ConfigureAwait(false);
+                await AutoRecovery.RestartServiceAsync(target, helperLogger).ConfigureAwait(false);
                 break;
 
             case ActionCycleAdapter:

@@ -18,20 +18,6 @@ internal static partial class AutoRecovery
     private const int AdapterCycleDelayMs       = 3000;
     private const int NetshTimeoutMs            = 15000;
 
-    // Maps VPN provider tokens to the Windows service name to restart.
-    // Used by HelperPipeServer for the "restart" action (exact token lookup via FindServiceForToken).
-    private static readonly Dictionary<string, string> _vpnServiceMap = new(StringComparer.OrdinalIgnoreCase)
-    {
-        ["ProtonVPN"] = "ProtonVPN Service",
-        ["PIA"]       = "PrivateInternetAccessService",
-    };
-
-    // Maps BitTorrent client tokens to the Windows service name to restart.
-    private static readonly Dictionary<string, string> _clientServiceMap = new(StringComparer.OrdinalIgnoreCase)
-    {
-        ["Transmission"] = "Transmission",
-    };
-
     internal static async Task RestartServiceAsync(string serviceName, HelperLogger logger)
     {
         try
@@ -52,7 +38,7 @@ internal static partial class AutoRecovery
             try { await StartServiceAsync(serviceName, logger).ConfigureAwait(false); }
             catch (Exception ex)
             {
-                logger.LogWarn($"Failed to start service '{serviceName}': {ex.Message}");
+                logger.LogError($"Failed to start service '{serviceName}': {ex.Message}");
                 return;
             }
 
@@ -60,7 +46,7 @@ internal static partial class AutoRecovery
         }
         catch (Exception ex)
         {
-            logger.LogError($"Failed to restart service: {ex.Message}");
+            logger.LogError($"Failed to restart service '{serviceName}': {ex.Message}");
         }
     }
 
@@ -106,12 +92,6 @@ internal static partial class AutoRecovery
             logger.LogError($"Failed to cycle adapter: {ex.Message}");
         }
     }
-
-    // Exact-match lookup used by HelperPipeServer for the "restart" action.
-    internal static string? FindServiceForToken(string token) =>
-        _vpnServiceMap.TryGetValue(token, out string? name) || _clientServiceMap.TryGetValue(token, out name)
-            ? name
-            : null;
 
     // Stops a service cleanly via the SCM, with escalating force if it doesn't respond.
     // Escalation: SCM stop → wait → KillServiceProcess (3-stage: Process.Kill → taskkill /F /T → retry).

@@ -7,8 +7,13 @@ namespace qbPortWeaver
     /// <summary>Detects ProtonVPN connectivity via network adapter enumeration and reads the forwarded port from the client log file.</summary>
     public sealed partial class ProtonVpnManager : IVpnManager
     {
-        private const int    LogReadChunkSize = 4096;
+        private const int    LogReadChunkSize  = 4096;
+        private const string ServiceSearchTerm = "ProtonVPN";
         internal const string ClientProcessName = "ProtonVPN.Client";
+
+        // Cached path; null = not found, string.Empty = not yet resolved.
+        // Install paths never change at runtime so we resolve once and reuse.
+        private static string? _clientExePathCache = string.Empty;
 
         private readonly string _logFilePath;
 
@@ -63,6 +68,38 @@ namespace qbPortWeaver
         /// <inheritdoc />
         public bool IsAdapterMatch(string interfaceName)
             => interfaceName.Contains("ProtonVPN", StringComparison.OrdinalIgnoreCase);
+
+        internal static string? FindServiceName() => AppConstants.FindServiceName(ServiceSearchTerm);
+
+        internal static string? GetClientExePath()
+        {
+            if (_clientExePathCache != string.Empty) return _clientExePathCache;
+            try
+            {
+                string? serviceName = FindServiceName();
+                string? serviceDir  = serviceName is not null ? AppConstants.GetServiceExeDirectory(serviceName) : null;
+                if (serviceDir is null)
+                {
+                    LogManager.Instance.LogDebug("ProtonVpnManager.GetClientExePath: ProtonVPN service executable directory not found");
+                    return _clientExePathCache = null;
+                }
+
+                string exePath = Path.Combine(serviceDir, ClientProcessName + ".exe");
+                if (!File.Exists(exePath))
+                {
+                    LogManager.Instance.LogDebug($"ProtonVpnManager.GetClientExePath: {ClientProcessName}.exe not found at: {exePath}");
+                    return _clientExePathCache = null;
+                }
+
+                LogManager.Instance.LogDebug($"ProtonVpnManager.GetClientExePath: Found {ClientProcessName}.exe at: {exePath}");
+                return _clientExePathCache = exePath;
+            }
+            catch (Exception ex)
+            {
+                LogManager.Instance.LogDebug($"ProtonVpnManager.GetClientExePath: {ex.Message}");
+                return null; // transient error - don't cache, retry next cycle
+            }
+        }
 
         private int? GetVpnPortCore()
         {

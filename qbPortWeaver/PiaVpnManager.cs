@@ -1,4 +1,3 @@
-using Microsoft.Win32;
 using System.Diagnostics;
 
 namespace qbPortWeaver
@@ -6,15 +5,15 @@ namespace qbPortWeaver
     /// <summary>Detects PIA (Private Internet Access) connectivity and reads the forwarded port via <c>piactl</c>.</summary>
     public sealed class PiaVpnManager : IVpnManager
     {
-        private const string PiaUninstallRegistryPath = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall";
-        private const string PiaDisplayName           = "Private Internet Access";
-        private const string PiactlFileName           = "piactl.exe";
-        internal const string ClientProcessName        = "pia-client";
-        private const int    ProcessTimeoutMs         = 5000;
+        private const string ServiceSearchTerm = "PrivateInternetAccess";
+        private const string PiactlFileName       = "piactl.exe";
+        internal const string ClientProcessName   = "pia-client";
+        private const int    ProcessTimeoutMs = 5000;
 
-        // Cached piactl.exe path; null = not found, string.Empty = not yet resolved.
-        // The install path never changes at runtime so we resolve it once and reuse it.
-        private static string? _piactlPathCache = string.Empty;
+        // Cached paths; null = not found, string.Empty = not yet resolved.
+        // Install paths never change at runtime so we resolve once and reuse.
+        private static string? _piactlPathCache    = string.Empty;
+        private static string? _clientExePathCache = string.Empty;
 
         /// <inheritdoc />
         public string ProviderName => RegistrySettingsManager.VpnProviderPia;
@@ -57,6 +56,8 @@ namespace qbPortWeaver
         /// <inheritdoc />
         public bool IsAdapterMatch(string interfaceName)
             => interfaceName.Contains("PIA", StringComparison.OrdinalIgnoreCase);
+
+        internal static string? FindServiceName() => AppConstants.FindServiceName(ServiceSearchTerm);
 
         private static int? GetVpnPortCore()
         {
@@ -130,55 +131,38 @@ namespace qbPortWeaver
             }
         }
 
-        // Resolves the piactl.exe path from PIA's install location in the registry, caching the result.
-        private static string? GetPiactlPath()
+        // Resolves a PIA exe path from the service executable directory.
+        private static string? ResolveExePath(ref string? cache, string exeFileName, string logLabel)
         {
-            if (_piactlPathCache != string.Empty) return _piactlPathCache; // already resolved (null = not found)
+            if (cache != string.Empty) return cache;
             try
             {
-                using var uninstallKey = Registry.LocalMachine.OpenSubKey(PiaUninstallRegistryPath);
-                if (uninstallKey is null)
+                string? serviceName = FindServiceName();
+                string? serviceDir  = serviceName is not null ? AppConstants.GetServiceExeDirectory(serviceName) : null;
+                if (serviceDir is null)
                 {
-                    LogManager.Instance.LogDebug("PiaVpnManager.GetPiactlPath: Failed to open Uninstall registry key");
-                    return null;
+                    LogManager.Instance.LogDebug($"PiaVpnManager.{logLabel}: PIA service executable directory not found");
+                    return cache = null;
                 }
 
-                foreach (string subKeyName in uninstallKey.GetSubKeyNames())
+                string exePath = Path.Combine(serviceDir, exeFileName);
+                if (!File.Exists(exePath))
                 {
-                    using var subKey = uninstallKey.OpenSubKey(subKeyName);
-                    if (subKey is null)
-                        continue;
-
-                    string? displayName = subKey.GetValue("DisplayName") as string;
-                    if (displayName is null || !displayName.Equals(PiaDisplayName, StringComparison.OrdinalIgnoreCase))
-                        continue;
-
-                    string? installLocation = subKey.GetValue("InstallLocation") as string;
-                    if (string.IsNullOrEmpty(installLocation))
-                    {
-                        LogManager.Instance.LogDebug("PiaVpnManager.GetPiactlPath: PIA found in registry but InstallLocation is empty");
-                        return _piactlPathCache = null;
-                    }
-
-                    string piactlPath = Path.Combine(installLocation, PiactlFileName);
-                    if (!File.Exists(piactlPath))
-                    {
-                        LogManager.Instance.LogDebug($"PiaVpnManager.GetPiactlPath: piactl not found at: {piactlPath}");
-                        return _piactlPathCache = null;
-                    }
-
-                    LogManager.Instance.LogDebug($"PiaVpnManager.GetPiactlPath: Found piactl at: {piactlPath}");
-                    return _piactlPathCache = piactlPath;
+                    LogManager.Instance.LogDebug($"PiaVpnManager.{logLabel}: {exeFileName} not found at: {exePath}");
+                    return cache = null;
                 }
 
-                LogManager.Instance.LogDebug("PiaVpnManager.GetPiactlPath: PIA not found in registry");
-                return _piactlPathCache = null;
+                LogManager.Instance.LogDebug($"PiaVpnManager.{logLabel}: Found {exeFileName} at: {exePath}");
+                return cache = exePath;
             }
             catch (Exception ex)
             {
-                LogManager.Instance.LogDebug($"PiaVpnManager.GetPiactlPath: {ex.Message}");
+                LogManager.Instance.LogDebug($"PiaVpnManager.{logLabel}: {ex.Message}");
                 return null; // transient error - don't cache, retry next cycle
             }
         }
+
+        private static string? GetPiactlPath()    => ResolveExePath(ref _piactlPathCache,    PiactlFileName,              "GetPiactlPath");
+        internal static string? GetClientExePath() => ResolveExePath(ref _clientExePathCache, ClientProcessName + ".exe",  "GetClientExePath");
     }
 }

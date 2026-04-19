@@ -8,7 +8,7 @@ namespace qbPortWeaver
     public sealed partial class ProtonVpnManager : IVpnManager
     {
         private const int    LogReadChunkSize  = 4096;
-        private const string ServiceSearchTerm = "ProtonVPN";
+        private const string ServiceSearchTerm = "ProtonVPN Service";
         internal const string ClientProcessName = "ProtonVPN.Client";
 
         // Cached path; null = not found, string.Empty = not yet resolved.

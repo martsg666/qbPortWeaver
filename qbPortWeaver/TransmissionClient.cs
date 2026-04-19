@@ -298,8 +298,10 @@ namespace qbPortWeaver
             }
         }
 
-        // Fetches config-dir live via RPC and returns true if it is under %ProgramData%,
-        // which confirms the daemon (service) is running rather than the Qt desktop client.
+        // Fetches config-dir live via RPC and returns true if it is NOT under the user profiles
+        // root (C:\Users\...), which confirms the daemon is running rather than the Qt desktop client.
+        // Covers all system account locations: %ProgramData%, ServiceProfiles\LocalService,
+        // ServiceProfiles\NetworkService, system32\config\systemprofile, etc.
         private async Task<bool> IsConfigDirSystemWideAsync()
         {
             try
@@ -320,8 +322,12 @@ namespace qbPortWeaver
                 string? configDir = configDirEl.GetString();
                 if (string.IsNullOrEmpty(configDir)) return false;
 
-                string programData = Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData);
-                return configDir.StartsWith(programData, StringComparison.OrdinalIgnoreCase);
+                // Parent of the current user's profile is the users root (e.g. C:\Users)
+                string usersRoot = Path.GetDirectoryName(
+                    Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)) ?? string.Empty;
+
+                return !Path.GetFullPath(configDir).StartsWith(
+                    usersRoot + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
             }
             catch (Exception ex)
             {

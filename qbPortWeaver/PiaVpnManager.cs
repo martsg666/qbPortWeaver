@@ -5,7 +5,7 @@ namespace qbPortWeaver
     /// <summary>Detects PIA (Private Internet Access) connectivity and reads the forwarded port via <c>piactl</c>.</summary>
     public sealed class PiaVpnManager : IVpnManager
     {
-        private const string ServiceSearchTerm = "PrivateInternetAccess";
+        private const string ServiceSearchTerm = "PrivateInternetAccessService";
         private const string PiactlFileName       = "piactl.exe";
         internal const string ClientProcessName   = "pia-client";
         private const int    ProcessTimeoutMs = 5000;

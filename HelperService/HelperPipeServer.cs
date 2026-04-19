@@ -22,6 +22,18 @@ internal sealed class HelperPipeServer(ILogger<HelperPipeServer> logger) : Backg
     private const string ActionRestart      = "restart";       // Must match HelperServiceClient.ActionRestart in qbPortWeaver
     private const string ActionCycleAdapter = "cycle-adapter"; // Must match HelperServiceClient.ActionCycleAdapter in qbPortWeaver
 
+    private static readonly PipeSecurity PipeSecurity = CreatePipeSecurity();
+
+    private static PipeSecurity CreatePipeSecurity()
+    {
+        var security = new PipeSecurity();
+        security.AddAccessRule(new PipeAccessRule(
+            new SecurityIdentifier(WellKnownSidType.AuthenticatedUserSid, null),
+            PipeAccessRights.ReadWrite,
+            AccessControlType.Allow));
+        return security;
+    }
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         logger.LogInformation("qbPortWeaver Helper Service started");
@@ -48,12 +60,6 @@ internal sealed class HelperPipeServer(ILogger<HelperPipeServer> logger) : Backg
     {
         // The pipe ACL grants ReadWrite to all authenticated users so the standard-user
         // qbPortWeaver client can send commands to this SYSTEM-level helper service.
-        var security = new PipeSecurity();
-        security.AddAccessRule(new PipeAccessRule(
-            new SecurityIdentifier(WellKnownSidType.AuthenticatedUserSid, null),
-            PipeAccessRights.ReadWrite,
-            AccessControlType.Allow));
-
         using var pipe = NamedPipeServerStreamAcl.Create(
             PipeName,
             PipeDirection.In,
@@ -62,7 +68,7 @@ internal sealed class HelperPipeServer(ILogger<HelperPipeServer> logger) : Backg
             PipeOptions.Asynchronous,
             inBufferSize:  0,
             outBufferSize: 0,
-            security);
+            PipeSecurity);
 
         await pipe.WaitForConnectionAsync(ct).ConfigureAwait(false);
 

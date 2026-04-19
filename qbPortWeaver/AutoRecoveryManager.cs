@@ -26,7 +26,7 @@ namespace qbPortWeaver
         /// to let the service come up first. For "cycle-adapter" actions, only the adapter
         /// is cycled - no client process is involved.
         /// </summary>
-        internal static async Task TriggerRecoveryAsync(string action, string target)
+        internal static async Task TriggerRecoveryAsync(string action, string target, CancellationToken cancellationToken = default)
         {
             if (action != HelperServiceClient.ActionRestart)
             {
@@ -49,8 +49,8 @@ namespace qbPortWeaver
                 // Give the helper service time to stop/restart the VPN service before
                 // we kill and relaunch the client process - the client should come up
                 // after the service is running, not before.
-                await Task.Delay(ServiceHeadStartDelayMs).ConfigureAwait(false);
-                await RestartClientProcessAsync(entry.ClientProcessName, entry.GetInstalledExePath).ConfigureAwait(false);
+                await Task.Delay(ServiceHeadStartDelayMs, cancellationToken).ConfigureAwait(false);
+                await RestartClientProcessAsync(entry.ClientProcessName, entry.GetInstalledExePath, cancellationToken).ConfigureAwait(false);
             }
         }
 
@@ -58,7 +58,7 @@ namespace qbPortWeaver
         // waits briefly, then relaunches it. Runs in the main app's user session - no
         // elevation or WTS token manipulation needed.
         // If the process is not running, falls back to the registry-derived exe path via getInstalledExePath.
-        private static async Task RestartClientProcessAsync(string processName, Func<string?>? getInstalledExePath)
+        private static async Task RestartClientProcessAsync(string processName, Func<string?>? getInstalledExePath, CancellationToken cancellationToken = default)
         {
             string? exePath = null;
             try
@@ -105,7 +105,7 @@ namespace qbPortWeaver
                 return;
             }
 
-            await Task.Delay(ClientRestartDelayMs).ConfigureAwait(false);
+            await Task.Delay(ClientRestartDelayMs, cancellationToken).ConfigureAwait(false);
             try
             {
                 Process.Start(new ProcessStartInfo(exePath) { UseShellExecute = true })?.Dispose();

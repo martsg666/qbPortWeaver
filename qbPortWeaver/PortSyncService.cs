@@ -162,7 +162,7 @@ namespace qbPortWeaver
             status[StatusKeys.UpdateIntervalSeconds] = cfg.UpdateInterval;
 
             // Instantiate VPN manager based on configured provider
-            IVpnManager? vpnManager = await CreateVpnManager(cfg, status).ConfigureAwait(false);
+            IVpnManager? vpnManager = await CreateVpnManager(cfg, status, cancellationToken).ConfigureAwait(false);
             if (vpnManager is null)
                 return cfg.UpdateInterval;
 
@@ -176,7 +176,7 @@ namespace qbPortWeaver
                 int disconnectedCount = _consecutiveFailedCycles;
                 string disconnectedMsg = $"{vpnManager.ProviderName} is not connected";
                 LogManager.Instance.LogMessage(BuildCycleCountMessage(disconnectedMsg, disconnectedCount, cfg), LogLevel.Info);
-                await TryTriggerRecoveryAsync(vpnManager, cfg).ConfigureAwait(false);
+                await TryTriggerRecoveryAsync(vpnManager, cfg, cancellationToken).ConfigureAwait(false);
 
                 if (cfg.DefaultPort == 0)
                 {
@@ -201,7 +201,7 @@ namespace qbPortWeaver
                 int? vpnPort = await vpnManager.GetVpnPortAsync().ConfigureAwait(false);
                 if (!vpnPort.HasValue)
                 {
-                    await HandlePortDetectionFailureAsync(vpnManager, cfg).ConfigureAwait(false);
+                    await HandlePortDetectionFailureAsync(vpnManager, cfg, cancellationToken).ConfigureAwait(false);
                     SetSyncResult(status, false, $"Failed to determine {vpnManager.ProviderName} port", LogLevel.Warn);
                     return cfg.UpdateInterval;
                 }
@@ -223,15 +223,7 @@ namespace qbPortWeaver
             }
 
             using var manager = CreateBitTorrentClient(cfg);
-            bool isTransmission = cfg.BitTorrentClient.Equals(
-                RegistrySettingsManager.BitTorrentClientTransmission, StringComparison.OrdinalIgnoreCase);
-            bool isDeluge = cfg.BitTorrentClient.Equals(
-                RegistrySettingsManager.BitTorrentClientDeluge, StringComparison.OrdinalIgnoreCase);
-
-            bool forceStart, restart;
-            if (isTransmission) { forceStart = cfg.ForceStartTransmission; restart = cfg.RestartTransmission; }
-            else if (isDeluge)  { forceStart = cfg.ForceStartDeluge;       restart = cfg.RestartDeluge; }
-            else                { forceStart = cfg.ForceStartQBittorrent;  restart = cfg.RestartQBittorrent; }
+            var (forceStart, restart) = GetClientRestartConfig(cfg);
 
             await EnsureRunningAndUpdatePortAsync(manager, targetPort,
                 new SyncConfig(
@@ -257,13 +249,7 @@ namespace qbPortWeaver
 
             // Read DefaultPort from the active client's section so each client can have its own fallback port
             string bitTorrentClient = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyBitTorrentClient);
-            string defaultPortSection;
-            if (bitTorrentClient.Equals(RegistrySettingsManager.BitTorrentClientTransmission, StringComparison.OrdinalIgnoreCase))
-                defaultPortSection = RegistrySettingsManager.SectionTransmission;
-            else if (bitTorrentClient.Equals(RegistrySettingsManager.BitTorrentClientDeluge, StringComparison.OrdinalIgnoreCase))
-                defaultPortSection = RegistrySettingsManager.SectionDeluge;
-            else
-                defaultPortSection = RegistrySettingsManager.SectionQBittorrent;
+            string defaultPortSection = GetActiveClientSection(bitTorrentClient);
             int defaultPort = RegistrySettingsManager.GetInt(defaultPortSection, RegistrySettingsManager.KeyDefaultPort);
 
             return new AppConfig(
@@ -315,12 +301,9 @@ namespace qbPortWeaver
                 $"{RegistrySettingsManager.KeyAutoRecoveryTriggerCycles}={cfg.AutoRecoveryTriggerCycles}, " +
                 $"{RegistrySettingsManager.KeyBitTorrentClient}={cfg.BitTorrentClient}");
 
-            bool isTransmission = cfg.BitTorrentClient.Equals(
-                RegistrySettingsManager.BitTorrentClientTransmission, StringComparison.OrdinalIgnoreCase);
-            bool isDeluge = cfg.BitTorrentClient.Equals(
-                RegistrySettingsManager.BitTorrentClientDeluge, StringComparison.OrdinalIgnoreCase);
+            string activeSection = GetActiveClientSection(cfg.BitTorrentClient);
 
-            if (isTransmission)
+            if (activeSection == RegistrySettingsManager.SectionTransmission)
                 LogManager.Instance.LogDebug(
                     $"PortSyncService.RunCoreAsync [transmission]: {RegistrySettingsManager.KeyTransmissionUrl}={cfg.TransmissionUrl}, " +
                     $"{RegistrySettingsManager.KeyTransmissionUserName}={cfg.TransmissionUserName}, " +
@@ -331,7 +314,7 @@ namespace qbPortWeaver
                     $"{RegistrySettingsManager.KeyRestartTransmission}={cfg.RestartTransmission}, " +
                     $"{RegistrySettingsManager.KeyForceStartTransmission}={cfg.ForceStartTransmission}, " +
                     $"{RegistrySettingsManager.KeyDefaultPort}={cfg.DefaultPort}");
-            else if (isDeluge)
+            else if (activeSection == RegistrySettingsManager.SectionDeluge)
                 LogManager.Instance.LogDebug(
                     $"PortSyncService.RunCoreAsync [deluge]: {RegistrySettingsManager.KeyDelugeUrl}={cfg.DelugeUrl}, " +
                     $"{RegistrySettingsManager.KeyDelugePassword}=***, " + // NOSONAR S2068 - value is masked, not a real credential
@@ -360,7 +343,7 @@ namespace qbPortWeaver
 
         // Instantiates the appropriate VPN manager for the configured provider.
         // Returns null (with status already set) if the provider is disabled or cannot be initialised.
-        private async Task<IVpnManager?> CreateVpnManager(AppConfig cfg, Dictionary<string, object?> status)
+        private async Task<IVpnManager?> CreateVpnManager(AppConfig cfg, Dictionary<string, object?> status, CancellationToken cancellationToken)
         {
             if (cfg.VpnProvider.Equals(RegistrySettingsManager.VpnProviderDisabled, StringComparison.OrdinalIgnoreCase))
             {
@@ -374,7 +357,7 @@ namespace qbPortWeaver
                 return new PiaVpnManager();
 
             if (cfg.VpnProvider.Equals(RegistrySettingsManager.VpnProviderNatPmp, StringComparison.OrdinalIgnoreCase))
-                return await CreateNatPmpVpnManager(cfg, status).ConfigureAwait(false);
+                return await CreateNatPmpVpnManager(cfg, status, cancellationToken).ConfigureAwait(false);
 
             if (!cfg.VpnProvider.Equals(RegistrySettingsManager.VpnProviderProtonVpn, StringComparison.OrdinalIgnoreCase))
                 LogManager.Instance.LogMessage($"VPN provider '{cfg.VpnProvider}' is not recognized, using ProtonVPN as default", LogLevel.Warn);
@@ -383,7 +366,7 @@ namespace qbPortWeaver
 
         // Resolves the NAT-PMP VPN manager for the configured adapter, handling the disconnected
         // fallback cases and auto-recovery triggering when no adapter is reachable.
-        private async Task<IVpnManager?> CreateNatPmpVpnManager(AppConfig cfg, Dictionary<string, object?> status)
+        private async Task<IVpnManager?> CreateNatPmpVpnManager(AppConfig cfg, Dictionary<string, object?> status, CancellationToken cancellationToken)
         {
             if (string.IsNullOrWhiteSpace(cfg.NatPmpAdapterName))
             {
@@ -431,7 +414,7 @@ namespace qbPortWeaver
             await TryTriggerRecoveryAsync(
                 providerToken is not null ? HelperServiceClient.ActionRestart : HelperServiceClient.ActionCycleAdapter,
                 providerToken ?? adapterName,
-                $"NAT-PMP adapter '{adapterName}'", cfg).ConfigureAwait(false);
+                $"NAT-PMP adapter '{adapterName}'", cfg, cancellationToken).ConfigureAwait(false);
 
             status[StatusKeys.Status]  = StatusKeys.Skipped;
             status[StatusKeys.Message] = disconnectedMsg;
@@ -622,26 +605,30 @@ namespace qbPortWeaver
 
         // Increments the failure counter and triggers recovery when port detection
         // fails despite the VPN being connected (applies to all providers).
-        private async Task HandlePortDetectionFailureAsync(IVpnManager vpnManager, AppConfig cfg)
+        private async Task HandlePortDetectionFailureAsync(IVpnManager vpnManager, AppConfig cfg, CancellationToken cancellationToken)
         {
             _consecutiveFailedCycles++;
             int failedCount = _consecutiveFailedCycles;
             LogManager.Instance.LogMessage(
                 BuildCycleCountMessage($"Port detection failed on '{vpnManager.ProviderName}'", failedCount, cfg),
                 LogLevel.Warn);
-            await TryTriggerRecoveryAsync(vpnManager, cfg).ConfigureAwait(false);
+            await TryTriggerRecoveryAsync(vpnManager, cfg, cancellationToken).ConfigureAwait(false);
         }
 
         // Triggers auto-recovery via the IVpnManager. Action and target are determined by the manager.
-        private Task TryTriggerRecoveryAsync(IVpnManager vpnManager, AppConfig cfg)
-            => TryTriggerRecoveryAsync(vpnManager.GetRecoveryAction(), vpnManager.GetRecoveryTarget(), vpnManager.ProviderName, cfg);
+        private Task TryTriggerRecoveryAsync(IVpnManager vpnManager, AppConfig cfg, CancellationToken cancellationToken = default)
+            => TryTriggerRecoveryAsync(vpnManager.GetRecoveryAction(), vpnManager.GetRecoveryTarget(), vpnManager.ProviderName, cfg, cancellationToken);
 
         // Triggers auto-recovery if enabled and the failure cycle threshold is reached.
         // Resets the counter before the target check so the warning does not fire every cycle
         // when no recovery target is found.
-        private async Task TryTriggerRecoveryAsync(string action, string? recoveryTarget, string displayName, AppConfig cfg)
+        private async Task TryTriggerRecoveryAsync(string action, string? recoveryTarget, string displayName, AppConfig cfg, CancellationToken cancellationToken = default)
         {
-            if (!cfg.AutoRecoveryEnabled) return;
+            if (!cfg.AutoRecoveryEnabled)
+            {
+                _consecutiveFailedCycles = 0;
+                return;
+            }
             if (_consecutiveFailedCycles < cfg.AutoRecoveryTriggerCycles) return;
 
             int count = _consecutiveFailedCycles;
@@ -656,7 +643,7 @@ namespace qbPortWeaver
             LogManager.Instance.LogMessage(
                 $"Triggering '{action}' for '{displayName}' after {count} consecutive failed {(count == 1 ? "cycle" : "cycles")}",
                 LogLevel.Info);
-            await AutoRecoveryManager.TriggerRecoveryAsync(action, recoveryTarget).ConfigureAwait(false);
+            await AutoRecoveryManager.TriggerRecoveryAsync(action, recoveryTarget, cancellationToken).ConfigureAwait(false);
         }
 
         // Builds a failure log message with cycle count and optional recovery trigger suffix
@@ -668,6 +655,25 @@ namespace qbPortWeaver
                 : string.Empty;
             return $"{prefix} ({count} consecutive {cycles}{recoverySuffix})";
         }
+
+        // Returns the registry settings section for the active BitTorrent client.
+        // Used to read DefaultPort and to determine which restart options to apply.
+        private static string GetActiveClientSection(string client)
+        {
+            if (client.Equals(RegistrySettingsManager.BitTorrentClientTransmission, StringComparison.OrdinalIgnoreCase))
+                return RegistrySettingsManager.SectionTransmission;
+            if (client.Equals(RegistrySettingsManager.BitTorrentClientDeluge, StringComparison.OrdinalIgnoreCase))
+                return RegistrySettingsManager.SectionDeluge;
+            return RegistrySettingsManager.SectionQBittorrent;
+        }
+
+        private static (bool ForceStart, bool Restart) GetClientRestartConfig(AppConfig cfg) =>
+            GetActiveClientSection(cfg.BitTorrentClient) switch
+            {
+                RegistrySettingsManager.SectionTransmission => (cfg.ForceStartTransmission, cfg.RestartTransmission),
+                RegistrySettingsManager.SectionDeluge       => (cfg.ForceStartDeluge,       cfg.RestartDeluge),
+                _                                           => (cfg.ForceStartQBittorrent,  cfg.RestartQBittorrent),
+            };
 
         // Sets the cycle status and message in the status dict, logs the message, and adds a closing bookend on failure.
         // Pass an explicit level to override the default (Info on success, Error on failure).

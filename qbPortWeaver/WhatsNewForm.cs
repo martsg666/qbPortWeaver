@@ -9,7 +9,12 @@ namespace qbPortWeaver
             "The GitHub repository was recently set to private for a period, and all stars were " +
             "lost. If you find qbPortWeaver useful, please star it on GitHub.";
 
-        private const string ReleaseFeaturesText = "";
+        private const string ReleaseFeaturesText =
+            "Transmission and Deluge support\n" +
+            "qbPortWeaver can now manage the listening port for Transmission and Deluge in addition to qBittorrent. " +
+            "Configure your client under Settings — each client has its own URL, credentials, and restart options.\n\n" +
+            "Transmission runs in service mode (Windows service) or process mode (Qt desktop client) and is detected automatically.\n\n" +
+            "Deluge connects via its Web UI JSON-RPC API. A configurable flush wait ensures the port change is written to disk before restart.";
 
         public WhatsNewForm()
         {

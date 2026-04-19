@@ -33,9 +33,6 @@ The application runs in the system tray, manages configuration and logging, and 
 - **Default Port Fallback**
   When VPN is not connected, optionally sets the client's listening port to a configured default. Useful if you have a port forwarded in your router for direct connections without VPN.
 
-- **Client Control**
-  Authenticates with the configured client's API and updates its listening port. Supports qBittorrent (Web API), Transmission (RPC), and Deluge (Web JSON-RPC).
-
 - **Restart After Port Change**
   Optionally restart the BitTorrent client after updating the port to ensure changes take effect immediately.
 
@@ -217,11 +214,11 @@ Configured via tray menu → **Media Manager**.
 
 ### 2. Windows Auto-Logon
 
-- Install [Sysinternals Autologon](https://learn.microsoft.com/en-us/sysinternals/downloads/autologon) to automatically log in to Windows after a reboot. This ensures your VPN client, qBittorrent, and qbPortWeaver all start without manual intervention.
+- Install [Sysinternals Autologon](https://learn.microsoft.com/en-us/sysinternals/downloads/autologon) to automatically log in to Windows after a reboot. This ensures your VPN client, BitTorrent client, and qbPortWeaver all start without manual intervention.
 
 ### 3. ProtonVPN Configuration
 
-- Enable **Split Tunneling** and route only qBittorrent through the VPN.
+- Enable **Split Tunneling** and route only your BitTorrent client through the VPN.
 - Enable **Port Forwarding** (required for qbPortWeaver to work).
 - Select a **P2P server**.
 - Enable **NetShield**.
@@ -233,7 +230,7 @@ Configured via tray menu → **Media Manager**.
 
 ### 4. PIA Configuration (if using PIA instead of ProtonVPN)
 
-- Enable **Split Tunneling** and route only qBittorrent through the VPN.
+- Enable **Split Tunneling** and route only your BitTorrent client through the VPN.
 - Enable **Port Forwarding** in the PIA desktop client settings.
 - Use **OpenVPN (UDP)** as the protocol to avoid DNS resolution issues that can occur with WireGuard.
 - Set PIA to **start with Windows**.

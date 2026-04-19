@@ -81,6 +81,9 @@ namespace qbPortWeaver
         {
             string? serviceName = GetEffectiveServiceName();
             bool isService = serviceName is not null && await IsConfigDirSystemWideAsync().ConfigureAwait(false);
+            LogManager.Instance.LogMessage(
+                $"Transmission restarting in {(isService ? $"service mode. Service name: {serviceName}" : "process mode")}",
+                LogLevel.Info);
             return isService
                 ? await RestartServiceModeAsync(serviceName!, cancellationToken).ConfigureAwait(false)
                 : await RestartProcessModeAsync(cancellationToken).ConfigureAwait(false);

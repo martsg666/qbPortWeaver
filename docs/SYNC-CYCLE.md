@@ -13,12 +13,8 @@ flowchart TD
     DISABLED -- No --> CONNECTED{VPN connected?}
     SKIP_DISABLED --> FINALLY
 
-    CONNECTED -- Yes --> CACHE_EXE{Auto-recovery enabled?}
+    CONNECTED -- Yes --> PORT[Get VPN port]
     CONNECTED -- No --> DISCONNECTED[Handle disconnection]
-
-    CACHE_EXE -- Yes --> DO_CACHE[Cache VPN client EXE paths]
-    CACHE_EXE -- No --> PORT
-    DO_CACHE --> PORT[Get VPN port]
 
     PORT --> PORT_OK{Port found?}
     PORT_OK -- Yes --> CLIENT[Ensure client is running]
@@ -103,7 +99,7 @@ When the VPN is detected as disconnected - or port detection fails despite the V
 2. **Auto-recovery** - if enabled, once the counter reaches the configured threshold, the cycle:
    - Resets the counter (to prevent repeated triggers)
    - Determines the recovery action and target based on the provider type:
-     - **ProtonVPN / PIA (direct or NAT-PMP mode):** action = `restart`, target = provider token (e.g. "ProtonVPN", "PIA") - the helper maps the token to the actual Windows service name and restarts it
+     - **ProtonVPN / PIA (direct or NAT-PMP mode):** action = `restart`, target = the resolved Windows service name - the main app auto-discovers the service name and sends it to the helper, which restarts it directly
      - **NAT-PMP with a generic gateway:** action = `cycle-adapter`, target = adapter name - the helper disables and re-enables the adapter via netsh
    - Sends the recovery request to the helper service (runs as SYSTEM) via named pipe
    - If the target matches a known provider's client process, restarts it in the user session
@@ -127,7 +123,9 @@ Cycle 4: VPN connected, port failed  → counter=3 → TRIGGER RECOVERY → coun
 
 ### Counter Reset Rules
 
-The counter is reset to zero only after a successful port detection (`GetVpnPortAsync` returns a valid port). This applies uniformly to all providers - both VPN disconnection and port detection failure accumulate toward the auto-recovery threshold.
+The counter resets in two cases:
+- **Successful port detection** — `GetVpnPortAsync` returns a valid port. Applies uniformly to all providers; both VPN disconnection and port detection failure accumulate toward the threshold.
+- **Auto-recovery disabled** — if the feature is turned off, the counter resets each cycle so it does not carry over stale state when the feature is re-enabled.
 
 ## BitTorrent Client Interaction
 
@@ -135,13 +133,17 @@ All client communication goes through the `IBitTorrentClient` interface, with im
 
 ### Port Update Sequence
 
-The sequence below shows the qBittorrent flow. Transmission and Deluge follow the same logical steps via their respective API endpoints.
-
 ```
-1. GET  /api/v2/app/preferences  → read listen_port + current_interface_name  [qBittorrent]
-2. POST /api/v2/app/setPreferences  → set listen_port (only if different)      [qBittorrent]
-   session-get → read peer-port                                                [Transmission]
-   core.get_config_values → read listen_ports                                  [Deluge]
+1. Read current port:
+   GET /api/v2/app/preferences   → listen_port + current_interface_name  [qBittorrent]
+   session-get                   → peer-port + bind-address-ipv4          [Transmission]
+   core.get_config_values        → listen_ports / listen_random_port      [Deluge]
+
+2. Set new port (only if different):
+   POST /api/v2/app/setPreferences                                        [qBittorrent]
+   session-set                                                            [Transmission]
+   core.set_config                                                        [Deluge]
+
 3. (optional) Restart client process or service (if restart enabled)
 4. (optional) Run post-update shell command
 5. (optional, qBittorrent only) GET /api/v2/transfer/info → check connection_status
@@ -155,7 +157,7 @@ When enabled, the cycle compares qBittorrent's bound network interface (`current
 
 ## Status Output
 
-Every cycle writes a JSON status file (`status.json` next to the log file) capturing the full cycle outcome. External tools can read this file to monitor sync health.
+Every cycle writes a JSON status file (`qbPortWeaver.status.json` in `%LocalAppData%\qbPortWeaver\`) capturing the full cycle outcome. External tools can read this file to monitor sync health.
 
 ```json
 {
@@ -194,7 +196,6 @@ RunAsync
      │   ├─ BuildCycleCountMessage
      │   └─ TryTriggerRecoveryAsync
      ├─ (if connected)
-     │   ├─ AutoRecoveryManager.CacheRunningClientExePaths
      │   ├─ IVpnManager.GetVpnPortAsync
      │   └─ HandlePortDetectionFailureAsync (if port null, all providers)
      │       ├─ BuildCycleCountMessage

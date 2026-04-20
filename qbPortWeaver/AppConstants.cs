@@ -197,6 +197,42 @@ namespace qbPortWeaver
             catch { return null; }
         }
 
+        /// <summary>
+        /// Resolves an executable path from the directory of a Windows service, caching the result.
+        /// Returns <see langword="null"/> if the service or file is not found; the cache is set to
+        /// <see langword="null"/> on a definitive miss and left as <see cref="string.Empty"/> on a
+        /// transient error so the next cycle retries.
+        /// </summary>
+        internal static string? ResolveServiceExePath(ref string? cache, string exeFileName, Func<string?> findServiceName, string logPrefix)
+        {
+            if (cache != string.Empty) return cache;
+            try
+            {
+                string? serviceName = findServiceName();
+                string? serviceDir  = serviceName is not null ? GetServiceExeDirectory(serviceName) : null;
+                if (serviceDir is null)
+                {
+                    LogManager.Instance.LogDebug($"{logPrefix}: service executable directory not found");
+                    return cache = null;
+                }
+
+                string exePath = Path.Combine(serviceDir, exeFileName);
+                if (!File.Exists(exePath))
+                {
+                    LogManager.Instance.LogDebug($"{logPrefix}: {exeFileName} not found at: {exePath}");
+                    return cache = null;
+                }
+
+                LogManager.Instance.LogDebug($"{logPrefix}: Found {exeFileName} at: {exePath}");
+                return cache = exePath;
+            }
+            catch (Exception ex)
+            {
+                LogManager.Instance.LogDebug($"{logPrefix}: {ex.Message}");
+                return null; // transient error - don't cache, retry next cycle
+            }
+        }
+
         /// <summary>Creates a ProcessStartInfo configured to run a hidden, windowless process.</summary>
         public static ProcessStartInfo CreateHiddenStartInfo(string fileName, string arguments) =>
             new(fileName, arguments) { UseShellExecute = false, CreateNoWindow = true };

@@ -132,38 +132,7 @@ namespace qbPortWeaver
             }
         }
 
-        // Resolves a PIA exe path from the service executable directory.
-        private static string? ResolveExePath(ref string? cache, string exeFileName, string logLabel)
-        {
-            if (cache != string.Empty) return cache;
-            try
-            {
-                string? serviceName = FindServiceName();
-                string? serviceDir  = serviceName is not null ? AppConstants.GetServiceExeDirectory(serviceName) : null;
-                if (serviceDir is null)
-                {
-                    LogManager.Instance.LogDebug($"PiaVpnManager.{logLabel}: PIA service executable directory not found");
-                    return cache = null;
-                }
-
-                string exePath = Path.Combine(serviceDir, exeFileName);
-                if (!File.Exists(exePath))
-                {
-                    LogManager.Instance.LogDebug($"PiaVpnManager.{logLabel}: {exeFileName} not found at: {exePath}");
-                    return cache = null;
-                }
-
-                LogManager.Instance.LogDebug($"PiaVpnManager.{logLabel}: Found {exeFileName} at: {exePath}");
-                return cache = exePath;
-            }
-            catch (Exception ex)
-            {
-                LogManager.Instance.LogDebug($"PiaVpnManager.{logLabel}: {ex.Message}");
-                return null; // transient error - don't cache, retry next cycle
-            }
-        }
-
-        private static string? GetPiactlPath()    => ResolveExePath(ref _piactlPathCache,    GetPiactlProcessName() + ".exe", "GetPiactlPath");
-        internal static string? GetClientExePath() => ResolveExePath(ref _clientExePathCache, GetClientProcessName() + ".exe", "GetClientExePath");
+        private static string? GetPiactlPath()    => AppConstants.ResolveServiceExePath(ref _piactlPathCache,    GetPiactlProcessName() + ".exe", FindServiceName, "PiaVpnManager.GetPiactlPath");
+        internal static string? GetClientExePath() => AppConstants.ResolveServiceExePath(ref _clientExePathCache, GetClientProcessName() + ".exe", FindServiceName, "PiaVpnManager.GetClientExePath");
     }
 }

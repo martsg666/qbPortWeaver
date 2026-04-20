@@ -167,7 +167,7 @@ namespace qbPortWeaver
 
                 if (root.TryGetProperty("error", out var error) && error.ValueKind != JsonValueKind.Null)
                 {
-                    LogManager.Instance.LogMessage($"{ClientName} authentication failed: check the password in Settings", LogLevel.Error);
+                    LogManager.Instance.LogMessage($"{ClientName} authentication failed: {error} - check the URL in Settings ({_url})", LogLevel.Error);
                     return false;
                 }
 

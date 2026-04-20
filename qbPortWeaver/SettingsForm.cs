@@ -26,7 +26,7 @@ namespace qbPortWeaver
             toolTip.SetToolTip(cboVpnProvider,              "VPN provider used for port detection (Disabled, ProtonVPN, PIA, or NAT-PMP)");
             toolTip.SetToolTip(cboNatPmpAdapter,             "Network adapter to use for NAT-PMP port mapping (only applies when NAT-PMP is selected)");
             toolTip.SetToolTip(btnRefreshAdapters,           "Refresh the adapter list");
-            toolTip.SetToolTip(nudUpdateInterval,            "How often to check and sync the port, in seconds");
+            toolTip.SetToolTip(nudUpdateInterval,            "How often to run the sync cycle, in seconds - controls both port sync and Media Manager frequency");
             toolTip.SetToolTip(cboBitTorrentClient,          "BitTorrent client to control (qBittorrent, Transmission, or Deluge)");
             toolTip.SetToolTip(txtQBittorrentURL,            "URL for the qBittorrent Web UI (e.g. http://127.0.0.1:8080)");
             toolTip.SetToolTip(txtQBittorrentUserName,       "Username for the qBittorrent Web UI");

@@ -79,7 +79,7 @@ namespace qbPortWeaver
             string? serviceName = GetEffectiveServiceName();
             bool isService = serviceName is not null && await IsConfigDirSystemWideAsync().ConfigureAwait(false);
             LogManager.Instance.LogMessage(
-                $"Transmission restarting in {(isService ? $"service mode. Service name: {serviceName}" : "process mode")}",
+                $"{ClientName} restarting in {(isService ? $"service mode. Service name: {serviceName}" : "process mode")}",
                 LogLevel.Info);
             return isService
                 ? await RestartServiceModeAsync(serviceName!, cancellationToken).ConfigureAwait(false)
@@ -94,6 +94,12 @@ namespace qbPortWeaver
                 const string body = """{"method":"session-get","arguments":{"fields":["peer-port","bind-address-ipv4"]}}""";
                 using var response = await SendRpcAsync(body).ConfigureAwait(false);
                 if (response is null) return (null, null);
+
+                if (response.StatusCode == HttpStatusCode.Unauthorized)
+                {
+                    LogManager.Instance.LogMessage($"{ClientName} authentication failed: wrong username or password - check the credentials in Settings", LogLevel.Error);
+                    return (null, null);
+                }
 
                 if (!response.IsSuccessStatusCode)
                 {

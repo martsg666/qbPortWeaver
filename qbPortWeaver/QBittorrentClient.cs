@@ -156,13 +156,13 @@ namespace qbPortWeaver
 
                 if (response.StatusCode == HttpStatusCode.Forbidden)
                 {
-                    LogManager.Instance.LogMessage("qBittorrent returned HTTP 403 Forbidden - IP banned due to too many failed login attempts. Restart qBittorrent to clear the ban", LogLevel.Error);
+                    LogManager.Instance.LogMessage($"{ClientName} returned HTTP 403 Forbidden - IP banned due to too many failed login attempts. Restart {ClientName} to clear the ban", LogLevel.Error);
                     return false;
                 }
 
                 if (response.StatusCode == HttpStatusCode.Unauthorized)
                 {
-                    LogManager.Instance.LogMessage("qBittorrent returned HTTP 401 Unauthorized - check whether a reverse proxy with authentication is running in front of qBittorrent", LogLevel.Error);
+                    LogManager.Instance.LogMessage($"{ClientName} returned HTTP 401 Unauthorized - check whether a reverse proxy with authentication is running in front of {ClientName}", LogLevel.Error);
                     return false;
                 }
 

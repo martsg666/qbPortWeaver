@@ -173,7 +173,7 @@ namespace qbPortWeaver
             writer.Write(text);
         }
 
-        // Internal rotation check - must be called while holding _lock
+        // Must be called while holding _lock
         private void RotateIfNeeded()
         {
             try

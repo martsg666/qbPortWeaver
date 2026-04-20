@@ -460,7 +460,7 @@ namespace qbPortWeaver
 
             string text = $"{AppConstants.AppName} {AppConstants.AppVersion}\n{statusLine}";
 
-            // Tooltip is limited to 63 characters
+            // Tray tooltip maximum is 63 characters
             if (text.Length > AppConstants.MaxTooltipLength)
                 text = text[..AppConstants.MaxTooltipLength];
 

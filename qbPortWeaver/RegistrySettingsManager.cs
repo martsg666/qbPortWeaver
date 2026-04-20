@@ -54,7 +54,6 @@ namespace qbPortWeaver
         public const string KeyTransmissionUrl         = "transmissionURL";
         public const string KeyTransmissionUserName    = "transmissionUserName";
         public const string KeyTransmissionPassword    = "transmissionPassword";
-        public const string KeyTransmissionServiceName = "transmissionServiceName";
         public const string KeyTransmissionProcessName = "transmissionProcessName";
         public const string KeyTransmissionExePath     = "transmissionExePath";
         public const string KeyRestartTransmission     = "restartTransmission";
@@ -93,8 +92,17 @@ namespace qbPortWeaver
         public const string ImportModeCopy     = "Copy";
         public const string ImportModeMove     = "Move";
 
-        // Registry key name - app level (not in a section)
-        public const string KeyLastSeenVersion  = "lastSeenVersion";
+        // Registry key names - app level (not in a section)
+        public const string KeyLastSeenVersion              = "lastSeenVersion";
+        public const string KeyProtonVpnLogFilePath          = "protonVpnLogFilePath";
+        public const string KeyProtonVpnServiceSearchTerm   = "protonVpnServiceSearchTerm";
+        public const string KeyPiaServiceSearchTerm         = "piaServiceSearchTerm";
+        public const string KeyTransmissionServiceSearchTerm = "transmissionServiceSearchTerm";
+        public const string KeyProtonVpnClientProcessName   = "protonVpnClientProcessName";
+        public const string KeyProtonVpnAdapterName         = "protonVpnAdapterName";
+        public const string KeyPiaAdapterName               = "piaAdapterName";
+        public const string KeyPiaClientProcessName         = "piaClientProcessName";
+        public const string KeyPiactlProcessName            = "piactlProcessName";
 
         // Registry key names - general section (auto-recovery)
         // Registry string values are frozen for backward compatibility.
@@ -132,7 +140,6 @@ namespace qbPortWeaver
                     [KeyTransmissionUrl]         = "http://127.0.0.1:9091",
                     [KeyTransmissionUserName]    = "",
                     [KeyTransmissionPassword]    = "",
-                    [KeyTransmissionServiceName] = "",
                     [KeyTransmissionProcessName] = "transmission-qt",
                     [KeyTransmissionExePath]     = @"C:\Program Files\Transmission\transmission-qt.exe",
                     [KeyRestartTransmission]     = ValueTrue,
@@ -169,19 +176,36 @@ namespace qbPortWeaver
                 }
             };
 
-        /// <summary>Reads a string value from the app-level registry key (<c>HKCU\Software\qbPortWeaver</c>), above the settings sections. Returns an empty string if the key is missing.</summary>
+        // Default values for app-level keys (single source of truth; written on first run)
+        private static readonly Dictionary<string, string> _appDefaults =
+            new(StringComparer.OrdinalIgnoreCase)
+            {
+                [KeyProtonVpnLogFilePath]           = @"Proton\Proton VPN\Logs\client-logs.txt",
+                [KeyProtonVpnServiceSearchTerm]    = "ProtonVPN Service",
+                [KeyPiaServiceSearchTerm]          = "PrivateInternetAccessService",
+                [KeyTransmissionServiceSearchTerm] = "Transmission",
+                [KeyProtonVpnClientProcessName]    = "ProtonVPN.Client",
+                [KeyProtonVpnAdapterName]          = "ProtonVPN",
+                [KeyPiaAdapterName]                = "PIA",
+                [KeyPiaClientProcessName]          = "pia-client",
+                [KeyPiactlProcessName]             = "piactl",
+            };
+
+        /// <summary>Reads a string value from the app-level registry key (<c>HKCU\Software\qbPortWeaver</c>), above the settings sections. Returns the hardcoded default if the key is missing.</summary>
         public static string GetAppValue(string key)
         {
             try
             {
                 using var regKey = Registry.CurrentUser.OpenSubKey(AppKeyPath);
-                return regKey?.GetValue(key) as string ?? string.Empty;
+                if (regKey?.GetValue(key) is string value)
+                    return value;
             }
             catch (Exception ex)
             {
                 LogManager.Instance.LogDebug($"RegistrySettingsManager.GetAppValue: {key} - {ex.Message}");
-                return string.Empty;
             }
+
+            return _appDefaults.TryGetValue(key, out var fallback) ? fallback : string.Empty;
         }
 
         /// <summary>Writes a string value to the app-level registry key (<c>HKCU\Software\qbPortWeaver</c>), above the settings sections.</summary>
@@ -213,6 +237,20 @@ namespace qbPortWeaver
                 {
                     LogManager.Instance.LogDebug($"RegistrySettingsManager.EnsureDefaults: [{section.Key}] - {ex.Message}");
                 }
+            }
+
+            try
+            {
+                using var appKey = Registry.CurrentUser.CreateSubKey(AppKeyPath);
+                foreach (var kvp in _appDefaults.Where(kvp => appKey.GetValue(kvp.Key) is null))
+                {
+                    appKey.SetValue(kvp.Key, kvp.Value, RegistryValueKind.String);
+                    anyWritten = true;
+                }
+            }
+            catch (Exception ex)
+            {
+                LogManager.Instance.LogDebug($"RegistrySettingsManager.EnsureDefaults: [app] - {ex.Message}");
             }
 
             if (anyWritten)
@@ -337,8 +375,8 @@ namespace qbPortWeaver
         }
 
         // Keys that are stored DPAPI-encrypted rather than as plaintext registry strings.
-        // Used by WriteDefaultsForSection to encrypt initial values, and could be extended
-        // to any future sensitive setting.
+        // Used by WriteDefaultsForSection to encrypt initial values. Add any future
+        // sensitive setting here to ensure it is stored encrypted.
         private static readonly HashSet<string> _encryptedKeys = new(StringComparer.OrdinalIgnoreCase)
         {
             KeyQBittorrentPassword,

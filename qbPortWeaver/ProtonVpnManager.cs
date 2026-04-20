@@ -7,9 +7,11 @@ namespace qbPortWeaver
     /// <summary>Detects ProtonVPN connectivity via network adapter enumeration and reads the forwarded port from the client log file.</summary>
     public sealed partial class ProtonVpnManager : IVpnManager
     {
-        private const int    LogReadChunkSize  = 4096;
-        private const string ServiceSearchTerm = "ProtonVPN Service";
-        internal const string ClientProcessName = "ProtonVPN.Client";
+        private const int LogReadChunkSize = 4096;
+
+        internal static string GetServiceSearchTerm() => RegistrySettingsManager.GetAppValue(RegistrySettingsManager.KeyProtonVpnServiceSearchTerm);
+        internal static string GetClientProcessName() => RegistrySettingsManager.GetAppValue(RegistrySettingsManager.KeyProtonVpnClientProcessName);
+        internal static string GetAdapterName()       => RegistrySettingsManager.GetAppValue(RegistrySettingsManager.KeyProtonVpnAdapterName);
 
         // Cached path; null = not found, string.Empty = not yet resolved.
         // Install paths never change at runtime so we resolve once and reuse.
@@ -18,7 +20,7 @@ namespace qbPortWeaver
         private readonly string _logFilePath;
 
         // Log format: "Port pair X->Y" where X and Y are always identical (ProtonVPN does not
-        // differentiate external from internal port). Capture group 1 gives the forwarded port.
+        // distinguish the two port values). Capture group 1 gives the forwarded port.
         // No nested quantifiers, so no backtracking risk - no match timeout required.
         [GeneratedRegex(@"Port pair\s+(\d+)->(?:\d+)")]
         private static partial Regex PortPairRegex();
@@ -38,10 +40,10 @@ namespace qbPortWeaver
             try
             {
                 var adapters = NetworkInterface.GetAllNetworkInterfaces();
-                // Uses Name (not Description) - ProtonVPN's adapter Name contains "ProtonVPN" on all
-                // installations: "ProtonVPN" (WireGuard) or "ProtonVPN TUN" (OpenVPN).
+                // Uses Name (not Description) - ProtonVPN's adapter Name contains the configured
+                // adapter name substring on all installations: "ProtonVPN" (WireGuard) or "ProtonVPN TUN" (OpenVPN).
                 bool isConnected = adapters.Any(adapter =>
-                    adapter.Name.Contains("ProtonVPN", StringComparison.OrdinalIgnoreCase) &&
+                    adapter.Name.Contains(GetAdapterName(), StringComparison.OrdinalIgnoreCase) &&
                     adapter.OperationalStatus == OperationalStatus.Up);
 
                 LogManager.Instance.LogDebug(isConnected
@@ -67,9 +69,9 @@ namespace qbPortWeaver
 
         /// <inheritdoc />
         public bool IsAdapterMatch(string interfaceName)
-            => interfaceName.Contains("ProtonVPN", StringComparison.OrdinalIgnoreCase);
+            => interfaceName.Contains(GetAdapterName(), StringComparison.OrdinalIgnoreCase);
 
-        internal static string? FindServiceName() => AppConstants.FindServiceName(ServiceSearchTerm);
+        internal static string? FindServiceName() => AppConstants.FindServiceName(GetServiceSearchTerm());
 
         internal static string? GetClientExePath()
         {
@@ -84,14 +86,15 @@ namespace qbPortWeaver
                     return _clientExePathCache = null;
                 }
 
-                string exePath = Path.Combine(serviceDir, ClientProcessName + ".exe");
+                string processName = GetClientProcessName();
+                string exePath = Path.Combine(serviceDir, processName + ".exe");
                 if (!File.Exists(exePath))
                 {
-                    LogManager.Instance.LogDebug($"ProtonVpnManager.GetClientExePath: {ClientProcessName}.exe not found at: {exePath}");
+                    LogManager.Instance.LogDebug($"ProtonVpnManager.GetClientExePath: {processName}.exe not found at: {exePath}");
                     return _clientExePathCache = null;
                 }
 
-                LogManager.Instance.LogDebug($"ProtonVpnManager.GetClientExePath: Found {ClientProcessName}.exe at: {exePath}");
+                LogManager.Instance.LogDebug($"ProtonVpnManager.GetClientExePath: Found {processName}.exe at: {exePath}");
                 return _clientExePathCache = exePath;
             }
             catch (Exception ex)

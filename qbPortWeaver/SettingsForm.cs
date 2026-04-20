@@ -34,7 +34,7 @@ namespace qbPortWeaver
             toolTip.SetToolTip(txtQBittorrentExePath,        "Path to the qBittorrent executable, used to start or restart the application");
             toolTip.SetToolTip(btnBrowseExePath,             "Browse for the qBittorrent executable");
             toolTip.SetToolTip(txtQBittorrentProcessName,    "Process name used to detect if qBittorrent is running (usually qbittorrent)");
-            toolTip.SetToolTip(chkRestartQBittorrent,        "Restart qBittorrent after updating the port - required for the change to take effect");
+            toolTip.SetToolTip(chkRestartQBittorrent,        "Restart qBittorrent after updating the port - recommended for the change to take effect immediately");
             toolTip.SetToolTip(chkForceStartQBittorrent,     "Automatically launch qBittorrent if it is not already running");
             toolTip.SetToolTip(nudDefaultPort,               DefaultPortTooltip);
             toolTip.SetToolTip(lblDefaultPort,               DefaultPortTooltip);
@@ -46,7 +46,7 @@ namespace qbPortWeaver
             toolTip.SetToolTip(txtTransmissionExePath,       "Path to the Transmission executable, used to start or restart the application when running as a user-space process");
             toolTip.SetToolTip(btnBrowseTransmissionExePath, "Browse for the Transmission executable");
             toolTip.SetToolTip(txtTransmissionProcessName,   "Process name used to detect if Transmission is running as a user-space process (e.g. transmission-qt)");
-            toolTip.SetToolTip(chkRestartTransmission,       "Restart Transmission after updating the port - required for the change to take effect");
+            toolTip.SetToolTip(chkRestartTransmission,       "Restart Transmission after updating the port - recommended for the change to take effect immediately");
             toolTip.SetToolTip(chkForceStartTransmission,    "Automatically launch Transmission if it is not already running");
             toolTip.SetToolTip(nudTransmissionDefaultPort,   DefaultPortTooltip);
             toolTip.SetToolTip(lblTransmissionDefaultPort,   DefaultPortTooltip);
@@ -55,14 +55,14 @@ namespace qbPortWeaver
             toolTip.SetToolTip(txtDelugeExePath,             "Path to the Deluge executable, used to start or restart the application");
             toolTip.SetToolTip(btnBrowseDelugeExePath,       "Browse for the Deluge executable");
             toolTip.SetToolTip(txtDelugeProcessName,         "Process name used to detect if Deluge is running (usually deluge)");
-            toolTip.SetToolTip(chkRestartDeluge,             "Restart Deluge after updating the port - required for the change to take effect");
+            toolTip.SetToolTip(chkRestartDeluge,             "Restart Deluge after updating the port - recommended for the change to take effect immediately");
             toolTip.SetToolTip(chkForceStartDeluge,          "Automatically launch Deluge if it is not already running");
             toolTip.SetToolTip(nudDelugeDefaultPort,         DefaultPortTooltip);
             toolTip.SetToolTip(lblDelugeDefaultPort,         DefaultPortTooltip);
             toolTip.SetToolTip(txtPostUpdateCmd,             "Shell command to run after a successful port update (leave empty to disable)");
             toolTip.SetToolTip(chkDebugMode,                 "Write verbose debug entries to the log file");
             toolTip.SetToolTip(cboColorTheme,                "Application color theme (System, Dark, or Light) - a restart prompt will appear if changed");
-            toolTip.SetToolTip(chkAutoRecovery,              "Automatically recover after N consecutive failed sync cycles (VPN disconnected or port detection failure)");
+            toolTip.SetToolTip(chkAutoRecovery,              "Automatically recover after the configured number of consecutive failed sync cycles (VPN disconnected or port detection failure)");
             toolTip.SetToolTip(nudRecoveryCycles,            "Number of consecutive failed cycles before recovery is triggered");
         }
 

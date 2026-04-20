@@ -39,8 +39,8 @@ namespace qbPortWeaver
             string QBittorrentUrl,
             string QBittorrentUserName,
             string QBittorrentPassword,
-            string QBittorrentExePath,
             string QBittorrentProcessName,
+            string QBittorrentExePath,
             bool RestartQBittorrent,
             bool ForceStartQBittorrent,
             int DefaultPort,
@@ -83,9 +83,9 @@ namespace qbPortWeaver
             public const string VpnProvider             = "vpnProvider";
             public const string VpnConnected            = "vpnConnected";
             public const string VpnPort                 = "vpnPort";
-            public const string ClientRunning      = "clientRunning";
-            public const string ClientPreviousPort = "clientPreviousPort";
-            public const string ClientPort         = "clientPort";
+            public const string ClientRunning           = "clientRunning";
+            public const string ClientPreviousPort      = "clientPreviousPort";
+            public const string ClientPort              = "clientPort";
             public const string PortChanged             = "portChanged";
             public const string UpdateIntervalSeconds   = "updateIntervalSeconds";
             public const string Status                  = "status";
@@ -110,9 +110,9 @@ namespace qbPortWeaver
                 [StatusKeys.VpnProvider]             = null,
                 [StatusKeys.VpnConnected]            = false,
                 [StatusKeys.VpnPort]                 = null,
-                [StatusKeys.ClientRunning]      = false,
-                [StatusKeys.ClientPreviousPort] = null,
-                [StatusKeys.ClientPort]         = null,
+                [StatusKeys.ClientRunning]           = false,
+                [StatusKeys.ClientPreviousPort]      = null,
+                [StatusKeys.ClientPort]              = null,
                 [StatusKeys.PortChanged]             = false,
                 [StatusKeys.UpdateIntervalSeconds]   = AppConstants.DefaultUpdateIntervalSeconds,
                 [StatusKeys.Status]                  = StatusKeys.Error,
@@ -259,8 +259,8 @@ namespace qbPortWeaver
                 QBittorrentUrl:            RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionQBittorrent,  RegistrySettingsManager.KeyQBittorrentUrl),
                 QBittorrentUserName:       RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionQBittorrent,  RegistrySettingsManager.KeyQBittorrentUserName),
                 QBittorrentPassword:       RegistrySettingsManager.GetPassword(),
-                QBittorrentExePath:        RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionQBittorrent,  RegistrySettingsManager.KeyQBittorrentExePath),
                 QBittorrentProcessName:    RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionQBittorrent,  RegistrySettingsManager.KeyQBittorrentProcessName),
+                QBittorrentExePath:        RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionQBittorrent,  RegistrySettingsManager.KeyQBittorrentExePath),
                 RestartQBittorrent:        RegistrySettingsManager.GetBool (RegistrySettingsManager.SectionQBittorrent,  RegistrySettingsManager.KeyRestartQBittorrent),
                 ForceStartQBittorrent:     RegistrySettingsManager.GetBool (RegistrySettingsManager.SectionQBittorrent,  RegistrySettingsManager.KeyForceStartQBittorrent),
                 DefaultPort:               defaultPort,
@@ -325,8 +325,8 @@ namespace qbPortWeaver
                     $"PortSyncService.RunCoreAsync [qBittorrent]: {RegistrySettingsManager.KeyQBittorrentUrl}={cfg.QBittorrentUrl}, " +
                     $"{RegistrySettingsManager.KeyQBittorrentUserName}={cfg.QBittorrentUserName}, " +
                     $"{RegistrySettingsManager.KeyQBittorrentPassword}=***, " + // NOSONAR S2068 - value is masked, not a real credential
-                    $"{RegistrySettingsManager.KeyQBittorrentExePath}={cfg.QBittorrentExePath}, " +
                     $"{RegistrySettingsManager.KeyQBittorrentProcessName}={cfg.QBittorrentProcessName}, " +
+                    $"{RegistrySettingsManager.KeyQBittorrentExePath}={cfg.QBittorrentExePath}, " +
                     $"{RegistrySettingsManager.KeyRestartQBittorrent}={cfg.RestartQBittorrent}, " +
                     $"{RegistrySettingsManager.KeyForceStartQBittorrent}={cfg.ForceStartQBittorrent}, " +
                     $"{RegistrySettingsManager.KeyDefaultPort}={cfg.DefaultPort}, " +
@@ -469,8 +469,8 @@ namespace qbPortWeaver
 
             // Check connection status and restart if offline - skip if a restart was already performed
             // by ApplyPortUpdateAsync (port changed + restart enabled) to avoid a redundant cycle.
-            bool alreadyRestarted = config.Restart && status[StatusKeys.PortChanged] is true;
-            if (config.RestartOnDisconnect && !alreadyRestarted)
+            bool restartAttemptedThisCycle = config.Restart && status[StatusKeys.PortChanged] is true;
+            if (config.RestartOnDisconnect && !restartAttemptedThisCycle)
                 await CheckAndRestartIfDisconnectedAsync(manager, cancellationToken).ConfigureAwait(false);
 
             SetSyncResult(status, true, "Sync cycle completed");
@@ -541,7 +541,7 @@ namespace qbPortWeaver
             LogManager.Instance.LogMessage($"{manager.ClientName} port set to {targetPort}", LogLevel.Info);
 
             status[StatusKeys.ClientPort] = targetPort;
-            status[StatusKeys.PortChanged]     = true;
+            status[StatusKeys.PortChanged]             = true;
 
             if (config.Restart)
             {

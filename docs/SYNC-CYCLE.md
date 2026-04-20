@@ -40,7 +40,7 @@ flowchart TD
     POST_CMD -- No --> DONE_CHECK
     RUN_CMD --> DONE_CHECK
 
-    DONE_CHECK{restartOnDisconnect AND\nnot already restarted?}
+    DONE_CHECK{restartOnDisconnect AND\nrestart not attempted this cycle?}
     DONE_CHECK -- Yes --> CONN_STATUS[Check client connection status]
     DONE_CHECK -- No --> SUCCESS
     CONN_STATUS -- disconnected --> RESTART_CLIENT[Restart client]

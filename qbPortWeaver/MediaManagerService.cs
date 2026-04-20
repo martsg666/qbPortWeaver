@@ -21,7 +21,7 @@ namespace qbPortWeaver
             var apiKey = RegistrySettingsManager.GetEncryptedValue(RegistrySettingsManager.SectionMedia, RegistrySettingsManager.KeyTmdbApiKey);
             if (string.IsNullOrWhiteSpace(apiKey))
             {
-                LogManager.Instance.LogMessage("TMDB API key not configured - skipping scan", LogLevel.Warn, Subsystem.MediaManager);
+                LogManager.Instance.LogMessage("TMDB API key not configured - skipping import", LogLevel.Warn, Subsystem.MediaManager);
                 return;
             }
 
@@ -30,7 +30,7 @@ namespace qbPortWeaver
 
             if (string.IsNullOrWhiteSpace(moviesLibraryPath) && string.IsNullOrWhiteSpace(tvShowsLibraryPath))
             {
-                LogManager.Instance.LogMessage("No library paths configured - skipping scan", LogLevel.Warn, Subsystem.MediaManager);
+                LogManager.Instance.LogMessage("No library paths configured - skipping import", LogLevel.Warn, Subsystem.MediaManager);
                 return;
             }
 
@@ -44,7 +44,7 @@ namespace qbPortWeaver
             LogManager.Instance.LogMessage($"Import started (dryRun={dryRun}, createFolders={createFolders}, deleteEmptyFolders={deleteEmptyFolders}, importMode={importMode})", LogLevel.Info, Subsystem.MediaManager);
             if (LogManager.Instance.DebugMode)
                 LogManager.Instance.LogDebug(
-                    $"MediaManagerService.ImportAsync [media]: {RegistrySettingsManager.KeyMediaEnabled}=true, " +
+                    $"MediaManagerService.ImportAsync: {RegistrySettingsManager.KeyMediaEnabled}=true, " +
                     $"{RegistrySettingsManager.KeyTmdbApiKey}=***, " +
                     $"{RegistrySettingsManager.KeyMediaSourceFolders}={string.Join(";", sourceFolders)}, " +
                     $"{RegistrySettingsManager.KeyMediaMoviesLibraryPath}={moviesLibraryPath}, " +

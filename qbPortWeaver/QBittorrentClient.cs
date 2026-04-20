@@ -45,7 +45,7 @@ namespace qbPortWeaver
 
                 if (!response.IsSuccessStatusCode)
                 {
-                    LogManager.Instance.LogMessage($"Failed to get qBittorrent preferences (HTTP {(int)response.StatusCode} {response.StatusCode})", LogLevel.Error);
+                    LogManager.Instance.LogMessage($"Failed to get {ClientName} preferences (HTTP {(int)response.StatusCode} {response.StatusCode})", LogLevel.Error);
                     return (null, null);
                 }
 
@@ -99,7 +99,7 @@ namespace qbPortWeaver
                 using var response = await _httpClient.PostAsync($"{_url}{ApiSetPreferences}", content).ConfigureAwait(false);
                 if (!response.IsSuccessStatusCode)
                 {
-                    LogManager.Instance.LogMessage($"Failed to set qBittorrent port (HTTP {(int)response.StatusCode} {response.StatusCode})", LogLevel.Error);
+                    LogManager.Instance.LogMessage($"Failed to set {ClientName} port (HTTP {(int)response.StatusCode} {response.StatusCode})", LogLevel.Error);
                     return false;
                 }
                 return true;
@@ -123,7 +123,7 @@ namespace qbPortWeaver
 
                 if (!response.IsSuccessStatusCode)
                 {
-                    LogManager.Instance.LogMessage($"Failed to get qBittorrent transfer info (HTTP {(int)response.StatusCode} {response.StatusCode})", LogLevel.Error);
+                    LogManager.Instance.LogMessage($"Failed to get {ClientName} transfer info (HTTP {(int)response.StatusCode} {response.StatusCode})", LogLevel.Error);
                     return null;
                 }
 
@@ -168,7 +168,7 @@ namespace qbPortWeaver
 
                 if (!response.IsSuccessStatusCode)
                 {
-                    LogManager.Instance.LogMessage($"qBittorrent authentication failed (HTTP {(int)response.StatusCode} {response.StatusCode}) - check the URL in Settings ({_url})", LogLevel.Error);
+                    LogManager.Instance.LogMessage($"{ClientName} authentication failed (HTTP {(int)response.StatusCode} {response.StatusCode}) - check the URL in Settings ({_url})", LogLevel.Error);
                     return false;
                 }
 
@@ -176,7 +176,7 @@ namespace qbPortWeaver
                 var body = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
                 if (!body.Contains(AuthOkResponse, StringComparison.OrdinalIgnoreCase))
                 {
-                    LogManager.Instance.LogMessage($"qBittorrent authentication failed: wrong username or password (username: '{_userName}') - check the credentials in Settings", LogLevel.Error);
+                    LogManager.Instance.LogMessage($"{ClientName} authentication failed: wrong username or password (username: '{_userName}') - check the credentials in Settings", LogLevel.Error);
                     return false;
                 }
 

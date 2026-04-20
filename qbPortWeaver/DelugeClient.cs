@@ -44,7 +44,7 @@ namespace qbPortWeaver
 
                 if (!response.IsSuccessStatusCode)
                 {
-                    LogManager.Instance.LogMessage($"Failed to get Deluge preferences (HTTP {(int)response.StatusCode} {response.StatusCode})", LogLevel.Error);
+                    LogManager.Instance.LogMessage($"Failed to get {ClientName} preferences (HTTP {(int)response.StatusCode} {response.StatusCode})", LogLevel.Error);
                     return (null, null);
                 }
 
@@ -91,7 +91,7 @@ namespace qbPortWeaver
 
                 if (!response.IsSuccessStatusCode)
                 {
-                    LogManager.Instance.LogMessage($"Failed to set Deluge port (HTTP {(int)response.StatusCode} {response.StatusCode})", LogLevel.Error);
+                    LogManager.Instance.LogMessage($"Failed to set {ClientName} port (HTTP {(int)response.StatusCode} {response.StatusCode})", LogLevel.Error);
                     return false;
                 }
 
@@ -101,7 +101,7 @@ namespace qbPortWeaver
                 if (doc.RootElement.TryGetProperty("error", out var error) &&
                     error.ValueKind != JsonValueKind.Null)
                 {
-                    LogManager.Instance.LogMessage($"Deluge RPC returned an error for core.set_config: {error}", LogLevel.Error);
+                    LogManager.Instance.LogMessage($"{ClientName} RPC returned an error for core.set_config: {error}", LogLevel.Error);
                     return false;
                 }
 
@@ -157,7 +157,7 @@ namespace qbPortWeaver
 
                 if (!response.IsSuccessStatusCode)
                 {
-                    LogManager.Instance.LogMessage($"Deluge authentication failed (HTTP {(int)response.StatusCode} {response.StatusCode}) - check the URL in Settings ({_url})", LogLevel.Error);
+                    LogManager.Instance.LogMessage($"{ClientName} authentication failed (HTTP {(int)response.StatusCode} {response.StatusCode}) - check the URL in Settings ({_url})", LogLevel.Error);
                     return false;
                 }
 
@@ -167,14 +167,14 @@ namespace qbPortWeaver
 
                 if (root.TryGetProperty("error", out var error) && error.ValueKind != JsonValueKind.Null)
                 {
-                    LogManager.Instance.LogMessage("Deluge authentication failed: check the password in Settings", LogLevel.Error);
+                    LogManager.Instance.LogMessage($"{ClientName} authentication failed: check the password in Settings", LogLevel.Error);
                     return false;
                 }
 
                 if (root.TryGetProperty("result", out var result) && result.ValueKind == JsonValueKind.True)
                     return true;
 
-                LogManager.Instance.LogMessage("Deluge authentication failed: wrong password - check the credentials in Settings", LogLevel.Error);
+                LogManager.Instance.LogMessage($"{ClientName} authentication failed: wrong password - check the credentials in Settings", LogLevel.Error);
                 return false;
             }
             catch (Exception ex)

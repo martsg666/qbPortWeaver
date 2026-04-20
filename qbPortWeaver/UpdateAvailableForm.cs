@@ -34,8 +34,6 @@ namespace qbPortWeaver
                 TabIndex = 0,
             };
 
-            grpInfo.Controls.Add(lblMessage);
-
             var btnUpdate = new Button
             {
                 Text     = "Update",
@@ -67,10 +65,16 @@ namespace qbPortWeaver
             StartPosition       = FormStartPosition.CenterScreen;
             Text                = $"{AppConstants.AppName} | Update Available";
 
+            grpInfo.SuspendLayout();
+            SuspendLayout();
+            grpInfo.Controls.Add(lblMessage);
             Controls.Add(lblTitle);
             Controls.Add(grpInfo);
             Controls.Add(btnUpdate);
             Controls.Add(btnLater);
+            grpInfo.ResumeLayout(false);
+            grpInfo.PerformLayout();
+            ResumeLayout(false);
         }
 
         protected override void Dispose(bool disposing)

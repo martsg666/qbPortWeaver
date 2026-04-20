@@ -4,12 +4,15 @@ using System.Net;
 namespace qbPortWeaver
 {
     /// <summary>Base class providing shared process-lifecycle and HTTP infrastructure for BitTorrent clients.</summary>
-    public abstract class BitTorrentClientBase : IBitTorrentClient // NOSONAR S3881 — all subclasses are sealed with no additional disposable resources
+    public abstract class BitTorrentClientBase : IBitTorrentClient // NOSONAR S3881 - all subclasses are sealed with no additional disposable resources
     {
         protected const int ProcessStartDelayMs     = 2000;
         protected const int ProcessKillTimeoutMs    = 5000;
         protected const int ProcessKillRetryDelayMs = 1000;
         protected const int ProcessInitDelayMs      = 1000;
+        private   const int ApiReadyPollIntervalMs  = 500;
+        private   const int ApiReadyTimeoutSeconds  = 30;
+        private   const int ApiProbeTimeoutSeconds  = 2;
 
         protected readonly string _url;
         protected readonly string _processName;
@@ -61,9 +64,7 @@ namespace qbPortWeaver
             try
             {
                 ResetAuthState();
-                Process.Start(CreateStartInfo())?.Dispose();
-                await Task.Delay(ProcessStartDelayMs, cancellationToken).ConfigureAwait(false);
-                return IsRunning();
+                return await LaunchAndWaitAsync(ProcessStartDelayMs, cancellationToken).ConfigureAwait(false);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
@@ -84,9 +85,7 @@ namespace qbPortWeaver
                 // to avoid the new process inheriting a port or file lock held by a still-dying instance.
                 if (!await KillAndVerifyAsync(cancellationToken).ConfigureAwait(false)) return false;
                 ResetAuthState();
-                Process.Start(CreateStartInfo())?.Dispose();
-                await Task.Delay(ProcessInitDelayMs, cancellationToken).ConfigureAwait(false);
-                return IsRunning();
+                return await LaunchAndWaitAsync(ProcessInitDelayMs, cancellationToken).ConfigureAwait(false);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
@@ -97,6 +96,38 @@ namespace qbPortWeaver
 
         // Override to inject work before the kill step in RestartAsync (e.g. waiting for a config flush).
         protected virtual Task PreRestartAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
+        // Launches the process, waits for the OS to register it, confirms it is running,
+        // then polls the API URL until it accepts connections or the timeout elapses.
+        protected async Task<bool> LaunchAndWaitAsync(int initialDelayMs, CancellationToken cancellationToken)
+        {
+            Process.Start(CreateStartInfo())?.Dispose();
+            await Task.Delay(initialDelayMs, cancellationToken).ConfigureAwait(false);
+            if (!IsRunning()) return false;
+            await WaitForApiReadyAsync(cancellationToken).ConfigureAwait(false);
+            return true;
+        }
+
+        // Probes the API URL until it returns any HTTP response (port is open) or the timeout elapses.
+        // A short per-probe cancellation avoids blocking on a slow response mid-startup.
+        private async Task WaitForApiReadyAsync(CancellationToken cancellationToken)
+        {
+            var deadline = DateTime.UtcNow.AddSeconds(ApiReadyTimeoutSeconds);
+            while (DateTime.UtcNow < deadline)
+            {
+                try
+                {
+                    using var probeCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                    probeCts.CancelAfter(TimeSpan.FromSeconds(ApiProbeTimeoutSeconds));
+                    using var response = await _httpClient.GetAsync(_url, probeCts.Token).ConfigureAwait(false);
+                    return;
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+                catch { } // Connection refused or per-probe timeout - not ready yet
+                await Task.Delay(ApiReadyPollIntervalMs, cancellationToken).ConfigureAwait(false);
+            }
+            LogManager.Instance.LogDebug($"{ClientName} API did not respond within {ApiReadyTimeoutSeconds}s after start");
+        }
 
         /// <inheritdoc/>
         public abstract Task<(int? ListenPort, string? CurrentInterfaceName)> GetPreferencesAsync();

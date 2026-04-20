@@ -43,10 +43,9 @@ namespace qbPortWeaver
             toolTip.SetToolTip(txtTransmissionURL,           "URL for the Transmission RPC endpoint (e.g. http://127.0.0.1:9091)");
             toolTip.SetToolTip(txtTransmissionUserName,      "Username for the Transmission RPC (leave empty if authentication is disabled)");
             toolTip.SetToolTip(txtTransmissionPassword,      "Password for the Transmission RPC (leave empty if authentication is disabled)");
-            toolTip.SetToolTip(txtTransmissionServiceName,   "Windows service name override (leave empty to auto-detect; required if the service name does not contain 'Transmission')");
-            toolTip.SetToolTip(txtTransmissionProcessName,   "Process name used to detect if Transmission is running as a user-space process (e.g. transmission-qt)");
             toolTip.SetToolTip(txtTransmissionExePath,       "Path to the Transmission executable, used to start or restart the application when running as a user-space process");
             toolTip.SetToolTip(btnBrowseTransmissionExePath, "Browse for the Transmission executable");
+            toolTip.SetToolTip(txtTransmissionProcessName,   "Process name used to detect if Transmission is running as a user-space process (e.g. transmission-qt)");
             toolTip.SetToolTip(chkRestartTransmission,       "Restart Transmission after updating the port - required for the change to take effect");
             toolTip.SetToolTip(chkForceStartTransmission,    "Automatically launch Transmission if it is not already running");
             toolTip.SetToolTip(nudTransmissionDefaultPort,   DefaultPortTooltip);
@@ -130,9 +129,8 @@ namespace qbPortWeaver
             txtTransmissionURL.Text         = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionTransmission, RegistrySettingsManager.KeyTransmissionUrl);
             txtTransmissionUserName.Text    = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionTransmission, RegistrySettingsManager.KeyTransmissionUserName);
             txtTransmissionPassword.Text    = RegistrySettingsManager.GetTransmissionPassword();
-            txtTransmissionServiceName.Text = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionTransmission, RegistrySettingsManager.KeyTransmissionServiceName);
-            txtTransmissionProcessName.Text = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionTransmission, RegistrySettingsManager.KeyTransmissionProcessName);
             txtTransmissionExePath.Text     = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionTransmission, RegistrySettingsManager.KeyTransmissionExePath);
+            txtTransmissionProcessName.Text = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionTransmission, RegistrySettingsManager.KeyTransmissionProcessName);
             chkRestartTransmission.Checked    = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionTransmission, RegistrySettingsManager.KeyRestartTransmission);
             chkForceStartTransmission.Checked = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionTransmission, RegistrySettingsManager.KeyForceStartTransmission);
             nudTransmissionDefaultPort.Value  = Math.Clamp(
@@ -197,9 +195,8 @@ namespace qbPortWeaver
             RegistrySettingsManager.SetValue        (RegistrySettingsManager.SectionTransmission, RegistrySettingsManager.KeyTransmissionUrl,         txtTransmissionURL.Text.Trim());
             RegistrySettingsManager.SetValue        (RegistrySettingsManager.SectionTransmission, RegistrySettingsManager.KeyTransmissionUserName,    txtTransmissionUserName.Text.Trim());
             RegistrySettingsManager.SetTransmissionPassword(txtTransmissionPassword.Text);
-            RegistrySettingsManager.SetValue        (RegistrySettingsManager.SectionTransmission, RegistrySettingsManager.KeyTransmissionServiceName, txtTransmissionServiceName.Text.Trim());
-            RegistrySettingsManager.SetValue        (RegistrySettingsManager.SectionTransmission, RegistrySettingsManager.KeyTransmissionProcessName, txtTransmissionProcessName.Text.Trim());
             RegistrySettingsManager.SetValue        (RegistrySettingsManager.SectionTransmission, RegistrySettingsManager.KeyTransmissionExePath,     txtTransmissionExePath.Text.Trim());
+            RegistrySettingsManager.SetValue        (RegistrySettingsManager.SectionTransmission, RegistrySettingsManager.KeyTransmissionProcessName, txtTransmissionProcessName.Text.Trim());
             RegistrySettingsManager.SetBool         (RegistrySettingsManager.SectionTransmission, RegistrySettingsManager.KeyRestartTransmission,     chkRestartTransmission.Checked);
             RegistrySettingsManager.SetBool         (RegistrySettingsManager.SectionTransmission, RegistrySettingsManager.KeyForceStartTransmission,  chkForceStartTransmission.Checked);
             RegistrySettingsManager.SetValue        (RegistrySettingsManager.SectionTransmission, RegistrySettingsManager.KeyDefaultPort,             ((int)nudTransmissionDefaultPort.Value).ToString());

@@ -17,9 +17,8 @@ namespace qbPortWeaver
         private const string RpcPath        = "/transmission/rpc";
         private const string SessionIdHeader = "X-Transmission-Session-Id";
 
-        private readonly string _serviceNameOverride;
         private string? _sessionId;
-        private string? _resolvedServiceName; // lazily discovered: override → search → null
+        private string? _resolvedServiceName; // lazily discovered via search term
         private bool    _serviceNameResolved;
 
         /// <inheritdoc/>
@@ -35,13 +34,11 @@ namespace qbPortWeaver
         /// <param name="url">Base URL of the Transmission RPC endpoint (e.g. <c>http://localhost:9091</c>).</param>
         /// <param name="userName">RPC username.</param>
         /// <param name="password">RPC password.</param>
-        /// <param name="serviceNameOverride">Windows service name override. Pass an empty string to auto-detect by searching for a service with "transmission" in its name or display name.</param>
         /// <param name="processName">Process name used to detect Transmission when running as a user-space process (e.g. <c>transmission-qt</c>).</param>
         /// <param name="exePath">Full path to the Transmission executable, used for force-start in user-space mode.</param>
-        public TransmissionClient(string url, string userName, string password, string serviceNameOverride, string processName, string exePath)
+        public TransmissionClient(string url, string userName, string password, string processName, string exePath)
             : base(url, processName, exePath, CreateBasicAuthHttpClient(userName, password))
         {
-            _serviceNameOverride = serviceNameOverride;
         }
 
         /// <inheritdoc/>
@@ -100,7 +97,7 @@ namespace qbPortWeaver
 
                 if (!response.IsSuccessStatusCode)
                 {
-                    LogManager.Instance.LogMessage($"Failed to get Transmission preferences (HTTP {(int)response.StatusCode} {response.StatusCode})", LogLevel.Error);
+                    LogManager.Instance.LogMessage($"Failed to get {ClientName} preferences (HTTP {(int)response.StatusCode} {response.StatusCode})", LogLevel.Error);
                     return (null, null);
                 }
 
@@ -146,7 +143,7 @@ namespace qbPortWeaver
 
                 if (!response.IsSuccessStatusCode)
                 {
-                    LogManager.Instance.LogMessage($"Failed to set Transmission port (HTTP {(int)response.StatusCode} {response.StatusCode})", LogLevel.Error);
+                    LogManager.Instance.LogMessage($"Failed to set {ClientName} port (HTTP {(int)response.StatusCode} {response.StatusCode})", LogLevel.Error);
                     return false;
                 }
 
@@ -155,7 +152,7 @@ namespace qbPortWeaver
                 if (!doc.RootElement.TryGetProperty("result", out var result) ||
                     !string.Equals(result.GetString(), "success", StringComparison.OrdinalIgnoreCase))
                 {
-                    LogManager.Instance.LogMessage("Transmission RPC returned non-success result for session-set", LogLevel.Error);
+                    LogManager.Instance.LogMessage($"{ClientName} RPC returned non-success result for session-set", LogLevel.Error);
                     return false;
                 }
             }
@@ -203,7 +200,7 @@ namespace qbPortWeaver
 
                 if (!wentDown)
                 {
-                    LogManager.Instance.LogMessage($"Transmission service '{serviceName}' did not stop within the expected time", LogLevel.Error);
+                    LogManager.Instance.LogMessage($"{ClientName} service '{serviceName}' did not stop within the expected time", LogLevel.Error);
                     return false;
                 }
 
@@ -214,12 +211,12 @@ namespace qbPortWeaver
                     if (IsRunning()) return true;
                 }
 
-                LogManager.Instance.LogMessage($"Transmission service '{serviceName}' did not come back up within the expected time", LogLevel.Error);
+                LogManager.Instance.LogMessage($"{ClientName} service '{serviceName}' did not come back up within the expected time", LogLevel.Error);
                 return false;
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                LogManager.Instance.LogMessage($"Failed to restart Transmission service: {ex.Message}", LogLevel.Error);
+                LogManager.Instance.LogMessage($"Failed to restart {ClientName} service: {ex.Message}", LogLevel.Error);
                 return false;
             }
         }
@@ -233,7 +230,7 @@ namespace qbPortWeaver
                 // Wait for the Qt client to poll and reflect the port change before closing
                 await Task.Delay(GracefulShutdownWaitMs, cancellationToken).ConfigureAwait(false);
 
-                // Close the main window cleanly — the app saves settings on exit
+                // Close the main window cleanly; the app saves settings on exit
                 foreach (var proc in Process.GetProcessesByName(_processName))
                 {
                     try { proc.CloseMainWindow(); }
@@ -247,9 +244,7 @@ namespace qbPortWeaver
                     return false;
 
                 ResetAuthState();
-                Process.Start(CreateStartInfo())?.Dispose();
-                await Task.Delay(ProcessInitDelayMs, cancellationToken).ConfigureAwait(false);
-                return IsRunning();
+                return await LaunchAndWaitAsync(ProcessInitDelayMs, cancellationToken).ConfigureAwait(false);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
@@ -280,7 +275,7 @@ namespace qbPortWeaver
 
                 if (!response.Headers.TryGetValues(SessionIdHeader, out var values))
                 {
-                    LogManager.Instance.LogMessage("Transmission returned 409 without a session ID header", LogLevel.Error);
+                    LogManager.Instance.LogMessage($"{ClientName} returned 409 without a session ID header", LogLevel.Error);
                     return response;
                 }
 
@@ -339,21 +334,14 @@ namespace qbPortWeaver
             }
         }
 
-        // Returns the effective service name: override if set, otherwise lazily discovered via search.
+        // Lazily discovers and caches the Transmission Windows service name via the configured search term.
         private string? GetEffectiveServiceName()
         {
             if (_serviceNameResolved) return _resolvedServiceName;
             _serviceNameResolved = true;
-            if (!string.IsNullOrEmpty(_serviceNameOverride))
-            {
-                _resolvedServiceName = _serviceNameOverride;
-                return _resolvedServiceName;
-            }
-            _resolvedServiceName = FindTransmissionServiceName();
+            _resolvedServiceName = AppConstants.FindServiceName(RegistrySettingsManager.GetAppValue(RegistrySettingsManager.KeyTransmissionServiceSearchTerm));
             return _resolvedServiceName;
         }
-
-        private static string? FindTransmissionServiceName() => AppConstants.FindServiceName("transmission");
 
         // Creates an HttpClient with Basic auth for the Transmission RPC endpoint.
         private static HttpClient CreateBasicAuthHttpClient(string userName, string password)

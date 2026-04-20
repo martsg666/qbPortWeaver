@@ -124,8 +124,8 @@ Cycle 4: VPN connected, port failed  → counter=3 → TRIGGER RECOVERY → coun
 ### Counter Reset Rules
 
 The counter resets in two cases:
-- **Successful port detection** — `GetVpnPortAsync` returns a valid port. Applies uniformly to all providers; both VPN disconnection and port detection failure accumulate toward the threshold.
-- **Auto-recovery disabled** — if the feature is turned off, the counter resets each cycle so it does not carry over stale state when the feature is re-enabled.
+- **Successful port detection**: `GetVpnPortAsync` returns a valid port. Applies uniformly to all providers; both VPN disconnection and port detection failure accumulate toward the threshold.
+- **Auto-recovery disabled**: if the feature is turned off, the counter resets each cycle so it does not carry over stale state when the feature is re-enabled.
 
 ## BitTorrent Client Interaction
 

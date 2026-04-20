@@ -5,9 +5,10 @@ namespace qbPortWeaver
     /// <summary>Detects PIA (Private Internet Access) connectivity and reads the forwarded port via <c>piactl</c>.</summary>
     public sealed class PiaVpnManager : IVpnManager
     {
-        private const string ServiceSearchTerm = "PrivateInternetAccessService";
-        private const string PiactlFileName       = "piactl.exe";
-        internal const string ClientProcessName   = "pia-client";
+        internal static string GetServiceSearchTerm() => RegistrySettingsManager.GetAppValue(RegistrySettingsManager.KeyPiaServiceSearchTerm);
+        internal static string GetAdapterName()       => RegistrySettingsManager.GetAppValue(RegistrySettingsManager.KeyPiaAdapterName);
+        internal static string GetClientProcessName() => RegistrySettingsManager.GetAppValue(RegistrySettingsManager.KeyPiaClientProcessName);
+        private  static string GetPiactlProcessName() => RegistrySettingsManager.GetAppValue(RegistrySettingsManager.KeyPiactlProcessName);
         private const int    ProcessTimeoutMs = 5000;
 
         // Cached paths; null = not found, string.Empty = not yet resolved.
@@ -55,9 +56,9 @@ namespace qbPortWeaver
 
         /// <inheritdoc />
         public bool IsAdapterMatch(string interfaceName)
-            => interfaceName.Contains("PIA", StringComparison.OrdinalIgnoreCase);
+            => interfaceName.Contains(GetAdapterName(), StringComparison.OrdinalIgnoreCase);
 
-        internal static string? FindServiceName() => AppConstants.FindServiceName(ServiceSearchTerm);
+        internal static string? FindServiceName() => AppConstants.FindServiceName(GetServiceSearchTerm());
 
         private static int? GetVpnPortCore()
         {
@@ -162,7 +163,7 @@ namespace qbPortWeaver
             }
         }
 
-        private static string? GetPiactlPath()    => ResolveExePath(ref _piactlPathCache,    PiactlFileName,              "GetPiactlPath");
-        internal static string? GetClientExePath() => ResolveExePath(ref _clientExePathCache, ClientProcessName + ".exe",  "GetClientExePath");
+        private static string? GetPiactlPath()    => ResolveExePath(ref _piactlPathCache,    GetPiactlProcessName() + ".exe", "GetPiactlPath");
+        internal static string? GetClientExePath() => ResolveExePath(ref _clientExePathCache, GetClientProcessName() + ".exe", "GetClientExePath");
     }
 }

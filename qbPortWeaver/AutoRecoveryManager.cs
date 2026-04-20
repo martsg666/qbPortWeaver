@@ -14,10 +14,10 @@ namespace qbPortWeaver
 
         // Maps a provider token to the client process that must be restarted alongside the service.
         // GetInstalledExePath resolves the exe path from the service registry entry when the process is not running.
-        private static readonly (string ProviderKeyword, string ClientProcessName, Func<string?>? GetInstalledExePath, Func<string?> FindServiceName)[] _clientProcessMap =
+        private static readonly (string ProviderKeyword, Func<string> GetClientProcessName, Func<string?>? GetInstalledExePath, Func<string?> FindServiceName)[] _clientProcessMap =
         [
-            (RegistrySettingsManager.VpnProviderProtonVpn, ProtonVpnManager.ClientProcessName, ProtonVpnManager.GetClientExePath, ProtonVpnManager.FindServiceName),
-            (RegistrySettingsManager.VpnProviderPia,       PiaVpnManager.ClientProcessName,    PiaVpnManager.GetClientExePath, PiaVpnManager.FindServiceName),
+            (RegistrySettingsManager.VpnProviderProtonVpn, ProtonVpnManager.GetClientProcessName, ProtonVpnManager.GetClientExePath, ProtonVpnManager.FindServiceName),
+            (RegistrySettingsManager.VpnProviderPia,       PiaVpnManager.GetClientProcessName,    PiaVpnManager.GetClientExePath,    PiaVpnManager.FindServiceName),
         ];
 
         /// <summary>
@@ -44,13 +44,13 @@ namespace qbPortWeaver
 
             await HelperServiceClient.SendRestartAsync(serviceName).ConfigureAwait(false);
 
-            if (entry.ClientProcessName is not null)
+            if (entry.GetClientProcessName is not null)
             {
                 // Give the helper service time to stop/restart the VPN service before
                 // we kill and relaunch the client process - the client should come up
                 // after the service is running, not before.
                 await Task.Delay(ServiceHeadStartDelayMs, cancellationToken).ConfigureAwait(false);
-                await RestartClientProcessAsync(entry.ClientProcessName, entry.GetInstalledExePath, cancellationToken).ConfigureAwait(false);
+                await RestartClientProcessAsync(entry.GetClientProcessName(), entry.GetInstalledExePath, cancellationToken).ConfigureAwait(false);
             }
         }
 

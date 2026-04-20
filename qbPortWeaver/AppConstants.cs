@@ -73,8 +73,7 @@ namespace qbPortWeaver
 
         public static string GetProtonVPNLogFilePath() => Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "Proton", "Proton VPN", "Logs", "client-logs.txt"
-        );
+            RegistrySettingsManager.GetAppValue(RegistrySettingsManager.KeyProtonVpnLogFilePath));
 
         /// <summary>
         /// Kills a process (including its entire process tree) and waits up to <paramref name="timeoutMs"/> for exit.

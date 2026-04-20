@@ -49,7 +49,6 @@ namespace qbPortWeaver
             string TransmissionUrl,
             string TransmissionUserName,
             string TransmissionPassword,
-            string TransmissionServiceName,
             string TransmissionProcessName,
             string TransmissionExePath,
             bool RestartTransmission,
@@ -270,7 +269,6 @@ namespace qbPortWeaver
                 TransmissionUrl:           RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionTransmission, RegistrySettingsManager.KeyTransmissionUrl),
                 TransmissionUserName:      RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionTransmission, RegistrySettingsManager.KeyTransmissionUserName),
                 TransmissionPassword:      RegistrySettingsManager.GetTransmissionPassword(),
-                TransmissionServiceName:   RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionTransmission, RegistrySettingsManager.KeyTransmissionServiceName),
                 TransmissionProcessName:   RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionTransmission, RegistrySettingsManager.KeyTransmissionProcessName),
                 TransmissionExePath:       RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionTransmission, RegistrySettingsManager.KeyTransmissionExePath),
                 RestartTransmission:       RegistrySettingsManager.GetBool (RegistrySettingsManager.SectionTransmission, RegistrySettingsManager.KeyRestartTransmission),
@@ -308,7 +306,6 @@ namespace qbPortWeaver
                     $"PortSyncService.RunCoreAsync [transmission]: {RegistrySettingsManager.KeyTransmissionUrl}={cfg.TransmissionUrl}, " +
                     $"{RegistrySettingsManager.KeyTransmissionUserName}={cfg.TransmissionUserName}, " +
                     $"{RegistrySettingsManager.KeyTransmissionPassword}=***, " + // NOSONAR S2068 - value is masked, not a real credential
-                    $"{RegistrySettingsManager.KeyTransmissionServiceName}={cfg.TransmissionServiceName}, " +
                     $"{RegistrySettingsManager.KeyTransmissionProcessName}={cfg.TransmissionProcessName}, " +
                     $"{RegistrySettingsManager.KeyTransmissionExePath}={cfg.TransmissionExePath}, " +
                     $"{RegistrySettingsManager.KeyRestartTransmission}={cfg.RestartTransmission}, " +
@@ -428,7 +425,7 @@ namespace qbPortWeaver
             if (cfg.BitTorrentClient.Equals(RegistrySettingsManager.BitTorrentClientTransmission, StringComparison.OrdinalIgnoreCase))
                 return new TransmissionClient(
                     cfg.TransmissionUrl, cfg.TransmissionUserName, cfg.TransmissionPassword,
-                    cfg.TransmissionServiceName, cfg.TransmissionProcessName, cfg.TransmissionExePath);
+                    cfg.TransmissionProcessName, cfg.TransmissionExePath);
 
             if (cfg.BitTorrentClient.Equals(RegistrySettingsManager.BitTorrentClientDeluge, StringComparison.OrdinalIgnoreCase))
                 return new DelugeClient(cfg.DelugeUrl, cfg.DelugePassword, cfg.DelugeProcessName, cfg.DelugeExePath);

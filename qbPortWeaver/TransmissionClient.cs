@@ -53,9 +53,7 @@ namespace qbPortWeaver
                     sc.Refresh();
                     if (sc.Status == ServiceControllerStatus.Running) return true;
                 }
-                // ServiceController throws if the service name is invalid or access is denied;
-                // fall through to the process-based check in the base class.
-                catch { } // NOSONAR S108
+                catch { } // NOSONAR S108 - ServiceController throws if the service name is invalid or access is denied; fall through to the process-based check in the base class
             }
 
             return base.IsRunning();

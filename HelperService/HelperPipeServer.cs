@@ -16,8 +16,9 @@ namespace qbPortWeaver.HelperService;
 /// </summary>
 internal sealed class HelperPipeServer(ILogger<HelperPipeServer> logger) : BackgroundService
 {
-    internal const string PipeName = "qbPortWeaverHelper"; // Must match AppConstants.HelperServicePipeName in qbPortWeaver
-    private  const string ExpectedLogFileName = "qbPortWeaver.log"; // Must match AppConstants.LogFileName in qbPortWeaver
+    internal const string PipeName              = "qbPortWeaverHelper"; // Must match AppConstants.HelperServicePipeName in qbPortWeaver
+    private  const string ExpectedLogFileName   = "qbPortWeaver.log";   // Must match AppConstants.LogFileName in qbPortWeaver
+    private  const int    PipeErrorRetryDelayMs = 1000;
 
     private const string ActionRestart      = "restart";       // Must match HelperServiceClient.ActionRestart in qbPortWeaver
     private const string ActionCycleAdapter = "cycle-adapter"; // Must match HelperServiceClient.ActionCycleAdapter in qbPortWeaver
@@ -50,7 +51,7 @@ internal sealed class HelperPipeServer(ILogger<HelperPipeServer> logger) : Backg
             catch (Exception ex)
             {
                 logger.LogError(ex, "Pipe server error - retrying");
-                await Task.Delay(1000, stoppingToken).ConfigureAwait(false);
+                await Task.Delay(PipeErrorRetryDelayMs, stoppingToken).ConfigureAwait(false);
             }
         }
         logger.LogInformation("qbPortWeaver Helper Service stopped");

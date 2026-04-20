@@ -123,7 +123,10 @@ namespace qbPortWeaver
                     return;
                 }
                 catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
-                catch { } // Connection refused or per-probe timeout - not ready yet
+                // HttpRequestException (connection refused) and OperationCanceledException from the
+                // per-probe CTS are both expected while the process is still starting up - swallow
+                // and retry after the poll interval.
+                catch { } // NOSONAR S108
                 await Task.Delay(ApiReadyPollIntervalMs, cancellationToken).ConfigureAwait(false);
             }
             LogManager.Instance.LogDebug($"{ClientName} API did not respond within {ApiReadyTimeoutSeconds}s after start");

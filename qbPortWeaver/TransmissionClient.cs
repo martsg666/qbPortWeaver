@@ -53,6 +53,8 @@ namespace qbPortWeaver
                     sc.Refresh();
                     if (sc.Status == ServiceControllerStatus.Running) return true;
                 }
+                // ServiceController throws if the service name is invalid or access is denied;
+                // fall through to the process-based check in the base class.
                 catch { } // NOSONAR S108
             }
 
@@ -233,6 +235,7 @@ namespace qbPortWeaver
                 // Close the main window cleanly; the app saves settings on exit
                 foreach (var proc in Process.GetProcessesByName(_processName))
                 {
+                    // CloseMainWindow can fail if the process has already exited; safe to ignore.
                     try { proc.CloseMainWindow(); }
                     catch { } // NOSONAR S108
                     finally { proc.Dispose(); }

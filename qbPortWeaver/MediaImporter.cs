@@ -47,7 +47,7 @@ namespace qbPortWeaver
         private sealed record CacheEntry(long Size, long LastWriteTimeTicks, string Fingerprint);
 
         /// <summary>Attempts to create a hardlink at <paramref name="destinationPath"/> pointing to <paramref name="sourcePath"/>.
-        /// Uses the extended-length path prefix to support paths longer than MAX_PATH (260 characters).</summary>
+        /// Uses the <c>\\?\</c> long-path prefix to support paths longer than MAX_PATH (260 characters).</summary>
         /// <returns><see langword="true"/> if the hardlink was created; <see langword="false"/> on failure (e.g. cross-volume, unsupported filesystem).</returns>
         internal static bool TryCreateHardLink(string sourcePath, string destinationPath)
         {
@@ -112,7 +112,7 @@ namespace qbPortWeaver
             }
         }
 
-        // Prepends the extended-length prefix so Win32 APIs accept paths longer than MAX_PATH (260).
+        // Prepends the \\?\ long-path prefix so Win32 APIs accept paths longer than MAX_PATH (260).
         // UNC paths (\\server\share) become \\?\UNC\server\share; local paths become \\?\C:\...
         private static string ToExtendedPath(string path)
         {

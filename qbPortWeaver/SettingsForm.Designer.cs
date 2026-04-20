@@ -16,188 +16,198 @@ namespace qbPortWeaver
         private void InitializeComponent()
         {
             components = new System.ComponentModel.Container();
-            grpGeneral = new GroupBox();
-            lblVpnProvider = new Label();
-            cboVpnProvider = new ComboBox();
-            lblNatPmpAdapter = new Label();
-            cboNatPmpAdapter = new ComboBox();
-            btnRefreshAdapters = new Button();
-            lblUpdateInterval = new Label();
-            nudUpdateInterval = new NumericUpDown();
-            lblSeconds = new Label();
-            chkAutoRecovery = new CheckBox();
-            lblRecoveryCycles = new Label();
-            nudRecoveryCycles = new NumericUpDown();
-            lblRecoveryCyclesUnit = new Label();
-            grpQBittorrent = new GroupBox();
-            lblQBittorrentURL = new Label();
-            txtQBittorrentURL = new TextBox();
-            lblQBittorrentUserName = new Label();
-            txtQBittorrentUserName = new TextBox();
-            lblQBittorrentPassword = new Label();
-            txtQBittorrentPassword = new TextBox();
-            lblQBittorrentExePath = new Label();
-            txtQBittorrentExePath = new TextBox();
-            btnBrowseExePath = new Button();
+            grpGeneral                = new GroupBox();
+            lblVpnProvider            = new Label();
+            cboVpnProvider            = new ComboBox();
+            lblBitTorrentClient       = new Label();
+            cboBitTorrentClient       = new ComboBox();
+            lblUpdateInterval         = new Label();
+            nudUpdateInterval         = new NumericUpDown();
+            lblSeconds                = new Label();
+            lblNatPmpAdapter          = new Label();
+            cboNatPmpAdapter          = new ComboBox();
+            btnRefreshAdapters        = new Button();
+            chkAutoRecovery           = new CheckBox();
+            lblRecoveryCycles         = new Label();
+            nudRecoveryCycles         = new NumericUpDown();
+            lblRecoveryCyclesUnit     = new Label();
+            grpQBittorrent            = new GroupBox();
+            lblQBittorrentURL         = new Label();
+            txtQBittorrentURL         = new TextBox();
+            lblQBittorrentUserName    = new Label();
+            txtQBittorrentUserName    = new TextBox();
+            lblQBittorrentPassword    = new Label();
+            txtQBittorrentPassword    = new TextBox();
+            lblQBittorrentExePath     = new Label();
+            txtQBittorrentExePath     = new TextBox();
+            btnBrowseExePath          = new Button();
             lblQBittorrentProcessName = new Label();
             txtQBittorrentProcessName = new TextBox();
-            chkRestartQBittorrent = new CheckBox();
-            chkForceStartQBittorrent = new CheckBox();
-            lblDefaultPort = new Label();
-            nudDefaultPort = new NumericUpDown();
+            chkRestartQBittorrent     = new CheckBox();
+            chkForceStartQBittorrent  = new CheckBox();
+            lblDefaultPort            = new Label();
+            nudDefaultPort            = new NumericUpDown();
             chkWarnOnInterfaceMismatch = new CheckBox();
-            chkRestartOnDisconnect = new CheckBox();
-            grpExtra = new GroupBox();
-            lblPostUpdateCmd = new Label();
-            txtPostUpdateCmd = new TextBox();
-            chkDebugMode = new CheckBox();
-            lblColorTheme = new Label();
-            cboColorTheme = new ComboBox();
-            btnOK = new Button();
-            btnCancel = new Button();
-            toolTip = new ToolTip(components);
+            chkRestartOnDisconnect    = new CheckBox();
+            grpDeluge               = new GroupBox();
+            lblDelugeURL            = new Label();
+            txtDelugeURL            = new TextBox();
+            lblDelugePassword       = new Label();
+            txtDelugePassword       = new TextBox();
+            lblDelugeExePath        = new Label();
+            txtDelugeExePath        = new TextBox();
+            btnBrowseDelugeExePath  = new Button();
+            lblDelugeProcessName    = new Label();
+            txtDelugeProcessName    = new TextBox();
+            chkRestartDeluge        = new CheckBox();
+            chkForceStartDeluge     = new CheckBox();
+            lblDelugeDefaultPort    = new Label();
+            nudDelugeDefaultPort    = new NumericUpDown();
+            grpTransmission               = new GroupBox();
+            lblTransmissionURL            = new Label();
+            txtTransmissionURL            = new TextBox();
+            lblTransmissionUserName       = new Label();
+            txtTransmissionUserName       = new TextBox();
+            lblTransmissionPassword       = new Label();
+            txtTransmissionPassword       = new TextBox();
+            lblTransmissionProcessName    = new Label();
+            txtTransmissionProcessName    = new TextBox();
+            lblTransmissionExePath        = new Label();
+            txtTransmissionExePath        = new TextBox();
+            btnBrowseTransmissionExePath  = new Button();
+            chkRestartTransmission        = new CheckBox();
+            chkForceStartTransmission     = new CheckBox();
+            lblTransmissionDefaultPort    = new Label();
+            nudTransmissionDefaultPort    = new NumericUpDown();
+            grpExtra             = new GroupBox();
+            lblColorTheme        = new Label();
+            cboColorTheme        = new ComboBox();
+            lblPostUpdateCmd     = new Label();
+            txtPostUpdateCmd     = new TextBox();
+            chkDebugMode         = new CheckBox();
+            btnOK                = new Button();
+            btnCancel            = new Button();
+            toolTip              = new ToolTip(components);
             grpGeneral.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)nudUpdateInterval).BeginInit();
             ((System.ComponentModel.ISupportInitialize)nudRecoveryCycles).BeginInit();
             grpQBittorrent.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)nudDefaultPort).BeginInit();
+            grpDeluge.SuspendLayout();
+            ((System.ComponentModel.ISupportInitialize)nudDelugeDefaultPort).BeginInit();
+            grpTransmission.SuspendLayout();
+            ((System.ComponentModel.ISupportInitialize)nudTransmissionDefaultPort).BeginInit();
             grpExtra.SuspendLayout();
             SuspendLayout();
-            // 
-            // grpGeneral
-            // 
+            // ── grpGeneral ────────────────────────────────────────────────
+            grpGeneral.Controls.Add(lblBitTorrentClient);
+            grpGeneral.Controls.Add(cboBitTorrentClient);
+            grpGeneral.Controls.Add(lblUpdateInterval);
+            grpGeneral.Controls.Add(nudUpdateInterval);
+            grpGeneral.Controls.Add(lblSeconds);
             grpGeneral.Controls.Add(lblVpnProvider);
             grpGeneral.Controls.Add(cboVpnProvider);
             grpGeneral.Controls.Add(lblNatPmpAdapter);
             grpGeneral.Controls.Add(cboNatPmpAdapter);
             grpGeneral.Controls.Add(btnRefreshAdapters);
-            grpGeneral.Controls.Add(lblUpdateInterval);
-            grpGeneral.Controls.Add(nudUpdateInterval);
-            grpGeneral.Controls.Add(lblSeconds);
             grpGeneral.Controls.Add(chkAutoRecovery);
             grpGeneral.Controls.Add(lblRecoveryCycles);
             grpGeneral.Controls.Add(nudRecoveryCycles);
             grpGeneral.Controls.Add(lblRecoveryCyclesUnit);
             grpGeneral.Location = new Point(8, 8);
-            grpGeneral.Name = "grpGeneral";
-            grpGeneral.Size = new Size(484, 167);
+            grpGeneral.Name     = "grpGeneral";
+            grpGeneral.Size     = new Size(484, 196);
             grpGeneral.TabIndex = 0;
-            grpGeneral.TabStop = false;
-            grpGeneral.Text = "General";
-            // 
-            // lblVpnProvider
-            // 
-            lblVpnProvider.Location = new Point(12, 24);
-            lblVpnProvider.Name = "lblVpnProvider";
-            lblVpnProvider.Size = new Size(130, 23);
-            lblVpnProvider.TabIndex = 0;
-            lblVpnProvider.Text = "VPN provider:";
-            lblVpnProvider.TextAlign = ContentAlignment.MiddleLeft;
-            // 
-            // cboVpnProvider
-            // 
-            cboVpnProvider.DropDownStyle = ComboBoxStyle.DropDownList;
-            cboVpnProvider.Location = new Point(148, 24);
-            cboVpnProvider.Name = "cboVpnProvider";
-            cboVpnProvider.Size = new Size(200, 23);
-            cboVpnProvider.TabIndex = 1;
-            cboVpnProvider.SelectedIndexChanged += cboVpnProvider_SelectedIndexChanged;
-            // 
-            // lblNatPmpAdapter
-            // 
-            lblNatPmpAdapter.Location = new Point(12, 82);
-            lblNatPmpAdapter.Name = "lblNatPmpAdapter";
-            lblNatPmpAdapter.Size = new Size(130, 23);
-            lblNatPmpAdapter.TabIndex = 5;
-            lblNatPmpAdapter.Text = "NAT-PMP adapter:";
-            lblNatPmpAdapter.TextAlign = ContentAlignment.MiddleLeft;
-            // 
-            // cboNatPmpAdapter
-            // 
-            cboNatPmpAdapter.DropDownStyle = ComboBoxStyle.DropDownList;
-            cboNatPmpAdapter.Location = new Point(148, 82);
-            cboNatPmpAdapter.Name = "cboNatPmpAdapter";
-            cboNatPmpAdapter.Size = new Size(290, 23);
-            cboNatPmpAdapter.TabIndex = 6;
-            // 
-            // btnRefreshAdapters
-            // 
-            btnRefreshAdapters.Enabled = false;
-            btnRefreshAdapters.Location = new Point(442, 82);
-            btnRefreshAdapters.Name = "btnRefreshAdapters";
-            btnRefreshAdapters.Size = new Size(26, 23);
-            btnRefreshAdapters.TabIndex = 7;
-            btnRefreshAdapters.Text = "↻";
-            btnRefreshAdapters.Click += btnRefreshAdapters_Click;
-            // 
-            // lblUpdateInterval
-            // 
-            lblUpdateInterval.Location = new Point(12, 53);
-            lblUpdateInterval.Name = "lblUpdateInterval";
-            lblUpdateInterval.Size = new Size(130, 23);
-            lblUpdateInterval.TabIndex = 2;
-            lblUpdateInterval.Text = "Update interval:";
+            grpGeneral.TabStop  = false;
+            grpGeneral.Text     = "General";
+            lblBitTorrentClient.Location  = new Point(12, 24);
+            lblBitTorrentClient.Name      = "lblBitTorrentClient";
+            lblBitTorrentClient.Size      = new Size(130, 23);
+            lblBitTorrentClient.TabIndex  = 0;
+            lblBitTorrentClient.Text      = "Client:";
+            lblBitTorrentClient.TextAlign = ContentAlignment.MiddleLeft;
+            cboBitTorrentClient.DropDownStyle        = ComboBoxStyle.DropDownList;
+            cboBitTorrentClient.Location             = new Point(148, 24);
+            cboBitTorrentClient.Name                 = "cboBitTorrentClient";
+            cboBitTorrentClient.Size                 = new Size(200, 23);
+            cboBitTorrentClient.TabIndex             = 1;
+            cboBitTorrentClient.SelectedIndexChanged += cboBitTorrentClient_SelectedIndexChanged;
+            lblUpdateInterval.Location  = new Point(12, 53);
+            lblUpdateInterval.Name      = "lblUpdateInterval";
+            lblUpdateInterval.Size      = new Size(130, 23);
+            lblUpdateInterval.TabIndex  = 2;
+            lblUpdateInterval.Text      = "Update interval:";
             lblUpdateInterval.TextAlign = ContentAlignment.MiddleLeft;
-            // 
-            // nudUpdateInterval
-            // 
             nudUpdateInterval.Location = new Point(148, 53);
-            nudUpdateInterval.Maximum = new decimal(new int[] { 86400, 0, 0, 0 });
-            nudUpdateInterval.Minimum = new decimal(new int[] { 10, 0, 0, 0 });
-            nudUpdateInterval.Name = "nudUpdateInterval";
-            nudUpdateInterval.Size = new Size(80, 23);
+            nudUpdateInterval.Maximum  = new decimal(new int[] { 86400, 0, 0, 0 });
+            nudUpdateInterval.Minimum  = new decimal(new int[] { 10, 0, 0, 0 });
+            nudUpdateInterval.Name     = "nudUpdateInterval";
+            nudUpdateInterval.Size     = new Size(80, 23);
             nudUpdateInterval.TabIndex = 3;
-            nudUpdateInterval.Value = new decimal(new int[] { 180, 0, 0, 0 });
-            // 
-            // lblSeconds
-            // 
-            lblSeconds.Location = new Point(234, 53);
-            lblSeconds.Name = "lblSeconds";
-            lblSeconds.Size = new Size(55, 23);
-            lblSeconds.TabIndex = 4;
-            lblSeconds.Text = "seconds";
+            nudUpdateInterval.Value    = new decimal(new int[] { 180, 0, 0, 0 });
+            lblSeconds.Location  = new Point(234, 53);
+            lblSeconds.Name      = "lblSeconds";
+            lblSeconds.Size      = new Size(55, 23);
+            lblSeconds.TabIndex  = 4;
+            lblSeconds.Text      = "seconds";
             lblSeconds.TextAlign = ContentAlignment.MiddleLeft;
-            // 
-            // chkAutoRecovery
-            // 
-            chkAutoRecovery.AutoSize = true;
-            chkAutoRecovery.Location = new Point(12, 114);
-            chkAutoRecovery.Name = "chkAutoRecovery";
-            chkAutoRecovery.Size = new Size(164, 19);
-            chkAutoRecovery.TabIndex = 8;
-            chkAutoRecovery.Text = "Enable auto-recovery";
+            lblVpnProvider.Location  = new Point(12, 82);
+            lblVpnProvider.Name      = "lblVpnProvider";
+            lblVpnProvider.Size      = new Size(130, 23);
+            lblVpnProvider.TabIndex  = 5;
+            lblVpnProvider.Text      = "VPN provider:";
+            lblVpnProvider.TextAlign = ContentAlignment.MiddleLeft;
+            cboVpnProvider.DropDownStyle        = ComboBoxStyle.DropDownList;
+            cboVpnProvider.Location             = new Point(148, 82);
+            cboVpnProvider.Name                 = "cboVpnProvider";
+            cboVpnProvider.Size                 = new Size(200, 23);
+            cboVpnProvider.TabIndex             = 6;
+            cboVpnProvider.SelectedIndexChanged += cboVpnProvider_SelectedIndexChanged;
+            lblNatPmpAdapter.Location  = new Point(12, 111);
+            lblNatPmpAdapter.Name      = "lblNatPmpAdapter";
+            lblNatPmpAdapter.Size      = new Size(130, 23);
+            lblNatPmpAdapter.TabIndex  = 7;
+            lblNatPmpAdapter.Text      = "NAT-PMP adapter:";
+            lblNatPmpAdapter.TextAlign = ContentAlignment.MiddleLeft;
+            cboNatPmpAdapter.DropDownStyle = ComboBoxStyle.DropDownList;
+            cboNatPmpAdapter.Location      = new Point(148, 111);
+            cboNatPmpAdapter.Name          = "cboNatPmpAdapter";
+            cboNatPmpAdapter.Size          = new Size(290, 23);
+            cboNatPmpAdapter.TabIndex      = 8;
+            btnRefreshAdapters.Enabled  = false;
+            btnRefreshAdapters.Location = new Point(442, 111);
+            btnRefreshAdapters.Name     = "btnRefreshAdapters";
+            btnRefreshAdapters.Size     = new Size(26, 23);
+            btnRefreshAdapters.TabIndex = 9;
+            btnRefreshAdapters.Text     = "↻";
+            btnRefreshAdapters.Click   += btnRefreshAdapters_Click;
+            chkAutoRecovery.AutoSize       = true;
+            chkAutoRecovery.Location       = new Point(12, 143);
+            chkAutoRecovery.Name           = "chkAutoRecovery";
+            chkAutoRecovery.Size           = new Size(164, 19);
+            chkAutoRecovery.TabIndex       = 10;
+            chkAutoRecovery.Text           = "Enable auto-recovery";
             chkAutoRecovery.CheckedChanged += chkAutoRecovery_CheckedChanged;
-            // 
-            // lblRecoveryCycles
-            // 
-            lblRecoveryCycles.Location = new Point(28, 136);
-            lblRecoveryCycles.Name = "lblRecoveryCycles";
-            lblRecoveryCycles.Size = new Size(180, 23);
-            lblRecoveryCycles.TabIndex = 9;
-            lblRecoveryCycles.Text = "Trigger recovery after";
+            lblRecoveryCycles.Location  = new Point(28, 165);
+            lblRecoveryCycles.Name      = "lblRecoveryCycles";
+            lblRecoveryCycles.Size      = new Size(180, 23);
+            lblRecoveryCycles.TabIndex  = 11;
+            lblRecoveryCycles.Text      = "Trigger recovery after";
             lblRecoveryCycles.TextAlign = ContentAlignment.MiddleLeft;
-            // 
-            // nudRecoveryCycles
-            // 
-            nudRecoveryCycles.Location = new Point(212, 136);
-            nudRecoveryCycles.Maximum = new decimal(new int[] { 10, 0, 0, 0 });
-            nudRecoveryCycles.Minimum = new decimal(new int[] { 1, 0, 0, 0 });
-            nudRecoveryCycles.Name = "nudRecoveryCycles";
-            nudRecoveryCycles.Size = new Size(50, 23);
-            nudRecoveryCycles.TabIndex = 10;
-            nudRecoveryCycles.Value = new decimal(new int[] { 3, 0, 0, 0 });
-            // 
-            // lblRecoveryCyclesUnit
-            // 
-            lblRecoveryCyclesUnit.Location = new Point(266, 136);
-            lblRecoveryCyclesUnit.Name = "lblRecoveryCyclesUnit";
-            lblRecoveryCyclesUnit.Size = new Size(202, 23);
-            lblRecoveryCyclesUnit.TabIndex = 11;
-            lblRecoveryCyclesUnit.Text = "consecutive failed cycles";
+            nudRecoveryCycles.Location = new Point(212, 165);
+            nudRecoveryCycles.Maximum  = new decimal(new int[] { 10, 0, 0, 0 });
+            nudRecoveryCycles.Minimum  = new decimal(new int[] { 1, 0, 0, 0 });
+            nudRecoveryCycles.Name     = "nudRecoveryCycles";
+            nudRecoveryCycles.Size     = new Size(50, 23);
+            nudRecoveryCycles.TabIndex = 12;
+            nudRecoveryCycles.Value    = new decimal(new int[] { 3, 0, 0, 0 });
+            lblRecoveryCyclesUnit.Location  = new Point(266, 165);
+            lblRecoveryCyclesUnit.Name      = "lblRecoveryCyclesUnit";
+            lblRecoveryCyclesUnit.Size      = new Size(202, 23);
+            lblRecoveryCyclesUnit.TabIndex  = 13;
+            lblRecoveryCyclesUnit.Text      = "consecutive failed cycles";
             lblRecoveryCyclesUnit.TextAlign = ContentAlignment.MiddleLeft;
-            // 
-            // grpQBittorrent
-            // 
+            // ── grpQBittorrent ────────────────────────────────────────────
             grpQBittorrent.Controls.Add(lblQBittorrentURL);
             grpQBittorrent.Controls.Add(txtQBittorrentURL);
             grpQBittorrent.Controls.Add(lblQBittorrentUserName);
@@ -215,251 +225,372 @@ namespace qbPortWeaver
             grpQBittorrent.Controls.Add(nudDefaultPort);
             grpQBittorrent.Controls.Add(chkWarnOnInterfaceMismatch);
             grpQBittorrent.Controls.Add(chkRestartOnDisconnect);
-            grpQBittorrent.Location = new Point(8, 183);
-            grpQBittorrent.Name = "grpQBittorrent";
-            grpQBittorrent.Size = new Size(484, 312);
+            grpQBittorrent.Location = new Point(8, 212);
+            grpQBittorrent.Name     = "grpQBittorrent";
+            grpQBittorrent.Size     = new Size(484, 312);
             grpQBittorrent.TabIndex = 1;
-            grpQBittorrent.TabStop = false;
-            grpQBittorrent.Text = "qBittorrent";
-            // 
-            // lblQBittorrentURL
-            // 
-            lblQBittorrentURL.Location = new Point(12, 24);
-            lblQBittorrentURL.Name = "lblQBittorrentURL";
-            lblQBittorrentURL.Size = new Size(130, 23);
-            lblQBittorrentURL.TabIndex = 0;
-            lblQBittorrentURL.Text = "URL:";
+            grpQBittorrent.TabStop  = false;
+            grpQBittorrent.Text     = "qBittorrent";
+            lblQBittorrentURL.Location  = new Point(12, 24);
+            lblQBittorrentURL.Name      = "lblQBittorrentURL";
+            lblQBittorrentURL.Size      = new Size(130, 23);
+            lblQBittorrentURL.TabIndex  = 0;
+            lblQBittorrentURL.Text      = "URL:";
             lblQBittorrentURL.TextAlign = ContentAlignment.MiddleLeft;
-            // 
-            // txtQBittorrentURL
-            // 
             txtQBittorrentURL.Location = new Point(148, 24);
-            txtQBittorrentURL.Name = "txtQBittorrentURL";
-            txtQBittorrentURL.Size = new Size(320, 23);
+            txtQBittorrentURL.Name     = "txtQBittorrentURL";
+            txtQBittorrentURL.Size     = new Size(320, 23);
             txtQBittorrentURL.TabIndex = 1;
-            // 
-            // lblQBittorrentUserName
-            // 
-            lblQBittorrentUserName.Location = new Point(12, 53);
-            lblQBittorrentUserName.Name = "lblQBittorrentUserName";
-            lblQBittorrentUserName.Size = new Size(130, 23);
-            lblQBittorrentUserName.TabIndex = 2;
-            lblQBittorrentUserName.Text = "Username:";
+            lblQBittorrentUserName.Location  = new Point(12, 53);
+            lblQBittorrentUserName.Name      = "lblQBittorrentUserName";
+            lblQBittorrentUserName.Size      = new Size(130, 23);
+            lblQBittorrentUserName.TabIndex  = 2;
+            lblQBittorrentUserName.Text      = "Username:";
             lblQBittorrentUserName.TextAlign = ContentAlignment.MiddleLeft;
-            // 
-            // txtQBittorrentUserName
-            // 
             txtQBittorrentUserName.Location = new Point(148, 53);
-            txtQBittorrentUserName.Name = "txtQBittorrentUserName";
-            txtQBittorrentUserName.Size = new Size(320, 23);
+            txtQBittorrentUserName.Name     = "txtQBittorrentUserName";
+            txtQBittorrentUserName.Size     = new Size(320, 23);
             txtQBittorrentUserName.TabIndex = 3;
-            // 
-            // lblQBittorrentPassword
-            // 
-            lblQBittorrentPassword.Location = new Point(12, 82);
-            lblQBittorrentPassword.Name = "lblQBittorrentPassword";
-            lblQBittorrentPassword.Size = new Size(130, 23);
-            lblQBittorrentPassword.TabIndex = 4;
-            lblQBittorrentPassword.Text = "Password:";
+            lblQBittorrentPassword.Location  = new Point(12, 82);
+            lblQBittorrentPassword.Name      = "lblQBittorrentPassword";
+            lblQBittorrentPassword.Size      = new Size(130, 23);
+            lblQBittorrentPassword.TabIndex  = 4;
+            lblQBittorrentPassword.Text      = "Password:";
             lblQBittorrentPassword.TextAlign = ContentAlignment.MiddleLeft;
-            // 
-            // txtQBittorrentPassword
-            // 
-            txtQBittorrentPassword.Location = new Point(148, 82);
-            txtQBittorrentPassword.Name = "txtQBittorrentPassword";
+            txtQBittorrentPassword.Location     = new Point(148, 82);
+            txtQBittorrentPassword.Name         = "txtQBittorrentPassword";
             txtQBittorrentPassword.PasswordChar = '*';
-            txtQBittorrentPassword.Size = new Size(320, 23);
-            txtQBittorrentPassword.TabIndex = 5;
-            // 
-            // lblQBittorrentExePath
-            // 
-            lblQBittorrentExePath.Location = new Point(12, 111);
-            lblQBittorrentExePath.Name = "lblQBittorrentExePath";
-            lblQBittorrentExePath.Size = new Size(130, 23);
-            lblQBittorrentExePath.TabIndex = 6;
-            lblQBittorrentExePath.Text = "Executable:";
+            txtQBittorrentPassword.Size         = new Size(320, 23);
+            txtQBittorrentPassword.TabIndex     = 5;
+            lblQBittorrentExePath.Location  = new Point(12, 111);
+            lblQBittorrentExePath.Name      = "lblQBittorrentExePath";
+            lblQBittorrentExePath.Size      = new Size(130, 23);
+            lblQBittorrentExePath.TabIndex  = 6;
+            lblQBittorrentExePath.Text      = "Executable:";
             lblQBittorrentExePath.TextAlign = ContentAlignment.MiddleLeft;
-            // 
-            // txtQBittorrentExePath
-            // 
             txtQBittorrentExePath.Location = new Point(148, 111);
-            txtQBittorrentExePath.Name = "txtQBittorrentExePath";
-            txtQBittorrentExePath.Size = new Size(276, 23);
+            txtQBittorrentExePath.Name     = "txtQBittorrentExePath";
+            txtQBittorrentExePath.Size     = new Size(276, 23);
             txtQBittorrentExePath.TabIndex = 7;
-            // 
-            // btnBrowseExePath
-            // 
             btnBrowseExePath.Location = new Point(428, 111);
-            btnBrowseExePath.Name = "btnBrowseExePath";
-            btnBrowseExePath.Size = new Size(40, 23);
+            btnBrowseExePath.Name     = "btnBrowseExePath";
+            btnBrowseExePath.Size     = new Size(40, 23);
             btnBrowseExePath.TabIndex = 8;
-            btnBrowseExePath.Text = "...";
-            btnBrowseExePath.Click += btnBrowseExePath_Click;
-            // 
-            // lblQBittorrentProcessName
-            // 
-            lblQBittorrentProcessName.Location = new Point(12, 140);
-            lblQBittorrentProcessName.Name = "lblQBittorrentProcessName";
-            lblQBittorrentProcessName.Size = new Size(130, 23);
-            lblQBittorrentProcessName.TabIndex = 9;
-            lblQBittorrentProcessName.Text = "Process name:";
+            btnBrowseExePath.Text     = "...";
+            btnBrowseExePath.Click   += btnBrowseExePath_Click;
+            lblQBittorrentProcessName.Location  = new Point(12, 140);
+            lblQBittorrentProcessName.Name      = "lblQBittorrentProcessName";
+            lblQBittorrentProcessName.Size      = new Size(130, 23);
+            lblQBittorrentProcessName.TabIndex  = 9;
+            lblQBittorrentProcessName.Text      = "Process name:";
             lblQBittorrentProcessName.TextAlign = ContentAlignment.MiddleLeft;
-            // 
-            // txtQBittorrentProcessName
-            // 
             txtQBittorrentProcessName.Location = new Point(148, 140);
-            txtQBittorrentProcessName.Name = "txtQBittorrentProcessName";
-            txtQBittorrentProcessName.Size = new Size(320, 23);
+            txtQBittorrentProcessName.Name     = "txtQBittorrentProcessName";
+            txtQBittorrentProcessName.Size     = new Size(320, 23);
             txtQBittorrentProcessName.TabIndex = 10;
-            // 
-            // chkRestartQBittorrent
-            // 
-            chkRestartQBittorrent.AutoSize = true;
-            chkRestartQBittorrent.Location = new Point(12, 178);
-            chkRestartQBittorrent.Name = "chkRestartQBittorrent";
-            chkRestartQBittorrent.Size = new Size(314, 19);
-            chkRestartQBittorrent.TabIndex = 11;
-            chkRestartQBittorrent.Text = "Restart qBittorrent after a port change (recommended)";
-            // 
-            // chkForceStartQBittorrent
-            // 
+            chkRestartQBittorrent.AutoSize  = true;
+            chkRestartQBittorrent.Location  = new Point(12, 178);
+            chkRestartQBittorrent.Name      = "chkRestartQBittorrent";
+            chkRestartQBittorrent.Size      = new Size(314, 19);
+            chkRestartQBittorrent.TabIndex  = 11;
+            chkRestartQBittorrent.Text      = "Restart qBittorrent after a port change (recommended)";
             chkForceStartQBittorrent.AutoSize = true;
             chkForceStartQBittorrent.Location = new Point(12, 203);
-            chkForceStartQBittorrent.Name = "chkForceStartQBittorrent";
-            chkForceStartQBittorrent.Size = new Size(217, 19);
+            chkForceStartQBittorrent.Name     = "chkForceStartQBittorrent";
+            chkForceStartQBittorrent.Size     = new Size(217, 19);
             chkForceStartQBittorrent.TabIndex = 12;
-            chkForceStartQBittorrent.Text = "Force start qBittorrent if not running";
-            // 
-            // lblDefaultPort
-            // 
-            lblDefaultPort.Location = new Point(12, 228);
-            lblDefaultPort.Name = "lblDefaultPort";
-            lblDefaultPort.Size = new Size(130, 23);
-            lblDefaultPort.TabIndex = 13;
-            lblDefaultPort.Text = "Default port:";
+            chkForceStartQBittorrent.Text     = "Force start qBittorrent if not running";
+            lblDefaultPort.Location  = new Point(12, 228);
+            lblDefaultPort.Name      = "lblDefaultPort";
+            lblDefaultPort.Size      = new Size(130, 23);
+            lblDefaultPort.TabIndex  = 13;
+            lblDefaultPort.Text      = "Default port:";
             lblDefaultPort.TextAlign = ContentAlignment.MiddleLeft;
-            //
-            // nudDefaultPort
-            //
             nudDefaultPort.Location = new Point(148, 228);
-            nudDefaultPort.Maximum = new decimal(new int[] { 65535, 0, 0, 0 });
-            nudDefaultPort.Name = "nudDefaultPort";
-            nudDefaultPort.Size = new Size(80, 23);
+            nudDefaultPort.Maximum  = new decimal(new int[] { 65535, 0, 0, 0 });
+            nudDefaultPort.Name     = "nudDefaultPort";
+            nudDefaultPort.Size     = new Size(80, 23);
             nudDefaultPort.TabIndex = 14;
-            // 
-            // chkWarnOnInterfaceMismatch
-            // 
             chkWarnOnInterfaceMismatch.AutoSize = true;
             chkWarnOnInterfaceMismatch.Location = new Point(12, 257);
-            chkWarnOnInterfaceMismatch.Name = "chkWarnOnInterfaceMismatch";
-            chkWarnOnInterfaceMismatch.Size = new Size(306, 19);
+            chkWarnOnInterfaceMismatch.Name     = "chkWarnOnInterfaceMismatch";
+            chkWarnOnInterfaceMismatch.Size     = new Size(306, 19);
             chkWarnOnInterfaceMismatch.TabIndex = 15;
-            chkWarnOnInterfaceMismatch.Text = "Warn when network interface doesn't match the VPN";
-            // 
-            // chkRestartOnDisconnect
-            // 
+            chkWarnOnInterfaceMismatch.Text     = "Warn when network interface doesn't match the VPN";
             chkRestartOnDisconnect.AutoSize = true;
             chkRestartOnDisconnect.Location = new Point(12, 282);
-            chkRestartOnDisconnect.Name = "chkRestartOnDisconnect";
-            chkRestartOnDisconnect.Size = new Size(295, 19);
+            chkRestartOnDisconnect.Name     = "chkRestartOnDisconnect";
+            chkRestartOnDisconnect.Size     = new Size(295, 19);
             chkRestartOnDisconnect.TabIndex = 16;
-            chkRestartOnDisconnect.Text = "Restart qBittorrent if connection status disconnects";
-            // 
-            // grpExtra
-            // 
+            chkRestartOnDisconnect.Text     = "Restart qBittorrent if connection status disconnects";
+            // ── grpDeluge ─────────────────────────────────────────────────
+            grpDeluge.Controls.Add(lblDelugeURL);
+            grpDeluge.Controls.Add(txtDelugeURL);
+            grpDeluge.Controls.Add(lblDelugePassword);
+            grpDeluge.Controls.Add(txtDelugePassword);
+            grpDeluge.Controls.Add(lblDelugeExePath);
+            grpDeluge.Controls.Add(txtDelugeExePath);
+            grpDeluge.Controls.Add(btnBrowseDelugeExePath);
+            grpDeluge.Controls.Add(lblDelugeProcessName);
+            grpDeluge.Controls.Add(txtDelugeProcessName);
+            grpDeluge.Controls.Add(chkRestartDeluge);
+            grpDeluge.Controls.Add(chkForceStartDeluge);
+            grpDeluge.Controls.Add(lblDelugeDefaultPort);
+            grpDeluge.Controls.Add(nudDelugeDefaultPort);
+            grpDeluge.Location = new Point(8, 212);
+            grpDeluge.Name     = "grpDeluge";
+            grpDeluge.Size     = new Size(484, 312);
+            grpDeluge.TabIndex = 3;
+            grpDeluge.TabStop  = false;
+            grpDeluge.Text     = "Deluge";
+            grpDeluge.Visible  = false;
+            lblDelugeURL.Location  = new Point(12, 24);
+            lblDelugeURL.Name      = "lblDelugeURL";
+            lblDelugeURL.Size      = new Size(130, 23);
+            lblDelugeURL.TabIndex  = 0;
+            lblDelugeURL.Text      = "URL:";
+            lblDelugeURL.TextAlign = ContentAlignment.MiddleLeft;
+            txtDelugeURL.Location = new Point(148, 24);
+            txtDelugeURL.Name     = "txtDelugeURL";
+            txtDelugeURL.Size     = new Size(320, 23);
+            txtDelugeURL.TabIndex = 1;
+            lblDelugePassword.Location  = new Point(12, 53);
+            lblDelugePassword.Name      = "lblDelugePassword";
+            lblDelugePassword.Size      = new Size(130, 23);
+            lblDelugePassword.TabIndex  = 2;
+            lblDelugePassword.Text      = "Password:";
+            lblDelugePassword.TextAlign = ContentAlignment.MiddleLeft;
+            txtDelugePassword.Location     = new Point(148, 53);
+            txtDelugePassword.Name         = "txtDelugePassword";
+            txtDelugePassword.PasswordChar = '*';
+            txtDelugePassword.Size         = new Size(320, 23);
+            txtDelugePassword.TabIndex     = 3;
+            lblDelugeExePath.Location  = new Point(12, 82);
+            lblDelugeExePath.Name      = "lblDelugeExePath";
+            lblDelugeExePath.Size      = new Size(130, 23);
+            lblDelugeExePath.TabIndex  = 4;
+            lblDelugeExePath.Text      = "Executable:";
+            lblDelugeExePath.TextAlign = ContentAlignment.MiddleLeft;
+            txtDelugeExePath.Location = new Point(148, 82);
+            txtDelugeExePath.Name     = "txtDelugeExePath";
+            txtDelugeExePath.Size     = new Size(276, 23);
+            txtDelugeExePath.TabIndex = 5;
+            btnBrowseDelugeExePath.Location = new Point(428, 82);
+            btnBrowseDelugeExePath.Name     = "btnBrowseDelugeExePath";
+            btnBrowseDelugeExePath.Size     = new Size(40, 23);
+            btnBrowseDelugeExePath.TabIndex = 6;
+            btnBrowseDelugeExePath.Text     = "...";
+            btnBrowseDelugeExePath.Click   += btnBrowseDelugeExePath_Click;
+            lblDelugeProcessName.Location  = new Point(12, 111);
+            lblDelugeProcessName.Name      = "lblDelugeProcessName";
+            lblDelugeProcessName.Size      = new Size(130, 23);
+            lblDelugeProcessName.TabIndex  = 7;
+            lblDelugeProcessName.Text      = "Process name:";
+            lblDelugeProcessName.TextAlign = ContentAlignment.MiddleLeft;
+            txtDelugeProcessName.Location = new Point(148, 111);
+            txtDelugeProcessName.Name     = "txtDelugeProcessName";
+            txtDelugeProcessName.Size     = new Size(320, 23);
+            txtDelugeProcessName.TabIndex = 8;
+            chkRestartDeluge.AutoSize = true;
+            chkRestartDeluge.Location = new Point(12, 149);
+            chkRestartDeluge.Name     = "chkRestartDeluge";
+            chkRestartDeluge.Size     = new Size(280, 19);
+            chkRestartDeluge.TabIndex = 9;
+            chkRestartDeluge.Text     = "Restart Deluge after a port change (recommended)";
+            chkForceStartDeluge.AutoSize = true;
+            chkForceStartDeluge.Location = new Point(12, 174);
+            chkForceStartDeluge.Name     = "chkForceStartDeluge";
+            chkForceStartDeluge.Size     = new Size(204, 19);
+            chkForceStartDeluge.TabIndex = 10;
+            chkForceStartDeluge.Text     = "Force start Deluge if not running";
+            lblDelugeDefaultPort.Location  = new Point(12, 203);
+            lblDelugeDefaultPort.Name      = "lblDelugeDefaultPort";
+            lblDelugeDefaultPort.Size      = new Size(130, 23);
+            lblDelugeDefaultPort.TabIndex  = 11;
+            lblDelugeDefaultPort.Text      = "Default port:";
+            lblDelugeDefaultPort.TextAlign = ContentAlignment.MiddleLeft;
+            nudDelugeDefaultPort.Location = new Point(148, 203);
+            nudDelugeDefaultPort.Maximum  = new decimal(new int[] { 65535, 0, 0, 0 });
+            nudDelugeDefaultPort.Name     = "nudDelugeDefaultPort";
+            nudDelugeDefaultPort.Size     = new Size(80, 23);
+            nudDelugeDefaultPort.TabIndex = 12;
+            // ── grpTransmission ───────────────────────────────────────────
+            grpTransmission.Controls.Add(lblTransmissionURL);
+            grpTransmission.Controls.Add(txtTransmissionURL);
+            grpTransmission.Controls.Add(lblTransmissionUserName);
+            grpTransmission.Controls.Add(txtTransmissionUserName);
+            grpTransmission.Controls.Add(lblTransmissionPassword);
+            grpTransmission.Controls.Add(txtTransmissionPassword);
+            grpTransmission.Controls.Add(lblTransmissionExePath);
+            grpTransmission.Controls.Add(txtTransmissionExePath);
+            grpTransmission.Controls.Add(btnBrowseTransmissionExePath);
+            grpTransmission.Controls.Add(lblTransmissionProcessName);
+            grpTransmission.Controls.Add(txtTransmissionProcessName);
+            grpTransmission.Controls.Add(chkRestartTransmission);
+            grpTransmission.Controls.Add(chkForceStartTransmission);
+            grpTransmission.Controls.Add(lblTransmissionDefaultPort);
+            grpTransmission.Controls.Add(nudTransmissionDefaultPort);
+            grpTransmission.Location = new Point(8, 212);
+            grpTransmission.Name     = "grpTransmission";
+            grpTransmission.Size     = new Size(484, 312);
+            grpTransmission.TabIndex = 2;
+            grpTransmission.TabStop  = false;
+            grpTransmission.Text     = "Transmission";
+            grpTransmission.Visible  = false;
+            lblTransmissionURL.Location  = new Point(12, 24);
+            lblTransmissionURL.Name      = "lblTransmissionURL";
+            lblTransmissionURL.Size      = new Size(130, 23);
+            lblTransmissionURL.TabIndex  = 0;
+            lblTransmissionURL.Text      = "URL:";
+            lblTransmissionURL.TextAlign = ContentAlignment.MiddleLeft;
+            txtTransmissionURL.Location = new Point(148, 24);
+            txtTransmissionURL.Name     = "txtTransmissionURL";
+            txtTransmissionURL.Size     = new Size(320, 23);
+            txtTransmissionURL.TabIndex = 1;
+            lblTransmissionUserName.Location  = new Point(12, 53);
+            lblTransmissionUserName.Name      = "lblTransmissionUserName";
+            lblTransmissionUserName.Size      = new Size(130, 23);
+            lblTransmissionUserName.TabIndex  = 2;
+            lblTransmissionUserName.Text      = "Username:";
+            lblTransmissionUserName.TextAlign = ContentAlignment.MiddleLeft;
+            txtTransmissionUserName.Location = new Point(148, 53);
+            txtTransmissionUserName.Name     = "txtTransmissionUserName";
+            txtTransmissionUserName.Size     = new Size(320, 23);
+            txtTransmissionUserName.TabIndex = 3;
+            lblTransmissionPassword.Location  = new Point(12, 82);
+            lblTransmissionPassword.Name      = "lblTransmissionPassword";
+            lblTransmissionPassword.Size      = new Size(130, 23);
+            lblTransmissionPassword.TabIndex  = 4;
+            lblTransmissionPassword.Text      = "Password:";
+            lblTransmissionPassword.TextAlign = ContentAlignment.MiddleLeft;
+            txtTransmissionPassword.Location     = new Point(148, 82);
+            txtTransmissionPassword.Name         = "txtTransmissionPassword";
+            txtTransmissionPassword.PasswordChar = '*';
+            txtTransmissionPassword.Size         = new Size(320, 23);
+            txtTransmissionPassword.TabIndex     = 5;
+            lblTransmissionExePath.Location  = new Point(12, 111);
+            lblTransmissionExePath.Name      = "lblTransmissionExePath";
+            lblTransmissionExePath.Size      = new Size(130, 23);
+            lblTransmissionExePath.TabIndex  = 6;
+            lblTransmissionExePath.Text      = "Executable:";
+            lblTransmissionExePath.TextAlign = ContentAlignment.MiddleLeft;
+            txtTransmissionExePath.Location = new Point(148, 111);
+            txtTransmissionExePath.Name     = "txtTransmissionExePath";
+            txtTransmissionExePath.Size     = new Size(276, 23);
+            txtTransmissionExePath.TabIndex = 7;
+            btnBrowseTransmissionExePath.Location = new Point(428, 111);
+            btnBrowseTransmissionExePath.Name     = "btnBrowseTransmissionExePath";
+            btnBrowseTransmissionExePath.Size     = new Size(40, 23);
+            btnBrowseTransmissionExePath.TabIndex = 8;
+            btnBrowseTransmissionExePath.Text     = "...";
+            btnBrowseTransmissionExePath.Click   += btnBrowseTransmissionExePath_Click;
+            lblTransmissionProcessName.Location  = new Point(12, 140);
+            lblTransmissionProcessName.Name      = "lblTransmissionProcessName";
+            lblTransmissionProcessName.Size      = new Size(130, 23);
+            lblTransmissionProcessName.TabIndex  = 9;
+            lblTransmissionProcessName.Text      = "Process name:";
+            lblTransmissionProcessName.TextAlign = ContentAlignment.MiddleLeft;
+            txtTransmissionProcessName.Location = new Point(148, 140);
+            txtTransmissionProcessName.Name     = "txtTransmissionProcessName";
+            txtTransmissionProcessName.Size     = new Size(320, 23);
+            txtTransmissionProcessName.TabIndex = 10;
+            chkRestartTransmission.AutoSize  = true;
+            chkRestartTransmission.Location  = new Point(12, 178);
+            chkRestartTransmission.Name      = "chkRestartTransmission";
+            chkRestartTransmission.Size      = new Size(305, 19);
+            chkRestartTransmission.TabIndex  = 11;
+            chkRestartTransmission.Text      = "Restart Transmission after a port change (recommended)";
+            chkForceStartTransmission.AutoSize = true;
+            chkForceStartTransmission.Location = new Point(12, 203);
+            chkForceStartTransmission.Name     = "chkForceStartTransmission";
+            chkForceStartTransmission.Size     = new Size(214, 19);
+            chkForceStartTransmission.TabIndex = 12;
+            chkForceStartTransmission.Text     = "Force start Transmission if not running";
+            lblTransmissionDefaultPort.Location  = new Point(12, 232);
+            lblTransmissionDefaultPort.Name      = "lblTransmissionDefaultPort";
+            lblTransmissionDefaultPort.Size      = new Size(130, 23);
+            lblTransmissionDefaultPort.TabIndex  = 13;
+            lblTransmissionDefaultPort.Text      = "Default port:";
+            lblTransmissionDefaultPort.TextAlign = ContentAlignment.MiddleLeft;
+            nudTransmissionDefaultPort.Location = new Point(148, 232);
+            nudTransmissionDefaultPort.Maximum  = new decimal(new int[] { 65535, 0, 0, 0 });
+            nudTransmissionDefaultPort.Name     = "nudTransmissionDefaultPort";
+            nudTransmissionDefaultPort.Size     = new Size(80, 23);
+            nudTransmissionDefaultPort.TabIndex = 14;
+            // ── grpExtra ──────────────────────────────────────────────────
             grpExtra.Controls.Add(lblColorTheme);
             grpExtra.Controls.Add(cboColorTheme);
             grpExtra.Controls.Add(lblPostUpdateCmd);
             grpExtra.Controls.Add(txtPostUpdateCmd);
             grpExtra.Controls.Add(chkDebugMode);
-            grpExtra.Location = new Point(8, 503);
-            grpExtra.Name = "grpExtra";
-            grpExtra.Size = new Size(484, 126);
-            grpExtra.TabIndex = 2;
-            grpExtra.TabStop = false;
-            grpExtra.Text = "Extra";
-            //
-            // lblColorTheme
-            //
-            lblColorTheme.Location = new Point(12, 24);
-            lblColorTheme.Name = "lblColorTheme";
-            lblColorTheme.Size = new Size(130, 23);
-            lblColorTheme.TabIndex = 0;
-            lblColorTheme.Text = "Color theme:";
+            grpExtra.Location = new Point(8, 532);
+            grpExtra.Name     = "grpExtra";
+            grpExtra.Size     = new Size(484, 126);
+            grpExtra.TabIndex = 4;
+            grpExtra.TabStop  = false;
+            grpExtra.Text     = "Extra";
+            lblColorTheme.Location  = new Point(12, 24);
+            lblColorTheme.Name      = "lblColorTheme";
+            lblColorTheme.Size      = new Size(130, 23);
+            lblColorTheme.TabIndex  = 0;
+            lblColorTheme.Text      = "Color theme:";
             lblColorTheme.TextAlign = ContentAlignment.MiddleLeft;
-            //
-            // cboColorTheme
-            //
             cboColorTheme.DropDownStyle = ComboBoxStyle.DropDownList;
-            cboColorTheme.Location = new Point(148, 24);
-            cboColorTheme.Name = "cboColorTheme";
-            cboColorTheme.Size = new Size(150, 23);
-            cboColorTheme.TabIndex = 1;
-            //
-            // lblPostUpdateCmd
-            //
-            lblPostUpdateCmd.Location = new Point(12, 53);
-            lblPostUpdateCmd.Name = "lblPostUpdateCmd";
-            lblPostUpdateCmd.Size = new Size(130, 23);
-            lblPostUpdateCmd.TabIndex = 2;
-            lblPostUpdateCmd.Text = "Post-update:";
+            cboColorTheme.Location      = new Point(148, 24);
+            cboColorTheme.Name          = "cboColorTheme";
+            cboColorTheme.Size          = new Size(150, 23);
+            cboColorTheme.TabIndex      = 1;
+            lblPostUpdateCmd.Location  = new Point(12, 53);
+            lblPostUpdateCmd.Name      = "lblPostUpdateCmd";
+            lblPostUpdateCmd.Size      = new Size(130, 23);
+            lblPostUpdateCmd.TabIndex  = 2;
+            lblPostUpdateCmd.Text      = "Post-update:";
             lblPostUpdateCmd.TextAlign = ContentAlignment.MiddleLeft;
-            //
-            // txtPostUpdateCmd
-            //
             txtPostUpdateCmd.Location = new Point(148, 53);
-            txtPostUpdateCmd.Name = "txtPostUpdateCmd";
-            txtPostUpdateCmd.Size = new Size(320, 23);
+            txtPostUpdateCmd.Name     = "txtPostUpdateCmd";
+            txtPostUpdateCmd.Size     = new Size(320, 23);
             txtPostUpdateCmd.TabIndex = 3;
-            //
-            // chkDebugMode
-            //
             chkDebugMode.AutoSize = true;
             chkDebugMode.Location = new Point(12, 82);
-            chkDebugMode.Name = "chkDebugMode";
-            chkDebugMode.Size = new Size(142, 19);
+            chkDebugMode.Name     = "chkDebugMode";
+            chkDebugMode.Size     = new Size(142, 19);
             chkDebugMode.TabIndex = 4;
-            chkDebugMode.Text = "Enable debug logging";
-            //
-            // btnOK
-            //
-            btnOK.Location = new Point(320, 641);
-            btnOK.Name = "btnOK";
-            btnOK.Size = new Size(82, 28);
-            btnOK.TabIndex = 3;
-            btnOK.Text = "OK";
-            btnOK.Click += btnOK_Click;
-            //
-            // btnCancel
-            //
+            chkDebugMode.Text     = "Enable debug logging";
+            // ── Buttons ───────────────────────────────────────────────────
+            btnOK.Location = new Point(320, 670);
+            btnOK.Name     = "btnOK";
+            btnOK.Size     = new Size(82, 28);
+            btnOK.TabIndex = 5;
+            btnOK.Text     = "OK";
+            btnOK.Click   += btnOK_Click;
             btnCancel.DialogResult = DialogResult.Cancel;
-            btnCancel.Location = new Point(410, 641);
-            btnCancel.Name = "btnCancel";
-            btnCancel.Size = new Size(82, 28);
-            btnCancel.TabIndex = 4;
-            btnCancel.Text = "Cancel";
-            btnCancel.Click += btnCancel_Click;
-            //
-            // SettingsForm
-            //
-            AcceptButton = btnOK;
+            btnCancel.Location     = new Point(410, 670);
+            btnCancel.Name         = "btnCancel";
+            btnCancel.Size         = new Size(82, 28);
+            btnCancel.TabIndex     = 6;
+            btnCancel.Text         = "Cancel";
+            btnCancel.Click       += btnCancel_Click;
+            // ── SettingsForm ──────────────────────────────────────────────
+            AcceptButton        = btnOK;
             AutoScaleDimensions = new SizeF(7F, 15F);
-            AutoScaleMode = AutoScaleMode.Font;
-            CancelButton = btnCancel;
-            ClientSize = new Size(500, 680);
+            AutoScaleMode       = AutoScaleMode.Font;
+            CancelButton        = btnCancel;
+            ClientSize          = new Size(500, 709);
             Controls.Add(grpGeneral);
             Controls.Add(grpQBittorrent);
+            Controls.Add(grpDeluge);
+            Controls.Add(grpTransmission);
             Controls.Add(grpExtra);
             Controls.Add(btnOK);
             Controls.Add(btnCancel);
             FormBorderStyle = FormBorderStyle.FixedDialog;
-            MaximizeBox = false;
-            MinimizeBox = false;
-            Name = "SettingsForm";
-            ShowIcon = false;
-            ShowInTaskbar = false;
-            StartPosition = FormStartPosition.CenterScreen;
-            Text = "qbPortWeaver | Settings";
+            MaximizeBox     = false;
+            MinimizeBox     = false;
+            Name            = "SettingsForm";
+            ShowIcon        = false;
+            ShowInTaskbar   = false;
+            StartPosition   = FormStartPosition.CenterScreen;
+            Text            = "qbPortWeaver | Settings";
             grpGeneral.ResumeLayout(false);
             grpGeneral.PerformLayout();
             ((System.ComponentModel.ISupportInitialize)nudUpdateInterval).EndInit();
@@ -467,54 +598,93 @@ namespace qbPortWeaver
             grpQBittorrent.ResumeLayout(false);
             grpQBittorrent.PerformLayout();
             ((System.ComponentModel.ISupportInitialize)nudDefaultPort).EndInit();
+            grpDeluge.ResumeLayout(false);
+            grpDeluge.PerformLayout();
+            ((System.ComponentModel.ISupportInitialize)nudDelugeDefaultPort).EndInit();
+            grpTransmission.ResumeLayout(false);
+            grpTransmission.PerformLayout();
+            ((System.ComponentModel.ISupportInitialize)nudTransmissionDefaultPort).EndInit();
             grpExtra.ResumeLayout(false);
             grpExtra.PerformLayout();
             ResumeLayout(false);
         }
 
-        private GroupBox    grpGeneral;
-        private Label       lblVpnProvider;
-        private ComboBox    cboVpnProvider;
-        private Label       lblNatPmpAdapter;
-        private ComboBox    cboNatPmpAdapter;
-        private Button      btnRefreshAdapters;
-        private Label       lblUpdateInterval;
+        private GroupBox      grpGeneral;
+        private Label         lblBitTorrentClient;
+        private ComboBox      cboBitTorrentClient;
+        private Label         lblUpdateInterval;
         private NumericUpDown nudUpdateInterval;
-        private Label       lblSeconds;
-
-        private GroupBox    grpQBittorrent;
-        private Label       lblQBittorrentURL;
-        private TextBox     txtQBittorrentURL;
-        private Label       lblQBittorrentUserName;
-        private TextBox     txtQBittorrentUserName;
-        private Label       lblQBittorrentPassword;
-        private TextBox     txtQBittorrentPassword;
-        private Label       lblQBittorrentExePath;
-        private TextBox     txtQBittorrentExePath;
-        private Button      btnBrowseExePath;
-        private Label       lblQBittorrentProcessName;
-        private TextBox     txtQBittorrentProcessName;
-        private CheckBox    chkRestartQBittorrent;
-        private CheckBox    chkForceStartQBittorrent;
-        private Label       lblDefaultPort;
-        private NumericUpDown nudDefaultPort;
-        private CheckBox    chkWarnOnInterfaceMismatch;
-        private CheckBox    chkRestartOnDisconnect;
-
-        private GroupBox    grpExtra;
-        private Label       lblPostUpdateCmd;
-        private TextBox     txtPostUpdateCmd;
-        private CheckBox    chkDebugMode;
-        private Label       lblColorTheme;
-        private ComboBox    cboColorTheme;
-
+        private Label         lblSeconds;
+        private Label         lblVpnProvider;
+        private ComboBox      cboVpnProvider;
+        private Label         lblNatPmpAdapter;
+        private ComboBox      cboNatPmpAdapter;
+        private Button        btnRefreshAdapters;
         private CheckBox      chkAutoRecovery;
         private Label         lblRecoveryCycles;
         private NumericUpDown nudRecoveryCycles;
         private Label         lblRecoveryCyclesUnit;
 
-        private Button      btnOK;
-        private Button      btnCancel;
-        private ToolTip     toolTip;
+        private GroupBox      grpQBittorrent;
+        private Label         lblQBittorrentURL;
+        private TextBox       txtQBittorrentURL;
+        private Label         lblQBittorrentUserName;
+        private TextBox       txtQBittorrentUserName;
+        private Label         lblQBittorrentPassword;
+        private TextBox       txtQBittorrentPassword;
+        private Label         lblQBittorrentExePath;
+        private TextBox       txtQBittorrentExePath;
+        private Button        btnBrowseExePath;
+        private Label         lblQBittorrentProcessName;
+        private TextBox       txtQBittorrentProcessName;
+        private CheckBox      chkRestartQBittorrent;
+        private CheckBox      chkForceStartQBittorrent;
+        private Label         lblDefaultPort;
+        private NumericUpDown nudDefaultPort;
+        private CheckBox      chkWarnOnInterfaceMismatch;
+        private CheckBox      chkRestartOnDisconnect;
+
+        private GroupBox      grpDeluge;
+        private Label         lblDelugeURL;
+        private TextBox       txtDelugeURL;
+        private Label         lblDelugePassword;
+        private TextBox       txtDelugePassword;
+        private Label         lblDelugeExePath;
+        private TextBox       txtDelugeExePath;
+        private Button        btnBrowseDelugeExePath;
+        private Label         lblDelugeProcessName;
+        private TextBox       txtDelugeProcessName;
+        private CheckBox      chkRestartDeluge;
+        private CheckBox      chkForceStartDeluge;
+        private Label         lblDelugeDefaultPort;
+        private NumericUpDown nudDelugeDefaultPort;
+
+        private GroupBox      grpTransmission;
+        private Label         lblTransmissionURL;
+        private TextBox       txtTransmissionURL;
+        private Label         lblTransmissionUserName;
+        private TextBox       txtTransmissionUserName;
+        private Label         lblTransmissionPassword;
+        private TextBox       txtTransmissionPassword;
+        private Label         lblTransmissionExePath;
+        private TextBox       txtTransmissionExePath;
+        private Button        btnBrowseTransmissionExePath;
+        private Label         lblTransmissionProcessName;
+        private TextBox       txtTransmissionProcessName;
+        private CheckBox      chkRestartTransmission;
+        private CheckBox      chkForceStartTransmission;
+        private Label         lblTransmissionDefaultPort;
+        private NumericUpDown nudTransmissionDefaultPort;
+
+        private GroupBox      grpExtra;
+        private Label         lblColorTheme;
+        private ComboBox      cboColorTheme;
+        private Label         lblPostUpdateCmd;
+        private TextBox       txtPostUpdateCmd;
+        private CheckBox      chkDebugMode;
+
+        private Button        btnOK;
+        private Button        btnCancel;
+        private ToolTip       toolTip;
     }
 }

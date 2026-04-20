@@ -60,7 +60,7 @@ namespace qbPortWeaver
             toolTip.SetToolTip(btnImportNow,           "Import the files shown in the grid into the library");
             toolTip.SetToolTip(btnClearCache,          "Delete cached fingerprints and TMDB lookups so the next scan starts fresh");
             toolTip.SetToolTip(btnRematch,             "Re-run TMDB matching for uncertain and unmatched rows using the current Proposed filenames");
-            toolTip.SetToolTip(dgvResults,            "Files that would be imported. Uncheck a row to exclude it. Colored rows are uncertain TMDB matches - double-click the Proposed cell to correct the name before importing.");
+            toolTip.SetToolTip(dgvResults,            "Files that would be imported. Uncheck a row to exclude it. Gold rows are uncertain TMDB matches, red rows have no match - double-click the Proposed cell to correct the name before importing.");
             toolTip.SetToolTip(chkShowOnlyReview,     "Show only uncertain TMDB matches (gold) and rows with no TMDB match found (red) - hides confident matches.");
         }
 

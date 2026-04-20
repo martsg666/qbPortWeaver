@@ -1,4 +1,6 @@
+using Microsoft.Win32;
 using System.Diagnostics;
+using System.ServiceProcess;
 
 namespace qbPortWeaver
 {
@@ -71,8 +73,7 @@ namespace qbPortWeaver
 
         public static string GetProtonVPNLogFilePath() => Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "Proton", "Proton VPN", "Logs", "client-logs.txt"
-        );
+            RegistrySettingsManager.GetAppValue(RegistrySettingsManager.KeyProtonVpnLogFilePath));
 
         /// <summary>
         /// Kills a process (including its entire process tree) and waits up to <paramref name="timeoutMs"/> for exit.
@@ -124,6 +125,112 @@ namespace qbPortWeaver
                 return false;
             }
             return process.WaitForExit(timeoutMs);
+        }
+
+        /// <summary>Kills all running processes matching <paramref name="processName"/> and logs outcomes per process.</summary>
+        internal static void KillProcessesByName(string processName, int killTimeoutMs, string clientName)
+        {
+            foreach (var proc in Process.GetProcessesByName(processName))
+            {
+                try
+                {
+                    if (!KillProcess(proc, killTimeoutMs))
+                        LogManager.Instance.LogMessage($"{clientName} process (PID {proc.Id}) still running after kill attempts", LogLevel.Warn);
+                }
+                catch (Exception ex) { LogManager.Instance.LogDebug($"{clientName}.KillProcessesByName: Failed to kill process: {ex.Message}"); }
+                finally { proc.Dispose(); }
+            }
+        }
+
+        /// <summary>
+        /// Searches all installed Windows services for one whose <c>ServiceName</c> or <c>DisplayName</c>
+        /// contains <paramref name="searchTerm"/> and returns the <c>ServiceName</c>, or
+        /// <see langword="null"/> if no match is found.
+        /// </summary>
+        internal static string? FindServiceName(string searchTerm)
+        {
+            ServiceController[]? services = null;
+            try
+            {
+                services = ServiceController.GetServices();
+                return services
+                    .FirstOrDefault(s =>
+                        s.ServiceName.Contains(searchTerm, StringComparison.OrdinalIgnoreCase) ||
+                        s.DisplayName.Contains(searchTerm, StringComparison.OrdinalIgnoreCase))
+                    ?.ServiceName;
+            }
+            catch { return null; } // NOSONAR S108
+            finally
+            {
+                if (services is not null)
+                    foreach (var s in services) s.Dispose();
+            }
+        }
+
+        /// <summary>
+        /// Reads the <c>ImagePath</c> for the named Windows service from the registry and returns
+        /// the directory containing the service executable, or <see langword="null"/> if the
+        /// service key is absent or the path cannot be resolved.
+        /// Handles quoted paths and trailing arguments: <c>"C:\path\exe.exe" -arg</c>.
+        /// </summary>
+        internal static string? GetServiceExeDirectory(string serviceName)
+        {
+            try
+            {
+                using var key = Registry.LocalMachine.OpenSubKey($@"SYSTEM\CurrentControlSet\Services\{serviceName}");
+                if (key?.GetValue("ImagePath") is not string imagePath) return null;
+
+                imagePath = Environment.ExpandEnvironmentVariables(imagePath.Trim());
+                if (imagePath.StartsWith('"'))
+                {
+                    int end = imagePath.IndexOf('"', 1);
+                    imagePath = end > 0 ? imagePath[1..end] : imagePath[1..];
+                }
+                else
+                {
+                    int space = imagePath.IndexOf(' ');
+                    if (space > 0) imagePath = imagePath[..space];
+                }
+
+                return Path.GetDirectoryName(Path.GetFullPath(imagePath));
+            }
+            catch { return null; }
+        }
+
+        /// <summary>
+        /// Resolves an executable path from the directory of a Windows service, caching the result.
+        /// Returns <see langword="null"/> if the service or file is not found; the cache is set to
+        /// <see langword="null"/> on a definitive miss and left as <see cref="string.Empty"/> on a
+        /// transient error so the next cycle retries.
+        /// </summary>
+        internal static string? ResolveServiceExePath(ref string? cache, string exeFileName, Func<string?> findServiceName, string logPrefix)
+        {
+            if (cache != string.Empty) return cache;
+            try
+            {
+                string? serviceName = findServiceName();
+                string? serviceDir  = serviceName is not null ? GetServiceExeDirectory(serviceName) : null;
+                if (serviceDir is null)
+                {
+                    LogManager.Instance.LogDebug($"{logPrefix}: service executable directory not found");
+                    return cache = null;
+                }
+
+                string exePath = Path.Combine(serviceDir, exeFileName);
+                if (!File.Exists(exePath))
+                {
+                    LogManager.Instance.LogDebug($"{logPrefix}: {exeFileName} not found at: {exePath}");
+                    return cache = null;
+                }
+
+                LogManager.Instance.LogDebug($"{logPrefix}: Found {exeFileName} at: {exePath}");
+                return cache = exePath;
+            }
+            catch (Exception ex)
+            {
+                LogManager.Instance.LogDebug($"{logPrefix}: {ex.Message}");
+                return null; // transient error - don't cache, retry next cycle
+            }
         }
 
         /// <summary>Creates a ProcessStartInfo configured to run a hidden, windowless process.</summary>

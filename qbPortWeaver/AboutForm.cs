@@ -103,7 +103,7 @@ namespace qbPortWeaver
                     {
                         lblStatusValue.Text      = "Update available";
                         lblStatusValue.ForeColor = Color.DarkOrange;
-                        btnCheckForUpdates.Text  = "View Release";
+                        btnCheckForUpdates.Text  = "Update";
                         _releaseUrl              = info.ReleaseUrl;
                     }
                     else

@@ -35,7 +35,7 @@ namespace qbPortWeaver
             "cam", "camrip", "scr", "screener", "telecine", "telesync", "ts", "tc", "hdts", "hdtc", "vod", "imax",
             "r5", "r6", "workprint", "wp", "retail",
             "hddvd", "hd-dvd", "ldrip", "dcp",
-            // Streaming service prefixes (appear before WEB-DL)
+            // Streaming service prefixes (appear before the web source token)
             "amzn", "amz", "nf", "nflx", "dsnp", "dnsp", "dsny", "hmax", "hbomax", "hbo",
             "atvp", "pcok", "pmtp", "pmnp", "para", "crav", "hulu", "roku",
             "bcore", "stan", "itun", "htsr", "dscp", "funi", "adn", "ma",
@@ -227,7 +227,7 @@ namespace qbPortWeaver
             if (parsedYear is not null)
             {
                 // Year found: strip cutoff tokens only from the pre-year title portion
-                // (avoids cutting the year itself when tokens like EXTENDED appear before it)
+                // (avoids cutting the year itself when edition tokens appear before it)
                 rawTitle = CutAtTokens(rawTitle);
             }
             else

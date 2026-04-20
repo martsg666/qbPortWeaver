@@ -1,10 +1,11 @@
 namespace qbPortWeaver
 {
-    /// <summary>Settings dialog for configuring VPN provider, qBittorrent connection, sync interval, and extra options.</summary>
+    /// <summary>Settings dialog for configuring VPN provider, BitTorrent client connection, sync interval, and extra options.</summary>
     public partial class SettingsForm : Form
     {
         private const string DiscoveringAdaptersPlaceholder = "Discovering adapters\u2026";
         private const string NoAdaptersFoundPlaceholder     = "No NAT-PMP adapters found";
+        private const string DefaultPortTooltip             = "Port to apply when the VPN is disconnected (0 = do nothing when disconnected)";
 
         public SettingsForm()
         {
@@ -25,23 +26,43 @@ namespace qbPortWeaver
             toolTip.SetToolTip(cboVpnProvider,              "VPN provider used for port detection (Disabled, ProtonVPN, PIA, or NAT-PMP)");
             toolTip.SetToolTip(cboNatPmpAdapter,             "Network adapter to use for NAT-PMP port mapping (only applies when NAT-PMP is selected)");
             toolTip.SetToolTip(btnRefreshAdapters,           "Refresh the adapter list");
-            toolTip.SetToolTip(nudUpdateInterval,            "How often to check and sync the port, in seconds");
+            toolTip.SetToolTip(nudUpdateInterval,            "How often to run the sync cycle, in seconds - controls both port sync and Media Manager frequency");
+            toolTip.SetToolTip(cboBitTorrentClient,          "BitTorrent client to control (qBittorrent, Transmission, or Deluge)");
             toolTip.SetToolTip(txtQBittorrentURL,            "URL for the qBittorrent Web UI (e.g. http://127.0.0.1:8080)");
             toolTip.SetToolTip(txtQBittorrentUserName,       "Username for the qBittorrent Web UI");
             toolTip.SetToolTip(txtQBittorrentPassword,       "Password for the qBittorrent Web UI");
-            toolTip.SetToolTip(txtQBittorrentExePath,        "Path to qbittorrent.exe, used to start or restart the application");
+            toolTip.SetToolTip(txtQBittorrentExePath,        "Path to the qBittorrent executable, used to start or restart the application");
             toolTip.SetToolTip(btnBrowseExePath,             "Browse for the qBittorrent executable");
             toolTip.SetToolTip(txtQBittorrentProcessName,    "Process name used to detect if qBittorrent is running (usually qbittorrent)");
-            toolTip.SetToolTip(chkRestartQBittorrent,        "Restart qBittorrent after updating the port - required for the change to take effect");
+            toolTip.SetToolTip(chkRestartQBittorrent,        "Restart qBittorrent after updating the port - recommended for the change to take effect immediately");
             toolTip.SetToolTip(chkForceStartQBittorrent,     "Automatically launch qBittorrent if it is not already running");
-            toolTip.SetToolTip(nudDefaultPort,               "Port to apply when the VPN is disconnected (0 = do nothing when disconnected)");
-            toolTip.SetToolTip(lblDefaultPort,               "Port to apply when the VPN is disconnected (0 = do nothing when disconnected)");
+            toolTip.SetToolTip(nudDefaultPort,               DefaultPortTooltip);
+            toolTip.SetToolTip(lblDefaultPort,               DefaultPortTooltip);
             toolTip.SetToolTip(chkWarnOnInterfaceMismatch,   "Show a warning when qBittorrent's network interface does not match the configured VPN provider");
-            toolTip.SetToolTip(chkRestartOnDisconnect,       "Automatically restart qBittorrent if the connection goes offline or disconnects");
+            toolTip.SetToolTip(chkRestartOnDisconnect,       "Automatically restart qBittorrent when its connection status becomes disconnected");
+            toolTip.SetToolTip(txtTransmissionURL,           "URL for the Transmission RPC endpoint (e.g. http://127.0.0.1:9091)");
+            toolTip.SetToolTip(txtTransmissionUserName,      "Username for the Transmission RPC (leave empty if authentication is disabled)");
+            toolTip.SetToolTip(txtTransmissionPassword,      "Password for the Transmission RPC (leave empty if authentication is disabled)");
+            toolTip.SetToolTip(txtTransmissionExePath,       "Path to the Transmission executable, used to start or restart the application when running as a user-space process");
+            toolTip.SetToolTip(btnBrowseTransmissionExePath, "Browse for the Transmission executable");
+            toolTip.SetToolTip(txtTransmissionProcessName,   "Process name used to detect if Transmission is running as a user-space process (e.g. transmission-qt)");
+            toolTip.SetToolTip(chkRestartTransmission,       "Restart Transmission after updating the port - recommended for the change to take effect immediately");
+            toolTip.SetToolTip(chkForceStartTransmission,    "Automatically launch Transmission if it is not already running");
+            toolTip.SetToolTip(nudTransmissionDefaultPort,   DefaultPortTooltip);
+            toolTip.SetToolTip(lblTransmissionDefaultPort,   DefaultPortTooltip);
+            toolTip.SetToolTip(txtDelugeURL,                 "URL for the Deluge Web UI (e.g. http://127.0.0.1:8112)");
+            toolTip.SetToolTip(txtDelugePassword,            "Password for the Deluge Web UI");
+            toolTip.SetToolTip(txtDelugeExePath,             "Path to the Deluge executable, used to start or restart the application");
+            toolTip.SetToolTip(btnBrowseDelugeExePath,       "Browse for the Deluge executable");
+            toolTip.SetToolTip(txtDelugeProcessName,         "Process name used to detect if Deluge is running (usually deluge)");
+            toolTip.SetToolTip(chkRestartDeluge,             "Restart Deluge after updating the port - recommended for the change to take effect immediately");
+            toolTip.SetToolTip(chkForceStartDeluge,          "Automatically launch Deluge if it is not already running");
+            toolTip.SetToolTip(nudDelugeDefaultPort,         DefaultPortTooltip);
+            toolTip.SetToolTip(lblDelugeDefaultPort,         DefaultPortTooltip);
             toolTip.SetToolTip(txtPostUpdateCmd,             "Shell command to run after a successful port update (leave empty to disable)");
             toolTip.SetToolTip(chkDebugMode,                 "Write verbose debug entries to the log file");
             toolTip.SetToolTip(cboColorTheme,                "Application color theme (System, Dark, or Light) - a restart prompt will appear if changed");
-            toolTip.SetToolTip(chkAutoRecovery,              "Automatically recover after N consecutive failed sync cycles (VPN disconnected or port detection failure)");
+            toolTip.SetToolTip(chkAutoRecovery,              "Automatically recover after the configured number of consecutive failed sync cycles (VPN disconnected or port detection failure)");
             toolTip.SetToolTip(nudRecoveryCycles,            "Number of consecutive failed cycles before recovery is triggered");
         }
 
@@ -59,6 +80,16 @@ namespace qbPortWeaver
             cboVpnProvider.SelectedItem = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyVpnProvider);
             if (cboVpnProvider.SelectedIndex < 0)
                 cboVpnProvider.SelectedIndex = 0;
+
+            cboBitTorrentClient.Items.Clear();
+            cboBitTorrentClient.Items.AddRange(
+            [
+                RegistrySettingsManager.BitTorrentClientQBittorrent,
+                RegistrySettingsManager.BitTorrentClientTransmission,
+                RegistrySettingsManager.BitTorrentClientDeluge
+            ]);
+            cboBitTorrentClient.SelectedItem = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyBitTorrentClient);
+            if (cboBitTorrentClient.SelectedIndex < 0) cboBitTorrentClient.SelectedIndex = 0;
 
             // NAT-PMP adapter - discovered asynchronously to avoid blocking the UI
             cboNatPmpAdapter.Items.Clear();
@@ -94,6 +125,31 @@ namespace qbPortWeaver
                 RegistrySettingsManager.GetInt(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyDefaultPort),
                 (int)nudDefaultPort.Minimum, (int)nudDefaultPort.Maximum);
 
+            // Transmission
+            txtTransmissionURL.Text         = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionTransmission, RegistrySettingsManager.KeyTransmissionUrl);
+            txtTransmissionUserName.Text    = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionTransmission, RegistrySettingsManager.KeyTransmissionUserName);
+            txtTransmissionPassword.Text    = RegistrySettingsManager.GetTransmissionPassword();
+            txtTransmissionExePath.Text     = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionTransmission, RegistrySettingsManager.KeyTransmissionExePath);
+            txtTransmissionProcessName.Text = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionTransmission, RegistrySettingsManager.KeyTransmissionProcessName);
+            chkRestartTransmission.Checked    = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionTransmission, RegistrySettingsManager.KeyRestartTransmission);
+            chkForceStartTransmission.Checked = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionTransmission, RegistrySettingsManager.KeyForceStartTransmission);
+            nudTransmissionDefaultPort.Value  = Math.Clamp(
+                RegistrySettingsManager.GetInt(RegistrySettingsManager.SectionTransmission, RegistrySettingsManager.KeyDefaultPort),
+                (int)nudTransmissionDefaultPort.Minimum, (int)nudTransmissionDefaultPort.Maximum);
+
+            // Deluge
+            txtDelugeURL.Text         = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionDeluge, RegistrySettingsManager.KeyDelugeUrl);
+            txtDelugePassword.Text    = RegistrySettingsManager.GetDelugePassword();
+            txtDelugeExePath.Text     = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionDeluge, RegistrySettingsManager.KeyDelugeExePath);
+            txtDelugeProcessName.Text = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionDeluge, RegistrySettingsManager.KeyDelugeProcessName);
+            chkRestartDeluge.Checked    = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionDeluge, RegistrySettingsManager.KeyRestartDeluge);
+            chkForceStartDeluge.Checked = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionDeluge, RegistrySettingsManager.KeyForceStartDeluge);
+            nudDelugeDefaultPort.Value  = Math.Clamp(
+                RegistrySettingsManager.GetInt(RegistrySettingsManager.SectionDeluge, RegistrySettingsManager.KeyDefaultPort),
+                (int)nudDelugeDefaultPort.Minimum, (int)nudDelugeDefaultPort.Maximum);
+
+            UpdateClientGroupVisibility();
+
             // Extra
             cboColorTheme.Items.Clear();
             cboColorTheme.Items.AddRange(
@@ -112,6 +168,7 @@ namespace qbPortWeaver
         {
             // General
             RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyVpnProvider,          cboVpnProvider.SelectedItem?.ToString() ?? RegistrySettingsManager.VpnProviderDisabled);
+            RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyBitTorrentClient,      cboBitTorrentClient.SelectedItem?.ToString() ?? RegistrySettingsManager.BitTorrentClientQBittorrent);
             RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyUpdateIntervalSeconds, ((int)nudUpdateInterval.Value).ToString());
             // If discovery is still pending (combo disabled), preserve the existing value to avoid
             // saving the "Discovering adapters…" placeholder text as the adapter name
@@ -134,6 +191,25 @@ namespace qbPortWeaver
             RegistrySettingsManager.SetBool (RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyWarnOnInterfaceMismatch, chkWarnOnInterfaceMismatch.Checked);
             RegistrySettingsManager.SetBool (RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyRestartOnDisconnect,     chkRestartOnDisconnect.Checked);
 
+            // Transmission
+            RegistrySettingsManager.SetValue        (RegistrySettingsManager.SectionTransmission, RegistrySettingsManager.KeyTransmissionUrl,         txtTransmissionURL.Text.Trim());
+            RegistrySettingsManager.SetValue        (RegistrySettingsManager.SectionTransmission, RegistrySettingsManager.KeyTransmissionUserName,    txtTransmissionUserName.Text.Trim());
+            RegistrySettingsManager.SetTransmissionPassword(txtTransmissionPassword.Text);
+            RegistrySettingsManager.SetValue        (RegistrySettingsManager.SectionTransmission, RegistrySettingsManager.KeyTransmissionExePath,     txtTransmissionExePath.Text.Trim());
+            RegistrySettingsManager.SetValue        (RegistrySettingsManager.SectionTransmission, RegistrySettingsManager.KeyTransmissionProcessName, txtTransmissionProcessName.Text.Trim());
+            RegistrySettingsManager.SetBool         (RegistrySettingsManager.SectionTransmission, RegistrySettingsManager.KeyRestartTransmission,     chkRestartTransmission.Checked);
+            RegistrySettingsManager.SetBool         (RegistrySettingsManager.SectionTransmission, RegistrySettingsManager.KeyForceStartTransmission,  chkForceStartTransmission.Checked);
+            RegistrySettingsManager.SetValue        (RegistrySettingsManager.SectionTransmission, RegistrySettingsManager.KeyDefaultPort,             ((int)nudTransmissionDefaultPort.Value).ToString());
+
+            // Deluge
+            RegistrySettingsManager.SetValue        (RegistrySettingsManager.SectionDeluge, RegistrySettingsManager.KeyDelugeUrl,         txtDelugeURL.Text.Trim());
+            RegistrySettingsManager.SetDelugePassword(txtDelugePassword.Text);
+            RegistrySettingsManager.SetValue        (RegistrySettingsManager.SectionDeluge, RegistrySettingsManager.KeyDelugeExePath,     txtDelugeExePath.Text.Trim());
+            RegistrySettingsManager.SetValue        (RegistrySettingsManager.SectionDeluge, RegistrySettingsManager.KeyDelugeProcessName, txtDelugeProcessName.Text.Trim());
+            RegistrySettingsManager.SetBool         (RegistrySettingsManager.SectionDeluge, RegistrySettingsManager.KeyRestartDeluge,     chkRestartDeluge.Checked);
+            RegistrySettingsManager.SetBool         (RegistrySettingsManager.SectionDeluge, RegistrySettingsManager.KeyForceStartDeluge,  chkForceStartDeluge.Checked);
+            RegistrySettingsManager.SetValue        (RegistrySettingsManager.SectionDeluge, RegistrySettingsManager.KeyDefaultPort,       ((int)nudDelugeDefaultPort.Value).ToString());
+
             // Extra
             RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionExtra, RegistrySettingsManager.KeyColorTheme,     cboColorTheme.SelectedItem?.ToString() ?? RegistrySettingsManager.ColorThemeSystem);
             RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionExtra, RegistrySettingsManager.KeyPostUpdateCmd, txtPostUpdateCmd.Text.Trim());
@@ -154,13 +230,18 @@ namespace qbPortWeaver
                 return;
             }
 
-            string urlText = txtQBittorrentURL.Text.Trim();
+            bool isTransmission = cboBitTorrentClient.SelectedItem?.ToString() == RegistrySettingsManager.BitTorrentClientTransmission;
+            bool isDeluge       = cboBitTorrentClient.SelectedItem?.ToString() == RegistrySettingsManager.BitTorrentClientDeluge;
+            string urlText, clientName;
+            if (isTransmission) { urlText = txtTransmissionURL.Text.Trim(); clientName = "Transmission"; }
+            else if (isDeluge)  { urlText = txtDelugeURL.Text.Trim();       clientName = "Deluge"; }
+            else                { urlText = txtQBittorrentURL.Text.Trim();  clientName = "qBittorrent"; }
             if (!string.IsNullOrEmpty(urlText) &&
                 (!Uri.TryCreate(urlText, UriKind.Absolute, out var uri) ||
                  (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps)))
             {
                 MessageBox.Show(
-                    "The qBittorrent URL is not valid. Enter a URL starting with http:// or https://",
+                    $"The {clientName} URL is not valid. Enter a URL starting with http:// or https://",
                     AppConstants.AppName,
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Warning);
@@ -188,6 +269,18 @@ namespace qbPortWeaver
         }
 
         private void btnCancel_Click(object? sender, EventArgs e) => Close();
+
+        private void cboBitTorrentClient_SelectedIndexChanged(object? sender, EventArgs e) =>
+            UpdateClientGroupVisibility();
+
+        private void UpdateClientGroupVisibility()
+        {
+            bool isTransmission     = cboBitTorrentClient.SelectedItem?.ToString() == RegistrySettingsManager.BitTorrentClientTransmission;
+            bool isDeluge           = cboBitTorrentClient.SelectedItem?.ToString() == RegistrySettingsManager.BitTorrentClientDeluge;
+            grpQBittorrent.Visible  = !isTransmission && !isDeluge;
+            grpDeluge.Visible       = isDeluge;
+            grpTransmission.Visible = isTransmission;
+        }
 
         private void cboVpnProvider_SelectedIndexChanged(object? sender, EventArgs e)
         {
@@ -236,6 +329,42 @@ namespace qbPortWeaver
                 txtQBittorrentExePath.Text = dlg.FileName;
         }
 
+        private void btnBrowseDelugeExePath_Click(object? sender, EventArgs e)
+        {
+            using var dlg = new OpenFileDialog
+            {
+                Title  = "Select Deluge Executable",
+                Filter = "Executable files (*.exe)|*.exe|All files (*.*)|*.*"
+            };
+
+            if (!string.IsNullOrWhiteSpace(txtDelugeExePath.Text) &&
+                File.Exists(txtDelugeExePath.Text))
+            {
+                dlg.InitialDirectory = Path.GetDirectoryName(txtDelugeExePath.Text) ?? string.Empty;
+            }
+
+            if (dlg.ShowDialog() == DialogResult.OK)
+                txtDelugeExePath.Text = dlg.FileName;
+        }
+
+        private void btnBrowseTransmissionExePath_Click(object? sender, EventArgs e)
+        {
+            using var dlg = new OpenFileDialog
+            {
+                Title  = "Select Transmission Executable",
+                Filter = "Executable files (*.exe)|*.exe|All files (*.*)|*.*"
+            };
+
+            if (!string.IsNullOrWhiteSpace(txtTransmissionExePath.Text) &&
+                File.Exists(txtTransmissionExePath.Text))
+            {
+                dlg.InitialDirectory = Path.GetDirectoryName(txtTransmissionExePath.Text) ?? string.Empty;
+            }
+
+            if (dlg.ShowDialog() == DialogResult.OK)
+                txtTransmissionExePath.Text = dlg.FileName;
+        }
+
         private void chkAutoRecovery_CheckedChanged(object? sender, EventArgs e) =>
             UpdateAutoRecoverySubControls();
 
@@ -257,8 +386,10 @@ namespace qbPortWeaver
             nudRecoveryCycles.Enabled     = enabled && chkAutoRecovery.Checked;
             lblRecoveryCyclesUnit.Enabled = enabled && chkAutoRecovery.Checked;
 
-            // qBittorrent section
-            grpQBittorrent.Enabled = enabled;
+            // qBittorrent / Deluge / Transmission section
+            grpQBittorrent.Enabled  = enabled;
+            grpDeluge.Enabled       = enabled;
+            grpTransmission.Enabled = enabled;
 
             // Extra section - post-update command (color mode and debug mode stay enabled)
             lblPostUpdateCmd.Enabled = enabled;

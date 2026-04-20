@@ -13,46 +13,42 @@ flowchart TD
     DISABLED -- No --> CONNECTED{VPN connected?}
     SKIP_DISABLED --> FINALLY
 
-    CONNECTED -- Yes --> CACHE_EXE{Auto-recovery enabled?}
+    CONNECTED -- Yes --> PORT[Get VPN port]
     CONNECTED -- No --> DISCONNECTED[Handle disconnection]
 
-    CACHE_EXE -- Yes --> DO_CACHE[Cache VPN client EXE paths]
-    CACHE_EXE -- No --> PORT
-    DO_CACHE --> PORT[Get VPN port]
-
     PORT --> PORT_OK{Port found?}
-    PORT_OK -- Yes --> QB[Ensure qBittorrent is running]
+    PORT_OK -- Yes --> CLIENT[Ensure client is running]
     PORT_OK -- No --> HANDLE_FAIL[Increment counter + try auto-recovery]
     HANDLE_FAIL --> ERROR_PORT([ERROR: Failed to determine port])
 
     DISCONNECTED --> DEFAULT{Default port > 0?}
-    DEFAULT -- Yes --> QB
+    DEFAULT -- Yes --> CLIENT
     DEFAULT -- No --> SKIP([SKIP: No default port configured])
 
-    QB --> QB_OK{Running or force-started?}
-    QB_OK -- No --> ERROR_QB([ERROR: qBittorrent not running])
-    QB_OK -- Yes --> COMPARE{Ports match?}
+    CLIENT --> CLIENT_OK{Running or force-started?}
+    CLIENT_OK -- No --> ERROR_CLIENT([ERROR: client not running])
+    CLIENT_OK -- Yes --> COMPARE{Ports match?}
 
     COMPARE -- Yes --> DONE_CHECK
-    COMPARE -- No --> UPDATE[Set new port in qBittorrent]
+    COMPARE -- No --> UPDATE[Set new port in client]
 
     UPDATE --> RESTART{Restart enabled?}
-    RESTART -- Yes --> DO_RESTART[Restart qBittorrent]
+    RESTART -- Yes --> DO_RESTART[Restart client]
     RESTART -- No --> POST_CMD
     DO_RESTART --> POST_CMD{Post-update command?}
     POST_CMD -- Yes --> RUN_CMD[Run command fire-and-forget]
     POST_CMD -- No --> DONE_CHECK
     RUN_CMD --> DONE_CHECK
 
-    DONE_CHECK{restartOnDisconnect AND\nnot already restarted?}
-    DONE_CHECK -- Yes --> CONN_STATUS[Check qBT connection status]
+    DONE_CHECK{restartOnDisconnect AND\nrestart not attempted this cycle?}
+    DONE_CHECK -- Yes --> CONN_STATUS[Check client connection status]
     DONE_CHECK -- No --> SUCCESS
-    CONN_STATUS -- disconnected --> RESTART_QB[Restart qBittorrent]
+    CONN_STATUS -- disconnected --> RESTART_CLIENT[Restart client]
     CONN_STATUS -- connected/firewalled --> SUCCESS
-    RESTART_QB --> SUCCESS([SUCCESS])
+    RESTART_CLIENT --> SUCCESS([SUCCESS])
 
     ERROR_PORT --> FINALLY
-    ERROR_QB --> FINALLY
+    ERROR_CLIENT --> FINALLY
     SKIP --> FINALLY
     SUCCESS --> FINALLY
     FINALLY([Write status JSON + raise SyncCompleted event])
@@ -98,12 +94,12 @@ flowchart TD
 
 When the VPN is detected as disconnected - or port detection fails despite the VPN being connected - the cycle increments a consecutive-failure counter. This counter drives two behaviors:
 
-1. **Default port fallback** - if `DefaultPort > 0`, the cycle applies it to qBittorrent so the client remains functional (typically on a non-VPN port). If `DefaultPort == 0`, the cycle is skipped entirely.
+1. **Default port fallback** - if `DefaultPort > 0`, the cycle applies it to the BitTorrent client so it remains functional (typically on a non-VPN port). If `DefaultPort == 0`, the cycle is skipped entirely.
 
 2. **Auto-recovery** - if enabled, once the counter reaches the configured threshold, the cycle:
    - Resets the counter (to prevent repeated triggers)
    - Determines the recovery action and target based on the provider type:
-     - **ProtonVPN / PIA (direct or NAT-PMP mode):** action = `restart`, target = provider token (e.g. "ProtonVPN", "PIA") - the helper maps the token to the actual Windows service name and restarts it
+     - **ProtonVPN / PIA (direct or NAT-PMP mode):** action = `restart`, target = the resolved Windows service name - the main app auto-discovers the service name and sends it to the helper, which restarts it directly
      - **NAT-PMP with a generic gateway:** action = `cycle-adapter`, target = adapter name - the helper disables and re-enables the adapter via netsh
    - Sends the recovery request to the helper service (runs as SYSTEM) via named pipe
    - If the target matches a known provider's client process, restarts it in the user session
@@ -127,31 +123,41 @@ Cycle 4: VPN connected, port failed  → counter=3 → TRIGGER RECOVERY → coun
 
 ### Counter Reset Rules
 
-The counter is reset to zero only after a successful port detection (`GetVpnPortAsync` returns a valid port). This applies uniformly to all providers - both VPN disconnection and port detection failure accumulate toward the auto-recovery threshold.
+The counter resets in two cases:
+- **Successful port detection**: `GetVpnPortAsync` returns a valid port. Applies uniformly to all providers; both VPN disconnection and port detection failure accumulate toward the threshold.
+- **Auto-recovery disabled**: if the feature is turned off, the counter resets each cycle so it does not carry over stale state when the feature is re-enabled.
 
-## qBittorrent Interaction
+## BitTorrent Client Interaction
 
-All qBittorrent communication goes through `QBittorrentManager`, which wraps the [qBittorrent Web API](https://github.com/qbittorrent/qBittorrent/wiki/WebUI-API-(qBittorrent-4.1)).
+All client communication goes through the `IBitTorrentClient` interface, with implementations for qBittorrent (`QBittorrentClient`), Transmission (`TransmissionClient`), and Deluge (`DelugeClient`). The active implementation is selected each cycle based on the configured client setting.
 
 ### Port Update Sequence
 
 ```
-1. GET  /api/v2/app/preferences  → read listen_port + current_interface_name
-2. POST /api/v2/app/setPreferences  → set listen_port (only if different)
-3. (optional) Kill + relaunch qBittorrent process (if restart enabled)
+1. Read current port:
+   GET /api/v2/app/preferences   → listen_port + current_interface_name  [qBittorrent]
+   session-get                   → peer-port + bind-address-ipv4          [Transmission]
+   core.get_config_values        → listen_ports / listen_random_port      [Deluge]
+
+2. Set new port (only if different):
+   POST /api/v2/app/setPreferences                                        [qBittorrent]
+   session-set                                                            [Transmission]
+   core.set_config                                                        [Deluge]
+
+3. (optional) Restart client process or service (if restart enabled)
 4. (optional) Run post-update shell command
-5. (optional) GET /api/v2/transfer/info → check connection_status
-              If "disconnected" → kill + relaunch qBittorrent
+5. (optional, qBittorrent only) GET /api/v2/transfer/info → check connection_status
+              If "disconnected" → restart qBittorrent
               Skipped if step 3 already restarted (avoids redundant restart)
 ```
 
-### Interface Mismatch Warning
+### Interface Mismatch Warning *(qBittorrent only)*
 
-When enabled, the cycle compares qBittorrent's bound network interface (`current_interface_name` from preferences) against the configured VPN provider name. A mismatch raises the `InterfaceMismatchDetected` event, which shows a balloon tip from the tray icon. This helps catch cases where qBittorrent is routing traffic outside the VPN tunnel.
+When enabled, the cycle compares qBittorrent's bound network interface (`current_interface_name` from preferences) against the configured VPN provider name. A mismatch raises the `InterfaceMismatchDetected` event, which shows a balloon tip from the tray icon. This helps catch cases where qBittorrent is routing traffic outside the VPN tunnel. Transmission and Deluge do not expose a named adapter via their APIs, so this check is skipped for those clients.
 
 ## Status Output
 
-Every cycle writes a JSON status file (`status.json` next to the log file) capturing the full cycle outcome. External tools can read this file to monitor sync health.
+Every cycle writes a JSON status file (`qbPortWeaver.status.json` in `%LocalAppData%\qbPortWeaver\`) capturing the full cycle outcome. External tools can read this file to monitor sync health.
 
 ```json
 {
@@ -160,9 +166,9 @@ Every cycle writes a JSON status file (`status.json` next to the log file) captu
   "vpnProvider": "ProtonVPN",
   "vpnConnected": true,
   "vpnPort": 51234,
-  "qBittorrentRunning": true,
-  "qBittorrentPreviousPort": 44000,
-  "qBittorrentPort": 51234,
+  "clientRunning": true,
+  "clientPreviousPort": 44000,
+  "clientPort": 51234,
   "portChanged": true,
   "updateIntervalSeconds": 180,
   "status": "success",
@@ -172,7 +178,7 @@ Every cycle writes a JSON status file (`status.json` next to the log file) captu
 
 The `status` field is one of:
 - **`success`** - port synced (or already matched)
-- **`error`** - something failed (VPN port unreadable, qBittorrent unreachable, etc.)
+- **`error`** - something failed (VPN port unreadable, client unreachable, etc.)
 - **`skipped`** - VPN disconnected and no default port configured (no-op cycle)
 
 ## Method Call Map
@@ -190,21 +196,20 @@ RunAsync
      │   ├─ BuildCycleCountMessage
      │   └─ TryTriggerRecoveryAsync
      ├─ (if connected)
-     │   ├─ AutoRecoveryManager.CacheRunningClientExePaths
      │   ├─ IVpnManager.GetVpnPortAsync
      │   └─ HandlePortDetectionFailureAsync (if port null, all providers)
      │       ├─ BuildCycleCountMessage
      │       └─ TryTriggerRecoveryAsync
      └─ EnsureRunningAndUpdatePortAsync
-         ├─ EnsureQBittorrentRunningAsync
-         ├─ QBittorrentManager.GetPreferencesAsync
-         ├─ CheckInterfaceMatch
+         ├─ EnsureClientRunningAsync
+         ├─ IBitTorrentClient.GetPreferencesAsync
+         ├─ CheckInterfaceMatch (qBittorrent only)
          ├─ ApplyPortUpdateAsync
-         │   ├─ QBittorrentManager.SetListeningPortAsync
-         │   ├─ QBittorrentManager.RestartAsync
+         │   ├─ IBitTorrentClient.SetListeningPortAsync
+         │   ├─ IBitTorrentClient.RestartAsync
          │   └─ RunPostUpdateCommand
-         ├─ CheckAndRestartIfDisconnectedAsync (skipped if already restarted)
-         │   └─ QBittorrentManager.RestartAsync
+         ├─ CheckAndRestartIfDisconnectedAsync (qBittorrent only; skipped if already restarted)
+         │   └─ IBitTorrentClient.RestartAsync
          └─ SetSyncResult
 ```
 

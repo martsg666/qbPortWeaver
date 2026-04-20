@@ -10,17 +10,11 @@ namespace qbPortWeaver
             "lost. If you find qbPortWeaver useful, please star it on GitHub.";
 
         private const string ReleaseFeaturesText =
-            "VPN Auto-Recovery\r\n" +
-            "Automatically recovers when port sync fails for a configurable number " +
-            "of consecutive cycles. Restarts the VPN Windows service and client " +
-            "(ProtonVPN/PIA), or cycles the network adapter (NAT-PMP). Configure " +
-            "the trigger count in Settings > General.\r\n\r\n" +
-            "Media Manager\r\n" +
-            "Automatically imports and organizes media files into library folders " +
-            "on each sync cycle, using TMDB metadata for naming (movies and TV shows).\r\n\r\n" +
-            "Log Viewer\r\n" +
-            "Color-coded live log with level filters, subsystem filter, color " +
-            "theme support, and in-text search with match count and navigation.";
+            "Transmission and Deluge support\n" +
+            "qbPortWeaver can now manage the listening port for Transmission and Deluge in addition to qBittorrent. " +
+            "Configure your client under Settings - each client has its own URL, credentials, and restart options.\n\n" +
+            "Transmission runs in service mode (Windows service) or process mode (Qt desktop client) and is detected automatically.\n\n" +
+            "Deluge connects via its Web UI JSON-RPC API. A configurable flush wait ensures the port change is written to disk before restart.";
 
         public WhatsNewForm()
         {

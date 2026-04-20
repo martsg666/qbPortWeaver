@@ -16,11 +16,11 @@
     <docsUrl>https://github.com/martsg666/qbPortWeaver#readme</docsUrl>
     <bugTrackerUrl>https://github.com/martsg666/qbPortWeaver/issues</bugTrackerUrl>
     <requireLicenseAcceptance>false</requireLicenseAcceptance>
-    <summary>Syncs qBittorrent's listening port with the VPN-assigned port, and imports media files into Plex-compatible library folders</summary>
+    <summary>Syncs the listening port of qBittorrent, Transmission, or Deluge with the VPN-assigned port, and imports media files into Plex-compatible library folders</summary>
     <description><![CDATA[
 ## qbPortWeaver
 
-qbPortWeaver is a lightweight Windows system tray application that automatically keeps qBittorrent's listening port in sync with the port assigned by your VPN provider.
+qbPortWeaver is a lightweight Windows system tray application that automatically keeps the listening port of **qBittorrent**, **Transmission**, or **Deluge** in sync with the port assigned by your VPN provider.
 
 ### VPN Support
 
@@ -28,7 +28,7 @@ Works out of the box with **ProtonVPN** (log file), **Private Internet Access** 
 
 ### Port Sync
 
-Runs on a configurable interval and updates qBittorrent's listening port via its Web API whenever the VPN-assigned port changes. Can restart qBittorrent after a port change to ensure it takes effect immediately, force-start it if it is not running, and optionally restart it if the connection drops. A fallback port can be applied when the VPN is disconnected.
+Runs on a configurable interval and updates the BitTorrent client's listening port via its API whenever the VPN-assigned port changes. Supports qBittorrent (Web API), Transmission (RPC), and Deluge (Web JSON-RPC). Can restart the client after a port change to ensure it takes effect immediately, force-start it if it is not running, and (for qBittorrent) optionally restart it if the connection drops. A fallback port can be applied when the VPN is disconnected.
 
 ### Media Manager
 
@@ -50,7 +50,7 @@ For full setup instructions and recommended VPN configuration, see the documenta
     ]]></description>
     <releaseNotes>https://github.com/martsg666/qbPortWeaver/releases/tag/vTEMPLATE_VERSION</releaseNotes>
     <copyright>© 2026 martsg666</copyright>
-    <tags>qbittorrent vpn port-forwarding protonvpn pia private-internet-access nat-pmp system-tray port-sync media-manager media-importer plex tmdb hardlink auto-recovery</tags>
+    <tags>qbittorrent transmission deluge vpn port-forwarding protonvpn pia private-internet-access nat-pmp system-tray port-sync media-manager media-importer plex tmdb hardlink auto-recovery</tags>
     <licenseUrl>https://github.com/martsg666/qbPortWeaver/blob/master/LICENSE</licenseUrl>
     <iconUrl>https://cdn.jsdelivr.net/gh/martsg666/qbPortWeaver@vTEMPLATE_VERSION/qbPortWeaver.png</iconUrl>
   </metadata>

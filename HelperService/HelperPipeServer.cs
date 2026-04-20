@@ -9,18 +9,31 @@ namespace qbPortWeaver.HelperService;
 /// Listens on a named pipe and dispatches privileged session 0 actions requested by the
 /// user-session tray app. Runs as a hosted background service inside the helper Windows service.
 /// Protocol: one text line per connection, pipe-delimited: action|target|logFilePath.
-/// Supported actions: restart (restart the Windows service identified by the provider token)
-/// and cycle-adapter (disable and re-enable a network adapter via netsh).
+/// Supported actions: restart (restart a Windows service by name) and
+/// cycle-adapter (disable and re-enable a network adapter via netsh).
 /// The log file path is sent per-call so the helper writes into the same log file as the
 /// tray app, regardless of which user profile is active.
 /// </summary>
 internal sealed class HelperPipeServer(ILogger<HelperPipeServer> logger) : BackgroundService
 {
-    internal const string PipeName = "qbPortWeaverHelper"; // Must match AppConstants.HelperServicePipeName in qbPortWeaver
-    private  const string ExpectedLogFileName = "qbPortWeaver.log"; // Must match AppConstants.LogFileName in qbPortWeaver
+    internal const string PipeName              = "qbPortWeaverHelper"; // Must match AppConstants.HelperServicePipeName in qbPortWeaver
+    private  const string ExpectedLogFileName   = "qbPortWeaver.log";   // Must match AppConstants.LogFileName in qbPortWeaver
+    private  const int    PipeErrorRetryDelayMs = 1000;
 
-    private const string ActionRestart      = "restart";       // Must match AutoRecoveryManager.ActionRestart in qbPortWeaver
-    private const string ActionCycleAdapter = "cycle-adapter"; // Must match AutoRecoveryManager.ActionCycleAdapter in qbPortWeaver
+    private const string ActionRestart      = "restart";       // Must match HelperServiceClient.ActionRestart in qbPortWeaver
+    private const string ActionCycleAdapter = "cycle-adapter"; // Must match HelperServiceClient.ActionCycleAdapter in qbPortWeaver
+
+    private static readonly PipeSecurity PipeSecurity = CreatePipeSecurity();
+
+    private static PipeSecurity CreatePipeSecurity()
+    {
+        var security = new PipeSecurity();
+        security.AddAccessRule(new PipeAccessRule(
+            new SecurityIdentifier(WellKnownSidType.AuthenticatedUserSid, null),
+            PipeAccessRights.ReadWrite,
+            AccessControlType.Allow));
+        return security;
+    }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -38,7 +51,7 @@ internal sealed class HelperPipeServer(ILogger<HelperPipeServer> logger) : Backg
             catch (Exception ex)
             {
                 logger.LogError(ex, "Pipe server error - retrying");
-                await Task.Delay(1000, stoppingToken).ConfigureAwait(false);
+                await Task.Delay(PipeErrorRetryDelayMs, stoppingToken).ConfigureAwait(false);
             }
         }
         logger.LogInformation("qbPortWeaver Helper Service stopped");
@@ -48,12 +61,6 @@ internal sealed class HelperPipeServer(ILogger<HelperPipeServer> logger) : Backg
     {
         // The pipe ACL grants ReadWrite to all authenticated users so the standard-user
         // qbPortWeaver client can send commands to this SYSTEM-level helper service.
-        var security = new PipeSecurity();
-        security.AddAccessRule(new PipeAccessRule(
-            new SecurityIdentifier(WellKnownSidType.AuthenticatedUserSid, null),
-            PipeAccessRights.ReadWrite,
-            AccessControlType.Allow));
-
         using var pipe = NamedPipeServerStreamAcl.Create(
             PipeName,
             PipeDirection.In,
@@ -62,7 +69,7 @@ internal sealed class HelperPipeServer(ILogger<HelperPipeServer> logger) : Backg
             PipeOptions.Asynchronous,
             inBufferSize:  0,
             outBufferSize: 0,
-            security);
+            PipeSecurity);
 
         await pipe.WaitForConnectionAsync(ct).ConfigureAwait(false);
 
@@ -116,13 +123,12 @@ internal sealed class HelperPipeServer(ILogger<HelperPipeServer> logger) : Backg
         switch (action)
         {
             case ActionRestart:
-                string? serviceName = AutoRecovery.FindServiceForToken(target);
-                if (serviceName is null)
+                if (string.IsNullOrWhiteSpace(target))
                 {
-                    logger.LogWarning("Rejected restart request for unknown provider token '{Token}'", target);
+                    logger.LogWarning("Rejected restart request with empty service name");
                     return;
                 }
-                await AutoRecovery.RestartServiceAsync(serviceName, helperLogger).ConfigureAwait(false);
+                await AutoRecovery.RestartServiceAsync(target, helperLogger).ConfigureAwait(false);
                 break;
 
             case ActionCycleAdapter:

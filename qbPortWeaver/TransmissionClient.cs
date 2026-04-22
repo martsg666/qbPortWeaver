@@ -17,6 +17,7 @@ namespace qbPortWeaver
         private const string RpcPath        = "/transmission/rpc";
         private const string SessionIdHeader = "X-Transmission-Session-Id";
 
+        private readonly string _userName;
         private string? _sessionId;
         private string? _resolvedServiceName; // lazily discovered via search term
         private bool    _serviceNameResolved;
@@ -39,6 +40,7 @@ namespace qbPortWeaver
         public TransmissionClient(string url, string userName, string password, string processName, string exePath)
             : base(url, processName, exePath, CreateBasicAuthHttpClient(userName, password))
         {
+            _userName = userName;
         }
 
         /// <inheritdoc/>
@@ -97,7 +99,7 @@ namespace qbPortWeaver
 
                 if (response.StatusCode == HttpStatusCode.Unauthorized)
                 {
-                    LogManager.Instance.LogMessage($"{ClientName} authentication failed: wrong username or password - check the credentials in Settings", LogLevel.Error);
+                    LogManager.Instance.LogMessage($"{ClientName} authentication failed: wrong username or password (username: '{_userName}') - check the credentials in Settings", LogLevel.Error);
                     return (null, null);
                 }
 

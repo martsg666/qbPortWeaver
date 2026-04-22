@@ -115,32 +115,12 @@ namespace qbPortWeaver
             if (TmdbCacheManager.TryGetTvShow(cacheKey, out var cached))
                 return cached;
 
-            var result = await LookupTvShowAsync(title, year).ConfigureAwait(false);
+            var result = await TmdbClient.LookupAsync(title, year,
+                tmdb.SearchTvShowAsync, i => i.Year is not null, i => i.Title, i => i.VoteCount, "TV show").ConfigureAwait(false);
+            if (result.Info is not null)
+                LogManager.Instance.LogDebug($"TvShowProcessor.GetOrLookupTvShowAsync: Matched '{result.Info.Title}' ({result.Info.Year}) [tmdb-{result.Info.TmdbId}]", Subsystem.MediaManager);
             TmdbCacheManager.TryAddTvShow(cacheKey, result);
             return result;
-        }
-
-        private async Task<(TvShowInfo? Info, bool IsConfident)> LookupTvShowAsync(string title, int? year)
-        {
-            try
-            {
-                var (info, isConfident) = await TmdbClient.SearchWithConfidenceAsync(
-                    title, year, tmdb.SearchTvShowAsync, i => i.Year is not null, i => i.Title, i => i.VoteCount).ConfigureAwait(false);
-
-                if (info is null)
-                {
-                    LogManager.Instance.LogMessage($"No TMDB match found for TV show '{title}'", LogLevel.Warn, Subsystem.MediaManager);
-                    return (null, false);
-                }
-
-                LogManager.Instance.LogDebug($"TvShowProcessor.LookupTvShowAsync: Matched '{info.Title}' ({info.Year}) [tmdb-{info.TmdbId}]", Subsystem.MediaManager);
-                return (info, isConfident);
-            }
-            catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
-            {
-                LogManager.Instance.LogMessage($"Failed to look up TMDB TV show: {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
-                return (null, false);
-            }
         }
     }
 }

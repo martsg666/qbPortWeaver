@@ -87,6 +87,38 @@ namespace qbPortWeaver
             return (info, isConfident);
         }
 
+        /// <summary>
+        /// Performs a TMDB lookup with confidence tracking, handling "no match" logging and HTTP/timeout errors.
+        /// Shared by both processors so the error handling and log format live in one place.
+        /// </summary>
+        internal static async Task<(T? Info, bool IsConfident)> LookupAsync<T>(
+            string title, int? year,
+            Func<string, int?, Task<T?>> search,
+            Func<T, bool> hasYear,
+            Func<T, string> getTitle,
+            Func<T, int> getVoteCount,
+            string mediaKind) where T : class
+        {
+            try
+            {
+                var (info, isConfident) = await SearchWithConfidenceAsync(
+                    title, year, search, hasYear, getTitle, getVoteCount).ConfigureAwait(false);
+
+                if (info is null)
+                {
+                    LogManager.Instance.LogMessage($"No TMDB match found for {mediaKind} '{title}'", LogLevel.Warn, Subsystem.MediaManager);
+                    return (null, false);
+                }
+
+                return (info, isConfident);
+            }
+            catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+            {
+                LogManager.Instance.LogMessage($"Failed to look up TMDB {mediaKind}: {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
+                return (null, false);
+            }
+        }
+
         // Enforces a minimum delay between TMDB API calls to avoid HTTP 429 rate limiting.
         // The delay runs inside the semaphore hold so the next caller waits for the cooldown to finish.
         private static async Task<T?> GetWithRateLimitAsync<T>(string url)

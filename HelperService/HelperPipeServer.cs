@@ -16,7 +16,7 @@ namespace qbPortWeaver.HelperService;
 /// </summary>
 internal sealed class HelperPipeServer(ILogger<HelperPipeServer> logger) : BackgroundService
 {
-    internal const string PipeName              = "qbPortWeaverHelper"; // Must match AppConstants.HelperServicePipeName in qbPortWeaver
+    internal const string HelperServicePipeName  = "qbPortWeaverHelper"; // Must match AppConstants.HelperServicePipeName in qbPortWeaver
     private  const string ExpectedLogFileName   = "qbPortWeaver.log";   // Must match AppConstants.LogFileName in qbPortWeaver
     private  const int    PipeErrorRetryDelayMs = 1000;
 
@@ -62,7 +62,7 @@ internal sealed class HelperPipeServer(ILogger<HelperPipeServer> logger) : Backg
         // The pipe ACL grants ReadWrite to all authenticated users so the standard-user
         // qbPortWeaver client can send commands to this SYSTEM-level helper service.
         using var pipe = NamedPipeServerStreamAcl.Create(
-            PipeName,
+            HelperServicePipeName,
             PipeDirection.In,
             maxNumberOfServerInstances: 1,
             PipeTransmissionMode.Byte,

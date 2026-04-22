@@ -155,8 +155,8 @@ namespace qbPortWeaver
             // Set debug mode as early as possible (reads fresh from registry each loop)
             LogManager.Instance.DebugMode = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionExtra, RegistrySettingsManager.KeyDebugMode);
 
-            var cfg = ReadConfig();
-            LogConfigDebug(cfg);
+            var (cfg, activeSection) = ReadConfig();
+            LogConfigDebug(cfg, activeSection);
             status[StatusKeys.VpnProvider]           = cfg.VpnProvider;
             status[StatusKeys.UpdateIntervalSeconds] = cfg.UpdateInterval;
 
@@ -222,7 +222,7 @@ namespace qbPortWeaver
             }
 
             using var manager = CreateBitTorrentClient(cfg);
-            var (forceStart, restart) = GetClientRestartConfig(cfg);
+            var (forceStart, restart) = GetClientRestartConfig(cfg, activeSection);
 
             await EnsureRunningAndUpdatePortAsync(manager, targetPort,
                 new SyncConfig(
@@ -239,7 +239,7 @@ namespace qbPortWeaver
         }
 
         // Reads all configuration values from the registry into a single AppConfig record
-        private static AppConfig ReadConfig()
+        private static (AppConfig Config, string ActiveSection) ReadConfig()
         {
             int updateInterval = RegistrySettingsManager.GetInt(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyUpdateIntervalSeconds);
             if (updateInterval < AppConstants.MinUpdateIntervalSeconds) updateInterval = AppConstants.DefaultUpdateIntervalSeconds;
@@ -248,10 +248,10 @@ namespace qbPortWeaver
 
             // Read DefaultPort from the active client's section so each client can have its own fallback port
             string bitTorrentClient = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyBitTorrentClient);
-            string defaultPortSection = GetActiveClientSection(bitTorrentClient);
-            int defaultPort = RegistrySettingsManager.GetInt(defaultPortSection, RegistrySettingsManager.KeyDefaultPort);
+            string activeSection = GetActiveClientSection(bitTorrentClient);
+            int defaultPort = RegistrySettingsManager.GetInt(activeSection, RegistrySettingsManager.KeyDefaultPort);
 
-            return new AppConfig(
+            return (new AppConfig(
                 VpnProvider:               RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral,      RegistrySettingsManager.KeyVpnProvider),
                 NatPmpAdapterName:         RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral,      RegistrySettingsManager.KeyNatPmpAdapterName),
                 UpdateInterval:            updateInterval,
@@ -282,12 +282,12 @@ namespace qbPortWeaver
                 PostUpdateCommand:         RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionExtra,        RegistrySettingsManager.KeyPostUpdateCmd),
                 AutoRecoveryEnabled:       RegistrySettingsManager.GetBool (RegistrySettingsManager.SectionGeneral,      RegistrySettingsManager.KeyAutoRecoveryEnabled),
                 AutoRecoveryTriggerCycles: autoRecoveryTriggerCycles
-            );
+            ), activeSection);
         }
 
         // Dumps the active AppConfig to the log file when debug mode is enabled.
         // Three lines (general / active client / extra) keep each section independently greppable.
-        private static void LogConfigDebug(AppConfig cfg)
+        private static void LogConfigDebug(AppConfig cfg, string activeSection)
         {
             if (!LogManager.Instance.DebugMode) return;
 
@@ -298,8 +298,6 @@ namespace qbPortWeaver
                 $"{RegistrySettingsManager.KeyAutoRecoveryEnabled}={cfg.AutoRecoveryEnabled}, " +
                 $"{RegistrySettingsManager.KeyAutoRecoveryTriggerCycles}={cfg.AutoRecoveryTriggerCycles}, " +
                 $"{RegistrySettingsManager.KeyBitTorrentClient}={cfg.BitTorrentClient}");
-
-            string activeSection = GetActiveClientSection(cfg.BitTorrentClient);
 
             if (activeSection == RegistrySettingsManager.SectionTransmission)
                 LogManager.Instance.LogDebug(
@@ -664,8 +662,8 @@ namespace qbPortWeaver
             return RegistrySettingsManager.SectionQBittorrent;
         }
 
-        private static (bool ForceStart, bool Restart) GetClientRestartConfig(AppConfig cfg) =>
-            GetActiveClientSection(cfg.BitTorrentClient) switch
+        private static (bool ForceStart, bool Restart) GetClientRestartConfig(AppConfig cfg, string activeSection) =>
+            activeSection switch
             {
                 RegistrySettingsManager.SectionTransmission => (cfg.ForceStartTransmission, cfg.RestartTransmission),
                 RegistrySettingsManager.SectionDeluge       => (cfg.ForceStartDeluge,       cfg.RestartDeluge),

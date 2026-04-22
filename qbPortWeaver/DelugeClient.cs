@@ -12,7 +12,7 @@ namespace qbPortWeaver
         private const string RpcPath           = "/json";
 
         private readonly string _password;
-        private int _nextId = 1;
+        private int _rpcId = 1;
 
         /// <inheritdoc/>
         public override string ClientName => "Deluge";
@@ -38,7 +38,7 @@ namespace qbPortWeaver
 
             try
             {
-                var body = $$$"""{"method":"core.get_config_values","params":[["listen_ports","random_port","listen_random_port","listen_interface"]],"id":{{{_nextId++}}}}""";
+                var body = $$$"""{"method":"core.get_config_values","params":[["listen_ports","random_port","listen_random_port","listen_interface"]],"id":{{{_rpcId++}}}}""";
                 using var content  = new StringContent(body, Encoding.UTF8, "application/json");
                 using var response = await _httpClient.PostAsync($"{_url}{RpcPath}", content).ConfigureAwait(false);
 
@@ -85,7 +85,7 @@ namespace qbPortWeaver
             {
                 // Disable UPnP and NAT-PMP alongside the port change to prevent Deluge's
                 // built-in port mapping from overwriting the externally managed port.
-                var body = $$$"""{"method":"core.set_config","params":[{"listen_ports":[{{{port}}},{{{port}}}],"random_port":false,"upnp":false,"natpmp":false}],"id":{{{_nextId++}}}}""";
+                var body = $$$"""{"method":"core.set_config","params":[{"listen_ports":[{{{port}}},{{{port}}}],"random_port":false,"upnp":false,"natpmp":false}],"id":{{{_rpcId++}}}}""";
                 using var content  = new StringContent(body, Encoding.UTF8, "application/json");
                 using var response = await _httpClient.PostAsync($"{_url}{RpcPath}", content).ConfigureAwait(false);
 
@@ -151,7 +151,7 @@ namespace qbPortWeaver
             {
                 // Use JsonSerializer to safely embed the password as a JSON string literal
                 string encodedPassword = JsonSerializer.Serialize(_password);
-                var body = $$$"""{"method":"auth.login","params":[{{{encodedPassword}}}],"id":{{{_nextId++}}}}""";
+                var body = $$$"""{"method":"auth.login","params":[{{{encodedPassword}}}],"id":{{{_rpcId++}}}}""";
                 using var content  = new StringContent(body, Encoding.UTF8, "application/json");
                 using var response = await _httpClient.PostAsync($"{_url}{RpcPath}", content).ConfigureAwait(false);
 

@@ -20,34 +20,27 @@ internal static partial class AutoRecovery
 
     internal static async Task RestartServiceAsync(string serviceName, HelperLogger logger)
     {
-        try
+        if (string.IsNullOrWhiteSpace(serviceName))
         {
-            if (string.IsNullOrWhiteSpace(serviceName))
-            {
-                logger.LogWarn("Service name is empty - nothing to restart");
-                return;
-            }
-
-            logger.LogInfo($"Restarting service '{serviceName}'");
-
-            try { await StopServiceAsync(serviceName, logger).ConfigureAwait(false); }
-            catch (Exception ex) { logger.LogWarn($"Failed to stop service '{serviceName}': {ex.Message}"); }
-
-            await Task.Delay(ServiceRestartDelayMs).ConfigureAwait(false);
-
-            try { await StartServiceAsync(serviceName, logger).ConfigureAwait(false); }
-            catch (Exception ex)
-            {
-                logger.LogError($"Failed to start service '{serviceName}': {ex.Message}");
-                return;
-            }
-
-            logger.LogInfo($"Restarted service '{serviceName}'");
+            logger.LogWarn("Service name is empty - nothing to restart");
+            return;
         }
+
+        logger.LogInfo($"Restarting service '{serviceName}'");
+
+        try { await StopServiceAsync(serviceName, logger).ConfigureAwait(false); }
+        catch (Exception ex) { logger.LogWarn($"Failed to stop service '{serviceName}': {ex.Message}"); }
+
+        await Task.Delay(ServiceRestartDelayMs).ConfigureAwait(false);
+
+        try { await StartServiceAsync(serviceName, logger).ConfigureAwait(false); }
         catch (Exception ex)
         {
-            logger.LogError($"Failed to restart service '{serviceName}': {ex.Message}");
+            logger.LogError($"Failed to start service '{serviceName}': {ex.Message}");
+            return;
         }
+
+        logger.LogInfo($"Restarted service '{serviceName}'");
     }
 
     // Cycles a network adapter by disabling and re-enabling it via netsh.

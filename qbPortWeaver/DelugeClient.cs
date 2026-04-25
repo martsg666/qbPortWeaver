@@ -49,8 +49,8 @@ namespace qbPortWeaver
                 }
 
                 var json = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
-                using var doc  = JsonDocument.Parse(json);
-                var root       = doc.RootElement;
+                using var doc = JsonDocument.Parse(json);
+                var root = doc.RootElement;
 
                 if (!root.TryGetProperty("result", out var result) || result.ValueKind == JsonValueKind.Null)
                 {
@@ -64,8 +64,8 @@ namespace qbPortWeaver
                     LogManager.Instance.LogDebug("DelugeClient.GetPreferencesAsync: listen port not parsed in RPC response");
 
                 string? bindAddress = null;
-                if (result.TryGetProperty("listen_interface", out var ifaceEl))
-                    bindAddress = ifaceEl.GetString();
+                if (result.TryGetProperty("listen_interface", out var ifaceElement))
+                    bindAddress = ifaceElement.GetString();
 
                 return (listenPort, bindAddress);
             }
@@ -123,28 +123,6 @@ namespace qbPortWeaver
         protected override Task PreRestartAsync(CancellationToken cancellationToken) =>
             Task.Delay(ConfigFlushWaitMs, cancellationToken);
 
-        private static int? ParseListenPort(JsonElement result)
-        {
-            bool randomPort = result.TryGetProperty("random_port", out var randomPortEl) &&
-                              randomPortEl.ValueKind == JsonValueKind.True;
-
-            if (randomPort)
-            {
-                if (result.TryGetProperty("listen_random_port", out var randomPortValEl) &&
-                    randomPortValEl.TryGetInt32(out int parsed))
-                    return parsed;
-            }
-            else
-            {
-                if (result.TryGetProperty("listen_ports", out var listenPortsEl) &&
-                    listenPortsEl.ValueKind == JsonValueKind.Array &&
-                    listenPortsEl.GetArrayLength() > 0 &&
-                    listenPortsEl[0].TryGetInt32(out int parsed))
-                    return parsed;
-            }
-            return null;
-        }
-
         protected override async Task<bool> AuthenticateAsync()
         {
             try
@@ -162,8 +140,8 @@ namespace qbPortWeaver
                 }
 
                 var json = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
-                using var doc  = JsonDocument.Parse(json);
-                var root       = doc.RootElement;
+                using var doc = JsonDocument.Parse(json);
+                var root = doc.RootElement;
 
                 if (root.TryGetProperty("error", out var error) && error.ValueKind != JsonValueKind.Null)
                 {
@@ -182,6 +160,28 @@ namespace qbPortWeaver
                 LogHttpException("AuthenticateAsync", ex);
                 return false;
             }
+        }
+
+        private static int? ParseListenPort(JsonElement result)
+        {
+            bool randomPort = result.TryGetProperty("random_port", out var randomPortElement) &&
+                              randomPortElement.ValueKind == JsonValueKind.True;
+
+            if (randomPort)
+            {
+                if (result.TryGetProperty("listen_random_port", out var randomPortValElement) &&
+                    randomPortValElement.TryGetInt32(out int parsed))
+                    return parsed;
+            }
+            else
+            {
+                if (result.TryGetProperty("listen_ports", out var listenPortsElement) &&
+                    listenPortsElement.ValueKind == JsonValueKind.Array &&
+                    listenPortsElement.GetArrayLength() > 0 &&
+                    listenPortsElement[0].TryGetInt32(out int parsed))
+                    return parsed;
+            }
+            return null;
         }
     }
 }

@@ -212,8 +212,24 @@ namespace qbPortWeaver
             prgScan.Style   = ProgressBarStyle.Blocks;
             prgScan.Maximum = total;
             prgScan.Value   = 0;
-            int done = 0;
 
+            int done = await RematchTvShowRowsAsync(tmdb, tvShowLib, tvShowRows, createFolders, total, 0, ct);
+            if (IsDisposed) return null;
+            await RematchMovieRowsAsync(tmdb, moviesLib, movieRows, createFolders, total, done, ct);
+            if (IsDisposed) return null;
+
+            dgvResults.Refresh(); // force full repaint so CellFormatting fires for all visible cells
+            int verified = tvShowRows.Count(r => ((RowData)r.Tag!).Confidence == RowConfidence.Confident)
+                         + movieRows.Count(r => ((RowData)r.Tag!).Confidence == RowConfidence.Confident);
+            return verified == total
+                ? "Re-match complete - all rows verified."
+                : $"Re-match complete - {verified}/{total} rows verified.";
+        }
+
+        // Re-matches TV show rows grouped by show name. Returns updated done count.
+        private async Task<int> RematchTvShowRowsAsync(TmdbClient tmdb, string tvShowLib,
+            List<DataGridViewRow> tvShowRows, bool createFolders, int total, int done, CancellationToken ct)
+        {
             foreach (var (showKey, showRows) in GroupTvShowRowsByShow(tvShowRows))
             {
                 ct.ThrowIfCancellationRequested();
@@ -222,18 +238,24 @@ namespace qbPortWeaver
                     : await SearchTmdbByPlexNameAsync<TvShowInfo>(showKey, tmdb.SearchTvShowAsync, i => i.Title, i => i.Year, i => i.VoteCount, "TV show");
                 foreach (var row in showRows)
                 {
-                    if (IsDisposed) return null;
+                    if (IsDisposed) return done;
                     if (showInfo is not null)
                         ApplyTvRematchResult(row, showInfo, tvShowLib, createFolders, showConfident);
                     prgScan.Value      = Math.Min(++done, prgScan.Maximum);
                     lblScanStatus.Text = $"Re-matching\u2026 {done}/{total}";
                 }
             }
+            return done;
+        }
 
+        // Re-matches movie rows individually. Returns updated done count.
+        private async Task<int> RematchMovieRowsAsync(TmdbClient tmdb, string moviesLib,
+            List<DataGridViewRow> movieRows, bool createFolders, int total, int done, CancellationToken ct)
+        {
             foreach (var row in movieRows)
             {
                 ct.ThrowIfCancellationRequested();
-                if (IsDisposed) return null;
+                if (IsDisposed) return done;
                 if (!string.IsNullOrWhiteSpace(moviesLib))
                 {
                     var editedName = row.Cells[colProposed.Index].Value?.ToString() ?? string.Empty;
@@ -244,15 +266,7 @@ namespace qbPortWeaver
                 prgScan.Value      = Math.Min(++done, prgScan.Maximum);
                 lblScanStatus.Text = $"Re-matching\u2026 {done}/{total}";
             }
-
-            if (IsDisposed) return null;
-
-            dgvResults.Refresh(); // force full repaint so CellFormatting fires for all visible cells
-            int verified = tvShowRows.Count(r => ((RowData)r.Tag!).Confidence == RowConfidence.Confident)
-                         + movieRows.Count(r => ((RowData)r.Tag!).Confidence == RowConfidence.Confident);
-            return verified == total
-                ? "Re-match complete - all rows verified."
-                : $"Re-match complete - {verified}/{total} rows verified.";
+            return done;
         }
 
         // Returns uncertain/unmatched rows of the given media type.
@@ -584,7 +598,7 @@ namespace qbPortWeaver
         {
             var oldCts = _thumbnailCts;
             _thumbnailCts = null;
-            oldCts?.Cancel();
+            if (oldCts is not null) await oldCts.CancelAsync();
             oldCts?.Dispose();
 
             if (dgvResults.SelectedRows.Count == 0 || dgvResults.SelectedRows[0].Tag is not RowData rd)

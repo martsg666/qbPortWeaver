@@ -24,8 +24,10 @@ namespace qbPortWeaver
         {
             InitializeComponent();
             lblTitle.Text      = $"What's New in {AppConstants.AppVersion}";
-            lnkCommunity.Text  = CommunityText;
-            lblFeatures.Text   = ReleaseFeaturesText;
+            lnkCommunity.Text     = CommunityText;
+            rtbFeatures.Font      = Font;
+            rtbFeatures.ForeColor = ForeColor;
+            rtbFeatures.Text      = ReleaseFeaturesText;
             Text               = $"{AppConstants.AppName} | What's New";
 
             // Set the link region to cover only "star it on GitHub" within the full sentence.
@@ -38,7 +40,11 @@ namespace qbPortWeaver
                 lnkCommunity.LinkArea = new(linkStart, linkText.Length);
 
             if (AppConstants.IsDarkModeEnabled())
+            {
                 lnkCommunity.LinkColor = Color.CornflowerBlue;
+                rtbFeatures.BackColor  = Color.FromArgb(30, 30, 30);
+                rtbFeatures.ForeColor  = Color.Gainsboro;
+            }
         }
 
         private void btnClose_Click(object? sender, EventArgs e) => Close();

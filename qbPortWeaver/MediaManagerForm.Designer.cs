@@ -53,12 +53,19 @@ namespace qbPortWeaver
             colType        = new DataGridViewTextBoxColumn();
             colCurrent     = new DataGridViewTextBoxColumn();
             colProposed    = new DataGridViewTextBoxColumn();
+            pnlTmdbDetail    = new Panel();
+            picTmdbPoster    = new PictureBox();
+            lblTmdbTitle     = new Label();
+            lblTmdbMeta      = new Label();
+            lblTmdbConfidence = new Label();
             btnOK          = new Button();
             btnCancel      = new Button();
             grpGeneral.SuspendLayout();
             grpLibrary.SuspendLayout();
             grpSourceFolders.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)dgvResults).BeginInit();
+            pnlTmdbDetail.SuspendLayout();
+            ((System.ComponentModel.ISupportInitialize)picTmdbPoster).BeginInit();
             SuspendLayout();
             // ── grpGeneral ────────────────────────────────────────────────
             grpGeneral.Controls.Add(chkEnabled);
@@ -283,6 +290,7 @@ namespace qbPortWeaver
             dgvResults.CellEndEdit             += dgvResults_CellEndEdit;
             dgvResults.ColumnHeaderMouseClick  += dgvResults_ColumnHeaderMouseClick;
             dgvResults.KeyDown                 += dgvResults_KeyDown;
+            dgvResults.SelectionChanged        += dgvResults_SelectionChanged;
             colInclude.FillWeight   = 5;
             colInclude.HeaderText   = "";
             colInclude.MinimumWidth = 30;
@@ -305,9 +313,44 @@ namespace qbPortWeaver
             colProposed.MinimumWidth = 100;
             colProposed.Name         = "colProposed";
             colProposed.SortMode     = DataGridViewColumnSortMode.Automatic;
+            // ── TMDB detail panel ─────────────────────────────────────────
+            pnlTmdbDetail.Controls.Add(picTmdbPoster);
+            pnlTmdbDetail.Controls.Add(lblTmdbTitle);
+            pnlTmdbDetail.Controls.Add(lblTmdbMeta);
+            pnlTmdbDetail.Controls.Add(lblTmdbConfidence);
+            pnlTmdbDetail.Anchor      = AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
+            pnlTmdbDetail.BorderStyle = BorderStyle.FixedSingle;
+            pnlTmdbDetail.Location    = new Point(8, 739);
+            pnlTmdbDetail.Name        = "pnlTmdbDetail";
+            pnlTmdbDetail.Size        = new Size(684, 110);
+            pnlTmdbDetail.TabIndex    = 15;
+            picTmdbPoster.Location    = new Point(8, 8);
+            picTmdbPoster.Name        = "picTmdbPoster";
+            picTmdbPoster.Size        = new Size(67, 94);
+            picTmdbPoster.SizeMode    = PictureBoxSizeMode.Zoom;
+            picTmdbPoster.TabIndex    = 0;
+            picTmdbPoster.TabStop     = false;
+            picTmdbPoster.Visible     = false;
+            lblTmdbTitle.Anchor       = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+            lblTmdbTitle.Font         = new System.Drawing.Font(Font.FontFamily, Font.Size, System.Drawing.FontStyle.Bold);
+            lblTmdbTitle.Location     = new Point(84, 10);
+            lblTmdbTitle.Name         = "lblTmdbTitle";
+            lblTmdbTitle.Size         = new Size(590, 20);
+            lblTmdbTitle.TabIndex     = 1;
+            lblTmdbMeta.Anchor        = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+            lblTmdbMeta.Location      = new Point(84, 36);
+            lblTmdbMeta.Name          = "lblTmdbMeta";
+            lblTmdbMeta.Size          = new Size(590, 18);
+            lblTmdbMeta.TabIndex      = 2;
+            lblTmdbMeta.ForeColor     = SystemColors.GrayText;
+            lblTmdbConfidence.Anchor  = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+            lblTmdbConfidence.Location = new Point(84, 62);
+            lblTmdbConfidence.Name    = "lblTmdbConfidence";
+            lblTmdbConfidence.Size    = new Size(590, 18);
+            lblTmdbConfidence.TabIndex = 3;
             // ── Buttons ───────────────────────────────────────────────────
             btnOK.Anchor   = AnchorStyles.Bottom | AnchorStyles.Right;
-            btnOK.Location = new Point(520, 744);
+            btnOK.Location = new Point(520, 856);
             btnOK.Name     = "btnOK";
             btnOK.Size     = new Size(82, 28);
             btnOK.TabIndex = 13;
@@ -315,7 +358,7 @@ namespace qbPortWeaver
             btnOK.Click   += btnOK_Click;
             btnCancel.DialogResult = DialogResult.Cancel;
             btnCancel.Anchor       = AnchorStyles.Bottom | AnchorStyles.Right;
-            btnCancel.Location     = new Point(610, 744);
+            btnCancel.Location     = new Point(610, 856);
             btnCancel.Name         = "btnCancel";
             btnCancel.Size         = new Size(82, 28);
             btnCancel.TabIndex     = 14;
@@ -326,7 +369,7 @@ namespace qbPortWeaver
             AutoScaleDimensions = new SizeF(7F, 15F);
             AutoScaleMode       = AutoScaleMode.Font;
             CancelButton        = btnCancel;
-            ClientSize          = new Size(700, 783);
+            ClientSize          = new Size(700, 895);
             Controls.Add(grpGeneral);
             Controls.Add(grpLibrary);
             Controls.Add(grpSourceFolders);
@@ -340,6 +383,7 @@ namespace qbPortWeaver
             Controls.Add(lblLegendUnmatched);
             Controls.Add(prgScan);
             Controls.Add(dgvResults);
+            Controls.Add(pnlTmdbDetail);
             Controls.Add(btnOK);
             Controls.Add(btnCancel);
             FormBorderStyle = FormBorderStyle.Sizable;
@@ -355,6 +399,8 @@ namespace qbPortWeaver
             grpLibrary.PerformLayout();
             grpSourceFolders.ResumeLayout(false);
             ((System.ComponentModel.ISupportInitialize)dgvResults).EndInit();
+            pnlTmdbDetail.ResumeLayout(false);
+            ((System.ComponentModel.ISupportInitialize)picTmdbPoster).EndInit();
             ResumeLayout(false);
         }
 
@@ -395,6 +441,12 @@ namespace qbPortWeaver
         private DataGridViewTextBoxColumn colType;
         private DataGridViewTextBoxColumn colCurrent;
         private DataGridViewTextBoxColumn colProposed;
+
+        private Panel      pnlTmdbDetail;
+        private PictureBox picTmdbPoster;
+        private Label      lblTmdbTitle;
+        private Label      lblTmdbMeta;
+        private Label      lblTmdbConfidence;
 
         private Button btnOK;
         private Button btnCancel;

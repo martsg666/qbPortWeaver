@@ -26,7 +26,7 @@
          S2486 - same as S108, SonarCloud cloud rule counterpart (AppConstants.cs, BitTorrentClientBase.cs, TransmissionClient.cs)
          S3881 - abstract base class; all sealed subclasses have no additional disposable resources (BitTorrentClientBase.cs)
          S4721 - post-update command is user-configured, arbitrary execution is intended (PortSyncService.cs)
-         S4790 - TMDB API v3 requires key as query parameter, HTTPS only (TmdbClient.cs)
+         S4790 - TMDB credential sent over HTTPS only; v3 API key in query param, v4 JWT as Bearer header (TmdbClient.cs)
          S6966 - non-modal Show() is intentional for WhatsNewForm and UpdateAvailableForm (MainForm.cs) -->
     <NoWarn>S108;S1075;S2068;S2221;S2486;S3881;S4721;S4790;S6966</NoWarn>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>

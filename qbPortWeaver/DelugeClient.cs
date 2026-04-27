@@ -123,6 +123,7 @@ namespace qbPortWeaver
         protected override Task PreRestartAsync(CancellationToken cancellationToken) =>
             Task.Delay(ConfigFlushWaitMs, cancellationToken);
 
+        /// <inheritdoc/>
         protected override async Task<bool> AuthenticateAsync()
         {
             try

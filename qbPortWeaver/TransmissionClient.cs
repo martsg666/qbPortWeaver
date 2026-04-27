@@ -113,14 +113,14 @@ namespace qbPortWeaver
                 using var doc = JsonDocument.Parse(json);
                 var root = doc.RootElement;
 
-                if (!root.TryGetProperty("arguments", out var args))
+                if (!root.TryGetProperty("arguments", out var argsElement))
                 {
                     LogManager.Instance.LogDebug("TransmissionClient.GetPreferencesAsync: 'arguments' key missing from RPC response");
                     return (null, null);
                 }
 
                 int? listenPort = null;
-                if (args.TryGetProperty("peer-port", out var portElement) &&
+                if (argsElement.TryGetProperty("peer-port", out var portElement) &&
                     portElement.TryGetInt32(out int parsed))
                     listenPort = parsed;
 
@@ -128,7 +128,7 @@ namespace qbPortWeaver
                     LogManager.Instance.LogDebug("TransmissionClient.GetPreferencesAsync: peer-port not parsed in RPC response");
 
                 string? bindAddress = null;
-                if (args.TryGetProperty("bind-address-ipv4", out var addrElement))
+                if (argsElement.TryGetProperty("bind-address-ipv4", out var addrElement))
                     bindAddress = addrElement.GetString();
 
                 return (listenPort, bindAddress);
@@ -184,6 +184,7 @@ namespace qbPortWeaver
             _sessionId = null;
         }
 
+        /// <inheritdoc/>
         // Transmission uses X-Transmission-Session-Id header exchange in SendRpcAsync instead of a login step.
         protected override Task<bool> AuthenticateAsync() => Task.FromResult(true);
 
@@ -285,7 +286,8 @@ namespace qbPortWeaver
                 if (!response.Headers.TryGetValues(SessionIdHeader, out var values))
                 {
                     LogManager.Instance.LogMessage($"{ClientName} returned 409 without a session ID header", LogLevel.Error);
-                    return response;
+                    response.Dispose();
+                    return null;
                 }
 
                 _sessionId = values.First();

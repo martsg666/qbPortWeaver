@@ -363,6 +363,7 @@ internal static partial class AutoRecovery
                 // netsh is a short-lived system utility that always responds to Process.Kill -
                 // no taskkill fallback needed here.
                 process.Kill(entireProcessTree: true);
+                process.WaitForExit(ProcessKillTimeoutMs);
                 logger.LogWarn("netsh timed out and was killed");
                 return false;
             }

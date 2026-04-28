@@ -9,6 +9,7 @@ namespace qbPortWeaver
 
         private enum RowConfidence { Confident, Uncertain, Unmatched }
         private sealed record RowData(RowConfidence Confidence, MediaProposal Proposal);
+        private readonly record struct TmdbMatch(string? PosterPath, int? TmdbId, int VoteCount, string? Overview);
 
         private CancellationTokenSource? _scanCts;
         private CancellationTokenSource? _thumbnailCts;
@@ -331,20 +332,20 @@ namespace qbPortWeaver
             }
 
             var proposedPath = TvShowProcessor.BuildEpisodePath(editedName, info, episodeInfo, tvShowLib, createFolders);
-            UpdateRow(row, proposedPath, Path.GetFileName(proposedPath), isConfident, info.PosterPath, info.TmdbId, info.VoteCount, info.Overview);
+            UpdateRow(row, proposedPath, Path.GetFileName(proposedPath), isConfident, new TmdbMatch(info.PosterPath, info.TmdbId, info.VoteCount, info.Overview));
         }
 
         private void ApplyMovieRematchResult(DataGridViewRow row, MovieInfo info, string moviesLib, bool createFolders, string editedName, bool isConfident)
         {
             var proposedPath = MovieProcessor.BuildStandaloneMoviePath(editedName, info, moviesLib, createFolders);
-            UpdateRow(row, proposedPath, Path.GetFileName(proposedPath), isConfident, info.PosterPath, info.TmdbId, info.VoteCount, info.Overview);
+            UpdateRow(row, proposedPath, Path.GetFileName(proposedPath), isConfident, new TmdbMatch(info.PosterPath, info.TmdbId, info.VoteCount, info.Overview));
         }
 
-        private void UpdateRow(DataGridViewRow row, string proposedPath, string displayName, bool isConfident, string? posterPath = null, int? tmdbId = null, int voteCount = 0, string? overview = null)
+        private void UpdateRow(DataGridViewRow row, string proposedPath, string displayName, bool isConfident, TmdbMatch match = default)
         {
             var original   = ((RowData)row.Tag!).Proposal;
             var confidence = isConfident ? RowConfidence.Confident : RowConfidence.Uncertain;
-            row.Tag = new RowData(confidence, original with { ProposedPath = proposedPath, IsMatched = true, IsConfident = isConfident, PosterPath = posterPath, TmdbId = tmdbId, VoteCount = voteCount, Overview = overview });
+            row.Tag = new RowData(confidence, original with { ProposedPath = proposedPath, IsMatched = true, IsConfident = isConfident, PosterPath = match.PosterPath, TmdbId = match.TmdbId, VoteCount = match.VoteCount, Overview = match.Overview });
             row.Cells[colProposed.Index].Value = displayName;
         }
 

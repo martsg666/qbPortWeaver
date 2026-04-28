@@ -12,7 +12,7 @@ namespace qbPortWeaver
         private const string RpcPath           = "/json";
 
         private readonly string _password;
-        private int _nextId = 1;
+        private int _rpcId = 1;
 
         /// <inheritdoc/>
         public override string ClientName => "Deluge";
@@ -38,7 +38,7 @@ namespace qbPortWeaver
 
             try
             {
-                var body = $$$"""{"method":"core.get_config_values","params":[["listen_ports","random_port","listen_random_port","listen_interface"]],"id":{{{_nextId++}}}}""";
+                var body = $$$"""{"method":"core.get_config_values","params":[["listen_ports","random_port","listen_random_port","listen_interface"]],"id":{{{_rpcId++}}}}""";
                 using var content  = new StringContent(body, Encoding.UTF8, "application/json");
                 using var response = await _httpClient.PostAsync($"{_url}{RpcPath}", content).ConfigureAwait(false);
 
@@ -49,8 +49,8 @@ namespace qbPortWeaver
                 }
 
                 var json = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
-                using var doc  = JsonDocument.Parse(json);
-                var root       = doc.RootElement;
+                using var doc = JsonDocument.Parse(json);
+                var root = doc.RootElement;
 
                 if (!root.TryGetProperty("result", out var result) || result.ValueKind == JsonValueKind.Null)
                 {
@@ -64,8 +64,8 @@ namespace qbPortWeaver
                     LogManager.Instance.LogDebug("DelugeClient.GetPreferencesAsync: listen port not parsed in RPC response");
 
                 string? bindAddress = null;
-                if (result.TryGetProperty("listen_interface", out var ifaceEl))
-                    bindAddress = ifaceEl.GetString();
+                if (result.TryGetProperty("listen_interface", out var ifaceElement))
+                    bindAddress = ifaceElement.GetString();
 
                 return (listenPort, bindAddress);
             }
@@ -85,7 +85,7 @@ namespace qbPortWeaver
             {
                 // Disable UPnP and NAT-PMP alongside the port change to prevent Deluge's
                 // built-in port mapping from overwriting the externally managed port.
-                var body = $$$"""{"method":"core.set_config","params":[{"listen_ports":[{{{port}}},{{{port}}}],"random_port":false,"upnp":false,"natpmp":false}],"id":{{{_nextId++}}}}""";
+                var body = $$$"""{"method":"core.set_config","params":[{"listen_ports":[{{{port}}},{{{port}}}],"random_port":false,"upnp":false,"natpmp":false}],"id":{{{_rpcId++}}}}""";
                 using var content  = new StringContent(body, Encoding.UTF8, "application/json");
                 using var response = await _httpClient.PostAsync($"{_url}{RpcPath}", content).ConfigureAwait(false);
 
@@ -123,35 +123,14 @@ namespace qbPortWeaver
         protected override Task PreRestartAsync(CancellationToken cancellationToken) =>
             Task.Delay(ConfigFlushWaitMs, cancellationToken);
 
-        private static int? ParseListenPort(JsonElement result)
-        {
-            bool randomPort = result.TryGetProperty("random_port", out var randomPortEl) &&
-                              randomPortEl.ValueKind == JsonValueKind.True;
-
-            if (randomPort)
-            {
-                if (result.TryGetProperty("listen_random_port", out var randomPortValEl) &&
-                    randomPortValEl.TryGetInt32(out int parsed))
-                    return parsed;
-            }
-            else
-            {
-                if (result.TryGetProperty("listen_ports", out var listenPortsEl) &&
-                    listenPortsEl.ValueKind == JsonValueKind.Array &&
-                    listenPortsEl.GetArrayLength() > 0 &&
-                    listenPortsEl[0].TryGetInt32(out int parsed))
-                    return parsed;
-            }
-            return null;
-        }
-
+        /// <inheritdoc/>
         protected override async Task<bool> AuthenticateAsync()
         {
             try
             {
                 // Use JsonSerializer to safely embed the password as a JSON string literal
                 string encodedPassword = JsonSerializer.Serialize(_password);
-                var body = $$$"""{"method":"auth.login","params":[{{{encodedPassword}}}],"id":{{{_nextId++}}}}""";
+                var body = $$$"""{"method":"auth.login","params":[{{{encodedPassword}}}],"id":{{{_rpcId++}}}}""";
                 using var content  = new StringContent(body, Encoding.UTF8, "application/json");
                 using var response = await _httpClient.PostAsync($"{_url}{RpcPath}", content).ConfigureAwait(false);
 
@@ -162,8 +141,8 @@ namespace qbPortWeaver
                 }
 
                 var json = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
-                using var doc  = JsonDocument.Parse(json);
-                var root       = doc.RootElement;
+                using var doc = JsonDocument.Parse(json);
+                var root = doc.RootElement;
 
                 if (root.TryGetProperty("error", out var error) && error.ValueKind != JsonValueKind.Null)
                 {
@@ -182,6 +161,28 @@ namespace qbPortWeaver
                 LogHttpException("AuthenticateAsync", ex);
                 return false;
             }
+        }
+
+        private static int? ParseListenPort(JsonElement result)
+        {
+            bool randomPort = result.TryGetProperty("random_port", out var randomPortElement) &&
+                              randomPortElement.ValueKind == JsonValueKind.True;
+
+            if (randomPort)
+            {
+                if (result.TryGetProperty("listen_random_port", out var randomPortValElement) &&
+                    randomPortValElement.TryGetInt32(out int parsed))
+                    return parsed;
+            }
+            else
+            {
+                if (result.TryGetProperty("listen_ports", out var listenPortsElement) &&
+                    listenPortsElement.ValueKind == JsonValueKind.Array &&
+                    listenPortsElement.GetArrayLength() > 0 &&
+                    listenPortsElement[0].TryGetInt32(out int parsed))
+                    return parsed;
+            }
+            return null;
         }
     }
 }

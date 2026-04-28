@@ -6,8 +6,8 @@ namespace qbPortWeaver
     public sealed class PiaVpnManager : IVpnManager
     {
         internal static string GetServiceSearchTerm() => RegistrySettingsManager.GetAppValue(RegistrySettingsManager.KeyPiaServiceSearchTerm);
-        internal static string GetAdapterName()       => RegistrySettingsManager.GetAppValue(RegistrySettingsManager.KeyPiaAdapterName);
         internal static string GetClientProcessName() => RegistrySettingsManager.GetAppValue(RegistrySettingsManager.KeyPiaClientProcessName);
+        internal static string GetAdapterName()       => RegistrySettingsManager.GetAppValue(RegistrySettingsManager.KeyPiaAdapterName);
         private  static string GetPiactlProcessName() => RegistrySettingsManager.GetAppValue(RegistrySettingsManager.KeyPiactlProcessName);
         private const int    ProcessTimeoutMs = 5000;
 
@@ -58,7 +58,8 @@ namespace qbPortWeaver
         public bool IsAdapterMatch(string interfaceName)
             => interfaceName.Contains(GetAdapterName(), StringComparison.OrdinalIgnoreCase);
 
-        internal static string? FindServiceName() => AppConstants.FindServiceName(GetServiceSearchTerm());
+        internal static string? FindServiceName()     => AppConstants.FindServiceName(GetServiceSearchTerm());
+        internal static string? GetClientExePath()    => AppConstants.ResolveServiceExePath(ref _clientExePathCache, GetClientProcessName() + ".exe", FindServiceName, "PiaVpnManager.GetClientExePath");
 
         private static int? GetVpnPortCore()
         {
@@ -132,7 +133,6 @@ namespace qbPortWeaver
             }
         }
 
-        private static string? GetPiactlPath()    => AppConstants.ResolveServiceExePath(ref _piactlPathCache,    GetPiactlProcessName() + ".exe", FindServiceName, "PiaVpnManager.GetPiactlPath");
-        internal static string? GetClientExePath() => AppConstants.ResolveServiceExePath(ref _clientExePathCache, GetClientProcessName() + ".exe", FindServiceName, "PiaVpnManager.GetClientExePath");
+        private static string? GetPiactlPath() => AppConstants.ResolveServiceExePath(ref _piactlPathCache, GetPiactlProcessName() + ".exe", FindServiceName, "PiaVpnManager.GetPiactlPath");
     }
 }

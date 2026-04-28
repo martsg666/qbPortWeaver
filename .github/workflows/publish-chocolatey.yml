@@ -69,7 +69,7 @@ jobs:
           $version = $env:RELEASE_VERSION
           $nupkg   = "qbportweaver.$version.nupkg"
 
-          gh release download $tag --pattern $nupkg --dir .
+          gh release download $tag --repo $env:GITHUB_REPOSITORY --pattern $nupkg --dir .
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
           if (-not (Test-Path $nupkg)) { throw "nupkg not found after download: $nupkg" }

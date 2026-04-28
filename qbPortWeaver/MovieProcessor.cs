@@ -88,7 +88,7 @@ namespace qbPortWeaver
             if (MediaImporter.IsDuplicateFile(filePath, proposedPath)) return;
 
             if (!string.Equals(filePath, proposedPath, StringComparison.OrdinalIgnoreCase))
-                proposals.Add(new MediaProposal(MediaProposal.TypeMovie, filePath, proposedPath, isConfident));
+                proposals.Add(new MediaProposal(MediaProposal.TypeMovie, filePath, proposedPath, isConfident, PosterPath: info.PosterPath, TmdbId: info.TmdbId, VoteCount: info.VoteCount, Overview: info.Overview));
         }
 
         // Shared opening logic for folder-dependent scan and process methods: validates the file list,
@@ -130,7 +130,7 @@ namespace qbPortWeaver
                 if (MediaImporter.IsDuplicateFile(file, proposedPath)) continue;
 
                 if (!string.Equals(file, proposedPath, StringComparison.OrdinalIgnoreCase))
-                    proposals.Add(new MediaProposal(MediaProposal.TypeMovie, file, proposedPath, isConfident));
+                    proposals.Add(new MediaProposal(MediaProposal.TypeMovie, file, proposedPath, isConfident, PosterPath: info.PosterPath, TmdbId: info.TmdbId, VoteCount: info.VoteCount, Overview: info.Overview));
             }
         }
 
@@ -244,32 +244,12 @@ namespace qbPortWeaver
             if (TmdbCacheManager.TryGetMovie(cacheKey, out var cached))
                 return cached;
 
-            var result = await LookupMovieAsync(title, year).ConfigureAwait(false);
+            var result = await TmdbClient.LookupAsync(title, year,
+                tmdb.SearchMovieAsync, i => i.Year is not null, i => i.Title, i => i.VoteCount, "movie").ConfigureAwait(false);
+            if (result.Info is not null)
+                LogManager.Instance.LogDebug($"MovieProcessor.GetOrLookupMovieAsync: Matched '{result.Info.Title}' ({result.Info.Year}) [tmdb-{result.Info.TmdbId}]", Subsystem.MediaManager);
             TmdbCacheManager.TryAddMovie(cacheKey, result);
             return result;
-        }
-
-        private async Task<(MovieInfo? Info, bool IsConfident)> LookupMovieAsync(string title, int? year)
-        {
-            try
-            {
-                var (info, isConfident) = await TmdbClient.SearchWithConfidenceAsync(
-                    title, year, tmdb.SearchMovieAsync, i => i.Year is not null, i => i.Title, i => i.VoteCount).ConfigureAwait(false);
-
-                if (info is null)
-                {
-                    LogManager.Instance.LogMessage($"No TMDB match found for movie '{title}'", LogLevel.Warn, Subsystem.MediaManager);
-                    return (null, false);
-                }
-
-                LogManager.Instance.LogDebug($"MovieProcessor.LookupMovieAsync: Matched '{info.Title}' ({info.Year}) [tmdb-{info.TmdbId}]", Subsystem.MediaManager);
-                return (info, isConfident);
-            }
-            catch (HttpRequestException ex)
-            {
-                LogManager.Instance.LogMessage($"Failed to look up TMDB movie: {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
-                return (null, false);
-            }
         }
 
         // Detects multi-part suffixes such as "cd1", "pt2", "disc3" and returns the normalised token.

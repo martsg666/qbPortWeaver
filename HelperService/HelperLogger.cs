@@ -10,9 +10,9 @@ namespace qbPortWeaver.HelperService;
 /// </summary>
 internal sealed class HelperLogger(string logFilePath)
 {
-    // Must match LogManager.Subsystem.HelperService and LogManager.Subsystem.MaxLength in qbPortWeaver
-    private const string SubsystemName        = "HelperService";
-    private const int    SubsystemColumnWidth = 13;
+    // Must match Subsystem.HelperService and Subsystem.MaxLength in qbPortWeaver
+    private const string SubsystemName   = "HelperService";
+    private const int    SubsystemMaxLength = 13;
     private const int    WriteMaxAttempts     = 3;
     private const int    WriteRetryDelayMs    = 50;
 
@@ -22,7 +22,7 @@ internal sealed class HelperLogger(string logFilePath)
 
     private void WriteLog(string message, string paddedLevel)
     {
-        string entry = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} | {paddedLevel} | {SubsystemName.PadRight(SubsystemColumnWidth)} | {message}{Environment.NewLine}";
+        string entry = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} | {paddedLevel} | {SubsystemName.PadRight(SubsystemMaxLength)} | {message}{Environment.NewLine}";
         for (int attempt = 0; attempt < WriteMaxAttempts; attempt++)
         {
             try

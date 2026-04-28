@@ -65,7 +65,7 @@ The sync cycle instantiates a provider-specific `IVpnManager` based on the confi
 | PIA        | `PiaVpnManager`    | Runs `piactl get portforward` and parses stdout |
 | NAT-PMP    | `NatPmpManager`    | Sends a UDP port mapping request (RFC 6886) to the gateway |
 
-Unknown provider values fall back to ProtonVPN with a warning. `Disabled` is the default for new installations.
+`Disabled` is the default for new installations.
 
 ### NAT-PMP Manager Creation
 
@@ -285,13 +285,13 @@ MediaManagerService.ImportAsync / ScanAsync
  ├─ ProcessSourceFolderAsync / ScanSourceFolderAsync (per folder, concurrent)
  │   ├─ MovieProcessor.ProcessMoviesAsync / ScanMoviesAsync
  │   │   ├─ ClassifyVideoFiles (self-describing vs folder-dependent)
- │   │   ├─ GetOrLookupMovieAsync → LookupMovieAsync
- │   │   │   └─ TmdbClient.SearchWithConfidenceAsync (confidence tracking + fallback strategies)
+ │   │   ├─ GetOrLookupMovieAsync
+ │   │   │   └─ TmdbClient.LookupAsync → SearchWithConfidenceAsync (confidence tracking + fallback strategies)
  │   │   └─ MediaManagerService.ImportFile / MediaProposal
  │   └─ TvShowProcessor.ProcessTvShowsAsync / ScanTvShowsAsync
  │       ├─ FileNameParser.ParseTvShowEpisode (per file)
- │       ├─ GetOrLookupTvShowAsync → LookupTvShowAsync
- │       │   └─ TmdbClient.SearchWithConfidenceAsync (confidence tracking + fallback strategies)
+ │       ├─ GetOrLookupTvShowAsync
+ │       │   └─ TmdbClient.LookupAsync → SearchWithConfidenceAsync (confidence tracking + fallback strategies)
  │       └─ MediaManagerService.ImportFile / MediaProposal
  │
  ├─ TmdbCacheManager.Save

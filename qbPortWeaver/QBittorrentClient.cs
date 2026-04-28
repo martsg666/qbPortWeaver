@@ -142,6 +142,7 @@ namespace qbPortWeaver
             }
         }
 
+        /// <inheritdoc/>
         protected override async Task<bool> AuthenticateAsync()
         {
             try

@@ -17,9 +17,12 @@ namespace qbPortWeaver
         private const string RpcPath        = "/transmission/rpc";
         private const string SessionIdHeader = "X-Transmission-Session-Id";
 
+        private readonly string _userName;
         private string? _sessionId;
-        private string? _resolvedServiceName; // lazily discovered via search term
-        private bool    _serviceNameResolved;
+        // Cached service name; null = not found, string.Empty = not yet resolved.
+        // Static so the SCM enumeration persists across sync-cycle instances.
+        // Mirrors the caching pattern used by ProtonVpnManager and PiaVpnManager.
+        private static string? _resolvedServiceName = string.Empty;
 
         /// <inheritdoc/>
         public override string ClientName => "Transmission";
@@ -39,6 +42,7 @@ namespace qbPortWeaver
         public TransmissionClient(string url, string userName, string password, string processName, string exePath)
             : base(url, processName, exePath, CreateBasicAuthHttpClient(userName, password))
         {
+            _userName = userName;
         }
 
         /// <inheritdoc/>
@@ -97,7 +101,7 @@ namespace qbPortWeaver
 
                 if (response.StatusCode == HttpStatusCode.Unauthorized)
                 {
-                    LogManager.Instance.LogMessage($"{ClientName} authentication failed: wrong username or password - check the credentials in Settings", LogLevel.Error);
+                    LogManager.Instance.LogMessage($"{ClientName} authentication failed: wrong username or password (username: '{_userName}') - check the credentials in Settings", LogLevel.Error);
                     return (null, null);
                 }
 
@@ -111,14 +115,14 @@ namespace qbPortWeaver
                 using var doc = JsonDocument.Parse(json);
                 var root = doc.RootElement;
 
-                if (!root.TryGetProperty("arguments", out var args))
+                if (!root.TryGetProperty("arguments", out var argsElement))
                 {
                     LogManager.Instance.LogDebug("TransmissionClient.GetPreferencesAsync: 'arguments' key missing from RPC response");
                     return (null, null);
                 }
 
                 int? listenPort = null;
-                if (args.TryGetProperty("peer-port", out var portElement) &&
+                if (argsElement.TryGetProperty("peer-port", out var portElement) &&
                     portElement.TryGetInt32(out int parsed))
                     listenPort = parsed;
 
@@ -126,7 +130,7 @@ namespace qbPortWeaver
                     LogManager.Instance.LogDebug("TransmissionClient.GetPreferencesAsync: peer-port not parsed in RPC response");
 
                 string? bindAddress = null;
-                if (args.TryGetProperty("bind-address-ipv4", out var addrElement))
+                if (argsElement.TryGetProperty("bind-address-ipv4", out var addrElement))
                     bindAddress = addrElement.GetString();
 
                 return (listenPort, bindAddress);
@@ -182,6 +186,7 @@ namespace qbPortWeaver
             _sessionId = null;
         }
 
+        /// <inheritdoc/>
         // Transmission uses X-Transmission-Session-Id header exchange in SendRpcAsync instead of a login step.
         protected override Task<bool> AuthenticateAsync() => Task.FromResult(true);
 
@@ -283,7 +288,8 @@ namespace qbPortWeaver
                 if (!response.Headers.TryGetValues(SessionIdHeader, out var values))
                 {
                     LogManager.Instance.LogMessage($"{ClientName} returned 409 without a session ID header", LogLevel.Error);
-                    return response;
+                    response.Dispose();
+                    return null;
                 }
 
                 _sessionId = values.First();
@@ -342,10 +348,9 @@ namespace qbPortWeaver
         }
 
         // Lazily discovers and caches the Transmission Windows service name via the configured search term.
-        private string? GetEffectiveServiceName()
+        private static string? GetEffectiveServiceName()
         {
-            if (_serviceNameResolved) return _resolvedServiceName;
-            _serviceNameResolved = true;
+            if (_resolvedServiceName != string.Empty) return _resolvedServiceName;
             _resolvedServiceName = AppConstants.FindServiceName(RegistrySettingsManager.GetAppValue(RegistrySettingsManager.KeyTransmissionServiceSearchTerm));
             return _resolvedServiceName;
         }

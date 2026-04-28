@@ -16,14 +16,33 @@ namespace qbPortWeaver.HelperService;
 /// </summary>
 internal sealed class HelperPipeServer(ILogger<HelperPipeServer> logger) : BackgroundService
 {
-    internal const string PipeName              = "qbPortWeaverHelper"; // Must match AppConstants.HelperServicePipeName in qbPortWeaver
+    internal const string HelperServicePipeName  = "qbPortWeaverHelper"; // Must match AppConstants.HelperServicePipeName in qbPortWeaver
     private  const string ExpectedLogFileName   = "qbPortWeaver.log";   // Must match AppConstants.LogFileName in qbPortWeaver
     private  const int    PipeErrorRetryDelayMs = 1000;
 
     private const string ActionRestart      = "restart";       // Must match HelperServiceClient.ActionRestart in qbPortWeaver
     private const string ActionCycleAdapter = "cycle-adapter"; // Must match HelperServiceClient.ActionCycleAdapter in qbPortWeaver
 
-    private static readonly PipeSecurity PipeSecurity = CreatePipeSecurity();
+    private static readonly PipeSecurity PipeSecurity  = CreatePipeSecurity();
+    private static readonly string       UsersRoot      = GetUsersRoot();
+
+    // Resolved once at startup: ProfilesDirectory is a system constant that never changes at runtime.
+    private static string GetUsersRoot()
+    {
+        string profilesDir;
+        try
+        {
+            profilesDir = (Registry.GetValue(
+                @"HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList",
+                "ProfilesDirectory", null) as string) ?? @"%SystemDrive%\Users";
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Security.SecurityException)
+        {
+            System.Diagnostics.Debug.WriteLine($"HelperPipeServer: Could not read ProfilesDirectory from registry - using default. {ex.Message}");
+            profilesDir = @"%SystemDrive%\Users";
+        }
+        return Path.GetFullPath(Environment.ExpandEnvironmentVariables(profilesDir));
+    }
 
     private static PipeSecurity CreatePipeSecurity()
     {
@@ -62,7 +81,7 @@ internal sealed class HelperPipeServer(ILogger<HelperPipeServer> logger) : Backg
         // The pipe ACL grants ReadWrite to all authenticated users so the standard-user
         // qbPortWeaver client can send commands to this SYSTEM-level helper service.
         using var pipe = NamedPipeServerStreamAcl.Create(
-            PipeName,
+            HelperServicePipeName,
             PipeDirection.In,
             maxNumberOfServerInstances: 1,
             PipeTransmissionMode.Byte,
@@ -95,12 +114,8 @@ internal sealed class HelperPipeServer(ILogger<HelperPipeServer> logger) : Backg
         // that the path is rooted under the Windows user profiles directory, and that it
         // falls within the expected app data subfolder.
         logFilePath = Path.GetFullPath(logFilePath);
-        var profilesDir = (Registry.GetValue(
-            @"HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList",
-            "ProfilesDirectory", null) as string) ?? @"%SystemDrive%\Users";
-        var usersRoot = Path.GetFullPath(Environment.ExpandEnvironmentVariables(profilesDir));
         if (!Path.GetFileName(logFilePath).Equals(ExpectedLogFileName, StringComparison.OrdinalIgnoreCase)
-            || !logFilePath.StartsWith(usersRoot + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)
+            || !logFilePath.StartsWith(UsersRoot + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)
             || logFilePath.IndexOf(@"\AppData\Local\qbPortWeaver\", StringComparison.OrdinalIgnoreCase) < 0)
         {
             logger.LogWarning("Rejected unexpected log file path '{Path}'", logFilePath);
@@ -154,9 +169,14 @@ internal sealed class HelperPipeServer(ILogger<HelperPipeServer> logger) : Backg
         var current = filePath;
         while (true)
         {
-            if ((File.Exists(current) || Directory.Exists(current))
-                && (File.GetAttributes(current) & FileAttributes.ReparsePoint) != 0)
-                return true;
+            try
+            {
+                if ((File.GetAttributes(current) & FileAttributes.ReparsePoint) != 0)
+                    return true;
+            }
+            catch (FileNotFoundException) { /* path component doesn't exist - not a reparse point */ }
+            catch (IOException)              { return true; } // can't verify - reject conservatively
+            catch (UnauthorizedAccessException) { return true; }
 
             var parent = Path.GetDirectoryName(current);
             if (parent is null || parent == current) break; // reached drive root

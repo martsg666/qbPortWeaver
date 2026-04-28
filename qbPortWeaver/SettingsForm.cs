@@ -431,7 +431,13 @@ namespace qbPortWeaver
             }
             catch (Exception ex)
             {
+                if (IsDisposed) return;
                 LogManager.Instance.LogDebug($"SettingsForm.PopulateNatPmpAdaptersAsync: {ex.Message}");
+                cboNatPmpAdapter.Items.Clear();
+                cboNatPmpAdapter.Items.Add(NoAdaptersFoundPlaceholder);
+                cboNatPmpAdapter.SelectedIndex = 0;
+                bool isNatPmp = cboVpnProvider.SelectedItem?.ToString() == RegistrySettingsManager.VpnProviderNatPmp;
+                SetAdapterControlsEnabled(isNatPmp);
             }
         }
     }

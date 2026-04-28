@@ -234,11 +234,9 @@ namespace qbPortWeaver
                 }
             }, cancellationToken);
 
-        /// <summary>
-        /// Deletes subdirectories of <paramref name="rootFolder"/> that are empty or contain only <c>.nfo</c> files.
-        /// Walks bottom-up so nested empty folders are cleaned in a single pass. The root folder itself is never deleted.
-        /// </summary>
-        public static void CleanupEmptyFolders(string rootFolder, bool dryRun)
+        // Deletes subdirectories of rootFolder that are empty or contain only .nfo files.
+        // Walks bottom-up so nested empty folders are cleaned in a single pass. The root folder itself is never deleted.
+        internal static void CleanupEmptyFolders(string rootFolder, bool dryRun)
         {
             if (!Directory.Exists(rootFolder)) return;
 

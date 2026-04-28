@@ -36,7 +36,7 @@ namespace qbPortWeaver
             public const int EM_SETSCROLLPOS = 0x04DE;
         }
 
-        private LogViewerForm() : this(string.Empty) { } // designer support only
+        public LogViewerForm() : this(string.Empty) { } // designer support only
 
         public LogViewerForm(string logFilePath)
         {

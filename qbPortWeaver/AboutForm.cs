@@ -121,7 +121,10 @@ namespace qbPortWeaver
             finally
             {
                 if (!IsDisposed)
+                {
                     btnCheckForUpdates.Enabled = true;
+                    btnCheckForUpdates.Text    = "Check for Updates";
+                }
             }
         }
 

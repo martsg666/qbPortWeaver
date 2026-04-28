@@ -21,6 +21,12 @@ namespace qbPortWeaver
         // Sends a pipe-delimited command to the helper service: action|target|logFilePath
         private static async Task SendAsync(string action, string target)
         {
+            if (target.Contains('|'))
+            {
+                LogManager.Instance.LogMessage($"Cannot send '{action}' request: target '{target}' contains an invalid character", LogLevel.Warn);
+                return;
+            }
+
             try
             {
                 using var pipe = new NamedPipeClientStream(".", AppConstants.HelperServicePipeName, PipeDirection.Out);

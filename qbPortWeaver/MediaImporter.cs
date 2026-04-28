@@ -149,27 +149,35 @@ namespace qbPortWeaver
             }
 
             var targetDir = Path.GetDirectoryName(destinationPath);
-            if (!string.IsNullOrEmpty(targetDir))
-                Directory.CreateDirectory(targetDir);
-
-            switch (importMode)
+            try
             {
-                case ImportMode.Hardlink:
-                    ImportWithHardlink(sourcePath, destinationPath);
-                    break;
+                if (!string.IsNullOrEmpty(targetDir))
+                    Directory.CreateDirectory(targetDir);
 
-                case ImportMode.Copy:
-                    File.Copy(sourcePath, destinationPath, overwrite: false);
-                    LogManager.Instance.LogDebug($"MediaImporter.AddFileToLibrary: Copied '{Path.GetFileName(destinationPath)}'", Subsystem.MediaManager);
-                    break;
+                switch (importMode)
+                {
+                    case ImportMode.Hardlink:
+                        ImportWithHardlink(sourcePath, destinationPath);
+                        break;
 
-                case ImportMode.Move:
-                    File.Move(sourcePath, destinationPath);
-                    LogManager.Instance.LogDebug($"MediaImporter.AddFileToLibrary: Moved '{Path.GetFileName(destinationPath)}'", Subsystem.MediaManager);
-                    break;
+                    case ImportMode.Copy:
+                        File.Copy(sourcePath, destinationPath, overwrite: false);
+                        LogManager.Instance.LogDebug($"MediaImporter.AddFileToLibrary: Copied '{Path.GetFileName(destinationPath)}'", Subsystem.MediaManager);
+                        break;
 
-                default:
-                    throw new ArgumentOutOfRangeException(nameof(importMode), importMode, "Unsupported import mode");
+                    case ImportMode.Move:
+                        File.Move(sourcePath, destinationPath);
+                        LogManager.Instance.LogDebug($"MediaImporter.AddFileToLibrary: Moved '{Path.GetFileName(destinationPath)}'", Subsystem.MediaManager);
+                        break;
+
+                    default:
+                        throw new ArgumentOutOfRangeException(nameof(importMode), importMode, "Unsupported import mode");
+                }
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or PathTooLongException)
+            {
+                LogManager.Instance.LogMessage($"Failed to import '{Path.GetFileName(sourcePath)}': {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
+                return;
             }
 
             AddToLibraryIndex(destinationPath);
@@ -500,7 +508,7 @@ namespace qbPortWeaver
                     }
                 }
             }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
             {
                 LogManager.Instance.LogDebug($"MediaImporter.AddToLibraryIndex: Could not index '{Path.GetFileName(importedFilePath)}': {ex.Message}", Subsystem.MediaManager);
             }

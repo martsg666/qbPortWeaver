@@ -13,6 +13,9 @@ namespace qbPortWeaver.HelperService;
 internal static partial class AutoRecovery
 {
     private const int ProcessKillTimeoutMs      = 5000;
+    // Delay between stop and start. AutoRecoveryManager.ServiceHeadStartDelayMs in the tray app
+    // must remain larger than this plus service startup time so the client process is not
+    // relaunched before the VPN service is ready.
     private const int ServiceRestartDelayMs     = 5000;
     private const int ServiceOperationTimeoutMs = 15000;
     private const int AdapterCycleDelayMs       = 3000;
@@ -20,34 +23,27 @@ internal static partial class AutoRecovery
 
     internal static async Task RestartServiceAsync(string serviceName, HelperLogger logger)
     {
-        try
+        if (string.IsNullOrWhiteSpace(serviceName))
         {
-            if (string.IsNullOrWhiteSpace(serviceName))
-            {
-                logger.LogWarn("Service name is empty - nothing to restart");
-                return;
-            }
-
-            logger.LogInfo($"Restarting service '{serviceName}'");
-
-            try { await StopServiceAsync(serviceName, logger).ConfigureAwait(false); }
-            catch (Exception ex) { logger.LogWarn($"Failed to stop service '{serviceName}': {ex.Message}"); }
-
-            await Task.Delay(ServiceRestartDelayMs).ConfigureAwait(false);
-
-            try { await StartServiceAsync(serviceName, logger).ConfigureAwait(false); }
-            catch (Exception ex)
-            {
-                logger.LogError($"Failed to start service '{serviceName}': {ex.Message}");
-                return;
-            }
-
-            logger.LogInfo($"Restarted service '{serviceName}'");
+            logger.LogWarn("Service name is empty - nothing to restart");
+            return;
         }
+
+        logger.LogInfo($"Restarting service '{serviceName}'");
+
+        try { await StopServiceAsync(serviceName, logger).ConfigureAwait(false); }
+        catch (Exception ex) { logger.LogWarn($"Failed to stop service '{serviceName}': {ex.Message}"); }
+
+        await Task.Delay(ServiceRestartDelayMs).ConfigureAwait(false);
+
+        try { await StartServiceAsync(serviceName, logger).ConfigureAwait(false); }
         catch (Exception ex)
         {
-            logger.LogError($"Failed to restart service '{serviceName}': {ex.Message}");
+            logger.LogError($"Failed to start service '{serviceName}': {ex.Message}");
+            return;
         }
+
+        logger.LogInfo($"Restarted service '{serviceName}'");
     }
 
     // Cycles a network adapter by disabling and re-enabling it via netsh.
@@ -257,6 +253,8 @@ internal static partial class AutoRecovery
     {
         try
         {
+            if (sc.ServiceHandle.IsInvalid) return;
+
             int    bufSize = Marshal.SizeOf<ServiceStatusProcess>();
             IntPtr buf     = Marshal.AllocHGlobal(bufSize);
             try
@@ -370,6 +368,7 @@ internal static partial class AutoRecovery
                 // netsh is a short-lived system utility that always responds to Process.Kill -
                 // no taskkill fallback needed here.
                 process.Kill(entireProcessTree: true);
+                process.WaitForExit(ProcessKillTimeoutMs);
                 logger.LogWarn("netsh timed out and was killed");
                 return false;
             }

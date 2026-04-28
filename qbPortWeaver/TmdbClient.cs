@@ -1,4 +1,5 @@
 using System.Net.Http.Json;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace qbPortWeaver
@@ -19,10 +20,24 @@ namespace qbPortWeaver
         // Serialises concurrent requests to enforce the rate limit
         private static readonly SemaphoreSlim _rateLimiter = new(1, 1);
 
+        // v4 Read Access Tokens are JWTs (start with "eyJ", contain dots); v3 API keys are 32-char hex strings.
+        // Both work on v3 endpoints but use different auth: v3 passes the key as a query param,
+        // v4 sends it as an Authorization: Bearer header.
+        private readonly bool _useBearer = apiKey.StartsWith("eyJ", StringComparison.Ordinal) && apiKey.Contains('.');
+
+        private const string TmdbImageBaseUrl = "https://image.tmdb.org/t/p/w92"; // NOSONAR S1075 - fixed TMDB image CDN base, not a configurable path
+
+        private static readonly HttpClient _imageHttpClient = new()
+        {
+            Timeout = TimeSpan.FromSeconds(AppConstants.HttpTimeoutSeconds)
+        };
+
         /// <summary>Searches for a movie by title and optional year. Returns the best match, or null if none found.</summary>
         public async Task<MovieInfo?> SearchMovieAsync(string query, int? year = null)
         {
-            var url = $"search/movie?api_key={apiKey}&query={Uri.EscapeDataString(query)}&language=en-US&page=1"; // NOSONAR S4790 - TMDB API v3 requires the key as a query parameter; transmitted over HTTPS only
+            var url = _useBearer // NOSONAR S4790 - key transmitted over HTTPS only; v3 in query param, v4 in Authorization header
+                ? $"search/movie?query={Uri.EscapeDataString(query)}&language=en-US&page=1"
+                : $"search/movie?api_key={apiKey}&query={Uri.EscapeDataString(query)}&language=en-US&page=1";
             if (year.HasValue)
                 url += $"&year={year.Value}";
 
@@ -31,13 +46,15 @@ namespace qbPortWeaver
             if (result is null)
                 return null;
 
-            return new MovieInfo(result.Title, ParseYearFromDate(result.ReleaseDate), result.Id, result.VoteCount);
+            return new MovieInfo(result.Title, ParseYearFromDate(result.ReleaseDate), result.Id, result.VoteCount, result.PosterPath, result.Overview);
         }
 
         /// <summary>Searches for a TV show by title and optional first-air year. Returns the best match, or null if none found.</summary>
         public async Task<TvShowInfo?> SearchTvShowAsync(string query, int? year = null)
         {
-            var url = $"search/tv?api_key={apiKey}&query={Uri.EscapeDataString(query)}&language=en-US&page=1"; // NOSONAR S4790 - TMDB API v3 requires the key as a query parameter; transmitted over HTTPS only
+            var url = _useBearer // NOSONAR S4790 - key transmitted over HTTPS only; v3 in query param, v4 in Authorization header
+                ? $"search/tv?query={Uri.EscapeDataString(query)}&language=en-US&page=1"
+                : $"search/tv?api_key={apiKey}&query={Uri.EscapeDataString(query)}&language=en-US&page=1";
             if (year.HasValue)
                 url += $"&first_air_date_year={year.Value}";
 
@@ -46,7 +63,23 @@ namespace qbPortWeaver
             if (result is null)
                 return null;
 
-            return new TvShowInfo(result.Name, ParseYearFromDate(result.FirstAirDate), result.Id, result.VoteCount);
+            return new TvShowInfo(result.Name, ParseYearFromDate(result.FirstAirDate), result.Id, result.VoteCount, result.PosterPath, result.Overview);
+        }
+
+        /// <summary>Downloads a TMDB poster image by its path. Returns null on failure or cancellation.</summary>
+        internal static async Task<Image?> FetchPosterAsync(string posterPath, CancellationToken ct)
+        {
+            try
+            {
+                var bytes = await _imageHttpClient.GetByteArrayAsync($"{TmdbImageBaseUrl}{posterPath}", ct).ConfigureAwait(false);
+                using var ms  = new MemoryStream(bytes);
+                using var src = Image.FromStream(ms);
+                return new Bitmap(src); // copy to break stream dependency
+            }
+            catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException)
+            {
+                return null;
+            }
         }
 
         // Extracts the year from a TMDB date string (format "YYYY-MM-DD"), or null if the string is missing or malformed.
@@ -87,13 +120,53 @@ namespace qbPortWeaver
             return (info, isConfident);
         }
 
+        /// <summary>
+        /// Performs a TMDB lookup with confidence tracking, handling "no match" logging and HTTP/timeout errors.
+        /// Shared by both processors so the error handling and log format live in one place.
+        /// </summary>
+        internal static async Task<(T? Info, bool IsConfident)> LookupAsync<T>(
+            string title, int? year,
+            Func<string, int?, Task<T?>> search,
+            Func<T, bool> hasYear,
+            Func<T, string> getTitle,
+            Func<T, int> getVoteCount,
+            string mediaKind) where T : class
+        {
+            try
+            {
+                var (info, isConfident) = await SearchWithConfidenceAsync(
+                    title, year, search, hasYear, getTitle, getVoteCount).ConfigureAwait(false);
+
+                if (info is null)
+                {
+                    LogManager.Instance.LogMessage($"No TMDB match found for {mediaKind} '{title}'", LogLevel.Warn, Subsystem.MediaManager);
+                    return (null, false);
+                }
+
+                return (info, isConfident);
+            }
+            catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException)
+            {
+                LogManager.Instance.LogMessage($"Failed to look up TMDB {mediaKind}: {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
+                return (null, false);
+            }
+        }
+
         // Enforces a minimum delay between TMDB API calls to avoid HTTP 429 rate limiting.
         // The delay runs inside the semaphore hold so the next caller waits for the cooldown to finish.
-        private static async Task<T?> GetWithRateLimitAsync<T>(string url)
+        private async Task<T?> GetWithRateLimitAsync<T>(string url)
         {
             await _rateLimiter.WaitAsync().ConfigureAwait(false);
             try
             {
+                if (_useBearer)
+                {
+                    using var request  = new HttpRequestMessage(HttpMethod.Get, url);
+                    request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", apiKey);
+                    using var response = await _httpClient.SendAsync(request).ConfigureAwait(false);
+                    response.EnsureSuccessStatusCode();
+                    return await response.Content.ReadFromJsonAsync<T>().ConfigureAwait(false);
+                }
                 return await _httpClient.GetFromJsonAsync<T>(url).ConfigureAwait(false);
             }
             finally
@@ -165,11 +238,11 @@ namespace qbPortWeaver
         }
     }
 
-    /// <summary>TMDB title, release year, database ID, and vote count for a movie.</summary>
-    public sealed record MovieInfo(string Title, int? Year, int TmdbId, int VoteCount = 0);
+    /// <summary>TMDB title, release year, database ID, vote count, poster path, and overview for a movie.</summary>
+    public sealed record MovieInfo(string Title, int? Year, int TmdbId, int VoteCount = 0, string? PosterPath = null, string? Overview = null);
 
-    /// <summary>TMDB title, first-air year, database ID, and vote count for a TV show.</summary>
-    public sealed record TvShowInfo(string Title, int? Year, int TmdbId, int VoteCount = 0);
+    /// <summary>TMDB title, first-air year, database ID, vote count, poster path, and overview for a TV show.</summary>
+    public sealed record TvShowInfo(string Title, int? Year, int TmdbId, int VoteCount = 0, string? PosterPath = null, string? Overview = null);
 
     // TMDB API response shapes - only used for deserialization
     internal sealed record TmdbMovieSearchResult(
@@ -179,7 +252,9 @@ namespace qbPortWeaver
         [property: JsonPropertyName("id")]           int     Id,
         [property: JsonPropertyName("title")]        string  Title,
         [property: JsonPropertyName("release_date")] string? ReleaseDate,
-        [property: JsonPropertyName("vote_count")]   int     VoteCount = 0);
+        [property: JsonPropertyName("vote_count")]   int     VoteCount    = 0,
+        [property: JsonPropertyName("poster_path")]  string? PosterPath   = null,
+        [property: JsonPropertyName("overview")]     string? Overview     = null);
 
     internal sealed record TmdbTvSearchResult(
         [property: JsonPropertyName("results")] List<TmdbTvShow>? Results);
@@ -188,5 +263,7 @@ namespace qbPortWeaver
         [property: JsonPropertyName("id")]             int     Id,
         [property: JsonPropertyName("name")]           string  Name,
         [property: JsonPropertyName("first_air_date")] string? FirstAirDate,
-        [property: JsonPropertyName("vote_count")]     int     VoteCount = 0);
+        [property: JsonPropertyName("vote_count")]     int     VoteCount    = 0,
+        [property: JsonPropertyName("poster_path")]    string? PosterPath   = null,
+        [property: JsonPropertyName("overview")]       string? Overview     = null);
 }

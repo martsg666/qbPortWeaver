@@ -5,6 +5,13 @@ namespace qbPortWeaver
         [STAThread]
         static void Main()
         {
+            // Route UI-thread event-handler exceptions through Application.ThreadException instead
+            // of the OS crash dialog. Must be called before ApplicationConfiguration.Initialize().
+            Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
+            Application.ThreadException += OnThreadException;
+            AppDomain.CurrentDomain.UnhandledException += OnUnhandledException;
+            TaskScheduler.UnobservedTaskException += OnUnobservedTaskException;
+
             Application.SetColorMode(ReadColorTheme());
             ApplicationConfiguration.Initialize();
 
@@ -28,6 +35,25 @@ namespace qbPortWeaver
                 return;
             }
             Application.Run(new MainForm());
+        }
+
+        private static void OnThreadException(object sender, ThreadExceptionEventArgs e)
+        {
+            if (LogManager.IsInitialized)
+                LogManager.Instance.LogMessage($"Unhandled UI thread exception: {e.Exception}", LogLevel.Error);
+        }
+
+        private static void OnUnhandledException(object sender, UnhandledExceptionEventArgs e)
+        {
+            if (LogManager.IsInitialized)
+                LogManager.Instance.LogMessage($"Unhandled exception (IsTerminating={e.IsTerminating}): {e.ExceptionObject}", LogLevel.Error);
+        }
+
+        private static void OnUnobservedTaskException(object? sender, UnobservedTaskExceptionEventArgs e)
+        {
+            e.SetObserved(); // prevent process termination on .NET 4+ where unobserved task exceptions are fatal
+            if (LogManager.IsInitialized)
+                LogManager.Instance.LogMessage($"Unobserved task exception: {e.Exception}", LogLevel.Error);
         }
 
         // Reads the color theme setting directly from the registry before LogManager is initialized.

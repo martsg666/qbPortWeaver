@@ -17,8 +17,8 @@ namespace qbPortWeaver
             "Deluge connects via its Web UI JSON-RPC API. A configurable flush wait ensures the port change is written to disk before restart.\n\n" +
             "Media Manager - TMDB detail panel\n" +
             "Selecting a result row in Media Manager now shows a detail panel at the bottom of the window with the matched title, " +
-            "TMDB ID, confidence indicator, and a poster thumbnail.\n\n" +
-            "Note: if you have used Media Manager before, click Clear Cache once to populate poster thumbnails for previously cached titles.";
+            "TMDB ID, confidence indicator, a poster thumbnail, and an overview description.\n\n" +
+            "Note: if you have used Media Manager before, click Clear Cache once to populate poster thumbnails and descriptions for previously cached titles.";
 
         private bool _isDarkMode;
 

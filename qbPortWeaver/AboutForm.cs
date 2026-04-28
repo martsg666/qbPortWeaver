@@ -5,6 +5,7 @@ namespace qbPortWeaver
     {
         // Set to the release URL when an update is available; null when up-to-date or not yet checked
         private string? _releaseUrl;
+        private bool    _isDarkMode;
 
         public AboutForm()
         {
@@ -20,7 +21,8 @@ namespace qbPortWeaver
         protected override void OnLoad(EventArgs e)
         {
             base.OnLoad(e);
-            if (AppConstants.IsDarkModeEnabled())
+            _isDarkMode = AppConstants.IsDarkModeEnabled();
+            if (_isDarkMode)
             {
                 lnkAuthor.LinkColor = Color.CornflowerBlue;
                 lnkGitHub.LinkColor = Color.CornflowerBlue;
@@ -102,14 +104,14 @@ namespace qbPortWeaver
                     if (info.IsNewer)
                     {
                         lblStatusValue.Text      = "Update available";
-                        lblStatusValue.ForeColor = Color.DarkOrange;
+                        lblStatusValue.ForeColor = _isDarkMode ? Color.Orange : Color.DarkOrange;
                         btnCheckForUpdates.Text  = "Update";
                         _releaseUrl              = info.ReleaseUrl;
                     }
                     else
                     {
                         lblStatusValue.Text      = "Up to date";
-                        lblStatusValue.ForeColor = Color.Green;
+                        lblStatusValue.ForeColor = _isDarkMode ? Color.LimeGreen : Color.Green;
                         btnCheckForUpdates.Text  = "Check for Updates";
                     }
                 }

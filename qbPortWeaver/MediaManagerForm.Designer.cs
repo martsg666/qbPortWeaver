@@ -354,7 +354,6 @@ namespace qbPortWeaver
             rtbTmdbOverview.Anchor    = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
             rtbTmdbOverview.BackColor = SystemColors.Control;
             rtbTmdbOverview.BorderStyle = BorderStyle.None;
-            rtbTmdbOverview.ForeColor = SystemColors.GrayText;
             rtbTmdbOverview.Location  = new Point(84, 58);
             rtbTmdbOverview.Name      = "rtbTmdbOverview";
             rtbTmdbOverview.ReadOnly  = true;

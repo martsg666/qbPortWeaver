@@ -20,15 +20,15 @@ namespace qbPortWeaver
             "TMDB ID, confidence indicator, and a poster thumbnail.\n\n" +
             "Note: if you have used Media Manager before, click Clear Cache once to populate poster thumbnails for previously cached titles.";
 
+        private bool _isDarkMode;
+
         public WhatsNewForm()
         {
             InitializeComponent();
-            lblTitle.Text      = $"What's New in {AppConstants.AppVersion}";
+            lblTitle.Text         = $"What's New in {AppConstants.AppVersion}";
             lnkCommunity.Text     = CommunityText;
-            rtbFeatures.Font      = Font;
-            rtbFeatures.ForeColor = ForeColor;
             rtbFeatures.Text      = ReleaseFeaturesText;
-            Text               = $"{AppConstants.AppName} | What's New";
+            Text                  = $"{AppConstants.AppName} | What's New";
 
             // Set the link region to cover only "star it on GitHub" within the full sentence.
             // Debug.Assert catches a mismatch between linkText and CommunityText at development
@@ -38,11 +38,18 @@ namespace qbPortWeaver
             System.Diagnostics.Debug.Assert(linkStart >= 0, $"WhatsNewForm: link text '{linkText}' not found in CommunityText");
             if (linkStart >= 0)
                 lnkCommunity.LinkArea = new(linkStart, linkText.Length);
+        }
 
-            if (AppConstants.IsDarkModeEnabled())
+        protected override void OnLoad(EventArgs e)
+        {
+            base.OnLoad(e);
+            _isDarkMode           = AppConstants.IsDarkModeEnabled();
+            rtbFeatures.Font      = Font;
+            rtbFeatures.ForeColor = ForeColor;
+            if (_isDarkMode)
             {
                 lnkCommunity.LinkColor = Color.CornflowerBlue;
-                rtbFeatures.BackColor  = Color.FromArgb(30, 30, 30);
+                rtbFeatures.BackColor  = AppConstants.DarkModeBackground;
                 rtbFeatures.ForeColor  = Color.Gainsboro;
             }
         }

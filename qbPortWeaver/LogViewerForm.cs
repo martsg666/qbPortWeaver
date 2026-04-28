@@ -90,9 +90,9 @@ namespace qbPortWeaver
         // Applies theme colors to the background, filter buttons, and search controls
         private void ApplyTheme()
         {
-            Color bg   = _isDarkMode ? Color.FromArgb(30, 30, 30) : SystemColors.Window;
-            Color fg   = _isDarkMode ? Color.Gainsboro : SystemColors.WindowText;
-            Color border = _isDarkMode ? Color.FromArgb(80, 80, 80) : SystemColors.ControlDark;
+            Color bg     = _isDarkMode ? AppConstants.DarkModeBackground : SystemColors.Window;
+            Color fg     = _isDarkMode ? Color.Gainsboro               : SystemColors.WindowText;
+            Color border = _isDarkMode ? AppConstants.DarkModeBorder    : SystemColors.ControlDark;
 
             BackColor            = bg;
             pnlToolbar.BackColor = bg;
@@ -118,20 +118,20 @@ namespace qbPortWeaver
 
             // Clear button sits inside the search box - blend it in rather than styling it like the nav buttons
             btnClearSearch.BackColor                 = txtSearch.BackColor;
-            btnClearSearch.ForeColor                 = _isDarkMode ? Color.FromArgb(160, 160, 160) : SystemColors.GrayText;
+            btnClearSearch.ForeColor                 = _isDarkMode ? AppConstants.DarkModeSecondaryText : SystemColors.GrayText;
             btnClearSearch.FlatAppearance.BorderSize = 0;
 
             lblMatchCount.BackColor = bg;
-            lblMatchCount.ForeColor = _isDarkMode ? Color.FromArgb(160, 160, 160) : SystemColors.GrayText;
+            lblMatchCount.ForeColor = _isDarkMode ? AppConstants.DarkModeSecondaryText : SystemColors.GrayText;
         }
 
         // Sets filter button foreground and border to the level colour when active, dimmed when inactive
         private void ApplyFilterButtonStyle(CheckBox chk, Color levelColor)
         {
-            Color dimmed = _isDarkMode ? Color.FromArgb(80, 80, 80) : Color.FromArgb(180, 180, 180);
+            Color dimmed = _isDarkMode ? AppConstants.DarkModeBorder : AppConstants.LightModeDimmed;
             chk.ForeColor                       = chk.Checked ? levelColor : dimmed;
             chk.FlatAppearance.BorderColor      = chk.Checked ? levelColor : dimmed;
-            chk.FlatAppearance.CheckedBackColor = _isDarkMode ? Color.FromArgb(55, 55, 55) : Color.FromArgb(225, 225, 235);
+            chk.FlatAppearance.CheckedBackColor = _isDarkMode ? AppConstants.DarkModeCheckedBack : AppConstants.LightModeCheckedBack;
             chk.BackColor                       = pnlToolbar.BackColor;
         }
 
@@ -296,7 +296,7 @@ namespace qbPortWeaver
 
             int   savedStart = rtbLog.SelectionStart;
             int   savedLen   = rtbLog.SelectionLength;
-            Color bg         = _isDarkMode ? Color.FromArgb(100, 85, 0) : Color.Yellow;
+            Color bg         = _isDarkMode ? AppConstants.DarkModeSearchHighlight : Color.Yellow;
             int   len        = txtSearch.Text.Length;
             int   count      = Math.Min(_searchMatches.Count, MaxHighlights);
 

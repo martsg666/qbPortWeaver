@@ -20,6 +20,7 @@ namespace qbPortWeaver
         private bool _showOnlyReviewNeeded;
 
         // Row confidence colors - set once in OnLoad based on active theme
+        private bool  _isDarkMode;
         private Color _colorUncertain;
         private Color _colorUnmatched;
 
@@ -33,11 +34,18 @@ namespace qbPortWeaver
         {
             base.OnLoad(e);
             MinimumSize = Size; // lock minimum to initial window size so controls are never clipped
-            bool dark      = AppConstants.IsDarkModeEnabled();
-            _colorUncertain = dark ? Color.Gold       : Color.Goldenrod;
-            _colorUnmatched = dark ? Color.OrangeRed  : Color.Crimson;
+            _isDarkMode     = AppConstants.IsDarkModeEnabled();
+            _colorUncertain = _isDarkMode ? Color.Gold      : Color.Goldenrod;
+            _colorUnmatched = _isDarkMode ? Color.OrangeRed : Color.Crimson;
             lblLegendUncertain.ForeColor = _colorUncertain;
             lblLegendUnmatched.ForeColor = _colorUnmatched;
+            rtbTmdbOverview.Font      = Font;
+            rtbTmdbOverview.ForeColor = ForeColor;
+            if (_isDarkMode)
+            {
+                rtbTmdbOverview.BackColor = AppConstants.DarkModeBackground;
+                rtbTmdbOverview.ForeColor = Color.Gainsboro;
+            }
             SetupTooltips();
             SetupGridContextMenu();
             LoadSettings();

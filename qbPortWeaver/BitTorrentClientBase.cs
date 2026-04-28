@@ -94,7 +94,7 @@ namespace qbPortWeaver
             }
         }
 
-        // Override to inject work before the kill step in RestartAsync (e.g. waiting for a config flush).
+        /// <summary>Called by <see cref="RestartAsync"/> before the kill step. Override to inject pre-kill work (e.g. waiting for a config flush).</summary>
         protected virtual Task PreRestartAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 
         // Launches the process, waits for the OS to register it, confirms it is running,
@@ -141,10 +141,10 @@ namespace qbPortWeaver
         /// <inheritdoc/>
         public abstract Task<string?> GetConnectionStatusAsync();
 
-        // Resets the per-instance auth token so the next API call re-authenticates against the freshly started process.
+        /// <summary>Resets the per-instance auth state so the next API call triggers a fresh authentication handshake.</summary>
         protected virtual void ResetAuthState() => _isAuthenticated = false;
 
-        // Performs the client-specific authentication handshake. Called once per instance by EnsureAuthenticatedAsync.
+        /// <summary>Performs the client-specific authentication handshake. Returns <see langword="true"/> on success.</summary>
         protected abstract Task<bool> AuthenticateAsync();
 
         // Authenticates once per instance; subsequent calls reuse the existing session.
@@ -155,7 +155,7 @@ namespace qbPortWeaver
             return _isAuthenticated;
         }
 
-        // Label inserted into HTTP error messages to identify the endpoint type ("Web UI" or "RPC").
+        /// <summary>Label identifying the endpoint type used in HTTP error messages (e.g. <c>"Web UI"</c> or <c>"RPC"</c>).</summary>
         protected virtual string ApiLabel => "Web UI";
 
         // Kills all processes matching _processName, waits for stragglers, then retries once.

@@ -43,7 +43,10 @@ namespace qbPortWeaver
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), AppName)
         ).FullName;
 
+        /// <summary>Returns the full path to the application log file.</summary>
         public static string GetLogFilePath()    => Path.Combine(AppDataFolder, LogFileName);
+
+        /// <summary>Returns the full path to the application status JSON file.</summary>
         public static string GetStatusFilePath() => Path.Combine(AppDataFolder, StatusFileName);
 
         /// <summary>Returns the full path for a named data file stored in the application data folder.</summary>
@@ -71,6 +74,7 @@ namespace qbPortWeaver
             File.Move(temp, path, overwrite: true);
         }
 
+        /// <summary>Returns the full path to the ProtonVPN log file, resolved from the registry setting.</summary>
         public static string GetProtonVPNLogFilePath() => Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             RegistrySettingsManager.GetAppValue(RegistrySettingsManager.KeyProtonVpnLogFilePath));
@@ -247,6 +251,15 @@ namespace qbPortWeaver
         /// </summary>
         public static bool IsDarkModeEnabled() =>
             SystemColors.Control.GetBrightness() < 0.5f;
+
+        public static readonly Color DarkModeBackground    = Color.FromArgb(30,  30,  30);
+        public static readonly Color DarkModeBorder        = Color.FromArgb(80,  80,  80);
+        public static readonly Color DarkModeSecondaryText = Color.FromArgb(160, 160, 160);
+        public static readonly Color DarkModeCheckedBack   = Color.FromArgb(55,  55,  55);
+        public static readonly Color DarkModeSearchHighlight = Color.FromArgb(100, 85,  0);
+        public static readonly Color LightModeDimmed       = Color.FromArgb(180, 180, 180);
+        public static readonly Color LightModeCheckedBack  = Color.FromArgb(225, 225, 235);
+        public static readonly Color TrayIconDotBorder     = Color.FromArgb(60,  60,  60);
 
         /// <summary>Opens a URL in the default browser using ShellExecute.</summary>
         public static void OpenUrl(string url)

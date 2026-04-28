@@ -88,33 +88,7 @@ namespace qbPortWeaver
                 else
                     lnkAuthor.Text = AppConstants.GitHubRepoOwner;
 
-                var info = releaseTask.Result;
-                lblLatestVersionValue.ForeColor = SystemColors.ControlText;
-                if (info is null)
-                {
-                    lblLatestVersionValue.Text = "Unable to check";
-                    lblStatusValue.Text        = "Check failed";
-                    lblStatusValue.ForeColor   = SystemColors.ControlText;
-                    btnCheckForUpdates.Text    = "Check for Updates";
-                }
-                else
-                {
-                    lblLatestVersionValue.Text = info.Version;
-
-                    if (info.IsNewer)
-                    {
-                        lblStatusValue.Text      = "Update available";
-                        lblStatusValue.ForeColor = _isDarkMode ? Color.Orange : Color.DarkOrange;
-                        btnCheckForUpdates.Text  = "Update";
-                        _releaseUrl              = info.ReleaseUrl;
-                    }
-                    else
-                    {
-                        lblStatusValue.Text      = "Up to date";
-                        lblStatusValue.ForeColor = _isDarkMode ? Color.LimeGreen : Color.Green;
-                        btnCheckForUpdates.Text  = "Check for Updates";
-                    }
-                }
+                ApplyReleaseInfo(releaseTask.Result);
             }
             catch (Exception ex)
             {
@@ -127,6 +101,34 @@ namespace qbPortWeaver
                     btnCheckForUpdates.Enabled = true;
                     btnCheckForUpdates.Text    = "Check for Updates";
                 }
+            }
+        }
+
+        // Populates the release info labels and status based on the latest release data
+        private void ApplyReleaseInfo(LatestReleaseInfo? info)
+        {
+            lblLatestVersionValue.ForeColor = SystemColors.ControlText;
+            if (info is null)
+            {
+                lblLatestVersionValue.Text = "Unable to check";
+                lblStatusValue.Text        = "Check failed";
+                lblStatusValue.ForeColor   = SystemColors.ControlText;
+                btnCheckForUpdates.Text    = "Check for Updates";
+                return;
+            }
+            lblLatestVersionValue.Text = info.Version;
+            if (info.IsNewer)
+            {
+                lblStatusValue.Text      = "Update available";
+                lblStatusValue.ForeColor = _isDarkMode ? Color.Orange : Color.DarkOrange;
+                btnCheckForUpdates.Text  = "Update";
+                _releaseUrl              = info.ReleaseUrl;
+            }
+            else
+            {
+                lblStatusValue.Text      = "Up to date";
+                lblStatusValue.ForeColor = _isDarkMode ? Color.LimeGreen : Color.Green;
+                btnCheckForUpdates.Text  = "Check for Updates";
             }
         }
 

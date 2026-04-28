@@ -331,20 +331,20 @@ namespace qbPortWeaver
             }
 
             var proposedPath = TvShowProcessor.BuildEpisodePath(editedName, info, episodeInfo, tvShowLib, createFolders);
-            UpdateRow(row, proposedPath, Path.GetFileName(proposedPath), isConfident, info.PosterPath, info.TmdbId, info.VoteCount);
+            UpdateRow(row, proposedPath, Path.GetFileName(proposedPath), isConfident, info.PosterPath, info.TmdbId, info.VoteCount, info.Overview);
         }
 
         private void ApplyMovieRematchResult(DataGridViewRow row, MovieInfo info, string moviesLib, bool createFolders, string editedName, bool isConfident)
         {
             var proposedPath = MovieProcessor.BuildStandaloneMoviePath(editedName, info, moviesLib, createFolders);
-            UpdateRow(row, proposedPath, Path.GetFileName(proposedPath), isConfident, info.PosterPath, info.TmdbId, info.VoteCount);
+            UpdateRow(row, proposedPath, Path.GetFileName(proposedPath), isConfident, info.PosterPath, info.TmdbId, info.VoteCount, info.Overview);
         }
 
-        private void UpdateRow(DataGridViewRow row, string proposedPath, string displayName, bool isConfident, string? posterPath = null, int? tmdbId = null, int voteCount = 0)
+        private void UpdateRow(DataGridViewRow row, string proposedPath, string displayName, bool isConfident, string? posterPath = null, int? tmdbId = null, int voteCount = 0, string? overview = null)
         {
             var original   = ((RowData)row.Tag!).Proposal;
             var confidence = isConfident ? RowConfidence.Confident : RowConfidence.Uncertain;
-            row.Tag = new RowData(confidence, original with { ProposedPath = proposedPath, IsMatched = true, IsConfident = isConfident, PosterPath = posterPath, TmdbId = tmdbId, VoteCount = voteCount });
+            row.Tag = new RowData(confidence, original with { ProposedPath = proposedPath, IsMatched = true, IsConfident = isConfident, PosterPath = posterPath, TmdbId = tmdbId, VoteCount = voteCount, Overview = overview });
             row.Cells[colProposed.Index].Value = displayName;
         }
 
@@ -650,7 +650,9 @@ namespace qbPortWeaver
                 lblTmdbConfidence.Text = string.Empty;
                 lblTmdbTitle.ForeColor = _colorUnmatched;
                 lblTmdbMeta.ForeColor  = SystemColors.ControlText;
+                picTmdbPoster.Image    = null;
                 picTmdbPoster.Visible  = false;
+                rtbTmdbOverview.Text   = string.Empty;
                 return;
             }
 
@@ -673,6 +675,8 @@ namespace qbPortWeaver
             {
                 lblTmdbConfidence.Text = string.Empty;
             }
+
+            rtbTmdbOverview.Text = p.Overview ?? string.Empty;
         }
 
         private void ClearDetailPanel()
@@ -680,6 +684,7 @@ namespace qbPortWeaver
             lblTmdbTitle.Text      = string.Empty;
             lblTmdbMeta.Text       = string.Empty;
             lblTmdbConfidence.Text = string.Empty;
+            rtbTmdbOverview.Text   = string.Empty;
             picTmdbPoster.Image    = null;
             picTmdbPoster.Visible  = false;
         }

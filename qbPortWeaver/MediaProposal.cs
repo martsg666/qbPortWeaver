@@ -9,7 +9,8 @@ namespace qbPortWeaver
     /// <param name="PosterPath">TMDB poster path (e.g. <c>/abc123.jpg</c>), used to fetch the thumbnail image.</param>
     /// <param name="TmdbId">TMDB numeric ID for the matched title.</param>
     /// <param name="VoteCount">TMDB vote count for the matched title, used as a match quality signal in the detail panel.</param>
-    public sealed record MediaProposal(string MediaType, string OriginalPath, string ProposedPath, bool IsConfident = true, bool IsMatched = true, string? PosterPath = null, int? TmdbId = null, int VoteCount = 0)
+    /// <param name="Overview">TMDB plot summary for the matched title, shown in the detail panel.</param>
+    public sealed record MediaProposal(string MediaType, string OriginalPath, string ProposedPath, bool IsConfident = true, bool IsMatched = true, string? PosterPath = null, int? TmdbId = null, int VoteCount = 0, string? Overview = null)
     {
         public const string TypeMovie  = "Movie";
         public const string TypeTvShow = "TV Show";

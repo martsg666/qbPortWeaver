@@ -46,7 +46,7 @@ namespace qbPortWeaver
             if (result is null)
                 return null;
 
-            return new MovieInfo(result.Title, ParseYearFromDate(result.ReleaseDate), result.Id, result.VoteCount, result.PosterPath);
+            return new MovieInfo(result.Title, ParseYearFromDate(result.ReleaseDate), result.Id, result.VoteCount, result.PosterPath, result.Overview);
         }
 
         /// <summary>Searches for a TV show by title and optional first-air year. Returns the best match, or null if none found.</summary>
@@ -63,7 +63,7 @@ namespace qbPortWeaver
             if (result is null)
                 return null;
 
-            return new TvShowInfo(result.Name, ParseYearFromDate(result.FirstAirDate), result.Id, result.VoteCount, result.PosterPath);
+            return new TvShowInfo(result.Name, ParseYearFromDate(result.FirstAirDate), result.Id, result.VoteCount, result.PosterPath, result.Overview);
         }
 
         /// <summary>Downloads a TMDB poster image by its path. Returns null on failure or cancellation.</summary>
@@ -238,11 +238,11 @@ namespace qbPortWeaver
         }
     }
 
-    /// <summary>TMDB title, release year, database ID, vote count, and poster path for a movie.</summary>
-    public sealed record MovieInfo(string Title, int? Year, int TmdbId, int VoteCount = 0, string? PosterPath = null);
+    /// <summary>TMDB title, release year, database ID, vote count, poster path, and overview for a movie.</summary>
+    public sealed record MovieInfo(string Title, int? Year, int TmdbId, int VoteCount = 0, string? PosterPath = null, string? Overview = null);
 
-    /// <summary>TMDB title, first-air year, database ID, vote count, and poster path for a TV show.</summary>
-    public sealed record TvShowInfo(string Title, int? Year, int TmdbId, int VoteCount = 0, string? PosterPath = null);
+    /// <summary>TMDB title, first-air year, database ID, vote count, poster path, and overview for a TV show.</summary>
+    public sealed record TvShowInfo(string Title, int? Year, int TmdbId, int VoteCount = 0, string? PosterPath = null, string? Overview = null);
 
     // TMDB API response shapes - only used for deserialization
     internal sealed record TmdbMovieSearchResult(
@@ -253,7 +253,8 @@ namespace qbPortWeaver
         [property: JsonPropertyName("title")]        string  Title,
         [property: JsonPropertyName("release_date")] string? ReleaseDate,
         [property: JsonPropertyName("vote_count")]   int     VoteCount    = 0,
-        [property: JsonPropertyName("poster_path")]  string? PosterPath   = null);
+        [property: JsonPropertyName("poster_path")]  string? PosterPath   = null,
+        [property: JsonPropertyName("overview")]     string? Overview     = null);
 
     internal sealed record TmdbTvSearchResult(
         [property: JsonPropertyName("results")] List<TmdbTvShow>? Results);
@@ -263,5 +264,6 @@ namespace qbPortWeaver
         [property: JsonPropertyName("name")]           string  Name,
         [property: JsonPropertyName("first_air_date")] string? FirstAirDate,
         [property: JsonPropertyName("vote_count")]     int     VoteCount    = 0,
-        [property: JsonPropertyName("poster_path")]    string? PosterPath   = null);
+        [property: JsonPropertyName("poster_path")]    string? PosterPath   = null,
+        [property: JsonPropertyName("overview")]       string? Overview     = null);
 }

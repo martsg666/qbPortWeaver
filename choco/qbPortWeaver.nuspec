@@ -32,7 +32,7 @@ Runs on a configurable interval and updates the BitTorrent client's listening po
 
 ### Media Manager
 
-Automatically imports movie and TV episode files into Plex-compatible library folders on each sync cycle. Queries The Movie Database (TMDB) to identify titles and release years, then imports files using Plex naming conventions (`Title (Year).ext` for movies, `Show (Year) - SxxExx.ext` for single-episode files and `Show (Year) - SxxExxExx.ext` for multi-episode files) via hardlink, copy, or move. Optionally organises files into Plex-recommended subfolders. A dedicated Media Manager dialog (tray menu) lets you configure source folders, preview imports before they run (Scan Now), and apply or correct them manually (Import Now). Uncertain TMDB matches are highlighted for review. A free TMDB API key is required.
+Automatically imports movie and TV episode files into Plex-compatible library folders on each sync cycle. Queries The Movie Database (TMDB) to identify titles and release years, then imports files using Plex naming conventions (`Title (Year).ext` for movies, `Show (Year) - SxxExx.ext` for single-episode files and `Show (Year) - SxxExxExx.ext` for multi-episode files) via hardlink (with automatic fallback to copy for cross-volume scenarios), copy, or move. Optionally organises files into Plex-recommended subfolders and deletes source folders left empty after importing. A dedicated Media Manager dialog (tray menu) lets you configure source folders, preview imports before they run (Scan Now), and apply or correct them manually (Import Now). Uncertain TMDB matches are highlighted for review. A free TMDB API key is required.
 
 ### Visibility and Safety
 

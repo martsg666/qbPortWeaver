@@ -10,6 +10,9 @@ namespace qbPortWeaver
     internal static class AutoRecoveryManager
     {
         private const int ClientRestartDelayMs    = 2000;
+        // Must exceed the helper service's full stop→delay→start cycle (5s stop wait + 5s restart
+        // delay + service startup time) so the VPN service is running before the client process
+        // is relaunched. See AutoRecovery.ServiceRestartDelayMs in HelperService.
         private const int ServiceHeadStartDelayMs = 20000;
 
         // Maps a provider token to the client process that must be restarted alongside the service.

@@ -19,8 +19,10 @@ namespace qbPortWeaver
 
         private readonly string _userName;
         private string? _sessionId;
-        private string? _resolvedServiceName; // lazily discovered via search term
-        private bool    _serviceNameResolved;
+        // Cached service name; null = not found, string.Empty = not yet resolved.
+        // Static so the SCM enumeration persists across sync-cycle instances.
+        // Mirrors the caching pattern used by ProtonVpnManager and PiaVpnManager.
+        private static string? _resolvedServiceName = string.Empty;
 
         /// <inheritdoc/>
         public override string ClientName => "Transmission";
@@ -346,10 +348,9 @@ namespace qbPortWeaver
         }
 
         // Lazily discovers and caches the Transmission Windows service name via the configured search term.
-        private string? GetEffectiveServiceName()
+        private static string? GetEffectiveServiceName()
         {
-            if (_serviceNameResolved) return _resolvedServiceName;
-            _serviceNameResolved = true;
+            if (_resolvedServiceName != string.Empty) return _resolvedServiceName;
             _resolvedServiceName = AppConstants.FindServiceName(RegistrySettingsManager.GetAppValue(RegistrySettingsManager.KeyTransmissionServiceSearchTerm));
             return _resolvedServiceName;
         }

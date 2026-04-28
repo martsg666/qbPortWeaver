@@ -13,6 +13,9 @@ namespace qbPortWeaver.HelperService;
 internal static partial class AutoRecovery
 {
     private const int ProcessKillTimeoutMs      = 5000;
+    // Delay between stop and start. AutoRecoveryManager.ServiceHeadStartDelayMs in the tray app
+    // must remain larger than this plus service startup time so the client process is not
+    // relaunched before the VPN service is ready.
     private const int ServiceRestartDelayMs     = 5000;
     private const int ServiceOperationTimeoutMs = 15000;
     private const int AdapterCycleDelayMs       = 3000;
@@ -250,6 +253,8 @@ internal static partial class AutoRecovery
     {
         try
         {
+            if (sc.ServiceHandle.IsInvalid) return;
+
             int    bufSize = Marshal.SizeOf<ServiceStatusProcess>();
             IntPtr buf     = Marshal.AllocHGlobal(bufSize);
             try

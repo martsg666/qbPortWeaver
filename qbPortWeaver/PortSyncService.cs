@@ -43,9 +43,9 @@ namespace qbPortWeaver
             string QBittorrentExePath,
             bool RestartQBittorrent,
             bool ForceStartQBittorrent,
-            int DefaultPort,
-            bool WarnOnInterfaceMismatch,
-            bool RestartOnDisconnect,
+            int QBittorrentDefaultPort,
+            bool QBittorrentWarnOnInterfaceMismatch,
+            bool QBittorrentRestartOnDisconnect,
             string TransmissionUrl,
             string TransmissionUserName,
             string TransmissionPassword,
@@ -53,12 +53,14 @@ namespace qbPortWeaver
             string TransmissionExePath,
             bool RestartTransmission,
             bool ForceStartTransmission,
+            int TransmissionDefaultPort,
             string DelugeUrl,
             string DelugePassword,
             string DelugeProcessName,
             string DelugeExePath,
             bool RestartDeluge,
             bool ForceStartDeluge,
+            int DelugeDefaultPort,
             string PostUpdateCommand,
             bool AutoRecoveryEnabled,
             int AutoRecoveryTriggerCycles
@@ -156,6 +158,7 @@ namespace qbPortWeaver
             LogManager.Instance.DebugMode = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionExtra, RegistrySettingsManager.KeyDebugMode);
 
             var (cfg, activeSection) = ReadConfig();
+            int defaultPort = GetDefaultPort(cfg, activeSection);
             LogConfigDebug(cfg, activeSection);
             status[StatusKeys.VpnProvider]           = cfg.VpnProvider;
             status[StatusKeys.UpdateIntervalSeconds] = cfg.UpdateInterval;
@@ -177,15 +180,15 @@ namespace qbPortWeaver
                 LogManager.Instance.LogMessage(BuildCycleCountMessage(disconnectedMsg, disconnectedCount, cfg), LogLevel.Info);
                 await TryTriggerRecoveryAsync(vpnManager, cfg, cancellationToken).ConfigureAwait(false);
 
-                if (cfg.DefaultPort == 0)
+                if (defaultPort == 0)
                 {
                     status[StatusKeys.Status]  = StatusKeys.Skipped;
                     status[StatusKeys.Message] = disconnectedMsg;
                     LogManager.Instance.LogMessage($"{vpnManager.ProviderName} default port is 0 - skipping port update", LogLevel.Info);
                     return cfg.UpdateInterval;
                 }
-                LogManager.Instance.LogMessage($"{vpnManager.ProviderName} default port is {cfg.DefaultPort} - applying to {cfg.BitTorrentClient}", LogLevel.Info);
-                targetPort          = cfg.DefaultPort;
+                LogManager.Instance.LogMessage($"{vpnManager.ProviderName} default port is {defaultPort} - applying to {cfg.BitTorrentClient}", LogLevel.Info);
+                targetPort          = defaultPort;
                 syncVpnManager      = null;
                 warnOnInterfaceMismatch = false;
             }
@@ -218,7 +221,7 @@ namespace qbPortWeaver
 
                 targetPort          = vpnPort.Value;
                 syncVpnManager      = vpnManager;
-                warnOnInterfaceMismatch = cfg.WarnOnInterfaceMismatch;
+                warnOnInterfaceMismatch = cfg.QBittorrentWarnOnInterfaceMismatch;
             }
 
             using var manager = CreateBitTorrentClient(cfg);
@@ -231,7 +234,7 @@ namespace qbPortWeaver
                     PostUpdateCommand:       cfg.PostUpdateCommand,
                     VpnManager:              syncVpnManager,
                     WarnOnInterfaceMismatch: warnOnInterfaceMismatch,
-                    RestartOnDisconnect:     cfg.RestartOnDisconnect),
+                    RestartOnDisconnect:     cfg.QBittorrentRestartOnDisconnect),
                 status,
                 cancellationToken).ConfigureAwait(false);
 
@@ -246,10 +249,8 @@ namespace qbPortWeaver
 
             int autoRecoveryTriggerCycles = Math.Max(1, RegistrySettingsManager.GetInt(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyAutoRecoveryTriggerCycles));
 
-            // Read DefaultPort from the active client's section so each client can have its own fallback port
             string bitTorrentClient = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyBitTorrentClient);
             string activeSection = GetActiveClientSection(bitTorrentClient);
-            int defaultPort = RegistrySettingsManager.GetInt(activeSection, RegistrySettingsManager.KeyDefaultPort);
 
             return (new AppConfig(
                 VpnProvider:               RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral,      RegistrySettingsManager.KeyVpnProvider),
@@ -263,9 +264,9 @@ namespace qbPortWeaver
                 QBittorrentExePath:        RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionQBittorrent,  RegistrySettingsManager.KeyQBittorrentExePath),
                 RestartQBittorrent:        RegistrySettingsManager.GetBool (RegistrySettingsManager.SectionQBittorrent,  RegistrySettingsManager.KeyRestartQBittorrent),
                 ForceStartQBittorrent:     RegistrySettingsManager.GetBool (RegistrySettingsManager.SectionQBittorrent,  RegistrySettingsManager.KeyForceStartQBittorrent),
-                DefaultPort:               defaultPort,
-                WarnOnInterfaceMismatch:   RegistrySettingsManager.GetBool (RegistrySettingsManager.SectionQBittorrent,  RegistrySettingsManager.KeyWarnOnInterfaceMismatch),
-                RestartOnDisconnect:       RegistrySettingsManager.GetBool (RegistrySettingsManager.SectionQBittorrent,  RegistrySettingsManager.KeyRestartOnDisconnect),
+                QBittorrentDefaultPort:    RegistrySettingsManager.GetInt  (RegistrySettingsManager.SectionQBittorrent,  RegistrySettingsManager.KeyDefaultPort),
+                QBittorrentWarnOnInterfaceMismatch: RegistrySettingsManager.GetBool (RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyWarnOnInterfaceMismatch),
+                QBittorrentRestartOnDisconnect:     RegistrySettingsManager.GetBool (RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyRestartOnDisconnect),
                 TransmissionUrl:           RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionTransmission, RegistrySettingsManager.KeyTransmissionUrl),
                 TransmissionUserName:      RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionTransmission, RegistrySettingsManager.KeyTransmissionUserName),
                 TransmissionPassword:      RegistrySettingsManager.GetTransmissionPassword(),
@@ -273,12 +274,14 @@ namespace qbPortWeaver
                 TransmissionExePath:       RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionTransmission, RegistrySettingsManager.KeyTransmissionExePath),
                 RestartTransmission:       RegistrySettingsManager.GetBool (RegistrySettingsManager.SectionTransmission, RegistrySettingsManager.KeyRestartTransmission),
                 ForceStartTransmission:    RegistrySettingsManager.GetBool (RegistrySettingsManager.SectionTransmission, RegistrySettingsManager.KeyForceStartTransmission),
+                TransmissionDefaultPort:   RegistrySettingsManager.GetInt  (RegistrySettingsManager.SectionTransmission, RegistrySettingsManager.KeyDefaultPort),
                 DelugeUrl:                 RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionDeluge,       RegistrySettingsManager.KeyDelugeUrl),
                 DelugePassword:            RegistrySettingsManager.GetDelugePassword(),
                 DelugeProcessName:         RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionDeluge,       RegistrySettingsManager.KeyDelugeProcessName),
                 DelugeExePath:             RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionDeluge,       RegistrySettingsManager.KeyDelugeExePath),
                 RestartDeluge:             RegistrySettingsManager.GetBool (RegistrySettingsManager.SectionDeluge,       RegistrySettingsManager.KeyRestartDeluge),
                 ForceStartDeluge:          RegistrySettingsManager.GetBool (RegistrySettingsManager.SectionDeluge,       RegistrySettingsManager.KeyForceStartDeluge),
+                DelugeDefaultPort:         RegistrySettingsManager.GetInt  (RegistrySettingsManager.SectionDeluge,       RegistrySettingsManager.KeyDefaultPort),
                 PostUpdateCommand:         RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionExtra,        RegistrySettingsManager.KeyPostUpdateCmd),
                 AutoRecoveryEnabled:       RegistrySettingsManager.GetBool (RegistrySettingsManager.SectionGeneral,      RegistrySettingsManager.KeyAutoRecoveryEnabled),
                 AutoRecoveryTriggerCycles: autoRecoveryTriggerCycles
@@ -308,7 +311,7 @@ namespace qbPortWeaver
                     $"{RegistrySettingsManager.KeyTransmissionExePath}={cfg.TransmissionExePath}, " +
                     $"{RegistrySettingsManager.KeyRestartTransmission}={cfg.RestartTransmission}, " +
                     $"{RegistrySettingsManager.KeyForceStartTransmission}={cfg.ForceStartTransmission}, " +
-                    $"{RegistrySettingsManager.KeyDefaultPort}={cfg.DefaultPort}");
+                    $"{RegistrySettingsManager.KeyDefaultPort}={cfg.TransmissionDefaultPort}");
             else if (activeSection == RegistrySettingsManager.SectionDeluge)
                 LogManager.Instance.LogDebug(
                     $"PortSyncService.RunCoreAsync [deluge]: {RegistrySettingsManager.KeyDelugeUrl}={cfg.DelugeUrl}, " +
@@ -317,7 +320,7 @@ namespace qbPortWeaver
                     $"{RegistrySettingsManager.KeyDelugeExePath}={cfg.DelugeExePath}, " +
                     $"{RegistrySettingsManager.KeyRestartDeluge}={cfg.RestartDeluge}, " +
                     $"{RegistrySettingsManager.KeyForceStartDeluge}={cfg.ForceStartDeluge}, " +
-                    $"{RegistrySettingsManager.KeyDefaultPort}={cfg.DefaultPort}");
+                    $"{RegistrySettingsManager.KeyDefaultPort}={cfg.DelugeDefaultPort}");
             else
                 LogManager.Instance.LogDebug(
                     $"PortSyncService.RunCoreAsync [qBittorrent]: {RegistrySettingsManager.KeyQBittorrentUrl}={cfg.QBittorrentUrl}, " +
@@ -327,9 +330,9 @@ namespace qbPortWeaver
                     $"{RegistrySettingsManager.KeyQBittorrentExePath}={cfg.QBittorrentExePath}, " +
                     $"{RegistrySettingsManager.KeyRestartQBittorrent}={cfg.RestartQBittorrent}, " +
                     $"{RegistrySettingsManager.KeyForceStartQBittorrent}={cfg.ForceStartQBittorrent}, " +
-                    $"{RegistrySettingsManager.KeyDefaultPort}={cfg.DefaultPort}, " +
-                    $"{RegistrySettingsManager.KeyWarnOnInterfaceMismatch}={cfg.WarnOnInterfaceMismatch}, " +
-                    $"{RegistrySettingsManager.KeyRestartOnDisconnect}={cfg.RestartOnDisconnect}");
+                    $"{RegistrySettingsManager.KeyDefaultPort}={cfg.QBittorrentDefaultPort}, " +
+                    $"{RegistrySettingsManager.KeyWarnOnInterfaceMismatch}={cfg.QBittorrentWarnOnInterfaceMismatch}, " +
+                    $"{RegistrySettingsManager.KeyRestartOnDisconnect}={cfg.QBittorrentRestartOnDisconnect}");
 
             LogManager.Instance.LogDebug(
                 $"PortSyncService.RunCoreAsync [extra]: {RegistrySettingsManager.KeyPostUpdateCmd}={cfg.PostUpdateCommand}, " +
@@ -355,7 +358,12 @@ namespace qbPortWeaver
                 return await CreateNatPmpVpnManager(cfg, status, cancellationToken).ConfigureAwait(false);
 
             if (!cfg.VpnProvider.Equals(RegistrySettingsManager.VpnProviderProtonVpn, StringComparison.OrdinalIgnoreCase))
-                LogManager.Instance.LogMessage($"VPN provider '{cfg.VpnProvider}' is not recognized, using ProtonVPN as default", LogLevel.Warn);
+            {
+                LogManager.Instance.LogMessage($"VPN provider '{cfg.VpnProvider}' is not recognized, port sync skipped", LogLevel.Warn);
+                status[StatusKeys.Status]  = StatusKeys.Skipped;
+                status[StatusKeys.Message] = $"VPN provider '{cfg.VpnProvider}' is not recognized";
+                return null;
+            }
             return new ProtonVpnManager(AppConstants.GetProtonVPNLogFilePath());
         }
 
@@ -668,6 +676,14 @@ namespace qbPortWeaver
                 RegistrySettingsManager.SectionTransmission => (cfg.ForceStartTransmission, cfg.RestartTransmission),
                 RegistrySettingsManager.SectionDeluge       => (cfg.ForceStartDeluge,       cfg.RestartDeluge),
                 _                                           => (cfg.ForceStartQBittorrent,  cfg.RestartQBittorrent),
+            };
+
+        private static int GetDefaultPort(AppConfig cfg, string activeSection) =>
+            activeSection switch
+            {
+                RegistrySettingsManager.SectionTransmission => cfg.TransmissionDefaultPort,
+                RegistrySettingsManager.SectionDeluge       => cfg.DelugeDefaultPort,
+                _                                           => cfg.QBittorrentDefaultPort,
             };
 
         // Sets the cycle status and message in the status dict, logs the message, and adds a closing bookend on failure.

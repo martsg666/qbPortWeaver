@@ -17,7 +17,9 @@ namespace qbPortWeaver
         private static HashSet<string>? _libraryFingerprints;
         private static readonly object _libraryLock = new();
         private static readonly SemaphoreSlim _libraryBuildSemaphore = new(1, 1);
-        private static int _libraryBuildCycleCount;
+        private static int    _libraryBuildCycleCount;
+        private static string _lastMoviesLibraryPath  = string.Empty;
+        private static string _lastTvShowsLibraryPath = string.Empty;
 
         // Library cache: persisted path -> metadata so unchanged library files are not re-hashed across sessions.
         private static Dictionary<string, CacheEntry>? _libraryCache;
@@ -294,16 +296,22 @@ namespace qbPortWeaver
             _libraryBuildSemaphore.Wait(cancellationToken);
             try
             {
-                bool forceRebuild = _libraryBuildCycleCount >= FullRebuildIntervalCycles;
+                bool pathsChanged = !string.Equals(moviesLibraryPath,  _lastMoviesLibraryPath,  StringComparison.OrdinalIgnoreCase)
+                                 || !string.Equals(tvShowsLibraryPath, _lastTvShowsLibraryPath, StringComparison.OrdinalIgnoreCase);
+                bool forceRebuild = pathsChanged || _libraryBuildCycleCount >= FullRebuildIntervalCycles;
                 if (!forceRebuild && allowReuse && _libraryFingerprints is not null)
                 {
                     LogManager.Instance.LogDebug($"MediaImporter.BuildLibraryIndex: Reusing index (cycle {_libraryBuildCycleCount}/{FullRebuildIntervalCycles})", Subsystem.MediaManager);
                     _libraryBuildCycleCount++;
                     return;
                 }
-                if (forceRebuild)
+                if (pathsChanged && _libraryFingerprints is not null)
+                    LogManager.Instance.LogDebug("MediaImporter.BuildLibraryIndex: Library paths changed, forcing full rebuild", Subsystem.MediaManager);
+                else if (_libraryBuildCycleCount >= FullRebuildIntervalCycles)
                     LogManager.Instance.LogDebug($"MediaImporter.BuildLibraryIndex: Forcing periodic rebuild (every {FullRebuildIntervalCycles} cycles)", Subsystem.MediaManager);
-                _libraryBuildCycleCount = 1;
+                _libraryBuildCycleCount  = 1;
+                _lastMoviesLibraryPath   = moviesLibraryPath;
+                _lastTvShowsLibraryPath  = tvShowsLibraryPath;
 
                 var libraryPaths = new[] { moviesLibraryPath, tvShowsLibraryPath }
                     .Where(p => !string.IsNullOrWhiteSpace(p) && Directory.Exists(p))
@@ -701,6 +709,8 @@ namespace qbPortWeaver
                 _libraryCache           = null;
                 _libraryCacheDirty      = false;
                 _libraryBuildCycleCount = 0;
+                _lastMoviesLibraryPath  = string.Empty;
+                _lastTvShowsLibraryPath = string.Empty;
             }
 
             AppConstants.TryDeleteFile(GetCacheFilePath(SourceCacheFileName));

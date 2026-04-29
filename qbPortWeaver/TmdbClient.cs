@@ -32,38 +32,32 @@ namespace qbPortWeaver
             Timeout = TimeSpan.FromSeconds(AppConstants.HttpTimeoutSeconds)
         };
 
-        /// <summary>Searches for a movie by title and optional year. Returns the best match, or null if none found.</summary>
-        public async Task<MovieInfo?> SearchMovieAsync(string query, int? year = null)
+        /// <summary>Returns all TMDB movie candidates for a query in relevance order, or null if none found.</summary>
+        internal async Task<IReadOnlyList<MovieInfo>?> SearchMovieCandidatesAsync(string query, int? year = null)
         {
             var url = _useBearer // NOSONAR S4790 - key transmitted over HTTPS only; v3 in query param, v4 in Authorization header
                 ? $"search/movie?query={Uri.EscapeDataString(query)}&language=en-US&page=1"
                 : $"search/movie?api_key={apiKey}&query={Uri.EscapeDataString(query)}&language=en-US&page=1";
             if (year.HasValue)
                 url += $"&year={year.Value}";
-
             var response = await GetWithRateLimitAsync<TmdbMovieSearchResult>(url).ConfigureAwait(false);
-            var result   = response?.Results?.FirstOrDefault();
-            if (result is null)
-                return null;
-
-            return new MovieInfo(result.Title, ParseYearFromDate(result.ReleaseDate), result.Id, result.VoteCount, result.PosterPath, result.Overview);
+            var results  = response?.Results;
+            if (results is null or { Count: 0 }) return null;
+            return results.ConvertAll(r => new MovieInfo(r.Title, ParseYearFromDate(r.ReleaseDate), r.Id, r.VoteCount, r.PosterPath, r.Overview));
         }
 
-        /// <summary>Searches for a TV show by title and optional first-air year. Returns the best match, or null if none found.</summary>
-        public async Task<TvShowInfo?> SearchTvShowAsync(string query, int? year = null)
+        /// <summary>Returns all TMDB TV show candidates for a query in relevance order, or null if none found.</summary>
+        internal async Task<IReadOnlyList<TvShowInfo>?> SearchTvShowCandidatesAsync(string query, int? year = null)
         {
             var url = _useBearer // NOSONAR S4790 - key transmitted over HTTPS only; v3 in query param, v4 in Authorization header
                 ? $"search/tv?query={Uri.EscapeDataString(query)}&language=en-US&page=1"
                 : $"search/tv?api_key={apiKey}&query={Uri.EscapeDataString(query)}&language=en-US&page=1";
             if (year.HasValue)
                 url += $"&first_air_date_year={year.Value}";
-
             var response = await GetWithRateLimitAsync<TmdbTvSearchResult>(url).ConfigureAwait(false);
-            var result   = response?.Results?.FirstOrDefault();
-            if (result is null)
-                return null;
-
-            return new TvShowInfo(result.Name, ParseYearFromDate(result.FirstAirDate), result.Id, result.VoteCount, result.PosterPath, result.Overview);
+            var results  = response?.Results;
+            if (results is null or { Count: 0 }) return null;
+            return results.ConvertAll(r => new TvShowInfo(r.Name, ParseYearFromDate(r.FirstAirDate), r.Id, r.VoteCount, r.PosterPath, r.Overview));
         }
 
         /// <summary>Downloads a TMDB poster image by its path. Returns null on failure or cancellation.</summary>
@@ -93,24 +87,41 @@ namespace qbPortWeaver
         /// </summary>
         internal static async Task<(T? Info, bool IsConfident)> SearchWithConfidenceAsync<T>(
             string title, int? year,
-            Func<string, int?, Task<T?>> search,
+            Func<string, int?, Task<IReadOnlyList<T>?>> search,
             Func<T, bool> hasYear,
             Func<T, string> getTitle,
             Func<T, int> getVoteCount) where T : class
         {
             bool isConfident = true;
 
-            var info = await search(title, year).ConfigureAwait(false);
+            var candidates = await search(title, year).ConfigureAwait(false);
+
+            // Prefer an exact normalized title match with a year over TMDB's top-ranked result.
+            // Scanning the full candidates list avoids accepting a longer near-miss as the best match.
+            var normalizedSearch = FileNameParser.NormalizeTitleForMatch(title);
+            var searchedWords    = normalizedSearch.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            var info = candidates is not null
+                ? (candidates.FirstOrDefault(c => hasYear(c) &&
+                       string.Equals(FileNameParser.NormalizeTitleForMatch(getTitle(c)), normalizedSearch, StringComparison.Ordinal))
+                   ?? candidates[0])
+                : null;
 
             // Without a year in the filename we cannot corroborate the match by year alone.
             // Require an exact title match and a meaningful vote count to stay confident.
             if (info is not null && !year.HasValue)
-                isConfident = IsStrongNoYearMatch(title, getTitle(info), getVoteCount(info));
+                isConfident = IsStrongNoYearMatch(normalizedSearch, getTitle(info), getVoteCount(info));
+
+            // With a year present, a short searched title can still match a longer TMDB title.
+            // Mark uncertain when all searched-title words appear in the returned title's word set
+            // and the returned title has strictly more words (word-subset match).
+            if (info is not null && year.HasValue)
+                isConfident = !IsWordSubsetMatch(searchedWords, getTitle(info));
 
             // Retry without year: parsed year may not match TMDB's release/first-air year
             if (info is null && year.HasValue)
             {
-                info = await search(title, null).ConfigureAwait(false);
+                candidates = await search(title, null).ConfigureAwait(false);
+                info       = candidates?[0];
                 if (info is not null) isConfident = false;
             }
 
@@ -126,7 +137,7 @@ namespace qbPortWeaver
         /// </summary>
         internal static async Task<(T? Info, bool IsConfident)> LookupAsync<T>(
             string title, int? year,
-            Func<string, int?, Task<T?>> search,
+            Func<string, int?, Task<IReadOnlyList<T>?>> search,
             Func<T, bool> hasYear,
             Func<T, string> getTitle,
             Func<T, int> getVoteCount,
@@ -180,25 +191,41 @@ namespace qbPortWeaver
 
         // Returns true when a TMDB result found without a year in the filename is a high-confidence match.
         // Requires a meaningful vote count and a normalised title match to filter out obscure or incorrect entries.
-        private static bool IsStrongNoYearMatch(string searchedTitle, string returnedTitle, int voteCount, int minVoteCount = 50) =>
+        private static bool IsStrongNoYearMatch(string normalizedSearchTitle, string returnedTitle, int voteCount, int minVoteCount = 50) =>
             voteCount >= minVoteCount &&
-            string.Equals(FileNameParser.NormalizeTitleForMatch(returnedTitle), FileNameParser.NormalizeTitleForMatch(searchedTitle), StringComparison.OrdinalIgnoreCase);
+            string.Equals(FileNameParser.NormalizeTitleForMatch(returnedTitle), normalizedSearchTitle, StringComparison.Ordinal);
 
-        // Applies two fallback lookup strategies when the primary search fails or returns a low-confidence result.
-        // After-dash strategy: retries with the part after " - " when info is null (no initial match).
-        // Trailing-number strategy: retries without trailing digit when info is null OR hasYear returns false
+        // Returns true when all words of the searched title appear in the returned title's word set
+        // and the returned title has strictly more words — i.e. the searched title is a proper word subset.
+        private static bool IsWordSubsetMatch(string[] normalizedSearchedWords, string returnedTitle)
+        {
+            var returnedWords = new HashSet<string>(
+                FileNameParser.NormalizeTitleForMatch(returnedTitle)
+                    .Split(' ', StringSplitOptions.RemoveEmptyEntries),
+                StringComparer.Ordinal);
+            return returnedWords.Count > normalizedSearchedWords.Length &&
+                   normalizedSearchedWords.All(w => returnedWords.Contains(w));
+        }
+
+        // Applies two fallback lookup strategies when the primary search fails or returns no match.
+        // After-dash strategy: retries with the part after " - " when info is null.
+        // Trailing-number strategy: retries without a trailing digit when info is null OR the result has no year
         // (a year-less result is ambiguous; a stripped-title result that includes a year is higher quality).
         private static async Task<(T? Info, bool IsConfident)> TryFallbackLookupsAsync<T>(
             string title, int? year, T? info, bool isConfident,
-            Func<string, int?, Task<T?>> search,
+            Func<string, int?, Task<IReadOnlyList<T>?>> search,
             Func<T, bool> hasYear) where T : class
         {
             var afterDash = info is null ? ExtractAfterDash(title) : null;
             if (afterDash is not null)
             {
                 LogManager.Instance.LogDebug($"TmdbClient.TryFallbackLookupsAsync: Retrying with after-dash title '{afterDash}'", Subsystem.MediaManager);
-                info = await search(afterDash, year).ConfigureAwait(false);
-                if (info is not null) isConfident = false;
+                var afterDashInfo = (await search(afterDash, year).ConfigureAwait(false))?[0];
+                if (afterDashInfo is not null)
+                {
+                    info        = afterDashInfo;
+                    isConfident = false;
+                }
             }
 
             if (info is null || (!hasYear(info) && title.Length > 2))
@@ -207,10 +234,10 @@ namespace qbPortWeaver
                 if (withoutNum is not null)
                 {
                     LogManager.Instance.LogDebug($"TmdbClient.TryFallbackLookupsAsync: Retrying without trailing number '{withoutNum}'", Subsystem.MediaManager);
-                    var altInfo = await search(withoutNum, year).ConfigureAwait(false);
-                    if (altInfo is not null && hasYear(altInfo))
+                    var withoutNumInfo = (await search(withoutNum, year).ConfigureAwait(false))?[0];
+                    if (withoutNumInfo is not null && hasYear(withoutNumInfo))
                     {
-                        info        = altInfo;
+                        info        = withoutNumInfo;
                         isConfident = false;
                     }
                 }

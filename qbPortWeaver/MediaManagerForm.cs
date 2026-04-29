@@ -244,7 +244,7 @@ namespace qbPortWeaver
                 ct.ThrowIfCancellationRequested();
                 var (showInfo, showConfident) = string.IsNullOrWhiteSpace(tvShowLib)
                     ? (null, false)
-                    : await SearchTmdbByPlexNameAsync<TvShowInfo>(showKey, tmdb.SearchTvShowAsync, i => i.Title, i => i.Year, i => i.VoteCount, "TV show");
+                    : await SearchTmdbByPlexNameAsync<TvShowInfo>(showKey, tmdb.SearchTvShowCandidatesAsync, i => i.Title, i => i.Year, i => i.VoteCount, "TV show");
                 foreach (var row in showRows)
                 {
                     if (IsDisposed) return done;
@@ -268,7 +268,7 @@ namespace qbPortWeaver
                 if (!string.IsNullOrWhiteSpace(moviesLib))
                 {
                     var editedName = row.Cells[colProposed.Index].Value?.ToString() ?? string.Empty;
-                    var (movieInfo, movieConfident) = await SearchTmdbByPlexNameAsync<MovieInfo>(editedName, tmdb.SearchMovieAsync, i => i.Title, i => i.Year, i => i.VoteCount, "movie");
+                    var (movieInfo, movieConfident) = await SearchTmdbByPlexNameAsync<MovieInfo>(editedName, tmdb.SearchMovieCandidatesAsync, i => i.Title, i => i.Year, i => i.VoteCount, "movie");
                     if (movieInfo is not null)
                         ApplyMovieRematchResult(row, movieInfo, moviesLib, createFolders, editedName, movieConfident);
                 }
@@ -302,7 +302,7 @@ namespace qbPortWeaver
         // Parses a Plex-formatted name into title+year and searches TMDB with confidence tracking.
         // Returns (null, false) if the name is blank, unparseable, or has no TMDB match.
         private static async Task<(T? Info, bool IsConfident)> SearchTmdbByPlexNameAsync<T>(
-            string name, Func<string, int?, Task<T?>> search,
+            string name, Func<string, int?, Task<IReadOnlyList<T>?>> search,
             Func<T, string> getTitle, Func<T, int?> getYear, Func<T, int> getVoteCount,
             string mediaLabel) where T : class
         {

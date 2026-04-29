@@ -81,6 +81,9 @@ namespace qbPortWeaver
         /// </summary>
         internal static string NormalizeTitleForMatch(string title)
         {
+            // NFD decomposition splits accented chars into base + combining mark (e.g. î → i + ◌̂).
+            // The intra-word punctuation rule below then drops combining marks, stripping all accents.
+            title = title.Normalize(NormalizationForm.FormD);
             var sb = new StringBuilder(title.Length);
             bool lastWasSpace = true; // start true to avoid a leading space
             for (int i = 0; i < title.Length; i++)

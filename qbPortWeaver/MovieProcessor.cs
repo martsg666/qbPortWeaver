@@ -245,7 +245,7 @@ namespace qbPortWeaver
                 return cached;
 
             var result = await TmdbClient.LookupAsync(title, year,
-                tmdb.SearchMovieAsync, i => i.Year is not null, i => i.Title, i => i.VoteCount, "movie").ConfigureAwait(false);
+                tmdb.SearchMovieCandidatesAsync, i => i.Year is not null, i => i.Title, i => i.VoteCount, "movie").ConfigureAwait(false);
             if (result.Info is not null)
                 LogManager.Instance.LogDebug($"MovieProcessor.GetOrLookupMovieAsync: Matched '{result.Info.Title}' ({result.Info.Year}) [tmdb-{result.Info.TmdbId}]", Subsystem.MediaManager);
             TmdbCacheManager.TryAddMovie(cacheKey, result);

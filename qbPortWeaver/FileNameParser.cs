@@ -211,8 +211,11 @@ namespace qbPortWeaver
                 EndEpisode: endEpisode);
         }
 
-        /// <summary>Extracts a probable movie title and optional release year from a filename or folder name.</summary>
-        public static (string Title, int? Year) ParseMovie(string name)
+        /// <summary>
+        /// Extracts a probable title and optional release year from a filename or folder name.
+        /// Generic: used for movies, TV show folder names, and any other <c>Title (Year)</c> pattern.
+        /// </summary>
+        public static (string Title, int? Year) ParseTitleYear(string name)
         {
             name = StripVideoExtension(name);
             name = StripSitePrefix(name);

@@ -17,13 +17,13 @@ namespace qbPortWeaver
         /// Scans pre-classified TV episode files and returns import proposals without modifying any files.
         /// Only items not yet present in the library are included.
         /// </summary>
-        public async Task<List<MediaProposal>> ScanTvShowsAsync(string[] tvShowFiles, Action? onItemProcessed = null)
+        public async Task<List<MediaProposal>> ScanTvShowsAsync(string[] tvShowFiles, Action? onItemProcessed = null, CancellationToken ct = default)
         {
             var proposals = new List<MediaProposal>();
 
             foreach (var file in tvShowFiles)
             {
-                await ScanEpisodeFileAsync(file, proposals).ConfigureAwait(false);
+                await ScanEpisodeFileAsync(file, proposals, ct).ConfigureAwait(false);
                 onItemProcessed?.Invoke();
             }
 
@@ -31,14 +31,14 @@ namespace qbPortWeaver
         }
 
         /// <summary>Processes pre-classified TV episode files, importing them into the library with Plex naming conventions. Skips uncertain TMDB matches - use <see cref="ScanTvShowsAsync"/> to preview and review those first.</summary>
-        public async Task ProcessTvShowsAsync(string sourceFolder, string[] tvShowFiles)
+        public async Task ProcessTvShowsAsync(string sourceFolder, string[] tvShowFiles, CancellationToken ct = default)
         {
             foreach (var file in tvShowFiles)
-                await ProcessEpisodeFileAsync(sourceFolder, file).ConfigureAwait(false);
+                await ProcessEpisodeFileAsync(sourceFolder, file, ct).ConfigureAwait(false);
         }
 
         // Scans a single TV episode file and adds proposals for unmatched or new items
-        private async Task ScanEpisodeFileAsync(string filePath, List<MediaProposal> proposals)
+        private async Task ScanEpisodeFileAsync(string filePath, List<MediaProposal> proposals, CancellationToken ct)
         {
             var fileName = Path.GetFileName(filePath);
 
@@ -49,7 +49,7 @@ namespace qbPortWeaver
                 return;
             }
 
-            var (info, isConfident) = await GetOrLookupTvShowAsync(episodeInfo.ShowName, episodeInfo.Year).ConfigureAwait(false);
+            var (info, isConfident) = await GetOrLookupTvShowAsync(episodeInfo.ShowName, episodeInfo.Year, ct).ConfigureAwait(false);
             if (info is null)
             {
                 proposals.Add(new MediaProposal(MediaProposal.TypeTvShow, filePath, string.Empty, IsConfident: false, IsMatched: false));
@@ -65,7 +65,7 @@ namespace qbPortWeaver
         }
 
         // Imports a single TV episode file into the library
-        private async Task ProcessEpisodeFileAsync(string sourceFolder, string filePath)
+        private async Task ProcessEpisodeFileAsync(string sourceFolder, string filePath, CancellationToken ct)
         {
             var fileName = Path.GetFileName(filePath);
 
@@ -76,7 +76,7 @@ namespace qbPortWeaver
                 return;
             }
 
-            var (info, isConfident) = await GetOrLookupTvShowAsync(episodeInfo.ShowName, episodeInfo.Year).ConfigureAwait(false);
+            var (info, isConfident) = await GetOrLookupTvShowAsync(episodeInfo.ShowName, episodeInfo.Year, ct).ConfigureAwait(false);
 
             if (info is null) return;
             if (!isConfident)
@@ -108,19 +108,20 @@ namespace qbPortWeaver
                 : Path.Combine(libraryPath, episodeFileName);
         }
 
-        // Returns a cached TV show lookup or performs a new TMDB search and caches the result
-        private async Task<(TvShowInfo? Info, bool IsConfident)> GetOrLookupTvShowAsync(string title, int? year)
+        // Returns a cached TV show lookup or performs a new TMDB search, deduplicating concurrent lookups
+        // for the same show so parallel source-folder scans share one TMDB API call.
+        private Task<(TvShowInfo? Info, bool IsConfident)> GetOrLookupTvShowAsync(string title, int? year, CancellationToken ct = default)
         {
             var cacheKey = $"{title}|{year}";
-            if (TmdbCacheManager.TryGetTvShow(cacheKey, out var cached))
-                return cached;
-
-            var result = await TmdbClient.LookupAsync(title, year,
-                tmdb.SearchTvShowCandidatesAsync, i => i.Year is not null, i => i.Title, i => i.VoteCount, "TV show").ConfigureAwait(false);
-            if (result.Info is not null)
-                LogManager.Instance.LogDebug($"TvShowProcessor.GetOrLookupTvShowAsync: Matched '{result.Info.Title}' ({result.Info.Year}) [tmdb-{result.Info.TmdbId}]", Subsystem.MediaManager);
-            TmdbCacheManager.TryAddTvShow(cacheKey, result);
-            return result;
+            return TmdbCacheManager.GetOrComputeTvShowAsync(cacheKey, async () =>
+            {
+                var result = await TmdbClient.LookupAsync(title, year,
+                    (q, y) => tmdb.SearchTvShowCandidatesAsync(q, y, ct),
+                    i => i.Year is not null, i => i.Title, i => i.VoteCount, "TV show").ConfigureAwait(false);
+                if (result.Info is not null)
+                    LogManager.Instance.LogDebug($"TvShowProcessor.GetOrLookupTvShowAsync: Matched '{result.Info.Title}' ({result.Info.Year}) [tmdb-{result.Info.TmdbId}]", Subsystem.MediaManager);
+                return result;
+            });
         }
     }
 }

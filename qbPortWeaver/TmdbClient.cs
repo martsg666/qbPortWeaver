@@ -33,28 +33,28 @@ namespace qbPortWeaver
         };
 
         /// <summary>Returns all TMDB movie candidates for a query in relevance order, or null if none found.</summary>
-        internal async Task<IReadOnlyList<MovieInfo>?> SearchMovieCandidatesAsync(string query, int? year = null)
+        internal async Task<IReadOnlyList<MovieInfo>?> SearchMovieCandidatesAsync(string query, int? year = null, CancellationToken ct = default)
         {
             var url = _useBearer // NOSONAR S4790 - key transmitted over HTTPS only; v3 in query param, v4 in Authorization header
                 ? $"search/movie?query={Uri.EscapeDataString(query)}&language=en-US&page=1"
                 : $"search/movie?api_key={apiKey}&query={Uri.EscapeDataString(query)}&language=en-US&page=1";
             if (year.HasValue)
                 url += $"&year={year.Value}";
-            var response = await GetWithRateLimitAsync<TmdbMovieSearchResult>(url).ConfigureAwait(false);
+            var response = await GetWithRateLimitAsync<TmdbMovieSearchResult>(url, ct).ConfigureAwait(false);
             var results  = response?.Results;
             if (results is null or { Count: 0 }) return null;
             return results.ConvertAll(r => new MovieInfo(r.Title, ParseYearFromDate(r.ReleaseDate), r.Id, r.VoteCount, r.PosterPath, r.Overview));
         }
 
         /// <summary>Returns all TMDB TV show candidates for a query in relevance order, or null if none found.</summary>
-        internal async Task<IReadOnlyList<TvShowInfo>?> SearchTvShowCandidatesAsync(string query, int? year = null)
+        internal async Task<IReadOnlyList<TvShowInfo>?> SearchTvShowCandidatesAsync(string query, int? year = null, CancellationToken ct = default)
         {
             var url = _useBearer // NOSONAR S4790 - key transmitted over HTTPS only; v3 in query param, v4 in Authorization header
                 ? $"search/tv?query={Uri.EscapeDataString(query)}&language=en-US&page=1"
                 : $"search/tv?api_key={apiKey}&query={Uri.EscapeDataString(query)}&language=en-US&page=1";
             if (year.HasValue)
                 url += $"&first_air_date_year={year.Value}";
-            var response = await GetWithRateLimitAsync<TmdbTvSearchResult>(url).ConfigureAwait(false);
+            var response = await GetWithRateLimitAsync<TmdbTvSearchResult>(url, ct).ConfigureAwait(false);
             var results  = response?.Results;
             if (results is null or { Count: 0 }) return null;
             return results.ConvertAll(r => new TvShowInfo(r.Name, ParseYearFromDate(r.FirstAirDate), r.Id, r.VoteCount, r.PosterPath, r.Overview));
@@ -114,7 +114,7 @@ namespace qbPortWeaver
             // With a year present, a short searched title can still match a longer TMDB title.
             // Mark uncertain when all searched-title words appear in the returned title's word set
             // and the returned title has strictly more words (word-subset match).
-            else if (info is not null && year.HasValue)
+            else if (info is not null)
                 isConfident = !IsWordSubsetMatch(searchedWords, getTitle(info));
 
             // Retry without year: parsed year may not match TMDB's release/first-air year
@@ -165,26 +165,27 @@ namespace qbPortWeaver
 
         // Enforces a minimum delay between TMDB API calls to avoid HTTP 429 rate limiting.
         // The delay runs inside the semaphore hold so the next caller waits for the cooldown to finish.
-        private async Task<T?> GetWithRateLimitAsync<T>(string url)
+        private async Task<T?> GetWithRateLimitAsync<T>(string url, CancellationToken ct = default)
         {
-            await _rateLimiter.WaitAsync().ConfigureAwait(false);
+            await _rateLimiter.WaitAsync(ct).ConfigureAwait(false);
             try
             {
                 if (_useBearer)
                 {
                     using var request  = new HttpRequestMessage(HttpMethod.Get, url);
                     request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", apiKey);
-                    using var response = await _httpClient.SendAsync(request).ConfigureAwait(false);
+                    using var response = await _httpClient.SendAsync(request, ct).ConfigureAwait(false);
                     response.EnsureSuccessStatusCode();
-                    return await response.Content.ReadFromJsonAsync<T>().ConfigureAwait(false);
+                    return await response.Content.ReadFromJsonAsync<T>(ct).ConfigureAwait(false);
                 }
-                return await _httpClient.GetFromJsonAsync<T>(url).ConfigureAwait(false);
+                return await _httpClient.GetFromJsonAsync<T>(url, ct).ConfigureAwait(false);
             }
             finally
             {
                 // Delay inside the semaphore hold so the next caller waits for the cooldown.
                 // Inner finally ensures Release() runs even if Task.Delay is interrupted.
-                try { await Task.Delay(RateLimitDelayMs).ConfigureAwait(false); }
+                try { await Task.Delay(RateLimitDelayMs, ct).ConfigureAwait(false); }
+                catch (OperationCanceledException) { }
                 finally { _rateLimiter.Release(); }
             }
         }

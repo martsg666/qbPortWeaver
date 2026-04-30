@@ -22,6 +22,14 @@ namespace qbPortWeaver
         private static readonly ConcurrentDictionary<string, (MovieInfo? Info, bool IsConfident)>
             _movieCache = new(StringComparer.OrdinalIgnoreCase);
 
+        // In-flight dedup: if two source folders race on the same title, the second awaits
+        // the first lookup's Task rather than issuing a second TMDB API call.
+        // Lazy<Task> ensures the factory is invoked exactly once even under concurrent GetOrAdd.
+        private static readonly ConcurrentDictionary<string, Lazy<Task<(TvShowInfo? Info, bool IsConfident)>>>
+            _tvShowInFlight = new(StringComparer.OrdinalIgnoreCase);
+        private static readonly ConcurrentDictionary<string, Lazy<Task<(MovieInfo? Info, bool IsConfident)>>>
+            _movieInFlight  = new(StringComparer.OrdinalIgnoreCase);
+
         private static int _loaded; // 0 = not loaded, 1 = loaded; Interlocked
         private static volatile bool _tvShowCacheDirty;
         private static volatile bool _movieCacheDirty;
@@ -49,6 +57,52 @@ namespace qbPortWeaver
             // Only mark dirty for non-null results - nulls are not persisted so they are retried on next start.
             if (_movieCache.TryAdd(key, value) && value.Info is not null)
                 _movieCacheDirty = true;
+        }
+
+        /// <summary>
+        /// Returns the cached TV show result for <paramref name="cacheKey"/> if present; otherwise runs
+        /// <paramref name="compute"/> exactly once even when concurrent callers race on the same key.
+        /// Parallel source-folder scans sharing the same show share one TMDB API call.
+        /// </summary>
+        internal static async Task<(TvShowInfo? Info, bool IsConfident)> GetOrComputeTvShowAsync(
+            string cacheKey, Func<Task<(TvShowInfo? Info, bool IsConfident)>> compute)
+        {
+            if (TryGetTvShow(cacheKey, out var cached)) return cached;
+            // The first caller's CT is captured inside the compute closure; subsequent waiters share that task.
+            var lazy = _tvShowInFlight.GetOrAdd(cacheKey, _ => new Lazy<Task<(TvShowInfo? Info, bool IsConfident)>>(compute));
+            try
+            {
+                var result = await lazy.Value.ConfigureAwait(false);
+                TryAddTvShow(cacheKey, result);
+                return result;
+            }
+            finally
+            {
+                _tvShowInFlight.TryRemove(new KeyValuePair<string, Lazy<Task<(TvShowInfo? Info, bool IsConfident)>>>(cacheKey, lazy));
+            }
+        }
+
+        /// <summary>
+        /// Returns the cached movie result for <paramref name="cacheKey"/> if present; otherwise runs
+        /// <paramref name="compute"/> exactly once even when concurrent callers race on the same key.
+        /// Parallel source-folder scans sharing the same title share one TMDB API call.
+        /// </summary>
+        internal static async Task<(MovieInfo? Info, bool IsConfident)> GetOrComputeMovieAsync(
+            string cacheKey, Func<Task<(MovieInfo? Info, bool IsConfident)>> compute)
+        {
+            if (TryGetMovie(cacheKey, out var cached)) return cached;
+            // The first caller's CT is captured inside the compute closure; subsequent waiters share that task.
+            var lazy = _movieInFlight.GetOrAdd(cacheKey, _ => new Lazy<Task<(MovieInfo? Info, bool IsConfident)>>(compute));
+            try
+            {
+                var result = await lazy.Value.ConfigureAwait(false);
+                TryAddMovie(cacheKey, result);
+                return result;
+            }
+            finally
+            {
+                _movieInFlight.TryRemove(new KeyValuePair<string, Lazy<Task<(MovieInfo? Info, bool IsConfident)>>>(cacheKey, lazy));
+            }
         }
 
         /// <summary>Evicts cached null TV show results so transient API failures are retried next cycle.</summary>
@@ -97,6 +151,8 @@ namespace qbPortWeaver
         {
             _tvShowCache.Clear();
             _movieCache.Clear();
+            _tvShowInFlight.Clear();
+            _movieInFlight.Clear();
             _tvShowCacheDirty = false;
             _movieCacheDirty  = false;
             Interlocked.Exchange(ref _loaded, 0);

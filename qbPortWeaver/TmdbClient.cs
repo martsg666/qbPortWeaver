@@ -114,7 +114,7 @@ namespace qbPortWeaver
             // With a year present, a short searched title can still match a longer TMDB title.
             // Mark uncertain when all searched-title words appear in the returned title's word set
             // and the returned title has strictly more words (word-subset match).
-            if (info is not null && year.HasValue)
+            else if (info is not null && year.HasValue)
                 isConfident = !IsWordSubsetMatch(searchedWords, getTitle(info));
 
             // Retry without year: parsed year may not match TMDB's release/first-air year
@@ -228,7 +228,7 @@ namespace qbPortWeaver
                 }
             }
 
-            if (info is null || (!hasYear(info) && title.Length > 2))
+            if (info is null || !hasYear(info))
             {
                 var withoutNum = StripTrailingNumber(title);
                 if (withoutNum is not null)

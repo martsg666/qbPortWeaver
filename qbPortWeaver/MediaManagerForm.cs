@@ -324,6 +324,7 @@ namespace qbPortWeaver
             }
             catch (HttpRequestException ex)
             {
+                // TaskCanceledException and JsonException propagate to the caller's handlers.
                 LogManager.Instance.LogMessage($"Re-match {mediaLabel} lookup failed for '{title}': {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
                 return (null, false);
             }
@@ -907,8 +908,9 @@ namespace qbPortWeaver
 
         private void FinishProgress()
         {
-            prgScan.Style = ProgressBarStyle.Blocks;
-            prgScan.Value = prgScan.Maximum;
+            prgScan.Style   = ProgressBarStyle.Blocks;
+            prgScan.Value   = prgScan.Maximum;
+            prgScan.Visible = false;
         }
 
         // Disables input controls while an async operation is running.

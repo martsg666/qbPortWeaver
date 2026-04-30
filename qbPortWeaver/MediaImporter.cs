@@ -320,8 +320,9 @@ namespace qbPortWeaver
                 LogManager.Instance.LogMessage($"Building library index across {libraryPaths.Length} folder(s)", LogLevel.Info, Subsystem.MediaManager);
                 LoadLibraryCache();
 
-                var sw = System.Diagnostics.Stopwatch.StartNew();
+                var sw           = System.Diagnostics.Stopwatch.StartNew();
                 var fingerprints = new HashSet<string>(StringComparer.Ordinal);
+                var fpToPath     = new Dictionary<string, string>(StringComparer.Ordinal);
                 var seenPaths    = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                 int cached = 0, computed = 0;
 
@@ -336,7 +337,7 @@ namespace qbPortWeaver
                         continue;
                     }
 
-                    var (c, comp) = FingerprintLibraryFiles(files, fingerprints, seenPaths, cancellationToken);
+                    var (c, comp) = FingerprintLibraryFiles(files, fingerprints, fpToPath, seenPaths, cancellationToken);
                     cached   += c;
                     computed += comp;
                 }
@@ -408,12 +409,13 @@ namespace qbPortWeaver
             }).ToList();
 
         // Fingerprints a pre-enumerated list of library files in parallel, using the cache where possible.
-        // Each file requires a 128 KB read to compute its fingerprint; reads are bounded by FingerprintParallelism.
+        // Each file requires a 128 KB read; reads are bounded by FingerprintParallelism.
+        // fpToPath maps each fingerprint to the first library path that produced it; additional copies are warned.
         private static (int Cached, int Computed) FingerprintLibraryFiles(
-            List<FileInfo> files, HashSet<string> fingerprints, HashSet<string> seenPaths,
-            CancellationToken cancellationToken)
+            List<FileInfo> files, HashSet<string> fingerprints, Dictionary<string, string> fpToPath,
+            HashSet<string> seenPaths, CancellationToken cancellationToken)
         {
-            var results = new ConcurrentBag<(string Fingerprint, bool WasCached)>();
+            var results = new ConcurrentBag<(string FullName, string Fingerprint, bool WasCached)>();
             var seen    = new ConcurrentBag<string>();
 
             Parallel.ForEach(files,
@@ -424,7 +426,7 @@ namespace qbPortWeaver
                     try
                     {
                         string fp = GetOrComputeLibraryFingerprint(fi, out bool wasCached);
-                        results.Add((fp, wasCached));
+                        results.Add((fi.FullName, fp, wasCached));
                     }
                     catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
                     {
@@ -434,8 +436,12 @@ namespace qbPortWeaver
 
             // Merge into caller-provided collections (single-threaded; no concurrent access from here)
             int cached = 0, computed = 0;
-            foreach (var (fp, wasCached) in results)
+            foreach (var (fullName, fp, wasCached) in results)
             {
+                if (!fpToPath.TryAdd(fp, fullName))
+                    LogManager.Instance.LogMessage(
+                        $"Library duplicate: '{fullName}' has same content as '{fpToPath[fp]}'",
+                        LogLevel.Warn, Subsystem.MediaManager);
                 fingerprints.Add(fp);
                 if (wasCached) cached++; else computed++;
             }
@@ -530,13 +536,9 @@ namespace qbPortWeaver
         /// </param>
         internal static bool IsAlreadyInLibrary(FileInfo fi)
         {
-            var fps = _libraryFingerprints;
-            if (fps is null) return false;
             try
             {
-                string fingerprint = GetOrComputeSourceFingerprint(fi);
-                lock (_libraryLock)
-                    return fps.Contains(fingerprint);
+                return IsAlreadyInLibrary(GetOrComputeSourceFingerprint(fi));
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
@@ -545,10 +547,19 @@ namespace qbPortWeaver
             }
         }
 
+        /// <summary>Returns <see langword="true"/> if the given fingerprint is already present in the library index.</summary>
+        internal static bool IsAlreadyInLibrary(string fingerprint)
+        {
+            var fps = _libraryFingerprints;
+            if (fps is null) return false;
+            lock (_libraryLock)
+                return fps.Contains(fingerprint);
+        }
+
         // Returns the fingerprint for a source file, using the in-memory cache when the file has not changed.
         // Uses _sourceInFlight to deduplicate concurrent computation: if two threads race on the same file,
         // the second waits on the Lazy rather than issuing a redundant read.
-        private static string GetOrComputeSourceFingerprint(FileInfo fi)
+        internal static string GetOrComputeSourceFingerprint(FileInfo fi)
         {
             var cache = _sourceCache;
             if (cache is not null)

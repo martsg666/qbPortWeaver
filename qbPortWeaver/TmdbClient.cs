@@ -183,9 +183,9 @@ namespace qbPortWeaver
             finally
             {
                 // Delay inside the semaphore hold so the next caller waits for the cooldown.
-                // Inner finally ensures Release() runs even if Task.Delay is interrupted.
-                try { await Task.Delay(RateLimitDelayMs, ct).ConfigureAwait(false); }
-                catch (OperationCanceledException) { }
+                // CancellationToken.None: cooldown is 260ms and must not be skipped by a mid-call cancellation.
+                // Inner finally ensures Release() runs even if Task.Delay somehow throws.
+                try { await Task.Delay(RateLimitDelayMs, CancellationToken.None).ConfigureAwait(false); }
                 finally { _rateLimiter.Release(); }
             }
         }

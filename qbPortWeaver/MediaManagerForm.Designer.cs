@@ -401,9 +401,12 @@ namespace qbPortWeaver
             Controls.Add(btnOK);
             Controls.Add(btnCancel);
             FormBorderStyle = FormBorderStyle.Sizable;
+            MaximizeBox     = true;
             MinimizeBox     = true;
+            MinimumSize     = new Size(720, 600);
             Name            = "MediaManagerForm";
-            ShowIcon        = false;
+            Icon            = Properties.Resources.qbPortWeaver;
+            ShowIcon        = true;
             ShowInTaskbar   = true;
             StartPosition   = FormStartPosition.CenterScreen;
             Text            = "qbPortWeaver | Media Manager";

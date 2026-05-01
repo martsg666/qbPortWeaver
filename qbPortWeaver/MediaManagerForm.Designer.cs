@@ -10,6 +10,7 @@ namespace qbPortWeaver
             {
                 _scanCts?.Cancel();
                 _scanCts?.Dispose();
+                lblTmdbTitle?.Font?.Dispose();
                 components?.Dispose();
             }
             base.Dispose(disposing);
@@ -400,10 +401,10 @@ namespace qbPortWeaver
             Controls.Add(btnOK);
             Controls.Add(btnCancel);
             FormBorderStyle = FormBorderStyle.Sizable;
-            MinimizeBox     = false;
+            MinimizeBox     = true;
             Name            = "MediaManagerForm";
             ShowIcon        = false;
-            ShowInTaskbar   = false;
+            ShowInTaskbar   = true;
             StartPosition   = FormStartPosition.CenterScreen;
             Text            = "qbPortWeaver | Media Manager";
             grpGeneral.ResumeLayout(false);

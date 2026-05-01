@@ -63,7 +63,7 @@ namespace qbPortWeaver
             await Task.WhenAll(classified.Select(c =>
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                return ProcessSourceFolderAsync(c.Folder, c.Items, ctx);
+                return ProcessSourceFolderAsync(c.Folder, c.Items, ctx, cancellationToken);
             })).ConfigureAwait(false);
 
             if (deleteEmptyFolders && total > 0)
@@ -80,7 +80,8 @@ namespace qbPortWeaver
         private static async Task ProcessSourceFolderAsync(
             string folder,
             (string[] MovieFiles, string[] TvShowFiles) items,
-            ImportContext ctx)
+            ImportContext ctx,
+            CancellationToken cancellationToken)
         {
             if (items.MovieFiles.Length == 0 && items.TvShowFiles.Length == 0)
             {
@@ -92,13 +93,13 @@ namespace qbPortWeaver
             if (!string.IsNullOrWhiteSpace(ctx.MoviesLibraryPath) && items.MovieFiles.Length > 0)
             {
                 var movieProcessor = new MovieProcessor(ctx.Tmdb, ctx.DryRun, ctx.CreateFolders, ctx.MoviesLibraryPath, ctx.ImportMode);
-                await TryRunAsync(() => movieProcessor.ProcessMoviesAsync(folder, items.MovieFiles), folder).ConfigureAwait(false);
+                await TryRunAsync(() => movieProcessor.ProcessMoviesAsync(folder, items.MovieFiles, cancellationToken), folder).ConfigureAwait(false);
             }
 
             if (!string.IsNullOrWhiteSpace(ctx.TvShowsLibraryPath) && items.TvShowFiles.Length > 0)
             {
                 var tvShowProcessor = new TvShowProcessor(ctx.Tmdb, ctx.DryRun, ctx.CreateFolders, ctx.TvShowsLibraryPath, ctx.ImportMode);
-                await TryRunAsync(() => tvShowProcessor.ProcessTvShowsAsync(folder, items.TvShowFiles), folder).ConfigureAwait(false);
+                await TryRunAsync(() => tvShowProcessor.ProcessTvShowsAsync(folder, items.TvShowFiles, cancellationToken), folder).ConfigureAwait(false);
             }
 
             int totalFiles = items.MovieFiles.Length + items.TvShowFiles.Length;
@@ -154,7 +155,7 @@ namespace qbPortWeaver
             var results = await Task.WhenAll(classified.Select(c =>
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                return ScanSourceFolderAsync(c.Folder, c.Items, ctx, OnItemProcessed);
+                return ScanSourceFolderAsync(c.Folder, c.Items, ctx, OnItemProcessed, cancellationToken);
             })).ConfigureAwait(false);
             var proposals = results.SelectMany(r => r).ToList();
 
@@ -171,7 +172,8 @@ namespace qbPortWeaver
             string folder,
             (string[] MovieFiles, string[] TvShowFiles) items,
             ImportContext ctx,
-            Action? onItemProcessed = null)
+            Action? onItemProcessed,
+            CancellationToken cancellationToken)
         {
             var proposals = new List<MediaProposal>();
             if (items.MovieFiles.Length == 0 && items.TvShowFiles.Length == 0)
@@ -184,13 +186,13 @@ namespace qbPortWeaver
             if (!string.IsNullOrWhiteSpace(ctx.MoviesLibraryPath) && items.MovieFiles.Length > 0)
             {
                 var movieProcessor = new MovieProcessor(ctx.Tmdb, ctx.DryRun, ctx.CreateFolders, ctx.MoviesLibraryPath, ctx.ImportMode);
-                proposals.AddRange(await TryRunAsync(() => movieProcessor.ScanMoviesAsync(items.MovieFiles, onItemProcessed), folder).ConfigureAwait(false));
+                proposals.AddRange(await TryRunAsync(() => movieProcessor.ScanMoviesAsync(items.MovieFiles, onItemProcessed, cancellationToken), folder).ConfigureAwait(false));
             }
 
             if (!string.IsNullOrWhiteSpace(ctx.TvShowsLibraryPath) && items.TvShowFiles.Length > 0)
             {
                 var tvShowProcessor = new TvShowProcessor(ctx.Tmdb, ctx.DryRun, ctx.CreateFolders, ctx.TvShowsLibraryPath, ctx.ImportMode);
-                proposals.AddRange(await TryRunAsync(() => tvShowProcessor.ScanTvShowsAsync(items.TvShowFiles, onItemProcessed), folder).ConfigureAwait(false));
+                proposals.AddRange(await TryRunAsync(() => tvShowProcessor.ScanTvShowsAsync(items.TvShowFiles, onItemProcessed, cancellationToken), folder).ConfigureAwait(false));
             }
 
             LogManager.Instance.LogMessage($"Scanned source folder '{folder}': {proposals.Count} proposal(s)", LogLevel.Info, Subsystem.MediaManager);
@@ -396,20 +398,22 @@ namespace qbPortWeaver
         // Requires BuildLibraryIndex to have completed before calling - IsAlreadyInLibrary uses the index.
         // Folders are processed sequentially so that a single Parallel.ForEach (degree MediaImporter.FingerprintParallelism)
         // is active at a time - processing folders concurrently would multiply the parallelism by the folder count.
+        // sourceFpToPath is shared across all folders so source duplicates spanning multiple folders are detected.
         private static Task<List<(string Folder, (string[] MovieFiles, string[] TvShowFiles) Items)>> FingerprintSourceFoldersAsync(
             List<(string Folder, List<FileInfo> Candidates)> enumerated, CancellationToken cancellationToken)
         {
             return Task.Run(() =>
             {
-                var classifySw = System.Diagnostics.Stopwatch.StartNew();
-                var classified = new List<(string Folder, (string[] MovieFiles, string[] TvShowFiles) Items)>(enumerated.Count);
+                var classifySw    = System.Diagnostics.Stopwatch.StartNew();
+                var classified    = new List<(string Folder, (string[] MovieFiles, string[] TvShowFiles) Items)>(enumerated.Count);
+                var sourceFpToPath = new ConcurrentDictionary<string, string>(StringComparer.Ordinal);
 
                 foreach (var e in enumerated)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
                     try
                     {
-                        classified.Add((e.Folder, FingerprintCandidates(e.Candidates, cancellationToken)));
+                        classified.Add((e.Folder, FingerprintCandidates(e.Candidates, sourceFpToPath, cancellationToken)));
                     }
                     catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
                     {
@@ -432,8 +436,11 @@ namespace qbPortWeaver
 
         // Fingerprints candidates in parallel, filters out files already in the library, and classifies
         // the remainder into movie and TV episode file paths in a single pass.
-        // Each candidate requires a 128 KB read to compute its fingerprint; reads are bounded by MediaImporter.FingerprintParallelism.
-        private static (string[] MovieFiles, string[] TvShowFiles) FingerprintCandidates(List<FileInfo> candidates, CancellationToken cancellationToken)
+        // Each candidate requires a 128 KB read; reads are bounded by MediaImporter.FingerprintParallelism.
+        // fpToPath maps each fingerprint to the first source path that produced it (shared across folders).
+        // Files already in the library are silently skipped; additional source copies of the same content are warned.
+        private static (string[] MovieFiles, string[] TvShowFiles) FingerprintCandidates(
+            List<FileInfo> candidates, ConcurrentDictionary<string, string> fpToPath, CancellationToken cancellationToken)
         {
             var movieFiles  = new ConcurrentBag<string>();
             var tvShowFiles = new ConcurrentBag<string>();
@@ -442,7 +449,25 @@ namespace qbPortWeaver
                 new ParallelOptions { MaxDegreeOfParallelism = MediaImporter.FingerprintParallelism, CancellationToken = cancellationToken },
                 fi =>
                 {
-                    if (MediaImporter.IsAlreadyInLibrary(fi)) return;
+                    string fp;
+                    try { fp = MediaImporter.GetOrComputeSourceFingerprint(fi); }
+                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                    {
+                        LogManager.Instance.LogDebug($"MediaManagerService.FingerprintCandidates: Skipped '{fi.Name}': {ex.Message}", Subsystem.MediaManager);
+                        return;
+                    }
+
+                    if (MediaImporter.IsAlreadyInLibrary(fp)) return;
+
+                    if (!fpToPath.TryAdd(fp, fi.FullName))
+                    {
+                        fpToPath.TryGetValue(fp, out var firstPath);
+                        LogManager.Instance.LogMessage(
+                            $"Source duplicate: '{fi.FullName}' has same content as '{firstPath}'",
+                            LogLevel.Warn, Subsystem.MediaManager);
+                        return;
+                    }
+
                     if (!FileNameParser.IsTvShow(fi.Name))
                         movieFiles.Add(fi.FullName);
                     else if (FileNameParser.IsVideoTvShowEpisode(fi.FullName))
@@ -519,6 +544,9 @@ namespace qbPortWeaver
             {
                 var fileName = Path.GetFileName(file);
                 if (!fileName.StartsWith(videoBase, StringComparison.OrdinalIgnoreCase)) continue;
+                // Require the character immediately after the base name to be '.' or end of string
+                // so "Movie.mkv" does not claim "Movie 2.srt" as a companion.
+                if (fileName.Length > videoBase.Length && fileName[videoBase.Length] != '.') continue;
 
                 var suffix     = fileName[videoBase.Length..];
                 var targetPath = Path.Combine(targetDir, targetBase + suffix);

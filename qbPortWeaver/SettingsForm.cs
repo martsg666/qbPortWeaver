@@ -68,6 +68,13 @@ namespace qbPortWeaver
 
         private void LoadSettings()
         {
+            // NAT-PMP placeholder must be in place before cboVpnProvider is set so that
+            // cboVpnProvider_SelectedIndexChanged sees discoveryPending = true and disables
+            // all adapter controls correctly while discovery is in flight.
+            cboNatPmpAdapter.Items.Clear();
+            cboNatPmpAdapter.Items.Add(DiscoveringAdaptersPlaceholder);
+            cboNatPmpAdapter.SelectedIndex = 0;
+
             // General
             cboVpnProvider.Items.Clear();
             cboVpnProvider.Items.AddRange(
@@ -91,11 +98,8 @@ namespace qbPortWeaver
             cboBitTorrentClient.SelectedItem = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyBitTorrentClient);
             if (cboBitTorrentClient.SelectedIndex < 0) cboBitTorrentClient.SelectedIndex = 0;
 
-            // NAT-PMP adapter - discovered asynchronously to avoid blocking the UI
-            cboNatPmpAdapter.Items.Clear();
-            cboNatPmpAdapter.Items.Add(DiscoveringAdaptersPlaceholder);
-            cboNatPmpAdapter.SelectedIndex = 0;
-            cboNatPmpAdapter.Enabled = false;
+            // NAT-PMP adapter discovery is async to avoid blocking the UI.
+            // Launched after VPN provider is set so the completion callback reads the correct state.
             string savedAdapter = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyNatPmpAdapterName);
             _ = PopulateNatPmpAdaptersAsync(savedAdapter); // fire-and-forget; exceptions are handled inside PopulateNatPmpAdaptersAsync
 
@@ -306,8 +310,7 @@ namespace qbPortWeaver
             cboNatPmpAdapter.Items.Clear();
             cboNatPmpAdapter.Items.Add(DiscoveringAdaptersPlaceholder);
             cboNatPmpAdapter.SelectedIndex = 0;
-            cboNatPmpAdapter.Enabled   = false;
-            btnRefreshAdapters.Enabled = false;
+            SetAdapterControlsEnabled(false);
             _ = PopulateNatPmpAdaptersAsync(current); // fire-and-forget; exceptions are handled inside PopulateNatPmpAdaptersAsync
         }
 
@@ -370,7 +373,8 @@ namespace qbPortWeaver
 
         private void UpdateAutoRecoverySubControls()
         {
-            bool enabled = chkAutoRecovery.Checked;
+            bool vpnActive = cboVpnProvider.SelectedItem?.ToString() != RegistrySettingsManager.VpnProviderDisabled;
+            bool enabled   = vpnActive && chkAutoRecovery.Checked;
             lblRecoveryCycles.Enabled     = enabled;
             nudRecoveryCycles.Enabled     = enabled;
             lblRecoveryCyclesUnit.Enabled = enabled;
@@ -379,12 +383,11 @@ namespace qbPortWeaver
         // Enables or disables all port-sync-related controls (everything except VPN provider, update interval, and debug mode)
         private void SetPortSyncControlsEnabled(bool enabled)
         {
-            // General section - NAT-PMP adapter and auto-recovery
-            lblNatPmpAdapter.Enabled      = enabled;
+            // General section - client and auto-recovery (NAT-PMP adapter row handled by SetAdapterControlsEnabled)
+            lblBitTorrentClient.Enabled   = enabled;
+            cboBitTorrentClient.Enabled   = enabled;
             chkAutoRecovery.Enabled       = enabled;
-            lblRecoveryCycles.Enabled     = enabled && chkAutoRecovery.Checked;
-            nudRecoveryCycles.Enabled     = enabled && chkAutoRecovery.Checked;
-            lblRecoveryCyclesUnit.Enabled = enabled && chkAutoRecovery.Checked;
+            UpdateAutoRecoverySubControls();
 
             // qBittorrent / Deluge / Transmission section
             grpQBittorrent.Enabled  = enabled;
@@ -398,6 +401,7 @@ namespace qbPortWeaver
 
         private void SetAdapterControlsEnabled(bool enabled)
         {
+            lblNatPmpAdapter.Enabled   = enabled;
             cboNatPmpAdapter.Enabled   = enabled;
             btnRefreshAdapters.Enabled = enabled;
         }

@@ -81,6 +81,9 @@ namespace qbPortWeaver
         /// </summary>
         internal static string NormalizeTitleForMatch(string title)
         {
+            // NFD decomposition splits accented chars into base + combining mark (e.g. î → i + ◌̂).
+            // The intra-word punctuation rule below then drops combining marks, stripping all accents.
+            title = title.Normalize(NormalizationForm.FormD);
             var sb = new StringBuilder(title.Length);
             bool lastWasSpace = true; // start true to avoid a leading space
             for (int i = 0; i < title.Length; i++)
@@ -208,8 +211,11 @@ namespace qbPortWeaver
                 EndEpisode: endEpisode);
         }
 
-        /// <summary>Extracts a probable movie title and optional release year from a filename or folder name.</summary>
-        public static (string Title, int? Year) ParseMovie(string name)
+        /// <summary>
+        /// Extracts a probable title and optional release year from a filename or folder name.
+        /// Generic: used for movies, TV show folder names, and any other <c>Title (Year)</c> pattern.
+        /// </summary>
+        public static (string Title, int? Year) ParseTitleYear(string name)
         {
             name = StripVideoExtension(name);
             name = StripSitePrefix(name);

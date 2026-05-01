@@ -191,7 +191,7 @@ namespace qbPortWeaver
         {
             using var bmp         = new Bitmap(16, 16, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
             using var g           = Graphics.FromImage(bmp);
-            using var borderBrush = new SolidBrush(Color.FromArgb(60, 60, 60));
+            using var borderBrush = new SolidBrush(AppConstants.TrayIconDotBorder);
             using var dotBrush    = new SolidBrush(dotColor);
 
             g.Clear(Color.Transparent);

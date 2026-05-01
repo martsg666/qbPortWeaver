@@ -17,18 +17,18 @@ namespace qbPortWeaver
             "Deluge connects via its Web UI JSON-RPC API. A configurable flush wait ensures the port change is written to disk before restart.\n\n" +
             "Media Manager - TMDB detail panel\n" +
             "Selecting a result row in Media Manager now shows a detail panel at the bottom of the window with the matched title, " +
-            "TMDB ID, confidence indicator, and a poster thumbnail.\n\n" +
-            "Note: if you have used Media Manager before, click Clear Cache once to populate poster thumbnails for previously cached titles.";
+            "TMDB ID, confidence indicator, a poster thumbnail, and an overview description.\n\n" +
+            "Note: if you have used Media Manager before, click Clear Cache once to populate poster thumbnails and descriptions for previously cached titles.";
+
+        private bool _isDarkMode;
 
         public WhatsNewForm()
         {
             InitializeComponent();
-            lblTitle.Text      = $"What's New in {AppConstants.AppVersion}";
+            lblTitle.Text         = $"What's New in {AppConstants.AppVersion}";
             lnkCommunity.Text     = CommunityText;
-            rtbFeatures.Font      = Font;
-            rtbFeatures.ForeColor = ForeColor;
             rtbFeatures.Text      = ReleaseFeaturesText;
-            Text               = $"{AppConstants.AppName} | What's New";
+            Text                  = $"{AppConstants.AppName} | What's New";
 
             // Set the link region to cover only "star it on GitHub" within the full sentence.
             // Debug.Assert catches a mismatch between linkText and CommunityText at development
@@ -38,11 +38,18 @@ namespace qbPortWeaver
             System.Diagnostics.Debug.Assert(linkStart >= 0, $"WhatsNewForm: link text '{linkText}' not found in CommunityText");
             if (linkStart >= 0)
                 lnkCommunity.LinkArea = new(linkStart, linkText.Length);
+        }
 
-            if (AppConstants.IsDarkModeEnabled())
+        protected override void OnLoad(EventArgs e)
+        {
+            base.OnLoad(e);
+            _isDarkMode           = AppConstants.IsDarkModeEnabled();
+            rtbFeatures.Font      = Font;
+            rtbFeatures.ForeColor = ForeColor;
+            if (_isDarkMode)
             {
                 lnkCommunity.LinkColor = Color.CornflowerBlue;
-                rtbFeatures.BackColor  = Color.FromArgb(30, 30, 30);
+                rtbFeatures.BackColor  = AppConstants.DarkModeBackground;
                 rtbFeatures.ForeColor  = Color.Gainsboro;
             }
         }

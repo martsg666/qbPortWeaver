@@ -28,7 +28,7 @@ namespace qbPortWeaver
             toolTip.SetToolTip(btnRefreshAdapters,           "Refresh the adapter list");
             toolTip.SetToolTip(nudUpdateInterval,            "How often to run the sync cycle, in seconds - controls both port sync and Media Manager frequency");
             toolTip.SetToolTip(cboBitTorrentClient,          "BitTorrent client to control (qBittorrent, Transmission, or Deluge)");
-            toolTip.SetToolTip(txtQBittorrentURL,            "URL for the qBittorrent Web UI (e.g. http://127.0.0.1:8080)");
+            toolTip.SetToolTip(txtQBittorrentURL,            "URL for the qBittorrent Web UI (e.g. http://127.0.0.1:8080). The Web UI must be enabled in qBittorrent under Tools > Options > Web UI.");
             toolTip.SetToolTip(txtQBittorrentUserName,       "Username for the qBittorrent Web UI");
             toolTip.SetToolTip(txtQBittorrentPassword,       "Password for the qBittorrent Web UI");
             toolTip.SetToolTip(txtQBittorrentExePath,        "Path to the qBittorrent executable, used to start or restart the application");
@@ -40,7 +40,7 @@ namespace qbPortWeaver
             toolTip.SetToolTip(lblDefaultPort,               DefaultPortTooltip);
             toolTip.SetToolTip(chkWarnOnInterfaceMismatch,   "Show a warning when qBittorrent's network interface does not match the configured VPN provider");
             toolTip.SetToolTip(chkRestartOnDisconnect,       "Automatically restart qBittorrent when its connection status becomes disconnected");
-            toolTip.SetToolTip(txtTransmissionURL,           "URL for the Transmission RPC endpoint (e.g. http://127.0.0.1:9091)");
+            toolTip.SetToolTip(txtTransmissionURL,           "URL for the Transmission RPC endpoint (e.g. http://127.0.0.1:9091). Remote access must be enabled in Transmission Preferences > Remote (not required when running as a service).");
             toolTip.SetToolTip(txtTransmissionUserName,      "Username for the Transmission RPC (leave empty if authentication is disabled)");
             toolTip.SetToolTip(txtTransmissionPassword,      "Password for the Transmission RPC (leave empty if authentication is disabled)");
             toolTip.SetToolTip(txtTransmissionExePath,       "Path to the Transmission executable, used to start or restart the application when running as a user-space process");
@@ -50,7 +50,7 @@ namespace qbPortWeaver
             toolTip.SetToolTip(chkForceStartTransmission,    "Automatically launch Transmission if it is not already running");
             toolTip.SetToolTip(nudTransmissionDefaultPort,   DefaultPortTooltip);
             toolTip.SetToolTip(lblTransmissionDefaultPort,   DefaultPortTooltip);
-            toolTip.SetToolTip(txtDelugeURL,                 "URL for the Deluge Web UI (e.g. http://127.0.0.1:8112)");
+            toolTip.SetToolTip(txtDelugeURL,                 "URL for the Deluge Web UI (e.g. http://127.0.0.1:8112). The Web UI plugin must be enabled in Deluge's Plugin Manager.");
             toolTip.SetToolTip(txtDelugePassword,            "Password for the Deluge Web UI");
             toolTip.SetToolTip(txtDelugeExePath,             "Path to the Deluge executable, used to start or restart the application");
             toolTip.SetToolTip(btnBrowseDelugeExePath,       "Browse for the Deluge executable");

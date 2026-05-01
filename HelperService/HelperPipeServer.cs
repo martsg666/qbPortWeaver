@@ -142,7 +142,8 @@ internal sealed class HelperPipeServer(ILogger<HelperPipeServer> logger) : Backg
     private bool TryReadClientHkcu(NamedPipeServerStream pipe, string pipeSessionToken, out string logFilePath)
     {
         logFilePath = string.Empty;
-        var tokenValid = false;
+        var tokenValid      = false;
+        var derivedPath     = string.Empty; // captured by lambda; out params cannot be used inside lambdas
         try
         {
             pipe.RunAsClient(() =>
@@ -158,7 +159,7 @@ internal sealed class HelperPipeServer(ILogger<HelperPipeServer> logger) : Backg
                     using var envKey = Registry.CurrentUser.OpenSubKey(VolatileEnvironmentKey);
                     var localAppData = envKey?.GetValue(LocalAppDataValue) as string;
                     if (!string.IsNullOrEmpty(localAppData))
-                        logFilePath = Path.Combine(localAppData, AppSubFolderName, LogFileName);
+                        derivedPath = Path.Combine(localAppData, AppSubFolderName, LogFileName);
                 }
             });
         }
@@ -166,6 +167,7 @@ internal sealed class HelperPipeServer(ILogger<HelperPipeServer> logger) : Backg
         {
             logger.LogWarning(ex, "Pipe client impersonation failed");
         }
+        logFilePath = derivedPath;
         return tokenValid && !string.IsNullOrEmpty(logFilePath);
     }
 }

@@ -70,7 +70,8 @@ namespace qbPortWeaver
                 using var src = Image.FromStream(ms);
                 return new Bitmap(src); // copy to break stream dependency
             }
-            catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException)
+            catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException
+                                            or ArgumentException or OutOfMemoryException)
             {
                 return null;
             }

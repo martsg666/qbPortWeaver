@@ -128,7 +128,6 @@ On first run, all settings are initialized with sensible defaults.
 | URL | Transmission RPC URL | `http://127.0.0.1:9091` |
 | Username | RPC username (leave empty if authentication is disabled) | - |
 | Password | RPC password (leave empty if authentication is disabled) | - |
-| Service name | Windows service name override (leave empty to auto-detect) | - |
 | Process name | Process name for user-space detection (e.g. `transmission-qt`) | `transmission-qt` |
 | Executable | Path to Transmission executable (user-space mode) | - |
 | Restart after port change | Restart Transmission after updating the port (recommended) | `True` |
@@ -271,7 +270,7 @@ NAT-PMP (RFC 6886) is a protocol for requesting port mappings directly from a ga
 
 - Enable **RPC** in Transmission preferences and set a username and password.
 - Use the **remote session** (connect via `http://localhost:9091` in qbPortWeaver Settings). Do not use Transmission's local session; when qbPortWeaver restarts the process, the RPC endpoint is the only reliable way to communicate across restarts.
-- If Transmission is installed as a **Windows service**, qbPortWeaver detects it automatically. Leave the Service name field empty unless the service name does not contain "Transmission".
+- If Transmission is installed as a **Windows service**, qbPortWeaver detects it automatically.
 - If running as a **user-space process** (e.g. Transmission Qt), set the Process name (e.g. `transmission-qt`) and the Executable path so qbPortWeaver can restart it after a port change.
 
 #### Deluge

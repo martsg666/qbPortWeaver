@@ -93,6 +93,7 @@ namespace qbPortWeaver
         public const string ImportModeMove     = "Move";
 
         // Registry key names - app level (not in a section)
+        public const string KeyPipeSessionToken             = "pipeSessionToken";
         public const string KeyLastSeenVersion              = "lastSeenVersion";
         public const string KeyProtonVpnLogFilePath          = "protonVpnLogFilePath";
         public const string KeyProtonVpnServiceSearchTerm   = "protonVpnServiceSearchTerm";
@@ -219,6 +220,29 @@ namespace qbPortWeaver
             catch (Exception ex)
             {
                 LogManager.Instance.LogDebug($"RegistrySettingsManager.SetAppValue: {key} - {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Returns the pipe session token from <c>HKCU\Software\qbPortWeaver\pipeSessionToken</c>,
+        /// generating and persisting a new one if none exists. Used by the tray app to authenticate
+        /// pipe messages sent to the helper service.
+        /// </summary>
+        public static string GetOrCreatePipeSessionToken()
+        {
+            try
+            {
+                using var regKey = Registry.CurrentUser.CreateSubKey(AppKeyPath);
+                if (regKey.GetValue(KeyPipeSessionToken) is string existing && existing.Length > 0)
+                    return existing;
+                var token = Guid.NewGuid().ToString("N");
+                regKey.SetValue(KeyPipeSessionToken, token, RegistryValueKind.String);
+                return token;
+            }
+            catch (Exception ex)
+            {
+                LogManager.Instance.LogDebug($"RegistrySettingsManager.GetOrCreatePipeSessionToken: {ex.Message}");
+                return string.Empty;
             }
         }
 

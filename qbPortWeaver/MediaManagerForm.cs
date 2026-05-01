@@ -228,6 +228,7 @@ namespace qbPortWeaver
             if (IsDisposed) return null;
 
             dgvResults.Refresh(); // force full repaint so CellFormatting fires for all visible cells
+            dgvResults_SelectionChanged(dgvResults, EventArgs.Empty); // refresh detail panel for the selected row
             int verified = tvShowRows.Count(r => ((RowData)r.Tag!).Confidence == RowConfidence.Confident)
                          + movieRows.Count(r => ((RowData)r.Tag!).Confidence == RowConfidence.Confident);
             return verified == total
@@ -643,7 +644,8 @@ namespace qbPortWeaver
         {
             // No ConfigureAwait(false): continuation must resume on the UI thread to touch controls
             var image = await TmdbClient.FetchPosterAsync(posterPath, ct);
-            if (ct.IsCancellationRequested || IsDisposed || image is null) return;
+            if (ct.IsCancellationRequested || IsDisposed) { image?.Dispose(); return; }
+            if (image is null) return;
 
             _posterCache[posterPath] = image;
             picTmdbPoster.Image      = image;

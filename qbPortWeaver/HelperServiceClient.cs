@@ -10,6 +10,9 @@ namespace qbPortWeaver
 
         private const int PipeConnectTimeoutMs = 5000;
 
+        // Resolved once per session; the helper validates it against HKCU to reject unauthorized pipe connections.
+        private static readonly Lazy<string> _sessionToken = new(() => RegistrySettingsManager.GetOrCreatePipeSessionToken());
+
         /// <summary>Asks the helper service to stop and restart the Windows service with the given <paramref name="serviceName"/>.</summary>
         internal static Task SendRestartAsync(string serviceName) =>
             SendAsync(ActionRestart, serviceName);
@@ -18,7 +21,7 @@ namespace qbPortWeaver
         internal static Task SendCycleAdapterAsync(string adapterName) =>
             SendAsync(ActionCycleAdapter, adapterName);
 
-        // Sends a pipe-delimited command to the helper service: action|target|logFilePath
+        // Sends a pipe-delimited command to the helper service: action|target|sessionToken
         private static async Task SendAsync(string action, string target)
         {
             if (target.Contains('|'))
@@ -32,7 +35,7 @@ namespace qbPortWeaver
                 using var pipe = new NamedPipeClientStream(".", AppConstants.HelperServicePipeName, PipeDirection.Out);
                 await pipe.ConnectAsync(PipeConnectTimeoutMs).ConfigureAwait(false);
                 using var writer = new StreamWriter(pipe) { AutoFlush = true };
-                await writer.WriteLineAsync($"{action}|{target}|{AppConstants.GetLogFilePath()}").ConfigureAwait(false);
+                await writer.WriteLineAsync($"{action}|{target}|{_sessionToken.Value}").ConfigureAwait(false);
                 LogManager.Instance.LogMessage($"Sent '{action}' request for '{target}'", LogLevel.Info);
             }
             catch (Exception ex)

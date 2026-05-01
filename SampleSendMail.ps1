@@ -8,15 +8,22 @@ $From = "FROM_EMAIL@gmail.com"
 $To = "TO_EMAIL@gmail.com"
 $Subject = "qbPortWeaver - Port Changed to $($status.clientPort)"
 $Body = @"
-VPN Provider: $($status.vpnProvider)
-VPN Connected: $($status.vpnConnected)
-VPN Port: $($status.vpnPort)
-Client Previous Port: $($status.clientPreviousPort)
-Client Port: $($status.clientPort)
-Port Changed: $($status.portChanged)
-Status: $($status.status)
-Message: $($status.message)
-Last Run: $($status.timestamp)
+App Version:         $($status.appVersion)
+Timestamp:           $($status.timestamp)
+Update Interval:     $($status.updateIntervalSeconds)s
+
+VPN Provider:        $($status.vpnProvider)
+VPN Connected:       $($status.vpnConnected)
+VPN Port:            $($status.vpnPort)
+
+Client:              $($status.client)
+Client Running:      $($status.clientRunning)
+Client Port:         $($status.clientPort)
+Client Prev Port:    $($status.clientPreviousPort)
+Port Changed:        $($status.portChanged)
+
+Status:              $($status.status)
+Message:             $($status.message)
 "@
 
 # Credentials

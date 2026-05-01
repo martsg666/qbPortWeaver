@@ -6,8 +6,8 @@ namespace qbPortWeaver
     /// <summary>Manages Deluge via its Web JSON-RPC API: authentication, port configuration, and process lifecycle.</summary>
     public sealed class DelugeClient : BitTorrentClientBase
     {
-        // Deluge's config writer debounces disk flushes by 5 s. Waiting longer than
-        // that before killing the process ensures core.conf is on disk before restart.
+        // Deluge's config writer debounces disk flushes by ~5 s; waiting 6 s ensures
+        // core.conf is on disk before the process is killed on restart.
         private const int    ConfigFlushWaitMs = 6000;
         private const string RpcPath           = "/json";
 

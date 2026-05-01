@@ -205,7 +205,7 @@ namespace qbPortWeaver
 
         /// <summary>
         /// Returns the VPN provider token if <paramref name="adapterName"/> matches a known provider keyword,
-        /// or <c>null</c> if it does not. Used to decide whether to trigger a service restart or an adapter cycle.
+        /// or <see langword="null"/> if it does not. Used to decide whether to trigger a service restart or an adapter cycle.
         /// </summary>
         internal static string? FindProviderToken(string adapterName)
         {

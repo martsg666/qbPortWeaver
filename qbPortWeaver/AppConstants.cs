@@ -84,6 +84,7 @@ namespace qbPortWeaver
         /// Escalation: <c>Process.Kill</c> → wait → <c>taskkill /F /T</c> → retry <c>Process.Kill</c>
         /// (handles processes that resist .NET's TerminateProcess, e.g. qBittorrent during active I/O).
         /// Returns <see langword="true"/> if the process exited (or had already exited), <see langword="false"/> if it may still be running.
+        /// The caller is responsible for disposing <paramref name="process"/>.
         /// </summary>
         public static bool KillProcess(Process process, int timeoutMs = 5000)
         {
@@ -163,7 +164,11 @@ namespace qbPortWeaver
                         s.DisplayName.Contains(searchTerm, StringComparison.OrdinalIgnoreCase))
                     ?.ServiceName;
             }
-            catch { return null; } // NOSONAR S108
+            catch (Exception ex)
+            {
+                LogManager.Instance.LogDebug($"AppConstants.FindServiceName: {ex.Message}");
+                return null;
+            }
             finally
             {
                 if (services is not null)
@@ -233,7 +238,7 @@ namespace qbPortWeaver
             catch (Exception ex)
             {
                 LogManager.Instance.LogDebug($"{logPrefix}: {ex.Message}");
-                return null; // transient error - don't cache, retry next cycle
+                return null; // transient error: cache left as string.Empty so next cycle retries
             }
         }
 

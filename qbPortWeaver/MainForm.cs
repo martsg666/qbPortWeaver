@@ -198,9 +198,14 @@ namespace qbPortWeaver
             using var icon16 = new Icon(baseIcon, 16, 16);
             g.DrawIcon(icon16, new Rectangle(0, 0, 16, 16));
 
+            // Status dot in the bottom-right quadrant of the 16×16 icon:
             // 7×7 dark border circle, then 5×5 colored fill - visible on both light and dark taskbars
-            g.FillEllipse(borderBrush, 9, 9, 7, 7);
-            g.FillEllipse(dotBrush,   10, 10, 5, 5);
+            const int DotBorderOrigin = 9;  // 16 - 7 = 9 px offset places border flush with icon edge
+            const int DotBorderSize   = 7;
+            const int DotFillOrigin   = 10; // 1 px inset from border on each side
+            const int DotFillSize     = 5;
+            g.FillEllipse(borderBrush, DotBorderOrigin, DotBorderOrigin, DotBorderSize, DotBorderSize);
+            g.FillEllipse(dotBrush,    DotFillOrigin,   DotFillOrigin,   DotFillSize,   DotFillSize);
 
             IntPtr hIcon = bmp.GetHicon();
             try

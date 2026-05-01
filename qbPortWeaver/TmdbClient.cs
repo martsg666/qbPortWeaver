@@ -198,7 +198,7 @@ namespace qbPortWeaver
             string.Equals(FileNameParser.NormalizeTitleForMatch(returnedTitle), normalizedSearchTitle, StringComparison.Ordinal);
 
         // Returns true when all words of the searched title appear in the returned title's word set
-        // and the returned title has strictly more words — i.e. the searched title is a proper word subset.
+        // and the returned title has strictly more words - i.e. the searched title is a proper word subset.
         private static bool IsWordSubsetMatch(string[] normalizedSearchedWords, string returnedTitle)
         {
             var returnedWords = new HashSet<string>(

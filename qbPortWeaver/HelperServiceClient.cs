@@ -30,6 +30,12 @@ namespace qbPortWeaver
                 return;
             }
 
+            if (string.IsNullOrEmpty(_sessionToken.Value))
+            {
+                LogManager.Instance.LogMessage($"Cannot send '{action}' request: session token unavailable (registry error)", LogLevel.Warn);
+                return;
+            }
+
             try
             {
                 using var pipe = new NamedPipeClientStream(".", AppConstants.HelperServicePipeName, PipeDirection.Out);

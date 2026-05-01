@@ -13,6 +13,13 @@ namespace qbPortWeaver
         string ClientName { get; }
 
         /// <summary>
+        /// Returns <see langword="true"/> if this client supports network interface mismatch warnings.
+        /// qBittorrent exposes a named adapter via its API, enabling the check.
+        /// Transmission exposes a bound IP address rather than an adapter name, so the check is skipped.
+        /// </summary>
+        bool SupportsInterfaceMismatchWarning { get; }
+
+        /// <summary>
         /// Returns <see langword="true"/> if the BitTorrent client process is currently running.
         /// </summary>
         bool IsRunning();
@@ -51,12 +58,5 @@ namespace qbPortWeaver
         /// For clients that do not expose connection status, always returns <see langword="null"/>.
         /// </summary>
         Task<string?> GetConnectionStatusAsync();
-
-        /// <summary>
-        /// Returns <see langword="true"/> if this client supports network interface mismatch warnings.
-        /// qBittorrent exposes a named adapter via its API, enabling the check.
-        /// Transmission exposes a bound IP address rather than an adapter name, so the check is skipped.
-        /// </summary>
-        bool SupportsInterfaceMismatchWarning { get; }
     }
 }

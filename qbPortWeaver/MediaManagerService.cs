@@ -504,7 +504,8 @@ namespace qbPortWeaver
         }
 
         /// <summary>Logs and performs the file transfer, or logs a dry-run message without touching files.
-        /// No-ops when source and target are the same path, or the target already exists with the same fingerprint.</summary>
+        /// No-ops when source and target are the same path, or the target already exists with the same fingerprint.
+        /// Warns in both dry-run and live mode when the target exists with different content.</summary>
         internal static void ImportFile(string sourcePath, string targetPath, string sourceFolder, bool dryRun, ImportMode importMode)
         {
             if (string.Equals(sourcePath, targetPath, StringComparison.OrdinalIgnoreCase)) return;
@@ -512,6 +513,17 @@ namespace qbPortWeaver
             if (MediaImporter.IsDuplicateFile(sourcePath, targetPath))
             {
                 LogManager.Instance.LogDebug($"MediaManagerService.ImportFile: Skipped '{Path.GetFileName(sourcePath)}' - target already exists", Subsystem.MediaManager);
+                return;
+            }
+
+            // Warn in both scan and import: two source files resolved to the same target name.
+            // Checked before dryRun branch so the conflict is visible during Scan Now, not only on live import.
+            if (File.Exists(targetPath))
+            {
+                LogManager.Instance.LogMessage(
+                    $"Destination conflict: '{Path.GetFileName(targetPath)}' already exists with different content " +
+                    $"(source: {new FileInfo(sourcePath).Length} bytes, dest: {new FileInfo(targetPath).Length} bytes). Skipping to avoid overwriting.",
+                    LogLevel.Warn, Subsystem.MediaManager);
                 return;
             }
 

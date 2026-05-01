@@ -42,20 +42,20 @@ namespace qbPortWeaver
             SuspendLayout();
             // ── Header ────────────────────────────────────────────────────
             picIcon.Image = (Image)resources.GetObject("picIcon.Image");
-            picIcon.Location = new Point(12, 12);
+            picIcon.Location = new Point(8, 8);
             picIcon.Name = "picIcon";
             picIcon.Size = new Size(48, 48);
             picIcon.SizeMode = PictureBoxSizeMode.Zoom;
             picIcon.TabIndex = 0;
             picIcon.TabStop = false;
             lblAppName.Font = new Font("Segoe UI", 13F, FontStyle.Bold);
-            lblAppName.Location = new Point(70, 14);
+            lblAppName.Location = new Point(66, 10);
             lblAppName.Name = "lblAppName";
             lblAppName.Size = new Size(296, 26);
             lblAppName.TabIndex = 1;
             lblAppName.Text = "qbPortWeaver";
             lblAppVersion.ForeColor = SystemColors.GrayText;
-            lblAppVersion.Location = new Point(70, 44);
+            lblAppVersion.Location = new Point(66, 40);
             lblAppVersion.Name = "lblAppVersion";
             lblAppVersion.Size = new Size(296, 20);
             lblAppVersion.TabIndex = 2;

@@ -85,6 +85,7 @@ namespace qbPortWeaver
             public const string VpnProvider             = "vpnProvider";
             public const string VpnConnected            = "vpnConnected";
             public const string VpnPort                 = "vpnPort";
+            public const string Client                  = "client";
             public const string ClientRunning           = "clientRunning";
             public const string ClientPreviousPort      = "clientPreviousPort";
             public const string ClientPort              = "clientPort";
@@ -112,6 +113,7 @@ namespace qbPortWeaver
                 [StatusKeys.VpnProvider]             = null,
                 [StatusKeys.VpnConnected]            = false,
                 [StatusKeys.VpnPort]                 = null,
+                [StatusKeys.Client]                  = null,
                 [StatusKeys.ClientRunning]           = false,
                 [StatusKeys.ClientPreviousPort]      = null,
                 [StatusKeys.ClientPort]              = null,
@@ -225,6 +227,7 @@ namespace qbPortWeaver
             }
 
             using var manager = CreateBitTorrentClient(cfg);
+            status[StatusKeys.Client] = manager.ClientName;
             var (forceStart, restart) = GetClientRestartConfig(cfg, activeSection);
 
             await EnsureRunningAndUpdatePortAsync(manager, targetPort,
@@ -547,7 +550,7 @@ namespace qbPortWeaver
             LogManager.Instance.LogMessage($"{manager.ClientName} port set to {targetPort}", LogLevel.Info);
 
             status[StatusKeys.ClientPort] = targetPort;
-            status[StatusKeys.PortChanged]             = true;
+            status[StatusKeys.PortChanged] = true;
 
             if (config.Restart)
             {

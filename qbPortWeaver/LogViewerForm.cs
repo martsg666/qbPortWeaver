@@ -67,9 +67,11 @@ namespace qbPortWeaver
 
             // Position the × button inside the right edge of the search box.
             // Done here so the button tracks the auto-sized TextBox height and right-anchor position.
-            int cbSize = txtSearch.Height - 4;
+            const int ClearButtonInset  = 4; // shrinks button to fit inside the TextBox border (2 px top + 2 px bottom)
+            const int ClearButtonMargin = 2; // inner gap from TextBox right edge and top
+            int cbSize = txtSearch.Height - ClearButtonInset;
             btnClearSearch.Size     = new Size(cbSize, cbSize);
-            btnClearSearch.Location = new Point(txtSearch.Right - cbSize - 2, searchTop + 2);
+            btnClearSearch.Location = new Point(txtSearch.Right - cbSize - ClearButtonMargin, searchTop + ClearButtonMargin);
             // Must be in front of the native TextBox HWND or it will be hidden behind it
             btnClearSearch.BringToFront();
             _ = LoadInitialContentAsync(); // fire-and-forget; exceptions are handled inside LoadInitialContentAsync

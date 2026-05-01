@@ -101,44 +101,9 @@ internal sealed class HelperPipeServer(ILogger<HelperPipeServer> logger) : Backg
         var target          = parts[1];
         var pipeSessionToken = parts[2];
 
-        // Impersonate the pipe client to read from their HKCU hive:
-        // validate the session token and derive the log file path from LocalAppData.
-        // Deriving the path from the user's own registry avoids trusting any caller-supplied path.
-        var tokenValid  = false;
-        var logFilePath = string.Empty;
-        try
+        if (!TryReadClientHkcu(pipe, pipeSessionToken, out var logFilePath))
         {
-            pipe.RunAsClient(() =>
-            {
-                using var appKey      = Registry.CurrentUser.OpenSubKey(AppRegistryKey);
-                var expectedToken     = appKey?.GetValue(PipeSessionTokenKey) as string;
-                tokenValid = !string.IsNullOrEmpty(expectedToken) &&
-                             !string.IsNullOrEmpty(pipeSessionToken) &&
-                             string.Equals(expectedToken, pipeSessionToken, StringComparison.Ordinal);
-
-                if (tokenValid)
-                {
-                    using var envKey = Registry.CurrentUser.OpenSubKey(VolatileEnvironmentKey);
-                    var localAppData = envKey?.GetValue(LocalAppDataValue) as string;
-                    if (!string.IsNullOrEmpty(localAppData))
-                        logFilePath = Path.Combine(localAppData, AppSubFolderName, LogFileName);
-                }
-            });
-        }
-        catch (Exception ex)
-        {
-            logger.LogWarning("Pipe client impersonation failed: {Message}", ex.Message);
-        }
-
-        if (!tokenValid)
-        {
-            logger.LogWarning("Rejected pipe message: session token mismatch");
-            return;
-        }
-
-        if (string.IsNullOrEmpty(logFilePath))
-        {
-            logger.LogWarning("Rejected pipe message: could not derive log file path");
+            logger.LogWarning("Rejected pipe message: session token mismatch or could not derive log file path");
             return;
         }
 
@@ -168,5 +133,39 @@ internal sealed class HelperPipeServer(ILogger<HelperPipeServer> logger) : Backg
                 logger.LogWarning("Rejected unknown action '{Action}'", action);
                 break;
         }
+    }
+
+    // Impersonates the pipe client to validate the session token and derive the log file path
+    // from the caller's HKCU hive. Returns false if the token is invalid, impersonation fails,
+    // or LocalAppData cannot be read. Using the caller's own registry avoids trusting any
+    // caller-supplied path.
+    private bool TryReadClientHkcu(NamedPipeServerStream pipe, string pipeSessionToken, out string logFilePath)
+    {
+        logFilePath = string.Empty;
+        var tokenValid = false;
+        try
+        {
+            pipe.RunAsClient(() =>
+            {
+                using var appKey  = Registry.CurrentUser.OpenSubKey(AppRegistryKey);
+                var expectedToken = appKey?.GetValue(PipeSessionTokenKey) as string;
+                tokenValid = !string.IsNullOrEmpty(expectedToken) &&
+                             !string.IsNullOrEmpty(pipeSessionToken) &&
+                             string.Equals(expectedToken, pipeSessionToken, StringComparison.Ordinal);
+
+                if (tokenValid)
+                {
+                    using var envKey = Registry.CurrentUser.OpenSubKey(VolatileEnvironmentKey);
+                    var localAppData = envKey?.GetValue(LocalAppDataValue) as string;
+                    if (!string.IsNullOrEmpty(localAppData))
+                        logFilePath = Path.Combine(localAppData, AppSubFolderName, LogFileName);
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Pipe client impersonation failed");
+        }
+        return tokenValid && !string.IsNullOrEmpty(logFilePath);
     }
 }

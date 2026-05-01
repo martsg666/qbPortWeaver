@@ -547,7 +547,7 @@ namespace qbPortWeaver
             LogManager.Instance.LogMessage($"{manager.ClientName} port set to {targetPort}", LogLevel.Info);
 
             status[StatusKeys.ClientPort] = targetPort;
-            status[StatusKeys.PortChanged]             = true;
+            status[StatusKeys.PortChanged] = true;
 
             if (config.Restart)
             {

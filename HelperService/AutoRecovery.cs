@@ -274,7 +274,11 @@ internal static partial class AutoRecovery
                 {
                     // Stage 1: Process.Kill
                     try { process.Kill(entireProcessTree: true); }
-                    catch (InvalidOperationException) { return; } // already exited
+                    catch (InvalidOperationException)
+                    {
+                        logger.LogWarn($"Service '{sc.ServiceName}' process (PID {pid}) already exited");
+                        return;
+                    }
                     catch (System.ComponentModel.Win32Exception) { return; } // access denied or process protected
 
                     if (process.WaitForExit(ProcessKillTimeoutMs))
@@ -309,7 +313,7 @@ internal static partial class AutoRecovery
                     try { process.Kill(entireProcessTree: true); }
                     catch (InvalidOperationException)
                     {
-                        logger.LogWarn($"Service '{sc.ServiceName}' process force-killed via Process.Kill retry (PID {pid})");
+                        logger.LogWarn($"Service '{sc.ServiceName}' process (PID {pid}) already exited");
                         return;
                     }
                     catch (System.ComponentModel.Win32Exception)

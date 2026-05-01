@@ -915,10 +915,10 @@ namespace qbPortWeaver
             prgScan.Visible = false;
         }
 
-        // Disables input controls while an async operation is running.
-        // btnImportNow is managed separately by each handler to preserve its proposals-count state.
         private string GetProposedName(DataGridViewRow row) => row.Cells[colProposed.Index].Value?.ToString() ?? string.Empty;
 
+        // Disables input controls while an async operation is running.
+        // btnImportNow is managed separately by each handler to preserve its proposals-count state.
         private void SetBusy(bool busy)
         {
             _isBusy                         = busy;

@@ -9,13 +9,11 @@ namespace qbPortWeaver
     {
         private const int LogReadChunkSize = 4096;
 
-        internal static string GetServiceSearchTerm() => RegistrySettingsManager.GetAppValue(RegistrySettingsManager.KeyProtonVpnServiceSearchTerm);
-        internal static string GetClientProcessName() => RegistrySettingsManager.GetAppValue(RegistrySettingsManager.KeyProtonVpnClientProcessName);
-        internal static string GetAdapterName()       => RegistrySettingsManager.GetAppValue(RegistrySettingsManager.KeyProtonVpnAdapterName);
-
-        // Cached path; null = not found, string.Empty = not yet resolved.
-        // Install paths never change at runtime so we resolve once and reuse.
-        private static string? _clientExePathCache = string.Empty;
+        internal static readonly VpnRegistryConfig Config = new(
+            RegistrySettingsManager.KeyProtonVpnServiceSearchTerm,
+            RegistrySettingsManager.KeyProtonVpnClientProcessName,
+            RegistrySettingsManager.KeyProtonVpnAdapterName,
+            "ProtonVpnManager.GetClientExePath");
 
         private readonly string _logFilePath;
 
@@ -43,7 +41,7 @@ namespace qbPortWeaver
                 // Uses Name (not Description) - ProtonVPN's adapter Name contains the configured
                 // adapter name substring on all installations: "ProtonVPN" (WireGuard) or "ProtonVPN TUN" (OpenVPN).
                 bool isConnected = adapters.Any(adapter =>
-                    adapter.Name.Contains(GetAdapterName(), StringComparison.OrdinalIgnoreCase) &&
+                    adapter.Name.Contains(Config.GetAdapterName(), StringComparison.OrdinalIgnoreCase) &&
                     adapter.OperationalStatus == OperationalStatus.Up);
 
                 LogManager.Instance.LogDebug(isConnected
@@ -69,12 +67,7 @@ namespace qbPortWeaver
 
         /// <inheritdoc />
         public bool IsAdapterMatch(string interfaceName)
-            => interfaceName.Contains(GetAdapterName(), StringComparison.OrdinalIgnoreCase);
-
-        internal static string? FindServiceName() => AppConstants.FindServiceName(GetServiceSearchTerm());
-
-        internal static string? GetClientExePath()
-            => AppConstants.FindExeInServiceDirectory(ref _clientExePathCache, GetClientProcessName() + ".exe", FindServiceName, "ProtonVpnManager.GetClientExePath");
+            => interfaceName.Contains(Config.GetAdapterName(), StringComparison.OrdinalIgnoreCase);
 
         private int? GetVpnPortCore()
         {

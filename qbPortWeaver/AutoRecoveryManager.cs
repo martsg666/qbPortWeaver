@@ -19,8 +19,8 @@ namespace qbPortWeaver
         // GetInstalledExePath resolves the exe path from the service registry entry when the process is not running.
         private static readonly (string ProviderKeyword, Func<string> GetClientProcessName, Func<string?>? GetInstalledExePath, Func<string?> FindServiceName)[] _clientProcessMap =
         [
-            (RegistrySettingsManager.VpnProviderProtonVpn, ProtonVpnManager.GetClientProcessName, ProtonVpnManager.GetClientExePath, ProtonVpnManager.FindServiceName),
-            (RegistrySettingsManager.VpnProviderPia,       PiaVpnManager.GetClientProcessName,    PiaVpnManager.GetClientExePath,    PiaVpnManager.FindServiceName),
+            (RegistrySettingsManager.VpnProviderProtonVpn, ProtonVpnManager.Config.GetClientProcessName, ProtonVpnManager.Config.GetClientExePath, ProtonVpnManager.Config.FindServiceName),
+            (RegistrySettingsManager.VpnProviderPia,       PiaVpnManager.Config.GetClientProcessName,    PiaVpnManager.Config.GetClientExePath,    PiaVpnManager.Config.FindServiceName),
         ];
 
         /// <summary>

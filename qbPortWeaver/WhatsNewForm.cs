@@ -36,7 +36,7 @@ namespace qbPortWeaver
             const string linkText = "star it on GitHub";
             int linkStart = CommunityText.IndexOf(linkText, StringComparison.Ordinal);
             System.Diagnostics.Debug.Assert(linkStart >= 0, $"WhatsNewForm: link text '{linkText}' not found in CommunityText");
-            if (linkStart >= 0)
+            if (linkStart >= 0) // NOSONAR S2589 - defensive runtime fallback; Debug.Assert only fires in dev builds
                 lnkCommunity.LinkArea = new(linkStart, linkText.Length);
         }
 
@@ -53,9 +53,9 @@ namespace qbPortWeaver
             }
         }
 
-        private void btnClose_Click(object? sender, EventArgs e) => Close();
+        private void btnClose_Click(object? sender, EventArgs e) => Close(); // NOSONAR S2325 - Close() is an instance method, handler cannot be static
 
-        private void lnkCommunity_LinkClicked(object? sender, LinkLabelLinkClickedEventArgs e) =>
+        private static void lnkCommunity_LinkClicked(object? sender, LinkLabelLinkClickedEventArgs e) =>
             AppConstants.OpenUrl(AppConstants.GitHubRepoUrl);
     }
 }

@@ -130,7 +130,7 @@ namespace qbPortWeaver
             Close();
         }
 
-        private void btnCancel_Click(object? sender, EventArgs e) => Close();
+        private void btnCancel_Click(object? sender, EventArgs e) => Close(); // NOSONAR S2325 - Close() is an instance method, handler cannot be static
 
         private void SaveSettings()
         {
@@ -424,7 +424,7 @@ namespace qbPortWeaver
         {
             // Count only checked rows with a proposed name (unchecked rows are excluded)
             int proposalCount = dgvResults.Rows.Cast<DataGridViewRow>()
-                .Count(r => r.Cells[colInclude.Index].Value is true
+                .Count(r => r.Cells[colInclude.Index].Value is true // NOSONAR S1125 - 'is true' pattern requires the literal to match the boxed bool value
                             && !string.IsNullOrWhiteSpace(r.Cells[colProposed.Index].Value?.ToString()));
 
             var confirm = MessageBox.Show(
@@ -527,7 +527,7 @@ namespace qbPortWeaver
             foreach (DataGridViewRow row in dgvResults.Rows)
             {
                 if (row.Tag is not RowData { Proposal: var original }) continue;
-                if (row.Cells[colInclude.Index].Value is not true) continue; // user excluded this row
+                if (row.Cells[colInclude.Index].Value is not true) continue; // NOSONAR S1125 - 'is not true' pattern requires the literal; user excluded this row
 
                 var editedName = GetProposedName(row);
                 if (string.IsNullOrWhiteSpace(editedName)) continue; // unmatched row with no user-supplied name
@@ -947,7 +947,7 @@ namespace qbPortWeaver
             foreach (DataGridViewRow row in dgvResults.Rows)
             {
                 if (row.Tag is not RowData { Proposal: var p }) continue;
-                bool isChecked = row.Cells[colInclude.Index].Value is true;
+                bool isChecked = row.Cells[colInclude.Index].Value is true; // NOSONAR S1125 - 'is true' pattern requires the literal to match the boxed bool value
 
                 if (isChecked && !p.IsMatched)
                     unmatched++;

@@ -30,7 +30,7 @@ namespace qbPortWeaver
             _ = LoadGitHubDataAsync(); // fire-and-forget; exceptions are handled inside LoadGitHubDataAsync
         }
 
-        private void btnClose_Click(object? sender, EventArgs e) => Close();
+        private void btnClose_Click(object? sender, EventArgs e) => Close(); // NOSONAR S2325 - Close() is an instance method, handler cannot be static
 
         private void btnWhatsNew_Click(object? sender, EventArgs e)
         {
@@ -51,13 +51,13 @@ namespace qbPortWeaver
         }
 
         // Each link region carries its contributor profile URL as LinkData
-        private void lnkAuthor_LinkClicked(object? sender, LinkLabelLinkClickedEventArgs e)
+        private static void lnkAuthor_LinkClicked(object? sender, LinkLabelLinkClickedEventArgs e)
         {
             if (e.Link?.LinkData is string url && !string.IsNullOrEmpty(url))
                 AppConstants.OpenUrl(url);
         }
 
-        private void lnkGitHub_LinkClicked(object? sender, LinkLabelLinkClickedEventArgs e)
+        private static void lnkGitHub_LinkClicked(object? sender, LinkLabelLinkClickedEventArgs e)
         {
             AppConstants.OpenUrl(AppConstants.GitHubRepoUrl);
         }

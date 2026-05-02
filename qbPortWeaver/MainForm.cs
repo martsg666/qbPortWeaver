@@ -309,7 +309,7 @@ namespace qbPortWeaver
             }
         }
 
-        private void exit_Click(object? sender, EventArgs e) => Close();
+        private void exit_Click(object? sender, EventArgs e) => Close(); // NOSONAR S2325 - Close() is an instance method, handler cannot be static
 
         // Called by PortSyncService when a sync cycle completes
         private void OnSyncCompleted(TrayStatus status)
@@ -473,7 +473,7 @@ namespace qbPortWeaver
         }
 
         // Marshals an action to the UI thread, using Invoke if called from a background thread
-        private void InvokeOnUiThread(Action action)
+        private void InvokeOnUiThread(Action action) // NOSONAR S2325 - InvokeRequired/Invoke are instance members, method cannot be static
         {
             if (InvokeRequired)
                 Invoke(action);

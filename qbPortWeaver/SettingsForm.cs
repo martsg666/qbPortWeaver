@@ -272,7 +272,7 @@ namespace qbPortWeaver
             Close();
         }
 
-        private void btnCancel_Click(object? sender, EventArgs e) => Close();
+        private void btnCancel_Click(object? sender, EventArgs e) => Close(); // NOSONAR S2325 - Close() is an instance method, handler cannot be static
 
         private void cboBitTorrentClient_SelectedIndexChanged(object? sender, EventArgs e) =>
             UpdateClientGroupVisibility();

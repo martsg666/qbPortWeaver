@@ -94,9 +94,9 @@ internal sealed class HelperPipeServer(ILogger<HelperPipeServer> logger) : Backg
         {
             message = await reader.ReadLineAsync(readCts.Token).ConfigureAwait(false);
         }
-        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        catch (OperationCanceledException ex) when (!ct.IsCancellationRequested)
         {
-            logger.LogWarning("Pipe connection read timed out - client connected but sent no data");
+            logger.LogWarning(ex, "Pipe connection read timed out - client connected but sent no data");
             return;
         }
         if (string.IsNullOrWhiteSpace(message)) return;

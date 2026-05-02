@@ -10,25 +10,25 @@ namespace qbPortWeaver
             "lost. If you find qbPortWeaver useful, please star it on GitHub.";
 
         private const string ReleaseFeaturesText =
-            "VPN Auto-Recovery\r\n" +
-            "Automatically recovers when port sync fails for a configurable number " +
-            "of consecutive cycles. Restarts the VPN Windows service and client " +
-            "(ProtonVPN/PIA), or cycles the network adapter (NAT-PMP). Configure " +
-            "the trigger count in Settings > General.\r\n\r\n" +
-            "Media Manager\r\n" +
-            "Automatically imports and organizes media files into library folders " +
-            "on each sync cycle, using TMDB metadata for naming (movies and TV shows).\r\n\r\n" +
-            "Log Viewer\r\n" +
-            "Color-coded live log with level filters, subsystem filter, color " +
-            "theme support, and in-text search with match count and navigation.";
+            "Transmission and Deluge support\n" +
+            "qbPortWeaver can now manage the listening port for Transmission and Deluge in addition to qBittorrent. " +
+            "Configure your client under Settings - each client has its own URL, credentials, and restart options.\n\n" +
+            "Transmission runs in service mode (Windows service) or process mode (Qt desktop client) and is detected automatically.\n\n" +
+            "Deluge connects via its Web UI JSON-RPC API. A configurable flush wait ensures the port change is written to disk before restart.\n\n" +
+            "Media Manager - TMDB detail panel\n" +
+            "Selecting a result row in Media Manager now shows a detail panel at the bottom of the window with the matched title, " +
+            "TMDB ID, confidence indicator, a poster thumbnail, and an overview description.\n\n" +
+            "Note: if you have used Media Manager before, click Clear Cache once to populate poster thumbnails and descriptions for previously cached titles.";
+
+        private bool _isDarkMode;
 
         public WhatsNewForm()
         {
             InitializeComponent();
-            lblTitle.Text      = $"What's New in {AppConstants.AppVersion}";
-            lnkCommunity.Text  = CommunityText;
-            lblFeatures.Text   = ReleaseFeaturesText;
-            Text               = $"{AppConstants.AppName} | What's New";
+            lblTitle.Text         = $"What's New in {AppConstants.AppVersion}";
+            lnkCommunity.Text     = CommunityText;
+            rtbFeatures.Text      = ReleaseFeaturesText;
+            Text                  = $"{AppConstants.AppName} | What's New";
 
             // Set the link region to cover only "star it on GitHub" within the full sentence.
             // Debug.Assert catches a mismatch between linkText and CommunityText at development
@@ -38,9 +38,19 @@ namespace qbPortWeaver
             System.Diagnostics.Debug.Assert(linkStart >= 0, $"WhatsNewForm: link text '{linkText}' not found in CommunityText");
             if (linkStart >= 0)
                 lnkCommunity.LinkArea = new(linkStart, linkText.Length);
+        }
 
-            if (AppConstants.IsDarkModeEnabled())
-                lnkCommunity.LinkColor = Color.CornflowerBlue;
+        protected override void OnLoad(EventArgs e)
+        {
+            base.OnLoad(e);
+            _isDarkMode           = AppConstants.IsDarkModeEnabled();
+            rtbFeatures.Font      = Font;
+            rtbFeatures.ForeColor = ForeColor;
+            if (_isDarkMode)
+            {
+                lnkCommunity.LinkColor = AppConstants.DarkModeLinkColor;
+                rtbFeatures.ForeColor  = AppConstants.DarkModeText;
+            }
         }
 
         private void btnClose_Click(object? sender, EventArgs e) => Close();

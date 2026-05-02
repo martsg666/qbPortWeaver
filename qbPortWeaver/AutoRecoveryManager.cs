@@ -1,6 +1,4 @@
-using System.Collections.Concurrent;
 using System.Diagnostics;
-using System.IO.Pipes;
 
 namespace qbPortWeaver
 {
@@ -11,22 +9,18 @@ namespace qbPortWeaver
     /// </summary>
     internal static class AutoRecoveryManager
     {
-        internal const string ActionRestart      = "restart";       // Must match HelperPipeServer.ActionRestart in HelperService
-        internal const string ActionCycleAdapter = "cycle-adapter"; // Must match HelperPipeServer.ActionCycleAdapter in HelperService
-
-        private const int ClientRestartDelayMs       = 2000;
-        private const int PipeConnectTimeoutMs       = 5000;
-        private const int ServiceHeadStartDelayMs    = 20000;
-
-        // Caches the EXE path for each client process name so recovery works even when
-        // the process was killed externally before we could inspect it.
-        private static readonly ConcurrentDictionary<string, string> _cachedClientExePaths = new(StringComparer.OrdinalIgnoreCase);
+        private const int ClientRestartDelayMs    = 2000;
+        // Must exceed the helper service's full stop→delay→start cycle (5s stop wait + 5s restart
+        // delay + service startup time) so the VPN service is running before the client process
+        // is relaunched. See AutoRecovery.ServiceRestartDelayMs in HelperService.
+        private const int ServiceHeadStartDelayMs = 20000;
 
         // Maps a provider token to the client process that must be restarted alongside the service.
-        private static readonly (string ProviderKeyword, string ClientProcessName)[] _clientProcessMap =
+        // GetInstalledExePath resolves the exe path from the service registry entry when the process is not running.
+        private static readonly (string ProviderKeyword, Func<string> GetClientProcessName, Func<string?>? GetInstalledExePath, Func<string?> FindServiceName)[] _clientProcessMap =
         [
-            (RegistrySettingsManager.VpnProviderProtonVpn, ProtonVpnManager.ClientProcessName),
-            (RegistrySettingsManager.VpnProviderPia,       PiaVpnManager.ClientProcessName),
+            (RegistrySettingsManager.VpnProviderProtonVpn, ProtonVpnManager.GetClientProcessName, ProtonVpnManager.GetClientExePath, ProtonVpnManager.FindServiceName),
+            (RegistrySettingsManager.VpnProviderPia,       PiaVpnManager.GetClientProcessName,    PiaVpnManager.GetClientExePath,    PiaVpnManager.FindServiceName),
         ];
 
         /// <summary>
@@ -35,92 +29,42 @@ namespace qbPortWeaver
         /// to let the service come up first. For "cycle-adapter" actions, only the adapter
         /// is cycled - no client process is involved.
         /// </summary>
-        internal static async Task TriggerRecoveryAsync(string action, string target)
+        internal static async Task TriggerRecoveryAsync(string action, string target, CancellationToken cancellationToken = default)
         {
-            await SendToHelperServiceAsync(action, target).ConfigureAwait(false);
-
-            if (action != ActionRestart)
+            if (action != HelperServiceClient.ActionRestart)
+            {
+                await HelperServiceClient.SendCycleAdapterAsync(target).ConfigureAwait(false);
                 return;
-
-            string? clientProcessName = FindClientProcessName(target);
-            if (clientProcessName is not null)
-            {
-                // Give the helper service time to stop/restart the VPN service before
-                // we kill and relaunch the client process - the client should come up
-                // after the service is running, not before.
-                await Task.Delay(ServiceHeadStartDelayMs).ConfigureAwait(false);
-                await RestartClientProcessAsync(clientProcessName).ConfigureAwait(false);
             }
-            else
-                LogManager.Instance.LogMessage($"No client process matches '{target}' - skipping client restart", LogLevel.Warn);
+
+            var entry = _clientProcessMap.FirstOrDefault(e => e.ProviderKeyword.Equals(target, StringComparison.OrdinalIgnoreCase));
+            if (entry.FindServiceName is null)
+            {
+                LogManager.Instance.LogMessage($"Unknown VPN provider '{target}' - skipping recovery", LogLevel.Warn);
+                return;
+            }
+
+            string? serviceName = entry.FindServiceName.Invoke();
+            if (serviceName is null)
+            {
+                LogManager.Instance.LogMessage($"Could not find Windows service for '{target}' - skipping recovery", LogLevel.Warn);
+                return;
+            }
+
+            await HelperServiceClient.SendRestartAsync(serviceName).ConfigureAwait(false);
+
+            // Give the helper service time to stop/restart the VPN service before
+            // we kill and relaunch the client process - the client should come up
+            // after the service is running, not before.
+            await Task.Delay(ServiceHeadStartDelayMs, cancellationToken).ConfigureAwait(false);
+            await RestartClientProcessAsync(entry.GetClientProcessName(), entry.GetInstalledExePath, cancellationToken).ConfigureAwait(false);
         }
-
-        /// <summary>
-        /// Proactively discovers and caches EXE paths for all known client processes.
-        /// Called during normal sync cycles so the path is available if the client is
-        /// later killed externally before recovery runs.
-        /// </summary>
-        internal static void CacheRunningClientExePaths()
-        {
-            foreach (var processName in _clientProcessMap
-                         .Select(e => e.ClientProcessName)
-                         .Where(name => !_cachedClientExePaths.ContainsKey(name)))
-            {
-                try
-                {
-                    var processes = Process.GetProcessesByName(processName);
-                    try
-                    {
-                        string? exePath = processes.FirstOrDefault()?.MainModule?.FileName;
-                        if (exePath is not null)
-                        {
-                            _cachedClientExePaths[processName] = exePath;
-                            LogManager.Instance.LogDebug($"AutoRecoveryManager.CacheRunningClientExePaths: Cached '{processName}' -> {exePath}");
-                        }
-                    }
-                    finally
-                    {
-                        foreach (var p in processes) p.Dispose();
-                    }
-                }
-                catch (Exception ex)
-                {
-                    LogManager.Instance.LogDebug($"AutoRecoveryManager.CacheRunningClientExePaths: '{processName}': {ex.Message}");
-                }
-            }
-        }
-
-        // Sends a recovery request to the SYSTEM helper service via named pipe.
-        // Protocol (pipe-delimited): <action>|<target>|<logFilePath>
-        private static async Task SendToHelperServiceAsync(string action, string target)
-        {
-            try
-            {
-                using var pipe = new NamedPipeClientStream(".", AppConstants.HelperServicePipeName, PipeDirection.Out);
-                await pipe.ConnectAsync(PipeConnectTimeoutMs).ConfigureAwait(false);
-                using var writer = new StreamWriter(pipe) { AutoFlush = true };
-                await writer.WriteLineAsync($"{action}|{target}|{AppConstants.GetLogFilePath()}").ConfigureAwait(false);
-                LogManager.Instance.LogMessage($"Sent '{action}' request for '{target}'", LogLevel.Info);
-            }
-            catch (Exception ex)
-            {
-                LogManager.Instance.LogMessage($"Failed to reach helper service: {ex.Message}", LogLevel.Warn);
-            }
-        }
-
-        // Matches the provider token (e.g. "ProtonVPN", "PIA") to the client process name.
-        private static string? FindClientProcessName(string target) =>
-            _clientProcessMap
-                .Where(e => e.ProviderKeyword.Equals(target, StringComparison.OrdinalIgnoreCase))
-                .Select(e => e.ClientProcessName)
-                .FirstOrDefault();
 
         // Kills all instances of the named client process (capturing the exe path first),
         // waits briefly, then relaunches it. Runs in the main app's user session - no
         // elevation or WTS token manipulation needed.
-        // If the process is already dead (e.g. killed externally), falls back to a cached
-        // EXE path from a previous successful discovery.
-        private static async Task RestartClientProcessAsync(string processName)
+        // If the process is not running, falls back to the registry-derived exe path via getInstalledExePath.
+        private static async Task RestartClientProcessAsync(string processName, Func<string?>? getInstalledExePath, CancellationToken cancellationToken = default)
         {
             string? exePath = null;
             try
@@ -129,8 +73,6 @@ namespace qbPortWeaver
                 try
                 {
                     exePath = processes.FirstOrDefault()?.MainModule?.FileName;
-                    if (exePath is not null)
-                        _cachedClientExePaths[processName] = exePath;
                     foreach (var p in processes)
                     {
                         try
@@ -155,20 +97,21 @@ namespace qbPortWeaver
                 LogManager.Instance.LogMessage($"Failed to kill client process '{processName}': {ex.Message}", LogLevel.Warn);
             }
 
-            // Fall back to cached path if the process was already dead
-            if (exePath is null && _cachedClientExePaths.TryGetValue(processName, out string? cached))
+            // Fall back to registry-derived exe path if the process was not running
+            if (exePath is null)
             {
-                exePath = cached;
-                LogManager.Instance.LogDebug($"AutoRecoveryManager.RestartClientProcessAsync: Using cached EXE path for '{processName}': {exePath}");
+                exePath = getInstalledExePath?.Invoke();
+                if (exePath is not null)
+                    LogManager.Instance.LogDebug($"AutoRecoveryManager.RestartClientProcessAsync: Using registry-discovered EXE path for '{processName}': {exePath}");
             }
 
             if (exePath is null)
             {
-                LogManager.Instance.LogMessage($"No EXE path available for '{processName}' - cannot restart client process", LogLevel.Warn);
+                LogManager.Instance.LogMessage($"No EXE path available for '{processName}' - cannot restart client process", LogLevel.Error);
                 return;
             }
 
-            await Task.Delay(ClientRestartDelayMs).ConfigureAwait(false);
+            await Task.Delay(ClientRestartDelayMs, cancellationToken).ConfigureAwait(false);
             try
             {
                 Process.Start(new ProcessStartInfo(exePath) { UseShellExecute = true })?.Dispose();

@@ -1,4 +1,5 @@
 using System.Net.Http.Json;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace qbPortWeaver
@@ -19,34 +20,61 @@ namespace qbPortWeaver
         // Serialises concurrent requests to enforce the rate limit
         private static readonly SemaphoreSlim _rateLimiter = new(1, 1);
 
-        /// <summary>Searches for a movie by title and optional year. Returns the best match, or null if none found.</summary>
-        public async Task<MovieInfo?> SearchMovieAsync(string query, int? year = null)
+        // v4 Read Access Tokens are JWTs (start with "eyJ", contain dots); v3 API keys are 32-char hex strings.
+        // Both work on v3 endpoints but use different auth: v3 passes the key as a query param,
+        // v4 sends it as an Authorization: Bearer header.
+        private readonly bool _useBearer = apiKey.StartsWith("eyJ", StringComparison.Ordinal) && apiKey.Contains('.');
+
+        private const string TmdbImageBaseUrl = "https://image.tmdb.org/t/p/w92"; // NOSONAR S1075 - fixed TMDB image CDN base, not a configurable path
+
+        private static readonly HttpClient _imageHttpClient = new()
         {
-            var url = $"search/movie?api_key={apiKey}&query={Uri.EscapeDataString(query)}&language=en-US&page=1"; // NOSONAR S4790 - TMDB API v3 requires the key as a query parameter; transmitted over HTTPS only
+            Timeout = TimeSpan.FromSeconds(AppConstants.HttpTimeoutSeconds)
+        };
+
+        /// <summary>Returns all TMDB movie candidates for a query in relevance order, or null if none found.</summary>
+        internal async Task<IReadOnlyList<MovieInfo>?> SearchMovieCandidatesAsync(string query, int? year = null, CancellationToken ct = default)
+        {
+            var url = _useBearer // NOSONAR S4790 - key transmitted over HTTPS only; v3 in query param, v4 in Authorization header
+                ? $"search/movie?query={Uri.EscapeDataString(query)}&language=en-US&page=1"
+                : $"search/movie?api_key={apiKey}&query={Uri.EscapeDataString(query)}&language=en-US&page=1";
             if (year.HasValue)
                 url += $"&year={year.Value}";
-
-            var response = await GetWithRateLimitAsync<TmdbMovieSearchResult>(url).ConfigureAwait(false);
-            var result   = response?.Results?.FirstOrDefault();
-            if (result is null)
-                return null;
-
-            return new MovieInfo(result.Title, ParseYearFromDate(result.ReleaseDate), result.Id, result.VoteCount);
+            var response = await GetWithRateLimitAsync<TmdbMovieSearchResult>(url, ct).ConfigureAwait(false);
+            var results  = response?.Results;
+            if (results is null or { Count: 0 }) return null;
+            return results.ConvertAll(r => new MovieInfo(r.Title, ParseYearFromDate(r.ReleaseDate), r.Id, r.VoteCount, r.PosterPath, r.Overview));
         }
 
-        /// <summary>Searches for a TV show by title and optional first-air year. Returns the best match, or null if none found.</summary>
-        public async Task<TvShowInfo?> SearchTvShowAsync(string query, int? year = null)
+        /// <summary>Returns all TMDB TV show candidates for a query in relevance order, or null if none found.</summary>
+        internal async Task<IReadOnlyList<TvShowInfo>?> SearchTvShowCandidatesAsync(string query, int? year = null, CancellationToken ct = default)
         {
-            var url = $"search/tv?api_key={apiKey}&query={Uri.EscapeDataString(query)}&language=en-US&page=1"; // NOSONAR S4790 - TMDB API v3 requires the key as a query parameter; transmitted over HTTPS only
+            var url = _useBearer // NOSONAR S4790 - key transmitted over HTTPS only; v3 in query param, v4 in Authorization header
+                ? $"search/tv?query={Uri.EscapeDataString(query)}&language=en-US&page=1"
+                : $"search/tv?api_key={apiKey}&query={Uri.EscapeDataString(query)}&language=en-US&page=1";
             if (year.HasValue)
                 url += $"&first_air_date_year={year.Value}";
+            var response = await GetWithRateLimitAsync<TmdbTvSearchResult>(url, ct).ConfigureAwait(false);
+            var results  = response?.Results;
+            if (results is null or { Count: 0 }) return null;
+            return results.ConvertAll(r => new TvShowInfo(r.Name, ParseYearFromDate(r.FirstAirDate), r.Id, r.VoteCount, r.PosterPath, r.Overview));
+        }
 
-            var response = await GetWithRateLimitAsync<TmdbTvSearchResult>(url).ConfigureAwait(false);
-            var result   = response?.Results?.FirstOrDefault();
-            if (result is null)
+        /// <summary>Downloads a TMDB poster image by its path. Returns null on failure or cancellation.</summary>
+        internal static async Task<Image?> FetchPosterAsync(string posterPath, CancellationToken ct)
+        {
+            try
+            {
+                var bytes = await _imageHttpClient.GetByteArrayAsync($"{TmdbImageBaseUrl}{posterPath}", ct).ConfigureAwait(false);
+                using var ms  = new MemoryStream(bytes);
+                using var src = Image.FromStream(ms);
+                return new Bitmap(src); // copy to break stream dependency
+            }
+            catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException
+                                            or ArgumentException or OutOfMemoryException)
+            {
                 return null;
-
-            return new TvShowInfo(result.Name, ParseYearFromDate(result.FirstAirDate), result.Id, result.VoteCount);
+            }
         }
 
         // Extracts the year from a TMDB date string (format "YYYY-MM-DD"), or null if the string is missing or malformed.
@@ -60,24 +88,41 @@ namespace qbPortWeaver
         /// </summary>
         internal static async Task<(T? Info, bool IsConfident)> SearchWithConfidenceAsync<T>(
             string title, int? year,
-            Func<string, int?, Task<T?>> search,
+            Func<string, int?, Task<IReadOnlyList<T>?>> search,
             Func<T, bool> hasYear,
             Func<T, string> getTitle,
             Func<T, int> getVoteCount) where T : class
         {
             bool isConfident = true;
 
-            var info = await search(title, year).ConfigureAwait(false);
+            var candidates = await search(title, year).ConfigureAwait(false);
+
+            // Prefer an exact normalized title match with a year over TMDB's top-ranked result.
+            // Scanning the full candidates list avoids accepting a longer near-miss as the best match.
+            var normalizedSearch = FileNameParser.NormalizeTitleForMatch(title);
+            var searchedWords    = normalizedSearch.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            var info = candidates is not null
+                ? (candidates.FirstOrDefault(c => hasYear(c) &&
+                       string.Equals(FileNameParser.NormalizeTitleForMatch(getTitle(c)), normalizedSearch, StringComparison.Ordinal))
+                   ?? candidates[0])
+                : null;
 
             // Without a year in the filename we cannot corroborate the match by year alone.
             // Require an exact title match and a meaningful vote count to stay confident.
             if (info is not null && !year.HasValue)
-                isConfident = IsStrongNoYearMatch(title, getTitle(info), getVoteCount(info));
+                isConfident = IsStrongNoYearMatch(normalizedSearch, getTitle(info), getVoteCount(info));
+
+            // With a year present, a short searched title can still match a longer TMDB title.
+            // Mark uncertain when all searched-title words appear in the returned title's word set
+            // and the returned title has strictly more words (word-subset match).
+            else if (info is not null)
+                isConfident = !IsWordSubsetMatch(searchedWords, getTitle(info));
 
             // Retry without year: parsed year may not match TMDB's release/first-air year
             if (info is null && year.HasValue)
             {
-                info = await search(title, null).ConfigureAwait(false);
+                candidates = await search(title, null).ConfigureAwait(false);
+                info       = candidates?[0];
                 if (info is not null) isConfident = false;
             }
 
@@ -87,57 +132,114 @@ namespace qbPortWeaver
             return (info, isConfident);
         }
 
-        // Enforces a minimum delay between TMDB API calls to avoid HTTP 429 rate limiting.
-        // The delay runs inside the semaphore hold so the next caller waits for the cooldown to finish.
-        private static async Task<T?> GetWithRateLimitAsync<T>(string url)
+        /// <summary>
+        /// Performs a TMDB lookup with confidence tracking, handling "no match" logging and HTTP/timeout errors.
+        /// Shared by both processors so the error handling and log format live in one place.
+        /// </summary>
+        internal static async Task<(T? Info, bool IsConfident)> LookupAsync<T>(
+            string title, int? year,
+            Func<string, int?, Task<IReadOnlyList<T>?>> search,
+            Func<T, bool> hasYear,
+            Func<T, string> getTitle,
+            Func<T, int> getVoteCount,
+            string mediaKind) where T : class
         {
-            await _rateLimiter.WaitAsync().ConfigureAwait(false);
             try
             {
-                return await _httpClient.GetFromJsonAsync<T>(url).ConfigureAwait(false);
+                var (info, isConfident) = await SearchWithConfidenceAsync(
+                    title, year, search, hasYear, getTitle, getVoteCount).ConfigureAwait(false);
+
+                if (info is null)
+                {
+                    LogManager.Instance.LogMessage($"No TMDB match found for {mediaKind} '{title}'", LogLevel.Warn, Subsystem.MediaManager);
+                    return (null, false);
+                }
+
+                return (info, isConfident);
+            }
+            catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException)
+            {
+                LogManager.Instance.LogMessage($"Failed to look up TMDB {mediaKind}: {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
+                return (null, false);
+            }
+        }
+
+        // Enforces a minimum delay between TMDB API calls to avoid HTTP 429 rate limiting.
+        // The delay runs inside the semaphore hold so the next caller waits for the cooldown to finish.
+        private async Task<T?> GetWithRateLimitAsync<T>(string url, CancellationToken ct = default)
+        {
+            await _rateLimiter.WaitAsync(ct).ConfigureAwait(false);
+            try
+            {
+                if (_useBearer)
+                {
+                    using var request  = new HttpRequestMessage(HttpMethod.Get, url);
+                    request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", apiKey);
+                    using var response = await _httpClient.SendAsync(request, ct).ConfigureAwait(false);
+                    response.EnsureSuccessStatusCode();
+                    return await response.Content.ReadFromJsonAsync<T>(ct).ConfigureAwait(false);
+                }
+                return await _httpClient.GetFromJsonAsync<T>(url, ct).ConfigureAwait(false);
             }
             finally
             {
                 // Delay inside the semaphore hold so the next caller waits for the cooldown.
-                // Inner finally ensures Release() runs even if Task.Delay is interrupted.
-                try { await Task.Delay(RateLimitDelayMs).ConfigureAwait(false); }
+                // CancellationToken.None: cooldown is 260ms and must not be skipped by a mid-call cancellation.
+                // Inner finally ensures Release() runs even if Task.Delay somehow throws.
+                try { await Task.Delay(RateLimitDelayMs, CancellationToken.None).ConfigureAwait(false); }
                 finally { _rateLimiter.Release(); }
             }
         }
 
         // Returns true when a TMDB result found without a year in the filename is a high-confidence match.
         // Requires a meaningful vote count and a normalised title match to filter out obscure or incorrect entries.
-        private static bool IsStrongNoYearMatch(string searchedTitle, string returnedTitle, int voteCount, int minVoteCount = 50) =>
+        private static bool IsStrongNoYearMatch(string normalizedSearchTitle, string returnedTitle, int voteCount, int minVoteCount = 50) =>
             voteCount >= minVoteCount &&
-            string.Equals(FileNameParser.NormalizeTitleForMatch(returnedTitle), FileNameParser.NormalizeTitleForMatch(searchedTitle), StringComparison.OrdinalIgnoreCase);
+            string.Equals(FileNameParser.NormalizeTitleForMatch(returnedTitle), normalizedSearchTitle, StringComparison.Ordinal);
 
-        // Applies two fallback lookup strategies when the primary search fails or returns a low-confidence result.
-        // After-dash strategy: retries with the part after " - " when info is null (no initial match).
-        // Trailing-number strategy: retries without trailing digit when info is null OR hasYear returns false
+        // Returns true when all words of the searched title appear in the returned title's word set
+        // and the returned title has strictly more words - i.e. the searched title is a proper word subset.
+        private static bool IsWordSubsetMatch(string[] normalizedSearchedWords, string returnedTitle)
+        {
+            var returnedWords = new HashSet<string>(
+                FileNameParser.NormalizeTitleForMatch(returnedTitle)
+                    .Split(' ', StringSplitOptions.RemoveEmptyEntries),
+                StringComparer.Ordinal);
+            return returnedWords.Count > normalizedSearchedWords.Length &&
+                   normalizedSearchedWords.All(w => returnedWords.Contains(w));
+        }
+
+        // Applies two fallback lookup strategies when the primary search fails or returns no match.
+        // After-dash strategy: retries with the part after " - " when info is null.
+        // Trailing-number strategy: retries without a trailing digit when info is null OR the result has no year
         // (a year-less result is ambiguous; a stripped-title result that includes a year is higher quality).
         private static async Task<(T? Info, bool IsConfident)> TryFallbackLookupsAsync<T>(
             string title, int? year, T? info, bool isConfident,
-            Func<string, int?, Task<T?>> search,
+            Func<string, int?, Task<IReadOnlyList<T>?>> search,
             Func<T, bool> hasYear) where T : class
         {
             var afterDash = info is null ? ExtractAfterDash(title) : null;
             if (afterDash is not null)
             {
                 LogManager.Instance.LogDebug($"TmdbClient.TryFallbackLookupsAsync: Retrying with after-dash title '{afterDash}'", Subsystem.MediaManager);
-                info = await search(afterDash, year).ConfigureAwait(false);
-                if (info is not null) isConfident = false;
+                var afterDashInfo = (await search(afterDash, year).ConfigureAwait(false))?[0];
+                if (afterDashInfo is not null)
+                {
+                    info        = afterDashInfo;
+                    isConfident = false;
+                }
             }
 
-            if (info is null || (!hasYear(info) && title.Length > 2))
+            if (info is null || !hasYear(info))
             {
                 var withoutNum = StripTrailingNumber(title);
                 if (withoutNum is not null)
                 {
                     LogManager.Instance.LogDebug($"TmdbClient.TryFallbackLookupsAsync: Retrying without trailing number '{withoutNum}'", Subsystem.MediaManager);
-                    var altInfo = await search(withoutNum, year).ConfigureAwait(false);
-                    if (altInfo is not null && hasYear(altInfo))
+                    var withoutNumInfo = (await search(withoutNum, year).ConfigureAwait(false))?[0];
+                    if (withoutNumInfo is not null && hasYear(withoutNumInfo))
                     {
-                        info        = altInfo;
+                        info        = withoutNumInfo;
                         isConfident = false;
                     }
                 }
@@ -165,13 +267,13 @@ namespace qbPortWeaver
         }
     }
 
-    /// <summary>TMDB title, release year, database ID, and vote count for a movie.</summary>
-    public sealed record MovieInfo(string Title, int? Year, int TmdbId, int VoteCount = 0);
+    /// <summary>TMDB title, release year, database ID, vote count, poster path, and overview for a movie.</summary>
+    public sealed record MovieInfo(string Title, int? Year, int TmdbId, int VoteCount = 0, string? PosterPath = null, string? Overview = null);
 
-    /// <summary>TMDB title, first-air year, database ID, and vote count for a TV show.</summary>
-    public sealed record TvShowInfo(string Title, int? Year, int TmdbId, int VoteCount = 0);
+    /// <summary>TMDB title, first-air year, database ID, vote count, poster path, and overview for a TV show.</summary>
+    public sealed record TvShowInfo(string Title, int? Year, int TmdbId, int VoteCount = 0, string? PosterPath = null, string? Overview = null);
 
-    // TMDB API response shapes (internal - only used for deserialization)
+    // TMDB API response shapes - only used for deserialization
     internal sealed record TmdbMovieSearchResult(
         [property: JsonPropertyName("results")] List<TmdbMovie>? Results);
 
@@ -179,7 +281,9 @@ namespace qbPortWeaver
         [property: JsonPropertyName("id")]           int     Id,
         [property: JsonPropertyName("title")]        string  Title,
         [property: JsonPropertyName("release_date")] string? ReleaseDate,
-        [property: JsonPropertyName("vote_count")]   int     VoteCount = 0);
+        [property: JsonPropertyName("vote_count")]   int     VoteCount    = 0,
+        [property: JsonPropertyName("poster_path")]  string? PosterPath   = null,
+        [property: JsonPropertyName("overview")]     string? Overview     = null);
 
     internal sealed record TmdbTvSearchResult(
         [property: JsonPropertyName("results")] List<TmdbTvShow>? Results);
@@ -188,5 +292,7 @@ namespace qbPortWeaver
         [property: JsonPropertyName("id")]             int     Id,
         [property: JsonPropertyName("name")]           string  Name,
         [property: JsonPropertyName("first_air_date")] string? FirstAirDate,
-        [property: JsonPropertyName("vote_count")]     int     VoteCount = 0);
+        [property: JsonPropertyName("vote_count")]     int     VoteCount    = 0,
+        [property: JsonPropertyName("poster_path")]    string? PosterPath   = null,
+        [property: JsonPropertyName("overview")]       string? Overview     = null);
 }

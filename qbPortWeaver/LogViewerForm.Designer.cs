@@ -217,9 +217,13 @@ namespace qbPortWeaver
             ClientSize          = new System.Drawing.Size(1100, 680);
             Controls.Add(rtbLog);
             Controls.Add(pnlToolbar);
+            MaximizeBox         = true;
+            MinimizeBox         = true;
             MinimumSize         = new System.Drawing.Size(600, 300);
             Name                = "LogViewerForm";
-            ShowIcon            = false;
+            Icon                = Properties.Resources.qbPortWeaver;
+            ShowIcon            = true;
+            ShowInTaskbar       = true;
             StartPosition       = System.Windows.Forms.FormStartPosition.CenterScreen;
             Text                = "qbPortWeaver | Log Viewer"; // overridden in OnLoad with AppConstants.AppName
 

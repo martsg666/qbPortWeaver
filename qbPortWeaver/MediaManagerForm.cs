@@ -9,14 +9,18 @@ namespace qbPortWeaver
 
         private enum RowConfidence { Confident, Uncertain, Unmatched }
         private sealed record RowData(RowConfidence Confidence, MediaProposal Proposal);
+        private readonly record struct TmdbMatch(string? PosterPath, int? TmdbId, int VoteCount, string? Overview);
 
         private CancellationTokenSource? _scanCts;
+        private CancellationTokenSource? _thumbnailCts;
+        private readonly Dictionary<string, Image> _posterCache = new(StringComparer.OrdinalIgnoreCase);
         private ToolStripMenuItem? _mnuPaste;
         private bool _allIncluded = true;
         private bool _isBusy;
         private bool _showOnlyReviewNeeded;
 
         // Row confidence colors - set once in OnLoad based on active theme
+        private bool  _isDarkMode;
         private Color _colorUncertain;
         private Color _colorUnmatched;
 
@@ -24,17 +28,23 @@ namespace qbPortWeaver
         {
             InitializeComponent();
             Text = $"{AppConstants.AppName} | Media Manager";
+            rtbTmdbOverview.Enter += (s, e) => dgvResults.Focus();
         }
 
         protected override void OnLoad(EventArgs e)
         {
             base.OnLoad(e);
             MinimumSize = Size; // lock minimum to initial window size so controls are never clipped
-            bool dark      = AppConstants.IsDarkModeEnabled();
-            _colorUncertain = dark ? Color.Gold       : Color.Goldenrod;
-            _colorUnmatched = dark ? Color.OrangeRed  : Color.Crimson;
+            _isDarkMode     = AppConstants.IsDarkModeEnabled();
+            _colorUncertain = _isDarkMode ? AppConstants.DarkModeWarning : AppConstants.LightModeWarning;
+            _colorUnmatched = _isDarkMode ? AppConstants.DarkModeError   : AppConstants.LightModeError;
             lblLegendUncertain.ForeColor = _colorUncertain;
             lblLegendUnmatched.ForeColor = _colorUnmatched;
+            rtbTmdbOverview.Font      = Font;
+            rtbTmdbOverview.ForeColor = ForeColor;
+            if (_isDarkMode)
+                rtbTmdbOverview.ForeColor = AppConstants.DarkModeText;
+            rtbTmdbOverview.Enter += (s, e) => dgvResults.Focus();
             SetupTooltips();
             SetupGridContextMenu();
             LoadSettings();
@@ -43,8 +53,8 @@ namespace qbPortWeaver
         private void SetupTooltips()
         {
             toolTip.SetToolTip(chkEnabled,            "Enable or disable Media Manager - when enabled, files are imported on each sync cycle");
-            toolTip.SetToolTip(txtTmdbApiKey,         "Your TMDB API key - get one free at themoviedb.org/settings/api");
-            toolTip.SetToolTip(lblTmdbApiKey,         "Your TMDB API key - get one free at themoviedb.org/settings/api");
+            toolTip.SetToolTip(txtTmdbApiKey,         "Your TMDB credential - accepts both the API Key (v3, 32-char hex) and the API Read Access Token (v4, JWT). Get one free at themoviedb.org/settings/api");
+            toolTip.SetToolTip(lblTmdbApiKey,         "Your TMDB credential - accepts both the API Key (v3, 32-char hex) and the API Read Access Token (v4, JWT). Get one free at themoviedb.org/settings/api");
             toolTip.SetToolTip(chkDryRun,             "When checked, the automatic sync cycle will only log what it would import without touching any files");
             toolTip.SetToolTip(chkCreateFolders,      "Import each title into its own Plex-recommended folder: Movies/Title (Year)/Title (Year).ext");
             toolTip.SetToolTip(chkDeleteEmptyFolders, "Delete source folders left empty after importing - folders containing only .nfo files are also removed");
@@ -60,7 +70,7 @@ namespace qbPortWeaver
             toolTip.SetToolTip(btnImportNow,           "Import the files shown in the grid into the library");
             toolTip.SetToolTip(btnClearCache,          "Delete cached fingerprints and TMDB lookups so the next scan starts fresh");
             toolTip.SetToolTip(btnRematch,             "Re-run TMDB matching for uncertain and unmatched rows using the current Proposed filenames");
-            toolTip.SetToolTip(dgvResults,            "Files that would be imported. Uncheck a row to exclude it. Colored rows are uncertain TMDB matches - double-click the Proposed cell to correct the name before importing.");
+            toolTip.SetToolTip(dgvResults,            "Files that would be imported. Uncheck a row to exclude it. Gold rows are uncertain TMDB matches, red rows have no match - double-click the Proposed cell to correct the name before importing.");
             toolTip.SetToolTip(chkShowOnlyReview,     "Show only uncertain TMDB matches (gold) and rows with no TMDB match found (red) - hides confident matches.");
         }
 
@@ -88,13 +98,18 @@ namespace qbPortWeaver
             _scanCts?.Cancel();
             _scanCts?.Dispose();
             _scanCts = null; // prevent double-dispose in Dispose(bool)
+            _thumbnailCts?.Cancel();
+            _thumbnailCts?.Dispose();
+            _thumbnailCts = null;
+            foreach (var img in _posterCache.Values) img.Dispose();
+            _posterCache.Clear();
             base.OnFormClosed(e);
         }
 
         private void LoadSettings()
         {
             chkEnabled.Checked       = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionMedia, RegistrySettingsManager.KeyMediaEnabled);
-            txtTmdbApiKey.Text       = RegistrySettingsManager.GetEncryptedValue(RegistrySettingsManager.SectionMedia, RegistrySettingsManager.KeyTmdbApiKey);
+            txtTmdbApiKey.Text       = RegistrySettingsManager.GetTmdbApiKey();
             chkDryRun.Checked        = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionMedia, RegistrySettingsManager.KeyMediaDryRun);
             chkCreateFolders.Checked      = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionMedia, RegistrySettingsManager.KeyMediaCreateFolders);
             chkDeleteEmptyFolders.Checked = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionMedia, RegistrySettingsManager.KeyMediaDeleteEmptyFolders);
@@ -120,7 +135,7 @@ namespace qbPortWeaver
         private void SaveSettings()
         {
             RegistrySettingsManager.SetBool(RegistrySettingsManager.SectionMedia,  RegistrySettingsManager.KeyMediaEnabled,      chkEnabled.Checked);
-            RegistrySettingsManager.SetEncryptedValue(RegistrySettingsManager.SectionMedia, RegistrySettingsManager.KeyTmdbApiKey, txtTmdbApiKey.Text.Trim());
+            RegistrySettingsManager.SetTmdbApiKey(txtTmdbApiKey.Text.Trim());
             RegistrySettingsManager.SetBool(RegistrySettingsManager.SectionMedia,  RegistrySettingsManager.KeyMediaDryRun,        chkDryRun.Checked);
             RegistrySettingsManager.SetBool(RegistrySettingsManager.SectionMedia,  RegistrySettingsManager.KeyMediaCreateFolders,      chkCreateFolders.Checked);
             RegistrySettingsManager.SetBool(RegistrySettingsManager.SectionMedia,  RegistrySettingsManager.KeyMediaDeleteEmptyFolders, chkDeleteEmptyFolders.Checked);
@@ -137,6 +152,9 @@ namespace qbPortWeaver
         {
             MediaManagerService.ClearAllCaches();
             dgvResults.Rows.Clear();
+            ClearDetailPanel();
+            foreach (var img in _posterCache.Values) img.Dispose();
+            _posterCache.Clear();
             btnImportNow.Enabled = false;
             prgScan.Visible      = false;
             lblScanStatus.Text   = "Cache cleared - run Scan Now to re-index.";
@@ -202,26 +220,23 @@ namespace qbPortWeaver
             prgScan.Style   = ProgressBarStyle.Blocks;
             prgScan.Maximum = total;
             prgScan.Value   = 0;
-            int done = 0;
 
-            if (await RematchTvShowRowsAsync(tmdb, tvShowLib, tvShowRows, createFolders, total, done, ct) is not int tvShowDone)
-                return null; // disposed
-
-            if (await RematchMovieRowsAsync(tmdb, moviesLib, movieRows, createFolders, total, tvShowDone, ct) is null)
-                return null; // disposed
-
+            int done = await RematchTvShowRowsAsync(tmdb, tvShowLib, tvShowRows, createFolders, total, 0, ct);
+            if (IsDisposed) return null;
+            await RematchMovieRowsAsync(tmdb, moviesLib, movieRows, createFolders, total, done, ct);
             if (IsDisposed) return null;
 
             dgvResults.Refresh(); // force full repaint so CellFormatting fires for all visible cells
-            int verified = tvShowRows.Concat(movieRows)
-                .Count(r => ((RowData)r.Tag!).Confidence == RowConfidence.Confident);
+            dgvResults_SelectionChanged(dgvResults, EventArgs.Empty); // refresh detail panel for the selected row
+            int verified = tvShowRows.Count(r => ((RowData)r.Tag!).Confidence == RowConfidence.Confident)
+                         + movieRows.Count(r => ((RowData)r.Tag!).Confidence == RowConfidence.Confident);
             return verified == total
                 ? "Re-match complete - all rows verified."
                 : $"Re-match complete - {verified}/{total} rows verified.";
         }
 
-        // Re-matches TV show rows grouped by show name. Returns updated done count, or null if the form was disposed.
-        private async Task<int?> RematchTvShowRowsAsync(TmdbClient tmdb, string tvShowLib,
+        // Re-matches TV show rows grouped by show name. Returns updated done count.
+        private async Task<int> RematchTvShowRowsAsync(TmdbClient tmdb, string tvShowLib,
             List<DataGridViewRow> tvShowRows, bool createFolders, int total, int done, CancellationToken ct)
         {
             foreach (var (showKey, showRows) in GroupTvShowRowsByShow(tvShowRows))
@@ -229,10 +244,10 @@ namespace qbPortWeaver
                 ct.ThrowIfCancellationRequested();
                 var (showInfo, showConfident) = string.IsNullOrWhiteSpace(tvShowLib)
                     ? (null, false)
-                    : await SearchTmdbByPlexNameAsync<TvShowInfo>(showKey, tmdb.SearchTvShowAsync, i => i.Title, i => i.Year, i => i.VoteCount, i => i.TmdbId, "TV show");
+                    : await SearchTmdbByPlexNameAsync<TvShowInfo>(showKey, (q, y) => tmdb.SearchTvShowCandidatesAsync(q, y, ct), i => i.Title, i => i.Year, i => i.VoteCount, "TV show");
                 foreach (var row in showRows)
                 {
-                    if (IsDisposed) return null;
+                    if (IsDisposed) return done;
                     if (showInfo is not null)
                         ApplyTvRematchResult(row, showInfo, tvShowLib, createFolders, showConfident);
                     prgScan.Value      = Math.Min(++done, prgScan.Maximum);
@@ -242,18 +257,18 @@ namespace qbPortWeaver
             return done;
         }
 
-        // Re-matches movie rows individually. Returns updated done count, or null if the form was disposed.
-        private async Task<int?> RematchMovieRowsAsync(TmdbClient tmdb, string moviesLib,
+        // Re-matches movie rows individually. Returns updated done count.
+        private async Task<int> RematchMovieRowsAsync(TmdbClient tmdb, string moviesLib,
             List<DataGridViewRow> movieRows, bool createFolders, int total, int done, CancellationToken ct)
         {
             foreach (var row in movieRows)
             {
                 ct.ThrowIfCancellationRequested();
-                if (IsDisposed) return null;
+                if (IsDisposed) return done;
                 if (!string.IsNullOrWhiteSpace(moviesLib))
                 {
-                    var editedName = row.Cells[colProposed.Index].Value?.ToString() ?? string.Empty;
-                    var (movieInfo, movieConfident) = await SearchTmdbByPlexNameAsync<MovieInfo>(editedName, tmdb.SearchMovieAsync, i => i.Title, i => i.Year, i => i.VoteCount, i => i.TmdbId, "movie");
+                    var editedName = GetProposedName(row);
+                    var (movieInfo, movieConfident) = await SearchTmdbByPlexNameAsync<MovieInfo>(editedName, (q, y) => tmdb.SearchMovieCandidatesAsync(q, y, ct), i => i.Title, i => i.Year, i => i.VoteCount, "movie");
                     if (movieInfo is not null)
                         ApplyMovieRematchResult(row, movieInfo, moviesLib, createFolders, editedName, movieConfident);
                 }
@@ -275,8 +290,8 @@ namespace qbPortWeaver
             var groups = new Dictionary<string, List<DataGridViewRow>>(StringComparer.OrdinalIgnoreCase);
             foreach (var row in tvShowRows)
             {
-                var editedName = row.Cells[colProposed.Index].Value?.ToString() ?? string.Empty;
-                var key        = ExtractTvShowFolder(editedName) ?? editedName;
+                var editedName = GetProposedName(row);
+                var key        = ExtractTvShowFolderKey(editedName) ?? editedName;
                 if (!groups.TryGetValue(key, out var group))
                     groups[key] = group = [];
                 group.Add(row);
@@ -287,12 +302,12 @@ namespace qbPortWeaver
         // Parses a Plex-formatted name into title+year and searches TMDB with confidence tracking.
         // Returns (null, false) if the name is blank, unparseable, or has no TMDB match.
         private static async Task<(T? Info, bool IsConfident)> SearchTmdbByPlexNameAsync<T>(
-            string name, Func<string, int?, Task<T?>> search,
-            Func<T, string> getTitle, Func<T, int?> getYear, Func<T, int> getVoteCount, Func<T, int> getTmdbId,
+            string name, Func<string, int?, Task<IReadOnlyList<T>?>> search,
+            Func<T, string> getTitle, Func<T, int?> getYear, Func<T, int> getVoteCount,
             string mediaLabel) where T : class
         {
             if (string.IsNullOrWhiteSpace(name)) return (null, false);
-            var (title, year) = FileNameParser.ParseMovie(name);
+            var (title, year) = FileNameParser.ParseTitleYear(name);
             if (string.IsNullOrWhiteSpace(title)) return (null, false);
             try
             {
@@ -304,11 +319,12 @@ namespace qbPortWeaver
                     LogManager.Instance.LogDebug($"MediaManagerForm.SearchTmdbByPlexNameAsync: No TMDB match found for {mediaLabel} '{title}'", Subsystem.MediaManager);
                     return (null, false);
                 }
-                LogManager.Instance.LogDebug($"MediaManagerForm.SearchTmdbByPlexNameAsync: Matched {mediaLabel} '{getTitle(info)}' ({getYear(info)}) [tmdb-{getTmdbId(info)}]", Subsystem.MediaManager);
+                LogManager.Instance.LogDebug($"MediaManagerForm.SearchTmdbByPlexNameAsync: Matched {mediaLabel} '{getTitle(info)}' ({getYear(info)})", Subsystem.MediaManager);
                 return (info, isConfident);
             }
             catch (HttpRequestException ex)
             {
+                // TaskCanceledException and JsonException propagate to the caller's handlers.
                 LogManager.Instance.LogMessage($"Re-match {mediaLabel} lookup failed for '{title}': {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
                 return (null, false);
             }
@@ -316,7 +332,7 @@ namespace qbPortWeaver
 
         private void ApplyTvRematchResult(DataGridViewRow row, TvShowInfo info, string tvShowLib, bool createFolders, bool isConfident)
         {
-            var editedName  = row.Cells[colProposed.Index].Value?.ToString() ?? string.Empty;
+            var editedName  = GetProposedName(row);
             var episodeInfo = FileNameParser.ParseTvShowEpisode(editedName);
             if (episodeInfo is null)
             {
@@ -325,20 +341,20 @@ namespace qbPortWeaver
             }
 
             var proposedPath = TvShowProcessor.BuildEpisodePath(editedName, info, episodeInfo, tvShowLib, createFolders);
-            UpdateRow(row, proposedPath, Path.GetFileName(proposedPath), isConfident);
+            UpdateRow(row, proposedPath, Path.GetFileName(proposedPath), isConfident, new TmdbMatch(info.PosterPath, info.TmdbId, info.VoteCount, info.Overview));
         }
 
         private void ApplyMovieRematchResult(DataGridViewRow row, MovieInfo info, string moviesLib, bool createFolders, string editedName, bool isConfident)
         {
             var proposedPath = MovieProcessor.BuildStandaloneMoviePath(editedName, info, moviesLib, createFolders);
-            UpdateRow(row, proposedPath, Path.GetFileName(proposedPath), isConfident);
+            UpdateRow(row, proposedPath, Path.GetFileName(proposedPath), isConfident, new TmdbMatch(info.PosterPath, info.TmdbId, info.VoteCount, info.Overview));
         }
 
-        private void UpdateRow(DataGridViewRow row, string proposedPath, string displayName, bool isConfident)
+        private void UpdateRow(DataGridViewRow row, string proposedPath, string displayName, bool isConfident, TmdbMatch match = default)
         {
             var original   = ((RowData)row.Tag!).Proposal;
             var confidence = isConfident ? RowConfidence.Confident : RowConfidence.Uncertain;
-            row.Tag = new RowData(confidence, original with { ProposedPath = proposedPath, IsMatched = true, IsConfident = isConfident });
+            row.Tag = new RowData(confidence, original with { ProposedPath = proposedPath, IsMatched = true, IsConfident = isConfident, PosterPath = match.PosterPath, TmdbId = match.TmdbId, VoteCount = match.VoteCount, Overview = match.Overview });
             row.Cells[colProposed.Index].Value = displayName;
         }
 
@@ -513,7 +529,7 @@ namespace qbPortWeaver
                 if (row.Tag is not RowData { Proposal: var original }) continue;
                 if (row.Cells[colInclude.Index].Value is not true) continue; // user excluded this row
 
-                var editedName = row.Cells[colProposed.Index].Value?.ToString() ?? string.Empty;
+                var editedName = GetProposedName(row);
                 if (string.IsNullOrWhiteSpace(editedName)) continue; // unmatched row with no user-supplied name
 
                 // Use the proposed directory from the scan (which targets the library).
@@ -548,7 +564,7 @@ namespace qbPortWeaver
             // TV show with season subfolder: immediate parent is "Season XX"
             if (lastSegment.StartsWith("Season ", StringComparison.OrdinalIgnoreCase))
             {
-                var newShowFolder = ExtractTvShowFolder(editedFileName);
+                var newShowFolder = ExtractTvShowFolderKey(editedFileName);
                 if (newShowFolder is not null)
                 {
                     var libraryPath = Path.GetDirectoryName(Path.GetDirectoryName(originalDir)) ?? string.Empty;
@@ -571,7 +587,7 @@ namespace qbPortWeaver
 
         // Extracts the show folder name from a Plex-formatted episode filename: "Show Name (Year) - SxxExx.ext"
         // Returns null if the pattern is not recognised.
-        private static string? ExtractTvShowFolder(string fileName)
+        private static string? ExtractTvShowFolderKey(string fileName)
         {
             var nameWithoutExt = Path.GetFileNameWithoutExtension(fileName);
             var sepIdx         = nameWithoutExt.LastIndexOf(" - S", StringComparison.Ordinal);
@@ -586,6 +602,102 @@ namespace qbPortWeaver
             if (i >= afterSep.Length || !char.IsDigit(afterSep[i])) return null;
 
             return nameWithoutExt[..sepIdx].Trim();
+        }
+
+        private async void dgvResults_SelectionChanged(object? sender, EventArgs e) // async void is correct here (WinForms event handler)
+        {
+            var oldCts = _thumbnailCts;
+            _thumbnailCts = null;
+            if (oldCts is not null) await oldCts.CancelAsync();
+            oldCts?.Dispose();
+
+            if (dgvResults.SelectedRows.Count == 0 || dgvResults.SelectedRows[0].Tag is not RowData rd)
+            {
+                ClearDetailPanel();
+                return;
+            }
+
+            UpdateDetailPanel(rd);
+
+            var posterPath = rd.Proposal.PosterPath;
+            if (string.IsNullOrEmpty(posterPath))
+            {
+                picTmdbPoster.Visible = false;
+                return;
+            }
+
+            if (_posterCache.TryGetValue(posterPath, out var cached))
+            {
+                picTmdbPoster.Image   = cached;
+                picTmdbPoster.Visible = true;
+                return;
+            }
+
+            picTmdbPoster.Visible = false;
+            var cts               = new CancellationTokenSource();
+            _thumbnailCts         = cts;
+            await LoadThumbnailAsync(posterPath, cts.Token);
+        }
+
+        private async Task LoadThumbnailAsync(string posterPath, CancellationToken ct)
+        {
+            // No ConfigureAwait(false): continuation must resume on the UI thread to touch controls
+            var image = await TmdbClient.FetchPosterAsync(posterPath, ct);
+            if (ct.IsCancellationRequested || IsDisposed) { image?.Dispose(); return; }
+            if (image is null) return;
+
+            _posterCache[posterPath] = image;
+            picTmdbPoster.Image      = image;
+            picTmdbPoster.Visible    = true;
+        }
+
+        private void UpdateDetailPanel(RowData rd)
+        {
+            var p = rd.Proposal;
+            if (!p.IsMatched)
+            {
+                lblTmdbTitle.Text      = "No TMDB match found";
+                lblTmdbMeta.Text       = p.MediaType;
+                lblTmdbConfidence.Text = string.Empty;
+                lblTmdbTitle.ForeColor = _colorUnmatched;
+                lblTmdbMeta.ForeColor  = SystemColors.ControlText;
+                picTmdbPoster.Image    = null;
+                picTmdbPoster.Visible  = false;
+                rtbTmdbOverview.Text   = string.Empty;
+                return;
+            }
+
+            var displayName = !string.IsNullOrEmpty(p.ProposedPath)
+                ? Path.GetFileNameWithoutExtension(p.ProposedPath)
+                : Path.GetFileNameWithoutExtension(p.OriginalPath);
+
+            lblTmdbTitle.Text      = displayName;
+            lblTmdbTitle.ForeColor = SystemColors.ControlText;
+            var voteStr      = p.VoteCount > 0 ? $"  |  {p.VoteCount:N0} votes" : string.Empty;
+            lblTmdbMeta.Text = p.MediaType + (p.TmdbId.HasValue ? $"  |  TMDB ID: {p.TmdbId}" : string.Empty) + voteStr;
+            lblTmdbMeta.ForeColor  = SystemColors.GrayText;
+
+            if (!p.IsConfident)
+            {
+                lblTmdbConfidence.Text      = "Uncertain match - review recommended";
+                lblTmdbConfidence.ForeColor = _colorUncertain;
+            }
+            else
+            {
+                lblTmdbConfidence.Text = string.Empty;
+            }
+
+            rtbTmdbOverview.Text = p.Overview ?? string.Empty;
+        }
+
+        private void ClearDetailPanel()
+        {
+            lblTmdbTitle.Text      = string.Empty;
+            lblTmdbMeta.Text       = string.Empty;
+            lblTmdbConfidence.Text = string.Empty;
+            rtbTmdbOverview.Text   = string.Empty;
+            picTmdbPoster.Image    = null;
+            picTmdbPoster.Visible  = false;
         }
 
         private void SetupGridContextMenu()
@@ -706,8 +818,8 @@ namespace qbPortWeaver
         private void PropagateTvShowNameToSiblings(int editedRowIndex)
         {
             var editedRow     = dgvResults.Rows[editedRowIndex];
-            var newProposed   = editedRow.Cells[colProposed.Index].Value?.ToString() ?? string.Empty;
-            var newShowFolder = ExtractTvShowFolder(newProposed);
+            var newProposed   = GetProposedName(editedRow);
+            var newShowFolder = ExtractTvShowFolderKey(newProposed);
             if (newShowFolder is null) return;
 
             var editedShowName = FileNameParser.ParseTvShowEpisode(
@@ -717,12 +829,12 @@ namespace qbPortWeaver
             foreach (DataGridViewRow row in dgvResults.Rows)
             {
                 if (row.Index != editedRowIndex)
-                    TryUpdateSiblingShowFolder(row, editedShowName, newShowFolder);
+                    UpdateSiblingShowFolder(row, editedShowName, newShowFolder);
             }
         }
 
         // Updates a single sibling row's show folder if it belongs to the same TV show.
-        private void TryUpdateSiblingShowFolder(DataGridViewRow row, string editedShowName, string newShowFolder)
+        private void UpdateSiblingShowFolder(DataGridViewRow row, string editedShowName, string newShowFolder)
         {
             if (row.Tag is not RowData rd) return;
             if (rd.Proposal.MediaType != MediaProposal.TypeTvShow) return;
@@ -731,8 +843,8 @@ namespace qbPortWeaver
                 Path.GetFileName(rd.Proposal.OriginalPath))?.ShowName;
             if (!string.Equals(siblingShowName, editedShowName, StringComparison.OrdinalIgnoreCase)) return;
 
-            var currentProposed   = row.Cells[colProposed.Index].Value?.ToString() ?? string.Empty;
-            var currentShowFolder = ExtractTvShowFolder(currentProposed);
+            var currentProposed   = GetProposedName(row);
+            var currentShowFolder = ExtractTvShowFolderKey(currentProposed);
             if (currentShowFolder is null) return;
             if (string.Equals(currentShowFolder, newShowFolder, StringComparison.OrdinalIgnoreCase)) return;
 
@@ -797,9 +909,12 @@ namespace qbPortWeaver
 
         private void FinishProgress()
         {
-            prgScan.Style = ProgressBarStyle.Blocks;
-            prgScan.Value = prgScan.Maximum;
+            prgScan.Style   = ProgressBarStyle.Blocks;
+            prgScan.Value   = prgScan.Maximum;
+            prgScan.Visible = false;
         }
+
+        private string GetProposedName(DataGridViewRow row) => row.Cells[colProposed.Index].Value?.ToString() ?? string.Empty;
 
         // Disables input controls while an async operation is running.
         // btnImportNow is managed separately by each handler to preserve its proposals-count state.
@@ -866,12 +981,14 @@ namespace qbPortWeaver
                 else
                     confidence = RowConfidence.Unmatched;
 
-                int idx = dgvResults.Rows.Add(
+                var row = new DataGridViewRow();
+                row.CreateCells(dgvResults,
                     true,
                     p.MediaType,
                     Path.GetFileName(p.OriginalPath),
                     p.IsMatched ? Path.GetFileName(p.ProposedPath) : string.Empty);
-                dgvResults.Rows[idx].Tag = new RowData(confidence, p);
+                row.Tag = new RowData(confidence, p);
+                dgvResults.Rows.Add(row);
             }
             ApplyGridFilter();
         }

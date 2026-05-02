@@ -89,16 +89,17 @@ namespace qbPortWeaver
                 // Start main loop immediately so port syncing is not blocked by dialogs
                 _ = Task.Run(RunMainLoopAsync); // fire-and-forget; exceptions are handled inside RunMainLoopAsync
 
-                // Show What's New on first run after an upgrade
+                // Show What's New on first run after an upgrade (non-modal - does not block port sync)
                 if (RegistrySettingsManager.GetAppValue(RegistrySettingsManager.KeyLastSeenVersion) != AppConstants.AppVersion)
                 {
-                    using var whatsNew = new WhatsNewForm();
-                    await whatsNew.ShowDialogAsync();
-                    RegistrySettingsManager.SetAppValue(RegistrySettingsManager.KeyLastSeenVersion, AppConstants.AppVersion);
+                    var whatsNew = new WhatsNewForm();
+                    whatsNew.FormClosed += (_, _) =>
+                        RegistrySettingsManager.SetAppValue(RegistrySettingsManager.KeyLastSeenVersion, AppConstants.AppVersion);
+                    whatsNew.Show(); // NOSONAR S6966 - non-modal is intentional; ShowAsync would block until closed
                 }
 
-                // Check for updates on GitHub (startup check)
-                await PerformUpdateCheckAsync();
+                // Check for updates on GitHub (non-modal - does not block port sync)
+                _ = PerformUpdateCheckAsync();
 
                 // Schedule periodic update checks every 12 hours
                 _updateCheckTimer = new System.Windows.Forms.Timer { Interval = AppConstants.AutoUpdateCheckIntervalMs };
@@ -180,9 +181,9 @@ namespace qbPortWeaver
         private void InitializeStatusIcons()
         {
             _iconBase    = Properties.Resources.qbPortWeaver;
-            _iconOk      = CreateStatusIcon(_iconBase, Color.LimeGreen);
-            _iconWarning = CreateStatusIcon(_iconBase, Color.Orange);
-            _iconError   = CreateStatusIcon(_iconBase, Color.Red);
+            _iconOk      = CreateStatusIcon(_iconBase, AppConstants.StatusOk);
+            _iconWarning = CreateStatusIcon(_iconBase, AppConstants.StatusWarning);
+            _iconError   = CreateStatusIcon(_iconBase, AppConstants.StatusError);
         }
 
         // Draws a small filled circle onto a 16x16 copy of the base icon and returns it as an Icon
@@ -190,16 +191,21 @@ namespace qbPortWeaver
         {
             using var bmp         = new Bitmap(16, 16, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
             using var g           = Graphics.FromImage(bmp);
-            using var borderBrush = new SolidBrush(Color.FromArgb(60, 60, 60));
+            using var borderBrush = new SolidBrush(AppConstants.TrayIconDotBorder);
             using var dotBrush    = new SolidBrush(dotColor);
 
             g.Clear(Color.Transparent);
             using var icon16 = new Icon(baseIcon, 16, 16);
             g.DrawIcon(icon16, new Rectangle(0, 0, 16, 16));
 
+            // Status dot in the bottom-right quadrant of the 16×16 icon:
             // 7×7 dark border circle, then 5×5 colored fill - visible on both light and dark taskbars
-            g.FillEllipse(borderBrush, 9, 9, 7, 7);
-            g.FillEllipse(dotBrush,   10, 10, 5, 5);
+            const int DotBorderOrigin = 9;  // 16 - 7 = 9 px offset places border flush with icon edge
+            const int DotBorderSize   = 7;
+            const int DotFillOrigin   = 10; // 1 px inset from border on each side
+            const int DotFillSize     = 5;
+            g.FillEllipse(borderBrush, DotBorderOrigin, DotBorderOrigin, DotBorderSize, DotBorderSize);
+            g.FillEllipse(dotBrush,    DotFillOrigin,   DotFillOrigin,   DotFillSize,   DotFillSize);
 
             IntPtr hIcon = bmp.GetHicon();
             try
@@ -418,14 +424,7 @@ namespace qbPortWeaver
 
                     _lastNotifiedVersion = update.Value.Version;
                     LogManager.Instance.LogMessage($"New application version available: {update.Value.Version}", LogLevel.Info);
-                    var result = MessageBox.Show(
-                        $"A new version of {AppConstants.AppName} is available: {update.Value.Version}\n\nWould you like to open the download page?",
-                        $"{AppConstants.AppName} - Update Available",
-                        MessageBoxButtons.YesNo,
-                        MessageBoxIcon.Information);
-
-                    if (result == DialogResult.Yes)
-                        AppConstants.OpenUrl(update.Value.Url);
+                    new UpdateAvailableForm(update.Value.Version, update.Value.Url).Show(); // NOSONAR S6966 - non-modal is intentional; ShowAsync would block until closed
                 }
                 else
                 {
@@ -466,7 +465,7 @@ namespace qbPortWeaver
 
             string text = $"{AppConstants.AppName} {AppConstants.AppVersion}\n{statusLine}";
 
-            // Tooltip is limited to 63 characters
+            // Tray tooltip maximum is 63 characters
             if (text.Length > AppConstants.MaxTooltipLength)
                 text = text[..AppConstants.MaxTooltipLength];
 

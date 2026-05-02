@@ -10,9 +10,11 @@ namespace qbPortWeaver.HelperService;
 /// </summary>
 internal sealed class HelperLogger(string logFilePath)
 {
-    // Must match LogManager.Subsystem.HelperService and LogManager.Subsystem.MaxLength in qbPortWeaver
-    private const string SubsystemName        = "HelperService";
-    private const int    SubsystemColumnWidth = 13;
+    // Must match Subsystem.HelperService and Subsystem.MaxLength in qbPortWeaver
+    private const string SubsystemName   = "HelperService";
+    private const int    SubsystemMaxLength = 13;
+    private const int    WriteMaxAttempts     = 3;
+    private const int    WriteRetryDelayMs    = 50;
 
     public void LogInfo(string message)  => WriteLog(message, "INFO ");
     public void LogWarn(string message)  => WriteLog(message, "WARN ");
@@ -20,8 +22,8 @@ internal sealed class HelperLogger(string logFilePath)
 
     private void WriteLog(string message, string paddedLevel)
     {
-        string entry = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} | {paddedLevel} | {SubsystemName.PadRight(SubsystemColumnWidth)} | {message}{Environment.NewLine}";
-        for (int attempt = 0; attempt < 3; attempt++)
+        string entry = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} | {paddedLevel} | {SubsystemName.PadRight(SubsystemMaxLength)} | {message}{Environment.NewLine}";
+        for (int attempt = 0; attempt < WriteMaxAttempts; attempt++)
         {
             try
             {
@@ -30,11 +32,11 @@ internal sealed class HelperLogger(string logFilePath)
                 writer.Write(entry);
                 return;
             }
-            catch (IOException) when (attempt < 2)
+            catch (IOException) when (attempt < WriteMaxAttempts - 1)
             {
-                Thread.Sleep(50); // intentional: WriteLog is synchronous by design; retries are rare and brief
+                Thread.Sleep(WriteRetryDelayMs); // intentional: WriteLog is synchronous by design; retries are rare and brief
             }
-            catch (Exception)
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
                 return;
             }

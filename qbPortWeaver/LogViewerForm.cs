@@ -36,7 +36,7 @@ namespace qbPortWeaver
             public const int EM_SETSCROLLPOS = 0x04DE;
         }
 
-        private LogViewerForm() : this(string.Empty) { } // designer support only
+        public LogViewerForm() : this(string.Empty) { } // designer support only
 
         public LogViewerForm(string logFilePath)
         {
@@ -49,8 +49,8 @@ namespace qbPortWeaver
             base.OnLoad(e);
             _isDarkMode  = AppConstants.IsDarkModeEnabled();
             _themeColors = _isDarkMode
-                ? [Color.OrangeRed, Color.Gold, Color.DodgerBlue, Color.DarkOrange, Color.Gainsboro]
-                : [Color.Crimson, Color.Goldenrod, Color.SteelBlue, Color.DarkOrange, SystemColors.WindowText];
+                ? [AppConstants.DarkModeError, AppConstants.DarkModeWarning, AppConstants.DarkModeInfo, AppConstants.LogLevelDebug, AppConstants.DarkModeText]
+                : [AppConstants.LightModeError, AppConstants.LightModeWarning, AppConstants.LightModeInfo, AppConstants.LogLevelDebug, SystemColors.WindowText];
             Text = $"{AppConstants.AppName} | Log Viewer";
             ApplyTheme();
             // Vertically center the search box - single-line TextBox auto-sizes its height from the font,
@@ -67,9 +67,11 @@ namespace qbPortWeaver
 
             // Position the × button inside the right edge of the search box.
             // Done here so the button tracks the auto-sized TextBox height and right-anchor position.
-            int cbSize = txtSearch.Height - 4;
+            const int ClearButtonInset  = 4; // shrinks button to fit inside the TextBox border (2 px top + 2 px bottom)
+            const int ClearButtonMargin = 2; // inner gap from TextBox right edge and top
+            int cbSize = txtSearch.Height - ClearButtonInset;
             btnClearSearch.Size     = new Size(cbSize, cbSize);
-            btnClearSearch.Location = new Point(txtSearch.Right - cbSize - 2, searchTop + 2);
+            btnClearSearch.Location = new Point(txtSearch.Right - cbSize - ClearButtonMargin, searchTop + ClearButtonMargin);
             // Must be in front of the native TextBox HWND or it will be hidden behind it
             btnClearSearch.BringToFront();
             _ = LoadInitialContentAsync(); // fire-and-forget; exceptions are handled inside LoadInitialContentAsync
@@ -90,9 +92,9 @@ namespace qbPortWeaver
         // Applies theme colors to the background, filter buttons, and search controls
         private void ApplyTheme()
         {
-            Color bg   = _isDarkMode ? Color.FromArgb(30, 30, 30) : SystemColors.Window;
-            Color fg   = _isDarkMode ? Color.Gainsboro : SystemColors.WindowText;
-            Color border = _isDarkMode ? Color.FromArgb(80, 80, 80) : SystemColors.ControlDark;
+            Color bg     = _isDarkMode ? AppConstants.DarkModeBackground : SystemColors.Window;
+            Color fg     = _isDarkMode ? AppConstants.DarkModeText      : SystemColors.WindowText;
+            Color border = _isDarkMode ? AppConstants.DarkModeBorder    : SystemColors.ControlDark;
 
             BackColor            = bg;
             pnlToolbar.BackColor = bg;
@@ -118,20 +120,20 @@ namespace qbPortWeaver
 
             // Clear button sits inside the search box - blend it in rather than styling it like the nav buttons
             btnClearSearch.BackColor                 = txtSearch.BackColor;
-            btnClearSearch.ForeColor                 = _isDarkMode ? Color.FromArgb(160, 160, 160) : SystemColors.GrayText;
+            btnClearSearch.ForeColor                 = _isDarkMode ? AppConstants.DarkModeSecondaryText : SystemColors.GrayText;
             btnClearSearch.FlatAppearance.BorderSize = 0;
 
             lblMatchCount.BackColor = bg;
-            lblMatchCount.ForeColor = _isDarkMode ? Color.FromArgb(160, 160, 160) : SystemColors.GrayText;
+            lblMatchCount.ForeColor = _isDarkMode ? AppConstants.DarkModeSecondaryText : SystemColors.GrayText;
         }
 
         // Sets filter button foreground and border to the level colour when active, dimmed when inactive
         private void ApplyFilterButtonStyle(CheckBox chk, Color levelColor)
         {
-            Color dimmed = _isDarkMode ? Color.FromArgb(80, 80, 80) : Color.FromArgb(180, 180, 180);
+            Color dimmed = _isDarkMode ? AppConstants.DarkModeBorder : AppConstants.LightModeDimmed;
             chk.ForeColor                       = chk.Checked ? levelColor : dimmed;
             chk.FlatAppearance.BorderColor      = chk.Checked ? levelColor : dimmed;
-            chk.FlatAppearance.CheckedBackColor = _isDarkMode ? Color.FromArgb(55, 55, 55) : Color.FromArgb(225, 225, 235);
+            chk.FlatAppearance.CheckedBackColor = _isDarkMode ? AppConstants.DarkModeCheckedBack : AppConstants.LightModeCheckedBack;
             chk.BackColor                       = pnlToolbar.BackColor;
         }
 
@@ -296,7 +298,7 @@ namespace qbPortWeaver
 
             int   savedStart = rtbLog.SelectionStart;
             int   savedLen   = rtbLog.SelectionLength;
-            Color bg         = _isDarkMode ? Color.FromArgb(100, 85, 0) : Color.Yellow;
+            Color bg         = _isDarkMode ? AppConstants.DarkModeSearchHighlight : AppConstants.LightModeSearchHighlight;
             int   len        = txtSearch.Text.Length;
             int   count      = Math.Min(_searchMatches.Count, MaxHighlights);
 
@@ -405,7 +407,7 @@ namespace qbPortWeaver
             catch (Exception ex)
             {
                 if (!IsDisposed)
-                    SetMetaMessage($"(Error reading log: {ex.Message})", Color.OrangeRed);
+                    SetMetaMessage($"(Error reading log: {ex.Message})", AppConstants.DarkModeError);
             }
             finally
             {
@@ -591,19 +593,20 @@ namespace qbPortWeaver
         }
 
         // Static - safe to call from background threads (no UI state access).
-        // Meta/unclassified lines (index >= 4) pass level filters but are hidden when a
-        // subsystem filter is active (blank cycle separators create large gaps otherwise).
+        // Meta/unclassified lines (index >= 4, e.g. blank cycle separators) are shown only when
+        // all level filters are active and no subsystem filter is set; hiding them otherwise
+        // prevents blank lines from appearing in a filtered view.
         private static bool IsLineVisibleWithFilters(string line, bool[] filters, string? subsystemFilter)
         {
             int idx = GetLineColorIndex(line);
-            if (idx >= filters.Length) return subsystemFilter is null;  // meta/unclassified: show only when "All"
+            if (idx >= filters.Length) return subsystemFilter is null && Array.TrueForAll(filters, f => f);
             if (!filters[idx]) return false;                            // level filtered out
             if (subsystemFilter is not null && !line.Contains($"| {subsystemFilter}", StringComparison.Ordinal)) return false;
             return true;
         }
 
         // Convenience colour for meta/status messages (not log entries)
-        private Color MetaColor => _isDarkMode ? Color.DimGray : SystemColors.GrayText;
+        private Color MetaColor => _isDarkMode ? AppConstants.DarkModeMeta : SystemColors.GrayText;
 
         // Writes the RTF document header shared by BuildRtf and SetMetaMessage:
         // Unicode-safe, Consolas 9pt (18 half-points), no paragraph spacing, colour table.
@@ -648,6 +651,7 @@ namespace qbPortWeaver
                     case '{':  sb.Append("\\{");  break;
                     case '}':  sb.Append("\\}");  break;
                     default:
+                        if (c == '\0') break; // NUL terminates RTF in RichEdit; skip to avoid corrupting the document
                         if (c > 127) sb.Append($"\\u{(int)(short)c} ");
                         else sb.Append(c);
                         break;

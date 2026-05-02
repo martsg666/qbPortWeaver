@@ -193,8 +193,8 @@ namespace qbPortWeaver
         /// <inheritdoc />
         public string GetRecoveryAction() =>
             FindProviderToken(_adapter.Name) is not null
-                ? AutoRecoveryManager.ActionRestart
-                : AutoRecoveryManager.ActionCycleAdapter;
+                ? HelperServiceClient.ActionRestart
+                : HelperServiceClient.ActionCycleAdapter;
 
         /// <inheritdoc />
         // Uses bidirectional Contains because the adapter name in settings may differ in length
@@ -205,7 +205,7 @@ namespace qbPortWeaver
 
         /// <summary>
         /// Returns the VPN provider token if <paramref name="adapterName"/> matches a known provider keyword,
-        /// or <c>null</c> if it does not. Used to decide whether to trigger a service restart or an adapter cycle.
+        /// or <see langword="null"/> if it does not. Used to decide whether to trigger a service restart or an adapter cycle.
         /// </summary>
         internal static string? FindProviderToken(string adapterName)
         {
@@ -308,12 +308,12 @@ namespace qbPortWeaver
 
         // Sends a NAT-PMP UDP port mapping request (RFC 6886 opcode 1).
         // Pass zero as suggestedExternalPort for an initial request, or the previously assigned port to request renewal.
-        // Internal port is set to 0 - clients that do not bind a specific port let the gateway infer it.
+        // Local port is set to 0 - clients that do not bind a specific port let the gateway infer it.
         private static async Task<(bool Success, ushort ExternalPort, uint LifetimeGranted, uint EpochSeconds, string? Error)>
             RequestPortMappingAsync(IPAddress gateway, uint lifetime, ushort suggestedExternalPort = 0)
         {
             // [0] version=0  [1] opcode=1 (UDP)  [2-3] reserved
-            // [4-5] internal port=0  [6-7] suggested external port  [8-11] lifetime
+            // [4-5] local port=0  [6-7] suggested external port  [8-11] lifetime
             byte[] request = new byte[12];
             request[0] = 0x00;
             request[1] = 0x01;
@@ -325,7 +325,7 @@ namespace qbPortWeaver
                 return (false, 0, 0, 0, "No response from gateway");
 
             // [0] version=0  [1] opcode=0x81  [2-3] result  [4-7] SSOE
-            // [8-9] internal port (not read)   [10-11] external port  [12-15] lifetime
+            // [8-9] local port (not read)   [10-11] external port  [12-15] lifetime
             if (data.Length < 16 || data[0] != 0x00 || data[1] != 0x81)
                 return (false, 0, 0, 0, "Unexpected response format");
 

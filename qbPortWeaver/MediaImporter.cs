@@ -17,7 +17,9 @@ namespace qbPortWeaver
         private static HashSet<string>? _libraryFingerprints;
         private static readonly object _libraryLock = new();
         private static readonly SemaphoreSlim _libraryBuildSemaphore = new(1, 1);
-        private static int _libraryBuildCycleCount;
+        private static int    _libraryBuildCycleCount;
+        private static string _lastMoviesLibraryPath  = string.Empty;
+        private static string _lastTvShowsLibraryPath = string.Empty;
 
         // Library cache: persisted path -> metadata so unchanged library files are not re-hashed across sessions.
         private static Dictionary<string, CacheEntry>? _libraryCache;
@@ -47,7 +49,7 @@ namespace qbPortWeaver
         private sealed record CacheEntry(long Size, long LastWriteTimeTicks, string Fingerprint);
 
         /// <summary>Attempts to create a hardlink at <paramref name="destinationPath"/> pointing to <paramref name="sourcePath"/>.
-        /// Uses the extended-length path prefix to support paths longer than MAX_PATH (260 characters).</summary>
+        /// Uses the <c>\\?\</c> long-path prefix to support paths longer than MAX_PATH (260 characters).</summary>
         /// <returns><see langword="true"/> if the hardlink was created; <see langword="false"/> on failure (e.g. cross-volume, unsupported filesystem).</returns>
         internal static bool TryCreateHardLink(string sourcePath, string destinationPath)
         {
@@ -112,7 +114,7 @@ namespace qbPortWeaver
             }
         }
 
-        // Prepends the extended-length prefix so Win32 APIs accept paths longer than MAX_PATH (260).
+        // Prepends the \\?\ long-path prefix so Win32 APIs accept paths longer than MAX_PATH (260).
         // UNC paths (\\server\share) become \\?\UNC\server\share; local paths become \\?\C:\...
         private static string ToExtendedPath(string path)
         {
@@ -133,7 +135,7 @@ namespace qbPortWeaver
             if (string.Equals(sourcePath, destinationPath, StringComparison.OrdinalIgnoreCase))
                 return;
 
-            if (IsDuplicateFile(sourcePath, destinationPath))
+            if (DestinationMatchesSource(sourcePath, destinationPath))
             {
                 LogManager.Instance.LogDebug($"MediaImporter.AddFileToLibrary: Skipped '{Path.GetFileName(destinationPath)}' - target already exists with same fingerprint", Subsystem.MediaManager);
                 return;
@@ -149,34 +151,42 @@ namespace qbPortWeaver
             }
 
             var targetDir = Path.GetDirectoryName(destinationPath);
-            if (!string.IsNullOrEmpty(targetDir))
-                Directory.CreateDirectory(targetDir);
-
-            switch (importMode)
+            try
             {
-                case ImportMode.Hardlink:
-                    ImportWithHardlink(sourcePath, destinationPath);
-                    break;
+                if (!string.IsNullOrEmpty(targetDir))
+                    Directory.CreateDirectory(targetDir);
 
-                case ImportMode.Copy:
-                    File.Copy(sourcePath, destinationPath, overwrite: false);
-                    LogManager.Instance.LogDebug($"MediaImporter.AddFileToLibrary: Copied '{Path.GetFileName(destinationPath)}'", Subsystem.MediaManager);
-                    break;
+                switch (importMode)
+                {
+                    case ImportMode.Hardlink:
+                        ImportWithHardlink(sourcePath, destinationPath);
+                        break;
 
-                case ImportMode.Move:
-                    File.Move(sourcePath, destinationPath);
-                    LogManager.Instance.LogDebug($"MediaImporter.AddFileToLibrary: Moved '{Path.GetFileName(destinationPath)}'", Subsystem.MediaManager);
-                    break;
+                    case ImportMode.Copy:
+                        File.Copy(sourcePath, destinationPath, overwrite: false);
+                        LogManager.Instance.LogDebug($"MediaImporter.AddFileToLibrary: Copied '{Path.GetFileName(destinationPath)}'", Subsystem.MediaManager);
+                        break;
 
-                default:
-                    throw new ArgumentOutOfRangeException(nameof(importMode), importMode, "Unsupported import mode");
+                    case ImportMode.Move:
+                        File.Move(sourcePath, destinationPath);
+                        LogManager.Instance.LogDebug($"MediaImporter.AddFileToLibrary: Moved '{Path.GetFileName(destinationPath)}'", Subsystem.MediaManager);
+                        break;
+
+                    default:
+                        throw new ArgumentOutOfRangeException(nameof(importMode), importMode, "Unsupported import mode");
+                }
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or PathTooLongException)
+            {
+                LogManager.Instance.LogMessage($"Failed to import '{Path.GetFileName(sourcePath)}': {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
+                return;
             }
 
             AddToLibraryIndex(destinationPath);
         }
 
-        /// <summary>Returns <see langword="true"/> if the destination file already exists and has the same fingerprint as the source.</summary>
-        internal static bool IsDuplicateFile(string sourcePath, string destinationPath)
+        /// <summary>Returns <see langword="true"/> if the destination file already exists and its fingerprint matches the source - i.e. the source was already imported.</summary>
+        internal static bool DestinationMatchesSource(string sourcePath, string destinationPath)
         {
             if (!File.Exists(destinationPath))
                 return false;
@@ -286,16 +296,22 @@ namespace qbPortWeaver
             _libraryBuildSemaphore.Wait(cancellationToken);
             try
             {
-                bool forceRebuild = _libraryBuildCycleCount >= FullRebuildIntervalCycles;
+                bool pathsChanged = !string.Equals(moviesLibraryPath,  _lastMoviesLibraryPath,  StringComparison.OrdinalIgnoreCase)
+                                 || !string.Equals(tvShowsLibraryPath, _lastTvShowsLibraryPath, StringComparison.OrdinalIgnoreCase);
+                bool forceRebuild = pathsChanged || _libraryBuildCycleCount >= FullRebuildIntervalCycles;
                 if (!forceRebuild && allowReuse && _libraryFingerprints is not null)
                 {
                     LogManager.Instance.LogDebug($"MediaImporter.BuildLibraryIndex: Reusing index (cycle {_libraryBuildCycleCount}/{FullRebuildIntervalCycles})", Subsystem.MediaManager);
                     _libraryBuildCycleCount++;
                     return;
                 }
-                if (forceRebuild)
+                if (pathsChanged && _libraryFingerprints is not null)
+                    LogManager.Instance.LogDebug("MediaImporter.BuildLibraryIndex: Library paths changed, forcing full rebuild", Subsystem.MediaManager);
+                else if (_libraryBuildCycleCount >= FullRebuildIntervalCycles)
                     LogManager.Instance.LogDebug($"MediaImporter.BuildLibraryIndex: Forcing periodic rebuild (every {FullRebuildIntervalCycles} cycles)", Subsystem.MediaManager);
-                _libraryBuildCycleCount = 1;
+                _libraryBuildCycleCount  = 1;
+                _lastMoviesLibraryPath   = moviesLibraryPath;
+                _lastTvShowsLibraryPath  = tvShowsLibraryPath;
 
                 var libraryPaths = new[] { moviesLibraryPath, tvShowsLibraryPath }
                     .Where(p => !string.IsNullOrWhiteSpace(p) && Directory.Exists(p))
@@ -304,8 +320,9 @@ namespace qbPortWeaver
                 LogManager.Instance.LogMessage($"Building library index across {libraryPaths.Length} folder(s)", LogLevel.Info, Subsystem.MediaManager);
                 LoadLibraryCache();
 
-                var sw = System.Diagnostics.Stopwatch.StartNew();
+                var sw           = System.Diagnostics.Stopwatch.StartNew();
                 var fingerprints = new HashSet<string>(StringComparer.Ordinal);
+                var fpToPath     = new Dictionary<string, string>(StringComparer.Ordinal);
                 var seenPaths    = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                 int cached = 0, computed = 0;
 
@@ -320,7 +337,7 @@ namespace qbPortWeaver
                         continue;
                     }
 
-                    var (c, comp) = FingerprintLibraryFiles(files, fingerprints, seenPaths, cancellationToken);
+                    var (c, comp) = FingerprintLibraryFiles(files, fingerprints, fpToPath, seenPaths, cancellationToken);
                     cached   += c;
                     computed += comp;
                 }
@@ -392,12 +409,13 @@ namespace qbPortWeaver
             }).ToList();
 
         // Fingerprints a pre-enumerated list of library files in parallel, using the cache where possible.
-        // Each file requires a 128 KB read to compute its fingerprint; reads are bounded by FingerprintParallelism.
+        // Each file requires a 128 KB read; reads are bounded by FingerprintParallelism.
+        // fpToPath maps each fingerprint to the first library path that produced it; additional copies are warned.
         private static (int Cached, int Computed) FingerprintLibraryFiles(
-            List<FileInfo> files, HashSet<string> fingerprints, HashSet<string> seenPaths,
-            CancellationToken cancellationToken)
+            List<FileInfo> files, HashSet<string> fingerprints, Dictionary<string, string> fpToPath,
+            HashSet<string> seenPaths, CancellationToken cancellationToken)
         {
-            var results = new ConcurrentBag<(string Fingerprint, bool WasCached)>();
+            var results = new ConcurrentBag<(string FullName, string Fingerprint, bool WasCached)>();
             var seen    = new ConcurrentBag<string>();
 
             Parallel.ForEach(files,
@@ -408,7 +426,7 @@ namespace qbPortWeaver
                     try
                     {
                         string fp = GetOrComputeLibraryFingerprint(fi, out bool wasCached);
-                        results.Add((fp, wasCached));
+                        results.Add((fi.FullName, fp, wasCached));
                     }
                     catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
                     {
@@ -418,8 +436,12 @@ namespace qbPortWeaver
 
             // Merge into caller-provided collections (single-threaded; no concurrent access from here)
             int cached = 0, computed = 0;
-            foreach (var (fp, wasCached) in results)
+            foreach (var (fullName, fp, wasCached) in results)
             {
+                if (!fpToPath.TryAdd(fp, fullName))
+                    LogManager.Instance.LogMessage(
+                        $"Library duplicate: '{fullName}' has same content as '{fpToPath[fp]}'",
+                        LogLevel.Warn, Subsystem.MediaManager);
                 fingerprints.Add(fp);
                 if (wasCached) cached++; else computed++;
             }
@@ -500,7 +522,7 @@ namespace qbPortWeaver
                     }
                 }
             }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
             {
                 LogManager.Instance.LogDebug($"MediaImporter.AddToLibraryIndex: Could not index '{Path.GetFileName(importedFilePath)}': {ex.Message}", Subsystem.MediaManager);
             }
@@ -514,13 +536,9 @@ namespace qbPortWeaver
         /// </param>
         internal static bool IsAlreadyInLibrary(FileInfo fi)
         {
-            var fps = _libraryFingerprints;
-            if (fps is null) return false;
             try
             {
-                string fingerprint = GetOrComputeSourceFingerprint(fi);
-                lock (_libraryLock)
-                    return fps.Contains(fingerprint);
+                return IsAlreadyInLibrary(GetOrComputeSourceFingerprint(fi));
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
@@ -529,10 +547,19 @@ namespace qbPortWeaver
             }
         }
 
+        /// <summary>Returns <see langword="true"/> if the given fingerprint is already present in the library index.</summary>
+        internal static bool IsAlreadyInLibrary(string fingerprint)
+        {
+            var fps = _libraryFingerprints;
+            if (fps is null) return false;
+            lock (_libraryLock)
+                return fps.Contains(fingerprint);
+        }
+
         // Returns the fingerprint for a source file, using the in-memory cache when the file has not changed.
         // Uses _sourceInFlight to deduplicate concurrent computation: if two threads race on the same file,
         // the second waits on the Lazy rather than issuing a redundant read.
-        private static string GetOrComputeSourceFingerprint(FileInfo fi)
+        internal static string GetOrComputeSourceFingerprint(FileInfo fi)
         {
             var cache = _sourceCache;
             if (cache is not null)
@@ -551,7 +578,17 @@ namespace qbPortWeaver
                 // Create before GetOrAdd so we can tell whether this thread won the race.
                 var newLazy = new Lazy<string>(() => ComputeFingerprint(fi.FullName));
                 var lazy    = _sourceInFlight.GetOrAdd(fi.FullName, newLazy);
-                string fp   = lazy.Value;
+                string fp;
+                try
+                {
+                    fp = lazy.Value;
+                }
+                catch
+                {
+                    // Remove the failed Lazy so the file can be retried on the next cycle.
+                    _sourceInFlight.TryRemove(new KeyValuePair<string, Lazy<string>>(fi.FullName, lazy));
+                    throw;
+                }
                 // Remove only our Lazy instance so a newer entry for the same path is left untouched.
                 _sourceInFlight.TryRemove(new KeyValuePair<string, Lazy<string>>(fi.FullName, lazy));
 
@@ -693,6 +730,8 @@ namespace qbPortWeaver
                 _libraryCache           = null;
                 _libraryCacheDirty      = false;
                 _libraryBuildCycleCount = 0;
+                _lastMoviesLibraryPath  = string.Empty;
+                _lastTvShowsLibraryPath = string.Empty;
             }
 
             AppConstants.TryDeleteFile(GetCacheFilePath(SourceCacheFileName));

@@ -13,49 +13,37 @@ namespace qbPortWeaver.HelperService;
 internal static partial class AutoRecovery
 {
     private const int ProcessKillTimeoutMs      = 5000;
+    // Delay between stop and start. AutoRecoveryManager.ServiceHeadStartDelayMs in the tray app
+    // must remain larger than this plus service startup time so the client process is not
+    // relaunched before the VPN service is ready.
     private const int ServiceRestartDelayMs     = 5000;
     private const int ServiceOperationTimeoutMs = 15000;
     private const int AdapterCycleDelayMs       = 3000;
     private const int NetshTimeoutMs            = 15000;
 
-    // Maps provider keywords to the Windows service to restart.
-    // Used by HelperPipeServer for the "restart" action (exact token lookup via FindServiceForToken).
-    private static readonly Dictionary<string, string> _providerServiceMap = new(StringComparer.OrdinalIgnoreCase)
-    {
-        ["ProtonVPN"] = "ProtonVPN Service",
-        ["PIA"]       = "PrivateInternetAccessService",
-    };
-
     internal static async Task RestartServiceAsync(string serviceName, HelperLogger logger)
     {
-        try
+        if (string.IsNullOrWhiteSpace(serviceName))
         {
-            if (string.IsNullOrWhiteSpace(serviceName))
-            {
-                logger.LogWarn("Service name is empty - nothing to restart");
-                return;
-            }
-
-            logger.LogInfo($"Restarting service '{serviceName}'");
-
-            try { await StopServiceAsync(serviceName, logger).ConfigureAwait(false); }
-            catch (Exception ex) { logger.LogWarn($"Failed to stop service '{serviceName}': {ex.Message}"); }
-
-            await Task.Delay(ServiceRestartDelayMs).ConfigureAwait(false);
-
-            try { await StartServiceAsync(serviceName, logger).ConfigureAwait(false); }
-            catch (Exception ex)
-            {
-                logger.LogWarn($"Failed to start service '{serviceName}': {ex.Message}");
-                return;
-            }
-
-            logger.LogInfo($"Restarted service '{serviceName}'");
+            logger.LogWarn("Service name is empty - nothing to restart");
+            return;
         }
+
+        logger.LogInfo($"Restarting service '{serviceName}'");
+
+        try { await StopServiceAsync(serviceName, logger).ConfigureAwait(false); }
+        catch (Exception ex) { logger.LogWarn($"Failed to stop service '{serviceName}': {ex.Message}"); }
+
+        await Task.Delay(ServiceRestartDelayMs).ConfigureAwait(false);
+
+        try { await StartServiceAsync(serviceName, logger).ConfigureAwait(false); }
         catch (Exception ex)
         {
-            logger.LogError($"Failed to restart service: {ex.Message}");
+            logger.LogError($"Failed to start service '{serviceName}': {ex.Message}");
+            return;
         }
+
+        logger.LogInfo($"Restarted service '{serviceName}'");
     }
 
     // Cycles a network adapter by disabling and re-enabling it via netsh.
@@ -100,10 +88,6 @@ internal static partial class AutoRecovery
             logger.LogError($"Failed to cycle adapter: {ex.Message}");
         }
     }
-
-    // Exact-match lookup used by HelperPipeServer for the "restart" action.
-    internal static string? FindServiceForToken(string providerToken) =>
-        _providerServiceMap.TryGetValue(providerToken, out string? serviceName) ? serviceName : null;
 
     // Stops a service cleanly via the SCM, with escalating force if it doesn't respond.
     // Escalation: SCM stop → wait → KillServiceProcess (3-stage: Process.Kill → taskkill /F /T → retry).
@@ -269,6 +253,8 @@ internal static partial class AutoRecovery
     {
         try
         {
+            if (sc.ServiceHandle.IsInvalid) return;
+
             int    bufSize = Marshal.SizeOf<ServiceStatusProcess>();
             IntPtr buf     = Marshal.AllocHGlobal(bufSize);
             try
@@ -288,8 +274,16 @@ internal static partial class AutoRecovery
                 {
                     // Stage 1: Process.Kill
                     try { process.Kill(entireProcessTree: true); }
-                    catch (InvalidOperationException) { return; } // already exited
-                    catch (System.ComponentModel.Win32Exception) { return; } // access denied or process protected
+                    catch (InvalidOperationException)
+                    {
+                        logger.LogWarn($"Service '{sc.ServiceName}' process (PID {pid}) already exited");
+                        return;
+                    }
+                    catch (System.ComponentModel.Win32Exception ex)
+                    {
+                        logger.LogWarn($"Service '{sc.ServiceName}' process (PID {pid}) could not be killed - access denied or process protected: {ex.Message}");
+                        return;
+                    }
 
                     if (process.WaitForExit(ProcessKillTimeoutMs))
                     {
@@ -323,12 +317,13 @@ internal static partial class AutoRecovery
                     try { process.Kill(entireProcessTree: true); }
                     catch (InvalidOperationException)
                     {
-                        logger.LogWarn($"Service '{sc.ServiceName}' process force-killed via Process.Kill retry (PID {pid})");
+                        logger.LogWarn($"Service '{sc.ServiceName}' process (PID {pid}) already exited");
                         return;
                     }
-                    catch (System.ComponentModel.Win32Exception)
+                    catch (System.ComponentModel.Win32Exception ex)
                     {
-                        return; // access denied or process protected
+                        logger.LogWarn($"Service '{sc.ServiceName}' process (PID {pid}) could not be killed on retry - access denied or process protected: {ex.Message}");
+                        return;
                     }
 
                     if (process.WaitForExit(ProcessKillTimeoutMs))
@@ -382,6 +377,7 @@ internal static partial class AutoRecovery
                 // netsh is a short-lived system utility that always responds to Process.Kill -
                 // no taskkill fallback needed here.
                 process.Kill(entireProcessTree: true);
+                process.WaitForExit(ProcessKillTimeoutMs);
                 logger.LogWarn("netsh timed out and was killed");
                 return false;
             }

@@ -13,20 +13,23 @@
     <Product>qbPortWeaver</Product>
     <Authors>martsg666</Authors>
     <Copyright>© 2026 martsg666</Copyright>
-    <Version>2.4.1</Version>
-    <FileVersion>2.4.1.0</FileVersion>
-    <AssemblyVersion>2.4.1.0</AssemblyVersion>
+    <Version>2.5.0</Version>
+    <FileVersion>2.5.0.0</FileVersion>
+    <AssemblyVersion>2.5.0.0</AssemblyVersion>
     <SignAssembly>False</SignAssembly>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <!-- Suppress known SonarAnalyzer false positives (each has a matching // NOSONAR comment):
-         S108  - comment-only catch bodies are intentional no-ops (LogViewerForm.cs, PiaVpnManager.cs, StatusManager.cs)
+         S108  - empty catch bodies are intentional (AppConstants.cs, BitTorrentClientBase.cs, TransmissionClient.cs)
+         S125  - documentation comments containing qualified identifiers (e.g. Class.Member) are falsely flagged as commented-out code
          S1075 - TMDB base URL is intentionally hardcoded (TmdbClient.cs)
          S2068 - registry key name contains "Password", value is masked (PortSyncService.cs)
          S2221 - bare catch before LogManager is initialized; any failure must fall back safely (Program.cs)
-         S2486 - same as S108, SonarCloud cloud rule counterpart (LogViewerForm.cs, PiaVpnManager.cs, StatusManager.cs)
+         S2486 - same as S108, SonarCloud cloud rule counterpart (AppConstants.cs, BitTorrentClientBase.cs, TransmissionClient.cs)
+         S3881 - abstract base class; all sealed subclasses have no additional disposable resources (BitTorrentClientBase.cs)
          S4721 - post-update command is user-configured, arbitrary execution is intended (PortSyncService.cs)
-         S4790 - TMDB API v3 requires key as query parameter, HTTPS only (TmdbClient.cs) -->
-    <NoWarn>S108;S1075;S2068;S2221;S2486;S4721;S4790</NoWarn>
+         S4790 - TMDB credential sent over HTTPS only; v3 API key in query param, v4 JWT as Bearer header (TmdbClient.cs)
+         S6966 - non-modal Show() is intentional for WhatsNewForm and UpdateAvailableForm (MainForm.cs) -->
+    <NoWarn>S108;S125;S1075;S2068;S2221;S2486;S3881;S4721;S4790;S6966</NoWarn>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 

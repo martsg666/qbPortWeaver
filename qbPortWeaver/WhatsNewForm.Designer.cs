@@ -17,7 +17,7 @@ namespace qbPortWeaver
             grpCommunity    = new GroupBox();
             lnkCommunity  = new LinkLabel();
             grpFeatures     = new GroupBox();
-            lblFeatures     = new Label();
+            rtbFeatures     = new RichTextBox();
             btnClose        = new Button();
 
             grpCommunity.SuspendLayout();
@@ -50,24 +50,28 @@ namespace qbPortWeaver
             lnkCommunity.LinkClicked += lnkCommunity_LinkClicked;
 
             // ── grpFeatures ───────────────────────────────────────────────
-            grpFeatures.Controls.Add(lblFeatures);
+            grpFeatures.Controls.Add(rtbFeatures);
             grpFeatures.Location = new Point(8, 146);
             grpFeatures.Name     = "grpFeatures";
-            grpFeatures.Size     = new Size(384, 258);
+            grpFeatures.Size     = new Size(384, 310);
             grpFeatures.TabIndex = 2;
             grpFeatures.TabStop  = false;
             grpFeatures.Text     = "New in this release";
 
-            lblFeatures.AutoSize = false;
-            lblFeatures.Location = new Point(12, 20);
-            lblFeatures.Name     = "lblFeatures";
-            lblFeatures.Size     = new Size(360, 228);
-            lblFeatures.TabIndex = 0;
-            lblFeatures.Text     = "";
+            rtbFeatures.BackColor   = SystemColors.Control;
+            rtbFeatures.BorderStyle = BorderStyle.None;
+            rtbFeatures.Location    = new Point(12, 20);
+            rtbFeatures.Name        = "rtbFeatures";
+            rtbFeatures.ReadOnly    = true;
+            rtbFeatures.ScrollBars  = RichTextBoxScrollBars.Vertical;
+            rtbFeatures.Size        = new Size(360, 280);
+            rtbFeatures.TabIndex    = 0;
+            rtbFeatures.TabStop     = false;
+            rtbFeatures.Text        = "";
 
             // ── Buttons ───────────────────────────────────────────────────
             btnClose.DialogResult = DialogResult.Cancel;
-            btnClose.Location     = new Point(310, 416);
+            btnClose.Location     = new Point(310, 468);
             btnClose.Name         = "btnClose";
             btnClose.Size         = new Size(82, 28);
             btnClose.TabIndex     = 3;
@@ -78,7 +82,7 @@ namespace qbPortWeaver
             AutoScaleDimensions = new SizeF(7F, 15F);
             AutoScaleMode       = AutoScaleMode.Font;
             CancelButton        = btnClose;
-            ClientSize          = new Size(400, 455);
+            ClientSize          = new Size(400, 508);
             Controls.Add(lblTitle);
             Controls.Add(grpCommunity);
             Controls.Add(grpFeatures);
@@ -101,7 +105,7 @@ namespace qbPortWeaver
         private GroupBox  grpCommunity;
         private LinkLabel lnkCommunity;
         private GroupBox  grpFeatures;
-        private Label     lblFeatures;
+        private RichTextBox rtbFeatures;
         private Button    btnClose;
     }
 }

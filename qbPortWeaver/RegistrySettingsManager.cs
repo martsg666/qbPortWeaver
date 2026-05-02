@@ -7,30 +7,36 @@ namespace qbPortWeaver
     /// <summary>Reads and writes application settings from the Windows registry under <c>HKCU\Software\qbPortWeaver\Settings</c>.</summary>
     public static class RegistrySettingsManager
     {
-        internal const string BaseKeyPath = @"Software\" + AppConstants.AppName + @"\Settings";
+        internal const string BaseKeyPath = @"Software\" + AppConstants.AppName + @"\settings";
         private const string AppKeyPath  = @"Software\" + AppConstants.AppName;
         // Explicit string literals guarantee stable boolean registry serialization independent of framework internals.
         private const string ValueTrue   = "True";
         private const string ValueFalse  = "False";
 
-        public const string SectionGeneral     = "general";
-        public const string SectionQBittorrent = "qBittorrent";
-        public const string SectionExtra       = "extra";
-        public const string SectionMedia       = "media";
+        public const string SectionGeneral      = "general";
+        public const string SectionQBittorrent  = "qbittorrent";
+        public const string SectionTransmission = "transmission";
+        public const string SectionDeluge       = "deluge";
+        public const string SectionExtra        = "extra";
+        public const string SectionMedia        = "media";
 
         public const string VpnProviderDisabled  = "Disabled";
         public const string VpnProviderProtonVpn = "ProtonVPN";
         public const string VpnProviderPia       = "PIA";
         public const string VpnProviderNatPmp    = "NAT-PMP";
 
+        public const string BitTorrentClientQBittorrent = "qBittorrent";
+        public const string BitTorrentClientTransmission = "Transmission";
+        public const string BitTorrentClientDeluge       = "Deluge";
+
         // Registry key name strings are frozen - changing them would silently break existing installations
-        // by orphaning previously saved values. Casing inconsistencies (e.g. "restartqBittorrent" vs
-        // "qBittorrentURL") are historical and must be preserved for backward compatibility.
+        // by orphaning previously saved values.
 
         // Registry key names - general section
         public const string KeyVpnProvider          = "vpnProvider";
         public const string KeyUpdateIntervalSeconds = "updateIntervalSeconds";
         public const string KeyNatPmpAdapterName    = "natPmpAdapterName";
+        public const string KeyBitTorrentClient     = "bitTorrentClient";
 
         // Registry key names - qBittorrent section
         public const string KeyQBittorrentUrl          = "qBittorrentURL";
@@ -43,6 +49,23 @@ namespace qbPortWeaver
         public const string KeyDefaultPort             = "defaultPort";
         public const string KeyWarnOnInterfaceMismatch = "warnOnInterfaceMismatch";
         public const string KeyRestartOnDisconnect     = "restartOnDisconnect";
+
+        // Registry key names - transmission section
+        public const string KeyTransmissionUrl         = "transmissionURL";
+        public const string KeyTransmissionUserName    = "transmissionUserName";
+        public const string KeyTransmissionPassword    = "transmissionPassword";
+        public const string KeyTransmissionProcessName = "transmissionProcessName";
+        public const string KeyTransmissionExePath     = "transmissionExePath";
+        public const string KeyRestartTransmission     = "restartTransmission";
+        public const string KeyForceStartTransmission  = "forceStartTransmission";
+
+        // Registry key names - deluge section
+        public const string KeyDelugeUrl         = "delugeURL";
+        public const string KeyDelugePassword    = "delugePassword";
+        public const string KeyDelugeProcessName = "delugeProcessName";
+        public const string KeyDelugeExePath     = "delugeExePath";
+        public const string KeyRestartDeluge     = "restartDeluge";
+        public const string KeyForceStartDeluge  = "forceStartDeluge";
 
         // Registry key names - extra section
         public const string KeyPostUpdateCmd = "postUpdateCmd";
@@ -69,8 +92,18 @@ namespace qbPortWeaver
         public const string ImportModeCopy     = "Copy";
         public const string ImportModeMove     = "Move";
 
-        // Registry key name - app level (not in a section)
-        public const string KeyLastSeenVersion  = "lastSeenVersion";
+        // Registry key names - app level (not in a section)
+        public const string KeyPipeSessionToken             = "pipeSessionToken";
+        public const string KeyLastSeenVersion              = "lastSeenVersion";
+        public const string KeyProtonVpnLogFilePath          = "protonVpnLogFilePath";
+        public const string KeyProtonVpnServiceSearchTerm   = "protonVpnServiceSearchTerm";
+        public const string KeyPiaServiceSearchTerm         = "piaServiceSearchTerm";
+        public const string KeyTransmissionServiceSearchTerm = "transmissionServiceSearchTerm";
+        public const string KeyProtonVpnClientProcessName   = "protonVpnClientProcessName";
+        public const string KeyProtonVpnAdapterName         = "protonVpnAdapterName";
+        public const string KeyPiaAdapterName               = "piaAdapterName";
+        public const string KeyPiaClientProcessName         = "piaClientProcessName";
+        public const string KeyPiactlProcessName            = "piactlProcessName";
 
         // Registry key names - general section (auto-recovery)
         // Registry string values are frozen for backward compatibility.
@@ -87,7 +120,8 @@ namespace qbPortWeaver
                     [KeyUpdateIntervalSeconds]          = "180",
                     [KeyNatPmpAdapterName]              = "",
                     [KeyAutoRecoveryEnabled]            = ValueTrue,
-                    [KeyAutoRecoveryTriggerCycles]      = "3"
+                    [KeyAutoRecoveryTriggerCycles]      = "3",
+                    [KeyBitTorrentClient]               = BitTorrentClientQBittorrent
                 },
                 [SectionQBittorrent] = new(StringComparer.OrdinalIgnoreCase)
                 {
@@ -101,6 +135,27 @@ namespace qbPortWeaver
                     [KeyDefaultPort]             = "0",
                     [KeyWarnOnInterfaceMismatch] = ValueTrue,
                     [KeyRestartOnDisconnect]     = ValueTrue
+                },
+                [SectionTransmission] = new(StringComparer.OrdinalIgnoreCase)
+                {
+                    [KeyTransmissionUrl]         = "http://127.0.0.1:9091",
+                    [KeyTransmissionUserName]    = "",
+                    [KeyTransmissionPassword]    = "",
+                    [KeyTransmissionProcessName] = "transmission-qt",
+                    [KeyTransmissionExePath]     = @"C:\Program Files\Transmission\transmission-qt.exe",
+                    [KeyRestartTransmission]     = ValueTrue,
+                    [KeyForceStartTransmission]  = ValueTrue,
+                    [KeyDefaultPort]             = "0"
+                },
+                [SectionDeluge] = new(StringComparer.OrdinalIgnoreCase)
+                {
+                    [KeyDelugeUrl]         = "http://127.0.0.1:8112",
+                    [KeyDelugePassword]    = "",
+                    [KeyDelugeProcessName] = "deluge",
+                    [KeyDelugeExePath]     = @"C:\Program Files\Deluge\deluge.exe",
+                    [KeyRestartDeluge]     = ValueTrue,
+                    [KeyForceStartDeluge]  = ValueTrue,
+                    [KeyDefaultPort]       = "0"
                 },
                 [SectionExtra] = new(StringComparer.OrdinalIgnoreCase)
                 {
@@ -122,19 +177,36 @@ namespace qbPortWeaver
                 }
             };
 
-        /// <summary>Reads a string value from the app-level registry key (<c>HKCU\Software\qbPortWeaver</c>), above the settings sections. Returns an empty string if the key is missing.</summary>
+        // Default values for app-level keys (single source of truth; written on first run)
+        private static readonly Dictionary<string, string> _appDefaults =
+            new(StringComparer.OrdinalIgnoreCase)
+            {
+                [KeyProtonVpnLogFilePath]           = @"Proton\Proton VPN\Logs\client-logs.txt",
+                [KeyProtonVpnServiceSearchTerm]    = "ProtonVPN Service",
+                [KeyPiaServiceSearchTerm]          = "PrivateInternetAccessService",
+                [KeyTransmissionServiceSearchTerm] = "Transmission",
+                [KeyProtonVpnClientProcessName]    = "ProtonVPN.Client",
+                [KeyProtonVpnAdapterName]          = "ProtonVPN",
+                [KeyPiaAdapterName]                = "PIA",
+                [KeyPiaClientProcessName]          = "pia-client",
+                [KeyPiactlProcessName]             = "piactl",
+            };
+
+        /// <summary>Reads a string value from the app-level registry key (<c>HKCU\Software\qbPortWeaver</c>), above the settings sections. Returns the hardcoded default if the key is missing.</summary>
         public static string GetAppValue(string key)
         {
             try
             {
                 using var regKey = Registry.CurrentUser.OpenSubKey(AppKeyPath);
-                return regKey?.GetValue(key) as string ?? string.Empty;
+                if (regKey?.GetValue(key) is string value)
+                    return value;
             }
             catch (Exception ex)
             {
                 LogManager.Instance.LogDebug($"RegistrySettingsManager.GetAppValue: {key} - {ex.Message}");
-                return string.Empty;
             }
+
+            return _appDefaults.TryGetValue(key, out var fallback) ? fallback : string.Empty;
         }
 
         /// <summary>Writes a string value to the app-level registry key (<c>HKCU\Software\qbPortWeaver</c>), above the settings sections.</summary>
@@ -147,7 +219,32 @@ namespace qbPortWeaver
             }
             catch (Exception ex)
             {
-                LogManager.Instance.LogDebug($"RegistrySettingsManager.SetAppValue: {key} - {ex.Message}");
+                LogManager.Instance.LogMessage($"Failed to save app-level setting {key}: {ex.Message}", LogLevel.Warn);
+            }
+        }
+
+        /// <summary>
+        /// Returns the pipe session token from <c>HKCU\Software\qbPortWeaver\pipeSessionToken</c>,
+        /// generating and persisting a new one if none exists. Used by the tray app to authenticate
+        /// pipe messages sent to the helper service.
+        /// </summary>
+        public static string GetOrCreatePipeSessionToken()
+        {
+            try
+            {
+                using var regKey = Registry.CurrentUser.CreateSubKey(AppKeyPath);
+                if (regKey.GetValue(KeyPipeSessionToken) is string existing && existing.Length > 0)
+                    return existing;
+                // 32 hex chars = 128 bits of CSPRNG entropy. Used to authenticate pipe messages
+                // sent to the SYSTEM helper service; HKCU's per-user ACL is the primary defense.
+                var token = RandomNumberGenerator.GetHexString(32, lowercase: true);
+                regKey.SetValue(KeyPipeSessionToken, token, RegistryValueKind.String);
+                return token;
+            }
+            catch (Exception ex)
+            {
+                LogManager.Instance.LogDebug($"RegistrySettingsManager.GetOrCreatePipeSessionToken: {ex.Message}");
+                return string.Empty;
             }
         }
 
@@ -166,6 +263,20 @@ namespace qbPortWeaver
                 {
                     LogManager.Instance.LogDebug($"RegistrySettingsManager.EnsureDefaults: [{section.Key}] - {ex.Message}");
                 }
+            }
+
+            try
+            {
+                using var appKey = Registry.CurrentUser.CreateSubKey(AppKeyPath);
+                foreach (var kvp in _appDefaults.Where(kvp => appKey.GetValue(kvp.Key) is null))
+                {
+                    appKey.SetValue(kvp.Key, kvp.Value, RegistryValueKind.String);
+                    anyWritten = true;
+                }
+            }
+            catch (Exception ex)
+            {
+                LogManager.Instance.LogDebug($"RegistrySettingsManager.EnsureDefaults: [app] - {ex.Message}");
             }
 
             if (anyWritten)
@@ -200,8 +311,24 @@ namespace qbPortWeaver
             int.TryParse(GetValue(section, key), out int result) ? result : 0;
 
         /// <summary>Reads the qBittorrent password from the registry and decrypts it with DPAPI (CurrentUser scope). Returns an empty string if missing or decryption fails.</summary>
-        public static string GetPassword() =>
+        public static string GetQBittorrentPassword() =>
             GetEncryptedValue(SectionQBittorrent, KeyQBittorrentPassword);
+
+        /// <summary>Reads the Transmission password from the registry and decrypts it with DPAPI (CurrentUser scope). Returns an empty string if missing or decryption fails.</summary>
+        public static string GetTransmissionPassword() =>
+            GetEncryptedValue(SectionTransmission, KeyTransmissionPassword);
+
+        /// <summary>Reads the Deluge password from the registry and decrypts it with DPAPI (CurrentUser scope). Returns an empty string if missing or decryption fails.</summary>
+        public static string GetDelugePassword() =>
+            GetEncryptedValue(SectionDeluge, KeyDelugePassword);
+
+        /// <summary>Reads the TMDB API key from the registry and decrypts it with DPAPI (CurrentUser scope). Returns an empty string if missing or decryption fails.</summary>
+        public static string GetTmdbApiKey() =>
+            GetEncryptedValue(SectionMedia, KeyTmdbApiKey);
+
+        /// <summary>Encrypts <paramref name="plaintext"/> with DPAPI (CurrentUser scope) and writes the result to the registry.</summary>
+        public static void SetTmdbApiKey(string plaintext) =>
+            SetEncryptedValue(SectionMedia, KeyTmdbApiKey, plaintext);
 
         /// <summary>Reads a DPAPI-encrypted string value from the registry. Returns the hardcoded default if the key is missing, empty, or decryption fails.</summary>
         public static string GetEncryptedValue(string section, string key)
@@ -217,7 +344,7 @@ namespace qbPortWeaver
                         byte[] decrypted = ProtectedData.Unprotect(encrypted, null, DataProtectionScope.CurrentUser);
                         return Encoding.UTF8.GetString(decrypted);
                     }
-                    catch (Exception)
+                    catch (Exception ex) when (ex is CryptographicException or FormatException or ArgumentException)
                     {
                         // Not a valid DPAPI blob - return the raw value as-is for backward compatibility
                         // (existing installations may have plaintext values that were stored before encryption was added)
@@ -254,8 +381,16 @@ namespace qbPortWeaver
             SetValue(section, key, value ? ValueTrue : ValueFalse);
 
         /// <summary>Encrypts <paramref name="plaintext"/> with DPAPI (CurrentUser scope) and writes the result to the registry.</summary>
-        public static void SetPassword(string plaintext) =>
+        public static void SetQBittorrentPassword(string plaintext) =>
             SetEncryptedValue(SectionQBittorrent, KeyQBittorrentPassword, plaintext);
+
+        /// <summary>Encrypts <paramref name="plaintext"/> with DPAPI (CurrentUser scope) and writes the result to the registry.</summary>
+        public static void SetTransmissionPassword(string plaintext) =>
+            SetEncryptedValue(SectionTransmission, KeyTransmissionPassword, plaintext);
+
+        /// <summary>Encrypts <paramref name="plaintext"/> with DPAPI (CurrentUser scope) and writes the result to the registry.</summary>
+        public static void SetDelugePassword(string plaintext) =>
+            SetEncryptedValue(SectionDeluge, KeyDelugePassword, plaintext);
 
         /// <summary>Encrypts <paramref name="plaintext"/> with DPAPI (CurrentUser scope) and writes the result to the registry under the given section and key.</summary>
         public static void SetEncryptedValue(string section, string key, string plaintext)
@@ -274,11 +409,13 @@ namespace qbPortWeaver
         }
 
         // Keys that are stored DPAPI-encrypted rather than as plaintext registry strings.
-        // Used by WriteDefaultsForSection to encrypt initial values, and could be extended
-        // to any future sensitive setting.
+        // Used by WriteDefaultsForSection to encrypt initial values. Add any future
+        // sensitive setting here to ensure it is stored encrypted.
         private static readonly HashSet<string> _encryptedKeys = new(StringComparer.OrdinalIgnoreCase)
         {
             KeyQBittorrentPassword,
+            KeyTransmissionPassword,
+            KeyDelugePassword,
             KeyTmdbApiKey
         };
 

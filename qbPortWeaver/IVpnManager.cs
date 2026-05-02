@@ -14,14 +14,14 @@ namespace qbPortWeaver
         string ProviderName { get; }
 
         /// <summary>
-        /// Returns <c>true</c> if the provider or gateway is currently reachable and active.
+        /// Returns <see langword="true"/> if the provider or gateway is currently reachable and active.
         /// For ProtonVPN and PIA this means the VPN tunnel adapter is up.
         /// For NAT-PMP this means the configured network adapter is up (gateway responsiveness is verified at creation time).
         /// </summary>
         bool IsVpnConnected();
 
         /// <summary>
-        /// Returns the externally-reachable forwarded port, or <c>null</c> if it cannot be determined.
+        /// Returns the externally-reachable forwarded port, or <see langword="null"/> if it cannot be determined.
         /// For ProtonVPN this is read from the client log file.
         /// For PIA this is queried via <c>piactl get portforward</c>.
         /// For NAT-PMP this is the external port assigned by the gateway via a UDP port-mapping request.
@@ -29,8 +29,9 @@ namespace qbPortWeaver
         Task<int?> GetVpnPortAsync();
 
         /// <summary>
-        /// Returns the recovery target sent to the helper service for auto-recovery, or <c>null</c>
-        /// if recovery is not supported.
+        /// Returns the recovery target passed to <c>AutoRecoveryManager.TriggerRecoveryAsync</c>, or <see langword="null"/>
+        /// if recovery is not supported. <c>AutoRecoveryManager</c> resolves the provider token to the
+        /// actual Windows service name before sending the restart request to the helper service.
         /// For ProtonVPN and PIA this is the provider token (e.g. "ProtonVPN", "PIA").
         /// For NAT-PMP this is the provider token when the adapter belongs to a known provider,
         /// or the adapter name when it does not (e.g. a standalone NAT-PMP gateway).
@@ -39,14 +40,14 @@ namespace qbPortWeaver
 
         /// <summary>
         /// Returns the auto-recovery action to request from the helper service.
-        /// For ProtonVPN and PIA this is always <see cref="AutoRecoveryManager.ActionRestart"/>.
-        /// For NAT-PMP this is <see cref="AutoRecoveryManager.ActionRestart"/> when the adapter belongs
-        /// to a known provider, or <see cref="AutoRecoveryManager.ActionCycleAdapter"/> otherwise.
+        /// For ProtonVPN and PIA this is always <see cref="HelperServiceClient.ActionRestart"/>.
+        /// For NAT-PMP this is <see cref="HelperServiceClient.ActionRestart"/> when the adapter belongs
+        /// to a known provider, or <see cref="HelperServiceClient.ActionCycleAdapter"/> otherwise.
         /// </summary>
         string GetRecoveryAction();
 
         /// <summary>
-        /// Returns <c>true</c> if <paramref name="interfaceName"/> matches this provider's adapter naming convention.
+        /// Returns <see langword="true"/> if <paramref name="interfaceName"/> matches this provider's adapter naming convention.
         /// For ProtonVPN this means the name contains "ProtonVPN".
         /// For PIA this means the name contains "PIA".
         /// For NAT-PMP this is a bidirectional contains check against the configured adapter name,

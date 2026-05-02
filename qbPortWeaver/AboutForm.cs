@@ -5,6 +5,7 @@ namespace qbPortWeaver
     {
         // Set to the release URL when an update is available; null when up-to-date or not yet checked
         private string? _releaseUrl;
+        private bool    _isDarkMode;
 
         public AboutForm()
         {
@@ -20,10 +21,11 @@ namespace qbPortWeaver
         protected override void OnLoad(EventArgs e)
         {
             base.OnLoad(e);
-            if (AppConstants.IsDarkModeEnabled())
+            _isDarkMode = AppConstants.IsDarkModeEnabled();
+            if (_isDarkMode)
             {
-                lnkAuthor.LinkColor = Color.CornflowerBlue;
-                lnkGitHub.LinkColor = Color.CornflowerBlue;
+                lnkAuthor.LinkColor = AppConstants.DarkModeLinkColor;
+                lnkGitHub.LinkColor = AppConstants.DarkModeLinkColor;
             }
             _ = LoadGitHubDataAsync(); // fire-and-forget; exceptions are handled inside LoadGitHubDataAsync
         }
@@ -86,42 +88,47 @@ namespace qbPortWeaver
                 else
                     lnkAuthor.Text = AppConstants.GitHubRepoOwner;
 
-                var info = releaseTask.Result;
-                lblLatestVersionValue.ForeColor = SystemColors.ControlText;
-                if (info is null)
-                {
-                    lblLatestVersionValue.Text = "Unable to check";
-                    lblStatusValue.Text        = "Check failed";
-                    lblStatusValue.ForeColor   = SystemColors.ControlText;
-                    btnCheckForUpdates.Text    = "Check for Updates";
-                }
-                else
-                {
-                    lblLatestVersionValue.Text = info.Version;
-
-                    if (info.IsNewer)
-                    {
-                        lblStatusValue.Text      = "Update available";
-                        lblStatusValue.ForeColor = Color.DarkOrange;
-                        btnCheckForUpdates.Text  = "View Release";
-                        _releaseUrl              = info.ReleaseUrl;
-                    }
-                    else
-                    {
-                        lblStatusValue.Text      = "Up to date";
-                        lblStatusValue.ForeColor = Color.Green;
-                        btnCheckForUpdates.Text  = "Check for Updates";
-                    }
-                }
+                ApplyReleaseInfo(releaseTask.Result);
             }
             catch (Exception ex)
             {
                 LogManager.Instance.LogDebug($"AboutForm.LoadGitHubDataAsync: {ex.Message}");
+                // Surface the failure in the labels and reset the button text. ApplyReleaseInfo(null)
+                // owns the "check failed" text so the success path can keep its "Update" label intact.
+                if (!IsDisposed) ApplyReleaseInfo(null);
             }
             finally
             {
                 if (!IsDisposed)
                     btnCheckForUpdates.Enabled = true;
+            }
+        }
+
+        // Populates the release info labels and status based on the latest release data
+        private void ApplyReleaseInfo(LatestReleaseInfo? info)
+        {
+            lblLatestVersionValue.ForeColor = SystemColors.ControlText;
+            if (info is null)
+            {
+                lblLatestVersionValue.Text = "Unable to check";
+                lblStatusValue.Text        = "Check failed";
+                lblStatusValue.ForeColor   = SystemColors.ControlText;
+                btnCheckForUpdates.Text    = "Check for Updates";
+                return;
+            }
+            lblLatestVersionValue.Text = info.Version;
+            if (info.IsNewer)
+            {
+                lblStatusValue.Text      = "Update available";
+                lblStatusValue.ForeColor = _isDarkMode ? AppConstants.StatusWarning : AppConstants.StatusWarningLight;
+                btnCheckForUpdates.Text  = "Update";
+                _releaseUrl              = info.ReleaseUrl;
+            }
+            else
+            {
+                lblStatusValue.Text      = "Up to date";
+                lblStatusValue.ForeColor = _isDarkMode ? AppConstants.StatusOk : AppConstants.StatusOkLight;
+                btnCheckForUpdates.Text  = "Check for Updates";
             }
         }
 

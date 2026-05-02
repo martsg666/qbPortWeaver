@@ -32,7 +32,7 @@ namespace qbPortWeaver
         }
 
         /// <inheritdoc/>
-        public override async Task<(int? ListenPort, string? CurrentInterfaceName)> GetPreferencesAsync()
+        public override async Task<(int? ListenPort, string? CurrentInterfaceName)> GetPreferencesAsync(CancellationToken cancellationToken = default)
         {
             if (!await EnsureAuthenticatedAsync().ConfigureAwait(false)) return (null, null);
 
@@ -40,7 +40,7 @@ namespace qbPortWeaver
             {
                 var body = $$$"""{"method":"core.get_config_values","params":[["listen_ports","random_port","listen_random_port","listen_interface"]],"id":{{{_rpcId++}}}}""";
                 using var content  = new StringContent(body, Encoding.UTF8, "application/json");
-                using var response = await _httpClient.PostAsync($"{_url}{RpcPath}", content).ConfigureAwait(false);
+                using var response = await _httpClient.PostAsync($"{_url}{RpcPath}", content, cancellationToken).ConfigureAwait(false);
 
                 if (!response.IsSuccessStatusCode)
                 {
@@ -77,7 +77,7 @@ namespace qbPortWeaver
         }
 
         /// <inheritdoc/>
-        public override async Task<bool> SetListeningPortAsync(int port)
+        public override async Task<bool> SetListeningPortAsync(int port, CancellationToken cancellationToken = default)
         {
             if (!await EnsureAuthenticatedAsync().ConfigureAwait(false)) return false;
 
@@ -87,7 +87,7 @@ namespace qbPortWeaver
                 // built-in port mapping from overwriting the externally managed port.
                 var body = $$$"""{"method":"core.set_config","params":[{"listen_ports":[{{{port}}},{{{port}}}],"random_port":false,"upnp":false,"natpmp":false}],"id":{{{_rpcId++}}}}""";
                 using var content  = new StringContent(body, Encoding.UTF8, "application/json");
-                using var response = await _httpClient.PostAsync($"{_url}{RpcPath}", content).ConfigureAwait(false);
+                using var response = await _httpClient.PostAsync($"{_url}{RpcPath}", content, cancellationToken).ConfigureAwait(false);
 
                 if (!response.IsSuccessStatusCode)
                 {
@@ -116,7 +116,7 @@ namespace qbPortWeaver
 
         /// <inheritdoc/>
         /// <remarks>Deluge does not expose a connection status endpoint; always returns <see langword="null"/>.</remarks>
-        public override Task<string?> GetConnectionStatusAsync() => Task.FromResult<string?>(null);
+        public override Task<string?> GetConnectionStatusAsync(CancellationToken cancellationToken = default) => Task.FromResult<string?>(null);
 
         // core.set_config debounces disk writes by ~5 s. Wait before the kill step so the
         // new port survives the restart (without this, Deluge reads the old core.conf).

@@ -19,7 +19,8 @@ namespace qbPortWeaver.HelperService;
 internal sealed class HelperPipeServer(ILogger<HelperPipeServer> logger) : BackgroundService
 {
     internal const string HelperServicePipeName = "qbPortWeaverHelper"; // Must match AppConstants.HelperServicePipeName in qbPortWeaver
-    private  const int    PipeErrorRetryDelayMs = 1000;
+    private  const int    PipeErrorRetryDelayMs  = 1000;
+    private  const int    PipeReadTimeoutMs      = 5_000;
 
     private const string ActionRestart      = "restart";       // Must match HelperServiceClient.ActionRestart in qbPortWeaver
     private const string ActionCycleAdapter = "cycle-adapter"; // Must match HelperServiceClient.ActionCycleAdapter in qbPortWeaver
@@ -85,8 +86,19 @@ internal sealed class HelperPipeServer(ILogger<HelperPipeServer> logger) : Backg
 
         await pipe.WaitForConnectionAsync(ct).ConfigureAwait(false);
 
-        using var reader = new StreamReader(pipe, leaveOpen: true);
-        var message = await reader.ReadLineAsync(ct).ConfigureAwait(false);
+        using var reader  = new StreamReader(pipe, leaveOpen: true);
+        using var readCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        readCts.CancelAfter(PipeReadTimeoutMs);
+        string? message;
+        try
+        {
+            message = await reader.ReadLineAsync(readCts.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            logger.LogWarning("Pipe connection read timed out - client connected but sent no data");
+            return;
+        }
         if (string.IsNullOrWhiteSpace(message)) return;
 
         // Split on pipe character - avoids ambiguity with colons in Windows paths (e.g. C:\...)

@@ -452,7 +452,7 @@ namespace qbPortWeaver
             status[StatusKeys.ClientRunning] = true;
 
             // Get current preferences (listening port and network interface) in a single request
-            var (currentPort, currentInterfaceName) = await manager.GetPreferencesAsync().ConfigureAwait(false);
+            var (currentPort, currentInterfaceName) = await manager.GetPreferencesAsync(cancellationToken).ConfigureAwait(false);
             if (!currentPort.HasValue)
             {
                 SetSyncResult(status, false, $"Failed to determine {manager.ClientName} port");
@@ -542,7 +542,7 @@ namespace qbPortWeaver
         private static async Task<bool> ApplyPortUpdateAsync(IBitTorrentClient manager, int targetPort, SyncConfig config, Dictionary<string, object?> status, CancellationToken cancellationToken)
         {
             LogManager.Instance.LogMessage($"Ports do not match - updating {manager.ClientName} port to {targetPort}", LogLevel.Info);
-            if (!await manager.SetListeningPortAsync(targetPort).ConfigureAwait(false))
+            if (!await manager.SetListeningPortAsync(targetPort, cancellationToken).ConfigureAwait(false))
             {
                 SetSyncResult(status, false, $"Failed to set {manager.ClientName} port to {targetPort}");
                 return false;
@@ -593,7 +593,7 @@ namespace qbPortWeaver
         // Clients that do not support connection status (GetConnectionStatusAsync returns null) are skipped.
         private static async Task CheckAndRestartIfDisconnectedAsync(IBitTorrentClient manager, CancellationToken cancellationToken)
         {
-            string? connectionStatus = await manager.GetConnectionStatusAsync().ConfigureAwait(false);
+            string? connectionStatus = await manager.GetConnectionStatusAsync(cancellationToken).ConfigureAwait(false);
             if (connectionStatus is null)
                 return;
 
@@ -638,13 +638,15 @@ namespace qbPortWeaver
             if (_consecutiveFailedCycles < cfg.AutoRecoveryTriggerCycles) return;
 
             int count = _consecutiveFailedCycles;
-            _consecutiveFailedCycles = 0;
 
             if (recoveryTarget is null)
             {
+                _consecutiveFailedCycles = 0;
                 LogManager.Instance.LogMessage($"No recovery target found for '{displayName}'", LogLevel.Warn);
                 return;
             }
+
+            _consecutiveFailedCycles = 0;
 
             LogManager.Instance.LogMessage(
                 $"Triggering '{action}' for '{displayName}' after {count} consecutive failed {(count == 1 ? "cycle" : "cycles")}",

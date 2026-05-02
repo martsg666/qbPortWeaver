@@ -45,18 +45,18 @@ namespace qbPortWeaver
         /// For Transmission this is the bound IPv4 address.
         /// Returns <c>(null, null)</c> if the client is unreachable or the values cannot be read.
         /// </summary>
-        Task<(int? ListenPort, string? CurrentInterfaceName)> GetPreferencesAsync();
+        Task<(int? ListenPort, string? CurrentInterfaceName)> GetPreferencesAsync(CancellationToken cancellationToken = default);
 
         /// <summary>
         /// Sets the client's listening port. Returns <see langword="true"/> on success.
         /// </summary>
-        Task<bool> SetListeningPortAsync(int port);
+        Task<bool> SetListeningPortAsync(int port, CancellationToken cancellationToken = default);
 
         /// <summary>
         /// Returns the client's current connection status string, or <see langword="null"/> if unsupported or unreachable.
         /// For qBittorrent this is one of "connected", "firewalled", or "disconnected".
         /// For clients that do not expose connection status, always returns <see langword="null"/>.
         /// </summary>
-        Task<string?> GetConnectionStatusAsync();
+        Task<string?> GetConnectionStatusAsync(CancellationToken cancellationToken = default);
     }
 }

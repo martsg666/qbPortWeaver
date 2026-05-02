@@ -49,8 +49,8 @@ namespace qbPortWeaver
             base.OnLoad(e);
             _isDarkMode  = AppConstants.IsDarkModeEnabled();
             _themeColors = _isDarkMode
-                ? [Color.OrangeRed, Color.Gold, Color.DodgerBlue, Color.DarkOrange, Color.Gainsboro]
-                : [Color.Crimson, Color.Goldenrod, Color.SteelBlue, Color.DarkOrange, SystemColors.WindowText];
+                ? [AppConstants.DarkModeError, AppConstants.DarkModeWarning, AppConstants.DarkModeInfo, AppConstants.LogLevelDebug, AppConstants.DarkModeText]
+                : [AppConstants.LightModeError, AppConstants.LightModeWarning, AppConstants.LightModeInfo, AppConstants.LogLevelDebug, SystemColors.WindowText];
             Text = $"{AppConstants.AppName} | Log Viewer";
             ApplyTheme();
             // Vertically center the search box - single-line TextBox auto-sizes its height from the font,
@@ -93,7 +93,7 @@ namespace qbPortWeaver
         private void ApplyTheme()
         {
             Color bg     = _isDarkMode ? AppConstants.DarkModeBackground : SystemColors.Window;
-            Color fg     = _isDarkMode ? Color.Gainsboro               : SystemColors.WindowText;
+            Color fg     = _isDarkMode ? AppConstants.DarkModeText      : SystemColors.WindowText;
             Color border = _isDarkMode ? AppConstants.DarkModeBorder    : SystemColors.ControlDark;
 
             BackColor            = bg;
@@ -298,7 +298,7 @@ namespace qbPortWeaver
 
             int   savedStart = rtbLog.SelectionStart;
             int   savedLen   = rtbLog.SelectionLength;
-            Color bg         = _isDarkMode ? AppConstants.DarkModeSearchHighlight : Color.Yellow;
+            Color bg         = _isDarkMode ? AppConstants.DarkModeSearchHighlight : AppConstants.LightModeSearchHighlight;
             int   len        = txtSearch.Text.Length;
             int   count      = Math.Min(_searchMatches.Count, MaxHighlights);
 
@@ -407,7 +407,7 @@ namespace qbPortWeaver
             catch (Exception ex)
             {
                 if (!IsDisposed)
-                    SetMetaMessage($"(Error reading log: {ex.Message})", Color.OrangeRed);
+                    SetMetaMessage($"(Error reading log: {ex.Message})", AppConstants.DarkModeError);
             }
             finally
             {
@@ -606,7 +606,7 @@ namespace qbPortWeaver
         }
 
         // Convenience colour for meta/status messages (not log entries)
-        private Color MetaColor => _isDarkMode ? Color.DimGray : SystemColors.GrayText;
+        private Color MetaColor => _isDarkMode ? AppConstants.DarkModeMeta : SystemColors.GrayText;
 
         // Writes the RTF document header shared by BuildRtf and SetMetaMessage:
         // Unicode-safe, Consolas 9pt (18 half-points), no paragraph spacing, colour table.

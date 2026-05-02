@@ -35,13 +35,13 @@ namespace qbPortWeaver
         }
 
         /// <inheritdoc/>
-        public override async Task<(int? ListenPort, string? CurrentInterfaceName)> GetPreferencesAsync()
+        public override async Task<(int? ListenPort, string? CurrentInterfaceName)> GetPreferencesAsync(CancellationToken cancellationToken = default)
         {
             if (!await EnsureAuthenticatedAsync().ConfigureAwait(false)) return (null, null);
 
             try
             {
-                using var response = await _httpClient.GetAsync($"{_url}{ApiAppPreferences}").ConfigureAwait(false);
+                using var response = await _httpClient.GetAsync($"{_url}{ApiAppPreferences}", cancellationToken).ConfigureAwait(false);
 
                 if (!response.IsSuccessStatusCode)
                 {
@@ -87,7 +87,7 @@ namespace qbPortWeaver
         }
 
         /// <inheritdoc/>
-        public override async Task<bool> SetListeningPortAsync(int port)
+        public override async Task<bool> SetListeningPortAsync(int port, CancellationToken cancellationToken = default)
         {
             if (!await EnsureAuthenticatedAsync().ConfigureAwait(false)) return false;
 
@@ -96,7 +96,7 @@ namespace qbPortWeaver
                 var jsonBody = $"{{\"listen_port\":{port},\"upnp\":false,\"natpmp\":false}}";
                 using var content = new FormUrlEncodedContent([new("json", jsonBody)]);
 
-                using var response = await _httpClient.PostAsync($"{_url}{ApiSetPreferences}", content).ConfigureAwait(false);
+                using var response = await _httpClient.PostAsync($"{_url}{ApiSetPreferences}", content, cancellationToken).ConfigureAwait(false);
                 if (!response.IsSuccessStatusCode)
                 {
                     LogManager.Instance.LogMessage($"Failed to set {ClientName} port (HTTP {(int)response.StatusCode} {response.StatusCode})", LogLevel.Error);
@@ -113,13 +113,13 @@ namespace qbPortWeaver
 
         /// <inheritdoc/>
         /// <remarks>Returns one of <c>"connected"</c>, <c>"firewalled"</c>, or <c>"disconnected"</c>.</remarks>
-        public override async Task<string?> GetConnectionStatusAsync()
+        public override async Task<string?> GetConnectionStatusAsync(CancellationToken cancellationToken = default)
         {
             if (!await EnsureAuthenticatedAsync().ConfigureAwait(false)) return null;
 
             try
             {
-                using var response = await _httpClient.GetAsync($"{_url}{ApiTransferInfo}").ConfigureAwait(false);
+                using var response = await _httpClient.GetAsync($"{_url}{ApiTransferInfo}", cancellationToken).ConfigureAwait(false);
 
                 if (!response.IsSuccessStatusCode)
                 {

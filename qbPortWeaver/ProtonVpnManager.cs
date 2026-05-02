@@ -74,7 +74,7 @@ namespace qbPortWeaver
         internal static string? FindServiceName() => AppConstants.FindServiceName(GetServiceSearchTerm());
 
         internal static string? GetClientExePath()
-            => AppConstants.ResolveServiceExePath(ref _clientExePathCache, GetClientProcessName() + ".exe", FindServiceName, "ProtonVpnManager.GetClientExePath");
+            => AppConstants.FindExeInServiceDirectory(ref _clientExePathCache, GetClientProcessName() + ".exe", FindServiceName, "ProtonVpnManager.GetClientExePath");
 
         private int? GetVpnPortCore()
         {

@@ -91,12 +91,12 @@ namespace qbPortWeaver
         }
 
         /// <inheritdoc/>
-        public override async Task<(int? ListenPort, string? CurrentInterfaceName)> GetPreferencesAsync()
+        public override async Task<(int? ListenPort, string? CurrentInterfaceName)> GetPreferencesAsync(CancellationToken cancellationToken = default)
         {
             try
             {
                 const string body = """{"method":"session-get","arguments":{"fields":["peer-port","bind-address-ipv4"]}}""";
-                using var response = await SendRpcAsync(body).ConfigureAwait(false);
+                using var response = await SendRpcAsync(body, cancellationToken).ConfigureAwait(false);
                 if (response is null) return (null, null);
 
                 if (response.StatusCode == HttpStatusCode.Unauthorized)
@@ -143,12 +143,12 @@ namespace qbPortWeaver
         }
 
         /// <inheritdoc/>
-        public override async Task<bool> SetListeningPortAsync(int port)
+        public override async Task<bool> SetListeningPortAsync(int port, CancellationToken cancellationToken = default)
         {
             try
             {
                 var body = $$$"""{"method":"session-set","arguments":{"peer-port":{{{port}}},"peer-port-random-on-start":false,"port-forwarding-enabled":false}}""";
-                using var response = await SendRpcAsync(body).ConfigureAwait(false);
+                using var response = await SendRpcAsync(body, cancellationToken).ConfigureAwait(false);
                 if (response is null) return false;
 
                 if (!response.IsSuccessStatusCode)
@@ -177,7 +177,7 @@ namespace qbPortWeaver
 
         /// <inheritdoc/>
         /// <remarks>Transmission does not expose a connection status endpoint; always returns <see langword="null"/>.</remarks>
-        public override Task<string?> GetConnectionStatusAsync() => Task.FromResult<string?>(null);
+        public override Task<string?> GetConnectionStatusAsync(CancellationToken cancellationToken = default) => Task.FromResult<string?>(null);
 
         /// <inheritdoc/>
         protected override void ResetAuthState()
@@ -269,7 +269,7 @@ namespace qbPortWeaver
         // Transmission rejects requests without a valid session ID with HTTP 409, including
         // the very first request per session. On 409, the new session ID is extracted from
         // the X-Transmission-Session-Id response header and the request is retried once.
-        private async Task<HttpResponseMessage?> SendRpcAsync(string jsonBody)
+        private async Task<HttpResponseMessage?> SendRpcAsync(string jsonBody, CancellationToken cancellationToken = default)
         {
             try
             {
@@ -280,7 +280,7 @@ namespace qbPortWeaver
                 if (_sessionId is not null)
                     request.Headers.Add(SessionIdHeader, _sessionId);
 
-                var response = await _httpClient.SendAsync(request).ConfigureAwait(false);
+                var response = await _httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
 
                 if (response.StatusCode != HttpStatusCode.Conflict)
                     return response;
@@ -300,7 +300,7 @@ namespace qbPortWeaver
                     Content = new StringContent(jsonBody, Encoding.UTF8, "application/json")
                 };
                 retry.Headers.Add(SessionIdHeader, _sessionId);
-                return await _httpClient.SendAsync(retry).ConfigureAwait(false);
+                return await _httpClient.SendAsync(retry, cancellationToken).ConfigureAwait(false);
             }
             catch (Exception ex)
             {

@@ -59,7 +59,7 @@ namespace qbPortWeaver
             => interfaceName.Contains(GetAdapterName(), StringComparison.OrdinalIgnoreCase);
 
         internal static string? FindServiceName()     => AppConstants.FindServiceName(GetServiceSearchTerm());
-        internal static string? GetClientExePath()    => AppConstants.ResolveServiceExePath(ref _clientExePathCache, GetClientProcessName() + ".exe", FindServiceName, "PiaVpnManager.GetClientExePath");
+        internal static string? GetClientExePath()    => AppConstants.FindExeInServiceDirectory(ref _clientExePathCache, GetClientProcessName() + ".exe", FindServiceName, "PiaVpnManager.GetClientExePath");
 
         private static int? GetVpnPortCore()
         {
@@ -133,6 +133,6 @@ namespace qbPortWeaver
             }
         }
 
-        private static string? GetPiactlPath() => AppConstants.ResolveServiceExePath(ref _piactlPathCache, GetPiactlProcessName() + ".exe", FindServiceName, "PiaVpnManager.GetPiactlPath");
+        private static string? GetPiactlPath() => AppConstants.FindExeInServiceDirectory(ref _piactlPathCache, GetPiactlProcessName() + ".exe", FindServiceName, "PiaVpnManager.GetPiactlPath");
     }
 }

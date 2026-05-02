@@ -28,6 +28,7 @@ namespace qbPortWeaver
         {
             InitializeComponent();
             Text = $"{AppConstants.AppName} | Media Manager";
+            rtbTmdbOverview.Enter += (s, e) => dgvResults.Focus();
         }
 
         protected override void OnLoad(EventArgs e)
@@ -35,17 +36,15 @@ namespace qbPortWeaver
             base.OnLoad(e);
             MinimumSize = Size; // lock minimum to initial window size so controls are never clipped
             _isDarkMode     = AppConstants.IsDarkModeEnabled();
-            _colorUncertain = _isDarkMode ? Color.Gold      : Color.Goldenrod;
-            _colorUnmatched = _isDarkMode ? Color.OrangeRed : Color.Crimson;
+            _colorUncertain = _isDarkMode ? AppConstants.DarkModeWarning : AppConstants.LightModeWarning;
+            _colorUnmatched = _isDarkMode ? AppConstants.DarkModeError   : AppConstants.LightModeError;
             lblLegendUncertain.ForeColor = _colorUncertain;
             lblLegendUnmatched.ForeColor = _colorUnmatched;
             rtbTmdbOverview.Font      = Font;
             rtbTmdbOverview.ForeColor = ForeColor;
             if (_isDarkMode)
-            {
-                rtbTmdbOverview.BackColor = AppConstants.DarkModeBackground;
-                rtbTmdbOverview.ForeColor = Color.Gainsboro;
-            }
+                rtbTmdbOverview.ForeColor = AppConstants.DarkModeText;
+            rtbTmdbOverview.Enter += (s, e) => dgvResults.Focus();
             SetupTooltips();
             SetupGridContextMenu();
             LoadSettings();

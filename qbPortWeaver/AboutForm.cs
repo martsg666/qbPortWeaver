@@ -24,8 +24,8 @@ namespace qbPortWeaver
             _isDarkMode = AppConstants.IsDarkModeEnabled();
             if (_isDarkMode)
             {
-                lnkAuthor.LinkColor = Color.CornflowerBlue;
-                lnkGitHub.LinkColor = Color.CornflowerBlue;
+                lnkAuthor.LinkColor = AppConstants.DarkModeLinkColor;
+                lnkGitHub.LinkColor = AppConstants.DarkModeLinkColor;
             }
             _ = LoadGitHubDataAsync(); // fire-and-forget; exceptions are handled inside LoadGitHubDataAsync
         }
@@ -120,14 +120,14 @@ namespace qbPortWeaver
             if (info.IsNewer)
             {
                 lblStatusValue.Text      = "Update available";
-                lblStatusValue.ForeColor = _isDarkMode ? Color.Orange : Color.DarkOrange;
+                lblStatusValue.ForeColor = _isDarkMode ? AppConstants.StatusWarning : AppConstants.StatusWarningLight;
                 btnCheckForUpdates.Text  = "Update";
                 _releaseUrl              = info.ReleaseUrl;
             }
             else
             {
                 lblStatusValue.Text      = "Up to date";
-                lblStatusValue.ForeColor = _isDarkMode ? Color.LimeGreen : Color.Green;
+                lblStatusValue.ForeColor = _isDarkMode ? AppConstants.StatusOk : AppConstants.StatusOkLight;
                 btnCheckForUpdates.Text  = "Check for Updates";
             }
         }

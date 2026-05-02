@@ -181,9 +181,9 @@ namespace qbPortWeaver
         private void InitializeStatusIcons()
         {
             _iconBase    = Properties.Resources.qbPortWeaver;
-            _iconOk      = CreateStatusIcon(_iconBase, Color.LimeGreen);
-            _iconWarning = CreateStatusIcon(_iconBase, Color.Orange);
-            _iconError   = CreateStatusIcon(_iconBase, Color.Red);
+            _iconOk      = CreateStatusIcon(_iconBase, AppConstants.StatusOk);
+            _iconWarning = CreateStatusIcon(_iconBase, AppConstants.StatusWarning);
+            _iconError   = CreateStatusIcon(_iconBase, AppConstants.StatusError);
         }
 
         // Draws a small filled circle onto a 16x16 copy of the base icon and returns it as an Icon

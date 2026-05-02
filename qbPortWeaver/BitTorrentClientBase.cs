@@ -40,7 +40,11 @@ namespace qbPortWeaver
         public abstract bool SupportsInterfaceMismatchWarning { get; }
 
         /// <inheritdoc/>
-        public void Dispose() => _httpClient.Dispose();
+        public void Dispose()
+        {
+            _httpClient.Dispose();
+            GC.SuppressFinalize(this);
+        }
 
         /// <inheritdoc/>
         public virtual bool IsRunning()
@@ -133,13 +137,13 @@ namespace qbPortWeaver
         }
 
         /// <inheritdoc/>
-        public abstract Task<(int? ListenPort, string? CurrentInterfaceName)> GetPreferencesAsync();
+        public abstract Task<(int? ListenPort, string? CurrentInterfaceName)> GetPreferencesAsync(CancellationToken cancellationToken = default);
 
         /// <inheritdoc/>
-        public abstract Task<bool> SetListeningPortAsync(int port);
+        public abstract Task<bool> SetListeningPortAsync(int port, CancellationToken cancellationToken = default);
 
         /// <inheritdoc/>
-        public abstract Task<string?> GetConnectionStatusAsync();
+        public abstract Task<string?> GetConnectionStatusAsync(CancellationToken cancellationToken = default);
 
         /// <summary>Resets the per-instance auth state so the next API call triggers a fresh authentication handshake.</summary>
         protected virtual void ResetAuthState() => _isAuthenticated = false;

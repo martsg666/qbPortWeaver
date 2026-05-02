@@ -48,9 +48,8 @@ namespace qbPortWeaver
             rtbFeatures.ForeColor = ForeColor;
             if (_isDarkMode)
             {
-                lnkCommunity.LinkColor = Color.CornflowerBlue;
-                rtbFeatures.BackColor  = AppConstants.DarkModeBackground;
-                rtbFeatures.ForeColor  = Color.Gainsboro;
+                lnkCommunity.LinkColor = AppConstants.DarkModeLinkColor;
+                rtbFeatures.ForeColor  = AppConstants.DarkModeText;
             }
         }
 

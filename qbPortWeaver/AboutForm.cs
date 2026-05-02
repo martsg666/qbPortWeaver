@@ -24,8 +24,8 @@ namespace qbPortWeaver
             _isDarkMode = AppConstants.IsDarkModeEnabled();
             if (_isDarkMode)
             {
-                lnkAuthor.LinkColor = Color.CornflowerBlue;
-                lnkGitHub.LinkColor = Color.CornflowerBlue;
+                lnkAuthor.LinkColor = AppConstants.DarkModeLinkColor;
+                lnkGitHub.LinkColor = AppConstants.DarkModeLinkColor;
             }
             _ = LoadGitHubDataAsync(); // fire-and-forget; exceptions are handled inside LoadGitHubDataAsync
         }
@@ -93,14 +93,14 @@ namespace qbPortWeaver
             catch (Exception ex)
             {
                 LogManager.Instance.LogDebug($"AboutForm.LoadGitHubDataAsync: {ex.Message}");
+                // Surface the failure in the labels and reset the button text. ApplyReleaseInfo(null)
+                // owns the "check failed" text so the success path can keep its "Update" label intact.
+                if (!IsDisposed) ApplyReleaseInfo(null);
             }
             finally
             {
                 if (!IsDisposed)
-                {
                     btnCheckForUpdates.Enabled = true;
-                    btnCheckForUpdates.Text    = "Check for Updates";
-                }
             }
         }
 
@@ -120,14 +120,14 @@ namespace qbPortWeaver
             if (info.IsNewer)
             {
                 lblStatusValue.Text      = "Update available";
-                lblStatusValue.ForeColor = _isDarkMode ? Color.Orange : Color.DarkOrange;
+                lblStatusValue.ForeColor = _isDarkMode ? AppConstants.StatusWarning : AppConstants.StatusWarningLight;
                 btnCheckForUpdates.Text  = "Update";
                 _releaseUrl              = info.ReleaseUrl;
             }
             else
             {
                 lblStatusValue.Text      = "Up to date";
-                lblStatusValue.ForeColor = _isDarkMode ? Color.LimeGreen : Color.Green;
+                lblStatusValue.ForeColor = _isDarkMode ? AppConstants.StatusOk : AppConstants.StatusOkLight;
                 btnCheckForUpdates.Text  = "Check for Updates";
             }
         }

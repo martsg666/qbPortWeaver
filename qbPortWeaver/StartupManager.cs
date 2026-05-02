@@ -36,7 +36,8 @@ namespace qbPortWeaver
 
                 if (enable)
                 {
-                    key.SetValue(AppConstants.AppName, Application.ExecutablePath);
+                    // Quote the path so CreateProcess parses it as a single token regardless of embedded spaces.
+                    key.SetValue(AppConstants.AppName, $"\"{Application.ExecutablePath}\"");
                     LogManager.Instance.LogMessage("Windows startup enabled", LogLevel.Info);
                 }
                 else

@@ -170,9 +170,10 @@ namespace qbPortWeaver
             if (vpnManager is null)
                 return cfg.UpdateInterval;
 
+            var (forceStart, restart, restartOnDisconnect, warnOnInterfaceMismatch) = GetClientBehaviorConfig(cfg, activeSection);
+
             int targetPort;
             IVpnManager? syncVpnManager;
-            bool warnOnInterfaceMismatch;
 
             if (!vpnManager.IsVpnConnected())
             {
@@ -190,9 +191,8 @@ namespace qbPortWeaver
                     return cfg.UpdateInterval;
                 }
                 LogManager.Instance.LogMessage($"{vpnManager.ProviderName} default port is {defaultPort} - applying to {cfg.BitTorrentClient}", LogLevel.Info);
-                targetPort          = defaultPort;
-                syncVpnManager      = null;
-                warnOnInterfaceMismatch = false;
+                targetPort     = defaultPort;
+                syncVpnManager = null;
             }
             else
             {
@@ -221,14 +221,12 @@ namespace qbPortWeaver
                         $"NAT-PMP sync interval ({cfg.UpdateInterval}s) exceeds lease lifetime ({natPmp.LastGrantedLifetime}s) - port mapping will expire before the next sync cycle",
                         LogLevel.Warn);
 
-                targetPort          = vpnPort.Value;
-                syncVpnManager      = vpnManager;
-                warnOnInterfaceMismatch = cfg.QBittorrentWarnOnInterfaceMismatch;
+                targetPort     = vpnPort.Value;
+                syncVpnManager = vpnManager;
             }
 
             using var manager = CreateBitTorrentClient(cfg);
             status[StatusKeys.Client] = manager.ClientName;
-            var (forceStart, restart) = GetClientRestartConfig(cfg, activeSection);
 
             await EnsureRunningAndUpdatePortAsync(manager, targetPort,
                 new SyncConfig(
@@ -237,7 +235,7 @@ namespace qbPortWeaver
                     PostUpdateCommand:       cfg.PostUpdateCommand,
                     VpnManager:              syncVpnManager,
                     WarnOnInterfaceMismatch: warnOnInterfaceMismatch,
-                    RestartOnDisconnect:     cfg.QBittorrentRestartOnDisconnect),
+                    RestartOnDisconnect:     restartOnDisconnect),
                 status,
                 cancellationToken).ConfigureAwait(false);
 
@@ -262,7 +260,7 @@ namespace qbPortWeaver
                 BitTorrentClient:          bitTorrentClient,
                 QBittorrentUrl:            RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionQBittorrent,  RegistrySettingsManager.KeyQBittorrentUrl),
                 QBittorrentUserName:       RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionQBittorrent,  RegistrySettingsManager.KeyQBittorrentUserName),
-                QBittorrentPassword:       RegistrySettingsManager.GetPassword(),
+                QBittorrentPassword:       RegistrySettingsManager.GetQBittorrentPassword(),
                 QBittorrentProcessName:    RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionQBittorrent,  RegistrySettingsManager.KeyQBittorrentProcessName),
                 QBittorrentExePath:        RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionQBittorrent,  RegistrySettingsManager.KeyQBittorrentExePath),
                 RestartQBittorrent:        RegistrySettingsManager.GetBool (RegistrySettingsManager.SectionQBittorrent,  RegistrySettingsManager.KeyRestartQBittorrent),
@@ -360,14 +358,13 @@ namespace qbPortWeaver
             if (cfg.VpnProvider.Equals(RegistrySettingsManager.VpnProviderNatPmp, StringComparison.OrdinalIgnoreCase))
                 return await CreateNatPmpVpnManager(cfg, status, cancellationToken).ConfigureAwait(false);
 
-            if (!cfg.VpnProvider.Equals(RegistrySettingsManager.VpnProviderProtonVpn, StringComparison.OrdinalIgnoreCase))
-            {
-                LogManager.Instance.LogMessage($"VPN provider '{cfg.VpnProvider}' is not recognized, port sync skipped", LogLevel.Warn);
-                status[StatusKeys.Status]  = StatusKeys.Skipped;
-                status[StatusKeys.Message] = $"VPN provider '{cfg.VpnProvider}' is not recognized";
-                return null;
-            }
-            return new ProtonVpnManager(AppConstants.GetProtonVPNLogFilePath());
+            if (cfg.VpnProvider.Equals(RegistrySettingsManager.VpnProviderProtonVpn, StringComparison.OrdinalIgnoreCase))
+                return new ProtonVpnManager(AppConstants.GetProtonVpnLogFilePath());
+
+            LogManager.Instance.LogMessage($"VPN provider '{cfg.VpnProvider}' is not recognized, port sync skipped", LogLevel.Warn);
+            status[StatusKeys.Status]  = StatusKeys.Skipped;
+            status[StatusKeys.Message] = $"VPN provider '{cfg.VpnProvider}' is not recognized";
+            return null;
         }
 
         // Resolves the NAT-PMP VPN manager for the configured adapter, handling the disconnected
@@ -452,7 +449,7 @@ namespace qbPortWeaver
             status[StatusKeys.ClientRunning] = true;
 
             // Get current preferences (listening port and network interface) in a single request
-            var (currentPort, currentInterfaceName) = await manager.GetPreferencesAsync().ConfigureAwait(false);
+            var (currentPort, currentInterfaceName) = await manager.GetPreferencesAsync(cancellationToken).ConfigureAwait(false);
             if (!currentPort.HasValue)
             {
                 SetSyncResult(status, false, $"Failed to determine {manager.ClientName} port");
@@ -463,7 +460,7 @@ namespace qbPortWeaver
 
             // Warn if the client's network interface doesn't match the configured VPN provider
             if (config.VpnManager is not null && config.WarnOnInterfaceMismatch && manager.SupportsInterfaceMismatchWarning)
-                CheckInterfaceMatch(currentInterfaceName, config.VpnManager);
+                CheckInterfaceMatch(manager.ClientName, currentInterfaceName, config.VpnManager);
 
             if (currentPort.Value == targetPort)
             {
@@ -511,29 +508,29 @@ namespace qbPortWeaver
         }
 
         // Checks if the client's network interface matches the expected VPN provider and logs a warning if not
-        private void CheckInterfaceMatch(string? interfaceName, IVpnManager vpnManager)
+        private void CheckInterfaceMatch(string clientName, string? interfaceName, IVpnManager vpnManager)
         {
             if (interfaceName is null)
             {
-                LogManager.Instance.LogDebug("PortSyncService.CheckInterfaceMatch: interface name not returned by client, skipping check");
+                LogManager.Instance.LogDebug($"PortSyncService.CheckInterfaceMatch: {clientName} did not return an interface name, skipping check");
                 return;
             }
 
             if (interfaceName.Length == 0)
             {
-                LogManager.Instance.LogMessage("Client is bound to all network interfaces - traffic may leak outside the VPN", LogLevel.Warn);
-                InterfaceMismatchDetected?.Invoke("No VPN interface bound - traffic may leak.");
+                LogManager.Instance.LogMessage($"{clientName} is bound to all network interfaces - traffic may leak outside the VPN", LogLevel.Warn);
+                InterfaceMismatchDetected?.Invoke($"{clientName}: no VPN interface bound - traffic may leak.");
                 return;
             }
 
             if (!vpnManager.IsAdapterMatch(interfaceName))
             {
-                LogManager.Instance.LogMessage($"Client network interface '{interfaceName}' does not match '{vpnManager.ProviderName}'", LogLevel.Warn);
-                InterfaceMismatchDetected?.Invoke($"Interface mismatch - '{interfaceName}' is not a {vpnManager.ProviderName} adapter.");
+                LogManager.Instance.LogMessage($"{clientName} network interface '{interfaceName}' does not match '{vpnManager.ProviderName}'", LogLevel.Warn);
+                InterfaceMismatchDetected?.Invoke($"{clientName} interface mismatch - '{interfaceName}' is not a {vpnManager.ProviderName} adapter.");
             }
             else
             {
-                LogManager.Instance.LogDebug($"PortSyncService.CheckInterfaceMatch: network interface '{interfaceName}' matches '{vpnManager.ProviderName}'");
+                LogManager.Instance.LogDebug($"PortSyncService.CheckInterfaceMatch: {clientName} interface '{interfaceName}' matches '{vpnManager.ProviderName}'");
             }
         }
 
@@ -542,7 +539,7 @@ namespace qbPortWeaver
         private static async Task<bool> ApplyPortUpdateAsync(IBitTorrentClient manager, int targetPort, SyncConfig config, Dictionary<string, object?> status, CancellationToken cancellationToken)
         {
             LogManager.Instance.LogMessage($"Ports do not match - updating {manager.ClientName} port to {targetPort}", LogLevel.Info);
-            if (!await manager.SetListeningPortAsync(targetPort).ConfigureAwait(false))
+            if (!await manager.SetListeningPortAsync(targetPort, cancellationToken).ConfigureAwait(false))
             {
                 SetSyncResult(status, false, $"Failed to set {manager.ClientName} port to {targetPort}");
                 return false;
@@ -593,7 +590,7 @@ namespace qbPortWeaver
         // Clients that do not support connection status (GetConnectionStatusAsync returns null) are skipped.
         private static async Task CheckAndRestartIfDisconnectedAsync(IBitTorrentClient manager, CancellationToken cancellationToken)
         {
-            string? connectionStatus = await manager.GetConnectionStatusAsync().ConfigureAwait(false);
+            string? connectionStatus = await manager.GetConnectionStatusAsync(cancellationToken).ConfigureAwait(false);
             if (connectionStatus is null)
                 return;
 
@@ -638,13 +635,15 @@ namespace qbPortWeaver
             if (_consecutiveFailedCycles < cfg.AutoRecoveryTriggerCycles) return;
 
             int count = _consecutiveFailedCycles;
-            _consecutiveFailedCycles = 0;
 
             if (recoveryTarget is null)
             {
+                _consecutiveFailedCycles = 0;
                 LogManager.Instance.LogMessage($"No recovery target found for '{displayName}'", LogLevel.Warn);
                 return;
             }
+
+            _consecutiveFailedCycles = 0;
 
             LogManager.Instance.LogMessage(
                 $"Triggering '{action}' for '{displayName}' after {count} consecutive failed {(count == 1 ? "cycle" : "cycles")}",
@@ -673,12 +672,12 @@ namespace qbPortWeaver
             return RegistrySettingsManager.SectionQBittorrent;
         }
 
-        private static (bool ForceStart, bool Restart) GetClientRestartConfig(AppConfig cfg, string activeSection) =>
+        private static (bool ForceStart, bool Restart, bool RestartOnDisconnect, bool WarnOnInterfaceMismatch) GetClientBehaviorConfig(AppConfig cfg, string activeSection) =>
             activeSection switch
             {
-                RegistrySettingsManager.SectionTransmission => (cfg.ForceStartTransmission, cfg.RestartTransmission),
-                RegistrySettingsManager.SectionDeluge       => (cfg.ForceStartDeluge,       cfg.RestartDeluge),
-                _                                           => (cfg.ForceStartQBittorrent,  cfg.RestartQBittorrent),
+                RegistrySettingsManager.SectionTransmission => (cfg.ForceStartTransmission, cfg.RestartTransmission, false, false),
+                RegistrySettingsManager.SectionDeluge       => (cfg.ForceStartDeluge,       cfg.RestartDeluge,       false, false),
+                _                                           => (cfg.ForceStartQBittorrent,  cfg.RestartQBittorrent,  cfg.QBittorrentRestartOnDisconnect, cfg.QBittorrentWarnOnInterfaceMismatch),
             };
 
         private static int GetDefaultPort(AppConfig cfg, string activeSection) =>

@@ -57,7 +57,7 @@ namespace qbPortWeaver
         {
             try
             {
-                if (File.Exists(path)) File.Delete(path);
+                File.Delete(path); // no-op if the file does not exist
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
@@ -75,7 +75,7 @@ namespace qbPortWeaver
         }
 
         /// <summary>Returns the full path to the ProtonVPN log file, resolved from the registry setting.</summary>
-        public static string GetProtonVPNLogFilePath() => Path.Combine(
+        public static string GetProtonVpnLogFilePath() => Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             RegistrySettingsManager.GetAppValue(RegistrySettingsManager.KeyProtonVpnLogFilePath));
 
@@ -112,7 +112,7 @@ namespace qbPortWeaver
             }
             catch (Exception ex)
             {
-                LogManager.Instance.LogMessage($"Failed to run taskkill fallback: {ex.Message}", LogLevel.Warn);
+                LogManager.Instance.LogMessage($"Failed to run taskkill fallback for PID {process.Id}: {ex.Message}", LogLevel.Warn);
             }
             if (process.WaitForExit(timeoutMs)) return true;
 
@@ -203,16 +203,20 @@ namespace qbPortWeaver
 
                 return Path.GetDirectoryName(Path.GetFullPath(imagePath));
             }
-            catch { return null; }
+            catch (Exception ex)
+            {
+                LogManager.Instance.LogDebug($"AppConstants.GetServiceExeDirectory: {serviceName} - {ex.Message}");
+                return null;
+            }
         }
 
         /// <summary>
         /// Resolves an executable path from the directory of a Windows service, caching the result.
-        /// Returns <see langword="null"/> if the service or file is not found; the cache is set to
-        /// <see langword="null"/> on a definitive miss and left as <see cref="string.Empty"/> on a
-        /// transient error so the next cycle retries.
+        /// Returns <see langword="null"/> if the service or file is not found; the cache remains as
+        /// <see cref="string.Empty"/> on any miss or transient error so the next cycle retries.
+        /// Only a successful resolution is cached permanently.
         /// </summary>
-        internal static string? ResolveServiceExePath(ref string? cache, string exeFileName, Func<string?> findServiceName, string logPrefix)
+        internal static string? FindExeInServiceDirectory(ref string? cache, string exeFileName, Func<string?> findServiceName, string logPrefix)
         {
             if (cache != string.Empty) return cache;
             try
@@ -222,14 +226,14 @@ namespace qbPortWeaver
                 if (serviceDir is null)
                 {
                     LogManager.Instance.LogDebug($"{logPrefix}: service executable directory not found");
-                    return cache = null;
+                    return null;
                 }
 
                 string exePath = Path.Combine(serviceDir, exeFileName);
                 if (!File.Exists(exePath))
                 {
                     LogManager.Instance.LogDebug($"{logPrefix}: {exeFileName} not found at: {exePath}");
-                    return cache = null;
+                    return null;
                 }
 
                 LogManager.Instance.LogDebug($"{logPrefix}: Found {exeFileName} at: {exePath}");
@@ -257,14 +261,36 @@ namespace qbPortWeaver
         public static bool IsDarkModeEnabled() =>
             SystemColors.Control.GetBrightness() < 0.5f;
 
-        public static readonly Color DarkModeBackground    = Color.FromArgb(30,  30,  30);
-        public static readonly Color DarkModeBorder        = Color.FromArgb(80,  80,  80);
-        public static readonly Color DarkModeSecondaryText = Color.FromArgb(160, 160, 160);
-        public static readonly Color DarkModeCheckedBack   = Color.FromArgb(55,  55,  55);
+        public static readonly Color DarkModeBackground      = Color.FromArgb(30,  30,  30);
+        public static readonly Color DarkModeBorder          = Color.FromArgb(80,  80,  80);
+        public static readonly Color DarkModeSecondaryText   = Color.FromArgb(160, 160, 160);
+        public static readonly Color DarkModeCheckedBack     = Color.FromArgb(55,  55,  55);
         public static readonly Color DarkModeSearchHighlight = Color.FromArgb(100, 85,  0);
-        public static readonly Color LightModeDimmed       = Color.FromArgb(180, 180, 180);
-        public static readonly Color LightModeCheckedBack  = Color.FromArgb(225, 225, 235);
-        public static readonly Color TrayIconDotBorder     = Color.FromArgb(60,  60,  60);
+        public static readonly Color LightModeDimmed         = Color.FromArgb(180, 180, 180);
+        public static readonly Color LightModeCheckedBack    = Color.FromArgb(225, 225, 235);
+        public static readonly Color TrayIconDotBorder       = Color.FromArgb(60,  60,  60);
+
+        // Text and link colors
+        public static readonly Color DarkModeText        = Color.Gainsboro;
+        public static readonly Color DarkModeLinkColor   = Color.CornflowerBlue;
+        public static readonly Color DarkModeMeta        = Color.DimGray;
+        public static readonly Color LightModeSearchHighlight = Color.Yellow;
+
+        // Severity / confidence level colors (paired dark/light)
+        public static readonly Color DarkModeError       = Color.OrangeRed;
+        public static readonly Color LightModeError      = Color.Crimson;
+        public static readonly Color DarkModeWarning     = Color.Gold;
+        public static readonly Color LightModeWarning    = Color.Goldenrod;
+        public static readonly Color DarkModeInfo        = Color.DodgerBlue;
+        public static readonly Color LightModeInfo       = Color.SteelBlue;
+        public static readonly Color LogLevelDebug       = Color.DarkOrange;     // same in both modes
+
+        // Status indicator colors (tray icon dots and status labels)
+        public static readonly Color StatusOk            = Color.LimeGreen;      // tray dot and dark mode label
+        public static readonly Color StatusOkLight       = Color.Green;          // light mode label
+        public static readonly Color StatusWarning       = Color.Orange;         // tray dot and dark mode label
+        public static readonly Color StatusWarningLight  = Color.DarkOrange;     // light mode label
+        public static readonly Color StatusError         = Color.Red;            // tray dot
 
         /// <summary>Opens a URL in the default browser using ShellExecute.</summary>
         public static void OpenUrl(string url)
@@ -275,7 +301,7 @@ namespace qbPortWeaver
             }
             catch (Exception ex)
             {
-                LogManager.Instance.LogMessage($"Failed to open URL: {ex.Message}", LogLevel.Warn);
+                LogManager.Instance.LogMessage($"Failed to open URL '{url}': {ex.Message}", LogLevel.Warn);
             }
         }
     }

@@ -38,7 +38,13 @@ namespace qbPortWeaver
             }
 
             var entry = _clientProcessMap.FirstOrDefault(e => e.ProviderKeyword.Equals(target, StringComparison.OrdinalIgnoreCase));
-            string? serviceName = entry.FindServiceName?.Invoke();
+            if (entry.FindServiceName is null)
+            {
+                LogManager.Instance.LogMessage($"Unknown VPN provider '{target}' - skipping recovery", LogLevel.Warn);
+                return;
+            }
+
+            string? serviceName = entry.FindServiceName.Invoke();
             if (serviceName is null)
             {
                 LogManager.Instance.LogMessage($"Could not find Windows service for '{target}' - skipping recovery", LogLevel.Warn);
@@ -47,14 +53,11 @@ namespace qbPortWeaver
 
             await HelperServiceClient.SendRestartAsync(serviceName).ConfigureAwait(false);
 
-            if (entry.GetClientProcessName is not null)
-            {
-                // Give the helper service time to stop/restart the VPN service before
-                // we kill and relaunch the client process - the client should come up
-                // after the service is running, not before.
-                await Task.Delay(ServiceHeadStartDelayMs, cancellationToken).ConfigureAwait(false);
-                await RestartClientProcessAsync(entry.GetClientProcessName(), entry.GetInstalledExePath, cancellationToken).ConfigureAwait(false);
-            }
+            // Give the helper service time to stop/restart the VPN service before
+            // we kill and relaunch the client process - the client should come up
+            // after the service is running, not before.
+            await Task.Delay(ServiceHeadStartDelayMs, cancellationToken).ConfigureAwait(false);
+            await RestartClientProcessAsync(entry.GetClientProcessName(), entry.GetInstalledExePath, cancellationToken).ConfigureAwait(false);
         }
 
         // Kills all instances of the named client process (capturing the exe path first),

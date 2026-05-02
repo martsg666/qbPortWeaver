@@ -279,7 +279,11 @@ internal static partial class AutoRecovery
                         logger.LogWarn($"Service '{sc.ServiceName}' process (PID {pid}) already exited");
                         return;
                     }
-                    catch (System.ComponentModel.Win32Exception) { return; } // access denied or process protected
+                    catch (System.ComponentModel.Win32Exception ex)
+                    {
+                        logger.LogWarn($"Service '{sc.ServiceName}' process (PID {pid}) could not be killed - access denied or process protected: {ex.Message}");
+                        return;
+                    }
 
                     if (process.WaitForExit(ProcessKillTimeoutMs))
                     {
@@ -316,9 +320,10 @@ internal static partial class AutoRecovery
                         logger.LogWarn($"Service '{sc.ServiceName}' process (PID {pid}) already exited");
                         return;
                     }
-                    catch (System.ComponentModel.Win32Exception)
+                    catch (System.ComponentModel.Win32Exception ex)
                     {
-                        return; // access denied or process protected
+                        logger.LogWarn($"Service '{sc.ServiceName}' process (PID {pid}) could not be killed on retry - access denied or process protected: {ex.Message}");
+                        return;
                     }
 
                     if (process.WaitForExit(ProcessKillTimeoutMs))

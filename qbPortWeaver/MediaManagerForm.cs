@@ -28,6 +28,7 @@ namespace qbPortWeaver
         {
             InitializeComponent();
             Text = $"{AppConstants.AppName} | Media Manager";
+            rtbTmdbOverview.Enter += (s, e) => dgvResults.Focus();
         }
 
         protected override void OnLoad(EventArgs e)
@@ -35,17 +36,15 @@ namespace qbPortWeaver
             base.OnLoad(e);
             MinimumSize = Size; // lock minimum to initial window size so controls are never clipped
             _isDarkMode     = AppConstants.IsDarkModeEnabled();
-            _colorUncertain = _isDarkMode ? Color.Gold      : Color.Goldenrod;
-            _colorUnmatched = _isDarkMode ? Color.OrangeRed : Color.Crimson;
+            _colorUncertain = _isDarkMode ? AppConstants.DarkModeWarning : AppConstants.LightModeWarning;
+            _colorUnmatched = _isDarkMode ? AppConstants.DarkModeError   : AppConstants.LightModeError;
             lblLegendUncertain.ForeColor = _colorUncertain;
             lblLegendUnmatched.ForeColor = _colorUnmatched;
             rtbTmdbOverview.Font      = Font;
             rtbTmdbOverview.ForeColor = ForeColor;
             if (_isDarkMode)
-            {
-                rtbTmdbOverview.BackColor = AppConstants.DarkModeBackground;
-                rtbTmdbOverview.ForeColor = Color.Gainsboro;
-            }
+                rtbTmdbOverview.ForeColor = AppConstants.DarkModeText;
+            rtbTmdbOverview.Enter += (s, e) => dgvResults.Focus();
             SetupTooltips();
             SetupGridContextMenu();
             LoadSettings();
@@ -110,7 +109,7 @@ namespace qbPortWeaver
         private void LoadSettings()
         {
             chkEnabled.Checked       = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionMedia, RegistrySettingsManager.KeyMediaEnabled);
-            txtTmdbApiKey.Text       = RegistrySettingsManager.GetEncryptedValue(RegistrySettingsManager.SectionMedia, RegistrySettingsManager.KeyTmdbApiKey);
+            txtTmdbApiKey.Text       = RegistrySettingsManager.GetTmdbApiKey();
             chkDryRun.Checked        = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionMedia, RegistrySettingsManager.KeyMediaDryRun);
             chkCreateFolders.Checked      = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionMedia, RegistrySettingsManager.KeyMediaCreateFolders);
             chkDeleteEmptyFolders.Checked = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionMedia, RegistrySettingsManager.KeyMediaDeleteEmptyFolders);
@@ -136,7 +135,7 @@ namespace qbPortWeaver
         private void SaveSettings()
         {
             RegistrySettingsManager.SetBool(RegistrySettingsManager.SectionMedia,  RegistrySettingsManager.KeyMediaEnabled,      chkEnabled.Checked);
-            RegistrySettingsManager.SetEncryptedValue(RegistrySettingsManager.SectionMedia, RegistrySettingsManager.KeyTmdbApiKey, txtTmdbApiKey.Text.Trim());
+            RegistrySettingsManager.SetTmdbApiKey(txtTmdbApiKey.Text.Trim());
             RegistrySettingsManager.SetBool(RegistrySettingsManager.SectionMedia,  RegistrySettingsManager.KeyMediaDryRun,        chkDryRun.Checked);
             RegistrySettingsManager.SetBool(RegistrySettingsManager.SectionMedia,  RegistrySettingsManager.KeyMediaCreateFolders,      chkCreateFolders.Checked);
             RegistrySettingsManager.SetBool(RegistrySettingsManager.SectionMedia,  RegistrySettingsManager.KeyMediaDeleteEmptyFolders, chkDeleteEmptyFolders.Checked);
@@ -830,12 +829,12 @@ namespace qbPortWeaver
             foreach (DataGridViewRow row in dgvResults.Rows)
             {
                 if (row.Index != editedRowIndex)
-                    TryUpdateSiblingShowFolder(row, editedShowName, newShowFolder);
+                    UpdateSiblingShowFolder(row, editedShowName, newShowFolder);
             }
         }
 
         // Updates a single sibling row's show folder if it belongs to the same TV show.
-        private void TryUpdateSiblingShowFolder(DataGridViewRow row, string editedShowName, string newShowFolder)
+        private void UpdateSiblingShowFolder(DataGridViewRow row, string editedShowName, string newShowFolder)
         {
             if (row.Tag is not RowData rd) return;
             if (rd.Proposal.MediaType != MediaProposal.TypeTvShow) return;

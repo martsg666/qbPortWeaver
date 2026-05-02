@@ -18,7 +18,7 @@ namespace qbPortWeaver
             if (!RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionMedia, RegistrySettingsManager.KeyMediaEnabled))
                 return;
 
-            var apiKey = RegistrySettingsManager.GetEncryptedValue(RegistrySettingsManager.SectionMedia, RegistrySettingsManager.KeyTmdbApiKey);
+            var apiKey = RegistrySettingsManager.GetTmdbApiKey();
             if (string.IsNullOrWhiteSpace(apiKey))
             {
                 LogManager.Instance.LogMessage("TMDB API key not configured - skipping import", LogLevel.Warn, Subsystem.MediaManager);
@@ -304,8 +304,8 @@ namespace qbPortWeaver
             {
                 if (hasNfoFiles)
                 {
-                    foreach (var nfo in Directory.GetFiles(dir))
-                        File.Delete(nfo);
+                    foreach (var file in Directory.GetFiles(dir))
+                        File.Delete(file);
                 }
                 Directory.Delete(dir);
                 string reason = hasNfoFiles ? "nfo-only" : "empty";
@@ -347,7 +347,7 @@ namespace qbPortWeaver
             var libraryTask = Task.Run(() => MediaImporter.BuildLibraryIndex(moviesLibraryPath, tvShowsLibraryPath, allowReuse: allowLibraryReuse, cancellationToken), cancellationToken);
             var enumerated  = await EnumerateSourceFoldersAsync(validFolders, cancellationToken).ConfigureAwait(false);
             await libraryTask.ConfigureAwait(false);
-            var classified  = await FingerprintSourceFoldersAsync(enumerated, cancellationToken).ConfigureAwait(false);
+            var classified  = await ClassifySourceFoldersAsync(enumerated, cancellationToken).ConfigureAwait(false);
             int total       = classified.Sum(c => c.Items.MovieFiles.Length + c.Items.TvShowFiles.Length);
 
             return (tmdb, classified, total);
@@ -399,7 +399,7 @@ namespace qbPortWeaver
         // Folders are processed sequentially so that a single Parallel.ForEach (degree MediaImporter.FingerprintParallelism)
         // is active at a time - processing folders concurrently would multiply the parallelism by the folder count.
         // sourceFpToPath is shared across all folders so source duplicates spanning multiple folders are detected.
-        private static Task<List<(string Folder, (string[] MovieFiles, string[] TvShowFiles) Items)>> FingerprintSourceFoldersAsync(
+        private static Task<List<(string Folder, (string[] MovieFiles, string[] TvShowFiles) Items)>> ClassifySourceFoldersAsync(
             List<(string Folder, List<FileInfo> Candidates)> enumerated, CancellationToken cancellationToken)
         {
             return Task.Run(() =>
@@ -413,7 +413,7 @@ namespace qbPortWeaver
                     cancellationToken.ThrowIfCancellationRequested();
                     try
                     {
-                        classified.Add((e.Folder, FingerprintCandidates(e.Candidates, sourceFpToPath, cancellationToken)));
+                        classified.Add((e.Folder, ClassifyCandidates(e.Candidates, sourceFpToPath, cancellationToken)));
                     }
                     catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
                     {
@@ -439,7 +439,7 @@ namespace qbPortWeaver
         // Each candidate requires a 128 KB read; reads are bounded by MediaImporter.FingerprintParallelism.
         // fpToPath maps each fingerprint to the first source path that produced it (shared across folders).
         // Files already in the library are silently skipped; additional source copies of the same content are warned.
-        private static (string[] MovieFiles, string[] TvShowFiles) FingerprintCandidates(
+        private static (string[] MovieFiles, string[] TvShowFiles) ClassifyCandidates(
             List<FileInfo> candidates, ConcurrentDictionary<string, string> fpToPath, CancellationToken cancellationToken)
         {
             var movieFiles  = new ConcurrentBag<string>();
@@ -453,7 +453,7 @@ namespace qbPortWeaver
                     try { fp = MediaImporter.GetOrComputeSourceFingerprint(fi); }
                     catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
                     {
-                        LogManager.Instance.LogDebug($"MediaManagerService.FingerprintCandidates: Skipped '{fi.Name}': {ex.Message}", Subsystem.MediaManager);
+                        LogManager.Instance.LogDebug($"MediaManagerService.ClassifyCandidates: Skipped '{fi.Name}': {ex.Message}", Subsystem.MediaManager);
                         return;
                     }
 
@@ -473,7 +473,7 @@ namespace qbPortWeaver
                     else if (FileNameParser.IsVideoTvShowEpisode(fi.FullName))
                         tvShowFiles.Add(fi.FullName);
                     else
-                        LogManager.Instance.LogDebug($"MediaManagerService.FingerprintCandidates: Skipped '{fi.Name}' - TV show without a recognized episode", Subsystem.MediaManager);
+                        LogManager.Instance.LogDebug($"MediaManagerService.ClassifyCandidates: Skipped '{fi.Name}' - TV show without a recognized episode", Subsystem.MediaManager);
                 });
 
             return (movieFiles.ToArray(), tvShowFiles.ToArray());
@@ -510,7 +510,7 @@ namespace qbPortWeaver
         {
             if (string.Equals(sourcePath, targetPath, StringComparison.OrdinalIgnoreCase)) return;
 
-            if (MediaImporter.IsDuplicateFile(sourcePath, targetPath))
+            if (MediaImporter.DestinationMatchesSource(sourcePath, targetPath))
             {
                 LogManager.Instance.LogDebug($"MediaManagerService.ImportFile: Skipped '{Path.GetFileName(sourcePath)}' - target already exists", Subsystem.MediaManager);
                 return;

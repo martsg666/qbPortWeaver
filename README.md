@@ -129,7 +129,7 @@ On first run, all settings are initialized with sensible defaults.
 | Username | RPC username (leave empty if authentication is disabled) | - |
 | Password | RPC password (leave empty if authentication is disabled) | - |
 | Process name | Process name for user-space detection (e.g. `transmission-qt`) | `transmission-qt` |
-| Executable | Path to Transmission executable (user-space mode) | - |
+| Executable | Path to Transmission executable (user-space mode) | `C:\Program Files\Transmission\transmission-qt.exe` |
 | Restart after port change | Restart Transmission after updating the port (recommended) | `True` |
 | Force start if not running | Automatically launch Transmission if it is not running | `True` |
 | Default port (0 = disabled) | Fallback port to apply when VPN is not connected | `0` |
@@ -140,7 +140,7 @@ On first run, all settings are initialized with sensible defaults.
 |---|---|---|
 | URL | Deluge Web UI URL | `http://127.0.0.1:8112` |
 | Password | Web UI password | - |
-| Executable | Path to Deluge executable | - |
+| Executable | Path to Deluge executable | `C:\Program Files\Deluge\deluge.exe` |
 | Process name | Process name used to detect if Deluge is running | `deluge` |
 | Restart after port change | Restart Deluge after updating the port (recommended) | `True` |
 | Force start if not running | Automatically launch Deluge if it is not running | `True` |
@@ -339,12 +339,12 @@ The application is designed to always recover. A failing cycle never crashes the
 ```
 master  ──────────────────────────────────────────────────────────────► (always latest release)
            │                                                          ▲
-           │  git checkout -b 2.5.0 origin/2.4.0                    │ git merge --no-ff 2.5.0
+           │  git checkout -b 2.6.0 origin/2.5.0                    │ git merge --no-ff 2.6.0
            ▼                                                          │
-2.5.0   ──┬───────────────────────────────────────── git tag v2.5.0 ─┘
+2.6.0   ──┬───────────────────────────────────────── git tag v2.6.0 ─┘
            │                                                  │
-           ├── fix/some-bug   → PR → merge into 2.5.0         └─► CI/CD pipeline triggers
-           └── feature/new-ui → PR → merge into 2.5.0               ├─ dotnet publish (self-contained win-x64)
+           ├── fix/some-bug   → PR → merge into 2.6.0         └─► CI/CD pipeline triggers
+           └── feature/new-ui → PR → merge into 2.6.0               ├─ dotnet publish (self-contained win-x64)
                                                                       ├─ WiX MSI build
                                                                       ├─ GitHub Release created
                                                                       └─ MSI + .nupkg uploaded to release
@@ -354,35 +354,35 @@ master  ────────────────────────
 
 1. **Create a release branch** from the previous release branch:
    ```
-   git checkout -b 2.5.0 origin/2.4.0
-   git push -u origin 2.5.0
+   git checkout -b 2.6.0 origin/2.5.0
+   git push -u origin 2.6.0
    ```
 
 2. **Create fix or feature branches** off the release branch and open a PR targeting it:
    ```
-   git checkout -b fix/my-fix origin/2.5.0
+   git checkout -b fix/my-fix origin/2.6.0
    # or
-   git checkout -b feature/my-feature origin/2.5.0
+   git checkout -b feature/my-feature origin/2.6.0
    ```
 
 3. **Tag the release branch** once all testing is complete - this triggers the pipeline:
    ```
-   git tag v2.5.0 origin/2.5.0
-   git push origin v2.5.0
+   git tag v2.6.0 origin/2.6.0
+   git push origin v2.6.0
    ```
    Pushing the tag automatically triggers the **Build and Release** pipeline, which builds the app, compiles the MSI installer, creates the GitHub Release, and uploads the MSI and Chocolatey package as release assets. Once the previous Chocolatey version is approved, run the **Publish to Chocolatey** workflow manually from the Actions tab.
 
 4. **Merge the release branch into `master`** after the pipeline completes successfully:
    ```
    git checkout master
-   git merge --no-ff 2.5.0
+   git merge --no-ff 2.6.0
    git push origin master
    ```
 
 5. **Do not delete release branches.** They serve as the base for future hotfixes. If a branch is accidentally deleted it can be reconstructed from its tag:
    ```
-   git checkout -b 2.5.0 v2.5.0
-   git push origin 2.5.0
+   git checkout -b 2.6.0 v2.6.0
+   git push origin 2.6.0
    ```
 
 ---

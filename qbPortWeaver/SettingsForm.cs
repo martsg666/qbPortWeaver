@@ -101,7 +101,7 @@ namespace qbPortWeaver
             // NAT-PMP adapter discovery is async to avoid blocking the UI.
             // Launched after VPN provider is set so the completion callback reads the correct state.
             string savedAdapter = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyNatPmpAdapterName);
-            _ = PopulateNatPmpAdaptersAsync(savedAdapter); // fire-and-forget; exceptions are handled inside PopulateNatPmpAdaptersAsync
+            _ = DiscoverNatPmpAdaptersAsync(savedAdapter); // fire-and-forget; exceptions are handled inside DiscoverNatPmpAdaptersAsync
 
             nudUpdateInterval.Value = Math.Clamp(
                 RegistrySettingsManager.GetInt(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyUpdateIntervalSeconds),
@@ -116,7 +116,7 @@ namespace qbPortWeaver
             // qBittorrent
             txtQBittorrentURL.Text         = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyQBittorrentUrl);
             txtQBittorrentUserName.Text    = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyQBittorrentUserName);
-            txtQBittorrentPassword.Text    = RegistrySettingsManager.GetPassword();
+            txtQBittorrentPassword.Text    = RegistrySettingsManager.GetQBittorrentPassword();
             txtQBittorrentExePath.Text     = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyQBittorrentExePath);
             txtQBittorrentProcessName.Text = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyQBittorrentProcessName);
 
@@ -186,7 +186,7 @@ namespace qbPortWeaver
             // qBittorrent
             RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyQBittorrentUrl,          txtQBittorrentURL.Text.Trim());
             RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyQBittorrentUserName,     txtQBittorrentUserName.Text.Trim());
-            RegistrySettingsManager.SetPassword(txtQBittorrentPassword.Text);
+            RegistrySettingsManager.SetQBittorrentPassword(txtQBittorrentPassword.Text);
             RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyQBittorrentExePath,      txtQBittorrentExePath.Text.Trim());
             RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyQBittorrentProcessName,  txtQBittorrentProcessName.Text.Trim());
             RegistrySettingsManager.SetBool (RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyRestartQBittorrent,      chkRestartQBittorrent.Checked);
@@ -292,7 +292,7 @@ namespace qbPortWeaver
             SetPortSyncControlsEnabled(!isDisabled);
 
             // Only enable the adapter combo and refresh button if NAT-PMP is selected AND discovery has finished
-            // (discovery replaces the placeholder and re-enables them via PopulateNatPmpAdaptersAsync)
+            // (discovery replaces the placeholder and re-enables them via DiscoverNatPmpAdaptersAsync)
             bool isNatPmp = cboVpnProvider.SelectedItem?.ToString() == RegistrySettingsManager.VpnProviderNatPmp;
             bool discoveryPending = cboNatPmpAdapter.Items.Count == 1 &&
                                     cboNatPmpAdapter.Items[0]?.ToString() == DiscoveringAdaptersPlaceholder;
@@ -311,7 +311,7 @@ namespace qbPortWeaver
             cboNatPmpAdapter.Items.Add(DiscoveringAdaptersPlaceholder);
             cboNatPmpAdapter.SelectedIndex = 0;
             SetAdapterControlsEnabled(false);
-            _ = PopulateNatPmpAdaptersAsync(current); // fire-and-forget; exceptions are handled inside PopulateNatPmpAdaptersAsync
+            _ = DiscoverNatPmpAdaptersAsync(current); // fire-and-forget; exceptions are handled inside DiscoverNatPmpAdaptersAsync
         }
 
         private void btnBrowseExePath_Click(object? sender, EventArgs e)
@@ -406,7 +406,7 @@ namespace qbPortWeaver
             btnRefreshAdapters.Enabled = enabled;
         }
 
-        private async Task PopulateNatPmpAdaptersAsync(string savedAdapter)
+        private async Task DiscoverNatPmpAdaptersAsync(string savedAdapter)
         {
             try
             {
@@ -436,7 +436,7 @@ namespace qbPortWeaver
             catch (Exception ex)
             {
                 if (IsDisposed) return;
-                LogManager.Instance.LogDebug($"SettingsForm.PopulateNatPmpAdaptersAsync: {ex.Message}");
+                LogManager.Instance.LogDebug($"SettingsForm.DiscoverNatPmpAdaptersAsync: {ex.Message}");
                 cboNatPmpAdapter.Items.Clear();
                 cboNatPmpAdapter.Items.Add(NoAdaptersFoundPlaceholder);
                 cboNatPmpAdapter.SelectedIndex = 0;

@@ -259,7 +259,10 @@ internal static partial class AutoRecovery
             IntPtr buf     = Marshal.AllocHGlobal(bufSize);
             try
             {
-                if (!QueryServiceStatusEx(sc.ServiceHandle.DangerousGetHandle(),
+                // Pass the SafeHandle directly - the [LibraryImport] marshaller AddRef/Releases
+                // it for the duration of the call so the handle stays valid even if the
+                // ServiceController is finalized concurrently. Avoids DangerousGetHandle.
+                if (!QueryServiceStatusEx(sc.ServiceHandle,
                         ScStatusProcessInfo, buf, bufSize, out _))
                     return;
 
@@ -403,7 +406,7 @@ internal static partial class AutoRecovery
     [LibraryImport("advapi32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static partial bool QueryServiceStatusEx(
-        IntPtr hService, int infoLevel, IntPtr buffer, int bufSize, out int bytesNeeded);
+        SafeHandle hService, int infoLevel, IntPtr buffer, int bufSize, out int bytesNeeded);
 
     [StructLayout(LayoutKind.Sequential)]
     private struct ServiceStatusProcess

@@ -219,7 +219,7 @@ namespace qbPortWeaver
             }
             catch (Exception ex)
             {
-                LogManager.Instance.LogDebug($"RegistrySettingsManager.SetAppValue: {key} - {ex.Message}");
+                LogManager.Instance.LogMessage($"Failed to save app-level setting {key}: {ex.Message}", LogLevel.Warn);
             }
         }
 
@@ -235,7 +235,9 @@ namespace qbPortWeaver
                 using var regKey = Registry.CurrentUser.CreateSubKey(AppKeyPath);
                 if (regKey.GetValue(KeyPipeSessionToken) is string existing && existing.Length > 0)
                     return existing;
-                var token = Guid.NewGuid().ToString("N");
+                // 32 hex chars = 128 bits of CSPRNG entropy. Used to authenticate pipe messages
+                // sent to the SYSTEM helper service; HKCU's per-user ACL is the primary defense.
+                var token = RandomNumberGenerator.GetHexString(32, lowercase: true);
                 regKey.SetValue(KeyPipeSessionToken, token, RegistryValueKind.String);
                 return token;
             }
@@ -309,7 +311,7 @@ namespace qbPortWeaver
             int.TryParse(GetValue(section, key), out int result) ? result : 0;
 
         /// <summary>Reads the qBittorrent password from the registry and decrypts it with DPAPI (CurrentUser scope). Returns an empty string if missing or decryption fails.</summary>
-        public static string GetPassword() =>
+        public static string GetQBittorrentPassword() =>
             GetEncryptedValue(SectionQBittorrent, KeyQBittorrentPassword);
 
         /// <summary>Reads the Transmission password from the registry and decrypts it with DPAPI (CurrentUser scope). Returns an empty string if missing or decryption fails.</summary>
@@ -319,6 +321,14 @@ namespace qbPortWeaver
         /// <summary>Reads the Deluge password from the registry and decrypts it with DPAPI (CurrentUser scope). Returns an empty string if missing or decryption fails.</summary>
         public static string GetDelugePassword() =>
             GetEncryptedValue(SectionDeluge, KeyDelugePassword);
+
+        /// <summary>Reads the TMDB API key from the registry and decrypts it with DPAPI (CurrentUser scope). Returns an empty string if missing or decryption fails.</summary>
+        public static string GetTmdbApiKey() =>
+            GetEncryptedValue(SectionMedia, KeyTmdbApiKey);
+
+        /// <summary>Encrypts <paramref name="plaintext"/> with DPAPI (CurrentUser scope) and writes the result to the registry.</summary>
+        public static void SetTmdbApiKey(string plaintext) =>
+            SetEncryptedValue(SectionMedia, KeyTmdbApiKey, plaintext);
 
         /// <summary>Reads a DPAPI-encrypted string value from the registry. Returns the hardcoded default if the key is missing, empty, or decryption fails.</summary>
         public static string GetEncryptedValue(string section, string key)
@@ -334,7 +344,7 @@ namespace qbPortWeaver
                         byte[] decrypted = ProtectedData.Unprotect(encrypted, null, DataProtectionScope.CurrentUser);
                         return Encoding.UTF8.GetString(decrypted);
                     }
-                    catch (Exception)
+                    catch (Exception ex) when (ex is CryptographicException or FormatException or ArgumentException)
                     {
                         // Not a valid DPAPI blob - return the raw value as-is for backward compatibility
                         // (existing installations may have plaintext values that were stored before encryption was added)
@@ -371,7 +381,7 @@ namespace qbPortWeaver
             SetValue(section, key, value ? ValueTrue : ValueFalse);
 
         /// <summary>Encrypts <paramref name="plaintext"/> with DPAPI (CurrentUser scope) and writes the result to the registry.</summary>
-        public static void SetPassword(string plaintext) =>
+        public static void SetQBittorrentPassword(string plaintext) =>
             SetEncryptedValue(SectionQBittorrent, KeyQBittorrentPassword, plaintext);
 
         /// <summary>Encrypts <paramref name="plaintext"/> with DPAPI (CurrentUser scope) and writes the result to the registry.</summary>

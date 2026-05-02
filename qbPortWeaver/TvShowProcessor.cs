@@ -58,7 +58,7 @@ namespace qbPortWeaver
 
             var proposedPath = BuildEpisodePath(filePath, info, episodeInfo, libraryPath, createFolders);
 
-            if (MediaImporter.IsDuplicateFile(filePath, proposedPath)) return;
+            if (MediaImporter.DestinationMatchesSource(filePath, proposedPath)) return;
 
             if (!string.Equals(filePath, proposedPath, StringComparison.OrdinalIgnoreCase))
                 proposals.Add(new MediaProposal(MediaProposal.TypeTvShow, filePath, proposedPath, isConfident, PosterPath: info.PosterPath, TmdbId: info.TmdbId, VoteCount: info.VoteCount, Overview: info.Overview));

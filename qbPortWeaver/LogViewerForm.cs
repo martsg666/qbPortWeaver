@@ -651,6 +651,7 @@ namespace qbPortWeaver
                     case '{':  sb.Append("\\{");  break;
                     case '}':  sb.Append("\\}");  break;
                     default:
+                        if (c == '\0') break; // NUL terminates RTF in RichEdit; skip to avoid corrupting the document
                         if (c > 127) sb.Append($"\\u{(int)(short)c} ");
                         else sb.Append(c);
                         break;

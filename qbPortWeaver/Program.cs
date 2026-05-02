@@ -15,12 +15,14 @@ namespace qbPortWeaver
             Application.SetColorMode(ReadColorTheme());
             ApplicationConfiguration.Initialize();
 
-            // Enforce single instance using a named mutex.
+            // Enforce single instance per Windows user using a named mutex.
+            // Local\ prefix scopes the mutex to the current session so each Windows user can run
+            // their own instance (settings, credentials and pipe token are all per-user).
             // Using initiallyOwned: false + WaitOne(0) instead of the initiallyOwned: true constructor
             // overload so that an AbandonedMutexException (thrown when a previous instance crashed
             // without releasing the mutex) can be caught and treated as "we are the new instance".
             // The OS transfers ownership to us when the mutex is abandoned, so the catch is safe.
-            using var mutex = new Mutex(false, "Global\\qbPortWeaver_SingleInstance");
+            using var mutex = new Mutex(false, "Local\\qbPortWeaver_SingleInstance");
             bool isNewInstance;
             try   { isNewInstance = mutex.WaitOne(0); }
             catch (AbandonedMutexException) { isNewInstance = true; }

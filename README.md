@@ -129,7 +129,7 @@ On first run, all settings are initialized with sensible defaults.
 | Username | RPC username (leave empty if authentication is disabled) | - |
 | Password | RPC password (leave empty if authentication is disabled) | - |
 | Process name | Process name for user-space detection (e.g. `transmission-qt`) | `transmission-qt` |
-| Executable | Path to Transmission executable (user-space mode) | - |
+| Executable | Path to Transmission executable (user-space mode) | `C:\Program Files\Transmission\transmission-qt.exe` |
 | Restart after port change | Restart Transmission after updating the port (recommended) | `True` |
 | Force start if not running | Automatically launch Transmission if it is not running | `True` |
 | Default port (0 = disabled) | Fallback port to apply when VPN is not connected | `0` |
@@ -140,7 +140,7 @@ On first run, all settings are initialized with sensible defaults.
 |---|---|---|
 | URL | Deluge Web UI URL | `http://127.0.0.1:8112` |
 | Password | Web UI password | - |
-| Executable | Path to Deluge executable | - |
+| Executable | Path to Deluge executable | `C:\Program Files\Deluge\deluge.exe` |
 | Process name | Process name used to detect if Deluge is running | `deluge` |
 | Restart after port change | Restart Deluge after updating the port (recommended) | `True` |
 | Force start if not running | Automatically launch Deluge if it is not running | `True` |

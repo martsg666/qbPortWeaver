@@ -103,7 +103,7 @@ namespace qbPortWeaver
 
             var proposedPath = BuildStandaloneMoviePath(filePath, info, libraryPath, createFolders);
 
-            if (MediaImporter.IsDuplicateFile(filePath, proposedPath)) return;
+            if (MediaImporter.DestinationMatchesSource(filePath, proposedPath)) return;
 
             if (!string.Equals(filePath, proposedPath, StringComparison.OrdinalIgnoreCase))
                 proposals.Add(new MediaProposal(MediaProposal.TypeMovie, filePath, proposedPath, isConfident, PosterPath: info.PosterPath, TmdbId: info.TmdbId, VoteCount: info.VoteCount, Overview: info.Overview));
@@ -127,7 +127,7 @@ namespace qbPortWeaver
             {
                 var proposedPath = BuildFolderMoviePath(file, info);
 
-                if (MediaImporter.IsDuplicateFile(file, proposedPath)) continue;
+                if (MediaImporter.DestinationMatchesSource(file, proposedPath)) continue;
 
                 if (!string.Equals(file, proposedPath, StringComparison.OrdinalIgnoreCase))
                     proposals.Add(new MediaProposal(MediaProposal.TypeMovie, file, proposedPath, isConfident, PosterPath: info.PosterPath, TmdbId: info.TmdbId, VoteCount: info.VoteCount, Overview: info.Overview));

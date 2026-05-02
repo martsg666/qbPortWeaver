@@ -34,7 +34,7 @@ namespace qbPortWeaver
         /// <inheritdoc/>
         public override async Task<(int? ListenPort, string? CurrentInterfaceName)> GetPreferencesAsync(CancellationToken cancellationToken = default)
         {
-            if (!await EnsureAuthenticatedAsync().ConfigureAwait(false)) return (null, null);
+            if (!await EnsureAuthenticatedAsync(cancellationToken).ConfigureAwait(false)) return (null, null);
 
             try
             {
@@ -79,7 +79,7 @@ namespace qbPortWeaver
         /// <inheritdoc/>
         public override async Task<bool> SetListeningPortAsync(int port, CancellationToken cancellationToken = default)
         {
-            if (!await EnsureAuthenticatedAsync().ConfigureAwait(false)) return false;
+            if (!await EnsureAuthenticatedAsync(cancellationToken).ConfigureAwait(false)) return false;
 
             try
             {
@@ -124,7 +124,7 @@ namespace qbPortWeaver
             Task.Delay(ConfigFlushWaitMs, cancellationToken);
 
         /// <inheritdoc/>
-        protected override async Task<bool> AuthenticateAsync()
+        protected override async Task<bool> AuthenticateAsync(CancellationToken cancellationToken = default)
         {
             try
             {
@@ -132,7 +132,7 @@ namespace qbPortWeaver
                 string encodedPassword = JsonSerializer.Serialize(_password);
                 var body = $$$"""{"method":"auth.login","params":[{{{encodedPassword}}}],"id":{{{_rpcId++}}}}""";
                 using var content  = new StringContent(body, Encoding.UTF8, "application/json");
-                using var response = await _httpClient.PostAsync($"{_url}{RpcPath}", content).ConfigureAwait(false);
+                using var response = await _httpClient.PostAsync($"{_url}{RpcPath}", content, cancellationToken).ConfigureAwait(false);
 
                 if (!response.IsSuccessStatusCode)
                 {

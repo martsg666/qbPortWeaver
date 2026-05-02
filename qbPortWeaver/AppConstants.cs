@@ -57,7 +57,7 @@ namespace qbPortWeaver
         {
             try
             {
-                if (File.Exists(path)) File.Delete(path);
+                File.Delete(path); // no-op if the file does not exist
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
@@ -75,7 +75,7 @@ namespace qbPortWeaver
         }
 
         /// <summary>Returns the full path to the ProtonVPN log file, resolved from the registry setting.</summary>
-        public static string GetProtonVPNLogFilePath() => Path.Combine(
+        public static string GetProtonVpnLogFilePath() => Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             RegistrySettingsManager.GetAppValue(RegistrySettingsManager.KeyProtonVpnLogFilePath));
 
@@ -112,7 +112,7 @@ namespace qbPortWeaver
             }
             catch (Exception ex)
             {
-                LogManager.Instance.LogMessage($"Failed to run taskkill fallback: {ex.Message}", LogLevel.Warn);
+                LogManager.Instance.LogMessage($"Failed to run taskkill fallback for PID {process.Id}: {ex.Message}", LogLevel.Warn);
             }
             if (process.WaitForExit(timeoutMs)) return true;
 
@@ -203,7 +203,11 @@ namespace qbPortWeaver
 
                 return Path.GetDirectoryName(Path.GetFullPath(imagePath));
             }
-            catch { return null; }
+            catch (Exception ex)
+            {
+                LogManager.Instance.LogDebug($"AppConstants.GetServiceExeDirectory: {serviceName} - {ex.Message}");
+                return null;
+            }
         }
 
         /// <summary>
@@ -297,7 +301,7 @@ namespace qbPortWeaver
             }
             catch (Exception ex)
             {
-                LogManager.Instance.LogMessage($"Failed to open URL: {ex.Message}", LogLevel.Warn);
+                LogManager.Instance.LogMessage($"Failed to open URL '{url}': {ex.Message}", LogLevel.Warn);
             }
         }
     }

@@ -184,12 +184,8 @@ namespace qbPortWeaver
                 var fileInfo = new FileInfo(LogFilePath);
                 if (fileInfo.Length > MaxSize)
                 {
-                    // Delete oldest backup if we already have max files
-                    string oldestBackup = $"{LogFilePath}.{MaxLogFiles - 1}";
-                    if (File.Exists(oldestBackup))
-                        File.Delete(oldestBackup);
-
-                    // Shift existing backups up: .1 → .2
+                    // Shift existing backups up (.1 → .2, etc.). The highest-numbered backup
+                    // is overwritten by the shift, so the oldest entries are dropped.
                     RotateBackupFiles();
 
                     // Move current log to .1

@@ -81,7 +81,7 @@ namespace qbPortWeaver
         public override async Task<bool> RestartAsync(CancellationToken cancellationToken = default)
         {
             string? serviceName = GetEffectiveServiceName();
-            bool isService = serviceName is not null && await IsConfigDirSystemWideAsync().ConfigureAwait(false);
+            bool isService = serviceName is not null && await IsConfigDirSystemWideAsync(cancellationToken).ConfigureAwait(false);
             LogManager.Instance.LogMessage(
                 $"{ClientName} restarting in {(isService ? $"service mode. Service name: {serviceName}" : "process mode")}",
                 LogLevel.Info);
@@ -188,7 +188,7 @@ namespace qbPortWeaver
 
         /// <inheritdoc/>
         // Transmission uses X-Transmission-Session-Id header exchange in SendRpcAsync instead of a login step.
-        protected override Task<bool> AuthenticateAsync() => Task.FromResult(true);
+        protected override Task<bool> AuthenticateAsync(CancellationToken cancellationToken = default) => Task.FromResult(true);
 
         private async Task<bool> RestartServiceModeAsync(string serviceName, CancellationToken cancellationToken)
         {
@@ -313,12 +313,12 @@ namespace qbPortWeaver
         // root (C:\Users\...), which confirms the daemon is running rather than the Qt desktop client.
         // Covers all system account locations: %ProgramData%, ServiceProfiles\LocalService,
         // ServiceProfiles\NetworkService, system32\config\systemprofile, etc.
-        private async Task<bool> IsConfigDirSystemWideAsync()
+        private async Task<bool> IsConfigDirSystemWideAsync(CancellationToken cancellationToken = default)
         {
             try
             {
                 const string body = """{"method":"session-get","arguments":{"fields":["config-dir"]}}""";
-                using var response = await SendRpcAsync(body).ConfigureAwait(false);
+                using var response = await SendRpcAsync(body, cancellationToken).ConfigureAwait(false);
                 if (response is null || !response.IsSuccessStatusCode) return false;
 
                 var json = await response.Content.ReadAsStringAsync().ConfigureAwait(false);

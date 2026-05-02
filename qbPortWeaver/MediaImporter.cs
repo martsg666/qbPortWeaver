@@ -135,7 +135,7 @@ namespace qbPortWeaver
             if (string.Equals(sourcePath, destinationPath, StringComparison.OrdinalIgnoreCase))
                 return;
 
-            if (IsDuplicateFile(sourcePath, destinationPath))
+            if (DestinationMatchesSource(sourcePath, destinationPath))
             {
                 LogManager.Instance.LogDebug($"MediaImporter.AddFileToLibrary: Skipped '{Path.GetFileName(destinationPath)}' - target already exists with same fingerprint", Subsystem.MediaManager);
                 return;
@@ -185,8 +185,8 @@ namespace qbPortWeaver
             AddToLibraryIndex(destinationPath);
         }
 
-        /// <summary>Returns <see langword="true"/> if the destination file already exists and has the same fingerprint as the source.</summary>
-        internal static bool IsDuplicateFile(string sourcePath, string destinationPath)
+        /// <summary>Returns <see langword="true"/> if the destination file already exists and its fingerprint matches the source - i.e. the source was already imported.</summary>
+        internal static bool DestinationMatchesSource(string sourcePath, string destinationPath)
         {
             if (!File.Exists(destinationPath))
                 return false;
@@ -578,7 +578,17 @@ namespace qbPortWeaver
                 // Create before GetOrAdd so we can tell whether this thread won the race.
                 var newLazy = new Lazy<string>(() => ComputeFingerprint(fi.FullName));
                 var lazy    = _sourceInFlight.GetOrAdd(fi.FullName, newLazy);
-                string fp   = lazy.Value;
+                string fp;
+                try
+                {
+                    fp = lazy.Value;
+                }
+                catch
+                {
+                    // Remove the failed Lazy so the file can be retried on the next cycle.
+                    _sourceInFlight.TryRemove(new KeyValuePair<string, Lazy<string>>(fi.FullName, lazy));
+                    throw;
+                }
                 // Remove only our Lazy instance so a newer entry for the same path is left untouched.
                 _sourceInFlight.TryRemove(new KeyValuePair<string, Lazy<string>>(fi.FullName, lazy));
 

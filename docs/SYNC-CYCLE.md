@@ -236,7 +236,7 @@ The Media Manager scan is split into two phases that partially overlap for perfo
     FileInfo metadata (size, last-write) comes from the directory listing -    │
     no extra stat per file. Filters to video files that are ready for import.  │
                                                                                │
-                           Phase 2: FingerprintSourceFoldersAsync ─────────── ▼ (waits for both)
+                           Phase 2: ClassifySourceFoldersAsync ─────────── ▼ (waits for both)
                              For each enumerated file, reads 128 KB (first +
                              last 64 KB) and computes a size:SHA-256 fingerprint.
                              Parallel.ForEach (degree 8) keeps storage throughput
@@ -247,7 +247,7 @@ The Media Manager scan is split into two phases that partially overlap for perfo
 
 ### Lazy Fingerprint Deduplication
 
-If `ImportAsync` and `ScanAsync` overlap (e.g. a manual **Scan Now** triggered while a sync cycle is running), both call `FingerprintSourceFoldersAsync` concurrently. A `ConcurrentDictionary<string, Lazy<string>>` ensures that when two threads race on the same source file, only one issues the 128 KB read while the other waits on the same `Lazy<string>` and reuses the result.
+If `ImportAsync` and `ScanAsync` overlap (e.g. a manual **Scan Now** triggered while a sync cycle is running), both call `ClassifySourceFoldersAsync` concurrently. A `ConcurrentDictionary<string, Lazy<string>>` ensures that when two threads race on the same source file, only one issues the 128 KB read while the other waits on the same `Lazy<string>` and reuses the result.
 
 ### Cache Layers
 
@@ -277,8 +277,8 @@ MediaManagerService.ImportAsync / ScanAsync
  ├─ [concurrent] EnumerateSourceFoldersAsync  [Phase 1]
  │   └─ EnumerateSourceFolder (per folder, concurrent)
  │
- ├─ FingerprintSourceFoldersAsync  [Phase 2 - waits for Phase 1 + library index]
- │   └─ FingerprintCandidates (per folder, Parallel.ForEach degree 8)
+ ├─ ClassifySourceFoldersAsync  [Phase 2 - waits for Phase 1 + library index]
+ │   └─ ClassifyCandidates (per folder, Parallel.ForEach degree 8)
  │       └─ MediaImporter.IsAlreadyInLibrary (per file)
  │           └─ GetOrComputeSourceFingerprint (with Lazy deduplication)
  │

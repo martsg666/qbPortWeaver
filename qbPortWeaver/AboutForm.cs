@@ -93,14 +93,14 @@ namespace qbPortWeaver
             catch (Exception ex)
             {
                 LogManager.Instance.LogDebug($"AboutForm.LoadGitHubDataAsync: {ex.Message}");
+                // Surface the failure in the labels and reset the button text. ApplyReleaseInfo(null)
+                // owns the "check failed" text so the success path can keep its "Update" label intact.
+                if (!IsDisposed) ApplyReleaseInfo(null);
             }
             finally
             {
                 if (!IsDisposed)
-                {
                     btnCheckForUpdates.Enabled = true;
-                    btnCheckForUpdates.Text    = "Check for Updates";
-                }
             }
         }
 

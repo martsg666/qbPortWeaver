@@ -149,13 +149,13 @@ namespace qbPortWeaver
         protected virtual void ResetAuthState() => _isAuthenticated = false;
 
         /// <summary>Performs the client-specific authentication handshake. Returns <see langword="true"/> on success.</summary>
-        protected abstract Task<bool> AuthenticateAsync();
+        protected abstract Task<bool> AuthenticateAsync(CancellationToken cancellationToken = default);
 
         // Authenticates once per instance; subsequent calls reuse the existing session.
-        protected async Task<bool> EnsureAuthenticatedAsync()
+        protected async Task<bool> EnsureAuthenticatedAsync(CancellationToken cancellationToken = default)
         {
             if (_isAuthenticated) return true;
-            _isAuthenticated = await AuthenticateAsync().ConfigureAwait(false);
+            _isAuthenticated = await AuthenticateAsync(cancellationToken).ConfigureAwait(false);
             return _isAuthenticated;
         }
 

@@ -37,7 +37,7 @@ namespace qbPortWeaver
         /// <inheritdoc/>
         public override async Task<(int? ListenPort, string? CurrentInterfaceName)> GetPreferencesAsync(CancellationToken cancellationToken = default)
         {
-            if (!await EnsureAuthenticatedAsync().ConfigureAwait(false)) return (null, null);
+            if (!await EnsureAuthenticatedAsync(cancellationToken).ConfigureAwait(false)) return (null, null);
 
             try
             {
@@ -89,7 +89,7 @@ namespace qbPortWeaver
         /// <inheritdoc/>
         public override async Task<bool> SetListeningPortAsync(int port, CancellationToken cancellationToken = default)
         {
-            if (!await EnsureAuthenticatedAsync().ConfigureAwait(false)) return false;
+            if (!await EnsureAuthenticatedAsync(cancellationToken).ConfigureAwait(false)) return false;
 
             try
             {
@@ -115,7 +115,7 @@ namespace qbPortWeaver
         /// <remarks>Returns one of <c>"connected"</c>, <c>"firewalled"</c>, or <c>"disconnected"</c>.</remarks>
         public override async Task<string?> GetConnectionStatusAsync(CancellationToken cancellationToken = default)
         {
-            if (!await EnsureAuthenticatedAsync().ConfigureAwait(false)) return null;
+            if (!await EnsureAuthenticatedAsync(cancellationToken).ConfigureAwait(false)) return null;
 
             try
             {
@@ -143,7 +143,7 @@ namespace qbPortWeaver
         }
 
         /// <inheritdoc/>
-        protected override async Task<bool> AuthenticateAsync()
+        protected override async Task<bool> AuthenticateAsync(CancellationToken cancellationToken = default)
         {
             try
             {
@@ -153,7 +153,7 @@ namespace qbPortWeaver
                     new("password", _password)
                 ]);
 
-                using var response = await _httpClient.PostAsync($"{_url}{ApiAuthLogin}", content).ConfigureAwait(false);
+                using var response = await _httpClient.PostAsync($"{_url}{ApiAuthLogin}", content, cancellationToken).ConfigureAwait(false);
 
                 if (response.StatusCode == HttpStatusCode.Forbidden)
                 {

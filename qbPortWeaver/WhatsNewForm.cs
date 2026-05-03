@@ -10,7 +10,15 @@ namespace qbPortWeaver
             "lost. If you find qbPortWeaver useful, please star it on GitHub.";
 
         private const string ReleaseFeaturesText =
-            "The following features were introduced in earlier releases of qbPortWeaver.\n\n" +
+            "New in 2.5.2\n\n" +
+            "Port update notification\n" +
+            "A tray balloon tip now appears whenever the client's listening port is successfully updated to a new value. " +
+            "Enabled by default - toggle it under Settings > General.\n\n" +
+            "Media Manager - improved startup reliability\n" +
+            "If library folders are temporarily unreachable at startup (for example, a NAS that powers on after the PC), " +
+            "the library index is now retried each cycle until the folders become accessible, " +
+            "preventing stale results from being carried over.\n\n" +
+            "Previously released\n\n" +
             "BitTorrent client support\n" +
             "Automatic port sync for qBittorrent (Web API), Transmission (RPC), and Deluge (Web JSON-RPC). " +
             "Transmission auto-detects service mode vs Qt desktop client.\n\n" +

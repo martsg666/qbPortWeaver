@@ -144,16 +144,21 @@ All client communication goes through the `IBitTorrentClient` interface, with im
    session-set                                                            [Transmission]
    core.set_config                                                        [Deluge]
 
-3. (optional) Restart client process or service (if restart enabled)
-4. (optional) Run post-update shell command
-5. (optional, qBittorrent only) GET /api/v2/transfer/info → check connection_status
+3. (optional) Show tray balloon tip if NotifyOnPortUpdate is enabled (raises PortUpdated event)
+4. (optional) Restart client process or service (if restart enabled)
+5. (optional) Run post-update shell command
+6. (optional, qBittorrent only) GET /api/v2/transfer/info → check connection_status
               If "disconnected" → restart qBittorrent
               Skipped if step 3 already restarted (avoids redundant restart)
 ```
 
 ### Interface Mismatch Warning *(qBittorrent only)*
 
-When enabled, the cycle compares qBittorrent's bound network interface (`current_interface_name` from preferences) against the configured VPN provider name. A mismatch raises the `InterfaceMismatchDetected` event, which shows a balloon tip from the tray icon. This helps catch cases where qBittorrent is routing traffic outside the VPN tunnel. Transmission and Deluge do not expose a named adapter via their APIs, so this check is skipped for those clients.
+When enabled, the cycle compares qBittorrent's bound network interface (`current_interface_name` from preferences) against the configured VPN provider name. A mismatch raises the `InterfaceMismatchDetected` event, which shows a warning balloon tip from the tray icon. This helps catch cases where qBittorrent is routing traffic outside the VPN tunnel. Transmission and Deluge do not expose a named adapter via their APIs, so this check is skipped for those clients.
+
+### Port Update Notification
+
+When `NotifyOnPortUpdate` is enabled (General settings, default on), a successful port change raises the `PortUpdated` event immediately after `ApplyPortUpdateAsync` returns. `MainForm` handles this with a tray balloon tip (`ToolTipIcon.Info`). The notification fires for all three clients.
 
 ## Status Output
 
@@ -208,6 +213,7 @@ RunAsync
          │   ├─ IBitTorrentClient.SetListeningPortAsync
          │   ├─ IBitTorrentClient.RestartAsync
          │   └─ RunPostUpdateCommand
+         ├─ PortUpdated?.Invoke (if NotifyOnPortUpdate and port changed)
          ├─ CheckAndRestartIfDisconnectedAsync (qBittorrent only; skipped if already restarted)
          │   └─ IBitTorrentClient.RestartAsync
          └─ SetSyncResult

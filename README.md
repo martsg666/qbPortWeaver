@@ -45,6 +45,9 @@ The application runs in the system tray, manages configuration and logging, and 
 - **VPN Interface Mismatch Warning** *(qBittorrent only)*
   Shows a tray balloon tip and logs a warning if qBittorrent's network interface does not match the configured VPN provider, or if qBittorrent is bound to all interfaces (which may cause traffic leaks).
 
+- **Port Update Notification**
+  Optionally shows a tray balloon tip when the BitTorrent client's listening port is successfully updated to a new value. Enabled by default. Configurable via Settings > General.
+
 - **Auto-Recovery**
   Automatically recovers when a configurable number of consecutive sync cycles fail - whether the VPN is disconnected or port detection fails despite the VPN being connected. For ProtonVPN and PIA (direct or NAT-PMP mode), the helper restarts the Windows service and the tray app restarts the client process. For NAT-PMP with a generic (non-ProtonVPN/PIA) gateway, the helper cycles the network adapter (disable/enable via netsh). All privileged operations are delegated to a lightweight helper Windows service (`qbPortWeaverHelper`) running as LocalSystem - no UAC prompt required.
 
@@ -102,6 +105,7 @@ On first run, all settings are initialized with sensible defaults.
 | Update interval | How often to check and sync the port (seconds) | `180` |
 | Auto-Recovery | Automatically recover after N consecutive failed sync cycles (VPN disconnected or port detection failure) | `True` |
 | Auto-Recovery trigger cycles | Number of consecutive failed cycles before triggering auto-recovery | `3` |
+| Notify on port update | Show a tray balloon tip when the client's listening port is successfully updated | `True` |
 | Post-update command | Command to run after a successful port update (leave empty to disable) | - |
 | Color theme | Application color theme: `System` (follows Windows), `Dark`, or `Light`. Requires a restart to take effect | `System` |
 | Debug logging | Enable verbose debug logging to the log file | `False` |
@@ -185,6 +189,7 @@ Configured via tray menu → **Media Manager**.
 6. *(qBittorrent only)* If **Warn on interface mismatch** is enabled: checks that qBittorrent's network interface matches the configured VPN provider and shows a tray warning if not.
 7. If ports differ:
    - Updates the client's listening port.
+   - Shows a tray balloon tip if **Notify on port update** is enabled.
    - Restarts the client if configured.
    - Runs the optional post-update command if configured. e.g., `powershell -File "C:\path\to\SampleSendMail.ps1"`
 8. *(qBittorrent only)* If **Restart on disconnect** is enabled (and qBittorrent was not already restarted in step 7): checks qBittorrent's connection status and restarts it if disconnected.

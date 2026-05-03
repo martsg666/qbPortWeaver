@@ -10,15 +10,24 @@ namespace qbPortWeaver
             "lost. If you find qbPortWeaver useful, please star it on GitHub.";
 
         private const string ReleaseFeaturesText =
-            "Transmission and Deluge support\n" +
-            "qbPortWeaver can now manage the listening port for Transmission and Deluge in addition to qBittorrent. " +
-            "Configure your client under Settings - each client has its own URL, credentials, and restart options.\n\n" +
-            "Transmission runs in service mode (Windows service) or process mode (Qt desktop client) and is detected automatically.\n\n" +
-            "Deluge connects via its Web UI JSON-RPC API. A configurable flush wait ensures the port change is written to disk before restart.\n\n" +
-            "Media Manager - TMDB detail panel\n" +
-            "Selecting a result row in Media Manager now shows a detail panel at the bottom of the window with the matched title, " +
-            "TMDB ID, confidence indicator, a poster thumbnail, and an overview description.\n\n" +
-            "Note: if you have used Media Manager before, click Clear Cache once to populate poster thumbnails and descriptions for previously cached titles.";
+            "The following features were introduced in earlier releases of qbPortWeaver.\n\n" +
+            "BitTorrent client support\n" +
+            "Automatic port sync for qBittorrent (Web API), Transmission (RPC), and Deluge (Web JSON-RPC). " +
+            "Transmission auto-detects service mode vs Qt desktop client.\n\n" +
+            "VPN provider support\n" +
+            "ProtonVPN (log file or NAT-PMP), Private Internet Access (via piactl), and any NAT-PMP capable VPN gateway or router.\n\n" +
+            "Auto-Recovery\n" +
+            "After a configurable number of failed sync cycles, qbPortWeaver can automatically restart the VPN service and client process " +
+            "(ProtonVPN and PIA) or cycle the network adapter (NAT-PMP gateway). " +
+            "Privileged operations are handled by a lightweight helper service - no UAC prompt required.\n\n" +
+            "Tray status indicator\n" +
+            "The tray icon shows a colored dot after each cycle: green (ports aligned), orange (VPN not connected), red (error), or no dot (port sync disabled). " +
+            "Hover to see the current port and status.\n\n" +
+            "Media Manager\n" +
+            "Imports movie and TV episode files into Plex-compatible library folders on each sync cycle using TMDB for title matching. " +
+            "Supports hardlink, copy, and move. Preview imports before applying with Scan Now, or apply manually with Import Now.\n\n" +
+            "Log Viewer\n" +
+            "Color-coded log viewer with real-time follow, level filters, subsystem filter, and search with match highlighting.";
 
         private bool _isDarkMode;
 

@@ -44,7 +44,6 @@ namespace qbPortWeaver
             rtbTmdbOverview.ForeColor = ForeColor;
             if (_isDarkMode)
                 rtbTmdbOverview.ForeColor = AppConstants.DarkModeText;
-            rtbTmdbOverview.Enter += (s, e) => dgvResults.Focus();
             SetupTooltips();
             SetupGridContextMenu();
             LoadSettings();

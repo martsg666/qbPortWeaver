@@ -31,6 +31,7 @@ namespace qbPortWeaver
             lblRecoveryCycles         = new Label();
             nudRecoveryCycles         = new NumericUpDown();
             lblRecoveryCyclesUnit     = new Label();
+            chkNotifyOnPortUpdate     = new CheckBox();
             grpQBittorrent            = new GroupBox();
             lblQBittorrentURL         = new Label();
             txtQBittorrentURL         = new TextBox();
@@ -114,9 +115,10 @@ namespace qbPortWeaver
             grpGeneral.Controls.Add(lblRecoveryCycles);
             grpGeneral.Controls.Add(nudRecoveryCycles);
             grpGeneral.Controls.Add(lblRecoveryCyclesUnit);
+            grpGeneral.Controls.Add(chkNotifyOnPortUpdate);
             grpGeneral.Location = new Point(8, 8);
             grpGeneral.Name     = "grpGeneral";
-            grpGeneral.Size     = new Size(484, 196);
+            grpGeneral.Size     = new Size(484, 221);
             grpGeneral.TabIndex = 0;
             grpGeneral.TabStop  = false;
             grpGeneral.Text     = "General";
@@ -207,6 +209,12 @@ namespace qbPortWeaver
             lblRecoveryCyclesUnit.TabIndex  = 13;
             lblRecoveryCyclesUnit.Text      = "consecutive failed cycles";
             lblRecoveryCyclesUnit.TextAlign = ContentAlignment.MiddleLeft;
+            chkNotifyOnPortUpdate.AutoSize  = true;
+            chkNotifyOnPortUpdate.Location  = new Point(12, 192);
+            chkNotifyOnPortUpdate.Name      = "chkNotifyOnPortUpdate";
+            chkNotifyOnPortUpdate.Size      = new Size(230, 19);
+            chkNotifyOnPortUpdate.TabIndex  = 14;
+            chkNotifyOnPortUpdate.Text      = "Show notification when port updates";
             // ── grpQBittorrent ────────────────────────────────────────────
             grpQBittorrent.Controls.Add(lblQBittorrentURL);
             grpQBittorrent.Controls.Add(txtQBittorrentURL);
@@ -225,7 +233,7 @@ namespace qbPortWeaver
             grpQBittorrent.Controls.Add(nudDefaultPort);
             grpQBittorrent.Controls.Add(chkWarnOnInterfaceMismatch);
             grpQBittorrent.Controls.Add(chkRestartOnDisconnect);
-            grpQBittorrent.Location = new Point(8, 212);
+            grpQBittorrent.Location = new Point(8, 237);
             grpQBittorrent.Name     = "grpQBittorrent";
             grpQBittorrent.Size     = new Size(484, 312);
             grpQBittorrent.TabIndex = 1;
@@ -337,7 +345,7 @@ namespace qbPortWeaver
             grpDeluge.Controls.Add(chkForceStartDeluge);
             grpDeluge.Controls.Add(lblDelugeDefaultPort);
             grpDeluge.Controls.Add(nudDelugeDefaultPort);
-            grpDeluge.Location = new Point(8, 212);
+            grpDeluge.Location = new Point(8, 237);
             grpDeluge.Name     = "grpDeluge";
             grpDeluge.Size     = new Size(484, 312);
             grpDeluge.TabIndex = 3;
@@ -430,7 +438,7 @@ namespace qbPortWeaver
             grpTransmission.Controls.Add(chkForceStartTransmission);
             grpTransmission.Controls.Add(lblTransmissionDefaultPort);
             grpTransmission.Controls.Add(nudTransmissionDefaultPort);
-            grpTransmission.Location = new Point(8, 212);
+            grpTransmission.Location = new Point(8, 237);
             grpTransmission.Name     = "grpTransmission";
             grpTransmission.Size     = new Size(484, 312);
             grpTransmission.TabIndex = 2;
@@ -523,7 +531,7 @@ namespace qbPortWeaver
             grpExtra.Controls.Add(lblPostUpdateCmd);
             grpExtra.Controls.Add(txtPostUpdateCmd);
             grpExtra.Controls.Add(chkDebugMode);
-            grpExtra.Location = new Point(8, 532);
+            grpExtra.Location = new Point(8, 557);
             grpExtra.Name     = "grpExtra";
             grpExtra.Size     = new Size(484, 126);
             grpExtra.TabIndex = 4;
@@ -557,14 +565,14 @@ namespace qbPortWeaver
             chkDebugMode.TabIndex = 4;
             chkDebugMode.Text     = "Enable debug logging";
             // ── Buttons ───────────────────────────────────────────────────
-            btnOK.Location = new Point(320, 670);
+            btnOK.Location = new Point(320, 695);
             btnOK.Name     = "btnOK";
             btnOK.Size     = new Size(82, 28);
             btnOK.TabIndex = 5;
             btnOK.Text     = "OK";
             btnOK.Click   += btnOK_Click;
             btnCancel.DialogResult = DialogResult.Cancel;
-            btnCancel.Location     = new Point(410, 670);
+            btnCancel.Location     = new Point(410, 695);
             btnCancel.Name         = "btnCancel";
             btnCancel.Size         = new Size(82, 28);
             btnCancel.TabIndex     = 6;
@@ -575,7 +583,7 @@ namespace qbPortWeaver
             AutoScaleDimensions = new SizeF(7F, 15F);
             AutoScaleMode       = AutoScaleMode.Font;
             CancelButton        = btnCancel;
-            ClientSize          = new Size(500, 709);
+            ClientSize          = new Size(500, 734);
             Controls.Add(grpGeneral);
             Controls.Add(grpQBittorrent);
             Controls.Add(grpDeluge);
@@ -624,6 +632,7 @@ namespace qbPortWeaver
         private Label         lblRecoveryCycles;
         private NumericUpDown nudRecoveryCycles;
         private Label         lblRecoveryCyclesUnit;
+        private CheckBox      chkNotifyOnPortUpdate;
 
         private GroupBox      grpQBittorrent;
         private Label         lblQBittorrentURL;

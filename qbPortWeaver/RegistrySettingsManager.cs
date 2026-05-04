@@ -110,6 +110,9 @@ namespace qbPortWeaver
         public const string KeyAutoRecoveryEnabled      = "vpnAutoRecoveryEnabled";
         public const string KeyAutoRecoveryTriggerCycles = "vpnAutoRecoveryTriggerCycles";
 
+        // Registry key names - general section (notifications)
+        public const string KeyNotifyOnPortUpdate = "notifyOnPortUpdate";
+
         // Default values for all settings (single source of truth)
         private static readonly Dictionary<string, Dictionary<string, string>> _defaults =
             new(StringComparer.OrdinalIgnoreCase)
@@ -121,7 +124,8 @@ namespace qbPortWeaver
                     [KeyNatPmpAdapterName]              = "",
                     [KeyAutoRecoveryEnabled]            = ValueTrue,
                     [KeyAutoRecoveryTriggerCycles]      = "3",
-                    [KeyBitTorrentClient]               = BitTorrentClientQBittorrent
+                    [KeyBitTorrentClient]               = BitTorrentClientQBittorrent,
+                    [KeyNotifyOnPortUpdate]             = ValueTrue
                 },
                 [SectionQBittorrent] = new(StringComparer.OrdinalIgnoreCase)
                 {

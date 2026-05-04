@@ -11,6 +11,9 @@ namespace qbPortWeaver
 
         private const string ReleaseFeaturesText =
             "New in 2.5.2\n\n" +
+            "qBittorrent 5.2.0 compatibility\n" +
+            "Authentication now works correctly with qBittorrent 5.2.0, which changed its Web API login response format. " +
+            "No configuration changes are required.\n\n" +
             "Port update notification\n" +
             "A tray balloon tip now appears whenever the client's listening port is successfully updated to a new value. " +
             "Enabled by default - toggle it under Settings > General.\n\n" +

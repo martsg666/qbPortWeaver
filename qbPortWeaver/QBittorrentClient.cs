@@ -161,9 +161,14 @@ namespace qbPortWeaver
                     return false;
                 }
 
+                // qBittorrent >= 5.2.0 returns 204 on success (WebAPI no-data responses changed from 200+"Ok." to 204)
+                if (response.StatusCode == HttpStatusCode.NoContent)
+                    return true;
+
+                // qBittorrent >= 5.2.0 returns 401 for wrong credentials; older versions with a reverse proxy also return 401
                 if (response.StatusCode == HttpStatusCode.Unauthorized)
                 {
-                    LogManager.Instance.LogMessage($"{ClientName} returned HTTP 401 Unauthorized - check whether a reverse proxy with authentication is running in front of {ClientName}", LogLevel.Error);
+                    LogManager.Instance.LogMessage($"{ClientName} authentication failed: wrong username or password (username: '{_userName}') - check the credentials in Settings. If a reverse proxy is in front of {ClientName}, verify it is not requiring additional authentication", LogLevel.Error);
                     return false;
                 }
 
@@ -173,7 +178,7 @@ namespace qbPortWeaver
                     return false;
                 }
 
-                // qBittorrent returns 200 for both success and failure - check response body
+                // qBittorrent < 5.2.0 returns 200 for both success ("Ok.") and failure ("Fails.")
                 var body = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
                 if (!body.Contains(AuthOkResponse, StringComparison.OrdinalIgnoreCase))
                 {

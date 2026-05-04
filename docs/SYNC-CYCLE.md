@@ -149,7 +149,7 @@ All client communication goes through the `IBitTorrentClient` interface, with im
 5. (optional) Run post-update shell command
 6. (optional, qBittorrent only) GET /api/v2/transfer/info → check connection_status
               If "disconnected" → restart qBittorrent
-              Skipped if step 3 already restarted (avoids redundant restart)
+              Skipped if step 4 already restarted (avoids redundant restart)
 ```
 
 ### Interface Mismatch Warning *(qBittorrent only)*

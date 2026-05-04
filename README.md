@@ -344,7 +344,7 @@ The application is designed to always recover. A failing cycle never crashes the
 ```
 master  ──────────────────────────────────────────────────────────────► (always latest release)
            │                                                          ▲
-           │  git checkout -b 2.6.0 origin/2.5.0                    │ git merge --no-ff 2.6.0
+           │  git checkout -b 2.6.0 origin/2.5.2                    │ git merge --no-ff 2.6.0
            ▼                                                          │
 2.6.0   ──┬───────────────────────────────────────── git tag v2.6.0 ─┘
            │                                                  │
@@ -359,7 +359,7 @@ master  ────────────────────────
 
 1. **Create a release branch** from the previous release branch:
    ```
-   git checkout -b 2.6.0 origin/2.5.0
+   git checkout -b 2.6.0 origin/2.5.2
    git push -u origin 2.6.0
    ```
 

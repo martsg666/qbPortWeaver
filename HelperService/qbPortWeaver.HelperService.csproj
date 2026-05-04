@@ -11,9 +11,9 @@
     <Product>qbPortWeaver</Product>
     <Authors>martsg666</Authors>
     <Copyright>© 2026 martsg666</Copyright>
-    <Version>2.5.2</Version>
-    <FileVersion>2.5.2.0</FileVersion>
-    <AssemblyVersion>2.5.2.0</AssemblyVersion>
+    <Version>2.5.3</Version>
+    <FileVersion>2.5.3.0</FileVersion>
+    <AssemblyVersion>2.5.3.0</AssemblyVersion>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 

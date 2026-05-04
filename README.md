@@ -344,12 +344,12 @@ The application is designed to always recover. A failing cycle never crashes the
 ```
 master  ──────────────────────────────────────────────────────────────► (always latest release)
            │                                                          ▲
-           │  git checkout -b 2.6.0 origin/2.5.0                    │ git merge --no-ff 2.6.0
+           │  git checkout -b <new-release> origin/<previous-release>│ git merge --no-ff <new-release>
            ▼                                                          │
-2.6.0   ──┬───────────────────────────────────────── git tag v2.6.0 ─┘
+<new-release> ──┬────────────────────────── git tag v<new-release> ──┘
            │                                                  │
-           ├── fix/some-bug   → PR → merge into 2.6.0         └─► CI/CD pipeline triggers
-           └── feature/new-ui → PR → merge into 2.6.0               ├─ dotnet publish (self-contained win-x64)
+           ├── fix/some-bug   → PR → merge into <new-release> └─► CI/CD pipeline triggers
+           └── feature/new-ui → PR → merge into <new-release>       ├─ dotnet publish (self-contained win-x64)
                                                                       ├─ WiX MSI build
                                                                       ├─ GitHub Release created
                                                                       └─ MSI + .nupkg uploaded to release
@@ -359,35 +359,35 @@ master  ────────────────────────
 
 1. **Create a release branch** from the previous release branch:
    ```
-   git checkout -b 2.6.0 origin/2.5.0
-   git push -u origin 2.6.0
+   git checkout -b <new-release> origin/<previous-release>
+   git push -u origin <new-release>
    ```
 
 2. **Create fix or feature branches** off the release branch and open a PR targeting it:
    ```
-   git checkout -b fix/my-fix origin/2.6.0
+   git checkout -b fix/my-fix origin/<new-release>
    # or
-   git checkout -b feature/my-feature origin/2.6.0
+   git checkout -b feature/my-feature origin/<new-release>
    ```
 
 3. **Tag the release branch** once all testing is complete - this triggers the pipeline:
    ```
-   git tag v2.6.0 origin/2.6.0
-   git push origin v2.6.0
+   git tag v<new-release> origin/<new-release>
+   git push origin v<new-release>
    ```
    Pushing the tag automatically triggers the **Build and Release** pipeline, which builds the app, compiles the MSI installer, creates the GitHub Release, and uploads the MSI and Chocolatey package as release assets. Once the previous Chocolatey version is approved, run the **Publish to Chocolatey** workflow manually from the Actions tab.
 
 4. **Merge the release branch into `master`** after the pipeline completes successfully:
    ```
    git checkout master
-   git merge --no-ff 2.6.0
+   git merge --no-ff <new-release>
    git push origin master
    ```
 
 5. **Do not delete release branches.** They serve as the base for future hotfixes. If a branch is accidentally deleted it can be reconstructed from its tag:
    ```
-   git checkout -b 2.6.0 v2.6.0
-   git push origin 2.6.0
+   git checkout -b <new-release> v<new-release>
+   git push origin <new-release>
    ```
 
 ---

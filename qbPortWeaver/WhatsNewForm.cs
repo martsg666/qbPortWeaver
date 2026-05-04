@@ -10,6 +10,10 @@ namespace qbPortWeaver
             "lost. If you find qbPortWeaver useful, please star it on GitHub.";
 
         private const string ReleaseFeaturesText =
+            "New in 2.5.3\n\n" +
+            "Documentation and accuracy fixes\n" +
+            "Corrected the contributing workflow guide, nuspec description, and sync-cycle reference document to accurately reflect features introduced in 2.5.2.\n\n" +
+            "Previously released\n\n" +
             "New in 2.5.2\n\n" +
             "qBittorrent 5.2.0 compatibility\n" +
             "Authentication now works correctly with qBittorrent 5.2.0, which changed its Web API login response format. " +
@@ -21,7 +25,6 @@ namespace qbPortWeaver
             "If library folders are temporarily unreachable at startup (for example, a NAS that powers on after the PC), " +
             "the library index is now retried each cycle until the folders become accessible, " +
             "preventing stale results from being carried over.\n\n" +
-            "Previously released\n\n" +
             "BitTorrent client support\n" +
             "Automatic port sync for qBittorrent (Web API), Transmission (RPC), and Deluge (Web JSON-RPC). " +
             "Transmission auto-detects service mode vs Qt desktop client.\n\n" +

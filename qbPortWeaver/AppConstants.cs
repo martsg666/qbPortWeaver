@@ -71,7 +71,15 @@ namespace qbPortWeaver
         {
             var temp = path + ".tmp";
             File.WriteAllText(temp, content);
-            File.Move(temp, path, overwrite: true);
+            try
+            {
+                File.Move(temp, path, overwrite: true);
+            }
+            catch
+            {
+                TryDeleteFile(temp);
+                throw;
+            }
         }
 
         /// <summary>Returns the full path to the ProtonVPN log file, resolved from the registry setting.</summary>

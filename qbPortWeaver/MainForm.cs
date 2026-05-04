@@ -68,6 +68,7 @@ namespace qbPortWeaver
             _portSyncService = new PortSyncService();
             _portSyncService.SyncCompleted += OnSyncCompleted;
             _portSyncService.InterfaceMismatchDetected += OnInterfaceMismatchDetected;
+            _portSyncService.PortUpdated += OnPortUpdated;
 
             InitializeStatusIcons();
             InitializeTrayIcon();
@@ -324,6 +325,13 @@ namespace qbPortWeaver
         {
             if (_shutdownCts.IsCancellationRequested) return;
             InvokeOnUiThread(() => _trayIcon.ShowBalloonTip(AppConstants.BalloonTipDurationMs, AppConstants.AppName, message, ToolTipIcon.Warning));
+        }
+
+        // Called by PortSyncService when the BitTorrent client's listening port is successfully updated
+        private void OnPortUpdated(string message) // NOSONAR S2325 - ShowBalloonTip is an instance method, handler cannot be static
+        {
+            if (_shutdownCts.IsCancellationRequested) return;
+            InvokeOnUiThread(() => _trayIcon.ShowBalloonTip(AppConstants.BalloonTipDurationMs, AppConstants.AppName, message, ToolTipIcon.Info));
         }
 
         // Runs the port-sync loop until shutdown is requested.

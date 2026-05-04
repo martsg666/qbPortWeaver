@@ -28,12 +28,12 @@ namespace qbPortWeaver
             _logPrefix            = logPrefix;
         }
 
-        public string GetServiceSearchTerm() => RegistrySettingsManager.GetAppValue(_serviceSearchTermKey);
-        public string GetClientProcessName() => RegistrySettingsManager.GetAppValue(_clientProcessNameKey);
-        public string GetAdapterName()       => RegistrySettingsManager.GetAppValue(_adapterNameKey);
+        internal string GetServiceSearchTerm() => RegistrySettingsManager.GetAppValue(_serviceSearchTermKey);
+        internal string GetClientProcessName() => RegistrySettingsManager.GetAppValue(_clientProcessNameKey);
+        internal string GetAdapterName()       => RegistrySettingsManager.GetAppValue(_adapterNameKey);
 
-        public string? FindServiceName()  => AppConstants.FindServiceName(GetServiceSearchTerm());
-        public string? GetClientExePath() => AppConstants.FindExeInServiceDirectory(
+        internal string? FindServiceName()  => AppConstants.FindServiceName(GetServiceSearchTerm());
+        internal string? GetClientExePath() => AppConstants.FindExeInServiceDirectory(
             ref _clientExePathCache, GetClientProcessName() + ".exe", FindServiceName, _logPrefix);
     }
 }

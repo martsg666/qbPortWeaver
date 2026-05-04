@@ -64,6 +64,7 @@ namespace qbPortWeaver
             toolTip.SetToolTip(cboColorTheme,                "Application color theme (System, Dark, or Light) - a restart prompt will appear if changed");
             toolTip.SetToolTip(chkAutoRecovery,              "Automatically recover after the configured number of consecutive failed sync cycles (VPN disconnected or port detection failure)");
             toolTip.SetToolTip(nudRecoveryCycles,            "Number of consecutive failed cycles before recovery is triggered");
+            toolTip.SetToolTip(chkNotifyOnPortUpdate,        "Show a tray notification when the port is successfully updated");
         }
 
         private void LoadSettings()
@@ -112,6 +113,7 @@ namespace qbPortWeaver
                 RegistrySettingsManager.GetInt(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyAutoRecoveryTriggerCycles),
                 (int)nudRecoveryCycles.Minimum, (int)nudRecoveryCycles.Maximum);
             UpdateAutoRecoverySubControls();
+            chkNotifyOnPortUpdate.Checked = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyNotifyOnPortUpdate);
 
             // qBittorrent
             txtQBittorrentURL.Text         = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyQBittorrentUrl);
@@ -182,6 +184,7 @@ namespace qbPortWeaver
             RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyNatPmpAdapterName,           adapterName);
             RegistrySettingsManager.SetBool (RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyAutoRecoveryEnabled,       chkAutoRecovery.Checked);
             RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyAutoRecoveryTriggerCycles, ((int)nudRecoveryCycles.Value).ToString());
+            RegistrySettingsManager.SetBool (RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyNotifyOnPortUpdate,         chkNotifyOnPortUpdate.Checked);
 
             // qBittorrent
             RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyQBittorrentUrl,          txtQBittorrentURL.Text.Trim());

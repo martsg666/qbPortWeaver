@@ -20,6 +20,9 @@ namespace qbPortWeaver
         /// <summary>Raised when the BitTorrent client's network interface does not match the configured VPN provider.</summary>
         public event Action<string>? InterfaceMismatchDetected;
 
+        /// <summary>Raised when the BitTorrent client's listening port is successfully updated to a new value.</summary>
+        public event Action<string>? PortUpdated;
+
         // Consecutive sync cycles in which the VPN was disconnected or port detection failed.
         // Serialised by MainForm._updateSemaphore (same guarantee as _lastKnownNatPmpManager).
         private int _consecutiveFailedCycles;
@@ -63,7 +66,8 @@ namespace qbPortWeaver
             int DelugeDefaultPort,
             string PostUpdateCommand,
             bool AutoRecoveryEnabled,
-            int AutoRecoveryTriggerCycles
+            int AutoRecoveryTriggerCycles,
+            bool NotifyOnPortUpdate
         );
 
         // Groups client behaviour settings passed to EnsureRunningAndUpdatePortAsync
@@ -73,7 +77,8 @@ namespace qbPortWeaver
             string PostUpdateCommand,
             IVpnManager? VpnManager,
             bool WarnOnInterfaceMismatch,
-            bool RestartOnDisconnect
+            bool RestartOnDisconnect,
+            bool NotifyOnPortUpdate
         );
 
         /// <summary>Compile-time-safe keys and values for the status dictionary written to the JSON status file.</summary>
@@ -235,7 +240,8 @@ namespace qbPortWeaver
                     PostUpdateCommand:       cfg.PostUpdateCommand,
                     VpnManager:              syncVpnManager,
                     WarnOnInterfaceMismatch: warnOnInterfaceMismatch,
-                    RestartOnDisconnect:     restartOnDisconnect),
+                    RestartOnDisconnect:     restartOnDisconnect,
+                    NotifyOnPortUpdate:      cfg.NotifyOnPortUpdate),
                 status,
                 cancellationToken).ConfigureAwait(false);
 
@@ -285,7 +291,8 @@ namespace qbPortWeaver
                 DelugeDefaultPort:         RegistrySettingsManager.GetInt  (RegistrySettingsManager.SectionDeluge,       RegistrySettingsManager.KeyDefaultPort),
                 PostUpdateCommand:         RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionExtra,        RegistrySettingsManager.KeyPostUpdateCmd),
                 AutoRecoveryEnabled:       RegistrySettingsManager.GetBool (RegistrySettingsManager.SectionGeneral,      RegistrySettingsManager.KeyAutoRecoveryEnabled),
-                AutoRecoveryTriggerCycles: autoRecoveryTriggerCycles
+                AutoRecoveryTriggerCycles: autoRecoveryTriggerCycles,
+                NotifyOnPortUpdate:        RegistrySettingsManager.GetBool (RegistrySettingsManager.SectionGeneral,      RegistrySettingsManager.KeyNotifyOnPortUpdate)
             ), activeSection);
         }
 
@@ -471,6 +478,8 @@ namespace qbPortWeaver
             {
                 if (!await ApplyPortUpdateAsync(manager, targetPort, config, status, cancellationToken).ConfigureAwait(false))
                     return;
+                if (config.NotifyOnPortUpdate)
+                    PortUpdated?.Invoke($"{manager.ClientName} port updated to {targetPort}");
             }
 
             // Check connection status and restart if offline - skip if a restart was already performed

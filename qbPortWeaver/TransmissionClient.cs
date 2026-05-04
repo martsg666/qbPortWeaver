@@ -348,11 +348,14 @@ namespace qbPortWeaver
         }
 
         // Lazily discovers and caches the Transmission Windows service name via the configured search term.
+        // Only caches a successful result; a null (not found) result is not cached so the lookup
+        // retries each cycle, allowing auto-detection to succeed if the service is installed later.
         private static string? GetEffectiveServiceName()
         {
-            if (_resolvedServiceName != string.Empty) return _resolvedServiceName;
-            _resolvedServiceName = AppConstants.FindServiceName(RegistrySettingsManager.GetAppValue(RegistrySettingsManager.KeyTransmissionServiceSearchTerm));
-            return _resolvedServiceName;
+            if (_resolvedServiceName is { Length: > 0 }) return _resolvedServiceName;
+            var found = AppConstants.FindServiceName(RegistrySettingsManager.GetAppValue(RegistrySettingsManager.KeyTransmissionServiceSearchTerm));
+            if (found is not null) _resolvedServiceName = found;
+            return found;
         }
 
         // Creates an HttpClient with Basic auth for the Transmission RPC endpoint.

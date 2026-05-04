@@ -317,6 +317,15 @@ namespace qbPortWeaver
                     .Where(p => !string.IsNullOrWhiteSpace(p) && Directory.Exists(p))
                     .ToArray();
 
+                bool hasConfiguredPaths = !string.IsNullOrWhiteSpace(moviesLibraryPath)
+                                       || !string.IsNullOrWhiteSpace(tvShowsLibraryPath);
+                if (hasConfiguredPaths && libraryPaths.Length == 0)
+                {
+                    LogManager.Instance.LogMessage("Library index build skipped: configured paths not accessible - will retry next cycle", LogLevel.Warn, Subsystem.MediaManager);
+                    _libraryBuildCycleCount = FullRebuildIntervalCycles;
+                    return;
+                }
+
                 LogManager.Instance.LogMessage($"Building library index across {libraryPaths.Length} folder(s)", LogLevel.Info, Subsystem.MediaManager);
                 LoadLibraryCache();
 

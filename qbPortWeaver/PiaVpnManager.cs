@@ -5,16 +5,18 @@ namespace qbPortWeaver
     /// <summary>Detects PIA (Private Internet Access) connectivity and reads the forwarded port via <c>piactl</c>.</summary>
     public sealed class PiaVpnManager : IVpnManager
     {
-        internal static string GetServiceSearchTerm() => RegistrySettingsManager.GetAppValue(RegistrySettingsManager.KeyPiaServiceSearchTerm);
-        internal static string GetClientProcessName() => RegistrySettingsManager.GetAppValue(RegistrySettingsManager.KeyPiaClientProcessName);
-        internal static string GetAdapterName()       => RegistrySettingsManager.GetAppValue(RegistrySettingsManager.KeyPiaAdapterName);
-        private  static string GetPiactlProcessName() => RegistrySettingsManager.GetAppValue(RegistrySettingsManager.KeyPiactlProcessName);
+        internal static readonly VpnRegistryConfig Config = new(
+            RegistrySettingsManager.KeyPiaServiceSearchTerm,
+            RegistrySettingsManager.KeyPiaClientProcessName,
+            RegistrySettingsManager.KeyPiaAdapterName,
+            "PiaVpnManager.GetClientExePath");
+
+        private static string GetPiactlProcessName() => RegistrySettingsManager.GetAppValue(RegistrySettingsManager.KeyPiactlProcessName);
         private const int    ProcessTimeoutMs = 5000;
 
-        // Cached paths; null = not found, string.Empty = not yet resolved.
+        // Cached path for piactl; null = not found, string.Empty = not yet resolved.
         // Install paths never change at runtime so we resolve once and reuse.
-        private static string? _piactlPathCache    = string.Empty;
-        private static string? _clientExePathCache = string.Empty;
+        private static string? _piactlPathCache = string.Empty;
 
         /// <inheritdoc />
         public string ProviderName => RegistrySettingsManager.VpnProviderPia;
@@ -56,10 +58,7 @@ namespace qbPortWeaver
 
         /// <inheritdoc />
         public bool IsAdapterMatch(string interfaceName)
-            => interfaceName.Contains(GetAdapterName(), StringComparison.OrdinalIgnoreCase);
-
-        internal static string? FindServiceName()     => AppConstants.FindServiceName(GetServiceSearchTerm());
-        internal static string? GetClientExePath()    => AppConstants.FindExeInServiceDirectory(ref _clientExePathCache, GetClientProcessName() + ".exe", FindServiceName, "PiaVpnManager.GetClientExePath");
+            => interfaceName.Contains(Config.GetAdapterName(), StringComparison.OrdinalIgnoreCase);
 
         private static int? GetVpnPortCore()
         {
@@ -133,6 +132,6 @@ namespace qbPortWeaver
             }
         }
 
-        private static string? GetPiactlPath() => AppConstants.FindExeInServiceDirectory(ref _piactlPathCache, GetPiactlProcessName() + ".exe", FindServiceName, "PiaVpnManager.GetPiactlPath");
+        private static string? GetPiactlPath() => AppConstants.FindExeInServiceDirectory(ref _piactlPathCache, GetPiactlProcessName() + ".exe", Config.FindServiceName, "PiaVpnManager.GetPiactlPath");
     }
 }

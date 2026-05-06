@@ -38,12 +38,10 @@ namespace qbPortWeaver
         }
 
         // Log column markers (format: "| LEVEL | ") and corresponding search terms
-        private const string ColError        = "| ERROR |";
-        private const string ColWarn         = "| WARN  |";
-        private const string ColInfo         = "| INFO  |";
-        private const string ColDebug        = "| DEBUG |";
-        private const string SearchTermError = "ERROR";
-        private const string SearchTermWarn  = "WARN";
+        private const string ColError = "| ERROR |";
+        private const string ColWarn  = "| WARN  |";
+        private const string ColInfo  = "| INFO  |";
+        private const string ColDebug = "| DEBUG |";
 
         public LogViewerForm() : this(string.Empty) { } // designer support only
 
@@ -65,14 +63,17 @@ namespace qbPortWeaver
             ApplyTheme();
             // Vertically center the search box - single-line TextBox auto-sizes its height from the font,
             // so the actual height is only known after layout; compute the top offset here.
-            int searchTop = (pnlToolbar.Height - txtSearch.Height) / 2;
-            txtSearch.Top = searchTop;
+            int searchTop    = (pnlToolbar.Height - txtSearch.Height) / 2;
+            txtSearch.Top    = searchTop;
+            cboSubsystem.Top = (pnlToolbar.Height - cboSubsystem.Height) / 2;
 
-            // Size nav buttons and match count label to the search box height so everything is visually aligned
-            btnPrev.Size      = new Size(btnPrev.Width, txtSearch.Height);
-            btnNext.Size      = new Size(btnNext.Width, txtSearch.Height);
-            btnPrev.Top       = searchTop;
-            btnNext.Top       = searchTop;
+            // Size all nav buttons to match the search box height so arrows render consistently
+            int navH = txtSearch.Height;
+            foreach (var btn in new[] { btnPrev, btnNext, btnIssuePrev, btnIssueNext })
+            {
+                btn.Height = navH;
+                btn.Top    = searchTop;
+            }
             lblMatchCount.Top = searchTop + (txtSearch.Height - lblMatchCount.Height) / 2;
 
             // Position the × button inside the right edge of the search box.
@@ -121,7 +122,7 @@ namespace qbPortWeaver
             txtSearch.BackColor = bg;
             txtSearch.ForeColor = fg;
 
-            foreach (var btn in new[] { btnPrev, btnNext })
+            foreach (var btn in new[] { btnPrev, btnNext, btnIssuePrev, btnIssueNext })
             {
                 btn.BackColor                  = bg;
                 btn.ForeColor                  = fg;
@@ -180,9 +181,11 @@ namespace qbPortWeaver
         private void ctxCopyAll_Click(object? sender, EventArgs e)   => Clipboard.SetText(rtbLog.Text.Length > 0 ? rtbLog.Text : " ");
         private void ctxSelectAll_Click(object? sender, EventArgs e) => rtbLog.SelectAll();
 
-        private void btnClearSearch_Click(object? sender, EventArgs e) => txtSearch.Clear();
-        private void btnPrev_Click(object? sender, EventArgs e)        => SearchPrev();
-        private void btnNext_Click(object? sender, EventArgs e)        => SearchNext();
+        private void btnClearSearch_Click(object? sender, EventArgs e)  => txtSearch.Clear();
+        private void btnPrev_Click(object? sender, EventArgs e)         => SearchPrev();
+        private void btnNext_Click(object? sender, EventArgs e)         => SearchNext();
+        private void btnIssuePrev_Click(object? sender, EventArgs e)    => IssuePrev();
+        private void btnIssueNext_Click(object? sender, EventArgs e)    => IssueNext();
 
         // Triggered when the search text changes - shows/hides the clear button, updates match
         // count and navigation immediately (fast text scan), then debounces the RTF rebuild
@@ -356,17 +359,50 @@ namespace qbPortWeaver
             return lastVisibleLine >= totalLines - 1;
         }
 
+        private void IssuePrev()
+        {
+            string text     = rtbLog.Text;
+            int    maxStart = Math.Min(rtbLog.SelectionStart - 1, text.Length - 1);
+            if (maxStart < 0) return;
+            int prev = Math.Max(
+                text.LastIndexOf(ColError, maxStart, StringComparison.Ordinal),
+                text.LastIndexOf(ColWarn,  maxStart, StringComparison.Ordinal));
+            if (prev < 0) return;
+            rtbLog.Select(prev, 0);
+            rtbLog.ScrollToCaret();
+        }
+
+        private void IssueNext()
+        {
+            string text  = rtbLog.Text;
+            int    start = rtbLog.SelectionStart + 1;
+            if (start >= text.Length) return;
+            int nextError = text.IndexOf(ColError, start, StringComparison.Ordinal);
+            int nextWarn  = text.IndexOf(ColWarn,  start, StringComparison.Ordinal);
+            int next = (nextError, nextWarn) switch
+            {
+                (< 0, _) => nextWarn,
+                (_, < 0) => nextError,
+                _        => Math.Min(nextError, nextWarn)
+            };
+            if (next < 0) return;
+            rtbLog.Select(next, 0);
+            rtbLog.ScrollToCaret();
+        }
+
         public void NavigateToFirstIssue()
         {
             if (rtbLog.TextLength == 0) { ScrollToBottom(); return; }
 
-            string text     = rtbLog.Text;
-            bool   hasError = text.Contains(ColError, StringComparison.Ordinal);
-            bool   hasWarn  = text.Contains(ColWarn,  StringComparison.Ordinal);
+            string text      = rtbLog.Text;
+            int    lastError = text.LastIndexOf(ColError, StringComparison.Ordinal);
+            int    lastWarn  = text.LastIndexOf(ColWarn,  StringComparison.Ordinal);
+            int    lastIdx   = Math.Max(lastError, lastWarn);
 
-            if (!hasError && !hasWarn) { ScrollToBottom(); return; }
+            if (lastIdx < 0) { ScrollToBottom(); return; }
 
-            txtSearch.Text = hasError ? SearchTermError : SearchTermWarn;
+            rtbLog.Select(lastIdx, 0);
+            rtbLog.ScrollToCaret();
         }
 
         private void ScrollToBottom()

@@ -74,7 +74,7 @@ The application runs in the system tray, manages configuration and logging, and 
   All configuration options are editable through a dedicated Settings form (tray menu → Settings), with inline descriptions and tooltips for each option.
 
 - **Log Viewer**
-  Built-in log viewer (tray menu → Show Logs, or double-click the tray icon) displays the log file with color-coded entries by level (error, warn, info, debug) and follows new entries in real time. Includes a search bar with match highlighting and prev/next navigation, toggle buttons to filter by log level, and a subsystem filter to isolate entries from a specific component. Adapts to the application color theme (System, Dark, or Light).
+  Built-in log viewer (tray menu → Show Logs, or double-click the tray icon) displays the log file with color-coded entries by level (error, warn, info, debug) and follows new entries in real time. Includes a search bar with match highlighting and prev/next navigation, dedicated prev/next buttons to step between warnings and errors without affecting the search, toggle buttons to filter by log level, and a subsystem filter to isolate entries from a specific component. Adapts to the application color theme (System, Dark, or Light).
 
 - **Logging**
   Logs all operations and errors, with automatic log size management (5 MB per file, up to 3 rotated files). Clear logs directly from the tray menu.

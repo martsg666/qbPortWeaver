@@ -164,7 +164,7 @@ When `NotifyOnPortUpdate` is enabled (General settings, default on), a successfu
 
 `LogManager` raises a `WarnOrErrorLogged` event (outside the write lock) whenever a `Warn` or `Error` entry is written. `MainForm` subscribes and marshals to the UI thread to:
 
-- Show a `ToolTipIcon.Warning` balloon tip once per unseen session. Clicking the balloon opens the log viewer scrolled to the first warning or error.
+- Show a `ToolTipIcon.Warning` balloon tip once per unseen session. Clicking the balloon opens the log viewer scrolled to the most recent warning or error.
 - Update the **Show Logs** context menu item text with a running count (e.g. "Show Logs (2 warnings, 1 error)").
 - Append a human-readable count to the tray tooltip (e.g. "2 Warnings, 1 Error").
 

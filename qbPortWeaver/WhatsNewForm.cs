@@ -45,7 +45,7 @@ namespace qbPortWeaver
             "Imports movie and TV episode files into Plex-compatible library folders on each sync cycle using TMDB for title matching. " +
             "Supports hardlink, copy, and move. Preview imports before applying with Scan Now, or apply manually with Import Now.\n\n" +
             "Log Viewer\n" +
-            "Color-coded log viewer with real-time follow, level filters, subsystem filter, and search with match highlighting.";
+            "Color-coded log viewer with real-time follow, level filters, subsystem filter, search with match highlighting, and prev/next issue navigation buttons to step between warnings and errors.";
 
         private bool _isDarkMode;
 

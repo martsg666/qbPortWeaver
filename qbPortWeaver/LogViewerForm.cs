@@ -37,6 +37,12 @@ namespace qbPortWeaver
             public const int EM_SETSCROLLPOS = 0x04DE;
         }
 
+        // Log column markers (format: "| LEVEL | ") and corresponding search terms
+        private const string ColError        = "| ERROR |";
+        private const string ColWarn         = "| WARN  |";
+        private const string SearchTermError = "ERROR";
+        private const string SearchTermWarn  = "WARN";
+
         public LogViewerForm() : this(string.Empty) { } // designer support only
 
         public LogViewerForm(string logFilePath, bool navigateToFirstIssue = false)
@@ -348,25 +354,22 @@ namespace qbPortWeaver
             return lastVisibleLine >= totalLines - 1;
         }
 
-        // Scrolls to the first WARN or ERROR line in the current view; falls back to bottom if none found.
+        // Populates the search box with ERROR or WARN so the existing search mechanism navigates
+        // to the first match and highlights all occurrences for prev/next navigation.
         // Safe to call from the already-open case (MainForm) or at the end of initial load.
         public void NavigateToFirstIssue()
         {
             if (rtbLog.TextLength == 0) { ScrollToBottom(); return; }
 
             string text     = rtbLog.Text;
-            int    warnIdx  = text.IndexOf("| WARN  |", StringComparison.Ordinal);
-            int    errorIdx = text.IndexOf("| ERROR |", StringComparison.Ordinal);
+            bool   hasError = text.Contains(ColError, StringComparison.Ordinal);
+            bool   hasWarn  = text.Contains(ColWarn,  StringComparison.Ordinal);
 
-            int firstIdx;
-            if      (warnIdx < 0 && errorIdx < 0) { ScrollToBottom(); return; }
-            else if (warnIdx  < 0)                 firstIdx = errorIdx;
-            else if (errorIdx < 0)                 firstIdx = warnIdx;
-            else                                   firstIdx = Math.Min(warnIdx, errorIdx);
+            if (!hasError && !hasWarn) { ScrollToBottom(); return; }
 
-            int lineStart = firstIdx > 0 ? text.LastIndexOf('\n', firstIdx - 1) + 1 : 0;
-            rtbLog.Select(lineStart, 0);
-            rtbLog.ScrollToCaret();
+            // Setting Text fires txtSearch_TextChanged which calls RefreshSearch and debounces RebuildDisplay.
+            // Prefer ERROR over WARN as more critical.
+            txtSearch.Text = hasError ? SearchTermError : SearchTermWarn;
         }
 
         private void ScrollToBottom()
@@ -608,10 +611,10 @@ namespace qbPortWeaver
         // Log format: "yyyy-MM-dd HH:mm:ss | LEVEL | Subsystem     | message" (level padded to 5 chars)
         private static int GetLineColorIndex(string line)
         {
-            if (line.Contains("| ERROR |", StringComparison.Ordinal)) return 0;
-            if (line.Contains("| WARN  |", StringComparison.Ordinal)) return 1;
-            if (line.Contains("| INFO  |", StringComparison.Ordinal)) return 2;
-            if (line.Contains("| DEBUG |", StringComparison.Ordinal)) return 3;
+            if (line.Contains(ColError,      StringComparison.Ordinal)) return 0;
+            if (line.Contains(ColWarn,       StringComparison.Ordinal)) return 1;
+            if (line.Contains("| INFO  |",   StringComparison.Ordinal)) return 2;
+            if (line.Contains("| DEBUG |",   StringComparison.Ordinal)) return 3;
             return 4;
         }
 

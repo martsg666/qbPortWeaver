@@ -356,9 +356,6 @@ namespace qbPortWeaver
             return lastVisibleLine >= totalLines - 1;
         }
 
-        // Populates the search box with ERROR or WARN so the existing search mechanism navigates
-        // to the first match and highlights all occurrences for prev/next navigation.
-        // Safe to call from the already-open case (MainForm) or at the end of initial load.
         public void NavigateToFirstIssue()
         {
             if (rtbLog.TextLength == 0) { ScrollToBottom(); return; }
@@ -369,8 +366,6 @@ namespace qbPortWeaver
 
             if (!hasError && !hasWarn) { ScrollToBottom(); return; }
 
-            // Setting Text fires txtSearch_TextChanged which calls RefreshSearch and debounces RebuildDisplay.
-            // Prefer ERROR over WARN as more critical.
             txtSearch.Text = hasError ? SearchTermError : SearchTermWarn;
         }
 

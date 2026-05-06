@@ -276,7 +276,6 @@ namespace qbPortWeaver
         {
             LogManager.Instance.ClearLogs();
             ResetLogAlerts();
-            _logAlertBalloonPending = false;
             _trayIcon.ShowBalloonTip(AppConstants.BalloonTipDurationMs, AppConstants.AppName, "Logs cleared", ToolTipIcon.Info);
         }
 
@@ -550,7 +549,7 @@ namespace qbPortWeaver
             string warnPart  = _unviewedWarnCount  > 0 ? Pluralize(_unviewedWarnCount,  "warning") : "";
             string errorPart = _unviewedErrorCount > 0 ? Pluralize(_unviewedErrorCount, "error")   : "";
             string badge     = (warnPart.Length > 0 && errorPart.Length > 0) ? $"{warnPart}, {errorPart}" : $"{warnPart}{errorPart}";
-            _showLogsMenuItem.Text = $"Show Logs ({badge})";
+            _showLogsMenuItem.Text = $"{ShowLogsMenuText} ({badge})";
         }
 
         private void ResetLogAlerts()
@@ -559,12 +558,13 @@ namespace qbPortWeaver
             _unviewedErrorCount     = 0;
             _logAlertBalloonShown   = false;
             _logAlertBalloonPending = false;
-            _showLogsMenuItem.Text  = "Show Logs";
+            _showLogsMenuItem.Text  = ShowLogsMenuText;
             UpdateTrayTooltip();
         }
 
-        private void ShowLogViewer(bool navigateToFirstIssue = false)
+        private void ShowLogViewer()
         {
+            bool navigateToFirstIssue = _unviewedWarnCount > 0 || _unviewedErrorCount > 0;
             ResetLogAlerts();
             var existing = _logViewerForm;
             if (existing is { IsDisposed: false })
@@ -585,7 +585,7 @@ namespace qbPortWeaver
         private void trayIcon_BalloonTipClicked(object? sender, EventArgs e)
         {
             if (!_logAlertBalloonPending) return;
-            ShowLogViewer(navigateToFirstIssue: true);
+            ShowLogViewer();
         }
 
         // Brings an existing child form to front, or creates and shows a new one.

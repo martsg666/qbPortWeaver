@@ -12,6 +12,9 @@ namespace qbPortWeaver
         private ToolStripMenuItem _autoStartMenuItem = null!;
         private ToolStripMenuItem _showLogsMenuItem = null!;
 
+        private const string ShowLogsMenuText       = "Show Logs";
+        private const string LogAlertBalloonMessage = "Check the log viewer for warnings or errors.";
+
         // Unviewed warn/error counts for log alert badge (UI thread only)
         private int _unviewedWarnCount;
         private int _unviewedErrorCount;
@@ -238,7 +241,7 @@ namespace qbPortWeaver
         {
             _trayMenu = new ContextMenuStrip();
             _trayMenu.Items.Add("Sync Port Now", null, syncPortNow_Click);
-            _showLogsMenuItem = new ToolStripMenuItem("Show Logs");
+            _showLogsMenuItem = new ToolStripMenuItem(ShowLogsMenuText);
             _showLogsMenuItem.Click += showLogs_Click;
             _trayMenu.Items.Add(_showLogsMenuItem);
             _trayMenu.Items.Add("Clear Logs", null, clearLogs_Click);
@@ -531,7 +534,7 @@ namespace qbPortWeaver
                     _logAlertBalloonShown   = true;
                     _logAlertBalloonPending = true;
                     _trayIcon.ShowBalloonTip(AppConstants.BalloonTipDurationMs, AppConstants.AppName,
-                        "Check the log viewer for warnings or errors.", ToolTipIcon.Warning);
+                        LogAlertBalloonMessage, ToolTipIcon.Warning);
                 }
             });
         }
@@ -540,7 +543,7 @@ namespace qbPortWeaver
         {
             if (_unviewedWarnCount == 0 && _unviewedErrorCount == 0)
             {
-                _showLogsMenuItem.Text = "Show Logs";
+                _showLogsMenuItem.Text = ShowLogsMenuText;
                 return;
             }
 

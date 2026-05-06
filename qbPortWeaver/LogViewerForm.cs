@@ -40,6 +40,8 @@ namespace qbPortWeaver
         // Log column markers (format: "| LEVEL | ") and corresponding search terms
         private const string ColError        = "| ERROR |";
         private const string ColWarn         = "| WARN  |";
+        private const string ColInfo         = "| INFO  |";
+        private const string ColDebug        = "| DEBUG |";
         private const string SearchTermError = "ERROR";
         private const string SearchTermWarn  = "WARN";
 
@@ -611,10 +613,10 @@ namespace qbPortWeaver
         // Log format: "yyyy-MM-dd HH:mm:ss | LEVEL | Subsystem     | message" (level padded to 5 chars)
         private static int GetLineColorIndex(string line)
         {
-            if (line.Contains(ColError,      StringComparison.Ordinal)) return 0;
-            if (line.Contains(ColWarn,       StringComparison.Ordinal)) return 1;
-            if (line.Contains("| INFO  |",   StringComparison.Ordinal)) return 2;
-            if (line.Contains("| DEBUG |",   StringComparison.Ordinal)) return 3;
+            if (line.Contains(ColError, StringComparison.Ordinal)) return 0;
+            if (line.Contains(ColWarn,  StringComparison.Ordinal)) return 1;
+            if (line.Contains(ColInfo,  StringComparison.Ordinal)) return 2;
+            if (line.Contains(ColDebug, StringComparison.Ordinal)) return 3;
             return 4;
         }
 

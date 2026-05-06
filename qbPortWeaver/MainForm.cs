@@ -10,6 +10,12 @@ namespace qbPortWeaver
         private NotifyIcon _trayIcon = null!;
         private ContextMenuStrip _trayMenu = null!;
         private ToolStripMenuItem _autoStartMenuItem = null!;
+        private ToolStripMenuItem _showLogsMenuItem = null!;
+
+        // Unviewed warn/error counts for log alert badge (UI thread only)
+        private int _unviewedWarnCount;
+        private int _unviewedErrorCount;
+        private bool _logAlertBalloonShown;
 
         // Status tray icons (generated at startup; disposed in MainForm.Designer.cs)
         private Icon? _iconBase;
@@ -73,6 +79,8 @@ namespace qbPortWeaver
             InitializeStatusIcons();
             InitializeTrayIcon();
             UpdateTrayTooltip();
+
+            LogManager.Instance.WarnOrErrorLogged += OnWarnOrErrorLogged;
         }
 
         private void MainForm_Load(object sender, EventArgs e) => _ = MainForm_LoadAsync();
@@ -161,6 +169,9 @@ namespace qbPortWeaver
             // Signal the main loop to stop
             _shutdownCts.Cancel();
 
+            // Unsubscribe before teardown so background threads cannot marshal onto a disposed form
+            LogManager.Instance.WarnOrErrorLogged -= OnWarnOrErrorLogged;
+
             // Stop the update check timer before closing child forms to prevent it firing during teardown
             _updateCheckTimer?.Stop();
             _updateCheckTimer?.Dispose();
@@ -226,7 +237,9 @@ namespace qbPortWeaver
         {
             _trayMenu = new ContextMenuStrip();
             _trayMenu.Items.Add("Sync Port Now", null, syncPortNow_Click);
-            _trayMenu.Items.Add("Show Logs", null, showLogs_Click);
+            _showLogsMenuItem = new ToolStripMenuItem("Show Logs");
+            _showLogsMenuItem.Click += showLogs_Click;
+            _trayMenu.Items.Add(_showLogsMenuItem);
             _trayMenu.Items.Add("Clear Logs", null, clearLogs_Click);
             _trayMenu.Items.Add("Settings", null, showSettings_Click);
             _trayMenu.Items.Add("Media Manager", null, showMediaManager_Click);
@@ -257,6 +270,7 @@ namespace qbPortWeaver
         private void clearLogs_Click(object? sender, EventArgs e)
         {
             LogManager.Instance.ClearLogs();
+            ResetLogAlerts();
             _trayIcon.ShowBalloonTip(AppConstants.BalloonTipDurationMs, AppConstants.AppName, "Logs cleared", ToolTipIcon.Info);
         }
 
@@ -471,13 +485,24 @@ namespace qbPortWeaver
                 _                                                      => "Starting\u2026"
             };
 
-            string text = $"{AppConstants.AppName} {AppConstants.AppVersion}\n{statusLine}";
+            string countSuffix = "";
+            if (_unviewedWarnCount > 0 || _unviewedErrorCount > 0)
+            {
+                string wPart = _unviewedWarnCount  > 0 ? $"{_unviewedWarnCount}W"  : "";
+                string ePart = _unviewedErrorCount > 0 ? $"{_unviewedErrorCount}E" : "";
+                string sep   = (wPart.Length > 0 && ePart.Length > 0) ? " " : "";
+                countSuffix  = $"\n{wPart}{sep}{ePart} in log";
+            }
 
-            // Tray tooltip maximum is 63 characters
-            if (text.Length > AppConstants.MaxTooltipLength)
-                text = text[..AppConstants.MaxTooltipLength];
+            // Tray tooltip maximum is 63 characters.
+            // Reserve space for the count suffix so it is never truncated mid-word;
+            // trim the status line instead if the combined text is too long.
+            string header = $"{AppConstants.AppName} {AppConstants.AppVersion}\n";
+            int statusBudget = AppConstants.MaxTooltipLength - header.Length - countSuffix.Length;
+            if (statusLine.Length > statusBudget)
+                statusLine = statusLine[..Math.Max(0, statusBudget)];
 
-            _trayIcon.Text = text;
+            _trayIcon.Text = $"{header}{statusLine}{countSuffix}";
         }
 
         // Marshals an action to the UI thread, using Invoke if called from a background thread
@@ -489,8 +514,55 @@ namespace qbPortWeaver
                 action();
         }
 
+        // Called from background threads via LogManager.WarnOrErrorLogged; marshals to UI thread
+        private void OnWarnOrErrorLogged(LogLevel level)
+        {
+            if (_shutdownCts.IsCancellationRequested) return;
+            InvokeOnUiThread(() =>
+            {
+                if (level == LogLevel.Warn) _unviewedWarnCount++;
+                else _unviewedErrorCount++;
+
+                UpdateShowLogsMenuItem();
+                UpdateTrayTooltip();
+
+                if (!_logAlertBalloonShown)
+                {
+                    _logAlertBalloonShown = true;
+                    _trayIcon.ShowBalloonTip(AppConstants.BalloonTipDurationMs, AppConstants.AppName,
+                        "Check the log viewer for warnings or errors.", ToolTipIcon.Warning);
+                }
+            });
+        }
+
+        private void UpdateShowLogsMenuItem()
+        {
+            if (_unviewedWarnCount == 0 && _unviewedErrorCount == 0)
+            {
+                _showLogsMenuItem.Text = "Show Logs";
+                return;
+            }
+
+            string warnPart  = _unviewedWarnCount  > 0 ? Pluralize(_unviewedWarnCount,  "warning") : "";
+            string errorPart = _unviewedErrorCount > 0 ? Pluralize(_unviewedErrorCount, "error")   : "";
+            string badge     = (warnPart.Length > 0 && errorPart.Length > 0) ? $"{warnPart}, {errorPart}" : $"{warnPart}{errorPart}";
+            _showLogsMenuItem.Text = $"Show Logs ({badge})";
+        }
+
+        private void ResetLogAlerts()
+        {
+            _unviewedWarnCount = 0;
+            _unviewedErrorCount = 0;
+            _logAlertBalloonShown = false;
+            _showLogsMenuItem.Text = "Show Logs";
+            UpdateTrayTooltip();
+        }
+
         private void ShowLogViewer()
-            => ShowOrActivate(() => _logViewerForm, f => _logViewerForm = f, () => new LogViewerForm(LogManager.Instance.LogFilePath));
+        {
+            ResetLogAlerts();
+            ShowOrActivate(() => _logViewerForm, f => _logViewerForm = f, () => new LogViewerForm(LogManager.Instance.LogFilePath));
+        }
 
         // Brings an existing child form to front, or creates and shows a new one.
         // The optional onClosed callback runs after the form is closed.
@@ -515,6 +587,8 @@ namespace qbPortWeaver
             };
             frm.Show();
         }
+
+        private static string Pluralize(int count, string noun) => $"{count} {noun}{(count == 1 ? "" : "s")}";
 
         [LibraryImport("user32.dll", SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]

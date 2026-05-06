@@ -48,6 +48,9 @@ The application runs in the system tray, manages configuration and logging, and 
 - **Port Update Notification**
   Optionally shows a tray balloon tip when the BitTorrent client's listening port is successfully updated to a new value. Enabled by default. Configurable via Settings > General.
 
+- **Log Alert Notifications**
+  When a warning or error is written to the log, a tray balloon tip appears once to get your attention. The **Show Logs** menu item updates to show a badge (e.g. "Show Logs (2 warnings, 1 error)"), and hovering over the tray icon shows a compact count (e.g. "2W 1E in log"). All alerts clear automatically when the log viewer is opened or logs are cleared.
+
 - **Auto-Recovery**
   Automatically recovers when a configurable number of consecutive sync cycles fail - whether the VPN is disconnected or port detection fails despite the VPN being connected. For ProtonVPN and PIA (direct or NAT-PMP mode), the helper restarts the Windows service and the tray app restarts the client process. For NAT-PMP with a generic (non-ProtonVPN/PIA) gateway, the helper cycles the network adapter (disable/enable via netsh). All privileged operations are delegated to a lightweight helper Windows service (`qbPortWeaverHelper`) running as LocalSystem - no UAC prompt required.
 
@@ -65,7 +68,7 @@ The application runs in the system tray, manages configuration and logging, and 
   Runs quietly in the background with a system tray icon for quick access to logs, settings, and controls.
 
 - **Tray Status Indicator**
-  After each sync cycle the tray icon shows a colored status dot: **green** (ports aligned), **orange** (VPN not connected), **red** (error), or **no dot** (port sync disabled). Hovering over the icon displays the current port and status at a glance, without opening the log file.
+  After each sync cycle the tray icon shows a colored status dot: **green** (ports aligned), **orange** (VPN not connected), **red** (error), or **no dot** (port sync disabled). Hovering over the icon displays the current port and status, and a compact warning/error count if there are unviewed log entries (e.g. "2W 1E in log").
 
 - **Settings Dialog**
   All configuration options are editable through a dedicated Settings form (tray menu → Settings), with inline descriptions and tooltips for each option.
@@ -200,7 +203,7 @@ Configured via tray menu → **Media Manager**.
 ### Tray Menu Options
 
 - **Sync Port Now** - triggers an immediate sync cycle, skipping the current wait interval
-- **Show Logs** - opens the built-in Log Viewer (also opened by double-clicking the tray icon)
+- **Show Logs** - opens the built-in Log Viewer (also opened by double-clicking the tray icon); shows a warning/error count badge when unviewed entries exist
 - **Clear Logs** - deletes all log files and starts a fresh log
 - **Settings** - opens the Settings dialog
 - **Media Manager** - opens the Media Manager dialog to configure source and library folders, preview imports (Scan Now), apply them (Import Now), and clear fingerprint caches (Clear Cache)

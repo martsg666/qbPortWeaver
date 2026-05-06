@@ -494,9 +494,6 @@ namespace qbPortWeaver
                 countSuffix  = $"\n{wPart}{sep}{ePart} in log";
             }
 
-            // Tray tooltip maximum is 63 characters.
-            // Reserve space for the count suffix so it is never truncated mid-word;
-            // trim the status line instead if the combined text is too long.
             string header = $"{AppConstants.AppName} {AppConstants.AppVersion}\n";
             int statusBudget = AppConstants.MaxTooltipLength - header.Length - countSuffix.Length;
             if (statusLine.Length > statusBudget)

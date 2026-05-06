@@ -16,6 +16,7 @@ namespace qbPortWeaver
         private int _unviewedWarnCount;
         private int _unviewedErrorCount;
         private bool _logAlertBalloonShown;
+        private bool _logAlertBalloonPending;
 
         // Status tray icons (generated at startup; disposed in MainForm.Designer.cs)
         private Icon? _iconBase;
@@ -262,7 +263,8 @@ namespace qbPortWeaver
                 Visible = true,
                 ContextMenuStrip = _trayMenu
             };
-            _trayIcon.MouseDoubleClick += trayIcon_MouseDoubleClick;
+            _trayIcon.MouseDoubleClick  += trayIcon_MouseDoubleClick;
+            _trayIcon.BalloonTipClicked += trayIcon_BalloonTipClicked;
         }
 
         private void showLogs_Click(object? sender, EventArgs e) => ShowLogViewer();
@@ -271,6 +273,7 @@ namespace qbPortWeaver
         {
             LogManager.Instance.ClearLogs();
             ResetLogAlerts();
+            _logAlertBalloonPending = false;
             _trayIcon.ShowBalloonTip(AppConstants.BalloonTipDurationMs, AppConstants.AppName, "Logs cleared", ToolTipIcon.Info);
         }
 
@@ -338,14 +341,14 @@ namespace qbPortWeaver
         private void OnInterfaceMismatchDetected(string message)
         {
             if (_shutdownCts.IsCancellationRequested) return;
-            InvokeOnUiThread(() => _trayIcon.ShowBalloonTip(AppConstants.BalloonTipDurationMs, AppConstants.AppName, message, ToolTipIcon.Warning));
+            InvokeOnUiThread(() => { _logAlertBalloonPending = false; _trayIcon.ShowBalloonTip(AppConstants.BalloonTipDurationMs, AppConstants.AppName, message, ToolTipIcon.Warning); });
         }
 
         // Called by PortSyncService when the BitTorrent client's listening port is successfully updated
         private void OnPortUpdated(string message) // NOSONAR S2325 - ShowBalloonTip is an instance method, handler cannot be static
         {
             if (_shutdownCts.IsCancellationRequested) return;
-            InvokeOnUiThread(() => _trayIcon.ShowBalloonTip(AppConstants.BalloonTipDurationMs, AppConstants.AppName, message, ToolTipIcon.Info));
+            InvokeOnUiThread(() => { _logAlertBalloonPending = false; _trayIcon.ShowBalloonTip(AppConstants.BalloonTipDurationMs, AppConstants.AppName, message, ToolTipIcon.Info); });
         }
 
         // Runs the port-sync loop until shutdown is requested.
@@ -488,10 +491,10 @@ namespace qbPortWeaver
             string countSuffix = "";
             if (_unviewedWarnCount > 0 || _unviewedErrorCount > 0)
             {
-                string wPart = _unviewedWarnCount  > 0 ? $"{_unviewedWarnCount}W"  : "";
-                string ePart = _unviewedErrorCount > 0 ? $"{_unviewedErrorCount}E" : "";
-                string sep   = (wPart.Length > 0 && ePart.Length > 0) ? " " : "";
-                countSuffix  = $"\n{wPart}{sep}{ePart} in log";
+                string wPart = _unviewedWarnCount  > 0 ? Pluralize(_unviewedWarnCount,  "Warning") : "";
+                string ePart = _unviewedErrorCount > 0 ? Pluralize(_unviewedErrorCount, "Error")   : "";
+                string sep   = (wPart.Length > 0 && ePart.Length > 0) ? ", " : "";
+                countSuffix  = $"\n{wPart}{sep}{ePart}";
             }
 
             string header = $"{AppConstants.AppName} {AppConstants.AppVersion}\n";
@@ -525,7 +528,8 @@ namespace qbPortWeaver
 
                 if (!_logAlertBalloonShown)
                 {
-                    _logAlertBalloonShown = true;
+                    _logAlertBalloonShown   = true;
+                    _logAlertBalloonPending = true;
                     _trayIcon.ShowBalloonTip(AppConstants.BalloonTipDurationMs, AppConstants.AppName,
                         "Check the log viewer for warnings or errors.", ToolTipIcon.Warning);
                 }
@@ -548,17 +552,37 @@ namespace qbPortWeaver
 
         private void ResetLogAlerts()
         {
-            _unviewedWarnCount = 0;
-            _unviewedErrorCount = 0;
-            _logAlertBalloonShown = false;
-            _showLogsMenuItem.Text = "Show Logs";
+            _unviewedWarnCount      = 0;
+            _unviewedErrorCount     = 0;
+            _logAlertBalloonShown   = false;
+            _logAlertBalloonPending = false;
+            _showLogsMenuItem.Text  = "Show Logs";
             UpdateTrayTooltip();
         }
 
-        private void ShowLogViewer()
+        private void ShowLogViewer(bool navigateToFirstIssue = false)
         {
             ResetLogAlerts();
-            ShowOrActivate(() => _logViewerForm, f => _logViewerForm = f, () => new LogViewerForm(LogManager.Instance.LogFilePath));
+            var existing = _logViewerForm;
+            if (existing is { IsDisposed: false })
+            {
+                if (existing.WindowState == FormWindowState.Minimized)
+                    existing.WindowState = FormWindowState.Normal;
+                existing.BringToFront();
+                existing.Activate();
+                if (navigateToFirstIssue) existing.NavigateToFirstIssue();
+                return;
+            }
+            var frm = new LogViewerForm(LogManager.Instance.LogFilePath, navigateToFirstIssue);
+            _logViewerForm = frm;
+            frm.FormClosed += (_, _) => _logViewerForm = null;
+            frm.Show();
+        }
+
+        private void trayIcon_BalloonTipClicked(object? sender, EventArgs e)
+        {
+            if (!_logAlertBalloonPending) return;
+            ShowLogViewer(navigateToFirstIssue: true);
         }
 
         // Brings an existing child form to front, or creates and shows a new one.

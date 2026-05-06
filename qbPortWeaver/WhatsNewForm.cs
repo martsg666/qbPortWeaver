@@ -13,8 +13,9 @@ namespace qbPortWeaver
             "New in 2.5.3\n\n" +
             "Log alert notifications\n" +
             "When a warning or error is written to the log, a tray balloon tip appears once to get your attention. " +
-            "The Show Logs menu item updates to show a count (e.g. Show Logs (2 warnings, 1 error)), and " +
-            "hovering over the tray icon shows a compact summary (e.g. 2W 1E in log). " +
+            "Clicking the balloon opens the log viewer at the first warning or error. " +
+            "The Show Logs menu item shows a running count (e.g. Show Logs (2 warnings, 1 error)), and " +
+            "hovering over the tray icon shows the same count in plain text (e.g. 2 Warnings, 1 Error). " +
             "Alerts clear automatically when you open the log viewer or clear the logs.\n\n" +
             "Previously released\n\n" +
             "New in 2.5.2\n\n" +

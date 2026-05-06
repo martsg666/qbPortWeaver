@@ -8,6 +8,7 @@ namespace qbPortWeaver
     public partial class LogViewerForm : Form
     {
         private readonly string      _logFilePath;
+        private readonly bool        _navigateToFirstIssue;
         private readonly object      _readLock  = new();
         private readonly List<string> _allLines = new(); // all raw lines from file; display is rebuilt from these on filter change
         private readonly List<int>   _searchMatches = new(); // character indices of current search hits in rtbLog
@@ -38,10 +39,11 @@ namespace qbPortWeaver
 
         public LogViewerForm() : this(string.Empty) { } // designer support only
 
-        public LogViewerForm(string logFilePath)
+        public LogViewerForm(string logFilePath, bool navigateToFirstIssue = false)
         {
             InitializeComponent();
-            _logFilePath = logFilePath;
+            _logFilePath          = logFilePath;
+            _navigateToFirstIssue = navigateToFirstIssue;
         }
 
         protected override void OnLoad(EventArgs e)
@@ -346,6 +348,27 @@ namespace qbPortWeaver
             return lastVisibleLine >= totalLines - 1;
         }
 
+        // Scrolls to the first WARN or ERROR line in the current view; falls back to bottom if none found.
+        // Safe to call from the already-open case (MainForm) or at the end of initial load.
+        public void NavigateToFirstIssue()
+        {
+            if (rtbLog.TextLength == 0) { ScrollToBottom(); return; }
+
+            string text     = rtbLog.Text;
+            int    warnIdx  = text.IndexOf("| WARN  |", StringComparison.Ordinal);
+            int    errorIdx = text.IndexOf("| ERROR |", StringComparison.Ordinal);
+
+            int firstIdx;
+            if      (warnIdx < 0 && errorIdx < 0) { ScrollToBottom(); return; }
+            else if (warnIdx  < 0)                 firstIdx = errorIdx;
+            else if (errorIdx < 0)                 firstIdx = warnIdx;
+            else                                   firstIdx = Math.Min(warnIdx, errorIdx);
+
+            int lineStart = firstIdx > 0 ? text.LastIndexOf('\n', firstIdx - 1) + 1 : 0;
+            rtbLog.Select(lineStart, 0);
+            rtbLog.ScrollToCaret();
+        }
+
         private void ScrollToBottom()
         {
             SendMessage(rtbLog.Handle, WinMsg.WM_VSCROLL, (IntPtr)WinMsg.SB_BOTTOM, IntPtr.Zero);
@@ -402,7 +425,7 @@ namespace qbPortWeaver
                 _allLines.AddRange(allLines);
                 _lastReadPosition = position;
                 rtbLog.Rtf = rtf;
-                ScrollToBottom();
+                if (_navigateToFirstIssue) NavigateToFirstIssue(); else ScrollToBottom();
             }
             catch (Exception ex)
             {

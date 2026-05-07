@@ -134,25 +134,15 @@ internal sealed class HelperPipeServer(ILogger<HelperPipeServer> logger) : Backg
         switch (action)
         {
             case ActionRestart:
-                if (string.IsNullOrWhiteSpace(target))
-                {
-                    logger.LogWarning("Rejected restart request with empty service name");
-                    break;
-                }
                 await AutoRecovery.RestartServiceAsync(target, helperLogger).ConfigureAwait(false);
                 break;
 
             case ActionCycleAdapter:
-                if (string.IsNullOrWhiteSpace(target))
-                {
-                    logger.LogWarning("Rejected cycle-adapter request with empty adapter name");
-                    break;
-                }
                 await AutoRecovery.CycleAdapterAsync(target, helperLogger).ConfigureAwait(false);
                 break;
 
             default:
-                logger.LogWarning("Rejected unknown action '{Action}'", action);
+                helperLogger.LogWarn($"Rejected unknown action '{action}'");
                 break;
         }
 

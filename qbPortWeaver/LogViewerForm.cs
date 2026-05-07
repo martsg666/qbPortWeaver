@@ -8,7 +8,7 @@ namespace qbPortWeaver
     public partial class LogViewerForm : Form
     {
         private readonly string      _logFilePath;
-        private readonly bool        _navigateToFirstIssue;
+        private readonly bool        _navigateToLatestIssue;
         private readonly object      _readLock  = new();
         private readonly List<string> _allLines = new(); // all raw lines from file; display is rebuilt from these on filter change
         private readonly List<int>   _searchMatches = new(); // character indices of current search hits in rtbLog
@@ -45,11 +45,11 @@ namespace qbPortWeaver
 
         public LogViewerForm() : this(string.Empty) { } // designer support only
 
-        public LogViewerForm(string logFilePath, bool navigateToFirstIssue = false)
+        public LogViewerForm(string logFilePath, bool navigateToLatestIssue = false)
         {
             InitializeComponent();
-            _logFilePath          = logFilePath;
-            _navigateToFirstIssue = navigateToFirstIssue;
+            _logFilePath           = logFilePath;
+            _navigateToLatestIssue = navigateToLatestIssue;
         }
 
         protected override void OnLoad(EventArgs e)
@@ -359,26 +359,30 @@ namespace qbPortWeaver
             return lastVisibleLine >= totalLines - 1;
         }
 
+        /// <summary>Scrolls to the previous (older) WARN or ERROR line relative to the current selection.
+        /// Matches the level-column markers (e.g. "| WARN  |"), so settings names like
+        /// warnOnInterfaceMismatch=True are not falsely matched.</summary>
         private void IssuePrev()
         {
-            string text     = rtbLog.Text;
-            int    maxStart = Math.Min(rtbLog.SelectionStart - 1, text.Length - 1);
-            if (maxStart < 0) return;
+            int end = rtbLog.SelectionStart;
+            if (end <= 0 || rtbLog.TextLength == 0) return;
             int prev = Math.Max(
-                text.LastIndexOf(ColError, maxStart, StringComparison.Ordinal),
-                text.LastIndexOf(ColWarn,  maxStart, StringComparison.Ordinal));
+                rtbLog.Find(ColError, 0, end, RichTextBoxFinds.Reverse),
+                rtbLog.Find(ColWarn,  0, end, RichTextBoxFinds.Reverse));
             if (prev < 0) return;
             rtbLog.Select(prev, 0);
             rtbLog.ScrollToCaret();
         }
 
+        /// <summary>Scrolls to the next (newer) WARN or ERROR line relative to the current selection.
+        /// Matches the level-column markers (e.g. "| WARN  |"), so settings names like
+        /// warnOnInterfaceMismatch=True are not falsely matched.</summary>
         private void IssueNext()
         {
-            string text  = rtbLog.Text;
-            int    start = rtbLog.SelectionStart + 1;
-            if (start >= text.Length) return;
-            int nextError = text.IndexOf(ColError, start, StringComparison.Ordinal);
-            int nextWarn  = text.IndexOf(ColWarn,  start, StringComparison.Ordinal);
+            int start = rtbLog.SelectionStart + 1;
+            if (start >= rtbLog.TextLength) return;
+            int nextError = rtbLog.Find(ColError, start, RichTextBoxFinds.None);
+            int nextWarn  = rtbLog.Find(ColWarn,  start, RichTextBoxFinds.None);
             int next = (nextError, nextWarn) switch
             {
                 (< 0, _) => nextWarn,
@@ -390,17 +394,16 @@ namespace qbPortWeaver
             rtbLog.ScrollToCaret();
         }
 
-        public void NavigateToFirstIssue()
+        /// <summary>Scrolls to the most recent (last) WARN or ERROR line in the log, falling back to
+        /// the bottom of the log if none are present. Used when opening the log viewer with unviewed
+        /// alerts (via tray balloon click or Show Logs).</summary>
+        public void NavigateToLatestIssue()
         {
             if (rtbLog.TextLength == 0) { ScrollToBottom(); return; }
-
-            string text      = rtbLog.Text;
-            int    lastError = text.LastIndexOf(ColError, StringComparison.Ordinal);
-            int    lastWarn  = text.LastIndexOf(ColWarn,  StringComparison.Ordinal);
-            int    lastIdx   = Math.Max(lastError, lastWarn);
-
+            int lastError = rtbLog.Find(ColError, 0, rtbLog.TextLength, RichTextBoxFinds.Reverse);
+            int lastWarn  = rtbLog.Find(ColWarn,  0, rtbLog.TextLength, RichTextBoxFinds.Reverse);
+            int lastIdx   = Math.Max(lastError, lastWarn);
             if (lastIdx < 0) { ScrollToBottom(); return; }
-
             rtbLog.Select(lastIdx, 0);
             rtbLog.ScrollToCaret();
         }
@@ -461,7 +464,7 @@ namespace qbPortWeaver
                 _allLines.AddRange(allLines);
                 _lastReadPosition = position;
                 rtbLog.Rtf = rtf;
-                if (_navigateToFirstIssue) NavigateToFirstIssue(); else ScrollToBottom();
+                if (_navigateToLatestIssue) NavigateToLatestIssue(); else ScrollToBottom();
             }
             catch (Exception ex)
             {

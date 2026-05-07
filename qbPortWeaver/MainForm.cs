@@ -564,7 +564,7 @@ namespace qbPortWeaver
 
         private void ShowLogViewer()
         {
-            bool navigateToFirstIssue = _unviewedWarnCount > 0 || _unviewedErrorCount > 0;
+            bool navigateToLatestIssue = _unviewedWarnCount > 0 || _unviewedErrorCount > 0;
             ResetLogAlerts();
             var existing = _logViewerForm;
             if (existing is { IsDisposed: false })
@@ -573,10 +573,10 @@ namespace qbPortWeaver
                     existing.WindowState = FormWindowState.Normal;
                 existing.BringToFront();
                 existing.Activate();
-                if (navigateToFirstIssue) existing.NavigateToFirstIssue();
+                if (navigateToLatestIssue) existing.NavigateToLatestIssue();
                 return;
             }
-            var frm = new LogViewerForm(LogManager.Instance.LogFilePath, navigateToFirstIssue);
+            var frm = new LogViewerForm(LogManager.Instance.LogFilePath, navigateToLatestIssue);
             _logViewerForm = frm;
             frm.FormClosed += (_, _) => _logViewerForm = null;
             frm.Show();

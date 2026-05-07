@@ -104,6 +104,17 @@ namespace qbPortWeaver
                 WarnOrErrorLogged?.Invoke(level);
         }
 
+        /// <summary>
+        /// Raises <see cref="WarnOrErrorLogged"/> for an entry written to the shared log file
+        /// by an external writer (the helper service), so the tray UI can surface it as a log
+        /// alert. Does not write a new entry. No-op for non-Warn/Error levels.
+        /// </summary>
+        public void NotifyExternalWarnOrError(LogLevel level)
+        {
+            if (level is LogLevel.Warn or LogLevel.Error)
+                WarnOrErrorLogged?.Invoke(level);
+        }
+
         /// <summary>Writes a blank line to the log file. Thread-safe.</summary>
         public void LogBlankLine()
         {

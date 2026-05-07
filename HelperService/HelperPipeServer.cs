@@ -25,6 +25,10 @@ internal sealed class HelperPipeServer(ILogger<HelperPipeServer> logger) : Backg
     private const string ActionRestart      = "restart";       // Must match HelperServiceClient.ActionRestart in qbPortWeaver
     private const string ActionCycleAdapter = "cycle-adapter"; // Must match HelperServiceClient.ActionCycleAdapter in qbPortWeaver
 
+    // Result line keys returned to the tray client. Must match HelperServiceClient.ResultWarnKey/ResultErrorKey.
+    private const string ResultWarnKey  = "warn";
+    private const string ResultErrorKey = "error";
+
     // Registry paths and keys for impersonated HKCU reads.
     // AppRegistryKey / PipeSessionTokenKey must match RegistrySettingsManager.AppKeyPath / KeyPipeSessionToken in qbPortWeaver.
     private const string AppRegistryKey         = @"Software\qbPortWeaver";
@@ -76,7 +80,7 @@ internal sealed class HelperPipeServer(ILogger<HelperPipeServer> logger) : Backg
         // qbPortWeaver client can send commands to this SYSTEM-level helper service.
         using var pipe = NamedPipeServerStreamAcl.Create(
             HelperServicePipeName,
-            PipeDirection.In,
+            PipeDirection.InOut,
             maxNumberOfServerInstances: 1,
             PipeTransmissionMode.Byte,
             PipeOptions.Asynchronous,
@@ -127,7 +131,7 @@ internal sealed class HelperPipeServer(ILogger<HelperPipeServer> logger) : Backg
                 if (string.IsNullOrWhiteSpace(target))
                 {
                     logger.LogWarning("Rejected restart request with empty service name");
-                    return;
+                    break;
                 }
                 await AutoRecovery.RestartServiceAsync(target, helperLogger).ConfigureAwait(false);
                 break;
@@ -136,7 +140,7 @@ internal sealed class HelperPipeServer(ILogger<HelperPipeServer> logger) : Backg
                 if (string.IsNullOrWhiteSpace(target))
                 {
                     logger.LogWarning("Rejected cycle-adapter request with empty adapter name");
-                    return;
+                    break;
                 }
                 await AutoRecovery.CycleAdapterAsync(target, helperLogger).ConfigureAwait(false);
                 break;
@@ -144,6 +148,18 @@ internal sealed class HelperPipeServer(ILogger<HelperPipeServer> logger) : Backg
             default:
                 logger.LogWarning("Rejected unknown action '{Action}'", action);
                 break;
+        }
+
+        // Send back the helper-side WARN/ERROR counts so the tray app can raise its log-alert
+        // event for entries the helper wrote directly to the shared log file.
+        try
+        {
+            await using var writer = new StreamWriter(pipe, leaveOpen: true) { AutoFlush = true };
+            await writer.WriteLineAsync($"{ResultWarnKey}={helperLogger.WarnCount}|{ResultErrorKey}={helperLogger.ErrorCount}").ConfigureAwait(false);
+        }
+        catch (IOException ex)
+        {
+            logger.LogWarning(ex, "Failed to send result line back to pipe client");
         }
     }
 

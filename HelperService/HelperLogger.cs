@@ -16,9 +16,12 @@ internal sealed class HelperLogger(string logFilePath)
     private const int    WriteMaxAttempts     = 3;
     private const int    WriteRetryDelayMs    = 50;
 
+    public int WarnCount  { get; private set; }
+    public int ErrorCount { get; private set; }
+
     public void LogInfo(string message)  => WriteLog(message, "INFO ");
-    public void LogWarn(string message)  => WriteLog(message, "WARN ");
-    public void LogError(string message) => WriteLog(message, "ERROR");
+    public void LogWarn(string message)  { WarnCount++;  WriteLog(message, "WARN "); }
+    public void LogError(string message) { ErrorCount++; WriteLog(message, "ERROR"); }
 
     private void WriteLog(string message, string paddedLevel)
     {

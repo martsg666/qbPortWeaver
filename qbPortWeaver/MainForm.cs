@@ -522,6 +522,11 @@ namespace qbPortWeaver
             if (_shutdownCts.IsCancellationRequested) return;
             InvokeOnUiThread(() =>
             {
+                // Re-check inside the marshalled lambda: a disposal can happen between the
+                // outer guard and Invoke completing, leaving the lambda about to touch a
+                // disposed form (counter fields, menu item, NotifyIcon).
+                if (IsDisposed || _shutdownCts.IsCancellationRequested) return;
+
                 if (level == LogLevel.Warn) _unviewedWarnCount++;
                 else _unviewedErrorCount++;
 
@@ -566,20 +571,13 @@ namespace qbPortWeaver
         {
             bool navigateToLatestIssue = _unviewedWarnCount > 0 || _unviewedErrorCount > 0;
             ResetLogAlerts();
-            var existing = _logViewerForm;
-            if (existing is { IsDisposed: false })
-            {
-                if (existing.WindowState == FormWindowState.Minimized)
-                    existing.WindowState = FormWindowState.Normal;
-                existing.BringToFront();
-                existing.Activate();
-                if (navigateToLatestIssue) existing.NavigateToLatestIssue();
-                return;
-            }
-            var frm = new LogViewerForm(LogManager.Instance.LogFilePath, navigateToLatestIssue);
-            _logViewerForm = frm;
-            frm.FormClosed += (_, _) => _logViewerForm = null;
-            frm.Show();
+            // For an already-open viewer, only the post-activate hook is needed (the constructor
+            // bool field only takes effect on initial load); this passes navigation through both paths.
+            ShowOrActivate(
+                () => _logViewerForm,
+                f => _logViewerForm = f,
+                () => new LogViewerForm(LogManager.Instance.LogFilePath, navigateToLatestIssue),
+                onActivated: f => { if (navigateToLatestIssue) f.NavigateToLatestIssue(); });
         }
 
         private void trayIcon_BalloonTipClicked(object? sender, EventArgs e)
@@ -589,8 +587,9 @@ namespace qbPortWeaver
         }
 
         // Brings an existing child form to front, or creates and shows a new one.
-        // The optional onClosed callback runs after the form is closed.
-        private static void ShowOrActivate<T>(Func<T?> getter, Action<T?> setter, Func<T> factory, Action<T>? onClosed = null) where T : Form
+        // onClosed runs after the form is closed. onActivated runs after the form is shown
+        // or re-activated (covers both new and existing).
+        private static void ShowOrActivate<T>(Func<T?> getter, Action<T?> setter, Func<T> factory, Action<T>? onClosed = null, Action<T>? onActivated = null) where T : Form
         {
             var existing = getter();
             if (existing is { IsDisposed: false })
@@ -599,6 +598,7 @@ namespace qbPortWeaver
                     existing.WindowState = FormWindowState.Normal;
                 existing.BringToFront();
                 existing.Activate();
+                onActivated?.Invoke(existing);
                 return;
             }
 
@@ -610,6 +610,7 @@ namespace qbPortWeaver
                 setter(null);
             };
             frm.Show();
+            onActivated?.Invoke(frm);
         }
 
         private static string Pluralize(int count, string noun) => $"{count} {noun}{(count == 1 ? "" : "s")}";

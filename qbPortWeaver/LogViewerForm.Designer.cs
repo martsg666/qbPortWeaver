@@ -34,6 +34,8 @@ namespace qbPortWeaver
             chkInfo       = new System.Windows.Forms.CheckBox();
             chkDebug      = new System.Windows.Forms.CheckBox();
             cboSubsystem  = new System.Windows.Forms.ComboBox();
+            btnIssuePrev   = new System.Windows.Forms.Button();
+            btnIssueNext   = new System.Windows.Forms.Button();
             txtSearch      = new PlaceholderTextBox();
             btnClearSearch = new System.Windows.Forms.Button();
             btnPrev        = new System.Windows.Forms.Button();
@@ -43,8 +45,10 @@ namespace qbPortWeaver
             ctxCopy        = new System.Windows.Forms.ToolStripMenuItem();
             ctxCopyAll     = new System.Windows.Forms.ToolStripMenuItem();
             ctxSelectAll   = new System.Windows.Forms.ToolStripMenuItem();
+            toolTip        = new System.Windows.Forms.ToolTip();
             components     = new System.ComponentModel.Container();
             components.Add(ctxLog);
+            components.Add(toolTip);
             pnlToolbar.SuspendLayout();
             SuspendLayout();
 
@@ -109,13 +113,33 @@ namespace qbPortWeaver
             chkInfo.CheckedChanged  += filterButton_CheckedChanged;
             chkDebug.CheckedChanged += filterButton_CheckedChanged;
 
-            // Subsystem filter - positioned after the level buttons with a small gap
+            // Issue navigation buttons - grouped with the level filter buttons, navigate between WARN/ERROR lines.
+            // Positioned immediately after chkDebug; y/h kept at filter-button values (no OnLoad adjustment).
+            btnIssuePrev.Anchor    = leftAnchor;
+            btnIssuePrev.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
+            btnIssuePrev.Location  = new System.Drawing.Point(296, 4);
+            btnIssuePrev.Size      = new System.Drawing.Size(26, 26);
+            btnIssuePrev.TabIndex  = 4;
+            btnIssuePrev.Text      = "▲";
+            btnIssuePrev.Click    += btnIssuePrev_Click;
+            toolTip.SetToolTip(btnIssuePrev, "Previous warning or error");
+
+            btnIssueNext.Anchor    = leftAnchor;
+            btnIssueNext.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
+            btnIssueNext.Location  = new System.Drawing.Point(322, 4);
+            btnIssueNext.Size      = new System.Drawing.Size(26, 26);
+            btnIssueNext.TabIndex  = 5;
+            btnIssueNext.Text      = "▼";
+            btnIssueNext.Click    += btnIssueNext_Click;
+            toolTip.SetToolTip(btnIssueNext, "Next warning or error");
+
+            // Subsystem filter - positioned after the level buttons and issue nav buttons
             cboSubsystem.Anchor        = System.Windows.Forms.AnchorStyles.Left | System.Windows.Forms.AnchorStyles.Top;
             cboSubsystem.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
             cboSubsystem.Items.AddRange(new object[] { "All", Subsystem.MainApp, Subsystem.MediaManager, Subsystem.HelperService });
-            cboSubsystem.Location      = new System.Drawing.Point(300, 6);
+            cboSubsystem.Location      = new System.Drawing.Point(380, 6);
             cboSubsystem.Size          = new System.Drawing.Size(130, 23);
-            cboSubsystem.TabIndex      = 4;
+            cboSubsystem.TabIndex      = 6;
             cboSubsystem.SelectedIndex = 0;
             // Wire event after setting SelectedIndex to avoid premature RebuildDisplay
             cboSubsystem.SelectedIndexChanged += cboSubsystem_SelectedIndexChanged;
@@ -131,7 +155,7 @@ namespace qbPortWeaver
             txtSearch.Location        = new System.Drawing.Point(752, 8);
             txtSearch.PlaceholderText = "Search…";
             txtSearch.Width           = 220; // height is auto-sized by font; vertically centered in OnLoad
-            txtSearch.TabIndex        = 5;
+            txtSearch.TabIndex        = 7;
             txtSearch.TextChanged    += txtSearch_TextChanged;
             txtSearch.KeyDown        += txtSearch_KeyDown;
 
@@ -146,7 +170,7 @@ namespace qbPortWeaver
             btnClearSearch.Size                      = new System.Drawing.Size(16, 16);  // fine-tuned in OnLoad
             btnClearSearch.Text                      = "X";
             btnClearSearch.TextAlign                 = System.Drawing.ContentAlignment.MiddleCenter;
-            btnClearSearch.TabIndex                  = 6;
+            btnClearSearch.TabIndex                  = 8;
             btnClearSearch.TabStop                   = false;
             btnClearSearch.Visible                   = false;
             btnClearSearch.Click                    += btnClearSearch_Click;
@@ -156,7 +180,7 @@ namespace qbPortWeaver
             btnPrev.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
             btnPrev.Location  = new System.Drawing.Point(1044, 5);
             btnPrev.Size      = new System.Drawing.Size(26, 26);
-            btnPrev.TabIndex  = 7;
+            btnPrev.TabIndex  = 9;
             btnPrev.Text      = "▲";
             btnPrev.Click    += btnPrev_Click;
 
@@ -165,7 +189,7 @@ namespace qbPortWeaver
             btnNext.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
             btnNext.Location  = new System.Drawing.Point(1070, 5);
             btnNext.Size      = new System.Drawing.Size(26, 26);
-            btnNext.TabIndex  = 8;
+            btnNext.TabIndex  = 10;
             btnNext.Text      = "▼";
             btnNext.Click    += btnNext_Click;
 
@@ -181,7 +205,7 @@ namespace qbPortWeaver
             // otherwise the default panel width (~200px) produces a negative right-margin and
             // causes right-anchored controls to fly off-screen when the panel expands to form width.
             pnlToolbar.Controls.AddRange(new System.Windows.Forms.Control[] {
-                chkError, chkWarn, chkInfo, chkDebug, cboSubsystem,
+                chkError, chkWarn, chkInfo, chkDebug, cboSubsystem, btnIssuePrev, btnIssueNext,
                 txtSearch, btnClearSearch, btnPrev, btnNext, lblMatchCount });
             pnlToolbar.Dock     = System.Windows.Forms.DockStyle.Top;
             pnlToolbar.Size     = new System.Drawing.Size(1100, 36);
@@ -238,6 +262,8 @@ namespace qbPortWeaver
         private System.Windows.Forms.CheckBox          chkInfo;
         private System.Windows.Forms.CheckBox          chkDebug;
         private System.Windows.Forms.ComboBox          cboSubsystem;
+        private System.Windows.Forms.Button            btnIssuePrev;
+        private System.Windows.Forms.Button            btnIssueNext;
         private PlaceholderTextBox                     txtSearch;
         private System.Windows.Forms.Button            btnClearSearch;
         private System.Windows.Forms.Button            btnPrev;
@@ -247,5 +273,6 @@ namespace qbPortWeaver
         private System.Windows.Forms.ToolStripMenuItem ctxCopy;
         private System.Windows.Forms.ToolStripMenuItem ctxCopyAll;
         private System.Windows.Forms.ToolStripMenuItem ctxSelectAll;
+        private System.Windows.Forms.ToolTip           toolTip;
     }
 }

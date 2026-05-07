@@ -30,6 +30,9 @@ namespace qbPortWeaver
         // Static instance for global access - null until Initialize() is called
         private static LogManager? _instance;
 
+        /// <summary>Raised after a Warn or Error entry is written, outside the write lock. Fired from background threads.</summary>
+        public event Action<LogLevel>? WarnOrErrorLogged;
+
         /// <summary>Returns <see langword="true"/> after <see cref="Initialize"/> has been called.</summary>
         public static bool IsInitialized => _instance is not null;
 
@@ -73,6 +76,7 @@ namespace qbPortWeaver
         /// <summary>Writes a log entry at the given level. Thread-safe.</summary>
         public void LogMessage(string message, LogLevel level, string subsystem = Subsystem.MainApp)
         {
+            bool shouldNotify = false;
             lock (_lock)
             {
                 try
@@ -88,12 +92,27 @@ namespace qbPortWeaver
                     string paddedType = _levelLabels[(int)level];
                     string logEntry = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} | {paddedType} | {subsystem.PadRight(Subsystem.MaxLength)} | {message}{Environment.NewLine}";
                     WriteRaw(logEntry);
+                    shouldNotify = level is LogLevel.Warn or LogLevel.Error;
                 }
                 catch (Exception ex)
                 {
                     Debug.WriteLine($"LogManager.LogMessage: {ex.Message}");
                 }
             }
+
+            if (shouldNotify)
+                WarnOrErrorLogged?.Invoke(level);
+        }
+
+        /// <summary>
+        /// Raises <see cref="WarnOrErrorLogged"/> for an entry written to the shared log file
+        /// by an external writer (the helper service), so the tray UI can surface it as a log
+        /// alert. Does not write a new entry. No-op for non-Warn/Error levels.
+        /// </summary>
+        public void NotifyExternalWarnOrError(LogLevel level)
+        {
+            if (level is LogLevel.Warn or LogLevel.Error)
+                WarnOrErrorLogged?.Invoke(level);
         }
 
         /// <summary>Writes a blank line to the log file. Thread-safe.</summary>

@@ -8,6 +8,7 @@ namespace qbPortWeaver
     public partial class LogViewerForm : Form
     {
         private readonly string      _logFilePath;
+        private readonly bool        _navigateToLatestIssue;
         private readonly object      _readLock  = new();
         private readonly List<string> _allLines = new(); // all raw lines from file; display is rebuilt from these on filter change
         private readonly List<int>   _searchMatches = new(); // character indices of current search hits in rtbLog
@@ -36,12 +37,19 @@ namespace qbPortWeaver
             public const int EM_SETSCROLLPOS = 0x04DE;
         }
 
+        // Log column markers (format: "| LEVEL | ") and corresponding search terms
+        private const string ColError = "| ERROR |";
+        private const string ColWarn  = "| WARN  |";
+        private const string ColInfo  = "| INFO  |";
+        private const string ColDebug = "| DEBUG |";
+
         public LogViewerForm() : this(string.Empty) { } // designer support only
 
-        public LogViewerForm(string logFilePath)
+        public LogViewerForm(string logFilePath, bool navigateToLatestIssue = false)
         {
             InitializeComponent();
-            _logFilePath = logFilePath;
+            _logFilePath           = logFilePath;
+            _navigateToLatestIssue = navigateToLatestIssue;
         }
 
         protected override void OnLoad(EventArgs e)
@@ -55,14 +63,17 @@ namespace qbPortWeaver
             ApplyTheme();
             // Vertically center the search box - single-line TextBox auto-sizes its height from the font,
             // so the actual height is only known after layout; compute the top offset here.
-            int searchTop = (pnlToolbar.Height - txtSearch.Height) / 2;
-            txtSearch.Top = searchTop;
+            int searchTop    = (pnlToolbar.Height - txtSearch.Height) / 2;
+            txtSearch.Top    = searchTop;
+            cboSubsystem.Top = (pnlToolbar.Height - cboSubsystem.Height) / 2;
 
-            // Size nav buttons and match count label to the search box height so everything is visually aligned
-            btnPrev.Size      = new Size(btnPrev.Width, txtSearch.Height);
-            btnNext.Size      = new Size(btnNext.Width, txtSearch.Height);
-            btnPrev.Top       = searchTop;
-            btnNext.Top       = searchTop;
+            // Size all nav buttons to match the search box height so arrows render consistently
+            int navH = txtSearch.Height;
+            foreach (var btn in new[] { btnPrev, btnNext, btnIssuePrev, btnIssueNext })
+            {
+                btn.Height = navH;
+                btn.Top    = searchTop;
+            }
             lblMatchCount.Top = searchTop + (txtSearch.Height - lblMatchCount.Height) / 2;
 
             // Position the × button inside the right edge of the search box.
@@ -111,7 +122,7 @@ namespace qbPortWeaver
             txtSearch.BackColor = bg;
             txtSearch.ForeColor = fg;
 
-            foreach (var btn in new[] { btnPrev, btnNext })
+            foreach (var btn in new[] { btnPrev, btnNext, btnIssuePrev, btnIssueNext })
             {
                 btn.BackColor                  = bg;
                 btn.ForeColor                  = fg;
@@ -170,9 +181,11 @@ namespace qbPortWeaver
         private void ctxCopyAll_Click(object? sender, EventArgs e)   => Clipboard.SetText(rtbLog.Text.Length > 0 ? rtbLog.Text : " ");
         private void ctxSelectAll_Click(object? sender, EventArgs e) => rtbLog.SelectAll();
 
-        private void btnClearSearch_Click(object? sender, EventArgs e) => txtSearch.Clear();
-        private void btnPrev_Click(object? sender, EventArgs e)        => SearchPrev();
-        private void btnNext_Click(object? sender, EventArgs e)        => SearchNext();
+        private void btnClearSearch_Click(object? sender, EventArgs e)  => txtSearch.Clear();
+        private void btnPrev_Click(object? sender, EventArgs e)         => SearchPrev();
+        private void btnNext_Click(object? sender, EventArgs e)         => SearchNext();
+        private void btnIssuePrev_Click(object? sender, EventArgs e)    => IssuePrev();
+        private void btnIssueNext_Click(object? sender, EventArgs e)    => IssueNext();
 
         // Triggered when the search text changes - shows/hides the clear button, updates match
         // count and navigation immediately (fast text scan), then debounces the RTF rebuild
@@ -346,6 +359,55 @@ namespace qbPortWeaver
             return lastVisibleLine >= totalLines - 1;
         }
 
+        /// <summary>Scrolls to the previous (older) WARN or ERROR line relative to the current selection.
+        /// Matches the level-column markers (e.g. "| WARN  |"), so settings names like
+        /// warnOnInterfaceMismatch=True are not falsely matched.</summary>
+        private void IssuePrev()
+        {
+            int end = rtbLog.SelectionStart;
+            if (end <= 0 || rtbLog.TextLength == 0) return;
+            int prev = Math.Max(
+                rtbLog.Find(ColError, 0, end, RichTextBoxFinds.Reverse),
+                rtbLog.Find(ColWarn,  0, end, RichTextBoxFinds.Reverse));
+            if (prev < 0) return;
+            rtbLog.Select(prev, 0);
+            rtbLog.ScrollToCaret();
+        }
+
+        /// <summary>Scrolls to the next (newer) WARN or ERROR line relative to the current selection.
+        /// Matches the level-column markers (e.g. "| WARN  |"), so settings names like
+        /// warnOnInterfaceMismatch=True are not falsely matched.</summary>
+        private void IssueNext()
+        {
+            int start = rtbLog.SelectionStart + 1;
+            if (start >= rtbLog.TextLength) return;
+            int nextError = rtbLog.Find(ColError, start, RichTextBoxFinds.None);
+            int nextWarn  = rtbLog.Find(ColWarn,  start, RichTextBoxFinds.None);
+            int next = (nextError, nextWarn) switch
+            {
+                (< 0, _) => nextWarn,
+                (_, < 0) => nextError,
+                _        => Math.Min(nextError, nextWarn)
+            };
+            if (next < 0) return;
+            rtbLog.Select(next, 0);
+            rtbLog.ScrollToCaret();
+        }
+
+        /// <summary>Scrolls to the most recent (last) WARN or ERROR line in the log, falling back to
+        /// the bottom of the log if none are present. Used when opening the log viewer with unviewed
+        /// alerts (via tray balloon click or Show Logs).</summary>
+        public void NavigateToLatestIssue()
+        {
+            if (rtbLog.TextLength == 0) { ScrollToBottom(); return; }
+            int lastError = rtbLog.Find(ColError, 0, rtbLog.TextLength, RichTextBoxFinds.Reverse);
+            int lastWarn  = rtbLog.Find(ColWarn,  0, rtbLog.TextLength, RichTextBoxFinds.Reverse);
+            int lastIdx   = Math.Max(lastError, lastWarn);
+            if (lastIdx < 0) { ScrollToBottom(); return; }
+            rtbLog.Select(lastIdx, 0);
+            rtbLog.ScrollToCaret();
+        }
+
         private void ScrollToBottom()
         {
             SendMessage(rtbLog.Handle, WinMsg.WM_VSCROLL, (IntPtr)WinMsg.SB_BOTTOM, IntPtr.Zero);
@@ -402,7 +464,7 @@ namespace qbPortWeaver
                 _allLines.AddRange(allLines);
                 _lastReadPosition = position;
                 rtbLog.Rtf = rtf;
-                ScrollToBottom();
+                if (_navigateToLatestIssue) NavigateToLatestIssue(); else ScrollToBottom();
             }
             catch (Exception ex)
             {
@@ -585,10 +647,10 @@ namespace qbPortWeaver
         // Log format: "yyyy-MM-dd HH:mm:ss | LEVEL | Subsystem     | message" (level padded to 5 chars)
         private static int GetLineColorIndex(string line)
         {
-            if (line.Contains("| ERROR |", StringComparison.Ordinal)) return 0;
-            if (line.Contains("| WARN  |", StringComparison.Ordinal)) return 1;
-            if (line.Contains("| INFO  |", StringComparison.Ordinal)) return 2;
-            if (line.Contains("| DEBUG |", StringComparison.Ordinal)) return 3;
+            if (line.Contains(ColError, StringComparison.Ordinal)) return 0;
+            if (line.Contains(ColWarn,  StringComparison.Ordinal)) return 1;
+            if (line.Contains(ColInfo,  StringComparison.Ordinal)) return 2;
+            if (line.Contains(ColDebug, StringComparison.Ordinal)) return 3;
             return 4;
         }
 

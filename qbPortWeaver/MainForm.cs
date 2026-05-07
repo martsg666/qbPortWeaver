@@ -10,6 +10,16 @@ namespace qbPortWeaver
         private NotifyIcon _trayIcon = null!;
         private ContextMenuStrip _trayMenu = null!;
         private ToolStripMenuItem _autoStartMenuItem = null!;
+        private ToolStripMenuItem _showLogsMenuItem = null!;
+
+        private const string ShowLogsMenuText       = "Show Logs";
+        private const string LogAlertBalloonMessage = "Check the log viewer for warnings or errors.";
+
+        // Unviewed warn/error counts for log alert badge (UI thread only)
+        private int _unviewedWarnCount;
+        private int _unviewedErrorCount;
+        private bool _logAlertBalloonShown;
+        private bool _logAlertBalloonPending;
 
         // Status tray icons (generated at startup; disposed in MainForm.Designer.cs)
         private Icon? _iconBase;
@@ -73,6 +83,8 @@ namespace qbPortWeaver
             InitializeStatusIcons();
             InitializeTrayIcon();
             UpdateTrayTooltip();
+
+            LogManager.Instance.WarnOrErrorLogged += OnWarnOrErrorLogged;
         }
 
         private void MainForm_Load(object sender, EventArgs e) => _ = MainForm_LoadAsync();
@@ -161,6 +173,9 @@ namespace qbPortWeaver
             // Signal the main loop to stop
             _shutdownCts.Cancel();
 
+            // Unsubscribe before teardown so background threads cannot marshal onto a disposed form
+            LogManager.Instance.WarnOrErrorLogged -= OnWarnOrErrorLogged;
+
             // Stop the update check timer before closing child forms to prevent it firing during teardown
             _updateCheckTimer?.Stop();
             _updateCheckTimer?.Dispose();
@@ -226,7 +241,9 @@ namespace qbPortWeaver
         {
             _trayMenu = new ContextMenuStrip();
             _trayMenu.Items.Add("Sync Port Now", null, syncPortNow_Click);
-            _trayMenu.Items.Add("Show Logs", null, showLogs_Click);
+            _showLogsMenuItem = new ToolStripMenuItem(ShowLogsMenuText);
+            _showLogsMenuItem.Click += showLogs_Click;
+            _trayMenu.Items.Add(_showLogsMenuItem);
             _trayMenu.Items.Add("Clear Logs", null, clearLogs_Click);
             _trayMenu.Items.Add("Settings", null, showSettings_Click);
             _trayMenu.Items.Add("Media Manager", null, showMediaManager_Click);
@@ -249,7 +266,8 @@ namespace qbPortWeaver
                 Visible = true,
                 ContextMenuStrip = _trayMenu
             };
-            _trayIcon.MouseDoubleClick += trayIcon_MouseDoubleClick;
+            _trayIcon.MouseDoubleClick  += trayIcon_MouseDoubleClick;
+            _trayIcon.BalloonTipClicked += trayIcon_BalloonTipClicked;
         }
 
         private void showLogs_Click(object? sender, EventArgs e) => ShowLogViewer();
@@ -257,6 +275,7 @@ namespace qbPortWeaver
         private void clearLogs_Click(object? sender, EventArgs e)
         {
             LogManager.Instance.ClearLogs();
+            ResetLogAlerts();
             _trayIcon.ShowBalloonTip(AppConstants.BalloonTipDurationMs, AppConstants.AppName, "Logs cleared", ToolTipIcon.Info);
         }
 
@@ -324,14 +343,14 @@ namespace qbPortWeaver
         private void OnInterfaceMismatchDetected(string message)
         {
             if (_shutdownCts.IsCancellationRequested) return;
-            InvokeOnUiThread(() => _trayIcon.ShowBalloonTip(AppConstants.BalloonTipDurationMs, AppConstants.AppName, message, ToolTipIcon.Warning));
+            InvokeOnUiThread(() => { _logAlertBalloonPending = false; _trayIcon.ShowBalloonTip(AppConstants.BalloonTipDurationMs, AppConstants.AppName, message, ToolTipIcon.Warning); });
         }
 
         // Called by PortSyncService when the BitTorrent client's listening port is successfully updated
         private void OnPortUpdated(string message) // NOSONAR S2325 - ShowBalloonTip is an instance method, handler cannot be static
         {
             if (_shutdownCts.IsCancellationRequested) return;
-            InvokeOnUiThread(() => _trayIcon.ShowBalloonTip(AppConstants.BalloonTipDurationMs, AppConstants.AppName, message, ToolTipIcon.Info));
+            InvokeOnUiThread(() => { _logAlertBalloonPending = false; _trayIcon.ShowBalloonTip(AppConstants.BalloonTipDurationMs, AppConstants.AppName, message, ToolTipIcon.Info); });
         }
 
         // Runs the port-sync loop until shutdown is requested.
@@ -471,13 +490,21 @@ namespace qbPortWeaver
                 _                                                      => "Starting\u2026"
             };
 
-            string text = $"{AppConstants.AppName} {AppConstants.AppVersion}\n{statusLine}";
+            string countSuffix = "";
+            if (_unviewedWarnCount > 0 || _unviewedErrorCount > 0)
+            {
+                string wPart = _unviewedWarnCount  > 0 ? Pluralize(_unviewedWarnCount,  "Warning") : "";
+                string ePart = _unviewedErrorCount > 0 ? Pluralize(_unviewedErrorCount, "Error")   : "";
+                string sep   = (wPart.Length > 0 && ePart.Length > 0) ? ", " : "";
+                countSuffix  = $"\n{wPart}{sep}{ePart}";
+            }
 
-            // Tray tooltip maximum is 63 characters
-            if (text.Length > AppConstants.MaxTooltipLength)
-                text = text[..AppConstants.MaxTooltipLength];
+            string header = $"{AppConstants.AppName} {AppConstants.AppVersion}\n";
+            int statusBudget = AppConstants.MaxTooltipLength - header.Length - countSuffix.Length;
+            if (statusLine.Length > statusBudget)
+                statusLine = statusLine[..Math.Max(0, statusBudget)];
 
-            _trayIcon.Text = text;
+            _trayIcon.Text = $"{header}{statusLine}{countSuffix}";
         }
 
         // Marshals an action to the UI thread, using Invoke if called from a background thread
@@ -489,12 +516,80 @@ namespace qbPortWeaver
                 action();
         }
 
+        // Called from background threads via LogManager.WarnOrErrorLogged; marshals to UI thread
+        private void OnWarnOrErrorLogged(LogLevel level)
+        {
+            if (_shutdownCts.IsCancellationRequested) return;
+            InvokeOnUiThread(() =>
+            {
+                // Re-check inside the marshalled lambda: a disposal can happen between the
+                // outer guard and Invoke completing, leaving the lambda about to touch a
+                // disposed form (counter fields, menu item, NotifyIcon).
+                if (IsDisposed || _shutdownCts.IsCancellationRequested) return;
+
+                if (level == LogLevel.Warn) _unviewedWarnCount++;
+                else _unviewedErrorCount++;
+
+                UpdateShowLogsMenuItem();
+                UpdateTrayTooltip();
+
+                if (!_logAlertBalloonShown)
+                {
+                    _logAlertBalloonShown   = true;
+                    _logAlertBalloonPending = true;
+                    _trayIcon.ShowBalloonTip(AppConstants.BalloonTipDurationMs, AppConstants.AppName,
+                        LogAlertBalloonMessage, ToolTipIcon.Warning);
+                }
+            });
+        }
+
+        private void UpdateShowLogsMenuItem()
+        {
+            if (_unviewedWarnCount == 0 && _unviewedErrorCount == 0)
+            {
+                _showLogsMenuItem.Text = ShowLogsMenuText;
+                return;
+            }
+
+            string warnPart  = _unviewedWarnCount  > 0 ? Pluralize(_unviewedWarnCount,  "warning") : "";
+            string errorPart = _unviewedErrorCount > 0 ? Pluralize(_unviewedErrorCount, "error")   : "";
+            string badge     = (warnPart.Length > 0 && errorPart.Length > 0) ? $"{warnPart}, {errorPart}" : $"{warnPart}{errorPart}";
+            _showLogsMenuItem.Text = $"{ShowLogsMenuText} ({badge})";
+        }
+
+        private void ResetLogAlerts()
+        {
+            _unviewedWarnCount      = 0;
+            _unviewedErrorCount     = 0;
+            _logAlertBalloonShown   = false;
+            _logAlertBalloonPending = false;
+            _showLogsMenuItem.Text  = ShowLogsMenuText;
+            UpdateTrayTooltip();
+        }
+
         private void ShowLogViewer()
-            => ShowOrActivate(() => _logViewerForm, f => _logViewerForm = f, () => new LogViewerForm(LogManager.Instance.LogFilePath));
+        {
+            bool navigateToLatestIssue = _unviewedWarnCount > 0 || _unviewedErrorCount > 0;
+            ResetLogAlerts();
+            // For an already-open viewer, only the post-activate hook is needed (the constructor
+            // bool field only takes effect on initial load); this passes navigation through both paths.
+            ShowOrActivate(
+                () => _logViewerForm,
+                f => _logViewerForm = f,
+                () => new LogViewerForm(LogManager.Instance.LogFilePath, navigateToLatestIssue),
+                onActivated: f => { if (navigateToLatestIssue) f.NavigateToLatestIssue(); });
+        }
+
+        private void trayIcon_BalloonTipClicked(object? sender, EventArgs e)
+        {
+            if (!_logAlertBalloonPending) return;
+            ShowLogViewer();
+        }
 
         // Brings an existing child form to front, or creates and shows a new one.
-        // The optional onClosed callback runs after the form is closed.
-        private static void ShowOrActivate<T>(Func<T?> getter, Action<T?> setter, Func<T> factory, Action<T>? onClosed = null) where T : Form
+        // onClosed runs after the form is closed. onActivated runs after the form is shown
+        // or re-activated (covers both new and existing).
+        private static void ShowOrActivate<T>(Func<T?> getter, Action<T?> setter, Func<T> factory, Action<T>? onClosed = null, Action<T>? onActivated = null) where T : Form
         {
             var existing = getter();
             if (existing is { IsDisposed: false })
@@ -503,6 +598,7 @@ namespace qbPortWeaver
                     existing.WindowState = FormWindowState.Normal;
                 existing.BringToFront();
                 existing.Activate();
+                onActivated?.Invoke(existing);
                 return;
             }
 
@@ -514,7 +610,10 @@ namespace qbPortWeaver
                 setter(null);
             };
             frm.Show();
+            onActivated?.Invoke(frm);
         }
+
+        private static string Pluralize(int count, string noun) => $"{count} {noun}{(count == 1 ? "" : "s")}";
 
         [LibraryImport("user32.dll", SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]

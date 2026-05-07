@@ -13,9 +13,8 @@ namespace qbPortWeaver.HelperService;
 internal static partial class AutoRecovery
 {
     private const int ProcessKillTimeoutMs      = 5000;
-    // Delay between stop and start. AutoRecoveryManager.ServiceHeadStartDelayMs in the tray app
-    // must remain larger than this plus service startup time so the client process is not
-    // relaunched before the VPN service is ready.
+    // Delay between stop and start to let the service host fully release its handles
+    // and listening sockets before we ask the SCM to bring it back up.
     private const int ServiceRestartDelayMs     = 5000;
     private const int ServiceOperationTimeoutMs = 15000;
     private const int AdapterCycleDelayMs       = 3000;

@@ -11,8 +11,12 @@ namespace qbPortWeaver
 
         private const string ReleaseFeaturesText =
             "New in 2.5.3\n\n" +
-            "Documentation and accuracy fixes\n" +
-            "Corrected the contributing workflow guide, nuspec description, and sync-cycle reference document to accurately reflect features introduced in 2.5.2.\n\n" +
+            "Log alert notifications\n" +
+            "When a warning or error is written to the log, a tray balloon tip appears once to get your attention. " +
+            "Clicking the balloon opens the log viewer at the most recent warning or error. " +
+            "The Show Logs menu item shows a running count (e.g. Show Logs (2 warnings, 1 error)), and " +
+            "hovering over the tray icon shows the same count in plain text (e.g. 2 Warnings, 1 Error). " +
+            "Alerts clear automatically when you open the log viewer or clear the logs.\n\n" +
             "Previously released\n\n" +
             "New in 2.5.2\n\n" +
             "qBittorrent 5.2.0 compatibility\n" +
@@ -41,7 +45,7 @@ namespace qbPortWeaver
             "Imports movie and TV episode files into Plex-compatible library folders on each sync cycle using TMDB for title matching. " +
             "Supports hardlink, copy, and move. Preview imports before applying with Scan Now, or apply manually with Import Now.\n\n" +
             "Log Viewer\n" +
-            "Color-coded log viewer with real-time follow, level filters, subsystem filter, and search with match highlighting.";
+            "Color-coded log viewer with real-time follow, level filters, subsystem filter, search with match highlighting, and prev/next issue navigation buttons to step between warnings and errors.";
 
         private bool _isDarkMode;
 

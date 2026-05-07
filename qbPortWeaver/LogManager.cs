@@ -185,6 +185,7 @@ namespace qbPortWeaver
         }
 
         // Appends text to the log file. Must be called while holding _lock.
+        // Opens a new stream per call intentionally - no persistent stream to manage across threads or rotation events.
         private void WriteRaw(string text)
         {
             using var fs = new FileStream(LogFilePath, FileMode.Append, FileAccess.Write, FileShare.ReadWrite);

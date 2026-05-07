@@ -14,6 +14,7 @@ namespace qbPortWeaver
 
         private const string ShowLogsMenuText       = "Show Logs";
         private const string LogAlertBalloonMessage = "Check the log viewer for warnings or errors.";
+        private const int    WsExToolWindow         = 0x80; // hides the form from Alt+Tab
 
         // Unviewed warn/error counts for log alert badge (UI thread only)
         private int _unviewedWarnCount;
@@ -40,8 +41,10 @@ namespace qbPortWeaver
         // Last sync status (written from background thread, read on UI thread)
         private volatile TrayStatus? _lastSyncStatus;
 
-        // Cancellation token for the inter-cycle delay - cancelled by manual sync requests to skip the wait
-        private volatile CancellationTokenSource _delayCts = new();
+        // Cancellation token for the inter-cycle delay - cancelled by manual sync requests to skip the wait.
+        // Swapped atomically via Interlocked.Exchange; InterruptDelay catches ObjectDisposedException
+        // for the residual window where the UI thread read the old reference before the swap completed.
+        private CancellationTokenSource _delayCts = new();
 
         // Semaphore to prevent concurrent sync cycles. Also serialises access to
         // PortSyncService instance state (e.g. _lastKnownNatPmpManager) - see PortSyncService.cs.
@@ -160,9 +163,8 @@ namespace qbPortWeaver
         {
             get
             {
-                const int WS_EX_TOOLWINDOW = 0x80;
                 CreateParams cp = base.CreateParams;
-                cp.ExStyle |= WS_EX_TOOLWINDOW;
+                cp.ExStyle |= WsExToolWindow;
                 return cp;
             }
         }
@@ -423,10 +425,8 @@ namespace qbPortWeaver
                 LogManager.Instance.LogMessage("Delay interrupted, starting next cycle", LogLevel.Info);
             }
 
-            // Reset token for next loop iteration (properly dispose old one)
-            var oldToken = _delayCts;
-            _delayCts = new CancellationTokenSource();
-            oldToken.Dispose();
+            // Atomically swap in a fresh token and dispose the old one
+            Interlocked.Exchange(ref _delayCts, new CancellationTokenSource()).Dispose();
             return false;
         }
 
@@ -490,7 +490,7 @@ namespace qbPortWeaver
                 _                                                      => "Starting\u2026"
             };
 
-            string countSuffix = "";
+            string countSuffix = string.Empty;
             if (_unviewedWarnCount > 0 || _unviewedErrorCount > 0)
             {
                 string wPart = _unviewedWarnCount  > 0 ? Pluralize(_unviewedWarnCount,  "Warning") : "";

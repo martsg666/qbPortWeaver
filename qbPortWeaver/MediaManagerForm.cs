@@ -605,10 +605,10 @@ namespace qbPortWeaver
 
         private async void dgvResults_SelectionChanged(object? sender, EventArgs e) // async void is correct here (WinForms event handler)
         {
-            var oldCts = _thumbnailCts;
-            _thumbnailCts = null;
-            if (oldCts is not null) await oldCts.CancelAsync();
-            oldCts?.Dispose();
+            // Atomically take ownership of the old CTS and cancel synchronously to avoid yielding
+            // to the message pump (CancelAsync would allow another SelectionChanged to interleave).
+            using var oldCts = Interlocked.Exchange(ref _thumbnailCts, null);
+            oldCts?.Cancel();
 
             if (dgvResults.SelectedRows.Count == 0 || dgvResults.SelectedRows[0].Tag is not RowData rd)
             {

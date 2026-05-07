@@ -26,6 +26,9 @@ namespace qbPortWeaver
         // Consecutive sync cycles in which the VPN was disconnected or port detection failed.
         // Serialised by MainForm._updateSemaphore (same guarantee as _lastKnownNatPmpManager).
         private int _consecutiveFailedCycles;
+        // Tracks the last interface-mismatch message shown as a balloon tip to suppress repeat invocations
+        // for the same persistent mismatch. Cleared when the mismatch resolves so the balloon re-fires if it returns.
+        private string? _lastInterfaceMismatchMessage;
 
         // Fallback for when TryCreateForAdapterAsync cannot reach the configured adapter (e.g. VPN is
         // between disconnect and reconnect) - returned so IsVpnConnected() reports false and
@@ -81,7 +84,7 @@ namespace qbPortWeaver
             bool NotifyOnPortUpdate
         );
 
-        /// <summary>Compile-time-safe keys and values for the status dictionary written to the JSON status file.</summary>
+        // Compile-time-safe keys and values for the status dictionary written to the JSON status file.
         private static class StatusKeys
         {
             // Keys
@@ -516,7 +519,10 @@ namespace qbPortWeaver
             return true;
         }
 
-        // Checks if the client's network interface matches the expected VPN provider and logs a warning if not
+        // Checks if the client's network interface matches the expected VPN provider and logs a warning if not.
+        // The warn log fires every cycle so the log alert badge tracks the persistent condition.
+        // The InterfaceMismatchDetected balloon fires only on transition (new or changed mismatch) to avoid
+        // spamming the user each cycle; it re-fires if the mismatch clears and then returns.
         private void CheckInterfaceMatch(string clientName, string? interfaceName, IVpnManager vpnManager)
         {
             if (interfaceName is null)
@@ -525,22 +531,32 @@ namespace qbPortWeaver
                 return;
             }
 
+            string? balloonMessage = null;
+
             if (interfaceName.Length == 0)
             {
                 LogManager.Instance.LogMessage($"{clientName} is bound to all network interfaces - traffic may leak outside the VPN", LogLevel.Warn);
-                InterfaceMismatchDetected?.Invoke($"{clientName}: no VPN interface bound - traffic may leak.");
-                return;
+                balloonMessage = $"{clientName}: no VPN interface bound - traffic may leak.";
             }
-
-            if (!vpnManager.IsAdapterMatch(interfaceName))
+            else if (!vpnManager.IsAdapterMatch(interfaceName))
             {
                 LogManager.Instance.LogMessage($"{clientName} network interface '{interfaceName}' does not match '{vpnManager.ProviderName}'", LogLevel.Warn);
-                InterfaceMismatchDetected?.Invoke($"{clientName} interface mismatch - '{interfaceName}' is not a {vpnManager.ProviderName} adapter.");
+                balloonMessage = $"{clientName} interface mismatch - '{interfaceName}' is not a {vpnManager.ProviderName} adapter.";
             }
             else
             {
                 LogManager.Instance.LogDebug($"PortSyncService.CheckInterfaceMatch: {clientName} interface '{interfaceName}' matches '{vpnManager.ProviderName}'");
             }
+
+            if (balloonMessage is null)
+            {
+                _lastInterfaceMismatchMessage = null;
+                return;
+            }
+
+            if (balloonMessage == _lastInterfaceMismatchMessage) return;
+            _lastInterfaceMismatchMessage = balloonMessage;
+            InterfaceMismatchDetected?.Invoke(balloonMessage);
         }
 
         // Sets the listening port, optionally restarts the client and runs the post-update command.

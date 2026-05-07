@@ -30,6 +30,7 @@ namespace qbPortWeaver
 
         private static class WinMsg
         {
+            public const int WM_PAINT        = 0x000F;
             public const int WM_SETREDRAW    = 0x000B;
             public const int WM_VSCROLL      = 0x0115;
             public const int SB_BOTTOM       = 7;
@@ -38,10 +39,13 @@ namespace qbPortWeaver
         }
 
         // Log column markers (format: "| LEVEL | ") and corresponding search terms
-        private const string ColError = "| ERROR |";
-        private const string ColWarn  = "| WARN  |";
-        private const string ColInfo  = "| INFO  |";
-        private const string ColDebug = "| DEBUG |";
+        private const string ColError            = "| ERROR |";
+        private const string ColWarn             = "| WARN  |";
+        private const string ColInfo             = "| INFO  |";
+        private const string ColDebug            = "| DEBUG |";
+        private const int    MaxHighlights       = 500;
+        private const int    ClearButtonInset    = 4; // shrinks button to fit inside the TextBox border (2 px top + 2 px bottom)
+        private const int    ClearButtonMargin   = 2; // inner gap from TextBox right edge and top
 
         public LogViewerForm() : this(string.Empty) { } // designer support only
 
@@ -78,8 +82,6 @@ namespace qbPortWeaver
 
             // Position the × button inside the right edge of the search box.
             // Done here so the button tracks the auto-sized TextBox height and right-anchor position.
-            const int ClearButtonInset  = 4; // shrinks button to fit inside the TextBox border (2 px top + 2 px bottom)
-            const int ClearButtonMargin = 2; // inner gap from TextBox right edge and top
             int cbSize = txtSearch.Height - ClearButtonInset;
             btnClearSearch.Size     = new Size(cbSize, cbSize);
             btnClearSearch.Location = new Point(txtSearch.Right - cbSize - ClearButtonMargin, searchTop + ClearButtonMargin);
@@ -306,8 +308,6 @@ namespace qbPortWeaver
         {
             if (_searchMatches.Count == 0 || txtSearch.Text.Length == 0 || rtbLog.TextLength == 0)
                 return;
-
-            const int MaxHighlights = 500;
 
             int   savedStart = rtbLog.SelectionStart;
             int   savedLen   = rtbLog.SelectionLength;
@@ -761,9 +761,9 @@ namespace qbPortWeaver
 
             protected override void WndProc(ref Message m)
             {
-                const int WM_PAINT = 0x000F;
+
                 base.WndProc(ref m);
-                if (m.Msg == WM_PAINT && TextLength == 0 && !Focused && _placeholderText.Length > 0)
+                if (m.Msg == WinMsg.WM_PAINT && TextLength == 0 && !Focused && _placeholderText.Length > 0)
                 {
                     using var g    = Graphics.FromHwnd(Handle);
                     var       rect = ClientRectangle;

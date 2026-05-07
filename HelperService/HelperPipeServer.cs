@@ -166,8 +166,8 @@ internal sealed class HelperPipeServer(ILogger<HelperPipeServer> logger) : Backg
     private bool TryReadClientHkcu(NamedPipeServerStream pipe, string pipeSessionToken, out string logFilePath)
     {
         logFilePath = string.Empty;
-        var tokenValid      = false;
-        var derivedPath     = string.Empty; // captured by lambda; out params cannot be used inside lambdas
+        bool   tokenValid  = false;
+        string derivedPath = string.Empty; // captured by lambda; out params cannot be used inside lambdas
         try
         {
             pipe.RunAsClient(() =>

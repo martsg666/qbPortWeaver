@@ -228,7 +228,28 @@ internal static partial class AutoRecovery
             }
         }
 
-        sc.Start();
+        try { sc.Start(); }
+        catch (InvalidOperationException)
+        {
+            // SCM auto-recovery may have started the service between our StopPending wait and this
+            // call. Refresh and treat Running/StartPending as success; rethrow anything else.
+            sc.Refresh();
+            if (sc.Status is not ServiceControllerStatus.Running and not ServiceControllerStatus.StartPending)
+                throw;
+            logger.LogInfo($"Service '{serviceName}' is already starting (likely SCM auto-recovery) - waiting");
+            try
+            {
+                await WaitForStatusAsync(sc, ServiceControllerStatus.Running).ConfigureAwait(false);
+                logger.LogInfo($"Service '{serviceName}' started (by SCM)");
+            }
+            catch (System.ServiceProcess.TimeoutException)
+            {
+                logger.LogWarn($"Service '{serviceName}' stuck in StartPending after {ServiceOperationTimeoutMs}ms");
+                throw;
+            }
+            return;
+        }
+
         try
         {
             await WaitForStatusAsync(sc, ServiceControllerStatus.Running).ConfigureAwait(false);
@@ -296,13 +317,9 @@ internal static partial class AutoRecovery
                     // Stage 2: taskkill /F /T
                     try
                     {
-                        using var taskkill = Process.Start(new ProcessStartInfo(
+                        using var taskkill = Process.Start(CreateHiddenStartInfo(
                             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "taskkill.exe"),
-                            $"/F /T /PID {pid}")
-                        {
-                            UseShellExecute = false,
-                            CreateNoWindow  = true
-                        });
+                            $"/F /T /PID {pid}"));
                         taskkill?.WaitForExit(ProcessKillTimeoutMs);
                     }
                     catch (Exception ex)
@@ -351,13 +368,9 @@ internal static partial class AutoRecovery
         try
         {
             string netshPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "netsh.exe");
-            var startInfo = new ProcessStartInfo(netshPath, arguments)
-            {
-                UseShellExecute        = false,
-                RedirectStandardOutput = true,
-                RedirectStandardError  = true,
-                CreateNoWindow         = true
-            };
+            var startInfo = CreateHiddenStartInfo(netshPath, arguments);
+            startInfo.RedirectStandardOutput = true;
+            startInfo.RedirectStandardError  = true;
 
             using var process = Process.Start(startInfo);
             if (process is null)
@@ -399,6 +412,12 @@ internal static partial class AutoRecovery
             return false;
         }
     }
+
+    private static ProcessStartInfo CreateHiddenStartInfo(string fileName, string arguments) => new(fileName, arguments)
+    {
+        UseShellExecute = false,
+        CreateNoWindow  = true
+    };
 
     private const int ScStatusProcessInfo = 0; // SC_STATUS_PROCESS_INFO - only valid infoLevel for QueryServiceStatusEx
 

@@ -22,7 +22,8 @@ namespace qbPortWeaver
         // Cached service name; null = not found, string.Empty = not yet resolved.
         // Static so the SCM enumeration persists across sync-cycle instances.
         // Mirrors the caching pattern used by ProtonVpnManager and PiaVpnManager.
-        private static string? _resolvedServiceName = string.Empty;
+        // volatile ensures writes from one sync-cycle thread are visible to concurrent callers.
+        private static volatile string? _resolvedServiceName = string.Empty;
 
         /// <inheritdoc/>
         public override string ClientName => "Transmission";
@@ -273,7 +274,8 @@ namespace qbPortWeaver
         {
             try
             {
-                using var request = new HttpRequestMessage(HttpMethod.Post, $"{_url}{RpcPath}")
+                var rpcUrl    = $"{_url}{RpcPath}";
+                using var request = new HttpRequestMessage(HttpMethod.Post, rpcUrl)
                 {
                     Content = new StringContent(jsonBody, Encoding.UTF8, "application/json")
                 };
@@ -292,10 +294,15 @@ namespace qbPortWeaver
                     return null;
                 }
 
-                _sessionId = values.First();
+                _sessionId = values.FirstOrDefault();
                 response.Dispose();
+                if (string.IsNullOrEmpty(_sessionId))
+                {
+                    LogManager.Instance.LogMessage($"{ClientName} returned 409 with empty session ID header", LogLevel.Error);
+                    return null;
+                }
 
-                using var retry = new HttpRequestMessage(HttpMethod.Post, $"{_url}{RpcPath}")
+                using var retry = new HttpRequestMessage(HttpMethod.Post, rpcUrl)
                 {
                     Content = new StringContent(jsonBody, Encoding.UTF8, "application/json")
                 };

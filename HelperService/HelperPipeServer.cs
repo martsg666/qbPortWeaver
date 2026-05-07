@@ -120,6 +120,12 @@ internal sealed class HelperPipeServer(ILogger<HelperPipeServer> logger) : Backg
         if (!TryReadClientHkcu(pipe, pipeSessionToken, out var logFilePath))
         {
             logger.LogWarning("Rejected pipe message: session token mismatch or could not derive log file path");
+            try
+            {
+                await using var w = new StreamWriter(pipe, leaveOpen: true) { AutoFlush = true };
+                await w.WriteLineAsync($"{ResultWarnKey}=0|{ResultErrorKey}=0").ConfigureAwait(false);
+            }
+            catch (IOException) { }
             return;
         }
 

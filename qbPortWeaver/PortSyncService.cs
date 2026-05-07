@@ -488,8 +488,7 @@ namespace qbPortWeaver
                 if (!await ApplyPortUpdateAsync(manager, targetPort, config, status, cancellationToken).ConfigureAwait(false))
                     return;
                 if (config.NotifyOnPortUpdate)
-                    try { PortUpdated?.Invoke($"{manager.ClientName} port updated to {targetPort}"); }
-                    catch (Exception ex) { LogManager.Instance.LogDebug($"PortSyncService: PortUpdated handler threw: {ex.Message}"); }
+                    NotifyPortUpdated(manager.ClientName, targetPort);
             }
 
             // Check connection status and restart if offline - skip if a restart was already performed
@@ -565,6 +564,12 @@ namespace qbPortWeaver
             _lastInterfaceMismatchMessage = balloonMessage;
             try { InterfaceMismatchDetected?.Invoke(balloonMessage); }
             catch (Exception ex) { LogManager.Instance.LogDebug($"PortSyncService: InterfaceMismatchDetected handler threw: {ex.Message}"); }
+        }
+
+        private void NotifyPortUpdated(string clientName, int port)
+        {
+            try { PortUpdated?.Invoke($"{clientName} port updated to {port}"); }
+            catch (Exception ex) { LogManager.Instance.LogDebug($"PortSyncService: PortUpdated handler threw: {ex.Message}"); }
         }
 
         // Sets the listening port, optionally restarts the client and runs the post-update command.

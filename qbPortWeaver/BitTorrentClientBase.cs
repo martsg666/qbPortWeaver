@@ -19,6 +19,7 @@ namespace qbPortWeaver
         protected readonly string _exePath;
         protected readonly HttpClient _httpClient;
         protected bool _isAuthenticated;
+        private bool _disposed;
 
         /// <summary>Initialises the shared fields used by all BitTorrent client implementations.</summary>
         /// <param name="url">Base URL of the client's Web UI or RPC endpoint.</param>
@@ -42,6 +43,8 @@ namespace qbPortWeaver
         /// <inheritdoc/>
         public void Dispose()
         {
+            if (_disposed) return;
+            _disposed = true;
             _httpClient.Dispose();
             GC.SuppressFinalize(this);
         }

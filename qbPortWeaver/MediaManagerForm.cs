@@ -125,7 +125,6 @@ namespace qbPortWeaver
         private void btnOK_Click(object? sender, EventArgs e)
         {
             SaveSettings();
-            DialogResult = DialogResult.OK;
             Close();
         }
 
@@ -391,6 +390,8 @@ namespace qbPortWeaver
             BeginProgress();
             lblScanStatus.Text = "Scanning\u2026";
             dgvResults.Rows.Clear();
+            foreach (var img in _posterCache.Values) img.Dispose();
+            _posterCache.Clear();
 
             try
             {
@@ -605,10 +606,9 @@ namespace qbPortWeaver
 
         private async void dgvResults_SelectionChanged(object? sender, EventArgs e) // async void is correct here (WinForms event handler)
         {
-            // Atomically take ownership of the old CTS and cancel synchronously to avoid yielding
-            // to the message pump (CancelAsync would allow another SelectionChanged to interleave).
+            // Atomically take ownership of the old CTS, then cancel it asynchronously.
             using var oldCts = Interlocked.Exchange(ref _thumbnailCts, null);
-            oldCts?.Cancel();
+            if (oldCts is not null) await oldCts.CancelAsync().ConfigureAwait(true);
 
             if (dgvResults.SelectedRows.Count == 0 || dgvResults.SelectedRows[0].Tag is not RowData rd)
             {
@@ -683,7 +683,8 @@ namespace qbPortWeaver
             }
             else
             {
-                lblTmdbConfidence.Text = string.Empty;
+                lblTmdbConfidence.Text      = string.Empty;
+                lblTmdbConfidence.ForeColor = SystemColors.ControlText;
             }
 
             rtbTmdbOverview.Text = p.Overview ?? string.Empty;

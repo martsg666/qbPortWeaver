@@ -198,15 +198,17 @@ namespace qbPortWeaver
             string.Equals(FileNameParser.NormalizeTitleForMatch(returnedTitle), normalizedSearchTitle, StringComparison.Ordinal);
 
         // Returns true when all words of the searched title appear in the returned title's word set
-        // and the returned title has strictly more words - i.e. the searched title is a proper word subset.
+        // and the returned title has strictly more distinct words - i.e. the searched title is a proper word subset.
+        // Both sides use distinct word sets so repeated words (e.g. "The The") don't skew the count.
         private static bool IsWordSubsetMatch(string[] normalizedSearchedWords, string returnedTitle)
         {
             var returnedWords = new HashSet<string>(
                 FileNameParser.NormalizeTitleForMatch(returnedTitle)
                     .Split(' ', StringSplitOptions.RemoveEmptyEntries),
                 StringComparer.Ordinal);
-            return returnedWords.Count > normalizedSearchedWords.Length &&
-                   normalizedSearchedWords.All(w => returnedWords.Contains(w));
+            var searchedWordSet = new HashSet<string>(normalizedSearchedWords, StringComparer.Ordinal);
+            return returnedWords.Count > searchedWordSet.Count &&
+                   searchedWordSet.All(w => returnedWords.Contains(w));
         }
 
         // Applies two fallback lookup strategies when the primary search fails or returns no match.
@@ -230,7 +232,7 @@ namespace qbPortWeaver
                 }
             }
 
-            if (info is null || !hasYear(info))
+            if (info is null || (!hasYear(info) && !isConfident))
             {
                 var withoutNum = StripTrailingNumber(title);
                 if (withoutNum is not null)

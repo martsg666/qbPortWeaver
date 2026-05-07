@@ -157,15 +157,17 @@ namespace qbPortWeaver
                         File.Delete(LogFilePath);
 
                     _writeCount = 0;
+
+                    // Write the sentinel while still holding the lock so no concurrent LogMessage
+                    // can interleave between the delete and this entry.
+                    string entry = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} | {_levelLabels[(int)LogLevel.Info]} | {Subsystem.MainApp.PadRight(Subsystem.MaxLength)} | Logs cleared by user{Environment.NewLine}";
+                    WriteRaw(entry);
                 }
                 catch (Exception ex)
                 {
                     Debug.WriteLine($"LogManager.ClearLogs: {ex.Message}");
                 }
             }
-
-            // Write fresh entry outside the lock (LogMessage acquires its own lock)
-            LogMessage("Logs cleared by user", LogLevel.Info);
         }
 
         /// <summary>Checks the log file size and rotates it if it exceeds the maximum. Thread-safe.</summary>

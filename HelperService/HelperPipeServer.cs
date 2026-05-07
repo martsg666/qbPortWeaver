@@ -1,6 +1,8 @@
 using System.IO.Pipes;
 using System.Security.AccessControl;
+using System.Security.Cryptography;
 using System.Security.Principal;
+using System.Text;
 using Microsoft.Win32;
 
 namespace qbPortWeaver.HelperService;
@@ -174,9 +176,16 @@ internal sealed class HelperPipeServer(ILogger<HelperPipeServer> logger) : Backg
             {
                 using var appKey  = Registry.CurrentUser.OpenSubKey(AppRegistryKey);
                 var expectedToken = appKey?.GetValue(PipeSessionTokenKey) as string;
+                // Use constant-time comparison to prevent timing side-channel attacks.
+                // string.Equals returns early on the first mismatch, leaking token length/prefix
+                // information to a local attacker who can measure pipe response times.
+                // The primary defence is the HKCU ACL (only the session owner can read the token),
+                // but FixedTimeEquals adds defence-in-depth for a SYSTEM-level dispatch gate.
                 tokenValid = !string.IsNullOrEmpty(expectedToken) &&
                              !string.IsNullOrEmpty(pipeSessionToken) &&
-                             string.Equals(expectedToken, pipeSessionToken, StringComparison.Ordinal);
+                             CryptographicOperations.FixedTimeEquals(
+                                 Encoding.UTF8.GetBytes(expectedToken),
+                                 Encoding.UTF8.GetBytes(pipeSessionToken));
 
                 if (tokenValid)
                 {

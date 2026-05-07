@@ -40,7 +40,7 @@ namespace qbPortWeaver
         // Honors <paramref name="ct"/> so app shutdown is not blocked while waiting for the helper.
         private static async Task<HelperResult> SendAsync(string action, string target, CancellationToken ct)
         {
-            if (target.Contains('|'))
+            if (target.Contains('|') || target.Contains('\n') || target.Contains('\r'))
             {
                 LogManager.Instance.LogMessage($"Cannot send '{action}' request: target '{target}' contains an invalid character", LogLevel.Warn);
                 return HelperResult.Empty;
@@ -57,7 +57,7 @@ namespace qbPortWeaver
                 await using var pipe = new NamedPipeClientStream(".", AppConstants.HelperServicePipeName, PipeDirection.InOut);
                 await pipe.ConnectAsync(PipeConnectTimeoutMs, ct).ConfigureAwait(false);
                 await using var writer = new StreamWriter(pipe, leaveOpen: true) { AutoFlush = true };
-                using       var reader = new StreamReader(pipe, leaveOpen: true);
+                using var reader = new StreamReader(pipe, leaveOpen: true);
 
                 await writer.WriteLineAsync($"{action}|{target}|{_sessionToken.Value}".AsMemory(), ct).ConfigureAwait(false);
                 LogManager.Instance.LogMessage($"Sent '{action}' request for '{target}'", LogLevel.Info);

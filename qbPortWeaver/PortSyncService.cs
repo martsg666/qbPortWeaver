@@ -142,22 +142,28 @@ namespace qbPortWeaver
             }
             finally
             {
-                StatusManager.Write(status);
+                // Skip status write and tray update on clean shutdown - the cycle was cancelled,
+                // not failed. Writing an error/disconnected state here would flicker the tray icon
+                // and leave a misleading error JSON file on every exit.
+                if (!cancellationToken.IsCancellationRequested)
+                {
+                    StatusManager.Write(status);
 
-                bool success      = status[StatusKeys.Status]          as string == StatusKeys.Success;
-                bool vpnConnected = status[StatusKeys.VpnConnected]   is true;
-                int? port         = status[StatusKeys.ClientPort] as int?;
-                string message    = status[StatusKeys.Message]         as string ?? string.Empty;
-                bool isDisabled   = string.Equals(status[StatusKeys.VpnProvider] as string, RegistrySettingsManager.VpnProviderDisabled, StringComparison.OrdinalIgnoreCase);
+                    bool success      = status[StatusKeys.Status]          as string == StatusKeys.Success;
+                    bool vpnConnected = status[StatusKeys.VpnConnected]   is true;
+                    int? port         = status[StatusKeys.ClientPort] as int?;
+                    string message    = status[StatusKeys.Message]         as string ?? string.Empty;
+                    bool isDisabled   = string.Equals(status[StatusKeys.VpnProvider] as string, RegistrySettingsManager.VpnProviderDisabled, StringComparison.OrdinalIgnoreCase);
 
-                SyncState state;
-                if (isDisabled)            state = SyncState.Disabled;
-                else if (!vpnConnected)    state = SyncState.VpnDisconnected;
-                else if (success)          state = SyncState.Synced;
-                else                       state = SyncState.Error;
+                    SyncState state;
+                    if (isDisabled)            state = SyncState.Disabled;
+                    else if (!vpnConnected)    state = SyncState.VpnDisconnected;
+                    else if (success)          state = SyncState.Synced;
+                    else                       state = SyncState.Error;
 
-                try { SyncCompleted?.Invoke(new TrayStatus(state, port, message)); }
-                catch (Exception ex) { LogManager.Instance.LogMessage($"SyncCompleted handler failed: {ex.Message}", LogLevel.Warn); }
+                    try { SyncCompleted?.Invoke(new TrayStatus(state, port, message)); }
+                    catch (Exception ex) { LogManager.Instance.LogMessage($"SyncCompleted handler failed: {ex.Message}", LogLevel.Warn); }
+                }
             }
         }
 
@@ -482,7 +488,8 @@ namespace qbPortWeaver
                 if (!await ApplyPortUpdateAsync(manager, targetPort, config, status, cancellationToken).ConfigureAwait(false))
                     return;
                 if (config.NotifyOnPortUpdate)
-                    PortUpdated?.Invoke($"{manager.ClientName} port updated to {targetPort}");
+                    try { PortUpdated?.Invoke($"{manager.ClientName} port updated to {targetPort}"); }
+                    catch (Exception ex) { LogManager.Instance.LogDebug($"PortSyncService: PortUpdated handler threw: {ex.Message}"); }
             }
 
             // Check connection status and restart if offline - skip if a restart was already performed
@@ -556,7 +563,8 @@ namespace qbPortWeaver
 
             if (balloonMessage == _lastInterfaceMismatchMessage) return;
             _lastInterfaceMismatchMessage = balloonMessage;
-            InterfaceMismatchDetected?.Invoke(balloonMessage);
+            try { InterfaceMismatchDetected?.Invoke(balloonMessage); }
+            catch (Exception ex) { LogManager.Instance.LogDebug($"PortSyncService: InterfaceMismatchDetected handler threw: {ex.Message}"); }
         }
 
         // Sets the listening port, optionally restarts the client and runs the post-update command.

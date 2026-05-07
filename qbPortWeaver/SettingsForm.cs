@@ -3,6 +3,8 @@ namespace qbPortWeaver
     /// <summary>Settings dialog for configuring VPN provider, BitTorrent client connection, sync interval, and extra options.</summary>
     public partial class SettingsForm : Form
     {
+        internal bool SettingsSaved { get; private set; }
+
         private const string DiscoveringAdaptersPlaceholder = "Discovering adapters\u2026";
         private const string NoAdaptersFoundPlaceholder     = "No NAT-PMP adapters found";
         private const string DefaultPortTooltip             = "Port to apply when the VPN is disconnected (0 = do nothing when disconnected)";
@@ -258,7 +260,7 @@ namespace qbPortWeaver
             string previousColorTheme  = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionExtra, RegistrySettingsManager.KeyColorTheme);
             string selectedColorTheme  = cboColorTheme.SelectedItem?.ToString() ?? RegistrySettingsManager.ColorThemeSystem;
             SaveSettings();
-            DialogResult = DialogResult.OK;
+            SettingsSaved = true;
 
             // Color theme takes effect at startup via Application.SetColorMode - restart if it changed
             if (selectedColorTheme != previousColorTheme)

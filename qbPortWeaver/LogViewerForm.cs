@@ -16,7 +16,7 @@ namespace qbPortWeaver
         private long                 _lastReadPosition;
         private FileSystemWatcher?   _watcher;
         private bool                 _isDarkMode;
-        private Color[]              _themeColors    = null!; // initialized in OnLoad after _isDarkMode is set
+        private Color[]              _themeColors    = []; // overwritten in OnLoad after _isDarkMode is set
         private System.Windows.Forms.Timer? _searchDebounceTimer;
 
         [LibraryImport("user32.dll", EntryPoint = "SendMessageW")]
@@ -198,8 +198,9 @@ namespace qbPortWeaver
 
             if (_searchDebounceTimer is null)
             {
-                _searchDebounceTimer = new System.Windows.Forms.Timer { Interval = 250 };
-                _searchDebounceTimer.Tick += (_, _) => { _searchDebounceTimer!.Stop(); RebuildDisplay(); };
+                var timer = new System.Windows.Forms.Timer { Interval = 250 };
+                timer.Tick += (_, _) => { timer.Stop(); RebuildDisplay(); };
+                _searchDebounceTimer = timer;
             }
 
             if (txtSearch.Text.Length == 0)
@@ -333,11 +334,16 @@ namespace qbPortWeaver
             string?  subsystemFilter  = GetSubsystemFilter();
             string[] filtered         = _allLines.Where(l => IsLineVisibleWithFilters(l, filters, subsystemFilter)).ToArray();
             rtbLog.Rtf = BuildRtf(filtered, _themeColors);
-            if (wasAtBottom) ScrollToBottom();
-            RefreshSearch(navigateToFirst: true);
 
+            // Suppress redraws across both RefreshSearch and ApplySearchHighlights so scroll,
+            // selection, and highlight changes are not visible as intermediate paint states.
             SendMessage(rtbLog.Handle, WinMsg.WM_SETREDRAW, IntPtr.Zero, IntPtr.Zero);
-            try { ApplySearchHighlights(); }
+            try
+            {
+                if (wasAtBottom) ScrollToBottom();
+                RefreshSearch(navigateToFirst: true);
+                ApplySearchHighlights();
+            }
             finally
             {
                 SendMessage(rtbLog.Handle, WinMsg.WM_SETREDRAW, (IntPtr)1, IntPtr.Zero);
@@ -366,9 +372,14 @@ namespace qbPortWeaver
         {
             int end = rtbLog.SelectionStart;
             if (end <= 0 || rtbLog.TextLength == 0) return;
-            int prev = Math.Max(
-                rtbLog.Find(ColError, 0, end, RichTextBoxFinds.Reverse),
-                rtbLog.Find(ColWarn,  0, end, RichTextBoxFinds.Reverse));
+            int prevError = rtbLog.Find(ColError, 0, end, RichTextBoxFinds.Reverse);
+            int prevWarn  = rtbLog.Find(ColWarn,  0, end, RichTextBoxFinds.Reverse);
+            int prev = (prevError, prevWarn) switch
+            {
+                (< 0, _) => prevWarn,
+                (_, < 0) => prevError,
+                _        => Math.Max(prevError, prevWarn)
+            };
             if (prev < 0) return;
             rtbLog.Select(prev, 0);
             rtbLog.ScrollToCaret();

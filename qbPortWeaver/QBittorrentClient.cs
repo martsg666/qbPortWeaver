@@ -180,7 +180,7 @@ namespace qbPortWeaver
 
                 // qBittorrent < 5.2.0 returns 200 for both success ("Ok.") and failure ("Fails.")
                 var body = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
-                if (!body.Contains(AuthOkResponse, StringComparison.OrdinalIgnoreCase))
+                if (!string.Equals(body.Trim(), AuthOkResponse, StringComparison.OrdinalIgnoreCase))
                 {
                     LogManager.Instance.LogMessage($"{ClientName} authentication failed: wrong username or password (username: '{_userName}') - check the credentials in Settings", LogLevel.Error);
                     return false;

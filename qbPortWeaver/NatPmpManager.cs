@@ -21,7 +21,8 @@ namespace qbPortWeaver
         private readonly IPAddress        _gateway;
         private readonly uint             _mappingLifetime;
 
-        // Cached state for port renewal (persists across sync cycles via PortSyncService._lastKnownNatPmpManager)
+        // Cached state for port renewal (persists across sync cycles via PortSyncService._lastKnownNatPmpManager).
+        // Not independently locked - access is serialized by PortSyncService's single-concurrency sync semaphore.
         private ushort _lastExternalPort;  // zero until first mapping; suggested to gateway on renewal
         private uint   _lastEpochSeconds;  // SSOE (Seconds Since Opened Epoch) from the last successful NAT-PMP response
 

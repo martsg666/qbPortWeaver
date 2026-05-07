@@ -19,7 +19,7 @@ namespace qbPortWeaver
 
         private readonly string _userName;
         private string? _sessionId;
-        // Cached service name; null = not found, string.Empty = not yet resolved.
+        // Cached service name; string.Empty = not yet resolved, non-empty = found and cached.
         // Static so the SCM enumeration persists across sync-cycle instances.
         // Mirrors the caching pattern used by ProtonVpnManager and PiaVpnManager.
         // volatile ensures writes from one sync-cycle thread are visible to concurrent callers.
@@ -188,7 +188,9 @@ namespace qbPortWeaver
         }
 
         /// <inheritdoc/>
-        // Transmission uses X-Transmission-Session-Id header exchange in SendRpcAsync instead of a login step.
+        // Transmission uses a per-request X-Transmission-Session-Id CSRF handshake in SendRpcAsync rather than a
+        // one-time login step, so EnsureAuthenticatedAsync is never called and this override is never reached.
+        // It exists only to satisfy the abstract base member.
         protected override Task<bool> AuthenticateAsync(CancellationToken cancellationToken = default) => Task.FromResult(true);
 
         private async Task<bool> RestartServiceModeAsync(string serviceName, CancellationToken cancellationToken)
@@ -196,7 +198,9 @@ namespace qbPortWeaver
             try
             {
                 ResetAuthState();
-                await HelperServiceClient.SendRestartAsync(serviceName).ConfigureAwait(false);
+                var helperResult = await HelperServiceClient.SendRestartAsync(serviceName, cancellationToken).ConfigureAwait(false);
+                for (int i = 0; i < helperResult.WarnCount;  i++) LogManager.Instance.NotifyExternalWarnOrError(LogLevel.Warn);
+                for (int i = 0; i < helperResult.ErrorCount; i++) LogManager.Instance.NotifyExternalWarnOrError(LogLevel.Error);
 
                 // The helper service restarts the service via named pipe (fire-and-forget from
                 // this side). Phase 1: wait for the service to stop. Phase 2: wait for it to

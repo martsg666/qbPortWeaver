@@ -11,12 +11,18 @@ namespace qbPortWeaver
     {
         private const int ClientRestartDelayMs = 2000;
 
+        private readonly record struct ProviderEntry(
+            string        ProviderKeyword,
+            Func<string>  GetClientProcessName,
+            Func<string?>? GetInstalledExePath,
+            Func<string?> FindServiceName);
+
         // Maps a provider token to the client process that must be restarted alongside the service.
         // GetInstalledExePath resolves the exe path from the service registry entry when the process is not running.
-        private static readonly (string ProviderKeyword, Func<string> GetClientProcessName, Func<string?>? GetInstalledExePath, Func<string?> FindServiceName)[] _clientProcessMap =
+        private static readonly ProviderEntry[] _clientProcessMap =
         [
-            (RegistrySettingsManager.VpnProviderProtonVpn, ProtonVpnManager.Config.GetClientProcessName, ProtonVpnManager.Config.GetClientExePath, ProtonVpnManager.Config.FindServiceName),
-            (RegistrySettingsManager.VpnProviderPia,       PiaVpnManager.Config.GetClientProcessName,    PiaVpnManager.Config.GetClientExePath,    PiaVpnManager.Config.FindServiceName),
+            new(RegistrySettingsManager.VpnProviderProtonVpn, ProtonVpnManager.Config.GetClientProcessName, ProtonVpnManager.Config.GetClientExePath, ProtonVpnManager.Config.FindServiceName),
+            new(RegistrySettingsManager.VpnProviderPia,       PiaVpnManager.Config.GetClientProcessName,    PiaVpnManager.Config.GetClientExePath,    PiaVpnManager.Config.FindServiceName),
         ];
 
         /// <summary>
@@ -72,6 +78,12 @@ namespace qbPortWeaver
         // If the process is not running, falls back to the registry-derived exe path via getInstalledExePath.
         private static async Task RestartClientProcessAsync(string processName, Func<string?>? getInstalledExePath, CancellationToken cancellationToken = default)
         {
+            if (string.IsNullOrWhiteSpace(processName))
+            {
+                LogManager.Instance.LogDebug("AutoRecoveryManager.RestartClientProcessAsync: processName is empty - skipping");
+                return;
+            }
+
             string? exePath = null;
             try
             {

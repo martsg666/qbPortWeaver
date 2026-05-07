@@ -29,6 +29,7 @@ namespace qbPortWeaver
             "If library folders are temporarily unreachable at startup (for example, a NAS that powers on after the PC), " +
             "the library index is now retried each cycle until the folders become accessible, " +
             "preventing stale results from being carried over.\n\n" +
+            "New in 2.5.0\n\n" +
             "BitTorrent client support\n" +
             "Automatic port sync for qBittorrent (Web API), Transmission (RPC), and Deluge (Web JSON-RPC). " +
             "Transmission auto-detects service mode vs Qt desktop client.\n\n" +

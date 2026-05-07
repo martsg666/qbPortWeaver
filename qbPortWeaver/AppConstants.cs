@@ -37,11 +37,11 @@ namespace qbPortWeaver
         private const string LogFileName    = "qbPortWeaver.log";
         private const string StatusFileName = "qbPortWeaver.status.json";
 
-        private static string? _appDataFolder;
-
-        private static string AppDataFolder => _appDataFolder ??= Directory.CreateDirectory(
+        private static readonly Lazy<string> _appDataFolder = new(() => Directory.CreateDirectory(
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), AppName)
-        ).FullName;
+        ).FullName);
+
+        private static string AppDataFolder => _appDataFolder.Value;
 
         /// <summary>Returns the full path to the application log file.</summary>
         public static string GetLogFilePath()    => Path.Combine(AppDataFolder, LogFileName);
@@ -70,9 +70,9 @@ namespace qbPortWeaver
         internal static void WriteAtomic(string path, string content)
         {
             var temp = path + ".tmp";
-            File.WriteAllText(temp, content);
             try
             {
+                File.WriteAllText(temp, content);
                 File.Move(temp, path, overwrite: true);
             }
             catch

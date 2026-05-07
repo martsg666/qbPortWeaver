@@ -354,7 +354,7 @@ namespace qbPortWeaver
                 PruneLibraryCache(seenPaths);
 
                 sw.Stop();
-                _libraryFingerprints = fingerprints;
+                lock (_libraryLock) { _libraryFingerprints = fingerprints; }
                 LogManager.Instance.LogMessage(
                     $"Library index built: {fingerprints.Count} files in {sw.ElapsedMilliseconds}ms (cached={cached}, computed={computed})",
                     LogLevel.Info, Subsystem.MediaManager);

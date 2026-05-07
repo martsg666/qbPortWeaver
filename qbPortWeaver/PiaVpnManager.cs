@@ -109,6 +109,11 @@ namespace qbPortWeaver
                     return null;
                 }
 
+                // Drain stdout concurrently with WaitForExit to prevent a pipe-buffer deadlock.
+                // If ReadToEnd() runs after WaitForExit() the process can stall waiting for the
+                // reader to consume its output while we wait for it to exit - each side blocking the other.
+                var stdoutTask = process.StandardOutput.ReadToEndAsync();
+
                 if (!process.WaitForExit(ProcessTimeoutMs))
                 {
                     // Cleanup only - no new process follows, so KillProcess's retry wait is not needed here.
@@ -118,9 +123,7 @@ namespace qbPortWeaver
                     return null;
                 }
 
-                // piactl output is always tiny (a few characters); stdout buffer overflow is not a concern,
-                // so synchronous ReadToEnd() after WaitForExit() is safe and simpler than async.
-                string output = process.StandardOutput.ReadToEnd().Trim();
+                string output = stdoutTask.GetAwaiter().GetResult().Trim();
 
                 LogManager.Instance.LogDebug($"PiaVpnManager.RunPiactl: '{arguments}' returned: {output}");
                 return output;

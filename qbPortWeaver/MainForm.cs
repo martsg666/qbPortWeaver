@@ -288,7 +288,7 @@ namespace qbPortWeaver
 
         private void OnSettingsFormClosed(SettingsForm frm)
         {
-            if (frm.DialogResult == DialogResult.OK)
+            if (frm.SettingsSaved)
             {
                 LogManager.Instance.LogMessage("Settings changed, triggering sync cycle", LogLevel.Info);
                 InterruptDelay();

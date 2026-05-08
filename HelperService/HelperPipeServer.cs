@@ -77,7 +77,7 @@ internal sealed class HelperPipeServer(ILogger<HelperPipeServer> logger) : Backg
         logger.LogInformation("qbPortWeaver Helper Service stopped");
     }
 
-    private async Task ServeOneConnectionAsync(CancellationToken ct)
+    private async Task ServeOneConnectionAsync(CancellationToken cancellationToken)
     {
         // The pipe ACL grants ReadWrite to all authenticated users so the standard-user
         // qbPortWeaver client can send commands to this SYSTEM-level helper service.
@@ -91,17 +91,17 @@ internal sealed class HelperPipeServer(ILogger<HelperPipeServer> logger) : Backg
             outBufferSize: 0,
             PipeSecurity);
 
-        await pipe.WaitForConnectionAsync(ct).ConfigureAwait(false);
+        await pipe.WaitForConnectionAsync(cancellationToken).ConfigureAwait(false);
 
         using var reader  = new StreamReader(pipe, leaveOpen: true);
-        using var readCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        using var readCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         readCts.CancelAfter(PipeReadTimeoutMs);
         string? message;
         try
         {
             message = await reader.ReadLineAsync(readCts.Token).ConfigureAwait(false);
         }
-        catch (OperationCanceledException ex) when (!ct.IsCancellationRequested)
+        catch (OperationCanceledException ex) when (!cancellationToken.IsCancellationRequested)
         {
             logger.LogWarning(ex, "Pipe connection read timed out - client connected but sent no data");
             return;
@@ -137,11 +137,11 @@ internal sealed class HelperPipeServer(ILogger<HelperPipeServer> logger) : Backg
         switch (action)
         {
             case ActionRestart:
-                await AutoRecovery.RestartServiceAsync(target, helperLogger, ct).ConfigureAwait(false);
+                await AutoRecovery.RestartServiceAsync(target, helperLogger, cancellationToken).ConfigureAwait(false);
                 break;
 
             case ActionCycleAdapter:
-                await AutoRecovery.CycleAdapterAsync(target, helperLogger, ct).ConfigureAwait(false);
+                await AutoRecovery.CycleAdapterAsync(target, helperLogger, cancellationToken).ConfigureAwait(false);
                 break;
 
             default:

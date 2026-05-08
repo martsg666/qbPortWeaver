@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
 
 namespace qbPortWeaver
 {
@@ -40,7 +41,7 @@ namespace qbPortWeaver
             var importMode = ParseImportMode(RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionMedia, RegistrySettingsManager.KeyMediaImportMode));
 
             var sourceFolders = GetFolders(RegistrySettingsManager.KeyMediaSourceFolders);
-            var importSw = System.Diagnostics.Stopwatch.StartNew();
+            var importSw = Stopwatch.StartNew();
             LogManager.Instance.LogMessage($"Import started (dryRun={dryRun}, createFolders={createFolders}, deleteEmptyFolders={deleteEmptyFolders}, importMode={importMode})", LogLevel.Info, Subsystem.MediaManager);
             if (LogManager.Instance.DebugMode)
                 LogManager.Instance.LogDebug(
@@ -92,7 +93,7 @@ namespace qbPortWeaver
             string moviesLibraryPath, string tvShowsLibraryPath,
             IProgress<(int Current, int Total)>? progress = null, CancellationToken cancellationToken = default)
         {
-            var scanSw = System.Diagnostics.Stopwatch.StartNew();
+            var scanSw = Stopwatch.StartNew();
             LogManager.Instance.LogMessage($"Scan started (createFolders={createFolders})", LogLevel.Info, Subsystem.MediaManager);
 
             // UI-initiated scans always rebuild the library index (allowLibraryReuse: false) to ensure fresh results.
@@ -407,7 +408,7 @@ namespace qbPortWeaver
         {
             return Task.Run(() =>
             {
-                var classifySw    = System.Diagnostics.Stopwatch.StartNew();
+                var classifySw    = Stopwatch.StartNew();
                 var classified    = new List<(string Folder, (string[] MovieFiles, string[] TvShowFiles) Items)>(enumerated.Count);
                 var sourceFpToPath = new ConcurrentDictionary<string, string>(StringComparer.Ordinal);
 

@@ -49,7 +49,18 @@ namespace qbPortWeaver
             }
 
             var restartResult = await HelperServiceClient.SendRestartAsync(serviceName, cancellationToken).ConfigureAwait(false);
-            RaiseHelperLogAlerts(restartResult);
+            restartResult.RaiseLogAlerts();
+
+            // Only restart the VPN client app if the helper actually completed the service restart.
+            // If the helper was unreachable, rejected the request, or reported errors, killing the
+            // VPN client UI alone does not fix the underlying VPN service - it just closes the user's
+            // VPN client window for nothing.
+            if (!restartResult.Completed || restartResult.ErrorCount > 0)
+            {
+                LogManager.Instance.LogMessage($"Skipping VPN client app restart for '{providerKeyword}' - helper service did not complete the service restart cleanly", LogLevel.Warn);
+                return;
+            }
+
             await RestartClientProcessAsync(entry.GetClientProcessName(), entry.GetInstalledExePath, cancellationToken).ConfigureAwait(false);
         }
 
@@ -60,10 +71,8 @@ namespace qbPortWeaver
         internal static async Task TriggerCycleAdapterAsync(string adapterName, CancellationToken cancellationToken = default)
         {
             var cycleResult = await HelperServiceClient.SendCycleAdapterAsync(adapterName, cancellationToken).ConfigureAwait(false);
-            RaiseHelperLogAlerts(cycleResult);
+            cycleResult.RaiseLogAlerts();
         }
-
-        private static void RaiseHelperLogAlerts(HelperResult result) => result.RaiseLogAlerts();
 
         // Kills all instances of the named client process (capturing the exe path first),
         // waits briefly, then relaunches it. Runs in the main app's user session - no

@@ -32,7 +32,7 @@ namespace qbPortWeaver
         }
 
         /// <inheritdoc/>
-        public override async Task<(int? ListenPort, string? CurrentInterfaceName)> GetPreferencesAsync(CancellationToken cancellationToken = default)
+        public override async Task<(int? ListenPort, string? BoundInterfaceOrAddress)> GetPreferencesAsync(CancellationToken cancellationToken = default)
         {
             if (!await EnsureAuthenticatedAsync(cancellationToken).ConfigureAwait(false)) return (null, null);
 
@@ -40,7 +40,7 @@ namespace qbPortWeaver
             {
                 var body = $$$"""{"method":"core.get_config_values","params":[["listen_ports","random_port","listen_random_port","listen_interface"]],"id":{{{_rpcId++}}}}""";
                 using var content  = new StringContent(body, Encoding.UTF8, "application/json");
-                using var response = await _httpClient.PostAsync($"{_url}{RpcPath}", content, cancellationToken).ConfigureAwait(false);
+                using var response = await HttpClient.PostAsync($"{Url}{RpcPath}", content, cancellationToken).ConfigureAwait(false);
 
                 if (!response.IsSuccessStatusCode)
                 {
@@ -88,7 +88,7 @@ namespace qbPortWeaver
                 // built-in port mapping from overwriting the externally managed port.
                 var body = $$$"""{"method":"core.set_config","params":[{"listen_ports":[{{{port}}},{{{port}}}],"random_port":false,"upnp":false,"natpmp":false}],"id":{{{_rpcId++}}}}""";
                 using var content  = new StringContent(body, Encoding.UTF8, "application/json");
-                using var response = await _httpClient.PostAsync($"{_url}{RpcPath}", content, cancellationToken).ConfigureAwait(false);
+                using var response = await HttpClient.PostAsync($"{Url}{RpcPath}", content, cancellationToken).ConfigureAwait(false);
 
                 if (!response.IsSuccessStatusCode)
                 {
@@ -134,11 +134,11 @@ namespace qbPortWeaver
                 string encodedPassword = JsonSerializer.Serialize(_password);
                 var body = $$$"""{"method":"auth.login","params":[{{{encodedPassword}}}],"id":{{{_rpcId++}}}}""";
                 using var content  = new StringContent(body, Encoding.UTF8, "application/json");
-                using var response = await _httpClient.PostAsync($"{_url}{RpcPath}", content, cancellationToken).ConfigureAwait(false);
+                using var response = await HttpClient.PostAsync($"{Url}{RpcPath}", content, cancellationToken).ConfigureAwait(false);
 
                 if (!response.IsSuccessStatusCode)
                 {
-                    LogManager.Instance.LogMessage($"{ClientName} authentication failed (HTTP {(int)response.StatusCode} {response.StatusCode}) - check the URL in Settings ({_url})", LogLevel.Error);
+                    LogManager.Instance.LogMessage($"{ClientName} authentication failed (HTTP {(int)response.StatusCode} {response.StatusCode}) - check the URL in Settings ({Url})", LogLevel.Error);
                     return false;
                 }
 
@@ -148,7 +148,7 @@ namespace qbPortWeaver
 
                 if (root.TryGetProperty("error", out var error) && error.ValueKind != JsonValueKind.Null)
                 {
-                    LogManager.Instance.LogMessage($"{ClientName} authentication failed: {error} - check the URL in Settings ({_url})", LogLevel.Error);
+                    LogManager.Instance.LogMessage($"{ClientName} authentication failed: {error} - check the URL in Settings ({Url})", LogLevel.Error);
                     return false;
                 }
 

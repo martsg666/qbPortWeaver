@@ -78,6 +78,10 @@ namespace qbPortWeaver
             // Ensure all registry keys exist, writing defaults for any missing ones
             RegistrySettingsManager.EnsureDefaults();
 
+            // Refresh the Windows startup Run-key entry if the install was moved or upgraded
+            // (covers Chocolatey upgrades and manual moves that would otherwise silently break autostart)
+            StartupManager.RefreshStartupPathIfMoved();
+
             _portSyncService = new PortSyncService();
             _portSyncService.SyncCompleted += OnSyncCompleted;
             _portSyncService.InterfaceMismatchDetected += OnInterfaceMismatchDetected;

@@ -6,8 +6,7 @@ namespace qbPortWeaver
         // Update these constants each release. They live here (not in Designer.cs) so the designer
         // cannot overwrite them, and content changes never touch layout code.
         private const string CommunityText =
-            "The GitHub repository was recently set to private for a period, and all stars were " +
-            "lost. If you find qbPortWeaver useful, please star it on GitHub.";
+            "If you find qbPortWeaver useful, please star it on GitHub.";
 
         private const string ReleaseFeaturesText =
             "New in 2.5.3\n\n" +

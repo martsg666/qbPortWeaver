@@ -37,69 +37,44 @@ namespace qbPortWeaver
         // Serialized on-disk format: only non-null results are persisted.
         private sealed record TmdbEntry<T>(T? Info, bool IsConfident, DateTime CachedAt) where T : class;
 
-        internal static bool TryGetTvShow(string key, out (TvShowInfo? Info, bool IsConfident) result)
-            => _tvShowCache.TryGetValue(key, out result);
-
-        internal static void TryAddTvShow(string key, (TvShowInfo? Info, bool IsConfident) value)
-        {
-            // Always cache in memory (including null results) to avoid re-hitting the API within the same session.
-            // Only mark dirty for non-null results - nulls are not persisted so they are retried on next start.
-            if (_tvShowCache.TryAdd(key, value) && value.Info is not null)
-                _tvShowCacheDirty = true;
-        }
-
-        internal static bool TryGetMovie(string key, out (MovieInfo? Info, bool IsConfident) result)
-            => _movieCache.TryGetValue(key, out result);
-
-        internal static void TryAddMovie(string key, (MovieInfo? Info, bool IsConfident) value)
-        {
-            // Always cache in memory (including null results) to avoid re-hitting the API within the same session.
-            // Only mark dirty for non-null results - nulls are not persisted so they are retried on next start.
-            if (_movieCache.TryAdd(key, value) && value.Info is not null)
-                _movieCacheDirty = true;
-        }
-
         /// <summary>
         /// Returns the cached TV show result for <paramref name="cacheKey"/> if present; otherwise runs
         /// <paramref name="compute"/> exactly once even when concurrent callers race on the same key.
         /// Parallel source-folder scans sharing the same show share one TMDB API call.
         /// </summary>
-        internal static async Task<(TvShowInfo? Info, bool IsConfident)> GetOrComputeTvShowAsync(
+        internal static Task<(TvShowInfo? Info, bool IsConfident)> GetOrComputeTvShowAsync(
             string cacheKey, Func<Task<(TvShowInfo? Info, bool IsConfident)>> compute)
-        {
-            if (TryGetTvShow(cacheKey, out var cached)) return cached;
-            // The first caller's CT is captured inside the compute closure; subsequent waiters share that task.
-            var lazy = _tvShowInFlight.GetOrAdd(cacheKey, _ => new Lazy<Task<(TvShowInfo? Info, bool IsConfident)>>(compute));
-            try
-            {
-                var result = await lazy.Value.ConfigureAwait(false);
-                TryAddTvShow(cacheKey, result);
-                return result;
-            }
-            finally
-            {
-                // KeyValuePair overload: only removes this exact Lazy instance - a concurrent winner that
-                // already replaced it is left intact. If the task faulted, this evicts it so the next
-                // caller retries rather than re-awaiting a permanently failed task.
-                _tvShowInFlight.TryRemove(new KeyValuePair<string, Lazy<Task<(TvShowInfo? Info, bool IsConfident)>>>(cacheKey, lazy));
-            }
-        }
+            => GetOrComputeAsync(cacheKey, compute, _tvShowCache, _tvShowInFlight, () => _tvShowCacheDirty = true);
 
         /// <summary>
         /// Returns the cached movie result for <paramref name="cacheKey"/> if present; otherwise runs
         /// <paramref name="compute"/> exactly once even when concurrent callers race on the same key.
         /// Parallel source-folder scans sharing the same title share one TMDB API call.
         /// </summary>
-        internal static async Task<(MovieInfo? Info, bool IsConfident)> GetOrComputeMovieAsync(
+        internal static Task<(MovieInfo? Info, bool IsConfident)> GetOrComputeMovieAsync(
             string cacheKey, Func<Task<(MovieInfo? Info, bool IsConfident)>> compute)
+            => GetOrComputeAsync(cacheKey, compute, _movieCache, _movieInFlight, () => _movieCacheDirty = true);
+
+        // Generic core for both Get-or-compute methods. Caches every result (including nulls) in memory to
+        // avoid re-hitting the API within the same session, but only marks the cache dirty for non-null
+        // results since nulls are not persisted to disk (see EvictNullTvShows / EvictNullMovies).
+        // The Lazy<Task> wrapper ensures the compute factory runs at most once even when multiple callers
+        // race on the same key; subsequent waiters share the in-flight task.
+        private static async Task<(T? Info, bool IsConfident)> GetOrComputeAsync<T>(
+            string cacheKey,
+            Func<Task<(T? Info, bool IsConfident)>> compute,
+            ConcurrentDictionary<string, (T? Info, bool IsConfident)> cache,
+            ConcurrentDictionary<string, Lazy<Task<(T? Info, bool IsConfident)>>> inFlight,
+            Action markDirty) where T : class
         {
-            if (TryGetMovie(cacheKey, out var cached)) return cached;
+            if (cache.TryGetValue(cacheKey, out var cached)) return cached;
             // The first caller's CT is captured inside the compute closure; subsequent waiters share that task.
-            var lazy = _movieInFlight.GetOrAdd(cacheKey, _ => new Lazy<Task<(MovieInfo? Info, bool IsConfident)>>(compute));
+            var lazy = inFlight.GetOrAdd(cacheKey, _ => new Lazy<Task<(T? Info, bool IsConfident)>>(compute));
             try
             {
                 var result = await lazy.Value.ConfigureAwait(false);
-                TryAddMovie(cacheKey, result);
+                if (cache.TryAdd(cacheKey, result) && result.Info is not null)
+                    markDirty();
                 return result;
             }
             finally
@@ -107,7 +82,7 @@ namespace qbPortWeaver
                 // KeyValuePair overload: only removes this exact Lazy instance - a concurrent winner that
                 // already replaced it is left intact. If the task faulted, this evicts it so the next
                 // caller retries rather than re-awaiting a permanently failed task.
-                _movieInFlight.TryRemove(new KeyValuePair<string, Lazy<Task<(MovieInfo? Info, bool IsConfident)>>>(cacheKey, lazy));
+                inFlight.TryRemove(new KeyValuePair<string, Lazy<Task<(T? Info, bool IsConfident)>>>(cacheKey, lazy));
             }
         }
 

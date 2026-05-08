@@ -14,15 +14,15 @@ namespace qbPortWeaver
         private   const int ApiReadyTimeoutSeconds  = 30;
         private   const int ApiProbeTimeoutSeconds  = 2;
 
-        protected readonly string _url;
-        protected readonly string _processName;
-        protected readonly string _exePath;
-        protected readonly HttpClient _httpClient;
-        // Not volatile: _isAuthenticated is only accessed on the single-threaded sync loop so no
+        protected readonly string Url;
+        protected readonly string ProcessName;
+        protected readonly string ExePath;
+        protected readonly HttpClient HttpClient;
+        // Not volatile: IsAuthenticated is only accessed on the single-threaded sync loop so no
         // cross-thread visibility guarantee is needed. Unlike TransmissionClient._resolvedServiceName
         // which is written once from a Task.Run context, this field is always read and written on
         // the same thread.
-        protected bool _isAuthenticated;
+        protected bool IsAuthenticated;
         private bool _disposed;
 
         /// <summary>Initialises the shared fields used by all BitTorrent client implementations.</summary>
@@ -32,10 +32,10 @@ namespace qbPortWeaver
         /// <param name="httpClient">Pre-configured <see cref="HttpClient"/> (cookie-based or header-based auth depending on the client).</param>
         protected BitTorrentClientBase(string url, string processName, string exePath, HttpClient httpClient)
         {
-            _url         = (url ?? string.Empty).TrimEnd('/');
-            _processName = processName;
-            _exePath     = exePath;
-            _httpClient  = httpClient;
+            Url         = (url ?? string.Empty).TrimEnd('/');
+            ProcessName = processName;
+            ExePath     = exePath;
+            HttpClient  = httpClient;
         }
 
         /// <inheritdoc/>
@@ -49,16 +49,16 @@ namespace qbPortWeaver
         {
             if (_disposed) return;
             _disposed = true;
-            _httpClient.Dispose();
+            HttpClient.Dispose();
             GC.SuppressFinalize(this);
         }
 
         /// <inheritdoc/>
         public virtual bool IsRunning()
         {
-            if (string.IsNullOrEmpty(_processName)) return false;
+            if (string.IsNullOrEmpty(ProcessName)) return false;
 
-            var processes = Process.GetProcessesByName(_processName);
+            var processes = Process.GetProcessesByName(ProcessName);
             try
             {
                 return processes.Length > 0;
@@ -79,7 +79,7 @@ namespace qbPortWeaver
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                LogManager.Instance.LogMessage($"Failed to start {ClientName}: {ex.Message} - check the Executable path in Settings ({_exePath})", LogLevel.Error);
+                LogManager.Instance.LogMessage($"Failed to start {ClientName}: {ex.Message} - check the Executable path in Settings ({ExePath})", LogLevel.Error);
                 return false;
             }
         }
@@ -100,13 +100,13 @@ namespace qbPortWeaver
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                LogManager.Instance.LogMessage($"Failed to restart {ClientName}: {ex.Message} - check the Executable path in Settings ({_exePath})", LogLevel.Error);
+                LogManager.Instance.LogMessage($"Failed to restart {ClientName}: {ex.Message} - check the Executable path in Settings ({ExePath})", LogLevel.Error);
                 return false;
             }
         }
 
         /// <inheritdoc/>
-        public abstract Task<(int? ListenPort, string? CurrentInterfaceName)> GetPreferencesAsync(CancellationToken cancellationToken = default);
+        public abstract Task<(int? ListenPort, string? BoundInterfaceOrAddress)> GetPreferencesAsync(CancellationToken cancellationToken = default);
 
         /// <inheritdoc/>
         public abstract Task<bool> SetListeningPortAsync(int port, CancellationToken cancellationToken = default);
@@ -139,7 +139,7 @@ namespace qbPortWeaver
                 {
                     using var probeCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
                     probeCts.CancelAfter(TimeSpan.FromSeconds(ApiProbeTimeoutSeconds));
-                    using var response = await _httpClient.GetAsync(_url, probeCts.Token).ConfigureAwait(false);
+                    using var response = await HttpClient.GetAsync(Url, probeCts.Token).ConfigureAwait(false);
                     return;
                 }
                 catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
@@ -153,7 +153,7 @@ namespace qbPortWeaver
         }
 
         /// <summary>Resets the per-instance auth state so the next API call triggers a fresh authentication handshake.</summary>
-        protected virtual void ResetAuthState() => _isAuthenticated = false;
+        protected virtual void ResetAuthState() => IsAuthenticated = false;
 
         /// <summary>Performs the client-specific authentication handshake. Returns <see langword="true"/> on success.</summary>
         protected abstract Task<bool> AuthenticateAsync(CancellationToken cancellationToken = default);
@@ -161,22 +161,22 @@ namespace qbPortWeaver
         // Authenticates once per instance; subsequent calls reuse the existing session.
         protected async Task<bool> EnsureAuthenticatedAsync(CancellationToken cancellationToken = default)
         {
-            if (_isAuthenticated) return true;
-            _isAuthenticated = await AuthenticateAsync(cancellationToken).ConfigureAwait(false);
-            return _isAuthenticated;
+            if (IsAuthenticated) return true;
+            IsAuthenticated = await AuthenticateAsync(cancellationToken).ConfigureAwait(false);
+            return IsAuthenticated;
         }
 
         /// <summary>Label identifying the endpoint type used in HTTP error messages (e.g. <c>"Web UI"</c> or <c>"RPC"</c>).</summary>
         protected virtual string ApiLabel => "Web UI";
 
-        // Kills all processes matching _processName, waits for stragglers, then retries once.
+        // Kills all processes matching ProcessName, waits for stragglers, then retries once.
         // Returns false (and logs an error) if processes remain after both passes.
         protected async Task<bool> KillAndVerifyAsync(CancellationToken cancellationToken)
         {
-            AppConstants.KillProcessesByName(_processName, ProcessKillTimeoutMs, ClientName);
+            AppConstants.KillProcessesByName(ProcessName, ProcessKillTimeoutMs, ClientName);
             if (!IsRunning()) return true;
             await Task.Delay(ProcessKillRetryDelayMs, cancellationToken).ConfigureAwait(false);
-            AppConstants.KillProcessesByName(_processName, ProcessKillTimeoutMs, ClientName);
+            AppConstants.KillProcessesByName(ProcessName, ProcessKillTimeoutMs, ClientName);
             if (!IsRunning()) return true;
             LogManager.Instance.LogMessage($"Failed to kill all {ClientName} processes - aborting restart", LogLevel.Error);
             return false;
@@ -184,19 +184,19 @@ namespace qbPortWeaver
 
         // Builds the ProcessStartInfo for launching the client executable.
         protected ProcessStartInfo CreateStartInfo() =>
-            new ProcessStartInfo(_exePath)
+            new ProcessStartInfo(ExePath)
             {
                 UseShellExecute  = true,
-                WorkingDirectory = Path.GetDirectoryName(_exePath) ?? string.Empty
+                WorkingDirectory = Path.GetDirectoryName(ExePath) ?? string.Empty
             };
 
         // Classifies and logs an HTTP-related exception using ClientName and ApiLabel.
         protected void LogHttpException(string methodName, Exception ex)
         {
             if (ex is TaskCanceledException)
-                LogManager.Instance.LogMessage($"{ClientName} {ApiLabel} is not reachable (timed out) - check the URL in Settings ({_url})", LogLevel.Error);
+                LogManager.Instance.LogMessage($"{ClientName} {ApiLabel} is not reachable (timed out) - check the URL in Settings ({Url})", LogLevel.Error);
             else if (ex is HttpRequestException)
-                LogManager.Instance.LogMessage($"Failed to connect to {ClientName} {ApiLabel}: {ex.Message} - check the URL in Settings ({_url})", LogLevel.Error);
+                LogManager.Instance.LogMessage($"Failed to connect to {ClientName} {ApiLabel}: {ex.Message} - check the URL in Settings ({Url})", LogLevel.Error);
             else
             {
                 LogManager.Instance.LogMessage($"Failed to complete {ClientName} request in {methodName}: {ex.Message}", LogLevel.Error);

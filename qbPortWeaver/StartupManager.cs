@@ -22,6 +22,35 @@ namespace qbPortWeaver
             }
         }
 
+        /// <summary>
+        /// If the Run-key entry exists and points at a different path than the currently running
+        /// executable, rewrites it to the current path. No-op if startup is disabled (entry absent)
+        /// or already current. Covers the case where the install was moved or upgraded in place
+        /// (e.g. a Chocolatey upgrade that lands the binary at a new versioned path).
+        /// </summary>
+        public static void RefreshStartupPathIfMoved()
+        {
+            try
+            {
+                using var key = Registry.CurrentUser.OpenSubKey(RunRegistryKey, writable: true);
+                if (key?.GetValue(AppConstants.AppName) is not string storedValue)
+                    return; // startup disabled - leave it alone
+
+                string expectedValue = $"\"{Application.ExecutablePath}\"";
+                if (string.Equals(storedValue, expectedValue, StringComparison.OrdinalIgnoreCase))
+                    return; // already current
+
+                key.SetValue(AppConstants.AppName, expectedValue);
+                LogManager.Instance.LogMessage(
+                    $"Windows startup path refreshed: '{storedValue}' -> '{expectedValue}'",
+                    LogLevel.Info);
+            }
+            catch (Exception ex)
+            {
+                LogManager.Instance.LogDebug($"StartupManager.RefreshStartupPathIfMoved: {ex.Message}");
+            }
+        }
+
         /// <summary>Adds or removes the application from the Windows startup registry key.</summary>
         public static void SetStartup(bool enable)
         {

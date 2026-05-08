@@ -220,6 +220,7 @@ namespace qbPortWeaver
             {
                 using var regKey = Registry.CurrentUser.CreateSubKey(AppKeyPath);
                 regKey.SetValue(key, value, RegistryValueKind.String);
+                LogManager.Instance.LogDebug($"RegistrySettingsManager.SetAppValue: {key} = {MaskSensitiveValue(key, value)}");
             }
             catch (Exception ex)
             {
@@ -423,6 +424,18 @@ namespace qbPortWeaver
             KeyTmdbApiKey
         };
 
+        // Keys whose values must never be written to logs in plaintext. Superset of _encryptedKeys
+        // plus app-level secrets stored plaintext but protected by the HKCU ACL (e.g. the pipe
+        // session token used to authenticate messages to the SYSTEM helper service).
+        private static readonly HashSet<string> _logMaskedKeys = new(StringComparer.OrdinalIgnoreCase)
+        {
+            KeyQBittorrentPassword,
+            KeyTransmissionPassword,
+            KeyDelugePassword,
+            KeyTmdbApiKey,
+            KeyPipeSessionToken
+        };
+
         // Writes any missing keys for one registry section; returns true if anything was written
         private static bool WriteDefaultsForSection(RegistryKey regKey,
             Dictionary<string, string> sectionDefaults)
@@ -451,9 +464,9 @@ namespace qbPortWeaver
             return Convert.ToBase64String(encrypted);
         }
 
-        // Returns "***" for sensitive keys to avoid writing credentials to the log
+        // Returns "***" for sensitive keys to avoid writing credentials or session tokens to the log
         private static string MaskSensitiveValue(string key, string value) =>
-            _encryptedKeys.Contains(key) ? "***" : value;
+            _logMaskedKeys.Contains(key) ? "***" : value;
 
         // Returns the hardcoded default for a setting; returns empty string if the section or key is not found
         private static string GetDefault(string section, string key)

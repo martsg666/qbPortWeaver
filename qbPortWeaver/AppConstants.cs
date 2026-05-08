@@ -255,7 +255,7 @@ namespace qbPortWeaver
             catch (Exception ex)
             {
                 LogManager.Instance.LogDebug($"{logPrefix}: {ex.Message}");
-                return null; // transient error: cache left as string.Empty so next cycle retries
+                return null; // transient error: cache left at its prior state (null or empty) so next cycle retries
             }
         }
 

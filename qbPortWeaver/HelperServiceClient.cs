@@ -2,12 +2,20 @@ using System.IO.Pipes;
 
 namespace qbPortWeaver
 {
-    /// <summary>WARN/ERROR counts the helper service wrote to the shared log file while handling a request.</summary>
-    internal readonly record struct HelperResult(int WarnCount, int ErrorCount)
+    /// <summary>
+    /// Result of a helper service request. <see cref="Completed"/> is true when the helper
+    /// processed the command and returned its WARN/ERROR counts; false when the request never
+    /// reached the helper or was rejected by it. <see cref="IsRejected"/> distinguishes the
+    /// session-token rejection case from a generic helper-unreachable failure.
+    /// </summary>
+    internal readonly record struct HelperResult(bool Completed, int WarnCount, int ErrorCount, bool IsRejected)
     {
-        public static HelperResult Empty    => default;
-        public static HelperResult Rejected => new(WarnCount: -1, ErrorCount: 0);
-        public bool IsRejected => WarnCount == -1;
+        // Helper unreachable, target invalid, session token unavailable, or response unparseable.
+        public static HelperResult Failed   => default; // Completed=false, IsRejected=false
+        // Helper actively rejected the command (session token mismatch).
+        public static HelperResult Rejected => new(Completed: false, WarnCount: 0, ErrorCount: 0, IsRejected: true);
+        // Helper processed the command and returned its WARN/ERROR counts.
+        public static HelperResult Ok(int warn, int error) => new(Completed: true, WarnCount: warn, ErrorCount: error, IsRejected: false);
 
         // Surfaces helper-side log entries in the tray badge, tooltip, and balloon tip.
         // The entries themselves are already in the shared log file (written by the helper directly).
@@ -44,76 +52,76 @@ namespace qbPortWeaver
         private static readonly Lazy<string> _sessionToken = new(() => RegistrySettingsManager.GetOrCreatePipeSessionToken());
 
         /// <summary>Asks the helper service to stop and restart the Windows service with the given <paramref name="serviceName"/>.</summary>
-        internal static Task<HelperResult> SendRestartAsync(string serviceName, CancellationToken ct = default) =>
-            SendAsync(ActionRestart, serviceName, ct);
+        internal static Task<HelperResult> SendRestartAsync(string serviceName, CancellationToken cancellationToken = default) =>
+            SendAsync(ActionRestart, serviceName, cancellationToken);
 
         /// <summary>Asks the helper service to disable and re-enable the named network adapter.</summary>
-        internal static Task<HelperResult> SendCycleAdapterAsync(string adapterName, CancellationToken ct = default) =>
-            SendAsync(ActionCycleAdapter, adapterName, ct);
+        internal static Task<HelperResult> SendCycleAdapterAsync(string adapterName, CancellationToken cancellationToken = default) =>
+            SendAsync(ActionCycleAdapter, adapterName, cancellationToken);
 
         // Sends a pipe-delimited command to the helper service: action|target|sessionToken.
         // Reads back a single result line: warn=N|error=M (helper-side WARN/ERROR counts).
-        // Honors <paramref name="ct"/> so app shutdown is not blocked while waiting for the helper.
-        private static async Task<HelperResult> SendAsync(string action, string target, CancellationToken ct)
+        // Honors <paramref name="cancellationToken"/> so app shutdown is not blocked while waiting for the helper.
+        private static async Task<HelperResult> SendAsync(string action, string target, CancellationToken cancellationToken)
         {
             if (target.Contains('|') || target.Contains('\n') || target.Contains('\r'))
             {
                 LogManager.Instance.LogMessage($"Cannot send '{action}' request: target '{target}' contains an invalid character", LogLevel.Warn);
-                return HelperResult.Empty;
+                return HelperResult.Failed;
             }
 
             if (string.IsNullOrEmpty(_sessionToken.Value))
             {
                 LogManager.Instance.LogMessage($"Cannot send '{action}' request: session token unavailable (registry error)", LogLevel.Warn);
-                return HelperResult.Empty;
+                return HelperResult.Failed;
             }
 
             try
             {
                 await using var pipe = new NamedPipeClientStream(".", AppConstants.HelperServicePipeName, PipeDirection.InOut);
-                await pipe.ConnectAsync(PipeConnectTimeoutMs, ct).ConfigureAwait(false);
+                await pipe.ConnectAsync(PipeConnectTimeoutMs, cancellationToken).ConfigureAwait(false);
                 await using var writer = new StreamWriter(pipe, leaveOpen: true) { AutoFlush = true };
                 using var reader = new StreamReader(pipe, leaveOpen: true); // StreamReader lacks IAsyncDisposable; synchronous Dispose is safe here (flushes no writes)
 
-                await writer.WriteLineAsync($"{action}|{target}|{_sessionToken.Value}".AsMemory(), ct).ConfigureAwait(false);
+                await writer.WriteLineAsync($"{action}|{target}|{_sessionToken.Value}".AsMemory(), cancellationToken).ConfigureAwait(false);
                 LogManager.Instance.LogMessage($"Sent '{action}' request for '{target}'", LogLevel.Info);
 
-                return ParseResult(await ReadResponseAsync(reader, action, ct).ConfigureAwait(false));
+                return ParseResult(await ReadResponseAsync(reader, action, cancellationToken).ConfigureAwait(false));
             }
-            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
                 throw; // app shutdown - let the caller observe cancellation
             }
             catch (Exception ex)
             {
                 LogManager.Instance.LogMessage($"Failed to reach helper service: {ex.Message}", LogLevel.Warn);
-                return HelperResult.Empty;
+                return HelperResult.Failed;
             }
         }
 
-        // Reads one line from the pipe with two cancellation sources: the caller's <paramref name="ct"/>
+        // Reads one line from the pipe with two cancellation sources: the caller's <paramref name="cancellationToken"/>
         // (shutdown) and an internal timeout. Distinguishes the two so timeout returns null while
         // shutdown propagates as OperationCanceledException.
-        private static async Task<string?> ReadResponseAsync(StreamReader reader, string action, CancellationToken ct)
+        private static async Task<string?> ReadResponseAsync(StreamReader reader, string action, CancellationToken cancellationToken)
         {
             using var timeoutCts = new CancellationTokenSource(PipeReadTimeoutMs);
-            using var linkedCts  = CancellationTokenSource.CreateLinkedTokenSource(ct, timeoutCts.Token);
+            using var linkedCts  = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
             try
             {
                 return await reader.ReadLineAsync(linkedCts.Token).ConfigureAwait(false);
             }
-            catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
             {
                 LogManager.Instance.LogDebug($"HelperServiceClient.ReadResponseAsync: Helper response timed out for '{action}'");
                 return null;
             }
         }
 
-        // Parses "warn=N|error=M" from the helper. Returns Empty if the line is missing or malformed.
+        // Parses "warn=N|error=M" from the helper. Returns Failed if the line is missing or malformed.
         // Returns Rejected if the helper sent the rejected sentinel (session token mismatch).
         private static HelperResult ParseResult(string? response)
         {
-            if (string.IsNullOrWhiteSpace(response)) return HelperResult.Empty;
+            if (string.IsNullOrWhiteSpace(response)) return HelperResult.Failed;
             if (response == ResultRejectedSentinel)  return HelperResult.Rejected;
 
             int warn = 0, error = 0;
@@ -124,7 +132,7 @@ namespace qbPortWeaver
                 if      (kv[0] == ResultWarnKey)  warn  = value;
                 else if (kv[0] == ResultErrorKey) error = value;
             }
-            return new HelperResult(warn, error);
+            return HelperResult.Ok(warn, error);
         }
     }
 }

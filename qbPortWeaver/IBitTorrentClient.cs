@@ -40,12 +40,17 @@ namespace qbPortWeaver
         Task<bool> RestartAsync(CancellationToken cancellationToken = default);
 
         /// <summary>
-        /// Returns the current listening port and network interface identifier from the client's settings.
-        /// For qBittorrent this is the bound network adapter name.
-        /// For Transmission this is the bound IPv4 address.
+        /// Returns the client's current listening port and bound interface identifier.
+        /// The bound interface identifier is consumed only when
+        /// <see cref="SupportsInterfaceMismatchWarning"/> is <see langword="true"/>:
+        /// for qBittorrent it is the bound network adapter name (e.g. <c>"ProtonVPN TUN"</c>).
+        /// Transmission and Deluge populate the value from their APIs (Transmission's
+        /// <c>bind-address-ipv4</c>, Deluge's <c>listen_interface</c>) but those clients
+        /// currently do not support interface mismatch detection - the value is returned
+        /// for future use and is ignored by the interface-match logic today.
         /// Returns <c>(null, null)</c> if the client is unreachable or the values cannot be read.
         /// </summary>
-        Task<(int? ListenPort, string? CurrentInterfaceName)> GetPreferencesAsync(CancellationToken cancellationToken = default);
+        Task<(int? ListenPort, string? BoundInterfaceOrAddress)> GetPreferencesAsync(CancellationToken cancellationToken = default);
 
         /// <summary>
         /// Sets the client's listening port. Returns <see langword="true"/> on success.

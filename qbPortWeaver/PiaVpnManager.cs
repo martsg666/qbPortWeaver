@@ -54,9 +54,9 @@ namespace qbPortWeaver
         }
 
         /// <inheritdoc />
-        // ct only prevents scheduling if cancelled before the task starts; once GetVpnPortCore runs,
+        // cancellationToken only prevents scheduling if cancelled before the task starts; once GetVpnPortCore runs,
         // cancellation cannot interrupt the in-progress piactl subprocess (bounded by ProcessTimeoutMs).
-        public Task<int?> GetVpnPortAsync(CancellationToken ct = default) => Task.Run(GetVpnPortCore, ct);
+        public Task<int?> GetVpnPortAsync(CancellationToken cancellationToken = default) => Task.Run(GetVpnPortCore, cancellationToken);
 
         /// <inheritdoc />
         public string? GetRecoveryTarget() => ProviderName;

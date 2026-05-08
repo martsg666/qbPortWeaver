@@ -90,7 +90,7 @@ namespace qbPortWeaver
         }
 
         /// <inheritdoc/>
-        public override async Task<(int? ListenPort, string? CurrentInterfaceName)> GetPreferencesAsync(CancellationToken cancellationToken = default)
+        public override async Task<(int? ListenPort, string? BoundInterfaceOrAddress)> GetPreferencesAsync(CancellationToken cancellationToken = default)
         {
             try
             {
@@ -214,9 +214,9 @@ namespace qbPortWeaver
                 var helperResult = await HelperServiceClient.SendRestartAsync(serviceName, cancellationToken).ConfigureAwait(false);
                 helperResult.RaiseLogAlerts();
 
-                if (helperResult.IsRejected || helperResult.ErrorCount > 0)
+                if (!helperResult.Completed || helperResult.ErrorCount > 0)
                 {
-                    LogManager.Instance.LogMessage($"{ClientName} service '{serviceName}' restart reported errors", LogLevel.Error);
+                    LogManager.Instance.LogMessage($"{ClientName} service '{serviceName}' restart did not complete cleanly", LogLevel.Error);
                     return false;
                 }
 
@@ -245,7 +245,7 @@ namespace qbPortWeaver
                 await Task.Delay(GracefulShutdownWaitMs, cancellationToken).ConfigureAwait(false);
 
                 // Close the main window cleanly; the app saves settings on exit
-                foreach (var proc in Process.GetProcessesByName(_processName))
+                foreach (var proc in Process.GetProcessesByName(ProcessName))
                 {
                     // CloseMainWindow can fail if the process has already exited; safe to ignore.
                     try { proc.CloseMainWindow(); }
@@ -263,7 +263,7 @@ namespace qbPortWeaver
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                LogManager.Instance.LogMessage($"Failed to restart {ClientName}: {ex.Message} - check the Executable path in Settings ({_exePath})", LogLevel.Error);
+                LogManager.Instance.LogMessage($"Failed to restart {ClientName}: {ex.Message} - check the Executable path in Settings ({ExePath})", LogLevel.Error);
                 return false;
             }
         }
@@ -276,7 +276,7 @@ namespace qbPortWeaver
         {
             try
             {
-                var rpcUrl    = $"{_url}{RpcPath}";
+                var rpcUrl    = $"{Url}{RpcPath}";
                 using var request = new HttpRequestMessage(HttpMethod.Post, rpcUrl)
                 {
                     Content = new StringContent(jsonBody, Encoding.UTF8, "application/json")
@@ -284,7 +284,7 @@ namespace qbPortWeaver
                 if (_sessionId is not null)
                     request.Headers.Add(SessionIdHeader, _sessionId);
 
-                var response = await _httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
+                var response = await HttpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
 
                 if (response.StatusCode != HttpStatusCode.Conflict)
                     return response;
@@ -309,7 +309,7 @@ namespace qbPortWeaver
                     Content = new StringContent(jsonBody, Encoding.UTF8, "application/json")
                 };
                 retry.Headers.Add(SessionIdHeader, _sessionId);
-                return await _httpClient.SendAsync(retry, cancellationToken).ConfigureAwait(false);
+                return await HttpClient.SendAsync(retry, cancellationToken).ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
             catch (Exception ex)

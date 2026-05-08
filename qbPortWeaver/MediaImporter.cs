@@ -14,7 +14,7 @@ namespace qbPortWeaver
         // I/O-bound: storage throughput is the constraint, not CPU count.
         // 8 concurrent reads balances throughput vs not overwhelming slower storage.
         internal const int FingerprintParallelism = 8;
-        private static volatile HashSet<string>? _libraryFingerprints;
+        private static HashSet<string>? _libraryFingerprints;
         private static readonly object _libraryLock = new();
         private static readonly SemaphoreSlim _libraryBuildSemaphore = new(1, 1);
         private static int    _libraryBuildCycleCount;
@@ -22,13 +22,15 @@ namespace qbPortWeaver
         private static string _lastTvShowsLibraryPath = string.Empty;
 
         // Library cache: persisted path -> metadata so unchanged library files are not re-hashed across sessions.
-        private static volatile Dictionary<string, CacheEntry>? _libraryCache;
-        private static volatile bool _libraryCacheDirty;
+        // All access guarded by _libraryLock above (no `volatile` needed - lock provides the memory barrier).
+        private static Dictionary<string, CacheEntry>? _libraryCache;
+        private static bool _libraryCacheDirty;
 
         // Source cache: maps source file paths to their fingerprint so unchanged files are not re-hashed each cycle.
-        private static volatile Dictionary<string, CacheEntry>? _sourceCache;
+        // All access guarded by _sourceCacheLock (no `volatile` needed - lock provides the memory barrier).
+        private static Dictionary<string, CacheEntry>? _sourceCache;
         private static readonly object _sourceCacheLock = new();
-        private static volatile bool _sourceCacheDirty;
+        private static bool _sourceCacheDirty;
         private static int _sourceCachedCount;
         private static int _sourceComputedCount;
 

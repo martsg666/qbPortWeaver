@@ -20,7 +20,29 @@ internal static partial class AutoRecovery
     private const int AdapterCycleDelayMs       = 3000;
     private const int NetshTimeoutMs            = 15000;
 
-    internal static async Task RestartServiceAsync(string serviceName, HelperLogger logger)
+    // P/Invoke - used by KillServiceProcess to resolve a service's host process ID
+    private const int ScStatusProcessInfo = 0; // SC_STATUS_PROCESS_INFO - only valid infoLevel for QueryServiceStatusEx
+
+    [LibraryImport("advapi32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool QueryServiceStatusEx(
+        SafeHandle hService, int infoLevel, IntPtr buffer, int bufSize, out int bytesNeeded);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct ServiceStatusProcess
+    {
+        public int dwServiceType;
+        public int dwCurrentState;
+        public int dwControlsAccepted;
+        public int dwWin32ExitCode;
+        public int dwServiceSpecificExitCode;
+        public int dwCheckPoint;
+        public int dwWaitHint;
+        public int dwProcessId;
+        public int dwServiceFlags;
+    }
+
+    internal static async Task RestartServiceAsync(string serviceName, HelperLogger logger, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(serviceName))
         {
@@ -30,13 +52,13 @@ internal static partial class AutoRecovery
 
         logger.LogInfo($"Restarting service '{serviceName}'");
 
-        try { await StopServiceAsync(serviceName, logger).ConfigureAwait(false); }
-        catch (Exception ex) { logger.LogWarn($"Failed to stop service '{serviceName}': {ex.Message}"); }
+        try { await StopServiceAsync(serviceName, logger, ct).ConfigureAwait(false); }
+        catch (Exception ex) when (ex is not OperationCanceledException) { logger.LogWarn($"Failed to stop service '{serviceName}': {ex.Message}"); }
 
-        await Task.Delay(ServiceRestartDelayMs).ConfigureAwait(false);
+        await Task.Delay(ServiceRestartDelayMs, ct).ConfigureAwait(false);
 
-        try { await StartServiceAsync(serviceName, logger).ConfigureAwait(false); }
-        catch (Exception ex)
+        try { await StartServiceAsync(serviceName, logger, ct).ConfigureAwait(false); }
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             logger.LogError($"Failed to start service '{serviceName}': {ex.Message}");
             return;
@@ -48,7 +70,7 @@ internal static partial class AutoRecovery
     // Cycles a network adapter by disabling and re-enabling it via netsh.
     // Used for generic NAT-PMP gateways where no known VPN service is involved.
     // For known providers (ProtonVPN, PIA), the main app sends "restart" instead.
-    internal static async Task CycleAdapterAsync(string adapterName, HelperLogger logger)
+    internal static async Task CycleAdapterAsync(string adapterName, HelperLogger logger, CancellationToken ct = default)
     {
         try
         {
@@ -66,16 +88,16 @@ internal static partial class AutoRecovery
 
             logger.LogInfo($"Cycling adapter '{adapterName}'");
 
-            if (!await RunNetshAsync($"interface set interface \"{adapterName}\" admin=disable", logger).ConfigureAwait(false))
+            if (!await RunNetshAsync($"interface set interface \"{adapterName}\" admin=disable", logger, ct).ConfigureAwait(false))
             {
                 logger.LogWarn($"Failed to disable adapter '{adapterName}'");
                 return;
             }
             logger.LogInfo($"Adapter '{adapterName}' disabled");
 
-            await Task.Delay(AdapterCycleDelayMs).ConfigureAwait(false);
+            await Task.Delay(AdapterCycleDelayMs, ct).ConfigureAwait(false);
 
-            if (!await RunNetshAsync($"interface set interface \"{adapterName}\" admin=enable", logger).ConfigureAwait(false))
+            if (!await RunNetshAsync($"interface set interface \"{adapterName}\" admin=enable", logger, ct).ConfigureAwait(false))
             {
                 logger.LogWarn($"Failed to re-enable adapter '{adapterName}'");
                 return;
@@ -95,7 +117,7 @@ internal static partial class AutoRecovery
     //
     // IMPORTANT: WaitForStatus throws System.ServiceProcess.TimeoutException, NOT
     // System.TimeoutException - they are sibling classes (both inherit SystemException).
-    private static async Task StopServiceAsync(string serviceName, HelperLogger logger)
+    private static async Task StopServiceAsync(string serviceName, HelperLogger logger, CancellationToken ct = default)
     {
         using var sc = new ServiceController(serviceName);
         sc.Refresh();
@@ -113,7 +135,7 @@ internal static partial class AutoRecovery
             logger.LogInfo($"Service '{serviceName}' is already stopping - waiting");
             try
             {
-                await WaitForStatusAsync(sc, ServiceControllerStatus.Stopped).ConfigureAwait(false);
+                await WaitForStatusAsync(sc, ServiceControllerStatus.Stopped, ct).ConfigureAwait(false);
                 logger.LogInfo($"Service '{serviceName}' stopped");
                 return;
             }
@@ -121,7 +143,7 @@ internal static partial class AutoRecovery
             {
                 logger.LogWarn($"Service '{serviceName}' StopPending timed out - force-killing process");
                 KillServiceProcess(sc, logger);
-                await WaitForStoppedOrWarnAsync(sc, serviceName, logger).ConfigureAwait(false);
+                await WaitForStoppedOrWarnAsync(sc, serviceName, logger, ct).ConfigureAwait(false);
                 return;
             }
         }
@@ -134,13 +156,13 @@ internal static partial class AutoRecovery
             logger.LogInfo($"Service '{serviceName}' is starting - waiting before stopping");
             try
             {
-                await WaitForStatusAsync(sc, ServiceControllerStatus.Running).ConfigureAwait(false);
+                await WaitForStatusAsync(sc, ServiceControllerStatus.Running, ct).ConfigureAwait(false);
             }
             catch (System.ServiceProcess.TimeoutException)
             {
                 logger.LogWarn($"Service '{serviceName}' StartPending timed out - force-killing process");
                 KillServiceProcess(sc, logger);
-                await WaitForStoppedOrWarnAsync(sc, serviceName, logger).ConfigureAwait(false);
+                await WaitForStoppedOrWarnAsync(sc, serviceName, logger, ct).ConfigureAwait(false);
                 return;
             }
         }
@@ -152,29 +174,29 @@ internal static partial class AutoRecovery
             // a transient state. Fall through to force-kill.
             logger.LogWarn($"Failed to stop service '{serviceName}' via SCM: {ex.Message} - force-killing process");
             KillServiceProcess(sc, logger);
-            await WaitForStoppedOrWarnAsync(sc, serviceName, logger).ConfigureAwait(false);
+            await WaitForStoppedOrWarnAsync(sc, serviceName, logger, ct).ConfigureAwait(false);
             return;
         }
 
         try
         {
-            await WaitForStatusAsync(sc, ServiceControllerStatus.Stopped).ConfigureAwait(false);
+            await WaitForStatusAsync(sc, ServiceControllerStatus.Stopped, ct).ConfigureAwait(false);
             logger.LogInfo($"Service '{serviceName}' stopped");
         }
         catch (System.ServiceProcess.TimeoutException)
         {
             logger.LogWarn($"Service '{serviceName}' stop timed out - force-killing process");
             KillServiceProcess(sc, logger);
-            await WaitForStoppedOrWarnAsync(sc, serviceName, logger).ConfigureAwait(false);
+            await WaitForStoppedOrWarnAsync(sc, serviceName, logger, ct).ConfigureAwait(false);
         }
     }
 
     // Waits for a service to reach Stopped after a force-kill attempt, logging the outcome.
-    private static async Task WaitForStoppedOrWarnAsync(ServiceController sc, string serviceName, HelperLogger logger)
+    private static async Task WaitForStoppedOrWarnAsync(ServiceController sc, string serviceName, HelperLogger logger, CancellationToken ct = default)
     {
         try
         {
-            await WaitForStatusAsync(sc, ServiceControllerStatus.Stopped).ConfigureAwait(false);
+            await WaitForStatusAsync(sc, ServiceControllerStatus.Stopped, ct).ConfigureAwait(false);
             logger.LogInfo($"Service '{serviceName}' force-stopped");
         }
         catch (System.ServiceProcess.TimeoutException)
@@ -183,7 +205,7 @@ internal static partial class AutoRecovery
         }
     }
 
-    private static async Task StartServiceAsync(string serviceName, HelperLogger logger)
+    private static async Task StartServiceAsync(string serviceName, HelperLogger logger, CancellationToken ct = default)
     {
         using var sc = new ServiceController(serviceName);
         sc.Refresh();
@@ -201,7 +223,7 @@ internal static partial class AutoRecovery
             logger.LogInfo($"Service '{serviceName}' is already starting (likely SCM auto-recovery) - waiting");
             try
             {
-                await WaitForStatusAsync(sc, ServiceControllerStatus.Running).ConfigureAwait(false);
+                await WaitForStatusAsync(sc, ServiceControllerStatus.Running, ct).ConfigureAwait(false);
                 logger.LogInfo($"Service '{serviceName}' started (by SCM)");
             }
             catch (System.ServiceProcess.TimeoutException)
@@ -220,7 +242,7 @@ internal static partial class AutoRecovery
             logger.LogInfo($"Service '{serviceName}' is still stopping - waiting");
             try
             {
-                await WaitForStatusAsync(sc, ServiceControllerStatus.Stopped).ConfigureAwait(false);
+                await WaitForStatusAsync(sc, ServiceControllerStatus.Stopped, ct).ConfigureAwait(false);
             }
             catch (System.ServiceProcess.TimeoutException)
             {
@@ -239,7 +261,7 @@ internal static partial class AutoRecovery
             logger.LogInfo($"Service '{serviceName}' is already starting (likely SCM auto-recovery) - waiting");
             try
             {
-                await WaitForStatusAsync(sc, ServiceControllerStatus.Running).ConfigureAwait(false);
+                await WaitForStatusAsync(sc, ServiceControllerStatus.Running, ct).ConfigureAwait(false);
                 logger.LogInfo($"Service '{serviceName}' started (by SCM)");
             }
             catch (System.ServiceProcess.TimeoutException)
@@ -252,7 +274,7 @@ internal static partial class AutoRecovery
 
         try
         {
-            await WaitForStatusAsync(sc, ServiceControllerStatus.Running).ConfigureAwait(false);
+            await WaitForStatusAsync(sc, ServiceControllerStatus.Running, ct).ConfigureAwait(false);
             logger.LogInfo($"Service '{serviceName}' started");
         }
         catch (System.ServiceProcess.TimeoutException)
@@ -262,13 +284,20 @@ internal static partial class AutoRecovery
     }
 
     // Wraps the synchronous ServiceController.WaitForStatus in Task.Run so it doesn't block a BackgroundService thread.
-    private static Task WaitForStatusAsync(ServiceController sc, ServiceControllerStatus status) =>
-        Task.Run(() => sc.WaitForStatus(status, TimeSpan.FromMilliseconds(ServiceOperationTimeoutMs)));
+    // Note: WaitForStatus has no cancellation support - the ct is checked before scheduling and on entry,
+    // but cannot interrupt a WaitForStatus already in progress. The timeout (ServiceOperationTimeoutMs) is the hard bound.
+    private static Task WaitForStatusAsync(ServiceController sc, ServiceControllerStatus status, CancellationToken ct = default) =>
+        Task.Run(() => sc.WaitForStatus(status, TimeSpan.FromMilliseconds(ServiceOperationTimeoutMs)), ct);
 
     // Called by StopServiceAsync when the service doesn't respond to a clean stop
     // or is stuck in a pending state. Resolves the service's host PID via
     // QueryServiceStatusEx, then escalates: Process.Kill → wait → taskkill /F /T → retry Process.Kill.
     // Mirrors the escalation logic in AppConstants.KillProcess (main app project).
+    //
+    // Intentionally synchronous: the kill escalation is sequential by design (each stage must
+    // complete before the next begins), and this runs only on the exceptional "service not
+    // responding" path. Worst-case blocking is 4x ProcessKillTimeoutMs (20s) on the caller's
+    // thread-pool thread - acceptable given how rarely this path is reached.
     private static void KillServiceProcess(ServiceController sc, HelperLogger logger)
     {
         try
@@ -363,7 +392,7 @@ internal static partial class AutoRecovery
     }
 
     // Runs a netsh command and returns true if it exits with code 0.
-    private static async Task<bool> RunNetshAsync(string arguments, HelperLogger logger)
+    private static async Task<bool> RunNetshAsync(string arguments, HelperLogger logger, CancellationToken ct = default)
     {
         try
         {
@@ -380,11 +409,10 @@ internal static partial class AutoRecovery
             }
 
             // Read stdout and stderr concurrently before WaitForExit to avoid deadlock on full pipe buffers
-            Task<string> stdoutTask = process.StandardOutput.ReadToEndAsync();
-            Task<string> stderrTask = process.StandardError.ReadToEndAsync();
-            await Task.WhenAll(stdoutTask, stderrTask).ConfigureAwait(false);
-            string stdout = stdoutTask.Result;
-            string stderr = stderrTask.Result;
+            Task<string> stdoutTask = process.StandardOutput.ReadToEndAsync(ct);
+            Task<string> stderrTask = process.StandardError.ReadToEndAsync(ct);
+            string stdout = await stdoutTask.ConfigureAwait(false);
+            string stderr = await stderrTask.ConfigureAwait(false);
 
             bool exited = await Task.Run(() => process.WaitForExit(NetshTimeoutMs)).ConfigureAwait(false);
             if (!exited)
@@ -418,25 +446,4 @@ internal static partial class AutoRecovery
         UseShellExecute = false,
         CreateNoWindow  = true
     };
-
-    private const int ScStatusProcessInfo = 0; // SC_STATUS_PROCESS_INFO - only valid infoLevel for QueryServiceStatusEx
-
-    [LibraryImport("advapi32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static partial bool QueryServiceStatusEx(
-        SafeHandle hService, int infoLevel, IntPtr buffer, int bufSize, out int bytesNeeded);
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct ServiceStatusProcess
-    {
-        public int dwServiceType;
-        public int dwCurrentState;
-        public int dwControlsAccepted;
-        public int dwWin32ExitCode;
-        public int dwServiceSpecificExitCode;
-        public int dwCheckPoint;
-        public int dwWaitHint;
-        public int dwProcessId;
-        public int dwServiceFlags;
-    }
 }

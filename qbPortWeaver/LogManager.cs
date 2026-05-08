@@ -89,9 +89,7 @@ namespace qbPortWeaver
                         RotateIfNeeded();
                     }
 
-                    string paddedType = _levelLabels[(int)level];
-                    string logEntry = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} | {paddedType} | {subsystem.PadRight(Subsystem.MaxLength)} | {message}{Environment.NewLine}";
-                    WriteRaw(logEntry);
+                    WriteRaw(FormatEntry(message, level, subsystem));
                     shouldNotify = level is LogLevel.Warn or LogLevel.Error;
                 }
                 catch (Exception ex)
@@ -160,8 +158,7 @@ namespace qbPortWeaver
 
                     // Write the sentinel while still holding the lock so no concurrent LogMessage
                     // can interleave between the delete and this entry.
-                    string entry = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} | {_levelLabels[(int)LogLevel.Info]} | {Subsystem.MainApp.PadRight(Subsystem.MaxLength)} | Logs cleared by user{Environment.NewLine}";
-                    WriteRaw(entry);
+                    WriteRaw(FormatEntry("Logs cleared by user", LogLevel.Info, Subsystem.MainApp));
                 }
                 catch (Exception ex)
                 {
@@ -185,6 +182,9 @@ namespace qbPortWeaver
             Instance.LogDebug(message, subsystem);
             return false;
         }
+
+        private static string FormatEntry(string message, LogLevel level, string subsystem) =>
+            $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} | {_levelLabels[(int)level]} | {subsystem.PadRight(Subsystem.MaxLength)} | {message}{Environment.NewLine}";
 
         // Appends text to the log file. Must be called while holding _lock.
         // Opens a new stream per call intentionally - no persistent stream to manage across threads or rotation events.

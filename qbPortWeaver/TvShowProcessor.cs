@@ -117,7 +117,7 @@ namespace qbPortWeaver
             {
                 var result = await TmdbClient.LookupAsync(title, year,
                     (q, y) => tmdb.SearchTvShowCandidatesAsync(q, y, ct),
-                    i => i.Year is not null, i => i.Title, i => i.VoteCount, "TV show").ConfigureAwait(false);
+                    i => i.Year is not null, i => i.Title, i => i.VoteCount, "TV show", ct).ConfigureAwait(false);
                 if (result.Info is not null)
                     LogManager.Instance.LogDebug($"TvShowProcessor.GetOrLookupTvShowAsync: Matched '{result.Info.Title}' ({result.Info.Year}) [tmdb-{result.Info.TmdbId}]", Subsystem.MediaManager);
                 return result;

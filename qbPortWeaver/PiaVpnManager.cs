@@ -2,7 +2,12 @@ using System.Diagnostics;
 
 namespace qbPortWeaver
 {
-    /// <summary>Detects PIA (Private Internet Access) connectivity and reads the forwarded port via <c>piactl</c>.</summary>
+    /// <summary>
+    /// Detects PIA (Private Internet Access) connectivity and reads the forwarded port via <c>piactl</c>.
+    /// Each sync cycle spawns two piactl subprocesses - one for IsVpnConnected, one for GetVpnPortAsync.
+    /// This is accepted design: piactl is the authoritative source and has no library API.
+    /// A stalled PIA client causes up to two sequential 5s timeouts per cycle.
+    /// </summary>
     public sealed class PiaVpnManager : IVpnManager
     {
         internal static readonly VpnRegistryConfig Config = new(
@@ -16,6 +21,8 @@ namespace qbPortWeaver
 
         // Cached path for piactl; null = not found, string.Empty = not yet resolved.
         // Install paths never change at runtime so we resolve once and reuse.
+        // Not volatile: relies on 64-bit CLR atomic reference assignment (reference writes are
+        // always atomic on x64). A data race here causes at most a redundant re-resolve, not corruption.
         private static string? _piactlPathCache = string.Empty;
 
         /// <inheritdoc />
@@ -48,7 +55,7 @@ namespace qbPortWeaver
         }
 
         /// <inheritdoc />
-        public Task<int?> GetVpnPortAsync() => Task.Run(GetVpnPortCore);
+        public Task<int?> GetVpnPortAsync(CancellationToken ct = default) => Task.Run(GetVpnPortCore, ct);
 
         /// <inheritdoc />
         public string? GetRecoveryTarget() => ProviderName;
@@ -123,7 +130,15 @@ namespace qbPortWeaver
                     return null;
                 }
 
-                string output = stdoutTask.GetAwaiter().GetResult().Trim();
+                // Process has exited and closed the pipe; ReadToEndAsync should complete immediately.
+                // Guard with a timeout so a stalled drain cannot block the thread-pool thread indefinitely.
+                if (!stdoutTask.Wait(ProcessTimeoutMs))
+                {
+                    LogManager.Instance.LogDebug("PiaVpnManager.RunPiactl: stdout drain timed out after process exit");
+                    return null;
+                }
+
+                string output = stdoutTask.Result.Trim();
 
                 LogManager.Instance.LogDebug($"PiaVpnManager.RunPiactl: '{arguments}' returned: {output}");
                 return output;

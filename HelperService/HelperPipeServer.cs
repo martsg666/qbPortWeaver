@@ -27,9 +27,10 @@ internal sealed class HelperPipeServer(ILogger<HelperPipeServer> logger) : Backg
     private const string ActionRestart      = "restart";       // Must match HelperServiceClient.ActionRestart in qbPortWeaver
     private const string ActionCycleAdapter = "cycle-adapter"; // Must match HelperServiceClient.ActionCycleAdapter in qbPortWeaver
 
-    // Result line keys returned to the tray client. Must match HelperServiceClient.ResultWarnKey/ResultErrorKey.
-    private const string ResultWarnKey  = "warn";
-    private const string ResultErrorKey = "error";
+    // Result line keys/sentinels returned to the tray client. Must match HelperServiceClient constants.
+    private const string ResultWarnKey          = "warn";
+    private const string ResultErrorKey         = "error";
+    private const string ResultRejectedSentinel = "rejected"; // Must match HelperServiceClient.ResultRejectedSentinel
 
     // Registry paths and keys for impersonated HKCU reads.
     // AppRegistryKey / PipeSessionTokenKey must match RegistrySettingsManager.AppKeyPath / KeyPipeSessionToken in qbPortWeaver.
@@ -125,7 +126,7 @@ internal sealed class HelperPipeServer(ILogger<HelperPipeServer> logger) : Backg
             try
             {
                 await using var w = new StreamWriter(pipe, leaveOpen: true) { AutoFlush = true };
-                await w.WriteLineAsync($"{ResultWarnKey}=0|{ResultErrorKey}=0").ConfigureAwait(false);
+                await w.WriteLineAsync(ResultRejectedSentinel).ConfigureAwait(false);
             }
             catch (IOException) { }
             return;
@@ -136,11 +137,11 @@ internal sealed class HelperPipeServer(ILogger<HelperPipeServer> logger) : Backg
         switch (action)
         {
             case ActionRestart:
-                await AutoRecovery.RestartServiceAsync(target, helperLogger).ConfigureAwait(false);
+                await AutoRecovery.RestartServiceAsync(target, helperLogger, ct).ConfigureAwait(false);
                 break;
 
             case ActionCycleAdapter:
-                await AutoRecovery.CycleAdapterAsync(target, helperLogger).ConfigureAwait(false);
+                await AutoRecovery.CycleAdapterAsync(target, helperLogger, ct).ConfigureAwait(false);
                 break;
 
             default:
@@ -174,6 +175,10 @@ internal sealed class HelperPipeServer(ILogger<HelperPipeServer> logger) : Backg
         {
             pipe.RunAsClient(() =>
             {
+                // Registry.CurrentUser resolves to the impersonated user's HKCU hive on .NET Core/5+
+                // (via NtOpenKey under the thread's impersonation token). This is the documented
+                // .NET behavior on Windows and holds for all supported targets. The alternative -
+                // RegOpenCurrentUser P/Invoke - is only needed if this assumption ever breaks.
                 using var appKey  = Registry.CurrentUser.OpenSubKey(AppRegistryKey);
                 var expectedToken = appKey?.GetValue(PipeSessionTokenKey) as string;
                 // Use constant-time comparison to prevent timing side-channel attacks.

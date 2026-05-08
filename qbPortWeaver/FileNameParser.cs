@@ -154,18 +154,6 @@ namespace qbPortWeaver
         public static bool IsVideoTvShowEpisode(string path) =>
             IsVideoFile(path) && IsTvShowEpisode(Path.GetFileName(path));
 
-        /// <summary>
-        /// Returns true if the file or folder name already follows Plex naming conventions and
-        /// does not need to be looked up or renamed.
-        /// <para>Movies: <c>Title (Year)</c> or <c>Title (Year) - partN</c></para>
-        /// <para>TV episodes: <c>Show (Year) - SxxExx</c></para>
-        /// </summary>
-        public static bool IsPlexFormatted(string name)
-        {
-            name = StripVideoExtension(name);
-            return PlexMovieNameRegex().IsMatch(name) || PlexEpisodeNameRegex().IsMatch(name);
-        }
-
         // Returns the filename without its extension if it is a recognized video file; otherwise returns the name unchanged.
         private static string StripVideoExtension(string name) =>
             _videoExtensions.Contains(Path.GetExtension(name)) ? Path.GetFileNameWithoutExtension(name) : name;
@@ -466,14 +454,6 @@ namespace qbPortWeaver
         // "S01E01" does NOT match (\b requires a word/non-word boundary and "1E" are both word chars).
         [GeneratedRegex(@"\bS\d{1,4}\b", RegexOptions.IgnoreCase)]
         private static partial Regex TvShowSeasonOnlyRegex();
-
-        // Matches Plex movie format: "Title (Year)" optionally followed by " - partN" (multi-part files)
-        [GeneratedRegex(@"^.+\s\(\d{4}\)(\s-\s(cd|disc|disk|dvd|part|pt)\d)?$", RegexOptions.IgnoreCase)]
-        private static partial Regex PlexMovieNameRegex();
-
-        // Matches Plex TV episode format: "Show (Year) - SxxExx" or "Show (Year) - SxxExxExx" (multi-episode)
-        [GeneratedRegex(@"^.+\s\(\d{4}\)\s-\sS\d{2}E\d{2}(E\d{2})?$", RegexOptions.IgnoreCase)]
-        private static partial Regex PlexEpisodeNameRegex();
 
     }
 

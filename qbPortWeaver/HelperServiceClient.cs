@@ -5,7 +5,22 @@ namespace qbPortWeaver
     /// <summary>WARN/ERROR counts the helper service wrote to the shared log file while handling a request.</summary>
     internal readonly record struct HelperResult(int WarnCount, int ErrorCount)
     {
-        public static HelperResult Empty => default;
+        public static HelperResult Empty    => default;
+        public static HelperResult Rejected => new(WarnCount: -1, ErrorCount: 0);
+        public bool IsRejected => WarnCount == -1;
+
+        // Surfaces helper-side log entries in the tray badge, tooltip, and balloon tip.
+        // The entries themselves are already in the shared log file (written by the helper directly).
+        public void RaiseLogAlerts()
+        {
+            if (IsRejected)
+            {
+                LogManager.Instance.LogMessage("Helper service rejected the command - session token mismatch", LogLevel.Warn);
+                return;
+            }
+            for (int i = 0; i < WarnCount;  i++) LogManager.Instance.NotifyExternalWarnOrError(LogLevel.Warn);
+            for (int i = 0; i < ErrorCount; i++) LogManager.Instance.NotifyExternalWarnOrError(LogLevel.Error);
+        }
     }
 
     /// <summary>Sends privileged action requests to the helper Windows service via named pipe.</summary>
@@ -14,9 +29,10 @@ namespace qbPortWeaver
         internal const string ActionRestart      = "restart";       // Must match HelperPipeServer.ActionRestart in HelperService
         internal const string ActionCycleAdapter = "cycle-adapter"; // Must match HelperPipeServer.ActionCycleAdapter in HelperService
 
-        // Result line keys returned by the helper service. Must match HelperPipeServer.
-        internal const string ResultWarnKey  = "warn";
-        internal const string ResultErrorKey = "error";
+        // Result line keys/sentinels returned by the helper service. Must match HelperPipeServer constants.
+        internal const string ResultWarnKey          = "warn";
+        internal const string ResultErrorKey         = "error";
+        internal const string ResultRejectedSentinel = "rejected"; // Must match HelperPipeServer.ResultRejectedSentinel
 
         private const int PipeConnectTimeoutMs = 5000;
         // Bound for awaiting the helper's response. Covers the helper's pathological
@@ -57,7 +73,7 @@ namespace qbPortWeaver
                 await using var pipe = new NamedPipeClientStream(".", AppConstants.HelperServicePipeName, PipeDirection.InOut);
                 await pipe.ConnectAsync(PipeConnectTimeoutMs, ct).ConfigureAwait(false);
                 await using var writer = new StreamWriter(pipe, leaveOpen: true) { AutoFlush = true };
-                using var reader = new StreamReader(pipe, leaveOpen: true);
+                using var reader = new StreamReader(pipe, leaveOpen: true); // StreamReader lacks IAsyncDisposable; synchronous Dispose is safe here (flushes no writes)
 
                 await writer.WriteLineAsync($"{action}|{target}|{_sessionToken.Value}".AsMemory(), ct).ConfigureAwait(false);
                 LogManager.Instance.LogMessage($"Sent '{action}' request for '{target}'", LogLevel.Info);
@@ -94,9 +110,11 @@ namespace qbPortWeaver
         }
 
         // Parses "warn=N|error=M" from the helper. Returns Empty if the line is missing or malformed.
+        // Returns Rejected if the helper sent the rejected sentinel (session token mismatch).
         private static HelperResult ParseResult(string? response)
         {
             if (string.IsNullOrWhiteSpace(response)) return HelperResult.Empty;
+            if (response == ResultRejectedSentinel)  return HelperResult.Rejected;
 
             int warn = 0, error = 0;
             foreach (var part in response.Split('|'))

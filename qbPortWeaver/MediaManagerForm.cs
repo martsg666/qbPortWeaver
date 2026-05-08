@@ -167,7 +167,7 @@ namespace qbPortWeaver
                 return;
             }
 
-            var ct = await ResetCancellationTokenAsync();
+            var ct = await RenewScanCancellationTokenAsync();
             SetBusy(true);
             BeginProgress();
             lblScanStatus.Text = "Re-matching\u2026";
@@ -384,7 +384,7 @@ namespace qbPortWeaver
                 return;
             }
 
-            var ct = await ResetCancellationTokenAsync();
+            var ct = await RenewScanCancellationTokenAsync();
 
             SetBusy(true);
             BeginProgress();
@@ -435,7 +435,7 @@ namespace qbPortWeaver
 
             if (confirm != DialogResult.Yes) return;
 
-            var ct = await ResetCancellationTokenAsync();
+            var ct = await RenewScanCancellationTokenAsync();
 
             SetBusy(true);
             BeginProgress();
@@ -606,8 +606,10 @@ namespace qbPortWeaver
 
         private async void dgvResults_SelectionChanged(object? sender, EventArgs e) // async void is correct here (WinForms event handler)
         {
-            // Atomically take ownership of the old CTS, then cancel it asynchronously.
-            using var oldCts = Interlocked.Exchange(ref _thumbnailCts, null);
+            // Always create new CTS first so _thumbnailCts is never null and LoadThumbnailAsync
+            // always reads its cancellation state from a live (not disposed) token.
+            var newCts = new CancellationTokenSource();
+            using var oldCts = Interlocked.Exchange(ref _thumbnailCts, newCts);
             if (oldCts is not null) await oldCts.CancelAsync().ConfigureAwait(true);
 
             if (dgvResults.SelectedRows.Count == 0 || dgvResults.SelectedRows[0].Tag is not RowData rd)
@@ -633,9 +635,7 @@ namespace qbPortWeaver
             }
 
             picTmdbPoster.Visible = false;
-            var cts               = new CancellationTokenSource();
-            _thumbnailCts         = cts;
-            await LoadThumbnailAsync(posterPath, cts.Token);
+            await LoadThumbnailAsync(posterPath, newCts.Token);
         }
 
         private async Task LoadThumbnailAsync(string posterPath, CancellationToken ct)
@@ -883,7 +883,7 @@ namespace qbPortWeaver
             e.CellStyle.SelectionForeColor = SystemColors.HighlightText;
         }
 
-        private async Task<CancellationToken> ResetCancellationTokenAsync()
+        private async Task<CancellationToken> RenewScanCancellationTokenAsync()
         {
             if (_scanCts is not null) { await _scanCts.CancelAsync(); _scanCts.Dispose(); }
             _scanCts = new CancellationTokenSource();

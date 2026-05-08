@@ -249,7 +249,7 @@ namespace qbPortWeaver
             {
                 var result = await TmdbClient.LookupAsync(title, year,
                     (q, y) => tmdb.SearchMovieCandidatesAsync(q, y, ct),
-                    i => i.Year is not null, i => i.Title, i => i.VoteCount, "movie").ConfigureAwait(false);
+                    i => i.Year is not null, i => i.Title, i => i.VoteCount, "movie", ct).ConfigureAwait(false);
                 if (result.Info is not null)
                     LogManager.Instance.LogDebug($"MovieProcessor.GetOrLookupMovieAsync: Matched '{result.Info.Title}' ({result.Info.Year}) [tmdb-{result.Info.TmdbId}]", Subsystem.MediaManager);
                 return result;

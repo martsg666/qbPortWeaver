@@ -53,7 +53,7 @@ namespace qbPortWeaver
 
         private static void OnUnobservedTaskException(object? sender, UnobservedTaskExceptionEventArgs e)
         {
-            e.SetObserved(); // prevent process termination on .NET 4+ where unobserved task exceptions are fatal
+            e.SetObserved(); // defensive: .NET 4.0 terminated on unobserved task exceptions; .NET 4.5+ and .NET Core do not, but SetObserved is kept as a safeguard
             if (LogManager.IsInitialized)
                 LogManager.Instance.LogMessage($"Unobserved task exception: {e.Exception}", LogLevel.Error);
         }

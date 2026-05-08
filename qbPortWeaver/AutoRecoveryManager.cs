@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Diagnostics;
 
 namespace qbPortWeaver
@@ -26,51 +27,43 @@ namespace qbPortWeaver
         ];
 
         /// <summary>
-        /// Sends a recovery request to the helper service and waits for it to finish (the helper
-        /// returns once its action has completed). WARN/ERROR entries the helper wrote directly
-        /// to the shared log file are surfaced as tray log alerts via the returned counts.
-        /// For "restart" actions, the matching client process is then restarted in the current
-        /// user session. For "cycle-adapter" actions, only the adapter is cycled - no client
-        /// process is involved.
+        /// Asks the helper service to stop and restart the Windows service for the given VPN
+        /// provider, then restarts the matching client process in the current user session.
+        /// Blocks until the helper finishes the service stop/start cycle (the pipe response
+        /// serves as synchronization so no head-start delay is needed before the client restart).
         /// </summary>
-        internal static async Task TriggerRecoveryAsync(string action, string target, CancellationToken cancellationToken = default)
+        internal static async Task TriggerRestartAsync(string providerKeyword, CancellationToken cancellationToken = default)
         {
-            if (action != HelperServiceClient.ActionRestart)
-            {
-                var cycleResult = await HelperServiceClient.SendCycleAdapterAsync(target, cancellationToken).ConfigureAwait(false);
-                RaiseHelperLogAlerts(cycleResult);
-                return;
-            }
-
-            var entry = _clientProcessMap.FirstOrDefault(e => e.ProviderKeyword.Equals(target, StringComparison.OrdinalIgnoreCase));
+            var entry = _clientProcessMap.FirstOrDefault(e => e.ProviderKeyword.Equals(providerKeyword, StringComparison.OrdinalIgnoreCase));
             if (entry.FindServiceName is null)
             {
-                LogManager.Instance.LogMessage($"Unknown VPN provider '{target}' - skipping recovery", LogLevel.Warn);
+                LogManager.Instance.LogMessage($"Unknown VPN provider '{providerKeyword}' - skipping recovery", LogLevel.Warn);
                 return;
             }
 
             string? serviceName = entry.FindServiceName.Invoke();
             if (serviceName is null)
             {
-                LogManager.Instance.LogMessage($"Could not find Windows service for '{target}' - skipping recovery", LogLevel.Warn);
+                LogManager.Instance.LogMessage($"Could not find Windows service for '{providerKeyword}' - skipping recovery", LogLevel.Warn);
                 return;
             }
 
-            // SendRestartAsync blocks until the helper finishes the service stop/start cycle,
-            // so the client process is relaunched immediately after - no head-start delay needed.
             var restartResult = await HelperServiceClient.SendRestartAsync(serviceName, cancellationToken).ConfigureAwait(false);
             RaiseHelperLogAlerts(restartResult);
             await RestartClientProcessAsync(entry.GetClientProcessName(), entry.GetInstalledExePath, cancellationToken).ConfigureAwait(false);
         }
 
-        // Fires one log-alert event per helper-side WARN/ERROR. Entries themselves are already
-        // in the shared log file (the helper wrote them directly); this just surfaces them in
-        // the tray badge, tooltip, and balloon tip.
-        private static void RaiseHelperLogAlerts(HelperResult result)
+        /// <summary>
+        /// Asks the helper service to disable and re-enable the named network adapter.
+        /// No client process restart is involved.
+        /// </summary>
+        internal static async Task TriggerCycleAdapterAsync(string adapterName, CancellationToken cancellationToken = default)
         {
-            for (int i = 0; i < result.WarnCount;  i++) LogManager.Instance.NotifyExternalWarnOrError(LogLevel.Warn);
-            for (int i = 0; i < result.ErrorCount; i++) LogManager.Instance.NotifyExternalWarnOrError(LogLevel.Error);
+            var cycleResult = await HelperServiceClient.SendCycleAdapterAsync(adapterName, cancellationToken).ConfigureAwait(false);
+            RaiseHelperLogAlerts(cycleResult);
         }
+
+        private static void RaiseHelperLogAlerts(HelperResult result) => result.RaiseLogAlerts();
 
         // Kills all instances of the named client process (capturing the exe path first),
         // waits briefly, then relaunches it. Runs in the main app's user session - no
@@ -90,7 +83,16 @@ namespace qbPortWeaver
                 var processes = Process.GetProcessesByName(processName);
                 try
                 {
-                    exePath = processes.FirstOrDefault()?.MainModule?.FileName;
+                    try
+                    {
+                        exePath = processes.FirstOrDefault()?.MainModule?.FileName;
+                    }
+                    catch (Win32Exception ex)
+                    {
+                        // MainModule access can throw on 32/64-bit mismatch or access denial.
+                        // Leave exePath null so the registry fallback path is used below.
+                        LogManager.Instance.LogDebug($"AutoRecoveryManager.RestartClientProcessAsync: Could not read exe path for '{processName}': {ex.Message}");
+                    }
                     foreach (var p in processes)
                     {
                         try

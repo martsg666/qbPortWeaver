@@ -38,7 +38,7 @@ namespace qbPortWeaver
 
             try
             {
-                var body = $$$"""{"method":"core.get_config_values","params":[["listen_ports","random_port","listen_random_port","listen_interface"]],"id":{{{Interlocked.Increment(ref _rpcId) - 1}}}}""";
+                var body = $$$"""{"method":"core.get_config_values","params":[["listen_ports","random_port","listen_random_port","listen_interface"]],"id":{{{_rpcId++}}}}""";
                 using var content  = new StringContent(body, Encoding.UTF8, "application/json");
                 using var response = await _httpClient.PostAsync($"{_url}{RpcPath}", content, cancellationToken).ConfigureAwait(false);
 
@@ -48,7 +48,7 @@ namespace qbPortWeaver
                     return (null, null);
                 }
 
-                var json = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+                var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
                 using var doc = JsonDocument.Parse(json);
                 var root = doc.RootElement;
 
@@ -69,6 +69,7 @@ namespace qbPortWeaver
 
                 return (listenPort, bindAddress);
             }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
             catch (Exception ex)
             {
                 LogHttpException("GetPreferencesAsync", ex);
@@ -85,7 +86,7 @@ namespace qbPortWeaver
             {
                 // Disable UPnP and NAT-PMP alongside the port change to prevent Deluge's
                 // built-in port mapping from overwriting the externally managed port.
-                var body = $$$"""{"method":"core.set_config","params":[{"listen_ports":[{{{port}}},{{{port}}}],"random_port":false,"upnp":false,"natpmp":false}],"id":{{{Interlocked.Increment(ref _rpcId) - 1}}}}""";
+                var body = $$$"""{"method":"core.set_config","params":[{"listen_ports":[{{{port}}},{{{port}}}],"random_port":false,"upnp":false,"natpmp":false}],"id":{{{_rpcId++}}}}""";
                 using var content  = new StringContent(body, Encoding.UTF8, "application/json");
                 using var response = await _httpClient.PostAsync($"{_url}{RpcPath}", content, cancellationToken).ConfigureAwait(false);
 
@@ -95,7 +96,7 @@ namespace qbPortWeaver
                     return false;
                 }
 
-                var json = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+                var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
                 using var doc = JsonDocument.Parse(json);
                 // Deluge returns {"result":null,"error":null,"id":N} on success
                 if (doc.RootElement.TryGetProperty("error", out var error) &&
@@ -107,6 +108,7 @@ namespace qbPortWeaver
 
                 return true;
             }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
             catch (Exception ex)
             {
                 LogHttpException("SetListeningPortAsync", ex);
@@ -118,11 +120,6 @@ namespace qbPortWeaver
         /// <remarks>Deluge does not expose a connection status endpoint; always returns <see langword="null"/>.</remarks>
         public override Task<string?> GetConnectionStatusAsync(CancellationToken cancellationToken = default) => Task.FromResult<string?>(null);
 
-        // core.set_config debounces disk writes by ~5 s. Wait before the kill step so the
-        // new port survives the restart (without this, Deluge reads the old core.conf).
-        protected override Task PreRestartAsync(CancellationToken cancellationToken) =>
-            Task.Delay(ConfigFlushWaitMs, cancellationToken);
-
         /// <inheritdoc/>
         protected override async Task<bool> AuthenticateAsync(CancellationToken cancellationToken = default)
         {
@@ -130,7 +127,7 @@ namespace qbPortWeaver
             {
                 // Use JsonSerializer to safely embed the password as a JSON string literal
                 string encodedPassword = JsonSerializer.Serialize(_password);
-                var body = $$$"""{"method":"auth.login","params":[{{{encodedPassword}}}],"id":{{{Interlocked.Increment(ref _rpcId) - 1}}}}""";
+                var body = $$$"""{"method":"auth.login","params":[{{{encodedPassword}}}],"id":{{{_rpcId++}}}}""";
                 using var content  = new StringContent(body, Encoding.UTF8, "application/json");
                 using var response = await _httpClient.PostAsync($"{_url}{RpcPath}", content, cancellationToken).ConfigureAwait(false);
 
@@ -140,7 +137,7 @@ namespace qbPortWeaver
                     return false;
                 }
 
-                var json = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+                var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
                 using var doc = JsonDocument.Parse(json);
                 var root = doc.RootElement;
 
@@ -156,12 +153,18 @@ namespace qbPortWeaver
                 LogManager.Instance.LogMessage($"{ClientName} authentication failed: wrong password - check the credentials in Settings", LogLevel.Error);
                 return false;
             }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
             catch (Exception ex)
             {
                 LogHttpException("AuthenticateAsync", ex);
                 return false;
             }
         }
+
+        // core.set_config debounces disk writes by ~5 s. Wait before the kill step so the
+        // new port survives the restart (without this, Deluge reads the old core.conf).
+        protected override Task PreRestartAsync(CancellationToken cancellationToken) =>
+            Task.Delay(ConfigFlushWaitMs, cancellationToken);
 
         private static int? ParseListenPort(JsonElement result)
         {

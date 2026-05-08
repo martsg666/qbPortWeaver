@@ -12,7 +12,7 @@ internal sealed class HelperLogger(string logFilePath)
 {
     // Must match Subsystem.HelperService and Subsystem.MaxLength in qbPortWeaver
     private const string SubsystemName      = "HelperService";
-    private const int    SubsystemMaxLength = 13; // "HelperService".Length - longest subsystem name; keeps log columns aligned
+    private const int    SubsystemMaxLength = 13; // "HelperService".Length - must equal Subsystem.MaxLength in the main app; if they drift, log columns silently misalign
     private const int    WriteMaxAttempts     = 3;
     private const int    WriteRetryDelayMs    = 50;
 

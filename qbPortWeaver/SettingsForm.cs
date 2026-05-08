@@ -418,35 +418,44 @@ namespace qbPortWeaver
                 // No ConfigureAwait(false) - continuation must run on the UI thread to update controls.
                 var adapters = await NatPmpManager.DiscoverAdaptersAsync();
 
-                // Guard against the form being closed while adapter discovery was in flight
+                // Guard against the form being closed while adapter discovery was in flight.
+                // IsDisposed check + ObjectDisposedException catch covers the TOCTOU window between
+                // the check and the first control write.
                 if (IsDisposed) return;
-
-                cboNatPmpAdapter.Items.Clear();
-                if (adapters.Count == 0)
+                try
                 {
-                    cboNatPmpAdapter.Items.Add(NoAdaptersFoundPlaceholder);
-                    cboNatPmpAdapter.SelectedIndex = 0;
-                }
-                else
-                {
-                    foreach (var adapter in adapters)
-                        cboNatPmpAdapter.Items.Add(adapter.ProviderName);
-                    cboNatPmpAdapter.SelectedItem = savedAdapter;
-                    if (cboNatPmpAdapter.SelectedIndex < 0)
+                    cboNatPmpAdapter.Items.Clear();
+                    if (adapters.Count == 0)
+                    {
+                        cboNatPmpAdapter.Items.Add(NoAdaptersFoundPlaceholder);
                         cboNatPmpAdapter.SelectedIndex = 0;
+                    }
+                    else
+                    {
+                        foreach (var adapter in adapters)
+                            cboNatPmpAdapter.Items.Add(adapter.ProviderName);
+                        cboNatPmpAdapter.SelectedItem = savedAdapter;
+                        if (cboNatPmpAdapter.SelectedIndex < 0)
+                            cboNatPmpAdapter.SelectedIndex = 0;
+                    }
+                    bool isNatPmp = cboVpnProvider.SelectedItem?.ToString() == RegistrySettingsManager.VpnProviderNatPmp;
+                    SetAdapterControlsEnabled(isNatPmp);
                 }
-                bool isNatPmp = cboVpnProvider.SelectedItem?.ToString() == RegistrySettingsManager.VpnProviderNatPmp;
-                SetAdapterControlsEnabled(isNatPmp);
+                catch (ObjectDisposedException) { }
             }
             catch (Exception ex)
             {
                 if (IsDisposed) return;
-                LogManager.Instance.LogDebug($"SettingsForm.DiscoverNatPmpAdaptersAsync: {ex.Message}");
-                cboNatPmpAdapter.Items.Clear();
-                cboNatPmpAdapter.Items.Add(NoAdaptersFoundPlaceholder);
-                cboNatPmpAdapter.SelectedIndex = 0;
-                bool isNatPmp = cboVpnProvider.SelectedItem?.ToString() == RegistrySettingsManager.VpnProviderNatPmp;
-                SetAdapterControlsEnabled(isNatPmp);
+                try
+                {
+                    LogManager.Instance.LogDebug($"SettingsForm.DiscoverNatPmpAdaptersAsync: {ex.Message}");
+                    cboNatPmpAdapter.Items.Clear();
+                    cboNatPmpAdapter.Items.Add(NoAdaptersFoundPlaceholder);
+                    cboNatPmpAdapter.SelectedIndex = 0;
+                    bool isNatPmp = cboVpnProvider.SelectedItem?.ToString() == RegistrySettingsManager.VpnProviderNatPmp;
+                    SetAdapterControlsEnabled(isNatPmp);
+                }
+                catch (ObjectDisposedException) { }
             }
         }
     }

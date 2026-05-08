@@ -14,7 +14,7 @@ namespace qbPortWeaver
         // I/O-bound: storage throughput is the constraint, not CPU count.
         // 8 concurrent reads balances throughput vs not overwhelming slower storage.
         internal const int FingerprintParallelism = 8;
-        private static HashSet<string>? _libraryFingerprints;
+        private static volatile HashSet<string>? _libraryFingerprints;
         private static readonly object _libraryLock = new();
         private static readonly SemaphoreSlim _libraryBuildSemaphore = new(1, 1);
         private static int    _libraryBuildCycleCount;
@@ -22,11 +22,11 @@ namespace qbPortWeaver
         private static string _lastTvShowsLibraryPath = string.Empty;
 
         // Library cache: persisted path -> metadata so unchanged library files are not re-hashed across sessions.
-        private static Dictionary<string, CacheEntry>? _libraryCache;
+        private static volatile Dictionary<string, CacheEntry>? _libraryCache;
         private static volatile bool _libraryCacheDirty;
 
         // Source cache: maps source file paths to their fingerprint so unchanged files are not re-hashed each cycle.
-        private static Dictionary<string, CacheEntry>? _sourceCache;
+        private static volatile Dictionary<string, CacheEntry>? _sourceCache;
         private static readonly object _sourceCacheLock = new();
         private static volatile bool _sourceCacheDirty;
         private static int _sourceCachedCount;
@@ -291,9 +291,9 @@ namespace qbPortWeaver
         /// first to finish. When <paramref name="allowReuse"/> is true, the existing index is reused for up to
         /// <see cref="FullRebuildIntervalCycles"/> cycles before forcing a full rebuild to catch external changes.
         /// </summary>
-        internal static void BuildLibraryIndex(string moviesLibraryPath, string tvShowsLibraryPath, bool allowReuse = false, CancellationToken cancellationToken = default)
+        internal static async Task BuildLibraryIndexAsync(string moviesLibraryPath, string tvShowsLibraryPath, bool allowReuse = false, CancellationToken cancellationToken = default)
         {
-            _libraryBuildSemaphore.Wait(cancellationToken);
+            await _libraryBuildSemaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
             try
             {
                 bool pathsChanged = !string.Equals(moviesLibraryPath,  _lastMoviesLibraryPath,  StringComparison.OrdinalIgnoreCase)
@@ -301,14 +301,14 @@ namespace qbPortWeaver
                 bool forceRebuild = pathsChanged || _libraryBuildCycleCount >= FullRebuildIntervalCycles;
                 if (!forceRebuild && allowReuse && _libraryFingerprints is not null)
                 {
-                    LogManager.Instance.LogDebug($"MediaImporter.BuildLibraryIndex: Reusing index (cycle {_libraryBuildCycleCount}/{FullRebuildIntervalCycles})", Subsystem.MediaManager);
+                    LogManager.Instance.LogDebug($"MediaImporter.BuildLibraryIndexAsync: Reusing index (cycle {_libraryBuildCycleCount}/{FullRebuildIntervalCycles})", Subsystem.MediaManager);
                     _libraryBuildCycleCount++;
                     return;
                 }
                 if (pathsChanged && _libraryFingerprints is not null)
-                    LogManager.Instance.LogDebug("MediaImporter.BuildLibraryIndex: Library paths changed, forcing full rebuild", Subsystem.MediaManager);
+                    LogManager.Instance.LogDebug("MediaImporter.BuildLibraryIndexAsync: Library paths changed, forcing full rebuild", Subsystem.MediaManager);
                 else if (_libraryBuildCycleCount >= FullRebuildIntervalCycles)
-                    LogManager.Instance.LogDebug($"MediaImporter.BuildLibraryIndex: Forcing periodic rebuild (every {FullRebuildIntervalCycles} cycles)", Subsystem.MediaManager);
+                    LogManager.Instance.LogDebug($"MediaImporter.BuildLibraryIndexAsync: Forcing periodic rebuild (every {FullRebuildIntervalCycles} cycles)", Subsystem.MediaManager);
                 _libraryBuildCycleCount  = 1;
                 _lastMoviesLibraryPath   = moviesLibraryPath;
                 _lastTvShowsLibraryPath  = tvShowsLibraryPath;
@@ -513,15 +513,14 @@ namespace qbPortWeaver
         /// <summary>Adds a file's fingerprint to the library index and cache after a successful import. No-op if the index hasn't been built yet.</summary>
         internal static void AddToLibraryIndex(string importedFilePath)
         {
-            var fps = _libraryFingerprints;
-            if (fps is null) return;
             try
             {
                 var fi = new FileInfo(importedFilePath);
                 string fingerprint = ComputeFingerprint(importedFilePath);
                 lock (_libraryLock)
                 {
-                    fps.Add(fingerprint);
+                    if (_libraryFingerprints is null) return;
+                    _libraryFingerprints.Add(fingerprint);
 
                     var cache = _libraryCache;
                     if (cache is not null)
@@ -559,15 +558,15 @@ namespace qbPortWeaver
         /// <summary>Returns <see langword="true"/> if the given fingerprint is already present in the library index.</summary>
         internal static bool IsAlreadyInLibrary(string fingerprint)
         {
-            var fps = _libraryFingerprints;
-            if (fps is null) return false;
             lock (_libraryLock)
-                return fps.Contains(fingerprint);
+                return _libraryFingerprints?.Contains(fingerprint) ?? false;
         }
 
         // Returns the fingerprint for a source file, using the in-memory cache when the file has not changed.
         // Uses _sourceInFlight to deduplicate concurrent computation: if two threads race on the same file,
         // the second waits on the Lazy rather than issuing a redundant read.
+        // Cold-start constraint: when _sourceCache is null (first ever run, no persisted cache), the dedup
+        // guarantee does not apply - concurrent callers skip the in-flight path and each compute independently.
         internal static string GetOrComputeSourceFingerprint(FileInfo fi)
         {
             var cache = _sourceCache;

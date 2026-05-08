@@ -504,9 +504,9 @@ namespace qbPortWeaver
                     NotifyFilter        = NotifyFilters.LastWrite | NotifyFilters.FileName,
                     EnableRaisingEvents = true
                 };
-                _watcher.Changed += watcher_Changed;
-                _watcher.Created += watcher_Created;
-                _watcher.Deleted += watcher_Deleted;
+                _watcher.Changed += OnWatcherChanged;
+                _watcher.Created += OnWatcherCreated;
+                _watcher.Deleted += OnWatcherDeleted;
             }
             catch (Exception ex)
             {
@@ -514,9 +514,9 @@ namespace qbPortWeaver
             }
         }
 
-        private void watcher_Changed(object sender, FileSystemEventArgs e) => OnLogFileUpdated();
-        private void watcher_Created(object sender, FileSystemEventArgs e) => OnLogFileUpdated();
-        private void watcher_Deleted(object sender, FileSystemEventArgs e) => OnLogFileDeleted();
+        private void OnWatcherChanged(object sender, FileSystemEventArgs e) => OnLogFileUpdated();
+        private void OnWatcherCreated(object sender, FileSystemEventArgs e) => OnLogFileUpdated();
+        private void OnWatcherDeleted(object sender, FileSystemEventArgs e) => OnLogFileDeleted();
 
         // Reads any new content appended since the last read and appends visible lines to the display.
         // Only scrolls to the bottom if the user was already there before the update.
@@ -772,7 +772,6 @@ namespace qbPortWeaver
 
             protected override void WndProc(ref Message m)
             {
-
                 base.WndProc(ref m);
                 if (m.Msg == WinMsg.WM_PAINT && TextLength == 0 && !Focused && _placeholderText.Length > 0)
                 {

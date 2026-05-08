@@ -11,9 +11,6 @@ namespace qbPortWeaver
     {
         private const int    GracefulShutdownWaitMs  = 5000;
         private const int    WindowCloseWaitMs       = 3000;
-        private const int    ServiceRestartTimeoutMs = 40000;
-        private const int    ServiceStopTimeoutMs    = 15000;
-        private const int    ServiceRestartPollMs    = 1000;
         private const string RpcPath        = "/transmission/rpc";
         private const string SessionIdHeader = "X-Transmission-Session-Id";
 
@@ -112,7 +109,7 @@ namespace qbPortWeaver
                     return (null, null);
                 }
 
-                var json = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+                var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
                 using var doc = JsonDocument.Parse(json);
                 var root = doc.RootElement;
 
@@ -136,6 +133,7 @@ namespace qbPortWeaver
 
                 return (listenPort, bindAddress);
             }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
             catch (Exception ex)
             {
                 LogHttpException("GetPreferencesAsync", ex);
@@ -158,7 +156,7 @@ namespace qbPortWeaver
                     return false;
                 }
 
-                var json = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+                var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
                 using var doc = JsonDocument.Parse(json);
                 if (!doc.RootElement.TryGetProperty("result", out var result) ||
                     !string.Equals(result.GetString(), "success", StringComparison.OrdinalIgnoreCase))
@@ -167,6 +165,7 @@ namespace qbPortWeaver
                     return false;
                 }
             }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
             catch (Exception ex)
             {
                 LogHttpException("SetListeningPortAsync", ex);
@@ -187,10 +186,10 @@ namespace qbPortWeaver
             _sessionId = null;
         }
 
-        /// <inheritdoc/>
         // Transmission uses a per-request X-Transmission-Session-Id CSRF handshake in SendRpcAsync rather than a
         // one-time login step, so EnsureAuthenticatedAsync is never called and this override is never reached.
         // It exists only to satisfy the abstract base member.
+        /// <inheritdoc/>
         protected override Task<bool> AuthenticateAsync(CancellationToken cancellationToken = default) => Task.FromResult(true);
 
         private async Task<bool> RestartServiceModeAsync(string serviceName, CancellationToken cancellationToken)
@@ -198,37 +197,24 @@ namespace qbPortWeaver
             try
             {
                 ResetAuthState();
+                // SendRestartAsync blocks until the helper has completed the full stop/start cycle
+                // and written back its result. No client-side polling is needed.
                 var helperResult = await HelperServiceClient.SendRestartAsync(serviceName, cancellationToken).ConfigureAwait(false);
-                for (int i = 0; i < helperResult.WarnCount;  i++) LogManager.Instance.NotifyExternalWarnOrError(LogLevel.Warn);
-                for (int i = 0; i < helperResult.ErrorCount; i++) LogManager.Instance.NotifyExternalWarnOrError(LogLevel.Error);
+                helperResult.RaiseLogAlerts();
 
-                // The helper service restarts the service via named pipe (fire-and-forget from
-                // this side). Phase 1: wait for the service to stop. Phase 2: wait for it to
-                // come back up. Without phase 1, the first poll finds the service still running
-                // (the helper hasn't stopped it yet) and returns a false success.
-                bool wentDown = false;
-                var stopDeadline = DateTimeOffset.UtcNow.AddMilliseconds(ServiceStopTimeoutMs);
-                while (DateTimeOffset.UtcNow < stopDeadline)
+                if (helperResult.IsRejected || helperResult.ErrorCount > 0)
                 {
-                    await Task.Delay(ServiceRestartPollMs, cancellationToken).ConfigureAwait(false);
-                    if (!IsRunning()) { wentDown = true; break; }
-                }
-
-                if (!wentDown)
-                {
-                    LogManager.Instance.LogMessage($"{ClientName} service '{serviceName}' did not stop within the expected time", LogLevel.Error);
+                    LogManager.Instance.LogMessage($"{ClientName} service '{serviceName}' restart reported errors", LogLevel.Error);
                     return false;
                 }
 
-                var upDeadline = DateTimeOffset.UtcNow.AddMilliseconds(ServiceRestartTimeoutMs);
-                while (DateTimeOffset.UtcNow < upDeadline)
+                if (!IsRunning())
                 {
-                    await Task.Delay(ServiceRestartPollMs, cancellationToken).ConfigureAwait(false);
-                    if (IsRunning()) return true;
+                    LogManager.Instance.LogMessage($"{ClientName} service '{serviceName}' did not come back up after restart", LogLevel.Error);
+                    return false;
                 }
 
-                LogManager.Instance.LogMessage($"{ClientName} service '{serviceName}' did not come back up within the expected time", LogLevel.Error);
-                return false;
+                return true;
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
@@ -313,6 +299,7 @@ namespace qbPortWeaver
                 retry.Headers.Add(SessionIdHeader, _sessionId);
                 return await _httpClient.SendAsync(retry, cancellationToken).ConfigureAwait(false);
             }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
             catch (Exception ex)
             {
                 LogHttpException("SendRpcAsync", ex);
@@ -332,7 +319,7 @@ namespace qbPortWeaver
                 using var response = await SendRpcAsync(body, cancellationToken).ConfigureAwait(false);
                 if (response is null || !response.IsSuccessStatusCode) return false;
 
-                var json = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+                var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
                 using var doc = JsonDocument.Parse(json);
                 if (!doc.RootElement.TryGetProperty("arguments", out var args) ||
                     !args.TryGetProperty("config-dir", out var configDirEl))
@@ -351,6 +338,7 @@ namespace qbPortWeaver
                 return !Path.GetFullPath(configDir).StartsWith(
                     usersRoot + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
             }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
             catch (Exception ex)
             {
                 LogManager.Instance.LogDebug($"TransmissionClient.IsConfigDirSystemWideAsync: {ex.Message}");

@@ -70,8 +70,8 @@ namespace qbPortWeaver
                 using var src = Image.FromStream(ms);
                 return new Bitmap(src); // copy to break stream dependency
             }
-            catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException
-                                            or ArgumentException or OutOfMemoryException)
+            catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+            catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException or ArgumentException)
             {
                 return null;
             }
@@ -97,12 +97,16 @@ namespace qbPortWeaver
 
             var candidates = await search(title, year).ConfigureAwait(false);
 
-            // Prefer an exact normalized title match with a year over TMDB's top-ranked result.
+            // Prefer an exact normalized title match over TMDB's top-ranked result.
+            // Among exact matches, prefer one that also has a year (tiebreaker) but do not
+            // exclude a yearless exact match - year is corroborating evidence, not a hard gate.
             // Scanning the full candidates list avoids accepting a longer near-miss as the best match.
             var normalizedSearch = FileNameParser.NormalizeTitleForMatch(title);
             var searchedWords    = normalizedSearch.Split(' ', StringSplitOptions.RemoveEmptyEntries);
             var info = candidates is not null
                 ? (candidates.FirstOrDefault(c => hasYear(c) &&
+                       string.Equals(FileNameParser.NormalizeTitleForMatch(getTitle(c)), normalizedSearch, StringComparison.Ordinal))
+                   ?? candidates.FirstOrDefault(c =>
                        string.Equals(FileNameParser.NormalizeTitleForMatch(getTitle(c)), normalizedSearch, StringComparison.Ordinal))
                    ?? candidates[0])
                 : null;
@@ -142,7 +146,8 @@ namespace qbPortWeaver
             Func<T, bool> hasYear,
             Func<T, string> getTitle,
             Func<T, int> getVoteCount,
-            string mediaKind) where T : class
+            string mediaKind,
+            CancellationToken ct = default) where T : class
         {
             try
             {
@@ -157,6 +162,7 @@ namespace qbPortWeaver
 
                 return (info, isConfident);
             }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
             catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException)
             {
                 LogManager.Instance.LogMessage($"Failed to look up TMDB {mediaKind}: {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);

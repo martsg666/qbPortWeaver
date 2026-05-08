@@ -103,7 +103,10 @@ namespace qbPortWeaver
                 LogManager.Instance.CheckAndRotateLogFile();
 
                 // Start main loop immediately so port syncing is not blocked by dialogs
-                _ = Task.Run(RunMainLoopAsync); // fire-and-forget; exceptions are handled inside RunMainLoopAsync
+                // Fire-and-forget: exceptions inside the while loop are caught per-cycle.
+                // A synchronous throw before the loop body (e.g. during Task.Run startup) would be
+                // silently lost - acceptable since RunMainLoopAsync has no synchronous preamble.
+                _ = Task.Run(RunMainLoopAsync);
 
                 // Show What's New on first run after an upgrade (non-modal - does not block port sync)
                 if (RegistrySettingsManager.GetAppValue(RegistrySettingsManager.KeyLastSeenVersion) != AppConstants.AppVersion)
@@ -181,6 +184,9 @@ namespace qbPortWeaver
             // Stop the update check timer before closing child forms to prevent it firing during teardown
             _updateCheckTimer?.Stop();
             _updateCheckTimer?.Dispose();
+
+            _delayCts.Dispose();
+            _updateSemaphore.Dispose();
 
             // Hide tray icon immediately to avoid ghost icon
             _trayIcon.Visible = false;
@@ -440,7 +446,7 @@ namespace qbPortWeaver
             try
             {
                 LogManager.Instance.LogDebug("MainForm.PerformUpdateCheckAsync: Checking for application updates");
-                var update = await UpdateChecker.GetAvailableUpdateAsync();
+                var update = await UpdateChecker.GetAvailableUpdateAsync(_shutdownCts.Token);
                 if (update.HasValue)
                 {
                     if (update.Value.Version == _lastNotifiedVersion)

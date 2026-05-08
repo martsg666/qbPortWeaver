@@ -52,18 +52,15 @@ namespace qbPortWeaver
             };
             btnLater.Click += (_, _) => Close();
 
-            AcceptButton        = btnUpdate;
-            CancelButton        = btnLater;
-            AutoScaleDimensions = new SizeF(7F, 15F);
-            AutoScaleMode       = AutoScaleMode.Font;
-            ClientSize          = new Size(400, 192);
-            FormBorderStyle     = FormBorderStyle.FixedDialog;
-            MaximizeBox         = false;
-            MinimizeBox         = false;
-            ShowIcon            = false;
-            ShowInTaskbar       = false;
-            StartPosition       = FormStartPosition.CenterScreen;
-            Text                = $"{AppConstants.AppName} | Update Available";
+            AcceptButton    = btnUpdate;
+            CancelButton    = btnLater;
+            FormBorderStyle = FormBorderStyle.FixedDialog;
+            MaximizeBox     = false;
+            MinimizeBox     = false;
+            ShowIcon        = false;
+            ShowInTaskbar   = false;
+            StartPosition   = FormStartPosition.CenterScreen;
+            Text            = $"{AppConstants.AppName} | Update Available";
 
             grpInfo.SuspendLayout();
             SuspendLayout();
@@ -72,9 +69,13 @@ namespace qbPortWeaver
             Controls.Add(grpInfo);
             Controls.Add(btnUpdate);
             Controls.Add(btnLater);
+            AutoScaleDimensions = new SizeF(7F, 15F);
+            AutoScaleMode       = AutoScaleMode.Font;
+            ClientSize          = new Size(400, 192);
             grpInfo.ResumeLayout(false);
             grpInfo.PerformLayout();
             ResumeLayout(false);
+            PerformLayout();
         }
 
         protected override void Dispose(bool disposing)

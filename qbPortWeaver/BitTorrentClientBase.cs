@@ -18,7 +18,12 @@ namespace qbPortWeaver
         protected readonly string _processName;
         protected readonly string _exePath;
         protected readonly HttpClient _httpClient;
+        // Not volatile: _isAuthenticated is only accessed on the single-threaded sync loop so no
+        // cross-thread visibility guarantee is needed. Unlike TransmissionClient._resolvedServiceName
+        // which is written once from a Task.Run context, this field is always read and written on
+        // the same thread.
         protected bool _isAuthenticated;
+        private bool _disposed;
 
         /// <summary>Initialises the shared fields used by all BitTorrent client implementations.</summary>
         /// <param name="url">Base URL of the client's Web UI or RPC endpoint.</param>
@@ -42,6 +47,8 @@ namespace qbPortWeaver
         /// <inheritdoc/>
         public void Dispose()
         {
+            if (_disposed) return;
+            _disposed = true;
             _httpClient.Dispose();
             GC.SuppressFinalize(this);
         }
@@ -112,7 +119,7 @@ namespace qbPortWeaver
             return true;
         }
 
-        // Probes the API URL until it returns any HTTP response (port is open) or the timeout elapses.
+        // Probes the API URL until it returns any HTTP response (API is accepting requests) or the timeout elapses.
         // A short per-probe cancellation avoids blocking on a slow response mid-startup.
         private async Task WaitForApiReadyAsync(CancellationToken cancellationToken)
         {

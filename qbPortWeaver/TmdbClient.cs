@@ -70,8 +70,8 @@ namespace qbPortWeaver
                 using var src = Image.FromStream(ms);
                 return new Bitmap(src); // copy to break stream dependency
             }
-            catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException
-                                            or ArgumentException or OutOfMemoryException)
+            catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+            catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException or ArgumentException)
             {
                 return null;
             }
@@ -97,12 +97,16 @@ namespace qbPortWeaver
 
             var candidates = await search(title, year).ConfigureAwait(false);
 
-            // Prefer an exact normalized title match with a year over TMDB's top-ranked result.
+            // Prefer an exact normalized title match over TMDB's top-ranked result.
+            // Among exact matches, prefer one that also has a year (tiebreaker) but do not
+            // exclude a yearless exact match - year is corroborating evidence, not a hard gate.
             // Scanning the full candidates list avoids accepting a longer near-miss as the best match.
             var normalizedSearch = FileNameParser.NormalizeTitleForMatch(title);
             var searchedWords    = normalizedSearch.Split(' ', StringSplitOptions.RemoveEmptyEntries);
             var info = candidates is not null
                 ? (candidates.FirstOrDefault(c => hasYear(c) &&
+                       string.Equals(FileNameParser.NormalizeTitleForMatch(getTitle(c)), normalizedSearch, StringComparison.Ordinal))
+                   ?? candidates.FirstOrDefault(c =>
                        string.Equals(FileNameParser.NormalizeTitleForMatch(getTitle(c)), normalizedSearch, StringComparison.Ordinal))
                    ?? candidates[0])
                 : null;
@@ -137,26 +141,28 @@ namespace qbPortWeaver
         /// Shared by both processors so the error handling and log format live in one place.
         /// </summary>
         internal static async Task<(T? Info, bool IsConfident)> LookupAsync<T>(
-            string title, int? year,
+            (string Title, int? Year) query,
             Func<string, int?, Task<IReadOnlyList<T>?>> search,
             Func<T, bool> hasYear,
             Func<T, string> getTitle,
             Func<T, int> getVoteCount,
-            string mediaKind) where T : class
+            string mediaKind,
+            CancellationToken ct = default) where T : class
         {
             try
             {
                 var (info, isConfident) = await SearchWithConfidenceAsync(
-                    title, year, search, hasYear, getTitle, getVoteCount).ConfigureAwait(false);
+                    query.Title, query.Year, search, hasYear, getTitle, getVoteCount).ConfigureAwait(false);
 
                 if (info is null)
                 {
-                    LogManager.Instance.LogMessage($"No TMDB match found for {mediaKind} '{title}'", LogLevel.Warn, Subsystem.MediaManager);
+                    LogManager.Instance.LogMessage($"No TMDB match found for {mediaKind} '{query.Title}'", LogLevel.Warn, Subsystem.MediaManager);
                     return (null, false);
                 }
 
                 return (info, isConfident);
             }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
             catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException)
             {
                 LogManager.Instance.LogMessage($"Failed to look up TMDB {mediaKind}: {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
@@ -198,15 +204,17 @@ namespace qbPortWeaver
             string.Equals(FileNameParser.NormalizeTitleForMatch(returnedTitle), normalizedSearchTitle, StringComparison.Ordinal);
 
         // Returns true when all words of the searched title appear in the returned title's word set
-        // and the returned title has strictly more words - i.e. the searched title is a proper word subset.
+        // and the returned title has strictly more distinct words - i.e. the searched title is a proper word subset.
+        // Both sides use distinct word sets so repeated words (e.g. "The The") don't skew the count.
         private static bool IsWordSubsetMatch(string[] normalizedSearchedWords, string returnedTitle)
         {
             var returnedWords = new HashSet<string>(
                 FileNameParser.NormalizeTitleForMatch(returnedTitle)
                     .Split(' ', StringSplitOptions.RemoveEmptyEntries),
                 StringComparer.Ordinal);
-            return returnedWords.Count > normalizedSearchedWords.Length &&
-                   normalizedSearchedWords.All(w => returnedWords.Contains(w));
+            var searchedWordSet = new HashSet<string>(normalizedSearchedWords, StringComparer.Ordinal);
+            return returnedWords.Count > searchedWordSet.Count &&
+                   searchedWordSet.All(w => returnedWords.Contains(w));
         }
 
         // Applies two fallback lookup strategies when the primary search fails or returns no match.
@@ -230,7 +238,7 @@ namespace qbPortWeaver
                 }
             }
 
-            if (info is null || !hasYear(info))
+            if (info is null || (!hasYear(info) && !isConfident))
             {
                 var withoutNum = StripTrailingNumber(title);
                 if (withoutNum is not null)

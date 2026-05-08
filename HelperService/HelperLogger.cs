@@ -11,8 +11,8 @@ namespace qbPortWeaver.HelperService;
 internal sealed class HelperLogger(string logFilePath)
 {
     // Must match Subsystem.HelperService and Subsystem.MaxLength in qbPortWeaver
-    private const string SubsystemName   = "HelperService";
-    private const int    SubsystemMaxLength = 13;
+    private const string SubsystemName      = "HelperService";
+    private const int    SubsystemMaxLength = 13; // "HelperService".Length - must equal Subsystem.MaxLength in the main app; if they drift, log columns silently misalign
     private const int    WriteMaxAttempts     = 3;
     private const int    WriteRetryDelayMs    = 50;
 
@@ -39,10 +39,8 @@ internal sealed class HelperLogger(string logFilePath)
             {
                 Thread.Sleep(WriteRetryDelayMs); // intentional: WriteLog is synchronous by design; retries are rare and brief
             }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-            {
-                return;
-            }
+            catch (IOException)            { return; }
+            catch (UnauthorizedAccessException) { return; }
         }
     }
 }

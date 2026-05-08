@@ -49,7 +49,7 @@ namespace qbPortWeaver
                     return (null, null);
                 }
 
-                var json = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+                var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
 
                 using var doc = JsonDocument.Parse(json);
                 var root = doc.RootElement;
@@ -79,6 +79,7 @@ namespace qbPortWeaver
 
                 return (listenPort, currentInterfaceName);
             }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
             catch (Exception ex)
             {
                 LogHttpException("GetPreferencesAsync", ex);
@@ -97,6 +98,7 @@ namespace qbPortWeaver
                 using var content = new FormUrlEncodedContent([new("json", jsonBody)]);
 
                 using var response = await _httpClient.PostAsync($"{_url}{ApiSetPreferences}", content, cancellationToken).ConfigureAwait(false);
+                // qBittorrent returns HTTP 200 with an empty body on success - no JSON error envelope to check.
                 if (!response.IsSuccessStatusCode)
                 {
                     LogManager.Instance.LogMessage($"Failed to set {ClientName} port (HTTP {(int)response.StatusCode} {response.StatusCode})", LogLevel.Error);
@@ -104,6 +106,7 @@ namespace qbPortWeaver
                 }
                 return true;
             }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
             catch (Exception ex)
             {
                 LogHttpException("SetListeningPortAsync", ex);
@@ -127,7 +130,7 @@ namespace qbPortWeaver
                     return null;
                 }
 
-                var json = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+                var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
                 using var doc = JsonDocument.Parse(json);
                 if (doc.RootElement.TryGetProperty("connection_status", out var statusElement))
                     return statusElement.GetString();
@@ -135,6 +138,7 @@ namespace qbPortWeaver
                 LogManager.Instance.LogDebug("QBittorrentClient.GetConnectionStatusAsync: connection_status not found in transfer/info response");
                 return null;
             }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
             catch (Exception ex)
             {
                 LogHttpException("GetConnectionStatusAsync", ex);
@@ -179,8 +183,8 @@ namespace qbPortWeaver
                 }
 
                 // qBittorrent < 5.2.0 returns 200 for both success ("Ok.") and failure ("Fails.")
-                var body = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
-                if (!body.Contains(AuthOkResponse, StringComparison.OrdinalIgnoreCase))
+                var body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+                if (!string.Equals(body.Trim(), AuthOkResponse, StringComparison.OrdinalIgnoreCase))
                 {
                     LogManager.Instance.LogMessage($"{ClientName} authentication failed: wrong username or password (username: '{_userName}') - check the credentials in Settings", LogLevel.Error);
                     return false;
@@ -188,6 +192,7 @@ namespace qbPortWeaver
 
                 return true;
             }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
             catch (Exception ex)
             {
                 LogHttpException("AuthenticateAsync", ex);

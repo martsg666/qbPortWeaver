@@ -89,9 +89,7 @@ namespace qbPortWeaver
                         RotateIfNeeded();
                     }
 
-                    string paddedType = _levelLabels[(int)level];
-                    string logEntry = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} | {paddedType} | {subsystem.PadRight(Subsystem.MaxLength)} | {message}{Environment.NewLine}";
-                    WriteRaw(logEntry);
+                    WriteRaw(FormatEntry(message, level, subsystem));
                     shouldNotify = level is LogLevel.Warn or LogLevel.Error;
                 }
                 catch (Exception ex)
@@ -157,15 +155,16 @@ namespace qbPortWeaver
                         File.Delete(LogFilePath);
 
                     _writeCount = 0;
+
+                    // Write the sentinel while still holding the lock so no concurrent LogMessage
+                    // can interleave between the delete and this entry.
+                    WriteRaw(FormatEntry("Logs cleared by user", LogLevel.Info, Subsystem.MainApp));
                 }
                 catch (Exception ex)
                 {
                     Debug.WriteLine($"LogManager.ClearLogs: {ex.Message}");
                 }
             }
-
-            // Write fresh entry outside the lock (LogMessage acquires its own lock)
-            LogMessage("Logs cleared by user", LogLevel.Info);
         }
 
         /// <summary>Checks the log file size and rotates it if it exceeds the maximum. Thread-safe.</summary>
@@ -184,7 +183,11 @@ namespace qbPortWeaver
             return false;
         }
 
+        private static string FormatEntry(string message, LogLevel level, string subsystem) =>
+            $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} | {_levelLabels[(int)level]} | {subsystem.PadRight(Subsystem.MaxLength)} | {message}{Environment.NewLine}";
+
         // Appends text to the log file. Must be called while holding _lock.
+        // Opens a new stream per call intentionally - no persistent stream to manage across threads or rotation events.
         private void WriteRaw(string text)
         {
             using var fs = new FileStream(LogFilePath, FileMode.Append, FileAccess.Write, FileShare.ReadWrite);

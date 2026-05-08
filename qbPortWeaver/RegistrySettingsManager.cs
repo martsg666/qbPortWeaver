@@ -4,7 +4,7 @@ using System.Text;
 
 namespace qbPortWeaver
 {
-    /// <summary>Reads and writes application settings from the Windows registry under <c>HKCU\Software\qbPortWeaver\Settings</c>.</summary>
+    /// <summary>Reads and writes application settings from the Windows registry under <c>HKCU\Software\qbPortWeaver\settings</c>.</summary>
     public static class RegistrySettingsManager
     {
         internal const string BaseKeyPath = @"Software\" + AppConstants.AppName + @"\settings";
@@ -302,7 +302,7 @@ namespace qbPortWeaver
             }
 
             string fallback = GetDefault(section, key);
-            LogManager.Instance.LogDebug($"RegistrySettingsManager.GetValue: [{section}] {key} not found, returning default: {fallback}");
+            LogManager.Instance.LogDebug($"RegistrySettingsManager.GetValue: [{section}] {key} not found, returning default: {MaskSensitiveValue(key, fallback)}");
             return fallback;
         }
 
@@ -352,7 +352,7 @@ namespace qbPortWeaver
                     {
                         // Not a valid DPAPI blob - return the raw value as-is for backward compatibility
                         // (existing installations may have plaintext values that were stored before encryption was added)
-                        LogManager.Instance.LogDebug($"RegistrySettingsManager.GetEncryptedValue: [{section}] {key} is not a valid DPAPI blob, returning raw value");
+                        LogManager.Instance.LogDebug($"RegistrySettingsManager.GetEncryptedValue: [{section}] {key} is not a valid DPAPI blob ({ex.GetType().Name}), returning raw value");
                         return storedValue;
                     }
                 }

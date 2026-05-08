@@ -26,6 +26,9 @@ namespace qbPortWeaver
         // Consecutive sync cycles in which the VPN was disconnected or port detection failed.
         // Serialised by MainForm._updateSemaphore (same guarantee as _lastKnownNatPmpManager).
         private int _consecutiveFailedCycles;
+        // Tracks the last interface-mismatch message shown as a balloon tip to suppress repeat invocations
+        // for the same persistent mismatch. Cleared when the mismatch resolves so the balloon re-fires if it returns.
+        private string? _lastInterfaceMismatchMessage;
 
         // Fallback for when TryCreateForAdapterAsync cannot reach the configured adapter (e.g. VPN is
         // between disconnect and reconnect) - returned so IsVpnConnected() reports false and
@@ -33,7 +36,11 @@ namespace qbPortWeaver
         // Thread-safety: only accessed inside RunCoreAsync, serialised by MainForm._updateSemaphore.
         private NatPmpManager? _lastKnownNatPmpManager;
 
-        // All values read from the registry for a single sync cycle
+        // All values read from the registry for a single sync cycle.
+        // Known extensibility bottleneck: adding a 4th BitTorrent client requires changes in
+        // several places (AppConfig parameters, ReadAppConfig, GetActiveClientSection,
+        // GetClientRestartConfig, GetClientBehaviorConfig). Consider per-client config sub-records
+        // if a 4th client is ever added.
         private sealed record AppConfig(
             string VpnProvider,
             string NatPmpAdapterName,
@@ -81,7 +88,7 @@ namespace qbPortWeaver
             bool NotifyOnPortUpdate
         );
 
-        /// <summary>Compile-time-safe keys and values for the status dictionary written to the JSON status file.</summary>
+        // Compile-time-safe keys and values for the status dictionary written to the JSON status file.
         private static class StatusKeys
         {
             // Keys
@@ -132,29 +139,35 @@ namespace qbPortWeaver
             {
                 return await RunCoreAsync(status, cancellationToken).ConfigureAwait(false);
             }
-            catch (Exception ex) when (ex is not OperationCanceledException)
+            catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
             {
                 SetSyncResult(status, false, $"An unexpected error occurred: {ex.Message}");
                 return AppConstants.DefaultUpdateIntervalSeconds;
             }
             finally
             {
-                StatusManager.Write(status);
+                // Skip status write and tray update on clean shutdown - the cycle was cancelled,
+                // not failed. Writing an error/disconnected state here would flicker the tray icon
+                // and leave a misleading error JSON file on every exit.
+                if (!cancellationToken.IsCancellationRequested)
+                {
+                    StatusManager.Write(status);
 
-                bool success      = status[StatusKeys.Status]          as string == StatusKeys.Success;
-                bool vpnConnected = status[StatusKeys.VpnConnected]   is true;
-                int? port         = status[StatusKeys.ClientPort] as int?;
-                string message    = status[StatusKeys.Message]         as string ?? string.Empty;
-                bool isDisabled   = string.Equals(status[StatusKeys.VpnProvider] as string, RegistrySettingsManager.VpnProviderDisabled, StringComparison.OrdinalIgnoreCase);
+                    bool success      = status[StatusKeys.Status]          as string == StatusKeys.Success;
+                    bool vpnConnected = status[StatusKeys.VpnConnected]   is true;
+                    int? port         = status[StatusKeys.ClientPort] as int?;
+                    string message    = status[StatusKeys.Message]         as string ?? string.Empty;
+                    bool isDisabled   = string.Equals(status[StatusKeys.VpnProvider] as string, RegistrySettingsManager.VpnProviderDisabled, StringComparison.OrdinalIgnoreCase);
 
-                SyncState state;
-                if (isDisabled)            state = SyncState.Disabled;
-                else if (!vpnConnected)    state = SyncState.VpnDisconnected;
-                else if (success)          state = SyncState.Synced;
-                else                       state = SyncState.Error;
+                    SyncState state;
+                    if (isDisabled)            state = SyncState.Disabled;
+                    else if (!vpnConnected)    state = SyncState.VpnDisconnected;
+                    else if (success)          state = SyncState.Synced;
+                    else                       state = SyncState.Error;
 
-                try { SyncCompleted?.Invoke(new TrayStatus(state, port, message)); }
-                catch (Exception ex) { LogManager.Instance.LogMessage($"SyncCompleted handler failed: {ex.Message}", LogLevel.Warn); }
+                    try { SyncCompleted?.Invoke(new TrayStatus(state, port, message)); }
+                    catch (Exception ex) { LogManager.Instance.LogMessage($"SyncCompleted handler failed: {ex.Message}", LogLevel.Warn); }
+                }
             }
         }
 
@@ -183,9 +196,9 @@ namespace qbPortWeaver
             if (!vpnManager.IsVpnConnected())
             {
                 _consecutiveFailedCycles++;
-                int disconnectedCount = _consecutiveFailedCycles;
+                int count = _consecutiveFailedCycles;
                 string disconnectedMsg = $"{vpnManager.ProviderName} is not connected";
-                LogManager.Instance.LogMessage(BuildCycleCountMessage(disconnectedMsg, disconnectedCount, cfg), LogLevel.Info);
+                LogManager.Instance.LogMessage(BuildCycleCountMessage(disconnectedMsg, count, cfg), LogLevel.Info);
                 await TryTriggerRecoveryAsync(vpnManager, cfg, cancellationToken).ConfigureAwait(false);
 
                 if (defaultPort == 0)
@@ -207,7 +220,7 @@ namespace qbPortWeaver
 
                 LogManager.Instance.LogMessage($"{vpnManager.ProviderName} is connected", LogLevel.Info);
 
-                int? vpnPort = await vpnManager.GetVpnPortAsync().ConfigureAwait(false);
+                int? vpnPort = await vpnManager.GetVpnPortAsync(cancellationToken).ConfigureAwait(false);
                 if (!vpnPort.HasValue)
                 {
                     await HandlePortDetectionFailureAsync(vpnManager, cfg, cancellationToken).ConfigureAwait(false);
@@ -411,7 +424,10 @@ namespace qbPortWeaver
             }
 
             // No previous knowledge of this adapter - VPN likely just disconnected for the first time.
-            // Treat as disconnected so the consecutive-cycle counter increments and auto-recovery can fire.
+            // Increment the counter here (in the fallback path) rather than in RunCoreAsync, because
+            // RunCoreAsync never reaches its own increment when this method returns null early.
+            // The two sites are mutually exclusive: RunCoreAsync increments on a connected-but-failed
+            // cycle; this path increments when no manager can be resolved at all.
             _consecutiveFailedCycles++;
             int count = _consecutiveFailedCycles;
             string disconnectedMsg = $"NAT-PMP adapter '{cfg.NatPmpAdapterName}' not found - VPN may be disconnected";
@@ -477,9 +493,9 @@ namespace qbPortWeaver
             else
             {
                 if (!await ApplyPortUpdateAsync(manager, targetPort, config, status, cancellationToken).ConfigureAwait(false))
-                    return;
+                    return; // port update failed - skip RestartOnDisconnect check; next cycle will retry
                 if (config.NotifyOnPortUpdate)
-                    PortUpdated?.Invoke($"{manager.ClientName} port updated to {targetPort}");
+                    NotifyPortUpdated(manager.ClientName, targetPort);
             }
 
             // Check connection status and restart if offline - skip if a restart was already performed
@@ -516,7 +532,10 @@ namespace qbPortWeaver
             return true;
         }
 
-        // Checks if the client's network interface matches the expected VPN provider and logs a warning if not
+        // Checks if the client's network interface matches the expected VPN provider and logs a warning if not.
+        // The warn log fires every cycle so the log alert badge tracks the persistent condition.
+        // The InterfaceMismatchDetected balloon fires only on transition (new or changed mismatch) to avoid
+        // spamming the user each cycle; it re-fires if the mismatch clears and then returns.
         private void CheckInterfaceMatch(string clientName, string? interfaceName, IVpnManager vpnManager)
         {
             if (interfaceName is null)
@@ -525,22 +544,39 @@ namespace qbPortWeaver
                 return;
             }
 
+            string? balloonMessage = null;
+
             if (interfaceName.Length == 0)
             {
                 LogManager.Instance.LogMessage($"{clientName} is bound to all network interfaces - traffic may leak outside the VPN", LogLevel.Warn);
-                InterfaceMismatchDetected?.Invoke($"{clientName}: no VPN interface bound - traffic may leak.");
-                return;
+                balloonMessage = $"{clientName}: no VPN interface bound - traffic may leak.";
             }
-
-            if (!vpnManager.IsAdapterMatch(interfaceName))
+            else if (!vpnManager.IsAdapterMatch(interfaceName))
             {
                 LogManager.Instance.LogMessage($"{clientName} network interface '{interfaceName}' does not match '{vpnManager.ProviderName}'", LogLevel.Warn);
-                InterfaceMismatchDetected?.Invoke($"{clientName} interface mismatch - '{interfaceName}' is not a {vpnManager.ProviderName} adapter.");
+                balloonMessage = $"{clientName} interface mismatch - '{interfaceName}' is not a {vpnManager.ProviderName} adapter.";
             }
             else
             {
                 LogManager.Instance.LogDebug($"PortSyncService.CheckInterfaceMatch: {clientName} interface '{interfaceName}' matches '{vpnManager.ProviderName}'");
             }
+
+            if (balloonMessage is null)
+            {
+                _lastInterfaceMismatchMessage = null;
+                return;
+            }
+
+            if (balloonMessage == _lastInterfaceMismatchMessage) return;
+            _lastInterfaceMismatchMessage = balloonMessage;
+            try { InterfaceMismatchDetected?.Invoke(balloonMessage); }
+            catch (Exception ex) { LogManager.Instance.LogMessage($"InterfaceMismatchDetected handler failed: {ex.Message}", LogLevel.Warn); }
+        }
+
+        private void NotifyPortUpdated(string clientName, int port)
+        {
+            try { PortUpdated?.Invoke($"{clientName} port updated to {port}"); }
+            catch (Exception ex) { LogManager.Instance.LogMessage($"PortUpdated handler failed: {ex.Message}", LogLevel.Warn); }
         }
 
         // Sets the listening port, optionally restarts the client and runs the post-update command.
@@ -620,21 +656,21 @@ namespace qbPortWeaver
         private async Task HandlePortDetectionFailureAsync(IVpnManager vpnManager, AppConfig cfg, CancellationToken cancellationToken)
         {
             _consecutiveFailedCycles++;
-            int failedCount = _consecutiveFailedCycles;
+            int count = _consecutiveFailedCycles;
             LogManager.Instance.LogMessage(
-                BuildCycleCountMessage($"Port detection failed on '{vpnManager.ProviderName}'", failedCount, cfg),
+                BuildCycleCountMessage($"Port detection failed on '{vpnManager.ProviderName}'", count, cfg),
                 LogLevel.Warn);
             await TryTriggerRecoveryAsync(vpnManager, cfg, cancellationToken).ConfigureAwait(false);
         }
 
         // Triggers auto-recovery via the IVpnManager. Action and target are determined by the manager.
-        private Task TryTriggerRecoveryAsync(IVpnManager vpnManager, AppConfig cfg, CancellationToken cancellationToken = default)
+        private Task TryTriggerRecoveryAsync(IVpnManager vpnManager, AppConfig cfg, CancellationToken cancellationToken)
             => TryTriggerRecoveryAsync(vpnManager.GetRecoveryAction(), vpnManager.GetRecoveryTarget(), vpnManager.ProviderName, cfg, cancellationToken);
 
         // Triggers auto-recovery if enabled and the failure cycle threshold is reached.
         // Resets the counter before the target check so the warning does not fire every cycle
         // when no recovery target is found.
-        private async Task TryTriggerRecoveryAsync(string action, string? recoveryTarget, string displayName, AppConfig cfg, CancellationToken cancellationToken = default)
+        private async Task TryTriggerRecoveryAsync(string action, string? recoveryTarget, string displayName, AppConfig cfg, CancellationToken cancellationToken)
         {
             if (!cfg.AutoRecoveryEnabled)
             {
@@ -657,7 +693,10 @@ namespace qbPortWeaver
             LogManager.Instance.LogMessage(
                 $"Triggering '{action}' for '{displayName}' after {count} consecutive failed {(count == 1 ? "cycle" : "cycles")}",
                 LogLevel.Info);
-            await AutoRecoveryManager.TriggerRecoveryAsync(action, recoveryTarget, cancellationToken).ConfigureAwait(false);
+            if (action == HelperServiceClient.ActionRestart)
+                await AutoRecoveryManager.TriggerRestartAsync(recoveryTarget, cancellationToken).ConfigureAwait(false);
+            else
+                await AutoRecoveryManager.TriggerCycleAdapterAsync(recoveryTarget, cancellationToken).ConfigureAwait(false);
         }
 
         // Builds a failure log message with cycle count and optional recovery trigger suffix
@@ -684,6 +723,8 @@ namespace qbPortWeaver
         private static (bool ForceStart, bool Restart, bool RestartOnDisconnect, bool WarnOnInterfaceMismatch) GetClientBehaviorConfig(AppConfig cfg, string activeSection) =>
             activeSection switch
             {
+                // RestartOnDisconnect and WarnOnInterfaceMismatch are qBittorrent-only: Transmission and Deluge
+                // do not expose a connection-state API, so neither feature can be implemented for them.
                 RegistrySettingsManager.SectionTransmission => (cfg.ForceStartTransmission, cfg.RestartTransmission, false, false),
                 RegistrySettingsManager.SectionDeluge       => (cfg.ForceStartDeluge,       cfg.RestartDeluge,       false, false),
                 _                                           => (cfg.ForceStartQBittorrent,  cfg.RestartQBittorrent,  cfg.QBittorrentRestartOnDisconnect, cfg.QBittorrentWarnOnInterfaceMismatch),

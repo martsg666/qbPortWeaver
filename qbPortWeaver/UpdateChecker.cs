@@ -30,22 +30,22 @@ namespace qbPortWeaver
         private static readonly HttpClient _httpClient = CreateHttpClient(); // Not disposed - static lifetime matches process lifetime (recommended pattern for HttpClient)
 
         /// <summary>Returns the latest release version and URL if a newer version exists; null if up-to-date or on any error.</summary>
-        public static async Task<(string Version, string Url)?> GetAvailableUpdateAsync()
+        public static async Task<(string Version, string Url)?> GetAvailableUpdateAsync(CancellationToken ct = default)
         {
-            var info = await GetLatestReleaseInfoAsync().ConfigureAwait(false);
+            var info = await GetLatestReleaseInfoAsync(ct).ConfigureAwait(false);
             return info?.IsNewer == true ? (info.Version, info.ReleaseUrl) : null;
         }
 
         /// <summary>Returns full release info from GitHub including whether a newer version exists; null on any error.</summary>
-        public static async Task<LatestReleaseInfo?> GetLatestReleaseInfoAsync()
+        public static async Task<LatestReleaseInfo?> GetLatestReleaseInfoAsync(CancellationToken ct = default)
         {
             try
             {
-                using var response = await _httpClient.GetAsync(_gitHubApiUrl).ConfigureAwait(false);
+                using var response = await _httpClient.GetAsync(_gitHubApiUrl, ct).ConfigureAwait(false);
                 response.EnsureSuccessStatusCode();
 
-                using var stream = await response.Content.ReadAsStreamAsync().ConfigureAwait(false);
-                using var doc    = await JsonDocument.ParseAsync(stream).ConfigureAwait(false);
+                using var stream = await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
+                using var doc    = await JsonDocument.ParseAsync(stream, cancellationToken: ct).ConfigureAwait(false);
                 var root = doc.RootElement;
 
                 if (!root.TryGetProperty(JsonPropTagName, out var tagElement) ||
@@ -70,15 +70,15 @@ namespace qbPortWeaver
         }
 
         /// <summary>Returns all unique human contributors to the repo, with the owner listed first. Bots are excluded. Returns an empty list on any error.</summary>
-        public static async Task<IReadOnlyList<ContributorInfo>> GetReleaseContributorsAsync()
+        public static async Task<IReadOnlyList<ContributorInfo>> GetReleaseContributorsAsync(CancellationToken ct = default)
         {
             try
             {
-                using var response = await _httpClient.GetAsync(_gitHubBaseApiUrl + "/contributors?per_page=100").ConfigureAwait(false);
+                using var response = await _httpClient.GetAsync(_gitHubBaseApiUrl + "/contributors?per_page=100", ct).ConfigureAwait(false);
                 response.EnsureSuccessStatusCode();
 
-                using var stream = await response.Content.ReadAsStreamAsync().ConfigureAwait(false);
-                using var doc    = await JsonDocument.ParseAsync(stream).ConfigureAwait(false);
+                using var stream = await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
+                using var doc    = await JsonDocument.ParseAsync(stream, cancellationToken: ct).ConfigureAwait(false);
 
                 var seen         = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                 var contributors = new List<ContributorInfo>();

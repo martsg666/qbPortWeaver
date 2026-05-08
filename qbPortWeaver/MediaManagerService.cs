@@ -66,7 +66,7 @@ namespace qbPortWeaver
                 return ProcessSourceFolderAsync(c.Folder, c.Items, ctx, cancellationToken);
             })).ConfigureAwait(false);
 
-            if (deleteEmptyFolders && total > 0)
+            if (deleteEmptyFolders)
                 CleanupSourceFolders(sourceFolders, dryRun, cancellationToken);
 
             TmdbCacheManager.Save();
@@ -237,7 +237,11 @@ namespace qbPortWeaver
             }, cancellationToken);
 
         // Deletes subdirectories of rootFolder that are empty or contain only .nfo files.
-        // Walks bottom-up so nested empty folders are cleaned in a single pass. The root folder itself is never deleted.
+        // Walks bottom-up (longest path first) so nested empty folders are cleaned in a single pass.
+        // Single-pass limitation: the directory list is snapshotted once before any deletions. Folders that
+        // become empty only because the import moved their last file out this cycle are in the snapshot and
+        // will be caught. Folders created or emptied by external processes after the snapshot are not seen
+        // until the next cycle. The root folder itself is never deleted.
         internal static void CleanupEmptyFolders(string rootFolder, bool dryRun)
         {
             if (!Directory.Exists(rootFolder)) return;
@@ -267,9 +271,10 @@ namespace qbPortWeaver
 
             bool removable;
             bool hasOnlyNfo;
+            string[] files;
             try
             {
-                (removable, hasOnlyNfo) = IsRemovableFolder(dir);
+                (removable, hasOnlyNfo, files) = IsRemovableFolder(dir);
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
@@ -282,33 +287,31 @@ namespace qbPortWeaver
             if (dryRun)
                 LogManager.Instance.LogMessage($"Would delete {reason} folder: '{dir}'", LogLevel.Info, Subsystem.MediaManager);
             else
-                DeleteFolder(dir, hasOnlyNfo);
+                DeleteFolder(dir, files);
 
             return true;
         }
 
-        // Returns (true, hasOnlyNfo) when the folder is empty or contains only .nfo files and has no subdirectories
-        private static (bool Removable, bool HasOnlyNfo) IsRemovableFolder(string dir)
+        // Returns (Removable, HasOnlyNfo, Files) when the folder is empty or contains only .nfo files and has no subdirectories.
+        // Files is returned so the caller can pass it to DeleteFolder without a second GetFiles call.
+        private static (bool Removable, bool HasOnlyNfo, string[] Files) IsRemovableFolder(string dir)
         {
             var files = Directory.GetFiles(dir);
-            if (Directory.GetDirectories(dir).Length > 0) return (false, false);
-            if (files.Length == 0) return (true, false);
+            if (Directory.GetDirectories(dir).Length > 0) return (false, false, files);
+            if (files.Length == 0) return (true, false, files);
             bool allNfo = files.All(f => Path.GetExtension(f).Equals(".nfo", StringComparison.OrdinalIgnoreCase));
-            return (allNfo, allNfo);
+            return (allNfo, allNfo, files);
         }
 
-        // Deletes .nfo files (if any) then removes the directory
-        private static void DeleteFolder(string dir, bool hasNfoFiles)
+        // Deletes .nfo files (if any) then removes the directory. Accepts the pre-enumerated files array to avoid a second GetFiles call.
+        private static void DeleteFolder(string dir, string[] files)
         {
             try
             {
-                if (hasNfoFiles)
-                {
-                    foreach (var file in Directory.GetFiles(dir))
-                        File.Delete(file);
-                }
+                foreach (var file in files)
+                    File.Delete(file);
                 Directory.Delete(dir);
-                string reason = hasNfoFiles ? "nfo-only" : "empty";
+                string reason = files.Length > 0 ? "nfo-only" : "empty";
                 LogManager.Instance.LogMessage($"Deleted {reason} folder: '{dir}'", LogLevel.Info, Subsystem.MediaManager);
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
@@ -344,7 +347,7 @@ namespace qbPortWeaver
                 validFolders.Add(f);
             }
 
-            var libraryTask = Task.Run(() => MediaImporter.BuildLibraryIndex(moviesLibraryPath, tvShowsLibraryPath, allowReuse: allowLibraryReuse, cancellationToken), cancellationToken);
+            var libraryTask = MediaImporter.BuildLibraryIndexAsync(moviesLibraryPath, tvShowsLibraryPath, allowReuse: allowLibraryReuse, cancellationToken);
             var enumerated  = await EnumerateSourceFoldersAsync(validFolders, cancellationToken).ConfigureAwait(false);
             await libraryTask.ConfigureAwait(false);
             var classified  = await ClassifySourceFoldersAsync(enumerated, cancellationToken).ConfigureAwait(false);
@@ -510,6 +513,8 @@ namespace qbPortWeaver
         {
             if (string.Equals(sourcePath, targetPath, StringComparison.OrdinalIgnoreCase)) return;
 
+            // Check applies in both live and dry-run: skip files already correctly placed so we
+            // don't falsely report "Would import" for content already present in the library.
             if (MediaImporter.DestinationMatchesSource(sourcePath, targetPath))
             {
                 LogManager.Instance.LogDebug($"MediaManagerService.ImportFile: Skipped '{Path.GetFileName(sourcePath)}' - target already exists", Subsystem.MediaManager);

@@ -16,7 +16,7 @@ namespace qbPortWeaver
         private long                 _lastReadPosition;
         private FileSystemWatcher?   _watcher;
         private bool                 _isDarkMode;
-        private Color[]              _themeColors    = null!; // initialized in OnLoad after _isDarkMode is set
+        private Color[]              _themeColors    = []; // overwritten in OnLoad after _isDarkMode is set
         private System.Windows.Forms.Timer? _searchDebounceTimer;
 
         [LibraryImport("user32.dll", EntryPoint = "SendMessageW")]
@@ -30,6 +30,7 @@ namespace qbPortWeaver
 
         private static class WinMsg
         {
+            public const int WM_PAINT        = 0x000F;
             public const int WM_SETREDRAW    = 0x000B;
             public const int WM_VSCROLL      = 0x0115;
             public const int SB_BOTTOM       = 7;
@@ -38,10 +39,13 @@ namespace qbPortWeaver
         }
 
         // Log column markers (format: "| LEVEL | ") and corresponding search terms
-        private const string ColError = "| ERROR |";
-        private const string ColWarn  = "| WARN  |";
-        private const string ColInfo  = "| INFO  |";
-        private const string ColDebug = "| DEBUG |";
+        private const string ColError            = "| ERROR |";
+        private const string ColWarn             = "| WARN  |";
+        private const string ColInfo             = "| INFO  |";
+        private const string ColDebug            = "| DEBUG |";
+        private const int    MaxHighlights       = 500;
+        private const int    ClearButtonInset    = 4; // shrinks button to fit inside the TextBox border (2 px top + 2 px bottom)
+        private const int    ClearButtonMargin   = 2; // inner gap from TextBox right edge and top
 
         public LogViewerForm() : this(string.Empty) { } // designer support only
 
@@ -78,8 +82,6 @@ namespace qbPortWeaver
 
             // Position the × button inside the right edge of the search box.
             // Done here so the button tracks the auto-sized TextBox height and right-anchor position.
-            const int ClearButtonInset  = 4; // shrinks button to fit inside the TextBox border (2 px top + 2 px bottom)
-            const int ClearButtonMargin = 2; // inner gap from TextBox right edge and top
             int cbSize = txtSearch.Height - ClearButtonInset;
             btnClearSearch.Size     = new Size(cbSize, cbSize);
             btnClearSearch.Location = new Point(txtSearch.Right - cbSize - ClearButtonMargin, searchTop + ClearButtonMargin);
@@ -196,8 +198,9 @@ namespace qbPortWeaver
 
             if (_searchDebounceTimer is null)
             {
-                _searchDebounceTimer = new System.Windows.Forms.Timer { Interval = 250 };
-                _searchDebounceTimer.Tick += (_, _) => { _searchDebounceTimer!.Stop(); RebuildDisplay(); };
+                var timer = new System.Windows.Forms.Timer { Interval = 250 };
+                timer.Tick += (_, _) => { timer.Stop(); RebuildDisplay(); };
+                _searchDebounceTimer = timer;
             }
 
             if (txtSearch.Text.Length == 0)
@@ -307,8 +310,6 @@ namespace qbPortWeaver
             if (_searchMatches.Count == 0 || txtSearch.Text.Length == 0 || rtbLog.TextLength == 0)
                 return;
 
-            const int MaxHighlights = 500;
-
             int   savedStart = rtbLog.SelectionStart;
             int   savedLen   = rtbLog.SelectionLength;
             Color bg         = _isDarkMode ? AppConstants.DarkModeSearchHighlight : AppConstants.LightModeSearchHighlight;
@@ -333,11 +334,16 @@ namespace qbPortWeaver
             string?  subsystemFilter  = GetSubsystemFilter();
             string[] filtered         = _allLines.Where(l => IsLineVisibleWithFilters(l, filters, subsystemFilter)).ToArray();
             rtbLog.Rtf = BuildRtf(filtered, _themeColors);
-            if (wasAtBottom) ScrollToBottom();
-            RefreshSearch(navigateToFirst: true);
 
+            // Suppress redraws across both RefreshSearch and ApplySearchHighlights so scroll,
+            // selection, and highlight changes are not visible as intermediate paint states.
             SendMessage(rtbLog.Handle, WinMsg.WM_SETREDRAW, IntPtr.Zero, IntPtr.Zero);
-            try { ApplySearchHighlights(); }
+            try
+            {
+                if (wasAtBottom) ScrollToBottom();
+                RefreshSearch(navigateToFirst: true);
+                ApplySearchHighlights();
+            }
             finally
             {
                 SendMessage(rtbLog.Handle, WinMsg.WM_SETREDRAW, (IntPtr)1, IntPtr.Zero);
@@ -359,24 +365,29 @@ namespace qbPortWeaver
             return lastVisibleLine >= totalLines - 1;
         }
 
-        /// <summary>Scrolls to the previous (older) WARN or ERROR line relative to the current selection.
-        /// Matches the level-column markers (e.g. "| WARN  |"), so settings names like
-        /// warnOnInterfaceMismatch=True are not falsely matched.</summary>
+        // Scrolls to the previous (older) WARN or ERROR line relative to the current selection.
+        // Matches the level-column markers (e.g. "| WARN  |") so settings names like
+        // warnOnInterfaceMismatch=True are not falsely matched.
         private void IssuePrev()
         {
             int end = rtbLog.SelectionStart;
             if (end <= 0 || rtbLog.TextLength == 0) return;
-            int prev = Math.Max(
-                rtbLog.Find(ColError, 0, end, RichTextBoxFinds.Reverse),
-                rtbLog.Find(ColWarn,  0, end, RichTextBoxFinds.Reverse));
+            int prevError = rtbLog.Find(ColError, 0, end, RichTextBoxFinds.Reverse);
+            int prevWarn  = rtbLog.Find(ColWarn,  0, end, RichTextBoxFinds.Reverse);
+            int prev = (prevError, prevWarn) switch
+            {
+                (< 0, _) => prevWarn,
+                (_, < 0) => prevError,
+                _        => Math.Max(prevError, prevWarn)
+            };
             if (prev < 0) return;
             rtbLog.Select(prev, 0);
             rtbLog.ScrollToCaret();
         }
 
-        /// <summary>Scrolls to the next (newer) WARN or ERROR line relative to the current selection.
-        /// Matches the level-column markers (e.g. "| WARN  |"), so settings names like
-        /// warnOnInterfaceMismatch=True are not falsely matched.</summary>
+        // Scrolls to the next (newer) WARN or ERROR line relative to the current selection.
+        // Matches the level-column markers (e.g. "| WARN  |") so settings names like
+        // warnOnInterfaceMismatch=True are not falsely matched.
         private void IssueNext()
         {
             int start = rtbLog.SelectionStart + 1;
@@ -493,9 +504,9 @@ namespace qbPortWeaver
                     NotifyFilter        = NotifyFilters.LastWrite | NotifyFilters.FileName,
                     EnableRaisingEvents = true
                 };
-                _watcher.Changed += watcher_Changed;
-                _watcher.Created += watcher_Created;
-                _watcher.Deleted += watcher_Deleted;
+                _watcher.Changed += OnWatcherChanged;
+                _watcher.Created += OnWatcherCreated;
+                _watcher.Deleted += OnWatcherDeleted;
             }
             catch (Exception ex)
             {
@@ -503,9 +514,9 @@ namespace qbPortWeaver
             }
         }
 
-        private void watcher_Changed(object sender, FileSystemEventArgs e) => OnLogFileUpdated();
-        private void watcher_Created(object sender, FileSystemEventArgs e) => OnLogFileUpdated();
-        private void watcher_Deleted(object sender, FileSystemEventArgs e) => OnLogFileDeleted();
+        private void OnWatcherChanged(object sender, FileSystemEventArgs e) => OnLogFileUpdated();
+        private void OnWatcherCreated(object sender, FileSystemEventArgs e) => OnLogFileUpdated();
+        private void OnWatcherDeleted(object sender, FileSystemEventArgs e) => OnLogFileDeleted();
 
         // Reads any new content appended since the last read and appends visible lines to the display.
         // Only scrolls to the bottom if the user was already there before the update.
@@ -761,9 +772,8 @@ namespace qbPortWeaver
 
             protected override void WndProc(ref Message m)
             {
-                const int WM_PAINT = 0x000F;
                 base.WndProc(ref m);
-                if (m.Msg == WM_PAINT && TextLength == 0 && !Focused && _placeholderText.Length > 0)
+                if (m.Msg == WinMsg.WM_PAINT && TextLength == 0 && !Focused && _placeholderText.Length > 0)
                 {
                     using var g    = Graphics.FromHwnd(Handle);
                     var       rect = ClientRectangle;

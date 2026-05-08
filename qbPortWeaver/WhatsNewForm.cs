@@ -17,6 +17,10 @@ namespace qbPortWeaver
             "The Show Logs menu item shows a running count (e.g. Show Logs (2 warnings, 1 error)), and " +
             "hovering over the tray icon shows the same count in plain text (e.g. 2 Warnings, 1 Error). " +
             "Alerts clear automatically when you open the log viewer or clear the logs.\n\n" +
+            "Log viewer - issue navigation\n" +
+            "Two new buttons in the log viewer let you step directly between warnings and errors " +
+            "without affecting your current search. Use Prev Issue / Next Issue to jump through " +
+            "problems one at a time.\n\n" +
             "Previously released\n\n" +
             "New in 2.5.2\n\n" +
             "qBittorrent 5.2.0 compatibility\n" +
@@ -29,6 +33,7 @@ namespace qbPortWeaver
             "If library folders are temporarily unreachable at startup (for example, a NAS that powers on after the PC), " +
             "the library index is now retried each cycle until the folders become accessible, " +
             "preventing stale results from being carried over.\n\n" +
+            "New in 2.5.0\n\n" +
             "BitTorrent client support\n" +
             "Automatic port sync for qBittorrent (Web API), Transmission (RPC), and Deluge (Web JSON-RPC). " +
             "Transmission auto-detects service mode vs Qt desktop client.\n\n" +

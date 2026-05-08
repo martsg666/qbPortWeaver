@@ -26,12 +26,11 @@ namespace qbPortWeaver
         /// For PIA this is queried via <c>piactl get portforward</c>.
         /// For NAT-PMP this is the external port assigned by the gateway via a UDP port-mapping request.
         /// </summary>
-        Task<int?> GetVpnPortAsync();
+        Task<int?> GetVpnPortAsync(CancellationToken ct = default);
 
         /// <summary>
-        /// Returns the recovery target passed to <c>AutoRecoveryManager.TriggerRecoveryAsync</c>, or <see langword="null"/>
-        /// if recovery is not supported. <c>AutoRecoveryManager</c> resolves the provider token to the
-        /// actual Windows service name before sending the restart request to the helper service.
+        /// Returns the recovery target passed to <c>AutoRecoveryManager.TriggerRestartAsync</c> or
+        /// <c>TriggerCycleAdapterAsync</c>, or <see langword="null"/> if recovery is not supported.
         /// For ProtonVPN and PIA this is the provider token (e.g. "ProtonVPN", "PIA").
         /// For NAT-PMP this is the provider token when the adapter belongs to a known provider,
         /// or the adapter name when it does not (e.g. a standalone NAT-PMP gateway).

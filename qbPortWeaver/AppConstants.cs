@@ -37,11 +37,11 @@ namespace qbPortWeaver
         private const string LogFileName    = "qbPortWeaver.log";
         private const string StatusFileName = "qbPortWeaver.status.json";
 
-        private static string? _appDataFolder;
-
-        private static string AppDataFolder => _appDataFolder ??= Directory.CreateDirectory(
+        private static readonly Lazy<string> _appDataFolder = new(() => Directory.CreateDirectory(
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), AppName)
-        ).FullName;
+        ).FullName);
+
+        private static string AppDataFolder => _appDataFolder.Value;
 
         /// <summary>Returns the full path to the application log file.</summary>
         public static string GetLogFilePath()    => Path.Combine(AppDataFolder, LogFileName);
@@ -61,7 +61,8 @@ namespace qbPortWeaver
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
-                LogManager.Instance.LogDebug($"AppConstants.TryDeleteFile: Could not delete '{path}': {ex.Message}");
+                if (LogManager.IsInitialized)
+                    LogManager.Instance.LogDebug($"AppConstants.TryDeleteFile: Could not delete '{path}': {ex.Message}");
             }
         }
 
@@ -70,9 +71,9 @@ namespace qbPortWeaver
         internal static void WriteAtomic(string path, string content)
         {
             var temp = path + ".tmp";
-            File.WriteAllText(temp, content);
             try
             {
+                File.WriteAllText(temp, content);
                 File.Move(temp, path, overwrite: true);
             }
             catch
@@ -220,13 +221,17 @@ namespace qbPortWeaver
 
         /// <summary>
         /// Resolves an executable path from the directory of a Windows service, caching the result.
-        /// Returns <see langword="null"/> if the service or file is not found; the cache remains as
-        /// <see cref="string.Empty"/> on any miss or transient error so the next cycle retries.
-        /// Only a successful resolution is cached permanently.
+        /// Returns <see langword="null"/> if the service or file is not found; the cache is left as
+        /// <see langword="null"/> or <see cref="string.Empty"/> on any miss or transient error so
+        /// the next cycle retries. Only a successful resolution is cached permanently (non-empty string).
+        /// Callers may initialize the cache field to either <see langword="null"/> or
+        /// <see cref="string.Empty"/> - both are treated as "not yet searched".
         /// </summary>
         internal static string? FindExeInServiceDirectory(ref string? cache, string exeFileName, Func<string?> findServiceName, string logPrefix)
         {
-            if (cache != string.Empty) return cache;
+            // cache is { Length: > 0 } means a path was previously resolved - return it.
+            // null or empty means "not yet searched" - both proceed to the lookup below.
+            if (cache is { Length: > 0 }) return cache;
             try
             {
                 string? serviceName = findServiceName();

@@ -2,7 +2,12 @@ using System.Diagnostics;
 
 namespace qbPortWeaver
 {
-    /// <summary>Detects PIA (Private Internet Access) connectivity and reads the forwarded port via <c>piactl</c>.</summary>
+    /// <summary>
+    /// Detects PIA (Private Internet Access) connectivity and reads the forwarded port via <c>piactl</c>.
+    /// Each sync cycle spawns two piactl subprocesses - one for IsVpnConnected, one for GetVpnPortAsync.
+    /// This is accepted design: piactl is the authoritative source and has no library API.
+    /// A stalled PIA client causes up to two sequential 5s timeouts per cycle.
+    /// </summary>
     public sealed class PiaVpnManager : IVpnManager
     {
         internal static readonly VpnRegistryConfig Config = new(
@@ -16,6 +21,8 @@ namespace qbPortWeaver
 
         // Cached path for piactl; null = not found, string.Empty = not yet resolved.
         // Install paths never change at runtime so we resolve once and reuse.
+        // Not volatile: relies on 64-bit CLR atomic reference assignment (reference writes are
+        // always atomic on x64). A data race here causes at most a redundant re-resolve, not corruption.
         private static string? _piactlPathCache = string.Empty;
 
         /// <inheritdoc />
@@ -48,7 +55,9 @@ namespace qbPortWeaver
         }
 
         /// <inheritdoc />
-        public Task<int?> GetVpnPortAsync() => Task.FromResult(GetVpnPortCore());
+        // ct only prevents scheduling if cancelled before the task starts; once GetVpnPortCore runs,
+        // cancellation cannot interrupt the in-progress piactl subprocess (bounded by ProcessTimeoutMs).
+        public Task<int?> GetVpnPortAsync(CancellationToken ct = default) => Task.Run(GetVpnPortCore, ct);
 
         /// <inheritdoc />
         public string? GetRecoveryTarget() => ProviderName;
@@ -109,6 +118,11 @@ namespace qbPortWeaver
                     return null;
                 }
 
+                // Drain stdout concurrently with WaitForExit to prevent a pipe-buffer deadlock.
+                // If ReadToEnd() runs after WaitForExit() the process can stall waiting for the
+                // reader to consume its output while we wait for it to exit - each side blocking the other.
+                var stdoutTask = process.StandardOutput.ReadToEndAsync();
+
                 if (!process.WaitForExit(ProcessTimeoutMs))
                 {
                     // Cleanup only - no new process follows, so KillProcess's retry wait is not needed here.
@@ -118,9 +132,15 @@ namespace qbPortWeaver
                     return null;
                 }
 
-                // piactl output is always tiny (a few characters); stdout buffer overflow is not a concern,
-                // so synchronous ReadToEnd() after WaitForExit() is safe and simpler than async.
-                string output = process.StandardOutput.ReadToEnd().Trim();
+                // Process has exited and closed the pipe; ReadToEndAsync should complete immediately.
+                // Guard with a timeout so a stalled drain cannot block the thread-pool thread indefinitely.
+                if (!stdoutTask.Wait(ProcessTimeoutMs))
+                {
+                    LogManager.Instance.LogDebug("PiaVpnManager.RunPiactl: stdout drain timed out after process exit");
+                    return null;
+                }
+
+                string output = stdoutTask.GetAwaiter().GetResult().Trim();
 
                 LogManager.Instance.LogDebug($"PiaVpnManager.RunPiactl: '{arguments}' returned: {output}");
                 return output;

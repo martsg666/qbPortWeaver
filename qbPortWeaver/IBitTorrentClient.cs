@@ -15,7 +15,7 @@ namespace qbPortWeaver
         /// <summary>
         /// Returns <see langword="true"/> if this client supports network interface mismatch warnings.
         /// qBittorrent exposes a named adapter via its API, enabling the check.
-        /// Transmission exposes a bound IP address rather than an adapter name, so the check is skipped.
+        /// Transmission and Deluge do not expose adapter names via their APIs, so the check is skipped.
         /// </summary>
         bool SupportsInterfaceMismatchWarning { get; }
 

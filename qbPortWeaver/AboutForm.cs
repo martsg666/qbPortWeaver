@@ -82,13 +82,15 @@ namespace qbPortWeaver
                 // Guard against the form being closed while the GitHub requests were in flight
                 if (IsDisposed) return;
 
-                var contributors = contributorsTask.Result;
+                // Await already-completed tasks to unwrap exceptions directly rather than
+                // through AggregateException (which .Result throws after WhenAll).
+                var contributors = await contributorsTask;
                 if (contributors.Count > 0)
                     SetContributorLinks(contributors);
                 else
                     lnkAuthor.Text = AppConstants.GitHubRepoOwner;
 
-                ApplyReleaseInfo(releaseTask.Result);
+                ApplyReleaseInfo(await releaseTask);
             }
             catch (Exception ex)
             {

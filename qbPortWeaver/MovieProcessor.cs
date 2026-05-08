@@ -148,6 +148,7 @@ namespace qbPortWeaver
             var targetPath = BuildStandaloneMoviePath(filePath, info, libraryPath, createFolders);
             MediaManagerService.ImportFile(filePath, targetPath, sourceFolder, dryRun, importMode);
 
+            // Standalone files use the shared companion importer (subtitle matched by filename prefix).
             MediaManagerService.ImportCompanionFiles(sourceFolder, filePath, targetPath, dryRun, importMode);
         }
 
@@ -169,6 +170,8 @@ namespace qbPortWeaver
                 MediaManagerService.ImportFile(file, BuildFolderMoviePath(file, info), sourceFolder, dryRun, importMode);
 
             var plexFolderName = FileNameParser.FormatPlexName(info.Title, info.Year);
+            // Folder-dependent files use a separate companion importer that pairs subtitles by part suffix
+            // (e.g. cd1.srt -> Title (Year) - cd1.srt) rather than by filename prefix.
             ImportFolderCompanionFiles(sourceFolder, dirPath, folderDependent, plexFolderName);
         }
 
@@ -247,9 +250,9 @@ namespace qbPortWeaver
             var cacheKey = $"{title}|{year}";
             return TmdbCacheManager.GetOrComputeMovieAsync(cacheKey, async () =>
             {
-                var result = await TmdbClient.LookupAsync(title, year,
+                var result = await TmdbClient.LookupAsync((title, year),
                     (q, y) => tmdb.SearchMovieCandidatesAsync(q, y, ct),
-                    i => i.Year is not null, i => i.Title, i => i.VoteCount, "movie").ConfigureAwait(false);
+                    i => i.Year is not null, i => i.Title, i => i.VoteCount, "movie", ct).ConfigureAwait(false);
                 if (result.Info is not null)
                     LogManager.Instance.LogDebug($"MovieProcessor.GetOrLookupMovieAsync: Matched '{result.Info.Title}' ({result.Info.Year}) [tmdb-{result.Info.TmdbId}]", Subsystem.MediaManager);
                 return result;

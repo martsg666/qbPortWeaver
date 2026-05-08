@@ -78,6 +78,9 @@ namespace qbPortWeaver
             }
             finally
             {
+                // KeyValuePair overload: only removes this exact Lazy instance - a concurrent winner that
+                // already replaced it is left intact. If the task faulted, this evicts it so the next
+                // caller retries rather than re-awaiting a permanently failed task.
                 _tvShowInFlight.TryRemove(new KeyValuePair<string, Lazy<Task<(TvShowInfo? Info, bool IsConfident)>>>(cacheKey, lazy));
             }
         }
@@ -101,6 +104,9 @@ namespace qbPortWeaver
             }
             finally
             {
+                // KeyValuePair overload: only removes this exact Lazy instance - a concurrent winner that
+                // already replaced it is left intact. If the task faulted, this evicts it so the next
+                // caller retries rather than re-awaiting a permanently failed task.
                 _movieInFlight.TryRemove(new KeyValuePair<string, Lazy<Task<(MovieInfo? Info, bool IsConfident)>>>(cacheKey, lazy));
             }
         }

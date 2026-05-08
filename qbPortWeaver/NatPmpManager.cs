@@ -21,7 +21,8 @@ namespace qbPortWeaver
         private readonly IPAddress        _gateway;
         private readonly uint             _mappingLifetime;
 
-        // Cached state for port renewal (persists across sync cycles via PortSyncService._lastKnownNatPmpManager)
+        // Cached state for port renewal (persists across sync cycles via PortSyncService._lastKnownNatPmpManager).
+        // Not independently locked - access is serialized by PortSyncService's single-concurrency sync semaphore.
         private ushort _lastExternalPort;  // zero until first mapping; suggested to gateway on renewal
         private uint   _lastEpochSeconds;  // SSOE (Seconds Since Opened Epoch) from the last successful NAT-PMP response
 
@@ -135,7 +136,7 @@ namespace qbPortWeaver
         // Logs at INFO/WARN (not DEBUG) because lease time and failure details are not surfaced
         // elsewhere in the sync cycle. On renewal, suggests the previously assigned port
         // (RFC 6886 §3.3) so the gateway keeps the same mapping across cycles.
-        public async Task<int?> GetVpnPortAsync()
+        public async Task<int?> GetVpnPortAsync(CancellationToken ct = default)
         {
             try
             {
@@ -143,7 +144,7 @@ namespace qbPortWeaver
                 // on renewal it holds the last assigned port so the gateway can keep the same mapping.
                 ushort suggested = _lastExternalPort;
 
-                var result = await RequestPortMappingAsync(_gateway, _mappingLifetime, suggested).ConfigureAwait(false);
+                var result = await RequestPortMappingAsync(_gateway, _mappingLifetime, suggested, ct).ConfigureAwait(false);
 
                 if (!result.Success)
                 {
@@ -169,6 +170,10 @@ namespace qbPortWeaver
                 _lastExternalPort  = result.ExternalPort;
                 LastGrantedLifetime = result.LifetimeGranted;
 
+                // All three cases log at Info deliberately: NAT-PMP leases have finite lifetimes
+                // so every renewal is a meaningful event (confirms the gateway is still reachable
+                // and the mapping is still active). Renewals are not high-frequency at typical
+                // sync intervals (30-60s) relative to lease lifetimes (several minutes).
                 if (suggested != 0 && result.ExternalPort == suggested)
                     LogManager.Instance.LogMessage($"NAT-PMP lease renewed: port {result.ExternalPort}, lifetime {result.LifetimeGranted}s", LogLevel.Info);
                 else if (suggested != 0)
@@ -178,7 +183,7 @@ namespace qbPortWeaver
 
                 return result.ExternalPort;
             }
-            catch (Exception ex)
+            catch (Exception ex) when (!ct.IsCancellationRequested)
             {
                 LogManager.Instance.LogMessage($"NAT-PMP error on '{_adapter.Name}': {ex.Message}", LogLevel.Warn);
                 return null;
@@ -251,6 +256,8 @@ namespace qbPortWeaver
         }
 
         // Infers the gateway as x.x.x.1 of the adapter's subnet - a common convention for VPN gateways.
+        // Assumes a /24 or wider subnet: for /30 (4 hosts) or /31 (2 hosts) subnets the .1 host
+        // may not exist or may not be the gateway. Accepted limitation for the typical VPN gateway case.
         private static IPAddress? InferGatewayFromUnicast(IPInterfaceProperties props)
         {
             foreach (UnicastIPAddressInformation address in props.UnicastAddresses)
@@ -310,7 +317,7 @@ namespace qbPortWeaver
         // Pass zero as suggestedExternalPort for an initial request, or the previously assigned port to request renewal.
         // Local port is set to 0 - clients that do not bind a specific port let the gateway infer it.
         private static async Task<(bool Success, ushort ExternalPort, uint LifetimeGranted, uint EpochSeconds, string? Error)>
-            RequestPortMappingAsync(IPAddress gateway, uint lifetime, ushort suggestedExternalPort = 0)
+            RequestPortMappingAsync(IPAddress gateway, uint lifetime, ushort suggestedExternalPort = 0, CancellationToken ct = default)
         {
             // [0] version=0  [1] opcode=1 (UDP)  [2-3] reserved
             // [4-5] local port=0  [6-7] suggested external port  [8-11] lifetime
@@ -320,7 +327,7 @@ namespace qbPortWeaver
             BinaryPrimitives.WriteUInt16BigEndian(request.AsSpan(6), suggestedExternalPort);
             BinaryPrimitives.WriteUInt32BigEndian(request.AsSpan(8), lifetime);
 
-            byte[]? data = await SendReceiveAsync(gateway, request).ConfigureAwait(false);
+            byte[]? data = await SendReceiveAsync(gateway, request, ct: ct).ConfigureAwait(false);
             if (data is null)
                 return (false, 0, 0, 0, "No response from gateway");
 
@@ -363,8 +370,10 @@ namespace qbPortWeaver
 
         // Sends a UDP datagram to the gateway and waits for a response.
         // Retries with exponential backoff per RFC 6886 §3.1 to handle dropped UDP packets.
+        // Each retry opens a fresh UdpClient so any stale datagrams from a previous attempt
+        // are silently discarded (they arrive on the old socket, which is already disposed).
         // maxAttempts defaults to MaxAttempts; pass 1 for best-effort probes (e.g. discovery).
-        private static async Task<byte[]?> SendReceiveAsync(IPAddress gateway, byte[] request, int maxAttempts = MaxAttempts)
+        private static async Task<byte[]?> SendReceiveAsync(IPAddress gateway, byte[] request, int maxAttempts = MaxAttempts, CancellationToken ct = default)
         {
             int timeoutMs = InitialTimeoutMs;
 
@@ -375,10 +384,11 @@ namespace qbPortWeaver
                     using var udp = new UdpClient();
                     await udp.SendAsync(request, new IPEndPoint(gateway, NatPmpPort)).ConfigureAwait(false);
 
-                    using var cts = new CancellationTokenSource(timeoutMs);
+                    using var timeoutCts = new CancellationTokenSource(timeoutMs);
+                    using var linkedCts  = CancellationTokenSource.CreateLinkedTokenSource(ct, timeoutCts.Token);
                     while (true)
                     {
-                        UdpReceiveResult result = await udp.ReceiveAsync(cts.Token).ConfigureAwait(false);
+                        UdpReceiveResult result = await udp.ReceiveAsync(linkedCts.Token).ConfigureAwait(false);
 
                         if (!result.RemoteEndPoint.Address.Equals(gateway))
                         {
@@ -391,7 +401,7 @@ namespace qbPortWeaver
                         return result.Buffer;
                     }
                 }
-                catch (OperationCanceledException)
+                catch (OperationCanceledException) when (!ct.IsCancellationRequested)
                 {
                     LogTimeoutDebug(attempt, maxAttempts, timeoutMs);
                     timeoutMs *= 2;

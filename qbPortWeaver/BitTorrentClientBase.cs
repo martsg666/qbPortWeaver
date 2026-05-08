@@ -105,6 +105,15 @@ namespace qbPortWeaver
             }
         }
 
+        /// <inheritdoc/>
+        public abstract Task<(int? ListenPort, string? CurrentInterfaceName)> GetPreferencesAsync(CancellationToken cancellationToken = default);
+
+        /// <inheritdoc/>
+        public abstract Task<bool> SetListeningPortAsync(int port, CancellationToken cancellationToken = default);
+
+        /// <inheritdoc/>
+        public abstract Task<string?> GetConnectionStatusAsync(CancellationToken cancellationToken = default);
+
         /// <summary>Called by <see cref="RestartAsync"/> before the kill step. Override to inject pre-kill work (e.g. waiting for a config flush).</summary>
         protected virtual Task PreRestartAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 
@@ -142,15 +151,6 @@ namespace qbPortWeaver
             }
             LogManager.Instance.LogDebug($"{ClientName} API did not respond within {ApiReadyTimeoutSeconds}s after start");
         }
-
-        /// <inheritdoc/>
-        public abstract Task<(int? ListenPort, string? CurrentInterfaceName)> GetPreferencesAsync(CancellationToken cancellationToken = default);
-
-        /// <inheritdoc/>
-        public abstract Task<bool> SetListeningPortAsync(int port, CancellationToken cancellationToken = default);
-
-        /// <inheritdoc/>
-        public abstract Task<string?> GetConnectionStatusAsync(CancellationToken cancellationToken = default);
 
         /// <summary>Resets the per-instance auth state so the next API call triggers a fresh authentication handshake.</summary>
         protected virtual void ResetAuthState() => _isAuthenticated = false;

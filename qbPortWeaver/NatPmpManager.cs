@@ -284,12 +284,6 @@ namespace qbPortWeaver
             return null;
         }
 
-        private static ushort ReadUShortBE(byte[] data, int offset)
-            => BinaryPrimitives.ReadUInt16BigEndian(data.AsSpan(offset));
-
-        private static uint ReadUIntBE(byte[] data, int offset)
-            => BinaryPrimitives.ReadUInt32BigEndian(data.AsSpan(offset));
-
         // Sends a NAT-PMP external address request (RFC 6886 opcode 0) and returns the public IP.
         // maxAttempts=1 for discovery (best-effort, all adapters probed in parallel)
         // MaxAttempts for targeted probes where retrying a single adapter is worthwhile.
@@ -349,6 +343,12 @@ namespace qbPortWeaver
 
             return (true, externalPort, lifetimeGiven, epochSeconds, null);
         }
+
+        private static ushort ReadUShortBE(byte[] data, int offset)
+            => BinaryPrimitives.ReadUInt16BigEndian(data.AsSpan(offset));
+
+        private static uint ReadUIntBE(byte[] data, int offset)
+            => BinaryPrimitives.ReadUInt32BigEndian(data.AsSpan(offset));
 
         private static void LogProbeResultDebug(string context, string adapterName, IPAddress gateway, IPAddress? externalIp)
         {

@@ -120,6 +120,11 @@ namespace qbPortWeaver
         /// <remarks>Deluge does not expose a connection status endpoint; always returns <see langword="null"/>.</remarks>
         public override Task<string?> GetConnectionStatusAsync(CancellationToken cancellationToken = default) => Task.FromResult<string?>(null);
 
+        // core.set_config debounces disk writes by ~5 s. Wait before the kill step so the
+        // new port survives the restart (without this, Deluge reads the old core.conf).
+        protected override Task PreRestartAsync(CancellationToken cancellationToken) =>
+            Task.Delay(ConfigFlushWaitMs, cancellationToken);
+
         /// <inheritdoc/>
         protected override async Task<bool> AuthenticateAsync(CancellationToken cancellationToken = default)
         {
@@ -160,11 +165,6 @@ namespace qbPortWeaver
                 return false;
             }
         }
-
-        // core.set_config debounces disk writes by ~5 s. Wait before the kill step so the
-        // new port survives the restart (without this, Deluge reads the old core.conf).
-        protected override Task PreRestartAsync(CancellationToken cancellationToken) =>
-            Task.Delay(ConfigFlushWaitMs, cancellationToken);
 
         private static int? ParseListenPort(JsonElement result)
         {

@@ -180,6 +180,12 @@ namespace qbPortWeaver
         /// <remarks>Transmission does not expose a connection status endpoint; always returns <see langword="null"/>.</remarks>
         public override Task<string?> GetConnectionStatusAsync(CancellationToken cancellationToken = default) => Task.FromResult<string?>(null);
 
+        // Transmission uses a per-request X-Transmission-Session-Id CSRF handshake in SendRpcAsync rather than a
+        // one-time login step, so EnsureAuthenticatedAsync is never called and this override is never reached.
+        // It exists only to satisfy the abstract base member.
+        /// <inheritdoc/>
+        protected override Task<bool> AuthenticateAsync(CancellationToken cancellationToken = default) => Task.FromResult(true);
+
         /// <inheritdoc/>
         protected override void ResetAuthState()
         {
@@ -187,11 +193,16 @@ namespace qbPortWeaver
             _sessionId = null;
         }
 
-        // Transmission uses a per-request X-Transmission-Session-Id CSRF handshake in SendRpcAsync rather than a
-        // one-time login step, so EnsureAuthenticatedAsync is never called and this override is never reached.
-        // It exists only to satisfy the abstract base member.
-        /// <inheritdoc/>
-        protected override Task<bool> AuthenticateAsync(CancellationToken cancellationToken = default) => Task.FromResult(true);
+        // Lazily discovers and caches the Transmission Windows service name via the configured search term.
+        // Only caches a successful result; a null (not found) result is not cached so the lookup
+        // retries each cycle, allowing auto-detection to succeed if the service is installed later.
+        private static string? GetEffectiveServiceName()
+        {
+            if (_resolvedServiceName is { Length: > 0 }) return _resolvedServiceName;
+            var found = AppConstants.FindServiceName(RegistrySettingsManager.GetAppValue(RegistrySettingsManager.KeyTransmissionServiceSearchTerm));
+            if (found is not null) _resolvedServiceName = found;
+            return found;
+        }
 
         private async Task<bool> RestartServiceModeAsync(string serviceName, CancellationToken cancellationToken)
         {
@@ -345,17 +356,6 @@ namespace qbPortWeaver
                 LogManager.Instance.LogDebug($"TransmissionClient.IsConfigDirSystemWideAsync: {ex.Message}");
                 return false;
             }
-        }
-
-        // Lazily discovers and caches the Transmission Windows service name via the configured search term.
-        // Only caches a successful result; a null (not found) result is not cached so the lookup
-        // retries each cycle, allowing auto-detection to succeed if the service is installed later.
-        private static string? GetEffectiveServiceName()
-        {
-            if (_resolvedServiceName is { Length: > 0 }) return _resolvedServiceName;
-            var found = AppConstants.FindServiceName(RegistrySettingsManager.GetAppValue(RegistrySettingsManager.KeyTransmissionServiceSearchTerm));
-            if (found is not null) _resolvedServiceName = found;
-            return found;
         }
 
         // Creates an HttpClient with Basic auth for the Transmission RPC endpoint.

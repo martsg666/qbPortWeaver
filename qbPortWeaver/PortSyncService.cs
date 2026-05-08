@@ -651,6 +651,16 @@ namespace qbPortWeaver
                 LogManager.Instance.LogMessage($"Restarted {manager.ClientName} after connection disconnect", LogLevel.Info);
         }
 
+        // Builds a failure log message with cycle count and optional recovery trigger suffix
+        private static string BuildCycleCountMessage(string prefix, int count, AppConfig cfg)
+        {
+            string cycles = count == 1 ? "cycle" : "cycles";
+            string recoverySuffix = cfg.AutoRecoveryEnabled
+                ? $", recovery triggers after {cfg.AutoRecoveryTriggerCycles} consecutive failures"
+                : string.Empty;
+            return $"{prefix} ({count} consecutive {cycles}{recoverySuffix})";
+        }
+
         // Increments the failure counter and triggers recovery when port detection
         // fails despite the VPN being connected (applies to all providers).
         private async Task HandlePortDetectionFailureAsync(IVpnManager vpnManager, AppConfig cfg, CancellationToken cancellationToken)
@@ -697,16 +707,6 @@ namespace qbPortWeaver
                 await AutoRecoveryManager.TriggerRestartAsync(recoveryTarget, cancellationToken).ConfigureAwait(false);
             else
                 await AutoRecoveryManager.TriggerCycleAdapterAsync(recoveryTarget, cancellationToken).ConfigureAwait(false);
-        }
-
-        // Builds a failure log message with cycle count and optional recovery trigger suffix
-        private static string BuildCycleCountMessage(string prefix, int count, AppConfig cfg)
-        {
-            string cycles = count == 1 ? "cycle" : "cycles";
-            string recoverySuffix = cfg.AutoRecoveryEnabled
-                ? $", recovery triggers after {cfg.AutoRecoveryTriggerCycles} consecutive failures"
-                : string.Empty;
-            return $"{prefix} ({count} consecutive {cycles}{recoverySuffix})";
         }
 
         // Returns the registry settings section for the active BitTorrent client.

@@ -16,7 +16,6 @@ namespace qbPortWeaver
             RegistrySettingsManager.KeyPiaAdapterName,
             "PiaVpnManager.GetClientExePath");
 
-        private static string GetPiactlProcessName() => RegistrySettingsManager.GetAppValue(RegistrySettingsManager.KeyPiactlProcessName);
         private const int    ProcessTimeoutMs = 5000;
 
         // Cached path for piactl; null = not found, string.Empty = not yet resolved.
@@ -151,6 +150,8 @@ namespace qbPortWeaver
                 return null;
             }
         }
+
+        private static string GetPiactlProcessName() => RegistrySettingsManager.GetAppValue(RegistrySettingsManager.KeyPiactlProcessName);
 
         private static string? GetPiactlPath() => AppConstants.FindExeInServiceDirectory(ref _piactlPathCache, GetPiactlProcessName() + ".exe", Config.FindServiceName, "PiaVpnManager.GetPiactlPath");
     }

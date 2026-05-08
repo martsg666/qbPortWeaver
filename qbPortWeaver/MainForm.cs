@@ -185,9 +185,6 @@ namespace qbPortWeaver
             _updateCheckTimer?.Stop();
             _updateCheckTimer?.Dispose();
 
-            _delayCts.Dispose();
-            _updateSemaphore.Dispose();
-
             // Hide tray icon immediately to avoid ghost icon
             _trayIcon.Visible = false;
 

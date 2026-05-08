@@ -208,90 +208,6 @@ internal static partial class AutoRecovery
         }
     }
 
-    private static async Task StartServiceAsync(string serviceName, HelperLogger logger, CancellationToken ct = default)
-    {
-        using var sc = new ServiceController(serviceName);
-        sc.Refresh();
-        if (sc.Status == ServiceControllerStatus.Running)
-        {
-            logger.LogInfo($"Service '{serviceName}' is already running");
-            return;
-        }
-
-        // The SCM's recovery policy may have already triggered a restart (e.g. VPN services
-        // are typically configured to restart automatically on failure). If the service is
-        // already starting, just wait for it instead of calling Start() which would throw.
-        if (sc.Status == ServiceControllerStatus.StartPending)
-        {
-            logger.LogInfo($"Service '{serviceName}' is already starting (likely SCM auto-recovery) - waiting");
-            try
-            {
-                await WaitForStatusAsync(sc, ServiceControllerStatus.Running, ct).ConfigureAwait(false);
-                logger.LogInfo($"Service '{serviceName}' started (by SCM)");
-            }
-            catch (System.ServiceProcess.TimeoutException)
-            {
-                logger.LogWarn($"Service '{serviceName}' stuck in StartPending after {ServiceOperationTimeoutMs}ms");
-                throw;
-            }
-            return;
-        }
-
-        // The service may still be in StopPending (e.g. the client process was killed
-        // concurrently and the service is tearing down). Wait for it to finish stopping
-        // before attempting to start, otherwise sc.Start() throws.
-        if (sc.Status == ServiceControllerStatus.StopPending)
-        {
-            logger.LogInfo($"Service '{serviceName}' is still stopping - waiting");
-            try
-            {
-                await WaitForStatusAsync(sc, ServiceControllerStatus.Stopped, ct).ConfigureAwait(false);
-            }
-            catch (System.ServiceProcess.TimeoutException)
-            {
-                logger.LogWarn($"Service '{serviceName}' StopPending timed out during start - proceeding anyway");
-            }
-        }
-
-        try { sc.Start(); }
-        catch (InvalidOperationException)
-        {
-            // SCM auto-recovery may have started the service between our StopPending wait and this
-            // call. Refresh and treat Running/StartPending as success; rethrow anything else.
-            sc.Refresh();
-            if (sc.Status is not ServiceControllerStatus.Running and not ServiceControllerStatus.StartPending)
-                throw;
-            logger.LogInfo($"Service '{serviceName}' is already starting (likely SCM auto-recovery) - waiting");
-            try
-            {
-                await WaitForStatusAsync(sc, ServiceControllerStatus.Running, ct).ConfigureAwait(false);
-                logger.LogInfo($"Service '{serviceName}' started (by SCM)");
-            }
-            catch (System.ServiceProcess.TimeoutException)
-            {
-                logger.LogWarn($"Service '{serviceName}' stuck in StartPending after {ServiceOperationTimeoutMs}ms");
-                throw;
-            }
-            return;
-        }
-
-        try
-        {
-            await WaitForStatusAsync(sc, ServiceControllerStatus.Running, ct).ConfigureAwait(false);
-            logger.LogInfo($"Service '{serviceName}' started");
-        }
-        catch (System.ServiceProcess.TimeoutException)
-        {
-            logger.LogWarn($"Service '{serviceName}' start timed out - service may still be starting");
-        }
-    }
-
-    // Wraps the synchronous ServiceController.WaitForStatus in Task.Run so it doesn't block a BackgroundService thread.
-    // Note: WaitForStatus has no cancellation support - the ct is checked before scheduling and on entry,
-    // but cannot interrupt a WaitForStatus already in progress. The timeout (ServiceOperationTimeoutMs) is the hard bound.
-    private static Task WaitForStatusAsync(ServiceController sc, ServiceControllerStatus status, CancellationToken ct = default) =>
-        Task.Run(() => sc.WaitForStatus(status, TimeSpan.FromMilliseconds(ServiceOperationTimeoutMs)), ct);
-
     // Called by StopServiceAsync when the service doesn't respond to a clean stop
     // or is stuck in a pending state. Resolves the service's host PID via
     // QueryServiceStatusEx, then escalates: Process.Kill → wait → taskkill /F /T → retry Process.Kill.
@@ -393,6 +309,90 @@ internal static partial class AutoRecovery
             logger.LogWarn($"Failed to force-kill service '{sc.ServiceName}': {ex.Message}");
         }
     }
+
+    private static async Task StartServiceAsync(string serviceName, HelperLogger logger, CancellationToken ct = default)
+    {
+        using var sc = new ServiceController(serviceName);
+        sc.Refresh();
+        if (sc.Status == ServiceControllerStatus.Running)
+        {
+            logger.LogInfo($"Service '{serviceName}' is already running");
+            return;
+        }
+
+        // The SCM's recovery policy may have already triggered a restart (e.g. VPN services
+        // are typically configured to restart automatically on failure). If the service is
+        // already starting, just wait for it instead of calling Start() which would throw.
+        if (sc.Status == ServiceControllerStatus.StartPending)
+        {
+            logger.LogInfo($"Service '{serviceName}' is already starting (likely SCM auto-recovery) - waiting");
+            try
+            {
+                await WaitForStatusAsync(sc, ServiceControllerStatus.Running, ct).ConfigureAwait(false);
+                logger.LogInfo($"Service '{serviceName}' started (by SCM)");
+            }
+            catch (System.ServiceProcess.TimeoutException)
+            {
+                logger.LogWarn($"Service '{serviceName}' stuck in StartPending after {ServiceOperationTimeoutMs}ms");
+                throw;
+            }
+            return;
+        }
+
+        // The service may still be in StopPending (e.g. the client process was killed
+        // concurrently and the service is tearing down). Wait for it to finish stopping
+        // before attempting to start, otherwise sc.Start() throws.
+        if (sc.Status == ServiceControllerStatus.StopPending)
+        {
+            logger.LogInfo($"Service '{serviceName}' is still stopping - waiting");
+            try
+            {
+                await WaitForStatusAsync(sc, ServiceControllerStatus.Stopped, ct).ConfigureAwait(false);
+            }
+            catch (System.ServiceProcess.TimeoutException)
+            {
+                logger.LogWarn($"Service '{serviceName}' StopPending timed out during start - proceeding anyway");
+            }
+        }
+
+        try { sc.Start(); }
+        catch (InvalidOperationException)
+        {
+            // SCM auto-recovery may have started the service between our StopPending wait and this
+            // call. Refresh and treat Running/StartPending as success; rethrow anything else.
+            sc.Refresh();
+            if (sc.Status is not ServiceControllerStatus.Running and not ServiceControllerStatus.StartPending)
+                throw;
+            logger.LogInfo($"Service '{serviceName}' is already starting (likely SCM auto-recovery) - waiting");
+            try
+            {
+                await WaitForStatusAsync(sc, ServiceControllerStatus.Running, ct).ConfigureAwait(false);
+                logger.LogInfo($"Service '{serviceName}' started (by SCM)");
+            }
+            catch (System.ServiceProcess.TimeoutException)
+            {
+                logger.LogWarn($"Service '{serviceName}' stuck in StartPending after {ServiceOperationTimeoutMs}ms");
+                throw;
+            }
+            return;
+        }
+
+        try
+        {
+            await WaitForStatusAsync(sc, ServiceControllerStatus.Running, ct).ConfigureAwait(false);
+            logger.LogInfo($"Service '{serviceName}' started");
+        }
+        catch (System.ServiceProcess.TimeoutException)
+        {
+            logger.LogWarn($"Service '{serviceName}' start timed out - service may still be starting");
+        }
+    }
+
+    // Wraps the synchronous ServiceController.WaitForStatus in Task.Run so it doesn't block a BackgroundService thread.
+    // Note: WaitForStatus has no cancellation support - the ct is checked before scheduling and on entry,
+    // but cannot interrupt a WaitForStatus already in progress. The timeout (ServiceOperationTimeoutMs) is the hard bound.
+    private static Task WaitForStatusAsync(ServiceController sc, ServiceControllerStatus status, CancellationToken ct = default) =>
+        Task.Run(() => sc.WaitForStatus(status, TimeSpan.FromMilliseconds(ServiceOperationTimeoutMs)), ct);
 
     // Runs a netsh command and returns true if it exits with code 0.
     private static async Task<bool> RunNetshAsync(string arguments, HelperLogger logger, CancellationToken ct = default)

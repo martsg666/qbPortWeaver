@@ -12,7 +12,7 @@ namespace qbPortWeaver
         private const string RpcPath           = "/json";
 
         private readonly string _password;
-        private int _rpcId = 1;
+        private int _rpcId = 1; // sequential - DelugeClient is not shared across threads; no atomic increment needed
 
         /// <inheritdoc/>
         public override string ClientName => "Deluge";

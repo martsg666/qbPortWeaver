@@ -55,6 +55,8 @@ namespace qbPortWeaver
         }
 
         /// <inheritdoc />
+        // ct only prevents scheduling if cancelled before the task starts; once GetVpnPortCore runs,
+        // cancellation cannot interrupt the in-progress piactl subprocess (bounded by ProcessTimeoutMs).
         public Task<int?> GetVpnPortAsync(CancellationToken ct = default) => Task.Run(GetVpnPortCore, ct);
 
         /// <inheritdoc />
@@ -138,7 +140,7 @@ namespace qbPortWeaver
                     return null;
                 }
 
-                string output = stdoutTask.Result.Trim();
+                string output = stdoutTask.GetAwaiter().GetResult().Trim();
 
                 LogManager.Instance.LogDebug($"PiaVpnManager.RunPiactl: '{arguments}' returned: {output}");
                 return output;

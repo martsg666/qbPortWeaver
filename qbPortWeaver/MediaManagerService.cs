@@ -347,7 +347,7 @@ namespace qbPortWeaver
                 validFolders.Add(f);
             }
 
-            var libraryTask = Task.Run(() => MediaImporter.BuildLibraryIndexAsync(moviesLibraryPath, tvShowsLibraryPath, allowReuse: allowLibraryReuse, cancellationToken), cancellationToken);
+            var libraryTask = MediaImporter.BuildLibraryIndexAsync(moviesLibraryPath, tvShowsLibraryPath, allowReuse: allowLibraryReuse, cancellationToken);
             var enumerated  = await EnumerateSourceFoldersAsync(validFolders, cancellationToken).ConfigureAwait(false);
             await libraryTask.ConfigureAwait(false);
             var classified  = await ClassifySourceFoldersAsync(enumerated, cancellationToken).ConfigureAwait(false);

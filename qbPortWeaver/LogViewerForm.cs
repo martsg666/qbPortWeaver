@@ -365,9 +365,9 @@ namespace qbPortWeaver
             return lastVisibleLine >= totalLines - 1;
         }
 
-        /// <summary>Scrolls to the previous (older) WARN or ERROR line relative to the current selection.
-        /// Matches the level-column markers (e.g. "| WARN  |"), so settings names like
-        /// warnOnInterfaceMismatch=True are not falsely matched.</summary>
+        // Scrolls to the previous (older) WARN or ERROR line relative to the current selection.
+        // Matches the level-column markers (e.g. "| WARN  |") so settings names like
+        // warnOnInterfaceMismatch=True are not falsely matched.
         private void IssuePrev()
         {
             int end = rtbLog.SelectionStart;
@@ -385,9 +385,9 @@ namespace qbPortWeaver
             rtbLog.ScrollToCaret();
         }
 
-        /// <summary>Scrolls to the next (newer) WARN or ERROR line relative to the current selection.
-        /// Matches the level-column markers (e.g. "| WARN  |"), so settings names like
-        /// warnOnInterfaceMismatch=True are not falsely matched.</summary>
+        // Scrolls to the next (newer) WARN or ERROR line relative to the current selection.
+        // Matches the level-column markers (e.g. "| WARN  |") so settings names like
+        // warnOnInterfaceMismatch=True are not falsely matched.
         private void IssueNext()
         {
             int start = rtbLog.SelectionStart + 1;

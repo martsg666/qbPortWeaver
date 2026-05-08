@@ -17,6 +17,10 @@ namespace qbPortWeaver
             "The Show Logs menu item shows a running count (e.g. Show Logs (2 warnings, 1 error)), and " +
             "hovering over the tray icon shows the same count in plain text (e.g. 2 Warnings, 1 Error). " +
             "Alerts clear automatically when you open the log viewer or clear the logs.\n\n" +
+            "Log viewer - issue navigation\n" +
+            "Two new buttons in the log viewer let you step directly between warnings and errors " +
+            "without affecting your current search. Use Prev Issue / Next Issue to jump through " +
+            "problems one at a time.\n\n" +
             "Previously released\n\n" +
             "New in 2.5.2\n\n" +
             "qBittorrent 5.2.0 compatibility\n" +

@@ -19,6 +19,7 @@ namespace qbPortWeaver
         // Cached service name; string.Empty = not yet resolved, non-empty = found and cached.
         // Static so the SCM enumeration persists across sync-cycle instances.
         // Mirrors the caching pattern used by ProtonVpnManager and PiaVpnManager.
+        // Sentinel values: string.Empty = not yet resolved; null = not found; non-empty = cached name.
         // volatile ensures writes from one sync-cycle thread are visible to concurrent callers.
         private static volatile string? _resolvedServiceName = string.Empty;
 

@@ -148,6 +148,7 @@ namespace qbPortWeaver
             var targetPath = BuildStandaloneMoviePath(filePath, info, libraryPath, createFolders);
             MediaManagerService.ImportFile(filePath, targetPath, sourceFolder, dryRun, importMode);
 
+            // Standalone files use the shared companion importer (subtitle matched by filename prefix).
             MediaManagerService.ImportCompanionFiles(sourceFolder, filePath, targetPath, dryRun, importMode);
         }
 
@@ -169,6 +170,8 @@ namespace qbPortWeaver
                 MediaManagerService.ImportFile(file, BuildFolderMoviePath(file, info), sourceFolder, dryRun, importMode);
 
             var plexFolderName = FileNameParser.FormatPlexName(info.Title, info.Year);
+            // Folder-dependent files use a separate companion importer that pairs subtitles by part suffix
+            // (e.g. cd1.srt -> Title (Year) - cd1.srt) rather than by filename prefix.
             ImportFolderCompanionFiles(sourceFolder, dirPath, folderDependent, plexFolderName);
         }
 

@@ -57,6 +57,8 @@ namespace qbPortWeaver
         }
 
         /// <inheritdoc />
+        // ct only prevents scheduling if cancelled before the task starts; once GetVpnPortCore runs,
+        // cancellation cannot interrupt the in-progress log file read (bounded by the file I/O itself).
         public Task<int?> GetVpnPortAsync(CancellationToken ct = default) => Task.Run(GetVpnPortCore, ct);
 
         /// <inheritdoc />

@@ -98,6 +98,7 @@ namespace qbPortWeaver
                 using var content = new FormUrlEncodedContent([new("json", jsonBody)]);
 
                 using var response = await _httpClient.PostAsync($"{_url}{ApiSetPreferences}", content, cancellationToken).ConfigureAwait(false);
+                // qBittorrent returns HTTP 200 with an empty body on success - no JSON error envelope to check.
                 if (!response.IsSuccessStatusCode)
                 {
                     LogManager.Instance.LogMessage($"Failed to set {ClientName} port (HTTP {(int)response.StatusCode} {response.StatusCode})", LogLevel.Error);

@@ -723,6 +723,8 @@ namespace qbPortWeaver
         private static (bool ForceStart, bool Restart, bool RestartOnDisconnect, bool WarnOnInterfaceMismatch) GetClientBehaviorConfig(AppConfig cfg, string activeSection) =>
             activeSection switch
             {
+                // RestartOnDisconnect and WarnOnInterfaceMismatch are qBittorrent-only: Transmission and Deluge
+                // do not expose a connection-state API, so neither feature can be implemented for them.
                 RegistrySettingsManager.SectionTransmission => (cfg.ForceStartTransmission, cfg.RestartTransmission, false, false),
                 RegistrySettingsManager.SectionDeluge       => (cfg.ForceStartDeluge,       cfg.RestartDeluge,       false, false),
                 _                                           => (cfg.ForceStartQBittorrent,  cfg.RestartQBittorrent,  cfg.QBittorrentRestartOnDisconnect, cfg.QBittorrentWarnOnInterfaceMismatch),

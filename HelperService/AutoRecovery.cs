@@ -55,6 +55,9 @@ internal static partial class AutoRecovery
         try { await StopServiceAsync(serviceName, logger, ct).ConfigureAwait(false); }
         catch (Exception ex) when (ex is not OperationCanceledException) { logger.LogWarn($"Failed to stop service '{serviceName}': {ex.Message}"); }
 
+        // Brief pause to allow the OS to fully release service resources (handles, sockets)
+        // before the start is issued - avoids a race where SCM reports stopped but the
+        // underlying process has not yet exited and freed its ports.
         await Task.Delay(ServiceRestartDelayMs, ct).ConfigureAwait(false);
 
         try { await StartServiceAsync(serviceName, logger, ct).ConfigureAwait(false); }

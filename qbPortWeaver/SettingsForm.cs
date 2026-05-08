@@ -441,7 +441,10 @@ namespace qbPortWeaver
                     bool isNatPmp = cboVpnProvider.SelectedItem?.ToString() == RegistrySettingsManager.VpnProviderNatPmp;
                     SetAdapterControlsEnabled(isNatPmp);
                 }
-                catch (ObjectDisposedException) { }
+                catch (ObjectDisposedException)
+                {
+                    LogManager.Instance.LogDebug("SettingsForm.DiscoverNatPmpAdaptersAsync: Form disposed during adapter update");
+                }
             }
             catch (Exception ex)
             {
@@ -455,7 +458,10 @@ namespace qbPortWeaver
                     bool isNatPmp = cboVpnProvider.SelectedItem?.ToString() == RegistrySettingsManager.VpnProviderNatPmp;
                     SetAdapterControlsEnabled(isNatPmp);
                 }
-                catch (ObjectDisposedException) { }
+                catch (ObjectDisposedException)
+                {
+                    LogManager.Instance.LogDebug("SettingsForm.DiscoverNatPmpAdaptersAsync: Form disposed during error recovery");
+                }
             }
         }
     }

@@ -141,7 +141,7 @@ namespace qbPortWeaver
         /// Shared by both processors so the error handling and log format live in one place.
         /// </summary>
         internal static async Task<(T? Info, bool IsConfident)> LookupAsync<T>(
-            string title, int? year,
+            (string Title, int? Year) query,
             Func<string, int?, Task<IReadOnlyList<T>?>> search,
             Func<T, bool> hasYear,
             Func<T, string> getTitle,
@@ -152,11 +152,11 @@ namespace qbPortWeaver
             try
             {
                 var (info, isConfident) = await SearchWithConfidenceAsync(
-                    title, year, search, hasYear, getTitle, getVoteCount).ConfigureAwait(false);
+                    query.Title, query.Year, search, hasYear, getTitle, getVoteCount).ConfigureAwait(false);
 
                 if (info is null)
                 {
-                    LogManager.Instance.LogMessage($"No TMDB match found for {mediaKind} '{title}'", LogLevel.Warn, Subsystem.MediaManager);
+                    LogManager.Instance.LogMessage($"No TMDB match found for {mediaKind} '{query.Title}'", LogLevel.Warn, Subsystem.MediaManager);
                     return (null, false);
                 }
 

@@ -247,7 +247,7 @@ namespace qbPortWeaver
             var cacheKey = $"{title}|{year}";
             return TmdbCacheManager.GetOrComputeMovieAsync(cacheKey, async () =>
             {
-                var result = await TmdbClient.LookupAsync(title, year,
+                var result = await TmdbClient.LookupAsync((title, year),
                     (q, y) => tmdb.SearchMovieCandidatesAsync(q, y, ct),
                     i => i.Year is not null, i => i.Title, i => i.VoteCount, "movie", ct).ConfigureAwait(false);
                 if (result.Info is not null)

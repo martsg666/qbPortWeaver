@@ -80,37 +80,7 @@ namespace qbPortWeaver
             string? exePath = null;
             try
             {
-                var processes = Process.GetProcessesByName(processName);
-                try
-                {
-                    try
-                    {
-                        exePath = processes.FirstOrDefault()?.MainModule?.FileName;
-                    }
-                    catch (Win32Exception ex)
-                    {
-                        // MainModule access can throw on 32/64-bit mismatch or access denial.
-                        // Leave exePath null so the registry fallback path is used below.
-                        LogManager.Instance.LogDebug($"AutoRecoveryManager.RestartClientProcessAsync: Could not read exe path for '{processName}': {ex.Message}");
-                    }
-                    foreach (var p in processes)
-                    {
-                        try
-                        {
-                            if (!AppConstants.KillProcess(p))
-                                LogManager.Instance.LogMessage($"Client process '{processName}' (PID {p.Id}) still running after kill attempts", LogLevel.Warn);
-                        }
-                        catch (Exception ex) { LogManager.Instance.LogDebug($"AutoRecoveryManager.RestartClientProcessAsync: Kill '{processName}': {ex.Message}"); }
-                    }
-                    if (exePath is not null)
-                        LogManager.Instance.LogMessage($"Killed client process '{processName}'", LogLevel.Info);
-                    else
-                        LogManager.Instance.LogDebug($"AutoRecoveryManager.RestartClientProcessAsync: Client process '{processName}' was not running");
-                }
-                finally
-                {
-                    foreach (var p in processes) p.Dispose();
-                }
+                exePath = KillClientProcesses(processName);
             }
             catch (Exception ex)
             {
@@ -140,6 +110,45 @@ namespace qbPortWeaver
             catch (Exception ex)
             {
                 LogManager.Instance.LogMessage($"Failed to restart client process '{processName}': {ex.Message}", LogLevel.Error);
+            }
+        }
+
+        // Kills all running instances of the named process and returns the exe path captured before killing.
+        // Returns null if no instances were running.
+        private static string? KillClientProcesses(string processName)
+        {
+            var processes = Process.GetProcessesByName(processName);
+            try
+            {
+                string? exePath = null;
+                try
+                {
+                    exePath = processes.FirstOrDefault()?.MainModule?.FileName;
+                }
+                catch (Win32Exception ex)
+                {
+                    // MainModule access can throw on 32/64-bit mismatch or access denial.
+                    // Leave exePath null so the registry fallback path is used below.
+                    LogManager.Instance.LogDebug($"AutoRecoveryManager.KillClientProcesses: Could not read exe path for '{processName}': {ex.Message}");
+                }
+                foreach (var p in processes)
+                {
+                    try
+                    {
+                        if (!AppConstants.KillProcess(p))
+                            LogManager.Instance.LogMessage($"Client process '{processName}' (PID {p.Id}) still running after kill attempts", LogLevel.Warn);
+                    }
+                    catch (Exception ex) { LogManager.Instance.LogDebug($"AutoRecoveryManager.KillClientProcesses: Kill '{processName}': {ex.Message}"); }
+                }
+                if (exePath is not null)
+                    LogManager.Instance.LogMessage($"Killed client process '{processName}'", LogLevel.Info);
+                else
+                    LogManager.Instance.LogDebug($"AutoRecoveryManager.KillClientProcesses: Client process '{processName}' was not running");
+                return exePath;
+            }
+            finally
+            {
+                foreach (var p in processes) p.Dispose();
             }
         }
     }

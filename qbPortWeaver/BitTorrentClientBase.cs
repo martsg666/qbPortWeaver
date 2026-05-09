@@ -106,7 +106,7 @@ namespace qbPortWeaver
         }
 
         /// <inheritdoc/>
-        public abstract Task<(int? ListenPort, string? BoundInterfaceOrAddress)> GetPreferencesAsync(CancellationToken cancellationToken = default);
+        public abstract Task<(int? ListenPort, string? CurrentInterfaceName)> GetPreferencesAsync(CancellationToken cancellationToken = default);
 
         /// <inheritdoc/>
         public abstract Task<bool> SetListeningPortAsync(int port, CancellationToken cancellationToken = default);

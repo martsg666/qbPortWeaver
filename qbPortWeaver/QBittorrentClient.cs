@@ -35,7 +35,7 @@ namespace qbPortWeaver
         }
 
         /// <inheritdoc/>
-        public override async Task<(int? ListenPort, string? BoundInterfaceOrAddress)> GetPreferencesAsync(CancellationToken cancellationToken = default)
+        public override async Task<(int? ListenPort, string? CurrentInterfaceName)> GetPreferencesAsync(CancellationToken cancellationToken = default)
         {
             if (!await EnsureAuthenticatedAsync(cancellationToken).ConfigureAwait(false)) return (null, null);
 

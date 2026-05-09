@@ -280,6 +280,7 @@ NAT-PMP (RFC 6886) is a protocol for requesting port mappings directly from a ga
 - Use the **remote session** (connect via `http://localhost:9091` in qbPortWeaver Settings). Do not use Transmission's local session; when qbPortWeaver restarts the process, the RPC endpoint is the only reliable way to communicate across restarts.
 - If Transmission is installed as a **Windows service**, qbPortWeaver detects it automatically.
 - If running as a **user-space process** (e.g. Transmission Qt), set the Process name (e.g. `transmission-qt`) and the Executable path so qbPortWeaver can restart it after a port change.
+- **Enable your VPN client's killswitch** to prevent traffic leaks. Transmission only allows binding to an IP address (not an adapter name), and the IP assigned by the VPN typically rotates on reconnection - making bind-address rules brittle. The VPN killswitch blocks all traffic when the tunnel is down, regardless of what address Transmission is bound to. Both ProtonVPN and PIA expose this option in their desktop clients.
 
 #### Deluge
 
@@ -287,6 +288,7 @@ NAT-PMP (RFC 6886) is a protocol for requesting port mappings directly from a ga
 - Set the URL in qbPortWeaver Settings to match the Web UI address (default `http://127.0.0.1:8112`).
 - Set the Process name (e.g. `deluge`) and Executable path so qbPortWeaver can restart it after a port change.
 - Disable **UPnP** and **NAT-PMP** in Deluge preferences (Preferences > Network) since the port is managed externally.
+- **Enable your VPN client's killswitch** to prevent traffic leaks. Deluge only allows binding to an IP address (not an adapter name), and the IP assigned by the VPN typically rotates on reconnection - making bind-address rules brittle. The VPN killswitch blocks all traffic when the tunnel is down, regardless of what address Deluge is bound to. Both ProtonVPN and PIA expose this option in their desktop clients.
 
 ### 7. qbPortWeaver
 

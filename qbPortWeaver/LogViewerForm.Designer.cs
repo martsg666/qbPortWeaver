@@ -34,6 +34,7 @@ namespace qbPortWeaver
             chkInfo       = new System.Windows.Forms.CheckBox();
             chkDebug      = new System.Windows.Forms.CheckBox();
             cboSubsystem  = new System.Windows.Forms.ComboBox();
+            cboLogFile    = new System.Windows.Forms.ComboBox();
             btnIssuePrev   = new System.Windows.Forms.Button();
             btnIssueNext   = new System.Windows.Forms.Button();
             txtSearch      = new PlaceholderTextBox();
@@ -144,6 +145,14 @@ namespace qbPortWeaver
             // Wire event after setting SelectedIndex to avoid premature RebuildDisplay
             cboSubsystem.SelectedIndexChanged += cboSubsystem_SelectedIndexChanged;
 
+            // Log file picker - populated in OnLoad; event wired there after population to avoid premature load
+            cboLogFile.Anchor        = System.Windows.Forms.AnchorStyles.Left | System.Windows.Forms.AnchorStyles.Top;
+            cboLogFile.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
+            cboLogFile.Location      = new System.Drawing.Point(514, 6);
+            cboLogFile.Size          = new System.Drawing.Size(110, 23);
+            cboLogFile.TabIndex      = 7;
+            toolTip.SetToolTip(cboLogFile, "Select log file");
+
             // Search controls - anchored Right so they stay visible when the form is resized
             // Layout from right: [4] [btnNext:26] [btnPrev:26] [4] [lblMatchCount:64] [4] [txtSearch:220] [8]
             // btnClearSearch floats inside the right edge of txtSearch (z-order above it); positioned in OnLoad.
@@ -155,7 +164,7 @@ namespace qbPortWeaver
             txtSearch.Location        = new System.Drawing.Point(752, 8);
             txtSearch.PlaceholderText = "Search…";
             txtSearch.Width           = 220; // height is auto-sized by font; vertically centered in OnLoad
-            txtSearch.TabIndex        = 7;
+            txtSearch.TabIndex        = 8;
             txtSearch.TextChanged    += txtSearch_TextChanged;
             txtSearch.KeyDown        += txtSearch_KeyDown;
 
@@ -170,7 +179,7 @@ namespace qbPortWeaver
             btnClearSearch.Size                      = new System.Drawing.Size(16, 16);  // fine-tuned in OnLoad
             btnClearSearch.Text                      = "X";
             btnClearSearch.TextAlign                 = System.Drawing.ContentAlignment.MiddleCenter;
-            btnClearSearch.TabIndex                  = 8;
+            btnClearSearch.TabIndex                  = 9;
             btnClearSearch.TabStop                   = false;
             btnClearSearch.Visible                   = false;
             btnClearSearch.Click                    += btnClearSearch_Click;
@@ -180,7 +189,7 @@ namespace qbPortWeaver
             btnPrev.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
             btnPrev.Location  = new System.Drawing.Point(1044, 5);
             btnPrev.Size      = new System.Drawing.Size(26, 26);
-            btnPrev.TabIndex  = 9;
+            btnPrev.TabIndex  = 10;
             btnPrev.Text      = "▲";
             btnPrev.Click    += btnPrev_Click;
 
@@ -189,7 +198,7 @@ namespace qbPortWeaver
             btnNext.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
             btnNext.Location  = new System.Drawing.Point(1070, 5);
             btnNext.Size      = new System.Drawing.Size(26, 26);
-            btnNext.TabIndex  = 10;
+            btnNext.TabIndex  = 11;
             btnNext.Text      = "▼";
             btnNext.Click    += btnNext_Click;
 
@@ -205,7 +214,7 @@ namespace qbPortWeaver
             // otherwise the default panel width (~200px) produces a negative right-margin and
             // causes right-anchored controls to fly off-screen when the panel expands to form width.
             pnlToolbar.Controls.AddRange(new System.Windows.Forms.Control[] {
-                chkError, chkWarn, chkInfo, chkDebug, cboSubsystem, btnIssuePrev, btnIssueNext,
+                chkError, chkWarn, chkInfo, chkDebug, cboSubsystem, cboLogFile, btnIssuePrev, btnIssueNext,
                 txtSearch, btnClearSearch, btnPrev, btnNext, lblMatchCount });
             pnlToolbar.Dock     = System.Windows.Forms.DockStyle.Top;
             pnlToolbar.Size     = new System.Drawing.Size(1100, 36);
@@ -262,6 +271,7 @@ namespace qbPortWeaver
         private System.Windows.Forms.CheckBox          chkInfo;
         private System.Windows.Forms.CheckBox          chkDebug;
         private System.Windows.Forms.ComboBox          cboSubsystem;
+        private System.Windows.Forms.ComboBox          cboLogFile;
         private System.Windows.Forms.Button            btnIssuePrev;
         private System.Windows.Forms.Button            btnIssueNext;
         private PlaceholderTextBox                     txtSearch;

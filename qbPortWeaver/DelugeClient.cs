@@ -120,8 +120,8 @@ namespace qbPortWeaver
         /// <remarks>Deluge does not expose a connection status endpoint; always returns <see langword="null"/>.</remarks>
         public override Task<string?> GetConnectionStatusAsync(CancellationToken cancellationToken = default) => Task.FromResult<string?>(null);
 
-        // core.set_config debounces disk writes by ~5 s. Wait before the kill step so the
-        // new port survives the restart (without this, Deluge reads the old core.conf).
+        /// <inheritdoc/>
+        /// <remarks>Waits for Deluge's ~5 s config-flush debounce before the kill step so the new port survives the restart.</remarks>
         protected override Task PreRestartAsync(CancellationToken cancellationToken) =>
             Task.Delay(ConfigFlushWaitMs, cancellationToken);
 
@@ -148,7 +148,7 @@ namespace qbPortWeaver
 
                 if (root.TryGetProperty("error", out var error) && error.ValueKind != JsonValueKind.Null)
                 {
-                    LogManager.Instance.LogMessage($"{ClientName} authentication failed: {error} - check the URL in Settings ({Url})", LogLevel.Error);
+                    LogManager.Instance.LogMessage($"{ClientName} authentication failed: {error} - wrong password - check the credentials in Settings", LogLevel.Error);
                     return false;
                 }
 

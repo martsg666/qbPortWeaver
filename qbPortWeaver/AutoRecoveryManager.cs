@@ -62,6 +62,7 @@ namespace qbPortWeaver
             }
 
             await RestartClientProcessAsync(entry.GetClientProcessName(), entry.GetInstalledExePath, cancellationToken).ConfigureAwait(false);
+            LogManager.Instance.LogMessage($"Recovery completed for '{providerKeyword}'", LogLevel.Info);
         }
 
         /// <summary>
@@ -70,8 +71,20 @@ namespace qbPortWeaver
         /// </summary>
         internal static async Task TriggerCycleAdapterAsync(string adapterName, CancellationToken cancellationToken = default)
         {
+            if (string.IsNullOrWhiteSpace(adapterName))
+            {
+                LogManager.Instance.LogMessage("No adapter name available - skipping adapter cycle", LogLevel.Warn);
+                return;
+            }
+
+            LogManager.Instance.LogMessage($"Cycling adapter '{adapterName}'", LogLevel.Info);
             var cycleResult = await HelperServiceClient.SendCycleAdapterAsync(adapterName, cancellationToken).ConfigureAwait(false);
             cycleResult.RaiseLogAlerts();
+
+            if (!cycleResult.Completed)
+                LogManager.Instance.LogMessage($"Adapter cycle did not complete for '{adapterName}'", LogLevel.Warn);
+            else if (cycleResult.ErrorCount == 0)
+                LogManager.Instance.LogMessage($"Adapter cycle completed for '{adapterName}'", LogLevel.Info);
         }
 
         // Kills all instances of the named client process (capturing the exe path first),

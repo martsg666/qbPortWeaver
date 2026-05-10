@@ -21,7 +21,7 @@ namespace qbPortWeaver
     public sealed class LogManager
     {
         private const long MaxSize              = 5 * 1024 * 1024; // 5 MB
-        private const int  MaxLogFiles          = 3;   // Keep only 3 logfiles total (including current)
+        private const int  MaxLogFiles          = 5;   // Keep only 5 logfiles total (including current)
         private const int  RotationCheckInterval = 100; // Check rotation every N writes
 
         // Pre-padded level labels indexed by LogLevel enum value (Info=0, Warn=1, Error=2, Debug=3)

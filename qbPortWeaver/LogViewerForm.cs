@@ -7,8 +7,9 @@ namespace qbPortWeaver
     /// <summary>Modeless log viewer with live tail updates and log-level colour coding. Opened via the tray menu or tray icon double-click; only one instance is allowed at a time (enforced by MainForm.ShowOrActivate).</summary>
     public partial class LogViewerForm : Form
     {
-        private readonly string      _logFilePath;
-        private readonly bool        _navigateToLatestIssue;
+        private readonly string _logFilePath;
+        private          string _activeLogFilePath;
+        private          bool   _navigateToLatestIssue;
         private readonly object      _readLock  = new();
         private readonly List<string> _allLines = new(); // all raw lines from file; display is rebuilt from these on filter change
         private readonly List<int>   _searchMatches = new(); // character indices of current search hits in rtbLog
@@ -49,10 +50,14 @@ namespace qbPortWeaver
 
         public LogViewerForm() : this(string.Empty) { } // designer support only
 
+        /// <summary>Opens the log viewer for the specified log file.</summary>
+        /// <param name="logFilePath">Path to the log file to display.</param>
+        /// <param name="navigateToLatestIssue">When <see langword="true"/>, scrolls to the most recent WARN or ERROR entry on open.</param>
         public LogViewerForm(string logFilePath, bool navigateToLatestIssue = false)
         {
             InitializeComponent();
             _logFilePath           = logFilePath;
+            _activeLogFilePath     = logFilePath;
             _navigateToLatestIssue = navigateToLatestIssue;
         }
 
@@ -70,6 +75,7 @@ namespace qbPortWeaver
             int searchTop    = (pnlToolbar.Height - txtSearch.Height) / 2;
             txtSearch.Top    = searchTop;
             cboSubsystem.Top = (pnlToolbar.Height - cboSubsystem.Height) / 2;
+            cboLogFile.Top   = (pnlToolbar.Height - cboLogFile.Height)   / 2;
 
             // Size all nav buttons to match the search box height so arrows render consistently
             int navH = txtSearch.Height;
@@ -87,6 +93,9 @@ namespace qbPortWeaver
             btnClearSearch.Location = new Point(txtSearch.Right - cbSize - ClearButtonMargin, searchTop + ClearButtonMargin);
             // Must be in front of the native TextBox HWND or it will be hidden behind it
             btnClearSearch.BringToFront();
+            PopulateLogFileDropdown();
+            // Wire event after population to avoid triggering a load before the initial LoadInitialContentAsync below
+            cboLogFile.SelectedIndexChanged += cboLogFile_SelectedIndexChanged;
             _ = LoadInitialContentAsync(); // fire-and-forget; exceptions are handled inside LoadInitialContentAsync
         }
 
@@ -120,6 +129,9 @@ namespace qbPortWeaver
 
             cboSubsystem.BackColor = bg;
             cboSubsystem.ForeColor = fg;
+
+            cboLogFile.BackColor = bg;
+            cboLogFile.ForeColor = fg;
 
             txtSearch.BackColor = bg;
             txtSearch.ForeColor = fg;
@@ -447,7 +459,8 @@ namespace qbPortWeaver
         {
             try
             {
-                if (!File.Exists(_logFilePath))
+                string loadPath = _activeLogFilePath;
+                if (!File.Exists(loadPath))
                 {
                     SetMetaMessage("(No log entries yet)", MetaColor);
                     return;
@@ -462,7 +475,7 @@ namespace qbPortWeaver
                 {
                     lock (_readLock)
                     {
-                        using var fs     = new FileStream(_logFilePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+                        using var fs     = new FileStream(loadPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
                         using var reader = new StreamReader(fs, Encoding.UTF8);
                         string[] lines    = ParseLogLines(reader.ReadToEnd());
                         string[] filtered = lines.Where(l => IsLineVisibleWithFilters(l, filters, subsystemFilter)).ToArray();
@@ -475,7 +488,13 @@ namespace qbPortWeaver
                 _allLines.AddRange(allLines);
                 _lastReadPosition = position;
                 rtbLog.Rtf = rtf;
-                if (_navigateToLatestIssue) NavigateToLatestIssue(); else ScrollToBottom();
+                if (_navigateToLatestIssue) { NavigateToLatestIssue(); _navigateToLatestIssue = false; } else ScrollToBottom();
+                if (!string.IsNullOrEmpty(txtSearch.Text))
+                {
+                    SendMessage(rtbLog.Handle, WinMsg.WM_SETREDRAW, IntPtr.Zero, IntPtr.Zero);
+                    try   { RefreshSearch(navigateToFirst: true); ApplySearchHighlights(); }
+                    finally { SendMessage(rtbLog.Handle, WinMsg.WM_SETREDRAW, (IntPtr)1, IntPtr.Zero); rtbLog.Invalidate(); }
+                }
             }
             catch (Exception ex)
             {
@@ -488,14 +507,16 @@ namespace qbPortWeaver
             }
         }
 
-        // Starts a FileSystemWatcher to detect new log entries and file rotation/clearing
+        // Starts a FileSystemWatcher to detect new log entries and file rotation/clearing.
+        // Only watches the current (non-rotated) log file; backup files are immutable.
         private void StartWatcher()
         {
             if (IsDisposed) return;
+            if (_activeLogFilePath != _logFilePath) return;
             try
             {
-                string? dir  = Path.GetDirectoryName(_logFilePath);
-                string? file = Path.GetFileName(_logFilePath);
+                string? dir  = Path.GetDirectoryName(_activeLogFilePath);
+                string? file = Path.GetFileName(_activeLogFilePath);
                 if (string.IsNullOrEmpty(dir) || string.IsNullOrEmpty(file))
                     return;
 
@@ -527,10 +548,10 @@ namespace qbPortWeaver
                 string[] newLines;
                 lock (_readLock)
                 {
-                    if (!File.Exists(_logFilePath))
+                    if (!File.Exists(_activeLogFilePath))
                         return;
 
-                    using var fs = new FileStream(_logFilePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+                    using var fs = new FileStream(_activeLogFilePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
 
                     // File shorter than expected - it was rotated; read from the start
                     if (fs.Length < _lastReadPosition)
@@ -593,6 +614,46 @@ namespace qbPortWeaver
                 });
             }
             catch (ObjectDisposedException) { /* form disposed between IsDisposed check and Invoke - expected on close */ }
+        }
+
+        // Populates the log file dropdown with the current log and any existing rotated backups.
+        // Called once on load; event is wired afterward to prevent a premature file switch.
+        private void PopulateLogFileDropdown()
+        {
+            cboLogFile.Items.Clear();
+            cboLogFile.Items.Add(new LogFileEntry("Current", _logFilePath));
+            for (int i = 1; File.Exists($"{_logFilePath}.{i}"); i++)
+                cboLogFile.Items.Add(new LogFileEntry($"Backup {i}", $"{_logFilePath}.{i}"));
+            cboLogFile.SelectedIndex = 0;
+        }
+
+        private void cboLogFile_SelectedIndexChanged(object? sender, EventArgs e)
+        {
+            if (cboLogFile.SelectedItem is not LogFileEntry entry) return;
+            if (entry.FilePath == _activeLogFilePath) return;
+
+            if (_watcher is not null)
+            {
+                _watcher.EnableRaisingEvents = false;
+                _watcher.Dispose();
+                _watcher = null;
+            }
+
+            _activeLogFilePath = entry.FilePath;
+
+            lock (_readLock)
+            {
+                _allLines.Clear();
+                _lastReadPosition = 0;
+            }
+            rtbLog.Clear();
+
+            _ = LoadInitialContentAsync();
+        }
+
+        private readonly record struct LogFileEntry(string DisplayName, string FilePath)
+        {
+            public override string ToString() => DisplayName;
         }
 
         // Appends new lines to the in-memory store and inserts visible lines into the display

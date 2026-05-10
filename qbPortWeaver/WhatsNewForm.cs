@@ -20,6 +20,11 @@ namespace qbPortWeaver
             "Two new buttons in the log viewer let you step directly between warnings and errors " +
             "without affecting your current search. Use Prev Issue / Next Issue to jump through " +
             "problems one at a time.\n\n" +
+            "Log viewer - previous log files\n" +
+            "A new dropdown in the log viewer lets you browse rotated backup files without leaving the viewer. " +
+            "Select Current for the live log or Backup 1-4 for older rotated files.\n\n" +
+            "More log history\n" +
+            "The number of retained log files has been increased from 3 to 5 (current + 4 backups at 5 MB each).\n\n" +
             "Previously released\n\n" +
             "New in 2.5.2\n\n" +
             "qBittorrent 5.2.0 compatibility\n" +

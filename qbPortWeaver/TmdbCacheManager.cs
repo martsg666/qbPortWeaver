@@ -17,9 +17,11 @@ namespace qbPortWeaver
         private static readonly JsonSerializerOptions _jsonWriteOptions = new() { WriteIndented = true };
 
         // ConcurrentDictionary: sync cycle and UI scan can overlap.
-        private static readonly ConcurrentDictionary<string, (TvShowInfo? Info, bool IsConfident)>
+        // CachedAt is stored in the tuple so SaveToDisk can preserve the original timestamp; without it
+        // every save would reset the TTL to now, allowing entries to persist indefinitely.
+        private static readonly ConcurrentDictionary<string, (TvShowInfo? Info, bool IsConfident, DateTime CachedAt)>
             _tvShowCache  = new(StringComparer.OrdinalIgnoreCase);
-        private static readonly ConcurrentDictionary<string, (MovieInfo? Info, bool IsConfident)>
+        private static readonly ConcurrentDictionary<string, (MovieInfo? Info, bool IsConfident, DateTime CachedAt)>
             _movieCache = new(StringComparer.OrdinalIgnoreCase);
 
         // In-flight dedup: if two source folders race on the same title, the second awaits
@@ -63,17 +65,17 @@ namespace qbPortWeaver
         private static async Task<(T? Info, bool IsConfident)> GetOrComputeAsync<T>(
             string cacheKey,
             Func<Task<(T? Info, bool IsConfident)>> compute,
-            ConcurrentDictionary<string, (T? Info, bool IsConfident)> cache,
+            ConcurrentDictionary<string, (T? Info, bool IsConfident, DateTime CachedAt)> cache,
             ConcurrentDictionary<string, Lazy<Task<(T? Info, bool IsConfident)>>> inFlight,
             Action markDirty) where T : class
         {
-            if (cache.TryGetValue(cacheKey, out var cached)) return cached;
+            if (cache.TryGetValue(cacheKey, out var cached)) return (cached.Info, cached.IsConfident);
             // The first caller's CT is captured inside the compute closure; subsequent waiters share that task.
             var lazy = inFlight.GetOrAdd(cacheKey, _ => new Lazy<Task<(T? Info, bool IsConfident)>>(compute));
             try
             {
                 var result = await lazy.Value.ConfigureAwait(false);
-                if (cache.TryAdd(cacheKey, result) && result.Info is not null)
+                if (cache.TryAdd(cacheKey, (result.Info, result.IsConfident, DateTime.UtcNow)) && result.Info is not null)
                     markDirty();
                 return result;
             }
@@ -142,7 +144,7 @@ namespace qbPortWeaver
             LogManager.Instance.LogMessage("TMDB caches cleared", LogLevel.Info, Subsystem.MediaManager);
         }
 
-        private static void EvictNullsFromCache<T>(ConcurrentDictionary<string, (T? Info, bool IsConfident)> cache) where T : class
+        private static void EvictNullsFromCache<T>(ConcurrentDictionary<string, (T? Info, bool IsConfident, DateTime CachedAt)> cache) where T : class
         {
             foreach (var key in cache.Keys.ToList())
                 if (cache.TryGetValue(key, out var entry) && entry.Info is null)
@@ -150,7 +152,7 @@ namespace qbPortWeaver
         }
 
         private static void LoadFromDisk<T>(
-            ConcurrentDictionary<string, (T? Info, bool IsConfident)> cache, string fileName, string label) where T : class
+            ConcurrentDictionary<string, (T? Info, bool IsConfident, DateTime CachedAt)> cache, string fileName, string label) where T : class
         {
             var filePath = AppConstants.GetDataFilePath(fileName);
             if (!File.Exists(filePath)) return;
@@ -168,7 +170,7 @@ namespace qbPortWeaver
                 foreach (var (key, entry) in entries)
                 {
                     if (entry.CachedAt < cutoff || entry.Info is null) { expired++; continue; }
-                    cache.TryAdd(key, (entry.Info, entry.IsConfident));
+                    cache.TryAdd(key, (entry.Info, entry.IsConfident, entry.CachedAt));
                     loaded++;
                 }
 
@@ -185,16 +187,15 @@ namespace qbPortWeaver
         }
 
         private static int SaveToDisk<T>(
-            ConcurrentDictionary<string, (T? Info, bool IsConfident)> cache, string fileName, string label) where T : class
+            ConcurrentDictionary<string, (T? Info, bool IsConfident, DateTime CachedAt)> cache, string fileName, string label) where T : class
         {
             try
             {
-                var now    = DateTime.UtcNow;
                 var toSave = cache
                     .Where(kv => kv.Value.Info is not null)
                     .ToDictionary(
                         kv => kv.Key,
-                        kv => new TmdbEntry<T>(kv.Value.Info, kv.Value.IsConfident, now),
+                        kv => new TmdbEntry<T>(kv.Value.Info, kv.Value.IsConfident, kv.Value.CachedAt),
                         StringComparer.OrdinalIgnoreCase);
 
                 var json = JsonSerializer.Serialize(toSave, _jsonWriteOptions);

@@ -258,7 +258,7 @@ internal static partial class AutoRecovery
 
                     if (process.WaitForExit(ProcessKillTimeoutMs))
                     {
-                        logger.LogWarn($"Service '{sc.ServiceName}' process force-killed via Process.Kill (PID {pid})");
+                        logger.LogInfo($"Service '{sc.ServiceName}' process force-killed via Process.Kill (PID {pid})");
                         return;
                     }
 
@@ -276,7 +276,7 @@ internal static partial class AutoRecovery
                     }
                     if (process.WaitForExit(ProcessKillTimeoutMs))
                     {
-                        logger.LogWarn($"Service '{sc.ServiceName}' process force-killed via taskkill (PID {pid})");
+                        logger.LogInfo($"Service '{sc.ServiceName}' process force-killed via taskkill (PID {pid})");
                         return;
                     }
 
@@ -294,7 +294,7 @@ internal static partial class AutoRecovery
                     }
 
                     if (process.WaitForExit(ProcessKillTimeoutMs))
-                        logger.LogWarn($"Service '{sc.ServiceName}' process force-killed via Process.Kill retry (PID {pid})");
+                        logger.LogInfo($"Service '{sc.ServiceName}' process force-killed via Process.Kill retry (PID {pid})");
                     else
                         logger.LogWarn($"Service '{sc.ServiceName}' process (PID {pid}) still running after all kill attempts");
                 }

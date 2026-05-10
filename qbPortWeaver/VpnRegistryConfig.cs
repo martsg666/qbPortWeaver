@@ -32,7 +32,9 @@ namespace qbPortWeaver
         internal string GetClientProcessName() => RegistrySettingsManager.GetAppValue(_clientProcessNameKey);
         internal string GetAdapterName()       => RegistrySettingsManager.GetAppValue(_adapterNameKey);
 
+        // Live SCM enumeration; call site caches the result where repeated lookups matter.
         internal string? FindServiceName()  => AppConstants.FindServiceName(GetServiceSearchTerm());
+        // Resolved once from the service's ImagePath registry entry; cached via _clientExePathCache sentinel.
         internal string? GetClientExePath() => AppConstants.FindExeInServiceDirectory(
             ref _clientExePathCache, GetClientProcessName() + ".exe", FindServiceName, _logPrefix);
     }

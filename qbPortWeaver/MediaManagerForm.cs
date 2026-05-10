@@ -18,6 +18,9 @@ namespace qbPortWeaver
         private bool _allIncluded = true;
         private bool _isBusy;
         private bool _showOnlyReviewNeeded;
+        // Controls disabled while an async operation is running. btnImportNow is excluded - each
+        // handler manages it separately to preserve its proposals-count state.
+        private Control[] _busyControls;
 
         // Row confidence colors - set once in OnLoad based on active theme
         private bool  _isDarkMode;
@@ -29,6 +32,16 @@ namespace qbPortWeaver
             InitializeComponent();
             Text = $"{AppConstants.AppName} | Media Manager";
             rtbTmdbOverview.Enter += (s, e) => dgvResults.Focus();
+            _busyControls =
+            [
+                btnScanNow, btnRematch, btnClearCache,
+                btnAddSourceFolder, btnRemoveSourceFolder,
+                txtMoviesLibraryPath, txtTvShowsLibraryPath,
+                btnBrowseMoviesLibrary, btnBrowseTvShowsLibrary,
+                chkCreateFolders, cboImportMode, chkDryRun,
+                chkDeleteEmptyFolders, chkShowOnlyReview,
+                dgvResults,
+            ];
         }
 
         protected override void OnLoad(EventArgs e)
@@ -917,26 +930,11 @@ namespace qbPortWeaver
 
         private string GetProposedName(DataGridViewRow row) => row.Cells[colProposed.Index].Value?.ToString() ?? string.Empty;
 
-        // Disables input controls while an async operation is running.
-        // btnImportNow is managed separately by each handler to preserve its proposals-count state.
         private void SetBusy(bool busy)
         {
-            _isBusy                         = busy;
-            btnScanNow.Enabled              = !busy;
-            btnRematch.Enabled              = !busy;
-            btnClearCache.Enabled           = !busy;
-            btnAddSourceFolder.Enabled      = !busy;
-            btnRemoveSourceFolder.Enabled   = !busy;
-            txtMoviesLibraryPath.Enabled    = !busy;
-            txtTvShowsLibraryPath.Enabled   = !busy;
-            btnBrowseMoviesLibrary.Enabled  = !busy;
-            btnBrowseTvShowsLibrary.Enabled = !busy;
-            chkCreateFolders.Enabled        = !busy;
-            cboImportMode.Enabled           = !busy;
-            chkDryRun.Enabled               = !busy;
-            chkDeleteEmptyFolders.Enabled   = !busy;
-            chkShowOnlyReview.Enabled       = !busy;
-            dgvResults.Enabled              = !busy;
+            _isBusy = busy;
+            foreach (var control in _busyControls)
+                control.Enabled = !busy;
         }
 
         // Updates the status label and Import Now button based on checked rows

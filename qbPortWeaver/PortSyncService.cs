@@ -3,7 +3,17 @@ using System.Diagnostics;
 namespace qbPortWeaver
 {
     /// <summary>Outcome of a port sync cycle, used to drive the tray icon color and tooltip.</summary>
-    public enum SyncState { Synced, VpnDisconnected, Disabled, Error }
+    public enum SyncState
+    {
+        /// <summary>Port was successfully detected and applied to the BitTorrent client.</summary>
+        Synced,
+        /// <summary>VPN is not connected; no port is available to sync.</summary>
+        VpnDisconnected,
+        /// <summary>Sync is paused because the BitTorrent client or VPN provider is not configured.</summary>
+        Disabled,
+        /// <summary>An error occurred during the sync cycle (e.g. client unreachable, port update failed).</summary>
+        Error,
+    }
 
     /// <summary>Snapshot of the tray icon state after a sync cycle, raised via <see cref="PortSyncService.SyncCompleted"/>.</summary>
     public sealed record TrayStatus(SyncState State, int? Port, string Message);

@@ -112,7 +112,7 @@ internal sealed class HelperPipeServer(ILogger<HelperPipeServer> logger) : Backg
         var parts = message.Split('|', 3);
         if (parts.Length != 3)
         {
-            logger.LogWarning($"Received malformed pipe message ({parts.Length} part(s), expected 3): '{message}'");
+            logger.LogWarning("Received malformed pipe message ({PartCount} part(s), expected 3): '{Message}'", parts.Length, message);
             return;
         }
 

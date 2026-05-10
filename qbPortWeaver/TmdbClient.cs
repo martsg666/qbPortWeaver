@@ -20,9 +20,6 @@ namespace qbPortWeaver
         // Serialises concurrent requests to enforce the rate limit
         private static readonly SemaphoreSlim _rateLimiter = new(1, 1);
 
-        // v4 Read Access Tokens are JWTs (header.payload.signature - exactly two dots, starts with "eyJ");
-        // v3 API keys are 32-char hex strings. Both work on v3 endpoints but use different auth:
-        // v3 passes the key as a query param, v4 sends it as an Authorization: Bearer header.
         private readonly bool _useBearer = apiKey.StartsWith("eyJ", StringComparison.Ordinal)
                                            && apiKey.IndexOf('.') != apiKey.LastIndexOf('.');
 

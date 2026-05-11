@@ -205,6 +205,7 @@ namespace qbPortWeaver
 
             if (!vpnManager.IsVpnConnected())
             {
+                // Mutually exclusive with the HandlePortDetectionFailureAsync increment in the else branch below.
                 _consecutiveFailedCycles++;
                 int count = _consecutiveFailedCycles;
                 string disconnectedMsg = $"{vpnManager.ProviderName} is not connected";

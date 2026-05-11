@@ -86,14 +86,15 @@ namespace qbPortWeaver
         /// </summary>
         internal static async Task<(T? Info, bool IsConfident)> SearchWithConfidenceAsync<T>(
             string title, int? year,
-            Func<string, int?, Task<IReadOnlyList<T>?>> search,
+            Func<string, int?, CancellationToken, Task<IReadOnlyList<T>?>> search,
             Func<T, bool> hasYear,
             Func<T, string> getTitle,
-            Func<T, int> getVoteCount) where T : class
+            Func<T, int> getVoteCount,
+            CancellationToken cancellationToken = default) where T : class
         {
             bool isConfident = true;
 
-            var candidates = await search(title, year).ConfigureAwait(false);
+            var candidates = await search(title, year, cancellationToken).ConfigureAwait(false);
 
             // Prefer an exact normalized title match over TMDB's top-ranked result.
             // Among exact matches, prefer one that also has a year (tiebreaker) but do not
@@ -123,13 +124,13 @@ namespace qbPortWeaver
             // Retry without year: parsed year may not match TMDB's release/first-air year
             if (info is null && year.HasValue)
             {
-                candidates = await search(title, null).ConfigureAwait(false);
+                candidates = await search(title, null, cancellationToken).ConfigureAwait(false);
                 info       = candidates?[0];
                 if (info is not null) isConfident = false;
             }
 
             (info, isConfident) = await TryFallbackLookupsAsync(
-                title, year, info, isConfident, search, hasYear).ConfigureAwait(false);
+                title, year, info, isConfident, search, hasYear, cancellationToken).ConfigureAwait(false);
 
             return (info, isConfident);
         }
@@ -140,7 +141,7 @@ namespace qbPortWeaver
         /// </summary>
         internal static async Task<(T? Info, bool IsConfident)> LookupAsync<T>(
             (string Title, int? Year) query,
-            Func<string, int?, Task<IReadOnlyList<T>?>> search,
+            Func<string, int?, CancellationToken, Task<IReadOnlyList<T>?>> search,
             Func<T, bool> hasYear,
             Func<T, string> getTitle,
             Func<T, int> getVoteCount,
@@ -150,7 +151,7 @@ namespace qbPortWeaver
             try
             {
                 var (info, isConfident) = await SearchWithConfidenceAsync(
-                    query.Title, query.Year, search, hasYear, getTitle, getVoteCount).ConfigureAwait(false);
+                    query.Title, query.Year, search, hasYear, getTitle, getVoteCount, cancellationToken).ConfigureAwait(false);
 
                 if (info is null)
                 {
@@ -221,14 +222,15 @@ namespace qbPortWeaver
         // (a year-less result is ambiguous; a stripped-title result that includes a year is higher quality).
         private static async Task<(T? Info, bool IsConfident)> TryFallbackLookupsAsync<T>(
             string title, int? year, T? info, bool isConfident,
-            Func<string, int?, Task<IReadOnlyList<T>?>> search,
-            Func<T, bool> hasYear) where T : class
+            Func<string, int?, CancellationToken, Task<IReadOnlyList<T>?>> search,
+            Func<T, bool> hasYear,
+            CancellationToken cancellationToken = default) where T : class
         {
             var afterDash = info is null ? ExtractAfterDash(title) : null;
             if (afterDash is not null)
             {
                 LogManager.Instance.LogDebug($"TmdbClient.TryFallbackLookupsAsync: Retrying with after-dash title '{afterDash}'", Subsystem.MediaManager);
-                var afterDashInfo = (await search(afterDash, year).ConfigureAwait(false))?[0];
+                var afterDashInfo = (await search(afterDash, year, cancellationToken).ConfigureAwait(false))?[0];
                 if (afterDashInfo is not null)
                 {
                     info        = afterDashInfo;
@@ -242,7 +244,7 @@ namespace qbPortWeaver
                 if (withoutNum is not null)
                 {
                     LogManager.Instance.LogDebug($"TmdbClient.TryFallbackLookupsAsync: Retrying without trailing number '{withoutNum}'", Subsystem.MediaManager);
-                    var withoutNumInfo = (await search(withoutNum, year).ConfigureAwait(false))?[0];
+                    var withoutNumInfo = (await search(withoutNum, year, cancellationToken).ConfigureAwait(false))?[0];
                     if (withoutNumInfo is not null && hasYear(withoutNumInfo))
                     {
                         info        = withoutNumInfo;

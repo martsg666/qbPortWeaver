@@ -116,7 +116,7 @@ namespace qbPortWeaver
             return TmdbCacheManager.GetOrComputeTvShowAsync(cacheKey, async () =>
             {
                 var result = await TmdbClient.LookupAsync((title, year),
-                    (q, y) => tmdb.SearchTvShowCandidatesAsync(q, y, cancellationToken),
+                    tmdb.SearchTvShowCandidatesAsync,
                     i => i.Year is not null, i => i.Title, i => i.VoteCount, "TV show", cancellationToken).ConfigureAwait(false);
                 if (result.Info is not null)
                     LogManager.Instance.LogDebug($"TvShowProcessor.GetOrLookupTvShowAsync: Matched '{result.Info.Title}' ({result.Info.Year}) [tmdb-{result.Info.TmdbId}]", Subsystem.MediaManager);

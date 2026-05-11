@@ -255,7 +255,7 @@ namespace qbPortWeaver
                 cancellationToken.ThrowIfCancellationRequested();
                 var (showInfo, showConfident) = string.IsNullOrWhiteSpace(tvShowLib)
                     ? (null, false)
-                    : await SearchTmdbByPlexNameAsync<TvShowInfo>(showKey, (q, y) => tmdb.SearchTvShowCandidatesAsync(q, y, cancellationToken), i => i.Title, i => i.Year, i => i.VoteCount, "TV show");
+                    : await SearchTmdbByPlexNameAsync<TvShowInfo>(showKey, tmdb.SearchTvShowCandidatesAsync, i => i.Title, i => i.Year, i => i.VoteCount, "TV show", cancellationToken);
                 foreach (var row in showRows)
                 {
                     if (IsDisposed) return done;
@@ -279,7 +279,7 @@ namespace qbPortWeaver
                 if (!string.IsNullOrWhiteSpace(moviesLib))
                 {
                     var editedName = GetProposedName(row);
-                    var (movieInfo, movieConfident) = await SearchTmdbByPlexNameAsync<MovieInfo>(editedName, (q, y) => tmdb.SearchMovieCandidatesAsync(q, y, cancellationToken), i => i.Title, i => i.Year, i => i.VoteCount, "movie");
+                    var (movieInfo, movieConfident) = await SearchTmdbByPlexNameAsync<MovieInfo>(editedName, tmdb.SearchMovieCandidatesAsync, i => i.Title, i => i.Year, i => i.VoteCount, "movie", cancellationToken);
                     if (movieInfo is not null)
                         ApplyMovieRematchResult(row, movieInfo, moviesLib, createFolders, editedName, movieConfident);
                 }
@@ -313,9 +313,9 @@ namespace qbPortWeaver
         // Parses a Plex-formatted name into title+year and searches TMDB with confidence tracking.
         // Returns (null, false) if the name is blank, unparseable, or has no TMDB match.
         private static async Task<(T? Info, bool IsConfident)> SearchTmdbByPlexNameAsync<T>(
-            string name, Func<string, int?, Task<IReadOnlyList<T>?>> search,
+            string name, Func<string, int?, CancellationToken, Task<IReadOnlyList<T>?>> search,
             Func<T, string> getTitle, Func<T, int?> getYear, Func<T, int> getVoteCount,
-            string mediaLabel) where T : class
+            string mediaLabel, CancellationToken cancellationToken = default) where T : class
         {
             if (string.IsNullOrWhiteSpace(name)) return (null, false);
             var (title, year) = FileNameParser.ParseTitleYear(name);
@@ -323,7 +323,7 @@ namespace qbPortWeaver
             try
             {
                 var (info, isConfident) = await TmdbClient.SearchWithConfidenceAsync(
-                    title, year, search, i => getYear(i) is not null, getTitle, getVoteCount).ConfigureAwait(false);
+                    title, year, search, i => getYear(i) is not null, getTitle, getVoteCount, cancellationToken).ConfigureAwait(false);
 
                 if (info is null)
                 {

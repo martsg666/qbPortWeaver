@@ -3,6 +3,7 @@ namespace qbPortWeaver
     /// <summary>Settings dialog for configuring VPN provider, BitTorrent client connection, sync interval, and extra options.</summary>
     public partial class SettingsForm : Form
     {
+        // Set to true when the user clicks Save; MainForm reads this after the dialog closes to decide whether to trigger an immediate sync.
         internal bool SettingsSaved { get; private set; }
 
         private const string DiscoveringAdaptersPlaceholder = "Discovering adapters\u2026";

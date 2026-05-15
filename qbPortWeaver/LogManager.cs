@@ -21,7 +21,7 @@ namespace qbPortWeaver
     public sealed class LogManager
     {
         private const long MaxSize              = 5 * 1024 * 1024; // 5 MB
-        private const int  MaxLogFiles          = 3;   // Keep only 3 logfiles total (including current)
+        private const int  MaxLogFiles          = 5;   // Keep only 5 logfiles total (including current)
         private const int  RotationCheckInterval = 100; // Check rotation every N writes
 
         // Pre-padded level labels indexed by LogLevel enum value (Info=0, Warn=1, Error=2, Debug=3)
@@ -99,7 +99,7 @@ namespace qbPortWeaver
             }
 
             if (shouldNotify)
-                WarnOrErrorLogged?.Invoke(level);
+                RaiseWarnOrErrorLogged(level);
         }
 
         /// <summary>
@@ -110,7 +110,23 @@ namespace qbPortWeaver
         public void NotifyExternalWarnOrError(LogLevel level)
         {
             if (level is LogLevel.Warn or LogLevel.Error)
+                RaiseWarnOrErrorLogged(level);
+        }
+
+        // Invokes WarnOrErrorLogged subscribers under a try/catch so a throwing subscriber cannot
+        // propagate back into the caller of LogMessage (which may be in the middle of unrelated
+        // sync logic) and disrupt it. Logging the failure via Debug.WriteLine avoids recursing
+        // back through LogMessage.
+        private void RaiseWarnOrErrorLogged(LogLevel level)
+        {
+            try
+            {
                 WarnOrErrorLogged?.Invoke(level);
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"LogManager.RaiseWarnOrErrorLogged: subscriber threw {ex.GetType().Name}: {ex.Message}");
+            }
         }
 
         /// <summary>Writes a blank line to the log file. Thread-safe.</summary>

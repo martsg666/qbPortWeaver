@@ -78,6 +78,10 @@ namespace qbPortWeaver
             // Ensure all registry keys exist, writing defaults for any missing ones
             RegistrySettingsManager.EnsureDefaults();
 
+            // Refresh the Windows startup Run-key entry if the install was moved or upgraded
+            // (covers Chocolatey upgrades and manual moves that would otherwise silently break autostart)
+            StartupManager.RefreshStartupPathIfMoved();
+
             _portSyncService = new PortSyncService();
             _portSyncService.SyncCompleted += OnSyncCompleted;
             _portSyncService.InterfaceMismatchDetected += OnInterfaceMismatchDetected;
@@ -184,9 +188,6 @@ namespace qbPortWeaver
             // Stop the update check timer before closing child forms to prevent it firing during teardown
             _updateCheckTimer?.Stop();
             _updateCheckTimer?.Dispose();
-
-            _delayCts.Dispose();
-            _updateSemaphore.Dispose();
 
             // Hide tray icon immediately to avoid ghost icon
             _trayIcon.Visible = false;

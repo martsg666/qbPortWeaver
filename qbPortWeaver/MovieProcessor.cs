@@ -17,7 +17,7 @@ namespace qbPortWeaver
         /// Scans pre-classified movie files and returns import proposals without modifying any files.
         /// Only items not yet present in the library are included.
         /// </summary>
-        public async Task<List<MediaProposal>> ScanMoviesAsync(string[] movieFiles, Action? onItemProcessed = null, CancellationToken ct = default)
+        public async Task<List<MediaProposal>> ScanMoviesAsync(string[] movieFiles, Action? onItemProcessed = null, CancellationToken cancellationToken = default)
         {
             var proposals = new List<MediaProposal>();
 
@@ -25,13 +25,13 @@ namespace qbPortWeaver
 
             foreach (var (file, title, year) in selfDescribing)
             {
-                await ScanMovieFileAsync(file, title, year, proposals, ct).ConfigureAwait(false);
+                await ScanMovieFileAsync(file, title, year, proposals, cancellationToken).ConfigureAwait(false);
                 onItemProcessed?.Invoke();
             }
 
             foreach (var group in folderDependent.GroupBy(f => Path.GetDirectoryName(f)!, StringComparer.OrdinalIgnoreCase))
             {
-                await ScanFolderDependentFilesAsync(group.Key, group.ToList(), proposals, ct).ConfigureAwait(false);
+                await ScanFolderDependentFilesAsync(group.Key, group.ToList(), proposals, cancellationToken).ConfigureAwait(false);
                 foreach (var _ in group) onItemProcessed?.Invoke();
             }
 
@@ -39,15 +39,15 @@ namespace qbPortWeaver
         }
 
         /// <summary>Processes pre-classified movie files, importing them into the library with Plex naming conventions. Skips uncertain TMDB matches - use <see cref="ScanMoviesAsync"/> to preview and review those first.</summary>
-        public async Task ProcessMoviesAsync(string sourceFolder, string[] movieFiles, CancellationToken ct = default)
+        public async Task ProcessMoviesAsync(string sourceFolder, string[] movieFiles, CancellationToken cancellationToken = default)
         {
             var (selfDescribing, folderDependent) = ClassifyVideoFiles(movieFiles);
 
             foreach (var (file, title, year) in selfDescribing)
-                await ProcessMovieFileAsync(sourceFolder, file, title, year, ct).ConfigureAwait(false);
+                await ProcessMovieFileAsync(sourceFolder, file, title, year, cancellationToken).ConfigureAwait(false);
 
             foreach (var group in folderDependent.GroupBy(f => Path.GetDirectoryName(f)!, StringComparer.OrdinalIgnoreCase))
-                await ProcessFolderDependentFilesAsync(sourceFolder, group.Key, group.ToList(), ct).ConfigureAwait(false);
+                await ProcessFolderDependentFilesAsync(sourceFolder, group.Key, group.ToList(), cancellationToken).ConfigureAwait(false);
         }
 
         // Splits video files into self-describing (filename has a parseable movie title) and folder-dependent
@@ -75,7 +75,7 @@ namespace qbPortWeaver
 
         // Shared opening logic for folder-dependent scan and process methods: validates the file list,
         // parses the folder name, and performs the TMDB lookup. Returns null if the folder should be skipped.
-        private async Task<(MovieInfo? Info, bool IsConfident)?> ResolveFolderMovieAsync(string dirPath, List<string> folderDependent, CancellationToken ct)
+        private async Task<(MovieInfo? Info, bool IsConfident)?> ResolveFolderMovieAsync(string dirPath, List<string> folderDependent, CancellationToken cancellationToken)
         {
             if (folderDependent.Count == 0) return null;
 
@@ -88,13 +88,13 @@ namespace qbPortWeaver
                 return null;
             }
 
-            return await GetOrLookupMovieAsync(title, year, ct).ConfigureAwait(false);
+            return await GetOrLookupMovieAsync(title, year, cancellationToken).ConfigureAwait(false);
         }
 
         // Scans a single self-describing movie file and adds proposals for unmatched or new items
-        private async Task ScanMovieFileAsync(string filePath, string title, int? year, List<MediaProposal> proposals, CancellationToken ct)
+        private async Task ScanMovieFileAsync(string filePath, string title, int? year, List<MediaProposal> proposals, CancellationToken cancellationToken)
         {
-            var (info, isConfident) = await GetOrLookupMovieAsync(title, year, ct).ConfigureAwait(false);
+            var (info, isConfident) = await GetOrLookupMovieAsync(title, year, cancellationToken).ConfigureAwait(false);
             if (info is null)
             {
                 proposals.Add(new MediaProposal(MediaProposal.TypeMovie, filePath, string.Empty, IsConfident: false, IsMatched: false));
@@ -110,9 +110,9 @@ namespace qbPortWeaver
         }
 
         // Scans folder-dependent files (no parseable title) using the parent folder name for TMDB lookup
-        private async Task ScanFolderDependentFilesAsync(string dirPath, List<string> folderDependent, List<MediaProposal> proposals, CancellationToken ct)
+        private async Task ScanFolderDependentFilesAsync(string dirPath, List<string> folderDependent, List<MediaProposal> proposals, CancellationToken cancellationToken)
         {
-            var resolved = await ResolveFolderMovieAsync(dirPath, folderDependent, ct).ConfigureAwait(false);
+            var resolved = await ResolveFolderMovieAsync(dirPath, folderDependent, cancellationToken).ConfigureAwait(false);
             if (resolved is null) return;
 
             var (info, isConfident) = resolved.Value;
@@ -135,9 +135,9 @@ namespace qbPortWeaver
         }
 
         // Imports a single self-describing movie file into the library
-        private async Task ProcessMovieFileAsync(string sourceFolder, string filePath, string title, int? year, CancellationToken ct)
+        private async Task ProcessMovieFileAsync(string sourceFolder, string filePath, string title, int? year, CancellationToken cancellationToken)
         {
-            var (info, isConfident) = await GetOrLookupMovieAsync(title, year, ct).ConfigureAwait(false);
+            var (info, isConfident) = await GetOrLookupMovieAsync(title, year, cancellationToken).ConfigureAwait(false);
             if (info is null) return;
             if (!isConfident)
             {
@@ -153,9 +153,9 @@ namespace qbPortWeaver
         }
 
         // Processes folder-dependent files using the parent folder name for TMDB lookup
-        private async Task ProcessFolderDependentFilesAsync(string sourceFolder, string dirPath, List<string> folderDependent, CancellationToken ct)
+        private async Task ProcessFolderDependentFilesAsync(string sourceFolder, string dirPath, List<string> folderDependent, CancellationToken cancellationToken)
         {
-            var resolved = await ResolveFolderMovieAsync(dirPath, folderDependent, ct).ConfigureAwait(false);
+            var resolved = await ResolveFolderMovieAsync(dirPath, folderDependent, cancellationToken).ConfigureAwait(false);
             if (resolved is null) return;
 
             var (info, isConfident) = resolved.Value;
@@ -245,28 +245,29 @@ namespace qbPortWeaver
 
         // Returns a cached movie lookup or performs a new TMDB search, deduplicating concurrent lookups
         // for the same title so parallel source-folder scans share one TMDB API call.
-        private Task<(MovieInfo? Info, bool IsConfident)> GetOrLookupMovieAsync(string title, int? year, CancellationToken ct = default)
+        private Task<(MovieInfo? Info, bool IsConfident)> GetOrLookupMovieAsync(string title, int? year, CancellationToken cancellationToken = default)
         {
             var cacheKey = $"{title}|{year}";
             return TmdbCacheManager.GetOrComputeMovieAsync(cacheKey, async () =>
             {
                 var result = await TmdbClient.LookupAsync((title, year),
-                    (q, y) => tmdb.SearchMovieCandidatesAsync(q, y, ct),
-                    i => i.Year is not null, i => i.Title, i => i.VoteCount, "movie", ct).ConfigureAwait(false);
+                    tmdb.SearchMovieCandidatesAsync,
+                    i => i.Year is not null, i => i.Title, i => i.VoteCount, "movie", cancellationToken).ConfigureAwait(false);
                 if (result.Info is not null)
                     LogManager.Instance.LogDebug($"MovieProcessor.GetOrLookupMovieAsync: Matched '{result.Info.Title}' ({result.Info.Year}) [tmdb-{result.Info.TmdbId}]", Subsystem.MediaManager);
                 return result;
             });
         }
 
+        private static readonly string[] _multiPartPatterns = ["cd", "disc", "disk", "dvd", "part", "pt"];
+
         // Detects multi-part suffixes such as "cd1", "pt2", "disc3" and returns the normalised token.
         // Requires a word boundary before the pattern to avoid matching mid-word (e.g. "Arcade2").
         private static string? ExtractPartSuffix(string fileName)
         {
-            var name     = Path.GetFileNameWithoutExtension(fileName);
-            string[] patterns = ["cd", "disc", "disk", "dvd", "part", "pt"];
+            var name = Path.GetFileNameWithoutExtension(fileName);
 
-            foreach (var pattern in patterns)
+            foreach (var pattern in _multiPartPatterns)
             {
                 var idx = name.LastIndexOf(pattern, StringComparison.OrdinalIgnoreCase);
                 if (idx < 0) continue;

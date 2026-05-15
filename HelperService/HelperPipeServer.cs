@@ -17,6 +17,18 @@ namespace qbPortWeaver.HelperService;
 /// so that only the user running the tray app can send commands to this SYSTEM-level service.
 /// The log file path is derived from the caller's HKCU Volatile Environment during impersonation
 /// rather than being caller-supplied, so no path validation is needed.
+///
+/// Trust boundary: the helper trusts any caller that (a) has access to the named pipe ACL
+/// (AuthenticatedUserSid) and (b) can read the pipeSessionToken value from their own HKCU hive.
+/// In practice this is the user the tray app runs under, plus any local administrator (who can
+/// read any user's HKCU). Once trusted, the caller can name any Windows service for restart and
+/// any adapter name for cycle. The helper does not allowlist service names because the service
+/// search terms themselves are user-configurable in HKCU; an attacker with user-level write
+/// access to HKCU would simply rewrite the search term to point at any other service before
+/// sending the restart request, so an allowlist sourced from HKCU adds no protection. A baked-in
+/// allowlist would help but the realistic threat (malware already running as the user) implies
+/// the attacker has user-scope access already, and the user-to-SYSTEM escalation is accepted as
+/// the documented privilege boundary the helper crosses.
 /// </summary>
 internal sealed class HelperPipeServer(ILogger<HelperPipeServer> logger) : BackgroundService
 {
@@ -77,7 +89,7 @@ internal sealed class HelperPipeServer(ILogger<HelperPipeServer> logger) : Backg
         logger.LogInformation("qbPortWeaver Helper Service stopped");
     }
 
-    private async Task ServeOneConnectionAsync(CancellationToken ct)
+    private async Task ServeOneConnectionAsync(CancellationToken cancellationToken)
     {
         // The pipe ACL grants ReadWrite to all authenticated users so the standard-user
         // qbPortWeaver client can send commands to this SYSTEM-level helper service.
@@ -91,17 +103,17 @@ internal sealed class HelperPipeServer(ILogger<HelperPipeServer> logger) : Backg
             outBufferSize: 0,
             PipeSecurity);
 
-        await pipe.WaitForConnectionAsync(ct).ConfigureAwait(false);
+        await pipe.WaitForConnectionAsync(cancellationToken).ConfigureAwait(false);
 
         using var reader  = new StreamReader(pipe, leaveOpen: true);
-        using var readCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        using var readCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         readCts.CancelAfter(PipeReadTimeoutMs);
         string? message;
         try
         {
             message = await reader.ReadLineAsync(readCts.Token).ConfigureAwait(false);
         }
-        catch (OperationCanceledException ex) when (!ct.IsCancellationRequested)
+        catch (OperationCanceledException ex) when (!cancellationToken.IsCancellationRequested)
         {
             logger.LogWarning(ex, "Pipe connection read timed out - client connected but sent no data");
             return;
@@ -112,7 +124,7 @@ internal sealed class HelperPipeServer(ILogger<HelperPipeServer> logger) : Backg
         var parts = message.Split('|', 3);
         if (parts.Length != 3)
         {
-            logger.LogWarning("Received malformed pipe message");
+            logger.LogWarning("Received malformed pipe message ({PartCount} part(s), expected 3): '{Message}'", parts.Length, message);
             return;
         }
 
@@ -137,11 +149,11 @@ internal sealed class HelperPipeServer(ILogger<HelperPipeServer> logger) : Backg
         switch (action)
         {
             case ActionRestart:
-                await AutoRecovery.RestartServiceAsync(target, helperLogger, ct).ConfigureAwait(false);
+                await AutoRecovery.RestartServiceAsync(target, helperLogger, cancellationToken).ConfigureAwait(false);
                 break;
 
             case ActionCycleAdapter:
-                await AutoRecovery.CycleAdapterAsync(target, helperLogger, ct).ConfigureAwait(false);
+                await AutoRecovery.CycleAdapterAsync(target, helperLogger, cancellationToken).ConfigureAwait(false);
                 break;
 
             default:

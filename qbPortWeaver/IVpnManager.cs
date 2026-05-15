@@ -26,7 +26,7 @@ namespace qbPortWeaver
         /// For PIA this is queried via <c>piactl get portforward</c>.
         /// For NAT-PMP this is the external port assigned by the gateway via a UDP port-mapping request.
         /// </summary>
-        Task<int?> GetVpnPortAsync(CancellationToken ct = default);
+        Task<int?> GetVpnPortAsync(CancellationToken cancellationToken = default);
 
         /// <summary>
         /// Returns the recovery target passed to <c>AutoRecoveryManager.TriggerRestartAsync</c> or

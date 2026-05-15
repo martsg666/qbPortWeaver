@@ -136,7 +136,7 @@ namespace qbPortWeaver
         // Logs at INFO/WARN (not DEBUG) because lease time and failure details are not surfaced
         // elsewhere in the sync cycle. On renewal, suggests the previously assigned port
         // (RFC 6886 §3.3) so the gateway keeps the same mapping across cycles.
-        public async Task<int?> GetVpnPortAsync(CancellationToken ct = default)
+        public async Task<int?> GetVpnPortAsync(CancellationToken cancellationToken = default)
         {
             try
             {
@@ -144,7 +144,7 @@ namespace qbPortWeaver
                 // on renewal it holds the last assigned port so the gateway can keep the same mapping.
                 ushort suggested = _lastExternalPort;
 
-                var result = await RequestPortMappingAsync(_gateway, _mappingLifetime, suggested, ct).ConfigureAwait(false);
+                var result = await RequestPortMappingAsync(_gateway, _mappingLifetime, suggested, cancellationToken).ConfigureAwait(false);
 
                 if (!result.Success)
                 {
@@ -183,7 +183,7 @@ namespace qbPortWeaver
 
                 return result.ExternalPort;
             }
-            catch (Exception ex) when (!ct.IsCancellationRequested)
+            catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
             {
                 LogManager.Instance.LogMessage($"NAT-PMP error on '{_adapter.Name}': {ex.Message}", LogLevel.Warn);
                 return null;
@@ -227,8 +227,9 @@ namespace qbPortWeaver
         // when a fresh NatPmpManager instance is created each cycle.
         internal void CopyRenewalStateFrom(NatPmpManager other)
         {
-            _lastExternalPort  = other._lastExternalPort;
-            _lastEpochSeconds  = other._lastEpochSeconds;
+            _lastExternalPort   = other._lastExternalPort;
+            _lastEpochSeconds   = other._lastEpochSeconds;
+            LastGrantedLifetime = other.LastGrantedLifetime;
         }
 
         // Returns all network interfaces that are up and not loopback or protocol-tunnel adapters.
@@ -265,11 +266,16 @@ namespace qbPortWeaver
                 if (address.Address.AddressFamily != AddressFamily.InterNetwork)
                     continue;
 
-                if (address.IPv4Mask.Equals(IPAddress.Any))
+                // IPv4Mask is documented to return IPAddress.None for non-IPv4 addresses, but some
+                // virtual adapters (TAP/TUN before negotiation) have been observed returning null
+                // while still reporting InterNetwork. Guard explicitly rather than relying on the
+                // outer try/catch to swallow an NRE.
+                IPAddress? ipv4Mask = address.IPv4Mask;
+                if (ipv4Mask is null || ipv4Mask.Equals(IPAddress.Any))
                     continue; // zero mask - cannot infer a meaningful gateway
 
                 byte[] addr = address.Address.GetAddressBytes();
-                byte[] mask = address.IPv4Mask.GetAddressBytes();
+                byte[] mask = ipv4Mask.GetAddressBytes();
 
                 byte[] network = new byte[4];
                 for (int i = 0; i < 4; i++)
@@ -283,12 +289,6 @@ namespace qbPortWeaver
             }
             return null;
         }
-
-        private static ushort ReadUShortBE(byte[] data, int offset)
-            => BinaryPrimitives.ReadUInt16BigEndian(data.AsSpan(offset));
-
-        private static uint ReadUIntBE(byte[] data, int offset)
-            => BinaryPrimitives.ReadUInt32BigEndian(data.AsSpan(offset));
 
         // Sends a NAT-PMP external address request (RFC 6886 opcode 0) and returns the public IP.
         // maxAttempts=1 for discovery (best-effort, all adapters probed in parallel)
@@ -317,7 +317,7 @@ namespace qbPortWeaver
         // Pass zero as suggestedExternalPort for an initial request, or the previously assigned port to request renewal.
         // Local port is set to 0 - clients that do not bind a specific port let the gateway infer it.
         private static async Task<(bool Success, ushort ExternalPort, uint LifetimeGranted, uint EpochSeconds, string? Error)>
-            RequestPortMappingAsync(IPAddress gateway, uint lifetime, ushort suggestedExternalPort = 0, CancellationToken ct = default)
+            RequestPortMappingAsync(IPAddress gateway, uint lifetime, ushort suggestedExternalPort = 0, CancellationToken cancellationToken = default)
         {
             // [0] version=0  [1] opcode=1 (UDP)  [2-3] reserved
             // [4-5] local port=0  [6-7] suggested external port  [8-11] lifetime
@@ -327,7 +327,7 @@ namespace qbPortWeaver
             BinaryPrimitives.WriteUInt16BigEndian(request.AsSpan(6), suggestedExternalPort);
             BinaryPrimitives.WriteUInt32BigEndian(request.AsSpan(8), lifetime);
 
-            byte[]? data = await SendReceiveAsync(gateway, request, ct: ct).ConfigureAwait(false);
+            byte[]? data = await SendReceiveAsync(gateway, request, cancellationToken: cancellationToken).ConfigureAwait(false);
             if (data is null)
                 return (false, 0, 0, 0, "No response from gateway");
 
@@ -349,6 +349,12 @@ namespace qbPortWeaver
 
             return (true, externalPort, lifetimeGiven, epochSeconds, null);
         }
+
+        private static ushort ReadUShortBE(byte[] data, int offset)
+            => BinaryPrimitives.ReadUInt16BigEndian(data.AsSpan(offset));
+
+        private static uint ReadUIntBE(byte[] data, int offset)
+            => BinaryPrimitives.ReadUInt32BigEndian(data.AsSpan(offset));
 
         private static void LogProbeResultDebug(string context, string adapterName, IPAddress gateway, IPAddress? externalIp)
         {
@@ -373,7 +379,7 @@ namespace qbPortWeaver
         // Each retry opens a fresh UdpClient so any stale datagrams from a previous attempt
         // are silently discarded (they arrive on the old socket, which is already disposed).
         // maxAttempts defaults to MaxAttempts; pass 1 for best-effort probes (e.g. discovery).
-        private static async Task<byte[]?> SendReceiveAsync(IPAddress gateway, byte[] request, int maxAttempts = MaxAttempts, CancellationToken ct = default)
+        private static async Task<byte[]?> SendReceiveAsync(IPAddress gateway, byte[] request, int maxAttempts = MaxAttempts, CancellationToken cancellationToken = default)
         {
             int timeoutMs = InitialTimeoutMs;
 
@@ -385,7 +391,7 @@ namespace qbPortWeaver
                     await udp.SendAsync(request, new IPEndPoint(gateway, NatPmpPort)).ConfigureAwait(false);
 
                     using var timeoutCts = new CancellationTokenSource(timeoutMs);
-                    using var linkedCts  = CancellationTokenSource.CreateLinkedTokenSource(ct, timeoutCts.Token);
+                    using var linkedCts  = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
                     while (true)
                     {
                         UdpReceiveResult result = await udp.ReceiveAsync(linkedCts.Token).ConfigureAwait(false);
@@ -401,7 +407,7 @@ namespace qbPortWeaver
                         return result.Buffer;
                     }
                 }
-                catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+                catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
                 {
                     LogTimeoutDebug(attempt, maxAttempts, timeoutMs);
                     timeoutMs *= 2;

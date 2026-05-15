@@ -20,10 +20,8 @@ namespace qbPortWeaver
         // Serialises concurrent requests to enforce the rate limit
         private static readonly SemaphoreSlim _rateLimiter = new(1, 1);
 
-        // v4 Read Access Tokens are JWTs (start with "eyJ", contain dots); v3 API keys are 32-char hex strings.
-        // Both work on v3 endpoints but use different auth: v3 passes the key as a query param,
-        // v4 sends it as an Authorization: Bearer header.
-        private readonly bool _useBearer = apiKey.StartsWith("eyJ", StringComparison.Ordinal) && apiKey.Contains('.');
+        private readonly bool _useBearer = apiKey.StartsWith("eyJ", StringComparison.Ordinal)
+                                           && apiKey.IndexOf('.') != apiKey.LastIndexOf('.');
 
         private const string TmdbImageBaseUrl = "https://image.tmdb.org/t/p/w92"; // NOSONAR S1075 - fixed TMDB image CDN base, not a configurable path
 
@@ -33,44 +31,44 @@ namespace qbPortWeaver
         };
 
         /// <summary>Returns all TMDB movie candidates for a query in relevance order, or null if none found.</summary>
-        internal async Task<IReadOnlyList<MovieInfo>?> SearchMovieCandidatesAsync(string query, int? year = null, CancellationToken ct = default)
+        internal async Task<IReadOnlyList<MovieInfo>?> SearchMovieCandidatesAsync(string query, int? year = null, CancellationToken cancellationToken = default)
         {
             var url = _useBearer // NOSONAR S4790 - key transmitted over HTTPS only; v3 in query param, v4 in Authorization header
                 ? $"search/movie?query={Uri.EscapeDataString(query)}&language=en-US&page=1"
                 : $"search/movie?api_key={apiKey}&query={Uri.EscapeDataString(query)}&language=en-US&page=1";
             if (year.HasValue)
                 url += $"&year={year.Value}";
-            var response = await GetWithRateLimitAsync<TmdbMovieSearchResult>(url, ct).ConfigureAwait(false);
+            var response = await GetWithRateLimitAsync<TmdbMovieSearchResult>(url, cancellationToken).ConfigureAwait(false);
             var results  = response?.Results;
             if (results is null or { Count: 0 }) return null;
             return results.ConvertAll(r => new MovieInfo(r.Title, ParseYearFromDate(r.ReleaseDate), r.Id, r.VoteCount, r.PosterPath, r.Overview));
         }
 
         /// <summary>Returns all TMDB TV show candidates for a query in relevance order, or null if none found.</summary>
-        internal async Task<IReadOnlyList<TvShowInfo>?> SearchTvShowCandidatesAsync(string query, int? year = null, CancellationToken ct = default)
+        internal async Task<IReadOnlyList<TvShowInfo>?> SearchTvShowCandidatesAsync(string query, int? year = null, CancellationToken cancellationToken = default)
         {
             var url = _useBearer // NOSONAR S4790 - key transmitted over HTTPS only; v3 in query param, v4 in Authorization header
                 ? $"search/tv?query={Uri.EscapeDataString(query)}&language=en-US&page=1"
                 : $"search/tv?api_key={apiKey}&query={Uri.EscapeDataString(query)}&language=en-US&page=1";
             if (year.HasValue)
                 url += $"&first_air_date_year={year.Value}";
-            var response = await GetWithRateLimitAsync<TmdbTvSearchResult>(url, ct).ConfigureAwait(false);
+            var response = await GetWithRateLimitAsync<TmdbTvSearchResult>(url, cancellationToken).ConfigureAwait(false);
             var results  = response?.Results;
             if (results is null or { Count: 0 }) return null;
             return results.ConvertAll(r => new TvShowInfo(r.Name, ParseYearFromDate(r.FirstAirDate), r.Id, r.VoteCount, r.PosterPath, r.Overview));
         }
 
         /// <summary>Downloads a TMDB poster image by its path. Returns null on failure or cancellation.</summary>
-        internal static async Task<Image?> FetchPosterAsync(string posterPath, CancellationToken ct)
+        internal static async Task<Image?> FetchPosterAsync(string posterPath, CancellationToken cancellationToken)
         {
             try
             {
-                var bytes = await _imageHttpClient.GetByteArrayAsync($"{TmdbImageBaseUrl}{posterPath}", ct).ConfigureAwait(false);
+                var bytes = await _imageHttpClient.GetByteArrayAsync($"{TmdbImageBaseUrl}{posterPath}", cancellationToken).ConfigureAwait(false);
                 using var ms  = new MemoryStream(bytes);
                 using var src = Image.FromStream(ms);
                 return new Bitmap(src); // copy to break stream dependency
             }
-            catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
             catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException or ArgumentException)
             {
                 return null;
@@ -88,14 +86,15 @@ namespace qbPortWeaver
         /// </summary>
         internal static async Task<(T? Info, bool IsConfident)> SearchWithConfidenceAsync<T>(
             string title, int? year,
-            Func<string, int?, Task<IReadOnlyList<T>?>> search,
+            Func<string, int?, CancellationToken, Task<IReadOnlyList<T>?>> search,
             Func<T, bool> hasYear,
             Func<T, string> getTitle,
-            Func<T, int> getVoteCount) where T : class
+            Func<T, int> getVoteCount,
+            CancellationToken cancellationToken = default) where T : class
         {
             bool isConfident = true;
 
-            var candidates = await search(title, year).ConfigureAwait(false);
+            var candidates = await search(title, year, cancellationToken).ConfigureAwait(false);
 
             // Prefer an exact normalized title match over TMDB's top-ranked result.
             // Among exact matches, prefer one that also has a year (tiebreaker) but do not
@@ -125,13 +124,13 @@ namespace qbPortWeaver
             // Retry without year: parsed year may not match TMDB's release/first-air year
             if (info is null && year.HasValue)
             {
-                candidates = await search(title, null).ConfigureAwait(false);
+                candidates = await search(title, null, cancellationToken).ConfigureAwait(false);
                 info       = candidates?[0];
                 if (info is not null) isConfident = false;
             }
 
             (info, isConfident) = await TryFallbackLookupsAsync(
-                title, year, info, isConfident, search, hasYear).ConfigureAwait(false);
+                title, year, info, isConfident, search, hasYear, cancellationToken).ConfigureAwait(false);
 
             return (info, isConfident);
         }
@@ -142,17 +141,17 @@ namespace qbPortWeaver
         /// </summary>
         internal static async Task<(T? Info, bool IsConfident)> LookupAsync<T>(
             (string Title, int? Year) query,
-            Func<string, int?, Task<IReadOnlyList<T>?>> search,
+            Func<string, int?, CancellationToken, Task<IReadOnlyList<T>?>> search,
             Func<T, bool> hasYear,
             Func<T, string> getTitle,
             Func<T, int> getVoteCount,
             string mediaKind,
-            CancellationToken ct = default) where T : class
+            CancellationToken cancellationToken = default) where T : class
         {
             try
             {
                 var (info, isConfident) = await SearchWithConfidenceAsync(
-                    query.Title, query.Year, search, hasYear, getTitle, getVoteCount).ConfigureAwait(false);
+                    query.Title, query.Year, search, hasYear, getTitle, getVoteCount, cancellationToken).ConfigureAwait(false);
 
                 if (info is null)
                 {
@@ -162,7 +161,7 @@ namespace qbPortWeaver
 
                 return (info, isConfident);
             }
-            catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
             catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException)
             {
                 LogManager.Instance.LogMessage($"Failed to look up TMDB {mediaKind}: {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
@@ -172,20 +171,20 @@ namespace qbPortWeaver
 
         // Enforces a minimum delay between TMDB API calls to avoid HTTP 429 rate limiting.
         // The delay runs inside the semaphore hold so the next caller waits for the cooldown to finish.
-        private async Task<T?> GetWithRateLimitAsync<T>(string url, CancellationToken ct = default)
+        private async Task<T?> GetWithRateLimitAsync<T>(string url, CancellationToken cancellationToken = default)
         {
-            await _rateLimiter.WaitAsync(ct).ConfigureAwait(false);
+            await _rateLimiter.WaitAsync(cancellationToken).ConfigureAwait(false);
             try
             {
                 if (_useBearer)
                 {
                     using var request  = new HttpRequestMessage(HttpMethod.Get, url);
                     request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", apiKey);
-                    using var response = await _httpClient.SendAsync(request, ct).ConfigureAwait(false);
+                    using var response = await _httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
                     response.EnsureSuccessStatusCode();
-                    return await response.Content.ReadFromJsonAsync<T>(ct).ConfigureAwait(false);
+                    return await response.Content.ReadFromJsonAsync<T>(cancellationToken).ConfigureAwait(false);
                 }
-                return await _httpClient.GetFromJsonAsync<T>(url, ct).ConfigureAwait(false);
+                return await _httpClient.GetFromJsonAsync<T>(url, cancellationToken).ConfigureAwait(false);
             }
             finally
             {
@@ -223,14 +222,15 @@ namespace qbPortWeaver
         // (a year-less result is ambiguous; a stripped-title result that includes a year is higher quality).
         private static async Task<(T? Info, bool IsConfident)> TryFallbackLookupsAsync<T>(
             string title, int? year, T? info, bool isConfident,
-            Func<string, int?, Task<IReadOnlyList<T>?>> search,
-            Func<T, bool> hasYear) where T : class
+            Func<string, int?, CancellationToken, Task<IReadOnlyList<T>?>> search,
+            Func<T, bool> hasYear,
+            CancellationToken cancellationToken = default) where T : class
         {
             var afterDash = info is null ? ExtractAfterDash(title) : null;
             if (afterDash is not null)
             {
                 LogManager.Instance.LogDebug($"TmdbClient.TryFallbackLookupsAsync: Retrying with after-dash title '{afterDash}'", Subsystem.MediaManager);
-                var afterDashInfo = (await search(afterDash, year).ConfigureAwait(false))?[0];
+                var afterDashInfo = (await search(afterDash, year, cancellationToken).ConfigureAwait(false))?[0];
                 if (afterDashInfo is not null)
                 {
                     info        = afterDashInfo;
@@ -244,7 +244,7 @@ namespace qbPortWeaver
                 if (withoutNum is not null)
                 {
                     LogManager.Instance.LogDebug($"TmdbClient.TryFallbackLookupsAsync: Retrying without trailing number '{withoutNum}'", Subsystem.MediaManager);
-                    var withoutNumInfo = (await search(withoutNum, year).ConfigureAwait(false))?[0];
+                    var withoutNumInfo = (await search(withoutNum, year, cancellationToken).ConfigureAwait(false))?[0];
                     if (withoutNumInfo is not null && hasYear(withoutNumInfo))
                     {
                         info        = withoutNumInfo;

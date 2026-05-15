@@ -17,9 +17,11 @@ namespace qbPortWeaver
         private static readonly JsonSerializerOptions _jsonWriteOptions = new() { WriteIndented = true };
 
         // ConcurrentDictionary: sync cycle and UI scan can overlap.
-        private static readonly ConcurrentDictionary<string, (TvShowInfo? Info, bool IsConfident)>
+        // CachedAt is stored in the tuple so SaveToDisk can preserve the original timestamp; without it
+        // every save would reset the TTL to now, allowing entries to persist indefinitely.
+        private static readonly ConcurrentDictionary<string, (TvShowInfo? Info, bool IsConfident, DateTime CachedAt)>
             _tvShowCache  = new(StringComparer.OrdinalIgnoreCase);
-        private static readonly ConcurrentDictionary<string, (MovieInfo? Info, bool IsConfident)>
+        private static readonly ConcurrentDictionary<string, (MovieInfo? Info, bool IsConfident, DateTime CachedAt)>
             _movieCache = new(StringComparer.OrdinalIgnoreCase);
 
         // In-flight dedup: if two source folders race on the same title, the second awaits
@@ -37,69 +39,53 @@ namespace qbPortWeaver
         // Serialized on-disk format: only non-null results are persisted.
         private sealed record TmdbEntry<T>(T? Info, bool IsConfident, DateTime CachedAt) where T : class;
 
-        internal static bool TryGetTvShow(string key, out (TvShowInfo? Info, bool IsConfident) result)
-            => _tvShowCache.TryGetValue(key, out result);
-
-        internal static void TryAddTvShow(string key, (TvShowInfo? Info, bool IsConfident) value)
-        {
-            // Always cache in memory (including null results) to avoid re-hitting the API within the same session.
-            // Only mark dirty for non-null results - nulls are not persisted so they are retried on next start.
-            if (_tvShowCache.TryAdd(key, value) && value.Info is not null)
-                _tvShowCacheDirty = true;
-        }
-
-        internal static bool TryGetMovie(string key, out (MovieInfo? Info, bool IsConfident) result)
-            => _movieCache.TryGetValue(key, out result);
-
-        internal static void TryAddMovie(string key, (MovieInfo? Info, bool IsConfident) value)
-        {
-            // Always cache in memory (including null results) to avoid re-hitting the API within the same session.
-            // Only mark dirty for non-null results - nulls are not persisted so they are retried on next start.
-            if (_movieCache.TryAdd(key, value) && value.Info is not null)
-                _movieCacheDirty = true;
-        }
-
         /// <summary>
         /// Returns the cached TV show result for <paramref name="cacheKey"/> if present; otherwise runs
         /// <paramref name="compute"/> exactly once even when concurrent callers race on the same key.
         /// Parallel source-folder scans sharing the same show share one TMDB API call.
         /// </summary>
-        internal static async Task<(TvShowInfo? Info, bool IsConfident)> GetOrComputeTvShowAsync(
+        internal static Task<(TvShowInfo? Info, bool IsConfident)> GetOrComputeTvShowAsync(
             string cacheKey, Func<Task<(TvShowInfo? Info, bool IsConfident)>> compute)
-        {
-            if (TryGetTvShow(cacheKey, out var cached)) return cached;
-            // The first caller's CT is captured inside the compute closure; subsequent waiters share that task.
-            var lazy = _tvShowInFlight.GetOrAdd(cacheKey, _ => new Lazy<Task<(TvShowInfo? Info, bool IsConfident)>>(compute));
-            try
-            {
-                var result = await lazy.Value.ConfigureAwait(false);
-                TryAddTvShow(cacheKey, result);
-                return result;
-            }
-            finally
-            {
-                // KeyValuePair overload: only removes this exact Lazy instance - a concurrent winner that
-                // already replaced it is left intact. If the task faulted, this evicts it so the next
-                // caller retries rather than re-awaiting a permanently failed task.
-                _tvShowInFlight.TryRemove(new KeyValuePair<string, Lazy<Task<(TvShowInfo? Info, bool IsConfident)>>>(cacheKey, lazy));
-            }
-        }
+            => GetOrComputeAsync(cacheKey, compute, _tvShowCache, _tvShowInFlight, () => _tvShowCacheDirty = true);
 
         /// <summary>
         /// Returns the cached movie result for <paramref name="cacheKey"/> if present; otherwise runs
         /// <paramref name="compute"/> exactly once even when concurrent callers race on the same key.
         /// Parallel source-folder scans sharing the same title share one TMDB API call.
         /// </summary>
-        internal static async Task<(MovieInfo? Info, bool IsConfident)> GetOrComputeMovieAsync(
+        internal static Task<(MovieInfo? Info, bool IsConfident)> GetOrComputeMovieAsync(
             string cacheKey, Func<Task<(MovieInfo? Info, bool IsConfident)>> compute)
+            => GetOrComputeAsync(cacheKey, compute, _movieCache, _movieInFlight, () => _movieCacheDirty = true);
+
+        // Generic core for both Get-or-compute methods. Caches every result (including nulls) in memory to
+        // avoid re-hitting the API within the same session, but only marks the cache dirty for non-null
+        // results since nulls are not persisted to disk (see EvictNullTvShows / EvictNullMovies).
+        // The Lazy<Task> wrapper ensures the compute factory runs at most once even when multiple callers
+        // race on the same key; subsequent waiters share the in-flight task.
+        //
+        // Known cancellation cascade (accepted as documented behavior):
+        // The first caller's CancellationToken is captured inside their compute closure. If a SECOND scan
+        // starts while the first scan's lookups are still in flight, the first scan's CT cancels. There
+        // is a microsecond race window between the in-flight task faulting with OCE and this method's
+        // finally block evicting the Lazy. If the second scan's GetOrAdd lands inside that window, it
+        // shares the already-faulted Lazy and observes the foreign OCE even though its own CT is fine.
+        // The user-visible effect is a single spurious "Scan cancelled." status message on the second
+        // scan. No data loss; the next user-triggered scan creates a fresh Lazy and proceeds normally.
+        private static async Task<(T? Info, bool IsConfident)> GetOrComputeAsync<T>(
+            string cacheKey,
+            Func<Task<(T? Info, bool IsConfident)>> compute,
+            ConcurrentDictionary<string, (T? Info, bool IsConfident, DateTime CachedAt)> cache,
+            ConcurrentDictionary<string, Lazy<Task<(T? Info, bool IsConfident)>>> inFlight,
+            Action markDirty) where T : class
         {
-            if (TryGetMovie(cacheKey, out var cached)) return cached;
+            if (cache.TryGetValue(cacheKey, out var cached)) return (cached.Info, cached.IsConfident);
             // The first caller's CT is captured inside the compute closure; subsequent waiters share that task.
-            var lazy = _movieInFlight.GetOrAdd(cacheKey, _ => new Lazy<Task<(MovieInfo? Info, bool IsConfident)>>(compute));
+            var lazy = inFlight.GetOrAdd(cacheKey, _ => new Lazy<Task<(T? Info, bool IsConfident)>>(compute));
             try
             {
                 var result = await lazy.Value.ConfigureAwait(false);
-                TryAddMovie(cacheKey, result);
+                if (cache.TryAdd(cacheKey, (result.Info, result.IsConfident, DateTime.UtcNow)) && result.Info is not null)
+                    markDirty();
                 return result;
             }
             finally
@@ -107,7 +93,7 @@ namespace qbPortWeaver
                 // KeyValuePair overload: only removes this exact Lazy instance - a concurrent winner that
                 // already replaced it is left intact. If the task faulted, this evicts it so the next
                 // caller retries rather than re-awaiting a permanently failed task.
-                _movieInFlight.TryRemove(new KeyValuePair<string, Lazy<Task<(MovieInfo? Info, bool IsConfident)>>>(cacheKey, lazy));
+                inFlight.TryRemove(new KeyValuePair<string, Lazy<Task<(T? Info, bool IsConfident)>>>(cacheKey, lazy));
             }
         }
 
@@ -167,7 +153,7 @@ namespace qbPortWeaver
             LogManager.Instance.LogMessage("TMDB caches cleared", LogLevel.Info, Subsystem.MediaManager);
         }
 
-        private static void EvictNullsFromCache<T>(ConcurrentDictionary<string, (T? Info, bool IsConfident)> cache) where T : class
+        private static void EvictNullsFromCache<T>(ConcurrentDictionary<string, (T? Info, bool IsConfident, DateTime CachedAt)> cache) where T : class
         {
             foreach (var key in cache.Keys.ToList())
                 if (cache.TryGetValue(key, out var entry) && entry.Info is null)
@@ -175,7 +161,7 @@ namespace qbPortWeaver
         }
 
         private static void LoadFromDisk<T>(
-            ConcurrentDictionary<string, (T? Info, bool IsConfident)> cache, string fileName, string label) where T : class
+            ConcurrentDictionary<string, (T? Info, bool IsConfident, DateTime CachedAt)> cache, string fileName, string label) where T : class
         {
             var filePath = AppConstants.GetDataFilePath(fileName);
             if (!File.Exists(filePath)) return;
@@ -193,7 +179,7 @@ namespace qbPortWeaver
                 foreach (var (key, entry) in entries)
                 {
                     if (entry.CachedAt < cutoff || entry.Info is null) { expired++; continue; }
-                    cache.TryAdd(key, (entry.Info, entry.IsConfident));
+                    cache.TryAdd(key, (entry.Info, entry.IsConfident, entry.CachedAt));
                     loaded++;
                 }
 
@@ -210,16 +196,15 @@ namespace qbPortWeaver
         }
 
         private static int SaveToDisk<T>(
-            ConcurrentDictionary<string, (T? Info, bool IsConfident)> cache, string fileName, string label) where T : class
+            ConcurrentDictionary<string, (T? Info, bool IsConfident, DateTime CachedAt)> cache, string fileName, string label) where T : class
         {
             try
             {
-                var now    = DateTime.UtcNow;
                 var toSave = cache
                     .Where(kv => kv.Value.Info is not null)
                     .ToDictionary(
                         kv => kv.Key,
-                        kv => new TmdbEntry<T>(kv.Value.Info, kv.Value.IsConfident, now),
+                        kv => new TmdbEntry<T>(kv.Value.Info, kv.Value.IsConfident, kv.Value.CachedAt),
                         StringComparer.OrdinalIgnoreCase);
 
                 var json = JsonSerializer.Serialize(toSave, _jsonWriteOptions);

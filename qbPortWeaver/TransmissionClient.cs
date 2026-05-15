@@ -16,10 +16,9 @@ namespace qbPortWeaver
 
         private readonly string _userName;
         private string? _sessionId;
-        // Cached service name; string.Empty = not yet resolved, non-empty = found and cached.
+        // Sentinel values: string.Empty = not yet resolved; null = not found; non-empty = cached name.
         // Static so the SCM enumeration persists across sync-cycle instances.
         // Mirrors the caching pattern used by ProtonVpnManager and PiaVpnManager.
-        // Sentinel values: string.Empty = not yet resolved; null = not found; non-empty = cached name.
         // volatile ensures writes from one sync-cycle thread are visible to concurrent callers.
         private static volatile string? _resolvedServiceName = string.Empty;
 
@@ -73,17 +72,32 @@ namespace qbPortWeaver
         }
 
         /// <inheritdoc/>
-        /// <remarks>Auto-detects mode from <c>config-dir</c> and service discovery. Service mode: a
-        /// Windows service containing "Transmission" is installed and <c>config-dir</c> is under
-        /// <c>%ProgramData%</c>, confirming the daemon is active. Process mode: no service found,
-        /// or config-dir is user-specific (the Qt desktop client is running instead).</remarks>
+        /// <remarks>Auto-detects mode from <c>config-dir</c> via RPC and service discovery. Service
+        /// mode: a Windows service containing "Transmission" is installed AND either <c>config-dir</c>
+        /// confirms a system-wide location, or the daemon RPC is unreachable (the most likely cause
+        /// of restart being triggered, so service mode is assumed in that case). Process mode: no
+        /// service is installed, or <c>config-dir</c> is user-specific (the Qt desktop client is
+        /// running instead).</remarks>
         public override async Task<bool> RestartAsync(CancellationToken cancellationToken = default)
         {
             string? serviceName = GetEffectiveServiceName();
-            bool isService = serviceName is not null && await IsConfigDirSystemWideAsync(cancellationToken).ConfigureAwait(false);
-            LogManager.Instance.LogMessage(
-                $"{ClientName} restarting in {(isService ? $"service mode. Service name: {serviceName}" : "process mode")}",
-                LogLevel.Info);
+            // Only query RPC if a service is installed - otherwise mode is unambiguously process mode.
+            bool? detected = serviceName is not null
+                ? await TryDetectServiceModeAsync(cancellationToken).ConfigureAwait(false)
+                : null;
+            // When a service is installed but RPC is unreachable, assume service mode: the daemon
+            // being hung is the most likely cause of restart being triggered, and a process-mode
+            // launch would bypass the service. A wrong guess here is recoverable - the helper-side
+            // restart of a dormant service either succeeds or fails cleanly.
+            bool isService = serviceName is not null && (detected ?? true);
+            string modeDescription;
+            if (!isService)
+                modeDescription = "process mode";
+            else if (detected.HasValue)
+                modeDescription = $"service mode. Service name: {serviceName}";
+            else
+                modeDescription = $"service mode (assumed; daemon RPC unreachable). Service name: {serviceName}";
+            LogManager.Instance.LogMessage($"{ClientName} restarting in {modeDescription}", LogLevel.Info);
             return isService
                 ? await RestartServiceModeAsync(serviceName!, cancellationToken).ConfigureAwait(false)
                 : await RestartProcessModeAsync(cancellationToken).ConfigureAwait(false);
@@ -113,6 +127,15 @@ namespace qbPortWeaver
                 var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
                 using var doc = JsonDocument.Parse(json);
                 var root = doc.RootElement;
+
+                // Surface RPC-level errors (e.g. "method not allowed", session conflicts) with the
+                // actual server message before falling through to the generic arguments-missing path.
+                if (root.TryGetProperty("result", out var rpcResult) &&
+                    !string.Equals(rpcResult.GetString(), "success", StringComparison.OrdinalIgnoreCase))
+                {
+                    LogManager.Instance.LogMessage($"{ClientName} RPC returned non-success result for session-get: {rpcResult.GetString()}", LogLevel.Error);
+                    return (null, null);
+                }
 
                 if (!root.TryGetProperty("arguments", out var argsElement))
                 {
@@ -180,6 +203,12 @@ namespace qbPortWeaver
         /// <remarks>Transmission does not expose a connection status endpoint; always returns <see langword="null"/>.</remarks>
         public override Task<string?> GetConnectionStatusAsync(CancellationToken cancellationToken = default) => Task.FromResult<string?>(null);
 
+        // Transmission uses a per-request X-Transmission-Session-Id CSRF handshake in SendRpcAsync rather than a
+        // one-time login step, so EnsureAuthenticatedAsync is never called and this override is never reached.
+        // It exists only to satisfy the abstract base member.
+        /// <inheritdoc/>
+        protected override Task<bool> AuthenticateAsync(CancellationToken cancellationToken = default) => Task.FromResult(true);
+
         /// <inheritdoc/>
         protected override void ResetAuthState()
         {
@@ -187,11 +216,16 @@ namespace qbPortWeaver
             _sessionId = null;
         }
 
-        // Transmission uses a per-request X-Transmission-Session-Id CSRF handshake in SendRpcAsync rather than a
-        // one-time login step, so EnsureAuthenticatedAsync is never called and this override is never reached.
-        // It exists only to satisfy the abstract base member.
-        /// <inheritdoc/>
-        protected override Task<bool> AuthenticateAsync(CancellationToken cancellationToken = default) => Task.FromResult(true);
+        // Lazily discovers and caches the Transmission Windows service name via the configured search term.
+        // Only caches a successful result; a null (not found) result is not cached so the lookup
+        // retries each cycle, allowing auto-detection to succeed if the service is installed later.
+        private static string? GetEffectiveServiceName()
+        {
+            if (_resolvedServiceName is { Length: > 0 }) return _resolvedServiceName;
+            var found = AppConstants.FindServiceName(RegistrySettingsManager.GetAppValue(RegistrySettingsManager.KeyTransmissionServiceSearchTerm));
+            if (found is not null) _resolvedServiceName = found;
+            return found;
+        }
 
         private async Task<bool> RestartServiceModeAsync(string serviceName, CancellationToken cancellationToken)
         {
@@ -203,9 +237,9 @@ namespace qbPortWeaver
                 var helperResult = await HelperServiceClient.SendRestartAsync(serviceName, cancellationToken).ConfigureAwait(false);
                 helperResult.RaiseLogAlerts();
 
-                if (helperResult.IsRejected || helperResult.ErrorCount > 0)
+                if (!helperResult.Completed || helperResult.ErrorCount > 0)
                 {
-                    LogManager.Instance.LogMessage($"{ClientName} service '{serviceName}' restart reported errors", LogLevel.Error);
+                    LogManager.Instance.LogMessage($"{ClientName} service '{serviceName}' restart did not complete cleanly", LogLevel.Error);
                     return false;
                 }
 
@@ -234,7 +268,7 @@ namespace qbPortWeaver
                 await Task.Delay(GracefulShutdownWaitMs, cancellationToken).ConfigureAwait(false);
 
                 // Close the main window cleanly; the app saves settings on exit
-                foreach (var proc in Process.GetProcessesByName(_processName))
+                foreach (var proc in Process.GetProcessesByName(ProcessName))
                 {
                     // CloseMainWindow can fail if the process has already exited; safe to ignore.
                     try { proc.CloseMainWindow(); }
@@ -252,7 +286,7 @@ namespace qbPortWeaver
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                LogManager.Instance.LogMessage($"Failed to restart {ClientName}: {ex.Message} - check the Executable path in Settings ({_exePath})", LogLevel.Error);
+                LogManager.Instance.LogMessage($"Failed to restart {ClientName}: {ex.Message} - check the Executable path in Settings ({ExePath})", LogLevel.Error);
                 return false;
             }
         }
@@ -265,7 +299,7 @@ namespace qbPortWeaver
         {
             try
             {
-                var rpcUrl    = $"{_url}{RpcPath}";
+                var rpcUrl    = $"{Url}{RpcPath}";
                 using var request = new HttpRequestMessage(HttpMethod.Post, rpcUrl)
                 {
                     Content = new StringContent(jsonBody, Encoding.UTF8, "application/json")
@@ -273,7 +307,7 @@ namespace qbPortWeaver
                 if (_sessionId is not null)
                     request.Headers.Add(SessionIdHeader, _sessionId);
 
-                var response = await _httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
+                var response = await HttpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
 
                 if (response.StatusCode != HttpStatusCode.Conflict)
                     return response;
@@ -298,7 +332,7 @@ namespace qbPortWeaver
                     Content = new StringContent(jsonBody, Encoding.UTF8, "application/json")
                 };
                 retry.Headers.Add(SessionIdHeader, _sessionId);
-                return await _httpClient.SendAsync(retry, cancellationToken).ConfigureAwait(false);
+                return await HttpClient.SendAsync(retry, cancellationToken).ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
             catch (Exception ex)
@@ -308,29 +342,32 @@ namespace qbPortWeaver
             }
         }
 
-        // Fetches config-dir live via RPC and returns true if it is NOT under the user profiles
-        // root (C:\Users\...), which confirms the daemon is running rather than the Qt desktop client.
-        // Covers all system account locations: %ProgramData%, ServiceProfiles\LocalService,
-        // ServiceProfiles\NetworkService, system32\config\systemprofile, etc.
-        private async Task<bool> IsConfigDirSystemWideAsync(CancellationToken cancellationToken = default)
+        // Fetches config-dir live via RPC to disambiguate service mode from Qt-process mode.
+        // Returns true if config-dir is NOT under the user profiles root (C:\Users\...), confirming
+        // the daemon is the active process; covers all system account locations: %ProgramData%,
+        // ServiceProfiles\LocalService, ServiceProfiles\NetworkService, system32\config\systemprofile.
+        // Returns false if config-dir is user-specific (the Qt desktop client is the active process).
+        // Returns null if the mode cannot be determined (RPC unreachable, malformed response,
+        // missing config-dir, etc.) - callers should fall back to a service-installation heuristic.
+        private async Task<bool?> TryDetectServiceModeAsync(CancellationToken cancellationToken = default)
         {
             try
             {
                 const string body = """{"method":"session-get","arguments":{"fields":["config-dir"]}}""";
                 using var response = await SendRpcAsync(body, cancellationToken).ConfigureAwait(false);
-                if (response is null || !response.IsSuccessStatusCode) return false;
+                if (response is null || !response.IsSuccessStatusCode) return null;
 
                 var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
                 using var doc = JsonDocument.Parse(json);
                 if (!doc.RootElement.TryGetProperty("arguments", out var args) ||
                     !args.TryGetProperty("config-dir", out var configDirEl))
                 {
-                    LogManager.Instance.LogDebug("TransmissionClient.IsConfigDirSystemWideAsync: config-dir not found in session-get response");
-                    return false;
+                    LogManager.Instance.LogDebug("TransmissionClient.TryDetectServiceModeAsync: config-dir not found in session-get response");
+                    return null;
                 }
 
                 string? configDir = configDirEl.GetString();
-                if (string.IsNullOrEmpty(configDir)) return false;
+                if (string.IsNullOrEmpty(configDir)) return null;
 
                 // Parent of the current user's profile is the users root (e.g. C:\Users)
                 string usersRoot = Path.GetDirectoryName(
@@ -342,20 +379,9 @@ namespace qbPortWeaver
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
             catch (Exception ex)
             {
-                LogManager.Instance.LogDebug($"TransmissionClient.IsConfigDirSystemWideAsync: {ex.Message}");
-                return false;
+                LogManager.Instance.LogDebug($"TransmissionClient.TryDetectServiceModeAsync: {ex.Message}");
+                return null;
             }
-        }
-
-        // Lazily discovers and caches the Transmission Windows service name via the configured search term.
-        // Only caches a successful result; a null (not found) result is not cached so the lookup
-        // retries each cycle, allowing auto-detection to succeed if the service is installed later.
-        private static string? GetEffectiveServiceName()
-        {
-            if (_resolvedServiceName is { Length: > 0 }) return _resolvedServiceName;
-            var found = AppConstants.FindServiceName(RegistrySettingsManager.GetAppValue(RegistrySettingsManager.KeyTransmissionServiceSearchTerm));
-            if (found is not null) _resolvedServiceName = found;
-            return found;
         }
 
         // Creates an HttpClient with Basic auth for the Transmission RPC endpoint.

@@ -41,7 +41,7 @@ namespace qbPortWeaver
 
             try
             {
-                using var response = await _httpClient.GetAsync($"{_url}{ApiAppPreferences}", cancellationToken).ConfigureAwait(false);
+                using var response = await HttpClient.GetAsync($"{Url}{ApiAppPreferences}", cancellationToken).ConfigureAwait(false);
 
                 if (!response.IsSuccessStatusCode)
                 {
@@ -97,7 +97,7 @@ namespace qbPortWeaver
                 var jsonBody = $"{{\"listen_port\":{port},\"upnp\":false,\"natpmp\":false}}";
                 using var content = new FormUrlEncodedContent([new("json", jsonBody)]);
 
-                using var response = await _httpClient.PostAsync($"{_url}{ApiSetPreferences}", content, cancellationToken).ConfigureAwait(false);
+                using var response = await HttpClient.PostAsync($"{Url}{ApiSetPreferences}", content, cancellationToken).ConfigureAwait(false);
                 // qBittorrent returns HTTP 200 with an empty body on success - no JSON error envelope to check.
                 if (!response.IsSuccessStatusCode)
                 {
@@ -122,7 +122,7 @@ namespace qbPortWeaver
 
             try
             {
-                using var response = await _httpClient.GetAsync($"{_url}{ApiTransferInfo}", cancellationToken).ConfigureAwait(false);
+                using var response = await HttpClient.GetAsync($"{Url}{ApiTransferInfo}", cancellationToken).ConfigureAwait(false);
 
                 if (!response.IsSuccessStatusCode)
                 {
@@ -157,7 +157,7 @@ namespace qbPortWeaver
                     new("password", _password)
                 ]);
 
-                using var response = await _httpClient.PostAsync($"{_url}{ApiAuthLogin}", content, cancellationToken).ConfigureAwait(false);
+                using var response = await HttpClient.PostAsync($"{Url}{ApiAuthLogin}", content, cancellationToken).ConfigureAwait(false);
 
                 if (response.StatusCode == HttpStatusCode.Forbidden)
                 {
@@ -178,7 +178,7 @@ namespace qbPortWeaver
 
                 if (!response.IsSuccessStatusCode)
                 {
-                    LogManager.Instance.LogMessage($"{ClientName} authentication failed (HTTP {(int)response.StatusCode} {response.StatusCode}) - check the URL in Settings ({_url})", LogLevel.Error);
+                    LogManager.Instance.LogMessage($"{ClientName} authentication failed (HTTP {(int)response.StatusCode} {response.StatusCode}) - check the URL in Settings ({Url})", LogLevel.Error);
                     return false;
                 }
 

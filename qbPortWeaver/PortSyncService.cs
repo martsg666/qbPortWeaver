@@ -3,7 +3,17 @@ using System.Diagnostics;
 namespace qbPortWeaver
 {
     /// <summary>Outcome of a port sync cycle, used to drive the tray icon color and tooltip.</summary>
-    public enum SyncState { Synced, VpnDisconnected, Disabled, Error }
+    public enum SyncState
+    {
+        /// <summary>Port was successfully detected and applied to the BitTorrent client.</summary>
+        Synced,
+        /// <summary>VPN is not connected; no port is available to sync.</summary>
+        VpnDisconnected,
+        /// <summary>Sync is paused because the BitTorrent client or VPN provider is not configured.</summary>
+        Disabled,
+        /// <summary>An error occurred during the sync cycle (e.g. client unreachable, port update failed).</summary>
+        Error,
+    }
 
     /// <summary>Snapshot of the tray icon state after a sync cycle, raised via <see cref="PortSyncService.SyncCompleted"/>.</summary>
     public sealed record TrayStatus(SyncState State, int? Port, string Message);
@@ -28,6 +38,8 @@ namespace qbPortWeaver
         private int _consecutiveFailedCycles;
         // Tracks the last interface-mismatch message shown as a balloon tip to suppress repeat invocations
         // for the same persistent mismatch. Cleared when the mismatch resolves so the balloon re-fires if it returns.
+        // Thread-safety: only read/written inside CheckInterfaceMatch via EnsureRunningAndUpdatePortAsync,
+        // serialised by MainForm._updateSemaphore (same guarantee as _consecutiveFailedCycles and _lastKnownNatPmpManager).
         private string? _lastInterfaceMismatchMessage;
 
         // Fallback for when TryCreateForAdapterAsync cannot reach the configured adapter (e.g. VPN is
@@ -195,6 +207,7 @@ namespace qbPortWeaver
 
             if (!vpnManager.IsVpnConnected())
             {
+                // Mutually exclusive with the HandlePortDetectionFailureAsync increment in the else branch below.
                 _consecutiveFailedCycles++;
                 int count = _consecutiveFailedCycles;
                 string disconnectedMsg = $"{vpnManager.ProviderName} is not connected";
@@ -651,6 +664,16 @@ namespace qbPortWeaver
                 LogManager.Instance.LogMessage($"Restarted {manager.ClientName} after connection disconnect", LogLevel.Info);
         }
 
+        // Builds a failure log message with cycle count and optional recovery trigger suffix
+        private static string BuildCycleCountMessage(string prefix, int count, AppConfig cfg)
+        {
+            string cycles = count == 1 ? "cycle" : "cycles";
+            string recoverySuffix = cfg.AutoRecoveryEnabled
+                ? $", recovery triggers after {cfg.AutoRecoveryTriggerCycles} consecutive failures"
+                : string.Empty;
+            return $"{prefix} ({count} consecutive {cycles}{recoverySuffix})";
+        }
+
         // Increments the failure counter and triggers recovery when port detection
         // fails despite the VPN being connected (applies to all providers).
         private async Task HandlePortDetectionFailureAsync(IVpnManager vpnManager, AppConfig cfg, CancellationToken cancellationToken)
@@ -697,16 +720,6 @@ namespace qbPortWeaver
                 await AutoRecoveryManager.TriggerRestartAsync(recoveryTarget, cancellationToken).ConfigureAwait(false);
             else
                 await AutoRecoveryManager.TriggerCycleAdapterAsync(recoveryTarget, cancellationToken).ConfigureAwait(false);
-        }
-
-        // Builds a failure log message with cycle count and optional recovery trigger suffix
-        private static string BuildCycleCountMessage(string prefix, int count, AppConfig cfg)
-        {
-            string cycles = count == 1 ? "cycle" : "cycles";
-            string recoverySuffix = cfg.AutoRecoveryEnabled
-                ? $", recovery triggers after {cfg.AutoRecoveryTriggerCycles} consecutive failures"
-                : string.Empty;
-            return $"{prefix} ({count} consecutive {cycles}{recoverySuffix})";
         }
 
         // Returns the registry settings section for the active BitTorrent client.

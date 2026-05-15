@@ -12,10 +12,11 @@ internal sealed class HelperLogger(string logFilePath)
 {
     // Must match Subsystem.HelperService and Subsystem.MaxLength in qbPortWeaver
     private const string SubsystemName      = "HelperService";
-    private const int    SubsystemMaxLength = 13; // "HelperService".Length - must equal Subsystem.MaxLength in the main app; if they drift, log columns silently misalign
+    private const int    SubsystemMaxLength = 13; // "HelperService".Length - must equal Subsystem.MaxLength in LogManager.cs; if they drift, log columns silently misalign
     private const int    WriteMaxAttempts     = 3;
     private const int    WriteRetryDelayMs    = 50;
 
+    // Cumulative counts returned to the tray app via the pipe response so it can raise log alerts.
     public int WarnCount  { get; private set; }
     public int ErrorCount { get; private set; }
 
@@ -34,6 +35,18 @@ internal sealed class HelperLogger(string logFilePath)
                 using var writer = new StreamWriter(fs, Encoding.UTF8);
                 writer.Write(entry);
                 return;
+            }
+            catch (DirectoryNotFoundException) when (attempt < WriteMaxAttempts - 1)
+            {
+                // Edge case: AppData subfolder does not yet exist (helper runs before the tray app has
+                // created it on a fresh install). Create the directory and let the loop retry.
+                // CreateDirectory is idempotent so no per-instance flag is needed.
+                try
+                {
+                    string? dir = Path.GetDirectoryName(logFilePath);
+                    if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
+                }
+                catch { return; } // directory creation also failed; log entry is lost
             }
             catch (IOException) when (attempt < WriteMaxAttempts - 1)
             {

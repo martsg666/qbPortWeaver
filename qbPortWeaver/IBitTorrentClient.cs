@@ -41,8 +41,10 @@ namespace qbPortWeaver
 
         /// <summary>
         /// Returns the current listening port and network interface identifier from the client's settings.
-        /// For qBittorrent this is the bound network adapter name.
-        /// For Transmission this is the bound IPv4 address.
+        /// For qBittorrent the interface identifier is the bound network adapter name and is consumed by
+        /// the interface mismatch check. For Transmission and Deluge the interface identifier is unused
+        /// (their RPCs only expose a bind IPv4 address, which is unreliable since the VPN-assigned IP
+        /// rotates on reconnection - users should rely on the VPN client's killswitch instead).
         /// Returns <c>(null, null)</c> if the client is unreachable or the values cannot be read.
         /// </summary>
         Task<(int? ListenPort, string? CurrentInterfaceName)> GetPreferencesAsync(CancellationToken cancellationToken = default);

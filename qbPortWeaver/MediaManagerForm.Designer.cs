@@ -10,6 +10,8 @@ namespace qbPortWeaver
             {
                 _scanCts?.Cancel();
                 _scanCts?.Dispose();
+                _thumbnailCts?.Cancel();
+                _thumbnailCts?.Dispose();
                 lblTmdbTitle?.Font?.Dispose();
                 components?.Dispose();
             }

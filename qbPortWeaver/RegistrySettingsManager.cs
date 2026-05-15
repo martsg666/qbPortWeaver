@@ -220,6 +220,7 @@ namespace qbPortWeaver
             {
                 using var regKey = Registry.CurrentUser.CreateSubKey(AppKeyPath);
                 regKey.SetValue(key, value, RegistryValueKind.String);
+                LogManager.Instance.LogDebug($"RegistrySettingsManager.SetAppValue: {key} = {MaskSensitiveValue(key, value)}");
             }
             catch (Exception ex)
             {
@@ -342,18 +343,34 @@ namespace qbPortWeaver
                 using var regKey = Registry.CurrentUser.OpenSubKey($@"{BaseKeyPath}\{section}");
                 if (regKey?.GetValue(key) is string storedValue && storedValue.Length > 0)
                 {
+                    byte[] encrypted;
                     try
                     {
-                        byte[] encrypted = Convert.FromBase64String(storedValue);
+                        encrypted = Convert.FromBase64String(storedValue);
+                    }
+                    catch (Exception ex) when (ex is FormatException or ArgumentException)
+                    {
+                        // Not valid Base64 - this is plaintext from before encryption was added (backward compat).
+                        // Pre-encryption installs stored values directly; treat them as the actual value.
+                        LogManager.Instance.LogDebug($"RegistrySettingsManager.GetEncryptedValue: [{section}] {key} is plaintext ({ex.GetType().Name}), returning raw value");
+                        return storedValue;
+                    }
+
+                    try
+                    {
                         byte[] decrypted = ProtectedData.Unprotect(encrypted, null, DataProtectionScope.CurrentUser);
                         return Encoding.UTF8.GetString(decrypted);
                     }
-                    catch (Exception ex) when (ex is CryptographicException or FormatException or ArgumentException)
+                    catch (CryptographicException ex)
                     {
-                        // Not a valid DPAPI blob - return the raw value as-is for backward compatibility
-                        // (existing installations may have plaintext values that were stored before encryption was added)
-                        LogManager.Instance.LogDebug($"RegistrySettingsManager.GetEncryptedValue: [{section}] {key} is not a valid DPAPI blob ({ex.GetType().Name}), returning raw value");
-                        return storedValue;
+                        // Value parsed as Base64 but DPAPI cannot decrypt it - typically a machine/profile
+                        // change (registry restored on a different machine) or DPAPI master key rotation.
+                        // Returning the raw Base64 would produce a confusing auth failure; surface the
+                        // underlying cause at Warn so the user can re-enter the value in Settings.
+                        LogManager.Instance.LogMessage(
+                            $"Failed to decrypt [{section}] {key}: {ex.Message} - re-enter the value in Settings",
+                            LogLevel.Warn);
+                        return string.Empty;
                     }
                 }
             }
@@ -423,6 +440,18 @@ namespace qbPortWeaver
             KeyTmdbApiKey
         };
 
+        // Keys whose values must never be written to logs in plaintext. Superset of _encryptedKeys
+        // plus app-level secrets stored plaintext but protected by the HKCU ACL (e.g. the pipe
+        // session token used to authenticate messages to the SYSTEM helper service).
+        private static readonly HashSet<string> _logMaskedKeys = new(StringComparer.OrdinalIgnoreCase)
+        {
+            KeyQBittorrentPassword,
+            KeyTransmissionPassword,
+            KeyDelugePassword,
+            KeyTmdbApiKey,
+            KeyPipeSessionToken
+        };
+
         // Writes any missing keys for one registry section; returns true if anything was written
         private static bool WriteDefaultsForSection(RegistryKey regKey,
             Dictionary<string, string> sectionDefaults)
@@ -451,9 +480,9 @@ namespace qbPortWeaver
             return Convert.ToBase64String(encrypted);
         }
 
-        // Returns "***" for sensitive keys to avoid writing credentials to the log
+        // Returns "***" for sensitive keys to avoid writing credentials or session tokens to the log
         private static string MaskSensitiveValue(string key, string value) =>
-            _encryptedKeys.Contains(key) ? "***" : value;
+            _logMaskedKeys.Contains(key) ? "***" : value;
 
         // Returns the hardcoded default for a setting; returns empty string if the section or key is not found
         private static string GetDefault(string section, string key)

@@ -40,7 +40,7 @@ namespace qbPortWeaver
             {
                 var body = $$$"""{"method":"core.get_config_values","params":[["listen_ports","random_port","listen_random_port","listen_interface"]],"id":{{{_rpcId++}}}}""";
                 using var content  = new StringContent(body, Encoding.UTF8, "application/json");
-                using var response = await _httpClient.PostAsync($"{_url}{RpcPath}", content, cancellationToken).ConfigureAwait(false);
+                using var response = await HttpClient.PostAsync($"{Url}{RpcPath}", content, cancellationToken).ConfigureAwait(false);
 
                 if (!response.IsSuccessStatusCode)
                 {
@@ -51,6 +51,14 @@ namespace qbPortWeaver
                 var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
                 using var doc = JsonDocument.Parse(json);
                 var root = doc.RootElement;
+
+                // Surface RPC-level errors (e.g. "Not Authenticated", "No daemon connected") with the
+                // actual server message before falling through to the generic result-missing path.
+                if (root.TryGetProperty("error", out var error) && error.ValueKind != JsonValueKind.Null)
+                {
+                    LogManager.Instance.LogMessage($"{ClientName} RPC returned an error for core.get_config_values: {error}", LogLevel.Error);
+                    return (null, null);
+                }
 
                 if (!root.TryGetProperty("result", out var result) || result.ValueKind == JsonValueKind.Null)
                 {
@@ -88,7 +96,7 @@ namespace qbPortWeaver
                 // built-in port mapping from overwriting the externally managed port.
                 var body = $$$"""{"method":"core.set_config","params":[{"listen_ports":[{{{port}}},{{{port}}}],"random_port":false,"upnp":false,"natpmp":false}],"id":{{{_rpcId++}}}}""";
                 using var content  = new StringContent(body, Encoding.UTF8, "application/json");
-                using var response = await _httpClient.PostAsync($"{_url}{RpcPath}", content, cancellationToken).ConfigureAwait(false);
+                using var response = await HttpClient.PostAsync($"{Url}{RpcPath}", content, cancellationToken).ConfigureAwait(false);
 
                 if (!response.IsSuccessStatusCode)
                 {
@@ -121,6 +129,11 @@ namespace qbPortWeaver
         public override Task<string?> GetConnectionStatusAsync(CancellationToken cancellationToken = default) => Task.FromResult<string?>(null);
 
         /// <inheritdoc/>
+        /// <remarks>Waits for Deluge's ~5 s config-flush debounce before the kill step so the new port survives the restart.</remarks>
+        protected override Task PreRestartAsync(CancellationToken cancellationToken) =>
+            Task.Delay(ConfigFlushWaitMs, cancellationToken);
+
+        /// <inheritdoc/>
         protected override async Task<bool> AuthenticateAsync(CancellationToken cancellationToken = default)
         {
             try
@@ -129,11 +142,11 @@ namespace qbPortWeaver
                 string encodedPassword = JsonSerializer.Serialize(_password);
                 var body = $$$"""{"method":"auth.login","params":[{{{encodedPassword}}}],"id":{{{_rpcId++}}}}""";
                 using var content  = new StringContent(body, Encoding.UTF8, "application/json");
-                using var response = await _httpClient.PostAsync($"{_url}{RpcPath}", content, cancellationToken).ConfigureAwait(false);
+                using var response = await HttpClient.PostAsync($"{Url}{RpcPath}", content, cancellationToken).ConfigureAwait(false);
 
                 if (!response.IsSuccessStatusCode)
                 {
-                    LogManager.Instance.LogMessage($"{ClientName} authentication failed (HTTP {(int)response.StatusCode} {response.StatusCode}) - check the URL in Settings ({_url})", LogLevel.Error);
+                    LogManager.Instance.LogMessage($"{ClientName} authentication failed (HTTP {(int)response.StatusCode} {response.StatusCode}) - check the URL in Settings ({Url})", LogLevel.Error);
                     return false;
                 }
 
@@ -143,7 +156,7 @@ namespace qbPortWeaver
 
                 if (root.TryGetProperty("error", out var error) && error.ValueKind != JsonValueKind.Null)
                 {
-                    LogManager.Instance.LogMessage($"{ClientName} authentication failed: {error} - check the URL in Settings ({_url})", LogLevel.Error);
+                    LogManager.Instance.LogMessage($"{ClientName} authentication failed: {error} - wrong password - check the credentials in Settings", LogLevel.Error);
                     return false;
                 }
 
@@ -160,11 +173,6 @@ namespace qbPortWeaver
                 return false;
             }
         }
-
-        // core.set_config debounces disk writes by ~5 s. Wait before the kill step so the
-        // new port survives the restart (without this, Deluge reads the old core.conf).
-        protected override Task PreRestartAsync(CancellationToken cancellationToken) =>
-            Task.Delay(ConfigFlushWaitMs, cancellationToken);
 
         private static int? ParseListenPort(JsonElement result)
         {

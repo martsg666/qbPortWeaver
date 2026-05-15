@@ -18,6 +18,9 @@ namespace qbPortWeaver
         private bool _allIncluded = true;
         private bool _isBusy;
         private bool _showOnlyReviewNeeded;
+        // Controls disabled while an async operation is running. btnImportNow is excluded - each
+        // handler manages it separately to preserve its proposals-count state.
+        private Control[] _busyControls;
 
         // Row confidence colors - set once in OnLoad based on active theme
         private bool  _isDarkMode;
@@ -29,6 +32,16 @@ namespace qbPortWeaver
             InitializeComponent();
             Text = $"{AppConstants.AppName} | Media Manager";
             rtbTmdbOverview.Enter += (s, e) => dgvResults.Focus();
+            _busyControls =
+            [
+                btnScanNow, btnRematch, btnImportNow, btnClearCache,
+                btnAddSourceFolder, btnRemoveSourceFolder,
+                txtMoviesLibraryPath, txtTvShowsLibraryPath,
+                btnBrowseMoviesLibrary, btnBrowseTvShowsLibrary,
+                chkCreateFolders, cboImportMode, chkDryRun,
+                chkDeleteEmptyFolders, chkShowOnlyReview,
+                dgvResults,
+            ];
         }
 
         protected override void OnLoad(EventArgs e)
@@ -167,7 +180,7 @@ namespace qbPortWeaver
                 return;
             }
 
-            var ct = await RenewScanCancellationTokenAsync();
+            var cancellationToken = await RenewScanCancellationTokenAsync();
             SetBusy(true);
             BeginProgress();
             lblScanStatus.Text = "Re-matching\u2026";
@@ -175,15 +188,15 @@ namespace qbPortWeaver
             string? completionStatus = null;
             try
             {
-                completionStatus = await RematchRowsAsync(apiKey, ct);
+                completionStatus = await RematchRowsAsync(apiKey, cancellationToken);
             }
             catch (OperationCanceledException)
             {
-                if (!IsDisposed) lblScanStatus.Text = "Re-match cancelled.";
+                if (!IsDisposed) completionStatus = "Re-match cancelled.";
             }
             catch (Exception ex)
             {
-                if (!IsDisposed) lblScanStatus.Text = $"Error: {ex.Message}";
+                if (!IsDisposed) completionStatus = $"Error: {ex.Message}";
             }
             finally
             {
@@ -200,7 +213,7 @@ namespace qbPortWeaver
         // Re-verifies uncertain and unmatched rows using the current Proposed filenames.
         // TV show rows are grouped by show name - one TMDB call per show, not per episode.
         // Rows where TMDB still cannot find a match are left unchanged.
-        private async Task<string?> RematchRowsAsync(string apiKey, CancellationToken ct)
+        private async Task<string?> RematchRowsAsync(string apiKey, CancellationToken cancellationToken)
         {
             var tmdb           = new TmdbClient(apiKey);
             bool createFolders = chkCreateFolders.Checked;
@@ -219,9 +232,9 @@ namespace qbPortWeaver
             prgScan.Maximum = total;
             prgScan.Value   = 0;
 
-            int done = await RematchTvShowRowsAsync(tmdb, tvShowLib, tvShowRows, createFolders, total, 0, ct);
+            int done = await RematchTvShowRowsAsync(tmdb, tvShowLib, tvShowRows, createFolders, total, 0, cancellationToken);
             if (IsDisposed) return null;
-            await RematchMovieRowsAsync(tmdb, moviesLib, movieRows, createFolders, total, done, ct);
+            await RematchMovieRowsAsync(tmdb, moviesLib, movieRows, createFolders, total, done, cancellationToken);
             if (IsDisposed) return null;
 
             dgvResults.Refresh(); // force full repaint so CellFormatting fires for all visible cells
@@ -235,14 +248,14 @@ namespace qbPortWeaver
 
         // Re-matches TV show rows grouped by show name. Returns updated done count.
         private async Task<int> RematchTvShowRowsAsync(TmdbClient tmdb, string tvShowLib,
-            List<DataGridViewRow> tvShowRows, bool createFolders, int total, int done, CancellationToken ct)
+            List<DataGridViewRow> tvShowRows, bool createFolders, int total, int done, CancellationToken cancellationToken)
         {
             foreach (var (showKey, showRows) in GroupTvShowRowsByShow(tvShowRows))
             {
-                ct.ThrowIfCancellationRequested();
+                cancellationToken.ThrowIfCancellationRequested();
                 var (showInfo, showConfident) = string.IsNullOrWhiteSpace(tvShowLib)
                     ? (null, false)
-                    : await SearchTmdbByPlexNameAsync<TvShowInfo>(showKey, (q, y) => tmdb.SearchTvShowCandidatesAsync(q, y, ct), i => i.Title, i => i.Year, i => i.VoteCount, "TV show");
+                    : await SearchTmdbByPlexNameAsync<TvShowInfo>(showKey, tmdb.SearchTvShowCandidatesAsync, i => i.Title, i => i.Year, i => i.VoteCount, "TV show", cancellationToken);
                 foreach (var row in showRows)
                 {
                     if (IsDisposed) return done;
@@ -257,16 +270,16 @@ namespace qbPortWeaver
 
         // Re-matches movie rows individually. Returns updated done count.
         private async Task<int> RematchMovieRowsAsync(TmdbClient tmdb, string moviesLib,
-            List<DataGridViewRow> movieRows, bool createFolders, int total, int done, CancellationToken ct)
+            List<DataGridViewRow> movieRows, bool createFolders, int total, int done, CancellationToken cancellationToken)
         {
             foreach (var row in movieRows)
             {
-                ct.ThrowIfCancellationRequested();
+                cancellationToken.ThrowIfCancellationRequested();
                 if (IsDisposed) return done;
                 if (!string.IsNullOrWhiteSpace(moviesLib))
                 {
                     var editedName = GetProposedName(row);
-                    var (movieInfo, movieConfident) = await SearchTmdbByPlexNameAsync<MovieInfo>(editedName, (q, y) => tmdb.SearchMovieCandidatesAsync(q, y, ct), i => i.Title, i => i.Year, i => i.VoteCount, "movie");
+                    var (movieInfo, movieConfident) = await SearchTmdbByPlexNameAsync<MovieInfo>(editedName, tmdb.SearchMovieCandidatesAsync, i => i.Title, i => i.Year, i => i.VoteCount, "movie", cancellationToken);
                     if (movieInfo is not null)
                         ApplyMovieRematchResult(row, movieInfo, moviesLib, createFolders, editedName, movieConfident);
                 }
@@ -300,9 +313,9 @@ namespace qbPortWeaver
         // Parses a Plex-formatted name into title+year and searches TMDB with confidence tracking.
         // Returns (null, false) if the name is blank, unparseable, or has no TMDB match.
         private static async Task<(T? Info, bool IsConfident)> SearchTmdbByPlexNameAsync<T>(
-            string name, Func<string, int?, Task<IReadOnlyList<T>?>> search,
+            string name, Func<string, int?, CancellationToken, Task<IReadOnlyList<T>?>> search,
             Func<T, string> getTitle, Func<T, int?> getYear, Func<T, int> getVoteCount,
-            string mediaLabel) where T : class
+            string mediaLabel, CancellationToken cancellationToken = default) where T : class
         {
             if (string.IsNullOrWhiteSpace(name)) return (null, false);
             var (title, year) = FileNameParser.ParseTitleYear(name);
@@ -310,7 +323,7 @@ namespace qbPortWeaver
             try
             {
                 var (info, isConfident) = await TmdbClient.SearchWithConfidenceAsync(
-                    title, year, search, i => getYear(i) is not null, getTitle, getVoteCount).ConfigureAwait(false);
+                    title, year, search, i => getYear(i) is not null, getTitle, getVoteCount, cancellationToken).ConfigureAwait(false);
 
                 if (info is null)
                 {
@@ -384,7 +397,7 @@ namespace qbPortWeaver
                 return;
             }
 
-            var ct = await RenewScanCancellationTokenAsync();
+            var cancellationToken = await RenewScanCancellationTokenAsync();
 
             SetBusy(true);
             BeginProgress();
@@ -393,21 +406,21 @@ namespace qbPortWeaver
             foreach (var img in _posterCache.Values) img.Dispose();
             _posterCache.Clear();
 
+            string? completionStatus = null;
             try
             {
                 bool createFolders = chkCreateFolders.Checked;
-                var proposals = await MediaManagerService.ScanAsync(apiKey, createFolders, sourceFolders, moviesLibraryPath, tvShowsLibraryPath, CreateScanProgress("Scanning\u2026"), ct);
+                var proposals = await MediaManagerService.ScanAsync(apiKey, createFolders, sourceFolders, moviesLibraryPath, tvShowsLibraryPath, CreateScanProgress("Scanning\u2026"), cancellationToken);
 
                 PopulateGrid(proposals);
-                UpdateScanStatus();
             }
             catch (OperationCanceledException)
             {
-                if (!IsDisposed) lblScanStatus.Text = "Scan cancelled.";
+                if (!IsDisposed) completionStatus = "Scan cancelled.";
             }
             catch (Exception ex)
             {
-                if (!IsDisposed) lblScanStatus.Text = $"Error: {ex.Message}";
+                if (!IsDisposed) completionStatus = $"Error: {ex.Message}";
             }
             finally
             {
@@ -415,6 +428,8 @@ namespace qbPortWeaver
                 {
                     FinishProgress();
                     SetBusy(false);
+                    UpdateScanStatus();
+                    if (completionStatus is not null) lblScanStatus.Text = completionStatus;
                 }
             }
         }
@@ -435,25 +450,25 @@ namespace qbPortWeaver
 
             if (confirm != DialogResult.Yes) return;
 
-            var ct = await RenewScanCancellationTokenAsync();
+            var cancellationToken = await RenewScanCancellationTokenAsync();
 
             SetBusy(true);
             BeginProgress();
-            btnImportNow.Enabled = false;
             lblScanStatus.Text   = "Importing\u2026";
             lblScanStatus.Refresh();
 
+            string? completionStatus = null;
             try
             {
-                await RunImportAndRescanAsync(ct);
+                await RunImportAndRescanAsync(cancellationToken);
             }
             catch (OperationCanceledException)
             {
-                if (!IsDisposed) lblScanStatus.Text = "Import cancelled.";
+                if (!IsDisposed) completionStatus = "Import cancelled.";
             }
             catch (Exception ex)
             {
-                if (!IsDisposed) lblScanStatus.Text = $"Error: {ex.Message}";
+                if (!IsDisposed) completionStatus = $"Error: {ex.Message}";
             }
             finally
             {
@@ -462,12 +477,13 @@ namespace qbPortWeaver
                     FinishProgress();
                     SetBusy(false);
                     UpdateScanStatus();
+                    if (completionStatus is not null) lblScanStatus.Text = completionStatus;
                 }
             }
         }
 
         // Applies proposals, optionally cleans up empty folders, then re-scans to refresh the grid.
-        private async Task RunImportAndRescanAsync(CancellationToken ct)
+        private async Task RunImportAndRescanAsync(CancellationToken cancellationToken)
         {
             var toApply    = BuildProposalsFromGrid();
             var importMode = MediaManagerService.ParseImportMode(cboImportMode.SelectedItem?.ToString() ?? RegistrySettingsManager.ImportModeHardlink);
@@ -483,7 +499,7 @@ namespace qbPortWeaver
                     : p.FileName;
                 lblScanStatus.Text = $"Importing {p.Current}/{p.Total} - {name}";
             });
-            await MediaManagerService.ApplyProposalsAsync(toApply, importMode, progress, ct);
+            await MediaManagerService.ApplyProposalsAsync(toApply, importMode, progress, cancellationToken);
 
             if (IsDisposed) return;
 
@@ -495,10 +511,10 @@ namespace qbPortWeaver
                 {
                     foreach (var folder in sourceFolders)
                     {
-                        ct.ThrowIfCancellationRequested();
+                        cancellationToken.ThrowIfCancellationRequested();
                         MediaManagerService.CleanupEmptyFolders(folder, dryRun: false);
                     }
-                }, ct);
+                }, cancellationToken);
             }
 
             if (IsDisposed) return;
@@ -507,7 +523,7 @@ namespace qbPortWeaver
             BeginProgress();
             var remaining = await MediaManagerService.ScanAsync(
                 txtTmdbApiKey.Text.Trim(), chkCreateFolders.Checked, sourceFolders,
-                txtMoviesLibraryPath.Text.Trim(), txtTvShowsLibraryPath.Text.Trim(), CreateScanProgress("Re-scanning\u2026"), ct);
+                txtMoviesLibraryPath.Text.Trim(), txtTvShowsLibraryPath.Text.Trim(), CreateScanProgress("Re-scanning\u2026"), cancellationToken);
 
             if (IsDisposed) return;
             PopulateGrid(remaining);
@@ -638,11 +654,11 @@ namespace qbPortWeaver
             await LoadThumbnailAsync(posterPath, newCts.Token);
         }
 
-        private async Task LoadThumbnailAsync(string posterPath, CancellationToken ct)
+        private async Task LoadThumbnailAsync(string posterPath, CancellationToken cancellationToken)
         {
             // No ConfigureAwait(false): continuation must resume on the UI thread to touch controls
-            var image = await TmdbClient.FetchPosterAsync(posterPath, ct);
-            if (ct.IsCancellationRequested || IsDisposed) { image?.Dispose(); return; }
+            var image = await TmdbClient.FetchPosterAsync(posterPath, cancellationToken);
+            if (cancellationToken.IsCancellationRequested || IsDisposed) { image?.Dispose(); return; }
             if (image is null) return;
 
             _posterCache[posterPath] = image;
@@ -885,9 +901,10 @@ namespace qbPortWeaver
 
         private async Task<CancellationToken> RenewScanCancellationTokenAsync()
         {
-            if (_scanCts is not null) { await _scanCts.CancelAsync(); _scanCts.Dispose(); }
-            _scanCts = new CancellationTokenSource();
-            return _scanCts.Token;
+            var newCts = new CancellationTokenSource();
+            using var oldCts = Interlocked.Exchange(ref _scanCts, newCts);
+            if (oldCts is not null) await oldCts.CancelAsync().ConfigureAwait(true);
+            return newCts.Token;
         }
 
         private IProgress<(int Current, int Total)> CreateScanProgress(string verb)
@@ -916,26 +933,11 @@ namespace qbPortWeaver
 
         private string GetProposedName(DataGridViewRow row) => row.Cells[colProposed.Index].Value?.ToString() ?? string.Empty;
 
-        // Disables input controls while an async operation is running.
-        // btnImportNow is managed separately by each handler to preserve its proposals-count state.
         private void SetBusy(bool busy)
         {
-            _isBusy                         = busy;
-            btnScanNow.Enabled              = !busy;
-            btnRematch.Enabled              = !busy;
-            btnClearCache.Enabled           = !busy;
-            btnAddSourceFolder.Enabled      = !busy;
-            btnRemoveSourceFolder.Enabled   = !busy;
-            txtMoviesLibraryPath.Enabled    = !busy;
-            txtTvShowsLibraryPath.Enabled   = !busy;
-            btnBrowseMoviesLibrary.Enabled  = !busy;
-            btnBrowseTvShowsLibrary.Enabled = !busy;
-            chkCreateFolders.Enabled        = !busy;
-            cboImportMode.Enabled           = !busy;
-            chkDryRun.Enabled               = !busy;
-            chkDeleteEmptyFolders.Enabled   = !busy;
-            chkShowOnlyReview.Enabled       = !busy;
-            dgvResults.Enabled              = !busy;
+            _isBusy = busy;
+            foreach (var control in _busyControls)
+                control.Enabled = !busy;
         }
 
         // Updates the status label and Import Now button based on checked rows

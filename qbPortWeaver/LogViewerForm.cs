@@ -7,14 +7,21 @@ namespace qbPortWeaver
     /// <summary>Modeless log viewer with live tail updates and log-level colour coding. Opened via the tray menu or tray icon double-click; only one instance is allowed at a time (enforced by MainForm.ShowOrActivate).</summary>
     public partial class LogViewerForm : Form
     {
-        private readonly string      _logFilePath;
-        private readonly bool        _navigateToLatestIssue;
+        private readonly string _logFilePath;
+        private          string _activeLogFilePath;
+        private          bool   _navigateToLatestIssue;
         private readonly object      _readLock  = new();
         private readonly List<string> _allLines = new(); // all raw lines from file; display is rebuilt from these on filter change
         private readonly List<int>   _searchMatches = new(); // character indices of current search hits in rtbLog
         private int                  _searchIndex = -1;
         private long                 _lastReadPosition;
         private FileSystemWatcher?   _watcher;
+        // Incremented under _readLock whenever the active log file changes so in-flight
+        // FileSystemWatcher events from the prior watcher can detect they are stale and bail.
+        // FileSystemWatcher.Dispose() does not synchronously wait for handlers already queued
+        // on the threadpool, so without this guard a stale event would read the newly-active
+        // file at a freshly-reset offset and duplicate content against LoadInitialContentAsync.
+        private int                  _watcherGeneration;
         private bool                 _isDarkMode;
         private Color[]              _themeColors    = []; // overwritten in OnLoad after _isDarkMode is set
         private System.Windows.Forms.Timer? _searchDebounceTimer;
@@ -49,10 +56,14 @@ namespace qbPortWeaver
 
         public LogViewerForm() : this(string.Empty) { } // designer support only
 
+        /// <summary>Opens the log viewer for the specified log file.</summary>
+        /// <param name="logFilePath">Path to the log file to display.</param>
+        /// <param name="navigateToLatestIssue">When <see langword="true"/>, scrolls to the most recent WARN or ERROR entry on open.</param>
         public LogViewerForm(string logFilePath, bool navigateToLatestIssue = false)
         {
             InitializeComponent();
             _logFilePath           = logFilePath;
+            _activeLogFilePath     = logFilePath;
             _navigateToLatestIssue = navigateToLatestIssue;
         }
 
@@ -70,6 +81,7 @@ namespace qbPortWeaver
             int searchTop    = (pnlToolbar.Height - txtSearch.Height) / 2;
             txtSearch.Top    = searchTop;
             cboSubsystem.Top = (pnlToolbar.Height - cboSubsystem.Height) / 2;
+            cboLogFile.Top   = (pnlToolbar.Height - cboLogFile.Height)   / 2;
 
             // Size all nav buttons to match the search box height so arrows render consistently
             int navH = txtSearch.Height;
@@ -87,6 +99,9 @@ namespace qbPortWeaver
             btnClearSearch.Location = new Point(txtSearch.Right - cbSize - ClearButtonMargin, searchTop + ClearButtonMargin);
             // Must be in front of the native TextBox HWND or it will be hidden behind it
             btnClearSearch.BringToFront();
+            PopulateLogFileDropdown();
+            // Wire event after population to avoid triggering a load before the initial LoadInitialContentAsync below
+            cboLogFile.SelectedIndexChanged += cboLogFile_SelectedIndexChanged;
             _ = LoadInitialContentAsync(); // fire-and-forget; exceptions are handled inside LoadInitialContentAsync
         }
 
@@ -120,6 +135,9 @@ namespace qbPortWeaver
 
             cboSubsystem.BackColor = bg;
             cboSubsystem.ForeColor = fg;
+
+            cboLogFile.BackColor = bg;
+            cboLogFile.ForeColor = fg;
 
             txtSearch.BackColor = bg;
             txtSearch.ForeColor = fg;
@@ -447,7 +465,8 @@ namespace qbPortWeaver
         {
             try
             {
-                if (!File.Exists(_logFilePath))
+                string loadPath = _activeLogFilePath;
+                if (!File.Exists(loadPath))
                 {
                     SetMetaMessage("(No log entries yet)", MetaColor);
                     return;
@@ -462,7 +481,7 @@ namespace qbPortWeaver
                 {
                     lock (_readLock)
                     {
-                        using var fs     = new FileStream(_logFilePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+                        using var fs     = new FileStream(loadPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
                         using var reader = new StreamReader(fs, Encoding.UTF8);
                         string[] lines    = ParseLogLines(reader.ReadToEnd());
                         string[] filtered = lines.Where(l => IsLineVisibleWithFilters(l, filters, subsystemFilter)).ToArray();
@@ -475,7 +494,13 @@ namespace qbPortWeaver
                 _allLines.AddRange(allLines);
                 _lastReadPosition = position;
                 rtbLog.Rtf = rtf;
-                if (_navigateToLatestIssue) NavigateToLatestIssue(); else ScrollToBottom();
+                if (_navigateToLatestIssue) { NavigateToLatestIssue(); _navigateToLatestIssue = false; } else ScrollToBottom();
+                if (!string.IsNullOrEmpty(txtSearch.Text))
+                {
+                    SendMessage(rtbLog.Handle, WinMsg.WM_SETREDRAW, IntPtr.Zero, IntPtr.Zero);
+                    try   { RefreshSearch(navigateToFirst: true); ApplySearchHighlights(); }
+                    finally { SendMessage(rtbLog.Handle, WinMsg.WM_SETREDRAW, (IntPtr)1, IntPtr.Zero); rtbLog.Invalidate(); }
+                }
             }
             catch (Exception ex)
             {
@@ -488,25 +513,30 @@ namespace qbPortWeaver
             }
         }
 
-        // Starts a FileSystemWatcher to detect new log entries and file rotation/clearing
+        // Starts a FileSystemWatcher to detect new log entries and file rotation/clearing.
+        // Only watches the current (non-rotated) log file; backup files are immutable.
         private void StartWatcher()
         {
             if (IsDisposed) return;
+            if (_activeLogFilePath != _logFilePath) return;
             try
             {
-                string? dir  = Path.GetDirectoryName(_logFilePath);
-                string? file = Path.GetFileName(_logFilePath);
+                string? dir  = Path.GetDirectoryName(_activeLogFilePath);
+                string? file = Path.GetFileName(_activeLogFilePath);
                 if (string.IsNullOrEmpty(dir) || string.IsNullOrEmpty(file))
                     return;
 
+                // Capture the current generation so events from this watcher can be distinguished
+                // from events queued by a previously-disposed watcher (see _watcherGeneration).
+                int generation = _watcherGeneration;
                 _watcher = new FileSystemWatcher(dir, file)
                 {
                     NotifyFilter        = NotifyFilters.LastWrite | NotifyFilters.FileName,
                     EnableRaisingEvents = true
                 };
-                _watcher.Changed += OnWatcherChanged;
-                _watcher.Created += OnWatcherCreated;
-                _watcher.Deleted += OnWatcherDeleted;
+                _watcher.Changed += (s, e) => OnLogFileUpdated(generation);
+                _watcher.Created += (s, e) => OnLogFileUpdated(generation);
+                _watcher.Deleted += (s, e) => OnLogFileDeleted(generation);
             }
             catch (Exception ex)
             {
@@ -514,23 +544,26 @@ namespace qbPortWeaver
             }
         }
 
-        private void OnWatcherChanged(object sender, FileSystemEventArgs e) => OnLogFileUpdated();
-        private void OnWatcherCreated(object sender, FileSystemEventArgs e) => OnLogFileUpdated();
-        private void OnWatcherDeleted(object sender, FileSystemEventArgs e) => OnLogFileDeleted();
-
         // Reads any new content appended since the last read and appends visible lines to the display.
         // Only scrolls to the bottom if the user was already there before the update.
-        private void OnLogFileUpdated()
+        // The generation parameter holds the value of _watcherGeneration at watcher-subscription time.
+        // Events with a stale generation are ignored to defend against the race between in-flight
+        // FileSystemWatcher events and a file switch. See _watcherGeneration for details.
+        private void OnLogFileUpdated(int generation)
         {
             try
             {
                 string[] newLines;
                 lock (_readLock)
                 {
-                    if (!File.Exists(_logFilePath))
+                    // Bail if a file switch happened between this event being queued and us
+                    // acquiring the lock - reading _activeLogFilePath here would read the
+                    // newly-active file at a reset offset and duplicate content.
+                    if (generation != _watcherGeneration) return;
+                    if (!File.Exists(_activeLogFilePath))
                         return;
 
-                    using var fs = new FileStream(_logFilePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+                    using var fs = new FileStream(_activeLogFilePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
 
                     // File shorter than expected - it was rotated; read from the start
                     if (fs.Length < _lastReadPosition)
@@ -566,7 +599,13 @@ namespace qbPortWeaver
 
                 try
                 {
-                    Invoke(() => AppendNewLines(newLines));
+                    Invoke(() =>
+                    {
+                        // Re-check on the UI thread: the switch handler also runs here, so it may
+                        // have completed between our lock release and this Invoke landing.
+                        if (generation != _watcherGeneration) return;
+                        AppendNewLines(newLines);
+                    });
                 }
                 catch (ObjectDisposedException) { /* form disposed between IsDisposed check and Invoke - expected on close */ }
             }
@@ -577,22 +616,69 @@ namespace qbPortWeaver
             }
         }
 
-        // Called when the log file is deleted (e.g. Clear Logs); resets state and clears the display
-        private void OnLogFileDeleted()
+        // Called when the log file is deleted (e.g. Clear Logs); resets state and clears the display.
+        // See OnLogFileUpdated for the generation parameter's purpose.
+        private void OnLogFileDeleted(int generation)
         {
             lock (_readLock)
+            {
+                if (generation != _watcherGeneration) return;
                 _lastReadPosition = 0;
+            }
 
             if (IsDisposed) return;
             try
             {
                 Invoke(() =>
                 {
+                    if (generation != _watcherGeneration) return;
                     _allLines.Clear();
                     rtbLog.Clear();
                 });
             }
             catch (ObjectDisposedException) { /* form disposed between IsDisposed check and Invoke - expected on close */ }
+        }
+
+        // Populates the log file dropdown with the current log and any existing rotated backups.
+        // Called once on load; event is wired afterward to prevent a premature file switch.
+        private void PopulateLogFileDropdown()
+        {
+            cboLogFile.Items.Clear();
+            cboLogFile.Items.Add(new LogFileEntry("Current", _logFilePath));
+            for (int i = 1; File.Exists($"{_logFilePath}.{i}"); i++)
+                cboLogFile.Items.Add(new LogFileEntry($"Backup {i}", $"{_logFilePath}.{i}"));
+            cboLogFile.SelectedIndex = 0;
+        }
+
+        private void cboLogFile_SelectedIndexChanged(object? sender, EventArgs e)
+        {
+            if (cboLogFile.SelectedItem is not LogFileEntry entry) return;
+            if (entry.FilePath == _activeLogFilePath) return;
+
+            if (_watcher is not null)
+            {
+                _watcher.EnableRaisingEvents = false;
+                _watcher.Dispose();
+                _watcher = null;
+            }
+
+            _activeLogFilePath = entry.FilePath;
+
+            lock (_readLock)
+            {
+                // Invalidate any in-flight events from the disposed watcher before clearing state.
+                _watcherGeneration++;
+                _allLines.Clear();
+                _lastReadPosition = 0;
+            }
+            rtbLog.Clear();
+
+            _ = LoadInitialContentAsync();
+        }
+
+        private readonly record struct LogFileEntry(string DisplayName, string FilePath)
+        {
+            public override string ToString() => DisplayName;
         }
 
         // Appends new lines to the in-memory store and inserts visible lines into the display

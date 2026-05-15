@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
 
 namespace qbPortWeaver
 {
@@ -40,7 +41,7 @@ namespace qbPortWeaver
             var importMode = ParseImportMode(RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionMedia, RegistrySettingsManager.KeyMediaImportMode));
 
             var sourceFolders = GetFolders(RegistrySettingsManager.KeyMediaSourceFolders);
-            var importSw = System.Diagnostics.Stopwatch.StartNew();
+            var importSw = Stopwatch.StartNew();
             LogManager.Instance.LogMessage($"Import started (dryRun={dryRun}, createFolders={createFolders}, deleteEmptyFolders={deleteEmptyFolders}, importMode={importMode})", LogLevel.Info, Subsystem.MediaManager);
             if (LogManager.Instance.DebugMode)
                 LogManager.Instance.LogDebug(
@@ -76,50 +77,6 @@ namespace qbPortWeaver
             LogManager.Instance.LogMessage($"Import completed: {total} file(s) in {importSw.ElapsedMilliseconds}ms", LogLevel.Info, Subsystem.MediaManager);
         }
 
-        // Processes a single source folder, running both movie and TV show processors.
-        private static async Task ProcessSourceFolderAsync(
-            string folder,
-            (string[] MovieFiles, string[] TvShowFiles) items,
-            ImportContext ctx,
-            CancellationToken cancellationToken)
-        {
-            if (items.MovieFiles.Length == 0 && items.TvShowFiles.Length == 0)
-            {
-                LogManager.Instance.LogDebug($"MediaManagerService.ProcessSourceFolderAsync: No new files in '{folder}'", Subsystem.MediaManager);
-                return;
-            }
-            LogManager.Instance.LogMessage($"Processing source folder: '{folder}'", LogLevel.Info, Subsystem.MediaManager);
-
-            if (!string.IsNullOrWhiteSpace(ctx.MoviesLibraryPath) && items.MovieFiles.Length > 0)
-            {
-                var movieProcessor = new MovieProcessor(ctx.Tmdb, ctx.DryRun, ctx.CreateFolders, ctx.MoviesLibraryPath, ctx.ImportMode);
-                await TryRunAsync(() => movieProcessor.ProcessMoviesAsync(folder, items.MovieFiles, cancellationToken), folder).ConfigureAwait(false);
-            }
-
-            if (!string.IsNullOrWhiteSpace(ctx.TvShowsLibraryPath) && items.TvShowFiles.Length > 0)
-            {
-                var tvShowProcessor = new TvShowProcessor(ctx.Tmdb, ctx.DryRun, ctx.CreateFolders, ctx.TvShowsLibraryPath, ctx.ImportMode);
-                await TryRunAsync(() => tvShowProcessor.ProcessTvShowsAsync(folder, items.TvShowFiles, cancellationToken), folder).ConfigureAwait(false);
-            }
-
-            int totalFiles = items.MovieFiles.Length + items.TvShowFiles.Length;
-            LogManager.Instance.LogMessage($"Processed source folder '{folder}': {totalFiles} file(s)", LogLevel.Info, Subsystem.MediaManager);
-        }
-
-        // Runs folder cleanup for all configured source folders.
-        private static void CleanupSourceFolders(string[] sourceFolders, bool dryRun, CancellationToken cancellationToken)
-        {
-            foreach (var folder in sourceFolders)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                try { CleanupEmptyFolders(folder, dryRun); }
-                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-                {
-                    LogManager.Instance.LogMessage($"Skipped folder cleanup for '{folder}': {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
-                }
-            }
-        }
-
         /// <summary>
         /// Returns import proposals for all configured source folders without modifying any files.
         /// Only processors whose library path is configured will produce proposals.
@@ -136,7 +93,7 @@ namespace qbPortWeaver
             string moviesLibraryPath, string tvShowsLibraryPath,
             IProgress<(int Current, int Total)>? progress = null, CancellationToken cancellationToken = default)
         {
-            var scanSw = System.Diagnostics.Stopwatch.StartNew();
+            var scanSw = Stopwatch.StartNew();
             LogManager.Instance.LogMessage($"Scan started (createFolders={createFolders})", LogLevel.Info, Subsystem.MediaManager);
 
             // UI-initiated scans always rebuild the library index (allowLibraryReuse: false) to ensure fresh results.
@@ -197,6 +154,50 @@ namespace qbPortWeaver
 
             LogManager.Instance.LogMessage($"Scanned source folder '{folder}': {proposals.Count} proposal(s)", LogLevel.Info, Subsystem.MediaManager);
             return proposals;
+        }
+
+        // Processes a single source folder, running both movie and TV show processors.
+        private static async Task ProcessSourceFolderAsync(
+            string folder,
+            (string[] MovieFiles, string[] TvShowFiles) items,
+            ImportContext ctx,
+            CancellationToken cancellationToken)
+        {
+            if (items.MovieFiles.Length == 0 && items.TvShowFiles.Length == 0)
+            {
+                LogManager.Instance.LogDebug($"MediaManagerService.ProcessSourceFolderAsync: No new files in '{folder}'", Subsystem.MediaManager);
+                return;
+            }
+            LogManager.Instance.LogMessage($"Processing source folder: '{folder}'", LogLevel.Info, Subsystem.MediaManager);
+
+            if (!string.IsNullOrWhiteSpace(ctx.MoviesLibraryPath) && items.MovieFiles.Length > 0)
+            {
+                var movieProcessor = new MovieProcessor(ctx.Tmdb, ctx.DryRun, ctx.CreateFolders, ctx.MoviesLibraryPath, ctx.ImportMode);
+                await TryRunAsync(() => movieProcessor.ProcessMoviesAsync(folder, items.MovieFiles, cancellationToken), folder).ConfigureAwait(false);
+            }
+
+            if (!string.IsNullOrWhiteSpace(ctx.TvShowsLibraryPath) && items.TvShowFiles.Length > 0)
+            {
+                var tvShowProcessor = new TvShowProcessor(ctx.Tmdb, ctx.DryRun, ctx.CreateFolders, ctx.TvShowsLibraryPath, ctx.ImportMode);
+                await TryRunAsync(() => tvShowProcessor.ProcessTvShowsAsync(folder, items.TvShowFiles, cancellationToken), folder).ConfigureAwait(false);
+            }
+
+            int totalFiles = items.MovieFiles.Length + items.TvShowFiles.Length;
+            LogManager.Instance.LogMessage($"Processed source folder '{folder}': {totalFiles} file(s)", LogLevel.Info, Subsystem.MediaManager);
+        }
+
+        // Runs folder cleanup for all configured source folders.
+        private static void CleanupSourceFolders(string[] sourceFolders, bool dryRun, CancellationToken cancellationToken)
+        {
+            foreach (var folder in sourceFolders)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                try { CleanupEmptyFolders(folder, dryRun); }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    LogManager.Instance.LogMessage($"Skipped folder cleanup for '{folder}': {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
+                }
+            }
         }
 
         /// <summary>
@@ -407,7 +408,7 @@ namespace qbPortWeaver
         {
             return Task.Run(() =>
             {
-                var classifySw    = System.Diagnostics.Stopwatch.StartNew();
+                var classifySw    = Stopwatch.StartNew();
                 var classified    = new List<(string Folder, (string[] MovieFiles, string[] TvShowFiles) Items)>(enumerated.Count);
                 var sourceFpToPath = new ConcurrentDictionary<string, string>(StringComparer.Ordinal);
 

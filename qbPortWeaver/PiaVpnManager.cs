@@ -16,14 +16,13 @@ namespace qbPortWeaver
             RegistrySettingsManager.KeyPiaAdapterName,
             "PiaVpnManager.GetClientExePath");
 
-        private static string GetPiactlProcessName() => RegistrySettingsManager.GetAppValue(RegistrySettingsManager.KeyPiactlProcessName);
         private const int    ProcessTimeoutMs = 5000;
 
         // Cached path for piactl; null = not found, string.Empty = not yet resolved.
         // Install paths never change at runtime so we resolve once and reuse.
-        // Not volatile: relies on 64-bit CLR atomic reference assignment (reference writes are
-        // always atomic on x64). A data race here causes at most a redundant re-resolve, not corruption.
-        private static string? _piactlPathCache = string.Empty;
+        // volatile: the field is written at most once (Empty -> resolved path). Without it a reading
+        // thread on a different core could observe a stale Empty and trigger one redundant re-resolve.
+        private static volatile string? _piactlPathCache = string.Empty;
 
         /// <inheritdoc />
         public string ProviderName => RegistrySettingsManager.VpnProviderPia;
@@ -55,9 +54,9 @@ namespace qbPortWeaver
         }
 
         /// <inheritdoc />
-        // ct only prevents scheduling if cancelled before the task starts; once GetVpnPortCore runs,
+        // cancellationToken only prevents scheduling if cancelled before the task starts; once GetVpnPortCore runs,
         // cancellation cannot interrupt the in-progress piactl subprocess (bounded by ProcessTimeoutMs).
-        public Task<int?> GetVpnPortAsync(CancellationToken ct = default) => Task.Run(GetVpnPortCore, ct);
+        public Task<int?> GetVpnPortAsync(CancellationToken cancellationToken = default) => Task.Run(GetVpnPortCore, cancellationToken);
 
         /// <inheritdoc />
         public string? GetRecoveryTarget() => ProviderName;
@@ -152,6 +151,15 @@ namespace qbPortWeaver
             }
         }
 
-        private static string? GetPiactlPath() => AppConstants.FindExeInServiceDirectory(ref _piactlPathCache, GetPiactlProcessName() + ".exe", Config.FindServiceName, "PiaVpnManager.GetPiactlPath");
+        private static string GetPiactlProcessName() => RegistrySettingsManager.GetAppValue(RegistrySettingsManager.KeyPiactlProcessName);
+
+        private static string? GetPiactlPath()
+        {
+            // Read/write the volatile field via a local so the ref pass does not strip volatile semantics (CS0420).
+            string? cache = _piactlPathCache;
+            var result = AppConstants.FindExeInServiceDirectory(ref cache, GetPiactlProcessName() + ".exe", Config.FindServiceName, "PiaVpnManager.GetPiactlPath");
+            _piactlPathCache = cache;
+            return result;
+        }
     }
 }

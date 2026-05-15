@@ -89,26 +89,12 @@ namespace qbPortWeaver
 
                 foreach (var item in doc.RootElement.EnumerateArray())
                 {
-                    string login = item.TryGetProperty("login",          out var loginEl) ? loginEl.GetString() ?? "" : "";
-                    string url   = item.TryGetProperty(JsonPropHtmlUrl,  out var urlEl)   ? urlEl.GetString()   ?? "" : "";
-                    string type  = item.TryGetProperty("type",           out var typeEl)  ? typeEl.GetString()  ?? "" : "";
-
-                    if (string.IsNullOrEmpty(login)) continue;
-                    if (IsBot(login, type)) continue;
-                    if (!seen.Add(login)) continue;
-
-                    contributors.Add(new ContributorInfo(login, url));
+                    var contributor = TryParseContributor(item);
+                    if (contributor is not null && seen.Add(contributor.Login))
+                        contributors.Add(contributor);
                 }
 
-                // Always list the repo owner first
-                int ownerIndex = contributors.FindIndex(c => c.Login.Equals(AppConstants.GitHubRepoOwner, StringComparison.OrdinalIgnoreCase));
-                if (ownerIndex > 0)
-                {
-                    var owner = contributors[ownerIndex];
-                    contributors.RemoveAt(ownerIndex);
-                    contributors.Insert(0, owner);
-                }
-
+                MoveOwnerToFront(contributors);
                 return contributors;
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -119,6 +105,32 @@ namespace qbPortWeaver
             {
                 LogManager.Instance.LogDebug($"UpdateChecker.GetReleaseContributorsAsync: {ex.Message}");
                 return [];
+            }
+        }
+
+        // Parses a single contributor object from the GitHub API response, returning null when the entry
+        // is missing a login, is a bot, or cannot be interpreted as a human contributor.
+        private static ContributorInfo? TryParseContributor(JsonElement item)
+        {
+            string login = item.TryGetProperty("login", out var loginEl) ? loginEl.GetString() ?? "" : "";
+            if (string.IsNullOrEmpty(login)) return null;
+
+            string type = item.TryGetProperty("type", out var typeEl) ? typeEl.GetString() ?? "" : "";
+            if (IsBot(login, type)) return null;
+
+            string url = item.TryGetProperty(JsonPropHtmlUrl, out var urlEl) ? urlEl.GetString() ?? "" : "";
+            return new ContributorInfo(login, url);
+        }
+
+        // Ensures the repo owner is the first entry when present anywhere else in the list.
+        private static void MoveOwnerToFront(List<ContributorInfo> contributors)
+        {
+            int ownerIndex = contributors.FindIndex(c => c.Login.Equals(AppConstants.GitHubRepoOwner, StringComparison.OrdinalIgnoreCase));
+            if (ownerIndex > 0)
+            {
+                var owner = contributors[ownerIndex];
+                contributors.RemoveAt(ownerIndex);
+                contributors.Insert(0, owner);
             }
         }
 

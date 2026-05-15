@@ -71,12 +71,7 @@ namespace qbPortWeaver
         public string GetRecoveryAction() => HelperServiceClient.ActionRestart;
 
         /// <inheritdoc />
-        public bool IsAdapterMatch(string interfaceName)
-        {
-            string adapterName = Config.GetAdapterName();
-            return !string.IsNullOrEmpty(adapterName) &&
-                   interfaceName.Contains(adapterName, StringComparison.OrdinalIgnoreCase);
-        }
+        public bool IsAdapterMatch(string interfaceName) => Config.MatchesAdapterName(interfaceName);
 
         private int? GetVpnPortCore()
         {

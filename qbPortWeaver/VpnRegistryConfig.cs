@@ -35,6 +35,16 @@ namespace qbPortWeaver
         internal string GetClientProcessName() => RegistrySettingsManager.GetAppValue(_clientProcessNameKey);
         internal string GetAdapterName()       => RegistrySettingsManager.GetAppValue(_adapterNameKey);
 
+        // Case-insensitive substring match against the registry-configured adapter name.
+        // Empty-string guard: Contains("") returns true for every adapter, which would falsely
+        // report a match if the registry value was cleared.
+        internal bool MatchesAdapterName(string interfaceName)
+        {
+            string adapterName = GetAdapterName();
+            return !string.IsNullOrEmpty(adapterName) &&
+                   interfaceName.Contains(adapterName, StringComparison.OrdinalIgnoreCase);
+        }
+
         // Live SCM enumeration; call site caches the result where repeated lookups matter.
         internal string? FindServiceName()  => AppConstants.FindServiceName(GetServiceSearchTerm());
         // Resolved once from the service's ImagePath registry entry; cached via _clientExePathCache sentinel.

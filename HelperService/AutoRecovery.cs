@@ -91,7 +91,7 @@ internal static partial class AutoRecovery
 
             logger.LogInfo($"Cycling adapter '{adapterName}'");
 
-            if (!await RunNetshAsync($"interface set interface \"{adapterName}\" admin=disable", logger, cancellationToken).ConfigureAwait(false))
+            if (!await RunNetshAsync(["interface", "set", "interface", adapterName, "admin=disable"], logger, cancellationToken).ConfigureAwait(false))
             {
                 logger.LogWarn($"Failed to disable adapter '{adapterName}'");
                 return;
@@ -100,7 +100,7 @@ internal static partial class AutoRecovery
 
             await Task.Delay(AdapterCycleDelayMs, cancellationToken).ConfigureAwait(false);
 
-            if (!await RunNetshAsync($"interface set interface \"{adapterName}\" admin=enable", logger, cancellationToken).ConfigureAwait(false))
+            if (!await RunNetshAsync(["interface", "set", "interface", adapterName, "admin=enable"], logger, cancellationToken).ConfigureAwait(false))
             {
                 logger.LogWarn($"Failed to re-enable adapter '{adapterName}'");
                 return;
@@ -395,14 +395,22 @@ internal static partial class AutoRecovery
         Task.Run(() => sc.WaitForStatus(status, TimeSpan.FromMilliseconds(ServiceOperationTimeoutMs)), cancellationToken);
 
     // Runs a netsh command and returns true if it exits with code 0.
-    private static async Task<bool> RunNetshAsync(string arguments, HelperLogger logger, CancellationToken cancellationToken = default)
+    // Arguments are passed via ProcessStartInfo.ArgumentList so .NET handles escaping/quoting,
+    // avoiding manual quote-escaping pitfalls for adapter names containing spaces or trailing backslashes.
+    private static async Task<bool> RunNetshAsync(IReadOnlyList<string> arguments, HelperLogger logger, CancellationToken cancellationToken = default)
     {
         try
         {
             string netshPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "netsh.exe");
-            var startInfo = CreateHiddenStartInfo(netshPath, arguments);
-            startInfo.RedirectStandardOutput = true;
-            startInfo.RedirectStandardError  = true;
+            var startInfo = new ProcessStartInfo(netshPath)
+            {
+                UseShellExecute        = false,
+                CreateNoWindow         = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError  = true,
+            };
+            foreach (string arg in arguments)
+                startInfo.ArgumentList.Add(arg);
 
             using var process = Process.Start(startInfo);
             if (process is null)

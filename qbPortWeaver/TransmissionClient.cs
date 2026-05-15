@@ -72,17 +72,32 @@ namespace qbPortWeaver
         }
 
         /// <inheritdoc/>
-        /// <remarks>Auto-detects mode from <c>config-dir</c> and service discovery. Service mode: a
-        /// Windows service containing "Transmission" is installed and <c>config-dir</c> is under
-        /// <c>%ProgramData%</c>, confirming the daemon is active. Process mode: no service found,
-        /// or config-dir is user-specific (the Qt desktop client is running instead).</remarks>
+        /// <remarks>Auto-detects mode from <c>config-dir</c> via RPC and service discovery. Service
+        /// mode: a Windows service containing "Transmission" is installed AND either <c>config-dir</c>
+        /// confirms a system-wide location, or the daemon RPC is unreachable (the most likely cause
+        /// of restart being triggered, so service mode is assumed in that case). Process mode: no
+        /// service is installed, or <c>config-dir</c> is user-specific (the Qt desktop client is
+        /// running instead).</remarks>
         public override async Task<bool> RestartAsync(CancellationToken cancellationToken = default)
         {
             string? serviceName = GetEffectiveServiceName();
-            bool isService = serviceName is not null && await IsConfigDirSystemWideAsync(cancellationToken).ConfigureAwait(false);
-            LogManager.Instance.LogMessage(
-                $"{ClientName} restarting in {(isService ? $"service mode. Service name: {serviceName}" : "process mode")}",
-                LogLevel.Info);
+            // Only query RPC if a service is installed - otherwise mode is unambiguously process mode.
+            bool? detected = serviceName is not null
+                ? await TryDetectServiceModeAsync(cancellationToken).ConfigureAwait(false)
+                : null;
+            // When a service is installed but RPC is unreachable, assume service mode: the daemon
+            // being hung is the most likely cause of restart being triggered, and a process-mode
+            // launch would bypass the service. A wrong guess here is recoverable - the helper-side
+            // restart of a dormant service either succeeds or fails cleanly.
+            bool isService = serviceName is not null && (detected ?? true);
+            string modeDescription;
+            if (!isService)
+                modeDescription = "process mode";
+            else if (detected.HasValue)
+                modeDescription = $"service mode. Service name: {serviceName}";
+            else
+                modeDescription = $"service mode (assumed; daemon RPC unreachable). Service name: {serviceName}";
+            LogManager.Instance.LogMessage($"{ClientName} restarting in {modeDescription}", LogLevel.Info);
             return isService
                 ? await RestartServiceModeAsync(serviceName!, cancellationToken).ConfigureAwait(false)
                 : await RestartProcessModeAsync(cancellationToken).ConfigureAwait(false);
@@ -112,6 +127,15 @@ namespace qbPortWeaver
                 var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
                 using var doc = JsonDocument.Parse(json);
                 var root = doc.RootElement;
+
+                // Surface RPC-level errors (e.g. "method not allowed", session conflicts) with the
+                // actual server message before falling through to the generic arguments-missing path.
+                if (root.TryGetProperty("result", out var rpcResult) &&
+                    !string.Equals(rpcResult.GetString(), "success", StringComparison.OrdinalIgnoreCase))
+                {
+                    LogManager.Instance.LogMessage($"{ClientName} RPC returned non-success result for session-get: {rpcResult.GetString()}", LogLevel.Error);
+                    return (null, null);
+                }
 
                 if (!root.TryGetProperty("arguments", out var argsElement))
                 {
@@ -318,29 +342,32 @@ namespace qbPortWeaver
             }
         }
 
-        // Fetches config-dir live via RPC and returns true if it is NOT under the user profiles
-        // root (C:\Users\...), which confirms the daemon is running rather than the Qt desktop client.
-        // Covers all system account locations: %ProgramData%, ServiceProfiles\LocalService,
-        // ServiceProfiles\NetworkService, system32\config\systemprofile, etc.
-        private async Task<bool> IsConfigDirSystemWideAsync(CancellationToken cancellationToken = default)
+        // Fetches config-dir live via RPC to disambiguate service mode from Qt-process mode.
+        // Returns true if config-dir is NOT under the user profiles root (C:\Users\...), confirming
+        // the daemon is the active process; covers all system account locations: %ProgramData%,
+        // ServiceProfiles\LocalService, ServiceProfiles\NetworkService, system32\config\systemprofile.
+        // Returns false if config-dir is user-specific (the Qt desktop client is the active process).
+        // Returns null if the mode cannot be determined (RPC unreachable, malformed response,
+        // missing config-dir, etc.) - callers should fall back to a service-installation heuristic.
+        private async Task<bool?> TryDetectServiceModeAsync(CancellationToken cancellationToken = default)
         {
             try
             {
                 const string body = """{"method":"session-get","arguments":{"fields":["config-dir"]}}""";
                 using var response = await SendRpcAsync(body, cancellationToken).ConfigureAwait(false);
-                if (response is null || !response.IsSuccessStatusCode) return false;
+                if (response is null || !response.IsSuccessStatusCode) return null;
 
                 var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
                 using var doc = JsonDocument.Parse(json);
                 if (!doc.RootElement.TryGetProperty("arguments", out var args) ||
                     !args.TryGetProperty("config-dir", out var configDirEl))
                 {
-                    LogManager.Instance.LogDebug("TransmissionClient.IsConfigDirSystemWideAsync: config-dir not found in session-get response");
-                    return false;
+                    LogManager.Instance.LogDebug("TransmissionClient.TryDetectServiceModeAsync: config-dir not found in session-get response");
+                    return null;
                 }
 
                 string? configDir = configDirEl.GetString();
-                if (string.IsNullOrEmpty(configDir)) return false;
+                if (string.IsNullOrEmpty(configDir)) return null;
 
                 // Parent of the current user's profile is the users root (e.g. C:\Users)
                 string usersRoot = Path.GetDirectoryName(
@@ -352,8 +379,8 @@ namespace qbPortWeaver
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
             catch (Exception ex)
             {
-                LogManager.Instance.LogDebug($"TransmissionClient.IsConfigDirSystemWideAsync: {ex.Message}");
-                return false;
+                LogManager.Instance.LogDebug($"TransmissionClient.TryDetectServiceModeAsync: {ex.Message}");
+                return null;
             }
         }
 

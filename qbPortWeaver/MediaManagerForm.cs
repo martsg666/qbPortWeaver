@@ -34,7 +34,7 @@ namespace qbPortWeaver
             rtbTmdbOverview.Enter += (s, e) => dgvResults.Focus();
             _busyControls =
             [
-                btnScanNow, btnRematch, btnClearCache,
+                btnScanNow, btnRematch, btnImportNow, btnClearCache,
                 btnAddSourceFolder, btnRemoveSourceFolder,
                 txtMoviesLibraryPath, txtTvShowsLibraryPath,
                 btnBrowseMoviesLibrary, btnBrowseTvShowsLibrary,
@@ -192,11 +192,11 @@ namespace qbPortWeaver
             }
             catch (OperationCanceledException)
             {
-                if (!IsDisposed) lblScanStatus.Text = "Re-match cancelled.";
+                if (!IsDisposed) completionStatus = "Re-match cancelled.";
             }
             catch (Exception ex)
             {
-                if (!IsDisposed) lblScanStatus.Text = $"Error: {ex.Message}";
+                if (!IsDisposed) completionStatus = $"Error: {ex.Message}";
             }
             finally
             {
@@ -406,21 +406,21 @@ namespace qbPortWeaver
             foreach (var img in _posterCache.Values) img.Dispose();
             _posterCache.Clear();
 
+            string? completionStatus = null;
             try
             {
                 bool createFolders = chkCreateFolders.Checked;
                 var proposals = await MediaManagerService.ScanAsync(apiKey, createFolders, sourceFolders, moviesLibraryPath, tvShowsLibraryPath, CreateScanProgress("Scanning\u2026"), cancellationToken);
 
                 PopulateGrid(proposals);
-                UpdateScanStatus();
             }
             catch (OperationCanceledException)
             {
-                if (!IsDisposed) lblScanStatus.Text = "Scan cancelled.";
+                if (!IsDisposed) completionStatus = "Scan cancelled.";
             }
             catch (Exception ex)
             {
-                if (!IsDisposed) lblScanStatus.Text = $"Error: {ex.Message}";
+                if (!IsDisposed) completionStatus = $"Error: {ex.Message}";
             }
             finally
             {
@@ -428,6 +428,8 @@ namespace qbPortWeaver
                 {
                     FinishProgress();
                     SetBusy(false);
+                    UpdateScanStatus();
+                    if (completionStatus is not null) lblScanStatus.Text = completionStatus;
                 }
             }
         }
@@ -452,21 +454,21 @@ namespace qbPortWeaver
 
             SetBusy(true);
             BeginProgress();
-            btnImportNow.Enabled = false;
             lblScanStatus.Text   = "Importing\u2026";
             lblScanStatus.Refresh();
 
+            string? completionStatus = null;
             try
             {
                 await RunImportAndRescanAsync(cancellationToken);
             }
             catch (OperationCanceledException)
             {
-                if (!IsDisposed) lblScanStatus.Text = "Import cancelled.";
+                if (!IsDisposed) completionStatus = "Import cancelled.";
             }
             catch (Exception ex)
             {
-                if (!IsDisposed) lblScanStatus.Text = $"Error: {ex.Message}";
+                if (!IsDisposed) completionStatus = $"Error: {ex.Message}";
             }
             finally
             {
@@ -475,6 +477,7 @@ namespace qbPortWeaver
                     FinishProgress();
                     SetBusy(false);
                     UpdateScanStatus();
+                    if (completionStatus is not null) lblScanStatus.Text = completionStatus;
                 }
             }
         }

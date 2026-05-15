@@ -36,6 +36,18 @@ internal sealed class HelperLogger(string logFilePath)
                 writer.Write(entry);
                 return;
             }
+            catch (DirectoryNotFoundException) when (attempt < WriteMaxAttempts - 1)
+            {
+                // Edge case: AppData subfolder does not yet exist (helper runs before the tray app has
+                // created it on a fresh install). Create the directory and let the loop retry.
+                // CreateDirectory is idempotent so no per-instance flag is needed.
+                try
+                {
+                    string? dir = Path.GetDirectoryName(logFilePath);
+                    if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
+                }
+                catch { return; } // directory creation also failed; log entry is lost
+            }
             catch (IOException) when (attempt < WriteMaxAttempts - 1)
             {
                 Thread.Sleep(WriteRetryDelayMs); // intentional: WriteLog is synchronous by design; retries are rare and brief

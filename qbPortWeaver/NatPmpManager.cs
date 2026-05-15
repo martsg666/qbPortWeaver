@@ -266,11 +266,16 @@ namespace qbPortWeaver
                 if (address.Address.AddressFamily != AddressFamily.InterNetwork)
                     continue;
 
-                if (address.IPv4Mask.Equals(IPAddress.Any))
+                // IPv4Mask is documented to return IPAddress.None for non-IPv4 addresses, but some
+                // virtual adapters (TAP/TUN before negotiation) have been observed returning null
+                // while still reporting InterNetwork. Guard explicitly rather than relying on the
+                // outer try/catch to swallow an NRE.
+                IPAddress? ipv4Mask = address.IPv4Mask;
+                if (ipv4Mask is null || ipv4Mask.Equals(IPAddress.Any))
                     continue; // zero mask - cannot infer a meaningful gateway
 
                 byte[] addr = address.Address.GetAddressBytes();
-                byte[] mask = address.IPv4Mask.GetAddressBytes();
+                byte[] mask = ipv4Mask.GetAddressBytes();
 
                 byte[] network = new byte[4];
                 for (int i = 0; i < 4; i++)

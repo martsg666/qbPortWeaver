@@ -55,9 +55,20 @@ namespace qbPortWeaver
             // If the helper was unreachable, rejected the request, or reported errors, killing the
             // VPN client UI alone does not fix the underlying VPN service - it just closes the user's
             // VPN client window for nothing.
+            // The lower layer (HelperServiceClient / RaiseLogAlerts) already logged the specific cause
+            // for unreachable / rejected; this line communicates the consequence (skipping the client
+            // restart) with a reason tailored to each failure mode so the two log lines do not look
+            // like duplicates.
             if (!restartResult.Completed || restartResult.ErrorCount > 0)
             {
-                LogManager.Instance.LogMessage($"Skipping VPN client app restart for '{providerKeyword}' - helper service did not complete the service restart cleanly", LogLevel.Warn);
+                string reason;
+                if (restartResult.IsRejected)
+                    reason = "helper service rejected the command (see prior log entry)";
+                else if (!restartResult.Completed)
+                    reason = "helper service was unreachable (see prior log entry)";
+                else
+                    reason = $"helper service reported {restartResult.ErrorCount} error{(restartResult.ErrorCount == 1 ? "" : "s")} during the service restart (see helper log entries)";
+                LogManager.Instance.LogMessage($"Skipping VPN client app restart for '{providerKeyword}' - {reason}", LogLevel.Warn);
                 return;
             }
 

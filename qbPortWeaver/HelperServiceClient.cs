@@ -92,6 +92,19 @@ namespace qbPortWeaver
             {
                 throw; // app shutdown - let the caller observe cancellation
             }
+            catch (TimeoutException)
+            {
+                // ConnectAsync's PipeConnectTimeoutMs elapsed - the named pipe is not being listened on.
+                LogManager.Instance.LogMessage("Helper service not running or not installed (pipe connection timed out)", LogLevel.Warn);
+                return HelperResult.Failed;
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                // The pipe ACL denied the connection (AuthenticatedUserSid grant is in place by default
+                // so this typically indicates a corrupted install or modified ACL).
+                LogManager.Instance.LogMessage($"Access denied connecting to helper service pipe: {ex.Message} - check the helper service installation", LogLevel.Warn);
+                return HelperResult.Failed;
+            }
             catch (Exception ex)
             {
                 LogManager.Instance.LogMessage($"Failed to reach helper service: {ex.Message}", LogLevel.Warn);

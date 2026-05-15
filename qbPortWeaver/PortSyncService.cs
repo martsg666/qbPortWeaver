@@ -38,6 +38,8 @@ namespace qbPortWeaver
         private int _consecutiveFailedCycles;
         // Tracks the last interface-mismatch message shown as a balloon tip to suppress repeat invocations
         // for the same persistent mismatch. Cleared when the mismatch resolves so the balloon re-fires if it returns.
+        // Thread-safety: only read/written inside CheckInterfaceMatch via EnsureRunningAndUpdatePortAsync,
+        // serialised by MainForm._updateSemaphore (same guarantee as _consecutiveFailedCycles and _lastKnownNatPmpManager).
         private string? _lastInterfaceMismatchMessage;
 
         // Fallback for when TryCreateForAdapterAsync cannot reach the configured adapter (e.g. VPN is

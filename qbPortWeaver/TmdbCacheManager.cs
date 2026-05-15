@@ -62,6 +62,15 @@ namespace qbPortWeaver
         // results since nulls are not persisted to disk (see EvictNullTvShows / EvictNullMovies).
         // The Lazy<Task> wrapper ensures the compute factory runs at most once even when multiple callers
         // race on the same key; subsequent waiters share the in-flight task.
+        //
+        // Known cancellation cascade (accepted as documented behavior):
+        // The first caller's CancellationToken is captured inside their compute closure. If a SECOND scan
+        // starts while the first scan's lookups are still in flight, the first scan's CT cancels. There
+        // is a microsecond race window between the in-flight task faulting with OCE and this method's
+        // finally block evicting the Lazy. If the second scan's GetOrAdd lands inside that window, it
+        // shares the already-faulted Lazy and observes the foreign OCE even though its own CT is fine.
+        // The user-visible effect is a single spurious "Scan cancelled." status message on the second
+        // scan. No data loss; the next user-triggered scan creates a fresh Lazy and proceeds normally.
         private static async Task<(T? Info, bool IsConfident)> GetOrComputeAsync<T>(
             string cacheKey,
             Func<Task<(T? Info, bool IsConfident)>> compute,

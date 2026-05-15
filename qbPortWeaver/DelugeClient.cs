@@ -52,6 +52,14 @@ namespace qbPortWeaver
                 using var doc = JsonDocument.Parse(json);
                 var root = doc.RootElement;
 
+                // Surface RPC-level errors (e.g. "Not Authenticated", "No daemon connected") with the
+                // actual server message before falling through to the generic result-missing path.
+                if (root.TryGetProperty("error", out var error) && error.ValueKind != JsonValueKind.Null)
+                {
+                    LogManager.Instance.LogMessage($"{ClientName} RPC returned an error for core.get_config_values: {error}", LogLevel.Error);
+                    return (null, null);
+                }
+
                 if (!root.TryGetProperty("result", out var result) || result.ValueKind == JsonValueKind.Null)
                 {
                     LogManager.Instance.LogDebug("DelugeClient.GetPreferencesAsync: 'result' key missing or null in RPC response");

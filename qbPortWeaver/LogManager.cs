@@ -99,7 +99,7 @@ namespace qbPortWeaver
             }
 
             if (shouldNotify)
-                WarnOrErrorLogged?.Invoke(level);
+                RaiseWarnOrErrorLogged(level);
         }
 
         /// <summary>
@@ -110,7 +110,23 @@ namespace qbPortWeaver
         public void NotifyExternalWarnOrError(LogLevel level)
         {
             if (level is LogLevel.Warn or LogLevel.Error)
+                RaiseWarnOrErrorLogged(level);
+        }
+
+        // Invokes WarnOrErrorLogged subscribers under a try/catch so a throwing subscriber cannot
+        // propagate back into the caller of LogMessage (which may be in the middle of unrelated
+        // sync logic) and disrupt it. Logging the failure via Debug.WriteLine avoids recursing
+        // back through LogMessage.
+        private void RaiseWarnOrErrorLogged(LogLevel level)
+        {
+            try
+            {
                 WarnOrErrorLogged?.Invoke(level);
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"LogManager.RaiseWarnOrErrorLogged: subscriber threw {ex.GetType().Name}: {ex.Message}");
+            }
         }
 
         /// <summary>Writes a blank line to the log file. Thread-safe.</summary>

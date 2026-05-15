@@ -21,10 +21,12 @@ internal sealed class HelperLogger(string logFilePath)
     public int ErrorCount { get; private set; }
 
     public void LogInfo(string message)  => WriteLog(message, "INFO ");
-    public void LogWarn(string message)  { WarnCount++;  WriteLog(message, "WARN "); }
-    public void LogError(string message) { ErrorCount++; WriteLog(message, "ERROR"); }
+    public void LogWarn(string message)  { if (WriteLog(message, "WARN "))  WarnCount++; }
+    public void LogError(string message) { if (WriteLog(message, "ERROR")) ErrorCount++; }
 
-    private void WriteLog(string message, string paddedLevel)
+    // Returns true if the entry was successfully written to the file. Callers increment WarnCount /
+    // ErrorCount only on success so the tray badge never advertises an entry the user cannot find.
+    private bool WriteLog(string message, string paddedLevel)
     {
         string entry = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} | {paddedLevel} | {SubsystemName.PadRight(SubsystemMaxLength)} | {message}{Environment.NewLine}";
         for (int attempt = 0; attempt < WriteMaxAttempts; attempt++)
@@ -34,7 +36,7 @@ internal sealed class HelperLogger(string logFilePath)
                 using var fs     = new FileStream(logFilePath, FileMode.Append, FileAccess.Write, FileShare.ReadWrite);
                 using var writer = new StreamWriter(fs, Encoding.UTF8);
                 writer.Write(entry);
-                return;
+                return true;
             }
             catch (DirectoryNotFoundException) when (attempt < WriteMaxAttempts - 1)
             {
@@ -46,14 +48,15 @@ internal sealed class HelperLogger(string logFilePath)
                     string? dir = Path.GetDirectoryName(logFilePath);
                     if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
                 }
-                catch { return; } // directory creation also failed; log entry is lost
+                catch { return false; } // directory creation also failed; log entry is lost
             }
             catch (IOException) when (attempt < WriteMaxAttempts - 1)
             {
                 Thread.Sleep(WriteRetryDelayMs); // intentional: WriteLog is synchronous by design; retries are rare and brief
             }
-            catch (IOException)            { return; }
-            catch (UnauthorizedAccessException) { return; }
+            catch (IOException)            { return false; }
+            catch (UnauthorizedAccessException) { return false; }
         }
+        return false;
     }
 }

@@ -217,16 +217,16 @@ namespace qbPortWeaver
         /// </summary>
         internal static bool IsFileReadyForImport(FileInfo fi)
         {
-            var cache = _sourceCache;
-            if (cache is not null)
+            // Read _sourceCache INSIDE the lock: a snapshot captured outside the lock could be
+            // orphaned by a concurrent ClearAllCaches, leading to reads from a dictionary no
+            // longer referenced by the live state.
+            lock (_sourceCacheLock)
             {
-                lock (_sourceCacheLock)
-                {
-                    if (cache.TryGetValue(fi.FullName, out var entry)
-                        && entry.Size == fi.Length
-                        && entry.LastWriteTimeTicks == fi.LastWriteTimeUtc.Ticks)
-                        return true;
-                }
+                if (_sourceCache is not null
+                    && _sourceCache.TryGetValue(fi.FullName, out var entry)
+                    && entry.Size == fi.Length
+                    && entry.LastWriteTimeTicks == fi.LastWriteTimeUtc.Ticks)
+                    return true;
             }
             return IsFileWriteComplete(fi.FullName);
         }
@@ -463,30 +463,31 @@ namespace qbPortWeaver
         }
 
         // Returns a cached library fingerprint if metadata matches, otherwise computes and caches it.
+        // Reads _libraryCache INSIDE the lock so a concurrent ClearAllCaches cannot orphan the
+        // captured reference between the field read and the dictionary access.
         private static string GetOrComputeLibraryFingerprint(FileInfo fi, out bool wasCached)
         {
-            var cache = _libraryCache;
-
-            if (cache is not null)
+            lock (_libraryLock)
             {
-                lock (_libraryLock)
+                if (_libraryCache is not null
+                    && _libraryCache.TryGetValue(fi.FullName, out var entry)
+                    && entry.Size == fi.Length
+                    && entry.LastWriteTimeTicks == fi.LastWriteTimeUtc.Ticks)
                 {
-                    if (cache.TryGetValue(fi.FullName, out var entry)
-                        && entry.Size == fi.Length
-                        && entry.LastWriteTimeTicks == fi.LastWriteTimeUtc.Ticks)
-                    {
-                        wasCached = true;
-                        return entry.Fingerprint;
-                    }
+                    wasCached = true;
+                    return entry.Fingerprint;
                 }
             }
 
             string fp = ComputeFingerprint(fi.FullName);
-            if (cache is not null)
+            lock (_libraryLock)
             {
-                lock (_libraryLock)
+                // Re-check inside the lock: ClearAllCaches may have nulled _libraryCache while we
+                // were computing the fingerprint. Skip the write in that case rather than recreating
+                // a dictionary that the live state no longer references.
+                if (_libraryCache is not null)
                 {
-                    cache[fi.FullName] = new CacheEntry(fi.Length, fi.LastWriteTimeUtc.Ticks, fp);
+                    _libraryCache[fi.FullName] = new CacheEntry(fi.Length, fi.LastWriteTimeUtc.Ticks, fp);
                     _libraryCacheDirty = true;
                 }
             }
@@ -571,53 +572,62 @@ namespace qbPortWeaver
         // guarantee does not apply - concurrent callers skip the in-flight path and each compute independently.
         internal static string GetOrComputeSourceFingerprint(FileInfo fi)
         {
-            var cache = _sourceCache;
-            if (cache is not null)
+            // First lock pass: cache hit check. _sourceCache is read inside the lock so a concurrent
+            // ClearAllCaches cannot orphan a captured reference here.
+            bool cacheActive;
+            lock (_sourceCacheLock)
             {
-                lock (_sourceCacheLock)
+                cacheActive = _sourceCache is not null;
+                if (cacheActive
+                    && _sourceCache!.TryGetValue(fi.FullName, out var entry)
+                    && entry.Size == fi.Length
+                    && entry.LastWriteTimeTicks == fi.LastWriteTimeUtc.Ticks)
                 {
-                    if (cache.TryGetValue(fi.FullName, out var entry)
-                        && entry.Size == fi.Length
-                        && entry.LastWriteTimeTicks == fi.LastWriteTimeUtc.Ticks)
-                    {
-                        Interlocked.Increment(ref _sourceCachedCount);
-                        return entry.Fingerprint;
-                    }
-                }
-
-                // Create before GetOrAdd so we can tell whether this thread won the race.
-                var newLazy = new Lazy<string>(() => ComputeFingerprint(fi.FullName));
-                var lazy    = _sourceInFlight.GetOrAdd(fi.FullName, newLazy);
-                string fp;
-                try
-                {
-                    fp = lazy.Value;
-                }
-                catch
-                {
-                    // Remove the failed Lazy so the file can be retried on the next cycle.
-                    _sourceInFlight.TryRemove(new KeyValuePair<string, Lazy<string>>(fi.FullName, lazy));
-                    throw;
-                }
-                // Remove only our Lazy instance so a newer entry for the same path is left untouched.
-                _sourceInFlight.TryRemove(new KeyValuePair<string, Lazy<string>>(fi.FullName, lazy));
-
-                // Winner computed the fingerprint; loser waited on the Lazy and reused the result.
-                if (ReferenceEquals(lazy, newLazy))
-                    Interlocked.Increment(ref _sourceComputedCount);
-                else
                     Interlocked.Increment(ref _sourceCachedCount);
-
-                lock (_sourceCacheLock)
-                {
-                    cache[fi.FullName] = new CacheEntry(fi.Length, fi.LastWriteTimeUtc.Ticks, fp);
-                    _sourceCacheDirty = true;
+                    return entry.Fingerprint;
                 }
-                return fp;
             }
 
-            Interlocked.Increment(ref _sourceComputedCount);
-            return ComputeFingerprint(fi.FullName);
+            if (!cacheActive)
+            {
+                Interlocked.Increment(ref _sourceComputedCount);
+                return ComputeFingerprint(fi.FullName);
+            }
+
+            // Create before GetOrAdd so we can tell whether this thread won the race.
+            var newLazy = new Lazy<string>(() => ComputeFingerprint(fi.FullName));
+            var lazy    = _sourceInFlight.GetOrAdd(fi.FullName, newLazy);
+            string fp;
+            try
+            {
+                fp = lazy.Value;
+            }
+            catch
+            {
+                // Remove the failed Lazy so the file can be retried on the next cycle.
+                _sourceInFlight.TryRemove(new KeyValuePair<string, Lazy<string>>(fi.FullName, lazy));
+                throw;
+            }
+            // Remove only our Lazy instance so a newer entry for the same path is left untouched.
+            _sourceInFlight.TryRemove(new KeyValuePair<string, Lazy<string>>(fi.FullName, lazy));
+
+            // Winner computed the fingerprint; loser waited on the Lazy and reused the result.
+            if (ReferenceEquals(lazy, newLazy))
+                Interlocked.Increment(ref _sourceComputedCount);
+            else
+                Interlocked.Increment(ref _sourceCachedCount);
+
+            // Re-check inside the lock: ClearAllCaches may have nulled _sourceCache while we
+            // were computing. Skip the write rather than persisting into an orphaned dictionary.
+            lock (_sourceCacheLock)
+            {
+                if (_sourceCache is not null)
+                {
+                    _sourceCache[fi.FullName] = new CacheEntry(fi.Length, fi.LastWriteTimeUtc.Ticks, fp);
+                    _sourceCacheDirty = true;
+                }
+            }
+            return fp;
         }
 
         /// <summary>Returns the number of source fingerprints served from cache and the number freshly computed during the current scan cycle.</summary>

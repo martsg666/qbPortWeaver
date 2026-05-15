@@ -62,6 +62,10 @@ namespace qbPortWeaver
 
                 return new LatestReleaseInfo(tagName, releaseUrl, isNewer);
             }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                return null; // shutdown - not a real failure, suppress log noise
+            }
             catch (Exception ex)
             {
                 LogManager.Instance.LogDebug($"UpdateChecker.GetLatestReleaseInfoAsync: {ex.Message}");
@@ -107,6 +111,10 @@ namespace qbPortWeaver
 
                 return contributors;
             }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                return []; // shutdown - not a real failure, suppress log noise
+            }
             catch (Exception ex)
             {
                 LogManager.Instance.LogDebug($"UpdateChecker.GetReleaseContributorsAsync: {ex.Message}");
@@ -114,11 +122,15 @@ namespace qbPortWeaver
             }
         }
 
-        // Creates the shared HttpClient pre-configured with the required User-Agent and timeout
+        // Creates the shared HttpClient pre-configured with the required User-Agent, timeout,
+        // and GitHub API headers (Accept media type and pinned API version) so future GitHub
+        // default changes do not silently alter the response shape.
         private static HttpClient CreateHttpClient()
         {
             var client = new HttpClient { Timeout = TimeSpan.FromSeconds(AppConstants.HttpTimeoutSeconds) };
             client.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue(AppConstants.AppName, AppConstants.AppVersion));
+            client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github+json"));
+            client.DefaultRequestHeaders.Add("X-GitHub-Api-Version", "2022-11-28");
             return client;
         }
 

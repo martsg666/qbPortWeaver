@@ -261,6 +261,7 @@ namespace qbPortWeaver
             string previousColorTheme  = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionExtra, RegistrySettingsManager.KeyColorTheme);
             string selectedColorTheme  = cboColorTheme.SelectedItem?.ToString() ?? RegistrySettingsManager.ColorThemeSystem;
             SaveSettings();
+            LogManager.Instance.LogMessage("Settings saved", LogLevel.Info);
             SettingsSaved = true;
 
             // Color theme takes effect at startup via Application.SetColorMode - restart if it changed

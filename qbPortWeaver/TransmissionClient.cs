@@ -16,7 +16,9 @@ namespace qbPortWeaver
 
         private readonly string _userName;
         private string? _sessionId;
-        // Sentinel values: string.Empty = not yet resolved; null = not found; non-empty = cached name.
+        // Sentinel values: string.Empty = not yet resolved or last lookup failed; non-empty = cached name.
+        // null is never assigned at runtime - the field starts as Empty and only transitions to non-empty
+        // on a successful lookup. The nullable type is required by the volatile reference contract.
         // Static so the SCM enumeration persists across sync-cycle instances.
         // Mirrors the caching pattern used by ProtonVpnManager and PiaVpnManager.
         // volatile ensures writes from one sync-cycle thread are visible to concurrent callers.
@@ -170,6 +172,8 @@ namespace qbPortWeaver
         {
             try
             {
+                // port-forwarding-enabled=false is Transmission's combined UPnP/NAT-PMP off switch,
+                // equivalent to qBittorrent's and Deluge's separate upnp=false + natpmp=false fields.
                 var body = $$$"""{"method":"session-set","arguments":{"peer-port":{{{port}}},"peer-port-random-on-start":false,"port-forwarding-enabled":false}}""";
                 using var response = await SendRpcAsync(body, cancellationToken).ConfigureAwait(false);
                 if (response is null) return false;

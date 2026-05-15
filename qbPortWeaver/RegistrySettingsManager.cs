@@ -285,7 +285,7 @@ namespace qbPortWeaver
             }
 
             if (anyWritten)
-                LogManager.Instance.LogMessage("Registry settings initialized with defaults", LogLevel.Info);
+                LogManager.Instance.LogMessage("Registry default values written for missing keys", LogLevel.Info);
         }
 
         /// <summary>Reads a string value from the registry. Returns the hardcoded default if the key is missing or unreadable.</summary>

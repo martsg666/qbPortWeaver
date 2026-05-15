@@ -86,6 +86,9 @@ internal static partial class AutoRecovery
                 return;
             }
 
+            // Defensive: ProcessStartInfo.ArgumentList handles quoting safely (we no longer build
+            // a command-line string by hand), but rejecting quote characters in adapter names
+            // remains a sanity check since real Windows NICs never contain them.
             if (adapterName.Contains('"'))
             {
                 logger.LogWarn("Rejected adapter name containing invalid characters");
@@ -240,6 +243,11 @@ internal static partial class AutoRecovery
                 int pid = Marshal.PtrToStructure<ServiceStatusProcess>(buf).dwProcessId;
                 if (pid <= 0) return;
 
+                // Known residual risk: between QueryServiceStatusEx returning the PID and
+                // GetProcessById opening it, the service process could exit cleanly and Windows
+                // could recycle the PID for an unrelated process. We would then force-kill the
+                // wrong process as SYSTEM. The window is microseconds and PID reuse on Windows
+                // typically takes much longer, so the probability is negligible in practice.
                 Process process;
                 try { process = Process.GetProcessById(pid); }
                 catch (ArgumentException) { return; } // already exited between SCM query and here

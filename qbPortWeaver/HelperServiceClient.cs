@@ -132,20 +132,23 @@ namespace qbPortWeaver
 
         // Parses "warn=N|error=M" from the helper. Returns Failed if the line is missing or malformed.
         // Returns Rejected if the helper sent the rejected sentinel (session token mismatch).
+        // Requires at least one recognised key to parse so future protocol garble does not silently
+        // succeed as Ok(0, 0).
         private static HelperResult ParseResult(string? response)
         {
             if (string.IsNullOrWhiteSpace(response)) return HelperResult.Failed;
             if (response == ResultRejectedSentinel)  return HelperResult.Rejected;
 
             int warn = 0, error = 0;
+            bool anyKeyParsed = false;
             foreach (var part in response.Split('|'))
             {
                 var kv = part.Split('=', 2);
                 if (kv.Length != 2 || !int.TryParse(kv[1], out int value)) continue;
-                if      (kv[0] == ResultWarnKey)  warn  = value;
-                else if (kv[0] == ResultErrorKey) error = value;
+                if      (kv[0] == ResultWarnKey)  { warn  = value; anyKeyParsed = true; }
+                else if (kv[0] == ResultErrorKey) { error = value; anyKeyParsed = true; }
             }
-            return HelperResult.Ok(warn, error);
+            return anyKeyParsed ? HelperResult.Ok(warn, error) : HelperResult.Failed;
         }
     }
 }

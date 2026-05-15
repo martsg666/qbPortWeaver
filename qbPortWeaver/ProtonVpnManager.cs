@@ -40,8 +40,11 @@ namespace qbPortWeaver
                 var adapters = NetworkInterface.GetAllNetworkInterfaces();
                 // Uses Name (not Description) - ProtonVPN's adapter Name contains the configured
                 // adapter name substring on all installations: "ProtonVPN" (WireGuard) or "ProtonVPN TUN" (OpenVPN).
-                bool isConnected = adapters.Any(adapter =>
-                    adapter.Name.Contains(Config.GetAdapterName(), StringComparison.OrdinalIgnoreCase) &&
+                // Empty-string guard: Contains("") returns true for every adapter, which would falsely
+                // report VPN connected if the registry value was cleared.
+                string adapterName = Config.GetAdapterName();
+                bool isConnected = !string.IsNullOrEmpty(adapterName) && adapters.Any(adapter =>
+                    adapter.Name.Contains(adapterName, StringComparison.OrdinalIgnoreCase) &&
                     adapter.OperationalStatus == OperationalStatus.Up);
 
                 LogManager.Instance.LogDebug(isConnected
@@ -69,7 +72,11 @@ namespace qbPortWeaver
 
         /// <inheritdoc />
         public bool IsAdapterMatch(string interfaceName)
-            => interfaceName.Contains(Config.GetAdapterName(), StringComparison.OrdinalIgnoreCase);
+        {
+            string adapterName = Config.GetAdapterName();
+            return !string.IsNullOrEmpty(adapterName) &&
+                   interfaceName.Contains(adapterName, StringComparison.OrdinalIgnoreCase);
+        }
 
         private int? GetVpnPortCore()
         {

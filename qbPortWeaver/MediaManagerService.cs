@@ -61,11 +61,12 @@ namespace qbPortWeaver
 
             var ctx = new ImportContext(tmdb, dryRun, createFolders, importMode, moviesLibraryPath, tvShowsLibraryPath);
 
+            // Check cancellation once before starting parallel work. Putting ThrowIfCancellationRequested
+            // inside the Select selector would orphan tasks already started in the partial enumeration
+            // when the throw propagated out of Task.WhenAll's source enumerator.
+            cancellationToken.ThrowIfCancellationRequested();
             await Task.WhenAll(classified.Select(c =>
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                return ProcessSourceFolderAsync(c.Folder, c.Items, ctx, cancellationToken);
-            })).ConfigureAwait(false);
+                ProcessSourceFolderAsync(c.Folder, c.Items, ctx, cancellationToken))).ConfigureAwait(false);
 
             if (deleteEmptyFolders)
                 CleanupSourceFolders(sourceFolders, dryRun, cancellationToken);
@@ -109,11 +110,10 @@ namespace qbPortWeaver
 
             var ctx = new ImportContext(tmdb, DryRun: true, createFolders, ImportMode.Hardlink, moviesLibraryPath, tvShowsLibraryPath);
 
+            // Check cancellation once before starting parallel work (see ImportAsync for rationale).
+            cancellationToken.ThrowIfCancellationRequested();
             var results = await Task.WhenAll(classified.Select(c =>
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                return ScanSourceFolderAsync(c.Folder, c.Items, ctx, OnItemProcessed, cancellationToken);
-            })).ConfigureAwait(false);
+                ScanSourceFolderAsync(c.Folder, c.Items, ctx, OnItemProcessed, cancellationToken))).ConfigureAwait(false);
             var proposals = results.SelectMany(r => r).ToList();
 
             TmdbCacheManager.Save();
@@ -173,13 +173,13 @@ namespace qbPortWeaver
             if (!string.IsNullOrWhiteSpace(ctx.MoviesLibraryPath) && items.MovieFiles.Length > 0)
             {
                 var movieProcessor = new MovieProcessor(ctx.Tmdb, ctx.DryRun, ctx.CreateFolders, ctx.MoviesLibraryPath, ctx.ImportMode);
-                await TryRunAsync(() => movieProcessor.ProcessMoviesAsync(folder, items.MovieFiles, cancellationToken), folder).ConfigureAwait(false);
+                await TryRunAsync(() => movieProcessor.ProcessMoviesAsync(items.MovieFiles, cancellationToken), folder).ConfigureAwait(false);
             }
 
             if (!string.IsNullOrWhiteSpace(ctx.TvShowsLibraryPath) && items.TvShowFiles.Length > 0)
             {
                 var tvShowProcessor = new TvShowProcessor(ctx.Tmdb, ctx.DryRun, ctx.CreateFolders, ctx.TvShowsLibraryPath, ctx.ImportMode);
-                await TryRunAsync(() => tvShowProcessor.ProcessTvShowsAsync(folder, items.TvShowFiles, cancellationToken), folder).ConfigureAwait(false);
+                await TryRunAsync(() => tvShowProcessor.ProcessTvShowsAsync(items.TvShowFiles, cancellationToken), folder).ConfigureAwait(false);
             }
 
             int totalFiles = items.MovieFiles.Length + items.TvShowFiles.Length;
@@ -250,7 +250,12 @@ namespace qbPortWeaver
             string[] directories;
             try
             {
-                directories = Directory.GetDirectories(rootFolder, "*", SearchOption.AllDirectories);
+                directories = Directory.GetDirectories(rootFolder, "*", new EnumerationOptions
+                {
+                    RecurseSubdirectories = true,
+                    MaxRecursionDepth     = MaxSubfolderDepth,
+                    IgnoreInaccessible    = true,
+                });
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
@@ -510,7 +515,7 @@ namespace qbPortWeaver
         /// <summary>Logs and performs the file transfer, or logs a dry-run message without touching files.
         /// No-ops when source and target are the same path, or the target already exists with the same fingerprint.
         /// Warns in both dry-run and live mode when the target exists with different content.</summary>
-        internal static void ImportFile(string sourcePath, string targetPath, string sourceFolder, bool dryRun, ImportMode importMode)
+        internal static void ImportFile(string sourcePath, string targetPath, bool dryRun, ImportMode importMode)
         {
             if (string.Equals(sourcePath, targetPath, StringComparison.OrdinalIgnoreCase)) return;
 
@@ -534,14 +539,16 @@ namespace qbPortWeaver
             }
 
             string verb = dryRun ? "Would import" : "Importing";
-            LogManager.Instance.LogMessage($"{verb} '{Path.GetFileName(sourcePath)}' -> {Path.GetRelativePath(sourceFolder, targetPath)}", LogLevel.Info, Subsystem.MediaManager);
+            // Log absolute target path: Path.GetRelativePath(sourceFolder, targetPath) produces
+            // confusing "..\..\E:\..." style strings when source and target live on different volumes.
+            LogManager.Instance.LogMessage($"{verb} '{Path.GetFileName(sourcePath)}' -> '{targetPath}'", LogLevel.Info, Subsystem.MediaManager);
 
             if (!dryRun)
                 MediaImporter.AddFileToLibrary(sourcePath, targetPath, importMode);
         }
 
         // Imports companion subtitle files that share the same base name as the video file
-        internal static void ImportCompanionFiles(string sourceFolder, string videoPath, string targetVideoPath, bool dryRun, ImportMode importMode)
+        internal static void ImportCompanionFiles(string videoPath, string targetVideoPath, bool dryRun, ImportMode importMode)
         {
             var videoDir   = Path.GetDirectoryName(videoPath);
             var videoBase  = Path.GetFileNameWithoutExtension(videoPath);
@@ -568,7 +575,7 @@ namespace qbPortWeaver
 
                 var suffix     = fileName[videoBase.Length..];
                 var targetPath = Path.Combine(targetDir, targetBase + suffix);
-                ImportFile(file, targetPath, sourceFolder, dryRun, importMode);
+                ImportFile(file, targetPath, dryRun, importMode);
             }
         }
 

@@ -546,9 +546,9 @@ namespace qbPortWeaver
 
         // Reads any new content appended since the last read and appends visible lines to the display.
         // Only scrolls to the bottom if the user was already there before the update.
-        // The generation parameter is the value of _watcherGeneration at watcher-subscription time;
-        // events with a stale generation are ignored to defend against the race between in-flight
-        // FileSystemWatcher events and a file switch (see _watcherGeneration).
+        // The generation parameter holds the value of _watcherGeneration at watcher-subscription time.
+        // Events with a stale generation are ignored to defend against the race between in-flight
+        // FileSystemWatcher events and a file switch. See _watcherGeneration for details.
         private void OnLogFileUpdated(int generation)
         {
             try

@@ -20,6 +20,9 @@ internal static partial class AutoRecovery
     private const int AdapterCycleDelayMs       = 3000;
     private const int NetshTimeoutMs            = 15000;
 
+    // First positional argument to "netsh interface set interface <name> admin=...".
+    private const string NetshInterface = "interface";
+
     // P/Invoke - used by KillServiceProcess to resolve a service's host process ID
     private const int ScStatusProcessInfo = 0; // SC_STATUS_PROCESS_INFO - only valid infoLevel for QueryServiceStatusEx
 
@@ -91,7 +94,7 @@ internal static partial class AutoRecovery
 
             logger.LogInfo($"Cycling adapter '{adapterName}'");
 
-            if (!await RunNetshAsync(["interface", "set", "interface", adapterName, "admin=disable"], logger, cancellationToken).ConfigureAwait(false))
+            if (!await RunNetshAsync([NetshInterface, "set", NetshInterface, adapterName, "admin=disable"], logger, cancellationToken).ConfigureAwait(false))
             {
                 logger.LogWarn($"Failed to disable adapter '{adapterName}'");
                 return;
@@ -100,7 +103,7 @@ internal static partial class AutoRecovery
 
             await Task.Delay(AdapterCycleDelayMs, cancellationToken).ConfigureAwait(false);
 
-            if (!await RunNetshAsync(["interface", "set", "interface", adapterName, "admin=enable"], logger, cancellationToken).ConfigureAwait(false))
+            if (!await RunNetshAsync([NetshInterface, "set", NetshInterface, adapterName, "admin=enable"], logger, cancellationToken).ConfigureAwait(false))
             {
                 logger.LogWarn($"Failed to re-enable adapter '{adapterName}'");
                 return;

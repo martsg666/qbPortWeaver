@@ -498,6 +498,11 @@ namespace qbPortWeaver
         // Removes library cache entries for files not present in the current directory walk.
         private static void PruneLibraryCache(HashSet<string> seenPaths)
         {
+            // Safe to read outside the lock: this method is only called from BuildLibraryIndexAsync,
+            // which holds _libraryBuildSemaphore. If ClearAllCaches nulls _libraryCache concurrently,
+            // the local still holds the old reference - mutations to it are harmless since no live
+            // state references that dictionary anymore. Unlike _sourceCache (read inside lock in
+            // IsFileReadyForImport), the caller's semaphore makes the concurrent-null scenario benign.
             var cache = _libraryCache!;
             List<string> stale;
             lock (_libraryLock)
@@ -670,9 +675,11 @@ namespace qbPortWeaver
                 }
 
                 // If every cached entry was visited this cycle, none can be stale - skip File.Exists entirely.
-                // If the counts differ, at least one entry was not visited (possibly deleted from source).
+                // If visited==0, the source share was unreachable this cycle; treat as no stale entries to
+                // avoid calling File.Exists on hundreds of UNC paths against an unreachable host (each call
+                // blocks for a full SMB timeout, turning a missed cycle into a multi-minute hang).
                 int visited = _sourceCachedCount + _sourceComputedCount;
-                bool mightHaveStaleEntries = snapshot.Count > visited;
+                bool mightHaveStaleEntries = visited > 0 && snapshot.Count > visited;
 
                 if (!wasDirty && !mightHaveStaleEntries) return;
 

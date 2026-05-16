@@ -273,7 +273,7 @@ namespace qbPortWeaver
                 if (idx < 0) continue;
 
                 // Ensure the match is at a word boundary, not embedded in a longer word
-                if (idx > 0 && char.IsLetter(name[idx - 1])) continue;
+                if (idx > 0 && char.IsLetterOrDigit(name[idx - 1])) continue;
 
                 var after  = name[(idx + pattern.Length)..].Trim();
                 int numEnd = after.TakeWhile(char.IsDigit).Count();

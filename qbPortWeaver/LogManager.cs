@@ -14,7 +14,7 @@ namespace qbPortWeaver
         public const string HelperService = "HelperService";
 
         /// <summary>Length of the longest subsystem name, used for column padding.</summary>
-        public const int MaxLength = 13; // "HelperService".Length
+        public const int MaxLength = 13; // "HelperService".Length - if changed, also update HelperLogger.SubsystemMaxLength in HelperService project
     }
 
     /// <summary>Singleton file-based logger with size-based rotation. Thread-safe.</summary>

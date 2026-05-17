@@ -321,58 +321,26 @@ namespace qbPortWeaver
             _ = DiscoverNatPmpAdaptersAsync(current); // fire-and-forget; exceptions are handled inside DiscoverNatPmpAdaptersAsync
         }
 
-        private void btnBrowseExePath_Click(object? sender, EventArgs e)
+        private void btnBrowseExePath_Click(object? sender, EventArgs e)             => BrowseForExe("qBittorrent",  txtQBittorrentExePath);
+        private void btnBrowseDelugeExePath_Click(object? sender, EventArgs e)       => BrowseForExe("Deluge",       txtDelugeExePath);
+        private void btnBrowseTransmissionExePath_Click(object? sender, EventArgs e) => BrowseForExe("Transmission", txtTransmissionExePath);
+
+        // Shared OpenFileDialog driver for the three BitTorrent-client executable browse buttons.
+        // Seeds InitialDirectory from the current path if the file exists so the user lands in the
+        // right folder without having to navigate from scratch.
+        private static void BrowseForExe(string clientName, TextBox target)
         {
             using var dlg = new OpenFileDialog
             {
-                Title  = "Select qBittorrent Executable",
+                Title  = $"Select {clientName} Executable",
                 Filter = "Executable files (*.exe)|*.exe|All files (*.*)|*.*"
             };
 
-            if (!string.IsNullOrWhiteSpace(txtQBittorrentExePath.Text) &&
-                File.Exists(txtQBittorrentExePath.Text))
-            {
-                dlg.InitialDirectory = Path.GetDirectoryName(txtQBittorrentExePath.Text) ?? string.Empty;
-            }
+            if (!string.IsNullOrWhiteSpace(target.Text) && File.Exists(target.Text))
+                dlg.InitialDirectory = Path.GetDirectoryName(target.Text) ?? string.Empty;
 
             if (dlg.ShowDialog() == DialogResult.OK)
-                txtQBittorrentExePath.Text = dlg.FileName;
-        }
-
-        private void btnBrowseDelugeExePath_Click(object? sender, EventArgs e)
-        {
-            using var dlg = new OpenFileDialog
-            {
-                Title  = "Select Deluge Executable",
-                Filter = "Executable files (*.exe)|*.exe|All files (*.*)|*.*"
-            };
-
-            if (!string.IsNullOrWhiteSpace(txtDelugeExePath.Text) &&
-                File.Exists(txtDelugeExePath.Text))
-            {
-                dlg.InitialDirectory = Path.GetDirectoryName(txtDelugeExePath.Text) ?? string.Empty;
-            }
-
-            if (dlg.ShowDialog() == DialogResult.OK)
-                txtDelugeExePath.Text = dlg.FileName;
-        }
-
-        private void btnBrowseTransmissionExePath_Click(object? sender, EventArgs e)
-        {
-            using var dlg = new OpenFileDialog
-            {
-                Title  = "Select Transmission Executable",
-                Filter = "Executable files (*.exe)|*.exe|All files (*.*)|*.*"
-            };
-
-            if (!string.IsNullOrWhiteSpace(txtTransmissionExePath.Text) &&
-                File.Exists(txtTransmissionExePath.Text))
-            {
-                dlg.InitialDirectory = Path.GetDirectoryName(txtTransmissionExePath.Text) ?? string.Empty;
-            }
-
-            if (dlg.ShowDialog() == DialogResult.OK)
-                txtTransmissionExePath.Text = dlg.FileName;
+                target.Text = dlg.FileName;
         }
 
         private void chkAutoRecovery_CheckedChanged(object? sender, EventArgs e) =>

@@ -207,12 +207,11 @@ namespace qbPortWeaver
 
             if (!vpnManager.IsVpnConnected())
             {
-                // Mutually exclusive with the HandlePortDetectionFailureAsync increment in the else branch below.
-                _consecutiveFailedCycles++;
-                int count = _consecutiveFailedCycles;
                 string disconnectedMsg = $"{vpnManager.ProviderName} is not connected";
-                LogManager.Instance.LogMessage(BuildCycleCountMessage(disconnectedMsg, count, cfg), LogLevel.Info);
-                await TryTriggerRecoveryAsync(vpnManager, cfg, cancellationToken).ConfigureAwait(false);
+                await RegisterFailureAndTryRecoveryAsync(
+                    disconnectedMsg, LogLevel.Info,
+                    vpnManager.GetRecoveryAction(), vpnManager.GetRecoveryTarget(), vpnManager.ProviderName,
+                    cfg, cancellationToken).ConfigureAwait(false);
 
                 if (defaultPort == 0)
                 {
@@ -437,23 +436,17 @@ namespace qbPortWeaver
             }
 
             // No previous knowledge of this adapter - VPN likely just disconnected for the first time.
-            // Increment the counter here (in the fallback path) rather than in RunCoreAsync, because
-            // RunCoreAsync never reaches its own increment when this method returns null early.
-            // The two sites are mutually exclusive: RunCoreAsync increments on a connected-but-failed
-            // cycle; this path increments when no manager can be resolved at all.
-            _consecutiveFailedCycles++;
-            int count = _consecutiveFailedCycles;
-            string disconnectedMsg = $"NAT-PMP adapter '{cfg.NatPmpAdapterName}' not found - VPN may be disconnected";
-            LogManager.Instance.LogMessage(BuildCycleCountMessage(disconnectedMsg, count, cfg), LogLevel.Info);
-
             // No IVpnManager instance is available here (adapter not found, no fallback manager),
-            // so we resolve the action and target directly instead of going through the interface.
-            string adapterName = cfg.NatPmpAdapterName;
-            string? providerToken = NatPmpManager.FindProviderToken(adapterName);
-            await TryTriggerRecoveryAsync(
+            // so we resolve the recovery action and target directly instead of going through the interface.
+            string adapterName     = cfg.NatPmpAdapterName;
+            string? providerToken  = NatPmpManager.FindProviderToken(adapterName);
+            string disconnectedMsg = $"NAT-PMP adapter '{adapterName}' not found - VPN may be disconnected";
+            await RegisterFailureAndTryRecoveryAsync(
+                disconnectedMsg, LogLevel.Info,
                 providerToken is not null ? HelperServiceClient.ActionRestart : HelperServiceClient.ActionCycleAdapter,
                 providerToken ?? adapterName,
-                $"NAT-PMP adapter '{adapterName}'", cfg, cancellationToken).ConfigureAwait(false);
+                $"NAT-PMP adapter '{adapterName}'",
+                cfg, cancellationToken).ConfigureAwait(false);
 
             status[StatusKeys.Status]  = StatusKeys.Skipped;
             status[StatusKeys.Message] = disconnectedMsg;
@@ -674,21 +667,28 @@ namespace qbPortWeaver
             return $"{prefix} ({count} consecutive {cycles}{recoverySuffix})";
         }
 
-        // Increments the failure counter and triggers recovery when port detection
-        // fails despite the VPN being connected (applies to all providers).
-        private async Task HandlePortDetectionFailureAsync(IVpnManager vpnManager, AppConfig cfg, CancellationToken cancellationToken)
+        // Port detection failed despite the VPN being connected. Logs at Warn (the other two
+        // failure paths use Info because they correspond to expected disconnection states).
+        private Task HandlePortDetectionFailureAsync(IVpnManager vpnManager, AppConfig cfg, CancellationToken cancellationToken) =>
+            RegisterFailureAndTryRecoveryAsync(
+                $"Port detection failed on '{vpnManager.ProviderName}'", LogLevel.Warn,
+                vpnManager.GetRecoveryAction(), vpnManager.GetRecoveryTarget(), vpnManager.ProviderName,
+                cfg, cancellationToken);
+
+        // Single increment site for _consecutiveFailedCycles. Every failure path that contributes
+        // to the auto-recovery threshold flows through here: VPN disconnected, port detection
+        // failed, and NAT-PMP adapter not found. Logs the cycle count message and then dispatches
+        // recovery (which may no-op if the threshold has not been reached).
+        private async Task RegisterFailureAndTryRecoveryAsync(
+            string reason, LogLevel logLevel,
+            string recoveryAction, string? recoveryTarget, string displayName,
+            AppConfig cfg, CancellationToken cancellationToken)
         {
             _consecutiveFailedCycles++;
             int count = _consecutiveFailedCycles;
-            LogManager.Instance.LogMessage(
-                BuildCycleCountMessage($"Port detection failed on '{vpnManager.ProviderName}'", count, cfg),
-                LogLevel.Warn);
-            await TryTriggerRecoveryAsync(vpnManager, cfg, cancellationToken).ConfigureAwait(false);
+            LogManager.Instance.LogMessage(BuildCycleCountMessage(reason, count, cfg), logLevel);
+            await TryTriggerRecoveryAsync(recoveryAction, recoveryTarget, displayName, cfg, cancellationToken).ConfigureAwait(false);
         }
-
-        // Triggers auto-recovery via the IVpnManager. Action and target are determined by the manager.
-        private Task TryTriggerRecoveryAsync(IVpnManager vpnManager, AppConfig cfg, CancellationToken cancellationToken)
-            => TryTriggerRecoveryAsync(vpnManager.GetRecoveryAction(), vpnManager.GetRecoveryTarget(), vpnManager.ProviderName, cfg, cancellationToken);
 
         // Triggers auto-recovery if enabled and the failure cycle threshold is reached.
         // Resets the counter before the target check so the warning does not fire every cycle

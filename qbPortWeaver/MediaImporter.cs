@@ -518,22 +518,21 @@ namespace qbPortWeaver
         }
 
         // Removes library cache entries for files not present in the current directory walk.
+        // Caller holds _libraryBuildSemaphore so the cache won't be racing with another rebuild,
+        // but ClearAllCaches can still null _libraryCache concurrently - treat that as a no-op.
+        // Reading _libraryCache inside the lock matches the locking discipline used elsewhere
+        // in this file (GetOrComputeLibraryFingerprint, IsFileReadyForImport).
         private static void PruneLibraryCache(HashSet<string> seenPaths)
         {
-            // Safe to read outside the lock: this method is only called from BuildLibraryIndexAsync,
-            // which holds _libraryBuildSemaphore. If ClearAllCaches nulls _libraryCache concurrently,
-            // the local still holds the old reference - mutations to it are harmless since no live
-            // state references that dictionary anymore. Unlike _sourceCache (read inside lock in
-            // IsFileReadyForImport), the caller's semaphore makes the concurrent-null scenario benign.
-            var cache = _libraryCache!;
             List<string> stale;
             lock (_libraryLock)
             {
-                stale = cache.Keys.Where(k => !seenPaths.Contains(k)).ToList();
+                if (_libraryCache is null) return;
+                stale = _libraryCache.Keys.Where(k => !seenPaths.Contains(k)).ToList();
                 if (stale.Count == 0) return;
 
                 foreach (var key in stale)
-                    cache.Remove(key);
+                    _libraryCache.Remove(key);
                 _libraryCacheDirty = true;
             }
 

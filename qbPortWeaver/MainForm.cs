@@ -46,9 +46,16 @@ namespace qbPortWeaver
         // for the residual window where the UI thread read the old reference before the swap completed.
         private CancellationTokenSource _delayCts = new();
 
-        // Semaphore to prevent concurrent sync cycles. Also serialises access to
+        // Semaphore to prevent concurrent port sync cycles. Also serialises access to
         // PortSyncService instance state (e.g. _lastKnownNatPmpManager) - see PortSyncService.cs.
+        // Does NOT cover MediaManagerService: media import runs on a separate fire-and-forget
+        // task so a long library scan cannot delay the next port sync cycle.
         private readonly SemaphoreSlim _updateSemaphore = new(1, 1);
+
+        // Running flag for the fire-and-forget media import task. 0 = idle, 1 = running.
+        // Subsequent sync cycles skip the import if the previous one is still in flight rather
+        // than queueing - prevents pile-up when a media import takes longer than the sync interval.
+        private int _mediaImportRunning;
 
         // Manual sync triggered flag (thread-safe with volatile)
         private volatile bool _manualSyncTriggered;
@@ -377,11 +384,37 @@ namespace qbPortWeaver
                     try
                     {
                         updateInterval = await _portSyncService.RunAsync(_shutdownCts.Token);
-                        await MediaManagerService.ImportAsync(_shutdownCts.Token);
                     }
                     finally
                     {
                         _updateSemaphore.Release();
+                    }
+
+                    // Kick off media import as fire-and-forget so a long library scan does not
+                    // delay the next port sync cycle. Skip if a previous import is still running -
+                    // queueing them would let imports pile up indefinitely on slow storage.
+                    if (Interlocked.CompareExchange(ref _mediaImportRunning, 1, 0) == 0)
+                    {
+                        _ = Task.Run(async () =>
+                        {
+                            try
+                            {
+                                await MediaManagerService.ImportAsync(_shutdownCts.Token);
+                            }
+                            catch (OperationCanceledException) when (_shutdownCts.IsCancellationRequested) { }
+                            catch (Exception ex)
+                            {
+                                LogManager.Instance.LogMessage($"Media import cycle failed: {ex.Message}", LogLevel.Error);
+                            }
+                            finally
+                            {
+                                Interlocked.Exchange(ref _mediaImportRunning, 0);
+                            }
+                        });
+                    }
+                    else
+                    {
+                        LogManager.Instance.LogDebug("MainForm.RunMainLoopAsync: Media import skipped - previous import still running");
                     }
 
                     // After a manual sync, wait only 10 seconds before next check

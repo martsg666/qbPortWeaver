@@ -359,6 +359,9 @@ namespace qbPortWeaver
                     try
                     {
                         byte[] decrypted = ProtectedData.Unprotect(encrypted, null, DataProtectionScope.CurrentUser);
+                        // Successful decrypt clears any prior failure so the warn re-fires if the
+                        // failure later returns (e.g. another profile move).
+                        lock (_lastDecryptWarning) _lastDecryptWarning.Remove($"{section}|{key}");
                         return Encoding.UTF8.GetString(decrypted);
                     }
                     catch (CryptographicException ex)
@@ -367,9 +370,17 @@ namespace qbPortWeaver
                         // change (registry restored on a different machine) or DPAPI master key rotation.
                         // Returning the raw Base64 would produce a confusing auth failure; surface the
                         // underlying cause at Warn so the user can re-enter the value in Settings.
-                        LogManager.Instance.LogMessage(
-                            $"Failed to decrypt [{section}] {key}: {ex.Message} - re-enter the value in Settings",
-                            LogLevel.Warn);
+                        // Fire only on transition (new or changed failure message) - see _lastDecryptWarning.
+                        string warnKey     = $"{section}|{key}";
+                        string warnMessage = $"Failed to decrypt [{section}] {key}: {ex.Message} - re-enter the value in Settings";
+                        bool shouldWarn;
+                        lock (_lastDecryptWarning)
+                        {
+                            shouldWarn = !_lastDecryptWarning.TryGetValue(warnKey, out var prior) || prior != warnMessage;
+                            if (shouldWarn) _lastDecryptWarning[warnKey] = warnMessage;
+                        }
+                        if (shouldWarn)
+                            LogManager.Instance.LogMessage(warnMessage, LogLevel.Warn);
                         return string.Empty;
                     }
                 }
@@ -452,6 +463,15 @@ namespace qbPortWeaver
             KeyPipeSessionToken
         };
 
+        // Tracks the last decrypt-failure warn message per (section, key) so the warn fires only
+        // on transition (new or changed failure) rather than every sync cycle. Without this, a
+        // persistent DPAPI failure (e.g. registry restored on a different machine) would Warn-spam
+        // the log alert badge every cycle until the user re-enters the value. Cleared on a
+        // successful decrypt so the warn re-fires if the failure later returns. Same pattern as
+        // PortSyncService._lastInterfaceMismatchMessage.
+        private static readonly Dictionary<string, string> _lastDecryptWarning =
+            new(StringComparer.OrdinalIgnoreCase);
+
         // Writes any missing keys for one registry section; returns true if anything was written
         private static bool WriteDefaultsForSection(RegistryKey regKey,
             Dictionary<string, string> sectionDefaults)
@@ -462,10 +482,14 @@ namespace qbPortWeaver
                 if (regKey.GetValue(kvp.Key) is not null)
                     continue;
 
-                // Sensitive keys are always stored encrypted; encrypt before the initial write.
-                regKey.SetValue(kvp.Key,
-                    _encryptedKeys.Contains(kvp.Key) ? EncryptValue(kvp.Value) : kvp.Value,
-                    RegistryValueKind.String);
+                // Sensitive keys are stored DPAPI-encrypted, but skip the encrypt round-trip for
+                // empty defaults: GetEncryptedValue returns the registered default for missing or
+                // empty values, so an empty-encrypted blob is indistinguishable from a plain empty
+                // string in observable behaviour.
+                string valueToWrite = _encryptedKeys.Contains(kvp.Key) && kvp.Value.Length > 0
+                    ? EncryptValue(kvp.Value)
+                    : kvp.Value;
+                regKey.SetValue(kvp.Key, valueToWrite, RegistryValueKind.String);
 
                 anyWritten = true;
             }

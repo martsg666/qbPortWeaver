@@ -155,8 +155,13 @@ namespace qbPortWeaver
         /// <summary>Resets the per-instance auth state so the next API call triggers a fresh authentication handshake.</summary>
         protected virtual void ResetAuthState() => IsAuthenticated = false;
 
-        /// <summary>Performs the client-specific authentication handshake. Returns <see langword="true"/> on success.</summary>
-        protected abstract Task<bool> AuthenticateAsync(CancellationToken cancellationToken = default);
+        /// <summary>
+        /// Performs the client-specific authentication handshake. Returns <see langword="true"/> on success.
+        /// Default implementation is a no-op for clients that authenticate per-request (e.g. Transmission's
+        /// X-Transmission-Session-Id CSRF handshake). Cookie-based clients (qBittorrent, Deluge) override
+        /// this with their login flow.
+        /// </summary>
+        protected virtual Task<bool> AuthenticateAsync(CancellationToken cancellationToken = default) => Task.FromResult(true);
 
         // Authenticates once per instance; subsequent calls reuse the existing session.
         protected async Task<bool> EnsureAuthenticatedAsync(CancellationToken cancellationToken = default)

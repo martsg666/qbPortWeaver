@@ -9,6 +9,11 @@ namespace qbPortWeaver
     /// <summary>Manages Transmission via its RPC API: authentication, port configuration, and process lifecycle.</summary>
     public sealed class TransmissionClient : BitTorrentClientBase
     {
+        // Transmission Qt's session refresh interval is 5s by default (see the "Update interval"
+        // preference in Edit -> Preferences). After SetListeningPortAsync the new port lives only
+        // in the daemon's in-memory session until the Qt client polls; closing the window before
+        // that point overwrites the change with the stale Qt-side value. 5s matches the default
+        // refresh - if a future Qt build changes the default this delay needs updating.
         private const int    GracefulShutdownWaitMs  = 5000;
         private const int    WindowCloseWaitMs       = 3000;
         private const string RpcPath        = "/transmission/rpc";
@@ -207,11 +212,9 @@ namespace qbPortWeaver
         /// <remarks>Transmission does not expose a connection status endpoint; always returns <see langword="null"/>.</remarks>
         public override Task<string?> GetConnectionStatusAsync(CancellationToken cancellationToken = default) => Task.FromResult<string?>(null);
 
-        // Transmission uses a per-request X-Transmission-Session-Id CSRF handshake in SendRpcAsync rather than a
-        // one-time login step, so EnsureAuthenticatedAsync is never called and this override is never reached.
-        // It exists only to satisfy the abstract base member.
-        /// <inheritdoc/>
-        protected override Task<bool> AuthenticateAsync(CancellationToken cancellationToken = default) => Task.FromResult(true);
+        // Transmission authenticates per request via SendRpcAsync's X-Transmission-Session-Id CSRF
+        // handshake, so EnsureAuthenticatedAsync is never called. The base's no-op AuthenticateAsync
+        // is inherited unchanged.
 
         /// <inheritdoc/>
         protected override void ResetAuthState()

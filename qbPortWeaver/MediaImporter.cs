@@ -292,8 +292,13 @@ namespace qbPortWeaver
         /// If called concurrently (e.g. from both the sync loop and a UI scan), the second caller waits for the
         /// first to finish. When <paramref name="allowReuse"/> is true, the existing index is reused for up to
         /// <see cref="FullRebuildIntervalCycles"/> cycles before forcing a full rebuild to catch external changes.
+        /// Returns <see langword="true"/> when the index reflects the configured library state and is safe to
+        /// query. Returns <see langword="false"/> when the configured paths were inaccessible or one or more
+        /// folder enumerations failed: in that case the prior <see cref="_libraryFingerprints"/> and the on-disk
+        /// cache are left untouched, and the caller must skip the import cycle - committing a partial index
+        /// would falsely report library files as missing and risk creating duplicates.
         /// </summary>
-        internal static async Task BuildLibraryIndexAsync(string moviesLibraryPath, string tvShowsLibraryPath, bool allowReuse = false, CancellationToken cancellationToken = default)
+        internal static async Task<bool> BuildLibraryIndexAsync(string moviesLibraryPath, string tvShowsLibraryPath, bool allowReuse = false, CancellationToken cancellationToken = default)
         {
             await _libraryBuildSemaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
             try
@@ -305,7 +310,7 @@ namespace qbPortWeaver
                 {
                     LogManager.Instance.LogDebug($"MediaImporter.BuildLibraryIndexAsync: Reusing index (cycle {_libraryBuildCycleCount}/{FullRebuildIntervalCycles})", Subsystem.MediaManager);
                     _libraryBuildCycleCount++;
-                    return;
+                    return true;
                 }
                 if (pathsChanged && _libraryFingerprints is not null)
                     LogManager.Instance.LogDebug("MediaImporter.BuildLibraryIndexAsync: Library paths changed, forcing full rebuild", Subsystem.MediaManager);
@@ -325,7 +330,7 @@ namespace qbPortWeaver
                 {
                     LogManager.Instance.LogMessage("Library index build skipped: configured paths not accessible - will retry next cycle", LogLevel.Warn, Subsystem.MediaManager);
                     _libraryBuildCycleCount = FullRebuildIntervalCycles;
-                    return;
+                    return false;
                 }
 
                 LogManager.Instance.LogMessage($"Building library index across {libraryPaths.Length} folder(s)", LogLevel.Info, Subsystem.MediaManager);
@@ -336,6 +341,7 @@ namespace qbPortWeaver
                 var fpToPath     = new Dictionary<string, string>(StringComparer.Ordinal);
                 var seenPaths    = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                 int cached = 0, computed = 0;
+                bool anyEnumerationFailed = false;
 
                 foreach (var path in libraryPaths)
                 {
@@ -345,12 +351,27 @@ namespace qbPortWeaver
                     catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
                     {
                         LogManager.Instance.LogMessage($"Skipped library folder '{path}': {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
+                        anyEnumerationFailed = true;
                         continue;
                     }
 
                     var (c, comp) = FingerprintLibraryFiles(files, fingerprints, fpToPath, seenPaths, cancellationToken);
                     cached   += c;
                     computed += comp;
+                }
+
+                // Any folder enumeration failure poisons the index: a partial fingerprint set would
+                // falsely report files in the failed folder as missing from the library, causing
+                // duplicate imports on the next cycle. Preserve the prior _libraryFingerprints (or
+                // leave it null on first run) and skip PruneLibraryCache so the on-disk cache is
+                // not wiped by an empty seenPaths set. Force a rebuild next cycle.
+                if (anyEnumerationFailed)
+                {
+                    LogManager.Instance.LogMessage(
+                        "Library index build incomplete - one or more configured folders failed to enumerate; will retry next cycle",
+                        LogLevel.Warn, Subsystem.MediaManager);
+                    _libraryBuildCycleCount = FullRebuildIntervalCycles;
+                    return false;
                 }
 
                 PruneLibraryCache(seenPaths);
@@ -360,6 +381,7 @@ namespace qbPortWeaver
                 LogManager.Instance.LogMessage(
                     $"Library index built: {fingerprints.Count} files in {sw.ElapsedMilliseconds}ms (cached={cached}, computed={computed})",
                     LogLevel.Info, Subsystem.MediaManager);
+                return true;
             }
             finally
             {

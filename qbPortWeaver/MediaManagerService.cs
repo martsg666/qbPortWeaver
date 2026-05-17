@@ -56,8 +56,14 @@ namespace qbPortWeaver
                     $"{RegistrySettingsManager.KeyMediaImportMode}={importMode}",
                     Subsystem.MediaManager);
 
-            var (tmdb, classified, total) = await PrepareClassifiedSourcesAsync(
+            var prep = await PrepareClassifiedSourcesAsync(
                 apiKey, sourceFolders, moviesLibraryPath, tvShowsLibraryPath, allowLibraryReuse: true, cancellationToken).ConfigureAwait(false);
+            if (prep is null)
+            {
+                LogManager.Instance.LogMessage("Import skipped this cycle - library index unavailable", LogLevel.Info, Subsystem.MediaManager);
+                return;
+            }
+            var (tmdb, classified, total) = prep.Value;
 
             var ctx = new ImportContext(tmdb, dryRun, createFolders, importMode, moviesLibraryPath, tvShowsLibraryPath);
 
@@ -98,8 +104,14 @@ namespace qbPortWeaver
             LogManager.Instance.LogMessage($"Scan started (createFolders={createFolders})", LogLevel.Info, Subsystem.MediaManager);
 
             // UI-initiated scans always rebuild the library index (allowLibraryReuse: false) to ensure fresh results.
-            var (tmdb, classified, total) = await PrepareClassifiedSourcesAsync(
+            var prep = await PrepareClassifiedSourcesAsync(
                 apiKey, sourceFolders, moviesLibraryPath, tvShowsLibraryPath, allowLibraryReuse: false, cancellationToken).ConfigureAwait(false);
+            if (prep is null)
+            {
+                LogManager.Instance.LogMessage("Scan aborted - library index unavailable", LogLevel.Warn, Subsystem.MediaManager);
+                return [];
+            }
+            var (tmdb, classified, total) = prep.Value;
 
             int current = 0;
             void OnItemProcessed()
@@ -330,7 +342,10 @@ namespace qbPortWeaver
         // concurrently (both are directory listings on different paths). Fingerprints candidates once the
         // library index is ready. allowLibraryReuse: true for background sync cycles (reuses index up to
         // FullRebuildIntervalCycles); false for UI-initiated scans (always rebuilds for fresh results).
-        private static async Task<(TmdbClient Tmdb, List<(string Folder, (string[] MovieFiles, string[] TvShowFiles) Items)> Classified, int Total)>
+        // Returns null when the library index could not be built (or was incomplete) so the caller can
+        // skip the cycle - acting on a partial index would falsely report library files as missing and
+        // risk creating duplicate imports.
+        private static async Task<(TmdbClient Tmdb, List<(string Folder, (string[] MovieFiles, string[] TvShowFiles) Items)> Classified, int Total)?>
             PrepareClassifiedSourcesAsync(
                 string apiKey, string[] sourceFolders, string moviesLibraryPath, string tvShowsLibraryPath,
                 bool allowLibraryReuse, CancellationToken cancellationToken)
@@ -355,7 +370,10 @@ namespace qbPortWeaver
 
             var libraryTask = MediaImporter.BuildLibraryIndexAsync(moviesLibraryPath, tvShowsLibraryPath, allowReuse: allowLibraryReuse, cancellationToken);
             var enumerated  = await EnumerateSourceFoldersAsync(validFolders, cancellationToken).ConfigureAwait(false);
-            await libraryTask.ConfigureAwait(false);
+            bool libraryReady = await libraryTask.ConfigureAwait(false);
+            if (!libraryReady)
+                return null;
+
             var classified  = await ClassifySourceFoldersAsync(enumerated, cancellationToken).ConfigureAwait(false);
             int total       = classified.Sum(c => c.Items.MovieFiles.Length + c.Items.TvShowFiles.Length);
 

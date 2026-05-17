@@ -298,27 +298,39 @@ namespace qbPortWeaver
         /// cache are left untouched, and the caller must skip the import cycle - committing a partial index
         /// would falsely report library files as missing and risk creating duplicates.
         /// </summary>
+        // Decides whether the previously-built library index can be reused this cycle. Returns true
+        // when the cached index is valid and the cycle counter has been bumped (caller skips the
+        // rebuild). Returns false when a full rebuild is required, in which case the path tracking
+        // fields and cycle counter are reset so the rebuild starts from a clean state.
+        // Caller holds _libraryBuildSemaphore.
+        private static bool TryReuseCachedIndex(string moviesLibraryPath, string tvShowsLibraryPath, bool allowReuse)
+        {
+            bool pathsChanged = !string.Equals(moviesLibraryPath,  _lastMoviesLibraryPath,  StringComparison.OrdinalIgnoreCase)
+                             || !string.Equals(tvShowsLibraryPath, _lastTvShowsLibraryPath, StringComparison.OrdinalIgnoreCase);
+            bool forceRebuild = pathsChanged || _libraryBuildCycleCount >= FullRebuildIntervalCycles;
+            if (!forceRebuild && allowReuse && _libraryFingerprints is not null)
+            {
+                LogManager.Instance.LogDebug($"MediaImporter.BuildLibraryIndexAsync: Reusing index (cycle {_libraryBuildCycleCount}/{FullRebuildIntervalCycles})", Subsystem.MediaManager);
+                _libraryBuildCycleCount++;
+                return true;
+            }
+            if (pathsChanged && _libraryFingerprints is not null)
+                LogManager.Instance.LogDebug("MediaImporter.BuildLibraryIndexAsync: Library paths changed, forcing full rebuild", Subsystem.MediaManager);
+            else if (_libraryBuildCycleCount >= FullRebuildIntervalCycles)
+                LogManager.Instance.LogDebug($"MediaImporter.BuildLibraryIndexAsync: Forcing periodic rebuild (every {FullRebuildIntervalCycles} cycles)", Subsystem.MediaManager);
+            _libraryBuildCycleCount  = 1;
+            _lastMoviesLibraryPath   = moviesLibraryPath;
+            _lastTvShowsLibraryPath  = tvShowsLibraryPath;
+            return false;
+        }
+
         internal static async Task<bool> BuildLibraryIndexAsync(string moviesLibraryPath, string tvShowsLibraryPath, bool allowReuse = false, CancellationToken cancellationToken = default)
         {
             await _libraryBuildSemaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
             try
             {
-                bool pathsChanged = !string.Equals(moviesLibraryPath,  _lastMoviesLibraryPath,  StringComparison.OrdinalIgnoreCase)
-                                 || !string.Equals(tvShowsLibraryPath, _lastTvShowsLibraryPath, StringComparison.OrdinalIgnoreCase);
-                bool forceRebuild = pathsChanged || _libraryBuildCycleCount >= FullRebuildIntervalCycles;
-                if (!forceRebuild && allowReuse && _libraryFingerprints is not null)
-                {
-                    LogManager.Instance.LogDebug($"MediaImporter.BuildLibraryIndexAsync: Reusing index (cycle {_libraryBuildCycleCount}/{FullRebuildIntervalCycles})", Subsystem.MediaManager);
-                    _libraryBuildCycleCount++;
+                if (TryReuseCachedIndex(moviesLibraryPath, tvShowsLibraryPath, allowReuse))
                     return true;
-                }
-                if (pathsChanged && _libraryFingerprints is not null)
-                    LogManager.Instance.LogDebug("MediaImporter.BuildLibraryIndexAsync: Library paths changed, forcing full rebuild", Subsystem.MediaManager);
-                else if (_libraryBuildCycleCount >= FullRebuildIntervalCycles)
-                    LogManager.Instance.LogDebug($"MediaImporter.BuildLibraryIndexAsync: Forcing periodic rebuild (every {FullRebuildIntervalCycles} cycles)", Subsystem.MediaManager);
-                _libraryBuildCycleCount  = 1;
-                _lastMoviesLibraryPath   = moviesLibraryPath;
-                _lastTvShowsLibraryPath  = tvShowsLibraryPath;
 
                 var libraryPaths = new[] { moviesLibraryPath, tvShowsLibraryPath }
                     .Where(p => !string.IsNullOrWhiteSpace(p) && Directory.Exists(p))

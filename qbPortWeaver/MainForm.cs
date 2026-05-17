@@ -390,32 +390,7 @@ namespace qbPortWeaver
                         _updateSemaphore.Release();
                     }
 
-                    // Kick off media import as fire-and-forget so a long library scan does not
-                    // delay the next port sync cycle. Skip if a previous import is still running -
-                    // queueing them would let imports pile up indefinitely on slow storage.
-                    if (Interlocked.CompareExchange(ref _mediaImportRunning, 1, 0) == 0)
-                    {
-                        _ = Task.Run(async () =>
-                        {
-                            try
-                            {
-                                await MediaManagerService.ImportAsync(_shutdownCts.Token);
-                            }
-                            catch (OperationCanceledException) when (_shutdownCts.IsCancellationRequested) { }
-                            catch (Exception ex)
-                            {
-                                LogManager.Instance.LogMessage($"Media import cycle failed: {ex.Message}", LogLevel.Error);
-                            }
-                            finally
-                            {
-                                Interlocked.Exchange(ref _mediaImportRunning, 0);
-                            }
-                        });
-                    }
-                    else
-                    {
-                        LogManager.Instance.LogDebug("MainForm.RunMainLoopAsync: Media import skipped - previous import still running");
-                    }
+                    TryKickOffMediaImport();
 
                     // After a manual sync, wait only 10 seconds before next check
                     if (_manualSyncTriggered)
@@ -441,6 +416,39 @@ namespace qbPortWeaver
             }
 
             LogManager.Instance.LogMessage("Main loop exited gracefully", LogLevel.Info);
+        }
+
+        // Kicks off the media import on a separate fire-and-forget task so a long library scan
+        // does not delay the next port sync cycle. Skipped when a previous import is still in
+        // flight - queueing them would let imports pile up indefinitely on slow storage.
+        private void TryKickOffMediaImport()
+        {
+            if (Interlocked.CompareExchange(ref _mediaImportRunning, 1, 0) != 0)
+            {
+                LogManager.Instance.LogDebug("MainForm.TryKickOffMediaImport: Media import skipped - previous import still running");
+                return;
+            }
+
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await MediaManagerService.ImportAsync(_shutdownCts.Token);
+                }
+                catch (OperationCanceledException) when (_shutdownCts.IsCancellationRequested)
+                {
+                    // Shutdown path: import was cancelled mid-cycle. Swallow silently - the
+                    // main loop's own shutdown handling logs the exit.
+                }
+                catch (Exception ex)
+                {
+                    LogManager.Instance.LogMessage($"Media import cycle failed: {ex.Message}", LogLevel.Error);
+                }
+                finally
+                {
+                    Interlocked.Exchange(ref _mediaImportRunning, 0);
+                }
+            });
         }
 
         // Waits for the next cycle interval, handling manual-update interrupts.

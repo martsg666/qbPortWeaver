@@ -46,6 +46,13 @@ namespace qbPortWeaver
         private const string SourceCacheFileName  = "qbPortWeaver.mediasource.json";
         private const string LibraryCacheFileName = "qbPortWeaver.medialibrary.json";
 
+        // Win32 ERROR_INVALID_FUNCTION wrapped as a .NET HResult. Some SMB server implementations
+        // return this transiently during connection renegotiation, oplock breaks, or AV-driver
+        // interception. The error clears on its own within a fraction of a second, so we retry
+        // once before giving up. Distinct from a real "not supported" response (those don't recover).
+        private const int ErrorInvalidFunctionHResult       = unchecked((int)0x80070001);
+        private const int SmbRetryDelayMs                   = 500;
+
         private static readonly JsonSerializerOptions _jsonWriteOptions = new() { WriteIndented = true };
 
         private sealed record CacheEntry(long Size, long LastWriteTimeTicks, string Fingerprint);
@@ -285,19 +292,6 @@ namespace qbPortWeaver
             return $"{size}:{Convert.ToHexString(SHA256.HashData(data))}";
         }
 
-        /// <summary>
-        /// Walks the library folders and builds a fingerprint index so <see cref="IsAlreadyInLibrary"/> can detect
-        /// files that were previously imported (regardless of the name they were imported under).
-        /// Uses a persisted cache so only new or modified library files are fingerprinted; deleted files are pruned.
-        /// If called concurrently (e.g. from both the sync loop and a UI scan), the second caller waits for the
-        /// first to finish. When <paramref name="allowReuse"/> is true, the existing index is reused for up to
-        /// <see cref="FullRebuildIntervalCycles"/> cycles before forcing a full rebuild to catch external changes.
-        /// Returns <see langword="true"/> when the index reflects the configured library state and is safe to
-        /// query. Returns <see langword="false"/> when the configured paths were inaccessible or one or more
-        /// folder enumerations failed: in that case the prior <see cref="_libraryFingerprints"/> and the on-disk
-        /// cache are left untouched, and the caller must skip the import cycle - committing a partial index
-        /// would falsely report library files as missing and risk creating duplicates.
-        /// </summary>
         // Decides whether the previously-built library index can be reused this cycle. Returns true
         // when the cached index is valid and the cycle counter has been bumped (caller skips the
         // rebuild). Returns false when a full rebuild is required, in which case the path tracking
@@ -324,6 +318,19 @@ namespace qbPortWeaver
             return false;
         }
 
+        /// <summary>
+        /// Walks the library folders and builds a fingerprint index so <see cref="IsAlreadyInLibrary"/> can detect
+        /// files that were previously imported (regardless of the name they were imported under).
+        /// Uses a persisted cache so only new or modified library files are fingerprinted; deleted files are pruned.
+        /// If called concurrently (e.g. from both the sync loop and a UI scan), the second caller waits for the
+        /// first to finish. When <paramref name="allowReuse"/> is true, the existing index is reused for up to
+        /// <see cref="FullRebuildIntervalCycles"/> cycles before forcing a full rebuild to catch external changes.
+        /// Returns <see langword="true"/> when the index reflects the configured library state and is safe to
+        /// query. Returns <see langword="false"/> when the configured paths were inaccessible or one or more
+        /// folder enumerations failed: in that case the prior <see cref="_libraryFingerprints"/> and the on-disk
+        /// cache are left untouched, and the caller must skip the import cycle - committing a partial index
+        /// would falsely report library files as missing and risk creating duplicates.
+        /// </summary>
         internal static async Task<bool> BuildLibraryIndexAsync(string moviesLibraryPath, string tvShowsLibraryPath, bool allowReuse = false, CancellationToken cancellationToken = default)
         {
             await _libraryBuildSemaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -447,11 +454,33 @@ namespace qbPortWeaver
         // IgnoreInaccessible = true silently skips permission-denied folders.
         // No MaxRecursionDepth: Plex libraries are shallow by convention (Title/Season/file), so no cap needed.
         private static List<FileInfo> EnumerateLibraryFolder(string folder) =>
-            new DirectoryInfo(folder).EnumerateFiles("*", new EnumerationOptions
+            EnumerateWithSmbRetry(folder, p =>
+                new DirectoryInfo(p).EnumerateFiles("*", new EnumerationOptions
+                {
+                    RecurseSubdirectories = true,
+                    IgnoreInaccessible    = true
+                }).ToList());
+
+        /// <summary>
+        /// Runs an enumeration callback, retrying once with a short delay if it fails with
+        /// ERROR_INVALID_FUNCTION. Used by both library and source folder walks because either
+        /// can hit a transient SMB hiccup. A second failure propagates to the caller's catch.
+        /// </summary>
+        internal static List<FileInfo> EnumerateWithSmbRetry(string folder, Func<string, List<FileInfo>> enumerate)
+        {
+            try
             {
-                RecurseSubdirectories = true,
-                IgnoreInaccessible    = true
-            }).ToList();
+                return enumerate(folder);
+            }
+            catch (IOException ex) when (ex.HResult == ErrorInvalidFunctionHResult)
+            {
+                LogManager.Instance.LogDebug(
+                    $"MediaImporter.EnumerateWithSmbRetry: '{folder}' hit ERROR_INVALID_FUNCTION (transient SMB error), retrying after {SmbRetryDelayMs}ms",
+                    Subsystem.MediaManager);
+                Thread.Sleep(SmbRetryDelayMs);
+                return enumerate(folder);
+            }
+        }
 
         // Fingerprints a pre-enumerated list of library files in parallel, using the cache where possible.
         // Each file requires a 128 KB read; reads are bounded by FingerprintParallelism.

@@ -408,18 +408,19 @@ namespace qbPortWeaver
         // FileInfo metadata (Length, LastWriteTimeUtc) comes from the directory listing - no extra stat per file.
         // MaxRecursionDepth = MaxSubfolderDepth preserves the existing depth cap.
         // IgnoreInaccessible = true silently skips permission-denied folders.
-        private static List<FileInfo> EnumerateSourceFolder(string folder)
-        {
-            return new DirectoryInfo(folder)
-                .EnumerateFiles("*", new EnumerationOptions
-                {
-                    RecurseSubdirectories = true,
-                    MaxRecursionDepth     = MaxSubfolderDepth,
-                    IgnoreInaccessible    = true
-                })
-                .Where(fi => FileNameParser.IsVideoFile(fi.FullName) && MediaImporter.IsFileReadyForImport(fi))
-                .ToList();
-        }
+        // Wrapped in EnumerateWithSmbRetry to ride out transient ERROR_INVALID_FUNCTION responses
+        // from SMB servers during connection renegotiation / oplock breaks.
+        private static List<FileInfo> EnumerateSourceFolder(string folder) =>
+            MediaImporter.EnumerateWithSmbRetry(folder, p =>
+                new DirectoryInfo(p)
+                    .EnumerateFiles("*", new EnumerationOptions
+                    {
+                        RecurseSubdirectories = true,
+                        MaxRecursionDepth     = MaxSubfolderDepth,
+                        IgnoreInaccessible    = true
+                    })
+                    .Where(fi => FileNameParser.IsVideoFile(fi.FullName) && MediaImporter.IsFileReadyForImport(fi))
+                    .ToList());
 
         // Phase 2: fingerprints candidates in parallel and classifies them into movies and TV episodes.
         // Requires BuildLibraryIndex to have completed before calling - IsAlreadyInLibrary uses the index.

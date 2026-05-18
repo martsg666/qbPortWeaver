@@ -257,17 +257,18 @@ namespace qbPortWeaver
         // until the next cycle. The root folder itself is never deleted.
         internal static void CleanupEmptyFolders(string rootFolder, bool dryRun)
         {
-            if (!Directory.Exists(rootFolder)) return;
+            if (!MediaImporter.DirectoryExistsWithSmbRetry(rootFolder)) return;
 
             string[] directories;
             try
             {
-                directories = Directory.GetDirectories(rootFolder, "*", new EnumerationOptions
-                {
-                    RecurseSubdirectories = true,
-                    MaxRecursionDepth     = MaxSubfolderDepth,
-                    IgnoreInaccessible    = true,
-                });
+                directories = MediaImporter.InvokeWithSmbRetry(rootFolder, () =>
+                    Directory.GetDirectories(rootFolder, "*", new EnumerationOptions
+                    {
+                        RecurseSubdirectories = true,
+                        MaxRecursionDepth     = MaxSubfolderDepth,
+                        IgnoreInaccessible    = true,
+                    }));
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
@@ -285,7 +286,7 @@ namespace qbPortWeaver
         // Checks whether a single directory is removable and deletes (or dry-run logs) it. Returns true if the folder was processed.
         private static bool TryCleanupFolder(string dir, bool dryRun)
         {
-            if (!Directory.Exists(dir)) return false;
+            if (!MediaImporter.DirectoryExistsWithSmbRetry(dir)) return false;
 
             bool removable;
             bool hasOnlyNfo;
@@ -312,10 +313,11 @@ namespace qbPortWeaver
 
         // Returns (Removable, HasOnlyNfo, Files) when the folder is empty or contains only .nfo files and has no subdirectories.
         // Files is returned so the caller can pass it to DeleteFolder without a second GetFiles call.
+        // Both GetFiles and GetDirectories wrapped in InvokeWithSmbRetry to ride out transient SMB blips.
         private static (bool Removable, bool HasOnlyNfo, string[] Files) IsRemovableFolder(string dir)
         {
-            var files = Directory.GetFiles(dir);
-            if (Directory.GetDirectories(dir).Length > 0) return (false, false, files);
+            var files = MediaImporter.InvokeWithSmbRetry(dir, () => Directory.GetFiles(dir));
+            if (MediaImporter.InvokeWithSmbRetry(dir, () => Directory.GetDirectories(dir)).Length > 0) return (false, false, files);
             if (files.Length == 0) return (true, false, files);
             bool allNfo = files.All(f => Path.GetExtension(f).Equals(".nfo", StringComparison.OrdinalIgnoreCase));
             return (allNfo, allNfo, files);
@@ -364,7 +366,11 @@ namespace qbPortWeaver
             var validFolders = new List<string>();
             foreach (var f in sourceFolders)
             {
-                if (!Directory.Exists(f)) { LogManager.Instance.LogMessage($"Source folder not found: '{f}'", LogLevel.Warn, Subsystem.MediaManager); continue; }
+                if (!MediaImporter.DirectoryExistsWithSmbRetry(f))
+                {
+                    LogManager.Instance.LogMessage($"Source folder not found: '{f}'", LogLevel.Warn, Subsystem.MediaManager);
+                    continue;
+                }
                 validFolders.Add(f);
             }
 
@@ -408,11 +414,11 @@ namespace qbPortWeaver
         // FileInfo metadata (Length, LastWriteTimeUtc) comes from the directory listing - no extra stat per file.
         // MaxRecursionDepth = MaxSubfolderDepth preserves the existing depth cap.
         // IgnoreInaccessible = true silently skips permission-denied folders.
-        // Wrapped in EnumerateWithSmbRetry to ride out transient ERROR_INVALID_FUNCTION responses
+        // Wrapped in InvokeWithSmbRetry to ride out transient ERROR_INVALID_FUNCTION responses
         // from SMB servers during connection renegotiation / oplock breaks.
         private static List<FileInfo> EnumerateSourceFolder(string folder) =>
-            MediaImporter.EnumerateWithSmbRetry(folder, p =>
-                new DirectoryInfo(p)
+            MediaImporter.InvokeWithSmbRetry(folder, () =>
+                new DirectoryInfo(folder)
                     .EnumerateFiles("*", new EnumerationOptions
                     {
                         RecurseSubdirectories = true,
@@ -577,7 +583,7 @@ namespace qbPortWeaver
             if (string.IsNullOrEmpty(videoDir) || string.IsNullOrEmpty(targetDir)) return;
 
             string[] files;
-            try { files = Directory.GetFiles(videoDir); }
+            try { files = MediaImporter.InvokeWithSmbRetry(videoDir, () => Directory.GetFiles(videoDir)); }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
                 LogManager.Instance.LogMessage($"Skipped companion files in '{videoDir}': {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);

@@ -212,7 +212,7 @@ namespace qbPortWeaver
             string[] files;
             try
             {
-                files = Directory.GetFiles(sourceDir);
+                files = MediaImporter.InvokeWithSmbRetry(sourceDir, () => Directory.GetFiles(sourceDir));
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {

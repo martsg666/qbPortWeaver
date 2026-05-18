@@ -354,7 +354,7 @@ namespace qbPortWeaver
                     return true;
 
                 var libraryPaths = new[] { moviesLibraryPath, tvShowsLibraryPath }
-                    .Where(p => !string.IsNullOrWhiteSpace(p) && Directory.Exists(p))
+                    .Where(p => !string.IsNullOrWhiteSpace(p) && DirectoryExistsWithSmbRetry(p))
                     .ToArray();
 
                 bool hasConfiguredPaths = !string.IsNullOrWhiteSpace(moviesLibraryPath)
@@ -468,32 +468,49 @@ namespace qbPortWeaver
         // IgnoreInaccessible = true silently skips permission-denied folders.
         // No MaxRecursionDepth: Plex libraries are shallow by convention (Title/Season/file), so no cap needed.
         private static List<FileInfo> EnumerateLibraryFolder(string folder) =>
-            EnumerateWithSmbRetry(folder, p =>
-                new DirectoryInfo(p).EnumerateFiles("*", new EnumerationOptions
+            InvokeWithSmbRetry(folder, () =>
+                new DirectoryInfo(folder).EnumerateFiles("*", new EnumerationOptions
                 {
                     RecurseSubdirectories = true,
                     IgnoreInaccessible    = true
                 }).ToList());
 
         /// <summary>
-        /// Runs an enumeration callback, retrying once with a short delay if it fails with
-        /// ERROR_INVALID_FUNCTION. Used by both library and source folder walks because either
-        /// can hit a transient SMB hiccup. A second failure propagates to the caller's catch.
+        /// Runs an SMB-touching action, retrying once with a short delay if it throws
+        /// <see cref="IOException"/> with HResult <c>ERROR_INVALID_FUNCTION</c> (the throwing
+        /// variant of the transient SMB hiccup). A second failure propagates to the caller's catch.
+        /// Used by every Media Manager call that enumerates or lists an SMB path.
         /// </summary>
-        internal static List<FileInfo> EnumerateWithSmbRetry(string folder, Func<string, List<FileInfo>> enumerate)
+        internal static T InvokeWithSmbRetry<T>(string folder, Func<T> action)
         {
             try
             {
-                return enumerate(folder);
+                return action();
             }
             catch (IOException ex) when (ex.HResult == ErrorInvalidFunctionHResult)
             {
                 LogManager.Instance.LogDebug(
-                    $"MediaImporter.EnumerateWithSmbRetry: '{folder}' hit ERROR_INVALID_FUNCTION (transient SMB error), retrying after {SmbRetryDelayMs}ms",
+                    $"MediaImporter.InvokeWithSmbRetry: '{folder}' hit ERROR_INVALID_FUNCTION (transient SMB error), retrying after {SmbRetryDelayMs}ms",
                     Subsystem.MediaManager);
                 Thread.Sleep(SmbRetryDelayMs);
-                return enumerate(folder);
+                return action();
             }
+        }
+
+        /// <summary>
+        /// Calls <see cref="Directory.Exists(string)"/> with a single retry. SMB sessions occasionally
+        /// return false for a path that actually exists (the silent-false variant of the transient
+        /// SMB hiccup - different symptom from <see cref="InvokeWithSmbRetry"/> which handles throws).
+        /// Used by every Media Manager call that needs to verify an SMB path before acting on it.
+        /// </summary>
+        internal static bool DirectoryExistsWithSmbRetry(string folder)
+        {
+            if (Directory.Exists(folder)) return true;
+            LogManager.Instance.LogDebug(
+                $"MediaImporter.DirectoryExistsWithSmbRetry: '{folder}' reported not found, retrying after {SmbRetryDelayMs}ms",
+                Subsystem.MediaManager);
+            Thread.Sleep(SmbRetryDelayMs);
+            return Directory.Exists(folder);
         }
 
         // Fingerprints a pre-enumerated list of library files in parallel, using the cache where possible.

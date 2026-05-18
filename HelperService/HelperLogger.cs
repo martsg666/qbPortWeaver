@@ -1,4 +1,5 @@
 using System.Text;
+using qbPortWeaver.Shared;
 
 namespace qbPortWeaver.HelperService;
 
@@ -10,9 +11,8 @@ namespace qbPortWeaver.HelperService;
 /// </summary>
 internal sealed class HelperLogger(string logFilePath)
 {
-    // Must match Subsystem.HelperService and Subsystem.MaxLength in qbPortWeaver
-    private const string SubsystemName      = "HelperService";
-    private const int    SubsystemMaxLength = 13; // "HelperService".Length - must equal Subsystem.MaxLength in LogManager.cs; if they drift, log columns silently misalign
+    private const string SubsystemName      = LoggingConstants.HelperServiceSubsystem;
+    private const int    SubsystemMaxLength = LoggingConstants.SubsystemMaxLength;
     private const int    WriteMaxAttempts     = 3;
     private const int    WriteRetryDelayMs    = 50;
 

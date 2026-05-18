@@ -1,4 +1,5 @@
 using Microsoft.Win32;
+using qbPortWeaver.Shared;
 using System.Diagnostics;
 using System.ServiceProcess;
 
@@ -8,7 +9,7 @@ namespace qbPortWeaver
     public static class AppConstants
     {
         // Application metadata
-        public const string AppName = "qbPortWeaver";
+        public const string AppName = AppIdentity.AppName;
         public static readonly string AppVersion =
             System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "0.0.0";
 
@@ -27,14 +28,13 @@ namespace qbPortWeaver
         public const int HttpTimeoutSeconds = 10;
 
         // Named pipe used to communicate with the SYSTEM helper service for session 0 actions.
-        // Must match HelperPipeServer.PipeName in qbPortWeaver.HelperService.
-        public const string HelperServicePipeName = "qbPortWeaverHelper";
+        public const string HelperServicePipeName = HelperProtocol.PipeName;
 
         // GitHub - only the owner is a literal; all URLs are derived
         public const string GitHubRepoOwner = "martsg666";
         public static readonly string GitHubRepoUrl = $"https://github.com/{GitHubRepoOwner}/{AppName}";
 
-        private const string LogFileName    = "qbPortWeaver.log";
+        private const string LogFileName    = AppIdentity.LogFileName;
         private const string StatusFileName = "qbPortWeaver.status.json";
 
         private static readonly Lazy<string> _appDataFolder = new(() => Directory.CreateDirectory(

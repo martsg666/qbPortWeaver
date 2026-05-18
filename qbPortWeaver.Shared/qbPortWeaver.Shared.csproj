@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyTitle>qbPortWeaver Shared</AssemblyTitle>
+    <Description>Constants shared between qbPortWeaver (main app) and qbPortWeaver.HelperService - pipe protocol, registry paths, log column widths.</Description>
+    <Company>martsg666</Company>
+    <Product>qbPortWeaver</Product>
+    <Authors>martsg666</Authors>
+    <Copyright>© 2026 martsg666</Copyright>
+    <Version>2.5.3</Version>
+    <FileVersion>2.5.3.0</FileVersion>
+    <AssemblyVersion>2.5.3.0</AssemblyVersion>
+  </PropertyGroup>
+
+</Project>

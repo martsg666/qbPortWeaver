@@ -1,3 +1,4 @@
+using qbPortWeaver.Shared;
 using System.Diagnostics;
 using System.Text;
 
@@ -11,10 +12,10 @@ namespace qbPortWeaver
     {
         public const string MainApp       = "MainApp";
         public const string MediaManager  = "MediaManager";
-        public const string HelperService = "HelperService";
+        public const string HelperService = LoggingConstants.HelperServiceSubsystem;
 
         /// <summary>Length of the longest subsystem name, used for column padding.</summary>
-        public const int MaxLength = 13; // "HelperService".Length - if changed, also update HelperLogger.SubsystemMaxLength in HelperService project
+        public const int MaxLength = LoggingConstants.SubsystemMaxLength;
     }
 
     /// <summary>Singleton file-based logger with size-based rotation. Thread-safe.</summary>

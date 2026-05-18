@@ -1,3 +1,4 @@
+using qbPortWeaver.Shared;
 using System.IO.Pipes;
 
 namespace qbPortWeaver
@@ -34,13 +35,13 @@ namespace qbPortWeaver
     /// <summary>Sends privileged action requests to the helper Windows service via named pipe.</summary>
     internal static class HelperServiceClient
     {
-        internal const string ActionRestart      = "restart";       // Must match HelperPipeServer.ActionRestart in HelperService
-        internal const string ActionCycleAdapter = "cycle-adapter"; // Must match HelperPipeServer.ActionCycleAdapter in HelperService
+        internal const string ActionRestart      = HelperProtocol.ActionRestart;
+        internal const string ActionCycleAdapter = HelperProtocol.ActionCycleAdapter;
 
-        // Result line keys/sentinels returned by the helper service. Must match HelperPipeServer constants.
-        internal const string ResultWarnKey          = "warn";
-        internal const string ResultErrorKey         = "error";
-        internal const string ResultRejectedSentinel = "rejected"; // Must match HelperPipeServer.ResultRejectedSentinel
+        // Result line keys/sentinels returned by the helper service.
+        internal const string ResultWarnKey          = HelperProtocol.ResultWarnKey;
+        internal const string ResultErrorKey         = HelperProtocol.ResultErrorKey;
+        internal const string ResultRejectedSentinel = HelperProtocol.ResultRejectedSentinel;
 
         private const int PipeConnectTimeoutMs = 5000;
         // Bound for awaiting the helper's response. Covers the helper's pathological

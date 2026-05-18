@@ -4,6 +4,7 @@ using System.Security.Cryptography;
 using System.Security.Principal;
 using System.Text;
 using Microsoft.Win32;
+using qbPortWeaver.Shared;
 
 namespace qbPortWeaver.HelperService;
 
@@ -32,28 +33,27 @@ namespace qbPortWeaver.HelperService;
 /// </summary>
 internal sealed class HelperPipeServer(ILogger<HelperPipeServer> logger) : BackgroundService
 {
-    internal const string HelperServicePipeName = "qbPortWeaverHelper"; // Must match AppConstants.HelperServicePipeName in qbPortWeaver
+    internal const string HelperServicePipeName = HelperProtocol.PipeName;
     private  const int    PipeErrorRetryDelayMs  = 1000;
     private  const int    PipeReadTimeoutMs      = 5_000;
 
-    private const string ActionRestart      = "restart";       // Must match HelperServiceClient.ActionRestart in qbPortWeaver
-    private const string ActionCycleAdapter = "cycle-adapter"; // Must match HelperServiceClient.ActionCycleAdapter in qbPortWeaver
+    private const string ActionRestart      = HelperProtocol.ActionRestart;
+    private const string ActionCycleAdapter = HelperProtocol.ActionCycleAdapter;
 
-    // Result line keys/sentinels returned to the tray client. Must match HelperServiceClient constants.
-    private const string ResultWarnKey          = "warn";
-    private const string ResultErrorKey         = "error";
-    private const string ResultRejectedSentinel = "rejected"; // Must match HelperServiceClient.ResultRejectedSentinel
+    // Result line keys/sentinels returned to the tray client.
+    private const string ResultWarnKey          = HelperProtocol.ResultWarnKey;
+    private const string ResultErrorKey         = HelperProtocol.ResultErrorKey;
+    private const string ResultRejectedSentinel = HelperProtocol.ResultRejectedSentinel;
 
     // Registry paths and keys for impersonated HKCU reads.
-    // AppRegistryKey / PipeSessionTokenKey must match RegistrySettingsManager.AppKeyPath / KeyPipeSessionToken in qbPortWeaver.
-    private const string AppRegistryKey         = @"Software\qbPortWeaver";
-    private const string PipeSessionTokenKey    = "pipeSessionToken";
+    private const string AppRegistryKey         = AppIdentity.AppRegistryKey;
+    private const string PipeSessionTokenKey    = AppIdentity.PipeSessionTokenKey;
     private const string VolatileEnvironmentKey = @"Volatile Environment";
     private const string LocalAppDataValue      = "LOCALAPPDATA";
 
-    // Log file path components - must match AppConstants.AppName / AppConstants.LogFileName in qbPortWeaver.
-    private const string AppSubFolderName = "qbPortWeaver";
-    private const string LogFileName      = "qbPortWeaver.log";
+    // Log file path components - resolved from %LocalAppData%\<AppName>\<LogFileName>.
+    private const string AppSubFolderName = AppIdentity.AppName;
+    private const string LogFileName      = AppIdentity.LogFileName;
 
     private static readonly PipeSecurity PipeSecurity = CreatePipeSecurity();
 

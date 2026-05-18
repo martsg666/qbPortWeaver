@@ -1,4 +1,5 @@
 using Microsoft.Win32;
+using qbPortWeaver.Shared;
 using System.Security.Cryptography;
 using System.Text;
 
@@ -7,8 +8,8 @@ namespace qbPortWeaver
     /// <summary>Reads and writes application settings from the Windows registry under <c>HKCU\Software\qbPortWeaver\settings</c>.</summary>
     public static class RegistrySettingsManager
     {
-        internal const string BaseKeyPath = @"Software\" + AppConstants.AppName + @"\settings";
-        private const string AppKeyPath  = @"Software\" + AppConstants.AppName;
+        internal const string BaseKeyPath = AppIdentity.AppRegistryKey + @"\settings";
+        private const string AppKeyPath  = AppIdentity.AppRegistryKey;
         // Explicit string literals guarantee stable boolean registry serialization independent of framework internals.
         private const string ValueTrue   = "True";
         private const string ValueFalse  = "False";
@@ -93,7 +94,7 @@ namespace qbPortWeaver
         public const string ImportModeMove     = "Move";
 
         // Registry key names - app level (not in a section)
-        public const string KeyPipeSessionToken             = "pipeSessionToken";
+        public const string KeyPipeSessionToken             = AppIdentity.PipeSessionTokenKey;
         public const string KeyLastSeenVersion              = "lastSeenVersion";
         public const string KeyProtonVpnLogFilePath          = "protonVpnLogFilePath";
         public const string KeyProtonVpnServiceSearchTerm   = "protonVpnServiceSearchTerm";

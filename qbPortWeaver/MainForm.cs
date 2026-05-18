@@ -411,7 +411,15 @@ namespace qbPortWeaver
                 {
                     LogManager.Instance.LogMessage($"Sync cycle failed, retrying in {updateInterval}s: {ex.Message}", LogLevel.Error);
                     try { await Task.Delay(updateInterval * AppConstants.MillisecondsPerSecond, _shutdownCts.Token); }
-                    catch (Exception) { break; }
+                    catch (OperationCanceledException) { break; }
+                    catch (Exception delayEx)
+                    {
+                        // Unexpected: Task.Delay should only throw OperationCanceledException via the token.
+                        // Anything else here indicates a runtime issue we cannot recover from in this loop.
+                        // Log the full exception (including type) so the failure is visible in the log file.
+                        LogManager.Instance.LogMessage($"Unexpected exception during retry delay: {delayEx}", LogLevel.Error);
+                        break;
+                    }
                 }
             }
 

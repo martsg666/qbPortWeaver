@@ -206,10 +206,24 @@ namespace qbPortWeaver
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
-                // If fingerprinting fails, fall back to size comparison to avoid silently skipping the import
-                var sourceInfo = new FileInfo(sourcePath);
-                var destInfo   = new FileInfo(destinationPath);
-                return sourceInfo.Length == destInfo.Length;
+                // Fingerprinting failed (typically a transient SMB hiccup). Fall back to size comparison.
+                // The fallback can also throw if the file became inaccessible between the calls, so guard
+                // it too - returning false makes the caller attempt the import, which has its own IO
+                // protections (AddFileToLibrary catches IOException, and the "destination conflict"
+                // check re-tests File.Exists). Better to retry the import than abort the whole category.
+                try
+                {
+                    var sourceInfo = new FileInfo(sourcePath);
+                    var destInfo   = new FileInfo(destinationPath);
+                    return sourceInfo.Length == destInfo.Length;
+                }
+                catch (Exception fallbackEx) when (fallbackEx is IOException or UnauthorizedAccessException)
+                {
+                    LogManager.Instance.LogDebug(
+                        $"MediaImporter.DestinationMatchesSource: Both fingerprint and length check failed for '{Path.GetFileName(sourcePath)}' ({ex.GetType().Name}, then {fallbackEx.GetType().Name}: {fallbackEx.Message})",
+                        Subsystem.MediaManager);
+                    return false;
+                }
             }
         }
 

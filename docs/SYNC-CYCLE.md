@@ -1,6 +1,6 @@
 # qbPortWeaver - Sync Cycle Flow
 
-This document describes the core port sync logic implemented in `PortSyncService.cs`. The sync cycle runs on a configurable interval (default 180s) and is serialized by a semaphore in `MainForm` - only one cycle runs at a time.
+This document describes the core port sync logic implemented in `PortSyncService.cs`. The sync cycle runs on a configurable interval (default 180s). Each port sync cycle is serialized by a semaphore in `MainForm` so port sync cycles never overlap. The Media Manager runs as a fire-and-forget task after each port sync, in parallel with the next cycle's wait; subsequent imports are skipped if a previous one is still running, so a slow library scan cannot delay port sync or pile up imports on slow storage.
 
 ## High-Level Overview
 
@@ -204,17 +204,20 @@ RunAsync
      ├─ ReadConfig
      ├─ CreateVpnManager
      │   └─ CreateNatPmpVpnManager (NAT-PMP only)
-     │       ├─ BuildCycleCountMessage
-     │       └─ TryTriggerRecoveryAsync
+     │       └─ RegisterFailureAndTryRecoveryAsync
+     │           ├─ BuildCycleCountMessage
+     │           └─ TryTriggerRecoveryAsync
      ├─ IVpnManager.IsVpnConnected
      ├─ (if disconnected)
-     │   ├─ BuildCycleCountMessage
-     │   └─ TryTriggerRecoveryAsync
+     │   └─ RegisterFailureAndTryRecoveryAsync
+     │       ├─ BuildCycleCountMessage
+     │       └─ TryTriggerRecoveryAsync
      ├─ (if connected)
      │   ├─ IVpnManager.GetVpnPortAsync
      │   └─ HandlePortDetectionFailureAsync (if port null, all providers)
-     │       ├─ BuildCycleCountMessage
-     │       └─ TryTriggerRecoveryAsync
+     │       └─ RegisterFailureAndTryRecoveryAsync
+     │           ├─ BuildCycleCountMessage
+     │           └─ TryTriggerRecoveryAsync
      └─ EnsureRunningAndUpdatePortAsync
          ├─ EnsureClientRunningAsync
          ├─ IBitTorrentClient.GetPreferencesAsync
@@ -233,7 +236,7 @@ RunAsync
 
 ## Media Manager
 
-The Media Manager runs on every sync cycle immediately after port sync completes. When VPN Provider is set to **Disabled**, port sync is skipped entirely and the Media Manager runs as the only step.
+The Media Manager runs after every sync cycle as a fire-and-forget task, in parallel with the wait until the next port sync cycle. If a previous import is still running when the next cycle ends, the new import is skipped to avoid pile-up on slow storage. When VPN Provider is set to **Disabled**, port sync is skipped entirely but the Media Manager still runs (kicked off after the no-op cycle).
 
 ### Scan Phases
 
@@ -245,6 +248,9 @@ The Media Manager scan is split into two phases that partially overlap for perfo
   Task.Run ───────────────►│  (degree 8), load/prune persisted cache.          │  concurrently
                            │  Semaphore prevents duplicate builds. Sync cycles │
                            │  reuse cached index; full rebuild every 10 cycles.│
+                           │  Returns false if a folder enumeration fails -    │
+                           │  prior index is preserved and import cycle skips, │
+                           │  so a partial index can't false-classify files.   │
                            └──────────────────────────────────────────────────►│
                                                                                │
   Phase 1: EnumerateSourceFoldersAsync ─────────────────────────────────────► │

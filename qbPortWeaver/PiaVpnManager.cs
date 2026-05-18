@@ -65,8 +65,7 @@ namespace qbPortWeaver
         public string GetRecoveryAction() => HelperServiceClient.ActionRestart;
 
         /// <inheritdoc />
-        public bool IsAdapterMatch(string interfaceName)
-            => interfaceName.Contains(Config.GetAdapterName(), StringComparison.OrdinalIgnoreCase);
+        public bool IsAdapterMatch(string interfaceName) => Config.MatchesAdapterName(interfaceName);
 
         private static int? GetVpnPortCore()
         {
@@ -126,7 +125,11 @@ namespace qbPortWeaver
                 {
                     // Cleanup only - no new process follows, so KillProcess's retry wait is not needed here.
                     try { process.Kill(entireProcessTree: true); }
-                    catch (InvalidOperationException) { /* already exited between timeout and Kill() */ }
+                    catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception)
+                    {
+                        // InvalidOperationException: already exited between timeout and Kill().
+                        // Win32Exception: access denied or process protected.
+                    }
                     LogManager.Instance.LogDebug("PiaVpnManager.RunPiactl: piactl timed out and was killed");
                     return null;
                 }

@@ -27,20 +27,31 @@ namespace qbPortWeaver
         /// executable, rewrites it to the current path. No-op if startup is disabled (entry absent)
         /// or already current. Covers the case where the install was moved or upgraded in place
         /// (e.g. a Chocolatey upgrade that lands the binary at a new versioned path).
+        /// Opens the key read-only first - many managed environments restrict write access to the
+        /// Run key via group policy, and we only need write access when a rewrite is actually needed.
         /// </summary>
         public static void RefreshStartupPathIfMoved()
         {
             try
             {
-                using var key = Registry.CurrentUser.OpenSubKey(RunRegistryKey, writable: true);
-                if (key?.GetValue(AppConstants.AppName) is not string storedValue)
+                string? storedValue;
+                using (var readKey = Registry.CurrentUser.OpenSubKey(RunRegistryKey))
+                    storedValue = readKey?.GetValue(AppConstants.AppName) as string;
+
+                if (storedValue is null)
                     return; // startup disabled - leave it alone
 
                 string expectedValue = $"\"{Application.ExecutablePath}\"";
                 if (string.Equals(storedValue, expectedValue, StringComparison.OrdinalIgnoreCase))
                     return; // already current
 
-                key.SetValue(AppConstants.AppName, expectedValue);
+                using var writeKey = Registry.CurrentUser.OpenSubKey(RunRegistryKey, writable: true);
+                if (writeKey is null)
+                {
+                    LogManager.Instance.LogDebug("StartupManager.RefreshStartupPathIfMoved: cannot open Run key for write - skipping refresh");
+                    return;
+                }
+                writeKey.SetValue(AppConstants.AppName, expectedValue);
                 LogManager.Instance.LogMessage(
                     $"Windows startup path refreshed: '{storedValue}' -> '{expectedValue}'",
                     LogLevel.Info);
@@ -66,8 +77,9 @@ namespace qbPortWeaver
                 if (enable)
                 {
                     // Quote the path so CreateProcess parses it as a single token regardless of embedded spaces.
-                    key.SetValue(AppConstants.AppName, $"\"{Application.ExecutablePath}\"");
-                    LogManager.Instance.LogMessage("Windows startup enabled", LogLevel.Info);
+                    string quotedPath = $"\"{Application.ExecutablePath}\"";
+                    key.SetValue(AppConstants.AppName, quotedPath);
+                    LogManager.Instance.LogMessage($"Windows startup enabled at {quotedPath}", LogLevel.Info);
                 }
                 else
                 {

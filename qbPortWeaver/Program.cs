@@ -73,8 +73,9 @@ namespace qbPortWeaver
                     _                                      => SystemColorMode.System
                 };
             }
-            catch // NOSONAR S2221 - registry read before LogManager is initialized; any failure must fall back to System mode
+            catch (Exception ex) // NOSONAR S2221 - registry read before LogManager is initialized; any failure must fall back to System mode
             {
+                System.Diagnostics.Debug.WriteLine($"Program.ReadColorTheme: {ex.Message}");
                 return SystemColorMode.System;
             }
         }

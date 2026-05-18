@@ -20,6 +20,8 @@ namespace qbPortWeaver
 
         // Maps a provider token to the client process that must be restarted alongside the service.
         // GetInstalledExePath resolves the exe path from the service registry entry when the process is not running.
+        // The provider tokens here MUST stay in sync with NatPmpManager.FindProviderToken; an adapter
+        // matched there to a keyword absent from this map produces a "Unknown VPN provider" warn at runtime.
         private static readonly ProviderEntry[] _clientProcessMap =
         [
             new(RegistrySettingsManager.VpnProviderProtonVpn, ProtonVpnManager.Config.GetClientProcessName, ProtonVpnManager.Config.GetClientExePath, ProtonVpnManager.Config.FindServiceName),
@@ -158,9 +160,10 @@ namespace qbPortWeaver
                 {
                     exePath = processes.FirstOrDefault()?.MainModule?.FileName;
                 }
-                catch (Win32Exception ex)
+                catch (Exception ex) when (ex is Win32Exception or InvalidOperationException)
                 {
-                    // MainModule access can throw on 32/64-bit mismatch or access denial.
+                    // MainModule access can throw Win32Exception on 32/64-bit mismatch or access denial,
+                    // or InvalidOperationException if the process exited between GetProcessesByName and here.
                     // Leave exePath null so the registry fallback path is used below.
                     LogManager.Instance.LogDebug($"AutoRecoveryManager.KillClientProcesses: Could not read exe path for '{processName}': {ex.Message}");
                 }

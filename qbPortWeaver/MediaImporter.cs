@@ -46,6 +46,13 @@ namespace qbPortWeaver
         private const string SourceCacheFileName  = "qbPortWeaver.mediasource.json";
         private const string LibraryCacheFileName = "qbPortWeaver.medialibrary.json";
 
+        // Win32 ERROR_INVALID_FUNCTION wrapped as a .NET HResult. Some SMB server implementations
+        // return this transiently during connection renegotiation, oplock breaks, or AV-driver
+        // interception. The error clears on its own within a fraction of a second, so we retry
+        // once before giving up. Distinct from a real "not supported" response (those don't recover).
+        private const int ErrorInvalidFunctionHResult       = unchecked((int)0x80070001);
+        private const int SmbRetryDelayMs                   = 500;
+
         private static readonly JsonSerializerOptions _jsonWriteOptions = new() { WriteIndented = true };
 
         private sealed record CacheEntry(long Size, long LastWriteTimeTicks, string Fingerprint);
@@ -217,16 +224,16 @@ namespace qbPortWeaver
         /// </summary>
         internal static bool IsFileReadyForImport(FileInfo fi)
         {
-            var cache = _sourceCache;
-            if (cache is not null)
+            // Read _sourceCache INSIDE the lock: a snapshot captured outside the lock could be
+            // orphaned by a concurrent ClearAllCaches, leading to reads from a dictionary no
+            // longer referenced by the live state.
+            lock (_sourceCacheLock)
             {
-                lock (_sourceCacheLock)
-                {
-                    if (cache.TryGetValue(fi.FullName, out var entry)
-                        && entry.Size == fi.Length
-                        && entry.LastWriteTimeTicks == fi.LastWriteTimeUtc.Ticks)
-                        return true;
-                }
+                if (_sourceCache is not null
+                    && _sourceCache.TryGetValue(fi.FullName, out var entry)
+                    && entry.Size == fi.Length
+                    && entry.LastWriteTimeTicks == fi.LastWriteTimeUtc.Ticks)
+                    return true;
             }
             return IsFileWriteComplete(fi.FullName);
         }
@@ -285,6 +292,32 @@ namespace qbPortWeaver
             return $"{size}:{Convert.ToHexString(SHA256.HashData(data))}";
         }
 
+        // Decides whether the previously-built library index can be reused this cycle. Returns true
+        // when the cached index is valid and the cycle counter has been bumped (caller skips the
+        // rebuild). Returns false when a full rebuild is required, in which case the path tracking
+        // fields and cycle counter are reset so the rebuild starts from a clean state.
+        // Caller holds _libraryBuildSemaphore.
+        private static bool TryReuseCachedIndex(string moviesLibraryPath, string tvShowsLibraryPath, bool allowReuse)
+        {
+            bool pathsChanged = !string.Equals(moviesLibraryPath,  _lastMoviesLibraryPath,  StringComparison.OrdinalIgnoreCase)
+                             || !string.Equals(tvShowsLibraryPath, _lastTvShowsLibraryPath, StringComparison.OrdinalIgnoreCase);
+            bool forceRebuild = pathsChanged || _libraryBuildCycleCount >= FullRebuildIntervalCycles;
+            if (!forceRebuild && allowReuse && _libraryFingerprints is not null)
+            {
+                LogManager.Instance.LogDebug($"MediaImporter.BuildLibraryIndexAsync: Reusing index (cycle {_libraryBuildCycleCount}/{FullRebuildIntervalCycles})", Subsystem.MediaManager);
+                _libraryBuildCycleCount++;
+                return true;
+            }
+            if (pathsChanged && _libraryFingerprints is not null)
+                LogManager.Instance.LogDebug("MediaImporter.BuildLibraryIndexAsync: Library paths changed, forcing full rebuild", Subsystem.MediaManager);
+            else if (_libraryBuildCycleCount >= FullRebuildIntervalCycles)
+                LogManager.Instance.LogDebug($"MediaImporter.BuildLibraryIndexAsync: Forcing periodic rebuild (every {FullRebuildIntervalCycles} cycles)", Subsystem.MediaManager);
+            _libraryBuildCycleCount  = 1;
+            _lastMoviesLibraryPath   = moviesLibraryPath;
+            _lastTvShowsLibraryPath  = tvShowsLibraryPath;
+            return false;
+        }
+
         /// <summary>
         /// Walks the library folders and builds a fingerprint index so <see cref="IsAlreadyInLibrary"/> can detect
         /// files that were previously imported (regardless of the name they were imported under).
@@ -292,28 +325,19 @@ namespace qbPortWeaver
         /// If called concurrently (e.g. from both the sync loop and a UI scan), the second caller waits for the
         /// first to finish. When <paramref name="allowReuse"/> is true, the existing index is reused for up to
         /// <see cref="FullRebuildIntervalCycles"/> cycles before forcing a full rebuild to catch external changes.
+        /// Returns <see langword="true"/> when the index reflects the configured library state and is safe to
+        /// query. Returns <see langword="false"/> when the configured paths were inaccessible or one or more
+        /// folder enumerations failed: in that case the prior <see cref="_libraryFingerprints"/> and the on-disk
+        /// cache are left untouched, and the caller must skip the import cycle - committing a partial index
+        /// would falsely report library files as missing and risk creating duplicates.
         /// </summary>
-        internal static async Task BuildLibraryIndexAsync(string moviesLibraryPath, string tvShowsLibraryPath, bool allowReuse = false, CancellationToken cancellationToken = default)
+        internal static async Task<bool> BuildLibraryIndexAsync(string moviesLibraryPath, string tvShowsLibraryPath, bool allowReuse = false, CancellationToken cancellationToken = default)
         {
             await _libraryBuildSemaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
             try
             {
-                bool pathsChanged = !string.Equals(moviesLibraryPath,  _lastMoviesLibraryPath,  StringComparison.OrdinalIgnoreCase)
-                                 || !string.Equals(tvShowsLibraryPath, _lastTvShowsLibraryPath, StringComparison.OrdinalIgnoreCase);
-                bool forceRebuild = pathsChanged || _libraryBuildCycleCount >= FullRebuildIntervalCycles;
-                if (!forceRebuild && allowReuse && _libraryFingerprints is not null)
-                {
-                    LogManager.Instance.LogDebug($"MediaImporter.BuildLibraryIndexAsync: Reusing index (cycle {_libraryBuildCycleCount}/{FullRebuildIntervalCycles})", Subsystem.MediaManager);
-                    _libraryBuildCycleCount++;
-                    return;
-                }
-                if (pathsChanged && _libraryFingerprints is not null)
-                    LogManager.Instance.LogDebug("MediaImporter.BuildLibraryIndexAsync: Library paths changed, forcing full rebuild", Subsystem.MediaManager);
-                else if (_libraryBuildCycleCount >= FullRebuildIntervalCycles)
-                    LogManager.Instance.LogDebug($"MediaImporter.BuildLibraryIndexAsync: Forcing periodic rebuild (every {FullRebuildIntervalCycles} cycles)", Subsystem.MediaManager);
-                _libraryBuildCycleCount  = 1;
-                _lastMoviesLibraryPath   = moviesLibraryPath;
-                _lastTvShowsLibraryPath  = tvShowsLibraryPath;
+                if (TryReuseCachedIndex(moviesLibraryPath, tvShowsLibraryPath, allowReuse))
+                    return true;
 
                 var libraryPaths = new[] { moviesLibraryPath, tvShowsLibraryPath }
                     .Where(p => !string.IsNullOrWhiteSpace(p) && Directory.Exists(p))
@@ -325,7 +349,7 @@ namespace qbPortWeaver
                 {
                     LogManager.Instance.LogMessage("Library index build skipped: configured paths not accessible - will retry next cycle", LogLevel.Warn, Subsystem.MediaManager);
                     _libraryBuildCycleCount = FullRebuildIntervalCycles;
-                    return;
+                    return false;
                 }
 
                 LogManager.Instance.LogMessage($"Building library index across {libraryPaths.Length} folder(s)", LogLevel.Info, Subsystem.MediaManager);
@@ -336,6 +360,7 @@ namespace qbPortWeaver
                 var fpToPath     = new Dictionary<string, string>(StringComparer.Ordinal);
                 var seenPaths    = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                 int cached = 0, computed = 0;
+                bool anyEnumerationFailed = false;
 
                 foreach (var path in libraryPaths)
                 {
@@ -345,12 +370,27 @@ namespace qbPortWeaver
                     catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
                     {
                         LogManager.Instance.LogMessage($"Skipped library folder '{path}': {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
+                        anyEnumerationFailed = true;
                         continue;
                     }
 
                     var (c, comp) = FingerprintLibraryFiles(files, fingerprints, fpToPath, seenPaths, cancellationToken);
                     cached   += c;
                     computed += comp;
+                }
+
+                // Any folder enumeration failure poisons the index: a partial fingerprint set would
+                // falsely report files in the failed folder as missing from the library, causing
+                // duplicate imports on the next cycle. Preserve the prior _libraryFingerprints (or
+                // leave it null on first run) and skip PruneLibraryCache so the on-disk cache is
+                // not wiped by an empty seenPaths set. Force a rebuild next cycle.
+                if (anyEnumerationFailed)
+                {
+                    LogManager.Instance.LogMessage(
+                        "Library index build incomplete - one or more configured folders failed to enumerate; will retry next cycle",
+                        LogLevel.Warn, Subsystem.MediaManager);
+                    _libraryBuildCycleCount = FullRebuildIntervalCycles;
+                    return false;
                 }
 
                 PruneLibraryCache(seenPaths);
@@ -360,6 +400,7 @@ namespace qbPortWeaver
                 LogManager.Instance.LogMessage(
                     $"Library index built: {fingerprints.Count} files in {sw.ElapsedMilliseconds}ms (cached={cached}, computed={computed})",
                     LogLevel.Info, Subsystem.MediaManager);
+                return true;
             }
             finally
             {
@@ -413,11 +454,33 @@ namespace qbPortWeaver
         // IgnoreInaccessible = true silently skips permission-denied folders.
         // No MaxRecursionDepth: Plex libraries are shallow by convention (Title/Season/file), so no cap needed.
         private static List<FileInfo> EnumerateLibraryFolder(string folder) =>
-            new DirectoryInfo(folder).EnumerateFiles("*", new EnumerationOptions
+            EnumerateWithSmbRetry(folder, p =>
+                new DirectoryInfo(p).EnumerateFiles("*", new EnumerationOptions
+                {
+                    RecurseSubdirectories = true,
+                    IgnoreInaccessible    = true
+                }).ToList());
+
+        /// <summary>
+        /// Runs an enumeration callback, retrying once with a short delay if it fails with
+        /// ERROR_INVALID_FUNCTION. Used by both library and source folder walks because either
+        /// can hit a transient SMB hiccup. A second failure propagates to the caller's catch.
+        /// </summary>
+        internal static List<FileInfo> EnumerateWithSmbRetry(string folder, Func<string, List<FileInfo>> enumerate)
+        {
+            try
             {
-                RecurseSubdirectories = true,
-                IgnoreInaccessible    = true
-            }).ToList();
+                return enumerate(folder);
+            }
+            catch (IOException ex) when (ex.HResult == ErrorInvalidFunctionHResult)
+            {
+                LogManager.Instance.LogDebug(
+                    $"MediaImporter.EnumerateWithSmbRetry: '{folder}' hit ERROR_INVALID_FUNCTION (transient SMB error), retrying after {SmbRetryDelayMs}ms",
+                    Subsystem.MediaManager);
+                Thread.Sleep(SmbRetryDelayMs);
+                return enumerate(folder);
+            }
+        }
 
         // Fingerprints a pre-enumerated list of library files in parallel, using the cache where possible.
         // Each file requires a 128 KB read; reads are bounded by FingerprintParallelism.
@@ -463,30 +526,31 @@ namespace qbPortWeaver
         }
 
         // Returns a cached library fingerprint if metadata matches, otherwise computes and caches it.
+        // Reads _libraryCache INSIDE the lock so a concurrent ClearAllCaches cannot orphan the
+        // captured reference between the field read and the dictionary access.
         private static string GetOrComputeLibraryFingerprint(FileInfo fi, out bool wasCached)
         {
-            var cache = _libraryCache;
-
-            if (cache is not null)
+            lock (_libraryLock)
             {
-                lock (_libraryLock)
+                if (_libraryCache is not null
+                    && _libraryCache.TryGetValue(fi.FullName, out var entry)
+                    && entry.Size == fi.Length
+                    && entry.LastWriteTimeTicks == fi.LastWriteTimeUtc.Ticks)
                 {
-                    if (cache.TryGetValue(fi.FullName, out var entry)
-                        && entry.Size == fi.Length
-                        && entry.LastWriteTimeTicks == fi.LastWriteTimeUtc.Ticks)
-                    {
-                        wasCached = true;
-                        return entry.Fingerprint;
-                    }
+                    wasCached = true;
+                    return entry.Fingerprint;
                 }
             }
 
             string fp = ComputeFingerprint(fi.FullName);
-            if (cache is not null)
+            lock (_libraryLock)
             {
-                lock (_libraryLock)
+                // Re-check inside the lock: ClearAllCaches may have nulled _libraryCache while we
+                // were computing the fingerprint. Skip the write in that case rather than recreating
+                // a dictionary that the live state no longer references.
+                if (_libraryCache is not null)
                 {
-                    cache[fi.FullName] = new CacheEntry(fi.Length, fi.LastWriteTimeUtc.Ticks, fp);
+                    _libraryCache[fi.FullName] = new CacheEntry(fi.Length, fi.LastWriteTimeUtc.Ticks, fp);
                     _libraryCacheDirty = true;
                 }
             }
@@ -495,17 +559,21 @@ namespace qbPortWeaver
         }
 
         // Removes library cache entries for files not present in the current directory walk.
+        // Caller holds _libraryBuildSemaphore so the cache won't be racing with another rebuild,
+        // but ClearAllCaches can still null _libraryCache concurrently - treat that as a no-op.
+        // Reading _libraryCache inside the lock matches the locking discipline used elsewhere
+        // in this file (GetOrComputeLibraryFingerprint, IsFileReadyForImport).
         private static void PruneLibraryCache(HashSet<string> seenPaths)
         {
-            var cache = _libraryCache!;
             List<string> stale;
             lock (_libraryLock)
             {
-                stale = cache.Keys.Where(k => !seenPaths.Contains(k)).ToList();
+                if (_libraryCache is null) return;
+                stale = _libraryCache.Keys.Where(k => !seenPaths.Contains(k)).ToList();
                 if (stale.Count == 0) return;
 
                 foreach (var key in stale)
-                    cache.Remove(key);
+                    _libraryCache.Remove(key);
                 _libraryCacheDirty = true;
             }
 
@@ -571,53 +639,62 @@ namespace qbPortWeaver
         // guarantee does not apply - concurrent callers skip the in-flight path and each compute independently.
         internal static string GetOrComputeSourceFingerprint(FileInfo fi)
         {
-            var cache = _sourceCache;
-            if (cache is not null)
+            // First lock pass: cache hit check. _sourceCache is read inside the lock so a concurrent
+            // ClearAllCaches cannot orphan a captured reference here.
+            bool cacheActive;
+            lock (_sourceCacheLock)
             {
-                lock (_sourceCacheLock)
+                cacheActive = _sourceCache is not null;
+                if (cacheActive
+                    && _sourceCache!.TryGetValue(fi.FullName, out var entry)
+                    && entry.Size == fi.Length
+                    && entry.LastWriteTimeTicks == fi.LastWriteTimeUtc.Ticks)
                 {
-                    if (cache.TryGetValue(fi.FullName, out var entry)
-                        && entry.Size == fi.Length
-                        && entry.LastWriteTimeTicks == fi.LastWriteTimeUtc.Ticks)
-                    {
-                        Interlocked.Increment(ref _sourceCachedCount);
-                        return entry.Fingerprint;
-                    }
-                }
-
-                // Create before GetOrAdd so we can tell whether this thread won the race.
-                var newLazy = new Lazy<string>(() => ComputeFingerprint(fi.FullName));
-                var lazy    = _sourceInFlight.GetOrAdd(fi.FullName, newLazy);
-                string fp;
-                try
-                {
-                    fp = lazy.Value;
-                }
-                catch
-                {
-                    // Remove the failed Lazy so the file can be retried on the next cycle.
-                    _sourceInFlight.TryRemove(new KeyValuePair<string, Lazy<string>>(fi.FullName, lazy));
-                    throw;
-                }
-                // Remove only our Lazy instance so a newer entry for the same path is left untouched.
-                _sourceInFlight.TryRemove(new KeyValuePair<string, Lazy<string>>(fi.FullName, lazy));
-
-                // Winner computed the fingerprint; loser waited on the Lazy and reused the result.
-                if (ReferenceEquals(lazy, newLazy))
-                    Interlocked.Increment(ref _sourceComputedCount);
-                else
                     Interlocked.Increment(ref _sourceCachedCount);
-
-                lock (_sourceCacheLock)
-                {
-                    cache[fi.FullName] = new CacheEntry(fi.Length, fi.LastWriteTimeUtc.Ticks, fp);
-                    _sourceCacheDirty = true;
+                    return entry.Fingerprint;
                 }
-                return fp;
             }
 
-            Interlocked.Increment(ref _sourceComputedCount);
-            return ComputeFingerprint(fi.FullName);
+            if (!cacheActive)
+            {
+                Interlocked.Increment(ref _sourceComputedCount);
+                return ComputeFingerprint(fi.FullName);
+            }
+
+            // Create before GetOrAdd so we can tell whether this thread won the race.
+            var newLazy = new Lazy<string>(() => ComputeFingerprint(fi.FullName));
+            var lazy    = _sourceInFlight.GetOrAdd(fi.FullName, newLazy);
+            string fp;
+            try
+            {
+                fp = lazy.Value;
+            }
+            catch
+            {
+                // Remove the failed Lazy so the file can be retried on the next cycle.
+                _sourceInFlight.TryRemove(new KeyValuePair<string, Lazy<string>>(fi.FullName, lazy));
+                throw;
+            }
+            // Remove only our Lazy instance so a newer entry for the same path is left untouched.
+            _sourceInFlight.TryRemove(new KeyValuePair<string, Lazy<string>>(fi.FullName, lazy));
+
+            // Winner computed the fingerprint; loser waited on the Lazy and reused the result.
+            if (ReferenceEquals(lazy, newLazy))
+                Interlocked.Increment(ref _sourceComputedCount);
+            else
+                Interlocked.Increment(ref _sourceCachedCount);
+
+            // Re-check inside the lock: ClearAllCaches may have nulled _sourceCache while we
+            // were computing. Skip the write rather than persisting into an orphaned dictionary.
+            lock (_sourceCacheLock)
+            {
+                if (_sourceCache is not null)
+                {
+                    _sourceCache[fi.FullName] = new CacheEntry(fi.Length, fi.LastWriteTimeUtc.Ticks, fp);
+                    _sourceCacheDirty = true;
+                }
+            }
+            return fp;
         }
 
         /// <summary>Returns the number of source fingerprints served from cache and the number freshly computed during the current scan cycle.</summary>
@@ -660,9 +737,11 @@ namespace qbPortWeaver
                 }
 
                 // If every cached entry was visited this cycle, none can be stale - skip File.Exists entirely.
-                // If the counts differ, at least one entry was not visited (possibly deleted from source).
+                // If visited==0, the source share was unreachable this cycle; treat as no stale entries to
+                // avoid calling File.Exists on hundreds of UNC paths against an unreachable host (each call
+                // blocks for a full SMB timeout, turning a missed cycle into a multi-minute hang).
                 int visited = _sourceCachedCount + _sourceComputedCount;
-                bool mightHaveStaleEntries = snapshot.Count > visited;
+                bool mightHaveStaleEntries = visited > 0 && snapshot.Count > visited;
 
                 if (!wasDirty && !mightHaveStaleEntries) return;
 

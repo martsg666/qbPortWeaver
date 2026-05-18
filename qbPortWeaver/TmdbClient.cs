@@ -230,7 +230,7 @@ namespace qbPortWeaver
             if (afterDash is not null)
             {
                 LogManager.Instance.LogDebug($"TmdbClient.TryFallbackLookupsAsync: Retrying with after-dash title '{afterDash}'", Subsystem.MediaManager);
-                var afterDashInfo = (await search(afterDash, year, cancellationToken).ConfigureAwait(false))?[0];
+                var afterDashInfo = (await search(afterDash, year, cancellationToken).ConfigureAwait(false))?[0]; // safe: search delegates return null (not empty list) for no results
                 if (afterDashInfo is not null)
                 {
                     info        = afterDashInfo;
@@ -244,7 +244,7 @@ namespace qbPortWeaver
                 if (withoutNum is not null)
                 {
                     LogManager.Instance.LogDebug($"TmdbClient.TryFallbackLookupsAsync: Retrying without trailing number '{withoutNum}'", Subsystem.MediaManager);
-                    var withoutNumInfo = (await search(withoutNum, year, cancellationToken).ConfigureAwait(false))?[0];
+                    var withoutNumInfo = (await search(withoutNum, year, cancellationToken).ConfigureAwait(false))?[0]; // safe: search delegates return null (not empty list) for no results
                     if (withoutNumInfo is not null && hasYear(withoutNumInfo))
                     {
                         info        = withoutNumInfo;

@@ -41,7 +41,12 @@ namespace qbPortWeaver
                 Size     = new Size(82, 28),
                 TabIndex = 2,
             };
-            btnUpdate.Click += (_, _) => { AppConstants.OpenUrl(url); Close(); };
+            btnUpdate.Click += (_, _) =>
+            {
+                LogManager.Instance.LogMessage($"Update dialog: opening release page for {version}", LogLevel.Info);
+                AppConstants.OpenUrl(url);
+                Close();
+            };
 
             var btnLater = new Button
             {
@@ -50,7 +55,11 @@ namespace qbPortWeaver
                 Size     = new Size(82, 28),
                 TabIndex = 3,
             };
-            btnLater.Click += (_, _) => Close();
+            btnLater.Click += (_, _) =>
+            {
+                LogManager.Instance.LogMessage($"Update dialog: deferred update to {version}", LogLevel.Info);
+                Close();
+            };
 
             AcceptButton    = btnUpdate;
             CancelButton    = btnLater;

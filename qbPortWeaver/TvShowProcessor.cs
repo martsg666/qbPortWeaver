@@ -31,10 +31,10 @@ namespace qbPortWeaver
         }
 
         /// <summary>Processes pre-classified TV episode files, importing them into the library with Plex naming conventions. Skips uncertain TMDB matches - use <see cref="ScanTvShowsAsync"/> to preview and review those first.</summary>
-        public async Task ProcessTvShowsAsync(string sourceFolder, string[] tvShowFiles, CancellationToken cancellationToken = default)
+        public async Task ProcessTvShowsAsync(string[] tvShowFiles, CancellationToken cancellationToken = default)
         {
             foreach (var file in tvShowFiles)
-                await ProcessEpisodeFileAsync(sourceFolder, file, cancellationToken).ConfigureAwait(false);
+                await ProcessEpisodeFileAsync(file, cancellationToken).ConfigureAwait(false);
         }
 
         // Scans a single TV episode file and adds proposals for unmatched or new items
@@ -65,7 +65,7 @@ namespace qbPortWeaver
         }
 
         // Imports a single TV episode file into the library
-        private async Task ProcessEpisodeFileAsync(string sourceFolder, string filePath, CancellationToken cancellationToken)
+        private async Task ProcessEpisodeFileAsync(string filePath, CancellationToken cancellationToken)
         {
             var fileName = Path.GetFileName(filePath);
 
@@ -86,9 +86,9 @@ namespace qbPortWeaver
             }
 
             var targetPath = BuildEpisodePath(filePath, info, episodeInfo, libraryPath, createFolders);
-            MediaManagerService.ImportFile(filePath, targetPath, sourceFolder, dryRun, importMode);
+            MediaManagerService.ImportFile(filePath, targetPath, dryRun, importMode);
 
-            MediaManagerService.ImportCompanionFiles(sourceFolder, filePath, targetPath, dryRun, importMode);
+            MediaManagerService.ImportCompanionFiles(filePath, targetPath, dryRun, importMode);
         }
 
         // Builds the library target path for an episode file.

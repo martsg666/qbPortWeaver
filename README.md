@@ -197,8 +197,8 @@ Configured via tray menu → **Media Manager**.
    - Runs the optional post-update command if configured. e.g., `powershell -File "C:\path\to\SampleSendMail.ps1"`
 8. *(qBittorrent only)* If **Restart on disconnect** is enabled (and qBittorrent was not already restarted in step 7): checks qBittorrent's connection status and restarts it if disconnected.
 9. Writes the JSON status file (`%LocalAppData%\qbPortWeaver\qbPortWeaver.status.json`) and updates the tray icon and tooltip.
-10. If **Media Manager** is enabled: scans the configured source folders, queries TMDB for each unrecognised title, and imports files into the library with Plex-compatible names. In **dry-run** mode no files are touched; use **Scan Now** in the Media Manager dialog to preview results first. Uncertain TMDB matches are skipped automatically and flagged for manual review in the dialog.
-11. Waits for the configured interval before repeating.
+10. Waits for the configured interval before repeating. If a manual sync was triggered, the wait is shortened to 10 seconds.
+11. In parallel with the wait, if **Media Manager** is enabled: scans the configured source folders, queries TMDB for each unrecognised title, and imports files into the library with Plex-compatible names. Runs as a fire-and-forget task so a slow library scan does not delay the next port sync cycle - if a previous import is still running when the next cycle starts, the new import is skipped to avoid pile-up. In **dry-run** mode no files are touched; use **Scan Now** in the Media Manager dialog to preview results first. Uncertain TMDB matches are skipped automatically and flagged for manual review in the dialog.
 
 ### Tray Menu Options
 

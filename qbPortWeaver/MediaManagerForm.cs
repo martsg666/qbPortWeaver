@@ -18,8 +18,9 @@ namespace qbPortWeaver
         private bool _allIncluded = true;
         private bool _isBusy;
         private bool _showOnlyReviewNeeded;
-        // Controls disabled while an async operation is running. btnImportNow is excluded - each
-        // handler manages it separately to preserve its proposals-count state.
+        // Controls disabled while an async operation is running. After the operation, SetBusy(false)
+        // re-enables _busyControls and each handler's finally calls UpdateScanStatus() which sets
+        // btnImportNow.Enabled appropriately based on the current grid state.
         private Control[] _busyControls;
 
         // Row confidence colors - set once in OnLoad based on active theme
@@ -402,6 +403,11 @@ namespace qbPortWeaver
             SetBusy(true);
             BeginProgress();
             lblScanStatus.Text = "Scanning\u2026";
+            // Detach the poster image before disposing cached images: Rows.Clear() fires
+            // SelectionChanged which awaits CancelAsync and yields, leaving picTmdbPoster.Image
+            // pointing at a freshly-disposed image until the handler resumes - a paint in that
+            // window would hit ObjectDisposedException.
+            picTmdbPoster.Image = null;
             dgvResults.Rows.Clear();
             foreach (var img in _posterCache.Values) img.Dispose();
             _posterCache.Clear();

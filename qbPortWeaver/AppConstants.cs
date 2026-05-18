@@ -159,7 +159,10 @@ namespace qbPortWeaver
         /// <summary>
         /// Searches all installed Windows services for one whose <c>ServiceName</c> or <c>DisplayName</c>
         /// contains <paramref name="searchTerm"/> and returns the <c>ServiceName</c>, or
-        /// <see langword="null"/> if no match is found.
+        /// <see langword="null"/> if no match is found. When multiple services match, the first one
+        /// returned by <see cref="ServiceController.GetServices"/> is used; that order is not guaranteed
+        /// to be stable across reboots, so callers should pass a precise enough search term that no more
+        /// than one service can match.
         /// </summary>
         internal static string? FindServiceName(string searchTerm)
         {

@@ -35,6 +35,20 @@ namespace qbPortWeaver
         internal string GetClientProcessName() => RegistrySettingsManager.GetAppValue(_clientProcessNameKey);
         internal string GetAdapterName()       => RegistrySettingsManager.GetAppValue(_adapterNameKey);
 
+        // Case-insensitive bidirectional substring match against the registry-configured adapter name.
+        // Bidirectional handles the case where the configured name and the actual Windows adapter name
+        // differ in length (e.g. registry "ProtonVPN TUN" vs adapter "ProtonVPN", or the reverse).
+        // Mirrors NatPmpManager.IsAdapterMatch so all three VPN managers behave identically.
+        // Empty-string guards on both sides: Contains("") returns true for any input, which would
+        // falsely match if either the registry value or the interface name was empty.
+        internal bool MatchesAdapterName(string interfaceName)
+        {
+            string adapterName = GetAdapterName();
+            if (string.IsNullOrEmpty(adapterName) || string.IsNullOrEmpty(interfaceName)) return false;
+            return interfaceName.Contains(adapterName, StringComparison.OrdinalIgnoreCase) ||
+                   adapterName.Contains(interfaceName, StringComparison.OrdinalIgnoreCase);
+        }
+
         // Live SCM enumeration; call site caches the result where repeated lookups matter.
         internal string? FindServiceName()  => AppConstants.FindServiceName(GetServiceSearchTerm());
         // Resolved once from the service's ImagePath registry entry; cached via _clientExePathCache sentinel.

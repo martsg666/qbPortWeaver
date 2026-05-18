@@ -504,8 +504,11 @@ namespace qbPortWeaver
             }
             catch (Exception ex)
             {
+                // _themeColors[0] is the error color for whichever theme is active (DarkModeError
+                // or LightModeError); using the literal DarkModeError would fall through to the
+                // foreground text colour in light mode and lose the visual emphasis.
                 if (!IsDisposed)
-                    SetMetaMessage($"(Error reading log: {ex.Message})", AppConstants.DarkModeError);
+                    SetMetaMessage($"(Error reading log: {ex.Message})", _themeColors[0]);
             }
             finally
             {
@@ -608,6 +611,7 @@ namespace qbPortWeaver
                     });
                 }
                 catch (ObjectDisposedException) { /* form disposed between IsDisposed check and Invoke - expected on close */ }
+                catch (InvalidOperationException) { /* handle destroyed by Close() before Dispose() - expected on close */ }
             }
             catch (Exception ex)
             {
@@ -637,6 +641,7 @@ namespace qbPortWeaver
                 });
             }
             catch (ObjectDisposedException) { /* form disposed between IsDisposed check and Invoke - expected on close */ }
+            catch (InvalidOperationException) { /* handle destroyed by Close() before Dispose() - expected on close */ }
         }
 
         // Populates the log file dropdown with the current log and any existing rotated backups.

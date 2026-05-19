@@ -90,55 +90,19 @@ namespace qbPortWeaver
 
         /// <summary>
         /// Kills a process (including its entire process tree) and waits up to <paramref name="timeoutMs"/> for exit.
-        /// Escalation: <c>Process.Kill</c> → wait → <c>taskkill /F /T</c> → retry <c>Process.Kill</c>
-        /// (handles processes that resist .NET's TerminateProcess, e.g. qBittorrent during active I/O).
+        /// Escalation lives in <see cref="ProcessKillHelper.KillProcessTreeWithEscalation"/> so the helper
+        /// service can use the same logic. This wrapper adapts the outcome to a simple bool and logs the
+        /// taskkill-launch error at Warn if it occurred.
         /// Returns <see langword="true"/> if the process exited (or had already exited), <see langword="false"/> if it may still be running.
         /// The caller is responsible for disposing <paramref name="process"/>.
         /// </summary>
         public static bool KillProcess(Process process, int timeoutMs = 5000)
         {
-            try
-            {
-                process.Kill(entireProcessTree: true);
-            }
-            catch (InvalidOperationException)
-            {
-                return true; // already exited
-            }
-            catch (System.ComponentModel.Win32Exception)
-            {
-                return false; // access denied or process protected
-            }
-            if (process.WaitForExit(timeoutMs)) return true;
-
-            // Process.Kill failed to terminate in time - fall back to taskkill /F /T
-            try
-            {
-                using var taskkill = Process.Start(CreateHiddenStartInfo(
-                    Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "taskkill.exe"),
-                    $"/F /T /PID {process.Id}"));
-                taskkill?.WaitForExit(timeoutMs);
-            }
-            catch (Exception ex)
-            {
-                LogManager.Instance.LogMessage($"Failed to run taskkill fallback for PID {process.Id}: {ex.Message}", LogLevel.Warn);
-            }
-            if (process.WaitForExit(timeoutMs)) return true;
-
-            // Last resort: retry Process.Kill after taskkill may have weakened the process tree
-            try
-            {
-                process.Kill(entireProcessTree: true);
-            }
-            catch (InvalidOperationException)
-            {
-                return true;
-            }
-            catch (System.ComponentModel.Win32Exception)
-            {
-                return false;
-            }
-            return process.WaitForExit(timeoutMs);
+            var result = ProcessKillHelper.KillProcessTreeWithEscalation(process, timeoutMs);
+            if (result.TaskkillError is not null)
+                LogManager.Instance.LogMessage($"Failed to run taskkill fallback for PID {process.Id}: {result.TaskkillError.Message}", LogLevel.Warn);
+            return result.Outcome is not ProcessKillOutcome.AccessDenied
+                                  and not ProcessKillOutcome.StillRunning;
         }
 
         /// <summary>Kills all running processes matching <paramref name="processName"/> and logs outcomes per process.</summary>
@@ -261,10 +225,6 @@ namespace qbPortWeaver
                 return null; // transient error: cache left at its prior state (null or empty) so next cycle retries
             }
         }
-
-        /// <summary>Creates a ProcessStartInfo configured to run a hidden, windowless process.</summary>
-        public static ProcessStartInfo CreateHiddenStartInfo(string fileName, string arguments) =>
-            new(fileName, arguments) { UseShellExecute = false, CreateNoWindow = true };
 
         // UI helpers
 

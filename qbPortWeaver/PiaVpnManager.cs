@@ -1,3 +1,4 @@
+using qbPortWeaver.Shared;
 using System.Diagnostics;
 
 namespace qbPortWeaver
@@ -106,7 +107,7 @@ namespace qbPortWeaver
                     return null;
                 }
 
-                var startInfo = AppConstants.CreateHiddenStartInfo(piactlPath, arguments);
+                var startInfo = ProcessHelpers.CreateHiddenStartInfo(piactlPath, arguments);
                 startInfo.RedirectStandardOutput = true;
 
                 using var process = Process.Start(startInfo);

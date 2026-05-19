@@ -20,15 +20,15 @@ internal sealed class HelperLogger(string logFilePath)
     public int WarnCount  { get; private set; }
     public int ErrorCount { get; private set; }
 
-    public void LogInfo(string message)  => WriteLog(message, "INFO ");
-    public void LogWarn(string message)  { if (WriteLog(message, "WARN "))  WarnCount++; }
-    public void LogError(string message) { if (WriteLog(message, "ERROR")) ErrorCount++; }
+    public void LogInfo(string message)  => WriteLog(message, LoggingConstants.LevelInfoLabel);
+    public void LogWarn(string message)  { if (WriteLog(message, LoggingConstants.LevelWarnLabel))  WarnCount++; }
+    public void LogError(string message) { if (WriteLog(message, LoggingConstants.LevelErrorLabel)) ErrorCount++; }
 
     // Returns true if the entry was successfully written to the file. Callers increment WarnCount /
     // ErrorCount only on success so the tray badge never advertises an entry the user cannot find.
     private bool WriteLog(string message, string paddedLevel)
     {
-        string entry = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} | {paddedLevel} | {SubsystemName.PadRight(SubsystemMaxLength)} | {message}{Environment.NewLine}";
+        string entry = LoggingConstants.FormatLogEntry(DateTime.Now, paddedLevel, SubsystemName, message);
         for (int attempt = 0; attempt < WriteMaxAttempts; attempt++)
         {
             try

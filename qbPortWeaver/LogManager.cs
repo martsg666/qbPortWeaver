@@ -25,8 +25,15 @@ namespace qbPortWeaver
         private const int  MaxLogFiles          = 5;   // Keep only 5 logfiles total (including current)
         private const int  RotationCheckInterval = 100; // Check rotation every N writes
 
-        // Pre-padded level labels indexed by LogLevel enum value (Info=0, Warn=1, Error=2, Debug=3)
-        private static readonly string[] _levelLabels = ["INFO ", "WARN ", "ERROR", "DEBUG"];
+        // Pre-padded level labels indexed by LogLevel enum value (Info=0, Warn=1, Error=2, Debug=3).
+        // Labels come from Shared.LoggingConstants so the helper service uses the same strings.
+        private static readonly string[] _levelLabels =
+        [
+            LoggingConstants.LevelInfoLabel,
+            LoggingConstants.LevelWarnLabel,
+            LoggingConstants.LevelErrorLabel,
+            LoggingConstants.LevelDebugLabel,
+        ];
 
         // Static instance for global access - null until Initialize() is called
         private static LogManager? _instance;
@@ -201,7 +208,7 @@ namespace qbPortWeaver
         }
 
         private static string FormatEntry(string message, LogLevel level, string subsystem) =>
-            $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} | {_levelLabels[(int)level]} | {subsystem.PadRight(Subsystem.MaxLength)} | {message}{Environment.NewLine}";
+            LoggingConstants.FormatLogEntry(DateTime.Now, _levelLabels[(int)level], subsystem, message);
 
         // Appends text to the log file. Must be called while holding _lock.
         // Opens a new stream per call intentionally - no persistent stream to manage across threads or rotation events.

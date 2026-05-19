@@ -1,3 +1,4 @@
+using qbPortWeaver.Shared;
 using System.Diagnostics;
 
 namespace qbPortWeaver
@@ -628,7 +629,7 @@ namespace qbPortWeaver
             try
             {
                 string cmdExe = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "cmd.exe");
-                Process.Start(AppConstants.CreateHiddenStartInfo(cmdExe, $"/C \"{cmd}\""))?.Dispose(); // NOSONAR S4721 - cmd is a user-configured registry value; execution of arbitrary commands is the intended behaviour
+                Process.Start(ProcessHelpers.CreateHiddenStartInfo(cmdExe, $"/C \"{cmd}\""))?.Dispose(); // NOSONAR S4721 - cmd is a user-configured registry value; execution of arbitrary commands is the intended behaviour
                 LogManager.Instance.LogMessage("Post-update command launched", LogLevel.Info);
             }
             catch (Exception ex)

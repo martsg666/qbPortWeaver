@@ -148,8 +148,8 @@ namespace qbPortWeaver
             _tvShowCacheDirty = false;
             _movieCacheDirty  = false;
             Interlocked.Exchange(ref _loaded, 0);
-            AppConstants.TryDeleteFile(AppConstants.GetDataFilePath(TvShowCacheFileName));
-            AppConstants.TryDeleteFile(AppConstants.GetDataFilePath(MovieCacheFileName));
+            AppConstants.DeleteFileSafely(AppConstants.GetDataFilePath(TvShowCacheFileName));
+            AppConstants.DeleteFileSafely(AppConstants.GetDataFilePath(MovieCacheFileName));
             LogManager.Instance.LogMessage("TMDB caches cleared", LogLevel.Info, Subsystem.MediaManager);
         }
 

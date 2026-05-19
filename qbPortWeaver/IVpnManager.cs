@@ -47,10 +47,9 @@ namespace qbPortWeaver
 
         /// <summary>
         /// Returns <see langword="true"/> if <paramref name="interfaceName"/> matches this provider's adapter naming convention.
-        /// For ProtonVPN and PIA this means the name contains the registry-configured adapter name
-        /// (defaults "ProtonVPN" and "PIA" respectively).
-        /// For NAT-PMP this is a bidirectional contains check against the configured adapter name,
-        /// since the name in settings and the Windows connection name may differ in length.
+        /// All three implementations perform a bidirectional case-insensitive substring match against
+        /// the configured adapter name, so e.g. registry "ProtonVPN" matches Windows adapter
+        /// "ProtonVPN TUN" and vice versa.
         /// </summary>
         bool IsAdapterMatch(string interfaceName);
     }

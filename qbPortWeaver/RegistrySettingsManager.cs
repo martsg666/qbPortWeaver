@@ -306,13 +306,19 @@ namespace qbPortWeaver
             return fallback;
         }
 
-        /// <summary>Reads a bool value from the registry. Returns <see langword="false"/> if the key is missing or not parseable.</summary>
-        public static bool GetBool(string section, string key) =>
-            bool.TryParse(GetValue(section, key), out bool result) && result;
+        /// <summary>Reads a bool value from the registry. Returns the registered default if the key is missing or not parseable.</summary>
+        public static bool GetBool(string section, string key)
+        {
+            if (bool.TryParse(GetValue(section, key), out bool result)) return result;
+            return bool.TryParse(GetDefault(section, key), out bool fallback) && fallback;
+        }
 
-        /// <summary>Reads an int value from the registry. Returns <c>0</c> if the key is missing or not parseable.</summary>
-        public static int GetInt(string section, string key) =>
-            int.TryParse(GetValue(section, key), out int result) ? result : 0;
+        /// <summary>Reads an int value from the registry. Returns the registered default if the key is missing or not parseable.</summary>
+        public static int GetInt(string section, string key)
+        {
+            if (int.TryParse(GetValue(section, key), out int result)) return result;
+            return int.TryParse(GetDefault(section, key), out int fallback) ? fallback : 0;
+        }
 
         /// <summary>Reads the qBittorrent password from the registry and decrypts it with DPAPI (CurrentUser scope). Returns an empty string if missing or decryption fails.</summary>
         public static string GetQBittorrentPassword() =>
@@ -358,9 +364,6 @@ namespace qbPortWeaver
                     try
                     {
                         byte[] decrypted = ProtectedData.Unprotect(encrypted, null, DataProtectionScope.CurrentUser);
-                        // Successful decrypt clears any prior failure so the warn re-fires if the
-                        // failure later returns (e.g. another profile move).
-                        lock (_lastDecryptWarning) _lastDecryptWarning.Remove($"{section}|{key}");
                         return Encoding.UTF8.GetString(decrypted);
                     }
                     catch (CryptographicException ex)
@@ -369,17 +372,9 @@ namespace qbPortWeaver
                         // change (registry restored on a different machine) or DPAPI master key rotation.
                         // Returning the raw Base64 would produce a confusing auth failure; surface the
                         // underlying cause at Warn so the user can re-enter the value in Settings.
-                        // Fire only on transition (new or changed failure message) - see _lastDecryptWarning.
-                        string warnKey     = $"{section}|{key}";
-                        string warnMessage = $"Failed to decrypt [{section}] {key}: {ex.Message} - re-enter the value in Settings";
-                        bool shouldWarn;
-                        lock (_lastDecryptWarning)
-                        {
-                            shouldWarn = !_lastDecryptWarning.TryGetValue(warnKey, out var prior) || prior != warnMessage;
-                            if (shouldWarn) _lastDecryptWarning[warnKey] = warnMessage;
-                        }
-                        if (shouldWarn)
-                            LogManager.Instance.LogMessage(warnMessage, LogLevel.Warn);
+                        LogManager.Instance.LogMessage(
+                            $"Failed to decrypt [{section}] {key}: {ex.Message} - re-enter the value in Settings",
+                            LogLevel.Warn);
                         return string.Empty;
                     }
                 }
@@ -461,15 +456,6 @@ namespace qbPortWeaver
             KeyTmdbApiKey,
             AppIdentity.PipeSessionTokenKey
         };
-
-        // Tracks the last decrypt-failure warn message per (section, key) so the warn fires only
-        // on transition (new or changed failure) rather than every sync cycle. Without this, a
-        // persistent DPAPI failure (e.g. registry restored on a different machine) would Warn-spam
-        // the log alert badge every cycle until the user re-enters the value. Cleared on a
-        // successful decrypt so the warn re-fires if the failure later returns. Same pattern as
-        // PortSyncService._lastInterfaceMismatchMessage.
-        private static readonly Dictionary<string, string> _lastDecryptWarning =
-            new(StringComparer.OrdinalIgnoreCase);
 
         // Writes any missing keys for one registry section; returns true if anything was written
         private static bool WriteDefaultsForSection(RegistryKey regKey,

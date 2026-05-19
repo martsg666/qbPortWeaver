@@ -854,8 +854,8 @@ namespace qbPortWeaver
                 _lastTvShowsLibraryPath = string.Empty;
             }
 
-            AppConstants.TryDeleteFile(GetCacheFilePath(SourceCacheFileName));
-            AppConstants.TryDeleteFile(GetCacheFilePath(LibraryCacheFileName));
+            AppConstants.DeleteFileSafely(GetCacheFilePath(SourceCacheFileName));
+            AppConstants.DeleteFileSafely(GetCacheFilePath(LibraryCacheFileName));
 
             LogManager.Instance.LogMessage("Fingerprint caches cleared", LogLevel.Info, Subsystem.MediaManager);
         }

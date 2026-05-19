@@ -47,8 +47,8 @@ namespace qbPortWeaver
         /// <summary>Returns the full path for a named data file stored in the application data folder.</summary>
         internal static string GetDataFilePath(string fileName) => Path.Combine(AppDataFolder, fileName);
 
-        /// <summary>Deletes a file if it exists, swallowing IO and permission errors.</summary>
-        internal static void TryDeleteFile(string path)
+        /// <summary>Deletes a file if it exists, swallowing IO and permission errors. Never throws.</summary>
+        internal static void DeleteFileSafely(string path)
         {
             try
             {
@@ -57,7 +57,7 @@ namespace qbPortWeaver
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
                 if (LogManager.IsInitialized)
-                    LogManager.Instance.LogDebug($"AppConstants.TryDeleteFile: Could not delete '{path}': {ex.Message}");
+                    LogManager.Instance.LogDebug($"AppConstants.DeleteFileSafely: Could not delete '{path}': {ex.Message}");
             }
         }
 
@@ -73,7 +73,7 @@ namespace qbPortWeaver
             }
             catch
             {
-                TryDeleteFile(temp);
+                DeleteFileSafely(temp);
                 throw;
             }
         }

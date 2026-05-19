@@ -125,7 +125,7 @@ internal sealed class HelperPipeServer(ILogger<HelperPipeServer> logger) : Backg
                 await using var w = new StreamWriter(pipe, leaveOpen: true) { AutoFlush = true };
                 await w.WriteLineAsync(HelperProtocol.ResultRejectedSentinel).ConfigureAwait(false);
             }
-            catch (IOException) { }
+            catch (IOException) { } // NOSONAR S108 - client likely disconnected before we could send the rejection; nothing more to report
             return;
         }
 

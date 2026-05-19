@@ -1,4 +1,4 @@
-using System.IO.Pipes;
+﻿using System.IO.Pipes;
 using System.Security.AccessControl;
 using System.Security.Cryptography;
 using System.Security.Principal;
@@ -34,11 +34,11 @@ namespace qbPortWeaver.HelperService;
 internal sealed class HelperPipeServer(ILogger<HelperPipeServer> logger) : BackgroundService
 {
     private const int PipeErrorRetryDelayMs = 1000;
-    private const int PipeReadTimeoutMs     = 5_000;
+    private const int PipeReadTimeoutMs = 5_000;
 
     // Registry paths and keys for impersonated HKCU reads. Subkey names not in AppIdentity are session-environment specific.
     private const string VolatileEnvironmentKey = @"Volatile Environment";
-    private const string LocalAppDataValue      = "LOCALAPPDATA";
+    private const string LocalAppDataValue = "LOCALAPPDATA";
 
     private static readonly PipeSecurity PipeSecurity = CreatePipeSecurity();
 
@@ -84,13 +84,13 @@ internal sealed class HelperPipeServer(ILogger<HelperPipeServer> logger) : Backg
             maxNumberOfServerInstances: 1,
             PipeTransmissionMode.Byte,
             PipeOptions.Asynchronous,
-            inBufferSize:  0,
+            inBufferSize: 0,
             outBufferSize: 0,
             PipeSecurity);
 
         await pipe.WaitForConnectionAsync(cancellationToken).ConfigureAwait(false);
 
-        using var reader  = new StreamReader(pipe, leaveOpen: true);
+        using var reader = new StreamReader(pipe, leaveOpen: true);
         using var readCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         readCts.CancelAfter(PipeReadTimeoutMs);
         string? message;
@@ -113,8 +113,8 @@ internal sealed class HelperPipeServer(ILogger<HelperPipeServer> logger) : Backg
             return;
         }
 
-        var action          = parts[0];
-        var target          = parts[1];
+        var action = parts[0];
+        var target = parts[1];
         var pipeSessionToken = parts[2];
 
         if (!TryReadClientHkcu(pipe, pipeSessionToken, out var logFilePath))
@@ -166,7 +166,7 @@ internal sealed class HelperPipeServer(ILogger<HelperPipeServer> logger) : Backg
     private bool TryReadClientHkcu(NamedPipeServerStream pipe, string pipeSessionToken, out string logFilePath)
     {
         logFilePath = string.Empty;
-        bool   tokenValid  = false;
+        bool tokenValid = false;
         string derivedPath = string.Empty; // captured by lambda; out params cannot be used inside lambdas
         try
         {
@@ -176,7 +176,7 @@ internal sealed class HelperPipeServer(ILogger<HelperPipeServer> logger) : Backg
                 // (via NtOpenKey under the thread's impersonation token). This is the documented
                 // .NET behavior on Windows and holds for all supported targets. The alternative -
                 // RegOpenCurrentUser P/Invoke - is only needed if this assumption ever breaks.
-                using var appKey  = Registry.CurrentUser.OpenSubKey(AppIdentity.AppRegistryKey);
+                using var appKey = Registry.CurrentUser.OpenSubKey(AppIdentity.AppRegistryKey);
                 var expectedToken = appKey?.GetValue(AppIdentity.PipeSessionTokenKey) as string;
                 // Use constant-time comparison to prevent timing side-channel attacks.
                 // string.Equals returns early on the first mismatch, leaking token length/prefix

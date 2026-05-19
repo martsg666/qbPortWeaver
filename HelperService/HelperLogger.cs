@@ -1,4 +1,4 @@
-using System.Text;
+﻿using System.Text;
 using qbPortWeaver.Shared;
 
 namespace qbPortWeaver.HelperService;
@@ -11,16 +11,16 @@ namespace qbPortWeaver.HelperService;
 /// </summary>
 internal sealed class HelperLogger(string logFilePath)
 {
-    private const string SubsystemName     = LoggingConstants.HelperServiceSubsystem;
-    private const int    WriteMaxAttempts  = 3;
-    private const int    WriteRetryDelayMs = 50;
+    private const string SubsystemName = LoggingConstants.HelperServiceSubsystem;
+    private const int WriteMaxAttempts = 3;
+    private const int WriteRetryDelayMs = 50;
 
     // Cumulative counts returned to the tray app via the pipe response so it can raise log alerts.
-    public int WarnCount  { get; private set; }
+    public int WarnCount { get; private set; }
     public int ErrorCount { get; private set; }
 
-    public void LogInfo(string message)  => WriteLog(message, LoggingConstants.LevelInfoLabel);
-    public void LogWarn(string message)  { if (WriteLog(message, LoggingConstants.LevelWarnLabel))  WarnCount++; }
+    public void LogInfo(string message) => WriteLog(message, LoggingConstants.LevelInfoLabel);
+    public void LogWarn(string message) { if (WriteLog(message, LoggingConstants.LevelWarnLabel)) WarnCount++; }
     public void LogError(string message) { if (WriteLog(message, LoggingConstants.LevelErrorLabel)) ErrorCount++; }
 
     // Returns true if the entry was successfully written to the file. Callers increment WarnCount /
@@ -32,7 +32,7 @@ internal sealed class HelperLogger(string logFilePath)
         {
             try
             {
-                using var fs     = new FileStream(logFilePath, FileMode.Append, FileAccess.Write, FileShare.ReadWrite);
+                using var fs = new FileStream(logFilePath, FileMode.Append, FileAccess.Write, FileShare.ReadWrite);
                 using var writer = new StreamWriter(fs, Encoding.UTF8);
                 writer.Write(entry);
                 return true;
@@ -53,7 +53,7 @@ internal sealed class HelperLogger(string logFilePath)
             {
                 Thread.Sleep(WriteRetryDelayMs); // intentional: WriteLog is synchronous by design; retries are rare and brief
             }
-            catch (IOException)            { return false; }
+            catch (IOException) { return false; }
             catch (UnauthorizedAccessException) { return false; }
         }
         return false;

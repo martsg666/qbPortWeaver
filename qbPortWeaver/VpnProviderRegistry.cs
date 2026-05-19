@@ -1,0 +1,27 @@
+﻿namespace qbPortWeaver;
+
+/// <summary>Pairs a VPN provider keyword (one of <see cref="RegistrySettingsManager.VpnProviderProtonVpn"/> etc.) with the shared <see cref="VpnRegistryConfig"/> used to resolve its service name, client process name, and exe path.</summary>
+internal sealed record VpnProvider(string Keyword, VpnRegistryConfig Config);
+
+/// <summary>
+/// Single source of truth for the VPN providers qbPortWeaver knows how to drive in auto-recovery.
+/// Adding a 4th provider: add one entry to <see cref="KnownProviders"/> here. Both
+/// <see cref="NatPmpManager.FindProviderToken"/> and <see cref="AutoRecoveryManager"/>
+/// derive their behaviour from this list, so no other code needs to change.
+/// </summary>
+internal static class VpnProviderRegistry
+{
+    internal static readonly IReadOnlyList<VpnProvider> KnownProviders =
+    [
+        new(RegistrySettingsManager.VpnProviderProtonVpn, ProtonVpnManager.Config),
+        new(RegistrySettingsManager.VpnProviderPia,       PiaVpnManager.Config),
+    ];
+
+    /// <summary>Returns the matching provider keyword if <paramref name="adapterName"/> contains a known provider keyword, or <see langword="null"/> otherwise.</summary>
+    internal static string? FindProviderToken(string adapterName) =>
+        KnownProviders.FirstOrDefault(p => adapterName.Contains(p.Keyword, StringComparison.OrdinalIgnoreCase))?.Keyword;
+
+    /// <summary>Returns the provider entry whose <see cref="VpnProvider.Keyword"/> equals <paramref name="keyword"/> (case-insensitive), or <see langword="null"/> if no provider matches.</summary>
+    internal static VpnProvider? FindByKeyword(string keyword) =>
+        KnownProviders.FirstOrDefault(p => p.Keyword.Equals(keyword, StringComparison.OrdinalIgnoreCase));
+}

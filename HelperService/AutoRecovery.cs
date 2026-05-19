@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.ServiceProcess;
 using qbPortWeaver.Shared;
@@ -13,13 +13,13 @@ namespace qbPortWeaver.HelperService;
 /// </summary>
 internal static partial class AutoRecovery
 {
-    private const int ProcessKillTimeoutMs      = 5000;
+    private const int ProcessKillTimeoutMs = 5000;
     // Delay between stop and start to let the service host fully release its handles
     // and listening sockets before we ask the SCM to bring it back up.
-    private const int ServiceRestartDelayMs     = 5000;
+    private const int ServiceRestartDelayMs = 5000;
     private const int ServiceOperationTimeoutMs = 15000;
-    private const int AdapterCycleDelayMs       = 3000;
-    private const int NetshTimeoutMs            = 15000;
+    private const int AdapterCycleDelayMs = 3000;
+    private const int NetshTimeoutMs = 15000;
 
     // First positional argument to "netsh interface set interface <name> admin=...".
     private const string NetshInterface = "interface";
@@ -232,8 +232,8 @@ internal static partial class AutoRecovery
         {
             if (sc.ServiceHandle.IsInvalid) return;
 
-            int    bufSize = Marshal.SizeOf<ServiceStatusProcess>();
-            IntPtr buf     = Marshal.AllocHGlobal(bufSize);
+            int bufSize = Marshal.SizeOf<ServiceStatusProcess>();
+            IntPtr buf = Marshal.AllocHGlobal(bufSize);
             try
             {
                 // Pass the SafeHandle directly - the [LibraryImport] marshaller AddRef/Releases
@@ -397,10 +397,10 @@ internal static partial class AutoRecovery
             string netshPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "netsh.exe");
             var startInfo = new ProcessStartInfo(netshPath)
             {
-                UseShellExecute        = false,
-                CreateNoWindow         = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
                 RedirectStandardOutput = true,
-                RedirectStandardError  = true,
+                RedirectStandardError = true,
             };
             foreach (string arg in arguments)
                 startInfo.ArgumentList.Add(arg);

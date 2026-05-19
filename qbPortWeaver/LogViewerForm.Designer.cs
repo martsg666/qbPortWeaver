@@ -258,7 +258,7 @@ namespace qbPortWeaver
             ShowIcon            = true;
             ShowInTaskbar       = true;
             StartPosition       = System.Windows.Forms.FormStartPosition.CenterScreen;
-            Text                = "qbPortWeaver | Log Viewer"; // overridden in OnLoad with AppConstants.AppName
+            Text                = "qbPortWeaver | Log Viewer"; // overridden in OnLoad with AppIdentity.AppName
 
             pnlToolbar.ResumeLayout(false);
             ResumeLayout(false);

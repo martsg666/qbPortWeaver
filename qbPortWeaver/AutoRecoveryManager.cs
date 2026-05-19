@@ -171,8 +171,7 @@ namespace qbPortWeaver
                 {
                     try
                     {
-                        if (!AppConstants.KillProcess(p))
-                            LogManager.Instance.LogMessage($"Client process '{processName}' (PID {p.Id}) still running after kill attempts", LogLevel.Warn);
+                        AppConstants.KillProcess(p, $"Client process '{processName}'");
                     }
                     catch (Exception ex) { LogManager.Instance.LogDebug($"AutoRecoveryManager.KillClientProcesses: Kill '{processName}': {ex.Message}"); }
                 }

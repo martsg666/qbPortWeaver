@@ -1,3 +1,5 @@
+using qbPortWeaver.Shared;
+
 namespace qbPortWeaver
 {
     /// <summary>Non-modal notification shown when a newer version of the application is available.</summary>
@@ -27,7 +29,7 @@ namespace qbPortWeaver
 
             var lblMessage = new Label
             {
-                Text     = $"Version {version} of {AppConstants.AppName} is available.\n\nClick Update to open the download page.",
+                Text     = $"Version {version} of {AppIdentity.AppName} is available.\n\nClick Update to open the download page.",
                 AutoSize = false,
                 Location = new Point(12, 20),
                 Size     = new Size(360, 58),
@@ -69,7 +71,7 @@ namespace qbPortWeaver
             ShowIcon        = false;
             ShowInTaskbar   = false;
             StartPosition   = FormStartPosition.CenterScreen;
-            Text            = $"{AppConstants.AppName} | Update Available";
+            Text            = $"{AppIdentity.AppName} | Update Available";
 
             grpInfo.SuspendLayout();
             SuspendLayout();

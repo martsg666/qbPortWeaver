@@ -1,3 +1,4 @@
+using qbPortWeaver.Shared;
 using System.Buffers.Binary;
 using System.Net;
 using System.Net.NetworkInformation;
@@ -198,8 +199,8 @@ namespace qbPortWeaver
         /// <inheritdoc />
         public string GetRecoveryAction() =>
             FindProviderToken(_adapter.Name) is not null
-                ? HelperServiceClient.ActionRestart
-                : HelperServiceClient.ActionCycleAdapter;
+                ? HelperProtocol.ActionRestart
+                : HelperProtocol.ActionCycleAdapter;
 
         /// <inheritdoc />
         // Uses bidirectional Contains because the adapter name in settings may differ in length

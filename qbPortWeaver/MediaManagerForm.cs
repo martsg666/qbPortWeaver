@@ -1,3 +1,5 @@
+using qbPortWeaver.Shared;
+
 namespace qbPortWeaver
 {
     /// <summary>Dialog for configuring the Media Manager feature, previewing proposed imports (Scan Now), and applying them (Import Now).</summary>
@@ -31,7 +33,7 @@ namespace qbPortWeaver
         public MediaManagerForm()
         {
             InitializeComponent();
-            Text = $"{AppConstants.AppName} | Media Manager";
+            Text = $"{AppIdentity.AppName} | Media Manager";
             rtbTmdbOverview.Enter += (s, e) => dgvResults.Focus();
             _busyControls =
             [
@@ -93,7 +95,7 @@ namespace qbPortWeaver
             {
                 var result = MessageBox.Show(
                     "A scan or import is in progress.\n\nClosing will cancel the operation. Any files already imported will remain in the library.\n\nClose anyway?",
-                    $"{AppConstants.AppName} | Media Manager",
+                    $"{AppIdentity.AppName} | Media Manager",
                     MessageBoxButtons.YesNo,
                     MessageBoxIcon.Warning);
 
@@ -450,7 +452,7 @@ namespace qbPortWeaver
 
             var confirm = MessageBox.Show(
                 $"{proposalCount} file{(proposalCount == 1 ? "" : "s")} will be imported. This cannot be undone.\n\nContinue?",
-                $"{AppConstants.AppName} | Media Manager",
+                $"{AppIdentity.AppName} | Media Manager",
                 MessageBoxButtons.YesNo,
                 MessageBoxIcon.Warning);
 

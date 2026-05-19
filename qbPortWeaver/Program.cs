@@ -1,3 +1,5 @@
+using qbPortWeaver.Shared;
+
 namespace qbPortWeaver
 {
     internal static class Program
@@ -30,8 +32,8 @@ namespace qbPortWeaver
             if (!isNewInstance)
             {
                 MessageBox.Show(
-                    $"{AppConstants.AppName} is already running.",
-                    AppConstants.AppName,
+                    $"{AppIdentity.AppName} is already running.",
+                    AppIdentity.AppName,
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Information);
                 return;

@@ -11,10 +11,9 @@ namespace qbPortWeaver.HelperService;
 /// </summary>
 internal sealed class HelperLogger(string logFilePath)
 {
-    private const string SubsystemName      = LoggingConstants.HelperServiceSubsystem;
-    private const int    SubsystemMaxLength = LoggingConstants.SubsystemMaxLength;
-    private const int    WriteMaxAttempts     = 3;
-    private const int    WriteRetryDelayMs    = 50;
+    private const string SubsystemName     = LoggingConstants.HelperServiceSubsystem;
+    private const int    WriteMaxAttempts  = 3;
+    private const int    WriteRetryDelayMs = 50;
 
     // Cumulative counts returned to the tray app via the pipe response so it can raise log alerts.
     public int WarnCount  { get; private set; }

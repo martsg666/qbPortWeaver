@@ -1,3 +1,5 @@
+using qbPortWeaver.Shared;
+
 namespace qbPortWeaver
 {
     /// <summary>Displays a summary of what changed in the current version. Shown automatically on first run after an upgrade.</summary>
@@ -95,7 +97,7 @@ namespace qbPortWeaver
             lblTitle.Text         = $"What's New in {AppConstants.AppVersion}";
             lnkCommunity.Text     = CommunityText;
             rtbFeatures.Text      = ReleaseFeaturesText;
-            Text                  = $"{AppConstants.AppName} | What's New";
+            Text                  = $"{AppIdentity.AppName} | What's New";
 
             // Set the link region to cover only "star it on GitHub" within the full sentence.
             // Debug.Assert catches a mismatch between linkText and CommunityText at development

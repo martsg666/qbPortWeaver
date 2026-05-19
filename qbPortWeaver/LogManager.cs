@@ -13,9 +13,6 @@ namespace qbPortWeaver
         public const string MainApp       = "MainApp";
         public const string MediaManager  = "MediaManager";
         public const string HelperService = LoggingConstants.HelperServiceSubsystem;
-
-        /// <summary>Length of the longest subsystem name, used for column padding.</summary>
-        public const int MaxLength = LoggingConstants.SubsystemMaxLength;
     }
 
     /// <summary>Singleton file-based logger with size-based rotation. Thread-safe.</summary>

@@ -1,3 +1,4 @@
+using qbPortWeaver.Shared;
 using System.ComponentModel;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -74,7 +75,7 @@ namespace qbPortWeaver
             _themeColors = _isDarkMode
                 ? [AppConstants.DarkModeError, AppConstants.DarkModeWarning, AppConstants.DarkModeInfo, AppConstants.LogLevelDebug, AppConstants.DarkModeText]
                 : [AppConstants.LightModeError, AppConstants.LightModeWarning, AppConstants.LightModeInfo, AppConstants.LogLevelDebug, SystemColors.WindowText];
-            Text = $"{AppConstants.AppName} | Log Viewer";
+            Text = $"{AppIdentity.AppName} | Log Viewer";
             ApplyTheme();
             // Vertically center the search box - single-line TextBox auto-sizes its height from the font,
             // so the actual height is only known after layout; compute the top offset here.

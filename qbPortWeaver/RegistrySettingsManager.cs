@@ -9,7 +9,6 @@ namespace qbPortWeaver
     public static class RegistrySettingsManager
     {
         internal const string BaseKeyPath = AppIdentity.AppRegistryKey + @"\settings";
-        private const string AppKeyPath  = AppIdentity.AppRegistryKey;
         // Explicit string literals guarantee stable boolean registry serialization independent of framework internals.
         private const string ValueTrue   = "True";
         private const string ValueFalse  = "False";
@@ -94,7 +93,6 @@ namespace qbPortWeaver
         public const string ImportModeMove     = "Move";
 
         // Registry key names - app level (not in a section)
-        public const string KeyPipeSessionToken             = AppIdentity.PipeSessionTokenKey;
         public const string KeyLastSeenVersion              = "lastSeenVersion";
         public const string KeyProtonVpnLogFilePath          = "protonVpnLogFilePath";
         public const string KeyProtonVpnServiceSearchTerm   = "protonVpnServiceSearchTerm";
@@ -202,7 +200,7 @@ namespace qbPortWeaver
         {
             try
             {
-                using var regKey = Registry.CurrentUser.OpenSubKey(AppKeyPath);
+                using var regKey = Registry.CurrentUser.OpenSubKey(AppIdentity.AppRegistryKey);
                 if (regKey?.GetValue(key) is string value)
                     return value;
             }
@@ -219,7 +217,7 @@ namespace qbPortWeaver
         {
             try
             {
-                using var regKey = Registry.CurrentUser.CreateSubKey(AppKeyPath);
+                using var regKey = Registry.CurrentUser.CreateSubKey(AppIdentity.AppRegistryKey);
                 regKey.SetValue(key, value, RegistryValueKind.String);
                 LogManager.Instance.LogDebug($"RegistrySettingsManager.SetAppValue: {key} = {MaskSensitiveValue(key, value)}");
             }
@@ -238,13 +236,13 @@ namespace qbPortWeaver
         {
             try
             {
-                using var regKey = Registry.CurrentUser.CreateSubKey(AppKeyPath);
-                if (regKey.GetValue(KeyPipeSessionToken) is string existing && existing.Length > 0)
+                using var regKey = Registry.CurrentUser.CreateSubKey(AppIdentity.AppRegistryKey);
+                if (regKey.GetValue(AppIdentity.PipeSessionTokenKey) is string existing && existing.Length > 0)
                     return existing;
                 // 32 hex chars = 128 bits of CSPRNG entropy. Used to authenticate pipe messages
                 // sent to the SYSTEM helper service; HKCU's per-user ACL is the primary defense.
                 var token = RandomNumberGenerator.GetHexString(32, lowercase: true);
-                regKey.SetValue(KeyPipeSessionToken, token, RegistryValueKind.String);
+                regKey.SetValue(AppIdentity.PipeSessionTokenKey, token, RegistryValueKind.String);
                 return token;
             }
             catch (Exception ex)
@@ -273,7 +271,7 @@ namespace qbPortWeaver
 
             try
             {
-                using var appKey = Registry.CurrentUser.CreateSubKey(AppKeyPath);
+                using var appKey = Registry.CurrentUser.CreateSubKey(AppIdentity.AppRegistryKey);
                 foreach (var kvp in _appDefaults.Where(kvp => appKey.GetValue(kvp.Key) is null))
                 {
                     appKey.SetValue(kvp.Key, kvp.Value, RegistryValueKind.String);
@@ -461,7 +459,7 @@ namespace qbPortWeaver
             KeyTransmissionPassword,
             KeyDelugePassword,
             KeyTmdbApiKey,
-            KeyPipeSessionToken
+            AppIdentity.PipeSessionTokenKey
         };
 
         // Tracks the last decrypt-failure warn message per (section, key) so the warn fires only

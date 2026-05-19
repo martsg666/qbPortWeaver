@@ -1,4 +1,5 @@
 using Microsoft.Win32;
+using qbPortWeaver.Shared;
 
 namespace qbPortWeaver
 {
@@ -13,7 +14,7 @@ namespace qbPortWeaver
             try
             {
                 using var key = Registry.CurrentUser.OpenSubKey(RunRegistryKey);
-                return key?.GetValue(AppConstants.AppName) is not null;
+                return key?.GetValue(AppIdentity.AppName) is not null;
             }
             catch (Exception ex)
             {
@@ -36,7 +37,7 @@ namespace qbPortWeaver
             {
                 string? storedValue;
                 using (var readKey = Registry.CurrentUser.OpenSubKey(RunRegistryKey))
-                    storedValue = readKey?.GetValue(AppConstants.AppName) as string;
+                    storedValue = readKey?.GetValue(AppIdentity.AppName) as string;
 
                 if (storedValue is null)
                     return; // startup disabled - leave it alone
@@ -51,7 +52,7 @@ namespace qbPortWeaver
                     LogManager.Instance.LogDebug("StartupManager.RefreshStartupPathIfMoved: cannot open Run key for write - skipping refresh");
                     return;
                 }
-                writeKey.SetValue(AppConstants.AppName, expectedValue);
+                writeKey.SetValue(AppIdentity.AppName, expectedValue);
                 LogManager.Instance.LogMessage(
                     $"Windows startup path refreshed: '{storedValue}' -> '{expectedValue}'",
                     LogLevel.Info);
@@ -78,12 +79,12 @@ namespace qbPortWeaver
                 {
                     // Quote the path so CreateProcess parses it as a single token regardless of embedded spaces.
                     string quotedPath = $"\"{Application.ExecutablePath}\"";
-                    key.SetValue(AppConstants.AppName, quotedPath);
+                    key.SetValue(AppIdentity.AppName, quotedPath);
                     LogManager.Instance.LogMessage($"Windows startup enabled at {quotedPath}", LogLevel.Info);
                 }
                 else
                 {
-                    key.DeleteValue(AppConstants.AppName, false);
+                    key.DeleteValue(AppIdentity.AppName, false);
                     LogManager.Instance.LogMessage("Windows startup disabled", LogLevel.Info);
                 }
             }

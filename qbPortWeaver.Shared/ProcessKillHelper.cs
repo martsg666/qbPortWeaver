@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Diagnostics;
+using System.IO;
 
 namespace qbPortWeaver.Shared
 {
@@ -33,6 +34,11 @@ namespace qbPortWeaver.Shared
     /// </summary>
     public static class ProcessKillHelper
     {
+        // Absolute path to taskkill.exe, cached once at type-init. Stage-2 fallback when Process.Kill alone
+        // does not bring the target down within the timeout.
+        private static readonly string SystemTaskkillPath =
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "taskkill.exe");
+
         /// <summary>
         /// Escalates kill attempts on <paramref name="process"/>:
         /// <list type="number">
@@ -66,7 +72,7 @@ namespace qbPortWeaver.Shared
             try
             {
                 using var taskkill = Process.Start(ProcessHelpers.CreateHiddenStartInfo(
-                    ProcessHelpers.SystemTaskkillPath, $"/F /T /PID {process.Id}"));
+                    SystemTaskkillPath, $"/F /T /PID {process.Id}"));
                 taskkill?.WaitForExit(timeoutMs);
             }
             catch (Exception ex)

@@ -1,3 +1,4 @@
+using qbPortWeaver.Shared;
 using System.Net.Http.Headers;
 using System.Text.Json;
 
@@ -24,7 +25,7 @@ namespace qbPortWeaver
         private const string JsonPropTagName = "tag_name";
         private const string JsonPropHtmlUrl = "html_url";
 
-        private static readonly string _gitHubBaseApiUrl = $"https://api.github.com/repos/{AppConstants.GitHubRepoOwner}/{AppConstants.AppName}";
+        private static readonly string _gitHubBaseApiUrl = $"https://api.github.com/repos/{AppConstants.GitHubRepoOwner}/{AppIdentity.AppName}";
         private static readonly string _gitHubApiUrl     = _gitHubBaseApiUrl + "/releases/latest";
 
         private static readonly HttpClient _httpClient = CreateHttpClient(); // Not disposed - static lifetime matches process lifetime (recommended pattern for HttpClient)
@@ -140,7 +141,7 @@ namespace qbPortWeaver
         private static HttpClient CreateHttpClient()
         {
             var client = new HttpClient { Timeout = TimeSpan.FromSeconds(AppConstants.HttpTimeoutSeconds) };
-            client.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue(AppConstants.AppName, AppConstants.AppVersion));
+            client.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue(AppIdentity.AppName, AppConstants.AppVersion));
             client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github+json"));
             client.DefaultRequestHeaders.Add("X-GitHub-Api-Version", "2022-11-28");
             return client;

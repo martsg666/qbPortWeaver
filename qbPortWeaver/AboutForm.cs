@@ -1,3 +1,5 @@
+using qbPortWeaver.Shared;
+
 namespace qbPortWeaver
 {
     /// <summary>About dialog showing version info, update availability, and contributor credits.</summary>
@@ -10,11 +12,11 @@ namespace qbPortWeaver
         public AboutForm()
         {
             InitializeComponent();
-            lblAppName.Text             = AppConstants.AppName;
+            lblAppName.Text             = AppIdentity.AppName;
             lblAppVersion.Text          = $"Version {AppConstants.AppVersion}";
             lblCurrentVersionValue.Text = AppConstants.AppVersion;
-            lnkGitHub.Text              = $"{AppConstants.GitHubRepoOwner}/{AppConstants.AppName}";
-            Text                        = $"{AppConstants.AppName} | About";
+            lnkGitHub.Text              = $"{AppConstants.GitHubRepoOwner}/{AppIdentity.AppName}";
+            Text                        = $"{AppIdentity.AppName} | About";
         }
 
         // Kick off the GitHub data fetch as fire-and-forget; the IsDisposed guard in the async method handles early close

@@ -9,7 +9,6 @@ namespace qbPortWeaver
     public static class AppConstants
     {
         // Application metadata
-        public const string AppName = AppIdentity.AppName;
         public static readonly string AppVersion =
             System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "0.0.0";
 
@@ -27,24 +26,20 @@ namespace qbPortWeaver
         // HTTP - shared timeout used by all outbound HTTP clients
         public const int HttpTimeoutSeconds = 10;
 
-        // Named pipe used to communicate with the SYSTEM helper service for session 0 actions.
-        public const string HelperServicePipeName = HelperProtocol.PipeName;
-
         // GitHub - only the owner is a literal; all URLs are derived
         public const string GitHubRepoOwner = "martsg666";
-        public static readonly string GitHubRepoUrl = $"https://github.com/{GitHubRepoOwner}/{AppName}";
+        public static readonly string GitHubRepoUrl = $"https://github.com/{GitHubRepoOwner}/{AppIdentity.AppName}";
 
-        private const string LogFileName    = AppIdentity.LogFileName;
         private const string StatusFileName = "qbPortWeaver.status.json";
 
         private static readonly Lazy<string> _appDataFolder = new(() => Directory.CreateDirectory(
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), AppName)
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), AppIdentity.AppName)
         ).FullName);
 
         private static string AppDataFolder => _appDataFolder.Value;
 
         /// <summary>Returns the full path to the application log file.</summary>
-        public static string GetLogFilePath()    => Path.Combine(AppDataFolder, LogFileName);
+        public static string GetLogFilePath()    => Path.Combine(AppDataFolder, AppIdentity.LogFileName);
 
         /// <summary>Returns the full path to the application status JSON file.</summary>
         public static string GetStatusFilePath() => Path.Combine(AppDataFolder, StatusFileName);
@@ -91,29 +86,38 @@ namespace qbPortWeaver
         /// <summary>
         /// Kills a process (including its entire process tree) and waits up to <paramref name="timeoutMs"/> for exit.
         /// Escalation lives in <see cref="ProcessKillHelper.KillProcessTreeWithEscalation"/> so the helper
-        /// service can use the same logic. This wrapper adapts the outcome to a simple bool and logs the
-        /// taskkill-launch error at Warn if it occurred.
-        /// Returns <see langword="true"/> if the process exited (or had already exited), <see langword="false"/> if it may still be running.
+        /// service can use the same logic. This wrapper logs the per-stage outcome at Warn using
+        /// <paramref name="contextLabel"/> as the prefix so the user sees what kind of process failed.
+        /// Returns <see langword="true"/> if the process exited (or had already exited), <see langword="false"/> if it could not be killed.
         /// The caller is responsible for disposing <paramref name="process"/>.
         /// </summary>
-        public static bool KillProcess(Process process, int timeoutMs = 5000)
+        public static bool KillProcess(Process process, string contextLabel, int timeoutMs = 5000)
         {
             var result = ProcessKillHelper.KillProcessTreeWithEscalation(process, timeoutMs);
             if (result.TaskkillError is not null)
-                LogManager.Instance.LogMessage($"Failed to run taskkill fallback for PID {process.Id}: {result.TaskkillError.Message}", LogLevel.Warn);
-            return result.Outcome is not ProcessKillOutcome.AccessDenied
-                                  and not ProcessKillOutcome.StillRunning;
+                LogManager.Instance.LogMessage($"Failed to run taskkill fallback for {contextLabel} (PID {process.Id}): {result.TaskkillError.Message}", LogLevel.Warn);
+
+            switch (result.Outcome)
+            {
+                case ProcessKillOutcome.AccessDenied:
+                    LogManager.Instance.LogMessage($"{contextLabel} (PID {process.Id}) could not be killed - access denied or process protected", LogLevel.Warn);
+                    return false;
+                case ProcessKillOutcome.StillRunning:
+                    LogManager.Instance.LogMessage($"{contextLabel} (PID {process.Id}) still running after kill attempts", LogLevel.Warn);
+                    return false;
+                default:
+                    return true;
+            }
         }
 
-        /// <summary>Kills all running processes matching <paramref name="processName"/> and logs outcomes per process.</summary>
+        /// <summary>Kills all running processes matching <paramref name="processName"/>; per-process outcome is logged inside <see cref="KillProcess"/>.</summary>
         internal static void KillProcessesByName(string processName, int killTimeoutMs, string clientName)
         {
             foreach (var proc in Process.GetProcessesByName(processName))
             {
                 try
                 {
-                    if (!KillProcess(proc, killTimeoutMs))
-                        LogManager.Instance.LogMessage($"{clientName} process (PID {proc.Id}) still running after kill attempts", LogLevel.Warn);
+                    KillProcess(proc, $"{clientName} process", killTimeoutMs);
                 }
                 catch (Exception ex) { LogManager.Instance.LogDebug($"{clientName}.KillProcessesByName: Failed to kill process: {ex.Message}"); }
                 finally { proc.Dispose(); }

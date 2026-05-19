@@ -1,3 +1,5 @@
+using qbPortWeaver.Shared;
+
 namespace qbPortWeaver
 {
     /// <summary>Settings dialog for configuring VPN provider, BitTorrent client connection, sync interval, and extra options.</summary>
@@ -13,7 +15,7 @@ namespace qbPortWeaver
         public SettingsForm()
         {
             InitializeComponent();
-            Text = $"{AppConstants.AppName} | Settings";
+            Text = $"{AppIdentity.AppName} | Settings";
         }
 
         protected override void OnLoad(EventArgs e)
@@ -234,7 +236,7 @@ namespace qbPortWeaver
             {
                 MessageBox.Show(
                     "No NAT-PMP capable adapters were found.\n\nEnsure the adapter is up and its gateway is responding to NAT-PMP, then click \u21bb to retry.",
-                    AppConstants.AppName,
+                    AppIdentity.AppName,
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Warning);
                 return;
@@ -252,7 +254,7 @@ namespace qbPortWeaver
             {
                 MessageBox.Show(
                     $"The {clientName} URL is not valid. Enter a URL starting with http:// or https://",
-                    AppConstants.AppName,
+                    AppIdentity.AppName,
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Warning);
                 return;
@@ -269,7 +271,7 @@ namespace qbPortWeaver
             {
                 var result = MessageBox.Show(
                     "The color theme change takes effect after restarting.\n\nRestart now?",
-                    AppConstants.AppName,
+                    AppIdentity.AppName,
                     MessageBoxButtons.YesNo,
                     MessageBoxIcon.Question);
                 if (result == DialogResult.Yes)

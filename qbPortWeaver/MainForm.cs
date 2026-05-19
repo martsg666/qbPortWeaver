@@ -1,3 +1,4 @@
+using qbPortWeaver.Shared;
 using System.ComponentModel;
 using System.Runtime.InteropServices;
 
@@ -108,7 +109,7 @@ namespace qbPortWeaver
             try
             {
                 // Log once at startup so the version is visible in the log file for diagnostics
-                LogManager.Instance.LogMessage($"{AppConstants.AppName} {AppConstants.AppVersion} starting", LogLevel.Info);
+                LogManager.Instance.LogMessage($"{AppIdentity.AppName} {AppConstants.AppVersion} starting", LogLevel.Info);
 
                 // Perform initial log rotation check
                 LogManager.Instance.CheckAndRotateLogFile();
@@ -144,7 +145,7 @@ namespace qbPortWeaver
                     InvokeOnUiThread(() =>
                     {
                         MessageBox.Show($"Fatal startup error: {ex.Message}\n\nThe application will now exit.",
-                            AppConstants.AppName, MessageBoxButtons.OK, MessageBoxIcon.Error);
+                            AppIdentity.AppName, MessageBoxButtons.OK, MessageBoxIcon.Error);
                         Application.Exit();
                     });
                 }
@@ -278,7 +279,7 @@ namespace qbPortWeaver
             _trayIcon = new NotifyIcon
             {
                 Icon = _iconBase,
-                Text = $"{AppConstants.AppName} {AppConstants.AppVersion}",
+                Text = $"{AppIdentity.AppName} {AppConstants.AppVersion}",
                 Visible = true,
                 ContextMenuStrip = _trayMenu
             };
@@ -292,7 +293,7 @@ namespace qbPortWeaver
         {
             LogManager.Instance.ClearLogs();
             ResetLogAlerts();
-            _trayIcon.ShowBalloonTip(AppConstants.BalloonTipDurationMs, AppConstants.AppName, "Logs cleared", ToolTipIcon.Info);
+            _trayIcon.ShowBalloonTip(AppConstants.BalloonTipDurationMs, AppIdentity.AppName, "Logs cleared", ToolTipIcon.Info);
         }
 
         private void showSettings_Click(object? sender, EventArgs e)
@@ -359,14 +360,14 @@ namespace qbPortWeaver
         private void OnInterfaceMismatchDetected(string message)
         {
             if (_shutdownCts.IsCancellationRequested) return;
-            InvokeOnUiThread(() => { _logAlertBalloonPending = false; _trayIcon.ShowBalloonTip(AppConstants.BalloonTipDurationMs, AppConstants.AppName, message, ToolTipIcon.Warning); });
+            InvokeOnUiThread(() => { _logAlertBalloonPending = false; _trayIcon.ShowBalloonTip(AppConstants.BalloonTipDurationMs, AppIdentity.AppName, message, ToolTipIcon.Warning); });
         }
 
         // Called by PortSyncService when the BitTorrent client's listening port is successfully updated
         private void OnPortUpdated(string message) // NOSONAR S2325 - ShowBalloonTip is an instance method, handler cannot be static
         {
             if (_shutdownCts.IsCancellationRequested) return;
-            InvokeOnUiThread(() => { _logAlertBalloonPending = false; _trayIcon.ShowBalloonTip(AppConstants.BalloonTipDurationMs, AppConstants.AppName, message, ToolTipIcon.Info); });
+            InvokeOnUiThread(() => { _logAlertBalloonPending = false; _trayIcon.ShowBalloonTip(AppConstants.BalloonTipDurationMs, AppIdentity.AppName, message, ToolTipIcon.Info); });
         }
 
         // Runs the port-sync loop until shutdown is requested.
@@ -555,7 +556,7 @@ namespace qbPortWeaver
                 countSuffix  = $"\n{wPart}{sep}{ePart}";
             }
 
-            string header = $"{AppConstants.AppName} {AppConstants.AppVersion}\n";
+            string header = $"{AppIdentity.AppName} {AppConstants.AppVersion}\n";
             int statusBudget = AppConstants.MaxTooltipLength - header.Length - countSuffix.Length;
             if (statusLine.Length > statusBudget)
                 statusLine = statusLine[..Math.Max(0, statusBudget)];
@@ -593,7 +594,7 @@ namespace qbPortWeaver
                 {
                     _logAlertBalloonShown   = true;
                     _logAlertBalloonPending = true;
-                    _trayIcon.ShowBalloonTip(AppConstants.BalloonTipDurationMs, AppConstants.AppName,
+                    _trayIcon.ShowBalloonTip(AppConstants.BalloonTipDurationMs, AppIdentity.AppName,
                         LogAlertBalloonMessage, ToolTipIcon.Warning);
                 }
             });

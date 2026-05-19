@@ -444,7 +444,7 @@ namespace qbPortWeaver
             string disconnectedMsg = $"NAT-PMP adapter '{adapterName}' not found - VPN may be disconnected";
             await RegisterFailureAndTryRecoveryAsync(
                 disconnectedMsg, LogLevel.Info,
-                providerToken is not null ? HelperServiceClient.ActionRestart : HelperServiceClient.ActionCycleAdapter,
+                providerToken is not null ? HelperProtocol.ActionRestart : HelperProtocol.ActionCycleAdapter,
                 providerToken ?? adapterName,
                 $"NAT-PMP adapter '{adapterName}'",
                 cfg, cancellationToken).ConfigureAwait(false);
@@ -717,7 +717,7 @@ namespace qbPortWeaver
             LogManager.Instance.LogMessage(
                 $"Triggering '{action}' for '{displayName}' after {count} consecutive failed {(count == 1 ? "cycle" : "cycles")}",
                 LogLevel.Info);
-            if (action == HelperServiceClient.ActionRestart)
+            if (action == HelperProtocol.ActionRestart)
                 await AutoRecoveryManager.TriggerRestartAsync(recoveryTarget, cancellationToken).ConfigureAwait(false);
             else
                 await AutoRecoveryManager.TriggerCycleAdapterAsync(recoveryTarget, cancellationToken).ConfigureAwait(false);

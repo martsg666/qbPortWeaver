@@ -63,7 +63,7 @@ namespace qbPortWeaver
         public string? GetRecoveryTarget() => ProviderName;
 
         /// <inheritdoc />
-        public string GetRecoveryAction() => HelperServiceClient.ActionRestart;
+        public string GetRecoveryAction() => HelperProtocol.ActionRestart;
 
         /// <inheritdoc />
         public bool IsAdapterMatch(string interfaceName) => Config.MatchesAdapterName(interfaceName);

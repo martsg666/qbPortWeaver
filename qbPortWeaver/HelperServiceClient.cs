@@ -35,14 +35,6 @@ namespace qbPortWeaver
     /// <summary>Sends privileged action requests to the helper Windows service via named pipe.</summary>
     internal static class HelperServiceClient
     {
-        internal const string ActionRestart      = HelperProtocol.ActionRestart;
-        internal const string ActionCycleAdapter = HelperProtocol.ActionCycleAdapter;
-
-        // Result line keys/sentinels returned by the helper service.
-        internal const string ResultWarnKey          = HelperProtocol.ResultWarnKey;
-        internal const string ResultErrorKey         = HelperProtocol.ResultErrorKey;
-        internal const string ResultRejectedSentinel = HelperProtocol.ResultRejectedSentinel;
-
         private const int PipeConnectTimeoutMs = 5000;
         // Bound for awaiting the helper's response. Covers the helper's pathological
         // restart path (stop ~45s + 5s pause + start ~30s = ~80s) with headroom. The
@@ -54,11 +46,11 @@ namespace qbPortWeaver
 
         /// <summary>Asks the helper service to stop and restart the Windows service with the given <paramref name="serviceName"/>.</summary>
         internal static Task<HelperResult> SendRestartAsync(string serviceName, CancellationToken cancellationToken = default) =>
-            SendAsync(ActionRestart, serviceName, cancellationToken);
+            SendAsync(HelperProtocol.ActionRestart, serviceName, cancellationToken);
 
         /// <summary>Asks the helper service to disable and re-enable the named network adapter.</summary>
         internal static Task<HelperResult> SendCycleAdapterAsync(string adapterName, CancellationToken cancellationToken = default) =>
-            SendAsync(ActionCycleAdapter, adapterName, cancellationToken);
+            SendAsync(HelperProtocol.ActionCycleAdapter, adapterName, cancellationToken);
 
         // Sends a pipe-delimited command to the helper service: action|target|sessionToken.
         // Reads back a single result line: warn=N|error=M (helper-side WARN/ERROR counts).
@@ -79,7 +71,7 @@ namespace qbPortWeaver
 
             try
             {
-                await using var pipe = new NamedPipeClientStream(".", AppConstants.HelperServicePipeName, PipeDirection.InOut);
+                await using var pipe = new NamedPipeClientStream(".", HelperProtocol.PipeName, PipeDirection.InOut);
                 await pipe.ConnectAsync(PipeConnectTimeoutMs, cancellationToken).ConfigureAwait(false);
                 await using var writer = new StreamWriter(pipe, leaveOpen: true) { AutoFlush = true };
                 using var reader = new StreamReader(pipe, leaveOpen: true); // StreamReader lacks IAsyncDisposable; synchronous Dispose is safe here (flushes no writes)
@@ -138,7 +130,7 @@ namespace qbPortWeaver
         private static HelperResult ParseResult(string? response)
         {
             if (string.IsNullOrWhiteSpace(response)) return HelperResult.Failed;
-            if (response == ResultRejectedSentinel)  return HelperResult.Rejected;
+            if (response == HelperProtocol.ResultRejectedSentinel)  return HelperResult.Rejected;
 
             int warn = 0, error = 0;
             bool anyKeyParsed = false;
@@ -146,8 +138,8 @@ namespace qbPortWeaver
             {
                 var kv = part.Split('=', 2);
                 if (kv.Length != 2 || !int.TryParse(kv[1], out int value)) continue;
-                if      (kv[0] == ResultWarnKey)  { warn  = value; anyKeyParsed = true; }
-                else if (kv[0] == ResultErrorKey) { error = value; anyKeyParsed = true; }
+                if      (kv[0] == HelperProtocol.ResultWarnKey)  { warn  = value; anyKeyParsed = true; }
+                else if (kv[0] == HelperProtocol.ResultErrorKey) { error = value; anyKeyParsed = true; }
             }
             return anyKeyParsed ? HelperResult.Ok(warn, error) : HelperResult.Failed;
         }

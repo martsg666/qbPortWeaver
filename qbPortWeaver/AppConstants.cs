@@ -175,17 +175,10 @@ public static class AppConstants
                 int end = imagePath.IndexOf('"', 1);
                 imagePath = end > 0 ? imagePath[1..end] : imagePath[1..];
             }
-            else
+            else if (!File.Exists(imagePath))
             {
-                // Unquoted ImagePath might be a bare exe with spaces in its path (e.g. "C:\Program Files\...")
-                // OR an exe followed by arguments (e.g. "C:\path\exe.exe -arg"). Try the full string first;
-                // only fall back to first-space split if the full path does not resolve. Quoted paths above
-                // already handle the unambiguous case correctly.
-                if (!File.Exists(imagePath))
-                {
-                    int space = imagePath.IndexOf(' ');
-                    if (space > 0) imagePath = imagePath[..space];
-                }
+                int space = imagePath.IndexOf(' ');
+                if (space > 0) imagePath = imagePath[..space];
             }
 
             return Path.GetDirectoryName(Path.GetFullPath(imagePath));

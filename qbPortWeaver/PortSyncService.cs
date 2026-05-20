@@ -418,7 +418,7 @@ public sealed class PortSyncService
             !_lastKnownNatPmpManager.ProviderName.Equals(cfg.NatPmpAdapterName, StringComparison.OrdinalIgnoreCase))
             _lastKnownNatPmpManager = null;
 
-        var selected = await NatPmpManager.TryCreateForAdapterAsync(cfg.NatPmpAdapterName).ConfigureAwait(false);
+        var selected = await NatPmpManager.TryCreateForAdapterAsync(cfg.NatPmpAdapterName, cancellationToken: cancellationToken).ConfigureAwait(false);
 
         if (selected is not null)
         {

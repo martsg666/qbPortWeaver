@@ -41,7 +41,8 @@ public sealed class NatPmpManager : IVpnManager
     /// gateway responds are returned. Used by SettingsForm to populate the adapter list.
     /// </summary>
     /// <param name="mappingLifetime">Requested port mapping duration in seconds; the gateway may grant less.</param>
-    public static async Task<IReadOnlyList<NatPmpManager>> DiscoverAdaptersAsync(uint mappingLifetime = DefaultMappingLifetime)
+    /// <param name="cancellationToken">Cancels in-flight UDP probes so app shutdown is not delayed.</param>
+    public static async Task<IReadOnlyList<NatPmpManager>> DiscoverAdaptersAsync(uint mappingLifetime = DefaultMappingLifetime, CancellationToken cancellationToken = default)
     {
         var candidates = new List<(NetworkInterface Nic, IPAddress Gateway)>();
 
@@ -59,7 +60,7 @@ public sealed class NatPmpManager : IVpnManager
         // Probe all candidates in parallel to verify NAT-PMP support
         var probeResults = await Task.WhenAll(candidates.Select(async c =>
         {
-            IPAddress? externalIp = await RequestExternalAddressAsync(c.Gateway).ConfigureAwait(false);
+            IPAddress? externalIp = await RequestExternalAddressAsync(c.Gateway, cancellationToken: cancellationToken).ConfigureAwait(false);
             LogProbeResultDebug("DiscoverAdaptersAsync", c.Nic.Name, c.Gateway, externalIp);
             return (c.Nic, c.Gateway, Supported: externalIp is not null);
         })).ConfigureAwait(false);
@@ -80,7 +81,8 @@ public sealed class NatPmpManager : IVpnManager
     /// </summary>
     /// <param name="adapterName">The adapter name to match (case-insensitive).</param>
     /// <param name="mappingLifetime">Requested port mapping duration in seconds; the gateway may grant less.</param>
-    public static async Task<NatPmpManager?> TryCreateForAdapterAsync(string adapterName, uint mappingLifetime = DefaultMappingLifetime)
+    /// <param name="cancellationToken">Cancels in-flight UDP probes so the sync cycle can yield promptly on shutdown.</param>
+    public static async Task<NatPmpManager?> TryCreateForAdapterAsync(string adapterName, uint mappingLifetime = DefaultMappingLifetime, CancellationToken cancellationToken = default)
     {
         NetworkInterface? nic = GetActiveNetworkInterfaces()
             .FirstOrDefault(n => n.Name.Equals(adapterName, StringComparison.OrdinalIgnoreCase));
@@ -98,7 +100,7 @@ public sealed class NatPmpManager : IVpnManager
             return null;
         }
 
-        IPAddress? externalIp = await RequestExternalAddressAsync(gateway, MaxAttempts).ConfigureAwait(false);
+        IPAddress? externalIp = await RequestExternalAddressAsync(gateway, MaxAttempts, cancellationToken).ConfigureAwait(false);
         LogProbeResultDebug("TryCreateForAdapterAsync", adapterName, gateway, externalIp);
 
         return externalIp is not null ? new NatPmpManager(nic, gateway, mappingLifetime) : null;
@@ -287,12 +289,12 @@ public sealed class NatPmpManager : IVpnManager
     // Sends a NAT-PMP external address request (RFC 6886 opcode 0) and returns the public IP.
     // maxAttempts=1 for discovery (best-effort, all adapters probed in parallel)
     // MaxAttempts for targeted probes where retrying a single adapter is worthwhile.
-    private static async Task<IPAddress?> RequestExternalAddressAsync(IPAddress gateway, int maxAttempts = 1)
+    private static async Task<IPAddress?> RequestExternalAddressAsync(IPAddress gateway, int maxAttempts = 1, CancellationToken cancellationToken = default)
     {
         // version=0, opcode=0 (external address request) - both zero by default
         byte[] request = new byte[2];
 
-        byte[]? data = await SendReceiveAsync(gateway, request, maxAttempts).ConfigureAwait(false);
+        byte[]? data = await SendReceiveAsync(gateway, request, maxAttempts, cancellationToken).ConfigureAwait(false);
         if (data is null)
             return null;
 

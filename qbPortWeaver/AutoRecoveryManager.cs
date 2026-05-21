@@ -88,7 +88,7 @@ internal static class AutoRecoveryManager
     // waits briefly, then relaunches it. Runs in the main app's user session - no
     // elevation or WTS token manipulation needed.
     // If the process is not running, falls back to the registry-derived exe path via getInstalledExePath.
-    private static async Task RestartClientProcessAsync(string processName, Func<string?>? getInstalledExePath, CancellationToken cancellationToken = default)
+    private static async Task RestartClientProcessAsync(string processName, Func<string?> getInstalledExePath, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(processName))
         {
@@ -109,7 +109,7 @@ internal static class AutoRecoveryManager
         // Fall back to registry-derived exe path if the process was not running
         if (exePath is null)
         {
-            exePath = getInstalledExePath?.Invoke();
+            exePath = getInstalledExePath();
             if (exePath is not null)
                 LogManager.Instance.LogDebug($"AutoRecoveryManager.RestartClientProcessAsync: Using registry-discovered EXE path for '{processName}': {exePath}");
         }

@@ -26,7 +26,8 @@ public partial class WhatsNewForm : Form
         "A new dropdown in the log viewer lets you browse rotated backup files without leaving the viewer. " +
         "Select Current for the live log or Backup 1-4 for older rotated files.\n\n" +
         "More log history\n" +
-        "The number of retained log files has been increased from 3 to 5 (current + 4 backups at 5 MB each).\n\n" +
+        "The number of retained log files has been increased from 3 to 5, and the per-file size limit raised from 5 MB to 20 MB (100 MB total). " +
+        "This keeps significantly more history available in the log viewer, especially useful when reviewing warnings and errors over longer periods.\n\n" +
         "Previously released\n\n" +
         "New in 2.5.2\n\n" +
         "qBittorrent 5.2.0 compatibility\n" +

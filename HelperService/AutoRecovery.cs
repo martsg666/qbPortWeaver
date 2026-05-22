@@ -430,7 +430,9 @@ internal static partial class AutoRecovery
                 return false;
             }
 
-            // Process has exited - streams are closed so drain tasks complete promptly
+            // Process has exited - streams are closed so drain tasks complete promptly.
+            // Re-throw if shutdown was requested so the caller sees OCE, not a spurious Warn.
+            cancellationToken.ThrowIfCancellationRequested();
             string stdout = await stdoutTask.ConfigureAwait(false);
             string stderr = await stderrTask.ConfigureAwait(false);
 

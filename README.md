@@ -2,10 +2,10 @@
 
 ## Overview
 
-**qbPortWeaver** is a Windows application designed to sync the listening port of **qBittorrent**, **Transmission**, or **Deluge** with the port assigned by your VPN provider (**ProtonVPN**, **Private Internet Access**, or any **NAT-PMP capable VPN gateway or router**).
+**qbPortWeaver** is a Windows tray application that syncs the listening port of **qBittorrent**, **Transmission**, or **Deluge** with the port assigned by your VPN provider (**ProtonVPN**, **Private Internet Access**, or any **NAT-PMP capable VPN gateway or router**).
 This ensures your client always uses the VPN-provided port, improving privacy and connectivity.
 
-The application runs in the system tray, manages configuration and logging, and automatically updates the configured client's listening port when changes are detected.
+The application runs in the system tray, manages configuration and logging, and automatically updates the configured client's listening port when changes are detected. It also includes a **Media Manager** for importing files into Plex-compatible library folders using TMDB title matching.
 
 ---
 
@@ -48,6 +48,9 @@ The application runs in the system tray, manages configuration and logging, and 
 - **Port Update Notification**
   Optionally shows a tray balloon tip when the BitTorrent client's listening port is successfully updated to a new value. Enabled by default. Configurable via Settings > General.
 
+- **Log Alert Notifications**
+  When a warning or error is written to the log, a tray balloon tip appears once to get your attention. Clicking the balloon opens the log viewer at the most recent warning or error. The **Show Logs** menu item shows a running count (e.g. "Show Logs (2 warnings, 1 error)"), and hovering over the tray icon shows the same count in plain text (e.g. "2 Warnings, 1 Error"). All alerts clear automatically when the log viewer is opened or logs are cleared.
+
 - **Auto-Recovery**
   Automatically recovers when a configurable number of consecutive sync cycles fail - whether the VPN is disconnected or port detection fails despite the VPN being connected. For ProtonVPN and PIA (direct or NAT-PMP mode), the helper restarts the Windows service and the tray app restarts the client process. For NAT-PMP with a generic (non-ProtonVPN/PIA) gateway, the helper cycles the network adapter (disable/enable via netsh). All privileged operations are delegated to a lightweight helper Windows service (`qbPortWeaverHelper`) running as LocalSystem - no UAC prompt required.
 
@@ -65,16 +68,16 @@ The application runs in the system tray, manages configuration and logging, and 
   Runs quietly in the background with a system tray icon for quick access to logs, settings, and controls.
 
 - **Tray Status Indicator**
-  After each sync cycle the tray icon shows a colored status dot: **green** (ports aligned), **orange** (VPN not connected), **red** (error), or **no dot** (port sync disabled). Hovering over the icon displays the current port and status at a glance, without opening the log file.
+  After each sync cycle the tray icon shows a colored status dot: **green** (ports aligned), **orange** (VPN not connected), **red** (error), or **no dot** (port sync disabled). Hovering over the icon displays the current port and status, and an unviewed log count if warnings or errors have occurred (e.g. "2 Warnings, 1 Error").
 
 - **Settings Dialog**
   All configuration options are editable through a dedicated Settings form (tray menu → Settings), with inline descriptions and tooltips for each option.
 
 - **Log Viewer**
-  Built-in log viewer (tray menu → Show Logs, or double-click the tray icon) displays the log file with color-coded entries by level (error, warn, info, debug) and follows new entries in real time. Includes a search bar with match highlighting and prev/next navigation, toggle buttons to filter by log level, and a subsystem filter to isolate entries from a specific component. Adapts to the application color theme (System, Dark, or Light).
+  Built-in log viewer (tray menu → Show Logs, or double-click the tray icon) displays the log file with color-coded entries by level (error, warn, info, debug) and follows new entries in real time. Includes a search bar with match highlighting and prev/next navigation, dedicated prev/next buttons to step between warnings and errors without affecting the search, toggle buttons to filter by log level, and a subsystem filter to isolate entries from a specific component. Adapts to the application color theme (System, Dark, or Light).
 
 - **Logging**
-  Logs all operations and errors, with automatic log size management (5 MB per file, up to 3 rotated files). Clear logs directly from the tray menu.
+  Logs all operations and errors, with automatic log size management (20 MB per file, up to 5 files total). Clear logs directly from the tray menu.
 
 - **Last-Run Status File**
   Writes a JSON status file (`%LocalAppData%\qbPortWeaver\qbPortWeaver.status.json`) after each sync cycle, exposing VPN port, client port, timestamps, and completion status for external scripts.
@@ -194,13 +197,13 @@ Configured via tray menu → **Media Manager**.
    - Runs the optional post-update command if configured. e.g., `powershell -File "C:\path\to\SampleSendMail.ps1"`
 8. *(qBittorrent only)* If **Restart on disconnect** is enabled (and qBittorrent was not already restarted in step 7): checks qBittorrent's connection status and restarts it if disconnected.
 9. Writes the JSON status file (`%LocalAppData%\qbPortWeaver\qbPortWeaver.status.json`) and updates the tray icon and tooltip.
-10. If **Media Manager** is enabled: scans the configured source folders, queries TMDB for each unrecognised title, and imports files into the library with Plex-compatible names. In **dry-run** mode no files are touched; use **Scan Now** in the Media Manager dialog to preview results first. Uncertain TMDB matches are skipped automatically and flagged for manual review in the dialog.
-11. Waits for the configured interval before repeating.
+10. Waits for the configured interval before repeating. If a manual sync was triggered, the wait is shortened to 10 seconds.
+11. In parallel with the wait, if **Media Manager** is enabled: scans the configured source folders, queries TMDB for each unrecognised title, and imports files into the library with Plex-compatible names. Runs as a fire-and-forget task so a slow library scan does not delay the next port sync cycle - if a previous import is still running when the next cycle starts, the new import is skipped to avoid pile-up. In **dry-run** mode no files are touched; use **Scan Now** in the Media Manager dialog to preview results first. Uncertain TMDB matches are skipped automatically and flagged for manual review in the dialog.
 
 ### Tray Menu Options
 
 - **Sync Port Now** - triggers an immediate sync cycle, skipping the current wait interval
-- **Show Logs** - opens the built-in Log Viewer (also opened by double-clicking the tray icon)
+- **Show Logs** - opens the built-in Log Viewer (also opened by double-clicking the tray icon); shows a warning/error count badge when unviewed entries exist
 - **Clear Logs** - deletes all log files and starts a fresh log
 - **Settings** - opens the Settings dialog
 - **Media Manager** - opens the Media Manager dialog to configure source and library folders, preview imports (Scan Now), apply them (Import Now), and clear fingerprint caches (Clear Cache)
@@ -277,6 +280,7 @@ NAT-PMP (RFC 6886) is a protocol for requesting port mappings directly from a ga
 - Use the **remote session** (connect via `http://localhost:9091` in qbPortWeaver Settings). Do not use Transmission's local session; when qbPortWeaver restarts the process, the RPC endpoint is the only reliable way to communicate across restarts.
 - If Transmission is installed as a **Windows service**, qbPortWeaver detects it automatically.
 - If running as a **user-space process** (e.g. Transmission Qt), set the Process name (e.g. `transmission-qt`) and the Executable path so qbPortWeaver can restart it after a port change.
+- **Enable your VPN client's killswitch** to prevent traffic leaks. Transmission only allows binding to an IP address (not an adapter name), and the IP assigned by the VPN typically rotates on reconnection - making bind-address rules brittle. The VPN killswitch blocks all traffic when the tunnel is down, regardless of what address Transmission is bound to. Both ProtonVPN and PIA expose this option in their desktop clients.
 
 #### Deluge
 
@@ -284,6 +288,7 @@ NAT-PMP (RFC 6886) is a protocol for requesting port mappings directly from a ga
 - Set the URL in qbPortWeaver Settings to match the Web UI address (default `http://127.0.0.1:8112`).
 - Set the Process name (e.g. `deluge`) and Executable path so qbPortWeaver can restart it after a port change.
 - Disable **UPnP** and **NAT-PMP** in Deluge preferences (Preferences > Network) since the port is managed externally.
+- **Enable your VPN client's killswitch** to prevent traffic leaks. Deluge only allows binding to an IP address (not an adapter name), and the IP assigned by the VPN typically rotates on reconnection - making bind-address rules brittle. The VPN killswitch blocks all traffic when the tunnel is down, regardless of what address Deluge is bound to. Both ProtonVPN and PIA expose this option in their desktop clients.
 
 ### 7. qbPortWeaver
 
@@ -295,8 +300,8 @@ NAT-PMP (RFC 6886) is a protocol for requesting port mappings directly from a ga
 ## Logging
 
 - All actions and errors are logged to `%LocalAppData%\qbPortWeaver\qbPortWeaver.log`.
-- Log files are automatically rotated when exceeding **5 MB**, keeping up to 3 files (current + 2 backups).
-- Open the **Log Viewer** from the tray menu (Show Logs) or by double-clicking the tray icon. It shows color-coded entries (red for errors, gold for warnings, blue for info, orange for debug) and tails new entries live. Use the search bar to find and highlight matches with prev/next navigation, the level filter buttons to show only the levels you care about, or the subsystem dropdown to isolate entries from a specific component. The viewer adapts to the application color theme configured in Settings.
+- Log files are automatically rotated when exceeding **20 MB**, keeping up to 5 files (current + 4 backups).
+- Open the **Log Viewer** from the tray menu (Show Logs) or by double-clicking the tray icon. It shows color-coded entries (red for errors, gold for warnings, blue for info, orange for debug) and tails new entries live. Use the search bar to find and highlight matches with prev/next navigation, the level filter buttons to show only the levels you care about, the subsystem dropdown to isolate entries from a specific component, or the file picker to browse rotated backup files. The viewer adapts to the application color theme configured in Settings.
 
 ---
 
@@ -344,12 +349,12 @@ The application is designed to always recover. A failing cycle never crashes the
 ```
 master  ──────────────────────────────────────────────────────────────► (always latest release)
            │                                                          ▲
-           │  git checkout -b 2.6.0 origin/2.5.0                    │ git merge --no-ff 2.6.0
+           │  git checkout -b <new-release> origin/<previous-release>│ git merge --no-ff <new-release>
            ▼                                                          │
-2.6.0   ──┬───────────────────────────────────────── git tag v2.6.0 ─┘
+<new-release> ──┬────────────────────────── git tag v<new-release> ──┘
            │                                                  │
-           ├── fix/some-bug   → PR → merge into 2.6.0         └─► CI/CD pipeline triggers
-           └── feature/new-ui → PR → merge into 2.6.0               ├─ dotnet publish (self-contained win-x64)
+           ├── fix/some-bug   → PR → merge into <new-release> └─► CI/CD pipeline triggers
+           └── feature/new-ui → PR → merge into <new-release>       ├─ dotnet publish (self-contained win-x64)
                                                                       ├─ WiX MSI build
                                                                       ├─ GitHub Release created
                                                                       └─ MSI + .nupkg uploaded to release
@@ -359,35 +364,35 @@ master  ────────────────────────
 
 1. **Create a release branch** from the previous release branch:
    ```
-   git checkout -b 2.6.0 origin/2.5.0
-   git push -u origin 2.6.0
+   git checkout -b <new-release> origin/<previous-release>
+   git push -u origin <new-release>
    ```
 
 2. **Create fix or feature branches** off the release branch and open a PR targeting it:
    ```
-   git checkout -b fix/my-fix origin/2.6.0
+   git checkout -b fix/my-fix origin/<new-release>
    # or
-   git checkout -b feature/my-feature origin/2.6.0
+   git checkout -b feature/my-feature origin/<new-release>
    ```
 
 3. **Tag the release branch** once all testing is complete - this triggers the pipeline:
    ```
-   git tag v2.6.0 origin/2.6.0
-   git push origin v2.6.0
+   git tag v<new-release> origin/<new-release>
+   git push origin v<new-release>
    ```
    Pushing the tag automatically triggers the **Build and Release** pipeline, which builds the app, compiles the MSI installer, creates the GitHub Release, and uploads the MSI and Chocolatey package as release assets. Once the previous Chocolatey version is approved, run the **Publish to Chocolatey** workflow manually from the Actions tab.
 
 4. **Merge the release branch into `master`** after the pipeline completes successfully:
    ```
    git checkout master
-   git merge --no-ff 2.6.0
+   git merge --no-ff <new-release>
    git push origin master
    ```
 
 5. **Do not delete release branches.** They serve as the base for future hotfixes. If a branch is accidentally deleted it can be reconstructed from its tag:
    ```
-   git checkout -b 2.6.0 v2.6.0
-   git push origin 2.6.0
+   git checkout -b <new-release> v<new-release>
+   git push origin <new-release>
    ```
 
 ---

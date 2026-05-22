@@ -1,7 +1,10 @@
-using System.IO.Pipes;
+﻿using System.IO.Pipes;
 using System.Security.AccessControl;
+using System.Security.Cryptography;
 using System.Security.Principal;
+using System.Text;
 using Microsoft.Win32;
+using qbPortWeaver.Shared;
 
 namespace qbPortWeaver.HelperService;
 
@@ -15,26 +18,27 @@ namespace qbPortWeaver.HelperService;
 /// so that only the user running the tray app can send commands to this SYSTEM-level service.
 /// The log file path is derived from the caller's HKCU Volatile Environment during impersonation
 /// rather than being caller-supplied, so no path validation is needed.
+///
+/// Trust boundary: the helper trusts any caller that (a) has access to the named pipe ACL
+/// (AuthenticatedUserSid) and (b) can read the pipeSessionToken value from their own HKCU hive.
+/// In practice this is the user the tray app runs under, plus any local administrator (who can
+/// read any user's HKCU). Once trusted, the caller can name any Windows service for restart and
+/// any adapter name for cycle. The helper does not allowlist service names because the service
+/// search terms themselves are user-configurable in HKCU; an attacker with user-level write
+/// access to HKCU would simply rewrite the search term to point at any other service before
+/// sending the restart request, so an allowlist sourced from HKCU adds no protection. A baked-in
+/// allowlist would help but the realistic threat (malware already running as the user) implies
+/// the attacker has user-scope access already, and the user-to-SYSTEM escalation is accepted as
+/// the documented privilege boundary the helper crosses.
 /// </summary>
 internal sealed class HelperPipeServer(ILogger<HelperPipeServer> logger) : BackgroundService
 {
-    internal const string HelperServicePipeName = "qbPortWeaverHelper"; // Must match AppConstants.HelperServicePipeName in qbPortWeaver
-    private  const int    PipeErrorRetryDelayMs  = 1000;
-    private  const int    PipeReadTimeoutMs      = 5_000;
+    private const int PipeErrorRetryDelayMs = 1000;
+    private const int PipeReadTimeoutMs = 5_000;
 
-    private const string ActionRestart      = "restart";       // Must match HelperServiceClient.ActionRestart in qbPortWeaver
-    private const string ActionCycleAdapter = "cycle-adapter"; // Must match HelperServiceClient.ActionCycleAdapter in qbPortWeaver
-
-    // Registry paths and keys for impersonated HKCU reads.
-    // AppRegistryKey / PipeSessionTokenKey must match RegistrySettingsManager.AppKeyPath / KeyPipeSessionToken in qbPortWeaver.
-    private const string AppRegistryKey         = @"Software\qbPortWeaver";
-    private const string PipeSessionTokenKey    = "pipeSessionToken";
+    // Registry paths and keys for impersonated HKCU reads. Subkey names not in AppIdentity are session-environment specific.
     private const string VolatileEnvironmentKey = @"Volatile Environment";
-    private const string LocalAppDataValue      = "LOCALAPPDATA";
-
-    // Log file path components - must match AppConstants.AppName / AppConstants.LogFileName in qbPortWeaver.
-    private const string AppSubFolderName = "qbPortWeaver";
-    private const string LogFileName      = "qbPortWeaver.log";
+    private const string LocalAppDataValue = "LOCALAPPDATA";
 
     private static readonly PipeSecurity PipeSecurity = CreatePipeSecurity();
 
@@ -70,31 +74,31 @@ internal sealed class HelperPipeServer(ILogger<HelperPipeServer> logger) : Backg
         logger.LogInformation("qbPortWeaver Helper Service stopped");
     }
 
-    private async Task ServeOneConnectionAsync(CancellationToken ct)
+    private async Task ServeOneConnectionAsync(CancellationToken cancellationToken)
     {
         // The pipe ACL grants ReadWrite to all authenticated users so the standard-user
         // qbPortWeaver client can send commands to this SYSTEM-level helper service.
         using var pipe = NamedPipeServerStreamAcl.Create(
-            HelperServicePipeName,
-            PipeDirection.In,
+            HelperProtocol.PipeName,
+            PipeDirection.InOut,
             maxNumberOfServerInstances: 1,
             PipeTransmissionMode.Byte,
             PipeOptions.Asynchronous,
-            inBufferSize:  0,
+            inBufferSize: 0,
             outBufferSize: 0,
             PipeSecurity);
 
-        await pipe.WaitForConnectionAsync(ct).ConfigureAwait(false);
+        await pipe.WaitForConnectionAsync(cancellationToken).ConfigureAwait(false);
 
-        using var reader  = new StreamReader(pipe, leaveOpen: true);
-        using var readCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        using var reader = new StreamReader(pipe, leaveOpen: true);
+        using var readCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         readCts.CancelAfter(PipeReadTimeoutMs);
         string? message;
         try
         {
             message = await reader.ReadLineAsync(readCts.Token).ConfigureAwait(false);
         }
-        catch (OperationCanceledException ex) when (!ct.IsCancellationRequested)
+        catch (OperationCanceledException ex) when (!cancellationToken.IsCancellationRequested)
         {
             logger.LogWarning(ex, "Pipe connection read timed out - client connected but sent no data");
             return;
@@ -105,17 +109,23 @@ internal sealed class HelperPipeServer(ILogger<HelperPipeServer> logger) : Backg
         var parts = message.Split('|', 3);
         if (parts.Length != 3)
         {
-            logger.LogWarning("Received malformed pipe message");
+            logger.LogWarning("Received malformed pipe message ({PartCount} part(s), expected 3): '{Message}'", parts.Length, message);
             return;
         }
 
-        var action          = parts[0];
-        var target          = parts[1];
+        var action = parts[0];
+        var target = parts[1];
         var pipeSessionToken = parts[2];
 
         if (!TryReadClientHkcu(pipe, pipeSessionToken, out var logFilePath))
         {
             logger.LogWarning("Rejected pipe message: session token mismatch or could not derive log file path");
+            try
+            {
+                await using var w = new StreamWriter(pipe, leaveOpen: true) { AutoFlush = true };
+                await w.WriteLineAsync(HelperProtocol.ResultRejectedSentinel).ConfigureAwait(false);
+            }
+            catch (IOException) { } // NOSONAR S108 - client likely disconnected before we could send the rejection; nothing more to report
             return;
         }
 
@@ -123,27 +133,29 @@ internal sealed class HelperPipeServer(ILogger<HelperPipeServer> logger) : Backg
 
         switch (action)
         {
-            case ActionRestart:
-                if (string.IsNullOrWhiteSpace(target))
-                {
-                    logger.LogWarning("Rejected restart request with empty service name");
-                    return;
-                }
-                await AutoRecovery.RestartServiceAsync(target, helperLogger).ConfigureAwait(false);
+            case HelperProtocol.ActionRestart:
+                await AutoRecovery.RestartServiceAsync(target, helperLogger, cancellationToken).ConfigureAwait(false);
                 break;
 
-            case ActionCycleAdapter:
-                if (string.IsNullOrWhiteSpace(target))
-                {
-                    logger.LogWarning("Rejected cycle-adapter request with empty adapter name");
-                    return;
-                }
-                await AutoRecovery.CycleAdapterAsync(target, helperLogger).ConfigureAwait(false);
+            case HelperProtocol.ActionCycleAdapter:
+                await AutoRecovery.CycleAdapterAsync(target, helperLogger, cancellationToken).ConfigureAwait(false);
                 break;
 
             default:
-                logger.LogWarning("Rejected unknown action '{Action}'", action);
+                helperLogger.LogWarn($"Rejected unknown action '{action}'");
                 break;
+        }
+
+        // Send back the helper-side WARN/ERROR counts so the tray app can raise its log-alert
+        // event for entries the helper wrote directly to the shared log file.
+        try
+        {
+            await using var writer = new StreamWriter(pipe, leaveOpen: true) { AutoFlush = true };
+            await writer.WriteLineAsync($"{HelperProtocol.ResultWarnKey}={helperLogger.WarnCount}|{HelperProtocol.ResultErrorKey}={helperLogger.ErrorCount}").ConfigureAwait(false);
+        }
+        catch (IOException ex)
+        {
+            logger.LogWarning(ex, "Failed to send result line back to pipe client");
         }
     }
 
@@ -154,24 +166,35 @@ internal sealed class HelperPipeServer(ILogger<HelperPipeServer> logger) : Backg
     private bool TryReadClientHkcu(NamedPipeServerStream pipe, string pipeSessionToken, out string logFilePath)
     {
         logFilePath = string.Empty;
-        var tokenValid      = false;
-        var derivedPath     = string.Empty; // captured by lambda; out params cannot be used inside lambdas
+        bool tokenValid = false;
+        string derivedPath = string.Empty; // captured by lambda; out params cannot be used inside lambdas
         try
         {
             pipe.RunAsClient(() =>
             {
-                using var appKey  = Registry.CurrentUser.OpenSubKey(AppRegistryKey);
-                var expectedToken = appKey?.GetValue(PipeSessionTokenKey) as string;
+                // Registry.CurrentUser resolves to the impersonated user's HKCU hive on .NET Core/5+
+                // (via NtOpenKey under the thread's impersonation token). This is the documented
+                // .NET behavior on Windows and holds for all supported targets. The alternative -
+                // RegOpenCurrentUser P/Invoke - is only needed if this assumption ever breaks.
+                using var appKey = Registry.CurrentUser.OpenSubKey(AppIdentity.AppRegistryKey);
+                var expectedToken = appKey?.GetValue(AppIdentity.PipeSessionTokenKey) as string;
+                // Use constant-time comparison to prevent timing side-channel attacks.
+                // string.Equals returns early on the first mismatch, leaking token length/prefix
+                // information to a local attacker who can measure pipe response times.
+                // The primary defence is the HKCU ACL (only the session owner can read the token),
+                // but FixedTimeEquals adds defence-in-depth for a SYSTEM-level dispatch gate.
                 tokenValid = !string.IsNullOrEmpty(expectedToken) &&
                              !string.IsNullOrEmpty(pipeSessionToken) &&
-                             string.Equals(expectedToken, pipeSessionToken, StringComparison.Ordinal);
+                             CryptographicOperations.FixedTimeEquals(
+                                 Encoding.UTF8.GetBytes(expectedToken),
+                                 Encoding.UTF8.GetBytes(pipeSessionToken));
 
                 if (tokenValid)
                 {
                     using var envKey = Registry.CurrentUser.OpenSubKey(VolatileEnvironmentKey);
                     var localAppData = envKey?.GetValue(LocalAppDataValue) as string;
                     if (!string.IsNullOrEmpty(localAppData))
-                        derivedPath = Path.Combine(localAppData, AppSubFolderName, LogFileName);
+                        derivedPath = Path.Combine(localAppData, AppIdentity.AppName, AppIdentity.LogFileName);
                 }
             });
         }

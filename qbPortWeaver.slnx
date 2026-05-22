@@ -1,4 +1,5 @@
 <Solution>
+  <Project Path="qbPortWeaver.Shared/qbPortWeaver.Shared.csproj" />
   <Project Path="qbPortWeaver/qbPortWeaver.csproj" />
   <Project Path="HelperService/qbPortWeaver.HelperService.csproj" />
 </Solution>

@@ -1,157 +1,161 @@
+﻿using qbPortWeaver.Shared;
 using System.Net.NetworkInformation;
 using System.Text;
 using System.Text.RegularExpressions;
 
-namespace qbPortWeaver
+namespace qbPortWeaver;
+
+/// <summary>Detects ProtonVPN connectivity via network adapter enumeration and reads the forwarded port from the client log file.</summary>
+public sealed partial class ProtonVpnManager : IVpnManager
 {
-    /// <summary>Detects ProtonVPN connectivity via network adapter enumeration and reads the forwarded port from the client log file.</summary>
-    public sealed partial class ProtonVpnManager : IVpnManager
+    private const int LogReadChunkSize = 4096;
+
+    internal static readonly VpnRegistryConfig Config = new(
+        RegistrySettingsManager.KeyProtonVpnServiceSearchTerm,
+        RegistrySettingsManager.KeyProtonVpnClientProcessName,
+        RegistrySettingsManager.KeyProtonVpnAdapterName,
+        "ProtonVpnManager.GetClientExePath");
+
+    private readonly string _logFilePath;
+
+    // Log format: "Port pair X->Y" where X and Y are always identical (ProtonVPN does not
+    // distinguish the two port values). Capture group 1 gives the forwarded port.
+    // No nested quantifiers, so no backtracking risk - no match timeout required.
+    [GeneratedRegex(@"Port pair\s+(\d+)->(?:\d+)")]
+    private static partial Regex PortPairRegex();
+
+    /// <inheritdoc />
+    public string ProviderName => RegistrySettingsManager.VpnProviderProtonVpn;
+
+    /// <summary>Creates a manager that reads the forwarded port from the ProtonVPN client log file at <paramref name="logFilePath"/>.</summary>
+    public ProtonVpnManager(string logFilePath)
     {
-        private const int LogReadChunkSize = 4096;
+        _logFilePath = logFilePath;
+    }
 
-        internal static readonly VpnRegistryConfig Config = new(
-            RegistrySettingsManager.KeyProtonVpnServiceSearchTerm,
-            RegistrySettingsManager.KeyProtonVpnClientProcessName,
-            RegistrySettingsManager.KeyProtonVpnAdapterName,
-            "ProtonVpnManager.GetClientExePath");
-
-        private readonly string _logFilePath;
-
-        // Log format: "Port pair X->Y" where X and Y are always identical (ProtonVPN does not
-        // distinguish the two port values). Capture group 1 gives the forwarded port.
-        // No nested quantifiers, so no backtracking risk - no match timeout required.
-        [GeneratedRegex(@"Port pair\s+(\d+)->(?:\d+)")]
-        private static partial Regex PortPairRegex();
-
-        /// <inheritdoc />
-        public string ProviderName => RegistrySettingsManager.VpnProviderProtonVpn;
-
-        /// <summary>Creates a manager that reads the forwarded port from the ProtonVPN client log file at <paramref name="logFilePath"/>.</summary>
-        public ProtonVpnManager(string logFilePath)
+    /// <inheritdoc />
+    public bool IsVpnConnected()
+    {
+        try
         {
-            _logFilePath = logFilePath;
+            var adapters = NetworkInterface.GetAllNetworkInterfaces();
+            // Uses Name (not Description) - ProtonVPN's adapter Name contains the configured
+            // adapter name substring on all installations: "ProtonVPN" (WireGuard) or "ProtonVPN TUN" (OpenVPN).
+            // Empty-string guard: Contains("") returns true for every adapter, which would falsely
+            // report VPN connected if the registry value was cleared.
+            string adapterName = Config.GetAdapterName();
+            bool isConnected = !string.IsNullOrEmpty(adapterName) && adapters.Any(adapter =>
+                adapter.Name.Contains(adapterName, StringComparison.OrdinalIgnoreCase) &&
+                adapter.OperationalStatus == OperationalStatus.Up);
+
+            LogManager.Instance.LogDebug(isConnected
+                ? "ProtonVpnManager.IsVpnConnected: ProtonVPN adapter is connected"
+                : "ProtonVpnManager.IsVpnConnected: ProtonVPN adapter not found or not connected");
+
+            return isConnected;
         }
-
-        /// <inheritdoc />
-        public bool IsVpnConnected()
+        catch (Exception ex)
         {
-            try
-            {
-                var adapters = NetworkInterface.GetAllNetworkInterfaces();
-                // Uses Name (not Description) - ProtonVPN's adapter Name contains the configured
-                // adapter name substring on all installations: "ProtonVPN" (WireGuard) or "ProtonVPN TUN" (OpenVPN).
-                bool isConnected = adapters.Any(adapter =>
-                    adapter.Name.Contains(Config.GetAdapterName(), StringComparison.OrdinalIgnoreCase) &&
-                    adapter.OperationalStatus == OperationalStatus.Up);
-
-                LogManager.Instance.LogDebug(isConnected
-                    ? "ProtonVpnManager.IsVpnConnected: ProtonVPN adapter is connected"
-                    : "ProtonVpnManager.IsVpnConnected: ProtonVPN adapter not found or not connected");
-
-                return isConnected;
-            }
-            catch (Exception ex)
-            {
-                return LogManager.LogDebugFalse($"ProtonVpnManager.IsVpnConnected: {ex.Message}");
-            }
+            return LogManager.LogDebugFalse($"ProtonVpnManager.IsVpnConnected: {ex.Message}");
         }
+    }
 
-        /// <inheritdoc />
-        public Task<int?> GetVpnPortAsync() => Task.FromResult(GetVpnPortCore());
+    /// <inheritdoc />
+    // cancellationToken only prevents scheduling if cancelled before the task starts; once GetVpnPortCore runs,
+    // cancellation cannot interrupt the in-progress log file read (bounded by the file I/O itself).
+    public Task<int?> GetVpnPortAsync(CancellationToken cancellationToken = default) => Task.Run(GetVpnPortCore, cancellationToken);
 
-        /// <inheritdoc />
-        public string? GetRecoveryTarget() => ProviderName;
+    /// <inheritdoc />
+    public string? GetRecoveryTarget() => ProviderName;
 
-        /// <inheritdoc />
-        public string GetRecoveryAction() => HelperServiceClient.ActionRestart;
+    /// <inheritdoc />
+    public string GetRecoveryAction() => HelperProtocol.ActionRestart;
 
-        /// <inheritdoc />
-        public bool IsAdapterMatch(string interfaceName)
-            => interfaceName.Contains(Config.GetAdapterName(), StringComparison.OrdinalIgnoreCase);
+    /// <inheritdoc />
+    public bool IsAdapterMatch(string interfaceName) => Config.MatchesAdapterName(interfaceName);
 
-        private int? GetVpnPortCore()
+    private int? GetVpnPortCore()
+    {
+        try
         {
-            try
+            if (string.IsNullOrWhiteSpace(_logFilePath))
             {
-                if (string.IsNullOrWhiteSpace(_logFilePath))
-                {
-                    LogManager.Instance.LogDebug("ProtonVpnManager.GetVpnPortCore: Logfile path is null or empty");
-                    return null;
-                }
-
-                if (!File.Exists(_logFilePath))
-                {
-                    LogManager.Instance.LogDebug($"ProtonVpnManager.GetVpnPortCore: Logfile does not exist: {_logFilePath}");
-                    return null;
-                }
-
-                LogManager.Instance.LogDebug($"ProtonVpnManager.GetVpnPortCore: Reading logfile: {_logFilePath}");
-
-                int? port = ReadLastPortFromLog();
-
-                if (port.HasValue)
-                {
-                    LogManager.Instance.LogDebug($"ProtonVpnManager.GetVpnPortCore: Found port {port.Value} in logfile");
-                    return port.Value;
-                }
-
-                LogManager.Instance.LogDebug("ProtonVpnManager.GetVpnPortCore: No port found in logfile");
+                LogManager.Instance.LogDebug("ProtonVpnManager.GetVpnPortCore: Logfile path is null or empty");
                 return null;
             }
-            catch (Exception ex)
+
+            if (!File.Exists(_logFilePath))
             {
-                LogManager.Instance.LogDebug($"ProtonVpnManager.GetVpnPortCore: {ex.Message}");
+                LogManager.Instance.LogDebug($"ProtonVpnManager.GetVpnPortCore: Logfile does not exist: {_logFilePath}");
                 return null;
             }
-        }
 
-        // Scans the log file from the end in chunks and returns the most recent matched port.
-        // Opens with FileShare.ReadWrite so ProtonVPN can keep writing while we read.
-        // Note: if a chunk boundary falls mid-multi-byte UTF-8 character, GetString produces a
-        // replacement char on that boundary. This is harmless because the target pattern
-        // "Port pair N->N" is pure ASCII and ProtonVPN logs use ASCII-only content.
-        private int? ReadLastPortFromLog()
-        {
-            using var fs = new FileStream(_logFilePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+            LogManager.Instance.LogDebug($"ProtonVpnManager.GetVpnPortCore: Reading logfile: {_logFilePath}");
 
-            long bytesRemaining = fs.Length;
-            string lineFragment = string.Empty;
-            byte[] buffer = new byte[LogReadChunkSize];
+            int? port = ReadLastPortFromLog();
 
-            while (bytesRemaining > 0)
+            if (port.HasValue)
             {
-                int chunkSize = (int)Math.Min(LogReadChunkSize, bytesRemaining);
-                bytesRemaining -= chunkSize;
-                fs.Seek(bytesRemaining, SeekOrigin.Begin);
-                fs.ReadExactly(buffer, 0, chunkSize);
-
-                // Append the partial-line fragment carried over from the left edge of the next (earlier) chunk
-                string text = Encoding.UTF8.GetString(buffer, 0, chunkSize) + lineFragment;
-                string[] lines = text.Split('\n');
-
-                // lines[0] may be a partial line whose start is in the next (earlier) chunk
-                lineFragment = lines[0];
-
-                // Process complete lines right-to-left; stop on first match
-                for (int i = lines.Length - 1; i >= 1; i--)
-                {
-                    string line = lines[i].TrimEnd('\r');
-                    if (line.Length == 0) continue;
-                    var match = PortPairRegex().Match(line);
-                    if (match.Success && int.TryParse(match.Groups[1].Value, out int port))
-                        return port;
-                }
+                LogManager.Instance.LogDebug($"ProtonVpnManager.GetVpnPortCore: Found port {port.Value} in logfile");
+                return port.Value;
             }
 
-            // Check the very first line of the file
-            if (lineFragment.Length > 0)
+            LogManager.Instance.LogDebug("ProtonVpnManager.GetVpnPortCore: No port found in logfile");
+            return null;
+        }
+        catch (Exception ex)
+        {
+            LogManager.Instance.LogDebug($"ProtonVpnManager.GetVpnPortCore: {ex.Message}");
+            return null;
+        }
+    }
+
+    // Scans the log file from the end in chunks and returns the most recent matched port.
+    // Opens with FileShare.ReadWrite so ProtonVPN can keep writing while we read.
+    // Note: if a chunk boundary falls mid-multi-byte UTF-8 character, GetString produces a
+    // replacement char on that boundary. This is harmless because the target pattern
+    // "Port pair N->N" is pure ASCII and ProtonVPN logs use ASCII-only content.
+    private int? ReadLastPortFromLog()
+    {
+        using var fs = new FileStream(_logFilePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+
+        long bytesRemaining = fs.Length;
+        string lineFragment = string.Empty;
+        byte[] buffer = new byte[LogReadChunkSize];
+
+        while (bytesRemaining > 0)
+        {
+            int chunkSize = (int)Math.Min(LogReadChunkSize, bytesRemaining);
+            bytesRemaining -= chunkSize;
+            fs.Seek(bytesRemaining, SeekOrigin.Begin);
+            fs.ReadExactly(buffer, 0, chunkSize);
+
+            // Append the partial-line fragment carried over from the left edge of the next (earlier) chunk
+            string text = Encoding.UTF8.GetString(buffer, 0, chunkSize) + lineFragment;
+            string[] lines = text.Split('\n');
+
+            // lines[0] may be a partial line whose start is in the next (earlier) chunk
+            lineFragment = lines[0];
+
+            // Process complete lines right-to-left; stop on first match
+            for (int i = lines.Length - 1; i >= 1; i--)
             {
-                var match = PortPairRegex().Match(lineFragment.TrimEnd('\r'));
+                string line = lines[i].TrimEnd('\r');
+                if (line.Length == 0) continue;
+                var match = PortPairRegex().Match(line);
                 if (match.Success && int.TryParse(match.Groups[1].Value, out int port))
                     return port;
             }
-
-            return null;
         }
+
+        // Check the very first line of the file
+        if (lineFragment.Length > 0)
+        {
+            var match = PortPairRegex().Match(lineFragment.TrimEnd('\r'));
+            if (match.Success && int.TryParse(match.Groups[1].Value, out int port))
+                return port;
+        }
+
+        return null;
     }
 }

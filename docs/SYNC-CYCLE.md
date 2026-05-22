@@ -1,6 +1,6 @@
 # qbPortWeaver - Sync Cycle Flow
 
-This document describes the core port sync logic implemented in `PortSyncService.cs`. The sync cycle runs on a configurable interval (default 180s) and is serialized by a semaphore in `MainForm` - only one cycle runs at a time.
+This document describes the core port sync logic implemented in `PortSyncService.cs`. The sync cycle runs on a configurable interval (default 180s). Each port sync cycle is serialized by a semaphore in `MainForm` so port sync cycles never overlap. The Media Manager runs as a fire-and-forget task after each port sync, in parallel with the next cycle's wait; subsequent imports are skipped if a previous one is still running, so a slow library scan cannot delay port sync or pile up imports on slow storage.
 
 ## High-Level Overview
 
@@ -149,7 +149,7 @@ All client communication goes through the `IBitTorrentClient` interface, with im
 5. (optional) Run post-update shell command
 6. (optional, qBittorrent only) GET /api/v2/transfer/info → check connection_status
               If "disconnected" → restart qBittorrent
-              Skipped if step 3 already restarted (avoids redundant restart)
+              Skipped if step 4 already restarted (avoids redundant restart)
 ```
 
 ### Interface Mismatch Warning *(qBittorrent only)*
@@ -159,6 +159,16 @@ When enabled, the cycle compares qBittorrent's bound network interface (`current
 ### Port Update Notification
 
 When `NotifyOnPortUpdate` is enabled (General settings, default on), a successful port change raises the `PortUpdated` event immediately after `ApplyPortUpdateAsync` returns. `MainForm` handles this with a tray balloon tip (`ToolTipIcon.Info`). The notification fires for all three clients.
+
+### Log Alert Notifications
+
+`LogManager` raises a `WarnOrErrorLogged` event (outside the write lock) whenever a `Warn` or `Error` entry is written. `MainForm` subscribes and marshals to the UI thread to:
+
+- Show a `ToolTipIcon.Warning` balloon tip once per unseen session. Clicking the balloon opens the log viewer scrolled to the most recent warning or error.
+- Update the **Show Logs** context menu item text with a running count (e.g. "Show Logs (2 warnings, 1 error)").
+- Append a human-readable count to the tray tooltip (e.g. "2 Warnings, 1 Error").
+
+All three indicators reset when the user opens the log viewer or clears the logs. `MainForm` unsubscribes in `OnFormClosing` before teardown to prevent background threads from marshalling onto a disposed form handle.
 
 ## Status Output
 
@@ -171,6 +181,7 @@ Every cycle writes a JSON status file (`qbPortWeaver.status.json` in `%LocalAppD
   "vpnProvider": "ProtonVPN",
   "vpnConnected": true,
   "vpnPort": 51234,
+  "client": "qBittorrent",
   "clientRunning": true,
   "clientPreviousPort": 44000,
   "clientPort": 51234,
@@ -194,17 +205,20 @@ RunAsync
      ├─ ReadConfig
      ├─ CreateVpnManager
      │   └─ CreateNatPmpVpnManager (NAT-PMP only)
-     │       ├─ BuildCycleCountMessage
-     │       └─ TryTriggerRecoveryAsync
+     │       └─ RegisterFailureAndTryRecoveryAsync
+     │           ├─ BuildCycleCountMessage
+     │           └─ TryTriggerRecoveryAsync
      ├─ IVpnManager.IsVpnConnected
      ├─ (if disconnected)
-     │   ├─ BuildCycleCountMessage
-     │   └─ TryTriggerRecoveryAsync
+     │   └─ RegisterFailureAndTryRecoveryAsync
+     │       ├─ BuildCycleCountMessage
+     │       └─ TryTriggerRecoveryAsync
      ├─ (if connected)
      │   ├─ IVpnManager.GetVpnPortAsync
      │   └─ HandlePortDetectionFailureAsync (if port null, all providers)
-     │       ├─ BuildCycleCountMessage
-     │       └─ TryTriggerRecoveryAsync
+     │       └─ RegisterFailureAndTryRecoveryAsync
+     │           ├─ BuildCycleCountMessage
+     │           └─ TryTriggerRecoveryAsync
      └─ EnsureRunningAndUpdatePortAsync
          ├─ EnsureClientRunningAsync
          ├─ IBitTorrentClient.GetPreferencesAsync
@@ -223,7 +237,7 @@ RunAsync
 
 ## Media Manager
 
-The Media Manager runs on every sync cycle immediately after port sync completes. When VPN Provider is set to **Disabled**, port sync is skipped entirely and the Media Manager runs as the only step.
+The Media Manager runs after every sync cycle as a fire-and-forget task, in parallel with the wait until the next port sync cycle. If a previous import is still running when the next cycle ends, the new import is skipped to avoid pile-up on slow storage. When VPN Provider is set to **Disabled**, port sync is skipped entirely but the Media Manager still runs (kicked off after the no-op cycle).
 
 ### Scan Phases
 
@@ -235,6 +249,9 @@ The Media Manager scan is split into two phases that partially overlap for perfo
   Task.Run ───────────────►│  (degree 8), load/prune persisted cache.          │  concurrently
                            │  Semaphore prevents duplicate builds. Sync cycles │
                            │  reuse cached index; full rebuild every 10 cycles.│
+                           │  Returns false if a folder enumeration fails -    │
+                           │  prior index is preserved and import cycle skips, │
+                           │  so a partial index can't false-classify files.   │
                            └──────────────────────────────────────────────────►│
                                                                                │
   Phase 1: EnumerateSourceFoldersAsync ─────────────────────────────────────► │

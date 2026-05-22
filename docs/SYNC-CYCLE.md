@@ -181,6 +181,7 @@ Every cycle writes a JSON status file (`qbPortWeaver.status.json` in `%LocalAppD
   "vpnProvider": "ProtonVPN",
   "vpnConnected": true,
   "vpnPort": 51234,
+  "client": "qBittorrent",
   "clientRunning": true,
   "clientPreviousPort": 44000,
   "clientPort": 51234,

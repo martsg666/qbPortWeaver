@@ -1,6 +1,7 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.ServiceProcess;
+using qbPortWeaver.Shared;
 
 namespace qbPortWeaver.HelperService;
 
@@ -12,13 +13,13 @@ namespace qbPortWeaver.HelperService;
 /// </summary>
 internal static partial class AutoRecovery
 {
-    private const int ProcessKillTimeoutMs      = 5000;
+    private const int ProcessKillTimeoutMs = 5000;
     // Delay between stop and start to let the service host fully release its handles
     // and listening sockets before we ask the SCM to bring it back up.
-    private const int ServiceRestartDelayMs     = 5000;
+    private const int ServiceRestartDelayMs = 5000;
     private const int ServiceOperationTimeoutMs = 15000;
-    private const int AdapterCycleDelayMs       = 3000;
-    private const int NetshTimeoutMs            = 15000;
+    private const int AdapterCycleDelayMs = 3000;
+    private const int NetshTimeoutMs = 15000;
 
     // First positional argument to "netsh interface set interface <name> admin=...".
     private const string NetshInterface = "interface";
@@ -214,14 +215,16 @@ internal static partial class AutoRecovery
         }
     }
 
-    // Called by StopServiceAsync when the service doesn't respond to a clean stop
-    // or is stuck in a pending state. Resolves the service's host PID via
-    // QueryServiceStatusEx, then escalates: Process.Kill → wait → taskkill /F /T → retry Process.Kill.
-    // Mirrors the escalation logic in AppConstants.KillProcess (main app project).
+    // Called by StopServiceAsync when the service doesn't respond to a clean stop or is stuck
+    // in a pending state. Resolves the service's host PID via QueryServiceStatusEx, then
+    // delegates the kill escalation (Process.Kill -> taskkill /F /T -> retry) to
+    // ProcessKillHelper in qbPortWeaver.Shared so the main app and the helper service share
+    // the same logic. The per-outcome logging stays here because it embeds service-name and PID
+    // context that the shared helper does not know about.
     //
     // Intentionally synchronous: the kill escalation is sequential by design (each stage must
     // complete before the next begins), and this runs only on the exceptional "service not
-    // responding" path. Worst-case blocking is 4x ProcessKillTimeoutMs (20s) on the caller's
+    // responding" path. Worst-case blocking is 3 x ProcessKillTimeoutMs (15s) on the caller's
     // thread-pool thread - acceptable given how rarely this path is reached.
     private static void KillServiceProcess(ServiceController sc, HelperLogger logger)
     {
@@ -229,8 +232,8 @@ internal static partial class AutoRecovery
         {
             if (sc.ServiceHandle.IsInvalid) return;
 
-            int    bufSize = Marshal.SizeOf<ServiceStatusProcess>();
-            IntPtr buf     = Marshal.AllocHGlobal(bufSize);
+            int bufSize = Marshal.SizeOf<ServiceStatusProcess>();
+            IntPtr buf = Marshal.AllocHGlobal(bufSize);
             try
             {
                 // Pass the SafeHandle directly - the [LibraryImport] marshaller AddRef/Releases
@@ -254,60 +257,8 @@ internal static partial class AutoRecovery
 
                 using (process)
                 {
-                    // Stage 1: Process.Kill
-                    try { process.Kill(entireProcessTree: true); }
-                    catch (InvalidOperationException)
-                    {
-                        logger.LogWarn($"Service '{sc.ServiceName}' process (PID {pid}) already exited");
-                        return;
-                    }
-                    catch (System.ComponentModel.Win32Exception ex)
-                    {
-                        logger.LogWarn($"Service '{sc.ServiceName}' process (PID {pid}) could not be killed - access denied or process protected: {ex.Message}");
-                        return;
-                    }
-
-                    if (process.WaitForExit(ProcessKillTimeoutMs))
-                    {
-                        logger.LogInfo($"Service '{sc.ServiceName}' process force-killed via Process.Kill (PID {pid})");
-                        return;
-                    }
-
-                    // Stage 2: taskkill /F /T
-                    try
-                    {
-                        using var taskkill = Process.Start(CreateHiddenStartInfo(
-                            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "taskkill.exe"),
-                            $"/F /T /PID {pid}"));
-                        taskkill?.WaitForExit(ProcessKillTimeoutMs);
-                    }
-                    catch (Exception ex)
-                    {
-                        logger.LogWarn($"Failed to kill service '{sc.ServiceName}' via taskkill (PID {pid}): {ex.Message}");
-                    }
-                    if (process.WaitForExit(ProcessKillTimeoutMs))
-                    {
-                        logger.LogInfo($"Service '{sc.ServiceName}' process force-killed via taskkill (PID {pid})");
-                        return;
-                    }
-
-                    // Stage 3: retry Process.Kill after taskkill may have weakened the process tree
-                    try { process.Kill(entireProcessTree: true); }
-                    catch (InvalidOperationException)
-                    {
-                        logger.LogWarn($"Service '{sc.ServiceName}' process (PID {pid}) already exited");
-                        return;
-                    }
-                    catch (System.ComponentModel.Win32Exception ex)
-                    {
-                        logger.LogWarn($"Service '{sc.ServiceName}' process (PID {pid}) could not be killed on retry - access denied or process protected: {ex.Message}");
-                        return;
-                    }
-
-                    if (process.WaitForExit(ProcessKillTimeoutMs))
-                        logger.LogInfo($"Service '{sc.ServiceName}' process force-killed via Process.Kill retry (PID {pid})");
-                    else
-                        logger.LogWarn($"Service '{sc.ServiceName}' process (PID {pid}) still running after all kill attempts");
+                    var result = ProcessKillHelper.KillProcessTreeWithEscalation(process, ProcessKillTimeoutMs);
+                    LogKillOutcome(sc.ServiceName, pid, result, logger);
                 }
             }
             finally
@@ -318,6 +269,37 @@ internal static partial class AutoRecovery
         catch (Exception ex)
         {
             logger.LogWarn($"Failed to force-kill service '{sc.ServiceName}': {ex.Message}");
+        }
+    }
+
+    // Renders a ProcessKillHelper outcome as service-context-aware log entries. Centralised here
+    // so KillServiceProcess stays focused on PID resolution and the shared helper stays
+    // service-agnostic.
+    private static void LogKillOutcome(string serviceName, int pid, ProcessKillResult result, HelperLogger logger)
+    {
+        if (result.TaskkillError is not null)
+            logger.LogWarn($"Failed to kill service '{serviceName}' via taskkill (PID {pid}): {result.TaskkillError.Message}");
+
+        switch (result.Outcome)
+        {
+            case ProcessKillOutcome.AlreadyExited:
+                logger.LogWarn($"Service '{serviceName}' process (PID {pid}) already exited");
+                break;
+            case ProcessKillOutcome.AccessDenied:
+                logger.LogWarn($"Service '{serviceName}' process (PID {pid}) could not be killed - access denied or process protected");
+                break;
+            case ProcessKillOutcome.KilledByProcessKill:
+                logger.LogInfo($"Service '{serviceName}' process force-killed via Process.Kill (PID {pid})");
+                break;
+            case ProcessKillOutcome.KilledByTaskkill:
+                logger.LogInfo($"Service '{serviceName}' process force-killed via taskkill (PID {pid})");
+                break;
+            case ProcessKillOutcome.KilledByProcessKillRetry:
+                logger.LogInfo($"Service '{serviceName}' process force-killed via Process.Kill retry (PID {pid})");
+                break;
+            case ProcessKillOutcome.StillRunning:
+                logger.LogWarn($"Service '{serviceName}' process (PID {pid}) still running after all kill attempts");
+                break;
         }
     }
 
@@ -415,10 +397,10 @@ internal static partial class AutoRecovery
             string netshPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "netsh.exe");
             var startInfo = new ProcessStartInfo(netshPath)
             {
-                UseShellExecute        = false,
-                CreateNoWindow         = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
                 RedirectStandardOutput = true,
-                RedirectStandardError  = true,
+                RedirectStandardError = true,
             };
             foreach (string arg in arguments)
                 startInfo.ArgumentList.Add(arg);
@@ -448,7 +430,9 @@ internal static partial class AutoRecovery
                 return false;
             }
 
-            // Process has exited - streams are closed so drain tasks complete promptly
+            // Process has exited - streams are closed so drain tasks complete promptly.
+            // Re-throw if shutdown was requested so the caller sees OCE, not a spurious Warn.
+            cancellationToken.ThrowIfCancellationRequested();
             string stdout = await stdoutTask.ConfigureAwait(false);
             string stderr = await stderrTask.ConfigureAwait(false);
 
@@ -468,9 +452,4 @@ internal static partial class AutoRecovery
         }
     }
 
-    private static ProcessStartInfo CreateHiddenStartInfo(string fileName, string arguments) => new(fileName, arguments)
-    {
-        UseShellExecute = false,
-        CreateNoWindow  = true
-    };
 }

@@ -1,0 +1,15 @@
+root = true
+
+[*]
+indent_style = space
+end_of_line = crlf
+charset = utf-8-bom
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+[*.cs]
+indent_size = 4
+
+# File-scoped namespace declarations (C# 10+). Matches the style used by the HelperService project;
+# converting the main app and shared library here brings the whole solution onto one convention.
+csharp_style_namespace_declarations = file_scoped:warning

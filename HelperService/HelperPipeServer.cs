@@ -1,9 +1,10 @@
-using System.IO.Pipes;
+﻿using System.IO.Pipes;
 using System.Security.AccessControl;
 using System.Security.Cryptography;
 using System.Security.Principal;
 using System.Text;
 using Microsoft.Win32;
+using qbPortWeaver.Shared;
 
 namespace qbPortWeaver.HelperService;
 
@@ -32,28 +33,12 @@ namespace qbPortWeaver.HelperService;
 /// </summary>
 internal sealed class HelperPipeServer(ILogger<HelperPipeServer> logger) : BackgroundService
 {
-    internal const string HelperServicePipeName = "qbPortWeaverHelper"; // Must match AppConstants.HelperServicePipeName in qbPortWeaver
-    private  const int    PipeErrorRetryDelayMs  = 1000;
-    private  const int    PipeReadTimeoutMs      = 5_000;
+    private const int PipeErrorRetryDelayMs = 1000;
+    private const int PipeReadTimeoutMs = 5_000;
 
-    private const string ActionRestart      = "restart";       // Must match HelperServiceClient.ActionRestart in qbPortWeaver
-    private const string ActionCycleAdapter = "cycle-adapter"; // Must match HelperServiceClient.ActionCycleAdapter in qbPortWeaver
-
-    // Result line keys/sentinels returned to the tray client. Must match HelperServiceClient constants.
-    private const string ResultWarnKey          = "warn";
-    private const string ResultErrorKey         = "error";
-    private const string ResultRejectedSentinel = "rejected"; // Must match HelperServiceClient.ResultRejectedSentinel
-
-    // Registry paths and keys for impersonated HKCU reads.
-    // AppRegistryKey / PipeSessionTokenKey must match RegistrySettingsManager.AppKeyPath / KeyPipeSessionToken in qbPortWeaver.
-    private const string AppRegistryKey         = @"Software\qbPortWeaver";
-    private const string PipeSessionTokenKey    = "pipeSessionToken";
+    // Registry paths and keys for impersonated HKCU reads. Subkey names not in AppIdentity are session-environment specific.
     private const string VolatileEnvironmentKey = @"Volatile Environment";
-    private const string LocalAppDataValue      = "LOCALAPPDATA";
-
-    // Log file path components - must match AppConstants.AppName / AppConstants.LogFileName in qbPortWeaver.
-    private const string AppSubFolderName = "qbPortWeaver";
-    private const string LogFileName      = "qbPortWeaver.log";
+    private const string LocalAppDataValue = "LOCALAPPDATA";
 
     private static readonly PipeSecurity PipeSecurity = CreatePipeSecurity();
 
@@ -94,18 +79,18 @@ internal sealed class HelperPipeServer(ILogger<HelperPipeServer> logger) : Backg
         // The pipe ACL grants ReadWrite to all authenticated users so the standard-user
         // qbPortWeaver client can send commands to this SYSTEM-level helper service.
         using var pipe = NamedPipeServerStreamAcl.Create(
-            HelperServicePipeName,
+            HelperProtocol.PipeName,
             PipeDirection.InOut,
             maxNumberOfServerInstances: 1,
             PipeTransmissionMode.Byte,
             PipeOptions.Asynchronous,
-            inBufferSize:  0,
+            inBufferSize: 0,
             outBufferSize: 0,
             PipeSecurity);
 
         await pipe.WaitForConnectionAsync(cancellationToken).ConfigureAwait(false);
 
-        using var reader  = new StreamReader(pipe, leaveOpen: true);
+        using var reader = new StreamReader(pipe, leaveOpen: true);
         using var readCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         readCts.CancelAfter(PipeReadTimeoutMs);
         string? message;
@@ -128,8 +113,8 @@ internal sealed class HelperPipeServer(ILogger<HelperPipeServer> logger) : Backg
             return;
         }
 
-        var action          = parts[0];
-        var target          = parts[1];
+        var action = parts[0];
+        var target = parts[1];
         var pipeSessionToken = parts[2];
 
         if (!TryReadClientHkcu(pipe, pipeSessionToken, out var logFilePath))
@@ -138,9 +123,9 @@ internal sealed class HelperPipeServer(ILogger<HelperPipeServer> logger) : Backg
             try
             {
                 await using var w = new StreamWriter(pipe, leaveOpen: true) { AutoFlush = true };
-                await w.WriteLineAsync(ResultRejectedSentinel).ConfigureAwait(false);
+                await w.WriteLineAsync(HelperProtocol.ResultRejectedSentinel).ConfigureAwait(false);
             }
-            catch (IOException) { }
+            catch (IOException) { } // NOSONAR S108 - client likely disconnected before we could send the rejection; nothing more to report
             return;
         }
 
@@ -148,11 +133,11 @@ internal sealed class HelperPipeServer(ILogger<HelperPipeServer> logger) : Backg
 
         switch (action)
         {
-            case ActionRestart:
+            case HelperProtocol.ActionRestart:
                 await AutoRecovery.RestartServiceAsync(target, helperLogger, cancellationToken).ConfigureAwait(false);
                 break;
 
-            case ActionCycleAdapter:
+            case HelperProtocol.ActionCycleAdapter:
                 await AutoRecovery.CycleAdapterAsync(target, helperLogger, cancellationToken).ConfigureAwait(false);
                 break;
 
@@ -166,7 +151,7 @@ internal sealed class HelperPipeServer(ILogger<HelperPipeServer> logger) : Backg
         try
         {
             await using var writer = new StreamWriter(pipe, leaveOpen: true) { AutoFlush = true };
-            await writer.WriteLineAsync($"{ResultWarnKey}={helperLogger.WarnCount}|{ResultErrorKey}={helperLogger.ErrorCount}").ConfigureAwait(false);
+            await writer.WriteLineAsync($"{HelperProtocol.ResultWarnKey}={helperLogger.WarnCount}|{HelperProtocol.ResultErrorKey}={helperLogger.ErrorCount}").ConfigureAwait(false);
         }
         catch (IOException ex)
         {
@@ -181,7 +166,7 @@ internal sealed class HelperPipeServer(ILogger<HelperPipeServer> logger) : Backg
     private bool TryReadClientHkcu(NamedPipeServerStream pipe, string pipeSessionToken, out string logFilePath)
     {
         logFilePath = string.Empty;
-        bool   tokenValid  = false;
+        bool tokenValid = false;
         string derivedPath = string.Empty; // captured by lambda; out params cannot be used inside lambdas
         try
         {
@@ -191,8 +176,8 @@ internal sealed class HelperPipeServer(ILogger<HelperPipeServer> logger) : Backg
                 // (via NtOpenKey under the thread's impersonation token). This is the documented
                 // .NET behavior on Windows and holds for all supported targets. The alternative -
                 // RegOpenCurrentUser P/Invoke - is only needed if this assumption ever breaks.
-                using var appKey  = Registry.CurrentUser.OpenSubKey(AppRegistryKey);
-                var expectedToken = appKey?.GetValue(PipeSessionTokenKey) as string;
+                using var appKey = Registry.CurrentUser.OpenSubKey(AppIdentity.AppRegistryKey);
+                var expectedToken = appKey?.GetValue(AppIdentity.PipeSessionTokenKey) as string;
                 // Use constant-time comparison to prevent timing side-channel attacks.
                 // string.Equals returns early on the first mismatch, leaking token length/prefix
                 // information to a local attacker who can measure pipe response times.
@@ -209,7 +194,7 @@ internal sealed class HelperPipeServer(ILogger<HelperPipeServer> logger) : Backg
                     using var envKey = Registry.CurrentUser.OpenSubKey(VolatileEnvironmentKey);
                     var localAppData = envKey?.GetValue(LocalAppDataValue) as string;
                     if (!string.IsNullOrEmpty(localAppData))
-                        derivedPath = Path.Combine(localAppData, AppSubFolderName, LogFileName);
+                        derivedPath = Path.Combine(localAppData, AppIdentity.AppName, AppIdentity.LogFileName);
                 }
             });
         }

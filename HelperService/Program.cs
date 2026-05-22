@@ -1,7 +1,8 @@
-using qbPortWeaver.HelperService;
+﻿using qbPortWeaver.HelperService;
+using qbPortWeaver.Shared;
 
 var builder = Host.CreateApplicationBuilder(args);
-builder.Services.AddWindowsService(options => options.ServiceName = HelperPipeServer.HelperServicePipeName);
+builder.Services.AddWindowsService(options => options.ServiceName = HelperProtocol.PipeName);
 builder.Services.AddHostedService<HelperPipeServer>();
 
 try
@@ -13,7 +14,7 @@ catch (Exception ex)
     try
     {
         System.Diagnostics.EventLog.WriteEntry(
-            HelperPipeServer.HelperServicePipeName,
+            HelperProtocol.PipeName,
             $"Fatal error: {ex}",
             System.Diagnostics.EventLogEntryType.Error);
     }

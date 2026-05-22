@@ -18,7 +18,7 @@ public static class Subsystem
 /// <summary>Singleton file-based logger with size-based rotation. Thread-safe.</summary>
 public sealed class LogManager
 {
-    private const long MaxSize = 5 * 1024 * 1024; // 5 MB
+    private const long MaxSize = 20 * 1024 * 1024; // 20 MB
     private const int MaxLogFiles = 5;   // Keep only 5 logfiles total (including current)
     private const int RotationCheckInterval = 100; // Check rotation every N writes
 

@@ -13,9 +13,10 @@
     <Product>qbPortWeaver</Product>
     <Authors>martsg666</Authors>
     <Copyright>© 2026 martsg666</Copyright>
-    <Version>2.5.3</Version>
-    <FileVersion>2.5.3.0</FileVersion>
-    <AssemblyVersion>2.5.3.0</AssemblyVersion>
+    <Version>2.5.4</Version>
+    <FileVersion>2.5.4.0</FileVersion>
+    <AssemblyVersion>2.5.4.0</AssemblyVersion>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <SignAssembly>False</SignAssembly>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <!-- Suppress known SonarAnalyzer false positives (each has a matching // NOSONAR comment):
@@ -23,6 +24,7 @@
          S125  - documentation comments containing qualified identifiers (e.g. Class.Member) are falsely flagged as commented-out code
          S1075 - TMDB base URL is intentionally hardcoded (TmdbClient.cs)
          S1125 - C# pattern matching 'is true' / 'is not true' requires the boolean literal (MediaManagerForm.cs)
+         S1215 - intentional GC after explicit large release on log viewer close (LogViewerForm.cs)
          S2068 - registry key name contains "Password", value is masked (PortSyncService.cs)
          S2221 - bare catch before LogManager is initialized; any failure must fall back safely (Program.cs)
          S2325 - WinForms event handlers calling instance methods (Close, Invoke) cannot be static (MainForm.cs, AboutForm.cs, MediaManagerForm.cs, SettingsForm.cs, WhatsNewForm.cs)
@@ -32,7 +34,7 @@
          S4721 - post-update command is user-configured, arbitrary execution is intended (PortSyncService.cs)
          S4790 - TMDB credential sent over HTTPS only; v3 API key in query param, v4 JWT as Bearer header (TmdbClient.cs)
          S6966 - non-modal Show() is intentional for WhatsNewForm and UpdateAvailableForm (MainForm.cs) -->
-    <NoWarn>S108;S125;S1075;S1125;S2068;S2221;S2325;S2486;S2589;S3881;S4721;S4790;S6966</NoWarn>
+    <NoWarn>S108;S125;S1075;S1125;S1215;S2068;S2221;S2325;S2486;S2589;S3881;S4721;S4790;S6966</NoWarn>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 

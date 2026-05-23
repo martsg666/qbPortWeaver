@@ -20,7 +20,7 @@ public static class AppConstants
     public const int AutoUpdateCheckIntervalMs = 12 * 60 * 60 * MillisecondsPerSecond;
 
     // UI
-    public const int MaxTooltipLength = 63; // NotifyIcon.Text is capped at 63 characters by Windows
+    public const int MaxTooltipLength = 127; // NotifyIcon.Text max in modern Windows / .NET (the historic 63-char limit was pre-Windows 2000)
     public const int BalloonTipDurationMs = 750;
 
     // HTTP - shared timeout used by all outbound HTTP clients

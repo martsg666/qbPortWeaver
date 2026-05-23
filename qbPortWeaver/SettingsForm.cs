@@ -70,6 +70,7 @@ public partial class SettingsForm : Form
         toolTip.SetToolTip(chkAutoRecovery, "Automatically recover after the configured number of consecutive failed sync cycles (VPN disconnected or port detection failure)");
         toolTip.SetToolTip(nudRecoveryCycles, "Number of consecutive failed cycles before recovery is triggered");
         toolTip.SetToolTip(chkNotifyOnPortUpdate, "Show a tray notification when the port is successfully updated");
+        toolTip.SetToolTip(chkShowUpdateForm, "When checked, opens the update form at startup if a newer version is found. When unchecked, only a tray notification is shown (12-hour periodic check runs either way)");
     }
 
     private void LoadSettings()
@@ -119,6 +120,7 @@ public partial class SettingsForm : Form
             (int)nudRecoveryCycles.Minimum, (int)nudRecoveryCycles.Maximum);
         UpdateAutoRecoverySubControls();
         chkNotifyOnPortUpdate.Checked = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyNotifyOnPortUpdate);
+        chkShowUpdateForm.Checked     = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyShowUpdateFormOnStartup);
 
         // qBittorrent
         txtQBittorrentURL.Text = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyQBittorrentUrl);
@@ -190,6 +192,7 @@ public partial class SettingsForm : Form
         RegistrySettingsManager.SetBool(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyAutoRecoveryEnabled, chkAutoRecovery.Checked);
         RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyAutoRecoveryTriggerCycles, ((int)nudRecoveryCycles.Value).ToString());
         RegistrySettingsManager.SetBool(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyNotifyOnPortUpdate, chkNotifyOnPortUpdate.Checked);
+        RegistrySettingsManager.SetBool(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyShowUpdateFormOnStartup, chkShowUpdateForm.Checked);
 
         // qBittorrent
         RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyQBittorrentUrl, txtQBittorrentURL.Text.Trim());

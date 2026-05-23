@@ -12,6 +12,7 @@ public partial class MainForm : Form
     private ContextMenuStrip _trayMenu = null!;
     private ToolStripMenuItem _autoStartMenuItem = null!;
     private ToolStripMenuItem _showLogsMenuItem = null!;
+    private ToolStripMenuItem _updateAvailableMenuItem = null!;
 
     private const string ShowLogsMenuText = "Show Logs";
     private const string LogAlertBalloonMessage = "Check the log viewer for warnings or errors.";
@@ -29,6 +30,10 @@ public partial class MainForm : Form
     private Icon? _iconWarning;
     private Icon? _iconError;
 
+    // Bold font for the update-available menu item, owned by MainForm because WinForms
+    // does not dispose Fonts assigned to ToolStripMenuItem. Disposed in MainForm.Designer.cs.
+    private Font? _updateMenuItemFont;
+
     // Services (assigned in the ctor after the designer guard; null! initializer keeps the field
     // non-nullable for runtime callers while satisfying flow analysis on the design-time early-return path)
     private readonly PortSyncService _portSyncService = null!;
@@ -38,6 +43,7 @@ public partial class MainForm : Form
     private SettingsForm? _settingsForm;
     private MediaManagerForm? _mediaManagerForm;
     private AboutForm? _aboutForm;
+    private UpdateAvailableForm? _updateAvailableForm;
 
     // Last sync status (written from background thread, read on UI thread)
     private volatile TrayStatus? _lastSyncStatus;
@@ -72,6 +78,13 @@ public partial class MainForm : Form
 
     // Last version for which the user was already shown an update prompt
     private string? _lastNotifiedVersion;
+
+    // Update detected by the latest check, surfaced via the tray menu item and tooltip
+    // until the user updates (next process launch resets _pendingUpdate). Null when no
+    // update is pending. The update balloon is informational only - Windows 11 routes
+    // ToolTipIcon.Info balloons through Action Center and does not reliably fire
+    // BalloonTipClicked, so the tray menu item is the only clickable entry point.
+    private (string Version, string Url)? _pendingUpdate;
 
     public MainForm()
     {
@@ -129,8 +142,12 @@ public partial class MainForm : Form
                 whatsNew.Show(); // NOSONAR S6966 - non-modal is intentional; ShowAsync would block until closed
             }
 
-            // Check for updates on GitHub (non-modal - does not block port sync)
-            _ = PerformUpdateCheckAsync();
+            // Check for updates on GitHub (non-modal - does not block port sync).
+            // The check itself always runs; the user setting only controls whether the
+            // UpdateAvailableForm opens at startup. When disabled, the user still gets the
+            // tray balloon + persistent menu item so the prompt is not silent.
+            bool intrusiveStartupCheck = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyShowUpdateFormOnStartup);
+            _ = PerformUpdateCheckAsync(intrusive: intrusiveStartupCheck);
 
             // Schedule periodic update checks every 12 hours
             _updateCheckTimer = new System.Windows.Forms.Timer { Interval = AppConstants.AutoUpdateCheckIntervalMs };
@@ -205,6 +222,7 @@ public partial class MainForm : Form
         _settingsForm?.Close();
         _mediaManagerForm?.Close();
         _aboutForm?.Close();
+        _updateAvailableForm?.Close();
 
         // Resources are disposed in Dispose(bool) via MainForm.Designer.cs
         base.OnFormClosing(e);
@@ -257,6 +275,20 @@ public partial class MainForm : Form
     private void InitializeTrayIcon()
     {
         _trayMenu = new ContextMenuStrip();
+
+        // Update notification - inserted at the top so it is the first thing the user sees
+        // when an update is pending. Hidden until a check reports a newer version.
+        // The bold font is stored as a field so MainForm can dispose it - WinForms does not
+        // dispose Fonts assigned to ToolStripMenuItem on its own.
+        _updateMenuItemFont = new Font(_trayMenu.Font, FontStyle.Bold);
+        _updateAvailableMenuItem = new ToolStripMenuItem("Update available")
+        {
+            Visible = false,
+            Font = _updateMenuItemFont // emphasised so it stands out among regular menu items
+        };
+        _updateAvailableMenuItem.Click += updateAvailable_Click;
+        _trayMenu.Items.Add(_updateAvailableMenuItem);
+
         _trayMenu.Items.Add("Sync Port Now", null, syncPortNow_Click);
         _showLogsMenuItem = new ToolStripMenuItem(ShowLogsMenuText);
         _showLogsMenuItem.Click += showLogs_Click;
@@ -363,11 +395,14 @@ public partial class MainForm : Form
         InvokeOnUiThread(() => { _logAlertBalloonPending = false; _trayIcon.ShowBalloonTip(AppConstants.BalloonTipDurationMs, AppIdentity.AppName, message, ToolTipIcon.Warning); });
     }
 
-    // Called by PortSyncService when the BitTorrent client's listening port is successfully updated
+    // Called by PortSyncService when the BitTorrent client's listening port is successfully updated.
+    // Info balloons are not clickable on Windows 11 (routed silently through Action Center), so there
+    // is no need to clear _logAlertBalloonPending here - a click on this balloon will not fire
+    // BalloonTipClicked, so it cannot mistakenly trigger the log viewer.
     private void OnPortUpdated(string message) // NOSONAR S2325 - ShowBalloonTip is an instance method, handler cannot be static
     {
         if (_shutdownCts.IsCancellationRequested) return;
-        InvokeOnUiThread(() => { _logAlertBalloonPending = false; _trayIcon.ShowBalloonTip(AppConstants.BalloonTipDurationMs, AppIdentity.AppName, message, ToolTipIcon.Info); });
+        InvokeOnUiThread(() => _trayIcon.ShowBalloonTip(AppConstants.BalloonTipDurationMs, AppIdentity.AppName, message, ToolTipIcon.Info));
     }
 
     // Runs the port-sync loop until shutdown is requested.
@@ -487,12 +522,20 @@ public partial class MainForm : Form
         return false;
     }
 
-    // Event handler for the periodic update-check timer - async void is correct here (event handler)
+    // Event handler for the periodic update-check timer - async void is correct here (event handler).
+    // Uses intrusive: false so a 12-hour tick surfaces an available update via the tray (menu item +
+    // balloon) rather than popping the UpdateAvailableForm in the user's face.
     private async void OnUpdateCheckTimerTick(object? sender, EventArgs e)
-        => await PerformUpdateCheckAsync();
+        => await PerformUpdateCheckAsync(intrusive: false);
 
-    // Checks GitHub for a newer release and prompts the user to open the download page if one is found
-    private async Task PerformUpdateCheckAsync()
+    // Checks GitHub for a newer release.
+    // When <paramref name="intrusive"/> is true (startup call), opens the UpdateAvailableForm directly.
+    // When false (12-hour timer tick), surfaces the result through the tray menu item and tooltip
+    // plus a one-shot informational balloon, so the user is not interrupted. The menu item is the
+    // only clickable entry point - Windows 11 routes ToolTipIcon.Info balloons silently through
+    // Action Center and does not reliably fire BalloonTipClicked. The menu item stays visible
+    // until the user updates (process restart with matching version clears _pendingUpdate naturally).
+    private async Task PerformUpdateCheckAsync(bool intrusive = true)
     {
         try
         {
@@ -507,8 +550,26 @@ public partial class MainForm : Form
                 }
 
                 _lastNotifiedVersion = update.Value.Version;
+                _pendingUpdate = update.Value;
                 LogManager.Instance.LogMessage($"New application version available: {update.Value.Version}", LogLevel.Info);
-                new UpdateAvailableForm(update.Value.Version, update.Value.Url).Show(); // NOSONAR S6966 - non-modal is intentional; ShowAsync would block until closed
+
+                _updateAvailableMenuItem.Text = $"Update available ({update.Value.Version})";
+                _updateAvailableMenuItem.Visible = true;
+                UpdateTrayTooltip();
+
+                if (intrusive)
+                {
+                    ShowUpdateAvailableForm(update.Value.Version, update.Value.Url);
+                }
+                else
+                {
+                    // Info balloon: not clickable on Windows 11 (routed silently through Action Center).
+                    // Shown purely as a visual hint that an update is available; the tray menu item is
+                    // the actual entry point to open the update form.
+                    _trayIcon.ShowBalloonTip(AppConstants.BalloonTipDurationMs, AppIdentity.AppName,
+                        $"Version {update.Value.Version} is available. Open the tray menu to install.",
+                        ToolTipIcon.Info);
+                }
             }
             else
             {
@@ -520,6 +581,21 @@ public partial class MainForm : Form
             LogManager.Instance.LogDebug($"MainForm.PerformUpdateCheckAsync: {ex.Message}");
         }
     }
+
+    private void updateAvailable_Click(object? sender, EventArgs e)
+    {
+        if (_pendingUpdate is not { } update) return;
+        ShowUpdateAvailableForm(update.Version, update.Url);
+    }
+
+    // Opens or activates the singleton UpdateAvailableForm. Wrapping in ShowOrActivate
+    // prevents repeated clicks (menu or startup intrusive path) from stacking multiple
+    // windows on top of each other.
+    private void ShowUpdateAvailableForm(string version, string url) =>
+        ShowOrActivate(
+            () => _updateAvailableForm,
+            f => _updateAvailableForm = f,
+            () => new UpdateAvailableForm(version, url));
 
     // Swaps the tray icon to reflect the current sync state
     private void UpdateTrayIcon(SyncState state)
@@ -556,12 +632,21 @@ public partial class MainForm : Form
             countSuffix = $"\n{wPart}{sep}{ePart}";
         }
 
+        string updateSuffix = _pendingUpdate is { } pu ? $"\nUpdate available: {pu.Version}" : string.Empty;
+
         string header = $"{AppIdentity.AppName} {AppConstants.AppVersion}\n";
-        int statusBudget = AppConstants.MaxTooltipLength - header.Length - countSuffix.Length;
+
+        // Prioritise the status line over the update suffix: if including the update line would
+        // force the status to be truncated, drop the update line entirely. The persistent menu
+        // item still carries the update info, so the tooltip can omit it under pressure.
+        int budgetWithUpdate = AppConstants.MaxTooltipLength - header.Length - countSuffix.Length - updateSuffix.Length;
+        string effectiveUpdateSuffix = statusLine.Length > budgetWithUpdate ? string.Empty : updateSuffix;
+
+        int statusBudget = AppConstants.MaxTooltipLength - header.Length - countSuffix.Length - effectiveUpdateSuffix.Length;
         if (statusLine.Length > statusBudget)
             statusLine = statusLine[..Math.Max(0, statusBudget)];
 
-        _trayIcon.Text = $"{header}{statusLine}{countSuffix}";
+        _trayIcon.Text = $"{header}{statusLine}{countSuffix}{effectiveUpdateSuffix}";
     }
 
     // Marshals an action to the UI thread, using Invoke if called from a background thread

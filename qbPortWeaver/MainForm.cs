@@ -30,6 +30,10 @@ public partial class MainForm : Form
     private Icon? _iconWarning;
     private Icon? _iconError;
 
+    // Bold font for the update-available menu item, owned by MainForm because WinForms
+    // does not dispose Fonts assigned to ToolStripMenuItem. Disposed in MainForm.Designer.cs.
+    private Font? _updateMenuItemFont;
+
     // Services (assigned in the ctor after the designer guard; null! initializer keeps the field
     // non-nullable for runtime callers while satisfying flow analysis on the design-time early-return path)
     private readonly PortSyncService _portSyncService = null!;
@@ -39,6 +43,7 @@ public partial class MainForm : Form
     private SettingsForm? _settingsForm;
     private MediaManagerForm? _mediaManagerForm;
     private AboutForm? _aboutForm;
+    private UpdateAvailableForm? _updateAvailableForm;
 
     // Last sync status (written from background thread, read on UI thread)
     private volatile TrayStatus? _lastSyncStatus;
@@ -217,6 +222,7 @@ public partial class MainForm : Form
         _settingsForm?.Close();
         _mediaManagerForm?.Close();
         _aboutForm?.Close();
+        _updateAvailableForm?.Close();
 
         // Resources are disposed in Dispose(bool) via MainForm.Designer.cs
         base.OnFormClosing(e);
@@ -272,10 +278,13 @@ public partial class MainForm : Form
 
         // Update notification - inserted at the top so it is the first thing the user sees
         // when an update is pending. Hidden until a check reports a newer version.
+        // The bold font is stored as a field so MainForm can dispose it - WinForms does not
+        // dispose Fonts assigned to ToolStripMenuItem on its own.
+        _updateMenuItemFont = new Font(_trayMenu.Font, FontStyle.Bold);
         _updateAvailableMenuItem = new ToolStripMenuItem("Update available")
         {
             Visible = false,
-            Font = new Font(_trayMenu.Font, FontStyle.Bold) // emphasised so it stands out among regular menu items
+            Font = _updateMenuItemFont // emphasised so it stands out among regular menu items
         };
         _updateAvailableMenuItem.Click += updateAvailable_Click;
         _trayMenu.Items.Add(_updateAvailableMenuItem);
@@ -521,10 +530,11 @@ public partial class MainForm : Form
 
     // Checks GitHub for a newer release.
     // When <paramref name="intrusive"/> is true (startup call), opens the UpdateAvailableForm directly.
-    // When false (12-hour timer tick), surfaces the result through the tray menu and a one-shot balloon
-    // so the user is not interrupted; they can click either to open the update form on their schedule.
-    // The tray menu item stays visible until the user updates (process restart with matching version
-    // clears _pendingUpdate naturally) so the prompt is not lost if they dismiss the balloon.
+    // When false (12-hour timer tick), surfaces the result through the tray menu item and tooltip
+    // plus a one-shot informational balloon, so the user is not interrupted. The menu item is the
+    // only clickable entry point - Windows 11 routes ToolTipIcon.Info balloons silently through
+    // Action Center and does not reliably fire BalloonTipClicked. The menu item stays visible
+    // until the user updates (process restart with matching version clears _pendingUpdate naturally).
     private async Task PerformUpdateCheckAsync(bool intrusive = true)
     {
         try
@@ -549,7 +559,7 @@ public partial class MainForm : Form
 
                 if (intrusive)
                 {
-                    new UpdateAvailableForm(update.Value.Version, update.Value.Url).Show(); // NOSONAR S6966 - non-modal is intentional; ShowAsync would block until closed
+                    ShowUpdateAvailableForm(update.Value.Version, update.Value.Url);
                 }
                 else
                 {
@@ -575,8 +585,17 @@ public partial class MainForm : Form
     private void updateAvailable_Click(object? sender, EventArgs e)
     {
         if (_pendingUpdate is not { } update) return;
-        new UpdateAvailableForm(update.Version, update.Url).Show(); // NOSONAR S6966 - non-modal is intentional; ShowAsync would block until closed
+        ShowUpdateAvailableForm(update.Version, update.Url);
     }
+
+    // Opens or activates the singleton UpdateAvailableForm. Wrapping in ShowOrActivate
+    // prevents repeated clicks (menu or startup intrusive path) from stacking multiple
+    // windows on top of each other.
+    private void ShowUpdateAvailableForm(string version, string url) =>
+        ShowOrActivate(
+            () => _updateAvailableForm,
+            f => _updateAvailableForm = f,
+            () => new UpdateAvailableForm(version, url));
 
     // Swaps the tray icon to reflect the current sync state
     private void UpdateTrayIcon(SyncState state)

@@ -13,7 +13,7 @@ public partial class WhatsNewForm : Form
     private const string ReleaseFeaturesText =
         "New in 2.5.4\n\n" +
         "Less intrusive update notifications\n" +
-        "The 12-hour background update check no longer interrupts you with a window. " +
+        "The 12-hour background update check no longer interrupts you with a form. " +
         "When a new version is found, an Update available item appears at the top of the tray menu " +
         "and a one-shot tray notification is shown. Click the menu item to open the update form. " +
         "A new setting under Settings > General lets you turn off the update form at startup; " +

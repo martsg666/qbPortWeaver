@@ -1,5 +1,7 @@
 ﻿using qbPortWeaver.Shared;
 using System.ComponentModel;
+using System.Diagnostics;
+using System.Runtime;
 using System.Runtime.InteropServices;
 using System.Text;
 
@@ -32,6 +34,11 @@ public partial class LogViewerForm : Form
 
     [LibraryImport("user32.dll", EntryPoint = "SendMessageW")]
     private static partial IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, ref NativePoint lParam);
+
+    // Asks Windows to trim the calling process's working set. Pages page back in on next access.
+    [LibraryImport("psapi.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool EmptyWorkingSet(IntPtr hProcess);
 
     [StructLayout(LayoutKind.Sequential)]
     private struct NativePoint { public int X, Y; }
@@ -125,11 +132,21 @@ public partial class LogViewerForm : Form
         _allLines.Clear();
         _allLines.TrimExcess();
 
-        // Large user-triggered release: force a Gen 2 collection now rather than wait for heap
-        // pressure. Without this, the freed RTF + string content sits as dead Gen 2 garbage until
-        // an unrelated allocation triggers a collection, leaving the working set inflated for
-        // minutes. Non-blocking background mode so the UI thread does not stall on close.
-        GC.Collect(2, GCCollectionMode.Optimized, blocking: false); // NOSONAR S1215 - see csproj NoWarn rationale
+        // Large user-triggered release: compact the LOH and force a Gen 2 collection now rather
+        // than wait for heap pressure. The freed RTF + string content sits mostly on the LOH,
+        // which does not compact during normal collections - without CompactOnce the segments
+        // stay committed even when empty. Blocking GC is acceptable here because form close is
+        // user-triggered and infrequent; the brief pause is invisible to the user.
+        GCSettings.LargeObjectHeapCompactionMode = GCLargeObjectHeapCompactionMode.CompactOnce;
+        GC.Collect(2, GCCollectionMode.Optimized, blocking: true); // NOSONAR S1215 - see csproj NoWarn rationale; blocking required for LOH compaction
+        GC.WaitForPendingFinalizers();
+
+        // Ask Windows to trim our working set so Task Manager reflects live memory rather than
+        // every page .NET ever touched. Pages page back in on next access; the only cost is a
+        // brief delay if the user reopens the log viewer immediately. Without this step the
+        // committed-but-empty heap segments keep the working set inflated until OS memory
+        // pressure forces eviction.
+        EmptyWorkingSet(Process.GetCurrentProcess().Handle);
 
         base.OnFormClosed(e);
     }

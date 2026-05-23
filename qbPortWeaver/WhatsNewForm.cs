@@ -15,8 +15,8 @@ public partial class WhatsNewForm : Form
         "Less intrusive update notifications\n" +
         "The 12-hour background update check no longer interrupts you with a window. " +
         "When a new version is found, an Update available item appears at the top of the tray menu " +
-        "and a one-shot tray notification is shown. Click either to open the update window. " +
-        "A new setting under Settings > General lets you turn off the update window at startup; " +
+        "and a one-shot tray notification is shown. Click the menu item to open the update form. " +
+        "A new setting under Settings > General lets you turn off the update form at startup; " +
         "the tray indicators still appear when an update is available.\n\n" +
         "Lower log viewer memory usage\n" +
         "Opening the log viewer used to leave a noticeable memory footprint after closing it. " +

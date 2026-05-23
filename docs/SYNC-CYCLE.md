@@ -182,7 +182,7 @@ The update check is separate from the sync cycle. It runs once at startup (from 
 
 The persistent tray indicators (menu item "Update available (X.Y.Z)" and tooltip line) appear in all three scenarios so the prompt is never silent. `_lastNotifiedVersion` dedups repeat notifications for the same version across timer ticks. `_pendingUpdate` clears naturally on the next process launch once the user updates (GitHub returns a matching version → no detection).
 
-The balloon-click handler dispatches on `_updateBalloonPending` vs `_logAlertBalloonPending`; other balloon-firing sites (port update, interface mismatch, logs cleared, log alerts) clear `_updateBalloonPending` so a click on those balloons does not mistakenly open the update form.
+The update balloon is informational only - Windows 11 routes `ToolTipIcon.Info` balloons through Action Center and does not reliably fire `BalloonTipClicked`, so the tray menu item is the only clickable entry point. The same applies to the port update and "Logs cleared" balloons (also `ToolTipIcon.Info`); they are visual hints with no associated action.
 
 ## Status Output
 

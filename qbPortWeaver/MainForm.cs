@@ -76,14 +76,10 @@ public partial class MainForm : Form
 
     // Update detected by the latest check, surfaced via the tray menu item and tooltip
     // until the user updates (next process launch resets _pendingUpdate). Null when no
-    // update is pending.
+    // update is pending. The update balloon is informational only - Windows 11 routes
+    // ToolTipIcon.Info balloons through Action Center and does not reliably fire
+    // BalloonTipClicked, so the tray menu item is the only clickable entry point.
     private (string Version, string Url)? _pendingUpdate;
-
-    // True while a tray balloon advertising an available update is the most recent balloon
-    // shown. Used by the balloon click handler to dispatch to the update form rather than
-    // the log viewer. Cleared by any subsequent ShowBalloonTip call (port update, log alert,
-    // logs cleared) so a click on those balloons does not mistakenly open the update form.
-    private bool _updateBalloonPending;
 
     public MainForm()
     {
@@ -320,7 +316,6 @@ public partial class MainForm : Form
     {
         LogManager.Instance.ClearLogs();
         ResetLogAlerts();
-        _updateBalloonPending = false; // this balloon overwrites any pending update balloon
         _trayIcon.ShowBalloonTip(AppConstants.BalloonTipDurationMs, AppIdentity.AppName, "Logs cleared", ToolTipIcon.Info);
     }
 
@@ -388,14 +383,17 @@ public partial class MainForm : Form
     private void OnInterfaceMismatchDetected(string message)
     {
         if (_shutdownCts.IsCancellationRequested) return;
-        InvokeOnUiThread(() => { _logAlertBalloonPending = false; _updateBalloonPending = false; _trayIcon.ShowBalloonTip(AppConstants.BalloonTipDurationMs, AppIdentity.AppName, message, ToolTipIcon.Warning); });
+        InvokeOnUiThread(() => { _logAlertBalloonPending = false; _trayIcon.ShowBalloonTip(AppConstants.BalloonTipDurationMs, AppIdentity.AppName, message, ToolTipIcon.Warning); });
     }
 
-    // Called by PortSyncService when the BitTorrent client's listening port is successfully updated
+    // Called by PortSyncService when the BitTorrent client's listening port is successfully updated.
+    // Info balloons are not clickable on Windows 11 (routed silently through Action Center), so there
+    // is no need to clear _logAlertBalloonPending here - a click on this balloon will not fire
+    // BalloonTipClicked, so it cannot mistakenly trigger the log viewer.
     private void OnPortUpdated(string message) // NOSONAR S2325 - ShowBalloonTip is an instance method, handler cannot be static
     {
         if (_shutdownCts.IsCancellationRequested) return;
-        InvokeOnUiThread(() => { _logAlertBalloonPending = false; _updateBalloonPending = false; _trayIcon.ShowBalloonTip(AppConstants.BalloonTipDurationMs, AppIdentity.AppName, message, ToolTipIcon.Info); });
+        InvokeOnUiThread(() => _trayIcon.ShowBalloonTip(AppConstants.BalloonTipDurationMs, AppIdentity.AppName, message, ToolTipIcon.Info));
     }
 
     // Runs the port-sync loop until shutdown is requested.
@@ -555,10 +553,9 @@ public partial class MainForm : Form
                 }
                 else
                 {
-                    // ShowBalloonTip overwrites any previously-pending balloon, so clear other pending
-                    // flags before setting our own to keep the click dispatch in sync with the visible balloon.
-                    _logAlertBalloonPending = false;
-                    _updateBalloonPending = true;
+                    // Info balloon: not clickable on Windows 11 (routed silently through Action Center).
+                    // Shown purely as a visual hint that an update is available; the tray menu item is
+                    // the actual entry point to open the update form.
                     _trayIcon.ShowBalloonTip(AppConstants.BalloonTipDurationMs, AppIdentity.AppName,
                         $"Version {update.Value.Version} is available. Open the tray menu to install.",
                         ToolTipIcon.Info);
@@ -619,11 +616,18 @@ public partial class MainForm : Form
         string updateSuffix = _pendingUpdate is { } pu ? $"\nUpdate available: {pu.Version}" : string.Empty;
 
         string header = $"{AppIdentity.AppName} {AppConstants.AppVersion}\n";
-        int statusBudget = AppConstants.MaxTooltipLength - header.Length - countSuffix.Length - updateSuffix.Length;
+
+        // Prioritise the status line over the update suffix: if including the update line would
+        // force the status to be truncated, drop the update line entirely. The persistent menu
+        // item still carries the update info, so the tooltip can omit it under pressure.
+        int budgetWithUpdate = AppConstants.MaxTooltipLength - header.Length - countSuffix.Length - updateSuffix.Length;
+        string effectiveUpdateSuffix = statusLine.Length > budgetWithUpdate ? string.Empty : updateSuffix;
+
+        int statusBudget = AppConstants.MaxTooltipLength - header.Length - countSuffix.Length - effectiveUpdateSuffix.Length;
         if (statusLine.Length > statusBudget)
             statusLine = statusLine[..Math.Max(0, statusBudget)];
 
-        _trayIcon.Text = $"{header}{statusLine}{countSuffix}{updateSuffix}";
+        _trayIcon.Text = $"{header}{statusLine}{countSuffix}{effectiveUpdateSuffix}";
     }
 
     // Marshals an action to the UI thread, using Invoke if called from a background thread
@@ -656,7 +660,6 @@ public partial class MainForm : Form
             {
                 _logAlertBalloonShown = true;
                 _logAlertBalloonPending = true;
-                _updateBalloonPending = false; // this balloon overwrites any pending update balloon
                 _trayIcon.ShowBalloonTip(AppConstants.BalloonTipDurationMs, AppIdentity.AppName,
                     LogAlertBalloonMessage, ToolTipIcon.Warning);
             }
@@ -702,17 +705,8 @@ public partial class MainForm : Form
 
     private void trayIcon_BalloonTipClicked(object? sender, EventArgs e)
     {
-        // Update balloon is checked first because both flags being set would be a bug;
-        // the more recent ShowBalloonTip call clears the other flag, so at most one is true.
-        if (_updateBalloonPending)
-        {
-            _updateBalloonPending = false;
-            if (_pendingUpdate is { } update)
-                new UpdateAvailableForm(update.Version, update.Url).Show(); // NOSONAR S6966 - non-modal is intentional; ShowAsync would block until closed
-            return;
-        }
-        if (_logAlertBalloonPending)
-            ShowLogViewer();
+        if (!_logAlertBalloonPending) return;
+        ShowLogViewer();
     }
 
     // Brings an existing child form to front, or creates and shows a new one.

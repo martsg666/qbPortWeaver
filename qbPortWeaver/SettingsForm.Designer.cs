@@ -32,6 +32,7 @@ partial class SettingsForm
         nudRecoveryCycles         = new NumericUpDown();
         lblRecoveryCyclesUnit     = new Label();
         chkNotifyOnPortUpdate     = new CheckBox();
+        chkShowUpdateForm         = new CheckBox();
         grpQBittorrent            = new GroupBox();
         lblQBittorrentURL         = new Label();
         txtQBittorrentURL         = new TextBox();
@@ -116,6 +117,7 @@ partial class SettingsForm
         grpGeneral.Controls.Add(nudRecoveryCycles);
         grpGeneral.Controls.Add(lblRecoveryCyclesUnit);
         grpGeneral.Controls.Add(chkNotifyOnPortUpdate);
+        grpGeneral.Controls.Add(chkShowUpdateForm);
         grpGeneral.Location = new Point(8, 8);
         grpGeneral.Name     = "grpGeneral";
         grpGeneral.Size     = new Size(484, 221);
@@ -215,6 +217,12 @@ partial class SettingsForm
         chkNotifyOnPortUpdate.Size      = new Size(230, 19);
         chkNotifyOnPortUpdate.TabIndex  = 14;
         chkNotifyOnPortUpdate.Text      = "Show notification when port updates";
+        chkShowUpdateForm.AutoSize      = true;
+        chkShowUpdateForm.Location      = new Point(252, 192);
+        chkShowUpdateForm.Name          = "chkShowUpdateForm";
+        chkShowUpdateForm.Size          = new Size(220, 19);
+        chkShowUpdateForm.TabIndex      = 15;
+        chkShowUpdateForm.Text          = "Show update form on startup";
         // ── grpQBittorrent ────────────────────────────────────────────
         grpQBittorrent.Controls.Add(lblQBittorrentURL);
         grpQBittorrent.Controls.Add(txtQBittorrentURL);
@@ -633,6 +641,7 @@ partial class SettingsForm
     private NumericUpDown nudRecoveryCycles;
     private Label         lblRecoveryCyclesUnit;
     private CheckBox      chkNotifyOnPortUpdate;
+    private CheckBox      chkShowUpdateForm;
 
     private GroupBox      grpQBittorrent;
     private Label         lblQBittorrentURL;

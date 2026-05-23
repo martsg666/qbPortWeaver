@@ -11,6 +11,17 @@ public partial class WhatsNewForm : Form
         "If you find qbPortWeaver useful, please star it on GitHub.";
 
     private const string ReleaseFeaturesText =
+        "New in 2.5.4\n\n" +
+        "Less intrusive update notifications\n" +
+        "The 12-hour background update check no longer interrupts you with a window. " +
+        "When a new version is found, an Update available item appears at the top of the tray menu " +
+        "and a one-shot tray notification is shown. Click either to open the update window. " +
+        "A new setting under Settings > General lets you turn off the update window at startup; " +
+        "the tray indicators still appear when an update is available.\n\n" +
+        "Lower log viewer memory usage\n" +
+        "Opening the log viewer used to leave a noticeable memory footprint after closing it. " +
+        "The viewer now releases its content promptly on close so the application returns to its baseline memory usage.\n\n" +
+        "Previously released\n\n" +
         "New in 2.5.3\n\n" +
         "Log alert notifications\n" +
         "When a warning or error is written to the log, a tray balloon tip appears once to get your attention. " +
@@ -28,7 +39,6 @@ public partial class WhatsNewForm : Form
         "More log history\n" +
         "The number of retained log files has been increased from 3 to 5, and the per-file size limit raised from 5 MB to 20 MB (100 MB total). " +
         "This keeps significantly more history available in the log viewer, especially useful when reviewing warnings and errors over longer periods.\n\n" +
-        "Previously released\n\n" +
         "New in 2.5.2\n\n" +
         "qBittorrent 5.2.0 compatibility\n" +
         "Authentication now works correctly with qBittorrent 5.2.0, which changed its Web API login response format. " +

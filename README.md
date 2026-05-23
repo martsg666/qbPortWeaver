@@ -83,7 +83,7 @@ The application runs in the system tray, manages configuration and logging, and 
   Writes a JSON status file (`%LocalAppData%\qbPortWeaver\qbPortWeaver.status.json`) after each sync cycle, exposing VPN port, client port, timestamps, and completion status for external scripts.
 
 - **Automatic Update Checker**
-  Checks GitHub for new releases on startup and every 12 hours, and offers to open the download page. The **About** dialog (tray menu → About) also shows the current and latest version, update status, contributor links, and a **What's New** button to review the current release highlights.
+  Checks GitHub for new releases on startup and every 12 hours. When a newer version is found, an **Update available (X.Y.Z)** item appears at the top of the tray menu and the tooltip is updated; clicking the menu item opens the update window. The 12-hour background check uses a one-shot tray notification instead of opening the update window, so the app does not interrupt you. The startup check additionally opens the update window by default; this can be turned off via **Settings > General > Show update form on startup** (the tray indicators still appear). The **About** dialog (tray menu → About) also shows the current and latest version, update status, contributor links, and a **What's New** button to review the current release highlights.
 
 - **Startup Option**
   Allows enabling or disabling automatic startup with Windows.
@@ -109,6 +109,7 @@ On first run, all settings are initialized with sensible defaults.
 | Auto-Recovery | Automatically recover after N consecutive failed sync cycles (VPN disconnected or port detection failure) | `True` |
 | Auto-Recovery trigger cycles | Number of consecutive failed cycles before triggering auto-recovery | `3` |
 | Notify on port update | Show a tray balloon tip when the client's listening port is successfully updated | `True` |
+| Show update form on startup | When checked, opens the update form at startup if a newer version is found. When unchecked, only a tray notification is shown (the 12-hour periodic check is always non-intrusive) | `True` |
 | Post-update command | Command to run after a successful port update (leave empty to disable) | - |
 | Color theme | Application color theme: `System` (follows Windows), `Dark`, or `Light`. Requires a restart to take effect | `System` |
 | Debug logging | Enable verbose debug logging to the log file | `False` |

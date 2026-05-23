@@ -12,6 +12,7 @@ public partial class MainForm : Form
     private ContextMenuStrip _trayMenu = null!;
     private ToolStripMenuItem _autoStartMenuItem = null!;
     private ToolStripMenuItem _showLogsMenuItem = null!;
+    private ToolStripMenuItem _updateAvailableMenuItem = null!;
 
     private const string ShowLogsMenuText = "Show Logs";
     private const string LogAlertBalloonMessage = "Check the log viewer for warnings or errors.";
@@ -73,6 +74,17 @@ public partial class MainForm : Form
     // Last version for which the user was already shown an update prompt
     private string? _lastNotifiedVersion;
 
+    // Update detected by the latest check, surfaced via the tray menu item and tooltip
+    // until the user updates (next process launch resets _pendingUpdate). Null when no
+    // update is pending.
+    private (string Version, string Url)? _pendingUpdate;
+
+    // True while a tray balloon advertising an available update is the most recent balloon
+    // shown. Used by the balloon click handler to dispatch to the update form rather than
+    // the log viewer. Cleared by any subsequent ShowBalloonTip call (port update, log alert,
+    // logs cleared) so a click on those balloons does not mistakenly open the update form.
+    private bool _updateBalloonPending;
+
     public MainForm()
     {
         InitializeComponent();
@@ -129,8 +141,12 @@ public partial class MainForm : Form
                 whatsNew.Show(); // NOSONAR S6966 - non-modal is intentional; ShowAsync would block until closed
             }
 
-            // Check for updates on GitHub (non-modal - does not block port sync)
-            _ = PerformUpdateCheckAsync();
+            // Check for updates on GitHub (non-modal - does not block port sync).
+            // The check itself always runs; the user setting only controls whether the
+            // UpdateAvailableForm opens at startup. When disabled, the user still gets the
+            // tray balloon + persistent menu item so the prompt is not silent.
+            bool intrusiveStartupCheck = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyShowUpdateFormOnStartup);
+            _ = PerformUpdateCheckAsync(intrusive: intrusiveStartupCheck);
 
             // Schedule periodic update checks every 12 hours
             _updateCheckTimer = new System.Windows.Forms.Timer { Interval = AppConstants.AutoUpdateCheckIntervalMs };
@@ -257,6 +273,17 @@ public partial class MainForm : Form
     private void InitializeTrayIcon()
     {
         _trayMenu = new ContextMenuStrip();
+
+        // Update notification - inserted at the top so it is the first thing the user sees
+        // when an update is pending. Hidden until a check reports a newer version.
+        _updateAvailableMenuItem = new ToolStripMenuItem("Update available")
+        {
+            Visible = false,
+            Font = new Font(_trayMenu.Font, FontStyle.Bold) // emphasised so it stands out among regular menu items
+        };
+        _updateAvailableMenuItem.Click += updateAvailable_Click;
+        _trayMenu.Items.Add(_updateAvailableMenuItem);
+
         _trayMenu.Items.Add("Sync Port Now", null, syncPortNow_Click);
         _showLogsMenuItem = new ToolStripMenuItem(ShowLogsMenuText);
         _showLogsMenuItem.Click += showLogs_Click;
@@ -293,6 +320,7 @@ public partial class MainForm : Form
     {
         LogManager.Instance.ClearLogs();
         ResetLogAlerts();
+        _updateBalloonPending = false; // this balloon overwrites any pending update balloon
         _trayIcon.ShowBalloonTip(AppConstants.BalloonTipDurationMs, AppIdentity.AppName, "Logs cleared", ToolTipIcon.Info);
     }
 
@@ -360,14 +388,14 @@ public partial class MainForm : Form
     private void OnInterfaceMismatchDetected(string message)
     {
         if (_shutdownCts.IsCancellationRequested) return;
-        InvokeOnUiThread(() => { _logAlertBalloonPending = false; _trayIcon.ShowBalloonTip(AppConstants.BalloonTipDurationMs, AppIdentity.AppName, message, ToolTipIcon.Warning); });
+        InvokeOnUiThread(() => { _logAlertBalloonPending = false; _updateBalloonPending = false; _trayIcon.ShowBalloonTip(AppConstants.BalloonTipDurationMs, AppIdentity.AppName, message, ToolTipIcon.Warning); });
     }
 
     // Called by PortSyncService when the BitTorrent client's listening port is successfully updated
     private void OnPortUpdated(string message) // NOSONAR S2325 - ShowBalloonTip is an instance method, handler cannot be static
     {
         if (_shutdownCts.IsCancellationRequested) return;
-        InvokeOnUiThread(() => { _logAlertBalloonPending = false; _trayIcon.ShowBalloonTip(AppConstants.BalloonTipDurationMs, AppIdentity.AppName, message, ToolTipIcon.Info); });
+        InvokeOnUiThread(() => { _logAlertBalloonPending = false; _updateBalloonPending = false; _trayIcon.ShowBalloonTip(AppConstants.BalloonTipDurationMs, AppIdentity.AppName, message, ToolTipIcon.Info); });
     }
 
     // Runs the port-sync loop until shutdown is requested.
@@ -487,12 +515,19 @@ public partial class MainForm : Form
         return false;
     }
 
-    // Event handler for the periodic update-check timer - async void is correct here (event handler)
+    // Event handler for the periodic update-check timer - async void is correct here (event handler).
+    // Uses intrusive: false so a 12-hour tick surfaces an available update via the tray (menu item +
+    // balloon) rather than popping the UpdateAvailableForm in the user's face.
     private async void OnUpdateCheckTimerTick(object? sender, EventArgs e)
-        => await PerformUpdateCheckAsync();
+        => await PerformUpdateCheckAsync(intrusive: false);
 
-    // Checks GitHub for a newer release and prompts the user to open the download page if one is found
-    private async Task PerformUpdateCheckAsync()
+    // Checks GitHub for a newer release.
+    // When <paramref name="intrusive"/> is true (startup call), opens the UpdateAvailableForm directly.
+    // When false (12-hour timer tick), surfaces the result through the tray menu and a one-shot balloon
+    // so the user is not interrupted; they can click either to open the update form on their schedule.
+    // The tray menu item stays visible until the user updates (process restart with matching version
+    // clears _pendingUpdate naturally) so the prompt is not lost if they dismiss the balloon.
+    private async Task PerformUpdateCheckAsync(bool intrusive = true)
     {
         try
         {
@@ -507,8 +542,27 @@ public partial class MainForm : Form
                 }
 
                 _lastNotifiedVersion = update.Value.Version;
+                _pendingUpdate = update.Value;
                 LogManager.Instance.LogMessage($"New application version available: {update.Value.Version}", LogLevel.Info);
-                new UpdateAvailableForm(update.Value.Version, update.Value.Url).Show(); // NOSONAR S6966 - non-modal is intentional; ShowAsync would block until closed
+
+                _updateAvailableMenuItem.Text = $"Update available ({update.Value.Version})";
+                _updateAvailableMenuItem.Visible = true;
+                UpdateTrayTooltip();
+
+                if (intrusive)
+                {
+                    new UpdateAvailableForm(update.Value.Version, update.Value.Url).Show(); // NOSONAR S6966 - non-modal is intentional; ShowAsync would block until closed
+                }
+                else
+                {
+                    // ShowBalloonTip overwrites any previously-pending balloon, so clear other pending
+                    // flags before setting our own to keep the click dispatch in sync with the visible balloon.
+                    _logAlertBalloonPending = false;
+                    _updateBalloonPending = true;
+                    _trayIcon.ShowBalloonTip(AppConstants.BalloonTipDurationMs, AppIdentity.AppName,
+                        $"Version {update.Value.Version} is available. Open the tray menu to install.",
+                        ToolTipIcon.Info);
+                }
             }
             else
             {
@@ -519,6 +573,12 @@ public partial class MainForm : Form
         {
             LogManager.Instance.LogDebug($"MainForm.PerformUpdateCheckAsync: {ex.Message}");
         }
+    }
+
+    private void updateAvailable_Click(object? sender, EventArgs e)
+    {
+        if (_pendingUpdate is not { } update) return;
+        new UpdateAvailableForm(update.Version, update.Url).Show(); // NOSONAR S6966 - non-modal is intentional; ShowAsync would block until closed
     }
 
     // Swaps the tray icon to reflect the current sync state
@@ -556,12 +616,14 @@ public partial class MainForm : Form
             countSuffix = $"\n{wPart}{sep}{ePart}";
         }
 
+        string updateSuffix = _pendingUpdate is { } pu ? $"\nUpdate available: {pu.Version}" : string.Empty;
+
         string header = $"{AppIdentity.AppName} {AppConstants.AppVersion}\n";
-        int statusBudget = AppConstants.MaxTooltipLength - header.Length - countSuffix.Length;
+        int statusBudget = AppConstants.MaxTooltipLength - header.Length - countSuffix.Length - updateSuffix.Length;
         if (statusLine.Length > statusBudget)
             statusLine = statusLine[..Math.Max(0, statusBudget)];
 
-        _trayIcon.Text = $"{header}{statusLine}{countSuffix}";
+        _trayIcon.Text = $"{header}{statusLine}{countSuffix}{updateSuffix}";
     }
 
     // Marshals an action to the UI thread, using Invoke if called from a background thread
@@ -594,6 +656,7 @@ public partial class MainForm : Form
             {
                 _logAlertBalloonShown = true;
                 _logAlertBalloonPending = true;
+                _updateBalloonPending = false; // this balloon overwrites any pending update balloon
                 _trayIcon.ShowBalloonTip(AppConstants.BalloonTipDurationMs, AppIdentity.AppName,
                     LogAlertBalloonMessage, ToolTipIcon.Warning);
             }
@@ -639,8 +702,17 @@ public partial class MainForm : Form
 
     private void trayIcon_BalloonTipClicked(object? sender, EventArgs e)
     {
-        if (!_logAlertBalloonPending) return;
-        ShowLogViewer();
+        // Update balloon is checked first because both flags being set would be a bug;
+        // the more recent ShowBalloonTip call clears the other flag, so at most one is true.
+        if (_updateBalloonPending)
+        {
+            _updateBalloonPending = false;
+            if (_pendingUpdate is { } update)
+                new UpdateAvailableForm(update.Version, update.Url).Show(); // NOSONAR S6966 - non-modal is intentional; ShowAsync would block until closed
+            return;
+        }
+        if (_logAlertBalloonPending)
+            ShowLogViewer();
     }
 
     // Brings an existing child form to front, or creates and shows a new one.

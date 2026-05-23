@@ -115,6 +115,22 @@ public partial class LogViewerForm : Form
 
         _searchDebounceTimer?.Stop();
 
+        // Release the large log content before Dispose runs. The native RichEdit control caches
+        // its document buffer and is slow to release after handle destruction, so clearing while
+        // the handle is still alive forces the buffer free now. _allLines is the matching managed
+        // backing store; clearing + TrimExcess hands its array straight to GC instead of waiting
+        // for a Gen 2 collection.
+        try { rtbLog?.Clear(); }
+        catch (ObjectDisposedException) { /* control already disposed - nothing to clear */ }
+        _allLines.Clear();
+        _allLines.TrimExcess();
+
+        // Large user-triggered release: force a Gen 2 collection now rather than wait for heap
+        // pressure. Without this, the freed RTF + string content sits as dead Gen 2 garbage until
+        // an unrelated allocation triggers a collection, leaving the working set inflated for
+        // minutes. Non-blocking background mode so the UI thread does not stall on close.
+        GC.Collect(2, GCCollectionMode.Optimized, blocking: false); // NOSONAR S1215 - see csproj NoWarn rationale
+
         base.OnFormClosed(e);
     }
 

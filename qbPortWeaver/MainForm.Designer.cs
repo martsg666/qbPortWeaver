@@ -21,6 +21,7 @@ partial class MainForm
             _iconError?.Dispose();
             _updateCheckTimer?.Dispose();
             _updateSemaphore?.Dispose();
+            _updateMenuItemFont?.Dispose();
             components?.Dispose();
         }
         base.Dispose(disposing);

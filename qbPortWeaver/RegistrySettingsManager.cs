@@ -112,6 +112,9 @@ public static class RegistrySettingsManager
     // Registry key names - general section (notifications)
     public const string KeyNotifyOnPortUpdate = "notifyOnPortUpdate";
 
+    // Registry key names - general section (updates)
+    public const string KeyShowUpdateFormOnStartup = "showUpdateFormOnStartup";
+
     // Default values for all settings (single source of truth)
     private static readonly Dictionary<string, Dictionary<string, string>> _defaults =
         new(StringComparer.OrdinalIgnoreCase)
@@ -124,7 +127,8 @@ public static class RegistrySettingsManager
                 [KeyAutoRecoveryEnabled] = ValueTrue,
                 [KeyAutoRecoveryTriggerCycles] = "3",
                 [KeyBitTorrentClient] = BitTorrentClientQBittorrent,
-                [KeyNotifyOnPortUpdate] = ValueTrue
+                [KeyNotifyOnPortUpdate] = ValueTrue,
+                [KeyShowUpdateFormOnStartup] = ValueTrue
             },
             [SectionQBittorrent] = new(StringComparer.OrdinalIgnoreCase)
             {

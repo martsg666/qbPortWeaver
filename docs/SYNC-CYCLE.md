@@ -170,6 +170,20 @@ When `NotifyOnPortUpdate` is enabled (General settings, default on), a successfu
 
 All three indicators reset when the user opens the log viewer or clears the logs. `MainForm` unsubscribes in `OnFormClosing` before teardown to prevent background threads from marshalling onto a disposed form handle.
 
+### Update Notifications
+
+The update check is separate from the sync cycle. It runs once at startup (from `MainForm_LoadAsync`) and every 12 hours (from a `System.Windows.Forms.Timer`). Both paths call `PerformUpdateCheckAsync(bool intrusive)`; the parameter controls whether the `UpdateAvailableForm` opens automatically.
+
+| Trigger | `intrusive` | Behaviour when newer version found |
+|---|---|---|
+| Startup, `Show update form on startup` = true | `true` | Tray menu item + tooltip line + opens `UpdateAvailableForm` |
+| Startup, `Show update form on startup` = false | `false` | Tray menu item + tooltip line + one-shot tray balloon |
+| 12-hour timer tick | `false` | Tray menu item + tooltip line + one-shot tray balloon |
+
+The persistent tray indicators (menu item "Update available (X.Y.Z)" and tooltip line) appear in all three scenarios so the prompt is never silent. `_lastNotifiedVersion` dedups repeat notifications for the same version across timer ticks. `_pendingUpdate` clears naturally on the next process launch once the user updates (GitHub returns a matching version → no detection).
+
+The update balloon is informational only - Windows 11 routes `ToolTipIcon.Info` balloons through Action Center and does not reliably fire `BalloonTipClicked`, so the tray menu item is the only clickable entry point. The same applies to the port update and "Logs cleared" balloons (also `ToolTipIcon.Info`); they are visual hints with no associated action.
+
 ## Status Output
 
 Every cycle writes a JSON status file (`qbPortWeaver.status.json` in `%LocalAppData%\qbPortWeaver\`) capturing the full cycle outcome. External tools can read this file to monitor sync health.

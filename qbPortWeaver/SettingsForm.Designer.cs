@@ -32,6 +32,7 @@ partial class SettingsForm
         nudRecoveryCycles         = new NumericUpDown();
         lblRecoveryCyclesUnit     = new Label();
         chkNotifyOnPortUpdate     = new CheckBox();
+        chkShowUpdateForm         = new CheckBox();
         grpQBittorrent            = new GroupBox();
         lblQBittorrentURL         = new Label();
         txtQBittorrentURL         = new TextBox();
@@ -116,9 +117,10 @@ partial class SettingsForm
         grpGeneral.Controls.Add(nudRecoveryCycles);
         grpGeneral.Controls.Add(lblRecoveryCyclesUnit);
         grpGeneral.Controls.Add(chkNotifyOnPortUpdate);
+        grpGeneral.Controls.Add(chkShowUpdateForm);
         grpGeneral.Location = new Point(8, 8);
         grpGeneral.Name     = "grpGeneral";
-        grpGeneral.Size     = new Size(484, 221);
+        grpGeneral.Size     = new Size(484, 249);
         grpGeneral.TabIndex = 0;
         grpGeneral.TabStop  = false;
         grpGeneral.Text     = "General";
@@ -215,6 +217,12 @@ partial class SettingsForm
         chkNotifyOnPortUpdate.Size      = new Size(230, 19);
         chkNotifyOnPortUpdate.TabIndex  = 14;
         chkNotifyOnPortUpdate.Text      = "Show notification when port updates";
+        chkShowUpdateForm.AutoSize      = true;
+        chkShowUpdateForm.Location      = new Point(12, 220);
+        chkShowUpdateForm.Name          = "chkShowUpdateForm";
+        chkShowUpdateForm.Size          = new Size(220, 19);
+        chkShowUpdateForm.TabIndex      = 15;
+        chkShowUpdateForm.Text          = "Show update form on startup";
         // ── grpQBittorrent ────────────────────────────────────────────
         grpQBittorrent.Controls.Add(lblQBittorrentURL);
         grpQBittorrent.Controls.Add(txtQBittorrentURL);
@@ -233,7 +241,7 @@ partial class SettingsForm
         grpQBittorrent.Controls.Add(nudDefaultPort);
         grpQBittorrent.Controls.Add(chkWarnOnInterfaceMismatch);
         grpQBittorrent.Controls.Add(chkRestartOnDisconnect);
-        grpQBittorrent.Location = new Point(8, 237);
+        grpQBittorrent.Location = new Point(8, 265);
         grpQBittorrent.Name     = "grpQBittorrent";
         grpQBittorrent.Size     = new Size(484, 312);
         grpQBittorrent.TabIndex = 1;
@@ -345,7 +353,7 @@ partial class SettingsForm
         grpDeluge.Controls.Add(chkForceStartDeluge);
         grpDeluge.Controls.Add(lblDelugeDefaultPort);
         grpDeluge.Controls.Add(nudDelugeDefaultPort);
-        grpDeluge.Location = new Point(8, 237);
+        grpDeluge.Location = new Point(8, 265);
         grpDeluge.Name     = "grpDeluge";
         grpDeluge.Size     = new Size(484, 312);
         grpDeluge.TabIndex = 3;
@@ -438,7 +446,7 @@ partial class SettingsForm
         grpTransmission.Controls.Add(chkForceStartTransmission);
         grpTransmission.Controls.Add(lblTransmissionDefaultPort);
         grpTransmission.Controls.Add(nudTransmissionDefaultPort);
-        grpTransmission.Location = new Point(8, 237);
+        grpTransmission.Location = new Point(8, 265);
         grpTransmission.Name     = "grpTransmission";
         grpTransmission.Size     = new Size(484, 312);
         grpTransmission.TabIndex = 2;
@@ -531,7 +539,7 @@ partial class SettingsForm
         grpExtra.Controls.Add(lblPostUpdateCmd);
         grpExtra.Controls.Add(txtPostUpdateCmd);
         grpExtra.Controls.Add(chkDebugMode);
-        grpExtra.Location = new Point(8, 557);
+        grpExtra.Location = new Point(8, 585);
         grpExtra.Name     = "grpExtra";
         grpExtra.Size     = new Size(484, 126);
         grpExtra.TabIndex = 4;
@@ -565,14 +573,14 @@ partial class SettingsForm
         chkDebugMode.TabIndex = 4;
         chkDebugMode.Text     = "Enable debug logging";
         // ── Buttons ───────────────────────────────────────────────────
-        btnOK.Location = new Point(320, 695);
+        btnOK.Location = new Point(320, 723);
         btnOK.Name     = "btnOK";
         btnOK.Size     = new Size(82, 28);
         btnOK.TabIndex = 5;
         btnOK.Text     = "OK";
         btnOK.Click   += btnOK_Click;
         btnCancel.DialogResult = DialogResult.Cancel;
-        btnCancel.Location     = new Point(410, 695);
+        btnCancel.Location     = new Point(410, 723);
         btnCancel.Name         = "btnCancel";
         btnCancel.Size         = new Size(82, 28);
         btnCancel.TabIndex     = 6;
@@ -583,7 +591,7 @@ partial class SettingsForm
         AutoScaleDimensions = new SizeF(7F, 15F);
         AutoScaleMode       = AutoScaleMode.Font;
         CancelButton        = btnCancel;
-        ClientSize          = new Size(500, 734);
+        ClientSize          = new Size(500, 762);
         Controls.Add(grpGeneral);
         Controls.Add(grpQBittorrent);
         Controls.Add(grpDeluge);
@@ -633,6 +641,7 @@ partial class SettingsForm
     private NumericUpDown nudRecoveryCycles;
     private Label         lblRecoveryCyclesUnit;
     private CheckBox      chkNotifyOnPortUpdate;
+    private CheckBox      chkShowUpdateForm;
 
     private GroupBox      grpQBittorrent;
     private Label         lblQBittorrentURL;

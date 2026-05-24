@@ -43,6 +43,7 @@ partial class SettingsForm
         lblQBittorrentExePath     = new Label();
         txtQBittorrentExePath     = new TextBox();
         btnBrowseExePath          = new Button();
+        btnTestQBittorrent        = new Button();
         lblQBittorrentProcessName = new Label();
         txtQBittorrentProcessName = new TextBox();
         chkRestartQBittorrent     = new CheckBox();
@@ -59,6 +60,7 @@ partial class SettingsForm
         lblDelugeExePath        = new Label();
         txtDelugeExePath        = new TextBox();
         btnBrowseDelugeExePath  = new Button();
+        btnTestDeluge           = new Button();
         lblDelugeProcessName    = new Label();
         txtDelugeProcessName    = new TextBox();
         chkRestartDeluge        = new CheckBox();
@@ -77,6 +79,7 @@ partial class SettingsForm
         lblTransmissionExePath        = new Label();
         txtTransmissionExePath        = new TextBox();
         btnBrowseTransmissionExePath  = new Button();
+        btnTestTransmission           = new Button();
         chkRestartTransmission        = new CheckBox();
         chkForceStartTransmission     = new CheckBox();
         lblTransmissionDefaultPort    = new Label();
@@ -233,6 +236,7 @@ partial class SettingsForm
         grpQBittorrent.Controls.Add(lblQBittorrentExePath);
         grpQBittorrent.Controls.Add(txtQBittorrentExePath);
         grpQBittorrent.Controls.Add(btnBrowseExePath);
+        grpQBittorrent.Controls.Add(btnTestQBittorrent);
         grpQBittorrent.Controls.Add(lblQBittorrentProcessName);
         grpQBittorrent.Controls.Add(txtQBittorrentProcessName);
         grpQBittorrent.Controls.Add(chkRestartQBittorrent);
@@ -255,8 +259,14 @@ partial class SettingsForm
         lblQBittorrentURL.TextAlign = ContentAlignment.MiddleLeft;
         txtQBittorrentURL.Location = new Point(148, 24);
         txtQBittorrentURL.Name     = "txtQBittorrentURL";
-        txtQBittorrentURL.Size     = new Size(320, 23);
+        txtQBittorrentURL.Size     = new Size(244, 23);
         txtQBittorrentURL.TabIndex = 1;
+        btnTestQBittorrent.Location = new Point(398, 24);
+        btnTestQBittorrent.Name     = "btnTestQBittorrent";
+        btnTestQBittorrent.Size     = new Size(70, 23);
+        btnTestQBittorrent.TabIndex = 17;
+        btnTestQBittorrent.Text     = "Test";
+        btnTestQBittorrent.Click   += btnTestQBittorrent_Click;
         lblQBittorrentUserName.Location  = new Point(12, 53);
         lblQBittorrentUserName.Name      = "lblQBittorrentUserName";
         lblQBittorrentUserName.Size      = new Size(130, 23);
@@ -347,6 +357,7 @@ partial class SettingsForm
         grpDeluge.Controls.Add(lblDelugeExePath);
         grpDeluge.Controls.Add(txtDelugeExePath);
         grpDeluge.Controls.Add(btnBrowseDelugeExePath);
+        grpDeluge.Controls.Add(btnTestDeluge);
         grpDeluge.Controls.Add(lblDelugeProcessName);
         grpDeluge.Controls.Add(txtDelugeProcessName);
         grpDeluge.Controls.Add(chkRestartDeluge);
@@ -368,8 +379,14 @@ partial class SettingsForm
         lblDelugeURL.TextAlign = ContentAlignment.MiddleLeft;
         txtDelugeURL.Location = new Point(148, 24);
         txtDelugeURL.Name     = "txtDelugeURL";
-        txtDelugeURL.Size     = new Size(320, 23);
+        txtDelugeURL.Size     = new Size(244, 23);
         txtDelugeURL.TabIndex = 1;
+        btnTestDeluge.Location = new Point(398, 24);
+        btnTestDeluge.Name     = "btnTestDeluge";
+        btnTestDeluge.Size     = new Size(70, 23);
+        btnTestDeluge.TabIndex = 13;
+        btnTestDeluge.Text     = "Test";
+        btnTestDeluge.Click   += btnTestDeluge_Click;
         lblDelugePassword.Location  = new Point(12, 53);
         lblDelugePassword.Name      = "lblDelugePassword";
         lblDelugePassword.Size      = new Size(130, 23);
@@ -440,6 +457,7 @@ partial class SettingsForm
         grpTransmission.Controls.Add(lblTransmissionExePath);
         grpTransmission.Controls.Add(txtTransmissionExePath);
         grpTransmission.Controls.Add(btnBrowseTransmissionExePath);
+        grpTransmission.Controls.Add(btnTestTransmission);
         grpTransmission.Controls.Add(lblTransmissionProcessName);
         grpTransmission.Controls.Add(txtTransmissionProcessName);
         grpTransmission.Controls.Add(chkRestartTransmission);
@@ -461,8 +479,14 @@ partial class SettingsForm
         lblTransmissionURL.TextAlign = ContentAlignment.MiddleLeft;
         txtTransmissionURL.Location = new Point(148, 24);
         txtTransmissionURL.Name     = "txtTransmissionURL";
-        txtTransmissionURL.Size     = new Size(320, 23);
+        txtTransmissionURL.Size     = new Size(244, 23);
         txtTransmissionURL.TabIndex = 1;
+        btnTestTransmission.Location = new Point(398, 24);
+        btnTestTransmission.Name     = "btnTestTransmission";
+        btnTestTransmission.Size     = new Size(70, 23);
+        btnTestTransmission.TabIndex = 15;
+        btnTestTransmission.Text     = "Test";
+        btnTestTransmission.Click   += btnTestTransmission_Click;
         lblTransmissionUserName.Location  = new Point(12, 53);
         lblTransmissionUserName.Name      = "lblTransmissionUserName";
         lblTransmissionUserName.Size      = new Size(130, 23);
@@ -653,6 +677,7 @@ partial class SettingsForm
     private Label         lblQBittorrentExePath;
     private TextBox       txtQBittorrentExePath;
     private Button        btnBrowseExePath;
+    private Button        btnTestQBittorrent;
     private Label         lblQBittorrentProcessName;
     private TextBox       txtQBittorrentProcessName;
     private CheckBox      chkRestartQBittorrent;
@@ -670,6 +695,7 @@ partial class SettingsForm
     private Label         lblDelugeExePath;
     private TextBox       txtDelugeExePath;
     private Button        btnBrowseDelugeExePath;
+    private Button        btnTestDeluge;
     private Label         lblDelugeProcessName;
     private TextBox       txtDelugeProcessName;
     private CheckBox      chkRestartDeluge;
@@ -687,6 +713,7 @@ partial class SettingsForm
     private Label         lblTransmissionExePath;
     private TextBox       txtTransmissionExePath;
     private Button        btnBrowseTransmissionExePath;
+    private Button        btnTestTransmission;
     private Label         lblTransmissionProcessName;
     private TextBox       txtTransmissionProcessName;
     private CheckBox      chkRestartTransmission;

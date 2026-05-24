@@ -13,6 +13,7 @@ public partial class MainForm : Form
     private ToolStripMenuItem _autoStartMenuItem = null!;
     private ToolStripMenuItem _showLogsMenuItem = null!;
     private ToolStripMenuItem _updateAvailableMenuItem = null!;
+    private ToolStripMenuItem _checkUpdatesMenuItem = null!;
 
     private const string ShowLogsMenuText = "Show Logs";
     private const string LogAlertBalloonMessage = "Check the log viewer for warnings or errors.";
@@ -290,6 +291,11 @@ public partial class MainForm : Form
         _trayMenu.Items.Add(_updateAvailableMenuItem);
 
         _trayMenu.Items.Add("Sync Port Now", null, syncPortNow_Click);
+
+        _checkUpdatesMenuItem = new ToolStripMenuItem("Check for Updates");
+        _checkUpdatesMenuItem.Click += checkUpdates_Click;
+        _trayMenu.Items.Add(_checkUpdatesMenuItem);
+
         _showLogsMenuItem = new ToolStripMenuItem(ShowLogsMenuText);
         _showLogsMenuItem.Click += showLogs_Click;
         _trayMenu.Items.Add(_showLogsMenuItem);
@@ -530,12 +536,15 @@ public partial class MainForm : Form
 
     // Checks GitHub for a newer release.
     // When <paramref name="intrusive"/> is true (startup call), opens the UpdateAvailableForm directly.
-    // When false (12-hour timer tick), surfaces the result through the tray menu item and tooltip
-    // plus a one-shot informational balloon, so the user is not interrupted. The menu item is the
-    // only clickable entry point - Windows 11 routes ToolTipIcon.Info balloons silently through
-    // Action Center and does not reliably fire BalloonTipClicked. The menu item stays visible
+    // When false (12-hour timer tick or manual tray click), surfaces the result through the tray menu
+    // item and tooltip plus a one-shot informational balloon, so the user is not interrupted. The menu
+    // item is the only clickable entry point - Windows 11 routes ToolTipIcon.Info balloons silently
+    // through Action Center and does not reliably fire BalloonTipClicked. The menu item stays visible
     // until the user updates (process restart with matching version clears _pendingUpdate naturally).
-    private async Task PerformUpdateCheckAsync(bool intrusive = true)
+    // When <paramref name="manual"/> is true (user-initiated from the tray menu), the same-version
+    // dedup is bypassed so the user always gets feedback, and "up to date" / failure outcomes show
+    // a balloon so the click is never silent.
+    private async Task PerformUpdateCheckAsync(bool intrusive = true, bool manual = false)
     {
         try
         {
@@ -543,7 +552,7 @@ public partial class MainForm : Form
             var update = await UpdateChecker.GetAvailableUpdateAsync(_shutdownCts.Token);
             if (update.HasValue)
             {
-                if (update.Value.Version == _lastNotifiedVersion)
+                if (!manual && update.Value.Version == _lastNotifiedVersion)
                 {
                     LogManager.Instance.LogDebug($"MainForm.PerformUpdateCheckAsync: Version {update.Value.Version} available (already notified)");
                     return;
@@ -574,11 +583,33 @@ public partial class MainForm : Form
             else
             {
                 LogManager.Instance.LogMessage($"Application is up to date ({AppConstants.AppVersion})", LogLevel.Info);
+                if (manual)
+                    _trayIcon.ShowBalloonTip(AppConstants.BalloonTipDurationMs, AppIdentity.AppName,
+                        $"{AppIdentity.AppName} {AppConstants.AppVersion} is up to date.", ToolTipIcon.Info);
             }
         }
         catch (Exception ex)
         {
             LogManager.Instance.LogDebug($"MainForm.PerformUpdateCheckAsync: {ex.Message}");
+            if (manual)
+                _trayIcon.ShowBalloonTip(AppConstants.BalloonTipDurationMs, AppIdentity.AppName,
+                    "Could not check for updates - see the log for details.", ToolTipIcon.Warning);
+        }
+    }
+
+    // Manual tray-triggered update check. Disables the menu item while the request is in flight
+    // so rapid clicks do not stack multiple HTTP calls; re-enabled in finally even on cancellation.
+    private async void checkUpdates_Click(object? sender, EventArgs e)
+    {
+        _checkUpdatesMenuItem.Enabled = false;
+        try
+        {
+            await PerformUpdateCheckAsync(intrusive: false, manual: true);
+        }
+        finally
+        {
+            if (!IsDisposed)
+                _checkUpdatesMenuItem.Enabled = true;
         }
     }
 

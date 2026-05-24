@@ -172,15 +172,16 @@ All three indicators reset when the user opens the log viewer or clears the logs
 
 ### Update Notifications
 
-The update check is separate from the sync cycle. It runs once at startup (from `MainForm_LoadAsync`) and every 12 hours (from a `System.Windows.Forms.Timer`). Both paths call `PerformUpdateCheckAsync(bool intrusive)`; the parameter controls whether the `UpdateAvailableForm` opens automatically.
+The update check is separate from the sync cycle. It runs once at startup (from `MainForm_LoadAsync`), every 12 hours (from a `System.Windows.Forms.Timer`), and on demand when the user clicks **Check for Updates** in the tray menu (`checkUpdates_Click`). These paths call `PerformUpdateCheckAsync(bool intrusive, bool manual)`; `intrusive` controls whether the `UpdateAvailableForm` opens automatically, and `manual` (set only by the tray click) bypasses the same-version dedup and adds an "up to date" or failure balloon so the click is never silent.
 
-| Trigger | `intrusive` | Behaviour when newer version found |
+| Trigger | `intrusive` / `manual` | Behaviour when newer version found |
 |---|---|---|
-| Startup, `Show update form on startup` = true | `true` | Tray menu item + tooltip line + opens `UpdateAvailableForm` |
-| Startup, `Show update form on startup` = false | `false` | Tray menu item + tooltip line + one-shot tray balloon |
-| 12-hour timer tick | `false` | Tray menu item + tooltip line + one-shot tray balloon |
+| Startup, `Show update form on startup` = true | `true` / `false` | Tray menu item + tooltip line + opens `UpdateAvailableForm` |
+| Startup, `Show update form on startup` = false | `false` / `false` | Tray menu item + tooltip line + one-shot tray balloon |
+| 12-hour timer tick | `false` / `false` | Tray menu item + tooltip line + one-shot tray balloon |
+| Manual "Check for Updates" tray click | `false` / `true` | Tray menu item + tooltip line + one-shot tray balloon; also shows an "up to date" or failure balloon, and ignores the same-version dedup, so the click always reports a result |
 
-The persistent tray indicators (menu item "Update available (X.Y.Z)" and tooltip line) appear in all three scenarios so the prompt is never silent. `_lastNotifiedVersion` dedups repeat notifications for the same version across timer ticks. `_pendingUpdate` clears naturally on the next process launch once the user updates (GitHub returns a matching version → no detection).
+The persistent tray indicators (menu item "Update available (X.Y.Z)" and tooltip line) appear in every scenario so the prompt is never silent. `_lastNotifiedVersion` dedups repeat notifications for the same version across timer ticks (skipped for manual checks). `_pendingUpdate` clears naturally on the next process launch once the user updates (GitHub returns a matching version → no detection). The manual handler disables the **Check for Updates** menu item while a request is in flight so rapid clicks do not stack HTTP calls.
 
 The update balloon is informational only - Windows 11 routes `ToolTipIcon.Info` balloons through Action Center and does not reliably fire `BalloonTipClicked`, so the tray menu item is the only clickable entry point. The same applies to the port update and "Logs cleared" balloons (also `ToolTipIcon.Info`); they are visual hints with no associated action.
 

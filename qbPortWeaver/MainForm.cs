@@ -10,10 +10,12 @@ public partial class MainForm : Form
     // Tray icon, menu and auto-start menu item
     private NotifyIcon _trayIcon = null!;
     private ContextMenuStrip _trayMenu = null!;
-    private ToolStripMenuItem _autoStartMenuItem = null!;
-    private ToolStripMenuItem _showLogsMenuItem = null!;
+    // Menu-item fields are declared in the order they appear in the tray menu (top to bottom).
     private ToolStripMenuItem _updateAvailableMenuItem = null!;
+    private ToolStripSeparator _updateSeparator = null!;
+    private ToolStripMenuItem _showLogsMenuItem = null!;
     private ToolStripMenuItem _checkUpdatesMenuItem = null!;
+    private ToolStripMenuItem _autoStartMenuItem = null!;
 
     private const string ShowLogsMenuText = "Show Logs";
     private const string LogAlertBalloonMessage = "Check the log viewer for warnings or errors.";
@@ -290,20 +292,35 @@ public partial class MainForm : Form
         _updateAvailableMenuItem.Click += updateAvailable_Click;
         _trayMenu.Items.Add(_updateAvailableMenuItem);
 
+        // Separator paired with the update item - hidden until an update is pending so the
+        // menu never opens with a leading separator. Toggled alongside _updateAvailableMenuItem.
+        _updateSeparator = new ToolStripSeparator { Visible = false };
+        _trayMenu.Items.Add(_updateSeparator);
+
+        // Sync action
         _trayMenu.Items.Add("Sync Port Now", null, syncPortNow_Click);
+        _trayMenu.Items.Add(new ToolStripSeparator());
 
-        _checkUpdatesMenuItem = new ToolStripMenuItem("Check for Updates");
-        _checkUpdatesMenuItem.Click += checkUpdates_Click;
-        _trayMenu.Items.Add(_checkUpdatesMenuItem);
-
+        // Logs
         _showLogsMenuItem = new ToolStripMenuItem(ShowLogsMenuText);
         _showLogsMenuItem.Click += showLogs_Click;
         _trayMenu.Items.Add(_showLogsMenuItem);
         _trayMenu.Items.Add("Clear Logs", null, clearLogs_Click);
+        _trayMenu.Items.Add(new ToolStripSeparator());
+
+        // Configuration
         _trayMenu.Items.Add("Settings", null, showSettings_Click);
         _trayMenu.Items.Add("Media Manager", null, showMediaManager_Click);
-        _trayMenu.Items.Add("About", null, showAbout_Click);
+        _trayMenu.Items.Add(new ToolStripSeparator());
 
+        // Info
+        _checkUpdatesMenuItem = new ToolStripMenuItem("Check for Updates");
+        _checkUpdatesMenuItem.Click += checkUpdates_Click;
+        _trayMenu.Items.Add(_checkUpdatesMenuItem);
+        _trayMenu.Items.Add("About", null, showAbout_Click);
+        _trayMenu.Items.Add(new ToolStripSeparator());
+
+        // App
         _autoStartMenuItem = new ToolStripMenuItem("Start Automatically with Windows")
         {
             CheckOnClick = true,
@@ -564,6 +581,7 @@ public partial class MainForm : Form
 
                 _updateAvailableMenuItem.Text = $"Update available ({update.Value.Version})";
                 _updateAvailableMenuItem.Visible = true;
+                _updateSeparator.Visible = true;
                 UpdateTrayTooltip();
 
                 if (intrusive)

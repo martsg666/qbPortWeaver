@@ -382,7 +382,7 @@ public partial class SettingsForm : Form
     // client-specific failure reasons to the log viewer. A non-null listening port is the success
     // signal. The client is always disposed and the button re-enabled in finally, even on cancel
     // or form disposal.
-    private async Task RunConnectionTestAsync(IBitTorrentClient client, Button button, string url, string clientName)
+    private async Task RunConnectionTestAsync(IBitTorrentClient client, Button button, string url, string clientName) // NOSONAR S2325 - accesses instance state (UseWaitCursor, IsDisposed) for post-await UI safety
     {
         if (string.IsNullOrEmpty(url) ||
             !Uri.TryCreate(url, UriKind.Absolute, out var uri) ||

@@ -354,47 +354,50 @@ public partial class SettingsForm : Form
 
     private async void btnTestQBittorrent_Click(object? sender, EventArgs e)
     {
-        var client = new QBittorrentClient(
-            txtQBittorrentURL.Text.Trim(), txtQBittorrentUserName.Text.Trim(), txtQBittorrentPassword.Text,
-            txtQBittorrentProcessName.Text.Trim(), txtQBittorrentExePath.Text.Trim());
-        await RunConnectionTestAsync(client, btnTestQBittorrent, txtQBittorrentURL.Text.Trim(), "qBittorrent");
+        await RunConnectionTestAsync(
+            () => new QBittorrentClient(
+                txtQBittorrentURL.Text.Trim(), txtQBittorrentUserName.Text.Trim(), txtQBittorrentPassword.Text,
+                txtQBittorrentProcessName.Text.Trim(), txtQBittorrentExePath.Text.Trim()),
+            btnTestQBittorrent, txtQBittorrentURL.Text.Trim(), "qBittorrent");
     }
 
     private async void btnTestTransmission_Click(object? sender, EventArgs e)
     {
-        var client = new TransmissionClient(
-            txtTransmissionURL.Text.Trim(), txtTransmissionUserName.Text.Trim(), txtTransmissionPassword.Text,
-            txtTransmissionProcessName.Text.Trim(), txtTransmissionExePath.Text.Trim());
-        await RunConnectionTestAsync(client, btnTestTransmission, txtTransmissionURL.Text.Trim(), "Transmission");
+        await RunConnectionTestAsync(
+            () => new TransmissionClient(
+                txtTransmissionURL.Text.Trim(), txtTransmissionUserName.Text.Trim(), txtTransmissionPassword.Text,
+                txtTransmissionProcessName.Text.Trim(), txtTransmissionExePath.Text.Trim()),
+            btnTestTransmission, txtTransmissionURL.Text.Trim(), "Transmission");
     }
 
     private async void btnTestDeluge_Click(object? sender, EventArgs e)
     {
-        var client = new DelugeClient(
-            txtDelugeURL.Text.Trim(), txtDelugePassword.Text,
-            txtDelugeProcessName.Text.Trim(), txtDelugeExePath.Text.Trim());
-        await RunConnectionTestAsync(client, btnTestDeluge, txtDelugeURL.Text.Trim(), "Deluge");
+        await RunConnectionTestAsync(
+            () => new DelugeClient(
+                txtDelugeURL.Text.Trim(), txtDelugePassword.Text,
+                txtDelugeProcessName.Text.Trim(), txtDelugeExePath.Text.Trim()),
+            btnTestDeluge, txtDelugeURL.Text.Trim(), "Deluge");
     }
 
-    // Shared driver for the three per-client "Test" buttons. Builds the client from the in-form
-    // values (not the saved registry values) so the user can validate before saving, then probes
-    // it with GetPreferencesAsync - a full auth + API round-trip that already logs detailed,
-    // client-specific failure reasons to the log viewer. A non-null listening port is the success
-    // signal. The client is always disposed and the button re-enabled in finally, even on cancel
-    // or form disposal.
-    private async Task RunConnectionTestAsync(IBitTorrentClient client, Button button, string url, string clientName) // NOSONAR S2325 - accesses instance state (UseWaitCursor, IsDisposed) for post-await UI safety
+    // Shared driver for the three per-client "Test" buttons. Validates the URL first, then builds the
+    // client from the in-form values (not the saved registry values) via the supplied factory so the
+    // client is created only when the URL is valid. Probes it with GetPreferencesAsync - a full
+    // auth + API round-trip that already logs detailed, client-specific failure reasons to the log
+    // viewer. A non-null listening port is the success signal. The client is disposed via 'using'
+    // and the button re-enabled in finally, even on cancel or form disposal.
+    private async Task RunConnectionTestAsync(Func<IBitTorrentClient> clientFactory, Button button, string url, string clientName) // NOSONAR S2325 - accesses instance state (UseWaitCursor, IsDisposed) for post-await UI safety
     {
         if (string.IsNullOrEmpty(url) ||
             !Uri.TryCreate(url, UriKind.Absolute, out var uri) ||
             (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
         {
-            client.Dispose();
             MessageBox.Show(
                 $"Enter a valid {clientName} URL starting with http:// or https:// before testing.",
                 AppIdentity.AppName, MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return;
         }
 
+        using var client = clientFactory();
         button.Enabled = false;
         UseWaitCursor = true;
         try
@@ -420,7 +423,6 @@ public partial class SettingsForm : Form
         }
         finally
         {
-            client.Dispose();
             if (!IsDisposed)
             {
                 UseWaitCursor = false;

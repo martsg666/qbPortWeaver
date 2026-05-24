@@ -552,15 +552,16 @@ public partial class MainForm : Form
         => await PerformUpdateCheckAsync(intrusive: false);
 
     // Checks GitHub for a newer release.
-    // When <paramref name="intrusive"/> is true (startup call), opens the UpdateAvailableForm directly.
-    // When false (12-hour timer tick or manual tray click), surfaces the result through the tray menu
-    // item and tooltip plus a one-shot informational balloon, so the user is not interrupted. The menu
-    // item is the only clickable entry point - Windows 11 routes ToolTipIcon.Info balloons silently
-    // through Action Center and does not reliably fire BalloonTipClicked. The menu item stays visible
+    // When <paramref name="intrusive"/> is true (startup call or manual tray click), opens the
+    // UpdateAvailableForm directly when a newer version is found.
+    // When false (12-hour timer tick), surfaces the result through the tray menu item and tooltip
+    // plus a one-shot informational balloon, so the user is not interrupted. The menu item is the
+    // only clickable entry point - Windows 11 routes ToolTipIcon.Info balloons silently through
+    // Action Center and does not reliably fire BalloonTipClicked. The menu item stays visible
     // until the user updates (process restart with matching version clears _pendingUpdate naturally).
-    // When <paramref name="manual"/> is true (user-initiated from the tray menu), the same-version
-    // dedup is bypassed so the user always gets feedback, and "up to date" / failure outcomes show
-    // a balloon so the click is never silent.
+    // When <paramref name="manual"/> is true (user-initiated from the tray menu), intrusive is also
+    // set so a found update opens the form; the same-version dedup is bypassed so the user always
+    // gets feedback, and "up to date" / failure outcomes show a balloon so the click is never silent.
     private async Task PerformUpdateCheckAsync(bool intrusive = true, bool manual = false)
     {
         try
@@ -622,7 +623,7 @@ public partial class MainForm : Form
         _checkUpdatesMenuItem.Enabled = false;
         try
         {
-            await PerformUpdateCheckAsync(intrusive: false, manual: true);
+            await PerformUpdateCheckAsync(intrusive: true, manual: true);
         }
         finally
         {

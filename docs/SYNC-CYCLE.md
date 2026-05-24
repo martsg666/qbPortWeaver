@@ -179,7 +179,7 @@ The update check is separate from the sync cycle. It runs once at startup (from 
 | Startup, `Show update form on startup` = true | `true` / `false` | Tray menu item + tooltip line + opens `UpdateAvailableForm` |
 | Startup, `Show update form on startup` = false | `false` / `false` | Tray menu item + tooltip line + one-shot tray balloon |
 | 12-hour timer tick | `false` / `false` | Tray menu item + tooltip line + one-shot tray balloon |
-| Manual "Check for Updates" tray click | `false` / `true` | Tray menu item + tooltip line + one-shot tray balloon; also shows an "up to date" or failure balloon, and ignores the same-version dedup, so the click always reports a result |
+| Manual "Check for Updates" tray click | `true` / `true` | Tray menu item + tooltip line + opens `UpdateAvailableForm`; also shows an "up to date" or failure balloon, and ignores the same-version dedup, so the click always reports a result |
 
 The persistent tray indicators (menu item "Update available (X.Y.Z)" and tooltip line) appear in every scenario so the prompt is never silent. `_lastNotifiedVersion` dedups repeat notifications for the same version across timer ticks (skipped for manual checks). `_pendingUpdate` clears naturally on the next process launch once the user updates (GitHub returns a matching version → no detection). The manual handler disables the **Check for Updates** menu item while a request is in flight so rapid clicks do not stack HTTP calls.
 

@@ -264,7 +264,7 @@ partial class SettingsForm
         btnTestQBittorrent.Location = new Point(398, 24);
         btnTestQBittorrent.Name     = "btnTestQBittorrent";
         btnTestQBittorrent.Size     = new Size(70, 23);
-        btnTestQBittorrent.TabIndex = 17;
+        btnTestQBittorrent.TabIndex = 2;
         btnTestQBittorrent.Text     = "Test";
         btnTestQBittorrent.Click   += btnTestQBittorrent_Click;
         lblQBittorrentUserName.Location  = new Point(12, 53);
@@ -384,7 +384,7 @@ partial class SettingsForm
         btnTestDeluge.Location = new Point(398, 24);
         btnTestDeluge.Name     = "btnTestDeluge";
         btnTestDeluge.Size     = new Size(70, 23);
-        btnTestDeluge.TabIndex = 13;
+        btnTestDeluge.TabIndex = 2;
         btnTestDeluge.Text     = "Test";
         btnTestDeluge.Click   += btnTestDeluge_Click;
         lblDelugePassword.Location  = new Point(12, 53);
@@ -484,7 +484,7 @@ partial class SettingsForm
         btnTestTransmission.Location = new Point(398, 24);
         btnTestTransmission.Name     = "btnTestTransmission";
         btnTestTransmission.Size     = new Size(70, 23);
-        btnTestTransmission.TabIndex = 15;
+        btnTestTransmission.TabIndex = 2;
         btnTestTransmission.Text     = "Test";
         btnTestTransmission.Click   += btnTestTransmission_Click;
         lblTransmissionUserName.Location  = new Point(12, 53);

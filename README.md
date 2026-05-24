@@ -207,11 +207,11 @@ Configured via tray menu → **Media Manager**.
 ### Tray Menu Options
 
 - **Sync Port Now** - triggers an immediate sync cycle, skipping the current wait interval
-- **Check for Updates** - checks GitHub for a newer release on demand and reports the result (also shown when already up to date)
 - **Show Logs** - opens the built-in Log Viewer (also opened by double-clicking the tray icon); shows a warning/error count badge when unviewed entries exist
 - **Clear Logs** - deletes all log files and starts a fresh log
 - **Settings** - opens the Settings dialog
 - **Media Manager** - opens the Media Manager dialog to configure source and library folders, preview imports (Scan Now), apply them (Import Now), and clear fingerprint caches (Clear Cache)
+- **Check for Updates** - checks GitHub for a newer release on demand and reports the result (also shown when already up to date)
 - **About** - shows version info and update status
 - **Start Automatically with Windows** - toggles the Windows startup registry entry
 - **Exit** - shuts down the application

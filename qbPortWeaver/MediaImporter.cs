@@ -1,4 +1,5 @@
 ﻿using System.Collections.Concurrent;
+using System.Net.Sockets;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text.Json;
@@ -52,6 +53,17 @@ internal static partial class MediaImporter
     // once before giving up. Distinct from a real "not supported" response (those don't recover).
     private const int ErrorInvalidFunctionHResult = unchecked((int)0x80070001);
     private const int SmbRetryDelayMs = 500;
+
+    // Reachability pre-check for UNC paths: Directory.Exists on an offline host blocks for the OS
+    // SMB/TCP connect timeout (tens of seconds), so probe the host's SMB port first and fail fast.
+    private const int SmbProbePort = 445;               // SMB-over-TCP port
+    private const int SmbProbeTimeoutMs = 2000;         // max wait for the reachability probe
+    private const int UnreachableHostCacheSeconds = 30; // negative-result lifetime
+
+    // Hosts found unreachable by IsUncHostReachable, keyed by host name with the UTC time of the failed
+    // probe. Lets multiple paths on one dead host (e.g. \\NAS\A and \\NAS\B) fail fast without each re-probing.
+    private static readonly ConcurrentDictionary<string, DateTime> _unreachableHosts =
+        new(StringComparer.OrdinalIgnoreCase);
 
     private static readonly JsonSerializerOptions _jsonWriteOptions = new() { WriteIndented = true };
 
@@ -505,12 +517,70 @@ internal static partial class MediaImporter
     /// </summary>
     internal static bool DirectoryExistsWithSmbRetry(string folder)
     {
+        // Fast-fail when the path is a UNC path whose host is offline. Directory.Exists would
+        // otherwise block for the OS SMB/TCP connect timeout, and the retry below would double it.
+        if (!IsUncHostReachable(folder))
+        {
+            LogManager.Instance.LogDebug(
+                $"MediaImporter.DirectoryExistsWithSmbRetry: host for '{folder}' is unreachable, skipping existence check",
+                Subsystem.MediaManager);
+            return false;
+        }
+
         if (Directory.Exists(folder)) return true;
         LogManager.Instance.LogDebug(
             $"MediaImporter.DirectoryExistsWithSmbRetry: '{folder}' reported not found, retrying after {SmbRetryDelayMs}ms",
             Subsystem.MediaManager);
         Thread.Sleep(SmbRetryDelayMs);
         return Directory.Exists(folder);
+    }
+
+    // Returns false only when <paramref name="folder"/> is a UNC path (\\host\share\...) whose host does
+    // not accept a TCP connection on the SMB port within the probe timeout. Local paths and reachable
+    // hosts return true, so the caller proceeds to the normal Directory.Exists check. A short-lived
+    // negative cache avoids re-probing a dead host for every path in the same import cycle.
+    private static bool IsUncHostReachable(string folder)
+    {
+        if (!TryGetUncHost(folder, out var host)) return true; // not a UNC path - no pre-check needed
+
+        if (_unreachableHosts.TryGetValue(host, out var failedAt))
+        {
+            if ((DateTime.UtcNow - failedAt).TotalSeconds < UnreachableHostCacheSeconds)
+                return false;
+            _unreachableHosts.TryRemove(host, out _); // stale - re-probe below
+        }
+
+        try
+        {
+            using var tcp = new TcpClient();
+            // Task.Wait bounds the wait to the timeout; the underlying socket is closed on Dispose if
+            // it has not connected. A faulted task (DNS failure / refused) throws here and is caught.
+            var connect = tcp.ConnectAsync(host, SmbProbePort);
+            if (connect.Wait(SmbProbeTimeoutMs) && tcp.Connected)
+                return true;
+        }
+        catch
+        {
+            // DNS resolution failure, connection refused, etc. - treat the host as unreachable.
+        }
+
+        _unreachableHosts[host] = DateTime.UtcNow;
+        return false;
+    }
+
+    // Extracts the host from a UNC path (\\host\share\... or //host/share/...). Returns false for
+    // local paths (drive letters, relative paths), which never need the reachability pre-check.
+    private static bool TryGetUncHost(string path, out string host)
+    {
+        host = string.Empty;
+        if (string.IsNullOrEmpty(path) || path.Length < 3) return false;
+        if (!IsSlash(path[0]) || !IsSlash(path[1])) return false;
+
+        int end = path.IndexOfAny(['\\', '/'], 2);
+        host = end < 0 ? path[2..] : path[2..end];
+        return host.Length > 0;
+
+        static bool IsSlash(char c) => c is '\\' or '/';
     }
 
     // Fingerprints a pre-enumerated list of library files in parallel, using the cache where possible.

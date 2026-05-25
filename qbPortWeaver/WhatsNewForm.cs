@@ -11,6 +11,16 @@ public partial class WhatsNewForm : Form
         "If you find qbPortWeaver useful, please star it on GitHub.";
 
     private const string ReleaseFeaturesText =
+        "New in 2.5.5\n\n" +
+        "Test connection from Settings\n" +
+        "Each client section in Settings now has a Test button next to the URL. " +
+        "Click it to check the connection to qBittorrent, Transmission, or Deluge using the values you have entered, " +
+        "without saving first. A message confirms success and shows the current listening port, " +
+        "or points you to the log if it does not connect.\n\n" +
+        "Check for updates on demand\n" +
+        "A new Check for Updates item in the tray menu lets you check for a newer version right away " +
+        "instead of waiting for the periodic check. You always get a result, even when you are already up to date.\n\n" +
+        "Previously released\n\n" +
         "New in 2.5.4\n\n" +
         "Less intrusive update notifications\n" +
         "The 12-hour background update check no longer interrupts you with a form. " +
@@ -21,7 +31,6 @@ public partial class WhatsNewForm : Form
         "Lower log viewer memory usage\n" +
         "Opening the log viewer used to leave a noticeable memory footprint after closing it. " +
         "The viewer now releases its content promptly on close so the application returns to its baseline memory usage.\n\n" +
-        "Previously released\n\n" +
         "New in 2.5.3\n\n" +
         "Log alert notifications\n" +
         "When a warning or error is written to the log, a tray balloon tip appears once to get your attention. " +

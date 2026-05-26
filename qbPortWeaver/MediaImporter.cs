@@ -528,7 +528,7 @@ internal static partial class MediaImporter
         if (isUnc && IsHostCachedUnreachable(host))
         {
             LogManager.Instance.LogDebug(
-                $"MediaImporter.DirectoryExistsWithSmbRetry: host for '{folder}' is unreachable (cached), skipping existence check",
+                $"MediaImporter.DirectoryExistsWithSmbRetry: Host for '{folder}' is unreachable (cached), skipping existence check",
                 Subsystem.MediaManager);
             return false;
         }

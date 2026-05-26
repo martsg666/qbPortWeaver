@@ -92,7 +92,7 @@ internal static class AutoRecoveryManager
     {
         if (string.IsNullOrWhiteSpace(processName))
         {
-            LogManager.Instance.LogDebug("AutoRecoveryManager.RestartClientProcessAsync: processName is empty - skipping");
+            LogManager.Instance.LogDebug("AutoRecoveryManager.RestartClientProcessAsync: Process name is empty - skipping");
             return;
         }
 

@@ -368,7 +368,7 @@ public static class MediaManagerService
         {
             if (!MediaImporter.DirectoryExistsWithSmbRetry(f))
             {
-                LogManager.Instance.LogMessage($"Source folder not found: '{f}'", LogLevel.Warn, Subsystem.MediaManager);
+                LogManager.Instance.LogMessage($"Source folder not accessible: '{f}'", LogLevel.Warn, Subsystem.MediaManager);
                 continue;
             }
             validFolders.Add(f);

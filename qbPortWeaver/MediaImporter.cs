@@ -558,6 +558,10 @@ internal static partial class MediaImporter
             var connect = tcp.ConnectAsync(host, SmbProbePort);
             if (connect.Wait(SmbProbeTimeoutMs) && tcp.Connected)
                 return true;
+
+            // Timed out: tcp is disposed as this scope exits, which faults the still-pending connect
+            // task. Observe its exception so it does not surface as an UnobservedTaskException.
+            _ = connect.ContinueWith(static t => _ = t.Exception, TaskScheduler.Default);
         }
         catch
         {
@@ -578,6 +582,15 @@ internal static partial class MediaImporter
 
         int end = path.IndexOfAny(['\\', '/'], 2);
         host = end < 0 ? path[2..] : path[2..end];
+
+        // \\?\ (extended-length) and \\.\ (device) prefixes are not network hosts - skip the probe
+        // and let Directory.Exists handle the path normally.
+        if (host is "?" or ".")
+        {
+            host = string.Empty;
+            return false;
+        }
+
         return host.Length > 0;
 
         static bool IsSlash(char c) => c is '\\' or '/';

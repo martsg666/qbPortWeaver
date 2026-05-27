@@ -28,6 +28,9 @@ public partial class LogViewerForm : Form
     private bool _isDarkMode;
     private Color[] _themeColors = []; // overwritten in OnLoad after _isDarkMode is set
     private System.Windows.Forms.Timer? _searchDebounceTimer;
+    // Overlay shown for status/placeholder text (loading, empty, error). A RichTextBox cannot
+    // vertically centre its content, so these messages live on a Label that covers the log area.
+    private Label? _metaLabel;
 
     [LibraryImport("user32.dll", EntryPoint = "SendMessageW")]
     private static partial IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
@@ -392,6 +395,7 @@ public partial class LogViewerForm : Form
         // a brief flash where the new content shows at the top before scrolling.
         WithRedrawSuppressed(() =>
         {
+            HideMetaLabel();
             rtbLog.Rtf = BuildRtf(filtered, _themeColors);
             if (wasAtBottom) ScrollToBottom();
             RefreshSearch(navigateToFirst: true);
@@ -550,6 +554,7 @@ public partial class LogViewerForm : Form
             // bottom / latest issue) instead of content painting at the top and then visibly jumping.
             WithRedrawSuppressed(() =>
             {
+                HideMetaLabel();
                 rtbLog.Rtf = rtf;
                 if (_navigateToLatestIssue) { NavigateToLatestIssue(); _navigateToLatestIssue = false; } else ScrollToBottom();
                 if (!string.IsNullOrEmpty(txtSearch.Text))
@@ -772,6 +777,7 @@ public partial class LogViewerForm : Form
         // bottom before the append); the helper handles re-enabling redraw and the single repaint.
         WithRedrawSuppressed(() =>
         {
+            HideMetaLabel();
             EnsureTrailingNewline();
             rtbLog.SelectionStart = rtbLog.TextLength;
             rtbLog.SelectionLength = 0;
@@ -825,7 +831,7 @@ public partial class LogViewerForm : Form
     // Convenience colour for meta/status messages (not log entries)
     private Color MetaColor => _isDarkMode ? AppConstants.DarkModeMeta : SystemColors.GrayText;
 
-    // Writes the RTF document header shared by BuildRtf and SetMetaMessage:
+    // Writes the RTF document header for BuildRtf:
     // Unicode-safe, Consolas 9pt (18 half-points), no paragraph spacing, colour table.
     private static void AppendRtfHeader(StringBuilder sb, Color[] colors)
     {
@@ -877,26 +883,46 @@ public partial class LogViewerForm : Form
     }
 
     // Displays a one-off meta/error message (e.g. "No log entries yet", watcher errors).
-    // Replaces the entire RTF content with a single styled line - safe because meta messages
-    // are shown before any real log content, or when the watcher has already failed.
+    // Shows a centred status/placeholder message (loading, empty, error) over the log area.
+    // The overlay Label fully covers rtbLog with the same background, so it reads as the log's
+    // own empty/error state; it is hidden again as soon as real content is displayed.
     private void SetMetaMessage(string text, Color color)
     {
-        // Map color to a 1-based RTF colour-table index.
-        // Falls back to the last entry for colours not in the theme palette (e.g. MetaColor).
-        int colorIdx = _themeColors.Length;
-        for (int i = 0; i < _themeColors.Length; i++)
-        {
-            if (_themeColors[i] == color) { colorIdx = i + 1; break; }
-        }
+        EnsureMetaLabel();
+        _metaLabel!.BackColor = rtbLog.BackColor;
+        _metaLabel.ForeColor = color;
+        _metaLabel.Text = text;
+        SyncMetaLabelBounds();
+        _metaLabel.Visible = true;
+        _metaLabel.BringToFront();
+    }
 
-        var sb = new StringBuilder();
-        AppendRtfHeader(sb, _themeColors);
-        // \qc centres the line: meta text is transient status/placeholder (not a log entry), so a
-        // centred message reads as intentional rather than a stray first log line.
-        sb.Append($"\\qc\\cf{colorIdx} ");
-        AppendRtfText(sb, text);
-        sb.Append("\\par}");
-        rtbLog.Rtf = sb.ToString();
+    // Creates the overlay Label as a sibling of rtbLog (not a child - a RichTextBox does not host
+    // child controls reliably across repaints) and keeps it aligned to rtbLog's bounds.
+    private void EnsureMetaLabel()
+    {
+        if (_metaLabel is not null) return;
+        _metaLabel = new Label
+        {
+            AutoSize = false,
+            TextAlign = ContentAlignment.MiddleCenter,
+            Font = rtbLog.Font,
+            Visible = false,
+        };
+        rtbLog.Parent!.Controls.Add(_metaLabel);
+        SyncMetaLabelBounds();
+        rtbLog.SizeChanged += (_, _) => SyncMetaLabelBounds();
+        rtbLog.LocationChanged += (_, _) => SyncMetaLabelBounds();
+    }
+
+    private void SyncMetaLabelBounds()
+    {
+        if (_metaLabel is not null) _metaLabel.Bounds = rtbLog.Bounds;
+    }
+
+    private void HideMetaLabel()
+    {
+        if (_metaLabel is not null) _metaLabel.Visible = false;
     }
 
     // Custom TextBox that draws a vertically-centered placeholder.

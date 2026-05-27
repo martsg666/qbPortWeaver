@@ -367,15 +367,18 @@ internal static partial class MediaImporter
             if (TryReuseCachedIndex(moviesLibraryPath, tvShowsLibraryPath, allowReuse))
                 return true;
 
+            int configuredCount = (string.IsNullOrWhiteSpace(moviesLibraryPath) ? 0 : 1)
+                                + (string.IsNullOrWhiteSpace(tvShowsLibraryPath) ? 0 : 1);
             var libraryPaths = new[] { moviesLibraryPath, tvShowsLibraryPath }
                 .Where(p => !string.IsNullOrWhiteSpace(p) && DirectoryExistsWithSmbRetry(p))
                 .ToArray();
 
-            bool hasConfiguredPaths = !string.IsNullOrWhiteSpace(moviesLibraryPath)
-                                   || !string.IsNullOrWhiteSpace(tvShowsLibraryPath);
-            if (hasConfiguredPaths && libraryPaths.Length == 0)
+            // If ANY configured path is inaccessible, skip the whole build rather than committing a
+            // partial index - a partial fingerprint set would report files under the missing path as
+            // absent and risk duplicate imports. Force a rebuild next cycle.
+            if (configuredCount > 0 && libraryPaths.Length < configuredCount)
             {
-                LogManager.Instance.LogMessage("Library index build skipped: configured paths not accessible - will retry next cycle", LogLevel.Warn, Subsystem.MediaManager);
+                LogManager.Instance.LogMessage("Library index build skipped: one or more configured paths not accessible - will retry next cycle", LogLevel.Warn, Subsystem.MediaManager);
                 _libraryBuildCycleCount = FullRebuildIntervalCycles;
                 return false;
             }
@@ -512,19 +515,20 @@ internal static partial class MediaImporter
     }
 
     /// <summary>
-    /// Verifies a path exists, with a single retry for the transient "silent-false" SMB hiccup (a
-    /// reachable path momentarily reported missing - different symptom from
-    /// <see cref="InvokeWithSmbRetry"/> which handles throws). For UNC paths the underlying
-    /// <see cref="Directory.Exists(string)"/> is bounded by <see cref="UncExistsTimeoutMs"/> so an
-    /// offline host fails fast instead of blocking on the OS SMB/TCP connect timeout; a timed-out host
-    /// is then cached as unreachable for <see cref="UnreachableHostCacheSeconds"/>s so other paths on
-    /// it also fail fast. Used by every Media Manager call that verifies an SMB path before acting on it.
+    /// Verifies a path exists, retrying once after a short delay when the first attempt is inconclusive -
+    /// covering both the transient "silent-false" SMB hiccup (a reachable path momentarily reported
+    /// missing) and a transient slow response (different symptom from <see cref="InvokeWithSmbRetry"/>
+    /// which handles throws). For UNC paths the underlying <see cref="Directory.Exists(string)"/> is
+    /// bounded by <see cref="UncExistsTimeoutMs"/> so an offline host fails fast instead of blocking on
+    /// the OS SMB/TCP connect timeout. Only when both attempts time out is the host cached as unreachable
+    /// for <see cref="UnreachableHostCacheSeconds"/>s, so a single slow check does not falsely skip a
+    /// healthy host. Used by every Media Manager call that verifies an SMB path before acting on it.
     /// </summary>
     internal static bool DirectoryExistsWithSmbRetry(string folder)
     {
         bool isUnc = TryGetUncHost(folder, out var host);
 
-        // Fast-fail if this UNC host's existence check timed out recently (host offline).
+        // Fast-fail if this UNC host's existence check timed out twice recently (host offline).
         if (isUnc && IsHostCachedUnreachable(host))
         {
             LogManager.Instance.LogDebug(
@@ -533,35 +537,44 @@ internal static partial class MediaImporter
             return false;
         }
 
-        var first = DirectoryExistsBounded(folder, isUnc, host);
+        var first = DirectoryExistsBounded(folder, isUnc);
         if (first == true) return true;
-        if (first is null) return false; // timed out - host already marked unreachable
 
-        // Reachable but reported missing: retry once for the transient SMB silent-false hiccup.
+        // first is false (reachable but reported missing) or null (timed out). Retry once after a short
+        // delay - a transient silent-false or a transient slow response usually clears on the second try.
         LogManager.Instance.LogDebug(
-            $"MediaImporter.DirectoryExistsWithSmbRetry: '{folder}' reported not found, retrying after {SmbRetryDelayMs}ms",
+            $"MediaImporter.DirectoryExistsWithSmbRetry: '{folder}' not confirmed ({(first is null ? "no response" : "reported not found")}), retrying after {SmbRetryDelayMs}ms",
             Subsystem.MediaManager);
         Thread.Sleep(SmbRetryDelayMs);
-        return DirectoryExistsBounded(folder, isUnc, host) == true;
+        var second = DirectoryExistsBounded(folder, isUnc);
+        if (second == true) return true;
+
+        // Still unconfirmed. If a UNC check timed out on both attempts the host is unreachable - cache it
+        // so sibling paths and later cycles fail fast instead of each waiting out the timeout.
+        if (isUnc && first is null && second is null)
+        {
+            _unreachableHosts[host] = DateTime.UtcNow;
+            LogManager.Instance.LogDebug(
+                $"MediaImporter.DirectoryExistsWithSmbRetry: '{folder}' did not respond within {UncExistsTimeoutMs}ms on two attempts, treating host as unreachable",
+                Subsystem.MediaManager);
+        }
+        return false;
     }
 
     // Runs Directory.Exists, bounding UNC paths by UncExistsTimeoutMs (a non-UNC path is checked
-    // directly - it never blocks). Returns the result, or null when a UNC check timed out, in which
-    // case the host is recorded as unreachable. Directory.Exists itself does not throw (it returns
-    // false on error), so the abandoned task completes harmlessly; the continuation only guards an
-    // unexpected fault from becoming an unobserved exception.
-    private static bool? DirectoryExistsBounded(string folder, bool isUnc, string host)
+    // directly - it never blocks). Returns the result, or null when a UNC check timed out. Side-effect
+    // free apart from observing the abandoned task: Directory.Exists itself does not throw (it returns
+    // false on error), so the orphaned task completes harmlessly; the continuation only guards an
+    // unexpected fault from becoming an unobserved exception. Caching a timed-out host is left to the
+    // caller so it can retry before deciding the host is unreachable.
+    private static bool? DirectoryExistsBounded(string folder, bool isUnc)
     {
         if (!isUnc) return Directory.Exists(folder);
 
         var task = Task.Run(() => Directory.Exists(folder));
         if (task.Wait(UncExistsTimeoutMs)) return task.Result;
 
-        _unreachableHosts[host] = DateTime.UtcNow;
         _ = task.ContinueWith(static t => _ = t.Exception, TaskScheduler.Default);
-        LogManager.Instance.LogDebug(
-            $"MediaImporter.DirectoryExistsBounded: '{folder}' did not respond within {UncExistsTimeoutMs}ms, treating host as unreachable",
-            Subsystem.MediaManager);
         return null;
     }
 

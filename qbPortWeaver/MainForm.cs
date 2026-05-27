@@ -438,10 +438,10 @@ public partial class MainForm : Form
             try
             {
                 await _updateSemaphore.WaitAsync(_shutdownCts.Token);
-                LogManager.Instance.LogBlankLine();
-                LogManager.Instance.LogMessage("Sync cycle started", LogLevel.Info);
                 try
                 {
+                    LogManager.Instance.LogBlankLine();
+                    LogManager.Instance.LogMessage("Sync cycle started", LogLevel.Info);
                     updateInterval = await _portSyncService.RunAsync(_shutdownCts.Token);
                 }
                 finally

@@ -1,6 +1,7 @@
 ﻿using Microsoft.Win32;
 using qbPortWeaver.Shared;
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using System.ServiceProcess;
 
 namespace qbPortWeaver;
@@ -282,6 +283,49 @@ public static class AppConstants
         catch (Exception ex)
         {
             LogManager.Instance.LogMessage($"Failed to open URL '{url}': {ex.Message}", LogLevel.Warn);
+        }
+    }
+
+    /// <summary>Copies text to the clipboard, swallowing the transient <see cref="ExternalException"/> thrown
+    /// when another process holds the clipboard open (clipboard managers, RDP). Empty text is replaced with a
+    /// single space because <see cref="Clipboard.SetText(string)"/> rejects an empty string.</summary>
+    public static void TrySetClipboardText(string text)
+    {
+        try
+        {
+            Clipboard.SetText(string.IsNullOrEmpty(text) ? " " : text);
+        }
+        catch (ExternalException ex)
+        {
+            LogManager.Instance.LogDebug($"AppConstants.TrySetClipboardText: Clipboard unavailable: {ex.Message}");
+        }
+    }
+
+    /// <summary>Returns clipboard text, or <see langword="null"/> when the clipboard holds no text or is transiently locked by another process.</summary>
+    public static string? TryGetClipboardText()
+    {
+        try
+        {
+            return Clipboard.ContainsText() ? Clipboard.GetText() : null;
+        }
+        catch (ExternalException ex)
+        {
+            LogManager.Instance.LogDebug($"AppConstants.TryGetClipboardText: Clipboard unavailable: {ex.Message}");
+            return null;
+        }
+    }
+
+    /// <summary>Returns <see langword="true"/> if the clipboard contains text; <see langword="false"/> if empty or transiently locked by another process.</summary>
+    public static bool ClipboardHasText()
+    {
+        try
+        {
+            return Clipboard.ContainsText();
+        }
+        catch (ExternalException ex)
+        {
+            LogManager.Instance.LogDebug($"AppConstants.ClipboardHasText: Clipboard unavailable: {ex.Message}");
+            return false;
         }
     }
 }

@@ -59,6 +59,7 @@ public partial class LogViewerForm : Form
     private const string ColInfo = "| INFO  |";
     private const string ColDebug = "| DEBUG |";
     private const int MaxHighlights = 500;
+    private const long LoadingIndicatorMinBytes = 1_000_000; // show "Loading..." only for logs large enough that the read + RTF parse is perceptible
     private const int ClearButtonInset = 4; // shrinks button to fit inside the TextBox border (2 px top + 2 px bottom)
     private const int ClearButtonMargin = 2; // inner gap from TextBox right edge and top
 
@@ -232,7 +233,7 @@ public partial class LogViewerForm : Form
         => ctxCopy.Enabled = rtbLog.SelectionLength > 0;
 
     private void ctxCopy_Click(object? sender, EventArgs e) => rtbLog.Copy();
-    private void ctxCopyAll_Click(object? sender, EventArgs e) => Clipboard.SetText(rtbLog.Text.Length > 0 ? rtbLog.Text : " ");
+    private void ctxCopyAll_Click(object? sender, EventArgs e) => AppConstants.TrySetClipboardText(rtbLog.Text);
     private void ctxSelectAll_Click(object? sender, EventArgs e) => rtbLog.SelectAll();
 
     private void btnClearSearch_Click(object? sender, EventArgs e) => txtSearch.Clear();
@@ -385,22 +386,17 @@ public partial class LogViewerForm : Form
         bool[] filters = [chkError.Checked, chkWarn.Checked, chkInfo.Checked, chkDebug.Checked];
         string? subsystemFilter = GetSubsystemFilter();
         string[] filtered = _allLines.Where(l => IsLineVisibleWithFilters(l, filters, subsystemFilter)).ToArray();
-        rtbLog.Rtf = BuildRtf(filtered, _themeColors);
 
-        // Suppress redraws across both RefreshSearch and ApplySearchHighlights so scroll,
-        // selection, and highlight changes are not visible as intermediate paint states.
-        SendMessage(rtbLog.Handle, WinMsg.WM_SETREDRAW, IntPtr.Zero, IntPtr.Zero);
-        try
+        // Rebuild under redraw suppression so the swap + scroll + highlight paint a single settled
+        // frame. Setting Rtf resets the scroll to the top, so doing it inside the suppression avoids
+        // a brief flash where the new content shows at the top before scrolling.
+        WithRedrawSuppressed(() =>
         {
+            rtbLog.Rtf = BuildRtf(filtered, _themeColors);
             if (wasAtBottom) ScrollToBottom();
             RefreshSearch(navigateToFirst: true);
             ApplySearchHighlights();
-        }
-        finally
-        {
-            SendMessage(rtbLog.Handle, WinMsg.WM_SETREDRAW, (IntPtr)1, IntPtr.Zero);
-            rtbLog.Invalidate();
-        }
+        });
     }
 
     // Returns true if the user is scrolled to the bottom of the log.
@@ -476,6 +472,23 @@ public partial class LogViewerForm : Form
         SendMessage(rtbLog.Handle, WinMsg.WM_VSCROLL, (IntPtr)WinMsg.SB_BOTTOM, IntPtr.Zero);
     }
 
+    // Batches a set of RichTextBox mutations (Rtf/SelectedRtf swap, scroll, highlight) into a single
+    // visible frame: suppresses painting, runs the update, then re-enables redraw and repaints once.
+    // Without this the intermediate states (content at top, caret at end, highlight loop) flicker.
+    private void WithRedrawSuppressed(Action update)
+    {
+        SendMessage(rtbLog.Handle, WinMsg.WM_SETREDRAW, IntPtr.Zero, IntPtr.Zero);
+        try
+        {
+            update();
+        }
+        finally
+        {
+            SendMessage(rtbLog.Handle, WinMsg.WM_SETREDRAW, (IntPtr)1, IntPtr.Zero);
+            rtbLog.Invalidate();
+        }
+    }
+
     // Ensures the existing text ends with \n so the next SelectedRtf insert starts on
     // its own line. The last \par in an RTF document does not always produce a trailing
     // newline in WinForms RichTextBox, which causes line merging on append.
@@ -506,6 +519,11 @@ public partial class LogViewerForm : Form
                 return;
             }
 
+            // Show a loading hint, but only for logs large enough that the read + RTF parse is
+            // perceptible - small logs (the common case) would otherwise flicker a "Loading" frame.
+            if (new FileInfo(loadPath).Length > LoadingIndicatorMinBytes)
+                SetMetaMessage("Loading\u2026", MetaColor);
+
             // Capture UI-thread state before entering the background task
             Color[] colors = _themeColors;
             bool[] filters = [chkError.Checked, chkWarn.Checked, chkInfo.Checked, chkDebug.Checked];
@@ -527,14 +545,19 @@ public partial class LogViewerForm : Form
 
             _allLines.AddRange(allLines);
             _lastReadPosition = position;
-            rtbLog.Rtf = rtf;
-            if (_navigateToLatestIssue) { NavigateToLatestIssue(); _navigateToLatestIssue = false; } else ScrollToBottom();
-            if (!string.IsNullOrEmpty(txtSearch.Text))
+
+            // Populate under redraw suppression so the user sees one final frame (scrolled to the
+            // bottom / latest issue) instead of content painting at the top and then visibly jumping.
+            WithRedrawSuppressed(() =>
             {
-                SendMessage(rtbLog.Handle, WinMsg.WM_SETREDRAW, IntPtr.Zero, IntPtr.Zero);
-                try { RefreshSearch(navigateToFirst: true); ApplySearchHighlights(); }
-                finally { SendMessage(rtbLog.Handle, WinMsg.WM_SETREDRAW, (IntPtr)1, IntPtr.Zero); rtbLog.Invalidate(); }
-            }
+                rtbLog.Rtf = rtf;
+                if (_navigateToLatestIssue) { NavigateToLatestIssue(); _navigateToLatestIssue = false; } else ScrollToBottom();
+                if (!string.IsNullOrEmpty(txtSearch.Text))
+                {
+                    RefreshSearch(navigateToFirst: true);
+                    ApplySearchHighlights();
+                }
+            });
         }
         catch (Exception ex)
         {
@@ -745,8 +768,9 @@ public partial class LogViewerForm : Form
             SendMessage(rtbLog.Handle, WinMsg.EM_GETSCROLLPOS, IntPtr.Zero, ref scrollPos);
 
         // Suppress painting so intermediate states (caret at end, highlight loop) don't flicker.
-        SendMessage(rtbLog.Handle, WinMsg.WM_SETREDRAW, IntPtr.Zero, IntPtr.Zero);
-        try
+        // The scroll restore is the last step of the batch (it depends on whether the user was at the
+        // bottom before the append); the helper handles re-enabling redraw and the single repaint.
+        WithRedrawSuppressed(() =>
         {
             EnsureTrailingNewline();
             rtbLog.SelectionStart = rtbLog.TextLength;
@@ -760,17 +784,12 @@ public partial class LogViewerForm : Form
             }
 
             rtbLog.Select(savedSelStart, savedSelLen);
-        }
-        finally
-        {
+
             if (wasAtBottom)
                 ScrollToBottom();
             else
                 SendMessage(rtbLog.Handle, WinMsg.EM_SETSCROLLPOS, IntPtr.Zero, ref scrollPos);
-
-            SendMessage(rtbLog.Handle, WinMsg.WM_SETREDRAW, (IntPtr)1, IntPtr.Zero);
-            rtbLog.Invalidate();
-        }
+        });
     }
 
     // Splits raw log content on newlines and strips trailing \r so CRLF and LF files produce identical lines.
@@ -872,7 +891,9 @@ public partial class LogViewerForm : Form
 
         var sb = new StringBuilder();
         AppendRtfHeader(sb, _themeColors);
-        sb.Append($"\\cf{colorIdx} ");
+        // \qc centres the line: meta text is transient status/placeholder (not a log entry), so a
+        // centred message reads as intentional rather than a stray first log line.
+        sb.Append($"\\qc\\cf{colorIdx} ");
         AppendRtfText(sb, text);
         sb.Append("\\par}");
         rtbLog.Rtf = sb.ToString();

@@ -281,7 +281,10 @@ public sealed class NatPmpManager : IVpnManager
             var candidate = new IPAddress(network);
 
             if (!candidate.Equals(address.Address))
+            {
+                LogManager.Instance.LogDebug($"NatPmpManager.InferGatewayFromUnicast: No declared gateway for {address.Address}, inferred {candidate}");
                 return candidate;
+            }
         }
         return null;
     }

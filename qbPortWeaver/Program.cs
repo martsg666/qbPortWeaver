@@ -41,13 +41,13 @@ internal static class Program
         Application.Run(new MainForm());
     }
 
-    private static void OnThreadException(object sender, ThreadExceptionEventArgs e)
+    private static void OnThreadException(object? sender, ThreadExceptionEventArgs e)
     {
         if (LogManager.IsInitialized)
             LogManager.Instance.LogMessage($"Unhandled UI thread exception: {e.Exception}", LogLevel.Error);
     }
 
-    private static void OnUnhandledException(object sender, UnhandledExceptionEventArgs e)
+    private static void OnUnhandledException(object? sender, UnhandledExceptionEventArgs e)
     {
         if (LogManager.IsInitialized)
             LogManager.Instance.LogMessage($"Unhandled exception (IsTerminating={e.IsTerminating}): {e.ExceptionObject}", LogLevel.Error);

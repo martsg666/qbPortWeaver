@@ -722,8 +722,10 @@ public sealed class PortSyncService
             LogLevel.Info);
         if (action == HelperProtocol.ActionRestart)
             await AutoRecoveryManager.TriggerRestartAsync(recoveryTarget, cancellationToken).ConfigureAwait(false);
-        else
+        else if (action == HelperProtocol.ActionCycleAdapter)
             await AutoRecoveryManager.TriggerCycleAdapterAsync(recoveryTarget, cancellationToken).ConfigureAwait(false);
+        else
+            LogManager.Instance.LogMessage($"Unknown recovery action '{action}' for '{displayName}' - skipping", LogLevel.Warn);
     }
 
     // Returns the registry settings section for the active BitTorrent client.

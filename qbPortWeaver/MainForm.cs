@@ -118,7 +118,7 @@ public partial class MainForm : Form
         LogManager.Instance.WarnOrErrorLogged += OnWarnOrErrorLogged;
     }
 
-    private void MainForm_Load(object sender, EventArgs e) => _ = MainForm_LoadAsync();
+    private void MainForm_Load(object? sender, EventArgs e) => _ = MainForm_LoadAsync();
 
     private async Task MainForm_LoadAsync()
     {

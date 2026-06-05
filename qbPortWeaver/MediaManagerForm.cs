@@ -445,13 +445,18 @@ public partial class MediaManagerForm : Form
     // Import Now - applies proposals from the grid, respecting any user edits to the Proposed column
     private async void btnImportNow_Click(object? sender, EventArgs e) // async void is correct here (WinForms event handler)
     {
-        // Count only checked rows with a proposed name (unchecked rows are excluded)
-        int proposalCount = dgvResults.Rows.Cast<DataGridViewRow>()
-            .Count(r => r.Cells[colInclude.Index].Value is true // NOSONAR S1125 - 'is true' pattern requires the literal to match the boxed bool value
-                        && !string.IsNullOrWhiteSpace(r.Cells[colProposed.Index].Value?.ToString()));
+        // Build the actual import set up front so the confirmation count matches exactly what
+        // will be imported. A plain cell scan would also count rows that BuildProposalsFromGrid
+        // drops (no derivable library directory, or source==target), overstating the total.
+        var toApply = BuildProposalsFromGrid();
+        if (toApply.Count == 0)
+        {
+            lblScanStatus.Text = "No files to import.";
+            return;
+        }
 
         var confirm = MessageBox.Show(
-            $"{proposalCount} file{(proposalCount == 1 ? "" : "s")} will be imported. This cannot be undone.\n\nContinue?",
+            $"{toApply.Count} file{(toApply.Count == 1 ? "" : "s")} will be imported. This cannot be undone.\n\nContinue?",
             $"{AppIdentity.AppName} | Media Manager",
             MessageBoxButtons.YesNo,
             MessageBoxIcon.Warning);
@@ -468,7 +473,7 @@ public partial class MediaManagerForm : Form
         string? completionStatus = null;
         try
         {
-            await RunImportAndRescanAsync(cancellationToken);
+            await RunImportAndRescanAsync(toApply, cancellationToken);
         }
         catch (OperationCanceledException)
         {
@@ -491,9 +496,8 @@ public partial class MediaManagerForm : Form
     }
 
     // Applies proposals, optionally cleans up empty folders, then re-scans to refresh the grid.
-    private async Task RunImportAndRescanAsync(CancellationToken cancellationToken)
+    private async Task RunImportAndRescanAsync(List<MediaProposal> toApply, CancellationToken cancellationToken)
     {
-        var toApply = BuildProposalsFromGrid();
         var importMode = MediaManagerService.ParseImportMode(cboImportMode.SelectedItem?.ToString() ?? RegistrySettingsManager.ImportModeHardlink);
 
         var progress = new Progress<(int Current, int Total, string FileName)>(p =>

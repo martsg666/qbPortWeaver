@@ -13,6 +13,10 @@ public partial class SettingsForm : Form
     private const string DefaultPortTooltip = "Port to apply when the VPN is disconnected (0 = do nothing when disconnected)";
     private const int ConnectionTestTimeoutSeconds = 15;
 
+    // Cancels in-flight NAT-PMP adapter discovery when the form closes so the UDP probes do not
+    // run to completion in the background after the dialog is dismissed.
+    private readonly CancellationTokenSource _discoveryCts = new();
+
     public SettingsForm()
     {
         InitializeComponent();
@@ -24,6 +28,13 @@ public partial class SettingsForm : Form
         base.OnLoad(e);
         SetupTooltips();
         LoadSettings();
+    }
+
+    protected override void OnFormClosed(FormClosedEventArgs e)
+    {
+        _discoveryCts.Cancel();
+        _discoveryCts.Dispose();
+        base.OnFormClosed(e);
     }
 
     // Wire up tooltips for each setting control
@@ -474,7 +485,7 @@ public partial class SettingsForm : Form
         try
         {
             // No ConfigureAwait(false) - continuation must run on the UI thread to update controls.
-            var adapters = await NatPmpManager.DiscoverAdaptersAsync();
+            var adapters = await NatPmpManager.DiscoverAdaptersAsync(cancellationToken: _discoveryCts.Token);
 
             // Guard against the form being closed while adapter discovery was in flight.
             // IsDisposed check + ObjectDisposedException catch covers the TOCTOU window between
@@ -503,6 +514,10 @@ public partial class SettingsForm : Form
             {
                 LogManager.Instance.LogDebug("SettingsForm.DiscoverNatPmpAdaptersAsync: Form disposed during adapter update");
             }
+        }
+        catch (OperationCanceledException)
+        {
+            // Form is closing - discovery was cancelled via _discoveryCts; nothing to update.
         }
         catch (Exception ex)
         {

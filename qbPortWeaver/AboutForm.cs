@@ -8,6 +8,9 @@ public partial class AboutForm : Form
     // Set to the release URL when an update is available; null when up-to-date or not yet checked
     private string? _releaseUrl;
     private bool _isDarkMode;
+    // Cancels in-flight GitHub requests when the form closes so they do not run to completion
+    // in the background after the user has dismissed the dialog.
+    private readonly CancellationTokenSource _cts = new();
 
     public AboutForm()
     {
@@ -30,6 +33,13 @@ public partial class AboutForm : Form
             lnkGitHub.LinkColor = AppConstants.DarkModeLinkColor;
         }
         _ = LoadGitHubDataAsync(); // fire-and-forget; exceptions are handled inside LoadGitHubDataAsync
+    }
+
+    protected override void OnFormClosed(FormClosedEventArgs e)
+    {
+        _cts.Cancel();
+        _cts.Dispose();
+        base.OnFormClosed(e);
     }
 
     private void btnClose_Click(object? sender, EventArgs e) => Close(); // NOSONAR S2325 - Close() is an instance method, handler cannot be static
@@ -77,8 +87,8 @@ public partial class AboutForm : Form
             _releaseUrl = null;
 
             // Fetch release info and contributor list in parallel
-            var releaseTask = UpdateChecker.GetLatestReleaseInfoAsync();
-            var contributorsTask = UpdateChecker.GetReleaseContributorsAsync();
+            var releaseTask = UpdateChecker.GetLatestReleaseInfoAsync(_cts.Token);
+            var contributorsTask = UpdateChecker.GetReleaseContributorsAsync(_cts.Token);
             await Task.WhenAll(releaseTask, contributorsTask);
 
             // Guard against the form being closed while the GitHub requests were in flight

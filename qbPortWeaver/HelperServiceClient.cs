@@ -87,8 +87,11 @@ internal static class HelperServiceClient
         }
         catch (TimeoutException)
         {
-            // ConnectAsync's PipeConnectTimeoutMs elapsed - the named pipe is not being listened on.
-            LogManager.Instance.LogMessage("Helper service not running or not installed (pipe connection timed out)", LogLevel.Warn);
+            // ConnectAsync's PipeConnectTimeoutMs elapsed without an available pipe instance. The
+            // helper accepts one connection at a time, so this means either the helper is not
+            // installed/running, or it is busy serving another request (e.g. an in-progress service
+            // restart) and could not accept this one in time.
+            LogManager.Instance.LogMessage("Could not reach helper service (pipe connection timed out) - it may not be installed, not running, or busy with another request", LogLevel.Warn);
             return HelperResult.Failed;
         }
         catch (UnauthorizedAccessException ex)

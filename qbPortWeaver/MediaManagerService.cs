@@ -1,5 +1,6 @@
 ﻿using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 
 namespace qbPortWeaver;
 
@@ -534,9 +535,9 @@ public static class MediaManagerService
     // with a numeric episode prefix in the filename. Show name comes from the grandparent folder.
     // Layered fallback for libraries that encode the show/season/episode identity in directory
     // structure rather than the filename - the parser's SxxExx detection would otherwise misclassify these as movies.
-    private static bool TryClassifyAsFolderTv(FileInfo fi, out FolderClassifiedEpisode result)
+    private static bool TryClassifyAsFolderTv(FileInfo fi, [NotNullWhen(true)] out FolderClassifiedEpisode? result)
     {
-        result = null!;
+        result = null;
 
         int? episode = FileNameParser.ParseEpisodePrefix(Path.GetFileNameWithoutExtension(fi.Name));
         if (episode is null) return false;

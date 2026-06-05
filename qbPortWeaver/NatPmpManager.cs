@@ -207,9 +207,13 @@ public sealed class NatPmpManager : IVpnManager
     /// <inheritdoc />
     // Uses bidirectional Contains because the adapter name in settings may differ in length
     // from the Windows connection name (e.g. "ProtonVPN TUN" vs "ProtonVPN").
+    // Empty-string guard mirrors VpnRegistryConfig.MatchesAdapterName so all three VPN managers
+    // behave identically: Contains("") returns true for any input, which would falsely match
+    // an empty interface name against this adapter.
     public bool IsAdapterMatch(string interfaceName)
-        => interfaceName.Contains(_adapter.Name, StringComparison.OrdinalIgnoreCase) ||
-           _adapter.Name.Contains(interfaceName, StringComparison.OrdinalIgnoreCase);
+        => !string.IsNullOrEmpty(interfaceName) && !string.IsNullOrEmpty(_adapter.Name) &&
+           (interfaceName.Contains(_adapter.Name, StringComparison.OrdinalIgnoreCase) ||
+            _adapter.Name.Contains(interfaceName, StringComparison.OrdinalIgnoreCase));
 
     /// <summary>
     /// Returns the VPN provider token if <paramref name="adapterName"/> matches a known provider keyword,

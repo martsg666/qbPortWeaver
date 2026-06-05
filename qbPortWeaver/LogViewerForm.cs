@@ -1,6 +1,5 @@
 ﻿using qbPortWeaver.Shared;
 using System.ComponentModel;
-using System.Diagnostics;
 using System.Runtime;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -28,6 +27,18 @@ public partial class LogViewerForm : Form
     private bool _isDarkMode;
     private Color[] _themeColors = []; // overwritten in OnLoad after _isDarkMode is set
     private System.Windows.Forms.Timer? _searchDebounceTimer;
+    // Reclaims memory once the viewer goes idle after a burst of content. Live appends and the
+    // initial load build transient RTF strings that land on the Large Object Heap; a normal
+    // pressure-driven GC frees them but never compacts the LOH, so committed-but-empty segments
+    // keep the working set inflated to hundreds of MB on an otherwise small log (it only returns
+    // to baseline on close, which forces LOH compaction). This timer runs that same compaction
+    // ~ReclaimIdleSeconds after the last content change, gated on idle so the blocking GC never
+    // fires while logging is actively streaming in. Content stays visible - only garbage is freed.
+    private System.Windows.Forms.Timer? _reclaimTimer;
+    private DateTime _lastActivityUtc;
+    private bool _reclaimPending;
+    private const int ReclaimTimerIntervalMs = 1000;
+    private const int ReclaimIdleSeconds = 3;
     // Overlay shown for status/placeholder text (loading, empty, error). A RichTextBox cannot
     // vertically centre its content, so these messages live on a Label that covers the log area.
     private Label? _metaLabel;
@@ -42,6 +53,11 @@ public partial class LogViewerForm : Form
     [LibraryImport("psapi.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static partial bool EmptyWorkingSet(IntPtr hProcess);
+
+    // Returns the current-process pseudo-handle (a constant, not a real handle - no open/close
+    // needed), used for self-targeted calls like EmptyWorkingSet.
+    [LibraryImport("kernel32.dll")]
+    private static partial IntPtr GetCurrentProcess();
 
     [StructLayout(LayoutKind.Sequential)]
     private struct NativePoint { public int X, Y; }
@@ -114,6 +130,7 @@ public partial class LogViewerForm : Form
         PopulateLogFileDropdown();
         // Wire event after population to avoid triggering a load before the initial LoadInitialContentAsync below
         cboLogFile.SelectedIndexChanged += cboLogFile_SelectedIndexChanged;
+        CreateReclaimTimer();
         _ = LoadInitialContentAsync(); // fire-and-forget; exceptions are handled inside LoadInitialContentAsync
     }
 
@@ -125,6 +142,13 @@ public partial class LogViewerForm : Form
             _watcher.EnableRaisingEvents = false;
 
         _searchDebounceTimer?.Stop();
+        _searchDebounceTimer?.Dispose();
+        _searchDebounceTimer = null;
+
+        _reclaimTimer?.Stop();
+        _reclaimTimer?.Dispose();
+        _reclaimTimer = null;
+        _reclaimPending = false;
 
         // Release the large log content before Dispose runs. The native RichEdit control caches
         // its document buffer and is slow to release after handle destruction, so clearing while
@@ -136,23 +160,66 @@ public partial class LogViewerForm : Form
         _allLines.Clear();
         _allLines.TrimExcess();
 
-        // Large user-triggered release: compact the LOH and force a Gen 2 collection now rather
-        // than wait for heap pressure. The freed RTF + string content sits mostly on the LOH,
-        // which does not compact during normal collections - without CompactOnce the segments
-        // stay committed even when empty. Blocking GC is acceptable here because form close is
-        // user-triggered and infrequent; the brief pause is invisible to the user.
-        GCSettings.LargeObjectHeapCompactionMode = GCLargeObjectHeapCompactionMode.CompactOnce;
-        GC.Collect(2, GCCollectionMode.Optimized, blocking: true); // NOSONAR S1215 - see csproj NoWarn rationale; blocking required for LOH compaction
-        GC.WaitForPendingFinalizers();
-
-        // Ask Windows to trim our working set so Task Manager reflects live memory rather than
-        // every page .NET ever touched. Pages page back in on next access; the only cost is a
-        // brief delay if the user reopens the log viewer immediately. Without this step the
-        // committed-but-empty heap segments keep the working set inflated until OS memory
-        // pressure forces eviction.
-        EmptyWorkingSet(Process.GetCurrentProcess().Handle);
+        // Content already cleared above; compact the LOH and trim the working set now rather than
+        // waiting for heap pressure. Shared with the periodic idle reclaim - see ReclaimUnusedMemory.
+        ReclaimUnusedMemory();
 
         base.OnFormClosed(e);
+    }
+
+    // Creates the idle-reclaim timer in a stopped state. It is started on content activity and
+    // stopped again once the reclaim has run, so an idle or empty viewer has no periodic wakeups.
+    private void CreateReclaimTimer()
+    {
+        _reclaimTimer = new System.Windows.Forms.Timer { Interval = ReclaimTimerIntervalMs };
+        _reclaimTimer.Tick += reclaimTimer_Tick;
+    }
+
+    // Records that content was just added (initial load or live append), arms a reclaim, and starts
+    // the timer if it is not already running. Called on the UI thread; resets the idle clock so the
+    // reclaim only fires after activity has settled.
+    private void MarkContentActivity()
+    {
+        _lastActivityUtc = DateTime.UtcNow;
+        _reclaimPending = true;
+        _reclaimTimer?.Start(); // idempotent if already running
+    }
+
+    // Fires on the UI thread. Once the viewer has been idle for ReclaimIdleSeconds after the last
+    // content change, runs one LOH-compacting reclaim and disarms until the next content arrives.
+    // Gating on idle keeps the blocking GC out of the active logging path: a continuous scan keeps
+    // pushing _lastActivityUtc forward, so the reclaim waits until the stream stops.
+    //
+    // Do NOT convert this to a fixed/max-interval reclaim: ReclaimUnusedMemory is process-wide (the
+    // blocking gen2 GC suspends all managed threads and EmptyWorkingSet trims the whole process), so
+    // firing it on an interval would perturb an actively-running media scan that has merely paused
+    // its logging. Idle-gating confines those costs to genuinely quiet moments.
+    private void reclaimTimer_Tick(object? sender, EventArgs e)
+    {
+        if (!_reclaimPending) return;
+        if ((DateTime.UtcNow - _lastActivityUtc).TotalSeconds < ReclaimIdleSeconds) return;
+        _reclaimPending = false;
+        _reclaimTimer?.Stop(); // nothing more to do until the next content activity
+        ReclaimUnusedMemory();
+    }
+
+    // Forces a blocking Gen2 collection with one-time LOH compaction, then trims the working set.
+    // The transient RTF strings built on each append/load sit mostly on the Large Object Heap, which
+    // a normal pressure-driven GC frees but never compacts - the committed-but-empty segments are
+    // what keep the viewer's footprint inflated to hundreds of MB on an otherwise small log.
+    // CompactOnce returns those segments; EmptyWorkingSet then asks Windows to page out the freed
+    // pages so Task Manager reflects live memory. Callers invoke this only when idle (after a burst
+    // settles) or on close - never mid-append - so the blocking pause is not user-visible.
+    private static void ReclaimUnusedMemory()
+    {
+        GCSettings.LargeObjectHeapCompactionMode = GCLargeObjectHeapCompactionMode.CompactOnce;
+        // Forced (not Optimized): Optimized lets the GC decline the collection, which would leave
+        // the CompactOnce flag armed to fire on an unpredictable later gen2 (possibly mid-scan).
+        // blocking: true is required - background/concurrent collections do not compact the LOH.
+        GC.Collect(2, GCCollectionMode.Forced, blocking: true); // NOSONAR S1215 - blocking required for LOH compaction
+        // No WaitForPendingFinalizers: the reclaimed garbage (RTF strings, char[]/string[] buffers)
+        // is non-finalizable, so the forced collection above reaps it directly.
+        EmptyWorkingSet(GetCurrentProcess()); // current-process pseudo-handle; nothing to dispose
     }
 
     // Applies theme colors to the background, filter buttons, and search controls
@@ -567,6 +634,9 @@ public partial class LogViewerForm : Form
                     ApplySearchHighlights();
                 }
             });
+
+            // Arm a reclaim so the transient RTF built for this load is compacted once idle.
+            MarkContentActivity();
         }
         catch (Exception ex)
         {
@@ -758,6 +828,10 @@ public partial class LogViewerForm : Form
     // Must be called on the UI thread.
     private void AppendNewLines(string[] newLines)
     {
+        // Any append (even one filtered to nothing visible) parses lines and grows _allLines,
+        // producing transient garbage; arm a reclaim so it is compacted once logging settles.
+        MarkContentActivity();
+
         bool wasAtBottom = IsAtBottom();
         bool[] filters = [chkError.Checked, chkWarn.Checked, chkInfo.Checked, chkDebug.Checked];
         string? subsystemFilter = GetSubsystemFilter();

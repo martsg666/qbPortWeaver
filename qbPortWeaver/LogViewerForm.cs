@@ -35,7 +35,7 @@ public partial class LogViewerForm : Form
     // ~ReclaimIdleSeconds after the last content change, gated on idle so the blocking GC never
     // fires while logging is actively streaming in. Content stays visible - only garbage is freed.
     private System.Windows.Forms.Timer? _reclaimTimer;
-    private DateTime _lastActivityUtc;
+    private long _lastActivityTicks; // Environment.TickCount64 (monotonic ms) at the last content change
     private bool _reclaimPending;
     private const int ReclaimTimerIntervalMs = 1000;
     private const int ReclaimIdleSeconds = 3;
@@ -180,7 +180,7 @@ public partial class LogViewerForm : Form
     // reclaim only fires after activity has settled.
     private void MarkContentActivity()
     {
-        _lastActivityUtc = DateTime.UtcNow;
+        _lastActivityTicks = Environment.TickCount64;
         _reclaimPending = true;
         _reclaimTimer?.Start(); // idempotent if already running
     }
@@ -197,7 +197,7 @@ public partial class LogViewerForm : Form
     private void reclaimTimer_Tick(object? sender, EventArgs e)
     {
         if (!_reclaimPending) return;
-        if ((DateTime.UtcNow - _lastActivityUtc).TotalSeconds < ReclaimIdleSeconds) return;
+        if (Environment.TickCount64 - _lastActivityTicks < ReclaimIdleSeconds * 1000L) return;
         _reclaimPending = false;
         _reclaimTimer?.Stop(); // nothing more to do until the next content activity
         ReclaimUnusedMemory();
@@ -219,7 +219,9 @@ public partial class LogViewerForm : Form
         GC.Collect(2, GCCollectionMode.Forced, blocking: true); // NOSONAR S1215 - blocking required for LOH compaction
         // No WaitForPendingFinalizers: the reclaimed garbage (RTF strings, char[]/string[] buffers)
         // is non-finalizable, so the forced collection above reaps it directly.
-        EmptyWorkingSet(GetCurrentProcess()); // current-process pseudo-handle; nothing to dispose
+        // best-effort: return value ignored by design (a failed trim just leaves pages resident,
+        // to be evicted later under memory pressure); pseudo-handle, so nothing to dispose.
+        EmptyWorkingSet(GetCurrentProcess());
     }
 
     // Applies theme colors to the background, filter buttons, and search controls

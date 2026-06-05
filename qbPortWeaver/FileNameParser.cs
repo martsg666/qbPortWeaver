@@ -460,10 +460,12 @@ public static partial class FileNameParser
     [GeneratedRegex(@"^(?:season|saison|temporada|stagione|s)\s*0*(\d{1,3})$", RegexOptions.IgnoreCase)]
     private static partial Regex SeasonFolderRegex();
 
-    // Matches a 1-3 digit number at the start of a filename followed by a separator (space, dash, dot, underscore).
-    // Leading zeros are absorbed by 0* so "01-Title" captures 1, "001_Title" captures 1.
-    // The trailing [\s\-_.] requirement prevents matching 4+ digit prefixes like a release year.
-    [GeneratedRegex(@"^0*(\d{1,3})[\s\-_.]")]
+    // Matches a 1-3 digit number at the start of a filename, followed by either a separator
+    // (space, dash, dot, underscore) or end-of-string. Leading zeros are absorbed by 0* so
+    // "01-Title" captures 1, "001_Title" captures 1, and a bare "01" captures 1.
+    // The 1-3 digit cap on (\d{1,3}) prevents matching 4+ digit prefixes like a release year
+    // (e.g. "2020.Movie" cannot reach a separator at any backtrack position).
+    [GeneratedRegex(@"^0*(\d{1,3})(?:[\s\-_.]|$)")]
     private static partial Regex EpisodePrefixRegex();
 
     /// <summary>Returns the season number when <paramref name="folderName"/> matches a season indicator pattern (e.g. "Season 1", "saison 01", "S01"), or <see langword="null"/> otherwise.</summary>

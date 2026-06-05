@@ -37,6 +37,75 @@ public sealed class TvShowProcessor(TmdbClient tmdb, bool dryRun, bool createFol
             await ProcessEpisodeFileAsync(file, cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>Scans folder-classified episodes (show name from grandparent folder, season from parent folder, episode from filename prefix) and returns import proposals.</summary>
+    public async Task<List<MediaProposal>> ScanFolderClassifiedAsync(FolderClassifiedEpisode[] episodes, Action? onItemProcessed = null, CancellationToken cancellationToken = default)
+    {
+        var proposals = new List<MediaProposal>();
+        foreach (var ep in episodes)
+        {
+            await ScanFolderClassifiedEpisodeAsync(ep, proposals, cancellationToken).ConfigureAwait(false);
+            onItemProcessed?.Invoke();
+        }
+        return proposals;
+    }
+
+    /// <summary>Processes folder-classified episodes, importing them into the library with Plex naming conventions. Skips uncertain TMDB matches - use <see cref="ScanFolderClassifiedAsync"/> to preview those first.</summary>
+    public async Task ProcessFolderClassifiedAsync(FolderClassifiedEpisode[] episodes, CancellationToken cancellationToken = default)
+    {
+        foreach (var ep in episodes)
+            await ProcessFolderClassifiedEpisodeAsync(ep, cancellationToken).ConfigureAwait(false);
+    }
+
+    // Scans one folder-classified episode. Show name is taken from the grandparent folder
+    // (already resolved during classification), so no episode-pattern parse on the filename is needed.
+    // Year hint comes from a trailing "(YYYY)" on the show folder name when present.
+    private async Task ScanFolderClassifiedEpisodeAsync(FolderClassifiedEpisode ep, List<MediaProposal> proposals, CancellationToken cancellationToken)
+    {
+        var (showName, year) = ResolveShowAndYear(ep.ShowName);
+
+        var (info, isConfident) = await GetOrLookupTvShowAsync(showName, year, cancellationToken).ConfigureAwait(false);
+        if (info is null)
+        {
+            proposals.Add(new MediaProposal(MediaProposal.TypeTvShow, ep.FilePath, string.Empty, IsConfident: false, IsMatched: false));
+            return;
+        }
+
+        var episodeInfo = new TvShowEpisodeInfo(showName, year, ep.Season, ep.Episode);
+        var proposedPath = BuildEpisodePath(ep.FilePath, info, episodeInfo, libraryPath, createFolders);
+
+        if (MediaImporter.DestinationMatchesSource(ep.FilePath, proposedPath)) return;
+
+        if (!string.Equals(ep.FilePath, proposedPath, StringComparison.OrdinalIgnoreCase))
+            proposals.Add(new MediaProposal(MediaProposal.TypeTvShow, ep.FilePath, proposedPath, isConfident,
+                PosterPath: info.PosterPath, TmdbId: info.TmdbId, VoteCount: info.VoteCount, Overview: info.Overview));
+    }
+
+    private async Task ProcessFolderClassifiedEpisodeAsync(FolderClassifiedEpisode ep, CancellationToken cancellationToken)
+    {
+        var (showName, year) = ResolveShowAndYear(ep.ShowName);
+
+        var (info, isConfident) = await GetOrLookupTvShowAsync(showName, year, cancellationToken).ConfigureAwait(false);
+        if (info is null) return;
+        if (!isConfident)
+        {
+            LogManager.Instance.LogMessage($"Skipped '{Path.GetFileName(ep.FilePath)}' - uncertain TMDB match, review in Media Manager", LogLevel.Warn, Subsystem.MediaManager);
+            return;
+        }
+
+        var episodeInfo = new TvShowEpisodeInfo(showName, year, ep.Season, ep.Episode);
+        var targetPath = BuildEpisodePath(ep.FilePath, info, episodeInfo, libraryPath, createFolders);
+        MediaManagerService.ImportFile(ep.FilePath, targetPath, dryRun, importMode);
+        MediaManagerService.ImportCompanionFiles(ep.FilePath, targetPath, dryRun, importMode);
+    }
+
+    // Parses the show folder name as a "Title (Year)" pair. Falls back to the raw folder name
+    // if no title can be parsed (e.g. a single-word title that ParseTitleYear strips to empty).
+    private static (string ShowName, int? Year) ResolveShowAndYear(string rawShowFolder)
+    {
+        var (title, year) = FileNameParser.ParseTitleYear(rawShowFolder);
+        return string.IsNullOrWhiteSpace(title) ? (rawShowFolder, year) : (title, year);
+    }
+
     // Scans a single TV episode file and adds proposals for unmatched or new items
     private async Task ScanEpisodeFileAsync(string filePath, List<MediaProposal> proposals, CancellationToken cancellationToken)
     {

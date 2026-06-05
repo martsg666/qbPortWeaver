@@ -139,13 +139,13 @@ public static class MediaManagerService
     // Scans a single source folder, returning proposals for both movies and TV shows.
     private static async Task<List<MediaProposal>> ScanSourceFolderAsync(
         string folder,
-        (string[] MovieFiles, string[] TvShowFiles) items,
+        (string[] MovieFiles, string[] TvShowFiles, FolderClassifiedEpisode[] FolderTvFiles) items,
         ImportContext ctx,
         Action? onItemProcessed,
         CancellationToken cancellationToken)
     {
         var proposals = new List<MediaProposal>();
-        if (items.MovieFiles.Length == 0 && items.TvShowFiles.Length == 0)
+        if (items.MovieFiles.Length == 0 && items.TvShowFiles.Length == 0 && items.FolderTvFiles.Length == 0)
         {
             LogManager.Instance.LogDebug($"MediaManagerService.ScanSourceFolderAsync: No new files in '{folder}'", Subsystem.MediaManager);
             return proposals;
@@ -158,10 +158,13 @@ public static class MediaManagerService
             proposals.AddRange(await TryRunAsync(() => movieProcessor.ScanMoviesAsync(items.MovieFiles, onItemProcessed, cancellationToken), folder).ConfigureAwait(false));
         }
 
-        if (!string.IsNullOrWhiteSpace(ctx.TvShowsLibraryPath) && items.TvShowFiles.Length > 0)
+        if (!string.IsNullOrWhiteSpace(ctx.TvShowsLibraryPath) && (items.TvShowFiles.Length > 0 || items.FolderTvFiles.Length > 0))
         {
             var tvShowProcessor = new TvShowProcessor(ctx.Tmdb, ctx.DryRun, ctx.CreateFolders, ctx.TvShowsLibraryPath, ctx.ImportMode);
-            proposals.AddRange(await TryRunAsync(() => tvShowProcessor.ScanTvShowsAsync(items.TvShowFiles, onItemProcessed, cancellationToken), folder).ConfigureAwait(false));
+            if (items.TvShowFiles.Length > 0)
+                proposals.AddRange(await TryRunAsync(() => tvShowProcessor.ScanTvShowsAsync(items.TvShowFiles, onItemProcessed, cancellationToken), folder).ConfigureAwait(false));
+            if (items.FolderTvFiles.Length > 0)
+                proposals.AddRange(await TryRunAsync(() => tvShowProcessor.ScanFolderClassifiedAsync(items.FolderTvFiles, onItemProcessed, cancellationToken), folder).ConfigureAwait(false));
         }
 
         LogManager.Instance.LogMessage($"Scanned source folder '{folder}': {proposals.Count} proposal(s)", LogLevel.Info, Subsystem.MediaManager);
@@ -171,11 +174,11 @@ public static class MediaManagerService
     // Processes a single source folder, running both movie and TV show processors.
     private static async Task ProcessSourceFolderAsync(
         string folder,
-        (string[] MovieFiles, string[] TvShowFiles) items,
+        (string[] MovieFiles, string[] TvShowFiles, FolderClassifiedEpisode[] FolderTvFiles) items,
         ImportContext ctx,
         CancellationToken cancellationToken)
     {
-        if (items.MovieFiles.Length == 0 && items.TvShowFiles.Length == 0)
+        if (items.MovieFiles.Length == 0 && items.TvShowFiles.Length == 0 && items.FolderTvFiles.Length == 0)
         {
             LogManager.Instance.LogDebug($"MediaManagerService.ProcessSourceFolderAsync: No new files in '{folder}'", Subsystem.MediaManager);
             return;
@@ -188,13 +191,16 @@ public static class MediaManagerService
             await TryRunAsync(() => movieProcessor.ProcessMoviesAsync(items.MovieFiles, cancellationToken), folder).ConfigureAwait(false);
         }
 
-        if (!string.IsNullOrWhiteSpace(ctx.TvShowsLibraryPath) && items.TvShowFiles.Length > 0)
+        if (!string.IsNullOrWhiteSpace(ctx.TvShowsLibraryPath) && (items.TvShowFiles.Length > 0 || items.FolderTvFiles.Length > 0))
         {
             var tvShowProcessor = new TvShowProcessor(ctx.Tmdb, ctx.DryRun, ctx.CreateFolders, ctx.TvShowsLibraryPath, ctx.ImportMode);
-            await TryRunAsync(() => tvShowProcessor.ProcessTvShowsAsync(items.TvShowFiles, cancellationToken), folder).ConfigureAwait(false);
+            if (items.TvShowFiles.Length > 0)
+                await TryRunAsync(() => tvShowProcessor.ProcessTvShowsAsync(items.TvShowFiles, cancellationToken), folder).ConfigureAwait(false);
+            if (items.FolderTvFiles.Length > 0)
+                await TryRunAsync(() => tvShowProcessor.ProcessFolderClassifiedAsync(items.FolderTvFiles, cancellationToken), folder).ConfigureAwait(false);
         }
 
-        int totalFiles = items.MovieFiles.Length + items.TvShowFiles.Length;
+        int totalFiles = items.MovieFiles.Length + items.TvShowFiles.Length + items.FolderTvFiles.Length;
         LogManager.Instance.LogMessage($"Processed source folder '{folder}': {totalFiles} file(s)", LogLevel.Info, Subsystem.MediaManager);
     }
 
@@ -347,7 +353,7 @@ public static class MediaManagerService
     // Returns null when the library index could not be built (or was incomplete) so the caller can
     // skip the cycle - acting on a partial index would falsely report library files as missing and
     // risk creating duplicate imports.
-    private static async Task<(TmdbClient Tmdb, List<(string Folder, (string[] MovieFiles, string[] TvShowFiles) Items)> Classified, int Total)?>
+    private static async Task<(TmdbClient Tmdb, List<(string Folder, (string[] MovieFiles, string[] TvShowFiles, FolderClassifiedEpisode[] FolderTvFiles) Items)> Classified, int Total)?>
         PrepareClassifiedSourcesAsync(
             string apiKey, string[] sourceFolders, string moviesLibraryPath, string tvShowsLibraryPath,
             bool allowLibraryReuse, CancellationToken cancellationToken)
@@ -381,7 +387,7 @@ public static class MediaManagerService
             return null;
 
         var classified = await ClassifySourceFoldersAsync(enumerated, cancellationToken).ConfigureAwait(false);
-        int total = classified.Sum(c => c.Items.MovieFiles.Length + c.Items.TvShowFiles.Length);
+        int total = classified.Sum(c => c.Items.MovieFiles.Length + c.Items.TvShowFiles.Length + c.Items.FolderTvFiles.Length);
 
         return (tmdb, classified, total);
     }
@@ -433,13 +439,13 @@ public static class MediaManagerService
     // Folders are processed sequentially so that a single Parallel.ForEach (degree MediaImporter.FingerprintParallelism)
     // is active at a time - processing folders concurrently would multiply the parallelism by the folder count.
     // sourceFpToPath is shared across all folders so source duplicates spanning multiple folders are detected.
-    private static Task<List<(string Folder, (string[] MovieFiles, string[] TvShowFiles) Items)>> ClassifySourceFoldersAsync(
+    private static Task<List<(string Folder, (string[] MovieFiles, string[] TvShowFiles, FolderClassifiedEpisode[] FolderTvFiles) Items)>> ClassifySourceFoldersAsync(
         List<(string Folder, List<FileInfo> Candidates)> enumerated, CancellationToken cancellationToken)
     {
         return Task.Run(() =>
         {
             var classifySw = Stopwatch.StartNew();
-            var classified = new List<(string Folder, (string[] MovieFiles, string[] TvShowFiles) Items)>(enumerated.Count);
+            var classified = new List<(string Folder, (string[] MovieFiles, string[] TvShowFiles, FolderClassifiedEpisode[] FolderTvFiles) Items)>(enumerated.Count);
             var sourceFpToPath = new ConcurrentDictionary<string, string>(StringComparer.Ordinal);
 
             foreach (var e in enumerated)
@@ -452,16 +458,17 @@ public static class MediaManagerService
                 catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
                 {
                     LogManager.Instance.LogMessage($"Skipped source folder '{e.Folder}': {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
-                    classified.Add((e.Folder, (MovieFiles: [], TvShowFiles: [])));
+                    classified.Add((e.Folder, (MovieFiles: [], TvShowFiles: [], FolderTvFiles: [])));
                 }
             }
 
             int movieTotal = classified.Sum(c => c.Items.MovieFiles.Length);
             int tvShowTotal = classified.Sum(c => c.Items.TvShowFiles.Length);
+            int folderTvTotal = classified.Sum(c => c.Items.FolderTvFiles.Length);
             classifySw.Stop();
             var (sourceCached, sourceComputed) = MediaImporter.GetSourceCacheStats();
             LogManager.Instance.LogMessage(
-                $"Source files classified: {movieTotal + tvShowTotal} ({movieTotal} movies, {tvShowTotal} TV episodes) in {classifySw.ElapsedMilliseconds}ms (cached={sourceCached}, computed={sourceComputed})",
+                $"Source files classified: {movieTotal + tvShowTotal + folderTvTotal} ({movieTotal} movies, {tvShowTotal + folderTvTotal} TV episodes) in {classifySw.ElapsedMilliseconds}ms (cached={sourceCached}, computed={sourceComputed})",
                 LogLevel.Info, Subsystem.MediaManager);
 
             return classified;
@@ -473,11 +480,12 @@ public static class MediaManagerService
     // Each candidate requires a 128 KB read; reads are bounded by MediaImporter.FingerprintParallelism.
     // fpToPath maps each fingerprint to the first source path that produced it (shared across folders).
     // Files already in the library are silently skipped; additional source copies of the same content are warned.
-    private static (string[] MovieFiles, string[] TvShowFiles) ClassifyCandidates(
+    private static (string[] MovieFiles, string[] TvShowFiles, FolderClassifiedEpisode[] FolderTvFiles) ClassifyCandidates(
         List<FileInfo> candidates, ConcurrentDictionary<string, string> fpToPath, CancellationToken cancellationToken)
     {
         var movieFiles = new ConcurrentBag<string>();
         var tvShowFiles = new ConcurrentBag<string>();
+        var folderTvFiles = new ConcurrentBag<FolderClassifiedEpisode>();
 
         Parallel.ForEach(candidates,
             new ParallelOptions { MaxDegreeOfParallelism = MediaImporter.FingerprintParallelism, CancellationToken = cancellationToken },
@@ -502,15 +510,48 @@ public static class MediaManagerService
                     return;
                 }
 
-                if (!FileNameParser.IsTvShow(fi.Name))
-                    movieFiles.Add(fi.FullName);
-                else if (FileNameParser.IsVideoTvShowEpisode(fi.FullName))
-                    tvShowFiles.Add(fi.FullName);
+                if (FileNameParser.IsTvShow(fi.Name))
+                {
+                    if (FileNameParser.IsVideoTvShowEpisode(fi.FullName))
+                        tvShowFiles.Add(fi.FullName);
+                    else
+                        LogManager.Instance.LogDebug($"MediaManagerService.ClassifyCandidates: Skipped '{fi.Name}' - TV show without a recognized episode", Subsystem.MediaManager);
+                }
+                else if (TryClassifyAsFolderTv(fi, out var ep))
+                {
+                    folderTvFiles.Add(ep);
+                }
                 else
-                    LogManager.Instance.LogDebug($"MediaManagerService.ClassifyCandidates: Skipped '{fi.Name}' - TV show without a recognized episode", Subsystem.MediaManager);
+                {
+                    movieFiles.Add(fi.FullName);
+                }
             });
 
-        return (movieFiles.ToArray(), tvShowFiles.ToArray());
+        return (movieFiles.ToArray(), tvShowFiles.ToArray(), folderTvFiles.ToArray());
+    }
+
+    // Recognises files that live under a season-indicator folder (e.g. "Season 01", "saison 1")
+    // with a numeric episode prefix in the filename. Show name comes from the grandparent folder.
+    // Layered fallback for libraries that encode the show/season/episode identity in directory
+    // structure rather than the filename - the parser's SxxExx detection would otherwise misclassify these as movies.
+    private static bool TryClassifyAsFolderTv(FileInfo fi, out FolderClassifiedEpisode result)
+    {
+        result = null!;
+
+        int? episode = FileNameParser.ParseEpisodePrefix(Path.GetFileNameWithoutExtension(fi.Name));
+        if (episode is null) return false;
+
+        string? parentFolder = fi.Directory?.Name;
+        if (parentFolder is null) return false;
+
+        int? season = FileNameParser.ParseSeasonFromFolder(parentFolder);
+        if (season is null) return false;
+
+        string? grandparent = fi.Directory?.Parent?.Name;
+        if (string.IsNullOrWhiteSpace(grandparent)) return false;
+
+        result = new FolderClassifiedEpisode(fi.FullName, grandparent, season.Value, episode.Value);
+        return true;
     }
 
     // Runs a processor operation and swallows IO/permission errors, logging the folder that was skipped.

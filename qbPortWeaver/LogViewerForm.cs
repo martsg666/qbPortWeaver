@@ -131,6 +131,16 @@ public partial class LogViewerForm : Form
         // Wire event after population to avoid triggering a load before the initial LoadInitialContentAsync below
         cboLogFile.SelectedIndexChanged += cboLogFile_SelectedIndexChanged;
         CreateReclaimTimer();
+    }
+
+    protected override void OnShown(EventArgs e)
+    {
+        base.OnShown(e);
+        // Start the load only after the form's first paint. Kicking it off in OnLoad raced the
+        // form's initial WM_PAINT: the "Loading..." overlay was made visible, but for a fast read
+        // the background task's continuation ran HideMetaLabel before any paint occurred, so the
+        // label was never actually drawn. By OnShown the form is painted, so the overlay below
+        // renders before the blocking read/RTF parse begins.
         _ = LoadInitialContentAsync(); // fire-and-forget; exceptions are handled inside LoadInitialContentAsync
     }
 
@@ -595,7 +605,13 @@ public partial class LogViewerForm : Form
             // Show a loading hint, but only for logs large enough that the read + RTF parse is
             // perceptible - small logs (the common case) would otherwise flicker a "Loading" frame.
             if (new FileInfo(loadPath).Length > LoadingIndicatorMinBytes)
+            {
                 SetMetaMessage("Loading\u2026", MetaColor);
+                // Force the overlay to paint now, before the blocking read/RTF parse below. Without
+                // this, the read can finish and its continuation can hide the label before the next
+                // paint, leaving the label invisible despite being momentarily set visible.
+                _metaLabel!.Refresh();
+            }
 
             // Capture UI-thread state before entering the background task
             Color[] colors = _themeColors;
@@ -623,7 +639,6 @@ public partial class LogViewerForm : Form
             // bottom / latest issue) instead of content painting at the top and then visibly jumping.
             WithRedrawSuppressed(() =>
             {
-                HideMetaLabel();
                 rtbLog.Rtf = rtf;
                 // Native RichEdit records every Rtf/SelectedRtf assignment in its undo buffer.
                 // The viewer is read-only so undo is unreachable - clear it so the buffer does
@@ -635,6 +650,11 @@ public partial class LogViewerForm : Form
                     RefreshSearch(navigateToFirst: true);
                     ApplySearchHighlights();
                 }
+                // Hide the "Loading..." overlay only after the (slow) Rtf parse and scroll have
+                // completed. rtbLog's painting is suppressed during this block, so keeping the
+                // sibling overlay visible here means the user sees "Loading..." for the whole parse
+                // instead of a blank frozen window, then a single settled frame of real content.
+                HideMetaLabel();
             });
 
             // Arm a reclaim so the transient RTF built for this load is compacted once idle.

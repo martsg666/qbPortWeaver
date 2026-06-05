@@ -1,4 +1,6 @@
-﻿namespace qbPortWeaver;
+﻿using System.Diagnostics.CodeAnalysis;
+
+namespace qbPortWeaver;
 
 /// <summary>
 /// Processes movie files and folders, applying Plex naming conventions and importing them into the library:
@@ -95,18 +97,8 @@ public sealed class MovieProcessor(TmdbClient tmdb, bool dryRun, bool createFold
     private async Task ScanMovieFileAsync(string filePath, string title, int? year, List<MediaProposal> proposals, CancellationToken cancellationToken)
     {
         var (info, isConfident) = await GetOrLookupMovieAsync(title, year, cancellationToken).ConfigureAwait(false);
-        if (info is null)
-        {
-            proposals.Add(new MediaProposal(MediaProposal.TypeMovie, filePath, string.Empty, IsConfident: false, IsMatched: false));
-            return;
-        }
-
-        var proposedPath = BuildStandaloneMoviePath(filePath, info, libraryPath, createFolders);
-
-        if (MediaImporter.DestinationMatchesSource(filePath, proposedPath)) return;
-
-        if (!string.Equals(filePath, proposedPath, StringComparison.OrdinalIgnoreCase))
-            proposals.Add(new MediaProposal(MediaProposal.TypeMovie, filePath, proposedPath, isConfident, PosterPath: info.PosterPath, TmdbId: info.TmdbId, VoteCount: info.VoteCount, Overview: info.Overview));
+        var proposedPath = info is not null ? BuildStandaloneMoviePath(filePath, info, libraryPath, createFolders) : string.Empty;
+        AddMovieScanProposal(filePath, info, isConfident, proposedPath, proposals);
     }
 
     // Scans folder-dependent files (no parseable title) using the parent folder name for TMDB lookup
@@ -114,23 +106,12 @@ public sealed class MovieProcessor(TmdbClient tmdb, bool dryRun, bool createFold
     {
         var resolved = await ResolveFolderMovieAsync(dirPath, folderDependent, cancellationToken).ConfigureAwait(false);
         if (resolved is null) return;
-
         var (info, isConfident) = resolved.Value;
-        if (info is null)
-        {
-            foreach (var file in folderDependent)
-                proposals.Add(new MediaProposal(MediaProposal.TypeMovie, file, string.Empty, IsConfident: false, IsMatched: false));
-            return;
-        }
 
         foreach (var file in folderDependent)
         {
-            var proposedPath = BuildFolderMoviePath(file, info);
-
-            if (MediaImporter.DestinationMatchesSource(file, proposedPath)) continue;
-
-            if (!string.Equals(file, proposedPath, StringComparison.OrdinalIgnoreCase))
-                proposals.Add(new MediaProposal(MediaProposal.TypeMovie, file, proposedPath, isConfident, PosterPath: info.PosterPath, TmdbId: info.TmdbId, VoteCount: info.VoteCount, Overview: info.Overview));
+            var proposedPath = info is not null ? BuildFolderMoviePath(file, info) : string.Empty;
+            AddMovieScanProposal(file, info, isConfident, proposedPath, proposals);
         }
     }
 
@@ -138,12 +119,7 @@ public sealed class MovieProcessor(TmdbClient tmdb, bool dryRun, bool createFold
     private async Task ProcessMovieFileAsync(string filePath, string title, int? year, CancellationToken cancellationToken)
     {
         var (info, isConfident) = await GetOrLookupMovieAsync(title, year, cancellationToken).ConfigureAwait(false);
-        if (info is null) return;
-        if (!isConfident)
-        {
-            LogManager.Instance.LogMessage($"Skipped '{Path.GetFileName(filePath)}' - uncertain TMDB match, review in Media Manager", LogLevel.Warn, Subsystem.MediaManager);
-            return;
-        }
+        if (!ShouldImportMatch(info, isConfident, $"'{Path.GetFileName(filePath)}'")) return;
 
         var targetPath = BuildStandaloneMoviePath(filePath, info, libraryPath, createFolders);
         MediaManagerService.ImportFile(filePath, targetPath, dryRun, importMode);
@@ -157,14 +133,8 @@ public sealed class MovieProcessor(TmdbClient tmdb, bool dryRun, bool createFold
     {
         var resolved = await ResolveFolderMovieAsync(dirPath, folderDependent, cancellationToken).ConfigureAwait(false);
         if (resolved is null) return;
-
         var (info, isConfident) = resolved.Value;
-        if (info is null) return;
-        if (!isConfident)
-        {
-            LogManager.Instance.LogMessage($"Skipped folder '{Path.GetFileName(dirPath)}' - uncertain TMDB match, review in Media Manager", LogLevel.Warn, Subsystem.MediaManager);
-            return;
-        }
+        if (!ShouldImportMatch(info, isConfident, $"folder '{Path.GetFileName(dirPath)}'")) return;
 
         foreach (var file in folderDependent)
             MediaManagerService.ImportFile(file, BuildFolderMoviePath(file, info), dryRun, importMode);
@@ -173,6 +143,40 @@ public sealed class MovieProcessor(TmdbClient tmdb, bool dryRun, bool createFold
         // Folder-dependent files use a separate companion importer that pairs subtitles by part suffix
         // (e.g. cd1.srt -> Title (Year) - cd1.srt) rather than by filename prefix.
         ImportFolderCompanionFiles(dirPath, folderDependent, plexFolderName);
+    }
+
+    // Shared per-file scan proposal logic. Both standalone and folder-dependent paths call this
+    // once per file with the already-built target path; movies have two path layouts (with/without
+    // title subfolder, plus a multi-part suffix) so path construction stays at the call site.
+    // When info is null an unmatched proposal is added. Otherwise the destination-matches check
+    // and source-equals-target check are applied before adding a matched proposal.
+    private static void AddMovieScanProposal(string filePath, MovieInfo? info, bool isConfident, string proposedPath, List<MediaProposal> proposals)
+    {
+        if (info is null)
+        {
+            proposals.Add(new MediaProposal(MediaProposal.TypeMovie, filePath, string.Empty, IsConfident: false, IsMatched: false));
+            return;
+        }
+
+        if (MediaImporter.DestinationMatchesSource(filePath, proposedPath)) return;
+
+        if (!string.Equals(filePath, proposedPath, StringComparison.OrdinalIgnoreCase))
+            proposals.Add(new MediaProposal(MediaProposal.TypeMovie, filePath, proposedPath, isConfident,
+                PosterPath: info.PosterPath, TmdbId: info.TmdbId, VoteCount: info.VoteCount, Overview: info.Overview));
+    }
+
+    // Returns true when the TMDB match is confident enough to proceed with import. Logs a Warn
+    // with the supplied skip label when the match is uncertain. [NotNullWhen(true)] on info
+    // lets callers use info without a null check after a true return.
+    private static bool ShouldImportMatch([NotNullWhen(true)] MovieInfo? info, bool isConfident, string skipLabel)
+    {
+        if (info is null) return false;
+        if (!isConfident)
+        {
+            LogManager.Instance.LogMessage($"Skipped {skipLabel} - uncertain TMDB match, review in Media Manager", LogLevel.Warn, Subsystem.MediaManager);
+            return false;
+        }
+        return true;
     }
 
     // Builds the library target path for a standalone movie file.

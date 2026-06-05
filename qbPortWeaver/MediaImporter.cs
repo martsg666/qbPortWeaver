@@ -792,6 +792,9 @@ internal static partial class MediaImporter
         }
 
         // Create before GetOrAdd so we can tell whether this thread won the race.
+        // Same cancellation-cascade race window applies as TmdbCacheManager.GetOrComputeAsync
+        // (see comment there): if the winning thread's compute throws between fault and eviction,
+        // a racing GetOrAdd may share the already-faulted Lazy. Accepted as documented behavior.
         var newLazy = new Lazy<string>(() => ComputeFingerprint(fi.FullName));
         var lazy = _sourceInFlight.GetOrAdd(fi.FullName, newLazy);
         string fp;

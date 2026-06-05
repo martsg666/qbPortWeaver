@@ -118,7 +118,7 @@ public partial class MainForm : Form
         LogManager.Instance.WarnOrErrorLogged += OnWarnOrErrorLogged;
     }
 
-    private void MainForm_Load(object sender, EventArgs e) => _ = MainForm_LoadAsync();
+    private void MainForm_Load(object? sender, EventArgs e) => _ = MainForm_LoadAsync();
 
     private async Task MainForm_LoadAsync()
     {
@@ -438,10 +438,10 @@ public partial class MainForm : Form
             try
             {
                 await _updateSemaphore.WaitAsync(_shutdownCts.Token);
-                LogManager.Instance.LogBlankLine();
-                LogManager.Instance.LogMessage("Sync cycle started", LogLevel.Info);
                 try
                 {
+                    LogManager.Instance.LogBlankLine();
+                    LogManager.Instance.LogMessage("Sync cycle started", LogLevel.Info);
                     updateInterval = await _portSyncService.RunAsync(_shutdownCts.Token);
                 }
                 finally

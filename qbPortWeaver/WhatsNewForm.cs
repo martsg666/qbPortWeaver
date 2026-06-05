@@ -20,6 +20,10 @@ public partial class WhatsNewForm : Form
         "Check for updates on demand\n" +
         "A new Check for Updates item in the tray menu lets you check for a newer version right away " +
         "instead of waiting for the periodic check. You always get a result, even when you are already up to date.\n\n" +
+        "More resilient media import\n" +
+        "When a source or library folder is on a network share that is temporarily offline (for example a NAS " +
+        "that is rebooting), the Media Manager now detects it quickly and skips that import cycle instead of " +
+        "stalling, then resumes automatically once the share is reachable again.\n\n" +
         "Previously released\n\n" +
         "New in 2.5.4\n\n" +
         "Less intrusive update notifications\n" +

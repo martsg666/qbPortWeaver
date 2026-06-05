@@ -28,6 +28,9 @@ public partial class LogViewerForm : Form
     private bool _isDarkMode;
     private Color[] _themeColors = []; // overwritten in OnLoad after _isDarkMode is set
     private System.Windows.Forms.Timer? _searchDebounceTimer;
+    // Overlay shown for status/placeholder text (loading, empty, error). A RichTextBox cannot
+    // vertically centre its content, so these messages live on a Label that covers the log area.
+    private Label? _metaLabel;
 
     [LibraryImport("user32.dll", EntryPoint = "SendMessageW")]
     private static partial IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
@@ -59,6 +62,7 @@ public partial class LogViewerForm : Form
     private const string ColInfo = "| INFO  |";
     private const string ColDebug = "| DEBUG |";
     private const int MaxHighlights = 500;
+    private const long LoadingIndicatorMinBytes = 1_000_000; // show "Loading..." only for logs large enough that the read + RTF parse is perceptible
     private const int ClearButtonInset = 4; // shrinks button to fit inside the TextBox border (2 px top + 2 px bottom)
     private const int ClearButtonMargin = 2; // inner gap from TextBox right edge and top
 
@@ -232,7 +236,7 @@ public partial class LogViewerForm : Form
         => ctxCopy.Enabled = rtbLog.SelectionLength > 0;
 
     private void ctxCopy_Click(object? sender, EventArgs e) => rtbLog.Copy();
-    private void ctxCopyAll_Click(object? sender, EventArgs e) => Clipboard.SetText(rtbLog.Text.Length > 0 ? rtbLog.Text : " ");
+    private void ctxCopyAll_Click(object? sender, EventArgs e) => AppConstants.TrySetClipboardText(rtbLog.Text);
     private void ctxSelectAll_Click(object? sender, EventArgs e) => rtbLog.SelectAll();
 
     private void btnClearSearch_Click(object? sender, EventArgs e) => txtSearch.Clear();
@@ -385,22 +389,18 @@ public partial class LogViewerForm : Form
         bool[] filters = [chkError.Checked, chkWarn.Checked, chkInfo.Checked, chkDebug.Checked];
         string? subsystemFilter = GetSubsystemFilter();
         string[] filtered = _allLines.Where(l => IsLineVisibleWithFilters(l, filters, subsystemFilter)).ToArray();
-        rtbLog.Rtf = BuildRtf(filtered, _themeColors);
 
-        // Suppress redraws across both RefreshSearch and ApplySearchHighlights so scroll,
-        // selection, and highlight changes are not visible as intermediate paint states.
-        SendMessage(rtbLog.Handle, WinMsg.WM_SETREDRAW, IntPtr.Zero, IntPtr.Zero);
-        try
+        // Rebuild under redraw suppression so the swap + scroll + highlight paint a single settled
+        // frame. Setting Rtf resets the scroll to the top, so doing it inside the suppression avoids
+        // a brief flash where the new content shows at the top before scrolling.
+        WithRedrawSuppressed(() =>
         {
+            HideMetaLabel();
+            rtbLog.Rtf = BuildRtf(filtered, _themeColors);
             if (wasAtBottom) ScrollToBottom();
             RefreshSearch(navigateToFirst: true);
             ApplySearchHighlights();
-        }
-        finally
-        {
-            SendMessage(rtbLog.Handle, WinMsg.WM_SETREDRAW, (IntPtr)1, IntPtr.Zero);
-            rtbLog.Invalidate();
-        }
+        });
     }
 
     // Returns true if the user is scrolled to the bottom of the log.
@@ -476,6 +476,23 @@ public partial class LogViewerForm : Form
         SendMessage(rtbLog.Handle, WinMsg.WM_VSCROLL, (IntPtr)WinMsg.SB_BOTTOM, IntPtr.Zero);
     }
 
+    // Batches a set of RichTextBox mutations (Rtf/SelectedRtf swap, scroll, highlight) into a single
+    // visible frame: suppresses painting, runs the update, then re-enables redraw and repaints once.
+    // Without this the intermediate states (content at top, caret at end, highlight loop) flicker.
+    private void WithRedrawSuppressed(Action update)
+    {
+        SendMessage(rtbLog.Handle, WinMsg.WM_SETREDRAW, IntPtr.Zero, IntPtr.Zero);
+        try
+        {
+            update();
+        }
+        finally
+        {
+            SendMessage(rtbLog.Handle, WinMsg.WM_SETREDRAW, (IntPtr)1, IntPtr.Zero);
+            rtbLog.Invalidate();
+        }
+    }
+
     // Ensures the existing text ends with \n so the next SelectedRtf insert starts on
     // its own line. The last \par in an RTF document does not always produce a trailing
     // newline in WinForms RichTextBox, which causes line merging on append.
@@ -506,6 +523,11 @@ public partial class LogViewerForm : Form
                 return;
             }
 
+            // Show a loading hint, but only for logs large enough that the read + RTF parse is
+            // perceptible - small logs (the common case) would otherwise flicker a "Loading" frame.
+            if (new FileInfo(loadPath).Length > LoadingIndicatorMinBytes)
+                SetMetaMessage("Loading\u2026", MetaColor);
+
             // Capture UI-thread state before entering the background task
             Color[] colors = _themeColors;
             bool[] filters = [chkError.Checked, chkWarn.Checked, chkInfo.Checked, chkDebug.Checked];
@@ -527,14 +549,20 @@ public partial class LogViewerForm : Form
 
             _allLines.AddRange(allLines);
             _lastReadPosition = position;
-            rtbLog.Rtf = rtf;
-            if (_navigateToLatestIssue) { NavigateToLatestIssue(); _navigateToLatestIssue = false; } else ScrollToBottom();
-            if (!string.IsNullOrEmpty(txtSearch.Text))
+
+            // Populate under redraw suppression so the user sees one final frame (scrolled to the
+            // bottom / latest issue) instead of content painting at the top and then visibly jumping.
+            WithRedrawSuppressed(() =>
             {
-                SendMessage(rtbLog.Handle, WinMsg.WM_SETREDRAW, IntPtr.Zero, IntPtr.Zero);
-                try { RefreshSearch(navigateToFirst: true); ApplySearchHighlights(); }
-                finally { SendMessage(rtbLog.Handle, WinMsg.WM_SETREDRAW, (IntPtr)1, IntPtr.Zero); rtbLog.Invalidate(); }
-            }
+                HideMetaLabel();
+                rtbLog.Rtf = rtf;
+                if (_navigateToLatestIssue) { NavigateToLatestIssue(); _navigateToLatestIssue = false; } else ScrollToBottom();
+                if (!string.IsNullOrEmpty(txtSearch.Text))
+                {
+                    RefreshSearch(navigateToFirst: true);
+                    ApplySearchHighlights();
+                }
+            });
         }
         catch (Exception ex)
         {
@@ -745,9 +773,11 @@ public partial class LogViewerForm : Form
             SendMessage(rtbLog.Handle, WinMsg.EM_GETSCROLLPOS, IntPtr.Zero, ref scrollPos);
 
         // Suppress painting so intermediate states (caret at end, highlight loop) don't flicker.
-        SendMessage(rtbLog.Handle, WinMsg.WM_SETREDRAW, IntPtr.Zero, IntPtr.Zero);
-        try
+        // The scroll restore is the last step of the batch (it depends on whether the user was at the
+        // bottom before the append); the helper handles re-enabling redraw and the single repaint.
+        WithRedrawSuppressed(() =>
         {
+            HideMetaLabel();
             EnsureTrailingNewline();
             rtbLog.SelectionStart = rtbLog.TextLength;
             rtbLog.SelectionLength = 0;
@@ -760,17 +790,12 @@ public partial class LogViewerForm : Form
             }
 
             rtbLog.Select(savedSelStart, savedSelLen);
-        }
-        finally
-        {
+
             if (wasAtBottom)
                 ScrollToBottom();
             else
                 SendMessage(rtbLog.Handle, WinMsg.EM_SETSCROLLPOS, IntPtr.Zero, ref scrollPos);
-
-            SendMessage(rtbLog.Handle, WinMsg.WM_SETREDRAW, (IntPtr)1, IntPtr.Zero);
-            rtbLog.Invalidate();
-        }
+        });
     }
 
     // Splits raw log content on newlines and strips trailing \r so CRLF and LF files produce identical lines.
@@ -806,7 +831,7 @@ public partial class LogViewerForm : Form
     // Convenience colour for meta/status messages (not log entries)
     private Color MetaColor => _isDarkMode ? AppConstants.DarkModeMeta : SystemColors.GrayText;
 
-    // Writes the RTF document header shared by BuildRtf and SetMetaMessage:
+    // Writes the RTF document header for BuildRtf:
     // Unicode-safe, Consolas 9pt (18 half-points), no paragraph spacing, colour table.
     private static void AppendRtfHeader(StringBuilder sb, Color[] colors)
     {
@@ -858,24 +883,46 @@ public partial class LogViewerForm : Form
     }
 
     // Displays a one-off meta/error message (e.g. "No log entries yet", watcher errors).
-    // Replaces the entire RTF content with a single styled line - safe because meta messages
-    // are shown before any real log content, or when the watcher has already failed.
+    // Shows a centred status/placeholder message (loading, empty, error) over the log area.
+    // The overlay Label fully covers rtbLog with the same background, so it reads as the log's
+    // own empty/error state; it is hidden again as soon as real content is displayed.
     private void SetMetaMessage(string text, Color color)
     {
-        // Map color to a 1-based RTF colour-table index.
-        // Falls back to the last entry for colours not in the theme palette (e.g. MetaColor).
-        int colorIdx = _themeColors.Length;
-        for (int i = 0; i < _themeColors.Length; i++)
-        {
-            if (_themeColors[i] == color) { colorIdx = i + 1; break; }
-        }
+        EnsureMetaLabel();
+        _metaLabel!.BackColor = rtbLog.BackColor;
+        _metaLabel.ForeColor = color;
+        _metaLabel.Text = text;
+        SyncMetaLabelBounds();
+        _metaLabel.Visible = true;
+        _metaLabel.BringToFront();
+    }
 
-        var sb = new StringBuilder();
-        AppendRtfHeader(sb, _themeColors);
-        sb.Append($"\\cf{colorIdx} ");
-        AppendRtfText(sb, text);
-        sb.Append("\\par}");
-        rtbLog.Rtf = sb.ToString();
+    // Creates the overlay Label as a sibling of rtbLog (not a child - a RichTextBox does not host
+    // child controls reliably across repaints) and keeps it aligned to rtbLog's bounds.
+    private void EnsureMetaLabel()
+    {
+        if (_metaLabel is not null) return;
+        _metaLabel = new Label
+        {
+            AutoSize = false,
+            TextAlign = ContentAlignment.MiddleCenter,
+            Font = rtbLog.Font,
+            Visible = false,
+        };
+        rtbLog.Parent!.Controls.Add(_metaLabel);
+        SyncMetaLabelBounds();
+        rtbLog.SizeChanged += (_, _) => SyncMetaLabelBounds();
+        rtbLog.LocationChanged += (_, _) => SyncMetaLabelBounds();
+    }
+
+    private void SyncMetaLabelBounds()
+    {
+        if (_metaLabel is not null) _metaLabel.Bounds = rtbLog.Bounds;
+    }
+
+    private void HideMetaLabel()
+    {
+        if (_metaLabel is not null) _metaLabel.Visible = false;
     }
 
     // Custom TextBox that draws a vertically-centered placeholder.

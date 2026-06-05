@@ -325,7 +325,7 @@ The application is designed to always recover. A failing cycle never crashes the
 ### Media Manager
 
 - If a TMDB API call fails (network error, invalid key), the file is skipped and the error is logged. Other files in the same scan continue processing.
-- If a source or library folder is inaccessible (permissions, network share offline), that folder is skipped with a warning. Remaining folders are still processed.
+- If a folder is inaccessible (permissions, or a network share that is offline or slow to respond), it is detected quickly without stalling the cycle. A source folder is skipped with a warning while the others are still processed; if a library folder is unreachable, the library index build is skipped that cycle and retried on the next (rather than committing a partial index), resuming automatically once the share is reachable.
 - If file import fails (I/O error, disk full), the individual file is skipped. The scan continues with the next file.
 - If the fingerprint cache is corrupt or unreadable, it is discarded and rebuilt from scratch on the next scan.
 

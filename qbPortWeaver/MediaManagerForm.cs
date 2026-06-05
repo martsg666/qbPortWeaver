@@ -752,7 +752,7 @@ public partial class MediaManagerForm : Form
     private void gridContextCopy_Click(object? sender, EventArgs e)
     {
         if (dgvResults.CurrentCell?.Value is string v && v.Length > 0)
-            Clipboard.SetText(v);
+            AppConstants.TrySetClipboardText(v);
     }
 
     private void gridContextPaste_Click(object? sender, EventArgs e) => PasteToCurrentCell();
@@ -772,7 +772,7 @@ public partial class MediaManagerForm : Form
     {
         bool canPaste = dgvResults.CurrentCell?.ColumnIndex == colProposed.Index
                         && !dgvResults.CurrentCell.ReadOnly
-                        && Clipboard.ContainsText();
+                        && AppConstants.ClipboardHasText();
         _mnuPaste!.Enabled = canPaste;
     }
 
@@ -780,8 +780,8 @@ public partial class MediaManagerForm : Form
     {
         if (dgvResults.CurrentCell?.ColumnIndex == colProposed.Index
             && !dgvResults.CurrentCell.ReadOnly
-            && Clipboard.ContainsText())
-            dgvResults.CurrentCell.Value = Clipboard.GetText().Trim();
+            && AppConstants.TryGetClipboardText() is { } text)
+            dgvResults.CurrentCell.Value = text.Trim();
     }
 
     // Keyboard shortcuts mirroring the context menu

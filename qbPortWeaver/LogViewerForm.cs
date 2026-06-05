@@ -556,6 +556,10 @@ public partial class LogViewerForm : Form
             {
                 HideMetaLabel();
                 rtbLog.Rtf = rtf;
+                // Native RichEdit records every Rtf/SelectedRtf assignment in its undo buffer.
+                // The viewer is read-only so undo is unreachable - clear it so the buffer does
+                // not hold a redundant copy of the document content.
+                rtbLog.ClearUndo();
                 if (_navigateToLatestIssue) { NavigateToLatestIssue(); _navigateToLatestIssue = false; } else ScrollToBottom();
                 if (!string.IsNullOrEmpty(txtSearch.Text))
                 {
@@ -782,6 +786,11 @@ public partial class LogViewerForm : Form
             rtbLog.SelectionStart = rtbLog.TextLength;
             rtbLog.SelectionLength = 0;
             rtbLog.SelectedRtf = BuildRtf(visibleNew, _themeColors);
+            // Native RichEdit records every SelectedRtf insertion in its undo buffer; left
+            // unchecked the buffer accumulates a copy of every appended batch and grows the
+            // working set linearly with append count. The viewer is read-only so undo is
+            // unreachable - clear it after each insertion to bound the buffer.
+            rtbLog.ClearUndo();
 
             if (!string.IsNullOrEmpty(txtSearch.Text))
             {

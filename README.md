@@ -60,6 +60,8 @@ The application runs in the system tray, manages configuration and logging, and 
 - **Media Manager**
   Automatically imports movie and TV episode files into Plex-compatible library folders on each sync cycle. Queries [The Movie Database (TMDB)](https://www.themoviedb.org) to identify titles and release years, then imports files using Plex naming conventions (`Title (Year).ext` for movies, `Show (Year) - SxxExx.ext` for single-episode files and `Show (Year) - SxxExxExx.ext` for multi-episode files) via hardlink (with automatic fallback to copy for cross-volume scenarios), copy, or move.
 
+  In addition to the SxxExx naming pattern, episodes organised into season subfolders with numbered filenames (e.g. `Show Name/Season N/01-Title.mp4`) are also recognised as TV shows. The show name is taken from the parent folder, the season number from the season subfolder, and the episode number from the filename prefix. English, French, Spanish and Italian season indicators are accepted.
+
   Optionally organises files into Plex-recommended subfolders (`Movies/Title (Year)/` and `TV Shows/Show (Year)/Season XX/`), and cleans up source folders left empty after importing (including folders containing only `.nfo` files).
 
   A dedicated **Media Manager** dialog (tray menu → Media Manager) lets you configure source and library folders, preview imports before they run (**Scan Now**), and apply or correct them manually (**Import Now**). Uncertain TMDB matches are highlighted for review. A free TMDB API key is required.

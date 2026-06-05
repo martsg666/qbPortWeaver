@@ -37,8 +37,52 @@ public sealed class TvShowProcessor(TmdbClient tmdb, bool dryRun, bool createFol
             await ProcessEpisodeFileAsync(file, cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>Scans folder-classified episodes (show name from grandparent folder, season from parent folder, episode from filename prefix) and returns import proposals.</summary>
+    public async Task<List<MediaProposal>> ScanFolderClassifiedAsync(FolderClassifiedEpisode[] episodes, Action? onItemProcessed = null, CancellationToken cancellationToken = default)
+    {
+        var proposals = new List<MediaProposal>();
+        foreach (var ep in episodes)
+        {
+            await ScanFolderClassifiedEpisodeAsync(ep, proposals, cancellationToken).ConfigureAwait(false);
+            onItemProcessed?.Invoke();
+        }
+        return proposals;
+    }
+
+    /// <summary>Processes folder-classified episodes, importing them into the library with Plex naming conventions. Skips uncertain TMDB matches - use <see cref="ScanFolderClassifiedAsync"/> to preview those first.</summary>
+    public async Task ProcessFolderClassifiedAsync(FolderClassifiedEpisode[] episodes, CancellationToken cancellationToken = default)
+    {
+        foreach (var ep in episodes)
+            await ProcessFolderClassifiedEpisodeAsync(ep, cancellationToken).ConfigureAwait(false);
+    }
+
+    // Scans one folder-classified episode. Show name comes from the grandparent folder
+    // (already resolved during classification), so no filename parse is needed - the
+    // resolved TvShowEpisodeInfo goes straight to the shared post-resolution flow.
+    private Task ScanFolderClassifiedEpisodeAsync(FolderClassifiedEpisode ep, List<MediaProposal> proposals, CancellationToken cancellationToken)
+    {
+        var (showName, year) = ResolveShowAndYear(ep.ShowName);
+        var episodeInfo = new TvShowEpisodeInfo(showName, year, ep.Season, ep.Episode);
+        return ScanResolvedEpisodeAsync(ep.FilePath, episodeInfo, proposals, cancellationToken);
+    }
+
+    private Task ProcessFolderClassifiedEpisodeAsync(FolderClassifiedEpisode ep, CancellationToken cancellationToken)
+    {
+        var (showName, year) = ResolveShowAndYear(ep.ShowName);
+        var episodeInfo = new TvShowEpisodeInfo(showName, year, ep.Season, ep.Episode);
+        return ProcessResolvedEpisodeAsync(ep.FilePath, episodeInfo, cancellationToken);
+    }
+
+    // Parses the show folder name as a "Title (Year)" pair. Falls back to the raw folder name
+    // if no title can be parsed (e.g. a single-word title that ParseTitleYear strips to empty).
+    private static (string ShowName, int? Year) ResolveShowAndYear(string rawShowFolder)
+    {
+        var (title, year) = FileNameParser.ParseTitleYear(rawShowFolder);
+        return string.IsNullOrWhiteSpace(title) ? (rawShowFolder, year) : (title, year);
+    }
+
     // Scans a single TV episode file and adds proposals for unmatched or new items
-    private async Task ScanEpisodeFileAsync(string filePath, List<MediaProposal> proposals, CancellationToken cancellationToken)
+    private Task ScanEpisodeFileAsync(string filePath, List<MediaProposal> proposals, CancellationToken cancellationToken)
     {
         var fileName = Path.GetFileName(filePath);
 
@@ -46,9 +90,32 @@ public sealed class TvShowProcessor(TmdbClient tmdb, bool dryRun, bool createFol
         if (episodeInfo is null)
         {
             LogManager.Instance.LogDebug($"TvShowProcessor.ScanEpisodeFileAsync: Skipped '{fileName}' - not a recognized episode", Subsystem.MediaManager);
-            return;
+            return Task.CompletedTask;
         }
 
+        return ScanResolvedEpisodeAsync(filePath, episodeInfo, proposals, cancellationToken);
+    }
+
+    // Imports a single TV episode file into the library
+    private Task ProcessEpisodeFileAsync(string filePath, CancellationToken cancellationToken)
+    {
+        var fileName = Path.GetFileName(filePath);
+
+        var episodeInfo = FileNameParser.ParseTvShowEpisode(fileName);
+        if (episodeInfo is null)
+        {
+            LogManager.Instance.LogDebug($"TvShowProcessor.ProcessEpisodeFileAsync: Skipped '{fileName}' - not a recognized episode", Subsystem.MediaManager);
+            return Task.CompletedTask;
+        }
+
+        return ProcessResolvedEpisodeAsync(filePath, episodeInfo, cancellationToken);
+    }
+
+    // Shared post-resolution scan: takes an already-resolved TvShowEpisodeInfo (from filename
+    // parsing OR folder classification) and builds the proposal. Centralises the TMDB lookup,
+    // destination-matches check, and proposal construction so both source paths stay in sync.
+    private async Task ScanResolvedEpisodeAsync(string filePath, TvShowEpisodeInfo episodeInfo, List<MediaProposal> proposals, CancellationToken cancellationToken)
+    {
         var (info, isConfident) = await GetOrLookupTvShowAsync(episodeInfo.ShowName, episodeInfo.Year, cancellationToken).ConfigureAwait(false);
         if (info is null)
         {
@@ -61,33 +128,24 @@ public sealed class TvShowProcessor(TmdbClient tmdb, bool dryRun, bool createFol
         if (MediaImporter.DestinationMatchesSource(filePath, proposedPath)) return;
 
         if (!string.Equals(filePath, proposedPath, StringComparison.OrdinalIgnoreCase))
-            proposals.Add(new MediaProposal(MediaProposal.TypeTvShow, filePath, proposedPath, isConfident, PosterPath: info.PosterPath, TmdbId: info.TmdbId, VoteCount: info.VoteCount, Overview: info.Overview));
+            proposals.Add(new MediaProposal(MediaProposal.TypeTvShow, filePath, proposedPath, isConfident,
+                PosterPath: info.PosterPath, TmdbId: info.TmdbId, VoteCount: info.VoteCount, Overview: info.Overview));
     }
 
-    // Imports a single TV episode file into the library
-    private async Task ProcessEpisodeFileAsync(string filePath, CancellationToken cancellationToken)
+    // Shared post-resolution import: looks up TMDB, skips on uncertain matches, and imports
+    // the file plus companion subtitles. Counterpart to ScanResolvedEpisodeAsync.
+    private async Task ProcessResolvedEpisodeAsync(string filePath, TvShowEpisodeInfo episodeInfo, CancellationToken cancellationToken)
     {
-        var fileName = Path.GetFileName(filePath);
-
-        var episodeInfo = FileNameParser.ParseTvShowEpisode(fileName);
-        if (episodeInfo is null)
-        {
-            LogManager.Instance.LogDebug($"TvShowProcessor.ProcessEpisodeFileAsync: Skipped '{fileName}' - not a recognized episode", Subsystem.MediaManager);
-            return;
-        }
-
         var (info, isConfident) = await GetOrLookupTvShowAsync(episodeInfo.ShowName, episodeInfo.Year, cancellationToken).ConfigureAwait(false);
-
         if (info is null) return;
         if (!isConfident)
         {
-            LogManager.Instance.LogMessage($"Skipped '{fileName}' - uncertain TMDB match, review in Media Manager", LogLevel.Warn, Subsystem.MediaManager);
+            LogManager.Instance.LogMessage($"Skipped '{Path.GetFileName(filePath)}' - uncertain TMDB match, review in Media Manager", LogLevel.Warn, Subsystem.MediaManager);
             return;
         }
 
         var targetPath = BuildEpisodePath(filePath, info, episodeInfo, libraryPath, createFolders);
         MediaManagerService.ImportFile(filePath, targetPath, dryRun, importMode);
-
         MediaManagerService.ImportCompanionFiles(filePath, targetPath, dryRun, importMode);
     }
 

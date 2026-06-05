@@ -287,6 +287,16 @@ The Media Manager scan is split into two phases that partially overlap for perfo
                              into movie files and TV episode files.
 ```
 
+### TV Episode Classification
+
+`ClassifyCandidates` routes each video file to one of three buckets:
+
+1. **Filename-pattern TV** - filename contains an `SxxExx` (or legacy `NxNN`) marker. `FileNameParser.ParseTvShowEpisode` extracts show name + season + episode from the filename.
+2. **Folder-classified TV** - filename has no episode marker but the file lives under a season-indicator folder (`Season N`, `saison N`, `temporada N`, `stagione N`, or compact `S01`) and starts with a 1-3 digit episode prefix (`01-Title.mp4`). `TryClassifyAsFolderTv` derives the season from the parent folder via `ParseSeasonFromFolder`, the episode from the filename via `ParseEpisodePrefix`, and the show name from the grandparent folder.
+3. **Movies** - everything else.
+
+Both TV buckets flow into `TvShowProcessor`, which shares the post-resolution `ScanResolvedEpisodeAsync` / `ProcessResolvedEpisodeAsync` helpers so TMDB lookup, destination matching, and proposal construction stay in sync between the two source paths. Folder-classified episodes are resolved into a `TvShowEpisodeInfo` before reaching the shared helpers, so downstream code sees no difference.
+
 ### Lazy Fingerprint Deduplication
 
 If `ImportAsync` and `ScanAsync` overlap (e.g. a manual **Scan Now** triggered while a sync cycle is running), both call `ClassifySourceFoldersAsync` concurrently. A `ConcurrentDictionary<string, Lazy<string>>` ensures that when two threads race on the same source file, only one issues the 128 KB read while the other waits on the same `Lazy<string>` and reuses the result.
@@ -321,20 +331,28 @@ MediaManagerService.ImportAsync / ScanAsync
  │
  ├─ ClassifySourceFoldersAsync  [Phase 2 - waits for Phase 1 + library index]
  │   └─ ClassifyCandidates (per folder, Parallel.ForEach degree 8)
- │       └─ MediaImporter.IsAlreadyInLibrary (per file)
- │           └─ GetOrComputeSourceFingerprint (with Lazy deduplication)
+ │       ├─ MediaImporter.IsAlreadyInLibrary (per file)
+ │       │   └─ GetOrComputeSourceFingerprint (with Lazy deduplication)
+ │       └─ TryClassifyAsFolderTv (when filename has no SxxExx pattern)
+ │           ├─ FileNameParser.ParseEpisodePrefix (filename)
+ │           └─ FileNameParser.ParseSeasonFromFolder (parent folder)
  │
  ├─ ProcessSourceFolderAsync / ScanSourceFolderAsync (per folder, concurrent)
  │   ├─ MovieProcessor.ProcessMoviesAsync / ScanMoviesAsync
  │   │   ├─ ClassifyVideoFiles (self-describing vs folder-dependent)
  │   │   ├─ GetOrLookupMovieAsync
  │   │   │   └─ TmdbClient.LookupAsync → SearchWithConfidenceAsync (confidence tracking + fallback strategies)
+ │   │   ├─ AddMovieScanProposal (scan)  |  ShouldImportMatch (process)
  │   │   └─ MediaManagerService.ImportFile / MediaProposal
- │   └─ TvShowProcessor.ProcessTvShowsAsync / ScanTvShowsAsync
- │       ├─ FileNameParser.ParseTvShowEpisode (per file)
- │       ├─ GetOrLookupTvShowAsync
- │       │   └─ TmdbClient.LookupAsync → SearchWithConfidenceAsync (confidence tracking + fallback strategies)
- │       └─ MediaManagerService.ImportFile / MediaProposal
+ │   └─ TvShowProcessor.ProcessTvShowsAsync / ScanTvShowsAsync       (filename-pattern path)
+ │       │   FileNameParser.ParseTvShowEpisode (per file)
+ │       └─ ScanResolvedEpisodeAsync / ProcessResolvedEpisodeAsync   (shared post-resolution flow)
+ │           ├─ GetOrLookupTvShowAsync
+ │           │   └─ TmdbClient.LookupAsync → SearchWithConfidenceAsync (confidence tracking + fallback strategies)
+ │           └─ MediaManagerService.ImportFile / MediaProposal
+ │   └─ TvShowProcessor.ProcessFolderClassifiedAsync / ScanFolderClassifiedAsync   (folder-classified path)
+ │       │   ResolveShowAndYear (parses Show Name + optional Year from folder)
+ │       └─ ScanResolvedEpisodeAsync / ProcessResolvedEpisodeAsync   (same shared helpers)
  │
  ├─ TmdbCacheManager.Save
  ├─ MediaImporter.SaveSourceCache

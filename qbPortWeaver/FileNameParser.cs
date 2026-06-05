@@ -455,7 +455,38 @@ public static partial class FileNameParser
     [GeneratedRegex(@"\bS\d{1,4}\b", RegexOptions.IgnoreCase)]
     private static partial Regex TvShowSeasonOnlyRegex();
 
+    // Anchored to start AND end so it does not match partial folder names like "Season Finale".
+    // Covers English, French, Spanish, Italian. Leading zeros are stripped via 0* before the capture group.
+    [GeneratedRegex(@"^(?:season|saison|temporada|stagione|s)\s*0*(\d{1,3})$", RegexOptions.IgnoreCase)]
+    private static partial Regex SeasonFolderRegex();
+
+    // Matches a 1-3 digit number at the start of a filename, followed by either a separator
+    // (space, dash, dot, underscore) or end-of-string. Leading zeros are absorbed by 0* so
+    // "01-Title" captures 1, "001_Title" captures 1, and a bare "01" captures 1.
+    // The 1-3 digit cap on (\d{1,3}) prevents matching 4+ digit prefixes like a release year
+    // (e.g. "2020.Movie" cannot reach a separator at any backtrack position).
+    [GeneratedRegex(@"^0*(\d{1,3})(?:[\s\-_.]|$)")]
+    private static partial Regex EpisodePrefixRegex();
+
+    /// <summary>Returns the season number when <paramref name="folderName"/> matches a season indicator pattern (e.g. "Season 1", "saison 01", "S01"), or <see langword="null"/> otherwise.</summary>
+    public static int? ParseSeasonFromFolder(string folderName)
+    {
+        if (string.IsNullOrWhiteSpace(folderName)) return null;
+        var match = SeasonFolderRegex().Match(folderName.Trim());
+        return match.Success && int.TryParse(match.Groups[1].Value, out int n) && n > 0 ? n : null;
+    }
+
+    /// <summary>Returns the episode number from a 1-3 digit prefix at the start of <paramref name="fileName"/> (e.g. "01-Title.mkv" → 1), or <see langword="null"/> if no prefix is present.</summary>
+    public static int? ParseEpisodePrefix(string fileName)
+    {
+        if (string.IsNullOrWhiteSpace(fileName)) return null;
+        var match = EpisodePrefixRegex().Match(fileName);
+        return match.Success && int.TryParse(match.Groups[1].Value, out int n) && n > 0 ? n : null;
+    }
 }
 
 /// <summary>Parsed TV episode identity: show name, optional year hint, season number, first episode number, and optional end episode for multi-episode files.</summary>
 public sealed record TvShowEpisodeInfo(string ShowName, int? Year, int Season, int Episode, int? EndEpisode = null);
+
+/// <summary>TV episode identity resolved from directory structure rather than filename pattern (e.g. <c>Show\Season 01\01-Title.mkv</c>). <see cref="ShowName"/> comes from the grandparent folder, <see cref="Season"/> from the parent folder, <see cref="Episode"/> from the leading digits of the filename.</summary>
+public sealed record FolderClassifiedEpisode(string FilePath, string ShowName, int Season, int Episode);

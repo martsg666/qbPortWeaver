@@ -20,10 +20,18 @@ public partial class WhatsNewForm : Form
         "Check for updates on demand\n" +
         "A new Check for Updates item in the tray menu lets you check for a newer version right away " +
         "instead of waiting for the periodic check. You always get a result, even when you are already up to date.\n\n" +
+        "Layered TV libraries\n" +
+        "The Media Manager now recognises TV episodes organised in season subfolders with numbered " +
+        "filenames (Show Name/Season N/01-Title.mp4) in addition to the existing SxxExx naming pattern. " +
+        "The show name comes from the parent folder, the season from the season subfolder, and the episode " +
+        "number from the filename prefix. English, French, Spanish and Italian season indicators are recognised.\n\n" +
         "More resilient media import\n" +
         "When a source or library folder is on a network share that is temporarily offline (for example a NAS " +
         "that is rebooting), the Media Manager now detects it quickly and skips that import cycle instead of " +
         "stalling, then resumes automatically once the share is reachable again.\n\n" +
+        "Stable log viewer memory\n" +
+        "Keeping the log viewer open during a long debugging session used to cause memory usage to grow over time. " +
+        "The viewer now keeps a steady footprint regardless of how long it stays open.\n\n" +
         "Previously released\n\n" +
         "New in 2.5.4\n\n" +
         "Less intrusive update notifications\n" +

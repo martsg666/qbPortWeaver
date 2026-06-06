@@ -53,8 +53,8 @@ public static class UpdateChecker
                 !root.TryGetProperty(JsonPropHtmlUrl, out var urlElement))
                 return null;
 
-            string tagName = tagElement.GetString() ?? "";
-            string releaseUrl = urlElement.GetString() ?? "";
+            string tagName = tagElement.GetString() ?? string.Empty;
+            string releaseUrl = urlElement.GetString() ?? string.Empty;
             string versionStr = tagName.TrimStart('v', 'V');
 
             bool isNewer = Version.TryParse(versionStr, out var latest) &&
@@ -113,13 +113,13 @@ public static class UpdateChecker
     // is missing a login, is a bot, or cannot be interpreted as a human contributor.
     private static ContributorInfo? TryParseContributor(JsonElement item)
     {
-        string login = item.TryGetProperty("login", out var loginEl) ? loginEl.GetString() ?? "" : "";
+        string login = item.TryGetProperty("login", out var loginEl) ? loginEl.GetString() ?? string.Empty : string.Empty;
         if (string.IsNullOrEmpty(login)) return null;
 
-        string type = item.TryGetProperty("type", out var typeEl) ? typeEl.GetString() ?? "" : "";
+        string type = item.TryGetProperty("type", out var typeEl) ? typeEl.GetString() ?? string.Empty : string.Empty;
         if (IsBot(login, type)) return null;
 
-        string url = item.TryGetProperty(JsonPropHtmlUrl, out var urlEl) ? urlEl.GetString() ?? "" : "";
+        string url = item.TryGetProperty(JsonPropHtmlUrl, out var urlEl) ? urlEl.GetString() ?? string.Empty : string.Empty;
         return new ContributorInfo(login, url);
     }
 

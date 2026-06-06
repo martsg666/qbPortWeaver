@@ -83,7 +83,7 @@ public partial class AboutForm : Form
             btnCheckForUpdates.Text = "Checking\u2026";
             lblLatestVersionValue.Text = "Checking\u2026";
             lblLatestVersionValue.ForeColor = SystemColors.GrayText;
-            lblStatusValue.Text = "";
+            lblStatusValue.Text = string.Empty;
             _releaseUrl = null;
 
             // Fetch release info and contributor list in parallel

@@ -201,7 +201,7 @@ public partial class SettingsForm : Form
         // If discovery is still pending (combo disabled), preserve the existing value to avoid
         // saving the "Discovering adapters…" placeholder text as the adapter name
         string adapterName = cboNatPmpAdapter.Enabled
-            ? cboNatPmpAdapter.SelectedItem?.ToString() ?? ""
+            ? cboNatPmpAdapter.SelectedItem?.ToString() ?? string.Empty
             : RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyNatPmpAdapterName);
         RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyNatPmpAdapterName, adapterName);
         RegistrySettingsManager.SetBool(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyAutoRecoveryEnabled, chkAutoRecovery.Checked);
@@ -331,7 +331,7 @@ public partial class SettingsForm : Form
         // Preserve current selection if it is a valid adapter name (not a placeholder)
         string current = cboNatPmpAdapter.Enabled &&
                          cboNatPmpAdapter.SelectedItem?.ToString() != NoAdaptersFoundPlaceholder
-            ? cboNatPmpAdapter.SelectedItem?.ToString() ?? ""
+            ? cboNatPmpAdapter.SelectedItem?.ToString() ?? string.Empty
             : RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyNatPmpAdapterName);
 
         cboNatPmpAdapter.Items.Clear();

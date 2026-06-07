@@ -35,18 +35,20 @@ internal sealed class VpnRegistryConfig
     internal string GetClientProcessName() => RegistrySettingsManager.GetAppValue(_clientProcessNameKey);
     internal string GetAdapterName() => RegistrySettingsManager.GetAppValue(_adapterNameKey);
 
-    // Case-insensitive bidirectional substring match against the registry-configured adapter name.
-    // Bidirectional handles the case where the configured name and the actual Windows adapter name
-    // differ in length (e.g. registry "ProtonVPN TUN" vs adapter "ProtonVPN", or the reverse).
-    // Mirrors NatPmpManager.IsAdapterMatch so all three VPN managers behave identically.
+    // Matches the registry-configured adapter name against an observed interface name.
+    internal bool MatchesAdapterName(string interfaceName) => AdapterNamesMatch(GetAdapterName(), interfaceName);
+
+    // Case-insensitive bidirectional substring match between a configured adapter name and an
+    // observed interface name. Bidirectional handles the configured name and the actual Windows
+    // adapter name differing in length (e.g. "ProtonVPN TUN" vs "ProtonVPN", or the reverse).
     // Empty-string guards on both sides: Contains("") returns true for any input, which would
-    // falsely match if either the registry value or the interface name was empty.
-    internal bool MatchesAdapterName(string interfaceName)
+    // falsely match if either side was empty. Shared by all three VPN managers - ProtonVPN/PIA via
+    // MatchesAdapterName, NAT-PMP via NatPmpManager.IsAdapterMatch - so the rule cannot drift.
+    internal static bool AdapterNamesMatch(string configuredName, string interfaceName)
     {
-        string adapterName = GetAdapterName();
-        if (string.IsNullOrEmpty(adapterName) || string.IsNullOrEmpty(interfaceName)) return false;
-        return interfaceName.Contains(adapterName, StringComparison.OrdinalIgnoreCase) ||
-               adapterName.Contains(interfaceName, StringComparison.OrdinalIgnoreCase);
+        if (string.IsNullOrEmpty(configuredName) || string.IsNullOrEmpty(interfaceName)) return false;
+        return interfaceName.Contains(configuredName, StringComparison.OrdinalIgnoreCase) ||
+               configuredName.Contains(interfaceName, StringComparison.OrdinalIgnoreCase);
     }
 
     // Live SCM enumeration; call site caches the result where repeated lookups matter.

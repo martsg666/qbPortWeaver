@@ -13,22 +13,22 @@
     <Product>qbPortWeaver</Product>
     <Authors>martsg666</Authors>
     <Copyright>© 2026 martsg666</Copyright>
-    <Version>2.5.4</Version>
-    <FileVersion>2.5.4.0</FileVersion>
-    <AssemblyVersion>2.5.4.0</AssemblyVersion>
+    <Version>2.5.5</Version>
+    <FileVersion>2.5.5.0</FileVersion>
+    <AssemblyVersion>2.5.5.0</AssemblyVersion>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <SignAssembly>False</SignAssembly>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <!-- Suppress known SonarAnalyzer false positives (each has a matching // NOSONAR comment):
-         S108  - empty catch bodies are intentional (BitTorrentClientBase.cs, TransmissionClient.cs, HelperPipeServer.cs)
+         S108  - empty catch bodies are intentional (BitTorrentClientBase.cs, TransmissionClient.cs)
          S125  - documentation comments containing qualified identifiers (e.g. Class.Member) are falsely flagged as commented-out code
          S1075 - TMDB base URL is intentionally hardcoded (TmdbClient.cs)
          S1125 - C# pattern matching 'is true' / 'is not true' requires the boolean literal (MediaManagerForm.cs)
          S1215 - intentional GC after explicit large release on log viewer close (LogViewerForm.cs)
          S2068 - registry key name contains "Password", value is masked (PortSyncService.cs)
          S2221 - bare catch before LogManager is initialized; any failure must fall back safely (Program.cs)
-         S2325 - WinForms event handlers calling instance methods (Close, Invoke) cannot be static (MainForm.cs, AboutForm.cs, MediaManagerForm.cs, SettingsForm.cs, WhatsNewForm.cs)
-         S2486 - same as S108, SonarCloud cloud rule counterpart (BitTorrentClientBase.cs, TransmissionClient.cs, HelperPipeServer.cs)
+         S2325 - WinForms handlers and helpers that access instance members (Close, Invoke, ShowBalloonTip, UseWaitCursor/IsDisposed) cannot be static (MainForm.cs, AboutForm.cs, MediaManagerForm.cs, SettingsForm.cs, WhatsNewForm.cs)
+         S2486 - same as S108, SonarCloud cloud rule counterpart (BitTorrentClientBase.cs, TransmissionClient.cs)
          S2589 - defensive runtime fallback after a Debug.Assert that only fires in dev builds (WhatsNewForm.cs)
          S3881 - abstract base class; all sealed subclasses have no additional disposable resources (BitTorrentClientBase.cs)
          S4721 - post-update command is user-configured, arbitrary execution is intended (PortSyncService.cs)
@@ -48,6 +48,15 @@
 
   <ItemGroup>
     <ProjectReference Include="..\qbPortWeaver.Shared\qbPortWeaver.Shared.csproj" />
+  </ItemGroup>
+
+  <!-- Shared is a foundational dependency (LogLevel, LoggingConstants, HelperProtocol, etc.); make it
+       a global using so every file resolves its types without a per-file using directive. The LogLevel
+       alias pins the unqualified name to our enum so it cannot be shadowed by another LogLevel in scope
+       (e.g. Microsoft.Extensions.Logging.LogLevel, imported by the helper's worker host). -->
+  <ItemGroup>
+    <Using Include="qbPortWeaver.Shared" />
+    <Using Include="qbPortWeaver.Shared.LogLevel" Alias="LogLevel" />
   </ItemGroup>
 
   <ItemGroup>

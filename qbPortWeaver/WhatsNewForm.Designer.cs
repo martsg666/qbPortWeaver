@@ -79,6 +79,7 @@ partial class WhatsNewForm
         btnClose.Click       += btnClose_Click;
 
         // ── WhatsNewForm ──────────────────────────────────────────────
+        AcceptButton        = btnClose;
         AutoScaleDimensions = new SizeF(7F, 15F);
         AutoScaleMode       = AutoScaleMode.Font;
         CancelButton        = btnClose;

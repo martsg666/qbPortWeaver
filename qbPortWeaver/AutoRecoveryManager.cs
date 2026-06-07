@@ -82,6 +82,8 @@ internal static class AutoRecoveryManager
             LogManager.Instance.LogMessage($"Adapter cycle did not complete for '{adapterName}'", LogLevel.Warn);
         else if (cycleResult.ErrorCount == 0)
             LogManager.Instance.LogMessage($"Adapter cycle completed for '{adapterName}'", LogLevel.Info);
+        else
+            LogManager.Instance.LogMessage($"Adapter cycle for '{adapterName}' completed with {cycleResult.ErrorCount} error{(cycleResult.ErrorCount == 1 ? "" : "s")} - see helper log entries", LogLevel.Warn);
     }
 
     // Kills all instances of the named client process (capturing the exe path first),
@@ -92,7 +94,7 @@ internal static class AutoRecoveryManager
     {
         if (string.IsNullOrWhiteSpace(processName))
         {
-            LogManager.Instance.LogDebug("AutoRecoveryManager.RestartClientProcessAsync: processName is empty - skipping");
+            LogManager.Instance.LogDebug("AutoRecoveryManager.RestartClientProcessAsync: Process name is empty - skipping");
             return;
         }
 

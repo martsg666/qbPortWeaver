@@ -1,6 +1,4 @@
-﻿using qbPortWeaver.Shared;
-using System.ComponentModel;
-using System.Diagnostics;
+﻿using System.ComponentModel;
 using System.Runtime;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -28,6 +26,21 @@ public partial class LogViewerForm : Form
     private bool _isDarkMode;
     private Color[] _themeColors = []; // overwritten in OnLoad after _isDarkMode is set
     private System.Windows.Forms.Timer? _searchDebounceTimer;
+    // Reclaims memory once the viewer goes idle after a burst of content. Live appends and the
+    // initial load build transient RTF strings that land on the Large Object Heap; a normal
+    // pressure-driven GC frees them but never compacts the LOH, so committed-but-empty segments
+    // keep the working set inflated to hundreds of MB on an otherwise small log (it only returns
+    // to baseline on close, which forces LOH compaction). This timer runs that same compaction
+    // ~ReclaimIdleSeconds after the last content change, gated on idle so the blocking GC never
+    // fires while logging is actively streaming in. Content stays visible - only garbage is freed.
+    private System.Windows.Forms.Timer? _reclaimTimer;
+    private long _lastActivityTicks; // Environment.TickCount64 (monotonic ms) at the last content change
+    private bool _reclaimPending;
+    private const int ReclaimTimerIntervalMs = 1000;
+    private const int ReclaimIdleSeconds = 3;
+    // Overlay shown for status/placeholder text (loading, empty, error). A RichTextBox cannot
+    // vertically centre its content, so these messages live on a Label that covers the log area.
+    private Label? _metaLabel;
 
     [LibraryImport("user32.dll", EntryPoint = "SendMessageW")]
     private static partial IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
@@ -39,6 +52,11 @@ public partial class LogViewerForm : Form
     [LibraryImport("psapi.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static partial bool EmptyWorkingSet(IntPtr hProcess);
+
+    // Returns the current-process pseudo-handle (a constant, not a real handle - no open/close
+    // needed), used for self-targeted calls like EmptyWorkingSet.
+    [LibraryImport("kernel32.dll")]
+    private static partial IntPtr GetCurrentProcess();
 
     [StructLayout(LayoutKind.Sequential)]
     private struct NativePoint { public int X, Y; }
@@ -59,6 +77,7 @@ public partial class LogViewerForm : Form
     private const string ColInfo = "| INFO  |";
     private const string ColDebug = "| DEBUG |";
     private const int MaxHighlights = 500;
+    private const long LoadingIndicatorMinBytes = 1_000_000; // show "Loading..." only for logs large enough that the read + RTF parse is perceptible
     private const int ClearButtonInset = 4; // shrinks button to fit inside the TextBox border (2 px top + 2 px bottom)
     private const int ClearButtonMargin = 2; // inner gap from TextBox right edge and top
 
@@ -110,6 +129,17 @@ public partial class LogViewerForm : Form
         PopulateLogFileDropdown();
         // Wire event after population to avoid triggering a load before the initial LoadInitialContentAsync below
         cboLogFile.SelectedIndexChanged += cboLogFile_SelectedIndexChanged;
+        CreateReclaimTimer();
+    }
+
+    protected override void OnShown(EventArgs e)
+    {
+        base.OnShown(e);
+        // Start the load only after the form's first paint. Kicking it off in OnLoad raced the
+        // form's initial WM_PAINT: the "Loading..." overlay was made visible, but for a fast read
+        // the background task's continuation ran HideMetaLabel before any paint occurred, so the
+        // label was never actually drawn. By OnShown the form is painted, so the overlay below
+        // renders before the blocking read/RTF parse begins.
         _ = LoadInitialContentAsync(); // fire-and-forget; exceptions are handled inside LoadInitialContentAsync
     }
 
@@ -121,6 +151,13 @@ public partial class LogViewerForm : Form
             _watcher.EnableRaisingEvents = false;
 
         _searchDebounceTimer?.Stop();
+        _searchDebounceTimer?.Dispose();
+        _searchDebounceTimer = null;
+
+        _reclaimTimer?.Stop();
+        _reclaimTimer?.Dispose();
+        _reclaimTimer = null;
+        _reclaimPending = false;
 
         // Release the large log content before Dispose runs. The native RichEdit control caches
         // its document buffer and is slow to release after handle destruction, so clearing while
@@ -132,23 +169,68 @@ public partial class LogViewerForm : Form
         _allLines.Clear();
         _allLines.TrimExcess();
 
-        // Large user-triggered release: compact the LOH and force a Gen 2 collection now rather
-        // than wait for heap pressure. The freed RTF + string content sits mostly on the LOH,
-        // which does not compact during normal collections - without CompactOnce the segments
-        // stay committed even when empty. Blocking GC is acceptable here because form close is
-        // user-triggered and infrequent; the brief pause is invisible to the user.
-        GCSettings.LargeObjectHeapCompactionMode = GCLargeObjectHeapCompactionMode.CompactOnce;
-        GC.Collect(2, GCCollectionMode.Optimized, blocking: true); // NOSONAR S1215 - see csproj NoWarn rationale; blocking required for LOH compaction
-        GC.WaitForPendingFinalizers();
-
-        // Ask Windows to trim our working set so Task Manager reflects live memory rather than
-        // every page .NET ever touched. Pages page back in on next access; the only cost is a
-        // brief delay if the user reopens the log viewer immediately. Without this step the
-        // committed-but-empty heap segments keep the working set inflated until OS memory
-        // pressure forces eviction.
-        EmptyWorkingSet(Process.GetCurrentProcess().Handle);
+        // Content already cleared above; compact the LOH and trim the working set now rather than
+        // waiting for heap pressure. Shared with the periodic idle reclaim - see ReclaimUnusedMemory.
+        ReclaimUnusedMemory();
 
         base.OnFormClosed(e);
+    }
+
+    // Creates the idle-reclaim timer in a stopped state. It is started on content activity and
+    // stopped again once the reclaim has run, so an idle or empty viewer has no periodic wakeups.
+    private void CreateReclaimTimer()
+    {
+        _reclaimTimer = new System.Windows.Forms.Timer { Interval = ReclaimTimerIntervalMs };
+        _reclaimTimer.Tick += reclaimTimer_Tick;
+    }
+
+    // Records that content was just added (initial load or live append), arms a reclaim, and starts
+    // the timer if it is not already running. Called on the UI thread; resets the idle clock so the
+    // reclaim only fires after activity has settled.
+    private void MarkContentActivity()
+    {
+        _lastActivityTicks = Environment.TickCount64;
+        _reclaimPending = true;
+        _reclaimTimer?.Start(); // idempotent if already running
+    }
+
+    // Fires on the UI thread. Once the viewer has been idle for ReclaimIdleSeconds after the last
+    // content change, runs one LOH-compacting reclaim and disarms until the next content arrives.
+    // Gating on idle keeps the blocking GC out of the active logging path: a continuous scan keeps
+    // pushing _lastActivityUtc forward, so the reclaim waits until the stream stops.
+    //
+    // Do NOT convert this to a fixed/max-interval reclaim: ReclaimUnusedMemory is process-wide (the
+    // blocking gen2 GC suspends all managed threads and EmptyWorkingSet trims the whole process), so
+    // firing it on an interval would perturb an actively-running media scan that has merely paused
+    // its logging. Idle-gating confines those costs to genuinely quiet moments.
+    private void reclaimTimer_Tick(object? sender, EventArgs e)
+    {
+        if (!_reclaimPending) return;
+        if (Environment.TickCount64 - _lastActivityTicks < ReclaimIdleSeconds * 1000L) return;
+        _reclaimPending = false;
+        _reclaimTimer?.Stop(); // nothing more to do until the next content activity
+        ReclaimUnusedMemory();
+    }
+
+    // Forces a blocking Gen2 collection with one-time LOH compaction, then trims the working set.
+    // The transient RTF strings built on each append/load sit mostly on the Large Object Heap, which
+    // a normal pressure-driven GC frees but never compacts - the committed-but-empty segments are
+    // what keep the viewer's footprint inflated to hundreds of MB on an otherwise small log.
+    // CompactOnce returns those segments; EmptyWorkingSet then asks Windows to page out the freed
+    // pages so Task Manager reflects live memory. Callers invoke this only when idle (after a burst
+    // settles) or on close - never mid-append - so the blocking pause is not user-visible.
+    private static void ReclaimUnusedMemory()
+    {
+        GCSettings.LargeObjectHeapCompactionMode = GCLargeObjectHeapCompactionMode.CompactOnce;
+        // Forced (not Optimized): Optimized lets the GC decline the collection, which would leave
+        // the CompactOnce flag armed to fire on an unpredictable later gen2 (possibly mid-scan).
+        // blocking: true is required - background/concurrent collections do not compact the LOH.
+        GC.Collect(2, GCCollectionMode.Forced, blocking: true); // NOSONAR S1215 - blocking required for LOH compaction
+        // No WaitForPendingFinalizers: the reclaimed garbage (RTF strings, char[]/string[] buffers)
+        // is non-finalizable, so the forced collection above reaps it directly.
+        // best-effort: return value ignored by design (a failed trim just leaves pages resident,
+        // to be evicted later under memory pressure); pseudo-handle, so nothing to dispose.
+        EmptyWorkingSet(GetCurrentProcess());
     }
 
     // Applies theme colors to the background, filter buttons, and search controls
@@ -232,7 +314,7 @@ public partial class LogViewerForm : Form
         => ctxCopy.Enabled = rtbLog.SelectionLength > 0;
 
     private void ctxCopy_Click(object? sender, EventArgs e) => rtbLog.Copy();
-    private void ctxCopyAll_Click(object? sender, EventArgs e) => Clipboard.SetText(rtbLog.Text.Length > 0 ? rtbLog.Text : " ");
+    private void ctxCopyAll_Click(object? sender, EventArgs e) => AppConstants.TrySetClipboardText(rtbLog.Text);
     private void ctxSelectAll_Click(object? sender, EventArgs e) => rtbLog.SelectAll();
 
     private void btnClearSearch_Click(object? sender, EventArgs e) => txtSearch.Clear();
@@ -385,22 +467,18 @@ public partial class LogViewerForm : Form
         bool[] filters = [chkError.Checked, chkWarn.Checked, chkInfo.Checked, chkDebug.Checked];
         string? subsystemFilter = GetSubsystemFilter();
         string[] filtered = _allLines.Where(l => IsLineVisibleWithFilters(l, filters, subsystemFilter)).ToArray();
-        rtbLog.Rtf = BuildRtf(filtered, _themeColors);
 
-        // Suppress redraws across both RefreshSearch and ApplySearchHighlights so scroll,
-        // selection, and highlight changes are not visible as intermediate paint states.
-        SendMessage(rtbLog.Handle, WinMsg.WM_SETREDRAW, IntPtr.Zero, IntPtr.Zero);
-        try
+        // Rebuild under redraw suppression so the swap + scroll + highlight paint a single settled
+        // frame. Setting Rtf resets the scroll to the top, so doing it inside the suppression avoids
+        // a brief flash where the new content shows at the top before scrolling.
+        WithRedrawSuppressed(() =>
         {
+            HideMetaLabel();
+            rtbLog.Rtf = BuildRtf(filtered, _themeColors);
             if (wasAtBottom) ScrollToBottom();
             RefreshSearch(navigateToFirst: true);
             ApplySearchHighlights();
-        }
-        finally
-        {
-            SendMessage(rtbLog.Handle, WinMsg.WM_SETREDRAW, (IntPtr)1, IntPtr.Zero);
-            rtbLog.Invalidate();
-        }
+        });
     }
 
     // Returns true if the user is scrolled to the bottom of the log.
@@ -476,6 +554,23 @@ public partial class LogViewerForm : Form
         SendMessage(rtbLog.Handle, WinMsg.WM_VSCROLL, (IntPtr)WinMsg.SB_BOTTOM, IntPtr.Zero);
     }
 
+    // Batches a set of RichTextBox mutations (Rtf/SelectedRtf swap, scroll, highlight) into a single
+    // visible frame: suppresses painting, runs the update, then re-enables redraw and repaints once.
+    // Without this the intermediate states (content at top, caret at end, highlight loop) flicker.
+    private void WithRedrawSuppressed(Action update)
+    {
+        SendMessage(rtbLog.Handle, WinMsg.WM_SETREDRAW, IntPtr.Zero, IntPtr.Zero);
+        try
+        {
+            update();
+        }
+        finally
+        {
+            SendMessage(rtbLog.Handle, WinMsg.WM_SETREDRAW, (IntPtr)1, IntPtr.Zero);
+            rtbLog.Invalidate();
+        }
+    }
+
     // Ensures the existing text ends with \n so the next SelectedRtf insert starts on
     // its own line. The last \par in an RTF document does not always produce a trailing
     // newline in WinForms RichTextBox, which causes line merging on append.
@@ -506,6 +601,17 @@ public partial class LogViewerForm : Form
                 return;
             }
 
+            // Show a loading hint, but only for logs large enough that the read + RTF parse is
+            // perceptible - small logs (the common case) would otherwise flicker a "Loading" frame.
+            if (new FileInfo(loadPath).Length > LoadingIndicatorMinBytes)
+            {
+                SetMetaMessage("Loading\u2026", MetaColor);
+                // Force the overlay to paint now, before the blocking read/RTF parse below. Without
+                // this, the read can finish and its continuation can hide the label before the next
+                // paint, leaving the label invisible despite being momentarily set visible.
+                _metaLabel!.Refresh();
+            }
+
             // Capture UI-thread state before entering the background task
             Color[] colors = _themeColors;
             bool[] filters = [chkError.Checked, chkWarn.Checked, chkInfo.Checked, chkDebug.Checked];
@@ -527,14 +633,31 @@ public partial class LogViewerForm : Form
 
             _allLines.AddRange(allLines);
             _lastReadPosition = position;
-            rtbLog.Rtf = rtf;
-            if (_navigateToLatestIssue) { NavigateToLatestIssue(); _navigateToLatestIssue = false; } else ScrollToBottom();
-            if (!string.IsNullOrEmpty(txtSearch.Text))
+
+            // Populate under redraw suppression so the user sees one final frame (scrolled to the
+            // bottom / latest issue) instead of content painting at the top and then visibly jumping.
+            WithRedrawSuppressed(() =>
             {
-                SendMessage(rtbLog.Handle, WinMsg.WM_SETREDRAW, IntPtr.Zero, IntPtr.Zero);
-                try { RefreshSearch(navigateToFirst: true); ApplySearchHighlights(); }
-                finally { SendMessage(rtbLog.Handle, WinMsg.WM_SETREDRAW, (IntPtr)1, IntPtr.Zero); rtbLog.Invalidate(); }
-            }
+                rtbLog.Rtf = rtf;
+                // Native RichEdit records every Rtf/SelectedRtf assignment in its undo buffer.
+                // The viewer is read-only so undo is unreachable - clear it so the buffer does
+                // not hold a redundant copy of the document content.
+                rtbLog.ClearUndo();
+                if (_navigateToLatestIssue) { NavigateToLatestIssue(); _navigateToLatestIssue = false; } else ScrollToBottom();
+                if (!string.IsNullOrEmpty(txtSearch.Text))
+                {
+                    RefreshSearch(navigateToFirst: true);
+                    ApplySearchHighlights();
+                }
+                // Hide the "Loading..." overlay only after the (slow) Rtf parse and scroll have
+                // completed. rtbLog's painting is suppressed during this block, so keeping the
+                // sibling overlay visible here means the user sees "Loading..." for the whole parse
+                // instead of a blank frozen window, then a single settled frame of real content.
+                HideMetaLabel();
+            });
+
+            // Arm a reclaim so the transient RTF built for this load is compacted once idle.
+            MarkContentActivity();
         }
         catch (Exception ex)
         {
@@ -726,6 +849,10 @@ public partial class LogViewerForm : Form
     // Must be called on the UI thread.
     private void AppendNewLines(string[] newLines)
     {
+        // Any append (even one filtered to nothing visible) parses lines and grows _allLines,
+        // producing transient garbage; arm a reclaim so it is compacted once logging settles.
+        MarkContentActivity();
+
         bool wasAtBottom = IsAtBottom();
         bool[] filters = [chkError.Checked, chkWarn.Checked, chkInfo.Checked, chkDebug.Checked];
         string? subsystemFilter = GetSubsystemFilter();
@@ -745,13 +872,20 @@ public partial class LogViewerForm : Form
             SendMessage(rtbLog.Handle, WinMsg.EM_GETSCROLLPOS, IntPtr.Zero, ref scrollPos);
 
         // Suppress painting so intermediate states (caret at end, highlight loop) don't flicker.
-        SendMessage(rtbLog.Handle, WinMsg.WM_SETREDRAW, IntPtr.Zero, IntPtr.Zero);
-        try
+        // The scroll restore is the last step of the batch (it depends on whether the user was at the
+        // bottom before the append); the helper handles re-enabling redraw and the single repaint.
+        WithRedrawSuppressed(() =>
         {
+            HideMetaLabel();
             EnsureTrailingNewline();
             rtbLog.SelectionStart = rtbLog.TextLength;
             rtbLog.SelectionLength = 0;
             rtbLog.SelectedRtf = BuildRtf(visibleNew, _themeColors);
+            // Native RichEdit records every SelectedRtf insertion in its undo buffer; left
+            // unchecked the buffer accumulates a copy of every appended batch and grows the
+            // working set linearly with append count. The viewer is read-only so undo is
+            // unreachable - clear it after each insertion to bound the buffer.
+            rtbLog.ClearUndo();
 
             if (!string.IsNullOrEmpty(txtSearch.Text))
             {
@@ -760,17 +894,12 @@ public partial class LogViewerForm : Form
             }
 
             rtbLog.Select(savedSelStart, savedSelLen);
-        }
-        finally
-        {
+
             if (wasAtBottom)
                 ScrollToBottom();
             else
                 SendMessage(rtbLog.Handle, WinMsg.EM_SETSCROLLPOS, IntPtr.Zero, ref scrollPos);
-
-            SendMessage(rtbLog.Handle, WinMsg.WM_SETREDRAW, (IntPtr)1, IntPtr.Zero);
-            rtbLog.Invalidate();
-        }
+        });
     }
 
     // Splits raw log content on newlines and strips trailing \r so CRLF and LF files produce identical lines.
@@ -806,7 +935,7 @@ public partial class LogViewerForm : Form
     // Convenience colour for meta/status messages (not log entries)
     private Color MetaColor => _isDarkMode ? AppConstants.DarkModeMeta : SystemColors.GrayText;
 
-    // Writes the RTF document header shared by BuildRtf and SetMetaMessage:
+    // Writes the RTF document header for BuildRtf:
     // Unicode-safe, Consolas 9pt (18 half-points), no paragraph spacing, colour table.
     private static void AppendRtfHeader(StringBuilder sb, Color[] colors)
     {
@@ -858,24 +987,46 @@ public partial class LogViewerForm : Form
     }
 
     // Displays a one-off meta/error message (e.g. "No log entries yet", watcher errors).
-    // Replaces the entire RTF content with a single styled line - safe because meta messages
-    // are shown before any real log content, or when the watcher has already failed.
+    // Shows a centred status/placeholder message (loading, empty, error) over the log area.
+    // The overlay Label fully covers rtbLog with the same background, so it reads as the log's
+    // own empty/error state; it is hidden again as soon as real content is displayed.
     private void SetMetaMessage(string text, Color color)
     {
-        // Map color to a 1-based RTF colour-table index.
-        // Falls back to the last entry for colours not in the theme palette (e.g. MetaColor).
-        int colorIdx = _themeColors.Length;
-        for (int i = 0; i < _themeColors.Length; i++)
-        {
-            if (_themeColors[i] == color) { colorIdx = i + 1; break; }
-        }
+        EnsureMetaLabel();
+        _metaLabel!.BackColor = rtbLog.BackColor;
+        _metaLabel.ForeColor = color;
+        _metaLabel.Text = text;
+        SyncMetaLabelBounds();
+        _metaLabel.Visible = true;
+        _metaLabel.BringToFront();
+    }
 
-        var sb = new StringBuilder();
-        AppendRtfHeader(sb, _themeColors);
-        sb.Append($"\\cf{colorIdx} ");
-        AppendRtfText(sb, text);
-        sb.Append("\\par}");
-        rtbLog.Rtf = sb.ToString();
+    // Creates the overlay Label as a sibling of rtbLog (not a child - a RichTextBox does not host
+    // child controls reliably across repaints) and keeps it aligned to rtbLog's bounds.
+    private void EnsureMetaLabel()
+    {
+        if (_metaLabel is not null) return;
+        _metaLabel = new Label
+        {
+            AutoSize = false,
+            TextAlign = ContentAlignment.MiddleCenter,
+            Font = rtbLog.Font,
+            Visible = false,
+        };
+        rtbLog.Parent!.Controls.Add(_metaLabel);
+        SyncMetaLabelBounds();
+        rtbLog.SizeChanged += (_, _) => SyncMetaLabelBounds();
+        rtbLog.LocationChanged += (_, _) => SyncMetaLabelBounds();
+    }
+
+    private void SyncMetaLabelBounds()
+    {
+        if (_metaLabel is not null) _metaLabel.Bounds = rtbLog.Bounds;
+    }
+
+    private void HideMetaLabel()
+    {
+        if (_metaLabel is not null) _metaLabel.Visible = false;
     }
 
     // Custom TextBox that draws a vertically-centered placeholder.

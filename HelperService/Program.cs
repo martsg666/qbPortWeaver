@@ -1,5 +1,4 @@
 ﻿using qbPortWeaver.HelperService;
-using qbPortWeaver.Shared;
 
 var builder = Host.CreateApplicationBuilder(args);
 builder.Services.AddWindowsService(options => options.ServiceName = HelperProtocol.PipeName);

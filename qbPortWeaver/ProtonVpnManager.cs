@@ -1,5 +1,4 @@
-﻿using qbPortWeaver.Shared;
-using System.Net.NetworkInformation;
+﻿using System.Net.NetworkInformation;
 using System.Text;
 using System.Text.RegularExpressions;
 

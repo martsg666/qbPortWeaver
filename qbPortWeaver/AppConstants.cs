@@ -1,6 +1,6 @@
 ﻿using Microsoft.Win32;
-using qbPortWeaver.Shared;
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using System.ServiceProcess;
 
 namespace qbPortWeaver;
@@ -56,6 +56,10 @@ public static class AppConstants
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
+            // Guarded with IsInitialized because this is a generic file helper reachable from
+            // early startup paths before LogManager.Initialize runs. The kill/service helpers
+            // below call LogManager.Instance unguarded by design - they only run inside the
+            // active sync loop, which cannot start until after initialization.
             if (LogManager.IsInitialized)
                 LogManager.Instance.LogDebug($"AppConstants.DeleteFileSafely: Could not delete '{path}': {ex.Message}");
         }
@@ -282,6 +286,49 @@ public static class AppConstants
         catch (Exception ex)
         {
             LogManager.Instance.LogMessage($"Failed to open URL '{url}': {ex.Message}", LogLevel.Warn);
+        }
+    }
+
+    /// <summary>Copies text to the clipboard, swallowing the transient <see cref="ExternalException"/> thrown
+    /// when another process holds the clipboard open (clipboard managers, RDP). Empty text is replaced with a
+    /// single space because <see cref="Clipboard.SetText(string)"/> rejects an empty string.</summary>
+    public static void TrySetClipboardText(string text)
+    {
+        try
+        {
+            Clipboard.SetText(string.IsNullOrEmpty(text) ? " " : text);
+        }
+        catch (ExternalException ex)
+        {
+            LogManager.Instance.LogDebug($"AppConstants.TrySetClipboardText: Clipboard unavailable: {ex.Message}");
+        }
+    }
+
+    /// <summary>Returns clipboard text, or <see langword="null"/> when the clipboard holds no text or is transiently locked by another process.</summary>
+    public static string? TryGetClipboardText()
+    {
+        try
+        {
+            return Clipboard.ContainsText() ? Clipboard.GetText() : null;
+        }
+        catch (ExternalException ex)
+        {
+            LogManager.Instance.LogDebug($"AppConstants.TryGetClipboardText: Clipboard unavailable: {ex.Message}");
+            return null;
+        }
+    }
+
+    /// <summary>Returns <see langword="true"/> if the clipboard contains text; <see langword="false"/> if empty or transiently locked by another process.</summary>
+    public static bool ClipboardHasText()
+    {
+        try
+        {
+            return Clipboard.ContainsText();
+        }
+        catch (ExternalException ex)
+        {
+            LogManager.Instance.LogDebug($"AppConstants.ClipboardHasText: Clipboard unavailable: {ex.Message}");
+            return false;
         }
     }
 }

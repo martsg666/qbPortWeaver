@@ -172,15 +172,16 @@ All three indicators reset when the user opens the log viewer or clears the logs
 
 ### Update Notifications
 
-The update check is separate from the sync cycle. It runs once at startup (from `MainForm_LoadAsync`) and every 12 hours (from a `System.Windows.Forms.Timer`). Both paths call `PerformUpdateCheckAsync(bool intrusive)`; the parameter controls whether the `UpdateAvailableForm` opens automatically.
+The update check is separate from the sync cycle. It runs once at startup (from `MainForm_LoadAsync`), every 12 hours (from a `System.Windows.Forms.Timer`), and on demand when the user clicks **Check for Updates** in the tray menu (`checkUpdates_Click`). These paths call `PerformUpdateCheckAsync(bool intrusive, bool manual)`; `intrusive` controls whether the `UpdateAvailableForm` opens automatically, and `manual` (set only by the tray click) bypasses the same-version dedup and adds an "up to date" or failure balloon so the click is never silent.
 
-| Trigger | `intrusive` | Behaviour when newer version found |
+| Trigger | `intrusive` / `manual` | Behaviour when newer version found |
 |---|---|---|
-| Startup, `Show update form on startup` = true | `true` | Tray menu item + tooltip line + opens `UpdateAvailableForm` |
-| Startup, `Show update form on startup` = false | `false` | Tray menu item + tooltip line + one-shot tray balloon |
-| 12-hour timer tick | `false` | Tray menu item + tooltip line + one-shot tray balloon |
+| Startup, `Show update form on startup` = true | `true` / `false` | Tray menu item + tooltip line + opens `UpdateAvailableForm` |
+| Startup, `Show update form on startup` = false | `false` / `false` | Tray menu item + tooltip line + one-shot tray balloon |
+| 12-hour timer tick | `false` / `false` | Tray menu item + tooltip line + one-shot tray balloon |
+| Manual "Check for Updates" tray click | `true` / `true` | Tray menu item + tooltip line + opens `UpdateAvailableForm`; also shows an "up to date" or failure balloon, and ignores the same-version dedup, so the click always reports a result |
 
-The persistent tray indicators (menu item "Update available (X.Y.Z)" and tooltip line) appear in all three scenarios so the prompt is never silent. `_lastNotifiedVersion` dedups repeat notifications for the same version across timer ticks. `_pendingUpdate` clears naturally on the next process launch once the user updates (GitHub returns a matching version → no detection).
+The persistent tray indicators (menu item "Update available (X.Y.Z)" and tooltip line) appear in every scenario so the prompt is never silent. `_lastNotifiedVersion` dedups repeat notifications for the same version across timer ticks (skipped for manual checks). `_pendingUpdate` clears naturally on the next process launch once the user updates (GitHub returns a matching version → no detection). The manual handler disables the **Check for Updates** menu item while a request is in flight so rapid clicks do not stack HTTP calls.
 
 The update balloon is informational only - Windows 11 routes `ToolTipIcon.Info` balloons through Action Center and does not reliably fire `BalloonTipClicked`, so the tray menu item is the only clickable entry point. The same applies to the port update and "Logs cleared" balloons (also `ToolTipIcon.Info`); they are visual hints with no associated action.
 
@@ -253,6 +254,10 @@ RunAsync
 
 The Media Manager runs after every sync cycle as a fire-and-forget task, in parallel with the wait until the next port sync cycle. If a previous import is still running when the next cycle ends, the new import is skipped to avoid pile-up on slow storage. When VPN Provider is set to **Disabled**, port sync is skipped entirely but the Media Manager still runs (kicked off after the no-op cycle).
 
+### Unreachable Source/Library Folders
+
+Every source and library path is verified with `MediaImporter.DirectoryExistsWithSmbRetry` before it is used. For UNC paths (`\\host\share\...`) the underlying `Directory.Exists` runs on a worker thread bounded by a 5s budget, because `Directory.Exists` on an offline host otherwise blocks for the OS SMB/TCP connect timeout (tens of seconds). The check is retried once after 500ms; only if **both** attempts time out is the host cached as unreachable (for 30s) so sibling paths and later cycles fail fast instead of each waiting out the timeout. A single slow response therefore does not falsely skip a healthy host, and the host is re-probed automatically once the cache entry expires. `BuildLibraryIndexAsync` skips the whole index build (and retries next cycle) if **any** configured library path is unreachable, so a partial fingerprint set is never committed and cannot cause duplicate imports.
+
 ### Scan Phases
 
 The Media Manager scan is split into two phases that partially overlap for performance.
@@ -281,6 +286,16 @@ The Media Manager scan is split into two phases that partially overlap for perfo
                              are skipped as already imported. The rest are split
                              into movie files and TV episode files.
 ```
+
+### TV Episode Classification
+
+`ClassifyCandidates` routes each video file to one of three buckets:
+
+1. **Filename-pattern TV** - filename contains an `SxxExx` (or legacy `NxNN`) marker. `FileNameParser.ParseTvShowEpisode` extracts show name + season + episode from the filename.
+2. **Folder-classified TV** - filename has no episode marker but the file lives under a season-indicator folder (`Season N`, `saison N`, `temporada N`, `stagione N`, or compact `S01`) and starts with a 1-3 digit episode prefix (`01-Title.mp4`). `TryClassifyAsFolderTv` derives the season from the parent folder via `ParseSeasonFromFolder`, the episode from the filename via `ParseEpisodePrefix`, and the show name from the grandparent folder.
+3. **Movies** - everything else.
+
+Both TV buckets flow into `TvShowProcessor`, which shares the post-resolution `ScanResolvedEpisodeAsync` / `ProcessResolvedEpisodeAsync` helpers so TMDB lookup, destination matching, and proposal construction stay in sync between the two source paths. Folder-classified episodes are resolved into a `TvShowEpisodeInfo` before reaching the shared helpers, so downstream code sees no difference.
 
 ### Lazy Fingerprint Deduplication
 
@@ -316,20 +331,28 @@ MediaManagerService.ImportAsync / ScanAsync
  │
  ├─ ClassifySourceFoldersAsync  [Phase 2 - waits for Phase 1 + library index]
  │   └─ ClassifyCandidates (per folder, Parallel.ForEach degree 8)
- │       └─ MediaImporter.IsAlreadyInLibrary (per file)
- │           └─ GetOrComputeSourceFingerprint (with Lazy deduplication)
+ │       ├─ MediaImporter.IsAlreadyInLibrary (per file)
+ │       │   └─ GetOrComputeSourceFingerprint (with Lazy deduplication)
+ │       └─ TryClassifyAsFolderTv (when filename has no SxxExx pattern)
+ │           ├─ FileNameParser.ParseEpisodePrefix (filename)
+ │           └─ FileNameParser.ParseSeasonFromFolder (parent folder)
  │
  ├─ ProcessSourceFolderAsync / ScanSourceFolderAsync (per folder, concurrent)
  │   ├─ MovieProcessor.ProcessMoviesAsync / ScanMoviesAsync
  │   │   ├─ ClassifyVideoFiles (self-describing vs folder-dependent)
  │   │   ├─ GetOrLookupMovieAsync
  │   │   │   └─ TmdbClient.LookupAsync → SearchWithConfidenceAsync (confidence tracking + fallback strategies)
+ │   │   ├─ AddMovieScanProposal (scan)  |  ShouldImportMatch (process)
  │   │   └─ MediaManagerService.ImportFile / MediaProposal
- │   └─ TvShowProcessor.ProcessTvShowsAsync / ScanTvShowsAsync
- │       ├─ FileNameParser.ParseTvShowEpisode (per file)
- │       ├─ GetOrLookupTvShowAsync
- │       │   └─ TmdbClient.LookupAsync → SearchWithConfidenceAsync (confidence tracking + fallback strategies)
- │       └─ MediaManagerService.ImportFile / MediaProposal
+ │   └─ TvShowProcessor.ProcessTvShowsAsync / ScanTvShowsAsync       (filename-pattern path)
+ │       │   FileNameParser.ParseTvShowEpisode (per file)
+ │       └─ ScanResolvedEpisodeAsync / ProcessResolvedEpisodeAsync   (shared post-resolution flow)
+ │           ├─ GetOrLookupTvShowAsync
+ │           │   └─ TmdbClient.LookupAsync → SearchWithConfidenceAsync (confidence tracking + fallback strategies)
+ │           └─ MediaManagerService.ImportFile / MediaProposal
+ │   └─ TvShowProcessor.ProcessFolderClassifiedAsync / ScanFolderClassifiedAsync   (folder-classified path)
+ │       │   ResolveShowAndYear (parses Show Name + optional Year from folder)
+ │       └─ ScanResolvedEpisodeAsync / ProcessResolvedEpisodeAsync   (same shared helpers)
  │
  ├─ TmdbCacheManager.Save
  ├─ MediaImporter.SaveSourceCache

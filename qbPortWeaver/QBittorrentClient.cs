@@ -94,7 +94,7 @@ public sealed class QBittorrentClient : BitTorrentClientBase
 
         try
         {
-            var jsonBody = $"{{\"listen_port\":{port},\"upnp\":false,\"natpmp\":false}}";
+            var jsonBody = $$$"""{"listen_port":{{{port}}},"upnp":false,"natpmp":false}""";
             using var content = new FormUrlEncodedContent([new("json", jsonBody)]);
 
             using var response = await HttpClient.PostAsync($"{Url}{ApiSetPreferences}", content, cancellationToken).ConfigureAwait(false);

@@ -53,6 +53,20 @@ internal static partial class MediaImporter
     private const int ErrorInvalidFunctionHResult = unchecked((int)0x80070001);
     private const int SmbRetryDelayMs = 500;
 
+    // Directory.Exists on an offline UNC host blocks for the OS SMB/TCP connect timeout (tens of
+    // seconds). For UNC paths the check is run on a worker thread and abandoned after this budget,
+    // treating a non-response as "host unreachable". A healthy host answers in a few ms over the warm
+    // SMB session, so this never false-negatives a reachable host - unlike a separate TCP probe, whose
+    // cold name resolution alone can exceed a short timeout.
+    private const int UncExistsTimeoutMs = 5000;        // budget for a UNC Directory.Exists before giving up
+    private const int UnreachableHostCacheSeconds = 30; // how long a timed-out host stays marked unreachable
+
+    // Hosts whose bounded existence check recently timed out, keyed by host name with the UTC time of
+    // the timeout. Lets multiple paths on one dead host (e.g. \\NAS\A and \\NAS\B) fail fast without
+    // each spawning another blocked check.
+    private static readonly ConcurrentDictionary<string, DateTime> _unreachableHosts =
+        new(StringComparer.OrdinalIgnoreCase);
+
     private static readonly JsonSerializerOptions _jsonWriteOptions = new() { WriteIndented = true };
 
     private sealed record CacheEntry(long Size, long LastWriteTimeTicks, string Fingerprint);
@@ -353,15 +367,18 @@ internal static partial class MediaImporter
             if (TryReuseCachedIndex(moviesLibraryPath, tvShowsLibraryPath, allowReuse))
                 return true;
 
+            int configuredCount = (string.IsNullOrWhiteSpace(moviesLibraryPath) ? 0 : 1)
+                                + (string.IsNullOrWhiteSpace(tvShowsLibraryPath) ? 0 : 1);
             var libraryPaths = new[] { moviesLibraryPath, tvShowsLibraryPath }
                 .Where(p => !string.IsNullOrWhiteSpace(p) && DirectoryExistsWithSmbRetry(p))
                 .ToArray();
 
-            bool hasConfiguredPaths = !string.IsNullOrWhiteSpace(moviesLibraryPath)
-                                   || !string.IsNullOrWhiteSpace(tvShowsLibraryPath);
-            if (hasConfiguredPaths && libraryPaths.Length == 0)
+            // If ANY configured path is inaccessible, skip the whole build rather than committing a
+            // partial index - a partial fingerprint set would report files under the missing path as
+            // absent and risk duplicate imports. Force a rebuild next cycle.
+            if (configuredCount > 0 && libraryPaths.Length < configuredCount)
             {
-                LogManager.Instance.LogMessage("Library index build skipped: configured paths not accessible - will retry next cycle", LogLevel.Warn, Subsystem.MediaManager);
+                LogManager.Instance.LogMessage("Library index build skipped: one or more configured paths not accessible - will retry next cycle", LogLevel.Warn, Subsystem.MediaManager);
                 _libraryBuildCycleCount = FullRebuildIntervalCycles;
                 return false;
             }
@@ -426,12 +443,12 @@ internal static partial class MediaImporter
     private static void LoadLibraryCache()
     {
         if (_libraryCache is not null) return;
-        _libraryCache = LoadCacheFromDisk(LibraryCacheFileName, "Library cache", "LoadLibraryCache");
+        _libraryCache = LoadCacheFromDisk(LibraryCacheFileName, "Library cache");
         _libraryCacheDirty = false;
     }
 
     // Loads a JSON-persisted cache from disk, returning an empty cache on missing file or corruption.
-    private static Dictionary<string, CacheEntry> LoadCacheFromDisk(string fileName, string label, string debugLabel)
+    private static Dictionary<string, CacheEntry> LoadCacheFromDisk(string fileName, string label)
     {
         var sw = System.Diagnostics.Stopwatch.StartNew();
         try
@@ -451,7 +468,6 @@ internal static partial class MediaImporter
                 : new(StringComparer.OrdinalIgnoreCase);
 
             sw.Stop();
-            LogManager.Instance.LogDebug($"MediaImporter.{debugLabel}: Loaded {cache.Count} entries", Subsystem.MediaManager);
             LogManager.Instance.LogMessage($"{label} loaded: {cache.Count} entries in {sw.ElapsedMilliseconds}ms", LogLevel.Info, Subsystem.MediaManager);
             return cache;
         }
@@ -498,19 +514,101 @@ internal static partial class MediaImporter
     }
 
     /// <summary>
-    /// Calls <see cref="Directory.Exists(string)"/> with a single retry. SMB sessions occasionally
-    /// return false for a path that actually exists (the silent-false variant of the transient
-    /// SMB hiccup - different symptom from <see cref="InvokeWithSmbRetry"/> which handles throws).
-    /// Used by every Media Manager call that needs to verify an SMB path before acting on it.
+    /// Verifies a path exists, retrying once after a short delay when the first attempt is inconclusive -
+    /// covering both the transient "silent-false" SMB hiccup (a reachable path momentarily reported
+    /// missing) and a transient slow response (different symptom from <see cref="InvokeWithSmbRetry"/>
+    /// which handles throws). For UNC paths the underlying <see cref="Directory.Exists(string)"/> is
+    /// bounded by <see cref="UncExistsTimeoutMs"/> so an offline host fails fast instead of blocking on
+    /// the OS SMB/TCP connect timeout. Only when both attempts time out is the host cached as unreachable
+    /// for <see cref="UnreachableHostCacheSeconds"/>s, so a single slow check does not falsely skip a
+    /// healthy host. Used by every Media Manager call that verifies an SMB path before acting on it.
     /// </summary>
     internal static bool DirectoryExistsWithSmbRetry(string folder)
     {
-        if (Directory.Exists(folder)) return true;
+        bool isUnc = TryGetUncHost(folder, out var host);
+
+        // Fast-fail if this UNC host's existence check timed out twice recently (host offline).
+        if (isUnc && IsHostCachedUnreachable(host))
+        {
+            LogManager.Instance.LogDebug(
+                $"MediaImporter.DirectoryExistsWithSmbRetry: Host for '{folder}' is unreachable (cached), skipping existence check",
+                Subsystem.MediaManager);
+            return false;
+        }
+
+        var first = DirectoryExistsBounded(folder, isUnc);
+        if (first == true) return true;
+
+        // first is false (reachable but reported missing) or null (timed out). Retry once after a short
+        // delay - a transient silent-false or a transient slow response usually clears on the second try.
         LogManager.Instance.LogDebug(
-            $"MediaImporter.DirectoryExistsWithSmbRetry: '{folder}' reported not found, retrying after {SmbRetryDelayMs}ms",
+            $"MediaImporter.DirectoryExistsWithSmbRetry: '{folder}' not confirmed ({(first is null ? "no response" : "reported not found")}), retrying after {SmbRetryDelayMs}ms",
             Subsystem.MediaManager);
         Thread.Sleep(SmbRetryDelayMs);
-        return Directory.Exists(folder);
+        var second = DirectoryExistsBounded(folder, isUnc);
+        if (second == true) return true;
+
+        // Still unconfirmed. If a UNC check timed out on both attempts the host is unreachable - cache it
+        // so sibling paths and later cycles fail fast instead of each waiting out the timeout.
+        if (isUnc && first is null && second is null)
+        {
+            _unreachableHosts[host] = DateTime.UtcNow;
+            LogManager.Instance.LogDebug(
+                $"MediaImporter.DirectoryExistsWithSmbRetry: '{folder}' did not respond within {UncExistsTimeoutMs}ms on two attempts, treating host as unreachable",
+                Subsystem.MediaManager);
+        }
+        return false;
+    }
+
+    // Runs Directory.Exists, bounding UNC paths by UncExistsTimeoutMs (a non-UNC path is checked
+    // directly - it never blocks). Returns the result, or null when a UNC check timed out. Side-effect
+    // free apart from observing the abandoned task: Directory.Exists itself does not throw (it returns
+    // false on error), so the orphaned task completes harmlessly; the continuation only guards an
+    // unexpected fault from becoming an unobserved exception. Caching a timed-out host is left to the
+    // caller so it can retry before deciding the host is unreachable.
+    private static bool? DirectoryExistsBounded(string folder, bool isUnc)
+    {
+        if (!isUnc) return Directory.Exists(folder);
+
+        var task = Task.Run(() => Directory.Exists(folder));
+        if (task.Wait(UncExistsTimeoutMs)) return task.Result;
+
+        _ = task.ContinueWith(static t => _ = t.Exception, TaskScheduler.Default);
+        return null;
+    }
+
+    // True if the host was marked unreachable within the cache window; clears a stale entry so the
+    // next check probes fresh.
+    private static bool IsHostCachedUnreachable(string host)
+    {
+        if (!_unreachableHosts.TryGetValue(host, out var failedAt)) return false;
+        if ((DateTime.UtcNow - failedAt).TotalSeconds < UnreachableHostCacheSeconds) return true;
+        _unreachableHosts.TryRemove(host, out _); // stale - allow a fresh check
+        return false;
+    }
+
+    // Extracts the host from a UNC path (\\host\share\... or //host/share/...). Returns false for
+    // local paths (drive letters, relative paths), which are never bounded or cached.
+    private static bool TryGetUncHost(string path, out string host)
+    {
+        host = string.Empty;
+        if (string.IsNullOrEmpty(path) || path.Length < 3) return false;
+        if (!IsSlash(path[0]) || !IsSlash(path[1])) return false;
+
+        int end = path.IndexOfAny(['\\', '/'], 2);
+        host = end < 0 ? path[2..] : path[2..end];
+
+        // \\?\ (extended-length) and \\.\ (device) prefixes are not network hosts - treat as local
+        // so they are checked directly rather than bounded or cached.
+        if (host is "?" or ".")
+        {
+            host = string.Empty;
+            return false;
+        }
+
+        return host.Length > 0;
+
+        static bool IsSlash(char c) => c is '\\' or '/';
     }
 
     // Fingerprints a pre-enumerated list of library files in parallel, using the cache where possible.
@@ -693,6 +791,9 @@ internal static partial class MediaImporter
         }
 
         // Create before GetOrAdd so we can tell whether this thread won the race.
+        // Same cancellation-cascade race window applies as TmdbCacheManager.GetOrComputeAsync
+        // (see comment there): if the winning thread's compute throws between fault and eviction,
+        // a racing GetOrAdd may share the already-faulted Lazy. Accepted as documented behavior.
         var newLazy = new Lazy<string>(() => ComputeFingerprint(fi.FullName));
         var lazy = _sourceInFlight.GetOrAdd(fi.FullName, newLazy);
         string fp;
@@ -743,7 +844,7 @@ internal static partial class MediaImporter
         Interlocked.Exchange(ref _sourceComputedCount, 0);
 
         if (_sourceCache is not null) return;
-        _sourceCache = LoadCacheFromDisk(SourceCacheFileName, "Source cache", "LoadSourceCache");
+        _sourceCache = LoadCacheFromDisk(SourceCacheFileName, "Source cache");
         _sourceCacheDirty = false;
     }
 

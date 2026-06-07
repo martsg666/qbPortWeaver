@@ -1,6 +1,4 @@
-﻿using qbPortWeaver.Shared;
-
-namespace qbPortWeaver;
+﻿namespace qbPortWeaver;
 
 /// <summary>Settings dialog for configuring VPN provider, BitTorrent client connection, sync interval, and extra options.</summary>
 public partial class SettingsForm : Form
@@ -11,6 +9,11 @@ public partial class SettingsForm : Form
     private const string DiscoveringAdaptersPlaceholder = "Discovering adapters\u2026";
     private const string NoAdaptersFoundPlaceholder = "No NAT-PMP adapters found";
     private const string DefaultPortTooltip = "Port to apply when the VPN is disconnected (0 = do nothing when disconnected)";
+    private const int ConnectionTestTimeoutSeconds = 15;
+
+    // Cancels in-flight NAT-PMP adapter discovery when the form closes so the UDP probes do not
+    // run to completion in the background after the dialog is dismissed.
+    private readonly CancellationTokenSource _discoveryCts = new();
 
     public SettingsForm()
     {
@@ -23,6 +26,13 @@ public partial class SettingsForm : Form
         base.OnLoad(e);
         SetupTooltips();
         LoadSettings();
+    }
+
+    protected override void OnFormClosed(FormClosedEventArgs e)
+    {
+        _discoveryCts.Cancel();
+        _discoveryCts.Dispose();
+        base.OnFormClosed(e);
     }
 
     // Wire up tooltips for each setting control
@@ -38,6 +48,7 @@ public partial class SettingsForm : Form
         toolTip.SetToolTip(txtQBittorrentPassword, "Password for the qBittorrent Web UI");
         toolTip.SetToolTip(txtQBittorrentExePath, "Path to the qBittorrent executable, used to start or restart the application");
         toolTip.SetToolTip(btnBrowseExePath, "Browse for the qBittorrent executable");
+        toolTip.SetToolTip(btnTestQBittorrent, "Test the connection to qBittorrent using the URL and credentials above");
         toolTip.SetToolTip(txtQBittorrentProcessName, "Process name used to detect if qBittorrent is running (usually qbittorrent)");
         toolTip.SetToolTip(chkRestartQBittorrent, "Restart qBittorrent after updating the port - recommended for the change to take effect immediately");
         toolTip.SetToolTip(chkForceStartQBittorrent, "Automatically launch qBittorrent if it is not already running");
@@ -50,6 +61,7 @@ public partial class SettingsForm : Form
         toolTip.SetToolTip(txtTransmissionPassword, "Password for the Transmission RPC (leave empty if authentication is disabled)");
         toolTip.SetToolTip(txtTransmissionExePath, "Path to the Transmission executable, used to start or restart the application when running as a user-space process");
         toolTip.SetToolTip(btnBrowseTransmissionExePath, "Browse for the Transmission executable");
+        toolTip.SetToolTip(btnTestTransmission, "Test the connection to Transmission using the URL and credentials above");
         toolTip.SetToolTip(txtTransmissionProcessName, "Process name used to detect if Transmission is running as a user-space process (e.g. transmission-qt)");
         toolTip.SetToolTip(chkRestartTransmission, "Restart Transmission after updating the port - recommended for the change to take effect immediately");
         toolTip.SetToolTip(chkForceStartTransmission, "Automatically launch Transmission if it is not already running");
@@ -59,6 +71,7 @@ public partial class SettingsForm : Form
         toolTip.SetToolTip(txtDelugePassword, "Password for the Deluge Web UI");
         toolTip.SetToolTip(txtDelugeExePath, "Path to the Deluge executable, used to start or restart the application");
         toolTip.SetToolTip(btnBrowseDelugeExePath, "Browse for the Deluge executable");
+        toolTip.SetToolTip(btnTestDeluge, "Test the connection to Deluge using the URL and password above");
         toolTip.SetToolTip(txtDelugeProcessName, "Process name used to detect if Deluge is running (usually deluge)");
         toolTip.SetToolTip(chkRestartDeluge, "Restart Deluge after updating the port - recommended for the change to take effect immediately");
         toolTip.SetToolTip(chkForceStartDeluge, "Automatically launch Deluge if it is not already running");
@@ -186,7 +199,7 @@ public partial class SettingsForm : Form
         // If discovery is still pending (combo disabled), preserve the existing value to avoid
         // saving the "Discovering adapters…" placeholder text as the adapter name
         string adapterName = cboNatPmpAdapter.Enabled
-            ? cboNatPmpAdapter.SelectedItem?.ToString() ?? ""
+            ? cboNatPmpAdapter.SelectedItem?.ToString() ?? string.Empty
             : RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyNatPmpAdapterName);
         RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyNatPmpAdapterName, adapterName);
         RegistrySettingsManager.SetBool(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyAutoRecoveryEnabled, chkAutoRecovery.Checked);
@@ -316,7 +329,7 @@ public partial class SettingsForm : Form
         // Preserve current selection if it is a valid adapter name (not a placeholder)
         string current = cboNatPmpAdapter.Enabled &&
                          cboNatPmpAdapter.SelectedItem?.ToString() != NoAdaptersFoundPlaceholder
-            ? cboNatPmpAdapter.SelectedItem?.ToString() ?? ""
+            ? cboNatPmpAdapter.SelectedItem?.ToString() ?? string.Empty
             : RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyNatPmpAdapterName);
 
         cboNatPmpAdapter.Items.Clear();
@@ -346,6 +359,85 @@ public partial class SettingsForm : Form
 
         if (dlg.ShowDialog() == DialogResult.OK)
             target.Text = dlg.FileName;
+    }
+
+    private async void btnTestQBittorrent_Click(object? sender, EventArgs e)
+    {
+        await RunConnectionTestAsync(
+            () => new QBittorrentClient(
+                txtQBittorrentURL.Text.Trim(), txtQBittorrentUserName.Text.Trim(), txtQBittorrentPassword.Text,
+                txtQBittorrentProcessName.Text.Trim(), txtQBittorrentExePath.Text.Trim()),
+            btnTestQBittorrent, txtQBittorrentURL.Text.Trim(), "qBittorrent");
+    }
+
+    private async void btnTestTransmission_Click(object? sender, EventArgs e)
+    {
+        await RunConnectionTestAsync(
+            () => new TransmissionClient(
+                txtTransmissionURL.Text.Trim(), txtTransmissionUserName.Text.Trim(), txtTransmissionPassword.Text,
+                txtTransmissionProcessName.Text.Trim(), txtTransmissionExePath.Text.Trim()),
+            btnTestTransmission, txtTransmissionURL.Text.Trim(), "Transmission");
+    }
+
+    private async void btnTestDeluge_Click(object? sender, EventArgs e)
+    {
+        await RunConnectionTestAsync(
+            () => new DelugeClient(
+                txtDelugeURL.Text.Trim(), txtDelugePassword.Text,
+                txtDelugeProcessName.Text.Trim(), txtDelugeExePath.Text.Trim()),
+            btnTestDeluge, txtDelugeURL.Text.Trim(), "Deluge");
+    }
+
+    // Shared driver for the three per-client "Test" buttons. Validates the URL first, then builds the
+    // client from the in-form values (not the saved registry values) via the supplied factory so the
+    // client is created only when the URL is valid. Probes it with GetPreferencesAsync - a full
+    // auth + API round-trip that already logs detailed, client-specific failure reasons to the log
+    // viewer. A non-null listening port is the success signal. The client is disposed via 'using'
+    // and the button re-enabled in finally, even on cancel or form disposal.
+    private async Task RunConnectionTestAsync(Func<IBitTorrentClient> clientFactory, Button button, string url, string clientName) // NOSONAR S2325 - accesses instance state (UseWaitCursor, IsDisposed) for post-await UI safety
+    {
+        if (string.IsNullOrEmpty(url) ||
+            !Uri.TryCreate(url, UriKind.Absolute, out var uri) ||
+            (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
+        {
+            MessageBox.Show(
+                $"Enter a valid {clientName} URL starting with http:// or https:// before testing.",
+                AppIdentity.AppName, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
+
+        using var client = clientFactory();
+        button.Enabled = false;
+        UseWaitCursor = true;
+        try
+        {
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(ConnectionTestTimeoutSeconds));
+            var (listenPort, _) = await client.GetPreferencesAsync(cts.Token);
+            if (IsDisposed) return;
+            if (listenPort is not null)
+                MessageBox.Show(
+                    $"Connected to {clientName} successfully.\n\nCurrent listening port: {listenPort}",
+                    AppIdentity.AppName, MessageBoxButtons.OK, MessageBoxIcon.Information);
+            else
+                MessageBox.Show(
+                    $"Could not connect to {clientName}.\n\nCheck the URL and credentials, then see the log for details.",
+                    AppIdentity.AppName, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        }
+        catch (OperationCanceledException)
+        {
+            if (!IsDisposed)
+                MessageBox.Show(
+                    $"The {clientName} connection test timed out after {ConnectionTestTimeoutSeconds} seconds.\n\nCheck the URL and that the client is running.",
+                    AppIdentity.AppName, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        }
+        finally
+        {
+            if (!IsDisposed)
+            {
+                UseWaitCursor = false;
+                button.Enabled = true;
+            }
+        }
     }
 
     private void chkAutoRecovery_CheckedChanged(object? sender, EventArgs e) =>
@@ -391,7 +483,7 @@ public partial class SettingsForm : Form
         try
         {
             // No ConfigureAwait(false) - continuation must run on the UI thread to update controls.
-            var adapters = await NatPmpManager.DiscoverAdaptersAsync();
+            var adapters = await NatPmpManager.DiscoverAdaptersAsync(cancellationToken: _discoveryCts.Token);
 
             // Guard against the form being closed while adapter discovery was in flight.
             // IsDisposed check + ObjectDisposedException catch covers the TOCTOU window between
@@ -420,6 +512,10 @@ public partial class SettingsForm : Form
             {
                 LogManager.Instance.LogDebug("SettingsForm.DiscoverNatPmpAdaptersAsync: Form disposed during adapter update");
             }
+        }
+        catch (OperationCanceledException)
+        {
+            // Form is closing - discovery was cancelled via _discoveryCts; nothing to update.
         }
         catch (Exception ex)
         {

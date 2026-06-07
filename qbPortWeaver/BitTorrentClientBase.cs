@@ -19,9 +19,9 @@ public abstract class BitTorrentClientBase : IBitTorrentClient // NOSONAR S3881 
     protected readonly string ExePath;
     protected readonly HttpClient HttpClient;
     // Not volatile: IsAuthenticated is only accessed on the single-threaded sync loop so no
-    // cross-thread visibility guarantee is needed. Unlike TransmissionClient._resolvedServiceName
-    // which is written once from a Task.Run context, this field is always read and written on
-    // the same thread.
+    // cross-thread visibility guarantee is needed. Unlike the static TransmissionClient._resolvedServiceName,
+    // which is shared across sync-cycle instances (hence volatile), this field is confined to a single
+    // client instance and is always read and written on the same thread.
     protected bool IsAuthenticated;
     private bool _disposed;
 

@@ -60,6 +60,8 @@ The application runs in the system tray, manages configuration and logging, and 
 - **Media Manager**
   Automatically imports movie and TV episode files into Plex-compatible library folders on each sync cycle. Queries [The Movie Database (TMDB)](https://www.themoviedb.org) to identify titles and release years, then imports files using Plex naming conventions (`Title (Year).ext` for movies, `Show (Year) - SxxExx.ext` for single-episode files and `Show (Year) - SxxExxExx.ext` for multi-episode files) via hardlink (with automatic fallback to copy for cross-volume scenarios), copy, or move.
 
+  In addition to the SxxExx naming pattern, episodes organised into season subfolders with numbered filenames (e.g. `Show Name/Season N/01-Title.mp4`) are also recognised as TV shows. The show name is taken from the parent folder, the season number from the season subfolder, and the episode number from the filename prefix. English, French, Spanish and Italian season indicators are accepted.
+
   Optionally organises files into Plex-recommended subfolders (`Movies/Title (Year)/` and `TV Shows/Show (Year)/Season XX/`), and cleans up source folders left empty after importing (including folders containing only `.nfo` files).
 
   A dedicated **Media Manager** dialog (tray menu → Media Manager) lets you configure source and library folders, preview imports before they run (**Scan Now**), and apply or correct them manually (**Import Now**). Uncertain TMDB matches are highlighted for review. A free TMDB API key is required.
@@ -73,6 +75,9 @@ The application runs in the system tray, manages configuration and logging, and 
 - **Settings Dialog**
   All configuration options are editable through a dedicated Settings form (tray menu → Settings), with inline descriptions and tooltips for each option.
 
+- **Connection Test**
+  Each client section in Settings has a **Test** button next to the URL. It checks the connection to qBittorrent, Transmission, or Deluge using the values currently entered (no need to save first), then reports success along with the current listening port, or points you to the log if it cannot connect.
+
 - **Log Viewer**
   Built-in log viewer (tray menu → Show Logs, or double-click the tray icon) displays the log file with color-coded entries by level (error, warn, info, debug) and follows new entries in real time. Includes a search bar with match highlighting and prev/next navigation, dedicated prev/next buttons to step between warnings and errors without affecting the search, toggle buttons to filter by log level, and a subsystem filter to isolate entries from a specific component. Adapts to the application color theme (System, Dark, or Light).
 
@@ -83,7 +88,7 @@ The application runs in the system tray, manages configuration and logging, and 
   Writes a JSON status file (`%LocalAppData%\qbPortWeaver\qbPortWeaver.status.json`) after each sync cycle, exposing VPN port, client port, timestamps, and completion status for external scripts.
 
 - **Automatic Update Checker**
-  Checks GitHub for new releases on startup and every 12 hours. When a newer version is found, an **Update available (X.Y.Z)** item appears at the top of the tray menu and the tooltip is updated; clicking the menu item opens the update form. The 12-hour background check uses a one-shot tray notification instead of opening the update form, so the app does not interrupt you. The startup check additionally opens the update form by default; this can be turned off via **Settings > General > Show update form on startup** (the tray indicators still appear). The **About** dialog (tray menu → About) also shows the current and latest version, update status, contributor links, and a **What's New** button to review the current release highlights.
+  Checks GitHub for new releases on startup and every 12 hours. When a newer version is found, an **Update available (X.Y.Z)** item appears at the top of the tray menu and the tooltip is updated; clicking the menu item opens the update form. The 12-hour background check uses a one-shot tray notification instead of opening the update form, so the app does not interrupt you. The startup check additionally opens the update form by default; this can be turned off via **Settings > General > Show update form on startup** (the tray indicators still appear). A **Check for Updates** item in the tray menu lets you check on demand at any time and always reports a result, even when you are already up to date. The **About** dialog (tray menu → About) also shows the current and latest version, update status, contributor links, and a **What's New** button to review the current release highlights.
 
 - **Startup Option**
   Allows enabling or disabling automatic startup with Windows.
@@ -208,6 +213,7 @@ Configured via tray menu → **Media Manager**.
 - **Clear Logs** - deletes all log files and starts a fresh log
 - **Settings** - opens the Settings dialog
 - **Media Manager** - opens the Media Manager dialog to configure source and library folders, preview imports (Scan Now), apply them (Import Now), and clear fingerprint caches (Clear Cache)
+- **Check for Updates** - checks GitHub for a newer release on demand and reports the result (also shown when already up to date)
 - **About** - shows version info and update status
 - **Start Automatically with Windows** - toggles the Windows startup registry entry
 - **Exit** - shuts down the application
@@ -295,6 +301,7 @@ NAT-PMP (RFC 6886) is a protocol for requesting port mappings directly from a ga
 
 - Enable **Start Automatically with Windows** from the tray menu.
 - On first run, open **Settings** from the tray menu, select your BitTorrent client, and enter the connection credentials and preferences.
+- Use the **Test** button next to the client URL to confirm the connection works before saving.
 
 ---
 
@@ -320,7 +327,7 @@ The application is designed to always recover. A failing cycle never crashes the
 ### Media Manager
 
 - If a TMDB API call fails (network error, invalid key), the file is skipped and the error is logged. Other files in the same scan continue processing.
-- If a source or library folder is inaccessible (permissions, network share offline), that folder is skipped with a warning. Remaining folders are still processed.
+- If a folder is inaccessible (permissions, or a network share that is offline or slow to respond), it is detected quickly without stalling the cycle. A source folder is skipped with a warning while the others are still processed; if a library folder is unreachable, the library index build is skipped that cycle and retried on the next (rather than committing a partial index), resuming automatically once the share is reachable.
 - If file import fails (I/O error, disk full), the individual file is skipped. The scan continues with the next file.
 - If the fingerprint cache is corrupt or unreadable, it is discarded and rebuilt from scratch on the next scan.
 

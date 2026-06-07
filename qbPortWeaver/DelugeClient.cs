@@ -69,7 +69,7 @@ public sealed class DelugeClient : BitTorrentClientBase
             int? listenPort = ParseListenPort(result);
 
             if (listenPort is null)
-                LogManager.Instance.LogDebug("DelugeClient.GetPreferencesAsync: listen port not parsed in RPC response");
+                LogManager.Instance.LogDebug("DelugeClient.GetPreferencesAsync: listen_ports not parsed in RPC response");
 
             string? bindAddress = null;
             if (result.TryGetProperty("listen_interface", out var ifaceElement))

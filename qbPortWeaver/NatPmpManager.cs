@@ -1,5 +1,4 @@
-﻿using qbPortWeaver.Shared;
-using System.Buffers.Binary;
+﻿using System.Buffers.Binary;
 using System.Net;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
@@ -32,78 +31,6 @@ public sealed class NatPmpManager : IVpnManager
         _adapter = adapter;
         _gateway = gateway;
         _mappingLifetime = mappingLifetime;
-    }
-
-    /// <summary>
-    /// Returns all network adapters whose gateway actively responds to NAT-PMP,
-    /// including TUN/VPN adapters where the gateway is inferred from the unicast address.
-    /// All candidates are probed in parallel with a single attempt each; only those whose
-    /// gateway responds are returned. Used by SettingsForm to populate the adapter list.
-    /// </summary>
-    /// <param name="mappingLifetime">Requested port mapping duration in seconds; the gateway may grant less.</param>
-    /// <param name="cancellationToken">Cancels in-flight UDP probes so app shutdown is not delayed.</param>
-    public static async Task<IReadOnlyList<NatPmpManager>> DiscoverAdaptersAsync(uint mappingLifetime = DefaultMappingLifetime, CancellationToken cancellationToken = default)
-    {
-        var candidates = new List<(NetworkInterface Nic, IPAddress Gateway)>();
-
-        foreach (NetworkInterface nic in GetActiveNetworkInterfaces())
-        {
-            IPInterfaceProperties props = nic.GetIPProperties();
-
-            IPAddress? gateway = ResolveGateway(props);
-            if (gateway is null)
-                continue;
-
-            candidates.Add((nic, gateway));
-        }
-
-        // Probe all candidates in parallel to verify NAT-PMP support
-        var probeResults = await Task.WhenAll(candidates.Select(async c =>
-        {
-            IPAddress? externalIp = await RequestExternalAddressAsync(c.Gateway, cancellationToken: cancellationToken).ConfigureAwait(false);
-            LogProbeResultDebug("DiscoverAdaptersAsync", c.Nic.Name, c.Gateway, externalIp);
-            return (c.Nic, c.Gateway, Supported: externalIp is not null);
-        })).ConfigureAwait(false);
-
-        return probeResults
-            .Where(r => r.Supported)
-            .Select(r => new NatPmpManager(r.Nic, r.Gateway, mappingLifetime))
-            .ToList();
-    }
-
-    /// <summary>
-    /// Probes only the named adapter rather than all adapters. Used by the sync cycle so that
-    /// unrelated adapters (e.g. ZeroTier, Ethernet) are never probed unnecessarily.
-    /// Unlike <see cref="DiscoverAdaptersAsync"/>, uses <see cref="MaxAttempts"/> retries with
-    /// exponential backoff since probing a single known adapter is worth retrying on transient packet loss.
-    /// Returns <see langword="null"/> if the adapter is not found or not up, has no resolvable
-    /// gateway, or does not respond to a NAT-PMP probe.
-    /// </summary>
-    /// <param name="adapterName">The adapter name to match (case-insensitive).</param>
-    /// <param name="mappingLifetime">Requested port mapping duration in seconds; the gateway may grant less.</param>
-    /// <param name="cancellationToken">Cancels in-flight UDP probes so the sync cycle can yield promptly on shutdown.</param>
-    public static async Task<NatPmpManager?> TryCreateForAdapterAsync(string adapterName, uint mappingLifetime = DefaultMappingLifetime, CancellationToken cancellationToken = default)
-    {
-        NetworkInterface? nic = GetActiveNetworkInterfaces()
-            .FirstOrDefault(n => n.Name.Equals(adapterName, StringComparison.OrdinalIgnoreCase));
-
-        if (nic is null)
-        {
-            LogManager.Instance.LogDebug($"NatPmpManager.TryCreateForAdapterAsync: '{adapterName}' not found or not up");
-            return null;
-        }
-
-        IPAddress? gateway = ResolveGateway(nic.GetIPProperties());
-        if (gateway is null)
-        {
-            LogManager.Instance.LogDebug($"NatPmpManager.TryCreateForAdapterAsync: '{adapterName}' no resolvable gateway");
-            return null;
-        }
-
-        IPAddress? externalIp = await RequestExternalAddressAsync(gateway, MaxAttempts, cancellationToken).ConfigureAwait(false);
-        LogProbeResultDebug("TryCreateForAdapterAsync", adapterName, gateway, externalIp);
-
-        return externalIp is not null ? new NatPmpManager(nic, gateway, mappingLifetime) : null;
     }
 
     /// <inheritdoc />
@@ -205,11 +132,82 @@ public sealed class NatPmpManager : IVpnManager
             : HelperProtocol.ActionCycleAdapter;
 
     /// <inheritdoc />
-    // Uses bidirectional Contains because the adapter name in settings may differ in length
-    // from the Windows connection name (e.g. "ProtonVPN TUN" vs "ProtonVPN").
+    // Delegates to the shared matcher so NAT-PMP, ProtonVPN, and PIA apply identical rules.
+    // The configured name here is the adapter's own name (an instance field), not a registry value.
     public bool IsAdapterMatch(string interfaceName)
-        => interfaceName.Contains(_adapter.Name, StringComparison.OrdinalIgnoreCase) ||
-           _adapter.Name.Contains(interfaceName, StringComparison.OrdinalIgnoreCase);
+        => VpnRegistryConfig.AdapterNamesMatch(_adapter.Name, interfaceName);
+
+    /// <summary>
+    /// Returns all network adapters whose gateway actively responds to NAT-PMP,
+    /// including TUN/VPN adapters where the gateway is inferred from the unicast address.
+    /// All candidates are probed in parallel with a single attempt each; only those whose
+    /// gateway responds are returned. Used by SettingsForm to populate the adapter list.
+    /// </summary>
+    /// <param name="mappingLifetime">Requested port mapping duration in seconds; the gateway may grant less.</param>
+    /// <param name="cancellationToken">Cancels in-flight UDP probes so app shutdown is not delayed.</param>
+    public static async Task<IReadOnlyList<NatPmpManager>> DiscoverAdaptersAsync(uint mappingLifetime = DefaultMappingLifetime, CancellationToken cancellationToken = default)
+    {
+        var candidates = new List<(NetworkInterface Nic, IPAddress Gateway)>();
+
+        foreach (NetworkInterface nic in GetActiveNetworkInterfaces())
+        {
+            IPInterfaceProperties props = nic.GetIPProperties();
+
+            IPAddress? gateway = ResolveGateway(props);
+            if (gateway is null)
+                continue;
+
+            candidates.Add((nic, gateway));
+        }
+
+        // Probe all candidates in parallel to verify NAT-PMP support
+        var probeResults = await Task.WhenAll(candidates.Select(async c =>
+        {
+            IPAddress? externalIp = await RequestExternalAddressAsync(c.Gateway, cancellationToken: cancellationToken).ConfigureAwait(false);
+            LogProbeResultDebug("DiscoverAdaptersAsync", c.Nic.Name, c.Gateway, externalIp);
+            return (c.Nic, c.Gateway, Supported: externalIp is not null);
+        })).ConfigureAwait(false);
+
+        return probeResults
+            .Where(r => r.Supported)
+            .Select(r => new NatPmpManager(r.Nic, r.Gateway, mappingLifetime))
+            .ToList();
+    }
+
+    /// <summary>
+    /// Probes only the named adapter rather than all adapters. Used by the sync cycle so that
+    /// unrelated adapters (e.g. ZeroTier, Ethernet) are never probed unnecessarily.
+    /// Unlike <see cref="DiscoverAdaptersAsync"/>, uses <see cref="MaxAttempts"/> retries with
+    /// exponential backoff since probing a single known adapter is worth retrying on transient packet loss.
+    /// Returns <see langword="null"/> if the adapter is not found or not up, has no resolvable
+    /// gateway, or does not respond to a NAT-PMP probe.
+    /// </summary>
+    /// <param name="adapterName">The adapter name to match (case-insensitive).</param>
+    /// <param name="mappingLifetime">Requested port mapping duration in seconds; the gateway may grant less.</param>
+    /// <param name="cancellationToken">Cancels in-flight UDP probes so the sync cycle can yield promptly on shutdown.</param>
+    public static async Task<NatPmpManager?> TryCreateForAdapterAsync(string adapterName, uint mappingLifetime = DefaultMappingLifetime, CancellationToken cancellationToken = default)
+    {
+        NetworkInterface? nic = GetActiveNetworkInterfaces()
+            .FirstOrDefault(n => n.Name.Equals(adapterName, StringComparison.OrdinalIgnoreCase));
+
+        if (nic is null)
+        {
+            LogManager.Instance.LogDebug($"NatPmpManager.TryCreateForAdapterAsync: '{adapterName}' not found or not up");
+            return null;
+        }
+
+        IPAddress? gateway = ResolveGateway(nic.GetIPProperties());
+        if (gateway is null)
+        {
+            LogManager.Instance.LogDebug($"NatPmpManager.TryCreateForAdapterAsync: '{adapterName}' no resolvable gateway");
+            return null;
+        }
+
+        IPAddress? externalIp = await RequestExternalAddressAsync(gateway, MaxAttempts, cancellationToken).ConfigureAwait(false);
+        LogProbeResultDebug("TryCreateForAdapterAsync", adapterName, gateway, externalIp);
+
+        return externalIp is not null ? new NatPmpManager(nic, gateway, mappingLifetime) : null;
+    }
 
     /// <summary>
     /// Returns the VPN provider token if <paramref name="adapterName"/> matches a known provider keyword,
@@ -281,7 +279,10 @@ public sealed class NatPmpManager : IVpnManager
             var candidate = new IPAddress(network);
 
             if (!candidate.Equals(address.Address))
+            {
+                LogManager.Instance.LogDebug($"NatPmpManager.InferGatewayFromUnicast: No declared gateway for {address.Address}, inferred {candidate}");
                 return candidate;
+            }
         }
         return null;
     }

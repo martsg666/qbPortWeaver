@@ -1,5 +1,4 @@
-﻿using qbPortWeaver.Shared;
-using System.ComponentModel;
+﻿using System.ComponentModel;
 using System.Runtime.InteropServices;
 
 namespace qbPortWeaver;
@@ -10,9 +9,12 @@ public partial class MainForm : Form
     // Tray icon, menu and auto-start menu item
     private NotifyIcon _trayIcon = null!;
     private ContextMenuStrip _trayMenu = null!;
-    private ToolStripMenuItem _autoStartMenuItem = null!;
-    private ToolStripMenuItem _showLogsMenuItem = null!;
+    // Menu-item fields are declared in the order they appear in the tray menu (top to bottom).
     private ToolStripMenuItem _updateAvailableMenuItem = null!;
+    private ToolStripSeparator _updateSeparator = null!;
+    private ToolStripMenuItem _showLogsMenuItem = null!;
+    private ToolStripMenuItem _checkUpdatesMenuItem = null!;
+    private ToolStripMenuItem _autoStartMenuItem = null!;
 
     private const string ShowLogsMenuText = "Show Logs";
     private const string LogAlertBalloonMessage = "Check the log viewer for warnings or errors.";
@@ -115,7 +117,7 @@ public partial class MainForm : Form
         LogManager.Instance.WarnOrErrorLogged += OnWarnOrErrorLogged;
     }
 
-    private void MainForm_Load(object sender, EventArgs e) => _ = MainForm_LoadAsync();
+    private void MainForm_Load(object? sender, EventArgs e) => _ = MainForm_LoadAsync();
 
     private async Task MainForm_LoadAsync()
     {
@@ -289,15 +291,35 @@ public partial class MainForm : Form
         _updateAvailableMenuItem.Click += updateAvailable_Click;
         _trayMenu.Items.Add(_updateAvailableMenuItem);
 
+        // Separator paired with the update item - hidden until an update is pending so the
+        // menu never opens with a leading separator. Toggled alongside _updateAvailableMenuItem.
+        _updateSeparator = new ToolStripSeparator { Visible = false };
+        _trayMenu.Items.Add(_updateSeparator);
+
+        // Sync action
         _trayMenu.Items.Add("Sync Port Now", null, syncPortNow_Click);
+        _trayMenu.Items.Add(new ToolStripSeparator());
+
+        // Logs
         _showLogsMenuItem = new ToolStripMenuItem(ShowLogsMenuText);
         _showLogsMenuItem.Click += showLogs_Click;
         _trayMenu.Items.Add(_showLogsMenuItem);
         _trayMenu.Items.Add("Clear Logs", null, clearLogs_Click);
+        _trayMenu.Items.Add(new ToolStripSeparator());
+
+        // Configuration
         _trayMenu.Items.Add("Settings", null, showSettings_Click);
         _trayMenu.Items.Add("Media Manager", null, showMediaManager_Click);
-        _trayMenu.Items.Add("About", null, showAbout_Click);
+        _trayMenu.Items.Add(new ToolStripSeparator());
 
+        // Info
+        _checkUpdatesMenuItem = new ToolStripMenuItem("Check for Updates");
+        _checkUpdatesMenuItem.Click += checkUpdates_Click;
+        _trayMenu.Items.Add(_checkUpdatesMenuItem);
+        _trayMenu.Items.Add("About", null, showAbout_Click);
+        _trayMenu.Items.Add(new ToolStripSeparator());
+
+        // App
         _autoStartMenuItem = new ToolStripMenuItem("Start Automatically with Windows")
         {
             CheckOnClick = true,
@@ -415,10 +437,10 @@ public partial class MainForm : Form
             try
             {
                 await _updateSemaphore.WaitAsync(_shutdownCts.Token);
-                LogManager.Instance.LogBlankLine();
-                LogManager.Instance.LogMessage("Sync cycle started", LogLevel.Info);
                 try
                 {
+                    LogManager.Instance.LogBlankLine();
+                    LogManager.Instance.LogMessage("Sync cycle started", LogLevel.Info);
                     updateInterval = await _portSyncService.RunAsync(_shutdownCts.Token);
                 }
                 finally
@@ -529,13 +551,17 @@ public partial class MainForm : Form
         => await PerformUpdateCheckAsync(intrusive: false);
 
     // Checks GitHub for a newer release.
-    // When <paramref name="intrusive"/> is true (startup call), opens the UpdateAvailableForm directly.
+    // When <paramref name="intrusive"/> is true (startup call or manual tray click), opens the
+    // UpdateAvailableForm directly when a newer version is found.
     // When false (12-hour timer tick), surfaces the result through the tray menu item and tooltip
     // plus a one-shot informational balloon, so the user is not interrupted. The menu item is the
     // only clickable entry point - Windows 11 routes ToolTipIcon.Info balloons silently through
     // Action Center and does not reliably fire BalloonTipClicked. The menu item stays visible
     // until the user updates (process restart with matching version clears _pendingUpdate naturally).
-    private async Task PerformUpdateCheckAsync(bool intrusive = true)
+    // When <paramref name="manual"/> is true (user-initiated from the tray menu), intrusive is also
+    // set so a found update opens the form; the same-version dedup is bypassed so the user always
+    // gets feedback, and "up to date" / failure outcomes show a balloon so the click is never silent.
+    private async Task PerformUpdateCheckAsync(bool intrusive = true, bool manual = false)
     {
         try
         {
@@ -543,7 +569,7 @@ public partial class MainForm : Form
             var update = await UpdateChecker.GetAvailableUpdateAsync(_shutdownCts.Token);
             if (update.HasValue)
             {
-                if (update.Value.Version == _lastNotifiedVersion)
+                if (!manual && update.Value.Version == _lastNotifiedVersion)
                 {
                     LogManager.Instance.LogDebug($"MainForm.PerformUpdateCheckAsync: Version {update.Value.Version} available (already notified)");
                     return;
@@ -555,6 +581,7 @@ public partial class MainForm : Form
 
                 _updateAvailableMenuItem.Text = $"Update available ({update.Value.Version})";
                 _updateAvailableMenuItem.Visible = true;
+                _updateSeparator.Visible = true;
                 UpdateTrayTooltip();
 
                 if (intrusive)
@@ -574,11 +601,33 @@ public partial class MainForm : Form
             else
             {
                 LogManager.Instance.LogMessage($"Application is up to date ({AppConstants.AppVersion})", LogLevel.Info);
+                if (manual)
+                    _trayIcon.ShowBalloonTip(AppConstants.BalloonTipDurationMs, AppIdentity.AppName,
+                        $"{AppIdentity.AppName} {AppConstants.AppVersion} is up to date.", ToolTipIcon.Info);
             }
         }
         catch (Exception ex)
         {
             LogManager.Instance.LogDebug($"MainForm.PerformUpdateCheckAsync: {ex.Message}");
+            if (manual)
+                _trayIcon.ShowBalloonTip(AppConstants.BalloonTipDurationMs, AppIdentity.AppName,
+                    "Could not check for updates - see the log for details.", ToolTipIcon.Warning);
+        }
+    }
+
+    // Manual tray-triggered update check. Disables the menu item while the request is in flight
+    // so rapid clicks do not stack multiple HTTP calls; re-enabled in finally even on cancellation.
+    private async void checkUpdates_Click(object? sender, EventArgs e)
+    {
+        _checkUpdatesMenuItem.Enabled = false;
+        try
+        {
+            await PerformUpdateCheckAsync(intrusive: true, manual: true);
+        }
+        finally
+        {
+            if (!IsDisposed)
+                _checkUpdatesMenuItem.Enabled = true;
         }
     }
 

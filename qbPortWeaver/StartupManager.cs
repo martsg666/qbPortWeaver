@@ -1,5 +1,4 @@
 ﻿using Microsoft.Win32;
-using qbPortWeaver.Shared;
 
 namespace qbPortWeaver;
 
@@ -49,7 +48,7 @@ public static class StartupManager
             using var writeKey = Registry.CurrentUser.OpenSubKey(RunRegistryKey, writable: true);
             if (writeKey is null)
             {
-                LogManager.Instance.LogDebug("StartupManager.RefreshStartupPathIfMoved: cannot open Run key for write - skipping refresh");
+                LogManager.Instance.LogDebug("StartupManager.RefreshStartupPathIfMoved: Cannot open Run key for write - skipping refresh");
                 return;
             }
             writeKey.SetValue(AppIdentity.AppName, expectedValue);

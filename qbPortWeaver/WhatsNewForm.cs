@@ -1,6 +1,4 @@
-﻿using qbPortWeaver.Shared;
-
-namespace qbPortWeaver;
+﻿namespace qbPortWeaver;
 
 /// <summary>Displays a summary of what changed in the current version. Shown automatically on first run after an upgrade.</summary>
 public partial class WhatsNewForm : Form
@@ -11,6 +9,28 @@ public partial class WhatsNewForm : Form
         "If you find qbPortWeaver useful, please star it on GitHub.";
 
     private const string ReleaseFeaturesText =
+        "New in 2.5.5\n\n" +
+        "Test connection from Settings\n" +
+        "Each client section in Settings now has a Test button next to the URL. " +
+        "Click it to check the connection to qBittorrent, Transmission, or Deluge using the values you have entered, " +
+        "without saving first. A message confirms success and shows the current listening port, " +
+        "or points you to the log if it does not connect.\n\n" +
+        "Check for updates on demand\n" +
+        "A new Check for Updates item in the tray menu lets you check for a newer version right away " +
+        "instead of waiting for the periodic check. You always get a result, even when you are already up to date.\n\n" +
+        "Layered TV libraries\n" +
+        "The Media Manager now recognises TV episodes organised in season subfolders with numbered " +
+        "filenames (Show Name/Season N/01-Title.mp4) in addition to the existing SxxExx naming pattern. " +
+        "The show name comes from the parent folder, the season from the season subfolder, and the episode " +
+        "number from the filename prefix. English, French, Spanish and Italian season indicators are recognised.\n\n" +
+        "More resilient media import\n" +
+        "When a source or library folder is on a network share that is temporarily offline (for example a NAS " +
+        "that is rebooting), the Media Manager now detects it quickly and skips that import cycle instead of " +
+        "stalling, then resumes automatically once the share is reachable again.\n\n" +
+        "Stable log viewer memory\n" +
+        "Keeping the log viewer open during a long debugging session used to cause memory usage to grow over time. " +
+        "The viewer now keeps a steady footprint regardless of how long it stays open.\n\n" +
+        "Previously released\n\n" +
         "New in 2.5.4\n\n" +
         "Less intrusive update notifications\n" +
         "The 12-hour background update check no longer interrupts you with a form. " +
@@ -21,7 +41,6 @@ public partial class WhatsNewForm : Form
         "Lower log viewer memory usage\n" +
         "Opening the log viewer used to leave a noticeable memory footprint after closing it. " +
         "The viewer now releases its content promptly on close so the application returns to its baseline memory usage.\n\n" +
-        "Previously released\n\n" +
         "New in 2.5.3\n\n" +
         "Log alert notifications\n" +
         "When a warning or error is written to the log, a tray balloon tip appears once to get your attention. " +

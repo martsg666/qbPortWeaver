@@ -1,5 +1,4 @@
-﻿using qbPortWeaver.Shared;
-using System.ComponentModel;
+﻿using System.ComponentModel;
 using System.Runtime;
 using System.Runtime.InteropServices;
 using System.Text;

@@ -1,11 +1,7 @@
-﻿using qbPortWeaver.Shared;
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.Text;
 
 namespace qbPortWeaver;
-
-/// <summary>Severity level for log entries.</summary>
-public enum LogLevel { Info, Warn, Error, Debug }
 
 /// <summary>Subsystem identifiers used as the source column in log entries.</summary>
 public static class Subsystem

@@ -1,5 +1,4 @@
 ﻿using Microsoft.Win32;
-using qbPortWeaver.Shared;
 
 namespace qbPortWeaver;
 

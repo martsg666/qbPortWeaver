@@ -1,5 +1,4 @@
-﻿using qbPortWeaver.Shared;
-using System.ComponentModel;
+﻿using System.ComponentModel;
 using System.Runtime.InteropServices;
 
 namespace qbPortWeaver;

@@ -1,6 +1,4 @@
-﻿using qbPortWeaver.Shared;
-
-namespace qbPortWeaver;
+﻿namespace qbPortWeaver;
 
 /// <summary>Settings dialog for configuring VPN provider, BitTorrent client connection, sync interval, and extra options.</summary>
 public partial class SettingsForm : Form
@@ -13,6 +11,10 @@ public partial class SettingsForm : Form
     private const string DefaultPortTooltip = "Port to apply when the VPN is disconnected (0 = do nothing when disconnected)";
     private const int ConnectionTestTimeoutSeconds = 15;
 
+    // Cancels in-flight NAT-PMP adapter discovery when the form closes so the UDP probes do not
+    // run to completion in the background after the dialog is dismissed.
+    private readonly CancellationTokenSource _discoveryCts = new();
+
     public SettingsForm()
     {
         InitializeComponent();
@@ -24,6 +26,13 @@ public partial class SettingsForm : Form
         base.OnLoad(e);
         SetupTooltips();
         LoadSettings();
+    }
+
+    protected override void OnFormClosed(FormClosedEventArgs e)
+    {
+        _discoveryCts.Cancel();
+        _discoveryCts.Dispose();
+        base.OnFormClosed(e);
     }
 
     // Wire up tooltips for each setting control
@@ -190,7 +199,7 @@ public partial class SettingsForm : Form
         // If discovery is still pending (combo disabled), preserve the existing value to avoid
         // saving the "Discovering adapters…" placeholder text as the adapter name
         string adapterName = cboNatPmpAdapter.Enabled
-            ? cboNatPmpAdapter.SelectedItem?.ToString() ?? ""
+            ? cboNatPmpAdapter.SelectedItem?.ToString() ?? string.Empty
             : RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyNatPmpAdapterName);
         RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyNatPmpAdapterName, adapterName);
         RegistrySettingsManager.SetBool(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyAutoRecoveryEnabled, chkAutoRecovery.Checked);
@@ -320,7 +329,7 @@ public partial class SettingsForm : Form
         // Preserve current selection if it is a valid adapter name (not a placeholder)
         string current = cboNatPmpAdapter.Enabled &&
                          cboNatPmpAdapter.SelectedItem?.ToString() != NoAdaptersFoundPlaceholder
-            ? cboNatPmpAdapter.SelectedItem?.ToString() ?? ""
+            ? cboNatPmpAdapter.SelectedItem?.ToString() ?? string.Empty
             : RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyNatPmpAdapterName);
 
         cboNatPmpAdapter.Items.Clear();
@@ -474,7 +483,7 @@ public partial class SettingsForm : Form
         try
         {
             // No ConfigureAwait(false) - continuation must run on the UI thread to update controls.
-            var adapters = await NatPmpManager.DiscoverAdaptersAsync();
+            var adapters = await NatPmpManager.DiscoverAdaptersAsync(cancellationToken: _discoveryCts.Token);
 
             // Guard against the form being closed while adapter discovery was in flight.
             // IsDisposed check + ObjectDisposedException catch covers the TOCTOU window between
@@ -503,6 +512,10 @@ public partial class SettingsForm : Form
             {
                 LogManager.Instance.LogDebug("SettingsForm.DiscoverNatPmpAdaptersAsync: Form disposed during adapter update");
             }
+        }
+        catch (OperationCanceledException)
+        {
+            // Form is closing - discovery was cancelled via _discoveryCts; nothing to update.
         }
         catch (Exception ex)
         {

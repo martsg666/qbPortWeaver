@@ -1,5 +1,4 @@
 ﻿using Microsoft.Win32;
-using qbPortWeaver.Shared;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.ServiceProcess;

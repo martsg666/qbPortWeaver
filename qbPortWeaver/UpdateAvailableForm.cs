@@ -1,5 +1,3 @@
-using qbPortWeaver.Shared;
-
 namespace qbPortWeaver;
 
 /// <summary>Non-modal notification shown when a newer version of the application is available.</summary>

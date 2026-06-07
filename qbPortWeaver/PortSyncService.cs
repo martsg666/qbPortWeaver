@@ -1,5 +1,4 @@
-﻿using qbPortWeaver.Shared;
-using System.Diagnostics;
+﻿using System.Diagnostics;
 
 namespace qbPortWeaver;
 
@@ -63,7 +62,8 @@ public sealed class PortSyncService
     );
 
     // All values read from the registry for a single sync cycle.
-    // Adding a 4th BitTorrent client: add a ClientConfig field below, an arm in
+    // Adding a 4th BitTorrent client: add a ClientConfig field below, populate it in ReadConfig,
+    // map the client name to its registry section in GetActiveClientSection, add an arm in
     // GetActiveClient, an arm in CreateBitTorrentClient, and a branch in LogConfigDebug.
     // qBittorrent-only flags (interface mismatch warn, restart on disconnect) stay at the
     // top level since the other clients do not expose the necessary RPC fields.
@@ -163,10 +163,16 @@ public sealed class PortSyncService
                 bool vpnConnected = status[StatusKeys.VpnConnected] is true;
                 int? port = status[StatusKeys.ClientPort] as int?;
                 string message = status[StatusKeys.Message] as string ?? string.Empty;
-                bool isDisabled = string.Equals(status[StatusKeys.VpnProvider] as string, RegistrySettingsManager.VpnProviderDisabled, StringComparison.OrdinalIgnoreCase);
+                string? provider = status[StatusKeys.VpnProvider] as string;
+                bool isDisabled = string.Equals(provider, RegistrySettingsManager.VpnProviderDisabled, StringComparison.OrdinalIgnoreCase);
+                // An unrecognized provider value (only reachable via a manual registry edit) is a
+                // configuration error, not a disconnection - surface it as Error so the tray shows
+                // red with the "not recognized" message rather than orange "VPN not connected".
+                bool isKnownProvider = isDisabled || IsRecognizedProvider(provider);
 
                 SyncState state;
                 if (isDisabled) state = SyncState.Disabled;
+                else if (!isKnownProvider) state = SyncState.Error;
                 else if (!vpnConnected) state = SyncState.VpnDisconnected;
                 else if (success) state = SyncState.Synced;
                 else state = SyncState.Error;
@@ -397,11 +403,19 @@ public sealed class PortSyncService
         if (cfg.VpnProvider.Equals(RegistrySettingsManager.VpnProviderProtonVpn, StringComparison.OrdinalIgnoreCase))
             return new ProtonVpnManager(AppConstants.GetProtonVpnLogFilePath());
 
-        LogManager.Instance.LogMessage($"VPN provider '{cfg.VpnProvider}' is not recognized, port sync skipped", LogLevel.Warn);
-        status[StatusKeys.Status] = StatusKeys.Skipped;
+        LogManager.Instance.LogMessage($"VPN provider '{cfg.VpnProvider}' is not recognized - check Settings", LogLevel.Warn);
+        status[StatusKeys.Status] = StatusKeys.Error;
         status[StatusKeys.Message] = $"VPN provider '{cfg.VpnProvider}' is not recognized";
         return null;
     }
+
+    // Returns true if the configured provider value is one the app knows how to drive.
+    // Used by the tray-state mapping to distinguish a misconfigured provider (Error) from a
+    // genuine disconnection. The "Disabled" value is handled separately by the caller.
+    private static bool IsRecognizedProvider(string? provider) =>
+        string.Equals(provider, RegistrySettingsManager.VpnProviderProtonVpn, StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(provider, RegistrySettingsManager.VpnProviderPia, StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(provider, RegistrySettingsManager.VpnProviderNatPmp, StringComparison.OrdinalIgnoreCase);
 
     // Resolves the NAT-PMP VPN manager for the configured adapter, handling the disconnected
     // fallback cases and auto-recovery triggering when no adapter is reachable.
@@ -532,7 +546,7 @@ public sealed class PortSyncService
             return false;
         }
 
-        LogManager.Instance.LogMessage($"{manager.ClientName} is not running - attempting to force start", LogLevel.Info);
+        LogManager.Instance.LogMessage($"{manager.ClientName} is not running - attempting to force-start", LogLevel.Info);
         if (!await manager.ForceStartAsync(cancellationToken).ConfigureAwait(false))
         {
             SetSyncResult(status, false, $"Failed to force start {manager.ClientName}");

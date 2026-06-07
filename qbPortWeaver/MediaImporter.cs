@@ -443,12 +443,12 @@ internal static partial class MediaImporter
     private static void LoadLibraryCache()
     {
         if (_libraryCache is not null) return;
-        _libraryCache = LoadCacheFromDisk(LibraryCacheFileName, "Library cache", "LoadLibraryCache");
+        _libraryCache = LoadCacheFromDisk(LibraryCacheFileName, "Library cache");
         _libraryCacheDirty = false;
     }
 
     // Loads a JSON-persisted cache from disk, returning an empty cache on missing file or corruption.
-    private static Dictionary<string, CacheEntry> LoadCacheFromDisk(string fileName, string label, string debugLabel)
+    private static Dictionary<string, CacheEntry> LoadCacheFromDisk(string fileName, string label)
     {
         var sw = System.Diagnostics.Stopwatch.StartNew();
         try
@@ -468,7 +468,6 @@ internal static partial class MediaImporter
                 : new(StringComparer.OrdinalIgnoreCase);
 
             sw.Stop();
-            LogManager.Instance.LogDebug($"MediaImporter.{debugLabel}: Loaded {cache.Count} entries", Subsystem.MediaManager);
             LogManager.Instance.LogMessage($"{label} loaded: {cache.Count} entries in {sw.ElapsedMilliseconds}ms", LogLevel.Info, Subsystem.MediaManager);
             return cache;
         }
@@ -845,7 +844,7 @@ internal static partial class MediaImporter
         Interlocked.Exchange(ref _sourceComputedCount, 0);
 
         if (_sourceCache is not null) return;
-        _sourceCache = LoadCacheFromDisk(SourceCacheFileName, "Source cache", "LoadSourceCache");
+        _sourceCache = LoadCacheFromDisk(SourceCacheFileName, "Source cache");
         _sourceCacheDirty = false;
     }
 

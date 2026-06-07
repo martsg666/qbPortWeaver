@@ -1,6 +1,4 @@
-﻿using qbPortWeaver.Shared;
-
-namespace qbPortWeaver;
+﻿namespace qbPortWeaver;
 
 /// <summary>Dialog for configuring the Media Manager feature, previewing proposed imports (Scan Now), and applying them (Import Now).</summary>
 public partial class MediaManagerForm : Form
@@ -13,7 +11,7 @@ public partial class MediaManagerForm : Form
     private sealed record RowData(RowConfidence Confidence, MediaProposal Proposal);
     private readonly record struct TmdbMatch(string? PosterPath, int? TmdbId, int VoteCount, string? Overview);
 
-    private CancellationTokenSource? _scanCts;
+    private CancellationTokenSource? _operationCts;
     private CancellationTokenSource? _thumbnailCts;
     private readonly Dictionary<string, Image> _posterCache = new(StringComparer.OrdinalIgnoreCase);
     private ToolStripMenuItem? _mnuPaste;
@@ -110,9 +108,9 @@ public partial class MediaManagerForm : Form
 
     protected override void OnFormClosed(FormClosedEventArgs e)
     {
-        _scanCts?.Cancel();
-        _scanCts?.Dispose();
-        _scanCts = null; // prevent double-dispose in Dispose(bool)
+        _operationCts?.Cancel();
+        _operationCts?.Dispose();
+        _operationCts = null; // prevent double-dispose in Dispose(bool)
         _thumbnailCts?.Cancel();
         _thumbnailCts?.Dispose();
         _thumbnailCts = null;
@@ -183,7 +181,7 @@ public partial class MediaManagerForm : Form
             return;
         }
 
-        var cancellationToken = await RenewScanCancellationTokenAsync();
+        var cancellationToken = await RenewOperationCancellationTokenAsync();
         SetBusy(true);
         BeginProgress();
         lblScanStatus.Text = "Re-matching\u2026";
@@ -400,7 +398,7 @@ public partial class MediaManagerForm : Form
             return;
         }
 
-        var cancellationToken = await RenewScanCancellationTokenAsync();
+        var cancellationToken = await RenewOperationCancellationTokenAsync();
 
         SetBusy(true);
         BeginProgress();
@@ -445,20 +443,25 @@ public partial class MediaManagerForm : Form
     // Import Now - applies proposals from the grid, respecting any user edits to the Proposed column
     private async void btnImportNow_Click(object? sender, EventArgs e) // async void is correct here (WinForms event handler)
     {
-        // Count only checked rows with a proposed name (unchecked rows are excluded)
-        int proposalCount = dgvResults.Rows.Cast<DataGridViewRow>()
-            .Count(r => r.Cells[colInclude.Index].Value is true // NOSONAR S1125 - 'is true' pattern requires the literal to match the boxed bool value
-                        && !string.IsNullOrWhiteSpace(r.Cells[colProposed.Index].Value?.ToString()));
+        // Build the actual import set up front so the confirmation count matches exactly what
+        // will be imported. A plain cell scan would also count rows that BuildProposalsFromGrid
+        // drops (no derivable library directory, or source==target), overstating the total.
+        var toApply = BuildProposalsFromGrid();
+        if (toApply.Count == 0)
+        {
+            lblScanStatus.Text = "No files to import.";
+            return;
+        }
 
         var confirm = MessageBox.Show(
-            $"{proposalCount} file{(proposalCount == 1 ? "" : "s")} will be imported. This cannot be undone.\n\nContinue?",
+            $"{toApply.Count} file{(toApply.Count == 1 ? "" : "s")} will be imported. This cannot be undone.\n\nContinue?",
             $"{AppIdentity.AppName} | Media Manager",
             MessageBoxButtons.YesNo,
             MessageBoxIcon.Warning);
 
         if (confirm != DialogResult.Yes) return;
 
-        var cancellationToken = await RenewScanCancellationTokenAsync();
+        var cancellationToken = await RenewOperationCancellationTokenAsync();
 
         SetBusy(true);
         BeginProgress();
@@ -468,7 +471,7 @@ public partial class MediaManagerForm : Form
         string? completionStatus = null;
         try
         {
-            await RunImportAndRescanAsync(cancellationToken);
+            await RunImportAndRescanAsync(toApply, cancellationToken);
         }
         catch (OperationCanceledException)
         {
@@ -491,9 +494,8 @@ public partial class MediaManagerForm : Form
     }
 
     // Applies proposals, optionally cleans up empty folders, then re-scans to refresh the grid.
-    private async Task RunImportAndRescanAsync(CancellationToken cancellationToken)
+    private async Task RunImportAndRescanAsync(List<MediaProposal> toApply, CancellationToken cancellationToken)
     {
-        var toApply = BuildProposalsFromGrid();
         var importMode = MediaManagerService.ParseImportMode(cboImportMode.SelectedItem?.ToString() ?? RegistrySettingsManager.ImportModeHardlink);
 
         var progress = new Progress<(int Current, int Total, string FileName)>(p =>
@@ -907,10 +909,10 @@ public partial class MediaManagerForm : Form
         e.CellStyle.SelectionForeColor = SystemColors.HighlightText;
     }
 
-    private async Task<CancellationToken> RenewScanCancellationTokenAsync()
+    private async Task<CancellationToken> RenewOperationCancellationTokenAsync()
     {
         var newCts = new CancellationTokenSource();
-        using var oldCts = Interlocked.Exchange(ref _scanCts, newCts);
+        using var oldCts = Interlocked.Exchange(ref _operationCts, newCts);
         if (oldCts is not null) await oldCts.CancelAsync().ConfigureAwait(true);
         return newCts.Token;
     }

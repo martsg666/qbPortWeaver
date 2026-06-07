@@ -1,6 +1,4 @@
-﻿using qbPortWeaver.Shared;
-
-namespace qbPortWeaver;
+﻿namespace qbPortWeaver;
 
 internal static class Program
 {

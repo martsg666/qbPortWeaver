@@ -1,6 +1,4 @@
-﻿using qbPortWeaver.Shared;
-
-namespace qbPortWeaver;
+﻿namespace qbPortWeaver;
 
 /// <summary>Dialog for configuring the Media Manager feature, previewing proposed imports (Scan Now), and applying them (Import Now).</summary>
 public partial class MediaManagerForm : Form
@@ -13,7 +11,7 @@ public partial class MediaManagerForm : Form
     private sealed record RowData(RowConfidence Confidence, MediaProposal Proposal);
     private readonly record struct TmdbMatch(string? PosterPath, int? TmdbId, int VoteCount, string? Overview);
 
-    private CancellationTokenSource? _scanCts;
+    private CancellationTokenSource? _operationCts;
     private CancellationTokenSource? _thumbnailCts;
     private readonly Dictionary<string, Image> _posterCache = new(StringComparer.OrdinalIgnoreCase);
     private ToolStripMenuItem? _mnuPaste;
@@ -110,9 +108,9 @@ public partial class MediaManagerForm : Form
 
     protected override void OnFormClosed(FormClosedEventArgs e)
     {
-        _scanCts?.Cancel();
-        _scanCts?.Dispose();
-        _scanCts = null; // prevent double-dispose in Dispose(bool)
+        _operationCts?.Cancel();
+        _operationCts?.Dispose();
+        _operationCts = null; // prevent double-dispose in Dispose(bool)
         _thumbnailCts?.Cancel();
         _thumbnailCts?.Dispose();
         _thumbnailCts = null;
@@ -183,7 +181,7 @@ public partial class MediaManagerForm : Form
             return;
         }
 
-        var cancellationToken = await RenewScanCancellationTokenAsync();
+        var cancellationToken = await RenewOperationCancellationTokenAsync();
         SetBusy(true);
         BeginProgress();
         lblScanStatus.Text = "Re-matching\u2026";
@@ -400,7 +398,7 @@ public partial class MediaManagerForm : Form
             return;
         }
 
-        var cancellationToken = await RenewScanCancellationTokenAsync();
+        var cancellationToken = await RenewOperationCancellationTokenAsync();
 
         SetBusy(true);
         BeginProgress();
@@ -463,7 +461,7 @@ public partial class MediaManagerForm : Form
 
         if (confirm != DialogResult.Yes) return;
 
-        var cancellationToken = await RenewScanCancellationTokenAsync();
+        var cancellationToken = await RenewOperationCancellationTokenAsync();
 
         SetBusy(true);
         BeginProgress();
@@ -911,10 +909,10 @@ public partial class MediaManagerForm : Form
         e.CellStyle.SelectionForeColor = SystemColors.HighlightText;
     }
 
-    private async Task<CancellationToken> RenewScanCancellationTokenAsync()
+    private async Task<CancellationToken> RenewOperationCancellationTokenAsync()
     {
         var newCts = new CancellationTokenSource();
-        using var oldCts = Interlocked.Exchange(ref _scanCts, newCts);
+        using var oldCts = Interlocked.Exchange(ref _operationCts, newCts);
         if (oldCts is not null) await oldCts.CancelAsync().ConfigureAwait(true);
         return newCts.Token;
     }

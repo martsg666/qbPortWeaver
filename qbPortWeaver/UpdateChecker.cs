@@ -1,5 +1,4 @@
-﻿using qbPortWeaver.Shared;
-using System.Net.Http.Headers;
+﻿using System.Net.Http.Headers;
 using System.Text.Json;
 
 namespace qbPortWeaver;

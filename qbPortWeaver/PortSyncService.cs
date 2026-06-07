@@ -1,5 +1,4 @@
-﻿using qbPortWeaver.Shared;
-using System.Diagnostics;
+﻿using System.Diagnostics;
 
 namespace qbPortWeaver;
 
@@ -63,7 +62,8 @@ public sealed class PortSyncService
     );
 
     // All values read from the registry for a single sync cycle.
-    // Adding a 4th BitTorrent client: add a ClientConfig field below, an arm in
+    // Adding a 4th BitTorrent client: add a ClientConfig field below, populate it in ReadConfig,
+    // map the client name to its registry section in GetActiveClientSection, add an arm in
     // GetActiveClient, an arm in CreateBitTorrentClient, and a branch in LogConfigDebug.
     // qBittorrent-only flags (interface mismatch warn, restart on disconnect) stay at the
     // top level since the other clients do not expose the necessary RPC fields.
@@ -546,7 +546,7 @@ public sealed class PortSyncService
             return false;
         }
 
-        LogManager.Instance.LogMessage($"{manager.ClientName} is not running - attempting to force start", LogLevel.Info);
+        LogManager.Instance.LogMessage($"{manager.ClientName} is not running - attempting to force-start", LogLevel.Info);
         if (!await manager.ForceStartAsync(cancellationToken).ConfigureAwait(false))
         {
             SetSyncResult(status, false, $"Failed to force start {manager.ClientName}");

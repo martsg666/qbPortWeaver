@@ -1,6 +1,4 @@
-﻿using qbPortWeaver.Shared;
-
-namespace qbPortWeaver;
+﻿namespace qbPortWeaver;
 
 /// <summary>About dialog showing version info, update availability, and contributor credits.</summary>
 public partial class AboutForm : Form

@@ -1,5 +1,4 @@
-﻿using qbPortWeaver.Shared;
-using System.Buffers.Binary;
+﻿using System.Buffers.Binary;
 using System.Net;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;

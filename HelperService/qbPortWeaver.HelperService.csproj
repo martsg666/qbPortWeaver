@@ -35,4 +35,13 @@
     <ProjectReference Include="..\qbPortWeaver.Shared\qbPortWeaver.Shared.csproj" />
   </ItemGroup>
 
+  <!-- Shared is a foundational dependency (LogLevel, LoggingConstants, HelperProtocol, etc.); make it
+       a global using so every file resolves its types without a per-file using directive. The LogLevel
+       alias pins the unqualified name to our enum so it cannot be shadowed by another LogLevel in scope
+       (e.g. Microsoft.Extensions.Logging.LogLevel, imported by the helper's worker host). -->
+  <ItemGroup>
+    <Using Include="qbPortWeaver.Shared" />
+    <Using Include="qbPortWeaver.Shared.LogLevel" Alias="LogLevel" />
+  </ItemGroup>
+
 </Project>

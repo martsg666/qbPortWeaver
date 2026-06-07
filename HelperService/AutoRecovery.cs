@@ -1,7 +1,6 @@
 ﻿using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.ServiceProcess;
-using qbPortWeaver.Shared;
 
 namespace qbPortWeaver.HelperService;
 
@@ -50,14 +49,14 @@ internal static partial class AutoRecovery
     {
         if (string.IsNullOrWhiteSpace(serviceName))
         {
-            logger.LogWarn("Service name is empty - nothing to restart");
+            logger.LogMessage("Service name is empty - nothing to restart", LogLevel.Warn);
             return;
         }
 
-        logger.LogInfo($"Restarting service '{serviceName}'");
+        logger.LogMessage($"Restarting service '{serviceName}'", LogLevel.Info);
 
         try { await StopServiceAsync(serviceName, logger, cancellationToken).ConfigureAwait(false); }
-        catch (Exception ex) when (ex is not OperationCanceledException) { logger.LogWarn($"Failed to stop service '{serviceName}': {ex.Message}"); }
+        catch (Exception ex) when (ex is not OperationCanceledException) { logger.LogMessage($"Failed to stop service '{serviceName}': {ex.Message}", LogLevel.Warn); }
 
         // Brief pause to allow the OS to fully release service resources (handles, sockets)
         // before the start is issued - avoids a race where SCM reports stopped but the
@@ -67,11 +66,11 @@ internal static partial class AutoRecovery
         try { await StartServiceAsync(serviceName, logger, cancellationToken).ConfigureAwait(false); }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            logger.LogError($"Failed to start service '{serviceName}': {ex.Message}");
+            logger.LogMessage($"Failed to start service '{serviceName}': {ex.Message}", LogLevel.Error);
             return;
         }
 
-        logger.LogInfo($"Restarted service '{serviceName}'");
+        logger.LogMessage($"Restarted service '{serviceName}'", LogLevel.Info);
     }
 
     // Cycles a network adapter by disabling and re-enabling it via netsh.
@@ -83,7 +82,7 @@ internal static partial class AutoRecovery
         {
             if (string.IsNullOrWhiteSpace(adapterName))
             {
-                logger.LogWarn("Adapter name is empty - nothing to cycle");
+                logger.LogMessage("Adapter name is empty - nothing to cycle", LogLevel.Warn);
                 return;
             }
 
@@ -92,31 +91,31 @@ internal static partial class AutoRecovery
             // remains a sanity check since real Windows NICs never contain them.
             if (adapterName.Contains('"'))
             {
-                logger.LogWarn("Rejected adapter name containing invalid characters");
+                logger.LogMessage("Rejected adapter name containing invalid characters", LogLevel.Warn);
                 return;
             }
 
-            logger.LogInfo($"Cycling adapter '{adapterName}'");
+            logger.LogMessage($"Cycling adapter '{adapterName}'", LogLevel.Info);
 
             if (!await RunNetshAsync([NetshInterface, "set", NetshInterface, adapterName, "admin=disable"], logger, cancellationToken).ConfigureAwait(false))
             {
-                logger.LogWarn($"Failed to disable adapter '{adapterName}'");
+                logger.LogMessage($"Failed to disable adapter '{adapterName}'", LogLevel.Warn);
                 return;
             }
-            logger.LogInfo($"Adapter '{adapterName}' disabled");
+            logger.LogMessage($"Adapter '{adapterName}' disabled", LogLevel.Info);
 
             await Task.Delay(AdapterCycleDelayMs, cancellationToken).ConfigureAwait(false);
 
             if (!await RunNetshAsync([NetshInterface, "set", NetshInterface, adapterName, "admin=enable"], logger, cancellationToken).ConfigureAwait(false))
             {
-                logger.LogWarn($"Failed to re-enable adapter '{adapterName}'");
+                logger.LogMessage($"Failed to re-enable adapter '{adapterName}'", LogLevel.Warn);
                 return;
             }
-            logger.LogInfo($"Re-enabled adapter '{adapterName}'");
+            logger.LogMessage($"Re-enabled adapter '{adapterName}'", LogLevel.Info);
         }
         catch (Exception ex)
         {
-            logger.LogError($"Failed to cycle adapter: {ex.Message}");
+            logger.LogMessage($"Failed to cycle adapter: {ex.Message}", LogLevel.Error);
         }
     }
 
@@ -133,7 +132,7 @@ internal static partial class AutoRecovery
         sc.Refresh();
         if (sc.Status == ServiceControllerStatus.Stopped)
         {
-            logger.LogInfo($"Service '{serviceName}' is already stopped");
+            logger.LogMessage($"Service '{serviceName}' is already stopped", LogLevel.Info);
             return;
         }
 
@@ -142,16 +141,16 @@ internal static partial class AutoRecovery
         // which would throw InvalidOperationException.
         if (sc.Status == ServiceControllerStatus.StopPending)
         {
-            logger.LogInfo($"Service '{serviceName}' is already stopping - waiting");
+            logger.LogMessage($"Service '{serviceName}' is already stopping - waiting", LogLevel.Info);
             try
             {
                 await WaitForStatusAsync(sc, ServiceControllerStatus.Stopped, cancellationToken).ConfigureAwait(false);
-                logger.LogInfo($"Service '{serviceName}' stopped");
+                logger.LogMessage($"Service '{serviceName}' stopped", LogLevel.Info);
                 return;
             }
             catch (System.ServiceProcess.TimeoutException)
             {
-                logger.LogWarn($"Service '{serviceName}' StopPending timed out - force-killing process");
+                logger.LogMessage($"Service '{serviceName}' StopPending timed out - force-killing process", LogLevel.Warn);
                 KillServiceProcess(sc, logger);
                 await WaitForStoppedOrWarnAsync(sc, serviceName, logger, cancellationToken).ConfigureAwait(false);
                 return;
@@ -163,14 +162,14 @@ internal static partial class AutoRecovery
         // unpredictably on a partially-initialized service.
         if (sc.Status == ServiceControllerStatus.StartPending)
         {
-            logger.LogInfo($"Service '{serviceName}' is starting - waiting before stopping");
+            logger.LogMessage($"Service '{serviceName}' is starting - waiting before stopping", LogLevel.Info);
             try
             {
                 await WaitForStatusAsync(sc, ServiceControllerStatus.Running, cancellationToken).ConfigureAwait(false);
             }
             catch (System.ServiceProcess.TimeoutException)
             {
-                logger.LogWarn($"Service '{serviceName}' StartPending timed out - force-killing process");
+                logger.LogMessage($"Service '{serviceName}' StartPending timed out - force-killing process", LogLevel.Warn);
                 KillServiceProcess(sc, logger);
                 await WaitForStoppedOrWarnAsync(sc, serviceName, logger, cancellationToken).ConfigureAwait(false);
                 return;
@@ -182,7 +181,7 @@ internal static partial class AutoRecovery
         {
             // sc.Stop() can throw if the service doesn't accept stop controls or is in
             // a transient state. Fall through to force-kill.
-            logger.LogWarn($"Failed to stop service '{serviceName}' via SCM: {ex.Message} - force-killing process");
+            logger.LogMessage($"Failed to stop service '{serviceName}' via SCM: {ex.Message} - force-killing process", LogLevel.Warn);
             KillServiceProcess(sc, logger);
             await WaitForStoppedOrWarnAsync(sc, serviceName, logger, cancellationToken).ConfigureAwait(false);
             return;
@@ -191,11 +190,11 @@ internal static partial class AutoRecovery
         try
         {
             await WaitForStatusAsync(sc, ServiceControllerStatus.Stopped, cancellationToken).ConfigureAwait(false);
-            logger.LogInfo($"Service '{serviceName}' stopped");
+            logger.LogMessage($"Service '{serviceName}' stopped", LogLevel.Info);
         }
         catch (System.ServiceProcess.TimeoutException)
         {
-            logger.LogWarn($"Service '{serviceName}' stop timed out - force-killing process");
+            logger.LogMessage($"Service '{serviceName}' stop timed out - force-killing process", LogLevel.Warn);
             KillServiceProcess(sc, logger);
             await WaitForStoppedOrWarnAsync(sc, serviceName, logger, cancellationToken).ConfigureAwait(false);
         }
@@ -207,11 +206,11 @@ internal static partial class AutoRecovery
         try
         {
             await WaitForStatusAsync(sc, ServiceControllerStatus.Stopped, cancellationToken).ConfigureAwait(false);
-            logger.LogInfo($"Service '{serviceName}' force-stopped");
+            logger.LogMessage($"Service '{serviceName}' force-stopped", LogLevel.Info);
         }
         catch (System.ServiceProcess.TimeoutException)
         {
-            logger.LogWarn($"Service '{serviceName}' still not stopped after force-kill - proceeding with start anyway");
+            logger.LogMessage($"Service '{serviceName}' still not stopped after force-kill - proceeding with start anyway", LogLevel.Warn);
         }
     }
 
@@ -268,7 +267,7 @@ internal static partial class AutoRecovery
         }
         catch (Exception ex)
         {
-            logger.LogWarn($"Failed to force-kill service '{sc.ServiceName}': {ex.Message}");
+            logger.LogMessage($"Failed to force-kill service '{sc.ServiceName}': {ex.Message}", LogLevel.Warn);
         }
     }
 
@@ -278,27 +277,27 @@ internal static partial class AutoRecovery
     private static void LogKillOutcome(string serviceName, int pid, ProcessKillResult result, HelperLogger logger)
     {
         if (result.TaskkillError is not null)
-            logger.LogWarn($"Failed to kill service '{serviceName}' via taskkill (PID {pid}): {result.TaskkillError.Message}");
+            logger.LogMessage($"Failed to kill service '{serviceName}' via taskkill (PID {pid}): {result.TaskkillError.Message}", LogLevel.Warn);
 
         switch (result.Outcome)
         {
             case ProcessKillOutcome.AlreadyExited:
-                logger.LogWarn($"Service '{serviceName}' process (PID {pid}) already exited");
+                logger.LogMessage($"Service '{serviceName}' process (PID {pid}) already exited", LogLevel.Warn);
                 break;
             case ProcessKillOutcome.AccessDenied:
-                logger.LogWarn($"Service '{serviceName}' process (PID {pid}) could not be killed - access denied or process protected");
+                logger.LogMessage($"Service '{serviceName}' process (PID {pid}) could not be killed - access denied or process protected", LogLevel.Warn);
                 break;
             case ProcessKillOutcome.KilledByProcessKill:
-                logger.LogInfo($"Service '{serviceName}' process force-killed via Process.Kill (PID {pid})");
+                logger.LogMessage($"Service '{serviceName}' process force-killed via Process.Kill (PID {pid})", LogLevel.Info);
                 break;
             case ProcessKillOutcome.KilledByTaskkill:
-                logger.LogInfo($"Service '{serviceName}' process force-killed via taskkill (PID {pid})");
+                logger.LogMessage($"Service '{serviceName}' process force-killed via taskkill (PID {pid})", LogLevel.Info);
                 break;
             case ProcessKillOutcome.KilledByProcessKillRetry:
-                logger.LogInfo($"Service '{serviceName}' process force-killed via Process.Kill retry (PID {pid})");
+                logger.LogMessage($"Service '{serviceName}' process force-killed via Process.Kill retry (PID {pid})", LogLevel.Info);
                 break;
             case ProcessKillOutcome.StillRunning:
-                logger.LogWarn($"Service '{serviceName}' process (PID {pid}) still running after all kill attempts");
+                logger.LogMessage($"Service '{serviceName}' process (PID {pid}) still running after all kill attempts", LogLevel.Warn);
                 break;
         }
     }
@@ -309,7 +308,7 @@ internal static partial class AutoRecovery
         sc.Refresh();
         if (sc.Status == ServiceControllerStatus.Running)
         {
-            logger.LogInfo($"Service '{serviceName}' is already running");
+            logger.LogMessage($"Service '{serviceName}' is already running", LogLevel.Info);
             return;
         }
 
@@ -318,15 +317,15 @@ internal static partial class AutoRecovery
         // already starting, just wait for it instead of calling Start() which would throw.
         if (sc.Status == ServiceControllerStatus.StartPending)
         {
-            logger.LogInfo($"Service '{serviceName}' is already starting (likely SCM auto-recovery) - waiting");
+            logger.LogMessage($"Service '{serviceName}' is already starting (likely SCM auto-recovery) - waiting", LogLevel.Info);
             try
             {
                 await WaitForStatusAsync(sc, ServiceControllerStatus.Running, cancellationToken).ConfigureAwait(false);
-                logger.LogInfo($"Service '{serviceName}' started (by SCM)");
+                logger.LogMessage($"Service '{serviceName}' started (by SCM)", LogLevel.Info);
             }
             catch (System.ServiceProcess.TimeoutException)
             {
-                logger.LogWarn($"Service '{serviceName}' stuck in StartPending after {ServiceOperationTimeoutMs}ms");
+                logger.LogMessage($"Service '{serviceName}' stuck in StartPending after {ServiceOperationTimeoutMs}ms", LogLevel.Warn);
                 throw;
             }
             return;
@@ -337,14 +336,14 @@ internal static partial class AutoRecovery
         // before attempting to start, otherwise sc.Start() throws.
         if (sc.Status == ServiceControllerStatus.StopPending)
         {
-            logger.LogInfo($"Service '{serviceName}' is still stopping - waiting");
+            logger.LogMessage($"Service '{serviceName}' is still stopping - waiting", LogLevel.Info);
             try
             {
                 await WaitForStatusAsync(sc, ServiceControllerStatus.Stopped, cancellationToken).ConfigureAwait(false);
             }
             catch (System.ServiceProcess.TimeoutException)
             {
-                logger.LogWarn($"Service '{serviceName}' StopPending timed out during start - proceeding anyway");
+                logger.LogMessage($"Service '{serviceName}' StopPending timed out during start - proceeding anyway", LogLevel.Warn);
             }
         }
 
@@ -356,15 +355,15 @@ internal static partial class AutoRecovery
             sc.Refresh();
             if (sc.Status is not ServiceControllerStatus.Running and not ServiceControllerStatus.StartPending)
                 throw;
-            logger.LogInfo($"Service '{serviceName}' is already starting (likely SCM auto-recovery) - waiting");
+            logger.LogMessage($"Service '{serviceName}' is already starting (likely SCM auto-recovery) - waiting", LogLevel.Info);
             try
             {
                 await WaitForStatusAsync(sc, ServiceControllerStatus.Running, cancellationToken).ConfigureAwait(false);
-                logger.LogInfo($"Service '{serviceName}' started (by SCM)");
+                logger.LogMessage($"Service '{serviceName}' started (by SCM)", LogLevel.Info);
             }
             catch (System.ServiceProcess.TimeoutException)
             {
-                logger.LogWarn($"Service '{serviceName}' stuck in StartPending after {ServiceOperationTimeoutMs}ms");
+                logger.LogMessage($"Service '{serviceName}' stuck in StartPending after {ServiceOperationTimeoutMs}ms", LogLevel.Warn);
                 throw;
             }
             return;
@@ -373,11 +372,11 @@ internal static partial class AutoRecovery
         try
         {
             await WaitForStatusAsync(sc, ServiceControllerStatus.Running, cancellationToken).ConfigureAwait(false);
-            logger.LogInfo($"Service '{serviceName}' started");
+            logger.LogMessage($"Service '{serviceName}' started", LogLevel.Info);
         }
         catch (System.ServiceProcess.TimeoutException)
         {
-            logger.LogWarn($"Service '{serviceName}' start timed out - service may still be starting");
+            logger.LogMessage($"Service '{serviceName}' start timed out - service may still be starting", LogLevel.Warn);
         }
     }
 
@@ -408,7 +407,7 @@ internal static partial class AutoRecovery
             using var process = Process.Start(startInfo);
             if (process is null)
             {
-                logger.LogWarn("Failed to start netsh");
+                logger.LogMessage("Failed to start netsh", LogLevel.Warn);
                 return false;
             }
 
@@ -426,7 +425,7 @@ internal static partial class AutoRecovery
                 // tasks complete naturally; we abandon them since their output is no longer useful.
                 process.Kill(entireProcessTree: true);
                 process.WaitForExit(ProcessKillTimeoutMs);
-                logger.LogWarn("netsh timed out and was killed");
+                logger.LogMessage("netsh timed out and was killed", LogLevel.Warn);
                 return false;
             }
 
@@ -439,7 +438,7 @@ internal static partial class AutoRecovery
             if (process.ExitCode != 0)
             {
                 string output = !string.IsNullOrWhiteSpace(stderr) ? stderr.Trim() : stdout.Trim();
-                logger.LogWarn($"netsh exited with code {process.ExitCode}: {output}");
+                logger.LogMessage($"netsh exited with code {process.ExitCode}: {output}", LogLevel.Warn);
                 return false;
             }
 
@@ -447,7 +446,7 @@ internal static partial class AutoRecovery
         }
         catch (Exception ex)
         {
-            logger.LogWarn($"Failed to run netsh: {ex.Message}");
+            logger.LogMessage($"Failed to run netsh: {ex.Message}", LogLevel.Warn);
             return false;
         }
     }

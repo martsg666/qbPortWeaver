@@ -8,8 +8,8 @@ partial class MediaManagerForm
     {
         if (disposing)
         {
-            _scanCts?.Cancel();
-            _scanCts?.Dispose();
+            _operationCts?.Cancel();
+            _operationCts?.Dispose();
             _thumbnailCts?.Cancel();
             _thumbnailCts?.Dispose();
             lblTmdbTitle?.Font?.Dispose();

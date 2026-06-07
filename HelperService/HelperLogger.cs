@@ -1,5 +1,4 @@
 ﻿using System.Text;
-using qbPortWeaver.Shared;
 
 namespace qbPortWeaver.HelperService;
 
@@ -19,9 +18,24 @@ internal sealed class HelperLogger(string logFilePath)
     public int WarnCount { get; private set; }
     public int ErrorCount { get; private set; }
 
-    public void LogInfo(string message) => WriteLog(message, LoggingConstants.LevelInfoLabel);
-    public void LogWarn(string message) { if (WriteLog(message, LoggingConstants.LevelWarnLabel)) WarnCount++; }
-    public void LogError(string message) { if (WriteLog(message, LoggingConstants.LevelErrorLabel)) ErrorCount++; }
+    /// <summary>
+    /// Writes a log entry at the given level, mirroring <c>LogManager.LogMessage</c>'s call shape so
+    /// both loggers are used identically. WARN and ERROR entries are counted (only on a successful
+    /// write) so the helper can return the counts to the tray app via the pipe response.
+    /// </summary>
+    public void LogMessage(string message, LogLevel level)
+    {
+        string label = level switch
+        {
+            LogLevel.Warn => LoggingConstants.LevelWarnLabel,
+            LogLevel.Error => LoggingConstants.LevelErrorLabel,
+            LogLevel.Debug => LoggingConstants.LevelDebugLabel,
+            _ => LoggingConstants.LevelInfoLabel,
+        };
+        if (!WriteLog(message, label)) return;
+        if (level == LogLevel.Warn) WarnCount++;
+        else if (level == LogLevel.Error) ErrorCount++;
+    }
 
     // Returns true if the entry was successfully written to the file. Callers increment WarnCount /
     // ErrorCount only on success so the tray badge never advertises an entry the user cannot find.

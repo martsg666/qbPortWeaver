@@ -4,7 +4,6 @@ using System.Security.Cryptography;
 using System.Security.Principal;
 using System.Text;
 using Microsoft.Win32;
-using qbPortWeaver.Shared;
 
 namespace qbPortWeaver.HelperService;
 
@@ -142,7 +141,7 @@ internal sealed class HelperPipeServer(ILogger<HelperPipeServer> logger) : Backg
                 break;
 
             default:
-                helperLogger.LogWarn($"Rejected unknown action '{action}'");
+                helperLogger.LogMessage($"Rejected unknown action '{action}'", LogLevel.Warn);
                 break;
         }
 

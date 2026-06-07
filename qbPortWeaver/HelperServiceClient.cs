@@ -1,5 +1,4 @@
-﻿using qbPortWeaver.Shared;
-using System.IO.Pipes;
+﻿using System.IO.Pipes;
 
 namespace qbPortWeaver;
 

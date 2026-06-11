@@ -9,6 +9,21 @@ public partial class WhatsNewForm : Form
         "If you find qbPortWeaver useful, please star it on GitHub.";
 
     private const string ReleaseFeaturesText =
+        "New in 2.5.6\n\n" +
+        "Accurate update check results\n" +
+        "If the update check cannot reach GitHub (for example when you are offline), it now tells you " +
+        "it could not check instead of reporting that you are up to date.\n\n" +
+        "Better guidance when a client does not start\n" +
+        "If the client launches but runs under a different process name than the one configured, " +
+        "the log now points you directly at the Process name field in Settings instead of showing " +
+        "a generic start failure.\n\n" +
+        "Consistent Transmission credential errors\n" +
+        "A wrong Transmission username or password is now reported with the same clear message " +
+        "on every operation.\n\n" +
+        "More precise log filtering\n" +
+        "Filtering the log viewer by subsystem now matches only the subsystem column, so unrelated " +
+        "lines that merely mention a subsystem name in their text no longer appear.\n\n" +
+        "Previously released\n\n" +
         "New in 2.5.5\n\n" +
         "Test connection from Settings\n" +
         "Each client section in Settings now has a Test button next to the URL. " +
@@ -30,7 +45,6 @@ public partial class WhatsNewForm : Form
         "Stable log viewer memory\n" +
         "Keeping the log viewer open during a long debugging session used to cause memory usage to grow over time. " +
         "The viewer now keeps a steady footprint regardless of how long it stays open.\n\n" +
-        "Previously released\n\n" +
         "New in 2.5.4\n\n" +
         "Less intrusive update notifications\n" +
         "The 12-hour background update check no longer interrupts you with a form. " +

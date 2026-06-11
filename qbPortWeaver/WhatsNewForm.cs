@@ -124,6 +124,12 @@ public partial class WhatsNewForm : Form
     public WhatsNewForm()
     {
         InitializeComponent();
+        // Catches a forgotten release-notes update at development time: the title below is
+        // derived from the assembly version, but ReleaseFeaturesText is a hardcoded constant,
+        // so nothing else forces the two to agree. Debug builds only - no release impact.
+        System.Diagnostics.Debug.Assert(
+            ReleaseFeaturesText.Contains($"New in {AppConstants.AppVersion}", StringComparison.Ordinal),
+            $"WhatsNewForm: ReleaseFeaturesText has no 'New in {AppConstants.AppVersion}' section - update it for this release");
         lblTitle.Text = $"What's New in {AppConstants.AppVersion}";
         lnkCommunity.Text = CommunityText;
         rtbFeatures.Text = ReleaseFeaturesText;

@@ -119,12 +119,6 @@ public sealed class TransmissionClient : BitTorrentClientBase
             using var response = await SendRpcAsync(body, cancellationToken).ConfigureAwait(false);
             if (response is null) return (null, null);
 
-            if (response.StatusCode == HttpStatusCode.Unauthorized)
-            {
-                LogManager.Instance.LogMessage($"{ClientName} authentication failed: wrong username or password (username: '{_userName}') - check the credentials in Settings", LogLevel.Error);
-                return (null, null);
-            }
-
             if (!response.IsSuccessStatusCode)
             {
                 LogManager.Instance.LogMessage($"Failed to get {ClientName} preferences (HTTP {(int)response.StatusCode} {response.StatusCode})", LogLevel.Error);
@@ -316,6 +310,11 @@ public sealed class TransmissionClient : BitTorrentClientBase
 
             var response = await HttpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
 
+            // 401 is handled here (not per caller) so every RPC call - including the post-409
+            // retry below - reports the same actionable credentials message.
+            if (IsUnauthorized(response))
+                return null;
+
             if (response.StatusCode != HttpStatusCode.Conflict)
                 return response;
 
@@ -339,7 +338,8 @@ public sealed class TransmissionClient : BitTorrentClientBase
                 Content = new StringContent(jsonBody, Encoding.UTF8, "application/json")
             };
             retry.Headers.Add(SessionIdHeader, _sessionId);
-            return await HttpClient.SendAsync(retry, cancellationToken).ConfigureAwait(false);
+            var retryResponse = await HttpClient.SendAsync(retry, cancellationToken).ConfigureAwait(false);
+            return IsUnauthorized(retryResponse) ? null : retryResponse;
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
         catch (Exception ex)
@@ -347,6 +347,16 @@ public sealed class TransmissionClient : BitTorrentClientBase
             LogHttpException("SendRpcAsync", ex);
             return null;
         }
+    }
+
+    // Returns true (after logging the actionable credentials message and disposing the response)
+    // when the response is HTTP 401, so SendRpcAsync can translate it into its null failure contract.
+    private bool IsUnauthorized(HttpResponseMessage response)
+    {
+        if (response.StatusCode != HttpStatusCode.Unauthorized) return false;
+        LogManager.Instance.LogMessage($"{ClientName} authentication failed: wrong username or password (username: '{_userName}') - check the credentials in Settings", LogLevel.Error);
+        response.Dispose();
+        return true;
     }
 
     // Fetches config-dir live via RPC to disambiguate service mode from Qt-process mode.

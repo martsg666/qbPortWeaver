@@ -123,7 +123,16 @@ public abstract class BitTorrentClientBase : IBitTorrentClient // NOSONAR S3881 
     {
         Process.Start(CreateStartInfo())?.Dispose();
         await Task.Delay(initialDelayMs, cancellationToken).ConfigureAwait(false);
-        if (!IsRunning()) return false;
+        if (!IsRunning())
+        {
+            // The launch itself succeeded, so the most likely cause is a ProcessName that does
+            // not match the actual executable - without this hint the caller's generic failure
+            // message points the user at the exe path instead of the Process name field.
+            LogManager.Instance.LogMessage(
+                $"{ClientName} was launched but no process named '{ProcessName}' was found - check the Process name in Settings",
+                LogLevel.Error);
+            return false;
+        }
         await WaitForApiReadyAsync(cancellationToken).ConfigureAwait(false);
         return true;
     }

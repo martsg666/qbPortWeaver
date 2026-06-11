@@ -566,27 +566,37 @@ public partial class MainForm : Form
         try
         {
             LogManager.Instance.LogDebug("MainForm.PerformUpdateCheckAsync: Checking for application updates");
-            var update = await UpdateChecker.GetAvailableUpdateAsync(_shutdownCts.Token);
-            if (update.HasValue)
+            var info = await UpdateChecker.GetLatestReleaseInfoAsync(_shutdownCts.Token);
+            if (info is null)
             {
-                if (!manual && update.Value.Version == _lastNotifiedVersion)
+                // Check failed or was cancelled by shutdown - UpdateChecker already logged the cause
+                // at Debug. Kept distinct from the up-to-date branch below so a failed check is never
+                // reported as "up to date" (the manual balloon would otherwise show false information).
+                if (manual)
+                    _trayIcon.ShowBalloonTip(AppConstants.BalloonTipDurationMs, AppIdentity.AppName,
+                        "Could not check for updates - see the log for details.", ToolTipIcon.Warning);
+                return;
+            }
+            if (info.IsNewer)
+            {
+                if (!manual && info.Version == _lastNotifiedVersion)
                 {
-                    LogManager.Instance.LogDebug($"MainForm.PerformUpdateCheckAsync: Version {update.Value.Version} available (already notified)");
+                    LogManager.Instance.LogDebug($"MainForm.PerformUpdateCheckAsync: Version {info.Version} available (already notified)");
                     return;
                 }
 
-                _lastNotifiedVersion = update.Value.Version;
-                _pendingUpdate = update.Value;
-                LogManager.Instance.LogMessage($"New application version available: {update.Value.Version}", LogLevel.Info);
+                _lastNotifiedVersion = info.Version;
+                _pendingUpdate = (info.Version, info.ReleaseUrl);
+                LogManager.Instance.LogMessage($"New application version available: {info.Version}", LogLevel.Info);
 
-                _updateAvailableMenuItem.Text = $"Update available ({update.Value.Version})";
+                _updateAvailableMenuItem.Text = $"Update available ({info.Version})";
                 _updateAvailableMenuItem.Visible = true;
                 _updateSeparator.Visible = true;
                 UpdateTrayTooltip();
 
                 if (intrusive)
                 {
-                    ShowUpdateAvailableForm(update.Value.Version, update.Value.Url);
+                    ShowUpdateAvailableForm(info.Version, info.ReleaseUrl);
                 }
                 else
                 {
@@ -594,7 +604,7 @@ public partial class MainForm : Form
                     // Shown purely as a visual hint that an update is available; the tray menu item is
                     // the actual entry point to open the update form.
                     _trayIcon.ShowBalloonTip(AppConstants.BalloonTipDurationMs, AppIdentity.AppName,
-                        $"Version {update.Value.Version} is available. Open the tray menu to install.",
+                        $"Version {info.Version} is available. Open the tray menu to install.",
                         ToolTipIcon.Info);
                 }
             }

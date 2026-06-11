@@ -29,13 +29,6 @@ public static class UpdateChecker
 
     private static readonly HttpClient _httpClient = CreateHttpClient(); // Not disposed - static lifetime matches process lifetime (recommended pattern for HttpClient)
 
-    /// <summary>Returns the latest release version and URL if a newer version exists; null if up-to-date or on any error.</summary>
-    public static async Task<(string Version, string Url)?> GetAvailableUpdateAsync(CancellationToken cancellationToken = default)
-    {
-        var info = await GetLatestReleaseInfoAsync(cancellationToken).ConfigureAwait(false);
-        return info?.IsNewer == true ? (info.Version, info.ReleaseUrl) : null;
-    }
-
     /// <summary>Returns full release info from GitHub including whether a newer version exists; null on any error.</summary>
     public static async Task<LatestReleaseInfo?> GetLatestReleaseInfoAsync(CancellationToken cancellationToken = default)
     {

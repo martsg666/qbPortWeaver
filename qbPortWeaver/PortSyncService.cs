@@ -384,6 +384,10 @@ public sealed class PortSyncService
 
     // Instantiates the appropriate VPN manager for the configured provider.
     // Returns null (with status already set) if the provider is disabled or cannot be initialised.
+    // Adding a new VPN provider: add a VpnProvider* constant in RegistrySettingsManager, an
+    // instantiation arm here, the keyword in IsRecognizedProvider below, an entry in
+    // VpnProviderRegistry.KnownProviders (when service-restart recovery applies), and the
+    // value in SettingsForm's cboVpnProvider list.
     private async Task<IVpnManager?> CreateVpnManager(AppConfig cfg, Dictionary<string, object?> status, CancellationToken cancellationToken)
     {
         if (cfg.VpnProvider.Equals(RegistrySettingsManager.VpnProviderDisabled, StringComparison.OrdinalIgnoreCase))

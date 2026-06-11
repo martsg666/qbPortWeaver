@@ -568,60 +568,68 @@ public partial class MainForm : Form
             LogManager.Instance.LogDebug("MainForm.PerformUpdateCheckAsync: Checking for application updates");
             var info = await UpdateChecker.GetLatestReleaseInfoAsync(_shutdownCts.Token);
             if (info is null)
-            {
-                // Check failed or was cancelled by shutdown - UpdateChecker already logged the cause
-                // at Debug. Kept distinct from the up-to-date branch below so a failed check is never
-                // reported as "up to date" (the manual balloon would otherwise show false information).
-                if (manual)
-                    _trayIcon.ShowBalloonTip(AppConstants.BalloonTipDurationMs, AppIdentity.AppName,
-                        "Could not check for updates - see the log for details.", ToolTipIcon.Warning);
-                return;
-            }
-            if (info.IsNewer)
-            {
-                if (!manual && info.Version == _lastNotifiedVersion)
-                {
-                    LogManager.Instance.LogDebug($"MainForm.PerformUpdateCheckAsync: Version {info.Version} available (already notified)");
-                    return;
-                }
-
-                _lastNotifiedVersion = info.Version;
-                _pendingUpdate = (info.Version, info.ReleaseUrl);
-                LogManager.Instance.LogMessage($"New application version available: {info.Version}", LogLevel.Info);
-
-                _updateAvailableMenuItem.Text = $"Update available ({info.Version})";
-                _updateAvailableMenuItem.Visible = true;
-                _updateSeparator.Visible = true;
-                UpdateTrayTooltip();
-
-                if (intrusive)
-                {
-                    ShowUpdateAvailableForm(info.Version, info.ReleaseUrl);
-                }
-                else
-                {
-                    // Info balloon: not clickable on Windows 11 (routed silently through Action Center).
-                    // Shown purely as a visual hint that an update is available; the tray menu item is
-                    // the actual entry point to open the update form.
-                    _trayIcon.ShowBalloonTip(AppConstants.BalloonTipDurationMs, AppIdentity.AppName,
-                        $"Version {info.Version} is available. Open the tray menu to install.",
-                        ToolTipIcon.Info);
-                }
-            }
+                NotifyUpdateCheckFailed(manual);
+            else if (info.IsNewer)
+                PresentAvailableUpdate(info, intrusive, manual);
             else
-            {
-                LogManager.Instance.LogMessage($"Application is up to date ({AppConstants.AppVersion})", LogLevel.Info);
-                if (manual)
-                    _trayIcon.ShowBalloonTip(AppConstants.BalloonTipDurationMs, AppIdentity.AppName,
-                        $"{AppIdentity.AppName} {AppConstants.AppVersion} is up to date.", ToolTipIcon.Info);
-            }
+                NotifyUpToDate(manual);
         }
         catch (Exception ex)
         {
             LogManager.Instance.LogDebug($"MainForm.PerformUpdateCheckAsync: {ex.Message}");
-            if (manual)
-                _trayIcon.ShowBalloonTip(AppConstants.BalloonTipDurationMs, AppIdentity.AppName,
-                    "Could not check for updates - see the log for details.", ToolTipIcon.Warning);
+            NotifyUpdateCheckFailed(manual);
+        }
+    }
+
+    // Check failed or was cancelled by shutdown - UpdateChecker already logged the cause at Debug.
+    // Kept distinct from NotifyUpToDate so a failed check is never reported as "up to date"
+    // (the manual balloon would otherwise show false information).
+    private void NotifyUpdateCheckFailed(bool manual)
+    {
+        if (manual)
+            _trayIcon.ShowBalloonTip(AppConstants.BalloonTipDurationMs, AppIdentity.AppName,
+                "Could not check for updates - see the log for details.", ToolTipIcon.Warning);
+    }
+
+    private void NotifyUpToDate(bool manual)
+    {
+        LogManager.Instance.LogMessage($"Application is up to date ({AppConstants.AppVersion})", LogLevel.Info);
+        if (manual)
+            _trayIcon.ShowBalloonTip(AppConstants.BalloonTipDurationMs, AppIdentity.AppName,
+                $"{AppIdentity.AppName} {AppConstants.AppVersion} is up to date.", ToolTipIcon.Info);
+    }
+
+    // Surfaces a newer release: persistent tray menu item + tooltip line, then either the
+    // update form (intrusive) or a one-shot informational balloon (background timer tick).
+    private void PresentAvailableUpdate(LatestReleaseInfo info, bool intrusive, bool manual)
+    {
+        if (!manual && info.Version == _lastNotifiedVersion)
+        {
+            LogManager.Instance.LogDebug($"MainForm.PresentAvailableUpdate: Version {info.Version} available (already notified)");
+            return;
+        }
+
+        _lastNotifiedVersion = info.Version;
+        _pendingUpdate = (info.Version, info.ReleaseUrl);
+        LogManager.Instance.LogMessage($"New application version available: {info.Version}", LogLevel.Info);
+
+        _updateAvailableMenuItem.Text = $"Update available ({info.Version})";
+        _updateAvailableMenuItem.Visible = true;
+        _updateSeparator.Visible = true;
+        UpdateTrayTooltip();
+
+        if (intrusive)
+        {
+            ShowUpdateAvailableForm(info.Version, info.ReleaseUrl);
+        }
+        else
+        {
+            // Info balloon: not clickable on Windows 11 (routed silently through Action Center).
+            // Shown purely as a visual hint that an update is available; the tray menu item is
+            // the actual entry point to open the update form.
+            _trayIcon.ShowBalloonTip(AppConstants.BalloonTipDurationMs, AppIdentity.AppName,
+                $"Version {info.Version} is available. Open the tray menu to install.",
+                ToolTipIcon.Info);
         }
     }
 

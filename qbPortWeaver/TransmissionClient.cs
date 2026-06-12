@@ -394,6 +394,8 @@ public sealed class TransmissionClient : BitTorrentClientBase
 
     // Returns true (after logging the actionable credentials message and disposing the response)
     // when the response is HTTP 401, so SendRpcAsync can translate it into its null failure contract.
+    // NOTE: Disposes the response internally so the 409-retry path in SendRpcAsync stays clean.
+    // Call sites must NOT wrap the response in a using block - it is already disposed when this returns true.
     private bool IsUnauthorized(HttpResponseMessage response)
     {
         if (response.StatusCode != HttpStatusCode.Unauthorized) return false;

@@ -474,37 +474,9 @@ public partial class MainForm : Form
                 // "Sync Port Now" click overrides the pause for exactly one cycle; the flag is
                 // consumed by the normal manual-sync handling after that cycle completes.
                 if (_syncPaused && !_manualSyncTriggered)
-                {
-                    LogManager.Instance.LogDebug("MainForm.RunMainLoopAsync: Sync paused - skipping cycle");
-                    // Re-publish the paused tray status each interval: a one-shot manual sync
-                    // while paused leaves that cycle's result on the tray; this reverts it.
-                    OnSyncCompleted(new TrayStatus(SyncState.Paused, null, "Port sync paused"));
-                    if (await ShutdownRequestedDuringDelayAsync(updateInterval))
-                        return;
-                    continue;
-                }
-
-                await _updateSemaphore.WaitAsync(_shutdownCts.Token);
-                try
-                {
-                    LogManager.Instance.LogBlankLine();
-                    LogManager.Instance.LogMessage("Sync cycle started", LogLevel.Info);
-                    updateInterval = await _portSyncService.RunAsync(_shutdownCts.Token);
-                }
-                finally
-                {
-                    _updateSemaphore.Release();
-                }
-
-                TryKickOffMediaImport();
-
-                // After a manual sync, wait only 10 seconds before next check
-                if (_manualSyncTriggered)
-                {
-                    _manualSyncTriggered = false;
-                    updateInterval = AppConstants.ManualSyncWaitSeconds;
-                    LogManager.Instance.LogMessage("Manual sync completed", LogLevel.Info);
-                }
+                    PublishPausedStatus();
+                else
+                    updateInterval = await RunSyncCycleAsync();
 
                 if (await ShutdownRequestedDuringDelayAsync(updateInterval))
                     return;
@@ -516,20 +488,73 @@ public partial class MainForm : Form
             catch (Exception ex)
             {
                 LogManager.Instance.LogMessage($"Sync cycle failed, retrying in {updateInterval}s: {ex.Message}", LogLevel.Error);
-                try { await Task.Delay(updateInterval * AppConstants.MillisecondsPerSecond, _shutdownCts.Token); }
-                catch (OperationCanceledException) { break; }
-                catch (Exception delayEx)
-                {
-                    // Unexpected: Task.Delay should only throw OperationCanceledException via the token.
-                    // Anything else here indicates a runtime issue we cannot recover from in this loop.
-                    // Log the full exception (including type) so the failure is visible in the log file.
-                    LogManager.Instance.LogMessage($"Unexpected exception during retry delay: {delayEx}", LogLevel.Error);
+                if (!await TryDelayAfterErrorAsync(updateInterval))
                     break;
-                }
             }
         }
 
         LogManager.Instance.LogMessage("Main loop exited gracefully", LogLevel.Info);
+    }
+
+    // Publishes the Paused tray status while cycles are being skipped. Re-published each
+    // interval: a one-shot manual sync while paused leaves that cycle's result on the tray;
+    // this reverts it.
+    private void PublishPausedStatus()
+    {
+        LogManager.Instance.LogDebug("MainForm.RunMainLoopAsync: Sync paused - skipping cycle");
+        OnSyncCompleted(new TrayStatus(SyncState.Paused, null, "Port sync paused"));
+    }
+
+    // Runs one full sync cycle (port sync under the semaphore, then the media import kick-off)
+    // and returns the interval in seconds to wait before the next cycle.
+    private async Task<int> RunSyncCycleAsync()
+    {
+        int updateInterval;
+        await _updateSemaphore.WaitAsync(_shutdownCts.Token);
+        try
+        {
+            LogManager.Instance.LogBlankLine();
+            LogManager.Instance.LogMessage("Sync cycle started", LogLevel.Info);
+            updateInterval = await _portSyncService.RunAsync(_shutdownCts.Token);
+        }
+        finally
+        {
+            _updateSemaphore.Release();
+        }
+
+        TryKickOffMediaImport();
+
+        // After a manual sync, wait only 10 seconds before next check
+        if (_manualSyncTriggered)
+        {
+            _manualSyncTriggered = false;
+            updateInterval = AppConstants.ManualSyncWaitSeconds;
+            LogManager.Instance.LogMessage("Manual sync completed", LogLevel.Info);
+        }
+        return updateInterval;
+    }
+
+    // Waits out the retry interval after a failed cycle. Returns false when the loop should
+    // stop: shutdown cancellation, or an unexpected delay failure.
+    private async Task<bool> TryDelayAfterErrorAsync(int updateInterval)
+    {
+        try
+        {
+            await Task.Delay(updateInterval * AppConstants.MillisecondsPerSecond, _shutdownCts.Token);
+            return true;
+        }
+        catch (OperationCanceledException)
+        {
+            return false;
+        }
+        catch (Exception delayEx)
+        {
+            // Unexpected: Task.Delay should only throw OperationCanceledException via the token.
+            // Anything else here indicates a runtime issue we cannot recover from in this loop.
+            // Log the full exception (including type) so the failure is visible in the log file.
+            LogManager.Instance.LogMessage($"Unexpected exception during retry delay: {delayEx}", LogLevel.Error);
+            return false;
+        }
     }
 
     // Kicks off the media import on a separate fire-and-forget task so a long library scan

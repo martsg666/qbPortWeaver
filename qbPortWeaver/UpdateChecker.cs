@@ -59,7 +59,7 @@ public static class UpdateChecker
         {
             return null; // shutdown - not a real failure, suppress log noise
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             LogManager.Instance.LogDebug($"UpdateChecker.GetLatestReleaseInfoAsync: {ex.Message}");
             return null;

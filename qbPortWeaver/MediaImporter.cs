@@ -340,7 +340,7 @@ internal static partial class MediaImporter
             LogManager.Instance.LogDebug("MediaImporter.BuildLibraryIndexAsync: Library paths changed, forcing full rebuild", Subsystem.MediaManager);
         else if (_libraryBuildCycleCount >= FullRebuildIntervalCycles)
             LogManager.Instance.LogDebug($"MediaImporter.BuildLibraryIndexAsync: Forcing periodic rebuild (every {FullRebuildIntervalCycles} cycles)", Subsystem.MediaManager);
-        _libraryBuildCycleCount = 1;
+        _libraryBuildCycleCount = 1; // Reset to 1, not 0 - this rebuild counts as the first cycle
         _lastMoviesLibraryPath = moviesLibraryPath;
         _lastTvShowsLibraryPath = tvShowsLibraryPath;
         return false;

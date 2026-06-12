@@ -177,7 +177,7 @@ When `verifyPortAfterSync` is enabled (General settings, default on) and the VPN
 | Transmission | `port-test` RPC method | Active probe via Transmission's online port-check service |
 | Deluge | `core.test_listen_port` | Active probe via Deluge's online port-check service |
 
-**Throttle** - because two of the three mechanisms contact external check services, the test runs when the port changed this cycle, every cycle while a result awaits confirmation or the closed condition persists, and otherwise every 5th cycle. The counter starts at the threshold so the first eligible cycle after startup verifies immediately.
+**Throttle** - because two of the three mechanisms contact external check services, the test runs when the port changed this cycle, every cycle while a result awaits confirmation or the closed condition persists, and otherwise every 5th cycle. The counter is initialised above the threshold so the first increment triggers immediately on the first eligible cycle after startup.
 
 **Confirmation rule** - a single closed result logs at Info and forces a re-test on the next cycle; only the second consecutive closed result is treated as confirmed. This absorbs qBittorrent's idle-firewalled false positive and transient check-service glitches. A confirmed-closed port logs at Warn every cycle (so the log alert badge tracks the persistent condition, like the interface mismatch check) and raises the `PortVerificationFailed` event once, on the transition, for a tray warning balloon. Results that cannot be determined (client unreachable, check service down) leave the verification state unchanged.
 
@@ -253,17 +253,20 @@ RunAsync
      │       └─ RegisterFailureAndTryRecoveryAsync
      │           ├─ BuildCycleCountMessage
      │           └─ TryTriggerRecoveryAsync
+     │               └─ DispatchRecoveryAsync
      ├─ IVpnManager.IsVpnConnected
      ├─ (if disconnected)
      │   └─ RegisterFailureAndTryRecoveryAsync
      │       ├─ BuildCycleCountMessage
      │       └─ TryTriggerRecoveryAsync
+     │           └─ DispatchRecoveryAsync
      ├─ (if connected)
      │   ├─ IVpnManager.GetVpnPortAsync
      │   └─ HandlePortDetectionFailureAsync (if port null, all providers)
      │       └─ RegisterFailureAndTryRecoveryAsync
      │           ├─ BuildCycleCountMessage
      │           └─ TryTriggerRecoveryAsync
+     │               └─ DispatchRecoveryAsync
      └─ EnsureRunningAndUpdatePortAsync
          ├─ EnsureClientRunningAsync
          ├─ IBitTorrentClient.GetPreferencesAsync

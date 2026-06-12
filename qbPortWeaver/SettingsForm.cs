@@ -81,10 +81,10 @@ public partial class SettingsForm : Form
         toolTip.SetToolTip(chkDebugMode, "Write verbose debug entries to the log file");
         toolTip.SetToolTip(cboColorTheme, "Application color theme (System, Dark, or Light) - a restart prompt will appear if changed");
         toolTip.SetToolTip(chkVerifyPort, "After each sync, check that the port is reachable from the Internet. Transmission and Deluge use their built-in online port checkers; qBittorrent infers it from incoming peer activity (an idle client may report closed). Runs after a port change and periodically.");
-        toolTip.SetToolTip(chkAutoRecovery, "Automatically recover after the configured number of consecutive failed sync cycles (VPN disconnected or port detection failure)");
-        toolTip.SetToolTip(nudRecoveryCycles, "Number of consecutive failed cycles before recovery is triggered");
-        toolTip.SetToolTip(chkPortClosedRecovery, "Also recover when port verification has confirmed the port closed for the configured number of checks. Fires at most once, then re-arms only after the port tests open again. Caution with qBittorrent: an idle client (no active transfers) can report closed indefinitely.");
-        toolTip.SetToolTip(nudPortClosedCycles, "Number of confirmed closed checks before recovery is triggered");
+        toolTip.SetToolTip(chkAutoRecovery, "Restart the VPN service (or cycle the adapter for generic NAT-PMP gateways) after the configured number of consecutive cycles where the VPN is disconnected or assigns no forwarded port. Client-side problems do not count - restarting the VPN cannot fix those");
+        toolTip.SetToolTip(nudRecoveryCycles, "Number of consecutive cycles without an assigned port before the VPN is restarted");
+        toolTip.SetToolTip(chkPortClosedRecovery, "Restart the VPN (same action as the no-port recovery) when port verification has confirmed the assigned port closed for the configured number of checks. Fires at most once, then re-arms only after the port tests open again. Caution with qBittorrent: an idle client (no active transfers) can report closed indefinitely.");
+        toolTip.SetToolTip(nudPortClosedCycles, "Number of confirmed closed checks before the VPN is restarted");
         toolTip.SetToolTip(chkNotifyOnPortUpdate, "Show a tray notification when the port is successfully updated");
         toolTip.SetToolTip(chkShowUpdateForm, "When checked, opens the update form at startup if a newer version is found. When unchecked, only a tray notification is shown (12-hour periodic check runs either way)");
     }
@@ -463,14 +463,16 @@ public partial class SettingsForm : Form
     private void UpdateAutoRecoverySubControls()
     {
         bool vpnActive = cboVpnProvider.SelectedItem?.ToString() != RegistrySettingsManager.VpnProviderDisabled;
+
+        // Failed-sync recovery: independent trigger, gated only by its own checkbox.
         bool enabled = vpnActive && chkAutoRecovery.Checked;
         lblRecoveryCycles.Enabled = enabled;
         nudRecoveryCycles.Enabled = enabled;
         lblRecoveryCyclesUnit.Enabled = enabled;
 
-        // Port-closed recovery is a sub-option of auto-recovery and consumes verification
-        // results, so it requires both the master switch and "Verify port after sync".
-        bool closedRecoveryAvailable = enabled && chkVerifyPort.Checked;
+        // Port-closed recovery: consumes verification results, so it depends only on
+        // "Verify port after sync" - not on the failed-sync recovery trigger.
+        bool closedRecoveryAvailable = vpnActive && chkVerifyPort.Checked;
         chkPortClosedRecovery.Enabled = closedRecoveryAvailable;
         bool closedCyclesEnabled = closedRecoveryAvailable && chkPortClosedRecovery.Checked;
         lblPortClosedCycles.Enabled = closedCyclesEnabled;

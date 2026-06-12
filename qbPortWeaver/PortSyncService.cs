@@ -121,7 +121,6 @@ public sealed class PortSyncService
         bool RestartOnDisconnect,
         bool NotifyOnPortUpdate,
         bool VerifyPort,
-        bool AutoRecoveryEnabled,
         bool PortClosedRecoveryEnabled,
         int PortClosedRecoveryCycles
     );
@@ -302,7 +301,6 @@ public sealed class PortSyncService
                 RestartOnDisconnect: restartOnDisconnect,
                 NotifyOnPortUpdate: cfg.NotifyOnPortUpdate,
                 VerifyPort: cfg.VerifyPortAfterSync,
-                AutoRecoveryEnabled: cfg.AutoRecoveryEnabled,
                 PortClosedRecoveryEnabled: cfg.PortClosedRecoveryEnabled,
                 PortClosedRecoveryCycles: cfg.PortClosedRecoveryCycles),
             status,
@@ -673,12 +671,13 @@ public sealed class PortSyncService
     }
 
     // Opt-in: when the port has been confirmed closed for the configured number of checks,
-    // dispatches the provider's recovery action once. One-shot arming: after firing, recovery
+    // dispatches the provider's recovery action once. Independent of the failed-sync recovery
+    // trigger - the two share the action, not the gate. One-shot arming: after firing, recovery
     // stays disarmed until a verification reports the port open again (see HandlePortOpenResult),
     // so a persistently false "closed" can never cause a VPN restart loop.
     private async Task MaybeTriggerPortClosedRecoveryAsync(SyncConfig config, CancellationToken cancellationToken)
     {
-        if (!config.PortClosedRecoveryEnabled || !config.AutoRecoveryEnabled)
+        if (!config.PortClosedRecoveryEnabled)
         {
             _confirmedClosedCount = 0;
             return;

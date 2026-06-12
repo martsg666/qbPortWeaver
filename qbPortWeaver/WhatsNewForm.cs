@@ -10,6 +10,17 @@ public partial class WhatsNewForm : Form
 
     private const string ReleaseFeaturesText =
         "New in 2.5.6\n\n" +
+        "Port verification\n" +
+        "After each sync, qbPortWeaver can now check that your port is actually reachable from the Internet, " +
+        "not just configured. If the port stays closed, a warning appears in the log and as a tray notification. " +
+        "Optionally, the VPN can be restarted automatically after a configurable number of closed checks - " +
+        "see Settings > General. Verification is enabled by default: Transmission and Deluge use their " +
+        "built-in online port checkers, while qBittorrent infers reachability from incoming connections " +
+        "(an idle client may report closed).\n\n" +
+        "Pause and resume syncing\n" +
+        "A new Pause Syncing item in the tray menu temporarily stops sync cycles, including media imports, " +
+        "without changing any settings. While paused, Sync Port Now still runs a single cycle on demand. " +
+        "Syncing always resumes when the application restarts.\n\n" +
         "Accurate update check results\n" +
         "If the update check cannot reach GitHub (for example when you are offline), it now tells you " +
         "it could not check instead of reporting that you are up to date.\n\n" +

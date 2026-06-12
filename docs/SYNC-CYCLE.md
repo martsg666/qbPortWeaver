@@ -2,6 +2,8 @@
 
 This document describes the core port sync logic implemented in `PortSyncService.cs`. The sync cycle runs on a configurable interval (default 180s). Each port sync cycle is serialized by a semaphore in `MainForm` so port sync cycles never overlap. The Media Manager runs as a fire-and-forget task after each port sync, in parallel with the next cycle's wait; subsequent imports are skipped if a previous one is still running, so a slow library scan cannot delay port sync or pile up imports on slow storage.
 
+The tray menu's **Pause Syncing** item skips entire cycles (port sync and the Media Manager kick-off) until resumed; the tray icon shows the paused state and **Sync Port Now** still runs a single cycle on demand. The paused state is in-memory only - a restart always resumes syncing.
+
 ## High-Level Overview
 
 ```mermaid
@@ -42,10 +44,15 @@ flowchart TD
 
     DONE_CHECK{restartOnDisconnect AND\nrestart not attempted this cycle?}
     DONE_CHECK -- Yes --> CONN_STATUS[Check client connection status]
-    DONE_CHECK -- No --> SUCCESS
+    DONE_CHECK -- No --> VERIFY
     CONN_STATUS -- disconnected --> RESTART_CLIENT[Restart client]
-    CONN_STATUS -- connected/firewalled --> SUCCESS
-    RESTART_CLIENT --> SUCCESS([SUCCESS])
+    CONN_STATUS -- connected/firewalled --> VERIFY
+    RESTART_CLIENT --> VERIFY
+
+    VERIFY{verifyPortAfterSync AND\nVPN connected?}
+    VERIFY -- Yes --> VERIFY_TEST[Test port reachability\nthrottled, confirmed over 2 checks]
+    VERIFY -- No --> SUCCESS
+    VERIFY_TEST --> SUCCESS([SUCCESS])
 
     ERROR_PORT --> FINALLY
     ERROR_CLIENT --> FINALLY
@@ -150,11 +157,31 @@ All client communication goes through the `IBitTorrentClient` interface, with im
 6. (optional, qBittorrent only) GET /api/v2/transfer/info → check connection_status
               If "disconnected" → restart qBittorrent
               Skipped if step 4 already restarted (avoids redundant restart)
+7. (optional) Verify outside reachability of the port (see Port Verification below):
+   GET /api/v2/transfer/info     → connection_status connected/firewalled    [qBittorrent]
+   port-test                     → port-is-open                              [Transmission]
+   core.test_listen_port         → true/false                                [Deluge]
 ```
 
 ### Interface Mismatch Warning *(qBittorrent only)*
 
 When enabled, the cycle compares qBittorrent's bound network interface (`current_interface_name` from preferences) against the configured VPN provider name. A mismatch raises the `InterfaceMismatchDetected` event, which shows a warning balloon tip from the tray icon. This helps catch cases where qBittorrent is routing traffic outside the VPN tunnel. Transmission and Deluge do not expose a named adapter via their APIs, so this check is skipped for those clients.
+
+### Port Verification
+
+When `verifyPortAfterSync` is enabled (General settings, default on) and the VPN is connected, the cycle ends by testing whether the synced port is actually reachable from the outside - not just configured.
+
+| Client | Mechanism | Notes |
+|---|---|---|
+| qBittorrent | `connection_status` from `transfer/info`: connected = open, firewalled = closed | Inferred from incoming peer activity; an idle client may report closed indefinitely |
+| Transmission | `port-test` RPC method | Active probe via Transmission's online port-check service |
+| Deluge | `core.test_listen_port` | Active probe via Deluge's online port-check service |
+
+**Throttle** - because two of the three mechanisms contact external check services, the test runs when the port changed this cycle, every cycle while a result awaits confirmation or the closed condition persists, and otherwise every 5th cycle. The counter starts at the threshold so the first eligible cycle after startup verifies immediately.
+
+**Confirmation rule** - a single closed result logs at Info and forces a re-test on the next cycle; only the second consecutive closed result is treated as confirmed. This absorbs qBittorrent's idle-firewalled false positive and transient check-service glitches. A confirmed-closed port logs at Warn every cycle (so the log alert badge tracks the persistent condition, like the interface mismatch check) and raises the `PortVerificationFailed` event once, on the transition, for a tray warning balloon. Results that cannot be determined (client unreachable, check service down) leave the verification state unchanged.
+
+**Opt-in recovery** - when `portClosedRecoveryEnabled` is on (default off; requires Auto-Recovery and port verification), a configurable number of confirmed closed checks (`portClosedRecoveryCycles`, default 3) dispatches the provider's normal recovery action (service restart, or adapter cycle for generic NAT-PMP gateways). The trigger is one-shot: after firing it stays disarmed until a verification reports the port open again, so a persistently false closed reading causes at most one VPN restart and never a restart loop.
 
 ### Port Update Notification
 
@@ -201,11 +228,14 @@ Every cycle writes a JSON status file (`qbPortWeaver.status.json` in `%LocalAppD
   "clientPreviousPort": 44000,
   "clientPort": 51234,
   "portChanged": true,
+  "portVerified": true,
   "updateIntervalSeconds": 180,
   "status": "success",
   "message": "Sync cycle completed"
 }
 ```
+
+The `portVerified` field is `true` when the reachability test reported the port open, `false` when it reported closed, and `null` when no test ran this cycle (verification disabled, VPN disconnected, throttled, or the result could not be determined).
 
 The `status` field is one of:
 - **`success`** - port synced (or already matched)
@@ -245,6 +275,13 @@ RunAsync
          ├─ PortUpdated?.Invoke (if NotifyOnPortUpdate and port changed)
          ├─ CheckAndRestartIfDisconnectedAsync (qBittorrent only; skipped if already restarted)
          │   └─ IBitTorrentClient.RestartAsync
+         ├─ VerifyPortAsync (if verifyPortAfterSync and VPN connected)
+         │   ├─ ShouldVerifyThisCycle (throttle)
+         │   ├─ IBitTorrentClient.TestListeningPortAsync
+         │   ├─ HandlePortOpenResult (re-arms port-closed recovery)
+         │   ├─ HandlePortClosedResult (PortVerificationFailed event on confirmed transition)
+         │   └─ MaybeTriggerPortClosedRecoveryAsync (opt-in, one-shot)
+         │       └─ DispatchRecoveryAsync
          └─ SetSyncResult
 ```
 

@@ -55,66 +55,6 @@ public sealed class TransmissionClient : BitTorrentClientBase
     }
 
     /// <inheritdoc/>
-    public override bool IsRunning()
-    {
-        string? serviceName = GetEffectiveServiceName();
-        if (serviceName is not null)
-        {
-            try
-            {
-                using var sc = new ServiceController(serviceName);
-                sc.Refresh();
-                if (sc.Status == ServiceControllerStatus.Running) return true;
-            }
-            catch { } // NOSONAR S108 - ServiceController throws if the service name is invalid or access is denied; fall through to the process-based check in the base class
-        }
-
-        return base.IsRunning();
-    }
-
-    /// <inheritdoc/>
-    public override async Task<bool> ForceStartAsync(CancellationToken cancellationToken = default)
-    {
-        string? serviceName = GetEffectiveServiceName();
-        if (serviceName is not null)
-            return await RestartServiceModeAsync(serviceName, cancellationToken).ConfigureAwait(false);
-
-        return await base.ForceStartAsync(cancellationToken).ConfigureAwait(false);
-    }
-
-    /// <inheritdoc/>
-    /// <remarks>Auto-detects mode from <c>config-dir</c> via RPC and service discovery. Service
-    /// mode: a Windows service containing "Transmission" is installed AND either <c>config-dir</c>
-    /// confirms a system-wide location, or the daemon RPC is unreachable (the most likely cause
-    /// of restart being triggered, so service mode is assumed in that case). Process mode: no
-    /// service is installed, or <c>config-dir</c> is user-specific (the Qt desktop client is
-    /// running instead).</remarks>
-    public override async Task<bool> RestartAsync(CancellationToken cancellationToken = default)
-    {
-        string? serviceName = GetEffectiveServiceName();
-        // Only query RPC if a service is installed - otherwise mode is unambiguously process mode.
-        bool? detected = serviceName is not null
-            ? await TryDetectServiceModeAsync(cancellationToken).ConfigureAwait(false)
-            : null;
-        // When a service is installed but RPC is unreachable, assume service mode: the daemon
-        // being hung is the most likely cause of restart being triggered, and a process-mode
-        // launch would bypass the service. A wrong guess here is recoverable - the helper-side
-        // restart of a dormant service either succeeds or fails cleanly.
-        bool isService = serviceName is not null && (detected ?? true);
-        string modeDescription;
-        if (!isService)
-            modeDescription = "process mode";
-        else if (detected.HasValue)
-            modeDescription = $"service mode. Service name: {serviceName}";
-        else
-            modeDescription = $"service mode (assumed; daemon RPC unreachable). Service name: {serviceName}";
-        LogManager.Instance.LogMessage($"{ClientName} restarting in {modeDescription}", LogLevel.Info);
-        return isService
-            ? await RestartServiceModeAsync(serviceName!, cancellationToken).ConfigureAwait(false)
-            : await RestartProcessModeAsync(cancellationToken).ConfigureAwait(false);
-    }
-
-    /// <inheritdoc/>
     public override async Task<(int? ListenPort, string? CurrentInterfaceName)> GetPreferencesAsync(CancellationToken cancellationToken = default)
     {
         try
@@ -249,9 +189,70 @@ public sealed class TransmissionClient : BitTorrentClientBase
         }
     }
 
+    /// <inheritdoc/>
+    public override bool IsRunning()
+    {
+        string? serviceName = GetEffectiveServiceName();
+        if (serviceName is not null)
+        {
+            try
+            {
+                using var sc = new ServiceController(serviceName);
+                sc.Refresh();
+                if (sc.Status == ServiceControllerStatus.Running) return true;
+            }
+            catch { } // NOSONAR S108 - ServiceController throws if the service name is invalid or access is denied; fall through to the process-based check in the base class
+        }
+
+        return base.IsRunning();
+    }
+
+    /// <inheritdoc/>
+    public override async Task<bool> ForceStartAsync(CancellationToken cancellationToken = default)
+    {
+        string? serviceName = GetEffectiveServiceName();
+        if (serviceName is not null)
+            return await RestartServiceModeAsync(serviceName, cancellationToken).ConfigureAwait(false);
+
+        return await base.ForceStartAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <inheritdoc/>
+    /// <remarks>Auto-detects mode from <c>config-dir</c> via RPC and service discovery. Service
+    /// mode: a Windows service containing "Transmission" is installed AND either <c>config-dir</c>
+    /// confirms a system-wide location, or the daemon RPC is unreachable (the most likely cause
+    /// of restart being triggered, so service mode is assumed in that case). Process mode: no
+    /// service is installed, or <c>config-dir</c> is user-specific (the Qt desktop client is
+    /// running instead).</remarks>
+    public override async Task<bool> RestartAsync(CancellationToken cancellationToken = default)
+    {
+        string? serviceName = GetEffectiveServiceName();
+        // Only query RPC if a service is installed - otherwise mode is unambiguously process mode.
+        bool? detected = serviceName is not null
+            ? await TryDetectServiceModeAsync(cancellationToken).ConfigureAwait(false)
+            : null;
+        // When a service is installed but RPC is unreachable, assume service mode: the daemon
+        // being hung is the most likely cause of restart being triggered, and a process-mode
+        // launch would bypass the service. A wrong guess here is recoverable - the helper-side
+        // restart of a dormant service either succeeds or fails cleanly.
+        bool isService = serviceName is not null && (detected ?? true);
+        string modeDescription;
+        if (!isService)
+            modeDescription = "process mode";
+        else if (detected.HasValue)
+            modeDescription = $"service mode. Service name: {serviceName}";
+        else
+            modeDescription = $"service mode (assumed; daemon RPC unreachable). Service name: {serviceName}";
+        LogManager.Instance.LogMessage($"{ClientName} restarting in {modeDescription}", LogLevel.Info);
+        return isService
+            ? await RestartServiceModeAsync(serviceName!, cancellationToken).ConfigureAwait(false)
+            : await RestartProcessModeAsync(cancellationToken).ConfigureAwait(false);
+    }
+
     // Transmission authenticates per request via SendRpcAsync's X-Transmission-Session-Id CSRF
-    // handshake, so EnsureAuthenticatedAsync is never called. The base's no-op AuthenticateAsync
-    // is inherited unchanged.
+    // handshake - no separate auth step is needed; the session ID is negotiated inline.
+    protected override Task<bool> AuthenticateAsync(CancellationToken cancellationToken = default) =>
+        Task.FromResult(true);
 
     /// <inheritdoc/>
     protected override void ResetAuthState()

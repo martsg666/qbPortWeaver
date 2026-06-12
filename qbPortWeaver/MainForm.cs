@@ -498,9 +498,9 @@ public partial class MainForm : Form
         LogManager.Instance.LogMessage("Main loop exited gracefully", LogLevel.Info);
     }
 
-    // Publishes the Paused tray status while cycles are being skipped. Re-published each
-    // interval: a one-shot manual sync while paused leaves that cycle's result on the tray;
-    // this reverts it.
+    // Publishes the Paused tray status while cycles are being skipped. Re-published on every
+    // skipped interval because a one-shot manual sync while paused leaves that cycle's result
+    // on the tray, and this puts the paused status back.
     private void PublishPausedStatus()
     {
         LogManager.Instance.LogDebug("MainForm.RunMainLoopAsync: Sync paused - skipping cycle");

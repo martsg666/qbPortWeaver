@@ -54,7 +54,9 @@ public sealed class PortSyncService
     // Port verification state. Serialised by MainForm._updateSemaphore (same guarantee as
     // _consecutiveFailedCycles). Deliberately not reset on a port change: the condition being
     // tracked is "incoming connections unreachable", which survives a new port assignment.
-    private int _cyclesSinceVerify;
+    // Starts at the threshold so the first eligible cycle after startup verifies immediately -
+    // a stale mapping is most likely right after a restart, and "ports match" alone cannot see it.
+    private int _cyclesSinceVerify = VerifyEveryNCycles;
     private bool _portCheckPendingConfirmation; // one unconfirmed closed result seen
     private bool _portConfirmedClosed;          // closed confirmed by two consecutive checks
 

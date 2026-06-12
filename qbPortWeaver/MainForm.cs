@@ -116,7 +116,8 @@ public partial class MainForm : Form
 
         _portSyncService = new PortSyncService();
         _portSyncService.SyncCompleted += OnSyncCompleted;
-        _portSyncService.InterfaceMismatchDetected += OnInterfaceMismatchDetected;
+        _portSyncService.InterfaceMismatchDetected += ShowWarningBalloon;
+        _portSyncService.PortVerificationFailed += ShowWarningBalloon;
         _portSyncService.PortUpdated += OnPortUpdated;
 
         InitializeStatusIcons();
@@ -444,8 +445,9 @@ public partial class MainForm : Form
             InvokeOnUiThread(() => { UpdateTrayIcon(status.State); UpdateTrayTooltip(); });
     }
 
-    // Called by PortSyncService when qBittorrent's network interface doesn't match the configured VPN provider
-    private void OnInterfaceMismatchDetected(string message)
+    // Shared handler for PortSyncService warning events (interface mismatch, port verification
+    // failure) - both fire transition-only and warrant a one-shot warning balloon.
+    private void ShowWarningBalloon(string message)
     {
         if (_shutdownCts.IsCancellationRequested) return;
         InvokeOnUiThread(() => { _logAlertBalloonPending = false; _trayIcon.ShowBalloonTip(AppConstants.BalloonTipDurationMs, AppIdentity.AppName, message, ToolTipIcon.Warning); });

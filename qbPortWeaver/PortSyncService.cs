@@ -35,6 +35,9 @@ public sealed class PortSyncService
     /// <summary>Raised when the BitTorrent client's listening port is successfully updated to a new value.</summary>
     public event Action<string>? PortUpdated;
 
+    /// <summary>Raised once when the forwarded port is confirmed unreachable from outside (two consecutive failed checks). Transition-only - it re-fires only after the port has tested open again.</summary>
+    public event Action<string>? PortVerificationFailed;
+
     // Consecutive sync cycles in which the VPN was disconnected or port detection failed.
     // Serialised by MainForm._updateSemaphore (same guarantee as _lastKnownNatPmpManager).
     private int _consecutiveFailedCycles;
@@ -43,6 +46,17 @@ public sealed class PortSyncService
     // Thread-safety: only read/written inside CheckInterfaceMatch via EnsureRunningAndUpdatePortAsync,
     // serialised by MainForm._updateSemaphore (same guarantee as _consecutiveFailedCycles and _lastKnownNatPmpManager).
     private string? _lastInterfaceMismatchMessage;
+
+    // Port verification throttle: full reachability tests run at most every N cycles because
+    // Transmission's and Deluge's tests contact their projects' online check services.
+    private const int VerifyEveryNCycles = 5;
+
+    // Port verification state. Serialised by MainForm._updateSemaphore (same guarantee as
+    // _consecutiveFailedCycles). Deliberately not reset on a port change: the condition being
+    // tracked is "incoming connections unreachable", which survives a new port assignment.
+    private int _cyclesSinceVerify;
+    private bool _portCheckPendingConfirmation; // one unconfirmed closed result seen
+    private bool _portConfirmedClosed;          // closed confirmed by two consecutive checks
 
     // Fallback for when TryCreateForAdapterAsync cannot reach the configured adapter (e.g. VPN is
     // between disconnect and reconnect) - returned so IsVpnConnected() reports false and
@@ -82,7 +96,8 @@ public sealed class PortSyncService
         string PostUpdateCommand,
         bool AutoRecoveryEnabled,
         int AutoRecoveryTriggerCycles,
-        bool NotifyOnPortUpdate
+        bool NotifyOnPortUpdate,
+        bool VerifyPortAfterSync
     );
 
     // Groups client behaviour settings passed to EnsureRunningAndUpdatePortAsync
@@ -93,7 +108,8 @@ public sealed class PortSyncService
         IVpnManager? VpnManager,
         bool WarnOnInterfaceMismatch,
         bool RestartOnDisconnect,
-        bool NotifyOnPortUpdate
+        bool NotifyOnPortUpdate,
+        bool VerifyPort
     );
 
     // Compile-time-safe keys and values for the status dictionary written to the JSON status file.
@@ -110,6 +126,7 @@ public sealed class PortSyncService
         public const string ClientPreviousPort = "clientPreviousPort";
         public const string ClientPort = "clientPort";
         public const string PortChanged = "portChanged";
+        public const string PortVerified = "portVerified";
         public const string UpdateIntervalSeconds = "updateIntervalSeconds";
         public const string Status = "status";
         public const string Message = "message";
@@ -138,6 +155,7 @@ public sealed class PortSyncService
             [StatusKeys.ClientPreviousPort] = null,
             [StatusKeys.ClientPort] = null,
             [StatusKeys.PortChanged] = false,
+            [StatusKeys.PortVerified] = null,
             [StatusKeys.UpdateIntervalSeconds] = AppConstants.DefaultUpdateIntervalSeconds,
             [StatusKeys.Status] = StatusKeys.Error,
             [StatusKeys.Message] = null
@@ -268,7 +286,8 @@ public sealed class PortSyncService
                 VpnManager: syncVpnManager,
                 WarnOnInterfaceMismatch: warnOnInterfaceMismatch,
                 RestartOnDisconnect: restartOnDisconnect,
-                NotifyOnPortUpdate: cfg.NotifyOnPortUpdate),
+                NotifyOnPortUpdate: cfg.NotifyOnPortUpdate,
+                VerifyPort: cfg.VerifyPortAfterSync),
             status,
             cancellationToken).ConfigureAwait(false);
 
@@ -329,7 +348,8 @@ public sealed class PortSyncService
             PostUpdateCommand: RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionExtra, RegistrySettingsManager.KeyPostUpdateCmd),
             AutoRecoveryEnabled: RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyAutoRecoveryEnabled),
             AutoRecoveryTriggerCycles: autoRecoveryTriggerCycles,
-            NotifyOnPortUpdate: RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyNotifyOnPortUpdate)
+            NotifyOnPortUpdate: RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyNotifyOnPortUpdate),
+            VerifyPortAfterSync: RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyVerifyPortAfterSync)
         ), activeSection);
     }
 
@@ -345,7 +365,8 @@ public sealed class PortSyncService
             $"{RegistrySettingsManager.KeyUpdateIntervalSeconds}={cfg.UpdateInterval}s, " +
             $"{RegistrySettingsManager.KeyAutoRecoveryEnabled}={cfg.AutoRecoveryEnabled}, " +
             $"{RegistrySettingsManager.KeyAutoRecoveryTriggerCycles}={cfg.AutoRecoveryTriggerCycles}, " +
-            $"{RegistrySettingsManager.KeyBitTorrentClient}={cfg.BitTorrentClient}");
+            $"{RegistrySettingsManager.KeyBitTorrentClient}={cfg.BitTorrentClient}, " +
+            $"{RegistrySettingsManager.KeyVerifyPortAfterSync}={cfg.VerifyPortAfterSync}");
 
         if (activeSection == RegistrySettingsManager.SectionTransmission)
             LogManager.Instance.LogDebug(
@@ -534,7 +555,87 @@ public sealed class PortSyncService
         if (config.RestartOnDisconnect && !restartAttemptedThisCycle)
             await CheckAndRestartIfDisconnectedAsync(manager, cancellationToken).ConfigureAwait(false);
 
+        // Verify outside reachability of the synced port. Skipped when the VPN is disconnected
+        // (VpnManager is null): the default-port fallback has no working tunnel for incoming
+        // connections, so a closed result would be expected noise.
+        if (config.VerifyPort && config.VpnManager is not null)
+            await VerifyPortAsync(manager, targetPort, status, cancellationToken).ConfigureAwait(false);
+
         SetSyncResult(status, true, "Sync cycle completed");
+    }
+
+    // Throttles the reachability test: Transmission's and Deluge's tests contact their projects'
+    // online check services, so testing every cycle would be wasteful. Tests run when the port
+    // changed this cycle, every cycle while a result awaits confirmation or the closed condition
+    // persists, and otherwise every VerifyEveryNCycles cycles.
+    private bool ShouldVerifyThisCycle(bool portChanged)
+    {
+        if (portChanged || _portCheckPendingConfirmation || _portConfirmedClosed)
+        {
+            _cyclesSinceVerify = 0;
+            return true;
+        }
+        _cyclesSinceVerify++;
+        if (_cyclesSinceVerify < VerifyEveryNCycles) return false;
+        _cyclesSinceVerify = 0;
+        return true;
+    }
+
+    // Verifies the forwarded port is reachable from outside after a successful sync. A single
+    // closed result is logged at Info and re-tested next cycle (absorbs qBittorrent's
+    // idle-firewalled false positive and transient check-service glitches); the second
+    // consecutive closed result is confirmed - see HandlePortClosedResult. Null results
+    // (client unreachable, test service unavailable) leave the verification state unchanged.
+    private async Task VerifyPortAsync(IBitTorrentClient manager, int port, Dictionary<string, object?> status, CancellationToken cancellationToken)
+    {
+        if (!ShouldVerifyThisCycle(status[StatusKeys.PortChanged] is true)) return;
+
+        bool? open = await manager.TestListeningPortAsync(cancellationToken).ConfigureAwait(false);
+        if (open is null)
+        {
+            LogManager.Instance.LogDebug($"PortSyncService.VerifyPortAsync: {manager.ClientName} port reachability could not be determined");
+            return;
+        }
+        status[StatusKeys.PortVerified] = open.Value;
+
+        if (open.Value)
+            HandlePortOpenResult(manager.ClientName, port);
+        else
+            HandlePortClosedResult(manager.ClientName, port);
+    }
+
+    private void HandlePortOpenResult(string clientName, int port)
+    {
+        if (_portConfirmedClosed)
+            LogManager.Instance.LogMessage($"{clientName} port {port} is reachable from outside again", LogLevel.Info);
+        else
+            LogManager.Instance.LogDebug($"PortSyncService.VerifyPortAsync: {clientName} port {port} verified open");
+        _portCheckPendingConfirmation = false;
+        _portConfirmedClosed = false;
+    }
+
+    // Confirmed-closed logs at Warn every cycle so the alert badge tracks the persistent
+    // condition (same pattern as the interface mismatch check); the PortVerificationFailed
+    // balloon fires only on the transition into the confirmed state.
+    private void HandlePortClosedResult(string clientName, int port)
+    {
+        if (_portConfirmedClosed)
+        {
+            LogManager.Instance.LogMessage($"{clientName} port {port} is still not reachable from outside", LogLevel.Warn);
+            return;
+        }
+        if (!_portCheckPendingConfirmation)
+        {
+            _portCheckPendingConfirmation = true;
+            LogManager.Instance.LogMessage($"{clientName} port {port} test reports closed - confirming on the next check", LogLevel.Info);
+            return;
+        }
+
+        _portCheckPendingConfirmation = false;
+        _portConfirmedClosed = true;
+        LogManager.Instance.LogMessage($"{clientName} port {port} is not reachable from outside (confirmed by two checks)", LogLevel.Warn);
+        try { PortVerificationFailed?.Invoke($"{clientName} port {port} is not reachable from the outside."); }
+        catch (Exception ex) { LogManager.Instance.LogMessage($"PortVerificationFailed handler failed: {ex.Message}", LogLevel.Warn); }
     }
 
     // Returns true if the BitTorrent client is running (or was successfully force-started), false otherwise

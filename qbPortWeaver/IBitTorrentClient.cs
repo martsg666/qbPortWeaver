@@ -60,4 +60,15 @@ public interface IBitTorrentClient : IDisposable
     /// For clients that do not expose connection status, always returns <see langword="null"/>.
     /// </summary>
     Task<string?> GetConnectionStatusAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Tests whether the listening port is reachable from the outside. Returns
+    /// <see langword="true"/> when open, <see langword="false"/> when closed, or
+    /// <see langword="null"/> when it cannot be determined (client unreachable, no internet,
+    /// or port-test service unavailable).
+    /// Transmission and Deluge actively probe via their projects' online port-check services.
+    /// qBittorrent infers the result from incoming peer activity, so an idle client may report
+    /// closed even when the port is open - callers should confirm before alerting.
+    /// </summary>
+    Task<bool?> TestListeningPortAsync(CancellationToken cancellationToken = default);
 }

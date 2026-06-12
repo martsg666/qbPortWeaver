@@ -206,6 +206,45 @@ public sealed class TransmissionClient : BitTorrentClientBase
     /// <remarks>Transmission does not expose a connection status endpoint; always returns <see langword="null"/>.</remarks>
     public override Task<string?> GetConnectionStatusAsync(CancellationToken cancellationToken = default) => Task.FromResult<string?>(null);
 
+    /// <inheritdoc/>
+    /// <remarks>Uses the <c>port-test</c> RPC method, which actively probes the port via
+    /// Transmission's online port-check service. Failures (RPC or service) log at Debug only -
+    /// this is a best-effort probe and the orchestrator treats null as "undeterminable".</remarks>
+    public override async Task<bool?> TestListeningPortAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            const string body = """{"method":"port-test"}""";
+            using var response = await SendRpcAsync(body, cancellationToken).ConfigureAwait(false);
+            if (response is null || !response.IsSuccessStatusCode) return null;
+
+            var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+            using var doc = JsonDocument.Parse(json);
+            var root = doc.RootElement;
+
+            if (root.TryGetProperty("result", out var result) &&
+                !string.Equals(result.GetString(), "success", StringComparison.OrdinalIgnoreCase))
+            {
+                LogManager.Instance.LogDebug($"TransmissionClient.TestListeningPortAsync: RPC returned non-success result: {result.GetString()}");
+                return null;
+            }
+
+            if (root.TryGetProperty("arguments", out var args) &&
+                args.TryGetProperty("port-is-open", out var open) &&
+                open.ValueKind is JsonValueKind.True or JsonValueKind.False)
+                return open.GetBoolean();
+
+            LogManager.Instance.LogDebug("TransmissionClient.TestListeningPortAsync: port-is-open not found in RPC response");
+            return null;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+        catch (Exception ex)
+        {
+            LogManager.Instance.LogDebug($"TransmissionClient.TestListeningPortAsync: {ex.Message}");
+            return null;
+        }
+    }
+
     // Transmission authenticates per request via SendRpcAsync's X-Transmission-Session-Id CSRF
     // handshake, so EnsureAuthenticatedAsync is never called. The base's no-op AuthenticateAsync
     // is inherited unchanged.

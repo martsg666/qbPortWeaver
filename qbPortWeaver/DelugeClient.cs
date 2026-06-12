@@ -129,6 +129,46 @@ public sealed class DelugeClient : BitTorrentClientBase
     public override Task<string?> GetConnectionStatusAsync(CancellationToken cancellationToken = default) => Task.FromResult<string?>(null);
 
     /// <inheritdoc/>
+    /// <remarks>Uses <c>core.test_listen_port</c>, which actively probes the port via Deluge's
+    /// online port-check service. A null RPC result means the daemon could not determine it
+    /// (e.g. check service unreachable). Failures log at Debug only - this is a best-effort
+    /// probe and the orchestrator treats null as "undeterminable".</remarks>
+    public override async Task<bool?> TestListeningPortAsync(CancellationToken cancellationToken = default)
+    {
+        if (!await EnsureAuthenticatedAsync(cancellationToken).ConfigureAwait(false)) return null;
+
+        try
+        {
+            var body = $$$"""{"method":"core.test_listen_port","params":[],"id":{{{_rpcId++}}}}""";
+            using var content = new StringContent(body, Encoding.UTF8, "application/json");
+            using var response = await HttpClient.PostAsync($"{Url}{RpcPath}", content, cancellationToken).ConfigureAwait(false);
+            if (!response.IsSuccessStatusCode) return null;
+
+            var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+            using var doc = JsonDocument.Parse(json);
+            var root = doc.RootElement;
+
+            if (root.TryGetProperty("error", out var error) && error.ValueKind != JsonValueKind.Null)
+            {
+                LogManager.Instance.LogDebug($"DelugeClient.TestListeningPortAsync: RPC returned an error: {error}");
+                return null;
+            }
+
+            if (root.TryGetProperty("result", out var result) &&
+                result.ValueKind is JsonValueKind.True or JsonValueKind.False)
+                return result.GetBoolean();
+
+            return null;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+        catch (Exception ex)
+        {
+            LogManager.Instance.LogDebug($"DelugeClient.TestListeningPortAsync: {ex.Message}");
+            return null;
+        }
+    }
+
+    /// <inheritdoc/>
     /// <remarks>Waits for Deluge's ~5 s config-flush debounce before the kill step so the new port survives the restart.</remarks>
     protected override Task PreRestartAsync(CancellationToken cancellationToken) =>
         Task.Delay(ConfigFlushWaitMs, cancellationToken);

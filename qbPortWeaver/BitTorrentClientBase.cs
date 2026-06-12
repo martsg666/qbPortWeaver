@@ -114,6 +114,9 @@ public abstract class BitTorrentClientBase : IBitTorrentClient // NOSONAR S3881 
     /// <inheritdoc/>
     public abstract Task<string?> GetConnectionStatusAsync(CancellationToken cancellationToken = default);
 
+    /// <inheritdoc/>
+    public abstract Task<bool?> TestListeningPortAsync(CancellationToken cancellationToken = default);
+
     /// <summary>Called by <see cref="RestartAsync"/> before the kill step. Override to inject pre-kill work (e.g. waiting for a config flush).</summary>
     protected virtual Task PreRestartAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 

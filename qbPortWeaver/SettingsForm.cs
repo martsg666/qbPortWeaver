@@ -81,10 +81,10 @@ public partial class SettingsForm : Form
         toolTip.SetToolTip(chkDebugMode, "Write verbose debug entries to the log file");
         toolTip.SetToolTip(cboColorTheme, "Application color theme (System, Dark, or Light) - a restart prompt will appear if changed");
         toolTip.SetToolTip(chkVerifyPort, "After each sync, check that the port is reachable from the Internet. Transmission and Deluge use their built-in online port checkers; qBittorrent infers it from incoming peer activity (an idle client may report closed). Runs after a port change and periodically.");
-        toolTip.SetToolTip(chkAutoRecovery, "Restart the VPN service (or cycle the adapter for generic NAT-PMP gateways) after the configured number of consecutive cycles where the VPN is disconnected or assigns no forwarded port. Client-side problems do not count - restarting the VPN cannot fix those");
-        toolTip.SetToolTip(nudRecoveryCycles, "Number of consecutive cycles without an assigned port before the VPN is restarted");
-        toolTip.SetToolTip(chkPortClosedRecovery, "Restart the VPN (same action as the no-port recovery) when port verification has confirmed the assigned port closed for the configured number of checks. Fires at most once, then re-arms only after the port tests open again. Caution with qBittorrent: an idle client (no active transfers) can report closed indefinitely.");
-        toolTip.SetToolTip(nudPortClosedCycles, "Number of confirmed closed checks before the VPN is restarted");
+        toolTip.SetToolTip(chkAutoRecovery, "Triggers auto-recovery (VPN service restart, or adapter cycle for NAT-PMP gateways) after the configured number of consecutive cycles where the VPN is disconnected or assigns no forwarded port. Client-side problems do not count - auto-recovery cannot fix those.");
+        toolTip.SetToolTip(nudRecoveryCycles, "Number of consecutive cycles without an assigned port or VPN connection before auto-recovery is triggered");
+        toolTip.SetToolTip(chkPortClosedRecovery, "Triggers auto-recovery (same action as the no-port trigger) when port verification has confirmed the assigned port closed for the configured number of checks. Fires at most once, then re-arms only after the port tests open again. Caution with qBittorrent: an idle client (no active transfers) can report closed indefinitely.");
+        toolTip.SetToolTip(nudPortClosedCycles, "Number of confirmed closed checks before auto-recovery is triggered");
         toolTip.SetToolTip(chkNotifyOnPortUpdate, "Show a tray notification when the port is successfully updated");
         toolTip.SetToolTip(chkShowUpdateForm, "When checked, opens the update form at startup if a newer version is found. When unchecked, only a tray notification is shown (12-hour periodic check runs either way)");
     }
@@ -483,11 +483,10 @@ public partial class SettingsForm : Form
     // Enables or disables all port-sync-related controls (everything except VPN provider, update interval, and debug mode)
     private void SetPortSyncControlsEnabled(bool enabled)
     {
-        // General section - client and auto-recovery (NAT-PMP adapter row handled by SetAdapterControlsEnabled)
+        // General section - client and auto-recovery group (NAT-PMP adapter row handled by SetAdapterControlsEnabled)
         lblBitTorrentClient.Enabled = enabled;
         cboBitTorrentClient.Enabled = enabled;
-        chkVerifyPort.Enabled = enabled;
-        chkAutoRecovery.Enabled = enabled;
+        grpAutoRecovery.Enabled = enabled;
         UpdateAutoRecoverySubControls();
 
         // qBittorrent / Deluge / Transmission section

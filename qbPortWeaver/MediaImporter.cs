@@ -854,16 +854,17 @@ internal static partial class MediaImporter
     /// </summary>
     internal static void SaveSourceCache()
     {
-        var cache = _sourceCache;
-        if (cache is null) return;
-
         try
         {
             Dictionary<string, CacheEntry> snapshot;
             bool wasDirty;
             lock (_sourceCacheLock)
             {
-                snapshot = new Dictionary<string, CacheEntry>(cache, StringComparer.OrdinalIgnoreCase);
+                // Read _sourceCache INSIDE the lock (same discipline as the readers above):
+                // a reference captured outside could be orphaned by a concurrent ClearAllCaches,
+                // and saving it would resurrect the just-deleted cache file.
+                if (_sourceCache is null) return;
+                snapshot = new Dictionary<string, CacheEntry>(_sourceCache, StringComparer.OrdinalIgnoreCase);
                 wasDirty = _sourceCacheDirty;
                 _sourceCacheDirty = false; // reset inside lock so concurrent writes after this point re-set it
             }
@@ -897,16 +898,15 @@ internal static partial class MediaImporter
     /// </summary>
     internal static void SaveLibraryCache()
     {
-        var cache = _libraryCache;
-        if (cache is null) return;
-
         try
         {
             Dictionary<string, CacheEntry> snapshot;
             bool wasDirty;
             lock (_libraryLock)
             {
-                snapshot = new Dictionary<string, CacheEntry>(cache, StringComparer.OrdinalIgnoreCase);
+                // Read _libraryCache INSIDE the lock - see SaveSourceCache for the rationale.
+                if (_libraryCache is null) return;
+                snapshot = new Dictionary<string, CacheEntry>(_libraryCache, StringComparer.OrdinalIgnoreCase);
                 wasDirty = _libraryCacheDirty;
                 _libraryCacheDirty = false; // reset inside lock so concurrent writes after this point re-set it
             }

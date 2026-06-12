@@ -13,6 +13,8 @@ public enum SyncState
     Disabled,
     /// <summary>An error occurred during the sync cycle (e.g. client unreachable, port update failed).</summary>
     Error,
+    /// <summary>Sync cycles are temporarily paused by the user via the tray menu. Not persisted - a restart always resumes.</summary>
+    Paused,
 }
 
 /// <summary>Snapshot of the tray icon state after a sync cycle, raised via <see cref="PortSyncService.SyncCompleted"/>.</summary>
@@ -33,6 +35,9 @@ public sealed class PortSyncService
     /// <summary>Raised when the BitTorrent client's listening port is successfully updated to a new value.</summary>
     public event Action<string>? PortUpdated;
 
+    /// <summary>Raised once when the forwarded port is confirmed unreachable from outside (two consecutive failed checks). Transition-only - it re-fires only after the port has tested open again.</summary>
+    public event Action<string>? PortVerificationFailed;
+
     // Consecutive sync cycles in which the VPN was disconnected or port detection failed.
     // Serialised by MainForm._updateSemaphore (same guarantee as _lastKnownNatPmpManager).
     private int _consecutiveFailedCycles;
@@ -41,6 +46,28 @@ public sealed class PortSyncService
     // Thread-safety: only read/written inside CheckInterfaceMatch via EnsureRunningAndUpdatePortAsync,
     // serialised by MainForm._updateSemaphore (same guarantee as _consecutiveFailedCycles and _lastKnownNatPmpManager).
     private string? _lastInterfaceMismatchMessage;
+
+    // Port verification throttle: full reachability tests run at most every N cycles because
+    // Transmission's and Deluge's tests contact their projects' online check services.
+    private const int VerifyEveryNCycles = 5;
+
+    // Port verification state. Serialised by MainForm._updateSemaphore (same guarantee as
+    // _consecutiveFailedCycles). Deliberately not reset on a port change: the condition being
+    // tracked is "incoming connections unreachable", which survives a new port assignment.
+    // Initialised above the threshold (VerifyEveryNCycles) so the first increment in
+    // ShouldVerifyThisCycle brings it above the "< VerifyEveryNCycles" guard, triggering a
+    // verification on the first eligible cycle after startup. A stale mapping is most likely
+    // right after a restart, and "ports match" alone cannot see it.
+    private int _cyclesSinceVerify = VerifyEveryNCycles;
+    private bool _portCheckPendingConfirmation; // one unconfirmed closed result seen
+    private bool _portConfirmedClosed;          // closed confirmed by two consecutive checks
+
+    // Opt-in port-closed recovery state (serialised by MainForm._updateSemaphore like the rest).
+    // The armed flag implements one-shot recovery: a persistent false "closed" (e.g. qBittorrent's
+    // idle-firewalled state, which can last indefinitely on a client with no active transfers)
+    // causes at most one VPN restart - re-armed only after a verification reports the port open.
+    private int _confirmedClosedCount;
+    private bool _portClosedRecoveryArmed = true;
 
     // Fallback for when TryCreateForAdapterAsync cannot reach the configured adapter (e.g. VPN is
     // between disconnect and reconnect) - returned so IsVpnConnected() reports false and
@@ -80,7 +107,10 @@ public sealed class PortSyncService
         string PostUpdateCommand,
         bool AutoRecoveryEnabled,
         int AutoRecoveryTriggerCycles,
-        bool NotifyOnPortUpdate
+        bool NotifyOnPortUpdate,
+        bool VerifyPortAfterSync,
+        bool PortClosedRecoveryEnabled,
+        int PortClosedRecoveryCycles
     );
 
     // Groups client behaviour settings passed to EnsureRunningAndUpdatePortAsync
@@ -91,7 +121,10 @@ public sealed class PortSyncService
         IVpnManager? VpnManager,
         bool WarnOnInterfaceMismatch,
         bool RestartOnDisconnect,
-        bool NotifyOnPortUpdate
+        bool NotifyOnPortUpdate,
+        bool VerifyPort,
+        bool PortClosedRecoveryEnabled,
+        int PortClosedRecoveryCycles
     );
 
     // Compile-time-safe keys and values for the status dictionary written to the JSON status file.
@@ -108,6 +141,7 @@ public sealed class PortSyncService
         public const string ClientPreviousPort = "clientPreviousPort";
         public const string ClientPort = "clientPort";
         public const string PortChanged = "portChanged";
+        public const string PortVerified = "portVerified";
         public const string UpdateIntervalSeconds = "updateIntervalSeconds";
         public const string Status = "status";
         public const string Message = "message";
@@ -136,6 +170,7 @@ public sealed class PortSyncService
             [StatusKeys.ClientPreviousPort] = null,
             [StatusKeys.ClientPort] = null,
             [StatusKeys.PortChanged] = false,
+            [StatusKeys.PortVerified] = null,
             [StatusKeys.UpdateIntervalSeconds] = AppConstants.DefaultUpdateIntervalSeconds,
             [StatusKeys.Status] = StatusKeys.Error,
             [StatusKeys.Message] = null
@@ -266,7 +301,10 @@ public sealed class PortSyncService
                 VpnManager: syncVpnManager,
                 WarnOnInterfaceMismatch: warnOnInterfaceMismatch,
                 RestartOnDisconnect: restartOnDisconnect,
-                NotifyOnPortUpdate: cfg.NotifyOnPortUpdate),
+                NotifyOnPortUpdate: cfg.NotifyOnPortUpdate,
+                VerifyPort: cfg.VerifyPortAfterSync,
+                PortClosedRecoveryEnabled: cfg.PortClosedRecoveryEnabled,
+                PortClosedRecoveryCycles: cfg.PortClosedRecoveryCycles),
             status,
             cancellationToken).ConfigureAwait(false);
 
@@ -327,7 +365,10 @@ public sealed class PortSyncService
             PostUpdateCommand: RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionExtra, RegistrySettingsManager.KeyPostUpdateCmd),
             AutoRecoveryEnabled: RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyAutoRecoveryEnabled),
             AutoRecoveryTriggerCycles: autoRecoveryTriggerCycles,
-            NotifyOnPortUpdate: RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyNotifyOnPortUpdate)
+            NotifyOnPortUpdate: RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyNotifyOnPortUpdate),
+            VerifyPortAfterSync: RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyVerifyPortAfterSync),
+            PortClosedRecoveryEnabled: RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyPortClosedRecoveryEnabled),
+            PortClosedRecoveryCycles: Math.Max(1, RegistrySettingsManager.GetInt(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyPortClosedRecoveryCycles))
         ), activeSection);
     }
 
@@ -343,7 +384,10 @@ public sealed class PortSyncService
             $"{RegistrySettingsManager.KeyUpdateIntervalSeconds}={cfg.UpdateInterval}s, " +
             $"{RegistrySettingsManager.KeyAutoRecoveryEnabled}={cfg.AutoRecoveryEnabled}, " +
             $"{RegistrySettingsManager.KeyAutoRecoveryTriggerCycles}={cfg.AutoRecoveryTriggerCycles}, " +
-            $"{RegistrySettingsManager.KeyBitTorrentClient}={cfg.BitTorrentClient}");
+            $"{RegistrySettingsManager.KeyBitTorrentClient}={cfg.BitTorrentClient}, " +
+            $"{RegistrySettingsManager.KeyVerifyPortAfterSync}={cfg.VerifyPortAfterSync}, " +
+            $"{RegistrySettingsManager.KeyPortClosedRecoveryEnabled}={cfg.PortClosedRecoveryEnabled}, " +
+            $"{RegistrySettingsManager.KeyPortClosedRecoveryCycles}={cfg.PortClosedRecoveryCycles}");
 
         if (activeSection == RegistrySettingsManager.SectionTransmission)
             LogManager.Instance.LogDebug(
@@ -384,6 +428,10 @@ public sealed class PortSyncService
 
     // Instantiates the appropriate VPN manager for the configured provider.
     // Returns null (with status already set) if the provider is disabled or cannot be initialised.
+    // Adding a new VPN provider: add a VpnProvider* constant in RegistrySettingsManager, an
+    // instantiation arm here, the keyword in IsRecognizedProvider below, an entry in
+    // VpnProviderRegistry.KnownProviders (when service-restart recovery applies), and the
+    // value in SettingsForm's cboVpnProvider list.
     private async Task<IVpnManager?> CreateVpnManager(AppConfig cfg, Dictionary<string, object?> status, CancellationToken cancellationToken)
     {
         if (cfg.VpnProvider.Equals(RegistrySettingsManager.VpnProviderDisabled, StringComparison.OrdinalIgnoreCase))
@@ -528,7 +576,132 @@ public sealed class PortSyncService
         if (config.RestartOnDisconnect && !restartAttemptedThisCycle)
             await CheckAndRestartIfDisconnectedAsync(manager, cancellationToken).ConfigureAwait(false);
 
+        // Verify outside reachability of the synced port. Skipped when the VPN is disconnected
+        // (VpnManager is null): the default-port fallback has no working tunnel for incoming
+        // connections, so a closed result would be expected noise.
+        if (config.VerifyPort && config.VpnManager is not null)
+            await VerifyPortAsync(manager, targetPort, config, status, cancellationToken).ConfigureAwait(false);
+
         SetSyncResult(status, true, "Sync cycle completed");
+    }
+
+    // Throttles the reachability test: Transmission's and Deluge's tests contact their projects'
+    // online check services, so testing every cycle would be wasteful. Tests run when the port
+    // changed this cycle, every cycle while a result awaits confirmation or the closed condition
+    // persists, and otherwise every VerifyEveryNCycles cycles.
+    private bool ShouldVerifyThisCycle(bool portChanged)
+    {
+        if (portChanged || _portCheckPendingConfirmation || _portConfirmedClosed)
+        {
+            _cyclesSinceVerify = 0;
+            return true;
+        }
+        _cyclesSinceVerify++;
+        if (_cyclesSinceVerify < VerifyEveryNCycles) return false;
+        _cyclesSinceVerify = 0;
+        return true;
+    }
+
+    // Verifies the forwarded port is reachable from outside after a successful sync. A single
+    // closed result is logged at Info and re-tested next cycle (absorbs qBittorrent's
+    // idle-firewalled false positive and transient check-service glitches); the second
+    // consecutive closed result is confirmed - see HandlePortClosedResult. Null results
+    // (client unreachable, test service unavailable) leave the verification state unchanged.
+    private async Task VerifyPortAsync(IBitTorrentClient manager, int port, SyncConfig config, Dictionary<string, object?> status, CancellationToken cancellationToken)
+    {
+        if (!ShouldVerifyThisCycle(status[StatusKeys.PortChanged] is true)) return;
+
+        bool? open = await manager.TestListeningPortAsync(cancellationToken).ConfigureAwait(false);
+        if (open is null)
+        {
+            LogManager.Instance.LogDebug($"PortSyncService.VerifyPortAsync: {manager.ClientName} port reachability could not be determined");
+            return;
+        }
+        status[StatusKeys.PortVerified] = open.Value;
+
+        if (open.Value)
+        {
+            HandlePortOpenResult(manager.ClientName, port);
+        }
+        else
+        {
+            HandlePortClosedResult(manager.ClientName, port);
+            await MaybeTriggerPortClosedRecoveryAsync(config, cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    private void HandlePortOpenResult(string clientName, int port)
+    {
+        if (_portConfirmedClosed)
+            LogManager.Instance.LogMessage($"{clientName} port {port} is reachable from outside again", LogLevel.Info);
+        else
+            LogManager.Instance.LogDebug($"PortSyncService.VerifyPortAsync: {clientName} port {port} verified open");
+        _portCheckPendingConfirmation = false;
+        _portConfirmedClosed = false;
+        _confirmedClosedCount = 0;
+        if (!_portClosedRecoveryArmed)
+        {
+            _portClosedRecoveryArmed = true;
+            LogManager.Instance.LogDebug("PortSyncService.HandlePortOpenResult: Port-closed recovery re-armed");
+        }
+    }
+
+    // Confirmed-closed logs at Warn every cycle so the alert badge tracks the persistent
+    // condition (same pattern as the interface mismatch check); the PortVerificationFailed
+    // balloon fires only on the transition into the confirmed state.
+    private void HandlePortClosedResult(string clientName, int port)
+    {
+        if (_portConfirmedClosed)
+        {
+            _confirmedClosedCount++;
+            LogManager.Instance.LogMessage($"{clientName} port {port} is still not reachable from outside", LogLevel.Warn);
+            return;
+        }
+        if (!_portCheckPendingConfirmation)
+        {
+            _portCheckPendingConfirmation = true;
+            LogManager.Instance.LogMessage($"{clientName} port {port} test reports closed - confirming on the next check", LogLevel.Info);
+            return;
+        }
+
+        _portCheckPendingConfirmation = false;
+        _portConfirmedClosed = true;
+        _confirmedClosedCount = 1;
+        LogManager.Instance.LogMessage($"{clientName} port {port} is not reachable from outside (confirmed by two checks)", LogLevel.Warn);
+        try { PortVerificationFailed?.Invoke($"{clientName} port {port} is not reachable from the outside."); }
+        catch (Exception ex) { LogManager.Instance.LogMessage($"PortVerificationFailed handler failed: {ex.Message}", LogLevel.Warn); }
+    }
+
+    // Opt-in: when the port has been confirmed closed for the configured number of checks,
+    // dispatches the provider's recovery action once. Independent of the failed-sync recovery
+    // trigger - the two share the action, not the gate. One-shot arming: after firing, recovery
+    // stays disarmed until a verification reports the port open again (see HandlePortOpenResult),
+    // so a persistently false "closed" can never cause a VPN restart loop.
+    private async Task MaybeTriggerPortClosedRecoveryAsync(SyncConfig config, CancellationToken cancellationToken)
+    {
+        if (!config.PortClosedRecoveryEnabled)
+        {
+            _confirmedClosedCount = 0;
+            return;
+        }
+        if (!_portClosedRecoveryArmed || _confirmedClosedCount < config.PortClosedRecoveryCycles) return;
+
+        _portClosedRecoveryArmed = false;
+        _confirmedClosedCount = 0;
+
+        IVpnManager vpnManager = config.VpnManager!; // non-null: verification only runs while the VPN is connected
+        string? target = vpnManager.GetRecoveryTarget();
+        if (target is null)
+        {
+            LogManager.Instance.LogMessage($"No recovery target found for '{vpnManager.ProviderName}' - skipping port-closed recovery", LogLevel.Warn);
+            return;
+        }
+
+        string action = vpnManager.GetRecoveryAction();
+        LogManager.Instance.LogMessage(
+            $"Triggering '{action}' for '{vpnManager.ProviderName}' - port confirmed closed for {config.PortClosedRecoveryCycles} consecutive checks",
+            LogLevel.Info);
+        await DispatchRecoveryAsync(action, target, vpnManager.ProviderName, cancellationToken).ConfigureAwait(false);
     }
 
     // Returns true if the BitTorrent client is running (or was successfully force-started), false otherwise
@@ -734,6 +907,13 @@ public sealed class PortSyncService
         LogManager.Instance.LogMessage(
             $"Triggering '{action}' for '{displayName}' after {count} consecutive failed {(count == 1 ? "cycle" : "cycles")}",
             LogLevel.Info);
+        await DispatchRecoveryAsync(action, recoveryTarget, displayName, cancellationToken).ConfigureAwait(false);
+    }
+
+    // Dispatches a recovery action to the helper service. Shared by the failed-cycle trigger
+    // (TryTriggerRecoveryAsync) and the port-closed trigger (MaybeTriggerPortClosedRecoveryAsync).
+    private static async Task DispatchRecoveryAsync(string action, string recoveryTarget, string displayName, CancellationToken cancellationToken)
+    {
         if (action == HelperProtocol.ActionRestart)
             await AutoRecoveryManager.TriggerRestartAsync(recoveryTarget, cancellationToken).ConfigureAwait(false);
         else if (action == HelperProtocol.ActionCycleAdapter)

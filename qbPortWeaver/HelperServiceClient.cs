@@ -37,8 +37,9 @@ internal static class HelperServiceClient
     private const int PipeConnectTimeoutMs = 5000;
     // Bound for awaiting the helper's response. Covers the helper's pathological
     // restart path (stop ~45s + 5s pause + start ~30s = ~80s) with headroom. The
-    // helper writes its response only after the action completes.
-    private const int PipeReadTimeoutMs = 120_000;
+    // helper writes its response only after the action completes. (Named distinctly from
+    // HelperPipeServer.RequestReadTimeoutMs, which bounds the opposite direction.)
+    private const int ResponseTimeoutMs = 120_000;
 
     // Resolved once per session; the helper validates it against HKCU to reject unauthorized pipe connections.
     private static readonly Lazy<string> _sessionToken = new(() => RegistrySettingsManager.GetOrCreatePipeSessionToken());
@@ -112,7 +113,7 @@ internal static class HelperServiceClient
     // shutdown propagates as OperationCanceledException.
     private static async Task<string?> ReadResponseAsync(StreamReader reader, string action, CancellationToken cancellationToken)
     {
-        using var timeoutCts = new CancellationTokenSource(PipeReadTimeoutMs);
+        using var timeoutCts = new CancellationTokenSource(ResponseTimeoutMs);
         using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
         try
         {

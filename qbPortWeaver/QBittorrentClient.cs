@@ -7,6 +7,8 @@ namespace qbPortWeaver;
 public sealed class QBittorrentClient : BitTorrentClientBase
 {
     private const string AuthOkResponse = "Ok.";
+    private const string ConnectionStatusConnected = "connected";
+    private const string ConnectionStatusFirewalled = "firewalled";
     private const string ApiAuthLogin = "/api/v2/auth/login";
     private const string ApiAppPreferences = "/api/v2/app/preferences";
     private const string ApiSetPreferences = "/api/v2/app/setPreferences";
@@ -144,6 +146,19 @@ public sealed class QBittorrentClient : BitTorrentClientBase
             LogHttpException("GetConnectionStatusAsync", ex);
             return null;
         }
+    }
+
+    /// <inheritdoc/>
+    /// <remarks>Derived from <c>connection_status</c>: "connected" = open, "firewalled" = closed,
+    /// "disconnected" or unreachable = <see langword="null"/> (no internet is not a port problem).
+    /// The status is inferred from incoming peer activity, so an idle client may report closed
+    /// even when the port is open - callers should confirm before alerting.</remarks>
+    public override async Task<bool?> TestListeningPortAsync(CancellationToken cancellationToken = default)
+    {
+        string? status = await GetConnectionStatusAsync(cancellationToken).ConfigureAwait(false);
+        if (string.Equals(status, ConnectionStatusConnected, StringComparison.OrdinalIgnoreCase)) return true;
+        if (string.Equals(status, ConnectionStatusFirewalled, StringComparison.OrdinalIgnoreCase)) return false;
+        return null;
     }
 
     /// <inheritdoc/>

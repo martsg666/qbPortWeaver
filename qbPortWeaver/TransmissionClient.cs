@@ -18,6 +18,10 @@ public sealed class TransmissionClient : BitTorrentClientBase
     private const int WindowCloseWaitMs = 3000;
     private const string RpcPath = "/transmission/rpc";
     private const string SessionIdHeader = "X-Transmission-Session-Id";
+    private const string JsonContentType = "application/json";
+    private const string JsonPropArguments = "arguments";
+    private const string JsonPropResult = "result";
+    private const string RpcResultSuccess = "success";
 
     private readonly string _userName;
     private string? _sessionId;
@@ -119,12 +123,6 @@ public sealed class TransmissionClient : BitTorrentClientBase
             using var response = await SendRpcAsync(body, cancellationToken).ConfigureAwait(false);
             if (response is null) return (null, null);
 
-            if (response.StatusCode == HttpStatusCode.Unauthorized)
-            {
-                LogManager.Instance.LogMessage($"{ClientName} authentication failed: wrong username or password (username: '{_userName}') - check the credentials in Settings", LogLevel.Error);
-                return (null, null);
-            }
-
             if (!response.IsSuccessStatusCode)
             {
                 LogManager.Instance.LogMessage($"Failed to get {ClientName} preferences (HTTP {(int)response.StatusCode} {response.StatusCode})", LogLevel.Error);
@@ -137,14 +135,14 @@ public sealed class TransmissionClient : BitTorrentClientBase
 
             // Surface RPC-level errors (e.g. "method not allowed", session conflicts) with the
             // actual server message before falling through to the generic arguments-missing path.
-            if (root.TryGetProperty("result", out var rpcResult) &&
-                !string.Equals(rpcResult.GetString(), "success", StringComparison.OrdinalIgnoreCase))
+            if (root.TryGetProperty(JsonPropResult, out var rpcResult) &&
+                !string.Equals(rpcResult.GetString(), RpcResultSuccess, StringComparison.OrdinalIgnoreCase))
             {
                 LogManager.Instance.LogMessage($"{ClientName} RPC returned non-success result for session-get: {rpcResult.GetString()}", LogLevel.Error);
                 return (null, null);
             }
 
-            if (!root.TryGetProperty("arguments", out var argsElement))
+            if (!root.TryGetProperty(JsonPropArguments, out var argsElement))
             {
                 LogManager.Instance.LogDebug("TransmissionClient.GetPreferencesAsync: 'arguments' key missing from RPC response");
                 return (null, null);
@@ -191,8 +189,8 @@ public sealed class TransmissionClient : BitTorrentClientBase
 
             var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
             using var doc = JsonDocument.Parse(json);
-            if (!doc.RootElement.TryGetProperty("result", out var result) ||
-                !string.Equals(result.GetString(), "success", StringComparison.OrdinalIgnoreCase))
+            if (!doc.RootElement.TryGetProperty(JsonPropResult, out var result) ||
+                !string.Equals(result.GetString(), RpcResultSuccess, StringComparison.OrdinalIgnoreCase))
             {
                 LogManager.Instance.LogMessage($"{ClientName} RPC returned non-success result for session-set", LogLevel.Error);
                 return false;
@@ -211,6 +209,45 @@ public sealed class TransmissionClient : BitTorrentClientBase
     /// <inheritdoc/>
     /// <remarks>Transmission does not expose a connection status endpoint; always returns <see langword="null"/>.</remarks>
     public override Task<string?> GetConnectionStatusAsync(CancellationToken cancellationToken = default) => Task.FromResult<string?>(null);
+
+    /// <inheritdoc/>
+    /// <remarks>Uses the <c>port-test</c> RPC method, which actively probes the port via
+    /// Transmission's online port-check service. Failures (RPC or service) log at Debug only -
+    /// this is a best-effort probe and the orchestrator treats null as "undeterminable".</remarks>
+    public override async Task<bool?> TestListeningPortAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            const string body = """{"method":"port-test"}""";
+            using var response = await SendRpcAsync(body, cancellationToken).ConfigureAwait(false);
+            if (response is null || !response.IsSuccessStatusCode) return null;
+
+            var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+            using var doc = JsonDocument.Parse(json);
+            var root = doc.RootElement;
+
+            if (root.TryGetProperty(JsonPropResult, out var result) &&
+                !string.Equals(result.GetString(), RpcResultSuccess, StringComparison.OrdinalIgnoreCase))
+            {
+                LogManager.Instance.LogDebug($"TransmissionClient.TestListeningPortAsync: RPC returned non-success result: {result.GetString()}");
+                return null;
+            }
+
+            if (root.TryGetProperty(JsonPropArguments, out var args) &&
+                args.TryGetProperty("port-is-open", out var open) &&
+                open.ValueKind is JsonValueKind.True or JsonValueKind.False)
+                return open.GetBoolean();
+
+            LogManager.Instance.LogDebug("TransmissionClient.TestListeningPortAsync: port-is-open not found in RPC response");
+            return null;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+        catch (Exception ex)
+        {
+            LogManager.Instance.LogDebug($"TransmissionClient.TestListeningPortAsync: {ex.Message}");
+            return null;
+        }
+    }
 
     // Transmission authenticates per request via SendRpcAsync's X-Transmission-Session-Id CSRF
     // handshake, so EnsureAuthenticatedAsync is never called. The base's no-op AuthenticateAsync
@@ -309,12 +346,17 @@ public sealed class TransmissionClient : BitTorrentClientBase
             var rpcUrl = $"{Url}{RpcPath}";
             using var request = new HttpRequestMessage(HttpMethod.Post, rpcUrl)
             {
-                Content = new StringContent(jsonBody, Encoding.UTF8, "application/json")
+                Content = new StringContent(jsonBody, Encoding.UTF8, JsonContentType)
             };
             if (_sessionId is not null)
                 request.Headers.Add(SessionIdHeader, _sessionId);
 
             var response = await HttpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
+
+            // 401 is handled here (not per caller) so every RPC call - including the post-409
+            // retry below - reports the same actionable credentials message.
+            if (IsUnauthorized(response))
+                return null;
 
             if (response.StatusCode != HttpStatusCode.Conflict)
                 return response;
@@ -336,10 +378,11 @@ public sealed class TransmissionClient : BitTorrentClientBase
 
             using var retry = new HttpRequestMessage(HttpMethod.Post, rpcUrl)
             {
-                Content = new StringContent(jsonBody, Encoding.UTF8, "application/json")
+                Content = new StringContent(jsonBody, Encoding.UTF8, JsonContentType)
             };
             retry.Headers.Add(SessionIdHeader, _sessionId);
-            return await HttpClient.SendAsync(retry, cancellationToken).ConfigureAwait(false);
+            var retryResponse = await HttpClient.SendAsync(retry, cancellationToken).ConfigureAwait(false);
+            return IsUnauthorized(retryResponse) ? null : retryResponse;
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
         catch (Exception ex)
@@ -347,6 +390,18 @@ public sealed class TransmissionClient : BitTorrentClientBase
             LogHttpException("SendRpcAsync", ex);
             return null;
         }
+    }
+
+    // Returns true (after logging the actionable credentials message and disposing the response)
+    // when the response is HTTP 401, so SendRpcAsync can translate it into its null failure contract.
+    // NOTE: Disposes the response internally so the 409-retry path in SendRpcAsync stays clean.
+    // Call sites must NOT wrap the response in a using block - it is already disposed when this returns true.
+    private bool IsUnauthorized(HttpResponseMessage response)
+    {
+        if (response.StatusCode != HttpStatusCode.Unauthorized) return false;
+        LogManager.Instance.LogMessage($"{ClientName} authentication failed: wrong username or password (username: '{_userName}') - check the credentials in Settings", LogLevel.Error);
+        response.Dispose();
+        return true;
     }
 
     // Fetches config-dir live via RPC to disambiguate service mode from Qt-process mode.
@@ -366,7 +421,7 @@ public sealed class TransmissionClient : BitTorrentClientBase
 
             var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
             using var doc = JsonDocument.Parse(json);
-            if (!doc.RootElement.TryGetProperty("arguments", out var args) ||
+            if (!doc.RootElement.TryGetProperty(JsonPropArguments, out var args) ||
                 !args.TryGetProperty("config-dir", out var configDirEl))
             {
                 LogManager.Instance.LogDebug("TransmissionClient.TryDetectServiceModeAsync: config-dir not found in session-get response");

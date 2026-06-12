@@ -9,6 +9,35 @@ public partial class WhatsNewForm : Form
         "If you find qbPortWeaver useful, please star it on GitHub.";
 
     private const string ReleaseFeaturesText =
+        "New in 2.5.6\n\n" +
+        "Port verification\n" +
+        "After each sync, qbPortWeaver can now check that your port is actually reachable from the Internet, " +
+        "not just configured. If the port stays closed, a warning appears in the log and as a tray notification. " +
+        "Optionally, the VPN can be restarted automatically after a configurable number of closed checks - " +
+        "see Settings > General. Verification is enabled by default: Transmission and Deluge use their " +
+        "built-in online port checkers, while qBittorrent infers reachability from incoming connections " +
+        "(an idle client may report closed).\n\n" +
+        "Pause and resume syncing\n" +
+        "A new Pause Syncing item in the tray menu temporarily stops sync cycles, including media imports, " +
+        "without changing any settings. While paused, Sync Port Now still runs a single cycle on demand. " +
+        "Syncing always resumes when the application restarts.\n\n" +
+        "Tabbed Settings\n" +
+        "The Settings window is now organised into General, Client and Extra tabs, " +
+        "so it fits comfortably on smaller screens.\n\n" +
+        "Accurate update check results\n" +
+        "If the update check cannot reach GitHub (for example when you are offline), it now tells you " +
+        "it could not check instead of reporting that you are up to date.\n\n" +
+        "Better guidance when a client does not start\n" +
+        "If the client launches but runs under a different process name than the one configured, " +
+        "the log now points you directly at the Process name field in Settings instead of showing " +
+        "a generic start failure.\n\n" +
+        "Consistent Transmission credential errors\n" +
+        "A wrong Transmission username or password is now reported with the same clear message " +
+        "on every operation.\n\n" +
+        "More precise log filtering\n" +
+        "Filtering the log viewer by subsystem now matches only the subsystem column, so unrelated " +
+        "lines that merely mention a subsystem name in their text no longer appear.\n\n" +
+        "Previously released\n\n" +
         "New in 2.5.5\n\n" +
         "Test connection from Settings\n" +
         "Each client section in Settings now has a Test button next to the URL. " +
@@ -30,7 +59,6 @@ public partial class WhatsNewForm : Form
         "Stable log viewer memory\n" +
         "Keeping the log viewer open during a long debugging session used to cause memory usage to grow over time. " +
         "The viewer now keeps a steady footprint regardless of how long it stays open.\n\n" +
-        "Previously released\n\n" +
         "New in 2.5.4\n\n" +
         "Less intrusive update notifications\n" +
         "The 12-hour background update check no longer interrupts you with a form. " +
@@ -124,6 +152,12 @@ public partial class WhatsNewForm : Form
     public WhatsNewForm()
     {
         InitializeComponent();
+        // Catches a forgotten release-notes update at development time: the title below is
+        // derived from the assembly version, but ReleaseFeaturesText is a hardcoded constant,
+        // so nothing else forces the two to agree. Debug builds only - no release impact.
+        System.Diagnostics.Debug.Assert(
+            ReleaseFeaturesText.Contains($"New in {AppConstants.AppVersion}", StringComparison.Ordinal),
+            $"WhatsNewForm: ReleaseFeaturesText has no 'New in {AppConstants.AppVersion}' section - update it for this release");
         lblTitle.Text = $"What's New in {AppConstants.AppVersion}";
         lnkCommunity.Text = CommunityText;
         rtbFeatures.Text = ReleaseFeaturesText;

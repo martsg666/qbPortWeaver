@@ -16,6 +16,10 @@ partial class SettingsForm
     private void InitializeComponent()
     {
         components = new System.ComponentModel.Container();
+        tabSettings               = new TabControl();
+        tabGeneral                = new TabPage();
+        tabClient                 = new TabPage();
+        tabExtra                  = new TabPage();
         grpGeneral                = new GroupBox();
         lblVpnProvider            = new Label();
         cboVpnProvider            = new ComboBox();
@@ -31,6 +35,11 @@ partial class SettingsForm
         lblRecoveryCycles         = new Label();
         nudRecoveryCycles         = new NumericUpDown();
         lblRecoveryCyclesUnit     = new Label();
+        chkPortClosedRecovery     = new CheckBox();
+        lblPortClosedCycles       = new Label();
+        nudPortClosedCycles       = new NumericUpDown();
+        lblPortClosedCyclesUnit   = new Label();
+        chkVerifyPort             = new CheckBox();
         chkNotifyOnPortUpdate     = new CheckBox();
         chkShowUpdateForm         = new CheckBox();
         grpQBittorrent            = new GroupBox();
@@ -93,9 +102,14 @@ partial class SettingsForm
         btnOK                = new Button();
         btnCancel            = new Button();
         toolTip              = new ToolTip(components);
+        tabSettings.SuspendLayout();
+        tabGeneral.SuspendLayout();
+        tabClient.SuspendLayout();
+        tabExtra.SuspendLayout();
         grpGeneral.SuspendLayout();
         ((System.ComponentModel.ISupportInitialize)nudUpdateInterval).BeginInit();
         ((System.ComponentModel.ISupportInitialize)nudRecoveryCycles).BeginInit();
+        ((System.ComponentModel.ISupportInitialize)nudPortClosedCycles).BeginInit();
         grpQBittorrent.SuspendLayout();
         ((System.ComponentModel.ISupportInitialize)nudDefaultPort).BeginInit();
         grpDeluge.SuspendLayout();
@@ -115,15 +129,22 @@ partial class SettingsForm
         grpGeneral.Controls.Add(lblNatPmpAdapter);
         grpGeneral.Controls.Add(cboNatPmpAdapter);
         grpGeneral.Controls.Add(btnRefreshAdapters);
+        grpGeneral.Controls.Add(chkVerifyPort);
         grpGeneral.Controls.Add(chkAutoRecovery);
         grpGeneral.Controls.Add(lblRecoveryCycles);
         grpGeneral.Controls.Add(nudRecoveryCycles);
         grpGeneral.Controls.Add(lblRecoveryCyclesUnit);
+        grpGeneral.Controls.Add(chkPortClosedRecovery);
+        grpGeneral.Controls.Add(lblPortClosedCycles);
+        grpGeneral.Controls.Add(nudPortClosedCycles);
+        grpGeneral.Controls.Add(lblPortClosedCyclesUnit);
         grpGeneral.Controls.Add(chkNotifyOnPortUpdate);
         grpGeneral.Controls.Add(chkShowUpdateForm);
-        grpGeneral.Location = new Point(8, 8);
+        // All five group boxes share one size that fills the tab page with an even margin,
+        // so every tab shows an identical frame regardless of how much content it holds.
+        grpGeneral.Location = new Point(6, 6);
         grpGeneral.Name     = "grpGeneral";
-        grpGeneral.Size     = new Size(484, 249);
+        grpGeneral.Size     = new Size(488, 352);
         grpGeneral.TabIndex = 0;
         grpGeneral.TabStop  = false;
         grpGeneral.Text     = "General";
@@ -188,43 +209,81 @@ partial class SettingsForm
         btnRefreshAdapters.TabIndex = 9;
         btnRefreshAdapters.Text     = "↻";
         btnRefreshAdapters.Click   += btnRefreshAdapters_Click;
+        // Two independent recovery triggers for the same VPN-restart action, each nested
+        // under its real dependency: port-closed recovery consumes verification results, so
+        // it indents under "Verify port after sync"; failed-sync recovery stands alone.
+        // Sub-rows indent in 18px steps so each row starts under its parent checkbox's text,
+        // and the numeric fields sit in the shared control column at x=148.
+        chkVerifyPort.AutoSize         = true;
+        chkVerifyPort.Location         = new Point(12, 143);
+        chkVerifyPort.Name             = "chkVerifyPort";
+        chkVerifyPort.Size             = new Size(150, 19);
+        chkVerifyPort.TabIndex         = 10;
+        chkVerifyPort.Text             = "Verify port after sync";
+        chkVerifyPort.CheckedChanged  += chkVerifyPort_CheckedChanged;
+        chkPortClosedRecovery.AutoSize       = true;
+        chkPortClosedRecovery.Location       = new Point(30, 165);
+        chkPortClosedRecovery.Name           = "chkPortClosedRecovery";
+        chkPortClosedRecovery.Size           = new Size(280, 19);
+        chkPortClosedRecovery.TabIndex       = 11;
+        chkPortClosedRecovery.Text           = "Restart VPN when the port stays closed";
+        chkPortClosedRecovery.CheckedChanged += chkPortClosedRecovery_CheckedChanged;
+        lblPortClosedCycles.Location  = new Point(48, 187);
+        lblPortClosedCycles.Name      = "lblPortClosedCycles";
+        lblPortClosedCycles.Size      = new Size(96, 23);
+        lblPortClosedCycles.TabIndex  = 12;
+        lblPortClosedCycles.Text      = "Trigger after";
+        lblPortClosedCycles.TextAlign = ContentAlignment.MiddleLeft;
+        nudPortClosedCycles.Location = new Point(148, 187);
+        nudPortClosedCycles.Maximum  = new decimal(new int[] { 10, 0, 0, 0 });
+        nudPortClosedCycles.Minimum  = new decimal(new int[] { 1, 0, 0, 0 });
+        nudPortClosedCycles.Name     = "nudPortClosedCycles";
+        nudPortClosedCycles.Size     = new Size(50, 23);
+        nudPortClosedCycles.TabIndex = 13;
+        nudPortClosedCycles.Value    = new decimal(new int[] { 3, 0, 0, 0 });
+        lblPortClosedCyclesUnit.Location  = new Point(204, 187);
+        lblPortClosedCyclesUnit.Name      = "lblPortClosedCyclesUnit";
+        lblPortClosedCyclesUnit.Size      = new Size(240, 23);
+        lblPortClosedCyclesUnit.TabIndex  = 14;
+        lblPortClosedCyclesUnit.Text      = "confirmed closed checks";
+        lblPortClosedCyclesUnit.TextAlign = ContentAlignment.MiddleLeft;
         chkAutoRecovery.AutoSize       = true;
-        chkAutoRecovery.Location       = new Point(12, 143);
+        chkAutoRecovery.Location       = new Point(12, 215);
         chkAutoRecovery.Name           = "chkAutoRecovery";
-        chkAutoRecovery.Size           = new Size(164, 19);
-        chkAutoRecovery.TabIndex       = 10;
-        chkAutoRecovery.Text           = "Enable auto-recovery";
+        chkAutoRecovery.Size           = new Size(230, 19);
+        chkAutoRecovery.TabIndex       = 15;
+        chkAutoRecovery.Text           = "Restart VPN when no port is assigned";
         chkAutoRecovery.CheckedChanged += chkAutoRecovery_CheckedChanged;
-        lblRecoveryCycles.Location  = new Point(28, 165);
+        lblRecoveryCycles.Location  = new Point(30, 237);
         lblRecoveryCycles.Name      = "lblRecoveryCycles";
-        lblRecoveryCycles.Size      = new Size(180, 23);
-        lblRecoveryCycles.TabIndex  = 11;
-        lblRecoveryCycles.Text      = "Trigger recovery after";
+        lblRecoveryCycles.Size      = new Size(114, 23);
+        lblRecoveryCycles.TabIndex  = 16;
+        lblRecoveryCycles.Text      = "Trigger after";
         lblRecoveryCycles.TextAlign = ContentAlignment.MiddleLeft;
-        nudRecoveryCycles.Location = new Point(212, 165);
+        nudRecoveryCycles.Location = new Point(148, 237);
         nudRecoveryCycles.Maximum  = new decimal(new int[] { 10, 0, 0, 0 });
         nudRecoveryCycles.Minimum  = new decimal(new int[] { 1, 0, 0, 0 });
         nudRecoveryCycles.Name     = "nudRecoveryCycles";
         nudRecoveryCycles.Size     = new Size(50, 23);
-        nudRecoveryCycles.TabIndex = 12;
+        nudRecoveryCycles.TabIndex = 17;
         nudRecoveryCycles.Value    = new decimal(new int[] { 3, 0, 0, 0 });
-        lblRecoveryCyclesUnit.Location  = new Point(266, 165);
+        lblRecoveryCyclesUnit.Location  = new Point(204, 237);
         lblRecoveryCyclesUnit.Name      = "lblRecoveryCyclesUnit";
-        lblRecoveryCyclesUnit.Size      = new Size(202, 23);
-        lblRecoveryCyclesUnit.TabIndex  = 13;
+        lblRecoveryCyclesUnit.Size      = new Size(240, 23);
+        lblRecoveryCyclesUnit.TabIndex  = 18;
         lblRecoveryCyclesUnit.Text      = "consecutive failed cycles";
         lblRecoveryCyclesUnit.TextAlign = ContentAlignment.MiddleLeft;
         chkNotifyOnPortUpdate.AutoSize  = true;
-        chkNotifyOnPortUpdate.Location  = new Point(12, 192);
+        chkNotifyOnPortUpdate.Location  = new Point(12, 265);
         chkNotifyOnPortUpdate.Name      = "chkNotifyOnPortUpdate";
         chkNotifyOnPortUpdate.Size      = new Size(230, 19);
-        chkNotifyOnPortUpdate.TabIndex  = 14;
+        chkNotifyOnPortUpdate.TabIndex  = 19;
         chkNotifyOnPortUpdate.Text      = "Show notification when port updates";
         chkShowUpdateForm.AutoSize      = true;
-        chkShowUpdateForm.Location      = new Point(12, 220);
+        chkShowUpdateForm.Location      = new Point(12, 293);
         chkShowUpdateForm.Name          = "chkShowUpdateForm";
         chkShowUpdateForm.Size          = new Size(220, 19);
-        chkShowUpdateForm.TabIndex      = 15;
+        chkShowUpdateForm.TabIndex      = 20;
         chkShowUpdateForm.Text          = "Show update form on startup";
         // ── grpQBittorrent ────────────────────────────────────────────
         grpQBittorrent.Controls.Add(lblQBittorrentURL);
@@ -245,9 +304,9 @@ partial class SettingsForm
         grpQBittorrent.Controls.Add(nudDefaultPort);
         grpQBittorrent.Controls.Add(chkWarnOnInterfaceMismatch);
         grpQBittorrent.Controls.Add(chkRestartOnDisconnect);
-        grpQBittorrent.Location = new Point(8, 265);
+        grpQBittorrent.Location = new Point(6, 6);
         grpQBittorrent.Name     = "grpQBittorrent";
-        grpQBittorrent.Size     = new Size(484, 312);
+        grpQBittorrent.Size     = new Size(488, 352);
         grpQBittorrent.TabIndex = 1;
         grpQBittorrent.TabStop  = false;
         grpQBittorrent.Text     = "qBittorrent";
@@ -364,9 +423,9 @@ partial class SettingsForm
         grpDeluge.Controls.Add(chkForceStartDeluge);
         grpDeluge.Controls.Add(lblDelugeDefaultPort);
         grpDeluge.Controls.Add(nudDelugeDefaultPort);
-        grpDeluge.Location = new Point(8, 265);
+        grpDeluge.Location = new Point(6, 6);
         grpDeluge.Name     = "grpDeluge";
-        grpDeluge.Size     = new Size(484, 312);
+        grpDeluge.Size     = new Size(488, 352);
         grpDeluge.TabIndex = 3;
         grpDeluge.TabStop  = false;
         grpDeluge.Text     = "Deluge";
@@ -464,9 +523,9 @@ partial class SettingsForm
         grpTransmission.Controls.Add(chkForceStartTransmission);
         grpTransmission.Controls.Add(lblTransmissionDefaultPort);
         grpTransmission.Controls.Add(nudTransmissionDefaultPort);
-        grpTransmission.Location = new Point(8, 265);
+        grpTransmission.Location = new Point(6, 6);
         grpTransmission.Name     = "grpTransmission";
-        grpTransmission.Size     = new Size(484, 312);
+        grpTransmission.Size     = new Size(488, 352);
         grpTransmission.TabIndex = 2;
         grpTransmission.TabStop  = false;
         grpTransmission.Text     = "Transmission";
@@ -563,9 +622,9 @@ partial class SettingsForm
         grpExtra.Controls.Add(lblPostUpdateCmd);
         grpExtra.Controls.Add(txtPostUpdateCmd);
         grpExtra.Controls.Add(chkDebugMode);
-        grpExtra.Location = new Point(8, 585);
+        grpExtra.Location = new Point(6, 6);
         grpExtra.Name     = "grpExtra";
-        grpExtra.Size     = new Size(484, 126);
+        grpExtra.Size     = new Size(488, 352);
         grpExtra.TabIndex = 4;
         grpExtra.TabStop  = false;
         grpExtra.Text     = "Extra";
@@ -596,18 +655,44 @@ partial class SettingsForm
         chkDebugMode.Size     = new Size(142, 19);
         chkDebugMode.TabIndex = 4;
         chkDebugMode.Text     = "Enable debug logging";
+        // ── tabSettings ───────────────────────────────────────────────
+        // Tabs keep the dialog short enough for small screens (the single-column layout
+        // outgrew a 1080p display at 125% scaling). The three client groups overlay each
+        // other on the Client tab; their existing visibility toggling is unchanged.
+        tabSettings.Controls.Add(tabGeneral);
+        tabSettings.Controls.Add(tabClient);
+        tabSettings.Controls.Add(tabExtra);
+        tabSettings.Location      = new Point(6, 8);
+        tabSettings.Name          = "tabSettings";
+        tabSettings.SelectedIndex = 0;
+        tabSettings.Size          = new Size(508, 396);
+        tabSettings.TabIndex      = 0;
+        // UseVisualStyleBackColor is deliberately left false on all pages: the visual-style
+        // page background renders light even in dark mode, leaving a white band wherever the
+        // group box does not cover the page. Default (Control color) follows the app theme.
+        tabGeneral.Controls.Add(grpGeneral);
+        tabGeneral.Name = "tabGeneral";
+        tabGeneral.Text = "General";
+        tabClient.Controls.Add(grpQBittorrent);
+        tabClient.Controls.Add(grpDeluge);
+        tabClient.Controls.Add(grpTransmission);
+        tabClient.Name = "tabClient";
+        tabClient.Text = "Client";
+        tabExtra.Controls.Add(grpExtra);
+        tabExtra.Name = "tabExtra";
+        tabExtra.Text = "Extra";
         // ── Buttons ───────────────────────────────────────────────────
-        btnOK.Location = new Point(320, 723);
+        btnOK.Location = new Point(340, 414);
         btnOK.Name     = "btnOK";
         btnOK.Size     = new Size(82, 28);
-        btnOK.TabIndex = 5;
+        btnOK.TabIndex = 1;
         btnOK.Text     = "OK";
         btnOK.Click   += btnOK_Click;
         btnCancel.DialogResult = DialogResult.Cancel;
-        btnCancel.Location     = new Point(410, 723);
+        btnCancel.Location     = new Point(430, 414);
         btnCancel.Name         = "btnCancel";
         btnCancel.Size         = new Size(82, 28);
-        btnCancel.TabIndex     = 6;
+        btnCancel.TabIndex     = 2;
         btnCancel.Text         = "Cancel";
         btnCancel.Click       += btnCancel_Click;
         // ── SettingsForm ──────────────────────────────────────────────
@@ -615,12 +700,8 @@ partial class SettingsForm
         AutoScaleDimensions = new SizeF(7F, 15F);
         AutoScaleMode       = AutoScaleMode.Font;
         CancelButton        = btnCancel;
-        ClientSize          = new Size(500, 762);
-        Controls.Add(grpGeneral);
-        Controls.Add(grpQBittorrent);
-        Controls.Add(grpDeluge);
-        Controls.Add(grpTransmission);
-        Controls.Add(grpExtra);
+        ClientSize          = new Size(520, 450);
+        Controls.Add(tabSettings);
         Controls.Add(btnOK);
         Controls.Add(btnCancel);
         FormBorderStyle = FormBorderStyle.FixedDialog;
@@ -635,6 +716,7 @@ partial class SettingsForm
         grpGeneral.PerformLayout();
         ((System.ComponentModel.ISupportInitialize)nudUpdateInterval).EndInit();
         ((System.ComponentModel.ISupportInitialize)nudRecoveryCycles).EndInit();
+        ((System.ComponentModel.ISupportInitialize)nudPortClosedCycles).EndInit();
         grpQBittorrent.ResumeLayout(false);
         grpQBittorrent.PerformLayout();
         ((System.ComponentModel.ISupportInitialize)nudDefaultPort).EndInit();
@@ -646,8 +728,17 @@ partial class SettingsForm
         ((System.ComponentModel.ISupportInitialize)nudTransmissionDefaultPort).EndInit();
         grpExtra.ResumeLayout(false);
         grpExtra.PerformLayout();
+        tabGeneral.ResumeLayout(false);
+        tabClient.ResumeLayout(false);
+        tabExtra.ResumeLayout(false);
+        tabSettings.ResumeLayout(false);
         ResumeLayout(false);
     }
+
+    private TabControl    tabSettings;
+    private TabPage       tabGeneral;
+    private TabPage       tabClient;
+    private TabPage       tabExtra;
 
     private GroupBox      grpGeneral;
     private Label         lblBitTorrentClient;
@@ -664,6 +755,11 @@ partial class SettingsForm
     private Label         lblRecoveryCycles;
     private NumericUpDown nudRecoveryCycles;
     private Label         lblRecoveryCyclesUnit;
+    private CheckBox      chkPortClosedRecovery;
+    private Label         lblPortClosedCycles;
+    private NumericUpDown nudPortClosedCycles;
+    private Label         lblPortClosedCyclesUnit;
+    private CheckBox      chkVerifyPort;
     private CheckBox      chkNotifyOnPortUpdate;
     private CheckBox      chkShowUpdateForm;
 

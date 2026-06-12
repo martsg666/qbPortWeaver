@@ -13,6 +13,8 @@ public enum SyncState
     Disabled,
     /// <summary>An error occurred during the sync cycle (e.g. client unreachable, port update failed).</summary>
     Error,
+    /// <summary>Sync cycles are temporarily paused by the user via the tray menu. Not persisted - a restart always resumes.</summary>
+    Paused,
 }
 
 /// <summary>Snapshot of the tray icon state after a sync cycle, raised via <see cref="PortSyncService.SyncCompleted"/>.</summary>

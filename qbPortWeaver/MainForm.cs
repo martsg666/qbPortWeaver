@@ -12,11 +12,14 @@ public partial class MainForm : Form
     // Menu-item fields are declared in the order they appear in the tray menu (top to bottom).
     private ToolStripMenuItem _updateAvailableMenuItem = null!;
     private ToolStripSeparator _updateSeparator = null!;
+    private ToolStripMenuItem _pauseSyncMenuItem = null!;
     private ToolStripMenuItem _showLogsMenuItem = null!;
     private ToolStripMenuItem _checkUpdatesMenuItem = null!;
     private ToolStripMenuItem _autoStartMenuItem = null!;
 
     private const string ShowLogsMenuText = "Show Logs";
+    private const string PauseSyncingMenuText = "Pause Syncing";
+    private const string ResumeSyncingMenuText = "Resume Syncing";
     private const string LogAlertBalloonMessage = "Check the log viewer for warnings or errors.";
     private const int WsExToolWindow = 0x80; // hides the form from Alt+Tab
 
@@ -68,6 +71,12 @@ public partial class MainForm : Form
 
     // Manual sync triggered flag (thread-safe with volatile)
     private volatile bool _manualSyncTriggered;
+
+    // Pause flag for the sync loop (thread-safe with volatile). Deliberately in-memory only:
+    // a restart always resumes syncing, so the app can never silently sit in a paused state
+    // the user forgot about. While paused the whole cycle body is skipped - port sync AND the
+    // media import kick-off - because the cycle is the unit the loop schedules.
+    private volatile bool _syncPaused;
 
     // Shutdown cancellation token to signal graceful exit
     private readonly CancellationTokenSource _shutdownCts = new();
@@ -296,8 +305,11 @@ public partial class MainForm : Form
         _updateSeparator = new ToolStripSeparator { Visible = false };
         _trayMenu.Items.Add(_updateSeparator);
 
-        // Sync action
+        // Sync actions
         _trayMenu.Items.Add("Sync Port Now", null, syncPortNow_Click);
+        _pauseSyncMenuItem = new ToolStripMenuItem(PauseSyncingMenuText);
+        _pauseSyncMenuItem.Click += pauseSync_Click;
+        _trayMenu.Items.Add(_pauseSyncMenuItem);
         _trayMenu.Items.Add(new ToolStripSeparator());
 
         // Logs
@@ -382,12 +394,33 @@ public partial class MainForm : Form
             ShowLogViewer();
     }
 
-    // Triggers an immediate sync cycle by interrupting the current wait interval
+    // Triggers an immediate sync cycle by interrupting the current wait interval.
+    // Works while paused too: the loop runs exactly one cycle (the manual flag overrides the
+    // pause check), then returns to the paused state.
     private void syncPortNow_Click(object? sender, EventArgs e)
     {
         _manualSyncTriggered = true;
         LogManager.Instance.LogMessage("Manual sync requested", LogLevel.Info);
         InterruptDelay();
+    }
+
+    // Toggles the sync pause. On pause the tray feedback flips immediately (the loop itself
+    // only notices at its next wakeup, but no cycle can start once the flag is set, so the
+    // pause is already effective). On resume the delay is interrupted so a cycle starts now.
+    private void pauseSync_Click(object? sender, EventArgs e)
+    {
+        _syncPaused = !_syncPaused;
+        _pauseSyncMenuItem.Text = _syncPaused ? ResumeSyncingMenuText : PauseSyncingMenuText;
+        if (_syncPaused)
+        {
+            LogManager.Instance.LogMessage("Syncing paused by user", LogLevel.Info);
+            OnSyncCompleted(new TrayStatus(SyncState.Paused, null, "Port sync paused"));
+        }
+        else
+        {
+            LogManager.Instance.LogMessage("Syncing resumed by user", LogLevel.Info);
+            InterruptDelay();
+        }
     }
 
     // Interrupts the current inter-cycle delay so the next sync cycle starts immediately
@@ -402,7 +435,8 @@ public partial class MainForm : Form
 
     private void exit_Click(object? sender, EventArgs e) => Close(); // NOSONAR S2325 - Close() is an instance method, handler cannot be static
 
-    // Called by PortSyncService when a sync cycle completes
+    // Called by PortSyncService when a sync cycle completes, and directly by the pause
+    // handling (pauseSync_Click and the paused loop branch) to publish the Paused status.
     private void OnSyncCompleted(TrayStatus status)
     {
         _lastSyncStatus = status;
@@ -436,6 +470,20 @@ public partial class MainForm : Form
             int updateInterval = AppConstants.DefaultUpdateIntervalSeconds;
             try
             {
+                // Paused: skip the whole cycle body (port sync and media import). A manual
+                // "Sync Port Now" click overrides the pause for exactly one cycle; the flag is
+                // consumed by the normal manual-sync handling after that cycle completes.
+                if (_syncPaused && !_manualSyncTriggered)
+                {
+                    LogManager.Instance.LogDebug("MainForm.RunMainLoopAsync: Sync paused - skipping cycle");
+                    // Re-publish the paused tray status each interval: a one-shot manual sync
+                    // while paused leaves that cycle's result on the tray; this reverts it.
+                    OnSyncCompleted(new TrayStatus(SyncState.Paused, null, "Port sync paused"));
+                    if (await ShutdownRequestedDuringDelayAsync(updateInterval))
+                        return;
+                    continue;
+                }
+
                 await _updateSemaphore.WaitAsync(_shutdownCts.Token);
                 try
                 {
@@ -673,6 +721,7 @@ public partial class MainForm : Form
             SyncState.VpnDisconnected => _iconWarning ?? _iconBase!,
             SyncState.Error => _iconError ?? _iconBase!,
             SyncState.Disabled => _iconBase!,
+            SyncState.Paused => _iconBase!,
             _ => _iconBase!
         };
     }
@@ -686,6 +735,7 @@ public partial class MainForm : Form
             { State: SyncState.VpnDisconnected, Port: int p } => $"VPN not connected | Default port {p}",
             { State: SyncState.VpnDisconnected } => "VPN not connected",
             { State: SyncState.Disabled } => "Port sync disabled",
+            { State: SyncState.Paused } => "Port sync paused",
             { State: SyncState.Error, Message: var m } => $"Error | {m}",
             _ => "Starting\u2026"
         };

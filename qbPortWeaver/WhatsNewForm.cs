@@ -21,6 +21,9 @@ public partial class WhatsNewForm : Form
         "A new Pause Syncing item in the tray menu temporarily stops sync cycles, including media imports, " +
         "without changing any settings. While paused, Sync Port Now still runs a single cycle on demand. " +
         "Syncing always resumes when the application restarts.\n\n" +
+        "Tabbed Settings\n" +
+        "The Settings window is now organised into General, Client and Extra tabs, " +
+        "so it fits comfortably on smaller screens.\n\n" +
         "Accurate update check results\n" +
         "If the update check cannot reach GitHub (for example when you are offline), it now tells you " +
         "it could not check instead of reporting that you are up to date.\n\n" +

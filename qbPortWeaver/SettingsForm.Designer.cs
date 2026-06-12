@@ -16,6 +16,10 @@ partial class SettingsForm
     private void InitializeComponent()
     {
         components = new System.ComponentModel.Container();
+        tabSettings               = new TabControl();
+        tabGeneral                = new TabPage();
+        tabClient                 = new TabPage();
+        tabExtra                  = new TabPage();
         grpGeneral                = new GroupBox();
         lblVpnProvider            = new Label();
         cboVpnProvider            = new ComboBox();
@@ -98,6 +102,10 @@ partial class SettingsForm
         btnOK                = new Button();
         btnCancel            = new Button();
         toolTip              = new ToolTip(components);
+        tabSettings.SuspendLayout();
+        tabGeneral.SuspendLayout();
+        tabClient.SuspendLayout();
+        tabExtra.SuspendLayout();
         grpGeneral.SuspendLayout();
         ((System.ComponentModel.ISupportInitialize)nudUpdateInterval).BeginInit();
         ((System.ComponentModel.ISupportInitialize)nudRecoveryCycles).BeginInit();
@@ -132,7 +140,7 @@ partial class SettingsForm
         grpGeneral.Controls.Add(lblPortClosedCyclesUnit);
         grpGeneral.Controls.Add(chkNotifyOnPortUpdate);
         grpGeneral.Controls.Add(chkShowUpdateForm);
-        grpGeneral.Location = new Point(8, 8);
+        grpGeneral.Location = new Point(3, 6);
         grpGeneral.Name     = "grpGeneral";
         grpGeneral.Size     = new Size(484, 327);
         grpGeneral.TabIndex = 0;
@@ -289,7 +297,7 @@ partial class SettingsForm
         grpQBittorrent.Controls.Add(nudDefaultPort);
         grpQBittorrent.Controls.Add(chkWarnOnInterfaceMismatch);
         grpQBittorrent.Controls.Add(chkRestartOnDisconnect);
-        grpQBittorrent.Location = new Point(8, 343);
+        grpQBittorrent.Location = new Point(3, 6);
         grpQBittorrent.Name     = "grpQBittorrent";
         grpQBittorrent.Size     = new Size(484, 312);
         grpQBittorrent.TabIndex = 1;
@@ -408,7 +416,7 @@ partial class SettingsForm
         grpDeluge.Controls.Add(chkForceStartDeluge);
         grpDeluge.Controls.Add(lblDelugeDefaultPort);
         grpDeluge.Controls.Add(nudDelugeDefaultPort);
-        grpDeluge.Location = new Point(8, 343);
+        grpDeluge.Location = new Point(3, 6);
         grpDeluge.Name     = "grpDeluge";
         grpDeluge.Size     = new Size(484, 312);
         grpDeluge.TabIndex = 3;
@@ -508,7 +516,7 @@ partial class SettingsForm
         grpTransmission.Controls.Add(chkForceStartTransmission);
         grpTransmission.Controls.Add(lblTransmissionDefaultPort);
         grpTransmission.Controls.Add(nudTransmissionDefaultPort);
-        grpTransmission.Location = new Point(8, 343);
+        grpTransmission.Location = new Point(3, 6);
         grpTransmission.Name     = "grpTransmission";
         grpTransmission.Size     = new Size(484, 312);
         grpTransmission.TabIndex = 2;
@@ -607,7 +615,7 @@ partial class SettingsForm
         grpExtra.Controls.Add(lblPostUpdateCmd);
         grpExtra.Controls.Add(txtPostUpdateCmd);
         grpExtra.Controls.Add(chkDebugMode);
-        grpExtra.Location = new Point(8, 663);
+        grpExtra.Location = new Point(3, 6);
         grpExtra.Name     = "grpExtra";
         grpExtra.Size     = new Size(484, 126);
         grpExtra.TabIndex = 4;
@@ -640,18 +648,44 @@ partial class SettingsForm
         chkDebugMode.Size     = new Size(142, 19);
         chkDebugMode.TabIndex = 4;
         chkDebugMode.Text     = "Enable debug logging";
+        // ── tabSettings ───────────────────────────────────────────────
+        // Tabs keep the dialog short enough for small screens (the single-column layout
+        // outgrew a 1080p display at 125% scaling). The three client groups overlay each
+        // other on the Client tab; their existing visibility toggling is unchanged.
+        tabSettings.Controls.Add(tabGeneral);
+        tabSettings.Controls.Add(tabClient);
+        tabSettings.Controls.Add(tabExtra);
+        tabSettings.Location      = new Point(6, 8);
+        tabSettings.Name          = "tabSettings";
+        tabSettings.SelectedIndex = 0;
+        tabSettings.Size          = new Size(498, 376);
+        tabSettings.TabIndex      = 0;
+        tabGeneral.Controls.Add(grpGeneral);
+        tabGeneral.Name = "tabGeneral";
+        tabGeneral.Text = "General";
+        tabGeneral.UseVisualStyleBackColor = true;
+        tabClient.Controls.Add(grpQBittorrent);
+        tabClient.Controls.Add(grpDeluge);
+        tabClient.Controls.Add(grpTransmission);
+        tabClient.Name = "tabClient";
+        tabClient.Text = "Client";
+        tabClient.UseVisualStyleBackColor = true;
+        tabExtra.Controls.Add(grpExtra);
+        tabExtra.Name = "tabExtra";
+        tabExtra.Text = "Extra";
+        tabExtra.UseVisualStyleBackColor = true;
         // ── Buttons ───────────────────────────────────────────────────
-        btnOK.Location = new Point(320, 801);
+        btnOK.Location = new Point(330, 394);
         btnOK.Name     = "btnOK";
         btnOK.Size     = new Size(82, 28);
-        btnOK.TabIndex = 5;
+        btnOK.TabIndex = 1;
         btnOK.Text     = "OK";
         btnOK.Click   += btnOK_Click;
         btnCancel.DialogResult = DialogResult.Cancel;
-        btnCancel.Location     = new Point(410, 801);
+        btnCancel.Location     = new Point(420, 394);
         btnCancel.Name         = "btnCancel";
         btnCancel.Size         = new Size(82, 28);
-        btnCancel.TabIndex     = 6;
+        btnCancel.TabIndex     = 2;
         btnCancel.Text         = "Cancel";
         btnCancel.Click       += btnCancel_Click;
         // ── SettingsForm ──────────────────────────────────────────────
@@ -659,12 +693,8 @@ partial class SettingsForm
         AutoScaleDimensions = new SizeF(7F, 15F);
         AutoScaleMode       = AutoScaleMode.Font;
         CancelButton        = btnCancel;
-        ClientSize          = new Size(500, 840);
-        Controls.Add(grpGeneral);
-        Controls.Add(grpQBittorrent);
-        Controls.Add(grpDeluge);
-        Controls.Add(grpTransmission);
-        Controls.Add(grpExtra);
+        ClientSize          = new Size(510, 432);
+        Controls.Add(tabSettings);
         Controls.Add(btnOK);
         Controls.Add(btnCancel);
         FormBorderStyle = FormBorderStyle.FixedDialog;
@@ -691,8 +721,17 @@ partial class SettingsForm
         ((System.ComponentModel.ISupportInitialize)nudTransmissionDefaultPort).EndInit();
         grpExtra.ResumeLayout(false);
         grpExtra.PerformLayout();
+        tabGeneral.ResumeLayout(false);
+        tabClient.ResumeLayout(false);
+        tabExtra.ResumeLayout(false);
+        tabSettings.ResumeLayout(false);
         ResumeLayout(false);
     }
+
+    private TabControl    tabSettings;
+    private TabPage       tabGeneral;
+    private TabPage       tabClient;
+    private TabPage       tabExtra;
 
     private GroupBox      grpGeneral;
     private Label         lblBitTorrentClient;

@@ -662,10 +662,11 @@ partial class SettingsForm
         tabSettings.Controls.Add(tabGeneral);
         tabSettings.Controls.Add(tabClient);
         tabSettings.Controls.Add(tabExtra);
+        tabSettings.ItemSize      = new Size(80, 28);
         tabSettings.Location      = new Point(6, 8);
         tabSettings.Name          = "tabSettings";
         tabSettings.SelectedIndex = 0;
-        tabSettings.Size          = new Size(508, 396);
+        tabSettings.Size          = new Size(508, 403);
         tabSettings.TabIndex      = 0;
         // UseVisualStyleBackColor is deliberately left false on all pages: the visual-style
         // page background renders light even in dark mode, leaving a white band wherever the
@@ -682,14 +683,14 @@ partial class SettingsForm
         tabExtra.Name = "tabExtra";
         tabExtra.Text = "Extra";
         // ── Buttons ───────────────────────────────────────────────────
-        btnOK.Location = new Point(340, 414);
+        btnOK.Location = new Point(340, 421);
         btnOK.Name     = "btnOK";
         btnOK.Size     = new Size(82, 28);
         btnOK.TabIndex = 1;
         btnOK.Text     = "OK";
         btnOK.Click   += btnOK_Click;
         btnCancel.DialogResult = DialogResult.Cancel;
-        btnCancel.Location     = new Point(430, 414);
+        btnCancel.Location     = new Point(430, 421);
         btnCancel.Name         = "btnCancel";
         btnCancel.Size         = new Size(82, 28);
         btnCancel.TabIndex     = 2;
@@ -700,7 +701,7 @@ partial class SettingsForm
         AutoScaleDimensions = new SizeF(7F, 15F);
         AutoScaleMode       = AutoScaleMode.Font;
         CancelButton        = btnCancel;
-        ClientSize          = new Size(520, 450);
+        ClientSize          = new Size(520, 457);
         Controls.Add(tabSettings);
         Controls.Add(btnOK);
         Controls.Add(btnCancel);

@@ -625,7 +625,7 @@ public sealed class PortSyncService
         }
         else
         {
-            HandlePortClosedResult(manager.ClientName, port);
+            HandlePortClosedResult(manager.ClientName, port, config);
             await MaybeTriggerPortClosedRecoveryAsync(config, cancellationToken).ConfigureAwait(false);
         }
     }
@@ -649,12 +649,15 @@ public sealed class PortSyncService
     // Confirmed-closed logs at Warn every cycle so the alert badge tracks the persistent
     // condition (same pattern as the interface mismatch check); the PortVerificationFailed
     // balloon fires only on the transition into the confirmed state.
-    private void HandlePortClosedResult(string clientName, int port)
+    private void HandlePortClosedResult(string clientName, int port, SyncConfig config)
     {
         if (_portConfirmedClosed)
         {
             _confirmedClosedCount++;
-            LogManager.Instance.LogMessage($"{clientName} port {port} is still not reachable from outside", LogLevel.Warn);
+            string closedSuffix = config.PortClosedRecoveryEnabled
+                ? $" ({_confirmedClosedCount}/{config.PortClosedRecoveryCycles} checks for recovery)"
+                : $" (check {_confirmedClosedCount})";
+            LogManager.Instance.LogMessage($"{clientName} port {port} is still not reachable from outside{closedSuffix}", LogLevel.Warn);
             return;
         }
         if (!_portCheckPendingConfirmation)
@@ -667,7 +670,10 @@ public sealed class PortSyncService
         _portCheckPendingConfirmation = false;
         _portConfirmedClosed = true;
         _confirmedClosedCount = 1;
-        LogManager.Instance.LogMessage($"{clientName} port {port} is not reachable from outside (confirmed by two checks)", LogLevel.Warn);
+        string confirmedSuffix = config.PortClosedRecoveryEnabled
+            ? $" (1/{config.PortClosedRecoveryCycles} checks for recovery)"
+            : "";
+        LogManager.Instance.LogMessage($"{clientName} port {port} is not reachable from outside (confirmed by two checks){confirmedSuffix}", LogLevel.Warn);
         try { PortVerificationFailed?.Invoke($"{clientName} port {port} is not reachable from the outside."); }
         catch (Exception ex) { LogManager.Instance.LogMessage($"PortVerificationFailed handler failed: {ex.Message}", LogLevel.Warn); }
     }

@@ -18,6 +18,10 @@ public sealed class TransmissionClient : BitTorrentClientBase
     private const int WindowCloseWaitMs = 3000;
     private const string RpcPath = "/transmission/rpc";
     private const string SessionIdHeader = "X-Transmission-Session-Id";
+    private const string JsonContentType = "application/json";
+    private const string JsonPropArguments = "arguments";
+    private const string JsonPropResult = "result";
+    private const string RpcResultSuccess = "success";
 
     private readonly string _userName;
     private string? _sessionId;
@@ -131,14 +135,14 @@ public sealed class TransmissionClient : BitTorrentClientBase
 
             // Surface RPC-level errors (e.g. "method not allowed", session conflicts) with the
             // actual server message before falling through to the generic arguments-missing path.
-            if (root.TryGetProperty("result", out var rpcResult) &&
-                !string.Equals(rpcResult.GetString(), "success", StringComparison.OrdinalIgnoreCase))
+            if (root.TryGetProperty(JsonPropResult, out var rpcResult) &&
+                !string.Equals(rpcResult.GetString(), RpcResultSuccess, StringComparison.OrdinalIgnoreCase))
             {
                 LogManager.Instance.LogMessage($"{ClientName} RPC returned non-success result for session-get: {rpcResult.GetString()}", LogLevel.Error);
                 return (null, null);
             }
 
-            if (!root.TryGetProperty("arguments", out var argsElement))
+            if (!root.TryGetProperty(JsonPropArguments, out var argsElement))
             {
                 LogManager.Instance.LogDebug("TransmissionClient.GetPreferencesAsync: 'arguments' key missing from RPC response");
                 return (null, null);
@@ -185,8 +189,8 @@ public sealed class TransmissionClient : BitTorrentClientBase
 
             var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
             using var doc = JsonDocument.Parse(json);
-            if (!doc.RootElement.TryGetProperty("result", out var result) ||
-                !string.Equals(result.GetString(), "success", StringComparison.OrdinalIgnoreCase))
+            if (!doc.RootElement.TryGetProperty(JsonPropResult, out var result) ||
+                !string.Equals(result.GetString(), RpcResultSuccess, StringComparison.OrdinalIgnoreCase))
             {
                 LogManager.Instance.LogMessage($"{ClientName} RPC returned non-success result for session-set", LogLevel.Error);
                 return false;
@@ -222,14 +226,14 @@ public sealed class TransmissionClient : BitTorrentClientBase
             using var doc = JsonDocument.Parse(json);
             var root = doc.RootElement;
 
-            if (root.TryGetProperty("result", out var result) &&
-                !string.Equals(result.GetString(), "success", StringComparison.OrdinalIgnoreCase))
+            if (root.TryGetProperty(JsonPropResult, out var result) &&
+                !string.Equals(result.GetString(), RpcResultSuccess, StringComparison.OrdinalIgnoreCase))
             {
                 LogManager.Instance.LogDebug($"TransmissionClient.TestListeningPortAsync: RPC returned non-success result: {result.GetString()}");
                 return null;
             }
 
-            if (root.TryGetProperty("arguments", out var args) &&
+            if (root.TryGetProperty(JsonPropArguments, out var args) &&
                 args.TryGetProperty("port-is-open", out var open) &&
                 open.ValueKind is JsonValueKind.True or JsonValueKind.False)
                 return open.GetBoolean();
@@ -342,7 +346,7 @@ public sealed class TransmissionClient : BitTorrentClientBase
             var rpcUrl = $"{Url}{RpcPath}";
             using var request = new HttpRequestMessage(HttpMethod.Post, rpcUrl)
             {
-                Content = new StringContent(jsonBody, Encoding.UTF8, "application/json")
+                Content = new StringContent(jsonBody, Encoding.UTF8, JsonContentType)
             };
             if (_sessionId is not null)
                 request.Headers.Add(SessionIdHeader, _sessionId);
@@ -374,7 +378,7 @@ public sealed class TransmissionClient : BitTorrentClientBase
 
             using var retry = new HttpRequestMessage(HttpMethod.Post, rpcUrl)
             {
-                Content = new StringContent(jsonBody, Encoding.UTF8, "application/json")
+                Content = new StringContent(jsonBody, Encoding.UTF8, JsonContentType)
             };
             retry.Headers.Add(SessionIdHeader, _sessionId);
             var retryResponse = await HttpClient.SendAsync(retry, cancellationToken).ConfigureAwait(false);
@@ -415,7 +419,7 @@ public sealed class TransmissionClient : BitTorrentClientBase
 
             var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
             using var doc = JsonDocument.Parse(json);
-            if (!doc.RootElement.TryGetProperty("arguments", out var args) ||
+            if (!doc.RootElement.TryGetProperty(JsonPropArguments, out var args) ||
                 !args.TryGetProperty("config-dir", out var configDirEl))
             {
                 LogManager.Instance.LogDebug("TransmissionClient.TryDetectServiceModeAsync: config-dir not found in session-get response");

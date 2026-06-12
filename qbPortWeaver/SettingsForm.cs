@@ -24,6 +24,11 @@ public partial class SettingsForm : Form
     protected override void OnLoad(EventArgs e)
     {
         base.OnLoad(e);
+        // AutoSize labels have resolved their widths by the time OnLoad fires - snap NUDs flush against them.
+        nudPortClosedCycles.Left     = lblPortClosedCycles.Right + 4;
+        lblPortClosedCyclesUnit.Left = nudPortClosedCycles.Right + 4;
+        nudRecoveryCycles.Left       = lblRecoveryCycles.Right + 4;
+        lblRecoveryCyclesUnit.Left   = nudRecoveryCycles.Right + 4;
         SetupTooltips();
         LoadSettings();
     }
@@ -483,10 +488,11 @@ public partial class SettingsForm : Form
     // Enables or disables all port-sync-related controls (everything except VPN provider, update interval, and debug mode)
     private void SetPortSyncControlsEnabled(bool enabled)
     {
-        // General section - client and auto-recovery group (NAT-PMP adapter row handled by SetAdapterControlsEnabled)
+        // General section - client and auto-recovery controls (NAT-PMP adapter row handled by SetAdapterControlsEnabled)
         lblBitTorrentClient.Enabled = enabled;
         cboBitTorrentClient.Enabled = enabled;
-        grpAutoRecovery.Enabled = enabled;
+        chkVerifyPort.Enabled = enabled;
+        chkAutoRecovery.Enabled = enabled;
         UpdateAutoRecoverySubControls();
 
         // qBittorrent / Deluge / Transmission section

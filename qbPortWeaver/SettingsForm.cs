@@ -24,6 +24,7 @@ public partial class SettingsForm : Form
     protected override void OnLoad(EventArgs e)
     {
         base.OnLoad(e);
+        lblAutoRecoveryHeader.Font = new Font(lblAutoRecoveryHeader.Font, FontStyle.Bold);
         // AutoSize labels have resolved their widths by the time OnLoad fires - snap NUDs flush against them.
         nudPortClosedCycles.Left     = lblPortClosedCycles.Right + 4;
         lblPortClosedCyclesUnit.Left = nudPortClosedCycles.Right + 4;

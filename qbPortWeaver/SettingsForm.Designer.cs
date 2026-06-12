@@ -33,7 +33,6 @@ partial class SettingsForm
         btnRefreshAdapters        = new Button();
         chkNotifyOnPortUpdate     = new CheckBox();
         chkShowUpdateForm         = new CheckBox();
-        pnlSeparator              = new Panel();
         lblAutoRecoveryHeader     = new Label();
         chkVerifyPort             = new CheckBox();
         chkPortClosedRecovery     = new CheckBox();
@@ -133,7 +132,6 @@ partial class SettingsForm
         grpGeneral.Controls.Add(btnRefreshAdapters);
         grpGeneral.Controls.Add(chkNotifyOnPortUpdate);
         grpGeneral.Controls.Add(chkShowUpdateForm);
-        grpGeneral.Controls.Add(pnlSeparator);
         grpGeneral.Controls.Add(lblAutoRecoveryHeader);
         grpGeneral.Controls.Add(chkVerifyPort);
         grpGeneral.Controls.Add(chkPortClosedRecovery);
@@ -224,16 +222,9 @@ partial class SettingsForm
         chkShowUpdateForm.Name          = "chkShowUpdateForm";
         chkShowUpdateForm.TabIndex      = 11;
         chkShowUpdateForm.Text          = "Show update form on startup";
-        // A thin separator line and section label divide the notification checkboxes from the
-        // auto-recovery controls, replacing a nested group box for a lighter visual hierarchy.
         // "Trigger after" labels use AutoSize so the NUD sits immediately after the text.
-        pnlSeparator.BackColor = SystemColors.ControlDark;
-        pnlSeparator.Location  = new Point(12, 195);
-        pnlSeparator.Name      = "pnlSeparator";
-        pnlSeparator.Size      = new Size(462, 1);
-        pnlSeparator.TabStop   = false;
         lblAutoRecoveryHeader.AutoSize = true;
-        lblAutoRecoveryHeader.Location = new Point(12, 202);
+        lblAutoRecoveryHeader.Location = new Point(12, 196);
         lblAutoRecoveryHeader.Name     = "lblAutoRecoveryHeader";
         lblAutoRecoveryHeader.TabIndex = 12;
         lblAutoRecoveryHeader.Text     = "Auto-recovery";
@@ -763,7 +754,6 @@ partial class SettingsForm
     private Button        btnRefreshAdapters;
     private CheckBox      chkNotifyOnPortUpdate;
     private CheckBox      chkShowUpdateForm;
-    private Panel         pnlSeparator;
     private Label         lblAutoRecoveryHeader;
     private CheckBox      chkVerifyPort;
     private CheckBox      chkPortClosedRecovery;

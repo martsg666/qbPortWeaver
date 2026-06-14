@@ -224,6 +224,7 @@ partial class SettingsForm
         chkShowUpdateForm.Text          = "Show update form on startup";
         // "Trigger after" labels use AutoSize so the NUD sits immediately after the text.
         lblAutoRecoveryHeader.AutoSize = true;
+        lblAutoRecoveryHeader.Font     = new Font("Segoe UI", 9F, FontStyle.Bold, GraphicsUnit.Point);
         lblAutoRecoveryHeader.Location = new Point(12, 196);
         lblAutoRecoveryHeader.Name     = "lblAutoRecoveryHeader";
         lblAutoRecoveryHeader.TabIndex = 12;

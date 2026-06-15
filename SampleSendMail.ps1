@@ -26,9 +26,9 @@ $(Row 'Running'       $status.clientRunning)
 $(Row 'Port'          $status.clientPort)
 $(Row 'Previous Port' $status.clientPreviousPort)
 $(Row 'Port Changed'  $status.portChanged)
-$(Row 'Port Verified' $(if ($null -eq $status.portVerified) { 'not tested this cycle' } else { $status.portVerified }))
+$(Row 'Port Verified' $(if ($null -eq $status.portVerified) { 'Not tested this cycle' } else { $status.portVerified }))
 $(Section '[Result]')
-$(Row 'Status'  $status.status)
+$(Row 'Status'  ($status.status.Substring(0,1).ToUpper() + $status.status.Substring(1)))
 $(Row 'Message' $status.message)
 </table>
 "@

@@ -587,11 +587,15 @@ public sealed class PortSyncService
 
     // Throttles the reachability test: Transmission's and Deluge's tests contact their projects'
     // online check services, so testing every cycle would be wasteful. Tests run when the port
-    // changed this cycle, every cycle while a result awaits confirmation or the closed condition
-    // persists, and otherwise every VerifyEveryNCycles cycles.
-    private bool ShouldVerifyThisCycle(bool portChanged)
+    // changed this cycle, every cycle while a result awaits confirmation, every cycle while
+    // confirmed-closed AND port-closed recovery is enabled and still armed (so the recovery counter
+    // advances each cycle up to the trigger), and otherwise every VerifyEveryNCycles cycles. A
+    // confirmed-closed port falls through to the throttle when recovery is off OR has already fired
+    // (disarmed) - throttled tests still detect a reopen (which re-arms) without hammering the
+    // online check services every cycle for a port that may stay closed indefinitely.
+    private bool ShouldVerifyThisCycle(bool portChanged, bool portClosedRecoveryEnabled)
     {
-        if (portChanged || _portCheckPendingConfirmation || _portConfirmedClosed)
+        if (portChanged || _portCheckPendingConfirmation || (_portConfirmedClosed && portClosedRecoveryEnabled && _portClosedRecoveryArmed))
         {
             _cyclesSinceVerify = 0;
             return true;
@@ -609,7 +613,7 @@ public sealed class PortSyncService
     // (client unreachable, test service unavailable) leave the verification state unchanged.
     private async Task VerifyPortAsync(IBitTorrentClient manager, int port, SyncConfig config, Dictionary<string, object?> status, CancellationToken cancellationToken)
     {
-        if (!ShouldVerifyThisCycle(status[StatusKeys.PortChanged] is true)) return;
+        if (!ShouldVerifyThisCycle(status[StatusKeys.PortChanged] is true, config.PortClosedRecoveryEnabled)) return;
 
         bool? open = await manager.TestListeningPortAsync(cancellationToken).ConfigureAwait(false);
         if (open is null)
@@ -625,7 +629,7 @@ public sealed class PortSyncService
         }
         else
         {
-            HandlePortClosedResult(manager.ClientName, port);
+            HandlePortClosedResult(manager.ClientName, port, config);
             await MaybeTriggerPortClosedRecoveryAsync(config, cancellationToken).ConfigureAwait(false);
         }
     }
@@ -649,12 +653,19 @@ public sealed class PortSyncService
     // Confirmed-closed logs at Warn every cycle so the alert badge tracks the persistent
     // condition (same pattern as the interface mismatch check); the PortVerificationFailed
     // balloon fires only on the transition into the confirmed state.
-    private void HandlePortClosedResult(string clientName, int port)
+    private void HandlePortClosedResult(string clientName, int port, SyncConfig config)
     {
         if (_portConfirmedClosed)
         {
             _confirmedClosedCount++;
-            LogManager.Instance.LogMessage($"{clientName} port {port} is still not reachable from outside", LogLevel.Warn);
+            // Suffix only while recovery is enabled AND still armed - it shows progress toward the
+            // recovery threshold. With recovery off the count is zeroed each cycle; once recovery
+            // has fired (disarmed) the count no longer drives a trigger, so showing N/M would
+            // misleadingly climb past M while waiting for the port to reopen.
+            string closedSuffix = config.PortClosedRecoveryEnabled && _portClosedRecoveryArmed
+                ? $" ({_confirmedClosedCount}/{config.PortClosedRecoveryCycles} checks for recovery)"
+                : string.Empty;
+            LogManager.Instance.LogMessage($"{clientName} port {port} is still not reachable from outside{closedSuffix}", LogLevel.Warn);
             return;
         }
         if (!_portCheckPendingConfirmation)
@@ -667,7 +678,10 @@ public sealed class PortSyncService
         _portCheckPendingConfirmation = false;
         _portConfirmedClosed = true;
         _confirmedClosedCount = 1;
-        LogManager.Instance.LogMessage($"{clientName} port {port} is not reachable from outside (confirmed by two checks)", LogLevel.Warn);
+        string confirmedSuffix = config.PortClosedRecoveryEnabled
+            ? $" (1/{config.PortClosedRecoveryCycles} checks for recovery)"
+            : "";
+        LogManager.Instance.LogMessage($"{clientName} port {port} is not reachable from outside (confirmed by two checks){confirmedSuffix}", LogLevel.Warn);
         try { PortVerificationFailed?.Invoke($"{clientName} port {port} is not reachable from the outside."); }
         catch (Exception ex) { LogManager.Instance.LogMessage($"PortVerificationFailed handler failed: {ex.Message}", LogLevel.Warn); }
     }

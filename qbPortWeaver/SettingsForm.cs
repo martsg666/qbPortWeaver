@@ -24,6 +24,21 @@ public partial class SettingsForm : Form
     protected override void OnLoad(EventArgs e)
     {
         base.OnLoad(e);
+        // The auto-recovery rows read as inline phrases ("Trigger after [N] <unit>"), so the spinner
+        // sits flush after its indented "Trigger after" label rather than on the form's field column.
+        // PreferredSize.Width is the measured text width (correct even before this tab has laid out),
+        // so both identical rows resolve to the same X and stay aligned with each other.
+        int InlineGap = LogicalToDeviceUnits(6); // scale the 6px gap with DPI so it stays proportional at 125%+
+        nudPortClosedCycles.Left     = lblPortClosedCycles.Left + lblPortClosedCycles.PreferredSize.Width + InlineGap;
+        lblPortClosedCyclesUnit.Left = nudPortClosedCycles.Left + nudPortClosedCycles.Width + InlineGap;
+        nudRecoveryCycles.Left       = lblRecoveryCycles.Left + lblRecoveryCycles.PreferredSize.Width + InlineGap;
+        lblRecoveryCyclesUnit.Left   = nudRecoveryCycles.Left + nudRecoveryCycles.Width + InlineGap;
+
+        // The "Trigger after" labels are AutoSize (~15px tall) but share a row with the 23px-tall
+        // spinner and unit label. Pinned at the same top they float above the spinner's centre, so
+        // centre them vertically on the spinner using the measured heights.
+        lblPortClosedCycles.Top = nudPortClosedCycles.Top + (nudPortClosedCycles.Height - lblPortClosedCycles.Height) / 2;
+        lblRecoveryCycles.Top   = nudRecoveryCycles.Top + (nudRecoveryCycles.Height - lblRecoveryCycles.Height) / 2;
         SetupTooltips();
         LoadSettings();
     }
@@ -81,10 +96,10 @@ public partial class SettingsForm : Form
         toolTip.SetToolTip(chkDebugMode, "Write verbose debug entries to the log file");
         toolTip.SetToolTip(cboColorTheme, "Application color theme (System, Dark, or Light) - a restart prompt will appear if changed");
         toolTip.SetToolTip(chkVerifyPort, "After each sync, check that the port is reachable from the Internet. Transmission and Deluge use their built-in online port checkers; qBittorrent infers it from incoming peer activity (an idle client may report closed). Runs after a port change and periodically.");
-        toolTip.SetToolTip(chkAutoRecovery, "Restart the VPN service (or cycle the adapter for generic NAT-PMP gateways) after the configured number of consecutive cycles where the VPN is disconnected or assigns no forwarded port. Client-side problems do not count - restarting the VPN cannot fix those");
-        toolTip.SetToolTip(nudRecoveryCycles, "Number of consecutive cycles without an assigned port before the VPN is restarted");
-        toolTip.SetToolTip(chkPortClosedRecovery, "Restart the VPN (same action as the no-port recovery) when port verification has confirmed the assigned port closed for the configured number of checks. Fires at most once, then re-arms only after the port tests open again. Caution with qBittorrent: an idle client (no active transfers) can report closed indefinitely.");
-        toolTip.SetToolTip(nudPortClosedCycles, "Number of confirmed closed checks before the VPN is restarted");
+        toolTip.SetToolTip(chkAutoRecovery, "Triggers auto-recovery (VPN service restart, or adapter cycle for NAT-PMP gateways) after the configured number of consecutive cycles where the VPN is disconnected or assigns no forwarded port. Client-side problems do not count - auto-recovery cannot fix those.");
+        toolTip.SetToolTip(nudRecoveryCycles, "Number of consecutive cycles without an assigned port or VPN connection before auto-recovery is triggered");
+        toolTip.SetToolTip(chkPortClosedRecovery, "Triggers auto-recovery (same action as the no-port trigger) when port verification has confirmed the assigned port closed for the configured number of checks. Fires at most once, then re-arms only after the port tests open again. Caution with qBittorrent: an idle client (no active transfers) can report closed indefinitely.");
+        toolTip.SetToolTip(nudPortClosedCycles, "Number of confirmed closed checks before auto-recovery is triggered");
         toolTip.SetToolTip(chkNotifyOnPortUpdate, "Show a tray notification when the port is successfully updated");
         toolTip.SetToolTip(chkShowUpdateForm, "When checked, opens the update form at startup if a newer version is found. When unchecked, only a tray notification is shown (12-hour periodic check runs either way)");
     }
@@ -315,11 +330,14 @@ public partial class SettingsForm : Form
 
     private void UpdateClientGroupVisibility()
     {
-        bool isTransmission = cboBitTorrentClient.SelectedItem?.ToString() == RegistrySettingsManager.BitTorrentClientTransmission;
-        bool isDeluge = cboBitTorrentClient.SelectedItem?.ToString() == RegistrySettingsManager.BitTorrentClientDeluge;
+        string? selectedClient = cboBitTorrentClient.SelectedItem?.ToString();
+        bool isTransmission = selectedClient == RegistrySettingsManager.BitTorrentClientTransmission;
+        bool isDeluge = selectedClient == RegistrySettingsManager.BitTorrentClientDeluge;
         grpQBittorrent.Visible = !isTransmission && !isDeluge;
         grpDeluge.Visible = isDeluge;
         grpTransmission.Visible = isTransmission;
+        // Reflect the chosen client in the Client tab header (qBittorrent / Transmission / Deluge).
+        tabClient.Text = selectedClient ?? "Client";
     }
 
     private void cboVpnProvider_SelectedIndexChanged(object? sender, EventArgs e)
@@ -483,7 +501,7 @@ public partial class SettingsForm : Form
     // Enables or disables all port-sync-related controls (everything except VPN provider, update interval, and debug mode)
     private void SetPortSyncControlsEnabled(bool enabled)
     {
-        // General section - client and auto-recovery (NAT-PMP adapter row handled by SetAdapterControlsEnabled)
+        // General section - client and auto-recovery controls (NAT-PMP adapter row handled by SetAdapterControlsEnabled)
         lblBitTorrentClient.Enabled = enabled;
         cboBitTorrentClient.Enabled = enabled;
         chkVerifyPort.Enabled = enabled;

@@ -121,9 +121,9 @@ On first run, all settings are initialized with sensible defaults.
 | Update interval | How often to check and sync the port (seconds) | `180` |
 | Verify port after sync | After each sync, check that the listening port is reachable from the Internet (after a port change and every 5th cycle) | `True` |
 | Restart VPN when no port is assigned | Restart the VPN (service restart, or adapter cycle for generic NAT-PMP gateways) after N consecutive cycles where the VPN is disconnected or assigns no forwarded port. Client-side failures do not count | `True` |
-| No-port trigger cycles | Number of consecutive cycles without an assigned port before the VPN is restarted | `3` |
+| Trigger after (consecutive failed cycles) | Number of consecutive cycles without an assigned port before the VPN is restarted | `3` |
 | Restart VPN when the port stays closed | Independent trigger: restart the VPN when port verification confirms the port closed for the configured number of checks. Fires at most once until the port tests open again. Requires Verify port after sync | `False` |
-| Closed checks before restart | Number of confirmed closed checks before the VPN is restarted | `3` |
+| Trigger after (confirmed closed checks) | Number of confirmed closed checks before the VPN is restarted | `3` |
 | Notify on port update | Show a tray balloon tip when the client's listening port is successfully updated | `True` |
 | Show update form on startup | When checked, opens the update form at startup if a newer version is found. When unchecked, only a tray notification is shown (the 12-hour periodic check is always non-intrusive) | `True` |
 | Post-update command | Command to run after a successful port update (leave empty to disable) | - |

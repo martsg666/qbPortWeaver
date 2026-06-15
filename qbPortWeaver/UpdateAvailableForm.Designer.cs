@@ -66,7 +66,7 @@ partial class UpdateAvailableForm
         AutoScaleDimensions = new SizeF(7F, 15F);
         AutoScaleMode       = AutoScaleMode.Font;
         CancelButton        = btnLater;
-        ClientSize          = new Size(400, 192);
+        ClientSize          = new Size(400, 188);
         Controls.Add(lblTitle);
         Controls.Add(grpInfo);
         Controls.Add(btnUpdate);

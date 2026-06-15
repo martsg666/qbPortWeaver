@@ -207,14 +207,11 @@ public abstract class BitTorrentClientBase : IBitTorrentClient // NOSONAR S3881 
             WorkingDirectory = Path.GetDirectoryName(ExePath) ?? string.Empty
         };
 
-    // Classifies and logs an HTTP-related exception using ClientName and ApiLabel.
-    protected void LogHttpException(string methodName, Exception ex) =>
-        LogHttpException(methodName, ex, LogLevel.Error);
-
-    // Level-parameterized overload: best-effort callers (e.g. port verification, where a failure
-    // is "undeterminable" rather than a fault) pass LogLevel.Debug so an unreachable client does
-    // not raise an Error - matching the Debug-level handling in the other clients' test methods.
-    protected void LogHttpException(string methodName, Exception ex, LogLevel level)
+    // Classifies and logs an HTTP-related exception using ClientName and ApiLabel. Defaults to
+    // Error; best-effort callers (e.g. port verification, where a failure is "undeterminable"
+    // rather than a fault) pass LogLevel.Debug so an unreachable client does not raise an Error -
+    // matching the Debug-level handling in the other clients' test methods.
+    protected void LogHttpException(string methodName, Exception ex, LogLevel level = LogLevel.Error)
     {
         if (ex is TaskCanceledException)
             LogManager.Instance.LogMessage($"{ClientName} {ApiLabel} is not reachable (timed out) - check the URL in Settings ({Url})", level);

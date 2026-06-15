@@ -28,7 +28,7 @@ public partial class SettingsForm : Form
         // sits flush after its indented "Trigger after" label rather than on the form's field column.
         // PreferredSize.Width is the measured text width (correct even before this tab has laid out),
         // so both identical rows resolve to the same X and stay aligned with each other.
-        const int InlineGap = 6;
+        int InlineGap = LogicalToDeviceUnits(6); // scale the 6px gap with DPI so it stays proportional at 125%+
         nudPortClosedCycles.Left     = lblPortClosedCycles.Left + lblPortClosedCycles.PreferredSize.Width + InlineGap;
         lblPortClosedCyclesUnit.Left = nudPortClosedCycles.Left + nudPortClosedCycles.Width + InlineGap;
         nudRecoveryCycles.Left       = lblRecoveryCycles.Left + lblRecoveryCycles.PreferredSize.Width + InlineGap;

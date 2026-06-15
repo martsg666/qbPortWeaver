@@ -25,15 +25,20 @@ public partial class SettingsForm : Form
     {
         base.OnLoad(e);
         // The auto-recovery rows read as inline phrases ("Trigger after [N] <unit>"), so the spinner
-        // sits flush after its indented, variable-width "Trigger after" label rather than on the
-        // form's field column. PreferredSize.Width is the measured text width (correct even before
-        // this tab has laid out), so both identical rows resolve to the same positions and stay
-        // aligned with each other.
+        // sits flush after its indented "Trigger after" label rather than on the form's field column.
+        // PreferredSize.Width is the measured text width (correct even before this tab has laid out),
+        // so both identical rows resolve to the same X and stay aligned with each other.
         const int InlineGap = 6;
         nudPortClosedCycles.Left     = lblPortClosedCycles.Left + lblPortClosedCycles.PreferredSize.Width + InlineGap;
         lblPortClosedCyclesUnit.Left = nudPortClosedCycles.Left + nudPortClosedCycles.Width + InlineGap;
         nudRecoveryCycles.Left       = lblRecoveryCycles.Left + lblRecoveryCycles.PreferredSize.Width + InlineGap;
         lblRecoveryCyclesUnit.Left   = nudRecoveryCycles.Left + nudRecoveryCycles.Width + InlineGap;
+
+        // The "Trigger after" labels are AutoSize (~15px tall) but share a row with the 23px-tall
+        // spinner and unit label. Pinned at the same top they float above the spinner's centre, so
+        // centre them vertically on the spinner using the measured heights.
+        lblPortClosedCycles.Top = nudPortClosedCycles.Top + (nudPortClosedCycles.Height - lblPortClosedCycles.Height) / 2;
+        lblRecoveryCycles.Top   = nudRecoveryCycles.Top + (nudRecoveryCycles.Height - lblRecoveryCycles.Height) / 2;
         SetupTooltips();
         LoadSettings();
     }

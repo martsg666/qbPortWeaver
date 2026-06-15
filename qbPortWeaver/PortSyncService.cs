@@ -678,9 +678,9 @@ public sealed class PortSyncService
         _portCheckPendingConfirmation = false;
         _portConfirmedClosed = true;
         _confirmedClosedCount = 1;
-        string confirmedSuffix = config.PortClosedRecoveryEnabled
+        string confirmedSuffix = config.PortClosedRecoveryEnabled && _portClosedRecoveryArmed
             ? $" (1/{config.PortClosedRecoveryCycles} checks for recovery)"
-            : "";
+            : string.Empty;
         LogManager.Instance.LogMessage($"{clientName} port {port} is not reachable from outside (confirmed by two checks){confirmedSuffix}", LogLevel.Warn);
         try { PortVerificationFailed?.Invoke($"{clientName} port {port} is not reachable from the outside."); }
         catch (Exception ex) { LogManager.Instance.LogMessage($"PortVerificationFailed handler failed: {ex.Message}", LogLevel.Warn); }

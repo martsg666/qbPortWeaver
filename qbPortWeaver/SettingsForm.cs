@@ -24,11 +24,16 @@ public partial class SettingsForm : Form
     protected override void OnLoad(EventArgs e)
     {
         base.OnLoad(e);
-        // AutoSize labels have resolved their widths by the time OnLoad fires - snap NUDs flush against them.
-        nudPortClosedCycles.Left     = lblPortClosedCycles.Right + 4;
-        lblPortClosedCyclesUnit.Left = nudPortClosedCycles.Right + 4;
-        nudRecoveryCycles.Left       = lblRecoveryCycles.Right + 4;
-        lblRecoveryCyclesUnit.Left   = nudRecoveryCycles.Right + 4;
+        // The auto-recovery rows read as inline phrases ("Trigger after [N] <unit>"), so the spinner
+        // sits flush after its indented, variable-width "Trigger after" label rather than on the
+        // form's field column. PreferredSize.Width is the measured text width (correct even before
+        // this tab has laid out), so both identical rows resolve to the same positions and stay
+        // aligned with each other.
+        const int InlineGap = 6;
+        nudPortClosedCycles.Left     = lblPortClosedCycles.Left + lblPortClosedCycles.PreferredSize.Width + InlineGap;
+        lblPortClosedCyclesUnit.Left = nudPortClosedCycles.Left + nudPortClosedCycles.Width + InlineGap;
+        nudRecoveryCycles.Left       = lblRecoveryCycles.Left + lblRecoveryCycles.PreferredSize.Width + InlineGap;
+        lblRecoveryCyclesUnit.Left   = nudRecoveryCycles.Left + nudRecoveryCycles.Width + InlineGap;
         SetupTooltips();
         LoadSettings();
     }
@@ -320,11 +325,14 @@ public partial class SettingsForm : Form
 
     private void UpdateClientGroupVisibility()
     {
-        bool isTransmission = cboBitTorrentClient.SelectedItem?.ToString() == RegistrySettingsManager.BitTorrentClientTransmission;
-        bool isDeluge = cboBitTorrentClient.SelectedItem?.ToString() == RegistrySettingsManager.BitTorrentClientDeluge;
+        string? selectedClient = cboBitTorrentClient.SelectedItem?.ToString();
+        bool isTransmission = selectedClient == RegistrySettingsManager.BitTorrentClientTransmission;
+        bool isDeluge = selectedClient == RegistrySettingsManager.BitTorrentClientDeluge;
         grpQBittorrent.Visible = !isTransmission && !isDeluge;
         grpDeluge.Visible = isDeluge;
         grpTransmission.Visible = isTransmission;
+        // Reflect the chosen client in the Client tab header (qBittorrent / Transmission / Deluge).
+        tabClient.Text = selectedClient ?? "Client";
     }
 
     private void cboVpnProvider_SelectedIndexChanged(object? sender, EventArgs e)

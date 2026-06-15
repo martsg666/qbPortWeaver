@@ -34,6 +34,7 @@ public partial class MainForm : Form
     private Icon? _iconOk;
     private Icon? _iconWarning;
     private Icon? _iconError;
+    private Icon? _iconPaused;
 
     // Bold font for the update-available menu item, owned by MainForm because WinForms
     // does not dispose Fonts assigned to ToolStripMenuItem. Disposed in MainForm.Designer.cs.
@@ -247,6 +248,7 @@ public partial class MainForm : Form
         _iconOk = CreateStatusIcon(_iconBase, AppConstants.StatusOk);
         _iconWarning = CreateStatusIcon(_iconBase, AppConstants.StatusWarning);
         _iconError = CreateStatusIcon(_iconBase, AppConstants.StatusError);
+        _iconPaused = CreateStatusIcon(_iconBase, AppConstants.StatusPaused);
     }
 
     // Draws a small filled circle onto a 16x16 copy of the base icon and returns it as an Icon
@@ -748,7 +750,7 @@ public partial class MainForm : Form
             SyncState.VpnDisconnected => _iconWarning ?? _iconBase!,
             SyncState.Error => _iconError ?? _iconBase!,
             SyncState.Disabled => _iconBase!,
-            SyncState.Paused => _iconBase!,
+            SyncState.Paused => _iconPaused ?? _iconBase!,
             _ => _iconBase!
         };
     }

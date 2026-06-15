@@ -19,6 +19,7 @@ partial class MainForm
             _iconOk?.Dispose();
             _iconWarning?.Dispose();
             _iconError?.Dispose();
+            _iconPaused?.Dispose();
             _updateCheckTimer?.Dispose();
             _updateSemaphore?.Dispose();
             _updateMenuItemFont?.Dispose();

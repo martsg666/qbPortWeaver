@@ -59,8 +59,12 @@ public static class UpdateChecker
         {
             return null; // shutdown - not a real failure, suppress log noise
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (Exception ex)
         {
+            // No OCE filter here (matches GetReleaseContributorsAsync): the arm above already
+            // suppresses shutdown cancellation, so anything reaching here - including a non-token
+            // HttpClient timeout surfacing as TaskCanceledException - is a real failure to log,
+            // not propagate.
             LogManager.Instance.LogDebug($"UpdateChecker.GetLatestReleaseInfoAsync: {ex.Message}");
             return null;
         }

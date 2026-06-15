@@ -587,11 +587,14 @@ public sealed class PortSyncService
 
     // Throttles the reachability test: Transmission's and Deluge's tests contact their projects'
     // online check services, so testing every cycle would be wasteful. Tests run when the port
-    // changed this cycle, every cycle while a result awaits confirmation or the closed condition
-    // persists, and otherwise every VerifyEveryNCycles cycles.
-    private bool ShouldVerifyThisCycle(bool portChanged)
+    // changed this cycle, every cycle while a result awaits confirmation, every cycle while
+    // confirmed-closed AND port-closed recovery is armed (so the recovery counter advances each
+    // cycle), and otherwise every VerifyEveryNCycles cycles. A confirmed-closed port with recovery
+    // off falls through to the throttle so we do not hammer the online check services every cycle
+    // for a port that may stay closed indefinitely.
+    private bool ShouldVerifyThisCycle(bool portChanged, bool portClosedRecoveryEnabled)
     {
-        if (portChanged || _portCheckPendingConfirmation || _portConfirmedClosed)
+        if (portChanged || _portCheckPendingConfirmation || (_portConfirmedClosed && portClosedRecoveryEnabled))
         {
             _cyclesSinceVerify = 0;
             return true;
@@ -609,7 +612,7 @@ public sealed class PortSyncService
     // (client unreachable, test service unavailable) leave the verification state unchanged.
     private async Task VerifyPortAsync(IBitTorrentClient manager, int port, SyncConfig config, Dictionary<string, object?> status, CancellationToken cancellationToken)
     {
-        if (!ShouldVerifyThisCycle(status[StatusKeys.PortChanged] is true)) return;
+        if (!ShouldVerifyThisCycle(status[StatusKeys.PortChanged] is true, config.PortClosedRecoveryEnabled)) return;
 
         bool? open = await manager.TestListeningPortAsync(cancellationToken).ConfigureAwait(false);
         if (open is null)
@@ -654,9 +657,12 @@ public sealed class PortSyncService
         if (_portConfirmedClosed)
         {
             _confirmedClosedCount++;
+            // Suffix only when recovery is enabled - it shows progress toward the recovery
+            // threshold. With recovery off, MaybeTriggerPortClosedRecoveryAsync zeroes
+            // _confirmedClosedCount every cycle, so a count here would always read 1.
             string closedSuffix = config.PortClosedRecoveryEnabled
                 ? $" ({_confirmedClosedCount}/{config.PortClosedRecoveryCycles} checks for recovery)"
-                : $" (check {_confirmedClosedCount})";
+                : string.Empty;
             LogManager.Instance.LogMessage($"{clientName} port {port} is still not reachable from outside{closedSuffix}", LogLevel.Warn);
             return;
         }

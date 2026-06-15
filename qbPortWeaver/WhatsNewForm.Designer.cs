@@ -83,7 +83,7 @@ partial class WhatsNewForm
         AutoScaleDimensions = new SizeF(7F, 15F);
         AutoScaleMode       = AutoScaleMode.Font;
         CancelButton        = btnClose;
-        ClientSize          = new Size(400, 508);
+        ClientSize          = new Size(400, 504);
         Controls.Add(lblTitle);
         Controls.Add(grpCommunity);
         Controls.Add(grpFeatures);

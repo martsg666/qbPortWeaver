@@ -275,6 +275,7 @@ public static class AppConstants
     public static readonly Color StatusWarning = Color.Orange;         // tray dot and dark mode label
     public static readonly Color StatusWarningLight = Color.DarkOrange;     // light mode label
     public static readonly Color StatusError = Color.Red;            // tray dot
+    public static readonly Color StatusPaused = Color.Gray;          // tray dot - syncing paused by the user (intentionally idle)
 
     /// <summary>Opens a URL in the default browser using ShellExecute.</summary>
     public static void OpenUrl(string url)

@@ -78,7 +78,7 @@ The application runs in the system tray, manages configuration and logging, and 
   Runs quietly in the background with a system tray icon for quick access to logs, settings, and controls.
 
 - **Tray Status Indicator**
-  After each sync cycle the tray icon shows a colored status dot: **green** (ports aligned), **orange** (VPN not connected), **red** (error), or **no dot** (port sync disabled). Hovering over the icon displays the current port and status, and an unviewed log count if warnings or errors have occurred (e.g. "2 Warnings, 1 Error").
+  After each sync cycle the tray icon shows a colored status dot: **green** (ports aligned), **orange** (VPN not connected), **red** (error), **gray** (sync paused), or **no dot** (port sync disabled). Hovering over the icon displays the current port and status, and an unviewed log count if warnings or errors have occurred (e.g. "2 Warnings, 1 Error").
 
 - **Settings Dialog**
   All configuration options are editable through a dedicated Settings form (tray menu → Settings), organised into **General**, **Client**, and **Extra** tabs, with inline descriptions and tooltips for each option.
@@ -120,10 +120,10 @@ On first run, all settings are initialized with sensible defaults.
 | NAT-PMP Adapter | Network adapter to use for NAT-PMP port mapping (only enabled when NAT-PMP is selected) | - |
 | Update interval | How often to check and sync the port (seconds) | `180` |
 | Verify port after sync | After each sync, check that the listening port is reachable from the Internet (after a port change and every 5th cycle) | `True` |
-| Restart VPN when no port is assigned | Restart the VPN (service restart, or adapter cycle for generic NAT-PMP gateways) after N consecutive cycles where the VPN is disconnected or assigns no forwarded port. Client-side failures do not count | `True` |
-| Trigger after (consecutive failed cycles) | Number of consecutive cycles without an assigned port before the VPN is restarted | `3` |
-| Restart VPN when the port stays closed | Independent trigger: restart the VPN when port verification confirms the port closed for the configured number of checks. Fires at most once until the port tests open again. Requires Verify port after sync | `False` |
-| Trigger after (confirmed closed checks) | Number of confirmed closed checks before the VPN is restarted | `3` |
+| Trigger auto-recovery when no port assigned or disconnected | Trigger auto-recovery (a VPN service restart, or adapter cycle for generic NAT-PMP gateways) after N consecutive cycles where the VPN is disconnected or assigns no forwarded port. Client-side failures do not count | `True` |
+| Trigger after (consecutive failed cycles) | Number of consecutive cycles without an assigned port before auto-recovery is triggered | `3` |
+| Trigger auto-recovery when port stays closed | Independent trigger: runs auto-recovery when port verification confirms the port closed for the configured number of checks. Fires at most once until the port tests open again. Requires Verify port after sync | `False` |
+| Trigger after (confirmed closed checks) | Number of confirmed closed checks before auto-recovery is triggered | `3` |
 | Notify on port update | Show a tray balloon tip when the client's listening port is successfully updated | `True` |
 | Show update form on startup | When checked, opens the update form at startup if a newer version is found. When unchecked, only a tray notification is shown (the 12-hour periodic check is always non-intrusive) | `True` |
 | Post-update command | Command to run after a successful port update (leave empty to disable) | - |

@@ -36,7 +36,7 @@ Automatically imports movie and TV episode files into Plex-compatible library fo
 
 ### Visibility and Safety
 
-The tray icon shows a color-coded status dot (green / orange / red) and the tooltip displays the current port at a glance. A tray balloon tip notifies you when the listening port is updated (configurable). When a warning or error is written to the log, a balloon tip appears and the Show Logs menu item shows a running count; clicking the balloon opens the log viewer at the most recent warning or error. An interface mismatch warning alerts you if qBittorrent is not bound to the VPN adapter. A JSON status file is written after each sync cycle for external monitoring or scripting.
+The tray icon shows a color-coded status dot (green / orange / red / gray) and the tooltip displays the current port at a glance. A tray balloon tip notifies you when the listening port is updated (configurable). When a warning or error is written to the log, a balloon tip appears and the Show Logs menu item shows a running count; clicking the balloon opens the log viewer at the most recent warning or error. An interface mismatch warning alerts you if qBittorrent is not bound to the VPN adapter. A JSON status file is written after each sync cycle for external monitoring or scripting.
 
 ### Other Features
 

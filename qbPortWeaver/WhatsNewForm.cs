@@ -19,7 +19,7 @@ public partial class WhatsNewForm : Form
         "(an idle client may report closed).\n\n" +
         "Pause and resume syncing\n" +
         "A new Pause Syncing item in the tray menu temporarily stops sync cycles, including media imports, " +
-        "without changing any settings. While paused, Sync Port Now still runs a single cycle on demand. " +
+        "without changing any settings. While paused, the tray icon shows a gray dot and Sync Port Now still runs a single cycle on demand. " +
         "Syncing always resumes when the application restarts.\n\n" +
         "Tabbed Settings\n" +
         "The Settings window is now organised into General, Client and Extra tabs, " +

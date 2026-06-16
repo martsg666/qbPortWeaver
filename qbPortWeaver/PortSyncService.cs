@@ -658,13 +658,7 @@ public sealed class PortSyncService
         if (_portConfirmedClosed)
         {
             _confirmedClosedCount++;
-            // Suffix only while recovery is enabled AND still armed - it shows progress toward the
-            // recovery threshold. With recovery off the count is zeroed each cycle; once recovery
-            // has fired (disarmed) the count no longer drives a trigger, so showing N/M would
-            // misleadingly climb past M while waiting for the port to reopen.
-            string closedSuffix = config.PortClosedRecoveryEnabled && _portClosedRecoveryArmed
-                ? $" ({_confirmedClosedCount}/{config.PortClosedRecoveryCycles} checks for recovery)"
-                : string.Empty;
+            string closedSuffix = BuildPortClosedRecoverySuffix(config);
             LogManager.Instance.LogMessage($"{clientName} port {port} is still not reachable from outside{closedSuffix}", LogLevel.Warn);
             return;
         }
@@ -678,12 +672,23 @@ public sealed class PortSyncService
         _portCheckPendingConfirmation = false;
         _portConfirmedClosed = true;
         _confirmedClosedCount = 1;
-        string confirmedSuffix = config.PortClosedRecoveryEnabled && _portClosedRecoveryArmed
-            ? $" (1/{config.PortClosedRecoveryCycles} checks for recovery)"
-            : string.Empty;
+        string confirmedSuffix = BuildPortClosedRecoverySuffix(config);
         LogManager.Instance.LogMessage($"{clientName} port {port} is not reachable from outside (confirmed by two checks){confirmedSuffix}", LogLevel.Warn);
         try { PortVerificationFailed?.Invoke($"{clientName} port {port} is not reachable from the outside."); }
         catch (Exception ex) { LogManager.Instance.LogMessage($"PortVerificationFailed handler failed: {ex.Message}", LogLevel.Warn); }
+    }
+
+    // Builds the recovery-progress suffix for the port-closed Warn messages, mirroring
+    // BuildCycleCountMessage so it reads consistently with the failed-cycle recovery logs.
+    // Shown only while recovery is enabled AND still armed - it tracks progress toward the
+    // threshold. With recovery off the count is zeroed each cycle; once recovery has fired
+    // (disarmed) the count no longer drives a trigger, so a climbing count would mislead.
+    private string BuildPortClosedRecoverySuffix(SyncConfig config)
+    {
+        if (!config.PortClosedRecoveryEnabled || !_portClosedRecoveryArmed)
+            return string.Empty;
+        string checks = _confirmedClosedCount == 1 ? "check" : "checks";
+        return $" ({_confirmedClosedCount} consecutive {checks}, recovery triggers after {config.PortClosedRecoveryCycles} consecutive failures)";
     }
 
     // Opt-in: when the port has been confirmed closed for the configured number of checks,

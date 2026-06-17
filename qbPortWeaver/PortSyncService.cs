@@ -231,7 +231,7 @@ public sealed class PortSyncService
         status[StatusKeys.UpdateIntervalSeconds] = cfg.UpdateInterval;
 
         // Instantiate VPN manager based on configured provider
-        IVpnManager? vpnManager = await CreateVpnManager(cfg, status, cancellationToken).ConfigureAwait(false);
+        IVpnManager? vpnManager = await CreateVpnManagerAsync(cfg, status, cancellationToken).ConfigureAwait(false);
         if (vpnManager is null)
             return cfg.UpdateInterval;
 
@@ -432,7 +432,7 @@ public sealed class PortSyncService
     // instantiation arm here, the keyword in IsRecognizedProvider below, an entry in
     // VpnProviderRegistry.KnownProviders (when service-restart recovery applies), and the
     // value in SettingsForm's cboVpnProvider list.
-    private async Task<IVpnManager?> CreateVpnManager(AppConfig cfg, Dictionary<string, object?> status, CancellationToken cancellationToken)
+    private async Task<IVpnManager?> CreateVpnManagerAsync(AppConfig cfg, Dictionary<string, object?> status, CancellationToken cancellationToken)
     {
         if (cfg.VpnProvider.Equals(RegistrySettingsManager.VpnProviderDisabled, StringComparison.OrdinalIgnoreCase))
         {
@@ -446,7 +446,7 @@ public sealed class PortSyncService
             return new PiaVpnManager();
 
         if (cfg.VpnProvider.Equals(RegistrySettingsManager.VpnProviderNatPmp, StringComparison.OrdinalIgnoreCase))
-            return await CreateNatPmpVpnManager(cfg, status, cancellationToken).ConfigureAwait(false);
+            return await CreateNatPmpVpnManagerAsync(cfg, status, cancellationToken).ConfigureAwait(false);
 
         if (cfg.VpnProvider.Equals(RegistrySettingsManager.VpnProviderProtonVpn, StringComparison.OrdinalIgnoreCase))
             return new ProtonVpnManager(AppConstants.GetProtonVpnLogFilePath());
@@ -467,7 +467,7 @@ public sealed class PortSyncService
 
     // Resolves the NAT-PMP VPN manager for the configured adapter, handling the disconnected
     // fallback cases and auto-recovery triggering when no adapter is reachable.
-    private async Task<IVpnManager?> CreateNatPmpVpnManager(AppConfig cfg, Dictionary<string, object?> status, CancellationToken cancellationToken)
+    private async Task<IVpnManager?> CreateNatPmpVpnManagerAsync(AppConfig cfg, Dictionary<string, object?> status, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(cfg.NatPmpAdapterName))
         {
@@ -497,7 +497,7 @@ public sealed class PortSyncService
         // RunCoreAsync handles disconnection gracefully (apply default port or skip).
         if (_lastKnownNatPmpManager is not null)
         {
-            LogManager.Instance.LogDebug("PortSyncService.CreateNatPmpVpnManager: Adapter not discoverable, using last known manager for disconnection handling");
+            LogManager.Instance.LogDebug("PortSyncService.CreateNatPmpVpnManagerAsync: Adapter not discoverable, using last known manager for disconnection handling");
             return _lastKnownNatPmpManager;
         }
 
@@ -679,7 +679,8 @@ public sealed class PortSyncService
     }
 
     // Builds the recovery-progress suffix for the port-closed Warn messages, mirroring
-    // BuildCycleCountMessage so it reads consistently with the failed-cycle recovery logs.
+    // BuildCycleCountMessage's structure (counted in checks, not cycles) so it reads consistently
+    // with the failed-cycle recovery logs.
     // Shown only while recovery is enabled AND still armed - it tracks progress toward the
     // threshold. With recovery off the count is zeroed each cycle; once recovery has fired
     // (disarmed) the count no longer drives a trigger, so a climbing count would mislead.
@@ -687,8 +688,8 @@ public sealed class PortSyncService
     {
         if (!config.PortClosedRecoveryEnabled || !_portClosedRecoveryArmed)
             return string.Empty;
-        string checks = _confirmedClosedCount == 1 ? "check" : "checks";
-        return $" ({_confirmedClosedCount} consecutive {checks}, recovery triggers after {config.PortClosedRecoveryTriggerChecks} consecutive failures)";
+        string checks = _confirmedClosedCount == 1 ? "closed check" : "closed checks";
+        return $" ({_confirmedClosedCount} consecutive {checks}, recovery triggers after {config.PortClosedRecoveryTriggerChecks} consecutive closed checks)";
     }
 
     // Opt-in: when the port has been confirmed closed for the configured number of checks,
@@ -718,7 +719,7 @@ public sealed class PortSyncService
 
         string action = vpnManager.GetRecoveryAction();
         LogManager.Instance.LogMessage(
-            $"Triggering '{action}' for '{vpnManager.ProviderName}' - port confirmed closed for {config.PortClosedRecoveryTriggerChecks} consecutive checks",
+            $"Triggering '{action}' for '{vpnManager.ProviderName}' after {config.PortClosedRecoveryTriggerChecks} consecutive closed {(config.PortClosedRecoveryTriggerChecks == 1 ? "check" : "checks")}",
             LogLevel.Info);
         await DispatchRecoveryAsync(action, target, vpnManager.ProviderName, cancellationToken).ConfigureAwait(false);
     }
@@ -870,9 +871,9 @@ public sealed class PortSyncService
     // Builds a failure log message with cycle count and optional recovery trigger suffix
     private static string BuildCycleCountMessage(string prefix, int count, AppConfig cfg)
     {
-        string cycles = count == 1 ? "cycle" : "cycles";
+        string cycles = count == 1 ? "failed cycle" : "failed cycles";
         string recoverySuffix = cfg.VpnAutoRecoveryEnabled
-            ? $", recovery triggers after {cfg.VpnAutoRecoveryTriggerCycles} consecutive failures"
+            ? $", recovery triggers after {cfg.VpnAutoRecoveryTriggerCycles} consecutive failed cycles"
             : string.Empty;
         return $"{prefix} ({count} consecutive {cycles}{recoverySuffix})";
     }
@@ -917,7 +918,7 @@ public sealed class PortSyncService
         if (recoveryTarget is null)
         {
             _consecutiveFailedCycles = 0;
-            LogManager.Instance.LogMessage($"No recovery target found for '{displayName}'", LogLevel.Warn);
+            LogManager.Instance.LogMessage($"No recovery target found for '{displayName}' - skipping recovery", LogLevel.Warn);
             return;
         }
 

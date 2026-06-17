@@ -161,7 +161,7 @@ public abstract class BitTorrentClientBase : IBitTorrentClient // NOSONAR S3881 
             catch { } // NOSONAR S108
             await Task.Delay(ApiReadyPollIntervalMs, cancellationToken).ConfigureAwait(false);
         }
-        LogManager.Instance.LogDebug($"{ClientName} API did not respond within {ApiReadyTimeoutSeconds}s after start");
+        LogManager.Instance.LogDebug($"{GetType().Name}.WaitForApiReadyAsync: {ClientName} API did not respond within {ApiReadyTimeoutSeconds}s after start");
     }
 
     /// <summary>Resets the per-instance auth state so the next API call triggers a fresh authentication handshake.</summary>

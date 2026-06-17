@@ -390,7 +390,7 @@ public partial class SettingsForm : Form
             target.Text = dlg.FileName;
     }
 
-    private async void btnTestQBittorrent_Click(object? sender, EventArgs e)
+    private async void btnTestQBittorrent_Click(object? sender, EventArgs e) // async void is correct here (WinForms event handler)
     {
         await RunConnectionTestAsync(
             () => new QBittorrentClient(
@@ -399,7 +399,7 @@ public partial class SettingsForm : Form
             btnTestQBittorrent, txtQBittorrentURL.Text.Trim(), "qBittorrent");
     }
 
-    private async void btnTestTransmission_Click(object? sender, EventArgs e)
+    private async void btnTestTransmission_Click(object? sender, EventArgs e) // async void is correct here (WinForms event handler)
     {
         await RunConnectionTestAsync(
             () => new TransmissionClient(
@@ -408,7 +408,7 @@ public partial class SettingsForm : Form
             btnTestTransmission, txtTransmissionURL.Text.Trim(), "Transmission");
     }
 
-    private async void btnTestDeluge_Click(object? sender, EventArgs e)
+    private async void btnTestDeluge_Click(object? sender, EventArgs e) // async void is correct here (WinForms event handler)
     {
         await RunConnectionTestAsync(
             () => new DelugeClient(

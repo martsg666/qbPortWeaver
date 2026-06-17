@@ -621,10 +621,9 @@ public partial class MainForm : Form
         return false;
     }
 
-    // Event handler for the periodic update-check timer - async void is correct here (event handler).
-    // Uses intrusive: false so a 12-hour tick surfaces an available update via the tray (menu item +
-    // balloon) rather than popping the UpdateAvailableForm in the user's face.
-    private async void OnUpdateCheckTimerTick(object? sender, EventArgs e)
+    // Periodic update-check timer tick. Uses intrusive: false so a 12-hour tick surfaces an available
+    // update via the tray (menu item + balloon) rather than popping the UpdateAvailableForm in the user's face.
+    private async void OnUpdateCheckTimerTick(object? sender, EventArgs e) // async void is correct here (WinForms event handler)
         => await PerformUpdateCheckAsync(intrusive: false);
 
     // Checks GitHub for a newer release.
@@ -712,7 +711,7 @@ public partial class MainForm : Form
 
     // Manual tray-triggered update check. Disables the menu item while the request is in flight
     // so rapid clicks do not stack multiple HTTP calls; re-enabled in finally even on cancellation.
-    private async void checkUpdates_Click(object? sender, EventArgs e)
+    private async void checkUpdates_Click(object? sender, EventArgs e) // async void is correct here (WinForms event handler)
     {
         _checkUpdatesMenuItem.Enabled = false;
         try

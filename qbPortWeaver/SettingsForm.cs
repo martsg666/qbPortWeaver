@@ -29,15 +29,15 @@ public partial class SettingsForm : Form
         // PreferredSize.Width is the measured text width (correct even before this tab has laid out),
         // so both identical rows resolve to the same X and stay aligned with each other.
         int InlineGap = LogicalToDeviceUnits(6); // scale the 6px gap with DPI so it stays proportional at 125%+
-        nudPortClosedCycles.Left     = lblPortClosedCycles.Left + lblPortClosedCycles.PreferredSize.Width + InlineGap;
-        lblPortClosedCyclesUnit.Left = nudPortClosedCycles.Left + nudPortClosedCycles.Width + InlineGap;
+        nudPortClosedChecks.Left     = lblPortClosedChecks.Left + lblPortClosedChecks.PreferredSize.Width + InlineGap;
+        lblPortClosedChecksUnit.Left = nudPortClosedChecks.Left + nudPortClosedChecks.Width + InlineGap;
         nudRecoveryCycles.Left       = lblRecoveryCycles.Left + lblRecoveryCycles.PreferredSize.Width + InlineGap;
         lblRecoveryCyclesUnit.Left   = nudRecoveryCycles.Left + nudRecoveryCycles.Width + InlineGap;
 
         // The "Trigger after" labels are AutoSize (~15px tall) but share a row with the 23px-tall
         // spinner and unit label. Pinned at the same top they float above the spinner's centre, so
         // centre them vertically on the spinner using the measured heights.
-        lblPortClosedCycles.Top = nudPortClosedCycles.Top + (nudPortClosedCycles.Height - lblPortClosedCycles.Height) / 2;
+        lblPortClosedChecks.Top = nudPortClosedChecks.Top + (nudPortClosedChecks.Height - lblPortClosedChecks.Height) / 2;
         lblRecoveryCycles.Top   = nudRecoveryCycles.Top + (nudRecoveryCycles.Height - lblRecoveryCycles.Height) / 2;
         SetupTooltips();
         LoadSettings();
@@ -99,7 +99,7 @@ public partial class SettingsForm : Form
         toolTip.SetToolTip(chkAutoRecovery, "Triggers auto-recovery (VPN service restart, or adapter cycle for NAT-PMP gateways) after the configured number of consecutive cycles where the VPN is disconnected or assigns no forwarded port. Client-side problems do not count - auto-recovery cannot fix those.");
         toolTip.SetToolTip(nudRecoveryCycles, "Number of consecutive cycles without an assigned port or VPN connection before auto-recovery is triggered");
         toolTip.SetToolTip(chkPortClosedRecovery, "Triggers auto-recovery (same action as the no-port trigger) when port verification has confirmed the assigned port closed for the configured number of checks. Fires at most once, then re-arms only after the port tests open again. Caution with qBittorrent: an idle client (no active transfers) can report closed indefinitely.");
-        toolTip.SetToolTip(nudPortClosedCycles, "Number of confirmed closed checks before auto-recovery is triggered");
+        toolTip.SetToolTip(nudPortClosedChecks, "Number of confirmed closed checks before auto-recovery is triggered");
         toolTip.SetToolTip(chkNotifyOnPortUpdate, "Show a tray notification when the port is successfully updated");
         toolTip.SetToolTip(chkShowUpdateForm, "When checked, opens the update form at startup if a newer version is found. When unchecked, only a tray notification is shown (12-hour periodic check runs either way)");
     }
@@ -150,9 +150,9 @@ public partial class SettingsForm : Form
             RegistrySettingsManager.GetInt(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyAutoRecoveryTriggerCycles),
             (int)nudRecoveryCycles.Minimum, (int)nudRecoveryCycles.Maximum);
         chkPortClosedRecovery.Checked = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyPortClosedRecoveryEnabled);
-        nudPortClosedCycles.Value = Math.Clamp(
-            RegistrySettingsManager.GetInt(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyPortClosedRecoveryCycles),
-            (int)nudPortClosedCycles.Minimum, (int)nudPortClosedCycles.Maximum);
+        nudPortClosedChecks.Value = Math.Clamp(
+            RegistrySettingsManager.GetInt(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyPortClosedRecoveryChecks),
+            (int)nudPortClosedChecks.Minimum, (int)nudPortClosedChecks.Maximum);
         UpdateAutoRecoverySubControls();
         chkNotifyOnPortUpdate.Checked = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyNotifyOnPortUpdate);
         chkShowUpdateForm.Checked     = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyShowUpdateFormOnStartup);
@@ -228,7 +228,7 @@ public partial class SettingsForm : Form
         RegistrySettingsManager.SetBool(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyAutoRecoveryEnabled, chkAutoRecovery.Checked);
         RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyAutoRecoveryTriggerCycles, ((int)nudRecoveryCycles.Value).ToString());
         RegistrySettingsManager.SetBool(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyPortClosedRecoveryEnabled, chkPortClosedRecovery.Checked);
-        RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyPortClosedRecoveryCycles, ((int)nudPortClosedCycles.Value).ToString());
+        RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyPortClosedRecoveryChecks, ((int)nudPortClosedChecks.Value).ToString());
         RegistrySettingsManager.SetBool(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyNotifyOnPortUpdate, chkNotifyOnPortUpdate.Checked);
         RegistrySettingsManager.SetBool(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyShowUpdateFormOnStartup, chkShowUpdateForm.Checked);
         RegistrySettingsManager.SetBool(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyVerifyPortAfterSync, chkVerifyPort.Checked);
@@ -492,10 +492,10 @@ public partial class SettingsForm : Form
         // "Verify port after sync" - not on the failed-sync recovery trigger.
         bool closedRecoveryAvailable = vpnActive && chkVerifyPort.Checked;
         chkPortClosedRecovery.Enabled = closedRecoveryAvailable;
-        bool closedCyclesEnabled = closedRecoveryAvailable && chkPortClosedRecovery.Checked;
-        lblPortClosedCycles.Enabled = closedCyclesEnabled;
-        nudPortClosedCycles.Enabled = closedCyclesEnabled;
-        lblPortClosedCyclesUnit.Enabled = closedCyclesEnabled;
+        bool closedChecksEnabled = closedRecoveryAvailable && chkPortClosedRecovery.Checked;
+        lblPortClosedChecks.Enabled = closedChecksEnabled;
+        nudPortClosedChecks.Enabled = closedChecksEnabled;
+        lblPortClosedChecksUnit.Enabled = closedChecksEnabled;
     }
 
     // Enables or disables all port-sync-related controls (everything except VPN provider, update interval, and debug mode)

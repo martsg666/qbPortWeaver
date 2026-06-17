@@ -114,7 +114,8 @@ public static class RegistrySettingsManager
     // Registry key names - general section (port verification)
     public const string KeyVerifyPortAfterSync = "verifyPortAfterSync";
     public const string KeyPortClosedRecoveryEnabled = "portClosedRecoveryEnabled";
-    public const string KeyPortClosedRecoveryCycles = "portClosedRecoveryCycles";
+    // Registry string value frozen for backward compatibility (the setting counts confirmed closed checks).
+    public const string KeyPortClosedRecoveryChecks = "portClosedRecoveryCycles";
 
     // Registry key names - general section (updates)
     public const string KeyShowUpdateFormOnStartup = "showUpdateFormOnStartup";
@@ -135,7 +136,7 @@ public static class RegistrySettingsManager
                 [KeyShowUpdateFormOnStartup] = ValueTrue,
                 [KeyVerifyPortAfterSync] = ValueTrue,
                 [KeyPortClosedRecoveryEnabled] = ValueFalse,
-                [KeyPortClosedRecoveryCycles] = "3"
+                [KeyPortClosedRecoveryChecks] = "3"
             },
             [SectionQBittorrent] = new(StringComparer.OrdinalIgnoreCase)
             {

@@ -110,7 +110,7 @@ public sealed class PortSyncService
         bool NotifyOnPortUpdate,
         bool VerifyPortAfterSync,
         bool PortClosedRecoveryEnabled,
-        int PortClosedRecoveryCycles
+        int PortClosedRecoveryChecks
     );
 
     // Groups client behaviour settings passed to EnsureRunningAndUpdatePortAsync
@@ -124,7 +124,7 @@ public sealed class PortSyncService
         bool NotifyOnPortUpdate,
         bool VerifyPort,
         bool PortClosedRecoveryEnabled,
-        int PortClosedRecoveryCycles
+        int PortClosedRecoveryChecks
     );
 
     // Compile-time-safe keys and values for the status dictionary written to the JSON status file.
@@ -304,7 +304,7 @@ public sealed class PortSyncService
                 NotifyOnPortUpdate: cfg.NotifyOnPortUpdate,
                 VerifyPort: cfg.VerifyPortAfterSync,
                 PortClosedRecoveryEnabled: cfg.PortClosedRecoveryEnabled,
-                PortClosedRecoveryCycles: cfg.PortClosedRecoveryCycles),
+                PortClosedRecoveryChecks: cfg.PortClosedRecoveryChecks),
             status,
             cancellationToken).ConfigureAwait(false);
 
@@ -368,7 +368,7 @@ public sealed class PortSyncService
             NotifyOnPortUpdate: RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyNotifyOnPortUpdate),
             VerifyPortAfterSync: RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyVerifyPortAfterSync),
             PortClosedRecoveryEnabled: RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyPortClosedRecoveryEnabled),
-            PortClosedRecoveryCycles: Math.Max(1, RegistrySettingsManager.GetInt(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyPortClosedRecoveryCycles))
+            PortClosedRecoveryChecks: Math.Max(1, RegistrySettingsManager.GetInt(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyPortClosedRecoveryChecks))
         ), activeSection);
     }
 
@@ -387,7 +387,7 @@ public sealed class PortSyncService
             $"{RegistrySettingsManager.KeyBitTorrentClient}={cfg.BitTorrentClient}, " +
             $"{RegistrySettingsManager.KeyVerifyPortAfterSync}={cfg.VerifyPortAfterSync}, " +
             $"{RegistrySettingsManager.KeyPortClosedRecoveryEnabled}={cfg.PortClosedRecoveryEnabled}, " +
-            $"{RegistrySettingsManager.KeyPortClosedRecoveryCycles}={cfg.PortClosedRecoveryCycles}");
+            $"{RegistrySettingsManager.KeyPortClosedRecoveryChecks}={cfg.PortClosedRecoveryChecks}");
 
         if (activeSection == RegistrySettingsManager.SectionTransmission)
             LogManager.Instance.LogDebug(
@@ -688,7 +688,7 @@ public sealed class PortSyncService
         if (!config.PortClosedRecoveryEnabled || !_portClosedRecoveryArmed)
             return string.Empty;
         string checks = _confirmedClosedCount == 1 ? "check" : "checks";
-        return $" ({_confirmedClosedCount} consecutive {checks}, recovery triggers after {config.PortClosedRecoveryCycles} consecutive failures)";
+        return $" ({_confirmedClosedCount} consecutive {checks}, recovery triggers after {config.PortClosedRecoveryChecks} consecutive failures)";
     }
 
     // Opt-in: when the port has been confirmed closed for the configured number of checks,
@@ -703,7 +703,7 @@ public sealed class PortSyncService
             _confirmedClosedCount = 0;
             return;
         }
-        if (!_portClosedRecoveryArmed || _confirmedClosedCount < config.PortClosedRecoveryCycles) return;
+        if (!_portClosedRecoveryArmed || _confirmedClosedCount < config.PortClosedRecoveryChecks) return;
 
         _portClosedRecoveryArmed = false;
         _confirmedClosedCount = 0;
@@ -718,7 +718,7 @@ public sealed class PortSyncService
 
         string action = vpnManager.GetRecoveryAction();
         LogManager.Instance.LogMessage(
-            $"Triggering '{action}' for '{vpnManager.ProviderName}' - port confirmed closed for {config.PortClosedRecoveryCycles} consecutive checks",
+            $"Triggering '{action}' for '{vpnManager.ProviderName}' - port confirmed closed for {config.PortClosedRecoveryChecks} consecutive checks",
             LogLevel.Info);
         await DispatchRecoveryAsync(action, target, vpnManager.ProviderName, cancellationToken).ConfigureAwait(false);
     }

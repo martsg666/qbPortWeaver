@@ -13,8 +13,9 @@ public partial class WhatsNewForm : Form
         "Port verification\n" +
         "After each sync, qbPortWeaver can now check that your port is actually reachable from the Internet, " +
         "not just configured. If the port stays closed, a warning appears in the log and as a tray notification. " +
-        "Optionally, the VPN can be restarted automatically after a configurable number of closed checks - " +
-        "see Settings > General. Verification is enabled by default: Transmission and Deluge use their " +
+        "Optionally, auto-recovery can run automatically after a configurable number of closed checks " +
+        "(a VPN service restart, or adapter cycle for NAT-PMP gateways) - see Settings > General. " +
+        "Verification is enabled by default: Transmission and Deluge use their " +
         "built-in online port checkers, while qBittorrent infers reachability from incoming connections " +
         "(an idle client may report closed).\n\n" +
         "Pause and resume syncing\n" +

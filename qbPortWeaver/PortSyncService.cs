@@ -105,12 +105,12 @@ public sealed class PortSyncService
         bool QBittorrentWarnOnInterfaceMismatch,
         bool QBittorrentRestartOnDisconnect,
         string PostUpdateCommand,
-        bool AutoRecoveryEnabled,
-        int AutoRecoveryTriggerCycles,
+        bool VpnAutoRecoveryEnabled,
+        int VpnAutoRecoveryTriggerCycles,
         bool NotifyOnPortUpdate,
         bool VerifyPortAfterSync,
         bool PortClosedRecoveryEnabled,
-        int PortClosedRecoveryChecks
+        int PortClosedRecoveryTriggerChecks
     );
 
     // Groups client behaviour settings passed to EnsureRunningAndUpdatePortAsync
@@ -124,7 +124,7 @@ public sealed class PortSyncService
         bool NotifyOnPortUpdate,
         bool VerifyPort,
         bool PortClosedRecoveryEnabled,
-        int PortClosedRecoveryChecks
+        int PortClosedRecoveryTriggerChecks
     );
 
     // Compile-time-safe keys and values for the status dictionary written to the JSON status file.
@@ -304,7 +304,7 @@ public sealed class PortSyncService
                 NotifyOnPortUpdate: cfg.NotifyOnPortUpdate,
                 VerifyPort: cfg.VerifyPortAfterSync,
                 PortClosedRecoveryEnabled: cfg.PortClosedRecoveryEnabled,
-                PortClosedRecoveryChecks: cfg.PortClosedRecoveryChecks),
+                PortClosedRecoveryTriggerChecks: cfg.PortClosedRecoveryTriggerChecks),
             status,
             cancellationToken).ConfigureAwait(false);
 
@@ -317,7 +317,7 @@ public sealed class PortSyncService
         int updateInterval = RegistrySettingsManager.GetInt(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyUpdateIntervalSeconds);
         if (updateInterval < AppConstants.MinUpdateIntervalSeconds) updateInterval = AppConstants.DefaultUpdateIntervalSeconds;
 
-        int autoRecoveryTriggerCycles = Math.Max(1, RegistrySettingsManager.GetInt(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyAutoRecoveryTriggerCycles));
+        int vpnAutoRecoveryTriggerCycles = Math.Max(1, RegistrySettingsManager.GetInt(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyVpnAutoRecoveryTriggerCycles));
 
         string bitTorrentClient = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyBitTorrentClient);
         string activeSection = GetActiveClientSection(bitTorrentClient);
@@ -363,12 +363,12 @@ public sealed class PortSyncService
             QBittorrentWarnOnInterfaceMismatch: RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyWarnOnInterfaceMismatch),
             QBittorrentRestartOnDisconnect: RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyRestartOnDisconnect),
             PostUpdateCommand: RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionExtra, RegistrySettingsManager.KeyPostUpdateCmd),
-            AutoRecoveryEnabled: RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyAutoRecoveryEnabled),
-            AutoRecoveryTriggerCycles: autoRecoveryTriggerCycles,
+            VpnAutoRecoveryEnabled: RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyVpnAutoRecoveryEnabled),
+            VpnAutoRecoveryTriggerCycles: vpnAutoRecoveryTriggerCycles,
             NotifyOnPortUpdate: RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyNotifyOnPortUpdate),
             VerifyPortAfterSync: RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyVerifyPortAfterSync),
             PortClosedRecoveryEnabled: RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyPortClosedRecoveryEnabled),
-            PortClosedRecoveryChecks: Math.Max(1, RegistrySettingsManager.GetInt(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyPortClosedRecoveryChecks))
+            PortClosedRecoveryTriggerChecks: Math.Max(1, RegistrySettingsManager.GetInt(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyPortClosedRecoveryTriggerChecks))
         ), activeSection);
     }
 
@@ -382,12 +382,12 @@ public sealed class PortSyncService
             $"PortSyncService.RunCoreAsync [general]: {RegistrySettingsManager.KeyVpnProvider}={cfg.VpnProvider}, " +
             $"{RegistrySettingsManager.KeyNatPmpAdapterName}={cfg.NatPmpAdapterName}, " +
             $"{RegistrySettingsManager.KeyUpdateIntervalSeconds}={cfg.UpdateInterval}s, " +
-            $"{RegistrySettingsManager.KeyAutoRecoveryEnabled}={cfg.AutoRecoveryEnabled}, " +
-            $"{RegistrySettingsManager.KeyAutoRecoveryTriggerCycles}={cfg.AutoRecoveryTriggerCycles}, " +
+            $"{RegistrySettingsManager.KeyVpnAutoRecoveryEnabled}={cfg.VpnAutoRecoveryEnabled}, " +
+            $"{RegistrySettingsManager.KeyVpnAutoRecoveryTriggerCycles}={cfg.VpnAutoRecoveryTriggerCycles}, " +
             $"{RegistrySettingsManager.KeyBitTorrentClient}={cfg.BitTorrentClient}, " +
             $"{RegistrySettingsManager.KeyVerifyPortAfterSync}={cfg.VerifyPortAfterSync}, " +
             $"{RegistrySettingsManager.KeyPortClosedRecoveryEnabled}={cfg.PortClosedRecoveryEnabled}, " +
-            $"{RegistrySettingsManager.KeyPortClosedRecoveryChecks}={cfg.PortClosedRecoveryChecks}");
+            $"{RegistrySettingsManager.KeyPortClosedRecoveryTriggerChecks}={cfg.PortClosedRecoveryTriggerChecks}");
 
         if (activeSection == RegistrySettingsManager.SectionTransmission)
             LogManager.Instance.LogDebug(
@@ -688,7 +688,7 @@ public sealed class PortSyncService
         if (!config.PortClosedRecoveryEnabled || !_portClosedRecoveryArmed)
             return string.Empty;
         string checks = _confirmedClosedCount == 1 ? "check" : "checks";
-        return $" ({_confirmedClosedCount} consecutive {checks}, recovery triggers after {config.PortClosedRecoveryChecks} consecutive failures)";
+        return $" ({_confirmedClosedCount} consecutive {checks}, recovery triggers after {config.PortClosedRecoveryTriggerChecks} consecutive failures)";
     }
 
     // Opt-in: when the port has been confirmed closed for the configured number of checks,
@@ -703,7 +703,7 @@ public sealed class PortSyncService
             _confirmedClosedCount = 0;
             return;
         }
-        if (!_portClosedRecoveryArmed || _confirmedClosedCount < config.PortClosedRecoveryChecks) return;
+        if (!_portClosedRecoveryArmed || _confirmedClosedCount < config.PortClosedRecoveryTriggerChecks) return;
 
         _portClosedRecoveryArmed = false;
         _confirmedClosedCount = 0;
@@ -718,7 +718,7 @@ public sealed class PortSyncService
 
         string action = vpnManager.GetRecoveryAction();
         LogManager.Instance.LogMessage(
-            $"Triggering '{action}' for '{vpnManager.ProviderName}' - port confirmed closed for {config.PortClosedRecoveryChecks} consecutive checks",
+            $"Triggering '{action}' for '{vpnManager.ProviderName}' - port confirmed closed for {config.PortClosedRecoveryTriggerChecks} consecutive checks",
             LogLevel.Info);
         await DispatchRecoveryAsync(action, target, vpnManager.ProviderName, cancellationToken).ConfigureAwait(false);
     }
@@ -871,8 +871,8 @@ public sealed class PortSyncService
     private static string BuildCycleCountMessage(string prefix, int count, AppConfig cfg)
     {
         string cycles = count == 1 ? "cycle" : "cycles";
-        string recoverySuffix = cfg.AutoRecoveryEnabled
-            ? $", recovery triggers after {cfg.AutoRecoveryTriggerCycles} consecutive failures"
+        string recoverySuffix = cfg.VpnAutoRecoveryEnabled
+            ? $", recovery triggers after {cfg.VpnAutoRecoveryTriggerCycles} consecutive failures"
             : string.Empty;
         return $"{prefix} ({count} consecutive {cycles}{recoverySuffix})";
     }
@@ -905,12 +905,12 @@ public sealed class PortSyncService
     // when no recovery target is found.
     private async Task TryTriggerRecoveryAsync(string action, string? recoveryTarget, string displayName, AppConfig cfg, CancellationToken cancellationToken)
     {
-        if (!cfg.AutoRecoveryEnabled)
+        if (!cfg.VpnAutoRecoveryEnabled)
         {
             _consecutiveFailedCycles = 0;
             return;
         }
-        if (_consecutiveFailedCycles < cfg.AutoRecoveryTriggerCycles) return;
+        if (_consecutiveFailedCycles < cfg.VpnAutoRecoveryTriggerCycles) return;
 
         int count = _consecutiveFailedCycles;
 

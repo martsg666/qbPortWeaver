@@ -241,7 +241,7 @@ public partial class MainForm : Form
         base.OnFormClosing(e);
     }
 
-    // Pre-generates the three status icon variants (colored dot in the bottom-right corner)
+    // Pre-generates the four status icon variants (colored dot in the bottom-right corner)
     private void InitializeStatusIcons()
     {
         _iconBase = Properties.Resources.qbPortWeaver;

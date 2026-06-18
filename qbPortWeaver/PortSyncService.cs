@@ -65,7 +65,7 @@ public sealed class PortSyncService
     // Opt-in port-closed recovery state (serialised by MainForm._updateSemaphore like the rest).
     // The armed flag implements one-shot recovery: a persistent false "closed" (e.g. qBittorrent's
     // idle-firewalled state, which can last indefinitely on a client with no active transfers)
-    // causes at most one VPN restart - re-armed only after a verification reports the port open.
+    // causes at most one recovery action - re-armed only after a verification reports the port open.
     private int _confirmedClosedCount;
     private bool _portClosedRecoveryArmed = true;
 
@@ -674,7 +674,7 @@ public sealed class PortSyncService
         _confirmedClosedCount = 1;
         string confirmedSuffix = BuildPortClosedRecoverySuffix(config);
         LogManager.Instance.LogMessage($"{clientName} port {port} is not reachable from outside (confirmed by two checks){confirmedSuffix}", LogLevel.Warn);
-        try { PortVerificationFailed?.Invoke($"{clientName} port {port} is not reachable from the outside."); }
+        try { PortVerificationFailed?.Invoke($"{clientName} port {port} is not reachable from outside."); }
         catch (Exception ex) { LogManager.Instance.LogMessage($"PortVerificationFailed handler failed: {ex.Message}", LogLevel.Warn); }
     }
 
@@ -696,7 +696,7 @@ public sealed class PortSyncService
     // dispatches the provider's recovery action once. Independent of the failed-sync recovery
     // trigger - the two share the action, not the gate. One-shot arming: after firing, recovery
     // stays disarmed until a verification reports the port open again (see HandlePortOpenResult),
-    // so a persistently false "closed" can never cause a VPN restart loop.
+    // so a persistently false "closed" can never cause a recovery loop.
     private async Task MaybeTriggerPortClosedRecoveryAsync(SyncConfig config, CancellationToken cancellationToken)
     {
         if (!config.PortClosedRecoveryEnabled)

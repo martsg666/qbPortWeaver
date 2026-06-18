@@ -62,7 +62,7 @@ public interface IBitTorrentClient : IDisposable
     Task<string?> GetConnectionStatusAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Tests whether the listening port is reachable from the outside. Returns
+    /// Tests whether the listening port is reachable from outside. Returns
     /// <see langword="true"/> when open, <see langword="false"/> when closed, or
     /// <see langword="null"/> when it cannot be determined (client unreachable, no internet,
     /// or port-test service unavailable).

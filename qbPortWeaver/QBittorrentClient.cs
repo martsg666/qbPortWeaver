@@ -138,7 +138,7 @@ public sealed class QBittorrentClient : BitTorrentClientBase
 
             if (!response.IsSuccessStatusCode)
             {
-                LogManager.Instance.LogMessage($"Failed to get {ClientName} transfer info (HTTP {(int)response.StatusCode} {response.StatusCode})", failureLevel);
+                LogManager.Instance.LogMessage($"QBittorrentClient.{callerName}: Failed to get {ClientName} transfer info (HTTP {(int)response.StatusCode} {response.StatusCode})", failureLevel);
                 return null;
             }
 

@@ -152,14 +152,16 @@ public sealed class TransmissionClient : BitTorrentClientBase
 
     /// <inheritdoc/>
     /// <remarks>Uses the <c>port-test</c> RPC method, which actively probes the port via
-    /// Transmission's online port-check service. Failures (RPC or service) log at Debug only -
-    /// this is a best-effort probe and the orchestrator treats null as "undeterminable".</remarks>
+    /// Transmission's online port-check service. Failures (transport, RPC, or service) log at
+    /// Debug only - this is a best-effort probe and the orchestrator treats null as
+    /// "undeterminable". The Debug level is passed through to <see cref="SendRpcAsync"/> so an
+    /// unreachable daemon during a verify cycle does not raise an Error.</remarks>
     public override async Task<bool?> TestListeningPortAsync(CancellationToken cancellationToken = default)
     {
         try
         {
             const string body = """{"method":"port-test"}""";
-            using var response = await SendRpcAsync(body, cancellationToken).ConfigureAwait(false);
+            using var response = await SendRpcAsync(body, cancellationToken, LogLevel.Debug).ConfigureAwait(false);
             if (response is null || !response.IsSuccessStatusCode) return null;
 
             var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
@@ -340,7 +342,11 @@ public sealed class TransmissionClient : BitTorrentClientBase
     // Transmission rejects requests without a valid session ID with HTTP 409, including
     // the very first request per session. On 409, the new session ID is extracted from
     // the X-Transmission-Session-Id response header and the request is retried once.
-    private async Task<HttpResponseMessage?> SendRpcAsync(string jsonBody, CancellationToken cancellationToken = default)
+    // failureLevel governs the level for transport/protocol/auth failures: Error by default
+    // (port sync, set-port - actionable), but the best-effort port verification probe passes
+    // Debug so an unreachable daemon during a verify cycle does not raise an Error, matching
+    // qBittorrent's and Deluge's verify-path handling.
+    private async Task<HttpResponseMessage?> SendRpcAsync(string jsonBody, CancellationToken cancellationToken = default, LogLevel failureLevel = LogLevel.Error)
     {
         try
         {
@@ -356,7 +362,7 @@ public sealed class TransmissionClient : BitTorrentClientBase
 
             // 401 is handled here (not per caller) so every RPC call - including the post-409
             // retry below - reports the same actionable credentials message.
-            if (IsUnauthorized(response))
+            if (IsUnauthorized(response, failureLevel))
                 return null;
 
             if (response.StatusCode != HttpStatusCode.Conflict)
@@ -364,7 +370,7 @@ public sealed class TransmissionClient : BitTorrentClientBase
 
             if (!response.Headers.TryGetValues(SessionIdHeader, out var values))
             {
-                LogManager.Instance.LogMessage($"{ClientName} returned 409 without a session ID header", LogLevel.Error);
+                LogManager.Instance.LogMessage($"{ClientName} returned 409 without a session ID header", failureLevel);
                 response.Dispose();
                 return null;
             }
@@ -373,7 +379,7 @@ public sealed class TransmissionClient : BitTorrentClientBase
             response.Dispose();
             if (string.IsNullOrEmpty(_sessionId))
             {
-                LogManager.Instance.LogMessage($"{ClientName} returned 409 with empty session ID header", LogLevel.Error);
+                LogManager.Instance.LogMessage($"{ClientName} returned 409 with empty session ID header", failureLevel);
                 return null;
             }
 
@@ -383,12 +389,12 @@ public sealed class TransmissionClient : BitTorrentClientBase
             };
             retry.Headers.Add(SessionIdHeader, _sessionId);
             var retryResponse = await HttpClient.SendAsync(retry, cancellationToken).ConfigureAwait(false);
-            return IsUnauthorized(retryResponse) ? null : retryResponse;
+            return IsUnauthorized(retryResponse, failureLevel) ? null : retryResponse;
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
         catch (Exception ex)
         {
-            LogHttpException("SendRpcAsync", ex);
+            LogHttpException("SendRpcAsync", ex, failureLevel);
             return null;
         }
     }
@@ -397,10 +403,10 @@ public sealed class TransmissionClient : BitTorrentClientBase
     // when the response is HTTP 401, so SendRpcAsync can translate it into its null failure contract.
     // NOTE: Disposes the response internally so the 409-retry path in SendRpcAsync stays clean.
     // Call sites must NOT wrap the response in a using block - it is already disposed when this returns true.
-    private bool IsUnauthorized(HttpResponseMessage response)
+    private bool IsUnauthorized(HttpResponseMessage response, LogLevel failureLevel = LogLevel.Error)
     {
         if (response.StatusCode != HttpStatusCode.Unauthorized) return false;
-        LogManager.Instance.LogMessage($"{ClientName} authentication failed: wrong username or password (username: '{_userName}') - check the credentials in Settings", LogLevel.Error);
+        LogManager.Instance.LogMessage($"{ClientName} authentication failed: wrong username or password (username: '{_userName}') - check the credentials in Settings", failureLevel);
         response.Dispose();
         return true;
     }

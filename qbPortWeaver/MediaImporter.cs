@@ -168,7 +168,7 @@ internal static partial class MediaImporter
         if (File.Exists(destinationPath))
         {
             LogManager.Instance.LogMessage(
-                $"Destination conflict: '{Path.GetFileName(destinationPath)}' already exists with different content (source: {new FileInfo(sourcePath).Length} bytes, dest: {new FileInfo(destinationPath).Length} bytes). Skipping to avoid overwriting.",
+                $"Destination conflict: '{Path.GetFileName(destinationPath)}' already exists with different content (source: {DescribeFileSize(sourcePath)}, dest: {DescribeFileSize(destinationPath)}). Skipping to avoid overwriting.",
                 LogLevel.Warn, Subsystem.MediaManager);
             return;
         }
@@ -206,6 +206,21 @@ internal static partial class MediaImporter
         }
 
         AddToLibraryIndex(destinationPath);
+    }
+
+    // Returns the file's size as a display string ("12345 bytes"), or "unknown size" if it cannot be
+    // read. Never throws: it only backs the destination-conflict warning, whose job is to describe a
+    // skip - a transient SMB stat failure or a file that vanished must not abort the import path.
+    internal static string DescribeFileSize(string path)
+    {
+        try
+        {
+            return $"{new FileInfo(path).Length} bytes";
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return "unknown size";
+        }
     }
 
     /// <summary>Returns <see langword="true"/> if the destination file already exists and its fingerprint matches the source - i.e. the source was already imported.</summary>

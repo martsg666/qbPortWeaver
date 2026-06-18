@@ -33,7 +33,7 @@
          S3881 - abstract base class; all sealed subclasses have no additional disposable resources (BitTorrentClientBase.cs)
          S4721 - post-update command is user-configured, arbitrary execution is intended (PortSyncService.cs)
          S4790 - TMDB credential sent over HTTPS only; v3 API key in query param, v4 JWT as Bearer header (TmdbClient.cs)
-         S6966 - non-modal Show() is intentional for WhatsNewForm and UpdateAvailableForm (MainForm.cs) -->
+         S6966 - non-modal Show() on child forms is intentional (WhatsNewForm directly; others via the ShowOrActivate helper, MainForm.cs) -->
     <NoWarn>S108;S125;S1075;S1125;S1215;S2068;S2221;S2325;S2486;S2589;S3881;S4721;S4790;S6966</NoWarn>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>

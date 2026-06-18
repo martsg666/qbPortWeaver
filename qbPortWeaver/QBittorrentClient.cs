@@ -121,13 +121,14 @@ public sealed class QBittorrentClient : BitTorrentClientBase
     /// Used by the restart-on-disconnect check, so transport failures log at Error (an unreachable
     /// client is actionable here).</remarks>
     public override Task<string?> GetConnectionStatusAsync(CancellationToken cancellationToken = default) =>
-        GetConnectionStatusCoreAsync(LogLevel.Error, cancellationToken);
+        GetConnectionStatusCoreAsync(LogLevel.Error, nameof(GetConnectionStatusAsync), cancellationToken);
 
     // Core implementation shared by GetConnectionStatusAsync (restart-on-disconnect, failureLevel
     // = Error) and TestListeningPortAsync (best-effort port verification, failureLevel = Debug).
     // The failure level keeps the verification path's logging symmetric with Transmission/Deluge,
-    // which log their best-effort port-test failures at Debug.
-    private async Task<string?> GetConnectionStatusCoreAsync(LogLevel failureLevel, CancellationToken cancellationToken)
+    // which log their best-effort port-test failures at Debug. callerName labels the log lines with
+    // the public method that initiated the call, so a verify failure reads TestListeningPortAsync.
+    private async Task<string?> GetConnectionStatusCoreAsync(LogLevel failureLevel, string callerName, CancellationToken cancellationToken)
     {
         if (!await EnsureAuthenticatedAsync(cancellationToken).ConfigureAwait(false)) return null;
 
@@ -137,7 +138,7 @@ public sealed class QBittorrentClient : BitTorrentClientBase
 
             if (!response.IsSuccessStatusCode)
             {
-                LogManager.Instance.LogMessage($"Failed to get {ClientName} transfer info (HTTP {(int)response.StatusCode} {response.StatusCode})", failureLevel);
+                LogManager.Instance.LogMessage($"QBittorrentClient.{callerName}: Failed to get {ClientName} transfer info (HTTP {(int)response.StatusCode} {response.StatusCode})", failureLevel);
                 return null;
             }
 
@@ -146,13 +147,13 @@ public sealed class QBittorrentClient : BitTorrentClientBase
             if (doc.RootElement.TryGetProperty("connection_status", out var statusElement))
                 return statusElement.GetString();
 
-            LogManager.Instance.LogDebug("QBittorrentClient.GetConnectionStatusAsync: connection_status not found in transfer/info response");
+            LogManager.Instance.LogDebug($"QBittorrentClient.{callerName}: connection_status not found in transfer/info response");
             return null;
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
         catch (Exception ex)
         {
-            LogHttpException("GetConnectionStatusAsync", ex, failureLevel);
+            LogHttpException(callerName, ex, failureLevel);
             return null;
         }
     }
@@ -166,7 +167,7 @@ public sealed class QBittorrentClient : BitTorrentClientBase
     {
         // Best-effort probe: transport failures log at Debug (failureLevel), not Error, so an
         // unreachable client during verification matches Transmission/Deluge's Debug-level handling.
-        string? status = await GetConnectionStatusCoreAsync(LogLevel.Debug, cancellationToken).ConfigureAwait(false);
+        string? status = await GetConnectionStatusCoreAsync(LogLevel.Debug, nameof(TestListeningPortAsync), cancellationToken).ConfigureAwait(false);
         if (string.Equals(status, ConnectionStatusConnected, StringComparison.OrdinalIgnoreCase)) return true;
         if (string.Equals(status, ConnectionStatusFirewalled, StringComparison.OrdinalIgnoreCase)) return false;
         return null;

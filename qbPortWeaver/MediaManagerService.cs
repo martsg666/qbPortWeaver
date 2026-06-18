@@ -600,7 +600,7 @@ public static class MediaManagerService
         {
             LogManager.Instance.LogMessage(
                 $"Destination conflict: '{Path.GetFileName(targetPath)}' already exists with different content " +
-                $"(source: {new FileInfo(sourcePath).Length} bytes, dest: {new FileInfo(targetPath).Length} bytes). Skipping to avoid overwriting.",
+                $"(source: {MediaImporter.DescribeFileSize(sourcePath)}, dest: {MediaImporter.DescribeFileSize(targetPath)}). Skipping to avoid overwriting.",
                 LogLevel.Warn, Subsystem.MediaManager);
             return;
         }

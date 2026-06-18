@@ -65,7 +65,7 @@ public sealed class PortSyncService
     // Opt-in port-closed recovery state (serialised by MainForm._updateSemaphore like the rest).
     // The armed flag implements one-shot recovery: a persistent false "closed" (e.g. qBittorrent's
     // idle-firewalled state, which can last indefinitely on a client with no active transfers)
-    // causes at most one VPN restart - re-armed only after a verification reports the port open.
+    // causes at most one recovery action - re-armed only after a verification reports the port open.
     private int _confirmedClosedCount;
     private bool _portClosedRecoveryArmed = true;
 
@@ -105,12 +105,12 @@ public sealed class PortSyncService
         bool QBittorrentWarnOnInterfaceMismatch,
         bool QBittorrentRestartOnDisconnect,
         string PostUpdateCommand,
-        bool AutoRecoveryEnabled,
-        int AutoRecoveryTriggerCycles,
+        bool VpnAutoRecoveryEnabled,
+        int VpnAutoRecoveryTriggerCycles,
         bool NotifyOnPortUpdate,
         bool VerifyPortAfterSync,
         bool PortClosedRecoveryEnabled,
-        int PortClosedRecoveryCycles
+        int PortClosedRecoveryTriggerChecks
     );
 
     // Groups client behaviour settings passed to EnsureRunningAndUpdatePortAsync
@@ -124,7 +124,7 @@ public sealed class PortSyncService
         bool NotifyOnPortUpdate,
         bool VerifyPort,
         bool PortClosedRecoveryEnabled,
-        int PortClosedRecoveryCycles
+        int PortClosedRecoveryTriggerChecks
     );
 
     // Compile-time-safe keys and values for the status dictionary written to the JSON status file.
@@ -231,7 +231,7 @@ public sealed class PortSyncService
         status[StatusKeys.UpdateIntervalSeconds] = cfg.UpdateInterval;
 
         // Instantiate VPN manager based on configured provider
-        IVpnManager? vpnManager = await CreateVpnManager(cfg, status, cancellationToken).ConfigureAwait(false);
+        IVpnManager? vpnManager = await CreateVpnManagerAsync(cfg, status, cancellationToken).ConfigureAwait(false);
         if (vpnManager is null)
             return cfg.UpdateInterval;
 
@@ -304,7 +304,7 @@ public sealed class PortSyncService
                 NotifyOnPortUpdate: cfg.NotifyOnPortUpdate,
                 VerifyPort: cfg.VerifyPortAfterSync,
                 PortClosedRecoveryEnabled: cfg.PortClosedRecoveryEnabled,
-                PortClosedRecoveryCycles: cfg.PortClosedRecoveryCycles),
+                PortClosedRecoveryTriggerChecks: cfg.PortClosedRecoveryTriggerChecks),
             status,
             cancellationToken).ConfigureAwait(false);
 
@@ -317,7 +317,7 @@ public sealed class PortSyncService
         int updateInterval = RegistrySettingsManager.GetInt(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyUpdateIntervalSeconds);
         if (updateInterval < AppConstants.MinUpdateIntervalSeconds) updateInterval = AppConstants.DefaultUpdateIntervalSeconds;
 
-        int autoRecoveryTriggerCycles = Math.Max(1, RegistrySettingsManager.GetInt(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyAutoRecoveryTriggerCycles));
+        int vpnAutoRecoveryTriggerCycles = Math.Max(1, RegistrySettingsManager.GetInt(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyVpnAutoRecoveryTriggerCycles));
 
         string bitTorrentClient = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyBitTorrentClient);
         string activeSection = GetActiveClientSection(bitTorrentClient);
@@ -363,12 +363,12 @@ public sealed class PortSyncService
             QBittorrentWarnOnInterfaceMismatch: RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyWarnOnInterfaceMismatch),
             QBittorrentRestartOnDisconnect: RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyRestartOnDisconnect),
             PostUpdateCommand: RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionExtra, RegistrySettingsManager.KeyPostUpdateCmd),
-            AutoRecoveryEnabled: RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyAutoRecoveryEnabled),
-            AutoRecoveryTriggerCycles: autoRecoveryTriggerCycles,
+            VpnAutoRecoveryEnabled: RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyVpnAutoRecoveryEnabled),
+            VpnAutoRecoveryTriggerCycles: vpnAutoRecoveryTriggerCycles,
             NotifyOnPortUpdate: RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyNotifyOnPortUpdate),
             VerifyPortAfterSync: RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyVerifyPortAfterSync),
             PortClosedRecoveryEnabled: RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyPortClosedRecoveryEnabled),
-            PortClosedRecoveryCycles: Math.Max(1, RegistrySettingsManager.GetInt(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyPortClosedRecoveryCycles))
+            PortClosedRecoveryTriggerChecks: Math.Max(1, RegistrySettingsManager.GetInt(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyPortClosedRecoveryTriggerChecks))
         ), activeSection);
     }
 
@@ -382,12 +382,12 @@ public sealed class PortSyncService
             $"PortSyncService.RunCoreAsync [general]: {RegistrySettingsManager.KeyVpnProvider}={cfg.VpnProvider}, " +
             $"{RegistrySettingsManager.KeyNatPmpAdapterName}={cfg.NatPmpAdapterName}, " +
             $"{RegistrySettingsManager.KeyUpdateIntervalSeconds}={cfg.UpdateInterval}s, " +
-            $"{RegistrySettingsManager.KeyAutoRecoveryEnabled}={cfg.AutoRecoveryEnabled}, " +
-            $"{RegistrySettingsManager.KeyAutoRecoveryTriggerCycles}={cfg.AutoRecoveryTriggerCycles}, " +
+            $"{RegistrySettingsManager.KeyVpnAutoRecoveryEnabled}={cfg.VpnAutoRecoveryEnabled}, " +
+            $"{RegistrySettingsManager.KeyVpnAutoRecoveryTriggerCycles}={cfg.VpnAutoRecoveryTriggerCycles}, " +
             $"{RegistrySettingsManager.KeyBitTorrentClient}={cfg.BitTorrentClient}, " +
             $"{RegistrySettingsManager.KeyVerifyPortAfterSync}={cfg.VerifyPortAfterSync}, " +
             $"{RegistrySettingsManager.KeyPortClosedRecoveryEnabled}={cfg.PortClosedRecoveryEnabled}, " +
-            $"{RegistrySettingsManager.KeyPortClosedRecoveryCycles}={cfg.PortClosedRecoveryCycles}");
+            $"{RegistrySettingsManager.KeyPortClosedRecoveryTriggerChecks}={cfg.PortClosedRecoveryTriggerChecks}");
 
         if (activeSection == RegistrySettingsManager.SectionTransmission)
             LogManager.Instance.LogDebug(
@@ -432,7 +432,7 @@ public sealed class PortSyncService
     // instantiation arm here, the keyword in IsRecognizedProvider below, an entry in
     // VpnProviderRegistry.KnownProviders (when service-restart recovery applies), and the
     // value in SettingsForm's cboVpnProvider list.
-    private async Task<IVpnManager?> CreateVpnManager(AppConfig cfg, Dictionary<string, object?> status, CancellationToken cancellationToken)
+    private async Task<IVpnManager?> CreateVpnManagerAsync(AppConfig cfg, Dictionary<string, object?> status, CancellationToken cancellationToken)
     {
         if (cfg.VpnProvider.Equals(RegistrySettingsManager.VpnProviderDisabled, StringComparison.OrdinalIgnoreCase))
         {
@@ -446,7 +446,7 @@ public sealed class PortSyncService
             return new PiaVpnManager();
 
         if (cfg.VpnProvider.Equals(RegistrySettingsManager.VpnProviderNatPmp, StringComparison.OrdinalIgnoreCase))
-            return await CreateNatPmpVpnManager(cfg, status, cancellationToken).ConfigureAwait(false);
+            return await CreateNatPmpVpnManagerAsync(cfg, status, cancellationToken).ConfigureAwait(false);
 
         if (cfg.VpnProvider.Equals(RegistrySettingsManager.VpnProviderProtonVpn, StringComparison.OrdinalIgnoreCase))
             return new ProtonVpnManager(AppConstants.GetProtonVpnLogFilePath());
@@ -467,7 +467,7 @@ public sealed class PortSyncService
 
     // Resolves the NAT-PMP VPN manager for the configured adapter, handling the disconnected
     // fallback cases and auto-recovery triggering when no adapter is reachable.
-    private async Task<IVpnManager?> CreateNatPmpVpnManager(AppConfig cfg, Dictionary<string, object?> status, CancellationToken cancellationToken)
+    private async Task<IVpnManager?> CreateNatPmpVpnManagerAsync(AppConfig cfg, Dictionary<string, object?> status, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(cfg.NatPmpAdapterName))
         {
@@ -497,7 +497,7 @@ public sealed class PortSyncService
         // RunCoreAsync handles disconnection gracefully (apply default port or skip).
         if (_lastKnownNatPmpManager is not null)
         {
-            LogManager.Instance.LogDebug("PortSyncService.CreateNatPmpVpnManager: Adapter not discoverable, using last known manager for disconnection handling");
+            LogManager.Instance.LogDebug("PortSyncService.CreateNatPmpVpnManagerAsync: Adapter not discoverable, using last known manager for disconnection handling");
             return _lastKnownNatPmpManager;
         }
 
@@ -658,13 +658,7 @@ public sealed class PortSyncService
         if (_portConfirmedClosed)
         {
             _confirmedClosedCount++;
-            // Suffix only while recovery is enabled AND still armed - it shows progress toward the
-            // recovery threshold. With recovery off the count is zeroed each cycle; once recovery
-            // has fired (disarmed) the count no longer drives a trigger, so showing N/M would
-            // misleadingly climb past M while waiting for the port to reopen.
-            string closedSuffix = config.PortClosedRecoveryEnabled && _portClosedRecoveryArmed
-                ? $" ({_confirmedClosedCount}/{config.PortClosedRecoveryCycles} checks for recovery)"
-                : string.Empty;
+            string closedSuffix = BuildPortClosedRecoverySuffix(config);
             LogManager.Instance.LogMessage($"{clientName} port {port} is still not reachable from outside{closedSuffix}", LogLevel.Warn);
             return;
         }
@@ -678,19 +672,31 @@ public sealed class PortSyncService
         _portCheckPendingConfirmation = false;
         _portConfirmedClosed = true;
         _confirmedClosedCount = 1;
-        string confirmedSuffix = config.PortClosedRecoveryEnabled
-            ? $" (1/{config.PortClosedRecoveryCycles} checks for recovery)"
-            : "";
+        string confirmedSuffix = BuildPortClosedRecoverySuffix(config);
         LogManager.Instance.LogMessage($"{clientName} port {port} is not reachable from outside (confirmed by two checks){confirmedSuffix}", LogLevel.Warn);
-        try { PortVerificationFailed?.Invoke($"{clientName} port {port} is not reachable from the outside."); }
+        try { PortVerificationFailed?.Invoke($"{clientName} port {port} is not reachable from outside."); }
         catch (Exception ex) { LogManager.Instance.LogMessage($"PortVerificationFailed handler failed: {ex.Message}", LogLevel.Warn); }
+    }
+
+    // Builds the recovery-progress suffix for the port-closed Warn messages, mirroring
+    // BuildCycleCountMessage's structure (counted in checks, not cycles) so it reads consistently
+    // with the failed-cycle recovery logs.
+    // Shown only while recovery is enabled AND still armed - it tracks progress toward the
+    // threshold. With recovery off the count is zeroed each cycle; once recovery has fired
+    // (disarmed) the count no longer drives a trigger, so a climbing count would mislead.
+    private string BuildPortClosedRecoverySuffix(SyncConfig config)
+    {
+        if (!config.PortClosedRecoveryEnabled || !_portClosedRecoveryArmed)
+            return string.Empty;
+        string checks = _confirmedClosedCount == 1 ? "closed check" : "closed checks";
+        return $" ({_confirmedClosedCount} consecutive {checks}, recovery triggers after {config.PortClosedRecoveryTriggerChecks} consecutive closed checks)";
     }
 
     // Opt-in: when the port has been confirmed closed for the configured number of checks,
     // dispatches the provider's recovery action once. Independent of the failed-sync recovery
     // trigger - the two share the action, not the gate. One-shot arming: after firing, recovery
     // stays disarmed until a verification reports the port open again (see HandlePortOpenResult),
-    // so a persistently false "closed" can never cause a VPN restart loop.
+    // so a persistently false "closed" can never cause a recovery loop.
     private async Task MaybeTriggerPortClosedRecoveryAsync(SyncConfig config, CancellationToken cancellationToken)
     {
         if (!config.PortClosedRecoveryEnabled)
@@ -698,7 +704,7 @@ public sealed class PortSyncService
             _confirmedClosedCount = 0;
             return;
         }
-        if (!_portClosedRecoveryArmed || _confirmedClosedCount < config.PortClosedRecoveryCycles) return;
+        if (!_portClosedRecoveryArmed || _confirmedClosedCount < config.PortClosedRecoveryTriggerChecks) return;
 
         _portClosedRecoveryArmed = false;
         _confirmedClosedCount = 0;
@@ -713,7 +719,7 @@ public sealed class PortSyncService
 
         string action = vpnManager.GetRecoveryAction();
         LogManager.Instance.LogMessage(
-            $"Triggering '{action}' for '{vpnManager.ProviderName}' - port confirmed closed for {config.PortClosedRecoveryCycles} consecutive checks",
+            $"Triggering '{action}' for '{vpnManager.ProviderName}' after {config.PortClosedRecoveryTriggerChecks} consecutive closed {(config.PortClosedRecoveryTriggerChecks == 1 ? "check" : "checks")}",
             LogLevel.Info);
         await DispatchRecoveryAsync(action, target, vpnManager.ProviderName, cancellationToken).ConfigureAwait(false);
     }
@@ -865,9 +871,9 @@ public sealed class PortSyncService
     // Builds a failure log message with cycle count and optional recovery trigger suffix
     private static string BuildCycleCountMessage(string prefix, int count, AppConfig cfg)
     {
-        string cycles = count == 1 ? "cycle" : "cycles";
-        string recoverySuffix = cfg.AutoRecoveryEnabled
-            ? $", recovery triggers after {cfg.AutoRecoveryTriggerCycles} consecutive failures"
+        string cycles = count == 1 ? "failed cycle" : "failed cycles";
+        string recoverySuffix = cfg.VpnAutoRecoveryEnabled
+            ? $", recovery triggers after {cfg.VpnAutoRecoveryTriggerCycles} consecutive failed cycles"
             : string.Empty;
         return $"{prefix} ({count} consecutive {cycles}{recoverySuffix})";
     }
@@ -900,19 +906,19 @@ public sealed class PortSyncService
     // when no recovery target is found.
     private async Task TryTriggerRecoveryAsync(string action, string? recoveryTarget, string displayName, AppConfig cfg, CancellationToken cancellationToken)
     {
-        if (!cfg.AutoRecoveryEnabled)
+        if (!cfg.VpnAutoRecoveryEnabled)
         {
             _consecutiveFailedCycles = 0;
             return;
         }
-        if (_consecutiveFailedCycles < cfg.AutoRecoveryTriggerCycles) return;
+        if (_consecutiveFailedCycles < cfg.VpnAutoRecoveryTriggerCycles) return;
 
         int count = _consecutiveFailedCycles;
 
         if (recoveryTarget is null)
         {
             _consecutiveFailedCycles = 0;
-            LogManager.Instance.LogMessage($"No recovery target found for '{displayName}'", LogLevel.Warn);
+            LogManager.Instance.LogMessage($"No recovery target found for '{displayName}' - skipping recovery", LogLevel.Warn);
             return;
         }
 

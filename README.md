@@ -355,15 +355,18 @@ The application is designed to always recover. A failing cycle never crashes the
 
 ### Branch and Release Strategy
 
-**`master`** always reflects the latest published release. Do not commit directly to `master`.
+**`master`** always reflects the latest published release. Do not commit directly to `master`; it is updated only by merging a completed release branch (step 4 below).
 
 #### Branch naming
 
 | Purpose | Base branch | Name pattern |
 |---|---|---|
 | Release | Previous release branch | `2.x.y` |
+| Release candidate | Release branch | `rc/<name>-<version>` |
 | Hotfix | Corresponding release branch | `fix/<description>` |
 | Feature | Corresponding release branch | `feature/<description>` |
+
+Hotfix, feature, and release-candidate branches are all merged into the release branch via pull request; release-candidate branches stage a batch of changes for final testing before the release is tagged.
 
 #### Workflow diagram
 
@@ -395,10 +398,13 @@ master  ────────────────────────
    # or
    git checkout -b feature/my-feature origin/<new-release>
    ```
+   Opening the pull request runs the **Build Check** workflow, which must pass before the branch can be merged.
 
 3. **Tag the release branch** once all testing is complete - this triggers the pipeline:
    ```
-   git tag v<new-release> origin/<new-release>
+   git checkout <new-release>
+   git pull --ff-only
+   git tag v<new-release>
    git push origin v<new-release>
    ```
    Pushing the tag automatically triggers the **Build and Release** pipeline, which builds the app, compiles the MSI installer, creates the GitHub Release, and uploads the MSI and Chocolatey package as release assets. Once the previous Chocolatey version is approved, run the **Publish to Chocolatey** workflow manually from the Actions tab.

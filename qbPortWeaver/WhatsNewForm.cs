@@ -234,6 +234,7 @@ public partial class WhatsNewForm : Form
     // gets the lighter bold style.
     private static bool IsVersionDivider(string headerLine) =>
         headerLine.StartsWith("New in ", StringComparison.Ordinal) ||
+        headerLine.StartsWith("v1.0.0", StringComparison.Ordinal) || // the lone initial-release header uses the vX.Y.Z form
         headerLine == "Previously released";
 
     private void btnClose_Click(object? sender, EventArgs e) => Close(); // NOSONAR S2325 - Close() is an instance method, handler cannot be static

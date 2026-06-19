@@ -22,6 +22,25 @@ The application runs in the system tray, manages configuration and logging, and 
 
 ---
 
+## Installation
+
+### Chocolatey (recommended)
+
+```
+choco install qbportweaver
+```
+
+Run from an elevated prompt. A newly released version may briefly lag behind the GitHub release while it is in Chocolatey moderation.
+
+### Manual (MSI)
+
+1. Download `qbPortWeaver_<version>_Setup.msi` from the [latest release](https://github.com/martsg666/qbPortWeaver/releases/latest).
+2. Run the installer (see the SmartScreen note above for the first-run warning).
+
+After installing, open **Settings** from the tray icon to configure the application.
+
+---
+
 ## Features
 
 - **Automatic Port Sync**
@@ -398,7 +417,7 @@ master  ────────────────────────
    # or
    git checkout -b feature/my-feature origin/<new-release>
    ```
-   Opening the pull request runs the **Build Check** workflow, which must pass before the branch can be merged.
+   Opening the pull request runs the **Build Check** workflow (a Release build with warnings treated as errors); make sure it passes before merging.
 
 3. **Tag the release branch** once all testing is complete - this triggers the pipeline:
    ```

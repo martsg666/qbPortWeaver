@@ -12,11 +12,14 @@ public partial class MainForm : Form
     // Menu-item fields are declared in the order they appear in the tray menu (top to bottom).
     private ToolStripMenuItem _updateAvailableMenuItem = null!;
     private ToolStripSeparator _updateSeparator = null!;
+    private ToolStripMenuItem _pauseSyncMenuItem = null!;
     private ToolStripMenuItem _showLogsMenuItem = null!;
     private ToolStripMenuItem _checkUpdatesMenuItem = null!;
     private ToolStripMenuItem _autoStartMenuItem = null!;
 
     private const string ShowLogsMenuText = "Show Logs";
+    private const string PauseSyncingMenuText = "Pause Syncing";
+    private const string ResumeSyncingMenuText = "Resume Syncing";
     private const string LogAlertBalloonMessage = "Check the log viewer for warnings or errors.";
     private const int WsExToolWindow = 0x80; // hides the form from Alt+Tab
 
@@ -31,6 +34,7 @@ public partial class MainForm : Form
     private Icon? _iconOk;
     private Icon? _iconWarning;
     private Icon? _iconError;
+    private Icon? _iconPaused;
 
     // Bold font for the update-available menu item, owned by MainForm because WinForms
     // does not dispose Fonts assigned to ToolStripMenuItem. Disposed in MainForm.Designer.cs.
@@ -68,6 +72,12 @@ public partial class MainForm : Form
 
     // Manual sync triggered flag (thread-safe with volatile)
     private volatile bool _manualSyncTriggered;
+
+    // Pause flag for the sync loop (thread-safe with volatile). Deliberately in-memory only:
+    // a restart always resumes syncing, so the app can never silently sit in a paused state
+    // the user forgot about. While paused the whole cycle body is skipped - port sync AND the
+    // media import kick-off - because the cycle is the unit the loop schedules.
+    private volatile bool _syncPaused;
 
     // Shutdown cancellation token to signal graceful exit
     private readonly CancellationTokenSource _shutdownCts = new();
@@ -107,7 +117,8 @@ public partial class MainForm : Form
 
         _portSyncService = new PortSyncService();
         _portSyncService.SyncCompleted += OnSyncCompleted;
-        _portSyncService.InterfaceMismatchDetected += OnInterfaceMismatchDetected;
+        _portSyncService.InterfaceMismatchDetected += ShowWarningBalloon;
+        _portSyncService.PortVerificationFailed += ShowWarningBalloon;
         _portSyncService.PortUpdated += OnPortUpdated;
 
         InitializeStatusIcons();
@@ -230,13 +241,14 @@ public partial class MainForm : Form
         base.OnFormClosing(e);
     }
 
-    // Pre-generates the three status icon variants (colored dot in the bottom-right corner)
+    // Pre-generates the four status icon variants (colored dot in the bottom-right corner)
     private void InitializeStatusIcons()
     {
         _iconBase = Properties.Resources.qbPortWeaver;
         _iconOk = CreateStatusIcon(_iconBase, AppConstants.StatusOk);
         _iconWarning = CreateStatusIcon(_iconBase, AppConstants.StatusWarning);
         _iconError = CreateStatusIcon(_iconBase, AppConstants.StatusError);
+        _iconPaused = CreateStatusIcon(_iconBase, AppConstants.StatusPaused);
     }
 
     // Draws a small filled circle onto a 16x16 copy of the base icon and returns it as an Icon
@@ -296,8 +308,11 @@ public partial class MainForm : Form
         _updateSeparator = new ToolStripSeparator { Visible = false };
         _trayMenu.Items.Add(_updateSeparator);
 
-        // Sync action
+        // Sync actions
         _trayMenu.Items.Add("Sync Port Now", null, syncPortNow_Click);
+        _pauseSyncMenuItem = new ToolStripMenuItem(PauseSyncingMenuText);
+        _pauseSyncMenuItem.Click += pauseSync_Click;
+        _trayMenu.Items.Add(_pauseSyncMenuItem);
         _trayMenu.Items.Add(new ToolStripSeparator());
 
         // Logs
@@ -382,12 +397,33 @@ public partial class MainForm : Form
             ShowLogViewer();
     }
 
-    // Triggers an immediate sync cycle by interrupting the current wait interval
+    // Triggers an immediate sync cycle by interrupting the current wait interval.
+    // Works while paused too: the loop runs exactly one cycle (the manual flag overrides the
+    // pause check), then returns to the paused state.
     private void syncPortNow_Click(object? sender, EventArgs e)
     {
         _manualSyncTriggered = true;
         LogManager.Instance.LogMessage("Manual sync requested", LogLevel.Info);
         InterruptDelay();
+    }
+
+    // Toggles the sync pause. On pause the tray feedback flips immediately (the loop itself
+    // only notices at its next wakeup, but no cycle can start once the flag is set, so the
+    // pause is already effective). On resume the delay is interrupted so a cycle starts now.
+    private void pauseSync_Click(object? sender, EventArgs e)
+    {
+        _syncPaused = !_syncPaused;
+        _pauseSyncMenuItem.Text = _syncPaused ? ResumeSyncingMenuText : PauseSyncingMenuText;
+        if (_syncPaused)
+        {
+            LogManager.Instance.LogMessage("Syncing paused by user", LogLevel.Info);
+            OnSyncCompleted(new TrayStatus(SyncState.Paused, null, "Port sync paused"));
+        }
+        else
+        {
+            LogManager.Instance.LogMessage("Syncing resumed by user", LogLevel.Info);
+            InterruptDelay();
+        }
     }
 
     // Interrupts the current inter-cycle delay so the next sync cycle starts immediately
@@ -402,7 +438,8 @@ public partial class MainForm : Form
 
     private void exit_Click(object? sender, EventArgs e) => Close(); // NOSONAR S2325 - Close() is an instance method, handler cannot be static
 
-    // Called by PortSyncService when a sync cycle completes
+    // Called by PortSyncService when a sync cycle completes, and directly by the pause
+    // handling (pauseSync_Click and the paused loop branch) to publish the Paused status.
     private void OnSyncCompleted(TrayStatus status)
     {
         _lastSyncStatus = status;
@@ -410,8 +447,9 @@ public partial class MainForm : Form
             InvokeOnUiThread(() => { UpdateTrayIcon(status.State); UpdateTrayTooltip(); });
     }
 
-    // Called by PortSyncService when qBittorrent's network interface doesn't match the configured VPN provider
-    private void OnInterfaceMismatchDetected(string message)
+    // Shared handler for PortSyncService warning events (interface mismatch, port verification
+    // failure) - both fire transition-only and warrant a one-shot warning balloon.
+    private void ShowWarningBalloon(string message)
     {
         if (_shutdownCts.IsCancellationRequested) return;
         InvokeOnUiThread(() => { _logAlertBalloonPending = false; _trayIcon.ShowBalloonTip(AppConstants.BalloonTipDurationMs, AppIdentity.AppName, message, ToolTipIcon.Warning); });
@@ -436,27 +474,13 @@ public partial class MainForm : Form
             int updateInterval = AppConstants.DefaultUpdateIntervalSeconds;
             try
             {
-                await _updateSemaphore.WaitAsync(_shutdownCts.Token);
-                try
-                {
-                    LogManager.Instance.LogBlankLine();
-                    LogManager.Instance.LogMessage("Sync cycle started", LogLevel.Info);
-                    updateInterval = await _portSyncService.RunAsync(_shutdownCts.Token);
-                }
-                finally
-                {
-                    _updateSemaphore.Release();
-                }
-
-                TryKickOffMediaImport();
-
-                // After a manual sync, wait only 10 seconds before next check
-                if (_manualSyncTriggered)
-                {
-                    _manualSyncTriggered = false;
-                    updateInterval = AppConstants.ManualSyncWaitSeconds;
-                    LogManager.Instance.LogMessage("Manual sync completed", LogLevel.Info);
-                }
+                // Paused: skip the whole cycle body (port sync and media import). A manual
+                // "Sync Port Now" click overrides the pause for exactly one cycle; the flag is
+                // consumed by the normal manual-sync handling after that cycle completes.
+                if (_syncPaused && !_manualSyncTriggered)
+                    PublishPausedStatus();
+                else
+                    updateInterval = await RunSyncCycleAsync();
 
                 if (await ShutdownRequestedDuringDelayAsync(updateInterval))
                     return;
@@ -468,20 +492,73 @@ public partial class MainForm : Form
             catch (Exception ex)
             {
                 LogManager.Instance.LogMessage($"Sync cycle failed, retrying in {updateInterval}s: {ex.Message}", LogLevel.Error);
-                try { await Task.Delay(updateInterval * AppConstants.MillisecondsPerSecond, _shutdownCts.Token); }
-                catch (OperationCanceledException) { break; }
-                catch (Exception delayEx)
-                {
-                    // Unexpected: Task.Delay should only throw OperationCanceledException via the token.
-                    // Anything else here indicates a runtime issue we cannot recover from in this loop.
-                    // Log the full exception (including type) so the failure is visible in the log file.
-                    LogManager.Instance.LogMessage($"Unexpected exception during retry delay: {delayEx}", LogLevel.Error);
+                if (!await TryDelayAfterErrorAsync(updateInterval))
                     break;
-                }
             }
         }
 
         LogManager.Instance.LogMessage("Main loop exited gracefully", LogLevel.Info);
+    }
+
+    // Publishes the Paused tray status while cycles are being skipped. Re-published on every
+    // skipped interval because a one-shot manual sync while paused leaves that cycle's result
+    // on the tray, and this puts the paused status back.
+    private void PublishPausedStatus()
+    {
+        LogManager.Instance.LogDebug("MainForm.RunMainLoopAsync: Sync paused - skipping cycle");
+        OnSyncCompleted(new TrayStatus(SyncState.Paused, null, "Port sync paused"));
+    }
+
+    // Runs one full sync cycle (port sync under the semaphore, then the media import kick-off)
+    // and returns the interval in seconds to wait before the next cycle.
+    private async Task<int> RunSyncCycleAsync()
+    {
+        int updateInterval;
+        await _updateSemaphore.WaitAsync(_shutdownCts.Token);
+        try
+        {
+            LogManager.Instance.LogBlankLine();
+            LogManager.Instance.LogMessage("Sync cycle started", LogLevel.Info);
+            updateInterval = await _portSyncService.RunAsync(_shutdownCts.Token);
+        }
+        finally
+        {
+            _updateSemaphore.Release();
+        }
+
+        TryKickOffMediaImport();
+
+        // After a manual sync, wait only 10 seconds before next check
+        if (_manualSyncTriggered)
+        {
+            _manualSyncTriggered = false;
+            updateInterval = AppConstants.ManualSyncWaitSeconds;
+            LogManager.Instance.LogMessage("Manual sync completed", LogLevel.Info);
+        }
+        return updateInterval;
+    }
+
+    // Waits out the retry interval after a failed cycle. Returns false when the loop should
+    // stop: shutdown cancellation, or an unexpected delay failure.
+    private async Task<bool> TryDelayAfterErrorAsync(int updateInterval)
+    {
+        try
+        {
+            await Task.Delay(updateInterval * AppConstants.MillisecondsPerSecond, _shutdownCts.Token);
+            return true;
+        }
+        catch (OperationCanceledException)
+        {
+            return false;
+        }
+        catch (Exception delayEx)
+        {
+            // Unexpected: Task.Delay should only throw OperationCanceledException via the token.
+            // Anything else here indicates a runtime issue we cannot recover from in this loop.
+            // Log the full exception (including type) so the failure is visible in the log file.
+            LogManager.Instance.LogMessage($"Unexpected exception during retry delay: {delayEx}", LogLevel.Error);
+            return false;
+        }
     }
 
     // Kicks off the media import on a separate fire-and-forget task so a long library scan
@@ -544,10 +621,9 @@ public partial class MainForm : Form
         return false;
     }
 
-    // Event handler for the periodic update-check timer - async void is correct here (event handler).
-    // Uses intrusive: false so a 12-hour tick surfaces an available update via the tray (menu item +
-    // balloon) rather than popping the UpdateAvailableForm in the user's face.
-    private async void OnUpdateCheckTimerTick(object? sender, EventArgs e)
+    // Periodic update-check timer tick. Uses intrusive: false so a 12-hour tick surfaces an available
+    // update via the tray (menu item + balloon) rather than popping the UpdateAvailableForm in the user's face.
+    private async void OnUpdateCheckTimerTick(object? sender, EventArgs e) // async void is correct here (WinForms event handler)
         => await PerformUpdateCheckAsync(intrusive: false);
 
     // Checks GitHub for a newer release.
@@ -566,58 +642,76 @@ public partial class MainForm : Form
         try
         {
             LogManager.Instance.LogDebug("MainForm.PerformUpdateCheckAsync: Checking for application updates");
-            var update = await UpdateChecker.GetAvailableUpdateAsync(_shutdownCts.Token);
-            if (update.HasValue)
-            {
-                if (!manual && update.Value.Version == _lastNotifiedVersion)
-                {
-                    LogManager.Instance.LogDebug($"MainForm.PerformUpdateCheckAsync: Version {update.Value.Version} available (already notified)");
-                    return;
-                }
-
-                _lastNotifiedVersion = update.Value.Version;
-                _pendingUpdate = update.Value;
-                LogManager.Instance.LogMessage($"New application version available: {update.Value.Version}", LogLevel.Info);
-
-                _updateAvailableMenuItem.Text = $"Update available ({update.Value.Version})";
-                _updateAvailableMenuItem.Visible = true;
-                _updateSeparator.Visible = true;
-                UpdateTrayTooltip();
-
-                if (intrusive)
-                {
-                    ShowUpdateAvailableForm(update.Value.Version, update.Value.Url);
-                }
-                else
-                {
-                    // Info balloon: not clickable on Windows 11 (routed silently through Action Center).
-                    // Shown purely as a visual hint that an update is available; the tray menu item is
-                    // the actual entry point to open the update form.
-                    _trayIcon.ShowBalloonTip(AppConstants.BalloonTipDurationMs, AppIdentity.AppName,
-                        $"Version {update.Value.Version} is available. Open the tray menu to install.",
-                        ToolTipIcon.Info);
-                }
-            }
+            var info = await UpdateChecker.GetLatestReleaseInfoAsync(_shutdownCts.Token);
+            if (info is null)
+                NotifyUpdateCheckFailed(manual);
+            else if (info.IsNewer)
+                PresentAvailableUpdate(info, intrusive, manual);
             else
-            {
-                LogManager.Instance.LogMessage($"Application is up to date ({AppConstants.AppVersion})", LogLevel.Info);
-                if (manual)
-                    _trayIcon.ShowBalloonTip(AppConstants.BalloonTipDurationMs, AppIdentity.AppName,
-                        $"{AppIdentity.AppName} {AppConstants.AppVersion} is up to date.", ToolTipIcon.Info);
-            }
+                NotifyUpToDate(manual);
         }
         catch (Exception ex)
         {
             LogManager.Instance.LogDebug($"MainForm.PerformUpdateCheckAsync: {ex.Message}");
-            if (manual)
-                _trayIcon.ShowBalloonTip(AppConstants.BalloonTipDurationMs, AppIdentity.AppName,
-                    "Could not check for updates - see the log for details.", ToolTipIcon.Warning);
+            NotifyUpdateCheckFailed(manual);
+        }
+    }
+
+    // Check failed or was cancelled by shutdown - UpdateChecker already logged the cause at Debug.
+    // Kept distinct from NotifyUpToDate so a failed check is never reported as "up to date"
+    // (the manual balloon would otherwise show false information).
+    private void NotifyUpdateCheckFailed(bool manual)
+    {
+        if (manual)
+            _trayIcon.ShowBalloonTip(AppConstants.BalloonTipDurationMs, AppIdentity.AppName,
+                "Could not check for updates - see the log for details.", ToolTipIcon.Warning);
+    }
+
+    private void NotifyUpToDate(bool manual)
+    {
+        LogManager.Instance.LogMessage($"Application is up to date ({AppConstants.AppVersion})", LogLevel.Info);
+        if (manual)
+            _trayIcon.ShowBalloonTip(AppConstants.BalloonTipDurationMs, AppIdentity.AppName,
+                $"{AppIdentity.AppName} {AppConstants.AppVersion} is up to date.", ToolTipIcon.Info);
+    }
+
+    // Surfaces a newer release: persistent tray menu item + tooltip line, then either the
+    // update form (intrusive) or a one-shot informational balloon (background timer tick).
+    private void PresentAvailableUpdate(LatestReleaseInfo info, bool intrusive, bool manual)
+    {
+        if (!manual && info.Version == _lastNotifiedVersion)
+        {
+            LogManager.Instance.LogDebug($"MainForm.PresentAvailableUpdate: Version {info.Version} available (already notified)");
+            return;
+        }
+
+        _lastNotifiedVersion = info.Version;
+        _pendingUpdate = (info.Version, info.ReleaseUrl);
+        LogManager.Instance.LogMessage($"New application version available: {info.Version}", LogLevel.Info);
+
+        _updateAvailableMenuItem.Text = $"Update available ({info.Version})";
+        _updateAvailableMenuItem.Visible = true;
+        _updateSeparator.Visible = true;
+        UpdateTrayTooltip();
+
+        if (intrusive)
+        {
+            ShowUpdateAvailableForm(info.Version, info.ReleaseUrl);
+        }
+        else
+        {
+            // Info balloon: not clickable on Windows 11 (routed silently through Action Center).
+            // Shown purely as a visual hint that an update is available; the tray menu item is
+            // the actual entry point to open the update form.
+            _trayIcon.ShowBalloonTip(AppConstants.BalloonTipDurationMs, AppIdentity.AppName,
+                $"Version {info.Version} is available. Open the tray menu to install.",
+                ToolTipIcon.Info);
         }
     }
 
     // Manual tray-triggered update check. Disables the menu item while the request is in flight
     // so rapid clicks do not stack multiple HTTP calls; re-enabled in finally even on cancellation.
-    private async void checkUpdates_Click(object? sender, EventArgs e)
+    private async void checkUpdates_Click(object? sender, EventArgs e) // async void is correct here (WinForms event handler)
     {
         _checkUpdatesMenuItem.Enabled = false;
         try
@@ -655,6 +749,7 @@ public partial class MainForm : Form
             SyncState.VpnDisconnected => _iconWarning ?? _iconBase!,
             SyncState.Error => _iconError ?? _iconBase!,
             SyncState.Disabled => _iconBase!,
+            SyncState.Paused => _iconPaused ?? _iconBase!,
             _ => _iconBase!
         };
     }
@@ -668,6 +763,7 @@ public partial class MainForm : Form
             { State: SyncState.VpnDisconnected, Port: int p } => $"VPN not connected | Default port {p}",
             { State: SyncState.VpnDisconnected } => "VPN not connected",
             { State: SyncState.Disabled } => "Port sync disabled",
+            { State: SyncState.Paused } => "Port sync paused",
             { State: SyncState.Error, Message: var m } => $"Error | {m}",
             _ => "Starting\u2026"
         };

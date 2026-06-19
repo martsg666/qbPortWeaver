@@ -105,11 +105,16 @@ public static class RegistrySettingsManager
 
     // Registry key names - general section (auto-recovery)
     // Registry string values are frozen for backward compatibility.
-    public const string KeyAutoRecoveryEnabled = "vpnAutoRecoveryEnabled";
-    public const string KeyAutoRecoveryTriggerCycles = "vpnAutoRecoveryTriggerCycles";
+    public const string KeyVpnAutoRecoveryEnabled = "vpnAutoRecoveryEnabled";
+    public const string KeyVpnAutoRecoveryTriggerCycles = "vpnAutoRecoveryTriggerCycles";
 
     // Registry key names - general section (notifications)
     public const string KeyNotifyOnPortUpdate = "notifyOnPortUpdate";
+
+    // Registry key names - general section (port verification)
+    public const string KeyVerifyPortAfterSync = "verifyPortAfterSync";
+    public const string KeyPortClosedRecoveryEnabled = "portClosedRecoveryEnabled";
+    public const string KeyPortClosedRecoveryTriggerChecks = "portClosedRecoveryTriggerChecks";
 
     // Registry key names - general section (updates)
     public const string KeyShowUpdateFormOnStartup = "showUpdateFormOnStartup";
@@ -123,11 +128,14 @@ public static class RegistrySettingsManager
                 [KeyVpnProvider] = VpnProviderDisabled,
                 [KeyUpdateIntervalSeconds] = "180",
                 [KeyNatPmpAdapterName] = "",
-                [KeyAutoRecoveryEnabled] = ValueTrue,
-                [KeyAutoRecoveryTriggerCycles] = "3",
+                [KeyVpnAutoRecoveryEnabled] = ValueTrue,
+                [KeyVpnAutoRecoveryTriggerCycles] = "3",
                 [KeyBitTorrentClient] = BitTorrentClientQBittorrent,
                 [KeyNotifyOnPortUpdate] = ValueTrue,
-                [KeyShowUpdateFormOnStartup] = ValueTrue
+                [KeyShowUpdateFormOnStartup] = ValueTrue,
+                [KeyVerifyPortAfterSync] = ValueTrue,
+                [KeyPortClosedRecoveryEnabled] = ValueFalse,
+                [KeyPortClosedRecoveryTriggerChecks] = "3"
             },
             [SectionQBittorrent] = new(StringComparer.OrdinalIgnoreCase)
             {

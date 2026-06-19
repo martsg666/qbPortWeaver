@@ -33,7 +33,9 @@ namespace qbPortWeaver.HelperService;
 internal sealed class HelperPipeServer(ILogger<HelperPipeServer> logger) : BackgroundService
 {
     private const int PipeErrorRetryDelayMs = 1000;
-    private const int PipeReadTimeoutMs = 5_000;
+    // Bound for reading the client's request line after a connection is accepted. (Named
+    // distinctly from HelperServiceClient.ResponseTimeoutMs, which bounds the opposite direction.)
+    private const int RequestReadTimeoutMs = 5_000;
 
     // Registry paths and keys for impersonated HKCU reads. Subkey names not in AppIdentity are session-environment specific.
     private const string VolatileEnvironmentKey = @"Volatile Environment";
@@ -91,7 +93,7 @@ internal sealed class HelperPipeServer(ILogger<HelperPipeServer> logger) : Backg
 
         using var reader = new StreamReader(pipe, leaveOpen: true);
         using var readCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        readCts.CancelAfter(PipeReadTimeoutMs);
+        readCts.CancelAfter(RequestReadTimeoutMs);
         string? message;
         try
         {

@@ -22,6 +22,25 @@ The application runs in the system tray, manages configuration and logging, and 
 
 ---
 
+## Installation
+
+### Chocolatey (recommended)
+
+```
+choco install qbportweaver
+```
+
+Run from an elevated prompt. A newly released version may briefly lag behind the GitHub release while it is in Chocolatey moderation.
+
+### Manual (MSI)
+
+1. Download `qbPortWeaver_<version>_Setup.msi` from the [latest release](https://github.com/martsg666/qbPortWeaver/releases/latest).
+2. Run the installer (see the SmartScreen note above for the first-run warning).
+
+After installing, open **Settings** from the tray icon to configure the application.
+
+---
+
 ## Features
 
 - **Automatic Port Sync**
@@ -42,6 +61,12 @@ The application runs in the system tray, manages configuration and logging, and 
 - **Restart on Disconnect** *(qBittorrent only)*
   Optionally restart qBittorrent when its connection status changes to disconnected. Requires the Executable and Process name to be configured.
 
+- **Port Verification**
+  After each sync, optionally checks that the listening port is actually reachable from the Internet - not just configured. Runs after a port change and periodically (every 5th cycle); a closed result is confirmed on the next cycle before a warning is logged and a tray notification is shown. Transmission and Deluge use their built-in online port checkers; qBittorrent infers reachability from incoming connections, so an idle client may report closed. Enabled by default.
+
+- **Pause and Resume Syncing**
+  A **Pause Syncing** item in the tray menu temporarily stops sync cycles (including Media Manager imports) without changing any settings. While paused, **Sync Port Now** still runs a single cycle on demand. Syncing always resumes when the application restarts.
+
 - **VPN Interface Mismatch Warning** *(qBittorrent only)*
   Shows a tray balloon tip and logs a warning if qBittorrent's network interface does not match the configured VPN provider, or if qBittorrent is bound to all interfaces (which may cause traffic leaks).
 
@@ -53,6 +78,8 @@ The application runs in the system tray, manages configuration and logging, and 
 
 - **Auto-Recovery**
   Automatically recovers when a configurable number of consecutive sync cycles fail - whether the VPN is disconnected or port detection fails despite the VPN being connected. For ProtonVPN and PIA (direct or NAT-PMP mode), the helper restarts the Windows service and the tray app restarts the client process. For NAT-PMP with a generic (non-ProtonVPN/PIA) gateway, the helper cycles the network adapter (disable/enable via netsh). All privileged operations are delegated to a lightweight helper Windows service (`qbPortWeaverHelper`) running as LocalSystem - no UAC prompt required.
+
+  A second, independent trigger can run the same recovery when port verification confirms the port closed for a configurable number of checks (off by default; requires **Verify port after sync**). It fires at most once and re-arms only after the port tests open again, so a false "closed" reading can never cause repeated recovery actions. Use with care on qBittorrent, where an idle client can report closed indefinitely.
 
 - **Post-Update Command**
   Optionally run a custom command after a successful port update (fire-and-forget). See SampleSendMail.ps1 for an example of sending an email notification with status details.
@@ -70,10 +97,10 @@ The application runs in the system tray, manages configuration and logging, and 
   Runs quietly in the background with a system tray icon for quick access to logs, settings, and controls.
 
 - **Tray Status Indicator**
-  After each sync cycle the tray icon shows a colored status dot: **green** (ports aligned), **orange** (VPN not connected), **red** (error), or **no dot** (port sync disabled). Hovering over the icon displays the current port and status, and an unviewed log count if warnings or errors have occurred (e.g. "2 Warnings, 1 Error").
+  After each sync cycle the tray icon shows a colored status dot: **green** (ports aligned), **orange** (VPN not connected), **red** (error), **gray** (sync paused), or **no dot** (port sync disabled). Hovering over the icon displays the current port and status, and an unviewed log count if warnings or errors have occurred (e.g. "2 Warnings, 1 Error").
 
 - **Settings Dialog**
-  All configuration options are editable through a dedicated Settings form (tray menu → Settings), with inline descriptions and tooltips for each option.
+  All configuration options are editable through a dedicated Settings form (tray menu → Settings), organised into **General**, **Client**, and **Extra** tabs, with inline descriptions and tooltips for each option.
 
 - **Connection Test**
   Each client section in Settings has a **Test** button next to the URL. It checks the connection to qBittorrent, Transmission, or Deluge using the values currently entered (no need to save first), then reports success along with the current listening port, or points you to the log if it cannot connect.
@@ -111,8 +138,11 @@ On first run, all settings are initialized with sensible defaults.
 | VPN Provider | `Disabled`, `ProtonVPN`, `PIA`, or `NAT-PMP` | `Disabled` |
 | NAT-PMP Adapter | Network adapter to use for NAT-PMP port mapping (only enabled when NAT-PMP is selected) | - |
 | Update interval | How often to check and sync the port (seconds) | `180` |
-| Auto-Recovery | Automatically recover after N consecutive failed sync cycles (VPN disconnected or port detection failure) | `True` |
-| Auto-Recovery trigger cycles | Number of consecutive failed cycles before triggering auto-recovery | `3` |
+| Verify port after sync | After each sync, check that the listening port is reachable from the Internet (after a port change and every 5th cycle) | `True` |
+| Trigger auto-recovery when no port assigned or disconnected | Trigger auto-recovery (a VPN service restart, or adapter cycle for generic NAT-PMP gateways) after N consecutive cycles where the VPN is disconnected or assigns no forwarded port. Client-side failures do not count | `True` |
+| Trigger after (consecutive failed cycles) | Number of consecutive cycles without an assigned port before auto-recovery is triggered | `3` |
+| Trigger auto-recovery when port stays closed | Independent trigger: runs auto-recovery when port verification confirms the port closed for the configured number of checks. Fires at most once until the port tests open again. Requires Verify port after sync | `False` |
+| Trigger after (confirmed closed checks) | Number of confirmed closed checks before auto-recovery is triggered | `3` |
 | Notify on port update | Show a tray balloon tip when the client's listening port is successfully updated | `True` |
 | Show update form on startup | When checked, opens the update form at startup if a newer version is found. When unchecked, only a tray notification is shown (the 12-hour periodic check is always non-intrusive) | `True` |
 | Post-update command | Command to run after a successful port update (leave empty to disable) | - |
@@ -202,13 +232,15 @@ Configured via tray menu → **Media Manager**.
    - Restarts the client if configured.
    - Runs the optional post-update command if configured. e.g., `powershell -File "C:\path\to\SampleSendMail.ps1"`
 8. *(qBittorrent only)* If **Restart on disconnect** is enabled (and qBittorrent was not already restarted in step 7): checks qBittorrent's connection status and restarts it if disconnected.
-9. Writes the JSON status file (`%LocalAppData%\qbPortWeaver\qbPortWeaver.status.json`) and updates the tray icon and tooltip.
-10. Waits for the configured interval before repeating. If a manual sync was triggered, the wait is shortened to 10 seconds.
-11. In parallel with the wait, if **Media Manager** is enabled: scans the configured source folders, queries TMDB for each unrecognised title, and imports files into the library with Plex-compatible names. Runs as a fire-and-forget task so a slow library scan does not delay the next port sync cycle - if a previous import is still running when the next cycle starts, the new import is skipped to avoid pile-up. In **dry-run** mode no files are touched; use **Scan Now** in the Media Manager dialog to preview results first. Uncertain TMDB matches are skipped automatically and flagged for manual review in the dialog.
+9. If **Verify port after sync** is enabled and the VPN is connected: checks that the port is reachable from the Internet (after a port change and every 5th cycle otherwise). A closed result is re-tested on the next cycle before a warning is raised. If **Trigger auto-recovery when port stays closed** is enabled, repeated confirmed closed checks trigger auto-recovery (a VPN service restart, or adapter cycle for NAT-PMP), at most once until the port tests open again.
+10. Writes the JSON status file (`%LocalAppData%\qbPortWeaver\qbPortWeaver.status.json`) and updates the tray icon and tooltip.
+11. Waits for the configured interval before repeating. If a manual sync was triggered, the wait is shortened to 10 seconds.
+12. In parallel with the wait, if **Media Manager** is enabled: scans the configured source folders, queries TMDB for each unrecognised title, and imports files into the library with Plex-compatible names. Runs as a fire-and-forget task so a slow library scan does not delay the next port sync cycle - if a previous import is still running when the next cycle starts, the new import is skipped to avoid pile-up. In **dry-run** mode no files are touched; use **Scan Now** in the Media Manager dialog to preview results first. Uncertain TMDB matches are skipped automatically and flagged for manual review in the dialog.
 
 ### Tray Menu Options
 
-- **Sync Port Now** - triggers an immediate sync cycle, skipping the current wait interval
+- **Sync Port Now** - triggers an immediate sync cycle, skipping the current wait interval (works while paused, running a single cycle)
+- **Pause Syncing / Resume Syncing** - temporarily stops sync cycles, including Media Manager imports; the tray icon and tooltip show the paused state. Not persisted: syncing always resumes when the application restarts
 - **Show Logs** - opens the built-in Log Viewer (also opened by double-clicking the tray icon); shows a warning/error count badge when unviewed entries exist
 - **Clear Logs** - deletes all log files and starts a fresh log
 - **Settings** - opens the Settings dialog
@@ -342,15 +374,18 @@ The application is designed to always recover. A failing cycle never crashes the
 
 ### Branch and Release Strategy
 
-**`master`** always reflects the latest published release. Do not commit directly to `master`.
+**`master`** always reflects the latest published release. Do not commit directly to `master`; it is updated only by merging a completed release branch (step 4 below).
 
 #### Branch naming
 
 | Purpose | Base branch | Name pattern |
 |---|---|---|
 | Release | Previous release branch | `2.x.y` |
+| Release candidate | Release branch | `rc/<name>-<version>` |
 | Hotfix | Corresponding release branch | `fix/<description>` |
 | Feature | Corresponding release branch | `feature/<description>` |
+
+Hotfix, feature, and release-candidate branches are all merged into the release branch via pull request; release-candidate branches stage a batch of changes for final testing before the release is tagged.
 
 #### Workflow diagram
 
@@ -382,10 +417,13 @@ master  ────────────────────────
    # or
    git checkout -b feature/my-feature origin/<new-release>
    ```
+   Opening the pull request runs the **Build Check** workflow (a Release build with warnings treated as errors); make sure it passes before merging.
 
 3. **Tag the release branch** once all testing is complete - this triggers the pipeline:
    ```
-   git tag v<new-release> origin/<new-release>
+   git checkout <new-release>
+   git pull --ff-only
+   git tag v<new-release>
    git push origin v<new-release>
    ```
    Pushing the tag automatically triggers the **Build and Release** pipeline, which builds the app, compiles the MSI installer, creates the GitHub Release, and uploads the MSI and Chocolatey package as release assets. Once the previous Chocolatey version is approved, run the **Publish to Chocolatey** workflow manually from the Actions tab.

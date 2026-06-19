@@ -9,6 +9,36 @@ public partial class WhatsNewForm : Form
         "If you find qbPortWeaver useful, please star it on GitHub.";
 
     private const string ReleaseFeaturesText =
+        "New in 2.5.6\n\n" +
+        "Port verification\n" +
+        "After each sync, qbPortWeaver can now check that your port is actually reachable from the Internet, " +
+        "not just configured. If the port stays closed, a warning appears in the log and as a tray notification. " +
+        "Optionally, auto-recovery can run automatically after a configurable number of closed checks " +
+        "(a VPN service restart, or adapter cycle for NAT-PMP gateways) - see Settings > General. " +
+        "Verification is enabled by default: Transmission and Deluge use their " +
+        "built-in online port checkers, while qBittorrent infers reachability from incoming connections " +
+        "(an idle client may report closed).\n\n" +
+        "Pause and resume syncing\n" +
+        "A new Pause Syncing item in the tray menu temporarily stops sync cycles, including media imports, " +
+        "without changing any settings. While paused, the tray icon shows a gray dot and Sync Port Now still runs a single cycle on demand. " +
+        "Syncing always resumes when the application restarts.\n\n" +
+        "Tabbed Settings\n" +
+        "The Settings window is now organised into General, Client and Extra tabs, " +
+        "so it fits comfortably on smaller screens.\n\n" +
+        "Accurate update check results\n" +
+        "If the update check cannot reach GitHub (for example when you are offline), it now tells you " +
+        "it could not check instead of reporting that you are up to date.\n\n" +
+        "Better guidance when a client does not start\n" +
+        "If the client launches but runs under a different process name than the one configured, " +
+        "the log now points you directly at the Process name field in Settings instead of showing " +
+        "a generic start failure.\n\n" +
+        "Consistent Transmission credential errors\n" +
+        "A wrong Transmission username or password is now reported with the same clear message " +
+        "on every operation.\n\n" +
+        "More precise log filtering\n" +
+        "Filtering the log viewer by subsystem now matches only the subsystem column, so unrelated " +
+        "lines that merely mention a subsystem name in their text no longer appear.\n\n" +
+        "Previously released\n\n" +
         "New in 2.5.5\n\n" +
         "Test connection from Settings\n" +
         "Each client section in Settings now has a Test button next to the URL. " +
@@ -30,7 +60,6 @@ public partial class WhatsNewForm : Form
         "Stable log viewer memory\n" +
         "Keeping the log viewer open during a long debugging session used to cause memory usage to grow over time. " +
         "The viewer now keeps a steady footprint regardless of how long it stays open.\n\n" +
-        "Previously released\n\n" +
         "New in 2.5.4\n\n" +
         "Less intrusive update notifications\n" +
         "The 12-hour background update check no longer interrupts you with a form. " +
@@ -124,9 +153,16 @@ public partial class WhatsNewForm : Form
     public WhatsNewForm()
     {
         InitializeComponent();
+        // Catches a forgotten release-notes update at development time: the title below is
+        // derived from the assembly version, but ReleaseFeaturesText is a hardcoded constant,
+        // so nothing else forces the two to agree. Debug builds only - no release impact.
+        System.Diagnostics.Debug.Assert(
+            ReleaseFeaturesText.Contains($"New in {AppConstants.AppVersion}", StringComparison.Ordinal),
+            $"WhatsNewForm: ReleaseFeaturesText has no 'New in {AppConstants.AppVersion}' section - update it for this release");
         lblTitle.Text = $"What's New in {AppConstants.AppVersion}";
         lnkCommunity.Text = CommunityText;
-        rtbFeatures.Text = ReleaseFeaturesText;
+        // rtbFeatures content is rendered with a visual hierarchy in OnLoad (RenderFeatures),
+        // once the theme-aware font and colour are known.
         Text = $"{AppIdentity.AppName} | What's New";
 
         // Set the link region to cover only "star it on GitHub" within the full sentence.
@@ -150,7 +186,56 @@ public partial class WhatsNewForm : Form
             lnkCommunity.LinkColor = AppConstants.DarkModeLinkColor;
             rtbFeatures.ForeColor = AppConstants.DarkModeText;
         }
+        RenderFeatures();
     }
+
+    // Renders ReleaseFeaturesText into the RichTextBox with a visual hierarchy instead of flat text:
+    // version dividers ("New in X.Y.Z", "Previously released") in bold and slightly larger, each
+    // feature's title line in bold, and body paragraphs in the normal font. ReleaseFeaturesText stays
+    // the single editable content source - this method only applies presentation, so the content is
+    // reproduced verbatim (blocks split on the blank-line separator, then re-joined with one).
+    private void RenderFeatures()
+    {
+        Color textColor = rtbFeatures.ForeColor;
+        Font baseFont = rtbFeatures.Font;
+        using var versionFont = new Font(baseFont.FontFamily, baseFont.Size + 1.5f, FontStyle.Bold);
+        using var titleFont = new Font(baseFont, FontStyle.Bold);
+
+        rtbFeatures.Clear();
+        bool first = true;
+        foreach (var block in ReleaseFeaturesText.Split("\n\n", StringSplitOptions.None))
+        {
+            if (block.Length == 0) continue;
+            if (!first) rtbFeatures.AppendText("\n\n");
+            first = false;
+
+            int firstBreak = block.IndexOf('\n');
+            string headerLine = firstBreak < 0 ? block : block[..firstBreak];
+            string body = firstBreak < 0 ? string.Empty : block[(firstBreak + 1)..];
+
+            rtbFeatures.SelectionColor = textColor;
+            rtbFeatures.SelectionFont = IsVersionDivider(headerLine) ? versionFont : titleFont;
+            rtbFeatures.AppendText(headerLine);
+
+            if (body.Length > 0)
+            {
+                rtbFeatures.SelectionFont = baseFont;
+                rtbFeatures.AppendText("\n" + body);
+            }
+        }
+
+        // Reset to the top so the dialog opens showing the newest release, not scrolled to the end.
+        rtbFeatures.Select(0, 0);
+        rtbFeatures.ScrollToCaret();
+    }
+
+    // True for the section dividers that should stand out the most: the per-version headers
+    // ("New in X.Y.Z") and the "Previously released" break. Everything else (feature titles)
+    // gets the lighter bold style.
+    private static bool IsVersionDivider(string headerLine) =>
+        headerLine.StartsWith("New in ", StringComparison.Ordinal) ||
+        headerLine.StartsWith("v1.0.0", StringComparison.Ordinal) || // the lone initial-release header uses the vX.Y.Z form
+        headerLine == "Previously released";
 
     private void btnClose_Click(object? sender, EventArgs e) => Close(); // NOSONAR S2325 - Close() is an instance method, handler cannot be static
 

@@ -18,6 +18,10 @@ public sealed class TransmissionClient : BitTorrentClientBase
     private const int WindowCloseWaitMs = 3000;
     private const string RpcPath = "/transmission/rpc";
     private const string SessionIdHeader = "X-Transmission-Session-Id";
+    private const string JsonContentType = "application/json";
+    private const string JsonPropArguments = "arguments";
+    private const string JsonPropResult = "result";
+    private const string RpcResultSuccess = "success";
 
     private readonly string _userName;
     private string? _sessionId;
@@ -48,6 +52,143 @@ public sealed class TransmissionClient : BitTorrentClientBase
         : base(url, processName, exePath, CreateBasicAuthHttpClient(userName, password))
     {
         _userName = userName;
+    }
+
+    /// <inheritdoc/>
+    public override async Task<(int? ListenPort, string? CurrentInterfaceName)> GetPreferencesAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            const string body = """{"method":"session-get","arguments":{"fields":["peer-port","bind-address-ipv4"]}}""";
+            using var response = await SendRpcAsync(body, cancellationToken).ConfigureAwait(false);
+            if (response is null) return (null, null);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                LogManager.Instance.LogMessage($"Failed to get {ClientName} preferences (HTTP {(int)response.StatusCode} {response.StatusCode})", LogLevel.Error);
+                return (null, null);
+            }
+
+            var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+            using var doc = JsonDocument.Parse(json);
+            var root = doc.RootElement;
+
+            // Surface RPC-level errors (e.g. "method not allowed", session conflicts) with the
+            // actual server message before falling through to the generic arguments-missing path.
+            if (root.TryGetProperty(JsonPropResult, out var rpcResult) &&
+                !string.Equals(rpcResult.GetString(), RpcResultSuccess, StringComparison.OrdinalIgnoreCase))
+            {
+                LogManager.Instance.LogMessage($"{ClientName} RPC returned non-success result for session-get: {rpcResult.GetString()}", LogLevel.Error);
+                return (null, null);
+            }
+
+            if (!root.TryGetProperty(JsonPropArguments, out var argsElement))
+            {
+                LogManager.Instance.LogDebug("TransmissionClient.GetPreferencesAsync: 'arguments' key missing from RPC response");
+                return (null, null);
+            }
+
+            int? listenPort = null;
+            if (argsElement.TryGetProperty("peer-port", out var portElement) &&
+                portElement.TryGetInt32(out int parsed))
+                listenPort = parsed;
+
+            if (listenPort is null)
+                LogManager.Instance.LogDebug("TransmissionClient.GetPreferencesAsync: peer-port not parsed in RPC response");
+
+            string? bindAddress = null;
+            if (argsElement.TryGetProperty("bind-address-ipv4", out var addrElement))
+                bindAddress = addrElement.GetString();
+
+            return (listenPort, bindAddress);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+        catch (Exception ex)
+        {
+            LogHttpException("GetPreferencesAsync", ex);
+            return (null, null);
+        }
+    }
+
+    /// <inheritdoc/>
+    public override async Task<bool> SetListeningPortAsync(int port, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            // port-forwarding-enabled=false is Transmission's combined UPnP/NAT-PMP off switch,
+            // equivalent to qBittorrent's and Deluge's separate upnp=false + natpmp=false fields.
+            var body = $$$"""{"method":"session-set","arguments":{"peer-port":{{{port}}},"peer-port-random-on-start":false,"port-forwarding-enabled":false}}""";
+            using var response = await SendRpcAsync(body, cancellationToken).ConfigureAwait(false);
+            if (response is null) return false;
+
+            if (!response.IsSuccessStatusCode)
+            {
+                LogManager.Instance.LogMessage($"Failed to set {ClientName} port (HTTP {(int)response.StatusCode} {response.StatusCode})", LogLevel.Error);
+                return false;
+            }
+
+            var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+            using var doc = JsonDocument.Parse(json);
+            if (!doc.RootElement.TryGetProperty(JsonPropResult, out var result) ||
+                !string.Equals(result.GetString(), RpcResultSuccess, StringComparison.OrdinalIgnoreCase))
+            {
+                LogManager.Instance.LogMessage($"{ClientName} RPC returned non-success result for session-set", LogLevel.Error);
+                return false;
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+        catch (Exception ex)
+        {
+            LogHttpException("SetListeningPortAsync", ex);
+            return false;
+        }
+
+        return true;
+    }
+
+    /// <inheritdoc/>
+    /// <remarks>Transmission does not expose a connection status endpoint; always returns <see langword="null"/>.</remarks>
+    public override Task<string?> GetConnectionStatusAsync(CancellationToken cancellationToken = default) => Task.FromResult<string?>(null);
+
+    /// <inheritdoc/>
+    /// <remarks>Uses the <c>port-test</c> RPC method, which actively probes the port via
+    /// Transmission's online port-check service. Failures (transport, RPC, or service) log at
+    /// Debug only - this is a best-effort probe and the orchestrator treats null as
+    /// "undeterminable". The Debug level is passed through to <see cref="SendRpcAsync"/> so an
+    /// unreachable daemon during a verify cycle does not raise an Error.</remarks>
+    public override async Task<bool?> TestListeningPortAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            const string body = """{"method":"port-test"}""";
+            using var response = await SendRpcAsync(body, cancellationToken, LogLevel.Debug).ConfigureAwait(false);
+            if (response is null || !response.IsSuccessStatusCode) return null;
+
+            var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+            using var doc = JsonDocument.Parse(json);
+            var root = doc.RootElement;
+
+            if (root.TryGetProperty(JsonPropResult, out var result) &&
+                !string.Equals(result.GetString(), RpcResultSuccess, StringComparison.OrdinalIgnoreCase))
+            {
+                LogManager.Instance.LogDebug($"TransmissionClient.TestListeningPortAsync: RPC returned non-success result: {result.GetString()}");
+                return null;
+            }
+
+            if (root.TryGetProperty(JsonPropArguments, out var args) &&
+                args.TryGetProperty("port-is-open", out var open) &&
+                open.ValueKind is JsonValueKind.True or JsonValueKind.False)
+                return open.GetBoolean();
+
+            LogManager.Instance.LogDebug("TransmissionClient.TestListeningPortAsync: port-is-open not found in RPC response");
+            return null;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+        catch (Exception ex)
+        {
+            LogManager.Instance.LogDebug($"TransmissionClient.TestListeningPortAsync: {ex.Message}");
+            return null;
+        }
     }
 
     /// <inheritdoc/>
@@ -110,111 +251,10 @@ public sealed class TransmissionClient : BitTorrentClientBase
             : await RestartProcessModeAsync(cancellationToken).ConfigureAwait(false);
     }
 
-    /// <inheritdoc/>
-    public override async Task<(int? ListenPort, string? CurrentInterfaceName)> GetPreferencesAsync(CancellationToken cancellationToken = default)
-    {
-        try
-        {
-            const string body = """{"method":"session-get","arguments":{"fields":["peer-port","bind-address-ipv4"]}}""";
-            using var response = await SendRpcAsync(body, cancellationToken).ConfigureAwait(false);
-            if (response is null) return (null, null);
-
-            if (response.StatusCode == HttpStatusCode.Unauthorized)
-            {
-                LogManager.Instance.LogMessage($"{ClientName} authentication failed: wrong username or password (username: '{_userName}') - check the credentials in Settings", LogLevel.Error);
-                return (null, null);
-            }
-
-            if (!response.IsSuccessStatusCode)
-            {
-                LogManager.Instance.LogMessage($"Failed to get {ClientName} preferences (HTTP {(int)response.StatusCode} {response.StatusCode})", LogLevel.Error);
-                return (null, null);
-            }
-
-            var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-            using var doc = JsonDocument.Parse(json);
-            var root = doc.RootElement;
-
-            // Surface RPC-level errors (e.g. "method not allowed", session conflicts) with the
-            // actual server message before falling through to the generic arguments-missing path.
-            if (root.TryGetProperty("result", out var rpcResult) &&
-                !string.Equals(rpcResult.GetString(), "success", StringComparison.OrdinalIgnoreCase))
-            {
-                LogManager.Instance.LogMessage($"{ClientName} RPC returned non-success result for session-get: {rpcResult.GetString()}", LogLevel.Error);
-                return (null, null);
-            }
-
-            if (!root.TryGetProperty("arguments", out var argsElement))
-            {
-                LogManager.Instance.LogDebug("TransmissionClient.GetPreferencesAsync: 'arguments' key missing from RPC response");
-                return (null, null);
-            }
-
-            int? listenPort = null;
-            if (argsElement.TryGetProperty("peer-port", out var portElement) &&
-                portElement.TryGetInt32(out int parsed))
-                listenPort = parsed;
-
-            if (listenPort is null)
-                LogManager.Instance.LogDebug("TransmissionClient.GetPreferencesAsync: peer-port not parsed in RPC response");
-
-            string? bindAddress = null;
-            if (argsElement.TryGetProperty("bind-address-ipv4", out var addrElement))
-                bindAddress = addrElement.GetString();
-
-            return (listenPort, bindAddress);
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
-        catch (Exception ex)
-        {
-            LogHttpException("GetPreferencesAsync", ex);
-            return (null, null);
-        }
-    }
-
-    /// <inheritdoc/>
-    public override async Task<bool> SetListeningPortAsync(int port, CancellationToken cancellationToken = default)
-    {
-        try
-        {
-            // port-forwarding-enabled=false is Transmission's combined UPnP/NAT-PMP off switch,
-            // equivalent to qBittorrent's and Deluge's separate upnp=false + natpmp=false fields.
-            var body = $$$"""{"method":"session-set","arguments":{"peer-port":{{{port}}},"peer-port-random-on-start":false,"port-forwarding-enabled":false}}""";
-            using var response = await SendRpcAsync(body, cancellationToken).ConfigureAwait(false);
-            if (response is null) return false;
-
-            if (!response.IsSuccessStatusCode)
-            {
-                LogManager.Instance.LogMessage($"Failed to set {ClientName} port (HTTP {(int)response.StatusCode} {response.StatusCode})", LogLevel.Error);
-                return false;
-            }
-
-            var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-            using var doc = JsonDocument.Parse(json);
-            if (!doc.RootElement.TryGetProperty("result", out var result) ||
-                !string.Equals(result.GetString(), "success", StringComparison.OrdinalIgnoreCase))
-            {
-                LogManager.Instance.LogMessage($"{ClientName} RPC returned non-success result for session-set", LogLevel.Error);
-                return false;
-            }
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
-        catch (Exception ex)
-        {
-            LogHttpException("SetListeningPortAsync", ex);
-            return false;
-        }
-
-        return true;
-    }
-
-    /// <inheritdoc/>
-    /// <remarks>Transmission does not expose a connection status endpoint; always returns <see langword="null"/>.</remarks>
-    public override Task<string?> GetConnectionStatusAsync(CancellationToken cancellationToken = default) => Task.FromResult<string?>(null);
-
     // Transmission authenticates per request via SendRpcAsync's X-Transmission-Session-Id CSRF
-    // handshake, so EnsureAuthenticatedAsync is never called. The base's no-op AuthenticateAsync
-    // is inherited unchanged.
+    // handshake - no separate auth step is needed; the session ID is negotiated inline.
+    protected override Task<bool> AuthenticateAsync(CancellationToken cancellationToken = default) =>
+        Task.FromResult(true);
 
     /// <inheritdoc/>
     protected override void ResetAuthState()
@@ -302,26 +342,35 @@ public sealed class TransmissionClient : BitTorrentClientBase
     // Transmission rejects requests without a valid session ID with HTTP 409, including
     // the very first request per session. On 409, the new session ID is extracted from
     // the X-Transmission-Session-Id response header and the request is retried once.
-    private async Task<HttpResponseMessage?> SendRpcAsync(string jsonBody, CancellationToken cancellationToken = default)
+    // failureLevel governs the level for transport/protocol/auth failures: Error by default
+    // (port sync, set-port - actionable), but the best-effort port verification probe passes
+    // Debug so an unreachable daemon during a verify cycle does not raise an Error, matching
+    // qBittorrent's and Deluge's verify-path handling.
+    private async Task<HttpResponseMessage?> SendRpcAsync(string jsonBody, CancellationToken cancellationToken = default, LogLevel failureLevel = LogLevel.Error)
     {
         try
         {
             var rpcUrl = $"{Url}{RpcPath}";
             using var request = new HttpRequestMessage(HttpMethod.Post, rpcUrl)
             {
-                Content = new StringContent(jsonBody, Encoding.UTF8, "application/json")
+                Content = new StringContent(jsonBody, Encoding.UTF8, JsonContentType)
             };
             if (_sessionId is not null)
                 request.Headers.Add(SessionIdHeader, _sessionId);
 
             var response = await HttpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
 
+            // 401 is handled here (not per caller) so every RPC call - including the post-409
+            // retry below - reports the same actionable credentials message.
+            if (IsUnauthorized(response, failureLevel))
+                return null;
+
             if (response.StatusCode != HttpStatusCode.Conflict)
                 return response;
 
             if (!response.Headers.TryGetValues(SessionIdHeader, out var values))
             {
-                LogManager.Instance.LogMessage($"{ClientName} returned 409 without a session ID header", LogLevel.Error);
+                LogManager.Instance.LogMessage($"{ClientName} returned 409 without a session ID header", failureLevel);
                 response.Dispose();
                 return null;
             }
@@ -330,23 +379,36 @@ public sealed class TransmissionClient : BitTorrentClientBase
             response.Dispose();
             if (string.IsNullOrEmpty(_sessionId))
             {
-                LogManager.Instance.LogMessage($"{ClientName} returned 409 with empty session ID header", LogLevel.Error);
+                LogManager.Instance.LogMessage($"{ClientName} returned 409 with empty session ID header", failureLevel);
                 return null;
             }
 
             using var retry = new HttpRequestMessage(HttpMethod.Post, rpcUrl)
             {
-                Content = new StringContent(jsonBody, Encoding.UTF8, "application/json")
+                Content = new StringContent(jsonBody, Encoding.UTF8, JsonContentType)
             };
             retry.Headers.Add(SessionIdHeader, _sessionId);
-            return await HttpClient.SendAsync(retry, cancellationToken).ConfigureAwait(false);
+            var retryResponse = await HttpClient.SendAsync(retry, cancellationToken).ConfigureAwait(false);
+            return IsUnauthorized(retryResponse, failureLevel) ? null : retryResponse;
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
         catch (Exception ex)
         {
-            LogHttpException("SendRpcAsync", ex);
+            LogHttpException("SendRpcAsync", ex, failureLevel);
             return null;
         }
+    }
+
+    // Returns true (after logging the actionable credentials message and disposing the response)
+    // when the response is HTTP 401, so SendRpcAsync can translate it into its null failure contract.
+    // NOTE: Disposes the response internally so the 409-retry path in SendRpcAsync stays clean.
+    // Call sites must NOT wrap the response in a using block - it is already disposed when this returns true.
+    private bool IsUnauthorized(HttpResponseMessage response, LogLevel failureLevel = LogLevel.Error)
+    {
+        if (response.StatusCode != HttpStatusCode.Unauthorized) return false;
+        LogManager.Instance.LogMessage($"{ClientName} authentication failed: wrong username or password (username: '{_userName}') - check the credentials in Settings", failureLevel);
+        response.Dispose();
+        return true;
     }
 
     // Fetches config-dir live via RPC to disambiguate service mode from Qt-process mode.
@@ -366,7 +428,7 @@ public sealed class TransmissionClient : BitTorrentClientBase
 
             var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
             using var doc = JsonDocument.Parse(json);
-            if (!doc.RootElement.TryGetProperty("arguments", out var args) ||
+            if (!doc.RootElement.TryGetProperty(JsonPropArguments, out var args) ||
                 !args.TryGetProperty("config-dir", out var configDirEl))
             {
                 LogManager.Instance.LogDebug("TransmissionClient.TryDetectServiceModeAsync: config-dir not found in session-get response");

@@ -49,13 +49,13 @@ public static partial class FileNameParser
         "truehd", "atmos", "dd", "dd1", "dd2", "dd5", "dd7", "ddp", "ddp1", "ddp2", "ddp5", "ddp7", "ddplus",
         "dolbydigital", "eac3", "opus", "lpcm", "pcm",
         "stereo", "mono", "2ch", "6ch", "8ch",
-        // Language (note: "french" omitted -- too common in real titles)
+        // Language (note: "french" omitted - too common in real titles)
         "multi", "dual", "dualaud", "truefrench", "vff", "vfi", "vf2", "vfq",
         "vost", "vostfr", "vof", "dubbed", "subbed", "korsub", "latino", "castellano",
         // Subtitle
         "multisubs", "multisub", "hardsub", "hardcoded", "softsub",
         "fansub", "fastsub", "subforced",
-        // Edition / release flags (note: "final" omitted -- too common in real titles)
+        // Edition / release flags (note: "final" omitted - too common in real titles)
         "proper", "repack", "rerip", "extended", "unrated", "uncut", "directors", "theatrical",
         "remastered", "remaster", "criterion", "limited", "internal",
         "redux", "restored", "hybrid", "mhd", "custom", "readnfo", "anniversary",
@@ -246,12 +246,12 @@ public static partial class FileNameParser
 
         int? year = int.TryParse(match.Groups[1].Value, out int y) ? y : null;
 
-        // Standard case: "Title (2009)" -- title appears before the year
+        // Standard case: "Title (2009)" - title appears before the year
         var titleBefore = CleanTitle(name[..match.Index].Trim());
         if (!string.IsNullOrWhiteSpace(titleBefore))
             return (titleBefore, year);
 
-        // Leading year case: "(2000) Title..." -- year at start, title follows
+        // Leading year case: "(2000) Title..." - year at start, title follows
         if (match.Index != 0)
             return null;
 

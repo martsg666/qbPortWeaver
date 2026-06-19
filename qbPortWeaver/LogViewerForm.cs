@@ -295,11 +295,17 @@ public partial class LogViewerForm : Form
     // Called when the subsystem filter ComboBox changes - rebuilds the display
     private void cboSubsystem_SelectedIndexChanged(object? sender, EventArgs e) => RebuildDisplay();
 
-    // Returns the selected subsystem filter, or null when "All" is selected (no filter)
+    // Returns the padded subsystem column token to match (e.g. "| MainApp       |"),
+    // or null when "All" is selected (no filter). Built here, once per rebuild, so the
+    // per-line check in IsLineVisibleWithFilters is a single allocation-free Contains.
+    // Matching the full padded column (not a bare "| Name" prefix) prevents false hits
+    // on message text that happens to contain the same characters.
     private string? GetSubsystemFilter()
     {
         var selected = cboSubsystem.SelectedItem?.ToString();
-        return selected is null or "All" ? null : selected;
+        return selected is null or "All"
+            ? null
+            : $"| {selected.PadRight(LoggingConstants.SubsystemMaxLength)} |";
     }
 
     private Color GetButtonLevelColor(CheckBox chk)
@@ -694,6 +700,11 @@ public partial class LogViewerForm : Form
                 NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName,
                 EnableRaisingEvents = true
             };
+            // Renamed (rotation moving the live file to .1) is deliberately not subscribed:
+            // the subsequent Created/Changed events reset the read offset via the length check
+            // in OnLogFileUpdated, so the new file's content is appended after the pre-rotation
+            // lines already on screen. That preserves on-screen history across a rotation
+            // instead of clearing the view mid-session.
             _watcher.Changed += (s, e) => OnLogFileUpdated(generation);
             _watcher.Created += (s, e) => OnLogFileUpdated(generation);
             _watcher.Deleted += (s, e) => OnLogFileDeleted(generation);
@@ -923,12 +934,12 @@ public partial class LogViewerForm : Form
     // Meta/unclassified lines (index >= 4, e.g. blank cycle separators) are shown only when
     // all level filters are active and no subsystem filter is set; hiding them otherwise
     // prevents blank lines from appearing in a filtered view.
-    private static bool IsLineVisibleWithFilters(string line, bool[] filters, string? subsystemFilter)
+    private static bool IsLineVisibleWithFilters(string line, bool[] filters, string? subsystemToken)
     {
         int idx = GetLineColorIndex(line);
-        if (idx >= filters.Length) return subsystemFilter is null && Array.TrueForAll(filters, f => f);
+        if (idx >= filters.Length) return subsystemToken is null && Array.TrueForAll(filters, f => f);
         if (!filters[idx]) return false;                            // level filtered out
-        if (subsystemFilter is not null && !line.Contains($"| {subsystemFilter}", StringComparison.Ordinal)) return false;
+        if (subsystemToken is not null && !line.Contains(subsystemToken, StringComparison.Ordinal)) return false;
         return true;
     }
 

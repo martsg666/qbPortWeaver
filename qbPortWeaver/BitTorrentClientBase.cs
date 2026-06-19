@@ -114,6 +114,9 @@ public abstract class BitTorrentClientBase : IBitTorrentClient // NOSONAR S3881 
     /// <inheritdoc/>
     public abstract Task<string?> GetConnectionStatusAsync(CancellationToken cancellationToken = default);
 
+    /// <inheritdoc/>
+    public abstract Task<bool?> TestListeningPortAsync(CancellationToken cancellationToken = default);
+
     /// <summary>Called by <see cref="RestartAsync"/> before the kill step. Override to inject pre-kill work (e.g. waiting for a config flush).</summary>
     protected virtual Task PreRestartAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 
@@ -123,7 +126,16 @@ public abstract class BitTorrentClientBase : IBitTorrentClient // NOSONAR S3881 
     {
         Process.Start(CreateStartInfo())?.Dispose();
         await Task.Delay(initialDelayMs, cancellationToken).ConfigureAwait(false);
-        if (!IsRunning()) return false;
+        if (!IsRunning())
+        {
+            // The launch itself succeeded, so the most likely cause is a ProcessName that does
+            // not match the actual executable - without this hint the caller's generic failure
+            // message points the user at the exe path instead of the Process name field.
+            LogManager.Instance.LogMessage(
+                $"{ClientName} was launched but no process named '{ProcessName}' was found - check the Process name in Settings",
+                LogLevel.Error);
+            return false;
+        }
         await WaitForApiReadyAsync(cancellationToken).ConfigureAwait(false);
         return true;
     }
@@ -149,7 +161,7 @@ public abstract class BitTorrentClientBase : IBitTorrentClient // NOSONAR S3881 
             catch { } // NOSONAR S108
             await Task.Delay(ApiReadyPollIntervalMs, cancellationToken).ConfigureAwait(false);
         }
-        LogManager.Instance.LogDebug($"{ClientName} API did not respond within {ApiReadyTimeoutSeconds}s after start");
+        LogManager.Instance.LogDebug($"{GetType().Name}.WaitForApiReadyAsync: {ClientName} API did not respond within {ApiReadyTimeoutSeconds}s after start");
     }
 
     /// <summary>Resets the per-instance auth state so the next API call triggers a fresh authentication handshake.</summary>
@@ -195,16 +207,19 @@ public abstract class BitTorrentClientBase : IBitTorrentClient // NOSONAR S3881 
             WorkingDirectory = Path.GetDirectoryName(ExePath) ?? string.Empty
         };
 
-    // Classifies and logs an HTTP-related exception using ClientName and ApiLabel.
-    protected void LogHttpException(string methodName, Exception ex)
+    // Classifies and logs an HTTP-related exception using ClientName and ApiLabel. Defaults to
+    // Error; best-effort callers (e.g. port verification, where a failure is "undeterminable"
+    // rather than a fault) pass LogLevel.Debug so an unreachable client does not raise an Error -
+    // matching the Debug-level handling in the other clients' test methods.
+    protected void LogHttpException(string methodName, Exception ex, LogLevel level = LogLevel.Error)
     {
         if (ex is TaskCanceledException)
-            LogManager.Instance.LogMessage($"{ClientName} {ApiLabel} is not reachable (timed out) - check the URL in Settings ({Url})", LogLevel.Error);
+            LogManager.Instance.LogMessage($"{ClientName} {ApiLabel} is not reachable (timed out) - check the URL in Settings ({Url})", level);
         else if (ex is HttpRequestException)
-            LogManager.Instance.LogMessage($"Failed to connect to {ClientName} {ApiLabel}: {ex.Message} - check the URL in Settings ({Url})", LogLevel.Error);
+            LogManager.Instance.LogMessage($"Failed to connect to {ClientName} {ApiLabel}: {ex.Message} - check the URL in Settings ({Url})", level);
         else
         {
-            LogManager.Instance.LogMessage($"Failed to complete {ClientName} request in {methodName}: {ex.Message}", LogLevel.Error);
+            LogManager.Instance.LogMessage($"Failed to complete {ClientName} request in {methodName}: {ex.Message}", level);
             LogManager.Instance.LogDebug($"{GetType().Name}.{methodName}: {ex.GetType().Name}");
         }
     }

@@ -24,6 +24,21 @@ public partial class SettingsForm : Form
     protected override void OnLoad(EventArgs e)
     {
         base.OnLoad(e);
+        // The auto-recovery rows read as inline phrases ("Trigger after [N] <unit>"), so the spinner
+        // sits flush after its indented "Trigger after" label rather than on the form's field column.
+        // PreferredSize.Width is the measured text width (correct even before this tab has laid out),
+        // so both identical rows resolve to the same X and stay aligned with each other.
+        int InlineGap = LogicalToDeviceUnits(6); // scale the 6px gap with DPI so it stays proportional at 125%+
+        nudPortClosedChecks.Left     = lblPortClosedChecks.Left + lblPortClosedChecks.PreferredSize.Width + InlineGap;
+        lblPortClosedChecksUnit.Left = nudPortClosedChecks.Left + nudPortClosedChecks.Width + InlineGap;
+        nudRecoveryCycles.Left       = lblRecoveryCycles.Left + lblRecoveryCycles.PreferredSize.Width + InlineGap;
+        lblRecoveryCyclesUnit.Left   = nudRecoveryCycles.Left + nudRecoveryCycles.Width + InlineGap;
+
+        // The "Trigger after" labels are AutoSize (~15px tall) but share a row with the 23px-tall
+        // spinner and unit label. Pinned at the same top they float above the spinner's centre, so
+        // centre them vertically on the spinner using the measured heights.
+        lblPortClosedChecks.Top = nudPortClosedChecks.Top + (nudPortClosedChecks.Height - lblPortClosedChecks.Height) / 2;
+        lblRecoveryCycles.Top   = nudRecoveryCycles.Top + (nudRecoveryCycles.Height - lblRecoveryCycles.Height) / 2;
         SetupTooltips();
         LoadSettings();
     }
@@ -80,8 +95,11 @@ public partial class SettingsForm : Form
         toolTip.SetToolTip(txtPostUpdateCmd, "Shell command to run after a successful port update (leave empty to disable)");
         toolTip.SetToolTip(chkDebugMode, "Write verbose debug entries to the log file");
         toolTip.SetToolTip(cboColorTheme, "Application color theme (System, Dark, or Light) - a restart prompt will appear if changed");
-        toolTip.SetToolTip(chkAutoRecovery, "Automatically recover after the configured number of consecutive failed sync cycles (VPN disconnected or port detection failure)");
-        toolTip.SetToolTip(nudRecoveryCycles, "Number of consecutive failed cycles before recovery is triggered");
+        toolTip.SetToolTip(chkVerifyPort, "After each sync, check that the port is reachable from the Internet. Transmission and Deluge use their built-in online port checkers; qBittorrent infers it from incoming peer activity (an idle client may report closed). Runs after a port change and periodically.");
+        toolTip.SetToolTip(chkAutoRecovery, "Triggers auto-recovery (VPN service restart, or adapter cycle for NAT-PMP gateways) after the configured number of consecutive cycles where the VPN is disconnected or assigns no forwarded port. Client-side problems do not count - auto-recovery cannot fix those.");
+        toolTip.SetToolTip(nudRecoveryCycles, "Number of consecutive cycles without an assigned port or VPN connection before auto-recovery is triggered");
+        toolTip.SetToolTip(chkPortClosedRecovery, "Triggers auto-recovery (same action as the no-port trigger) when port verification has confirmed the assigned port closed for the configured number of checks. Fires at most once, then re-arms only after the port tests open again. Caution with qBittorrent: an idle client (no active transfers) can report closed indefinitely.");
+        toolTip.SetToolTip(nudPortClosedChecks, "Number of confirmed closed checks before auto-recovery is triggered");
         toolTip.SetToolTip(chkNotifyOnPortUpdate, "Show a tray notification when the port is successfully updated");
         toolTip.SetToolTip(chkShowUpdateForm, "When checked, opens the update form at startup if a newer version is found. When unchecked, only a tray notification is shown (12-hour periodic check runs either way)");
     }
@@ -127,13 +145,18 @@ public partial class SettingsForm : Form
             RegistrySettingsManager.GetInt(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyUpdateIntervalSeconds),
             (int)nudUpdateInterval.Minimum, (int)nudUpdateInterval.Maximum);
 
-        chkAutoRecovery.Checked = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyAutoRecoveryEnabled);
+        chkAutoRecovery.Checked = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyVpnAutoRecoveryEnabled);
         nudRecoveryCycles.Value = Math.Clamp(
-            RegistrySettingsManager.GetInt(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyAutoRecoveryTriggerCycles),
+            RegistrySettingsManager.GetInt(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyVpnAutoRecoveryTriggerCycles),
             (int)nudRecoveryCycles.Minimum, (int)nudRecoveryCycles.Maximum);
+        chkPortClosedRecovery.Checked = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyPortClosedRecoveryEnabled);
+        nudPortClosedChecks.Value = Math.Clamp(
+            RegistrySettingsManager.GetInt(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyPortClosedRecoveryTriggerChecks),
+            (int)nudPortClosedChecks.Minimum, (int)nudPortClosedChecks.Maximum);
         UpdateAutoRecoverySubControls();
         chkNotifyOnPortUpdate.Checked = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyNotifyOnPortUpdate);
         chkShowUpdateForm.Checked     = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyShowUpdateFormOnStartup);
+        chkVerifyPort.Checked         = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyVerifyPortAfterSync);
 
         // qBittorrent
         txtQBittorrentURL.Text = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyQBittorrentUrl);
@@ -202,10 +225,13 @@ public partial class SettingsForm : Form
             ? cboNatPmpAdapter.SelectedItem?.ToString() ?? string.Empty
             : RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyNatPmpAdapterName);
         RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyNatPmpAdapterName, adapterName);
-        RegistrySettingsManager.SetBool(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyAutoRecoveryEnabled, chkAutoRecovery.Checked);
-        RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyAutoRecoveryTriggerCycles, ((int)nudRecoveryCycles.Value).ToString());
+        RegistrySettingsManager.SetBool(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyVpnAutoRecoveryEnabled, chkAutoRecovery.Checked);
+        RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyVpnAutoRecoveryTriggerCycles, ((int)nudRecoveryCycles.Value).ToString());
+        RegistrySettingsManager.SetBool(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyPortClosedRecoveryEnabled, chkPortClosedRecovery.Checked);
+        RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyPortClosedRecoveryTriggerChecks, ((int)nudPortClosedChecks.Value).ToString());
         RegistrySettingsManager.SetBool(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyNotifyOnPortUpdate, chkNotifyOnPortUpdate.Checked);
         RegistrySettingsManager.SetBool(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyShowUpdateFormOnStartup, chkShowUpdateForm.Checked);
+        RegistrySettingsManager.SetBool(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyVerifyPortAfterSync, chkVerifyPort.Checked);
 
         // qBittorrent
         RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyQBittorrentUrl, txtQBittorrentURL.Text.Trim());
@@ -304,11 +330,14 @@ public partial class SettingsForm : Form
 
     private void UpdateClientGroupVisibility()
     {
-        bool isTransmission = cboBitTorrentClient.SelectedItem?.ToString() == RegistrySettingsManager.BitTorrentClientTransmission;
-        bool isDeluge = cboBitTorrentClient.SelectedItem?.ToString() == RegistrySettingsManager.BitTorrentClientDeluge;
+        string? selectedClient = cboBitTorrentClient.SelectedItem?.ToString();
+        bool isTransmission = selectedClient == RegistrySettingsManager.BitTorrentClientTransmission;
+        bool isDeluge = selectedClient == RegistrySettingsManager.BitTorrentClientDeluge;
         grpQBittorrent.Visible = !isTransmission && !isDeluge;
         grpDeluge.Visible = isDeluge;
         grpTransmission.Visible = isTransmission;
+        // Reflect the chosen client in the Client tab header (qBittorrent / Transmission / Deluge).
+        tabClient.Text = selectedClient ?? "Client";
     }
 
     private void cboVpnProvider_SelectedIndexChanged(object? sender, EventArgs e)
@@ -361,7 +390,7 @@ public partial class SettingsForm : Form
             target.Text = dlg.FileName;
     }
 
-    private async void btnTestQBittorrent_Click(object? sender, EventArgs e)
+    private async void btnTestQBittorrent_Click(object? sender, EventArgs e) // async void is correct here (WinForms event handler)
     {
         await RunConnectionTestAsync(
             () => new QBittorrentClient(
@@ -370,7 +399,7 @@ public partial class SettingsForm : Form
             btnTestQBittorrent, txtQBittorrentURL.Text.Trim(), "qBittorrent");
     }
 
-    private async void btnTestTransmission_Click(object? sender, EventArgs e)
+    private async void btnTestTransmission_Click(object? sender, EventArgs e) // async void is correct here (WinForms event handler)
     {
         await RunConnectionTestAsync(
             () => new TransmissionClient(
@@ -379,7 +408,7 @@ public partial class SettingsForm : Form
             btnTestTransmission, txtTransmissionURL.Text.Trim(), "Transmission");
     }
 
-    private async void btnTestDeluge_Click(object? sender, EventArgs e)
+    private async void btnTestDeluge_Click(object? sender, EventArgs e) // async void is correct here (WinForms event handler)
     {
         await RunConnectionTestAsync(
             () => new DelugeClient(
@@ -443,21 +472,39 @@ public partial class SettingsForm : Form
     private void chkAutoRecovery_CheckedChanged(object? sender, EventArgs e) =>
         UpdateAutoRecoverySubControls();
 
+    private void chkVerifyPort_CheckedChanged(object? sender, EventArgs e) =>
+        UpdateAutoRecoverySubControls();
+
+    private void chkPortClosedRecovery_CheckedChanged(object? sender, EventArgs e) =>
+        UpdateAutoRecoverySubControls();
+
     private void UpdateAutoRecoverySubControls()
     {
         bool vpnActive = cboVpnProvider.SelectedItem?.ToString() != RegistrySettingsManager.VpnProviderDisabled;
+
+        // Failed-sync recovery: independent trigger, gated only by its own checkbox.
         bool enabled = vpnActive && chkAutoRecovery.Checked;
         lblRecoveryCycles.Enabled = enabled;
         nudRecoveryCycles.Enabled = enabled;
         lblRecoveryCyclesUnit.Enabled = enabled;
+
+        // Port-closed recovery: consumes verification results, so it depends only on
+        // "Verify port after sync" - not on the failed-sync recovery trigger.
+        bool closedRecoveryAvailable = vpnActive && chkVerifyPort.Checked;
+        chkPortClosedRecovery.Enabled = closedRecoveryAvailable;
+        bool closedChecksEnabled = closedRecoveryAvailable && chkPortClosedRecovery.Checked;
+        lblPortClosedChecks.Enabled = closedChecksEnabled;
+        nudPortClosedChecks.Enabled = closedChecksEnabled;
+        lblPortClosedChecksUnit.Enabled = closedChecksEnabled;
     }
 
     // Enables or disables all port-sync-related controls (everything except VPN provider, update interval, and debug mode)
     private void SetPortSyncControlsEnabled(bool enabled)
     {
-        // General section - client and auto-recovery (NAT-PMP adapter row handled by SetAdapterControlsEnabled)
+        // General section - client and auto-recovery controls (NAT-PMP adapter row handled by SetAdapterControlsEnabled)
         lblBitTorrentClient.Enabled = enabled;
         cboBitTorrentClient.Enabled = enabled;
+        chkVerifyPort.Enabled = enabled;
         chkAutoRecovery.Enabled = enabled;
         UpdateAutoRecoverySubControls();
 

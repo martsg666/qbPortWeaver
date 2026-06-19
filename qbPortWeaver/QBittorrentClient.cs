@@ -7,6 +7,8 @@ namespace qbPortWeaver;
 public sealed class QBittorrentClient : BitTorrentClientBase
 {
     private const string AuthOkResponse = "Ok.";
+    private const string ConnectionStatusConnected = "connected";
+    private const string ConnectionStatusFirewalled = "firewalled";
     private const string ApiAuthLogin = "/api/v2/auth/login";
     private const string ApiAppPreferences = "/api/v2/app/preferences";
     private const string ApiSetPreferences = "/api/v2/app/setPreferences";
@@ -115,8 +117,18 @@ public sealed class QBittorrentClient : BitTorrentClientBase
     }
 
     /// <inheritdoc/>
-    /// <remarks>Returns one of <c>"connected"</c>, <c>"firewalled"</c>, or <c>"disconnected"</c>.</remarks>
-    public override async Task<string?> GetConnectionStatusAsync(CancellationToken cancellationToken = default)
+    /// <remarks>Returns one of <c>"connected"</c>, <c>"firewalled"</c>, or <c>"disconnected"</c>.
+    /// Used by the restart-on-disconnect check, so transport failures log at Error (an unreachable
+    /// client is actionable here).</remarks>
+    public override Task<string?> GetConnectionStatusAsync(CancellationToken cancellationToken = default) =>
+        GetConnectionStatusCoreAsync(LogLevel.Error, nameof(GetConnectionStatusAsync), cancellationToken);
+
+    // Core implementation shared by GetConnectionStatusAsync (restart-on-disconnect, failureLevel
+    // = Error) and TestListeningPortAsync (best-effort port verification, failureLevel = Debug).
+    // The failure level keeps the verification path's logging symmetric with Transmission/Deluge,
+    // which log their best-effort port-test failures at Debug. callerName labels the log lines with
+    // the public method that initiated the call, so a verify failure reads TestListeningPortAsync.
+    private async Task<string?> GetConnectionStatusCoreAsync(LogLevel failureLevel, string callerName, CancellationToken cancellationToken)
     {
         if (!await EnsureAuthenticatedAsync(cancellationToken).ConfigureAwait(false)) return null;
 
@@ -126,7 +138,7 @@ public sealed class QBittorrentClient : BitTorrentClientBase
 
             if (!response.IsSuccessStatusCode)
             {
-                LogManager.Instance.LogMessage($"Failed to get {ClientName} transfer info (HTTP {(int)response.StatusCode} {response.StatusCode})", LogLevel.Error);
+                LogManager.Instance.LogMessage($"QBittorrentClient.{callerName}: Failed to get {ClientName} transfer info (HTTP {(int)response.StatusCode} {response.StatusCode})", failureLevel);
                 return null;
             }
 
@@ -135,15 +147,30 @@ public sealed class QBittorrentClient : BitTorrentClientBase
             if (doc.RootElement.TryGetProperty("connection_status", out var statusElement))
                 return statusElement.GetString();
 
-            LogManager.Instance.LogDebug("QBittorrentClient.GetConnectionStatusAsync: connection_status not found in transfer/info response");
+            LogManager.Instance.LogDebug($"QBittorrentClient.{callerName}: connection_status not found in transfer/info response");
             return null;
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
         catch (Exception ex)
         {
-            LogHttpException("GetConnectionStatusAsync", ex);
+            LogHttpException(callerName, ex, failureLevel);
             return null;
         }
+    }
+
+    /// <inheritdoc/>
+    /// <remarks>Derived from <c>connection_status</c>: "connected" = open, "firewalled" = closed,
+    /// "disconnected" or unreachable = <see langword="null"/> (no internet is not a port problem).
+    /// The status is inferred from incoming peer activity, so an idle client may report closed
+    /// even when the port is open - callers should confirm before alerting.</remarks>
+    public override async Task<bool?> TestListeningPortAsync(CancellationToken cancellationToken = default)
+    {
+        // Best-effort probe: transport failures log at Debug (failureLevel), not Error, so an
+        // unreachable client during verification matches Transmission/Deluge's Debug-level handling.
+        string? status = await GetConnectionStatusCoreAsync(LogLevel.Debug, nameof(TestListeningPortAsync), cancellationToken).ConfigureAwait(false);
+        if (string.Equals(status, ConnectionStatusConnected, StringComparison.OrdinalIgnoreCase)) return true;
+        if (string.Equals(status, ConnectionStatusFirewalled, StringComparison.OrdinalIgnoreCase)) return false;
+        return null;
     }
 
     /// <inheritdoc/>

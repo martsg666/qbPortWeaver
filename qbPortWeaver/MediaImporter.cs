@@ -168,7 +168,7 @@ internal static partial class MediaImporter
         if (File.Exists(destinationPath))
         {
             LogManager.Instance.LogMessage(
-                $"Destination conflict: '{Path.GetFileName(destinationPath)}' already exists with different content (source: {new FileInfo(sourcePath).Length} bytes, dest: {new FileInfo(destinationPath).Length} bytes). Skipping to avoid overwriting.",
+                $"Destination conflict: '{Path.GetFileName(destinationPath)}' already exists with different content (source: {DescribeFileSize(sourcePath)}, dest: {DescribeFileSize(destinationPath)}). Skipping to avoid overwriting.",
                 LogLevel.Warn, Subsystem.MediaManager);
             return;
         }
@@ -206,6 +206,21 @@ internal static partial class MediaImporter
         }
 
         AddToLibraryIndex(destinationPath);
+    }
+
+    // Returns the file's size as a display string ("12345 bytes"), or "unknown size" if it cannot be
+    // read. Never throws: it only backs the destination-conflict warning, whose job is to describe a
+    // skip - a transient SMB stat failure or a file that vanished must not abort the import path.
+    internal static string DescribeFileSize(string path)
+    {
+        try
+        {
+            return $"{new FileInfo(path).Length} bytes";
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return "unknown size";
+        }
     }
 
     /// <summary>Returns <see langword="true"/> if the destination file already exists and its fingerprint matches the source - i.e. the source was already imported.</summary>
@@ -340,7 +355,7 @@ internal static partial class MediaImporter
             LogManager.Instance.LogDebug("MediaImporter.BuildLibraryIndexAsync: Library paths changed, forcing full rebuild", Subsystem.MediaManager);
         else if (_libraryBuildCycleCount >= FullRebuildIntervalCycles)
             LogManager.Instance.LogDebug($"MediaImporter.BuildLibraryIndexAsync: Forcing periodic rebuild (every {FullRebuildIntervalCycles} cycles)", Subsystem.MediaManager);
-        _libraryBuildCycleCount = 1;
+        _libraryBuildCycleCount = 1; // Reset to 1, not 0 - this rebuild counts as the first cycle
         _lastMoviesLibraryPath = moviesLibraryPath;
         _lastTvShowsLibraryPath = tvShowsLibraryPath;
         return false;
@@ -854,16 +869,17 @@ internal static partial class MediaImporter
     /// </summary>
     internal static void SaveSourceCache()
     {
-        var cache = _sourceCache;
-        if (cache is null) return;
-
         try
         {
             Dictionary<string, CacheEntry> snapshot;
             bool wasDirty;
             lock (_sourceCacheLock)
             {
-                snapshot = new Dictionary<string, CacheEntry>(cache, StringComparer.OrdinalIgnoreCase);
+                // Read _sourceCache INSIDE the lock (same discipline as the readers above):
+                // a reference captured outside could be orphaned by a concurrent ClearAllCaches,
+                // and saving it would resurrect the just-deleted cache file.
+                if (_sourceCache is null) return;
+                snapshot = new Dictionary<string, CacheEntry>(_sourceCache, StringComparer.OrdinalIgnoreCase);
                 wasDirty = _sourceCacheDirty;
                 _sourceCacheDirty = false; // reset inside lock so concurrent writes after this point re-set it
             }
@@ -897,16 +913,15 @@ internal static partial class MediaImporter
     /// </summary>
     internal static void SaveLibraryCache()
     {
-        var cache = _libraryCache;
-        if (cache is null) return;
-
         try
         {
             Dictionary<string, CacheEntry> snapshot;
             bool wasDirty;
             lock (_libraryLock)
             {
-                snapshot = new Dictionary<string, CacheEntry>(cache, StringComparer.OrdinalIgnoreCase);
+                // Read _libraryCache INSIDE the lock - see SaveSourceCache for the rationale.
+                if (_libraryCache is null) return;
+                snapshot = new Dictionary<string, CacheEntry>(_libraryCache, StringComparer.OrdinalIgnoreCase);
                 wasDirty = _libraryCacheDirty;
                 _libraryCacheDirty = false; // reset inside lock so concurrent writes after this point re-set it
             }

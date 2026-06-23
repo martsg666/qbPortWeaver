@@ -17,6 +17,11 @@ public partial class WhatsNewForm : Form
         "anything out of sync, closed, or in error, and a Sync Now button runs an immediate cycle. Open it " +
         "from the tray menu (Show Status), or by double-clicking the tray icon. Double-clicking now opens " +
         "the Status panel instead of the log viewer; the log viewer is still available from Show Logs.\n\n" +
+        "Sync on network change\n" +
+        "qbPortWeaver can now run a sync the moment a network or VPN connection change is detected, " +
+        "so your client follows a VPN reconnect within seconds instead of waiting for the next interval. " +
+        "Rapid changes are grouped into a single sync, and pausing still suppresses it. " +
+        "Enabled by default - turn it off under Settings > General.\n\n" +
         "Previously released\n\n" +
         "New in 2.5.6\n\n" +
         "Port verification\n" +

@@ -46,6 +46,9 @@ After installing, open **Settings** from the tray icon to configure the applicat
 - **Automatic Port Sync**
   Detects the current VPN port and updates the BitTorrent client's listening port automatically. Supports qBittorrent (Web API), Transmission (RPC), and Deluge (Web JSON-RPC).
 
+- **Sync on Network Change**
+  In addition to the scheduled interval, qbPortWeaver can run a sync the moment a network or VPN connection change is detected, so the client follows a VPN reconnect within seconds instead of waiting for the next cycle. Rapid changes are coalesced into a single sync, and pausing still suppresses it. Enabled by default; configurable via Settings > General.
+
 - **Multi-VPN Support**
   Supports **ProtonVPN** (via log file parsing or NAT-PMP), **Private Internet Access** (via `piactl` CLI), and any **NAT-PMP capable VPN gateway or router** (via RFC 6886 UDP port mapping). Configurable through the Settings dialog.
 
@@ -141,6 +144,7 @@ On first run, all settings are initialized with sensible defaults.
 | VPN Provider | `Disabled`, `ProtonVPN`, `PIA`, or `NAT-PMP` | `Disabled` |
 | NAT-PMP Adapter | Network adapter to use for NAT-PMP port mapping (only enabled when NAT-PMP is selected) | - |
 | Update interval | How often to check and sync the port (seconds) | `180` |
+| Sync on network change | Also run a sync immediately when a network or VPN connection change is detected, instead of waiting for the next interval (rapid changes are coalesced; pausing still suppresses it) | `True` |
 | Verify port after sync | After each sync, check that the listening port is reachable from the Internet (after a port change and every 5th cycle) | `True` |
 | Trigger auto-recovery when no port assigned or disconnected | Trigger auto-recovery (a VPN service restart, or adapter cycle for generic NAT-PMP gateways) after N consecutive cycles where the VPN is disconnected or assigns no forwarded port. Client-side failures do not count | `True` |
 | Trigger after (consecutive failed cycles) | Number of consecutive cycles without an assigned port before auto-recovery is triggered | `3` |

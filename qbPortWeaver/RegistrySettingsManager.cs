@@ -119,6 +119,9 @@ public static class RegistrySettingsManager
     // Registry key names - general section (updates)
     public const string KeyShowUpdateFormOnStartup = "showUpdateFormOnStartup";
 
+    // Registry key names - general section (sync triggering)
+    public const string KeyResyncOnNetworkChange = "resyncOnNetworkChange";
+
     // Default values for all settings (single source of truth)
     private static readonly Dictionary<string, Dictionary<string, string>> _defaults =
         new(StringComparer.OrdinalIgnoreCase)
@@ -133,6 +136,7 @@ public static class RegistrySettingsManager
                 [KeyBitTorrentClient] = BitTorrentClientQBittorrent,
                 [KeyNotifyOnPortUpdate] = ValueTrue,
                 [KeyShowUpdateFormOnStartup] = ValueTrue,
+                [KeyResyncOnNetworkChange] = ValueTrue,
                 [KeyVerifyPortAfterSync] = ValueTrue,
                 [KeyPortClosedRecoveryEnabled] = ValueFalse,
                 [KeyPortClosedRecoveryTriggerChecks] = "3"

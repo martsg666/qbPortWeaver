@@ -28,6 +28,7 @@ partial class SettingsForm
         lblUpdateInterval         = new Label();
         nudUpdateInterval         = new NumericUpDown();
         lblSeconds                = new Label();
+        chkResyncOnNetworkChange  = new CheckBox();
         lblNatPmpAdapter          = new Label();
         cboNatPmpAdapter          = new ComboBox();
         btnRefreshAdapters        = new Button();
@@ -125,6 +126,7 @@ partial class SettingsForm
         grpGeneral.Controls.Add(lblUpdateInterval);
         grpGeneral.Controls.Add(nudUpdateInterval);
         grpGeneral.Controls.Add(lblSeconds);
+        grpGeneral.Controls.Add(chkResyncOnNetworkChange);
         grpGeneral.Controls.Add(lblVpnProvider);
         grpGeneral.Controls.Add(cboVpnProvider);
         grpGeneral.Controls.Add(lblNatPmpAdapter);
@@ -181,6 +183,13 @@ partial class SettingsForm
         lblSeconds.TabIndex  = 4;
         lblSeconds.Text      = "seconds";
         lblSeconds.TextAlign = ContentAlignment.MiddleLeft;
+        // Shares the update-interval row: the interval is the scheduled cadence, this adds an
+        // immediate sync on network/VPN change. AutoSize so the label sits flush after "seconds".
+        chkResyncOnNetworkChange.AutoSize = true;
+        chkResyncOnNetworkChange.Location = new Point(300, 54);
+        chkResyncOnNetworkChange.Name     = "chkResyncOnNetworkChange";
+        chkResyncOnNetworkChange.TabIndex = 5;
+        chkResyncOnNetworkChange.Text     = "Sync on network change";
         lblVpnProvider.Location  = new Point(12, 82);
         lblVpnProvider.Name      = "lblVpnProvider";
         lblVpnProvider.Size      = new Size(130, 23);
@@ -749,6 +758,7 @@ partial class SettingsForm
     private Label         lblUpdateInterval;
     private NumericUpDown nudUpdateInterval;
     private Label         lblSeconds;
+    private CheckBox      chkResyncOnNetworkChange;
     private Label         lblVpnProvider;
     private ComboBox      cboVpnProvider;
     private Label         lblNatPmpAdapter;

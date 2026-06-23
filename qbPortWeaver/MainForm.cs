@@ -89,6 +89,10 @@ public partial class MainForm : Form
     // Periodic update check timer (fires every 12 hours)
     private System.Windows.Forms.Timer _updateCheckTimer = null!;
 
+    // One-shot debounce timer for network-change triggered re-syncs. Re-armed on each
+    // NetworkAddressChanged event; fires once the burst settles (see OnNetworkAddressChanged).
+    private System.Threading.Timer? _resyncDebounceTimer;
+
     // Last version for which the user was already shown an update prompt
     private string? _lastNotifiedVersion;
 
@@ -146,6 +150,11 @@ public partial class MainForm : Form
             // A synchronous throw before the loop body (e.g. during Task.Run startup) would be
             // silently lost - acceptable since RunMainLoopAsync has no synchronous preamble.
             _ = Task.Run(RunMainLoopAsync);
+
+            // Wake the loop promptly on a network change (e.g. VPN reconnect) instead of waiting
+            // out the full interval. The timer starts disarmed; OnNetworkAddressChanged arms it.
+            _resyncDebounceTimer = new System.Threading.Timer(OnResyncDebounceElapsed, null, Timeout.Infinite, Timeout.Infinite);
+            System.Net.NetworkInformation.NetworkChange.NetworkAddressChanged += OnNetworkAddressChanged;
 
             // Show What's New on first run after an upgrade (non-modal - does not block port sync)
             if (RegistrySettingsManager.GetAppValue(RegistrySettingsManager.KeyLastSeenVersion) != AppConstants.AppVersion)
@@ -227,6 +236,10 @@ public partial class MainForm : Form
         // Stop the update check timer before closing child forms to prevent it firing during teardown
         _updateCheckTimer?.Stop();
         _updateCheckTimer?.Dispose();
+
+        // Stop reacting to network changes and dispose the debounce timer
+        System.Net.NetworkInformation.NetworkChange.NetworkAddressChanged -= OnNetworkAddressChanged;
+        _resyncDebounceTimer?.Dispose();
 
         // Hide tray icon immediately to avoid ghost icon
         _trayIcon.Visible = false;
@@ -444,6 +457,29 @@ public partial class MainForm : Form
             LogManager.Instance.LogMessage("Syncing resumed by user", LogLevel.Info);
             InterruptDelay();
         }
+    }
+
+    // A network address changed (adapter up/down, VPN reconnect). Re-arm the one-shot debounce
+    // timer; the re-sync fires once the burst settles. Runs on a thread-pool thread.
+    private void OnNetworkAddressChanged(object? sender, EventArgs e)
+    {
+        try { _resyncDebounceTimer?.Change(AppConstants.ResyncDebounceMs, Timeout.Infinite); }
+        catch (ObjectDisposedException)
+        {
+            // Defensive: the timer was disposed during shutdown between the null check and Change.
+        }
+    }
+
+    // Fires after network changes settle. Wakes the sync loop early unless shutting down, paused,
+    // or the user disabled the option. Reads the setting fresh so a Settings toggle takes effect
+    // immediately. Respects pause like the scheduled loop does (no cycle runs while paused).
+    private void OnResyncDebounceElapsed(object? state)
+    {
+        if (_shutdownCts.IsCancellationRequested || _syncPaused) return;
+        if (!RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyResyncOnNetworkChange))
+            return;
+        LogManager.Instance.LogMessage("Network change detected, triggering sync cycle", LogLevel.Info);
+        InterruptDelay();
     }
 
     // Interrupts the current inter-cycle delay so the next sync cycle starts immediately

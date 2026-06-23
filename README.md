@@ -1,5 +1,9 @@
 # qbPortWeaver
 
+[![Build Check](https://github.com/martsg666/qbPortWeaver/actions/workflows/build.yml/badge.svg)](https://github.com/martsg666/qbPortWeaver/actions/workflows/build.yml)
+[![Latest release](https://img.shields.io/github/v/release/martsg666/qbPortWeaver)](https://github.com/martsg666/qbPortWeaver/releases/latest)
+[![Chocolatey](https://img.shields.io/chocolatey/v/qbportweaver)](https://community.chocolatey.org/packages/qbportweaver)
+
 ## Overview
 
 **qbPortWeaver** is a Windows tray application that syncs the listening port of **qBittorrent**, **Transmission**, or **Deluge** with the port assigned by your VPN provider (**ProtonVPN**, **Private Internet Access**, or any **NAT-PMP capable VPN gateway or router**).

@@ -53,35 +53,54 @@ public partial class StatusForm : Form
         bool disabled = string.IsNullOrEmpty(s.VpnProvider) ||
                         string.Equals(s.VpnProvider, RegistrySettingsManager.VpnProviderDisabled, StringComparison.OrdinalIgnoreCase);
 
-        // VPN provider
+        PopulateVpnProvider(s, disabled);
+        PopulateVpnStatus(s, disabled);
+        PopulateForwardedPort(s);
+        PopulateClient(s);
+        PopulateListeningPort(s);
+        PopulateReachable(s);
+        PopulateLastSync(s);
+    }
+
+    private void PopulateVpnProvider(StatusSnapshot s, bool disabled)
+    {
         if (disabled)
             SetNeutral(lblVpnProviderValue, "Disabled");
         else
             SetDefault(lblVpnProviderValue, s.VpnProvider!);
+    }
 
-        // VPN status
+    private void PopulateVpnStatus(StatusSnapshot s, bool disabled)
+    {
         if (disabled)
             SetNeutral(lblVpnStatusValue, "Port sync disabled");
         else if (s.VpnConnected)
             SetColor(lblVpnStatusValue, "Connected", OkColor);
         else
             SetColor(lblVpnStatusValue, "Not connected", WarnColor);
+    }
 
-        // Forwarded (VPN-assigned) port
+    private void PopulateForwardedPort(StatusSnapshot s)
+    {
         if (s.VpnPort is int vpnPort)
             SetDefault(lblForwardedPortValue, vpnPort.ToString());
         else
             SetNeutral(lblForwardedPortValue, "-");
+    }
 
-        // Client + running state
+    private void PopulateClient(StatusSnapshot s)
+    {
         if (string.IsNullOrEmpty(s.Client))
             SetNeutral(lblClientValue, "-");
         else if (s.ClientRunning)
             SetDefault(lblClientValue, s.Client);
         else
             SetColor(lblClientValue, $"{s.Client} (not running)", ErrorColor);
+    }
 
-        // Listening port + in-sync indicator (only judged when a forwarded port is known)
+    // In-sync state is only judged when a forwarded port is known to compare against.
+    private void PopulateListeningPort(StatusSnapshot s)
+    {
         if (s.ClientPort is not int clientPort)
             SetNeutral(lblListeningPortValue, "-");
         else if (s.VpnPort is int target)
@@ -90,32 +109,35 @@ public partial class StatusForm : Form
                 clientPort == target ? OkColor : WarnColor);
         else
             SetDefault(lblListeningPortValue, clientPort.ToString());
+    }
 
-        // Reachability
+    private void PopulateReachable(StatusSnapshot s)
+    {
         switch (s.PortVerified)
         {
             case true: SetColor(lblReachableValue, "Open", OkColor); break;
             case false: SetColor(lblReachableValue, "Closed", WarnColor); break;
             default: SetNeutral(lblReachableValue, "Not checked"); break;
         }
+    }
 
-        // Last sync time + result
-        if (s.Timestamp is DateTimeOffset ts)
-        {
-            string time = ts.LocalDateTime.ToString("yyyy-MM-dd HH:mm:ss");
-            string result = string.IsNullOrEmpty(s.Status) ? "unknown" : s.Status;
-            Color color = s.Status switch
-            {
-                StatusSuccess => OkColor,
-                StatusSkipped => NeutralColor,
-                _ => ErrorColor
-            };
-            SetColor(lblLastSyncValue, $"{time}  -  {result}", color);
-        }
-        else
+    private void PopulateLastSync(StatusSnapshot s)
+    {
+        if (s.Timestamp is not DateTimeOffset ts)
         {
             SetNeutral(lblLastSyncValue, "-");
+            return;
         }
+
+        string time = ts.LocalDateTime.ToString("yyyy-MM-dd HH:mm:ss");
+        string result = string.IsNullOrEmpty(s.Status) ? "unknown" : s.Status;
+        Color color = s.Status switch
+        {
+            StatusSuccess => OkColor,
+            StatusSkipped => NeutralColor,
+            _ => ErrorColor
+        };
+        SetColor(lblLastSyncValue, $"{time}  -  {result}", color);
     }
 
     // Accent colors follow AboutForm: brighter variants in dark mode, deeper ones in light mode.

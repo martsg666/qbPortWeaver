@@ -167,9 +167,7 @@ internal static partial class MediaImporter
         // Destination exists but different content: two different source files resolved to the same target path
         if (File.Exists(destinationPath))
         {
-            LogManager.Instance.LogMessage(
-                $"Destination conflict: '{Path.GetFileName(destinationPath)}' already exists with different content (source: {DescribeFileSize(sourcePath)}, dest: {DescribeFileSize(destinationPath)}). Skipping to avoid overwriting.",
-                LogLevel.Warn, Subsystem.MediaManager);
+            LogDestinationConflict(sourcePath, destinationPath);
             return;
         }
 
@@ -222,6 +220,16 @@ internal static partial class MediaImporter
             return "unknown size";
         }
     }
+
+    /// <summary>Logs the standard "destination already exists with different content, skipping to avoid
+    /// overwrite" warning. Shared by the dry-run-aware import front door (<see cref="MediaManagerService.ImportFile"/>)
+    /// and the direct library-add path (<see cref="AddFileToLibrary"/>), which each keep their own
+    /// <see cref="File.Exists(string)"/> guard but emit one identical message.</summary>
+    internal static void LogDestinationConflict(string sourcePath, string destinationPath) =>
+        LogManager.Instance.LogMessage(
+            $"Destination conflict: '{Path.GetFileName(destinationPath)}' already exists with different content " +
+            $"(source: {DescribeFileSize(sourcePath)}, dest: {DescribeFileSize(destinationPath)}). Skipping to avoid overwriting.",
+            LogLevel.Warn, Subsystem.MediaManager);
 
     /// <summary>Returns <see langword="true"/> if the destination file already exists and its fingerprint matches the source - i.e. the source was already imported.</summary>
     internal static bool DestinationMatchesSource(string sourcePath, string destinationPath)

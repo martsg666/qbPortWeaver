@@ -18,6 +18,9 @@ public static class AppConstants
     public const int ManualSyncWaitSeconds = 10;
     public const int MillisecondsPerSecond = 1000;
     public const int AutoUpdateCheckIntervalMs = 12 * 60 * 60 * MillisecondsPerSecond;
+    // Debounce window for network-change triggered re-syncs. NetworkAddressChanged fires in
+    // bursts when an adapter comes up, so a single reconnect is coalesced into one wake.
+    public const int ResyncDebounceMs = 2500;
 
     // UI
     public const int MaxTooltipLength = 127; // NotifyIcon.Text max in modern Windows / .NET (the historic 63-char limit was pre-Windows 2000)

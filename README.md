@@ -1,5 +1,9 @@
 # qbPortWeaver
 
+[![Build Check](https://github.com/martsg666/qbPortWeaver/actions/workflows/build.yml/badge.svg)](https://github.com/martsg666/qbPortWeaver/actions/workflows/build.yml)
+[![Latest release](https://img.shields.io/github/v/release/martsg666/qbPortWeaver)](https://github.com/martsg666/qbPortWeaver/releases/latest)
+[![Chocolatey](https://img.shields.io/chocolatey/v/qbportweaver)](https://community.chocolatey.org/packages/qbportweaver)
+
 ## Overview
 
 **qbPortWeaver** is a Windows tray application that syncs the listening port of **qBittorrent**, **Transmission**, or **Deluge** with the port assigned by your VPN provider (**ProtonVPN**, **Private Internet Access**, or any **NAT-PMP capable VPN gateway or router**).
@@ -45,6 +49,9 @@ After installing, open **Settings** from the tray icon to configure the applicat
 
 - **Automatic Port Sync**
   Detects the current VPN port and updates the BitTorrent client's listening port automatically. Supports qBittorrent (Web API), Transmission (RPC), and Deluge (Web JSON-RPC).
+
+- **Sync on Network Change**
+  In addition to the scheduled interval, qbPortWeaver can run a sync the moment a network or VPN connection change is detected, so the client follows a VPN reconnect within seconds instead of waiting for the next cycle. Rapid changes are coalesced into a single sync, and pausing still suppresses it. Enabled by default; configurable via Settings > General.
 
 - **Multi-VPN Support**
   Supports **ProtonVPN** (via log file parsing or NAT-PMP), **Private Internet Access** (via `piactl` CLI), and any **NAT-PMP capable VPN gateway or router** (via RFC 6886 UDP port mapping). Configurable through the Settings dialog.
@@ -99,6 +106,9 @@ After installing, open **Settings** from the tray icon to configure the applicat
 - **Tray Status Indicator**
   After each sync cycle the tray icon shows a colored status dot: **green** (ports aligned), **orange** (VPN not connected), **red** (error), **gray** (sync paused), or **no dot** (port sync disabled). Hovering over the icon displays the current port and status, and an unviewed log count if warnings or errors have occurred (e.g. "2 Warnings, 1 Error").
 
+- **Status Panel**
+  A **Status** window (tray menu → Show Status, or double-click the tray icon) shows the live state of the sync chain at a glance: VPN provider and connection state, the forwarded port, the client and whether it is running, the client's listening port (with an in-sync indicator), reachability, and the time and result of the last sync. Color accents flag anything out of sync, closed, or in error. It refreshes automatically after each sync cycle, and a **Sync Now** button runs an immediate cycle on demand. It reflects the same data written to the status file.
+
 - **Settings Dialog**
   All configuration options are editable through a dedicated Settings form (tray menu → Settings), organised into **General**, **Client**, and **Extra** tabs, with inline descriptions and tooltips for each option.
 
@@ -106,7 +116,7 @@ After installing, open **Settings** from the tray icon to configure the applicat
   Each client section in Settings has a **Test** button next to the URL. It checks the connection to qBittorrent, Transmission, or Deluge using the values currently entered (no need to save first), then reports success along with the current listening port, or points you to the log if it cannot connect.
 
 - **Log Viewer**
-  Built-in log viewer (tray menu → Show Logs, or double-click the tray icon) displays the log file with color-coded entries by level (error, warn, info, debug) and follows new entries in real time. Includes a search bar with match highlighting and prev/next navigation, dedicated prev/next buttons to step between warnings and errors without affecting the search, toggle buttons to filter by log level, and a subsystem filter to isolate entries from a specific component. Adapts to the application color theme (System, Dark, or Light).
+  Built-in log viewer (tray menu → Show Logs) displays the log file with color-coded entries by level (error, warn, info, debug) and follows new entries in real time. Includes a search bar with match highlighting and prev/next navigation, dedicated prev/next buttons to step between warnings and errors without affecting the search, toggle buttons to filter by log level, and a subsystem filter to isolate entries from a specific component. Adapts to the application color theme (System, Dark, or Light).
 
 - **Logging**
   Logs all operations and errors, with automatic log size management (20 MB per file, up to 5 files total). Clear logs directly from the tray menu.
@@ -138,6 +148,7 @@ On first run, all settings are initialized with sensible defaults.
 | VPN Provider | `Disabled`, `ProtonVPN`, `PIA`, or `NAT-PMP` | `Disabled` |
 | NAT-PMP Adapter | Network adapter to use for NAT-PMP port mapping (only enabled when NAT-PMP is selected) | - |
 | Update interval | How often to check and sync the port (seconds) | `180` |
+| Sync on network change | Also run a sync immediately when a network or VPN connection change is detected, instead of waiting for the next interval (rapid changes are coalesced; pausing still suppresses it) | `True` |
 | Verify port after sync | After each sync, check that the listening port is reachable from the Internet (after a port change and every 5th cycle) | `True` |
 | Trigger auto-recovery when no port assigned or disconnected | Trigger auto-recovery (a VPN service restart, or adapter cycle for generic NAT-PMP gateways) after N consecutive cycles where the VPN is disconnected or assigns no forwarded port. Client-side failures do not count | `True` |
 | Trigger after (consecutive failed cycles) | Number of consecutive cycles without an assigned port before auto-recovery is triggered | `3` |
@@ -240,8 +251,9 @@ Configured via tray menu → **Media Manager**.
 ### Tray Menu Options
 
 - **Sync Port Now** - triggers an immediate sync cycle, skipping the current wait interval (works while paused, running a single cycle)
+- **Show Status** - opens the Status panel showing the live sync chain (also opened by double-clicking the tray icon); includes a Sync Now button to run an immediate cycle
 - **Pause Syncing / Resume Syncing** - temporarily stops sync cycles, including Media Manager imports; the tray icon and tooltip show the paused state. Not persisted: syncing always resumes when the application restarts
-- **Show Logs** - opens the built-in Log Viewer (also opened by double-clicking the tray icon); shows a warning/error count badge when unviewed entries exist
+- **Show Logs** - opens the built-in Log Viewer; shows a warning/error count badge when unviewed entries exist
 - **Clear Logs** - deletes all log files and starts a fresh log
 - **Settings** - opens the Settings dialog
 - **Media Manager** - opens the Media Manager dialog to configure source and library folders, preview imports (Scan Now), apply them (Import Now), and clear fingerprint caches (Clear Cache)
@@ -341,7 +353,7 @@ NAT-PMP (RFC 6886) is a protocol for requesting port mappings directly from a ga
 
 - All actions and errors are logged to `%LocalAppData%\qbPortWeaver\qbPortWeaver.log`.
 - Log files are automatically rotated when exceeding **20 MB**, keeping up to 5 files (current + 4 backups).
-- Open the **Log Viewer** from the tray menu (Show Logs) or by double-clicking the tray icon. It shows color-coded entries (red for errors, gold for warnings, blue for info, orange for debug) and tails new entries live. Use the search bar to find and highlight matches with prev/next navigation, the level filter buttons to show only the levels you care about, the subsystem dropdown to isolate entries from a specific component, or the file picker to browse rotated backup files. The viewer adapts to the application color theme configured in Settings.
+- Open the **Log Viewer** from the tray menu (Show Logs). It shows color-coded entries (red for errors, gold for warnings, blue for info, orange for debug) and tails new entries live. Use the search bar to find and highlight matches with prev/next navigation, the level filter buttons to show only the levels you care about, the subsystem dropdown to isolate entries from a specific component, or the file picker to browse rotated backup files. The viewer adapts to the application color theme configured in Settings.
 
 ---
 

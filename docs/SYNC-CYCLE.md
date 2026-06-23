@@ -4,6 +4,8 @@ This document describes the core port sync logic implemented in `PortSyncService
 
 The tray menu's **Pause Syncing** item skips entire cycles (port sync and the Media Manager kick-off) until resumed; the tray icon shows the paused state and **Sync Port Now** still runs a single cycle on demand. The paused state is in-memory only - a restart always resumes syncing.
 
+Beyond the fixed interval, a cycle can start early when the user clicks **Sync Port Now**, after a settings change, or - when **Sync on network change** is enabled (General settings, default on) - when a network or VPN connection change is detected. Network-change triggers are debounced in `MainForm`, so a reconnect's burst of events collapses into a single wake, and they give that cycle one short follow-up wait so a cycle that ran before the VPN finished settling retries promptly instead of resetting to a full interval. Network-change triggers respect pause (no cycle runs while paused).
+
 ## High-Level Overview
 
 ```mermaid
@@ -214,7 +216,7 @@ The update balloon is informational only - Windows 11 routes `ToolTipIcon.Info` 
 
 ## Status Output
 
-Every cycle writes a JSON status file (`qbPortWeaver.status.json` in `%LocalAppData%\qbPortWeaver\`) capturing the full cycle outcome. External tools can read this file to monitor sync health.
+Every cycle writes a JSON status file (`qbPortWeaver.status.json` in `%LocalAppData%\qbPortWeaver\`) capturing the full cycle outcome. External tools can read this file to monitor sync health, and the in-app Status panel (tray menu -> Show Status, or double-click the tray icon) renders the same data live, refreshing after each cycle.
 
 ```json
 {

@@ -49,6 +49,7 @@ public partial class MainForm : Form
     private SettingsForm? _settingsForm;
     private MediaManagerForm? _mediaManagerForm;
     private AboutForm? _aboutForm;
+    private StatusForm? _statusForm;
     private UpdateAvailableForm? _updateAvailableForm;
 
     // Last sync status (written from background thread, read on UI thread)
@@ -310,6 +311,7 @@ public partial class MainForm : Form
 
         // Sync actions
         _trayMenu.Items.Add("Sync Port Now", null, syncPortNow_Click);
+        _trayMenu.Items.Add("Show Status", null, showStatus_Click);
         _pauseSyncMenuItem = new ToolStripMenuItem(PauseSyncingMenuText);
         _pauseSyncMenuItem.Click += pauseSync_Click;
         _trayMenu.Items.Add(_pauseSyncMenuItem);
@@ -389,18 +391,36 @@ public partial class MainForm : Form
         ShowOrActivate(() => _aboutForm, f => _aboutForm = f, () => new AboutForm());
     }
 
+    private void showStatus_Click(object? sender, EventArgs e) => ShowStatusPanel();
+
+    private void ShowStatusPanel()
+    {
+        ShowOrActivate(() => _statusForm, f => _statusForm = f, CreateStatusForm);
+    }
+
+    // Builds the Status panel and wires its Sync Now button to the shared manual-sync trigger.
+    private StatusForm CreateStatusForm()
+    {
+        var form = new StatusForm();
+        form.SyncRequested += (_, _) => RequestManualSync();
+        return form;
+    }
+
     private void autoStart_Click(object? sender, EventArgs e) => StartupManager.SetStartup(_autoStartMenuItem.Checked);
 
     private void trayIcon_MouseDoubleClick(object? sender, MouseEventArgs e)
     {
         if (e.Button == MouseButtons.Left)
-            ShowLogViewer();
+            ShowStatusPanel();
     }
 
-    // Triggers an immediate sync cycle by interrupting the current wait interval.
+    private void syncPortNow_Click(object? sender, EventArgs e) => RequestManualSync();
+
+    // Triggers an immediate sync cycle by interrupting the current wait interval. Shared by the
+    // "Sync Port Now" tray item and the Status panel's "Sync Now" button.
     // Works while paused too: the loop runs exactly one cycle (the manual flag overrides the
     // pause check), then returns to the paused state.
-    private void syncPortNow_Click(object? sender, EventArgs e)
+    private void RequestManualSync()
     {
         _manualSyncTriggered = true;
         LogManager.Instance.LogMessage("Manual sync requested", LogLevel.Info);
@@ -444,7 +464,15 @@ public partial class MainForm : Form
     {
         _lastSyncStatus = status;
         if (!_shutdownCts.IsCancellationRequested)
-            InvokeOnUiThread(() => { UpdateTrayIcon(status.State); UpdateTrayTooltip(); });
+            InvokeOnUiThread(() =>
+            {
+                UpdateTrayIcon(status.State);
+                UpdateTrayTooltip();
+                // Refresh the Status panel live if it is open (the status file was written before
+                // this event fired, so it reflects the cycle that just completed).
+                if (_statusForm is { IsDisposed: false })
+                    _statusForm.RefreshStatus();
+            });
     }
 
     // Shared handler for PortSyncService warning events (interface mismatch, port verification

@@ -9,6 +9,15 @@ public partial class WhatsNewForm : Form
         "If you find qbPortWeaver useful, please star it on GitHub.";
 
     private const string ReleaseFeaturesText =
+        "New in 2.5.7\n\n" +
+        "Status panel\n" +
+        "A new Status window shows the live state of your port sync at a glance: your VPN provider and " +
+        "whether it is connected, the forwarded port, your client and its listening port (with an in-sync " +
+        "indicator), whether the port is reachable, and the time and result of the last sync. Colors flag " +
+        "anything out of sync, closed, or in error, and a Sync Now button runs an immediate cycle. Open it " +
+        "from the tray menu (Show Status), or by double-clicking the tray icon. Double-clicking now opens " +
+        "the Status panel instead of the log viewer; the log viewer is still available from Show Logs.\n\n" +
+        "Previously released\n\n" +
         "New in 2.5.6\n\n" +
         "Port verification\n" +
         "After each sync, qbPortWeaver can now check that your port is actually reachable from the Internet, " +
@@ -38,7 +47,6 @@ public partial class WhatsNewForm : Form
         "More precise log filtering\n" +
         "Filtering the log viewer by subsystem now matches only the subsystem column, so unrelated " +
         "lines that merely mention a subsystem name in their text no longer appear.\n\n" +
-        "Previously released\n\n" +
         "New in 2.5.5\n\n" +
         "Test connection from Settings\n" +
         "Each client section in Settings now has a Test button next to the URL. " +

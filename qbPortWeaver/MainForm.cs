@@ -74,6 +74,12 @@ public partial class MainForm : Form
     // Manual sync triggered flag (thread-safe with volatile)
     private volatile bool _manualSyncTriggered;
 
+    // Set when a network-change re-sync is triggered. Gives that cycle a single short follow-up
+    // wait (like manual sync) so a cycle that ran before the VPN finished settling retries
+    // promptly instead of resetting the clock to a full interval. Unlike _manualSyncTriggered it
+    // does NOT override pause or log as a manual sync.
+    private volatile bool _quickRecheckPending;
+
     // Pause flag for the sync loop (thread-safe with volatile). Deliberately in-memory only:
     // a restart always resumes syncing, so the app can never silently sit in a paused state
     // the user forgot about. While paused the whole cycle body is skipped - port sync AND the
@@ -479,6 +485,8 @@ public partial class MainForm : Form
         if (!RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyResyncOnNetworkChange))
             return;
         LogManager.Instance.LogMessage("Network change detected, triggering sync cycle", LogLevel.Info);
+        // Set before interrupting so the triggered cycle observes it and schedules a short re-check.
+        _quickRecheckPending = true;
         InterruptDelay();
     }
 
@@ -592,12 +600,20 @@ public partial class MainForm : Form
 
         TryKickOffMediaImport();
 
-        // After a manual sync, wait only 10 seconds before next check
+        // After a manual sync, wait only 10 seconds before next check.
         if (_manualSyncTriggered)
         {
             _manualSyncTriggered = false;
+            _quickRecheckPending = false; // manual takes precedence; do not also queue a quick re-check
             updateInterval = AppConstants.ManualSyncWaitSeconds;
             LogManager.Instance.LogMessage("Manual sync completed", LogLevel.Info);
+        }
+        // A network-change-triggered cycle may have run before the VPN finished settling; re-check
+        // shortly instead of resetting to a full interval. One-shot, so it does not spin.
+        else if (_quickRecheckPending)
+        {
+            _quickRecheckPending = false;
+            updateInterval = AppConstants.ManualSyncWaitSeconds;
         }
         return updateInterval;
     }

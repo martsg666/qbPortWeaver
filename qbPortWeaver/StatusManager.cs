@@ -4,6 +4,18 @@ using System.Text.Json.Serialization;
 namespace qbPortWeaver;
 
 /// <summary>
+/// String values written to the "status" field of the status file (and surfaced to the Status
+/// panel and external scripts). Kept stable across releases like the status keys. "skipped" means
+/// port sync was disabled or the VPN was disconnected with no default port (the cycle is a no-op).
+/// </summary>
+public static class SyncStatusValues
+{
+    public const string Success = "success";
+    public const string Skipped = "skipped";
+    public const string Error = "error";
+}
+
+/// <summary>
 /// Typed view of the last sync cycle written to the JSON status file. Property names map to the
 /// literal status keys (PortSyncService's StatusKeys constants); only the fields the Status panel
 /// surfaces are modelled here. Unmapped keys in the file are ignored.

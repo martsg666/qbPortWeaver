@@ -8,10 +8,6 @@ namespace qbPortWeaver;
 /// </summary>
 public partial class StatusForm : Form
 {
-    // Status string values written by PortSyncService (StatusKeys.Success / Skipped / Error).
-    private const string StatusSuccess = "success";
-    private const string StatusSkipped = "skipped";
-
     private bool _isDarkMode;
 
     /// <summary>Raised when the user clicks Sync Now. MainForm handles it by triggering an immediate
@@ -36,6 +32,9 @@ public partial class StatusForm : Form
     public void RefreshStatus()
     {
         if (IsDisposed) return;
+        // Synchronous read on the UI thread is intentional: the status file is a sub-1KB local
+        // JSON the app just wrote, read at most once per sync cycle - offloading it would add
+        // background/marshal complexity for no measurable gain.
         var snapshot = StatusManager.TryRead();
         if (snapshot is null)
         {
@@ -133,8 +132,8 @@ public partial class StatusForm : Form
         string result = string.IsNullOrEmpty(s.Status) ? "unknown" : s.Status;
         Color color = s.Status switch
         {
-            StatusSuccess => OkColor,
-            StatusSkipped => NeutralColor,
+            SyncStatusValues.Success => OkColor,
+            SyncStatusValues.Skipped => NeutralColor,
             _ => ErrorColor
         };
         SetColor(lblLastSyncValue, $"{time}  -  {result}", color);

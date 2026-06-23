@@ -146,10 +146,7 @@ public sealed class PortSyncService
         public const string Status = "status";
         public const string Message = "message";
 
-        // Values for the Status key - "skipped" means port sync was disabled or VPN disconnected with no default port (cycle is a no-op)
-        public const string Success = "success";
-        public const string Error = "error";
-        public const string Skipped = "skipped";
+        // Values for the Status key live in the public SyncStatusValues (shared with the Status panel).
     }
 
     /// <summary>Runs one port sync cycle and returns the configured update interval in seconds.</summary>
@@ -172,7 +169,7 @@ public sealed class PortSyncService
             [StatusKeys.PortChanged] = false,
             [StatusKeys.PortVerified] = null,
             [StatusKeys.UpdateIntervalSeconds] = AppConstants.DefaultUpdateIntervalSeconds,
-            [StatusKeys.Status] = StatusKeys.Error,
+            [StatusKeys.Status] = SyncStatusValues.Error,
             [StatusKeys.Message] = null
         };
 
@@ -194,7 +191,7 @@ public sealed class PortSyncService
             {
                 StatusManager.Write(status);
 
-                bool success = status[StatusKeys.Status] as string == StatusKeys.Success;
+                bool success = status[StatusKeys.Status] as string == SyncStatusValues.Success;
                 bool vpnConnected = status[StatusKeys.VpnConnected] is true;
                 int? port = status[StatusKeys.ClientPort] as int?;
                 string message = status[StatusKeys.Message] as string ?? string.Empty;
@@ -250,7 +247,7 @@ public sealed class PortSyncService
 
             if (defaultPort == 0)
             {
-                status[StatusKeys.Status] = StatusKeys.Skipped;
+                status[StatusKeys.Status] = SyncStatusValues.Skipped;
                 status[StatusKeys.Message] = disconnectedMsg;
                 LogManager.Instance.LogMessage($"{vpnManager.ProviderName} default port is 0 - skipping port update", LogLevel.Info);
                 return cfg.UpdateInterval;
@@ -437,7 +434,7 @@ public sealed class PortSyncService
         if (cfg.VpnProvider.Equals(RegistrySettingsManager.VpnProviderDisabled, StringComparison.OrdinalIgnoreCase))
         {
             LogManager.Instance.LogMessage("Port sync disabled", LogLevel.Info);
-            status[StatusKeys.Status] = StatusKeys.Skipped;
+            status[StatusKeys.Status] = SyncStatusValues.Skipped;
             status[StatusKeys.Message] = "Port sync disabled";
             return null;
         }
@@ -452,7 +449,7 @@ public sealed class PortSyncService
             return new ProtonVpnManager(AppConstants.GetProtonVpnLogFilePath());
 
         LogManager.Instance.LogMessage($"VPN provider '{cfg.VpnProvider}' is not recognized - check Settings", LogLevel.Warn);
-        status[StatusKeys.Status] = StatusKeys.Error;
+        status[StatusKeys.Status] = SyncStatusValues.Error;
         status[StatusKeys.Message] = $"VPN provider '{cfg.VpnProvider}' is not recognized";
         return null;
     }
@@ -514,7 +511,7 @@ public sealed class PortSyncService
             $"NAT-PMP adapter '{adapterName}'",
             cfg, cancellationToken).ConfigureAwait(false);
 
-        status[StatusKeys.Status] = StatusKeys.Skipped;
+        status[StatusKeys.Status] = SyncStatusValues.Skipped;
         status[StatusKeys.Message] = disconnectedMsg;
         return null;
     }
@@ -984,7 +981,7 @@ public sealed class PortSyncService
     // The bookend uses the same effective level so a Warn-level soft failure does not escalate to Error.
     private static void SetSyncResult(Dictionary<string, object?> status, bool success, string message, LogLevel? level = null)
     {
-        status[StatusKeys.Status] = success ? StatusKeys.Success : StatusKeys.Error;
+        status[StatusKeys.Status] = success ? SyncStatusValues.Success : SyncStatusValues.Error;
         status[StatusKeys.Message] = message;
         LogLevel effectiveLevel = level ?? (success ? LogLevel.Info : LogLevel.Error);
         LogManager.Instance.LogMessage(message, effectiveLevel);

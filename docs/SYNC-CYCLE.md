@@ -183,7 +183,7 @@ When `verifyPortAfterSync` is enabled (General settings, default on) and the VPN
 
 **Confirmation rule** - a single closed result logs at Info and forces a re-test on the next cycle; only the second consecutive closed result is treated as confirmed. This absorbs qBittorrent's idle-firewalled false positive and transient check-service glitches. A confirmed-closed port logs at Warn every cycle (so the log alert badge tracks the persistent condition, like the interface mismatch check) and raises the `PortVerificationFailed` event once, on the transition, for a tray warning balloon. Results that cannot be determined (client unreachable, check service down) leave the verification state unchanged.
 
-**Opt-in recovery** - when `portClosedRecoveryEnabled` is on (default off; requires port verification, but is independent of the failed-sync recovery trigger), a configurable number of confirmed closed checks (`portClosedRecoveryTriggerChecks`, default 3) dispatches the provider's normal recovery action (service restart, or adapter cycle for generic NAT-PMP gateways). The trigger is one-shot: after firing it stays disarmed until a verification reports the port open again, so a persistently false closed reading causes at most one recovery action and never a recovery loop.
+**Port-closed recovery** - when `portClosedRecoveryEnabled` is on (default on; requires port verification, but is independent of the failed-sync recovery trigger), a configurable number of confirmed closed checks (`portClosedRecoveryTriggerChecks`, default 3) dispatches the provider's normal recovery action (service restart, or adapter cycle for generic NAT-PMP gateways). The trigger is one-shot: after firing it stays disarmed until a verification reports the port open again, so a persistently false closed reading causes at most one recovery action and never a recovery loop.
 
 ### Port Update Notification
 
@@ -285,7 +285,7 @@ RunAsync
          │   ├─ IBitTorrentClient.TestListeningPortAsync
          │   ├─ HandlePortOpenResult (re-arms port-closed recovery)
          │   ├─ HandlePortClosedResult (PortVerificationFailed event on confirmed transition)
-         │   └─ MaybeTriggerPortClosedRecoveryAsync (opt-in, one-shot)
+         │   └─ MaybeTriggerPortClosedRecoveryAsync (one-shot)
          │       └─ DispatchRecoveryAsync
          └─ SetSyncResult
 ```

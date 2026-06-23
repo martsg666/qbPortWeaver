@@ -138,7 +138,7 @@ public static class RegistrySettingsManager
                 [KeyShowUpdateFormOnStartup] = ValueTrue,
                 [KeyResyncOnNetworkChange] = ValueTrue,
                 [KeyVerifyPortAfterSync] = ValueTrue,
-                [KeyPortClosedRecoveryEnabled] = ValueFalse,
+                [KeyPortClosedRecoveryEnabled] = ValueTrue,
                 [KeyPortClosedRecoveryTriggerChecks] = "3"
             },
             [SectionQBittorrent] = new(StringComparer.OrdinalIgnoreCase)

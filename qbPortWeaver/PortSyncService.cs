@@ -62,7 +62,7 @@ public sealed class PortSyncService
     private bool _portCheckPendingConfirmation; // one unconfirmed closed result seen
     private bool _portConfirmedClosed;          // closed confirmed by two consecutive checks
 
-    // Opt-in port-closed recovery state (serialised by MainForm._updateSemaphore like the rest).
+    // Port-closed recovery state (serialised by MainForm._updateSemaphore like the rest).
     // The armed flag implements one-shot recovery: a persistent false "closed" (e.g. qBittorrent's
     // idle-firewalled state, which can last indefinitely on a client with no active transfers)
     // causes at most one recovery action - re-armed only after a verification reports the port open.

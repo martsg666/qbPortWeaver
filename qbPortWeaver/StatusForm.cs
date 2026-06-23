@@ -129,12 +129,15 @@ public partial class StatusForm : Form
         }
 
         string time = ts.LocalDateTime.ToString("yyyy-MM-dd HH:mm:ss");
-        string result = string.IsNullOrEmpty(s.Status) ? "unknown" : s.Status;
-        Color color = s.Status switch
+        // Capitalize the displayed result so it matches the panel's other values (Connected, Open,
+        // etc.). The raw lowercase status value stays in the JSON file - that is the contract
+        // external scripts read; only the panel display is title-cased.
+        (string result, Color color) = s.Status switch
         {
-            SyncStatusValues.Success => OkColor,
-            SyncStatusValues.Skipped => NeutralColor,
-            _ => ErrorColor
+            SyncStatusValues.Success => ("Success", OkColor),
+            SyncStatusValues.Skipped => ("Skipped", NeutralColor),
+            SyncStatusValues.Error => ("Error", ErrorColor),
+            _ => (string.IsNullOrEmpty(s.Status) ? "Unknown" : s.Status, ErrorColor)
         };
         SetColor(lblLastSyncValue, $"{time}  -  {result}", color);
     }

@@ -86,6 +86,8 @@ After installing, open **Settings** from the tray icon to configure the applicat
 - **Auto-Recovery**
   Automatically recovers when a configurable number of consecutive sync cycles fail - whether the VPN is disconnected or port detection fails despite the VPN being connected. For ProtonVPN and PIA (direct or NAT-PMP mode), the helper restarts the Windows service and the tray app restarts the client process. For NAT-PMP with a generic (non-ProtonVPN/PIA) gateway, the helper cycles the network adapter (disable/enable via netsh). All privileged operations are delegated to a lightweight helper Windows service (`qbPortWeaverHelper`) running as LocalSystem - no UAC prompt required.
 
+  Recovery also requires that the failures have persisted long enough, not just reached the cycle count. When a sync runs early (for example a burst of network-change re-syncs while a router reboots), the failures can pile up in seconds; recovery is held until at least the time it would normally take to reach the threshold at the configured interval has elapsed. This keeps a brief network blip - which usually clears on its own - from force-restarting the VPN service.
+
   A second, independent trigger can run the same recovery when port verification confirms the port closed for a configurable number of checks (on by default; requires **Verify port after sync**). It fires at most once and re-arms only after the port tests open again, so a false "closed" reading can never cause repeated recovery actions. Use with care on qBittorrent, where an idle client can report closed indefinitely.
 
 - **Post-Update Command**
@@ -151,7 +153,7 @@ On first run, all settings are initialized with sensible defaults.
 | Sync on network change | Also run a sync immediately when a network or VPN connection change is detected, instead of waiting for the next interval (rapid changes are coalesced; pausing still suppresses it) | `True` |
 | Verify port after sync | After each sync, check that the listening port is reachable from the Internet (after a port change and every 5th cycle) | `True` |
 | Trigger auto-recovery when no port assigned or disconnected | Trigger auto-recovery (a VPN service restart, or adapter cycle for generic NAT-PMP gateways) after N consecutive cycles where the VPN is disconnected or assigns no forwarded port. Client-side failures do not count | `True` |
-| Trigger after (consecutive failed cycles) | Number of consecutive cycles without an assigned port before auto-recovery is triggered | `3` |
+| Trigger after (consecutive failed cycles) | Number of consecutive cycles without an assigned port before auto-recovery is triggered. Recovery is also held until the failures have persisted for the time these cycles would normally span, so a brief network blip that races through several early re-syncs does not trigger it | `3` |
 | Trigger auto-recovery when port stays closed | Independent trigger: runs auto-recovery when port verification confirms the port closed for the configured number of checks. Fires at most once until the port tests open again. Requires Verify port after sync | `True` |
 | Trigger after (confirmed closed checks) | Number of confirmed closed checks before auto-recovery is triggered | `3` |
 | Notify on port update | Show a tray balloon tip when the client's listening port is successfully updated | `True` |
@@ -231,7 +233,7 @@ Configured via tray menu → **Media Manager**.
 2. Checks whether the configured VPN provider is connected.
    - If **not connected** and **Default port** is 0: skips the cycle and waits for the next interval.
    - If **not connected** and **Default port** is set: uses the default port as the target and continues.
-   - If **Auto-Recovery** is enabled and the failed cycle count reaches the configured threshold: automatically triggers recovery (via the helper Windows service) - for ProtonVPN and PIA (direct or NAT-PMP mode), restarts the VPN service and client; for NAT-PMP with a generic gateway, cycles the network adapter.
+   - If **Auto-Recovery** is enabled, the failed cycle count reaches the configured threshold, and the failures have persisted long enough (so a brief blip raced through by early re-syncs is ignored): automatically triggers recovery (via the helper Windows service) - for ProtonVPN and PIA (direct or NAT-PMP mode), restarts the VPN service and client; for NAT-PMP with a generic gateway, cycles the network adapter.
 3. Reads the VPN-assigned port from the configured provider (skipped if using the default port fallback). If port detection fails despite the VPN being connected, the failed cycle counter increments and auto-recovery may trigger.
 4. Checks if the configured BitTorrent client is running (optionally force starts it if configured).
 5. Connects to the client and retrieves the current listening port.

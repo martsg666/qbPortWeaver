@@ -105,7 +105,7 @@ When the VPN is detected as disconnected - or port detection fails despite the V
 
 1. **Default port fallback** - if `DefaultPort > 0`, the cycle applies it to the BitTorrent client so it remains functional (typically on a non-VPN port). If `DefaultPort == 0`, the cycle is skipped entirely.
 
-2. **Auto-recovery** - if enabled, once the counter reaches the configured threshold, the cycle:
+2. **Auto-recovery** - if enabled, once the counter reaches the configured threshold *and* the failure streak has lasted at least `(threshold - 1) x interval` seconds, the cycle:
    - Resets the counter (to prevent repeated triggers)
    - Determines the recovery action and target based on the provider type:
      - **ProtonVPN / PIA (direct or NAT-PMP mode):** action = `restart`, target = the resolved Windows service name - the main app auto-discovers the service name and sends it to the helper, which restarts it directly
@@ -113,12 +113,21 @@ When the VPN is detected as disconnected - or port detection fails despite the V
    - Sends the recovery request to the helper service (runs as SYSTEM) via named pipe
    - If the target matches a known provider's client process, restarts it in the user session
 
+The time floor exists because a cycle can start early - a manual sync, a settings change, or (most commonly) a burst of network-change re-syncs while connectivity flaps during a router reboot. Without it, several early cycles can drive the counter to the threshold within seconds and force-restart the VPN service during a transient blip that would have cleared on its own. `(threshold - 1) x interval` is exactly the elapsed time the streak would take under normal scheduled cycling (failure 1 at t=0, failure N at t=`(N-1) x interval`), so a genuine sustained outage still triggers at the same moment it always did - the floor only defers recovery when failures arrive faster than the schedule. The streak's start time is stamped on the first failure and reset in lockstep with the counter.
+
 ```
-Cycle 1: VPN disconnected        → counter=1 (threshold=3, no action)
-Cycle 2: VPN disconnected        → counter=2 (threshold=3, no action)
-Cycle 3: VPN disconnected        → counter=3 → TRIGGER RECOVERY → counter=0
-Cycle 4: VPN still down          → counter=1 (recovery in progress)
-Cycle 5: VPN reconnects, port OK → counter=0
+interval=45s, threshold=3 → time floor = (3-1) x 45 = 90s
+
+Sustained outage (normal cadence):
+Cycle 1 (t=0s):   VPN disconnected   → counter=1 (no action)
+Cycle 2 (t=45s):  VPN disconnected   → counter=2 (no action)
+Cycle 3 (t=90s):  VPN disconnected   → counter=3, 90s elapsed ≥ 90s → TRIGGER RECOVERY → counter=0
+
+Brief blip raced by network-change re-syncs:
+Cycle 1 (t=0s):   VPN disconnected   → counter=1 (no action)
+Cycle 2 (t=26s):  VPN disconnected   → counter=2 (no action)
+Cycle 3 (t=31s):  VPN disconnected   → counter=3, only 31s elapsed < 90s → HOLD
+Cycle 4 (t=44s):  VPN reconnects, port OK → counter=0 (recovery never fired)
 ```
 
 Port detection failures follow the same pattern:
@@ -132,9 +141,11 @@ Cycle 4: VPN connected, port failed  → counter=3 → TRIGGER RECOVERY → coun
 
 ### Counter Reset Rules
 
-The counter resets in two cases:
+The counter (and its streak start time) reset in two cases:
 - **Successful port detection**: `GetVpnPortAsync` returns a valid port. Applies uniformly to all providers; both VPN disconnection and port detection failure accumulate toward the threshold.
 - **Auto-recovery disabled**: if the feature is turned off, the counter resets each cycle so it does not carry over stale state when the feature is re-enabled.
+
+All resets flow through a single `ResetFailureStreak` helper so the streak start time used by the time floor can never drift out of sync with the counter.
 
 ## BitTorrent Client Interaction
 

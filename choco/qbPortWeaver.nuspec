@@ -46,7 +46,7 @@ The tray icon shows a color-coded status dot (green / orange / red / gray) and t
 - Status panel: a tray window (menu or double-click the tray icon) showing the live sync chain at a glance - VPN, forwarded port, client listening port, reachability, and last sync result
 - Pause and resume syncing directly from the tray menu
 - Connection test button in Settings to verify the qBittorrent, Transmission, or Deluge connection before saving
-- Auto-Recovery: automatically restarts VPN services or cycles the network adapter after repeated sync failures
+- Auto-Recovery: automatically restarts VPN services or cycles the network adapter after sync failures persist, while ignoring brief network blips that clear on their own
 - Post-update shell command hook for custom automation
 - Resilient media import: a temporarily offline or slow network share (e.g. a NAS rebooting) is detected quickly and that import cycle is skipped instead of stalling, then resumes automatically
 - Layered TV libraries: episodes organised by season subfolder with numbered filenames (e.g. Show Name/Season N/01-Title.ext) are recognised in addition to the SxxExx naming pattern

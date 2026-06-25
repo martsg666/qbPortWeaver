@@ -876,7 +876,7 @@ public sealed class PortSyncService
     {
         string cycles = count == 1 ? "failed cycle" : "failed cycles";
         string recoverySuffix = cfg.VpnAutoRecoveryEnabled
-            ? $", recovery triggers after {cfg.VpnAutoRecoveryTriggerCycles} consecutive failed cycles"
+            ? $", recovery may trigger after {cfg.VpnAutoRecoveryTriggerCycles} consecutive failed cycles"
             : string.Empty;
         return $"{prefix} ({count} consecutive {cycles}{recoverySuffix})";
     }

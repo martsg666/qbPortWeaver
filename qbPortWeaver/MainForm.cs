@@ -49,6 +49,7 @@ public partial class MainForm : Form
     private SettingsForm? _settingsForm;
     private MediaManagerForm? _mediaManagerForm;
     private AboutForm? _aboutForm;
+    private StatusForm? _statusForm;
     private UpdateAvailableForm? _updateAvailableForm;
 
     // Last sync status (written from background thread, read on UI thread)
@@ -73,6 +74,12 @@ public partial class MainForm : Form
     // Manual sync triggered flag (thread-safe with volatile)
     private volatile bool _manualSyncTriggered;
 
+    // Set when a network-change re-sync is triggered. Gives that cycle a single short follow-up
+    // wait (like manual sync) so a cycle that ran before the VPN finished settling retries
+    // promptly instead of resetting the clock to a full interval. Unlike _manualSyncTriggered it
+    // does NOT override pause or log as a manual sync.
+    private volatile bool _quickRecheckPending;
+
     // Pause flag for the sync loop (thread-safe with volatile). Deliberately in-memory only:
     // a restart always resumes syncing, so the app can never silently sit in a paused state
     // the user forgot about. While paused the whole cycle body is skipped - port sync AND the
@@ -87,6 +94,10 @@ public partial class MainForm : Form
 
     // Periodic update check timer (fires every 12 hours)
     private System.Windows.Forms.Timer _updateCheckTimer = null!;
+
+    // One-shot debounce timer for network-change triggered re-syncs. Re-armed on each
+    // NetworkAddressChanged event; fires once the burst settles (see OnNetworkAddressChanged).
+    private System.Threading.Timer? _resyncDebounceTimer;
 
     // Last version for which the user was already shown an update prompt
     private string? _lastNotifiedVersion;
@@ -145,6 +156,11 @@ public partial class MainForm : Form
             // A synchronous throw before the loop body (e.g. during Task.Run startup) would be
             // silently lost - acceptable since RunMainLoopAsync has no synchronous preamble.
             _ = Task.Run(RunMainLoopAsync);
+
+            // Wake the loop promptly on a network change (e.g. VPN reconnect) instead of waiting
+            // out the full interval. The timer starts disarmed; OnNetworkAddressChanged arms it.
+            _resyncDebounceTimer = new System.Threading.Timer(OnResyncDebounceElapsed, null, Timeout.Infinite, Timeout.Infinite);
+            System.Net.NetworkInformation.NetworkChange.NetworkAddressChanged += OnNetworkAddressChanged;
 
             // Show What's New on first run after an upgrade (non-modal - does not block port sync)
             if (RegistrySettingsManager.GetAppValue(RegistrySettingsManager.KeyLastSeenVersion) != AppConstants.AppVersion)
@@ -227,6 +243,10 @@ public partial class MainForm : Form
         _updateCheckTimer?.Stop();
         _updateCheckTimer?.Dispose();
 
+        // Stop reacting to network changes and dispose the debounce timer
+        System.Net.NetworkInformation.NetworkChange.NetworkAddressChanged -= OnNetworkAddressChanged;
+        _resyncDebounceTimer?.Dispose();
+
         // Hide tray icon immediately to avoid ghost icon
         _trayIcon.Visible = false;
 
@@ -235,6 +255,7 @@ public partial class MainForm : Form
         _settingsForm?.Close();
         _mediaManagerForm?.Close();
         _aboutForm?.Close();
+        _statusForm?.Close();
         _updateAvailableForm?.Close();
 
         // Resources are disposed in Dispose(bool) via MainForm.Designer.cs
@@ -310,6 +331,7 @@ public partial class MainForm : Form
 
         // Sync actions
         _trayMenu.Items.Add("Sync Port Now", null, syncPortNow_Click);
+        _trayMenu.Items.Add("Show Status", null, showStatus_Click);
         _pauseSyncMenuItem = new ToolStripMenuItem(PauseSyncingMenuText);
         _pauseSyncMenuItem.Click += pauseSync_Click;
         _trayMenu.Items.Add(_pauseSyncMenuItem);
@@ -389,18 +411,36 @@ public partial class MainForm : Form
         ShowOrActivate(() => _aboutForm, f => _aboutForm = f, () => new AboutForm());
     }
 
+    private void showStatus_Click(object? sender, EventArgs e) => ShowStatusPanel();
+
+    private void ShowStatusPanel()
+    {
+        ShowOrActivate(() => _statusForm, f => _statusForm = f, CreateStatusForm);
+    }
+
+    // Builds the Status panel and wires its Sync Now button to the shared manual-sync trigger.
+    private StatusForm CreateStatusForm()
+    {
+        var form = new StatusForm();
+        form.SyncRequested += (_, _) => RequestManualSync();
+        return form;
+    }
+
     private void autoStart_Click(object? sender, EventArgs e) => StartupManager.SetStartup(_autoStartMenuItem.Checked);
 
     private void trayIcon_MouseDoubleClick(object? sender, MouseEventArgs e)
     {
         if (e.Button == MouseButtons.Left)
-            ShowLogViewer();
+            ShowStatusPanel();
     }
 
-    // Triggers an immediate sync cycle by interrupting the current wait interval.
+    private void syncPortNow_Click(object? sender, EventArgs e) => RequestManualSync();
+
+    // Triggers an immediate sync cycle by interrupting the current wait interval. Shared by the
+    // "Sync Port Now" tray item and the Status panel's "Sync Now" button.
     // Works while paused too: the loop runs exactly one cycle (the manual flag overrides the
     // pause check), then returns to the paused state.
-    private void syncPortNow_Click(object? sender, EventArgs e)
+    private void RequestManualSync()
     {
         _manualSyncTriggered = true;
         LogManager.Instance.LogMessage("Manual sync requested", LogLevel.Info);
@@ -426,6 +466,31 @@ public partial class MainForm : Form
         }
     }
 
+    // A network address changed (adapter up/down, VPN reconnect). Re-arm the one-shot debounce
+    // timer; the re-sync fires once the burst settles. Runs on a thread-pool thread.
+    private void OnNetworkAddressChanged(object? sender, EventArgs e)
+    {
+        try { _resyncDebounceTimer?.Change(AppConstants.ResyncDebounceMs, Timeout.Infinite); }
+        catch (ObjectDisposedException)
+        {
+            // Defensive: the timer was disposed during shutdown between the null check and Change.
+        }
+    }
+
+    // Fires after network changes settle. Wakes the sync loop early unless shutting down, paused,
+    // or the user disabled the option. Reads the setting fresh so a Settings toggle takes effect
+    // immediately. Respects pause like the scheduled loop does (no cycle runs while paused).
+    private void OnResyncDebounceElapsed(object? state)
+    {
+        if (_shutdownCts.IsCancellationRequested || _syncPaused) return;
+        if (!RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyResyncOnNetworkChange))
+            return;
+        LogManager.Instance.LogMessage("Network change detected, triggering sync cycle", LogLevel.Info);
+        // Set before interrupting so the triggered cycle observes it and schedules a short re-check.
+        _quickRecheckPending = true;
+        InterruptDelay();
+    }
+
     // Interrupts the current inter-cycle delay so the next sync cycle starts immediately
     private void InterruptDelay()
     {
@@ -444,7 +509,15 @@ public partial class MainForm : Form
     {
         _lastSyncStatus = status;
         if (!_shutdownCts.IsCancellationRequested)
-            InvokeOnUiThread(() => { UpdateTrayIcon(status.State); UpdateTrayTooltip(); });
+            InvokeOnUiThread(() =>
+            {
+                UpdateTrayIcon(status.State);
+                UpdateTrayTooltip();
+                // Refresh the Status panel live if it is open (the status file was written before
+                // this event fired, so it reflects the cycle that just completed).
+                if (_statusForm is { IsDisposed: false })
+                    _statusForm.RefreshStatus();
+            });
     }
 
     // Shared handler for PortSyncService warning events (interface mismatch, port verification
@@ -528,12 +601,20 @@ public partial class MainForm : Form
 
         TryKickOffMediaImport();
 
-        // After a manual sync, wait only 10 seconds before next check
+        // After a manual sync, wait only 10 seconds before next check.
         if (_manualSyncTriggered)
         {
             _manualSyncTriggered = false;
+            _quickRecheckPending = false; // manual takes precedence; do not also queue a quick re-check
             updateInterval = AppConstants.ManualSyncWaitSeconds;
             LogManager.Instance.LogMessage("Manual sync completed", LogLevel.Info);
+        }
+        // A network-change-triggered cycle may have run before the VPN finished settling; re-check
+        // shortly instead of resetting to a full interval. One-shot, so it does not spin.
+        else if (_quickRecheckPending)
+        {
+            _quickRecheckPending = false;
+            updateInterval = AppConstants.ManualSyncWaitSeconds;
         }
         return updateInterval;
     }

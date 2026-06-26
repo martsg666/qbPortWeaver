@@ -8,6 +8,9 @@ partial class SettingsForm
     {
         if (disposing)
         {
+            // Explicitly created font - WinForms controls do not own their Font (matches the
+            // disposal pattern in the other forms' designers).
+            lblAutoRecoveryHeader.Font?.Dispose();
             components?.Dispose();
         }
         base.Dispose(disposing);
@@ -28,6 +31,7 @@ partial class SettingsForm
         lblUpdateInterval         = new Label();
         nudUpdateInterval         = new NumericUpDown();
         lblSeconds                = new Label();
+        chkResyncOnNetworkChange  = new CheckBox();
         lblNatPmpAdapter          = new Label();
         cboNatPmpAdapter          = new ComboBox();
         btnRefreshAdapters        = new Button();
@@ -125,6 +129,7 @@ partial class SettingsForm
         grpGeneral.Controls.Add(lblUpdateInterval);
         grpGeneral.Controls.Add(nudUpdateInterval);
         grpGeneral.Controls.Add(lblSeconds);
+        grpGeneral.Controls.Add(chkResyncOnNetworkChange);
         grpGeneral.Controls.Add(lblVpnProvider);
         grpGeneral.Controls.Add(cboVpnProvider);
         grpGeneral.Controls.Add(lblNatPmpAdapter);
@@ -181,64 +186,71 @@ partial class SettingsForm
         lblSeconds.TabIndex  = 4;
         lblSeconds.Text      = "seconds";
         lblSeconds.TextAlign = ContentAlignment.MiddleLeft;
+        // Shares the update-interval row: the interval is the scheduled cadence, this adds an
+        // immediate sync on network/VPN change. AutoSize so the label sits flush after "seconds".
+        chkResyncOnNetworkChange.AutoSize = true;
+        chkResyncOnNetworkChange.Location = new Point(300, 54);
+        chkResyncOnNetworkChange.Name     = "chkResyncOnNetworkChange";
+        chkResyncOnNetworkChange.TabIndex = 5;
+        chkResyncOnNetworkChange.Text     = "Sync on network change";
         lblVpnProvider.Location  = new Point(12, 82);
         lblVpnProvider.Name      = "lblVpnProvider";
         lblVpnProvider.Size      = new Size(130, 23);
-        lblVpnProvider.TabIndex  = 5;
+        lblVpnProvider.TabIndex  = 6;
         lblVpnProvider.Text      = "VPN provider:";
         lblVpnProvider.TextAlign = ContentAlignment.MiddleLeft;
         cboVpnProvider.DropDownStyle        = ComboBoxStyle.DropDownList;
         cboVpnProvider.Location             = new Point(148, 82);
         cboVpnProvider.Name                 = "cboVpnProvider";
         cboVpnProvider.Size                 = new Size(200, 23);
-        cboVpnProvider.TabIndex             = 6;
+        cboVpnProvider.TabIndex             = 7;
         cboVpnProvider.SelectedIndexChanged += cboVpnProvider_SelectedIndexChanged;
         lblNatPmpAdapter.Location  = new Point(12, 111);
         lblNatPmpAdapter.Name      = "lblNatPmpAdapter";
         lblNatPmpAdapter.Size      = new Size(130, 23);
-        lblNatPmpAdapter.TabIndex  = 7;
+        lblNatPmpAdapter.TabIndex  = 8;
         lblNatPmpAdapter.Text      = "NAT-PMP adapter:";
         lblNatPmpAdapter.TextAlign = ContentAlignment.MiddleLeft;
         cboNatPmpAdapter.DropDownStyle = ComboBoxStyle.DropDownList;
         cboNatPmpAdapter.Location      = new Point(148, 111);
         cboNatPmpAdapter.Name          = "cboNatPmpAdapter";
         cboNatPmpAdapter.Size          = new Size(290, 23);
-        cboNatPmpAdapter.TabIndex      = 8;
+        cboNatPmpAdapter.TabIndex      = 9;
         btnRefreshAdapters.Enabled  = false;
         btnRefreshAdapters.Location = new Point(442, 111);
         btnRefreshAdapters.Name     = "btnRefreshAdapters";
         btnRefreshAdapters.Size     = new Size(26, 23);
-        btnRefreshAdapters.TabIndex = 9;
+        btnRefreshAdapters.TabIndex = 10;
         btnRefreshAdapters.Text     = "↻";
         btnRefreshAdapters.Click   += btnRefreshAdapters_Click;
         // Notify and show-update rows follow immediately after the NAT-PMP row at 29px spacing
         chkNotifyOnPortUpdate.AutoSize  = true;
         chkNotifyOnPortUpdate.Location  = new Point(15, 140);
         chkNotifyOnPortUpdate.Name      = "chkNotifyOnPortUpdate";
-        chkNotifyOnPortUpdate.TabIndex  = 10;
+        chkNotifyOnPortUpdate.TabIndex  = 11;
         chkNotifyOnPortUpdate.Text      = "Show notification when port updates";
         chkShowUpdateForm.AutoSize      = true;
         chkShowUpdateForm.Location      = new Point(15, 169);
         chkShowUpdateForm.Name          = "chkShowUpdateForm";
-        chkShowUpdateForm.TabIndex      = 11;
+        chkShowUpdateForm.TabIndex      = 12;
         chkShowUpdateForm.Text          = "Show update form on startup";
         // "Trigger after" labels use AutoSize so the NUD sits immediately after the text.
         lblAutoRecoveryHeader.AutoSize = true;
         lblAutoRecoveryHeader.Font     = new Font("Segoe UI", 9F, FontStyle.Bold, GraphicsUnit.Point);
         lblAutoRecoveryHeader.Location = new Point(12, 198);
         lblAutoRecoveryHeader.Name     = "lblAutoRecoveryHeader";
-        lblAutoRecoveryHeader.TabIndex = 12;
+        lblAutoRecoveryHeader.TabIndex = 13;
         lblAutoRecoveryHeader.Text     = "Auto-recovery";
         chkVerifyPort.AutoSize        = true;
         chkVerifyPort.Location        = new Point(15, 227);
         chkVerifyPort.Name            = "chkVerifyPort";
-        chkVerifyPort.TabIndex        = 13;
+        chkVerifyPort.TabIndex        = 14;
         chkVerifyPort.Text            = "Check that the forwarded port is open after each sync";
         chkVerifyPort.CheckedChanged += chkVerifyPort_CheckedChanged;
         chkPortClosedRecovery.AutoSize       = true;
         chkPortClosedRecovery.Location       = new Point(15, 256);
         chkPortClosedRecovery.Name           = "chkPortClosedRecovery";
-        chkPortClosedRecovery.TabIndex       = 14;
+        chkPortClosedRecovery.TabIndex       = 15;
         chkPortClosedRecovery.Text           = "Trigger auto-recovery when port stays closed";
         chkPortClosedRecovery.CheckedChanged += chkPortClosedRecovery_CheckedChanged;
         // "Trigger after" sub-rows align with the parent checkbox's text at x=28 (checkbox left 12 +
@@ -246,7 +258,7 @@ partial class SettingsForm
         lblPortClosedChecks.AutoSize  = true;
         lblPortClosedChecks.Location  = new Point(28, 285);
         lblPortClosedChecks.Name      = "lblPortClosedChecks";
-        lblPortClosedChecks.TabIndex  = 15;
+        lblPortClosedChecks.TabIndex  = 16;
         lblPortClosedChecks.Text      = "Trigger after";
         lblPortClosedChecks.TextAlign = ContentAlignment.MiddleLeft;
         nudPortClosedChecks.Location = new Point(112, 285);
@@ -254,24 +266,24 @@ partial class SettingsForm
         nudPortClosedChecks.Minimum  = new decimal(new int[] { 1, 0, 0, 0 });
         nudPortClosedChecks.Name     = "nudPortClosedChecks";
         nudPortClosedChecks.Size     = new Size(50, 23);
-        nudPortClosedChecks.TabIndex = 16;
+        nudPortClosedChecks.TabIndex = 17;
         nudPortClosedChecks.Value    = new decimal(new int[] { 3, 0, 0, 0 });
         lblPortClosedChecksUnit.Location  = new Point(168, 285);
         lblPortClosedChecksUnit.Name      = "lblPortClosedChecksUnit";
         lblPortClosedChecksUnit.Size      = new Size(270, 23);
-        lblPortClosedChecksUnit.TabIndex  = 17;
+        lblPortClosedChecksUnit.TabIndex  = 18;
         lblPortClosedChecksUnit.Text      = "confirmed closed checks";
         lblPortClosedChecksUnit.TextAlign = ContentAlignment.MiddleLeft;
         chkAutoRecovery.AutoSize       = true;
         chkAutoRecovery.Location       = new Point(15, 314);
         chkAutoRecovery.Name           = "chkAutoRecovery";
-        chkAutoRecovery.TabIndex       = 18;
+        chkAutoRecovery.TabIndex       = 19;
         chkAutoRecovery.Text           = "Trigger auto-recovery when no port assigned or disconnected";
         chkAutoRecovery.CheckedChanged += chkAutoRecovery_CheckedChanged;
         lblRecoveryCycles.AutoSize  = true;
         lblRecoveryCycles.Location  = new Point(28, 343);
         lblRecoveryCycles.Name      = "lblRecoveryCycles";
-        lblRecoveryCycles.TabIndex  = 19;
+        lblRecoveryCycles.TabIndex  = 20;
         lblRecoveryCycles.Text      = "Trigger after";
         lblRecoveryCycles.TextAlign = ContentAlignment.MiddleLeft;
         nudRecoveryCycles.Location = new Point(112, 343);
@@ -279,12 +291,12 @@ partial class SettingsForm
         nudRecoveryCycles.Minimum  = new decimal(new int[] { 1, 0, 0, 0 });
         nudRecoveryCycles.Name     = "nudRecoveryCycles";
         nudRecoveryCycles.Size     = new Size(50, 23);
-        nudRecoveryCycles.TabIndex = 20;
+        nudRecoveryCycles.TabIndex = 21;
         nudRecoveryCycles.Value    = new decimal(new int[] { 3, 0, 0, 0 });
         lblRecoveryCyclesUnit.Location  = new Point(168, 343);
         lblRecoveryCyclesUnit.Name      = "lblRecoveryCyclesUnit";
         lblRecoveryCyclesUnit.Size      = new Size(270, 23);
-        lblRecoveryCyclesUnit.TabIndex  = 21;
+        lblRecoveryCyclesUnit.TabIndex  = 22;
         lblRecoveryCyclesUnit.Text      = "consecutive failed cycles";
         lblRecoveryCyclesUnit.TextAlign = ContentAlignment.MiddleLeft;
         // ── grpQBittorrent ────────────────────────────────────────────
@@ -749,6 +761,7 @@ partial class SettingsForm
     private Label         lblUpdateInterval;
     private NumericUpDown nudUpdateInterval;
     private Label         lblSeconds;
+    private CheckBox      chkResyncOnNetworkChange;
     private Label         lblVpnProvider;
     private ComboBox      cboVpnProvider;
     private Label         lblNatPmpAdapter;

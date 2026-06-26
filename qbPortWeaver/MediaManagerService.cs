@@ -598,10 +598,7 @@ public static class MediaManagerService
         // Checked before dryRun branch so the conflict is visible during Scan Now, not only on live import.
         if (File.Exists(targetPath))
         {
-            LogManager.Instance.LogMessage(
-                $"Destination conflict: '{Path.GetFileName(targetPath)}' already exists with different content " +
-                $"(source: {MediaImporter.DescribeFileSize(sourcePath)}, dest: {MediaImporter.DescribeFileSize(targetPath)}). Skipping to avoid overwriting.",
-                LogLevel.Warn, Subsystem.MediaManager);
+            MediaImporter.LogDestinationConflict(sourcePath, targetPath);
             return;
         }
 

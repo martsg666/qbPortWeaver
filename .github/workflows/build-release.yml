@@ -90,6 +90,7 @@ jobs:
           $csproj = @(
             'qbPortWeaver\qbPortWeaver.csproj'
             'HelperService\qbPortWeaver.HelperService.csproj'
+            'qbPortWeaver.Shared\qbPortWeaver.Shared.csproj'
           )
           foreach ($proj in $csproj) {
             $match   = Select-String -Path $proj -Pattern '<Version>([^<]+)</Version>'

@@ -28,6 +28,7 @@ partial class SettingsForm
         cboVpnProvider            = new ComboBox();
         lblBitTorrentClient       = new Label();
         cboBitTorrentClient       = new ComboBox();
+        btnDetectClient           = new Button();
         lblUpdateInterval         = new Label();
         nudUpdateInterval         = new NumericUpDown();
         lblSeconds                = new Label();
@@ -126,6 +127,7 @@ partial class SettingsForm
         // ── grpGeneral ────────────────────────────────────────────────
         grpGeneral.Controls.Add(lblBitTorrentClient);
         grpGeneral.Controls.Add(cboBitTorrentClient);
+        grpGeneral.Controls.Add(btnDetectClient);
         grpGeneral.Controls.Add(lblUpdateInterval);
         grpGeneral.Controls.Add(nudUpdateInterval);
         grpGeneral.Controls.Add(lblSeconds);
@@ -167,6 +169,12 @@ partial class SettingsForm
         cboBitTorrentClient.Size                 = new Size(200, 23);
         cboBitTorrentClient.TabIndex             = 1;
         cboBitTorrentClient.SelectedIndexChanged += cboBitTorrentClient_SelectedIndexChanged;
+        btnDetectClient.Location = new Point(354, 24);
+        btnDetectClient.Name     = "btnDetectClient";
+        btnDetectClient.Size     = new Size(80, 24);
+        btnDetectClient.TabIndex = 2;
+        btnDetectClient.Text     = "Detect";
+        btnDetectClient.Click   += btnDetectClient_Click;
         lblUpdateInterval.Location  = new Point(12, 53);
         lblUpdateInterval.Name      = "lblUpdateInterval";
         lblUpdateInterval.Size      = new Size(130, 23);
@@ -758,6 +766,7 @@ partial class SettingsForm
     private GroupBox      grpGeneral;
     private Label         lblBitTorrentClient;
     private ComboBox      cboBitTorrentClient;
+    private Button        btnDetectClient;
     private Label         lblUpdateInterval;
     private NumericUpDown nudUpdateInterval;
     private Label         lblSeconds;

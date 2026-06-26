@@ -418,12 +418,35 @@ public partial class MainForm : Form
         ShowOrActivate(() => _statusForm, f => _statusForm = f, CreateStatusForm);
     }
 
-    // Builds the Status panel and wires its Sync Now button to the shared manual-sync trigger.
+    // Builds the Status panel and wires its Sync Now button to the shared manual-sync trigger and
+    // its Test Port button to an on-demand reachability check.
     private StatusForm CreateStatusForm()
     {
         var form = new StatusForm();
         form.SyncRequested += (_, _) => RequestManualSync();
+        form.TestPortRequested += async (_, _) => await RunManualPortTestAsync(form); // async void event handler (WinForms)
         return form;
+    }
+
+    // Runs an on-demand port-reachability check from the Status panel, reporting the outcome back to
+    // the panel. Builds a fresh client off the saved settings, so it is safe to run alongside a cycle.
+    private async Task RunManualPortTestAsync(StatusForm form)
+    {
+        form.SetReachableChecking();
+        LogManager.Instance.LogMessage("Manual port test requested", LogLevel.Info);
+        bool? open;
+        try
+        {
+            open = await PortSyncService.TestActivePortAsync(_shutdownCts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            return; // app shutting down - the form is closing, nothing to report
+        }
+        if (form.IsDisposed) return;
+        form.SetReachableResult(open);
+        string result = open switch { true => "open", false => "closed", _ => "could not be determined" };
+        LogManager.Instance.LogMessage($"Manual port test result: {result}", LogLevel.Info);
     }
 
     private void autoStart_Click(object? sender, EventArgs e) => StartupManager.SetStartup(_autoStartMenuItem.Checked);

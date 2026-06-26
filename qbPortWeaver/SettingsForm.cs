@@ -58,6 +58,7 @@ public partial class SettingsForm : Form
         toolTip.SetToolTip(btnRefreshAdapters, "Refresh the adapter list");
         toolTip.SetToolTip(nudUpdateInterval, "How often to run the sync cycle, in seconds - controls both port sync and Media Manager frequency");
         toolTip.SetToolTip(cboBitTorrentClient, "BitTorrent client to control (qBittorrent, Transmission, or Deluge)");
+        toolTip.SetToolTip(btnDetectClient, "Detect a running or installed client and fill in its selection and process details");
         toolTip.SetToolTip(txtQBittorrentURL, "URL for the qBittorrent Web UI (e.g. http://127.0.0.1:8080). The Web UI must be enabled in qBittorrent under Tools > Options > Web UI.");
         toolTip.SetToolTip(txtQBittorrentUserName, "Username for the qBittorrent Web UI");
         toolTip.SetToolTip(txtQBittorrentPassword, "Password for the qBittorrent Web UI");
@@ -331,6 +332,75 @@ public partial class SettingsForm : Form
     private void cboBitTorrentClient_SelectedIndexChanged(object? sender, EventArgs e) =>
         UpdateClientGroupVisibility();
 
+    // Detects a running or installed supported client and pre-fills the selection plus that client's
+    // process-name / executable fields, so the user does not have to know the exact values. Selection
+    // and field values are applied but not saved - the user reviews them, Tests, then Saves.
+    private void btnDetectClient_Click(object? sender, EventArgs e)
+    {
+        var detected = ClientDetector.DetectAll();
+        if (detected.Count == 0)
+        {
+            MessageBox.Show(
+                "No supported client was found running or installed in its default location.\n\nSelect your client manually and enter its connection details.",
+                AppIdentity.AppName, MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
+
+        // A running client is the strongest signal, so prefer running ones; only fall back to the
+        // installed-only matches when nothing is running. We auto-apply when that leaves a single
+        // candidate and prompt when it is still ambiguous (several running, or several installed).
+        var running = detected.Where(d => d.Kind == ClientDetector.DetectionKind.Running).ToList();
+        var candidates = running.Count > 0 ? running : detected;
+
+        ClientDetector.DetectedClient chosen;
+        bool autoSelected = candidates.Count == 1;
+        if (autoSelected)
+        {
+            chosen = candidates[0];
+        }
+        else
+        {
+            using var chooser = new ClientChooserForm(candidates, cboBitTorrentClient.SelectedItem?.ToString());
+            if (chooser.ShowDialog(this) != DialogResult.OK) return;
+            var picked = chooser.SelectedClient;
+            if (picked is null) return;
+            chosen = picked;
+        }
+
+        cboBitTorrentClient.SelectedItem = chosen.ClientName; // triggers UpdateClientGroupVisibility
+        ApplyDetectedClientDetails(chosen);
+
+        // The chooser already showed the user what they picked, so only confirm on an auto-selection.
+        if (autoSelected)
+        {
+            string how = chosen.Kind == ClientDetector.DetectionKind.Running ? "running now" : "installed";
+            MessageBox.Show(
+                $"Detected {chosen.ClientName} ({how}).\n\nThe client selection and its process details have been filled in. Review the connection settings, then use Test before saving.",
+                AppIdentity.AppName, MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
+    }
+
+    // Fills the matched client's process-name field (always) and executable field (only when a default
+    // install was found, so a user's custom path is never blanked) on its Client-tab group.
+    private void ApplyDetectedClientDetails(ClientDetector.DetectedClient d)
+    {
+        if (d.ClientName == RegistrySettingsManager.BitTorrentClientTransmission)
+        {
+            txtTransmissionProcessName.Text = d.ProcessName;
+            if (d.ExePath is not null) txtTransmissionExePath.Text = d.ExePath;
+        }
+        else if (d.ClientName == RegistrySettingsManager.BitTorrentClientDeluge)
+        {
+            txtDelugeProcessName.Text = d.ProcessName;
+            if (d.ExePath is not null) txtDelugeExePath.Text = d.ExePath;
+        }
+        else
+        {
+            txtQBittorrentProcessName.Text = d.ProcessName;
+            if (d.ExePath is not null) txtQBittorrentExePath.Text = d.ExePath;
+        }
+    }
+
     private void UpdateClientGroupVisibility()
     {
         string? selectedClient = cboBitTorrentClient.SelectedItem?.ToString();
@@ -507,6 +577,7 @@ public partial class SettingsForm : Form
         // General section - client and auto-recovery controls (NAT-PMP adapter row handled by SetAdapterControlsEnabled)
         lblBitTorrentClient.Enabled = enabled;
         cboBitTorrentClient.Enabled = enabled;
+        btnDetectClient.Enabled = enabled;
         chkVerifyPort.Enabled = enabled;
         chkAutoRecovery.Enabled = enabled;
         UpdateAutoRecoverySubControls();

@@ -9,6 +9,17 @@ public partial class WhatsNewForm : Form
         "If you find qbPortWeaver useful, please star it on GitHub.";
 
     private const string ReleaseFeaturesText =
+        "New in 2.5.8\n\n" +
+        "Test your port on demand\n" +
+        "The Status panel now has a Test Port button that checks whether your listening port is reachable " +
+        "from the Internet right then, without waiting for the next scheduled check. The result - open, " +
+        "closed, or could not determine - appears next to Reachable.\n\n" +
+        "Detect your client\n" +
+        "The Settings window can now find your client for you. Click Detect on the General tab and " +
+        "qbPortWeaver selects whichever supported client (qBittorrent, Transmission, or Deluge) is running " +
+        "or installed and fills in its process and executable details. If more than one is found, it asks " +
+        "you to choose. Review the connection settings, use Test, then Save.\n\n" +
+        "Previously released\n\n" +
         "New in 2.5.7\n\n" +
         "Status panel\n" +
         "A new Status window shows the live state of your port sync at a glance: your VPN provider and " +
@@ -26,7 +37,6 @@ public partial class WhatsNewForm : Form
         "Auto-recovery now waits until sync failures have persisted, not just counted up, before " +
         "restarting your VPN. A brief network blip - like a router reboot that triggers several quick " +
         "re-syncs - no longer force-restarts the VPN service when it would have reconnected on its own.\n\n" +
-        "Previously released\n\n" +
         "New in 2.5.6\n\n" +
         "Port verification\n" +
         "After each sync, qbPortWeaver can now check that your port is actually reachable from the Internet, " +

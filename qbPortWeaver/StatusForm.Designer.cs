@@ -33,6 +33,7 @@ partial class StatusForm
         lblLastSyncLabel = new Label();
         lblLastSyncValue = new Label();
         btnSyncNow = new Button();
+        btnTestPort = new Button();
         btnClose = new Button();
         grpStatus.SuspendLayout();
         SuspendLayout();
@@ -155,11 +156,17 @@ partial class StatusForm
         btnSyncNow.TabIndex = 2;
         btnSyncNow.Text = "Sync Now";
         btnSyncNow.Click += btnSyncNow_Click;
+        btnTestPort.Location = new Point(112, 290);
+        btnTestPort.Name = "btnTestPort";
+        btnTestPort.Size = new Size(96, 28);
+        btnTestPort.TabIndex = 3;
+        btnTestPort.Text = "Test Port";
+        btnTestPort.Click += btnTestPort_Click;
         btnClose.DialogResult = DialogResult.Cancel;
         btnClose.Location = new Point(290, 290);
         btnClose.Name = "btnClose";
         btnClose.Size = new Size(82, 28);
-        btnClose.TabIndex = 3;
+        btnClose.TabIndex = 4;
         btnClose.Text = "Close";
         btnClose.Click += btnClose_Click;
         // ── StatusForm ────────────────────────────────────────────────
@@ -170,6 +177,7 @@ partial class StatusForm
         Controls.Add(lblHeader);
         Controls.Add(grpStatus);
         Controls.Add(btnSyncNow);
+        Controls.Add(btnTestPort);
         Controls.Add(btnClose);
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
@@ -200,5 +208,6 @@ partial class StatusForm
     private Label    lblLastSyncLabel;
     private Label    lblLastSyncValue;
     private Button   btnSyncNow;
+    private Button   btnTestPort;
     private Button   btnClose;
 }

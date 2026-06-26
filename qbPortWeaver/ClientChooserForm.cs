@@ -26,6 +26,9 @@ internal sealed class ClientChooserForm : Form
         MinimizeBox = false;
         MaximizeBox = false;
         ShowInTaskbar = false;
+        // Match the designer forms' autoscale baseline (9pt Segoe UI at 96 DPI) so the runtime scales
+        // these manually-placed controls on high-DPI displays instead of leaving them at design pixels.
+        AutoScaleDimensions = new SizeF(7F, 15F);
         AutoScaleMode = AutoScaleMode.Font;
         ClientSize = new Size(330, 100 + clients.Count * RowHeight);
 

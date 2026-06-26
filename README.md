@@ -109,10 +109,10 @@ After installing, open **Settings** from the tray icon to configure the applicat
   After each sync cycle the tray icon shows a colored status dot: **green** (ports aligned), **orange** (VPN not connected), **red** (error), **gray** (sync paused), or **no dot** (port sync disabled). Hovering over the icon displays the current port and status, and an unviewed log count if warnings or errors have occurred (e.g. "2 Warnings, 1 Error").
 
 - **Status Panel**
-  A **Status** window (tray menu → Show Status, or double-click the tray icon) shows the live state of the sync chain at a glance: VPN provider and connection state, the forwarded port, the client and whether it is running, the client's listening port (with an in-sync indicator), reachability, and the time and result of the last sync. Color accents flag anything out of sync, closed, or in error. It refreshes automatically after each sync cycle, and a **Sync Now** button runs an immediate cycle on demand. It reflects the same data written to the status file.
+  A **Status** window (tray menu → Show Status, or double-click the tray icon) shows the live state of the sync chain at a glance: VPN provider and connection state, the forwarded port, the client and whether it is running, the client's listening port (with an in-sync indicator), reachability, and the time and result of the last sync. Color accents flag anything out of sync, closed, or in error. It refreshes automatically after each sync cycle, and a **Sync Now** button runs an immediate cycle on demand. A **Test Port** button checks the listening port's reachability on demand, independently of the periodic verification. It reflects the same data written to the status file.
 
 - **Settings Dialog**
-  All configuration options are editable through a dedicated Settings form (tray menu → Settings), organised into **General**, **Client**, and **Extra** tabs, with inline descriptions and tooltips for each option.
+  All configuration options are editable through a dedicated Settings form (tray menu → Settings), organised into **General**, **Client**, and **Extra** tabs, with inline descriptions and tooltips for each option. A **Detect** button on the General tab finds a running or installed client (qBittorrent, Transmission, or Deluge) and fills in its selection and process details, asking you to choose when more than one is found.
 
 - **Connection Test**
   Each client section in Settings has a **Test** button next to the URL. It checks the connection to qBittorrent, Transmission, or Deluge using the values currently entered (no need to save first), then reports success along with the current listening port, or points you to the log if it cannot connect.
@@ -346,7 +346,7 @@ NAT-PMP (RFC 6886) is a protocol for requesting port mappings directly from a ga
 ### 7. qbPortWeaver
 
 - Enable **Start Automatically with Windows** from the tray menu.
-- On first run, open **Settings** from the tray menu, select your BitTorrent client, and enter the connection credentials and preferences.
+- On first run, open **Settings** from the tray menu, select your BitTorrent client (or click **Detect** to find it automatically), and enter the connection credentials and preferences.
 - Use the **Test** button next to the client URL to confirm the connection works before saving.
 
 ---

@@ -39,18 +39,17 @@ internal static class ClientDetector
         var results = new List<DetectedClient>();
         foreach (var c in Candidates)
         {
-            string defaultExe = DefaultExePath(c);
-            bool exeExists = SafeFileExists(defaultExe);
+            string? defaultExe = ResolveDefaultExe(c);
 
             if (TryFindRunningProcess(c.ProcessNames, out string? matched, out string? runningExe))
             {
                 // A running client knows its own install location, so prefer the live process's real
                 // executable path. Fall back to the default install path only when the real path could
-                // not be read (access denied / bitness mismatch) but the default exists.
-                string? exe = runningExe ?? (exeExists ? defaultExe : null);
+                // not be read (access denied / bitness mismatch) but a default install exists.
+                string? exe = runningExe ?? defaultExe;
                 results.Add(new DetectedClient(c.ClientName, matched ?? c.ProcessNames[0], exe, DetectionKind.Running));
             }
-            else if (exeExists)
+            else if (defaultExe is not null)
             {
                 results.Add(new DetectedClient(c.ClientName, c.ProcessNames[0], defaultExe, DetectionKind.Installed));
             }
@@ -58,8 +57,20 @@ internal static class ClientDetector
         return results;
     }
 
-    private static string DefaultExePath(Candidate c) =>
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), c.DefaultExeFolder, c.DefaultExeFile);
+    // Returns the candidate's default install path, checking both the 64-bit and 32-bit Program Files
+    // roots (a client such as Deluge may ship a 32-bit build under "Program Files (x86)"), or null if
+    // the executable is not at either default location.
+    private static string? ResolveDefaultExe(Candidate c)
+    {
+        foreach (var root in (ReadOnlySpan<Environment.SpecialFolder>)[Environment.SpecialFolder.ProgramFiles, Environment.SpecialFolder.ProgramFilesX86])
+        {
+            string baseDir = Environment.GetFolderPath(root);
+            if (string.IsNullOrEmpty(baseDir)) continue;
+            string path = Path.Combine(baseDir, c.DefaultExeFolder, c.DefaultExeFile);
+            if (SafeFileExists(path)) return path;
+        }
+        return null;
+    }
 
     // Finds the first running process matching any of the candidate names. Reports the matched
     // process name and, best-effort, the live process's executable path (null when it cannot be read).

@@ -9,7 +9,6 @@ public partial class SettingsForm : Form
     private const string DiscoveringAdaptersPlaceholder = "Discovering adapters\u2026";
     private const string NoAdaptersFoundPlaceholder = "No NAT-PMP adapters found";
     private const string DefaultPortTooltip = "Port to apply when the VPN is disconnected (0 = do nothing when disconnected)";
-    private const int ConnectionTestTimeoutSeconds = 15;
 
     // Cancels in-flight NAT-PMP adapter discovery when the form closes so the UDP probes do not
     // run to completion in the background after the dialog is dismissed.
@@ -513,7 +512,7 @@ public partial class SettingsForm : Form
         UseWaitCursor = true;
         try
         {
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(ConnectionTestTimeoutSeconds));
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(AppConstants.ClientTestTimeoutSeconds));
             var (listenPort, _) = await client.GetPreferencesAsync(cts.Token);
             if (IsDisposed) return;
             if (listenPort is not null)
@@ -529,7 +528,7 @@ public partial class SettingsForm : Form
         {
             if (!IsDisposed)
                 MessageBox.Show(
-                    $"The {clientName} connection test timed out after {ConnectionTestTimeoutSeconds} seconds.\n\nCheck the URL and that the client is running.",
+                    $"The {clientName} connection test timed out after {AppConstants.ClientTestTimeoutSeconds} seconds.\n\nCheck the URL and that the client is running.",
                     AppIdentity.AppName, MessageBoxButtons.OK, MessageBoxIcon.Warning);
         }
         finally

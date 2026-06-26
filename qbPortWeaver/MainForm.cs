@@ -428,11 +428,6 @@ public partial class MainForm : Form
         return form;
     }
 
-    // Upper bound on a manual port-reachability check so the "Checking…" state cannot linger if a
-    // client's port-test path ever lacks its own timeout. Slightly above the shared HTTP timeout to
-    // allow for the external port-check round trip.
-    private const int ManualPortTestTimeoutSeconds = 20;
-
     // Runs an on-demand port-reachability check from the Status panel, reporting the outcome back to
     // the panel. Builds a fresh client off the saved settings, so it is safe to run alongside a cycle.
     private async Task RunManualPortTestAsync(StatusForm form)
@@ -441,7 +436,7 @@ public partial class MainForm : Form
         LogManager.Instance.LogMessage("Manual port test requested", LogLevel.Info);
         bool? open;
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(_shutdownCts.Token);
-        cts.CancelAfter(TimeSpan.FromSeconds(ManualPortTestTimeoutSeconds));
+        cts.CancelAfter(TimeSpan.FromSeconds(AppConstants.ClientTestTimeoutSeconds));
         try
         {
             open = await PortSyncService.TestActivePortAsync(cts.Token);
@@ -452,7 +447,7 @@ public partial class MainForm : Form
                 return; // app shutting down - the form is closing, nothing to report
             // Timed out: report as undetermined and re-enable the button so the user can retry.
             form.SetReachableResult(null);
-            LogManager.Instance.LogMessage($"Manual port test timed out after {ManualPortTestTimeoutSeconds}s", LogLevel.Warn);
+            LogManager.Instance.LogMessage($"Manual port test timed out after {AppConstants.ClientTestTimeoutSeconds}s", LogLevel.Warn);
             return;
         }
         if (form.IsDisposed) return;

@@ -255,6 +255,7 @@ public partial class MainForm : Form
         _settingsForm?.Close();
         _mediaManagerForm?.Close();
         _aboutForm?.Close();
+        _statusForm?.Close();
         _updateAvailableForm?.Close();
 
         // Resources are disposed in Dispose(bool) via MainForm.Designer.cs

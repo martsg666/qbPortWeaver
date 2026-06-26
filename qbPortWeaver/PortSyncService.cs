@@ -41,6 +41,12 @@ public sealed class PortSyncService
     // Consecutive sync cycles in which the VPN was disconnected or port detection failed.
     // Serialised by MainForm._updateSemaphore (same guarantee as _lastKnownNatPmpManager).
     private int _consecutiveFailedCycles;
+    // Wall-clock time the current failure streak began (stamped on the 0 -> 1 transition,
+    // cleared whenever the streak resets). Auto-recovery gates on this in addition to the cycle
+    // count so a burst of early wakes (network-change re-syncs interrupting the inter-cycle delay)
+    // cannot fast-track a heavy recovery action during a transient outage that would self-heal.
+    // Kept in lockstep with _consecutiveFailedCycles via RegisterFailure/ResetFailureStreak.
+    private DateTime _failureStreakStartedUtc;
     // Tracks the last interface-mismatch message shown as a balloon tip to suppress repeat invocations
     // for the same persistent mismatch. Cleared when the mismatch resolves so the balloon re-fires if it returns.
     // Thread-safety: only read/written inside CheckInterfaceMatch via EnsureRunningAndUpdatePortAsync,
@@ -62,7 +68,7 @@ public sealed class PortSyncService
     private bool _portCheckPendingConfirmation; // one unconfirmed closed result seen
     private bool _portConfirmedClosed;          // closed confirmed by two consecutive checks
 
-    // Opt-in port-closed recovery state (serialised by MainForm._updateSemaphore like the rest).
+    // Port-closed recovery state (serialised by MainForm._updateSemaphore like the rest).
     // The armed flag implements one-shot recovery: a persistent false "closed" (e.g. qBittorrent's
     // idle-firewalled state, which can last indefinitely on a client with no active transfers)
     // causes at most one recovery action - re-armed only after a verification reports the port open.
@@ -271,7 +277,7 @@ public sealed class PortSyncService
                 SetSyncResult(status, false, $"Failed to determine {vpnManager.ProviderName} port", LogLevel.Warn);
                 return cfg.UpdateInterval;
             }
-            _consecutiveFailedCycles = 0; // Reset only after a successful port fetch
+            ResetFailureStreak(); // Reset only after a successful port fetch
             status[StatusKeys.VpnPort] = vpnPort.Value;
             LogManager.Instance.LogMessage($"{vpnManager.ProviderName} port found: {vpnPort.Value}", LogLevel.Info);
 
@@ -870,7 +876,7 @@ public sealed class PortSyncService
     {
         string cycles = count == 1 ? "failed cycle" : "failed cycles";
         string recoverySuffix = cfg.VpnAutoRecoveryEnabled
-            ? $", recovery triggers after {cfg.VpnAutoRecoveryTriggerCycles} consecutive failed cycles"
+            ? $", recovery may trigger after {cfg.VpnAutoRecoveryTriggerCycles} consecutive failed cycles"
             : string.Empty;
         return $"{prefix} ({count} consecutive {cycles}{recoverySuffix})";
     }
@@ -885,41 +891,63 @@ public sealed class PortSyncService
 
     // Single increment site for _consecutiveFailedCycles. Every failure path that contributes
     // to the auto-recovery threshold flows through here: VPN disconnected, port detection
-    // failed, and NAT-PMP adapter not found. Logs the cycle count message and then dispatches
-    // recovery (which may no-op if the threshold has not been reached).
+    // failed, and NAT-PMP adapter not found. Stamps the streak start time on the first failure
+    // (for the recovery time gate), logs the cycle count message, then dispatches recovery
+    // (which may no-op if the cycle-count or time threshold has not been reached).
     private async Task RegisterFailureAndTryRecoveryAsync(
         string reason, LogLevel logLevel,
         string recoveryAction, string? recoveryTarget, string displayName,
         AppConfig cfg, CancellationToken cancellationToken)
     {
+        if (_consecutiveFailedCycles == 0) _failureStreakStartedUtc = DateTime.UtcNow;
         _consecutiveFailedCycles++;
         int count = _consecutiveFailedCycles;
         LogManager.Instance.LogMessage(BuildCycleCountMessage(reason, count, cfg), logLevel);
         await TryTriggerRecoveryAsync(recoveryAction, recoveryTarget, displayName, cfg, cancellationToken).ConfigureAwait(false);
     }
 
-    // Triggers auto-recovery if enabled and the failure cycle threshold is reached.
-    // Resets the counter before the target check so the warning does not fire every cycle
-    // when no recovery target is found.
+    // Resets the failure streak. Keeps the count and its start timestamp in lockstep so the
+    // time gate in TryTriggerRecoveryAsync cannot read a stale start time on the next streak.
+    private void ResetFailureStreak() => _consecutiveFailedCycles = 0;
+
+    // Triggers auto-recovery if enabled and both gates are cleared: the failure cycle threshold
+    // AND enough wall-clock time has elapsed since the streak began. The time gate (derived from
+    // the normal cycle cadence) prevents a burst of early wakes from fast-tracking recovery during
+    // a transient outage. Resets the counter before the target check so the warning does not fire
+    // every cycle when no recovery target is found.
     private async Task TryTriggerRecoveryAsync(string action, string? recoveryTarget, string displayName, AppConfig cfg, CancellationToken cancellationToken)
     {
         if (!cfg.VpnAutoRecoveryEnabled)
         {
-            _consecutiveFailedCycles = 0;
+            ResetFailureStreak();
             return;
         }
         if (_consecutiveFailedCycles < cfg.VpnAutoRecoveryTriggerCycles) return;
+
+        // Sustained-failure floor: the elapsed time recovery would have taken under normal
+        // scheduled cycling ((TriggerCycles - 1) intervals between the first and last failure).
+        // A streak driven faster than this by early wakes is held until the time also clears.
+        TimeSpan minSustainedFailure = TimeSpan.FromSeconds((cfg.VpnAutoRecoveryTriggerCycles - 1) * cfg.UpdateInterval);
+        TimeSpan elapsed = DateTime.UtcNow - _failureStreakStartedUtc;
+        if (elapsed < minSustainedFailure)
+        {
+            LogManager.Instance.LogMessage(
+                $"Holding recovery - failures started only {elapsed.TotalSeconds:F0}s ago " +
+                $"(recovery waits until {minSustainedFailure.TotalSeconds:F0}s to ignore brief network blips)",
+                LogLevel.Info);
+            return;
+        }
 
         int count = _consecutiveFailedCycles;
 
         if (recoveryTarget is null)
         {
-            _consecutiveFailedCycles = 0;
+            ResetFailureStreak();
             LogManager.Instance.LogMessage($"No recovery target found for '{displayName}' - skipping recovery", LogLevel.Warn);
             return;
         }
 
-        _consecutiveFailedCycles = 0;
+        ResetFailureStreak();
 
         LogManager.Instance.LogMessage(
             $"Triggering '{action}' for '{displayName}' after {count} consecutive failed {(count == 1 ? "cycle" : "cycles")}",

@@ -8,6 +8,9 @@ partial class SettingsForm
     {
         if (disposing)
         {
+            // Explicitly created font - WinForms controls do not own their Font (matches the
+            // disposal pattern in the other forms' designers).
+            lblAutoRecoveryHeader.Font?.Dispose();
             components?.Dispose();
         }
         base.Dispose(disposing);

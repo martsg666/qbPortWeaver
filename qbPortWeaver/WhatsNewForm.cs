@@ -22,6 +22,10 @@ public partial class WhatsNewForm : Form
         "so your client follows a VPN reconnect within seconds instead of waiting for the next interval. " +
         "Rapid changes are grouped into a single sync, and pausing still suppresses it. " +
         "Enabled by default - turn it off under Settings > General.\n\n" +
+        "Smarter auto-recovery\n" +
+        "Auto-recovery now waits until sync failures have persisted, not just counted up, before " +
+        "restarting your VPN. A brief network blip - like a router reboot that triggers several quick " +
+        "re-syncs - no longer force-restarts the VPN service when it would have reconnected on its own.\n\n" +
         "Previously released\n\n" +
         "New in 2.5.6\n\n" +
         "Port verification\n" +

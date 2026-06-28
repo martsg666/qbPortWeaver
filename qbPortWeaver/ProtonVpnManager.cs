@@ -40,16 +40,18 @@ public sealed partial class ProtonVpnManager : IVpnManager
             var adapters = NetworkInterface.GetAllNetworkInterfaces();
             // Uses Name (not Description). The legacy stack names its adapter "ProtonVPN" (WireGuard)
             // or "ProtonVPN TUN" (OpenVPN); the new in-house protocols (Proton WireGuard, Proton Stealth)
-            // name it "ProTUN". MatchesProtonAdapter checks both configured names.
-            bool isConnected = adapters.Any(adapter =>
+            // name it "ProTUN". Both configured names are read once here, then matched per adapter.
+            string legacyName = Config.GetAdapterName();
+            string nativeName = RegistrySettingsManager.GetAppValue(RegistrySettingsManager.KeyProtonVpnNativeAdapterName);
+            NetworkInterface? matched = adapters.FirstOrDefault(adapter =>
                 adapter.OperationalStatus == OperationalStatus.Up &&
-                MatchesProtonAdapter(adapter.Name));
+                MatchesProtonAdapter(adapter.Name, legacyName, nativeName));
 
-            LogManager.Instance.LogDebug(isConnected
-                ? "ProtonVpnManager.IsVpnConnected: ProtonVPN adapter is connected"
-                : "ProtonVpnManager.IsVpnConnected: ProtonVPN adapter not found or not connected");
+            LogManager.Instance.LogDebug(matched is not null
+                ? $"ProtonVpnManager.IsVpnConnected: Adapter '{matched.Name}' is connected"
+                : $"ProtonVpnManager.IsVpnConnected: Adapter '{legacyName}'/'{nativeName}' is not found or not connected");
 
-            return isConnected;
+            return matched is not null;
         }
         catch (Exception ex)
         {
@@ -73,12 +75,19 @@ public sealed partial class ProtonVpnManager : IVpnManager
 
     // Matches an observed adapter name against either configured Proton adapter name: the legacy
     // "ProtonVPN" (protonVpnAdapterName) or the new in-house tunnel "ProTUN" (protonVpnNativeAdapterName).
-    // Both names are registry-driven; the bidirectional substring rule (AdapterNamesMatch) guards
-    // against empty values, so a cleared registry key cannot cause a false match.
+    // This single-arg form reads both registry values; callers that match in a loop should read the
+    // names once and use the overload below.
     private static bool MatchesProtonAdapter(string interfaceName) =>
-        VpnRegistryConfig.AdapterNamesMatch(Config.GetAdapterName(), interfaceName) ||
-        VpnRegistryConfig.AdapterNamesMatch(
-            RegistrySettingsManager.GetAppValue(RegistrySettingsManager.KeyProtonVpnNativeAdapterName), interfaceName);
+        MatchesProtonAdapter(
+            interfaceName,
+            Config.GetAdapterName(),
+            RegistrySettingsManager.GetAppValue(RegistrySettingsManager.KeyProtonVpnNativeAdapterName));
+
+    // Matches against pre-read configured names. The bidirectional substring rule (AdapterNamesMatch)
+    // guards against empty values, so a cleared registry key cannot cause a false match.
+    private static bool MatchesProtonAdapter(string interfaceName, string legacyName, string nativeName) =>
+        VpnRegistryConfig.AdapterNamesMatch(legacyName, interfaceName) ||
+        VpnRegistryConfig.AdapterNamesMatch(nativeName, interfaceName);
 
     private int? GetVpnPortCore()
     {

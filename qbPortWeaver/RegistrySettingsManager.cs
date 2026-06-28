@@ -99,6 +99,7 @@ public static class RegistrySettingsManager
     public const string KeyTransmissionServiceSearchTerm = "transmissionServiceSearchTerm";
     public const string KeyProtonVpnClientProcessName = "protonVpnClientProcessName";
     public const string KeyProtonVpnAdapterName = "protonVpnAdapterName";
+    public const string KeyProtonVpnNativeAdapterName = "protonVpnNativeAdapterName";
     public const string KeyPiaAdapterName = "piaAdapterName";
     public const string KeyPiaClientProcessName = "piaClientProcessName";
     public const string KeyPiactlProcessName = "piactlProcessName";
@@ -205,6 +206,7 @@ public static class RegistrySettingsManager
             [KeyTransmissionServiceSearchTerm] = "Transmission",
             [KeyProtonVpnClientProcessName] = "ProtonVPN.Client",
             [KeyProtonVpnAdapterName] = "ProtonVPN",
+            [KeyProtonVpnNativeAdapterName] = "ProTUN",
             [KeyPiaAdapterName] = "PIA",
             [KeyPiaClientProcessName] = "pia-client",
             [KeyPiactlProcessName] = "piactl",

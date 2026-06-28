@@ -42,8 +42,9 @@ internal sealed class VpnRegistryConfig
     // observed interface name. Bidirectional handles the configured name and the actual Windows
     // adapter name differing in length (e.g. "ProtonVPN TUN" vs "ProtonVPN", or the reverse).
     // Empty-string guards on both sides: Contains("") returns true for any input, which would
-    // falsely match if either side was empty. Shared by all three VPN managers - ProtonVPN/PIA via
-    // MatchesAdapterName, NAT-PMP via NatPmpManager.IsAdapterMatch - so the rule cannot drift.
+    // falsely match if either side was empty. Shared by all three VPN managers - PIA via
+    // MatchesAdapterName, ProtonVPN via ProtonVpnManager.MatchesProtonAdapter (against either of its
+    // two configured names), NAT-PMP via NatPmpManager.IsAdapterMatch - so the rule cannot drift.
     internal static bool AdapterNamesMatch(string configuredName, string interfaceName)
     {
         if (string.IsNullOrEmpty(configuredName) || string.IsNullOrEmpty(interfaceName)) return false;

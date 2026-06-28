@@ -19,6 +19,12 @@ public partial class WhatsNewForm : Form
         "qbPortWeaver selects whichever supported client (qBittorrent, Transmission, or Deluge) is running " +
         "or installed and fills in its process and executable details. If more than one is found, it asks " +
         "you to choose. Review the connection settings, use Test, then Save.\n\n" +
+        "Support for Proton's new protocols\n" +
+        "Proton VPN 5.x.y adds in-house protocols (Proton WireGuard and Proton Stealth) that " +
+        "name their tunnel adapter differently than the earlier protocols. qbPortWeaver now detects it " +
+        "automatically, in both log-file and NAT-PMP modes. After switching to one of these protocols, " +
+        "reselect the active adapter wherever you have pinned it - the NAT-PMP Adapter setting and your " +
+        "client's network interface binding.\n\n" +
         "Previously released\n\n" +
         "New in 2.5.7\n\n" +
         "Status panel\n" +

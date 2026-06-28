@@ -76,6 +76,8 @@ The sync cycle instantiates a provider-specific `IVpnManager` based on the confi
 
 `Disabled` is the default for new installations.
 
+> **ProtonVPN adapter names:** ProtonVPN's tunnel adapter is named `ProtonVPN` on the earlier protocols and `ProTUN` on the new in-house protocols (Proton WireGuard, Proton Stealth). Both are matched via the registry-driven `protonVpnAdapterName` and `protonVpnNativeAdapterName` values, so detection and interface matching work across protocols without reconfiguration.
+
 ### NAT-PMP Manager Creation
 
 NAT-PMP has additional complexity because the adapter must be discovered each cycle and the manager carries renewal state between cycles.
@@ -179,6 +181,8 @@ All client communication goes through the `IBitTorrentClient` interface, with im
 ### Interface Mismatch Warning *(qBittorrent only)*
 
 When enabled, the cycle compares qBittorrent's bound network interface (`current_interface_name` from preferences) against the configured VPN provider name. A mismatch raises the `InterfaceMismatchDetected` event, which shows a warning balloon tip from the tray icon. This helps catch cases where qBittorrent is routing traffic outside the VPN tunnel. Transmission and Deluge do not expose a named adapter via their APIs, so this check is skipped for those clients.
+
+> If qBittorrent stays bound to an old adapter name after a ProtonVPN protocol change (e.g. `ProtonVPN` while the active tunnel is now `ProTUN`), this warning fires correctly - rebind qBittorrent's network interface to the active adapter to clear it.
 
 ### Port Verification
 

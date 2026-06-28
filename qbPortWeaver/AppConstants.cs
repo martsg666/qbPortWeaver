@@ -29,6 +29,11 @@ public static class AppConstants
     // HTTP - shared timeout used by all outbound HTTP clients
     public const int HttpTimeoutSeconds = 10;
 
+    // Upper bound for a user-initiated client test (Settings connection test or Status-panel port
+    // reachability check). Above HttpTimeoutSeconds to allow for the auth handshake or the external
+    // port-check round trip. Shared so both test paths time out consistently.
+    public const int ClientTestTimeoutSeconds = 20;
+
     // GitHub - only the owner is a literal; all URLs are derived
     public const string GitHubRepoOwner = "martsg666";
     public static readonly string GitHubRepoUrl = $"https://github.com/{GitHubRepoOwner}/{AppIdentity.AppName}";

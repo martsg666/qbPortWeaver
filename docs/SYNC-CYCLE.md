@@ -196,6 +196,8 @@ When `verifyPortAfterSync` is enabled (General settings, default on) and the VPN
 
 **Port-closed recovery** - when `portClosedRecoveryEnabled` is on (default on; requires port verification, but is independent of the failed-sync recovery trigger), a configurable number of confirmed closed checks (`portClosedRecoveryTriggerChecks`, default 3) dispatches the provider's normal recovery action (service restart, or adapter cycle for generic NAT-PMP gateways). The trigger is one-shot: after firing it stays disarmed until a verification reports the port open again, so a persistently false closed reading causes at most one recovery action and never a recovery loop.
 
+**On-demand test** - the Status panel's **Test Port** button runs this same reachability check immediately via `PortSyncService.TestActivePortAsync`, against a fresh client outside the cycle. It bypasses the throttle and the confirmation rule (a single result is reported as open/closed/undetermined) and does not affect the recovery counter or arming state, so it is purely diagnostic.
+
 ### Port Update Notification
 
 When `NotifyOnPortUpdate` is enabled (General settings, default on), a successful port change raises the `PortUpdated` event immediately after `ApplyPortUpdateAsync` returns. `MainForm` handles this with a tray balloon tip (`ToolTipIcon.Info`). The notification fires for all three clients.
@@ -227,7 +229,7 @@ The update balloon is informational only - Windows 11 routes `ToolTipIcon.Info` 
 
 ## Status Output
 
-Every cycle writes a JSON status file (`qbPortWeaver.status.json` in `%LocalAppData%\qbPortWeaver\`) capturing the full cycle outcome. External tools can read this file to monitor sync health, and the in-app Status panel (tray menu -> Show Status, or double-click the tray icon) renders the same data live, refreshing after each cycle.
+Every cycle writes a JSON status file (`qbPortWeaver.status.json` in `%LocalAppData%\qbPortWeaver\`) capturing the full cycle outcome. External tools can read this file to monitor sync health, and the in-app Status panel (tray menu -> Show Status, or double-click the tray icon) renders the same data live, refreshing after each cycle. The panel also exposes a **Sync Now** action and a **Test Port** button that runs the reachability check on demand (see Port Verification).
 
 ```json
 {

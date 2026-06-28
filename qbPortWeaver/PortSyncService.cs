@@ -539,6 +539,33 @@ public sealed class PortSyncService
             cfg.QBittorrent.ProcessName, cfg.QBittorrent.ExePath);
     }
 
+    /// <summary>
+    /// Tests on demand whether the currently configured client's listening port is reachable from
+    /// outside, independently of the sync loop. Builds a fresh client from the saved settings, so it
+    /// is safe to call while a cycle is running. Returns <see langword="true"/> when open,
+    /// <see langword="false"/> when closed, or <see langword="null"/> when it cannot be determined
+    /// (client unreachable, no internet, or the port-test service is unavailable). Never throws
+    /// except for <see cref="OperationCanceledException"/> when <paramref name="cancellationToken"/> fires.
+    /// </summary>
+    public static async Task<bool?> TestActivePortAsync(CancellationToken cancellationToken = default)
+    {
+        var (cfg, _) = ReadConfig();
+        using var client = CreateBitTorrentClient(cfg);
+        try
+        {
+            return await client.TestListeningPortAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            LogManager.Instance.LogMessage($"Manual port test failed: {ex.Message}", LogLevel.Warn);
+            return null;
+        }
+    }
+
     // Ensures the BitTorrent client is running, then updates its port if it differs from the target port
     private async Task EnsureRunningAndUpdatePortAsync(IBitTorrentClient manager, int targetPort, SyncConfig config, Dictionary<string, object?> status, CancellationToken cancellationToken)
     {

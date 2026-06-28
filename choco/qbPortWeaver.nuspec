@@ -42,9 +42,9 @@ The tray icon shows a color-coded status dot (green / orange / red / gray) and t
 
 - Built-in log viewer with color-coded levels, live tail, search, issue navigation, level filters, and subsystem filter
 - Sync on network change: runs a sync the moment a network or VPN change is detected, so the client follows a VPN reconnect within seconds (enabled by default)
-- Status panel: a tray window showing the live sync chain at a glance - VPN, forwarded port, client listening port, reachability, and last sync result
+- Status panel: a tray window showing the live sync chain at a glance - VPN, forwarded port, client listening port, reachability, and last sync result, with an on-demand port reachability test
 - Pause and resume syncing directly from the tray menu
-- Connection test button in Settings to verify the qBittorrent, Transmission, or Deluge connection before saving
+- Connection test button in Settings, plus a Detect button that finds a running or installed client and fills in its details
 - Auto-Recovery: restarts VPN services or cycles the network adapter after sync failures persist, while ignoring brief blips that clear on their own
 - Post-update shell command hook for custom automation
 - Resilient media import: a temporarily offline or slow network share is detected quickly and that cycle is skipped instead of stalling, then resumes automatically

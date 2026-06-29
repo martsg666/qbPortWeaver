@@ -132,8 +132,9 @@ public sealed class NatPmpManager : IVpnManager
             : HelperProtocol.ActionCycleAdapter;
 
     /// <inheritdoc />
-    // Delegates to the shared matcher so NAT-PMP, ProtonVPN, and PIA apply identical rules.
-    // The configured name here is the adapter's own name (an instance field), not a registry value.
+    // Delegates to the shared matcher (AdapterNamesMatch). NAT-PMP and PIA match one configured
+    // name; ProtonVpnManager matches either of its two names. The configured name here is the
+    // adapter's own name (an instance field), not a registry value.
     public bool IsAdapterMatch(string interfaceName)
         => VpnRegistryConfig.AdapterNamesMatch(_adapter.Name, interfaceName);
 

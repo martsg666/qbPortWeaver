@@ -3,9 +3,13 @@
 /// <summary>About dialog showing version info, update availability, and contributor credits.</summary>
 public partial class AboutForm : Form
 {
-    // Set to the release URL when an update is available; null when up-to-date or not yet checked
-    private string? _releaseUrl;
+    // The newer release when an update is available; null when up-to-date or not yet checked.
+    private LatestReleaseInfo? _availableUpdate;
     private bool _isDarkMode;
+
+    /// <summary>Raised when the user clicks Update for an available release. MainForm handles it by
+    /// opening the shared update dialog (in-app download and install), the same as the tray entry point.</summary>
+    public event Action<LatestReleaseInfo>? UpdateRequested;
     // Cancels in-flight GitHub requests when the form closes so they do not run to completion
     // in the background after the user has dismissed the dialog.
     private readonly CancellationTokenSource _githubCts = new();
@@ -48,11 +52,11 @@ public partial class AboutForm : Form
         form.ShowDialog(this);
     }
 
-    // Opens the release page if an update is available; otherwise re-runs the update check
+    // Opens the in-app update dialog if an update is available; otherwise re-runs the update check.
     private void btnCheckForUpdates_Click(object? sender, EventArgs e)
     {
-        if (_releaseUrl is not null)
-            AppConstants.OpenUrl(_releaseUrl);
+        if (_availableUpdate is not null)
+            UpdateRequested?.Invoke(_availableUpdate);
         else
         {
             btnCheckForUpdates.Enabled = false;
@@ -82,7 +86,7 @@ public partial class AboutForm : Form
             lblLatestVersionValue.Text = "Checking\u2026";
             lblLatestVersionValue.ForeColor = SystemColors.GrayText;
             lblStatusValue.Text = string.Empty;
-            _releaseUrl = null;
+            _availableUpdate = null;
 
             // Fetch release info and contributor list in parallel
             var releaseTask = UpdateChecker.GetLatestReleaseInfoAsync(_githubCts.Token);
@@ -134,7 +138,7 @@ public partial class AboutForm : Form
             lblStatusValue.Text = "Update available";
             lblStatusValue.ForeColor = _isDarkMode ? AppConstants.StatusWarning : AppConstants.StatusWarningLight;
             btnCheckForUpdates.Text = "Update";
-            _releaseUrl = info.ReleaseUrl;
+            _availableUpdate = info;
         }
         else
         {

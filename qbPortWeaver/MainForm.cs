@@ -416,7 +416,16 @@ public partial class MainForm : Form
 
     private void showAbout_Click(object? sender, EventArgs e)
     {
-        ShowOrActivate(() => _aboutForm, f => _aboutForm = f, () => new AboutForm());
+        ShowOrActivate(() => _aboutForm, f => _aboutForm = f, CreateAboutForm);
+    }
+
+    // Builds the About dialog and routes its Update button into the shared in-app update dialog,
+    // the same download-and-install flow as the tray "Update available" item.
+    private AboutForm CreateAboutForm()
+    {
+        var form = new AboutForm();
+        form.UpdateRequested += info => ShowUpdateAvailableForm(info.Version, info.ReleaseUrl, info.MsiUrl);
+        return form;
     }
 
     private void showStatus_Click(object? sender, EventArgs e) => ShowStatusPanel();

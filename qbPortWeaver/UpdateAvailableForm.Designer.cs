@@ -37,50 +37,51 @@ partial class UpdateAvailableForm
         grpInfo.Controls.Add(lblMessage);
         grpInfo.Location = new Point(8, 48);
         grpInfo.Name     = "grpInfo";
-        grpInfo.Size     = new Size(384, 92);
+        grpInfo.Size     = new Size(384, 106);
         grpInfo.TabIndex = 1;
         grpInfo.TabStop  = false;
         grpInfo.Text     = "New Version";
 
-        lblMessage.AutoSize = false;
-        lblMessage.Location = new Point(12, 20);
-        lblMessage.Name     = "lblMessage";
-        lblMessage.Size     = new Size(360, 58);
-        lblMessage.TabIndex = 0;
-        lblMessage.Text     = "";
+        lblMessage.AutoSize    = false;
+        lblMessage.Location    = new Point(12, 20);
+        lblMessage.Name        = "lblMessage";
+        lblMessage.Size        = new Size(360, 78);
+        lblMessage.TabIndex    = 0;
+        lblMessage.Text        = "";
+        lblMessage.UseMnemonic = false; // render a literal '&' (e.g. "Download & Install") instead of treating it as a mnemonic
 
         // ── Download progress (shown only during an in-app download) ──
-        prgDownload.Location = new Point(8, 148);
+        prgDownload.Location = new Point(8, 162);
         prgDownload.Name     = "prgDownload";
         prgDownload.Size     = new Size(384, 18);
         prgDownload.TabIndex = 2;
         prgDownload.Visible  = false;
 
-        lblStatus.AutoSize  = false;
-        lblStatus.Location  = new Point(8, 170);
-        lblStatus.Name      = "lblStatus";
-        lblStatus.Size      = new Size(384, 20);
-        lblStatus.TabIndex  = 3;
-        lblStatus.Text      = "";
-        lblStatus.TextAlign = ContentAlignment.MiddleLeft;
-        lblStatus.Visible   = false;
+        lblStatus.AutoSize    = false;
+        lblStatus.Location    = new Point(8, 184);
+        lblStatus.Name        = "lblStatus";
+        lblStatus.Size        = new Size(384, 20);
+        lblStatus.TabIndex    = 3;
+        lblStatus.Text        = "";
+        lblStatus.TextAlign   = ContentAlignment.MiddleLeft;
+        lblStatus.Visible     = false;
 
         // ── Release notes link + buttons ──────────────────────────────
-        lnkReleaseNotes.AutoSize      = true;
-        lnkReleaseNotes.Location      = new Point(8, 204);
-        lnkReleaseNotes.Name          = "lnkReleaseNotes";
-        lnkReleaseNotes.TabIndex      = 4;
-        lnkReleaseNotes.Text          = "View release notes";
-        lnkReleaseNotes.LinkClicked  += lnkReleaseNotes_LinkClicked;
+        lnkReleaseNotes.AutoSize     = true;
+        lnkReleaseNotes.Location     = new Point(8, 218);
+        lnkReleaseNotes.Name         = "lnkReleaseNotes";
+        lnkReleaseNotes.TabIndex     = 4;
+        lnkReleaseNotes.Text         = "View release notes";
+        lnkReleaseNotes.LinkClicked += lnkReleaseNotes_LinkClicked;
 
-        btnUpdate.Location = new Point(172, 198);
+        btnUpdate.Location = new Point(172, 212);
         btnUpdate.Name     = "btnUpdate";
         btnUpdate.Size     = new Size(130, 28);
         btnUpdate.TabIndex = 5;
         btnUpdate.Text     = "Download && Install";
         btnUpdate.Click   += btnUpdate_Click;
 
-        btnLater.Location = new Point(310, 198);
+        btnLater.Location = new Point(310, 212);
         btnLater.Name     = "btnLater";
         btnLater.Size     = new Size(82, 28);
         btnLater.TabIndex = 6;
@@ -92,7 +93,7 @@ partial class UpdateAvailableForm
         AutoScaleDimensions = new SizeF(7F, 15F);
         AutoScaleMode       = AutoScaleMode.Font;
         CancelButton        = btnLater;
-        ClientSize          = new Size(400, 238);
+        ClientSize          = new Size(400, 252);
         Controls.Add(lblTitle);
         Controls.Add(grpInfo);
         Controls.Add(prgDownload);
@@ -113,12 +114,12 @@ partial class UpdateAvailableForm
         ResumeLayout(false);
     }
 
-    private Label     lblTitle;
-    private GroupBox  grpInfo;
-    private Label     lblMessage;
+    private Label       lblTitle;
+    private GroupBox    grpInfo;
+    private Label       lblMessage;
     private ProgressBar prgDownload;
-    private Label     lblStatus;
-    private LinkLabel lnkReleaseNotes;
-    private Button    btnUpdate;
-    private Button    btnLater;
+    private Label       lblStatus;
+    private LinkLabel   lnkReleaseNotes;
+    private Button      btnUpdate;
+    private Button      btnLater;
 }

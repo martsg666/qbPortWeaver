@@ -24,9 +24,18 @@ internal sealed partial class UpdateAvailableForm : Form
         Text = $"{AppIdentity.AppName} | Update Available";
         lblMessage.Text = $"Version {version} of {AppIdentity.AppName} is available.\n\n" +
             (msiUrl is not null
-                ? "Click Download & Install to update automatically, or view the release notes below."
-                : "Click Open Download Page to get the installer.");
+                ? $"Click Download & Install to download and install the update automatically. {AppIdentity.AppName} will restart when it finishes."
+                : "Click Open Download Page to download the installer from GitHub.");
         btnUpdate.Text = msiUrl is not null ? "Download && Install" : "Open Download Page";
+    }
+
+    protected override void OnLoad(EventArgs e)
+    {
+        base.OnLoad(e);
+        // The default link color is a dark blue that is unreadable on the dark theme's background;
+        // match the brighter link color the other forms use in dark mode.
+        if (AppConstants.IsDarkModeEnabled())
+            lnkReleaseNotes.LinkColor = AppConstants.DarkModeLinkColor;
     }
 
     // Update button: in-app download+install when the release has an MSI asset, otherwise the release page.
@@ -45,6 +54,7 @@ internal sealed partial class UpdateAvailableForm : Form
         string destPath = Path.Combine(Path.GetTempPath(), $"{AppIdentity.AppName}_{_version}_Setup.msi");
         _downloading = true;
         SetDownloadingUi(true);
+        _downloadCts?.Dispose(); // dispose any prior (cancelled) source before starting a fresh download
         _downloadCts = new CancellationTokenSource();
 
         var progress = new Progress<double>(fraction =>

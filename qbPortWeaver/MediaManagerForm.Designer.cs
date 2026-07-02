@@ -405,7 +405,8 @@ partial class MediaManagerForm
         FormBorderStyle = FormBorderStyle.Sizable;
         MaximizeBox     = true;
         MinimizeBox     = true;
-        MinimumSize     = new Size(720, 600);
+        // MinimumSize is set at runtime in OnLoad (= initial Size) so the bottom-anchored grid and
+        // detail panel are never clipped; a static designer value here would be overridden anyway.
         Name            = "MediaManagerForm";
         Icon            = Properties.Resources.qbPortWeaver;
         ShowIcon        = true;

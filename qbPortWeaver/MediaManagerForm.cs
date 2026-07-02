@@ -66,8 +66,8 @@ public partial class MediaManagerForm : Form
     private void SetupTooltips()
     {
         toolTip.SetToolTip(chkEnabled, "Enable or disable Media Manager - when enabled, files are imported on each sync cycle");
-        toolTip.SetToolTip(txtTmdbApiKey, "Your TMDB credential - accepts both the API Key (v3, 32-char hex) and the API Read Access Token (v4, JWT). Get one free at themoviedb.org/settings/api");
-        toolTip.SetToolTip(lblTmdbApiKey, "Your TMDB credential - accepts both the API Key (v3, 32-char hex) and the API Read Access Token (v4, JWT). Get one free at themoviedb.org/settings/api");
+        toolTip.SetToolTip(txtTmdbApiKey, "Your TMDB credential - accepts both the API Key (v3, 32-char hex) and the API Read Access Token (v4, JWT). Get one free at themoviedb.org/settings/api.");
+        toolTip.SetToolTip(lblTmdbApiKey, "Your TMDB credential - accepts both the API Key (v3, 32-char hex) and the API Read Access Token (v4, JWT). Get one free at themoviedb.org/settings/api.");
         toolTip.SetToolTip(chkDryRun, "When checked, the automatic sync cycle will only log what it would import without touching any files");
         toolTip.SetToolTip(chkCreateFolders, "Import each title into its own Plex-recommended folder: Movies/Title (Year)/Title (Year).ext");
         toolTip.SetToolTip(chkDeleteEmptyFolders, "Delete source folders left empty after importing - folders containing only .nfo files are also removed");
@@ -84,7 +84,7 @@ public partial class MediaManagerForm : Form
         toolTip.SetToolTip(btnClearCache, "Delete cached fingerprints and TMDB lookups so the next scan starts fresh");
         toolTip.SetToolTip(btnRematch, "Re-run TMDB matching for uncertain and unmatched rows using the current Proposed filenames");
         toolTip.SetToolTip(dgvResults, "Files that would be imported. Uncheck a row to exclude it. Gold rows are uncertain TMDB matches, red rows have no match - double-click the Proposed cell to correct the name before importing.");
-        toolTip.SetToolTip(chkShowOnlyReview, "Show only uncertain TMDB matches (gold) and rows with no TMDB match found (red) - hides confident matches.");
+        toolTip.SetToolTip(chkShowOnlyReview, "Show only uncertain TMDB matches (gold) and rows with no TMDB match found (red) - hides confident matches");
     }
 
     protected override void OnFormClosing(FormClosingEventArgs e)

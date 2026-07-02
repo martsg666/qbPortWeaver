@@ -20,39 +20,30 @@
     <description><![CDATA[
 ## qbPortWeaver
 
-qbPortWeaver is a lightweight Windows system tray application that automatically keeps the listening port of **qBittorrent**, **Transmission**, or **Deluge** in sync with the port assigned by your VPN provider.
+A lightweight Windows system tray application that keeps the listening port of **qBittorrent**, **Transmission**, or **Deluge** in sync with the port assigned by your VPN.
 
 ### VPN Support
 
-Works out of the box with **ProtonVPN** (log file), **Private Internet Access** (`piactl`), and any **NAT-PMP capable VPN or router** (RFC 6886). The provider is selectable from the Settings dialog.
+Works with **ProtonVPN** (log file or NAT-PMP), **Private Internet Access** (`piactl`), and any **NAT-PMP capable VPN or router** (RFC 6886). ProtonVPN's earlier and new in-house protocols (Proton WireGuard, Proton Stealth) are both detected automatically. The provider is selectable from Settings.
 
 ### Port Sync
 
-Runs on a configurable interval and updates the client's listening port via its API whenever the VPN-assigned port changes. Supports qBittorrent (Web API), Transmission (RPC), and Deluge (Web JSON-RPC). Can restart the client after a port change, force-start it if it is not running, and (for qBittorrent) restart it if the connection drops. A fallback port can be applied when the VPN is disconnected. After each sync it can verify that the port is reachable from the Internet and warn when it stays closed, with optional automatic recovery.
+Updates the client's listening port via its API on a configurable interval whenever the VPN-assigned port changes. Can restart or force-start the client, apply a fallback port when the VPN is disconnected, and verify the port is reachable from the Internet with optional automatic recovery.
 
 ### Media Manager
 
-Automatically imports movie and TV episode files into Plex-compatible library folders on each sync cycle. Queries The Movie Database (TMDB) to identify titles and release years, then imports files using Plex naming conventions via hardlink (falling back to copy across volumes), copy, or move. Optionally organises files into Plex-recommended subfolders and deletes source folders left empty after importing. A dedicated Media Manager dialog (tray menu) lets you configure source folders, preview imports before they run (Scan Now), and apply or correct them manually (Import Now). Uncertain TMDB matches are highlighted for review. A free TMDB API key is required.
-
-### Visibility and Safety
-
-The tray icon shows a color-coded status dot (green / orange / red / gray) and the tooltip displays the current port at a glance. A tray balloon tip notifies you when the listening port is updated (configurable). When a warning or error is written to the log, a balloon tip appears and the Show Logs menu item shows a running count; clicking the balloon opens the log viewer at the most recent warning or error. An interface mismatch warning alerts you if qBittorrent is not bound to the VPN adapter. A JSON status file is written after each sync cycle for external monitoring or scripting.
+Imports movie and TV episode files into Plex-compatible library folders on each cycle, using The Movie Database (TMDB) for naming via hardlink, copy, or move. Preview before applying, with uncertain matches highlighted for review. A free TMDB API key is required.
 
 ### Other Features
 
-- Built-in log viewer with color-coded levels, live tail, search, issue navigation, level filters, and subsystem filter
-- Sync on network change: runs a sync the moment a network or VPN change is detected, so the client follows a VPN reconnect within seconds (enabled by default)
-- Status panel: a tray window showing the live sync chain at a glance - VPN, forwarded port, client listening port, reachability, and last sync result
-- Pause and resume syncing directly from the tray menu
-- Connection test button in Settings to verify the qBittorrent, Transmission, or Deluge connection before saving
-- Auto-Recovery: restarts VPN services or cycles the network adapter after sync failures persist, while ignoring brief blips that clear on their own
-- Post-update shell command hook for custom automation
-- Resilient media import: a temporarily offline or slow network share is detected quickly and that cycle is skipped instead of stalling, then resumes automatically
-- Layered TV libraries: episodes organised by season subfolder with numbered filenames (e.g. Show Name/Season N/01-Title.ext) are recognised in addition to the SxxExx pattern
-- Automatic update checker against GitHub releases - new versions are surfaced via a tray menu item and one-shot notification, with an on-demand Check for Updates option
-- Optional auto-start with Windows
+- Status panel and color-coded tray icon showing the live sync state, with an on-demand port reachability test
+- Built-in log viewer with levels, live tail, search, and filters; tray alerts on warnings or errors
+- Interface mismatch warning when qBittorrent is not bound to the VPN adapter
+- Auto-Recovery that restarts VPN services or cycles the adapter after failures persist
+- Sync on network change, pause/resume from the tray, connection test and client auto-detect in Settings
+- Post-update command hook, JSON status file, and optional auto-start with Windows
 
-For full setup instructions and recommended VPN configuration, see the documentation at https://github.com/martsg666/qbPortWeaver#readme
+For full setup instructions, see https://github.com/martsg666/qbPortWeaver#readme
     ]]></description>
     <releaseNotes>https://github.com/martsg666/qbPortWeaver/releases/tag/vTEMPLATE_VERSION</releaseNotes>
     <copyright>© 2026 martsg666</copyright>

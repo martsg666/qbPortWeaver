@@ -13,7 +13,8 @@ public sealed partial class ProtonVpnManager : IVpnManager
         RegistrySettingsManager.KeyProtonVpnServiceSearchTerm,
         RegistrySettingsManager.KeyProtonVpnClientProcessName,
         RegistrySettingsManager.KeyProtonVpnAdapterName,
-        "ProtonVpnManager.GetClientExePath");
+        "ProtonVpnManager.GetClientExePath",
+        nativeAdapterNameKey: RegistrySettingsManager.KeyProtonVpnNativeAdapterName);
 
     private readonly string _logFilePath;
 
@@ -38,20 +39,20 @@ public sealed partial class ProtonVpnManager : IVpnManager
         try
         {
             var adapters = NetworkInterface.GetAllNetworkInterfaces();
-            // Uses Name (not Description) - ProtonVPN's adapter Name contains the configured
-            // adapter name substring on all installations: "ProtonVPN" (WireGuard) or "ProtonVPN TUN" (OpenVPN).
-            // Empty-string guard: Contains("") returns true for every adapter, which would falsely
-            // report VPN connected if the registry value was cleared.
-            string adapterName = Config.GetAdapterName();
-            bool isConnected = !string.IsNullOrEmpty(adapterName) && adapters.Any(adapter =>
-                adapter.Name.Contains(adapterName, StringComparison.OrdinalIgnoreCase) &&
-                adapter.OperationalStatus == OperationalStatus.Up);
+            // Uses Name (not Description). The legacy stack names its adapter "ProtonVPN" (WireGuard)
+            // or "ProtonVPN TUN" (OpenVPN); the new in-house protocols (Proton WireGuard, Proton Stealth)
+            // name it "ProTUN". Both configured names are read once here, then matched per adapter.
+            string legacyName = Config.GetAdapterName();
+            string nativeName = Config.GetNativeAdapterName() ?? string.Empty;
+            NetworkInterface? matched = adapters.FirstOrDefault(adapter =>
+                adapter.OperationalStatus == OperationalStatus.Up &&
+                MatchesProtonAdapter(adapter.Name, legacyName, nativeName));
 
-            LogManager.Instance.LogDebug(isConnected
-                ? "ProtonVpnManager.IsVpnConnected: ProtonVPN adapter is connected"
-                : "ProtonVpnManager.IsVpnConnected: ProtonVPN adapter not found or not connected");
+            LogManager.Instance.LogDebug(matched is not null
+                ? $"ProtonVpnManager.IsVpnConnected: Adapter '{matched.Name}' is connected"
+                : $"ProtonVpnManager.IsVpnConnected: Adapter '{legacyName}'/'{nativeName}' is not found or not connected");
 
-            return isConnected;
+            return matched is not null;
         }
         catch (Exception ex)
         {
@@ -71,7 +72,21 @@ public sealed partial class ProtonVpnManager : IVpnManager
     public string GetRecoveryAction() => HelperProtocol.ActionRestart;
 
     /// <inheritdoc />
-    public bool IsAdapterMatch(string interfaceName) => Config.MatchesAdapterName(interfaceName);
+    public bool IsAdapterMatch(string interfaceName) => MatchesProtonAdapter(interfaceName);
+
+    // Matches an observed adapter name against either configured Proton adapter name: the legacy
+    // "ProtonVPN" (protonVpnAdapterName) or the new in-house tunnel "ProTUN" (protonVpnNativeAdapterName).
+    // Delegates to Config so the dual-name rule lives in one place (shared with recovery's
+    // provider-token resolution). Callers that match in a loop should read the names once via the
+    // overload below to avoid a per-adapter registry read.
+    private static bool MatchesProtonAdapter(string interfaceName) => Config.MatchesAdapterName(interfaceName);
+
+    // Matches against pre-read configured names (loop fast-path). The bidirectional substring rule
+    // (AdapterNamesMatch) guards against empty values, so a cleared registry key cannot cause a false
+    // match. Kept in step with Config.MatchesAdapterName, which applies the same two-name rule.
+    private static bool MatchesProtonAdapter(string interfaceName, string legacyName, string nativeName) =>
+        VpnRegistryConfig.AdapterNamesMatch(legacyName, interfaceName) ||
+        VpnRegistryConfig.AdapterNamesMatch(nativeName, interfaceName);
 
     private int? GetVpnPortCore()
     {

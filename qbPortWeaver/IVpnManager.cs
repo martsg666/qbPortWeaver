@@ -15,8 +15,8 @@ public interface IVpnManager
 
     /// <summary>
     /// Returns <see langword="true"/> if the provider or gateway is currently reachable and active.
-    /// For ProtonVPN and PIA this means the VPN tunnel adapter is up.
-    /// For NAT-PMP this means the configured network adapter is up (gateway responsiveness is verified at creation time).
+    /// For ProtonVPN this means the tunnel adapter is up; for PIA it means piactl reports the connection
+    /// state as Connected. For NAT-PMP this means the configured network adapter is up (gateway responsiveness is verified at creation time).
     /// </summary>
     bool IsVpnConnected();
 
@@ -47,9 +47,10 @@ public interface IVpnManager
 
     /// <summary>
     /// Returns <see langword="true"/> if <paramref name="interfaceName"/> matches this provider's adapter naming convention.
-    /// All three implementations perform a bidirectional case-insensitive substring match against
-    /// the configured adapter name, so e.g. registry "ProtonVPN" matches Windows adapter
-    /// "ProtonVPN TUN" and vice versa.
+    /// Each implementation performs a bidirectional case-insensitive substring match against its configured
+    /// adapter name(s), so e.g. registry "ProtonVPN" matches Windows adapter "ProtonVPN TUN" and vice versa.
+    /// NAT-PMP and PIA match a single configured name; ProtonVPN matches either its legacy name
+    /// ("ProtonVPN" / "ProtonVPN TUN") or its in-house tunnel name ("ProTUN").
     /// </summary>
     bool IsAdapterMatch(string interfaceName);
 }

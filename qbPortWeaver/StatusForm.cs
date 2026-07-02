@@ -14,6 +14,11 @@ public partial class StatusForm : Form
     /// sync cycle; the resulting cycle completion repaints this panel via <see cref="RefreshStatus"/>.</summary>
     public event EventHandler? SyncRequested;
 
+    /// <summary>Raised when the user clicks Test Port. MainForm handles it by running an on-demand
+    /// reachability check and reporting the outcome via <see cref="SetReachableChecking"/> /
+    /// <see cref="SetReachableResult"/>.</summary>
+    public event EventHandler? TestPortRequested;
+
     public StatusForm()
     {
         InitializeComponent();
@@ -57,7 +62,11 @@ public partial class StatusForm : Form
         PopulateForwardedPort(s);
         PopulateClient(s);
         PopulateListeningPort(s);
-        PopulateReachable(s);
+        // Skip the reachable repaint while a manual Test Port is in flight (button disabled),
+        // so a sync cycle completing mid-test does not overwrite the "Checking…" label with a
+        // stale snapshot value. SetReachableResult writes the real result when the test finishes.
+        if (btnTestPort.Enabled)
+            PopulateReachable(s);
         PopulateLastSync(s);
     }
 
@@ -158,6 +167,33 @@ public partial class StatusForm : Form
     private static void SetNeutral(Label label, string text) => SetColor(label, text, NeutralColor);
 
     private void btnSyncNow_Click(object? sender, EventArgs e) => SyncRequested?.Invoke(this, EventArgs.Empty);
+
+    private void btnTestPort_Click(object? sender, EventArgs e) => TestPortRequested?.Invoke(this, EventArgs.Empty);
+
+    /// <summary>Shows the in-progress state while an on-demand reachability test runs and disables the
+    /// Test Port button so it cannot be re-triggered until the result arrives.</summary>
+    public void SetReachableChecking()
+    {
+        if (IsDisposed) return;
+        btnTestPort.Enabled = false;
+        SetNeutral(lblReachableValue, "Checking…");
+    }
+
+    /// <summary>Displays the result of an on-demand reachability test (open / closed / could not
+    /// determine) and re-enables the Test Port button. Mirrors the coloring of
+    /// <see cref="PopulateReachable"/>; an undetermined result reads "Could not determine" rather than
+    /// the loop's "Not checked", since the user explicitly asked for a check.</summary>
+    public void SetReachableResult(bool? open)
+    {
+        if (IsDisposed) return;
+        switch (open)
+        {
+            case true: SetColor(lblReachableValue, "Open", OkColor); break;
+            case false: SetColor(lblReachableValue, "Closed", WarnColor); break;
+            default: SetNeutral(lblReachableValue, "Could not determine"); break;
+        }
+        btnTestPort.Enabled = true;
+    }
 
     private void btnClose_Click(object? sender, EventArgs e) => Close(); // NOSONAR S2325 - Close() is an instance method, handler cannot be static
 }

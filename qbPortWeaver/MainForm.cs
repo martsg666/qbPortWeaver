@@ -51,6 +51,9 @@ public partial class MainForm : Form
     private AboutForm? _aboutForm;
     private StatusForm? _statusForm;
     private UpdateAvailableForm? _updateAvailableForm;
+    private DiagnosticsForm? _diagnosticsForm;
+    // Guards against concurrent diagnostics runs from the Status button and the tray menu. UI thread only.
+    private bool _diagnosticsRunning;
 
     // Last sync status (written from background thread, read on UI thread)
     private volatile TrayStatus? _lastSyncStatus;
@@ -107,7 +110,7 @@ public partial class MainForm : Form
     // update is pending. The update balloon is informational only - Windows 11 routes
     // ToolTipIcon.Info balloons through Action Center and does not reliably fire
     // BalloonTipClicked, so the tray menu item is the only clickable entry point.
-    private (string Version, string Url)? _pendingUpdate;
+    private (string Version, string Url, string? MsiUrl)? _pendingUpdate;
 
     public MainForm()
     {
@@ -257,6 +260,7 @@ public partial class MainForm : Form
         _aboutForm?.Close();
         _statusForm?.Close();
         _updateAvailableForm?.Close();
+        _diagnosticsForm?.Close();
 
         // Resources are disposed in Dispose(bool) via MainForm.Designer.cs
         base.OnFormClosing(e);
@@ -329,12 +333,16 @@ public partial class MainForm : Form
         _updateSeparator = new ToolStripSeparator { Visible = false };
         _trayMenu.Items.Add(_updateSeparator);
 
-        // Sync actions
+        // Sync control
         _trayMenu.Items.Add("Sync Port Now", null, syncPortNow_Click);
-        _trayMenu.Items.Add("Show Status", null, showStatus_Click);
         _pauseSyncMenuItem = new ToolStripMenuItem(PauseSyncingMenuText);
         _pauseSyncMenuItem.Click += pauseSync_Click;
         _trayMenu.Items.Add(_pauseSyncMenuItem);
+        _trayMenu.Items.Add(new ToolStripSeparator());
+
+        // Status and diagnostics
+        _trayMenu.Items.Add("Show Status", null, showStatus_Click);
+        _trayMenu.Items.Add("Run Diagnostics", null, runDiagnostics_Click);
         _trayMenu.Items.Add(new ToolStripSeparator());
 
         // Logs
@@ -408,23 +416,35 @@ public partial class MainForm : Form
 
     private void showAbout_Click(object? sender, EventArgs e)
     {
-        ShowOrActivate(() => _aboutForm, f => _aboutForm = f, () => new AboutForm());
+        ShowOrActivate(() => _aboutForm, f => _aboutForm = f, CreateAboutForm);
+    }
+
+    // Builds the About dialog and routes its Update button into the shared in-app update dialog,
+    // the same download-and-install flow as the tray "Update available" item.
+    private AboutForm CreateAboutForm()
+    {
+        var form = new AboutForm();
+        form.UpdateRequested += info => ShowUpdateAvailableForm(info.Version, info.ReleaseUrl, info.MsiUrl);
+        return form;
     }
 
     private void showStatus_Click(object? sender, EventArgs e) => ShowStatusPanel();
+
+    private async void runDiagnostics_Click(object? sender, EventArgs e) => await RunDiagnosticsAsync(null); // async void is correct here (WinForms event handler)
 
     private void ShowStatusPanel()
     {
         ShowOrActivate(() => _statusForm, f => _statusForm = f, CreateStatusForm);
     }
 
-    // Builds the Status panel and wires its Sync Now button to the shared manual-sync trigger and
-    // its Test Port button to an on-demand reachability check.
+    // Builds the Status panel and wires its Sync Now, Test Port, and Run Diagnostics buttons to the
+    // shared manual-sync trigger, an on-demand reachability check, and the read-only health check.
     private StatusForm CreateStatusForm()
     {
         var form = new StatusForm();
         form.SyncRequested += (_, _) => RequestManualSync();
         form.TestPortRequested += async (_, _) => await RunManualPortTestAsync(form); // async void event handler (WinForms)
+        form.DiagnosticsRequested += async (_, _) => await RunDiagnosticsAsync(form); // async void event handler (WinForms)
         return form;
     }
 
@@ -454,6 +474,89 @@ public partial class MainForm : Form
         form.SetReachableResult(open);
         string result = open switch { true => "open", false => "closed", _ => "could not be determined" };
         LogManager.Instance.LogMessage($"Manual port test result: {result}", LogLevel.Info);
+    }
+
+    // From the Status panel button or the tray menu: runs diagnostics and opens (or refreshes) the
+    // results dialog. 'form' is the Status panel when triggered there (so its button can be toggled),
+    // or null from the tray. Guarded so the two entry points and the dialog's Re-run cannot run
+    // concurrently.
+    private async Task RunDiagnosticsAsync(StatusForm? form)
+    {
+        if (_diagnosticsRunning) return;
+        _diagnosticsRunning = true;
+        form?.SetDiagnosticsRunning(true);
+        LogManager.Instance.LogMessage("Diagnostics requested", LogLevel.Info);
+        try
+        {
+            var results = await RunDiagnosticsCoreAsync();
+            if (results is not null) ShowDiagnosticsResults(results);
+        }
+        finally
+        {
+            _diagnosticsRunning = false;
+            if (form is { IsDisposed: false }) form.SetDiagnosticsRunning(false);
+        }
+    }
+
+    // From the results dialog's Re-run button: re-runs diagnostics and refreshes the dialog in place.
+    private async Task RerunDiagnosticsAsync(DiagnosticsForm form)
+    {
+        if (_diagnosticsRunning) return;
+        _diagnosticsRunning = true;
+        form.SetRunning(true);
+        LogManager.Instance.LogMessage("Diagnostics re-run requested", LogLevel.Info);
+        try
+        {
+            var results = await RunDiagnosticsCoreAsync();
+            if (results is not null && !form.IsDisposed) form.SetResults(results);
+        }
+        finally
+        {
+            _diagnosticsRunning = false;
+            if (!form.IsDisposed) form.SetRunning(false);
+        }
+    }
+
+    // Runs the diagnostics service with the standard shutdown-linked timeout and error handling. Builds
+    // fresh managers/clients off the saved settings, so it is safe to run alongside a sync cycle.
+    // Returns the results, or null when cancelled, timed out, or failed (already logged).
+    private async Task<IReadOnlyList<DiagnosticResult>?> RunDiagnosticsCoreAsync()
+    {
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(_shutdownCts.Token);
+        cts.CancelAfter(TimeSpan.FromSeconds(AppConstants.DiagnosticsTimeoutSeconds));
+        try
+        {
+            return await DiagnosticsService.RunAsync(cts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            if (!_shutdownCts.IsCancellationRequested)
+                LogManager.Instance.LogMessage($"Diagnostics timed out after {AppConstants.DiagnosticsTimeoutSeconds}s", LogLevel.Warn);
+            return null;
+        }
+        catch (Exception ex)
+        {
+            LogManager.Instance.LogMessage($"Diagnostics failed: {ex.Message}", LogLevel.Error);
+            return null;
+        }
+    }
+
+    // Opens the diagnostics results dialog, or refreshes the already-open one in place, so a fresh run
+    // never stacks windows or shows stale results.
+    private void ShowDiagnosticsResults(IReadOnlyList<DiagnosticResult> results)
+    {
+        if (_shutdownCts.IsCancellationRequested) return;
+        if (_diagnosticsForm is { IsDisposed: false } existing)
+        {
+            existing.SetResults(results);
+            existing.Activate();
+            return;
+        }
+        var frm = new DiagnosticsForm(results);
+        _diagnosticsForm = frm;
+        frm.RefreshRequested += async (_, _) => await RerunDiagnosticsAsync(frm); // async void event handler (WinForms)
+        frm.FormClosed += (_, _) => { if (ReferenceEquals(_diagnosticsForm, frm)) _diagnosticsForm = null; };
+        frm.Show();
     }
 
     private void autoStart_Click(object? sender, EventArgs e) => StartupManager.SetStartup(_autoStartMenuItem.Checked);
@@ -797,7 +900,7 @@ public partial class MainForm : Form
         }
 
         _lastNotifiedVersion = info.Version;
-        _pendingUpdate = (info.Version, info.ReleaseUrl);
+        _pendingUpdate = (info.Version, info.ReleaseUrl, info.MsiUrl);
         LogManager.Instance.LogMessage($"New application version available: {info.Version}", LogLevel.Info);
 
         _updateAvailableMenuItem.Text = $"Update available ({info.Version})";
@@ -807,7 +910,7 @@ public partial class MainForm : Form
 
         if (intrusive)
         {
-            ShowUpdateAvailableForm(info.Version, info.ReleaseUrl);
+            ShowUpdateAvailableForm(info.Version, info.ReleaseUrl, info.MsiUrl);
         }
         else
         {
@@ -839,17 +942,17 @@ public partial class MainForm : Form
     private void updateAvailable_Click(object? sender, EventArgs e)
     {
         if (_pendingUpdate is not { } update) return;
-        ShowUpdateAvailableForm(update.Version, update.Url);
+        ShowUpdateAvailableForm(update.Version, update.Url, update.MsiUrl);
     }
 
     // Opens or activates the singleton UpdateAvailableForm. Wrapping in ShowOrActivate
     // prevents repeated clicks (menu or startup intrusive path) from stacking multiple
     // windows on top of each other.
-    private void ShowUpdateAvailableForm(string version, string url) =>
+    private void ShowUpdateAvailableForm(string version, string url, string? msiUrl) =>
         ShowOrActivate(
             () => _updateAvailableForm,
             f => _updateAvailableForm = f,
-            () => new UpdateAvailableForm(version, url));
+            () => new UpdateAvailableForm(version, url, msiUrl));
 
     // Swaps the tray icon to reflect the current sync state
     private void UpdateTrayIcon(SyncState state)

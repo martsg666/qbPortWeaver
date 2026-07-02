@@ -432,9 +432,9 @@ public sealed class PortSyncService
     // Instantiates the appropriate VPN manager for the configured provider.
     // Returns null (with status already set) if the provider is disabled or cannot be initialised.
     // Adding a new VPN provider: add a VpnProvider* constant in RegistrySettingsManager, an
-    // instantiation arm here, the keyword in IsRecognizedProvider below, an entry in
-    // VpnProviderRegistry.KnownProviders (when service-restart recovery applies), and the
-    // value in SettingsForm's cboVpnProvider list.
+    // instantiation arm here AND in BuildActiveVpnManagerAsync (the read-only diagnostics path),
+    // the keyword in IsRecognizedProvider below, an entry in VpnProviderRegistry.KnownProviders
+    // (when service-restart recovery applies), and the value in SettingsForm's cboVpnProvider list.
     private async Task<IVpnManager?> CreateVpnManagerAsync(AppConfig cfg, Dictionary<string, object?> status, CancellationToken cancellationToken)
     {
         if (cfg.VpnProvider.Equals(RegistrySettingsManager.VpnProviderDisabled, StringComparison.OrdinalIgnoreCase))
@@ -549,8 +549,7 @@ public sealed class PortSyncService
     /// </summary>
     public static async Task<bool?> TestActivePortAsync(CancellationToken cancellationToken = default)
     {
-        var (cfg, _) = ReadConfig();
-        using var client = CreateBitTorrentClient(cfg);
+        using var client = BuildActiveClient();
         try
         {
             return await client.TestListeningPortAsync(cancellationToken).ConfigureAwait(false);
@@ -564,6 +563,42 @@ public sealed class PortSyncService
             LogManager.Instance.LogMessage($"Manual port test failed: {ex.Message}", LogLevel.Warn);
             return null;
         }
+    }
+
+    /// <summary>
+    /// Builds the currently-configured BitTorrent client from the saved settings. Read-only and
+    /// side-effect free, so it is safe to call while a sync cycle is running (fresh instance, no
+    /// shared state). The caller owns disposal. Shared by <see cref="TestActivePortAsync"/> and
+    /// <see cref="DiagnosticsService"/> so client construction stays single-source.
+    /// </summary>
+    internal static IBitTorrentClient BuildActiveClient()
+    {
+        var (cfg, _) = ReadConfig();
+        return CreateBitTorrentClient(cfg);
+    }
+
+    /// <summary>
+    /// Builds the currently-configured VPN manager fresh for read-only callers (e.g.
+    /// <see cref="DiagnosticsService"/>), without the sync loop's status side effects or NAT-PMP
+    /// fallback state. Returns <see langword="null"/> when the provider is Disabled/unrecognized, the
+    /// NAT-PMP adapter is unset, or the adapter cannot currently be reached. Mirrors the provider
+    /// dispatch in <see cref="CreateVpnManagerAsync"/> - keep the two in step when adding a provider.
+    /// </summary>
+    internal static async Task<IVpnManager?> BuildActiveVpnManagerAsync(CancellationToken cancellationToken = default)
+    {
+        string provider = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyVpnProvider);
+
+        if (provider.Equals(RegistrySettingsManager.VpnProviderPia, StringComparison.OrdinalIgnoreCase))
+            return new PiaVpnManager();
+        if (provider.Equals(RegistrySettingsManager.VpnProviderProtonVpn, StringComparison.OrdinalIgnoreCase))
+            return new ProtonVpnManager(AppConstants.GetProtonVpnLogFilePath());
+        if (provider.Equals(RegistrySettingsManager.VpnProviderNatPmp, StringComparison.OrdinalIgnoreCase))
+        {
+            string adapter = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyNatPmpAdapterName);
+            if (string.IsNullOrWhiteSpace(adapter)) return null;
+            return await NatPmpManager.TryCreateForAdapterAsync(adapter, cancellationToken: cancellationToken).ConfigureAwait(false);
+        }
+        return null; // Disabled or unrecognized
     }
 
     // Ensures the BitTorrent client is running, then updates its port if it differs from the target port

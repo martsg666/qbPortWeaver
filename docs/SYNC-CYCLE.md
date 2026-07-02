@@ -229,6 +229,8 @@ The update check is separate from the sync cycle. It runs once at startup (from 
 
 The persistent tray indicators (menu item "Update available (X.Y.Z)" and tooltip line) appear in every scenario so the prompt is never silent. `_lastNotifiedVersion` dedups repeat notifications for the same version across timer ticks (skipped for manual checks). `_pendingUpdate` clears naturally on the next process launch once the user updates (GitHub returns a matching version → no detection). The manual handler disables the **Check for Updates** menu item while a request is in flight so rapid clicks do not stack HTTP calls.
 
+When opened, `UpdateAvailableForm` offers an in-app **Download & Install**: it downloads the release's MSI asset (`UpdateChecker.DownloadFileAsync`, with a progress bar), launches it interactively, and exits so the installer can replace the files and relaunch the updated app. It falls back to opening the release page when the release has no MSI asset or a download/launch fails. The **About** dialog's Update button routes into this same dialog (`AboutForm.UpdateRequested`).
+
 The update balloon is informational only - Windows 11 routes `ToolTipIcon.Info` balloons through Action Center and does not reliably fire `BalloonTipClicked`, so the tray menu item is the only clickable entry point. The same applies to the port update and "Logs cleared" balloons (also `ToolTipIcon.Info`); they are visual hints with no associated action.
 
 ## Status Output
@@ -260,6 +262,10 @@ The `status` field is one of:
 - **`success`** - port synced (or already matched)
 - **`error`** - something failed (VPN port unreadable, client unreachable, etc.)
 - **`skipped`** - VPN disconnected and no default port configured (no-op cycle)
+
+## Diagnostics
+
+**Run Diagnostics** (Status panel button and tray menu) runs `DiagnosticsService.RunAsync`, a read-only health check that walks the whole sync chain once and reports pass/warn/fail per step with a fix hint: configuration, helper service, VPN connection, forwarded port, client running, client reachable, ports in sync, interface binding, and outside reachability. It reuses the sync loop's own managers and clients via `PortSyncService.BuildActiveVpnManagerAsync` / `BuildActiveClient` (construction stays single-source) and mirrors the loop's rules - e.g. it skips the reachability check when the VPN is disconnected. It never changes the port or restarts anything. Results render in `DiagnosticsForm` with a Re-run button (refreshes in place) and Copy Report (plain text for a bug report); each result is also logged at Debug, with an Info summary line.
 
 ## Method Call Map
 

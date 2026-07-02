@@ -37,6 +37,8 @@ Imports movie and TV episode files into Plex-compatible library folders on each 
 ### Other Features
 
 - Status panel and color-coded tray icon showing the live sync state, with an on-demand port reachability test
+- One-click diagnostics that health-check the whole sync chain and suggest fixes
+- In-app update that downloads and installs new versions, plus an automatic update checker
 - Built-in log viewer with levels, live tail, search, and filters; tray alerts on warnings or errors
 - Interface mismatch warning when qBittorrent is not bound to the VPN adapter
 - Auto-Recovery that restarts VPN services or cycles the adapter after failures persist

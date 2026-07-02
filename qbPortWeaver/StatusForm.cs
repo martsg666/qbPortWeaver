@@ -19,6 +19,11 @@ public partial class StatusForm : Form
     /// <see cref="SetReachableResult"/>.</summary>
     public event EventHandler? TestPortRequested;
 
+    /// <summary>Raised when the user clicks Run Diagnostics. MainForm handles it by running the
+    /// read-only health check and showing the results dialog, toggling the button via
+    /// <see cref="SetDiagnosticsRunning"/>.</summary>
+    public event EventHandler? DiagnosticsRequested;
+
     public StatusForm()
     {
         InitializeComponent();
@@ -68,6 +73,24 @@ public partial class StatusForm : Form
         if (btnTestPort.Enabled)
             PopulateReachable(s);
         PopulateLastSync(s);
+        UpdateDiagnosticsHint(s, disabled);
+    }
+
+    // Surfaces the "run diagnostics" cue only when the last cycle shows a problem worth investigating:
+    // an error result, the client's port out of sync, the port confirmed closed, or the client not
+    // running. Benign states (sync disabled, or a VPN that is simply off) do not trigger it, so the
+    // cue does not nag during normal idle periods.
+    private void UpdateDiagnosticsHint(StatusSnapshot s, bool disabled)
+    {
+        bool outOfSync = s.ClientPort is int cp && s.VpnPort is int vp && cp != vp;
+        bool closed = s.PortVerified == false;
+        bool clientDown = !string.IsNullOrEmpty(s.Client) && !s.ClientRunning;
+        bool error = string.Equals(s.Status, SyncStatusValues.Error, StringComparison.OrdinalIgnoreCase);
+        bool problem = !disabled && (error || outOfSync || closed || clientDown);
+
+        lblDiagnosticsHint.Visible = problem;
+        if (problem)
+            lblDiagnosticsHint.ForeColor = error ? ErrorColor : WarnColor;
     }
 
     private void PopulateVpnProvider(StatusSnapshot s, bool disabled)
@@ -169,6 +192,17 @@ public partial class StatusForm : Form
     private void btnSyncNow_Click(object? sender, EventArgs e) => SyncRequested?.Invoke(this, EventArgs.Empty);
 
     private void btnTestPort_Click(object? sender, EventArgs e) => TestPortRequested?.Invoke(this, EventArgs.Empty);
+
+    private void btnRunDiagnostics_Click(object? sender, EventArgs e) => DiagnosticsRequested?.Invoke(this, EventArgs.Empty);
+
+    /// <summary>Toggles the Run Diagnostics button between its idle and in-progress states so it cannot
+    /// be re-triggered while a run is in flight.</summary>
+    public void SetDiagnosticsRunning(bool running)
+    {
+        if (IsDisposed) return;
+        btnRunDiagnostics.Enabled = !running;
+        btnRunDiagnostics.Text = running ? "Running…" : "Run Diagnostics";
+    }
 
     /// <summary>Shows the in-progress state while an on-demand reachability test runs and disables the
     /// Test Port button so it cannot be re-triggered until the result arrives.</summary>

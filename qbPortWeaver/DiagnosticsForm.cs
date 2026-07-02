@@ -10,6 +10,9 @@ namespace qbPortWeaver;
 /// </summary>
 internal sealed class DiagnosticsForm : Form
 {
+    // Paragraph indent (pixels) for the detail/hint lines under each check - keeps wrapped lines aligned.
+    private const int DetailIndentPixels = 22;
+
     private readonly bool _isDarkMode;
     private IReadOnlyList<DiagnosticResult> _results;
     private DateTime _ranAt;
@@ -136,6 +139,7 @@ internal sealed class DiagnosticsForm : Form
         _report.Clear();
         _report.ForeColor = textColor;
 
+        _report.SelectionIndent = 0;
         _report.SelectionFont = summaryFont;
         _report.SelectionColor = textColor;
         _report.AppendText($"{pass} passed, {warn} warning(s), {fail} failed\n\n");
@@ -143,20 +147,25 @@ internal sealed class DiagnosticsForm : Form
         foreach (var r in _results)
         {
             var (glyph, color) = GlyphFor(r.Status);
+            _report.SelectionIndent = 0;
             _report.SelectionFont = boldFont;
             _report.SelectionColor = color;
             _report.AppendText($"{glyph}  ");
             _report.SelectionColor = textColor;
             _report.AppendText($"{r.Check}\n");
 
+            // Indent the detail/hint paragraphs so a wrapped second line stays aligned under the
+            // first instead of falling back to the left margin (leading spaces only indent line one).
+            _report.SelectionIndent = DetailIndentPixels;
             _report.SelectionFont = _report.Font;
             _report.SelectionColor = textColor;
-            _report.AppendText($"      {r.Detail}\n");
+            _report.AppendText($"{r.Detail}\n");
             if (!string.IsNullOrEmpty(r.Hint))
             {
                 _report.SelectionColor = metaColor;
-                _report.AppendText($"      {r.Hint}\n");
+                _report.AppendText($"{r.Hint}\n");
             }
+            _report.SelectionIndent = 0;
             _report.AppendText("\n");
         }
 

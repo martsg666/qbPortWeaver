@@ -26,6 +26,22 @@ public sealed record DiagnosticResult(string Check, DiagnosticStatus Status, str
 /// </summary>
 public static class DiagnosticsService
 {
+    // Check names - each is reused across its check's pass/warn/fail/skip branches; named constants
+    // keep the report labels consistent and satisfy Sonar S1192 (no repeated string literals).
+    private static class Checks
+    {
+        public const string VpnProvider = "VPN provider";
+        public const string Client = "BitTorrent client";
+        public const string HelperService = "Helper service";
+        public const string VpnConnection = "VPN connection";
+        public const string ForwardedPort = "Forwarded port";
+        public const string ClientRunning = "Client running";
+        public const string ClientReachable = "Client reachable";
+        public const string PortsInSync = "Ports in sync";
+        public const string InterfaceBinding = "Interface binding";
+        public const string PortReachable = "Port reachable";
+    }
+
     /// <summary>Runs all diagnostic checks in sync-chain order. Throws <see cref="OperationCanceledException"/> only if <paramref name="cancellationToken"/> fires.</summary>
     public static async Task<IReadOnlyList<DiagnosticResult>> RunAsync(CancellationToken cancellationToken = default)
     {
@@ -52,21 +68,21 @@ public static class DiagnosticsService
     private static void AddConfigurationResults(List<DiagnosticResult> results, string provider, string clientSetting, bool disabled)
     {
         if (disabled)
-            results.Add(new("VPN provider", DiagnosticStatus.Warn, "Port sync is disabled",
+            results.Add(new(Checks.VpnProvider, DiagnosticStatus.Warn, "Port sync is disabled",
                 "Select a VPN provider in Settings > General to enable port syncing."));
         else if (IsRecognizedProvider(provider))
-            results.Add(new("VPN provider", DiagnosticStatus.Pass, provider));
+            results.Add(new(Checks.VpnProvider, DiagnosticStatus.Pass, provider));
         else
-            results.Add(new("VPN provider", DiagnosticStatus.Fail, $"'{provider}' is not a recognized provider",
+            results.Add(new(Checks.VpnProvider, DiagnosticStatus.Fail, $"'{provider}' is not a recognized provider",
                 "Reselect the VPN provider in Settings > General."));
 
         var (section, urlKey, name) = ResolveClient(clientSetting);
         string url = RegistrySettingsManager.GetValue(section, urlKey);
         if (string.IsNullOrWhiteSpace(url))
-            results.Add(new("BitTorrent client", DiagnosticStatus.Warn, $"{name} selected, but no URL is configured",
+            results.Add(new(Checks.Client, DiagnosticStatus.Warn, $"{name} selected, but no URL is configured",
                 $"Enter the {name} Web UI/RPC URL in Settings."));
         else
-            results.Add(new("BitTorrent client", DiagnosticStatus.Pass, $"{name} ({url})"));
+            results.Add(new(Checks.Client, DiagnosticStatus.Pass, $"{name} ({url})"));
     }
 
     private static bool IsRecognizedProvider(string provider) =>
@@ -92,19 +108,19 @@ public static class DiagnosticsService
             using var sc = new ServiceController(HelperProtocol.PipeName);
             ServiceControllerStatus status = sc.Status; // throws InvalidOperationException when the service is not installed
             if (status == ServiceControllerStatus.Running)
-                results.Add(new("Helper service", DiagnosticStatus.Pass, "Installed and running"));
+                results.Add(new(Checks.HelperService, DiagnosticStatus.Pass, "Installed and running"));
             else
-                results.Add(new("Helper service", DiagnosticStatus.Warn, $"Installed but {status}",
+                results.Add(new(Checks.HelperService, DiagnosticStatus.Warn, $"Installed but {status}",
                     "Auto-recovery needs the helper service running."));
         }
         catch (InvalidOperationException)
         {
-            results.Add(new("Helper service", DiagnosticStatus.Warn, "Not installed",
+            results.Add(new(Checks.HelperService, DiagnosticStatus.Warn, "Not installed",
                 "Auto-recovery (VPN service restart or adapter cycle) is unavailable. Reinstall qbPortWeaver to add the helper service."));
         }
         catch (Exception ex)
         {
-            results.Add(new("Helper service", DiagnosticStatus.Warn, $"Could not query the helper service: {ex.Message}"));
+            results.Add(new(Checks.HelperService, DiagnosticStatus.Warn, $"Could not query the helper service: {ex.Message}"));
         }
     }
 
@@ -113,8 +129,8 @@ public static class DiagnosticsService
     {
         if (disabled)
         {
-            results.Add(new("VPN connection", DiagnosticStatus.Skip, "Port sync is disabled"));
-            results.Add(new("Forwarded port", DiagnosticStatus.Skip, "Port sync is disabled"));
+            results.Add(new(Checks.VpnConnection, DiagnosticStatus.Skip, "Port sync is disabled"));
+            results.Add(new(Checks.ForwardedPort, DiagnosticStatus.Skip, "Port sync is disabled"));
             return (null, null);
         }
 
@@ -125,26 +141,26 @@ public static class DiagnosticsService
             string hint = natPmp
                 ? "Select a NAT-PMP adapter in Settings, and ensure it is up and its gateway responds to NAT-PMP."
                 : "Reselect the VPN provider in Settings.";
-            results.Add(new("VPN connection", DiagnosticStatus.Fail, $"Could not initialize {provider}", hint));
-            results.Add(new("Forwarded port", DiagnosticStatus.Skip, "VPN unavailable"));
+            results.Add(new(Checks.VpnConnection, DiagnosticStatus.Fail, $"Could not initialize {provider}", hint));
+            results.Add(new(Checks.ForwardedPort, DiagnosticStatus.Skip, "VPN unavailable"));
             return (null, null);
         }
 
         if (!vpn.IsVpnConnected())
         {
-            results.Add(new("VPN connection", DiagnosticStatus.Fail, $"{vpn.ProviderName} is not connected",
+            results.Add(new(Checks.VpnConnection, DiagnosticStatus.Fail, $"{vpn.ProviderName} is not connected",
                 "Connect your VPN and enable port forwarding on a P2P server."));
-            results.Add(new("Forwarded port", DiagnosticStatus.Skip, "VPN not connected"));
+            results.Add(new(Checks.ForwardedPort, DiagnosticStatus.Skip, "VPN not connected"));
             return (vpn, null);
         }
 
-        results.Add(new("VPN connection", DiagnosticStatus.Pass, $"{vpn.ProviderName} is connected"));
+        results.Add(new(Checks.VpnConnection, DiagnosticStatus.Pass, $"{vpn.ProviderName} is connected"));
 
         int? port = await vpn.GetVpnPortAsync(cancellationToken).ConfigureAwait(false);
         if (port is int p)
-            results.Add(new("Forwarded port", DiagnosticStatus.Pass, $"Port {p}"));
+            results.Add(new(Checks.ForwardedPort, DiagnosticStatus.Pass, $"Port {p}"));
         else
-            results.Add(new("Forwarded port", DiagnosticStatus.Fail, $"No forwarded port from {vpn.ProviderName}",
+            results.Add(new(Checks.ForwardedPort, DiagnosticStatus.Fail, $"No forwarded port from {vpn.ProviderName}",
                 "Ensure port forwarding is enabled on a P2P server."));
         return (vpn, port);
     }
@@ -155,23 +171,23 @@ public static class DiagnosticsService
         using IBitTorrentClient client = PortSyncService.BuildActiveClient();
 
         if (client.IsRunning())
-            results.Add(new("Client running", DiagnosticStatus.Pass, $"{client.ClientName} is running"));
+            results.Add(new(Checks.ClientRunning, DiagnosticStatus.Pass, $"{client.ClientName} is running"));
         else
-            results.Add(new("Client running", DiagnosticStatus.Warn, $"{client.ClientName} process not detected",
+            results.Add(new(Checks.ClientRunning, DiagnosticStatus.Warn, $"{client.ClientName} process not detected",
                 "Start your client, or enable Force start in Settings. Service/remote setups may still be reachable below."));
 
         var (clientPort, interfaceName) = await client.GetPreferencesAsync(cancellationToken).ConfigureAwait(false);
         if (clientPort is not int cp)
         {
-            results.Add(new("Client reachable", DiagnosticStatus.Fail, $"Could not reach {client.ClientName}",
+            results.Add(new(Checks.ClientReachable, DiagnosticStatus.Fail, $"Could not reach {client.ClientName}",
                 "Check the URL and credentials in Settings and that the Web UI/RPC is enabled. See the log for details."));
-            results.Add(new("Ports in sync", DiagnosticStatus.Skip, "Client unreachable"));
+            results.Add(new(Checks.PortsInSync, DiagnosticStatus.Skip, "Client unreachable"));
             if (client.SupportsInterfaceMismatchWarning)
-                results.Add(new("Interface binding", DiagnosticStatus.Skip, "Client unreachable"));
-            results.Add(new("Port reachable", DiagnosticStatus.Skip, "Client unreachable"));
+                results.Add(new(Checks.InterfaceBinding, DiagnosticStatus.Skip, "Client unreachable"));
+            results.Add(new(Checks.PortReachable, DiagnosticStatus.Skip, "Client unreachable"));
             return;
         }
-        results.Add(new("Client reachable", DiagnosticStatus.Pass, $"{client.ClientName} reachable, listening on port {cp}"));
+        results.Add(new(Checks.ClientReachable, DiagnosticStatus.Pass, $"{client.ClientName} reachable, listening on port {cp}"));
 
         AddInSyncResult(results, cp, vpnPort);
         if (client.SupportsInterfaceMismatchWarning)
@@ -183,13 +199,13 @@ public static class DiagnosticsService
     {
         if (vpnPort is not int vp)
         {
-            results.Add(new("Ports in sync", DiagnosticStatus.Skip, "No forwarded port to compare against"));
+            results.Add(new(Checks.PortsInSync, DiagnosticStatus.Skip, "No forwarded port to compare against"));
             return;
         }
         if (clientPort == vp)
-            results.Add(new("Ports in sync", DiagnosticStatus.Pass, $"Client matches the forwarded port ({vp})"));
+            results.Add(new(Checks.PortsInSync, DiagnosticStatus.Pass, $"Client matches the forwarded port ({vp})"));
         else
-            results.Add(new("Ports in sync", DiagnosticStatus.Warn, $"Client port {clientPort} does not match forwarded port {vp}",
+            results.Add(new(Checks.PortsInSync, DiagnosticStatus.Warn, $"Client port {clientPort} does not match forwarded port {vp}",
                 "Use Sync Now to align them immediately; the next cycle would do it automatically."));
     }
 
@@ -197,21 +213,21 @@ public static class DiagnosticsService
     {
         if (vpn is null)
         {
-            results.Add(new("Interface binding", DiagnosticStatus.Skip, "VPN unavailable"));
+            results.Add(new(Checks.InterfaceBinding, DiagnosticStatus.Skip, "VPN unavailable"));
             return;
         }
         if (interfaceName is null)
         {
-            results.Add(new("Interface binding", DiagnosticStatus.Skip, "Client did not report a bound interface"));
+            results.Add(new(Checks.InterfaceBinding, DiagnosticStatus.Skip, "Client did not report a bound interface"));
             return;
         }
         if (interfaceName.Length == 0)
-            results.Add(new("Interface binding", DiagnosticStatus.Warn, "Client is bound to all interfaces - traffic may leak outside the VPN",
+            results.Add(new(Checks.InterfaceBinding, DiagnosticStatus.Warn, "Client is bound to all interfaces - traffic may leak outside the VPN",
                 "Bind the client's network interface to your VPN adapter in its settings."));
         else if (vpn.IsAdapterMatch(interfaceName))
-            results.Add(new("Interface binding", DiagnosticStatus.Pass, $"Bound to '{interfaceName}'"));
+            results.Add(new(Checks.InterfaceBinding, DiagnosticStatus.Pass, $"Bound to '{interfaceName}'"));
         else
-            results.Add(new("Interface binding", DiagnosticStatus.Warn, $"Bound to '{interfaceName}', which is not a {vpn.ProviderName} adapter",
+            results.Add(new(Checks.InterfaceBinding, DiagnosticStatus.Warn, $"Bound to '{interfaceName}', which is not a {vpn.ProviderName} adapter",
                 "Rebind the client's network interface to your active VPN adapter."));
     }
 
@@ -221,16 +237,16 @@ public static class DiagnosticsService
     {
         if (vpnPort is null)
         {
-            results.Add(new("Port reachable", DiagnosticStatus.Skip, "VPN not connected or no forwarded port"));
+            results.Add(new(Checks.PortReachable, DiagnosticStatus.Skip, "VPN not connected or no forwarded port"));
             return;
         }
         bool? open = await client.TestListeningPortAsync(cancellationToken).ConfigureAwait(false);
         if (open == true)
-            results.Add(new("Port reachable", DiagnosticStatus.Pass, "Listening port is reachable from the Internet"));
+            results.Add(new(Checks.PortReachable, DiagnosticStatus.Pass, "Listening port is reachable from the Internet"));
         else if (open == false)
-            results.Add(new("Port reachable", DiagnosticStatus.Warn, "Listening port appears closed from the Internet",
+            results.Add(new(Checks.PortReachable, DiagnosticStatus.Warn, "Listening port appears closed from the Internet",
                 "Allow a moment after a port change. qBittorrent infers this from incoming connections, so an idle client may report closed."));
         else
-            results.Add(new("Port reachable", DiagnosticStatus.Skip, "Could not determine (client, internet, or port-check service unavailable)"));
+            results.Add(new(Checks.PortReachable, DiagnosticStatus.Skip, "Could not determine (client, internet, or port-check service unavailable)"));
     }
 }

@@ -196,6 +196,7 @@ public sealed class PortSyncService
             if (!cancellationToken.IsCancellationRequested)
             {
                 StatusManager.Write(status);
+                LogCycleOutcome(status[StatusKeys.Status] as string);
 
                 bool success = status[StatusKeys.Status] as string == SyncStatusValues.Success;
                 bool vpnConnected = status[StatusKeys.VpnConnected] is true;
@@ -1073,9 +1074,22 @@ public sealed class PortSyncService
     {
         status[StatusKeys.Status] = success ? SyncStatusValues.Success : SyncStatusValues.Error;
         status[StatusKeys.Message] = message;
-        LogLevel effectiveLevel = level ?? (success ? LogLevel.Info : LogLevel.Error);
-        LogManager.Instance.LogMessage(message, effectiveLevel);
+        // Log the specific reason on failure (at its own severity); the uniform terminal line is
+        // emitted once per cycle by LogCycleOutcome. A successful cycle needs no reason line - its
+        // terminal marker says it all.
         if (!success)
-            LogManager.Instance.LogMessage("Sync cycle failed", effectiveLevel);
+            LogManager.Instance.LogMessage(message, level ?? LogLevel.Error);
     }
+
+    // Emits exactly one terminal line per cycle so every cycle closes with a clear outcome - completed,
+    // skipped, or failed - regardless of which branch it exited through. Called once from the finally
+    // in RunAsync after the status is finalized.
+    private static void LogCycleOutcome(string? status) => LogManager.Instance.LogMessage(
+        status switch
+        {
+            SyncStatusValues.Success => "Sync cycle completed",
+            SyncStatusValues.Skipped => "Sync cycle skipped",
+            _ => "Sync cycle failed",
+        },
+        status == SyncStatusValues.Error ? LogLevel.Error : LogLevel.Info);
 }

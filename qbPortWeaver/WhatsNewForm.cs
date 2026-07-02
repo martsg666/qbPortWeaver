@@ -17,6 +17,11 @@ public partial class WhatsNewForm : Form
         "reachable from the Internet. Each result includes a short hint on how to fix it, and a Copy Report " +
         "button puts the whole report on your clipboard for pasting into a support request. It is read-only " +
         "- it never changes your port or restarts anything.\n\n" +
+        "In-app update\n" +
+        "When a new version is available, the update window can now download and install it for you. " +
+        "Click Download & Install and qbPortWeaver fetches the installer and runs it; the update " +
+        "relaunches the app when it finishes. The release notes stay one click away, and it falls back " +
+        "to the download page if anything goes wrong.\n\n" +
         "Previously released\n\n" +
         "New in 2.5.8\n\n" +
         "Test your port on demand\n" +

@@ -32,8 +32,6 @@ internal sealed partial class UpdateAvailableForm : Form
     protected override void OnLoad(EventArgs e)
     {
         base.OnLoad(e);
-        // The default link color is a dark blue that is unreadable on the dark theme's background;
-        // match the brighter link color the other forms use in dark mode.
         if (AppConstants.IsDarkModeEnabled())
             lnkReleaseNotes.LinkColor = AppConstants.DarkModeLinkColor;
     }

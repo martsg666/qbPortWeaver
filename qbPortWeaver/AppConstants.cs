@@ -24,6 +24,9 @@ public static class AppConstants
 
     // UI
     public const int MaxTooltipLength = 127; // NotifyIcon.Text max in modern Windows / .NET (the historic 63-char limit was pre-Windows 2000)
+    // Passed as the timeout to NotifyIcon.ShowBalloonTip. Modern Windows ignores this value -
+    // the OS controls the display duration (and routes Win11 toasts through Action Center) - so
+    // it is only a nominal hint; changing it does not alter how long a notification stays up.
     public const int BalloonTipDurationMs = 750;
 
     // HTTP - shared timeout used by all outbound HTTP clients

@@ -8,7 +8,7 @@ public partial class AboutForm : Form
     private bool _isDarkMode;
     // Cancels in-flight GitHub requests when the form closes so they do not run to completion
     // in the background after the user has dismissed the dialog.
-    private readonly CancellationTokenSource _cts = new();
+    private readonly CancellationTokenSource _githubCts = new();
 
     public AboutForm()
     {
@@ -35,8 +35,8 @@ public partial class AboutForm : Form
 
     protected override void OnFormClosed(FormClosedEventArgs e)
     {
-        _cts.Cancel();
-        _cts.Dispose();
+        _githubCts.Cancel();
+        _githubCts.Dispose();
         base.OnFormClosed(e);
     }
 
@@ -85,8 +85,8 @@ public partial class AboutForm : Form
             _releaseUrl = null;
 
             // Fetch release info and contributor list in parallel
-            var releaseTask = UpdateChecker.GetLatestReleaseInfoAsync(_cts.Token);
-            var contributorsTask = UpdateChecker.GetReleaseContributorsAsync(_cts.Token);
+            var releaseTask = UpdateChecker.GetLatestReleaseInfoAsync(_githubCts.Token);
+            var contributorsTask = UpdateChecker.GetReleaseContributorsAsync(_githubCts.Token);
             await Task.WhenAll(releaseTask, contributorsTask);
 
             // Guard against the form being closed while the GitHub requests were in flight

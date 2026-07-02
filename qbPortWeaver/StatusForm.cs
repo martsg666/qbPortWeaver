@@ -62,7 +62,11 @@ public partial class StatusForm : Form
         PopulateForwardedPort(s);
         PopulateClient(s);
         PopulateListeningPort(s);
-        PopulateReachable(s);
+        // Skip the reachable repaint while a manual Test Port is in flight (button disabled),
+        // so a sync cycle completing mid-test does not overwrite the "Checking…" label with a
+        // stale snapshot value. SetReachableResult writes the real result when the test finishes.
+        if (btnTestPort.Enabled)
+            PopulateReachable(s);
         PopulateLastSync(s);
     }
 

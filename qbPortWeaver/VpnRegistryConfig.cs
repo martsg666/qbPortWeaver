@@ -10,6 +10,9 @@ internal sealed class VpnRegistryConfig
     private readonly string _serviceSearchTermKey;
     private readonly string _clientProcessNameKey;
     private readonly string _adapterNameKey;
+    // Optional secondary adapter name key (ProtonVPN's in-house "ProTUN" name). Null for providers
+    // that expose a single adapter name (PIA, NAT-PMP).
+    private readonly string? _nativeAdapterNameKey;
     private readonly string _logPrefix;
 
     // Cached path; null = not found, string.Empty = not yet resolved.
@@ -23,20 +26,34 @@ internal sealed class VpnRegistryConfig
         string serviceSearchTermKey,
         string clientProcessNameKey,
         string adapterNameKey,
-        string logPrefix)
+        string logPrefix,
+        string? nativeAdapterNameKey = null)
     {
         _serviceSearchTermKey = serviceSearchTermKey;
         _clientProcessNameKey = clientProcessNameKey;
         _adapterNameKey = adapterNameKey;
+        _nativeAdapterNameKey = nativeAdapterNameKey;
         _logPrefix = logPrefix;
     }
 
     internal string GetServiceSearchTerm() => RegistrySettingsManager.GetAppValue(_serviceSearchTermKey);
     internal string GetClientProcessName() => RegistrySettingsManager.GetAppValue(_clientProcessNameKey);
     internal string GetAdapterName() => RegistrySettingsManager.GetAppValue(_adapterNameKey);
+    // Secondary adapter name (e.g. ProtonVPN's "ProTUN"), or null when the provider has only one.
+    internal string? GetNativeAdapterName() => _nativeAdapterNameKey is null ? null : RegistrySettingsManager.GetAppValue(_nativeAdapterNameKey);
 
-    // Matches the registry-configured adapter name against an observed interface name.
-    internal bool MatchesAdapterName(string interfaceName) => AdapterNamesMatch(GetAdapterName(), interfaceName);
+    // Matches any of the provider's registry-configured adapter names against an observed interface
+    // name. ProtonVPN configures a secondary "native" name (ProTUN) alongside its primary name, so
+    // both are checked; single-name providers check only the primary. Used both for interface
+    // matching and for provider-token resolution during recovery (VpnProviderRegistry.FindProviderToken),
+    // so a ProTUN adapter is recognised as ProtonVPN and recovery restarts the service instead of
+    // cycling the adapter.
+    internal bool MatchesAdapterName(string interfaceName)
+    {
+        if (AdapterNamesMatch(GetAdapterName(), interfaceName)) return true;
+        var native = GetNativeAdapterName();
+        return native is not null && AdapterNamesMatch(native, interfaceName);
+    }
 
     // Case-insensitive bidirectional substring match between a configured adapter name and an
     // observed interface name. Bidirectional handles the configured name and the actual Windows

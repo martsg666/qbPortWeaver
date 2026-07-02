@@ -13,7 +13,8 @@ public sealed partial class ProtonVpnManager : IVpnManager
         RegistrySettingsManager.KeyProtonVpnServiceSearchTerm,
         RegistrySettingsManager.KeyProtonVpnClientProcessName,
         RegistrySettingsManager.KeyProtonVpnAdapterName,
-        "ProtonVpnManager.GetClientExePath");
+        "ProtonVpnManager.GetClientExePath",
+        nativeAdapterNameKey: RegistrySettingsManager.KeyProtonVpnNativeAdapterName);
 
     private readonly string _logFilePath;
 
@@ -42,7 +43,7 @@ public sealed partial class ProtonVpnManager : IVpnManager
             // or "ProtonVPN TUN" (OpenVPN); the new in-house protocols (Proton WireGuard, Proton Stealth)
             // name it "ProTUN". Both configured names are read once here, then matched per adapter.
             string legacyName = Config.GetAdapterName();
-            string nativeName = RegistrySettingsManager.GetAppValue(RegistrySettingsManager.KeyProtonVpnNativeAdapterName);
+            string nativeName = Config.GetNativeAdapterName() ?? string.Empty;
             NetworkInterface? matched = adapters.FirstOrDefault(adapter =>
                 adapter.OperationalStatus == OperationalStatus.Up &&
                 MatchesProtonAdapter(adapter.Name, legacyName, nativeName));
@@ -75,16 +76,14 @@ public sealed partial class ProtonVpnManager : IVpnManager
 
     // Matches an observed adapter name against either configured Proton adapter name: the legacy
     // "ProtonVPN" (protonVpnAdapterName) or the new in-house tunnel "ProTUN" (protonVpnNativeAdapterName).
-    // This single-arg form reads both registry values; callers that match in a loop should read the
-    // names once and use the overload below.
-    private static bool MatchesProtonAdapter(string interfaceName) =>
-        MatchesProtonAdapter(
-            interfaceName,
-            Config.GetAdapterName(),
-            RegistrySettingsManager.GetAppValue(RegistrySettingsManager.KeyProtonVpnNativeAdapterName));
+    // Delegates to Config so the dual-name rule lives in one place (shared with recovery's
+    // provider-token resolution). Callers that match in a loop should read the names once via the
+    // overload below to avoid a per-adapter registry read.
+    private static bool MatchesProtonAdapter(string interfaceName) => Config.MatchesAdapterName(interfaceName);
 
-    // Matches against pre-read configured names. The bidirectional substring rule (AdapterNamesMatch)
-    // guards against empty values, so a cleared registry key cannot cause a false match.
+    // Matches against pre-read configured names (loop fast-path). The bidirectional substring rule
+    // (AdapterNamesMatch) guards against empty values, so a cleared registry key cannot cause a false
+    // match. Kept in step with Config.MatchesAdapterName, which applies the same two-name rule.
     private static bool MatchesProtonAdapter(string interfaceName, string legacyName, string nativeName) =>
         VpnRegistryConfig.AdapterNamesMatch(legacyName, interfaceName) ||
         VpnRegistryConfig.AdapterNamesMatch(nativeName, interfaceName);

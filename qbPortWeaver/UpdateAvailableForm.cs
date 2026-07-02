@@ -14,6 +14,7 @@ internal sealed partial class UpdateAvailableForm : Form
     private readonly string? _msiUrl;
     private CancellationTokenSource? _downloadCts;
     private bool _downloading;
+    private bool _userCancelled; // distinguishes a user Cancel from the safety-net timeout (both surface as OCE)
 
     internal UpdateAvailableForm(string version, string releaseUrl, string? msiUrl)
     {
@@ -51,6 +52,7 @@ internal sealed partial class UpdateAvailableForm : Form
     {
         string destPath = Path.Combine(Path.GetTempPath(), $"{AppIdentity.AppName}_{_version}_Setup.msi");
         _downloading = true;
+        _userCancelled = false;
         SetDownloadingUi(true);
         _downloadCts?.Dispose(); // dispose any prior (cancelled) source before starting a fresh download
         _downloadCts = new CancellationTokenSource();
@@ -73,8 +75,17 @@ internal sealed partial class UpdateAvailableForm : Form
         {
             if (IsDisposed) return;
             SetDownloadingUi(false);
-            lblStatus.Text = "Download cancelled.";
-            LogManager.Instance.LogMessage("Update download cancelled", LogLevel.Info);
+            if (_userCancelled)
+            {
+                lblStatus.Text = "Download cancelled.";
+                LogManager.Instance.LogMessage("Update download cancelled", LogLevel.Info);
+                return;
+            }
+            // Not user-initiated: the safety-net timeout fired on a stalled connection. Treat it like a
+            // transfer failure and fall back to the release page so the user still has a way forward.
+            lblStatus.Text = "Download timed out - opening the release page instead.";
+            LogManager.Instance.LogMessage("Update download timed out - falling back to the release page", LogLevel.Warn);
+            AppConstants.OpenUrl(_releaseUrl);
             return;
         }
         catch (Exception ex)
@@ -123,6 +134,7 @@ internal sealed partial class UpdateAvailableForm : Form
     {
         if (_downloading)
         {
+            _userCancelled = true;
             _downloadCts?.Cancel();
             return;
         }

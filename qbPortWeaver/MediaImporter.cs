@@ -94,21 +94,21 @@ internal static partial class MediaImporter
         {
             if (VerifyHardLink(sourcePath, destinationPath))
             {
-                LogManager.Instance.LogDebug($"MediaImporter.AddFileToLibrary: Hardlinked '{Path.GetFileName(destinationPath)}'", Subsystem.MediaManager);
+                LogManager.Instance.LogDebug($"MediaImporter.ImportWithHardlink: Hardlinked '{Path.GetFileName(destinationPath)}'", Subsystem.MediaManager);
             }
             else
             {
                 LogManager.Instance.LogMessage($"Hardlink not verified for '{Path.GetFileName(destinationPath)}' (filesystem created a copy instead), replacing with proper copy", LogLevel.Info, Subsystem.MediaManager);
                 File.Delete(destinationPath);
                 File.Copy(sourcePath, destinationPath, overwrite: false);
-                LogManager.Instance.LogDebug($"MediaImporter.AddFileToLibrary: Copied (verified fallback) '{Path.GetFileName(destinationPath)}'", Subsystem.MediaManager);
+                LogManager.Instance.LogDebug($"MediaImporter.ImportWithHardlink: Copied (verified fallback) '{Path.GetFileName(destinationPath)}'", Subsystem.MediaManager);
             }
         }
         else
         {
             LogManager.Instance.LogMessage($"Hardlink failed for '{Path.GetFileName(destinationPath)}', falling back to copy", LogLevel.Info, Subsystem.MediaManager);
             File.Copy(sourcePath, destinationPath, overwrite: false);
-            LogManager.Instance.LogDebug($"MediaImporter.AddFileToLibrary: Copied (fallback) '{Path.GetFileName(destinationPath)}'", Subsystem.MediaManager);
+            LogManager.Instance.LogDebug($"MediaImporter.ImportWithHardlink: Copied (fallback) '{Path.GetFileName(destinationPath)}'", Subsystem.MediaManager);
         }
     }
 
@@ -355,14 +355,14 @@ internal static partial class MediaImporter
         bool forceRebuild = pathsChanged || _libraryBuildCycleCount >= FullRebuildIntervalCycles;
         if (!forceRebuild && allowReuse && _libraryFingerprints is not null)
         {
-            LogManager.Instance.LogDebug($"MediaImporter.BuildLibraryIndexAsync: Reusing index (cycle {_libraryBuildCycleCount}/{FullRebuildIntervalCycles})", Subsystem.MediaManager);
+            LogManager.Instance.LogDebug($"MediaImporter.TryReuseCachedIndex: Reusing index (cycle {_libraryBuildCycleCount}/{FullRebuildIntervalCycles})", Subsystem.MediaManager);
             _libraryBuildCycleCount++;
             return true;
         }
         if (pathsChanged && _libraryFingerprints is not null)
-            LogManager.Instance.LogDebug("MediaImporter.BuildLibraryIndexAsync: Library paths changed, forcing full rebuild", Subsystem.MediaManager);
+            LogManager.Instance.LogDebug("MediaImporter.TryReuseCachedIndex: Library paths changed, forcing full rebuild", Subsystem.MediaManager);
         else if (_libraryBuildCycleCount >= FullRebuildIntervalCycles)
-            LogManager.Instance.LogDebug($"MediaImporter.BuildLibraryIndexAsync: Forcing periodic rebuild (every {FullRebuildIntervalCycles} cycles)", Subsystem.MediaManager);
+            LogManager.Instance.LogDebug($"MediaImporter.TryReuseCachedIndex: Forcing periodic rebuild (every {FullRebuildIntervalCycles} cycles)", Subsystem.MediaManager);
         _libraryBuildCycleCount = 1; // Reset to 1, not 0 - this rebuild counts as the first cycle
         _lastMoviesLibraryPath = moviesLibraryPath;
         _lastTvShowsLibraryPath = tvShowsLibraryPath;

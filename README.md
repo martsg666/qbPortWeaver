@@ -288,7 +288,7 @@ Configured via tray menu → **Media Manager**.
 
 > **Alternative:** ProtonVPN also supports NAT-PMP. If you prefer not to rely on log file parsing, set `VPN Provider` to `NAT-PMP` instead and select the ProtonVPN virtual adapter in the NAT-PMP Adapter dropdown. See the NAT-PMP Configuration section below.
 
-> **Proton's new protocols:** Proton VPN 5.x.y adds in-house protocols (Proton WireGuard and Proton Stealth) whose tunnel adapter is named `ProTUN`. The earlier protocols name it `ProtonVPN` (standard WireGuard) or `ProtonVPN TUN` (OpenVPN). qbPortWeaver detects all of them automatically. If you switch between the earlier and the in-house protocols, reselect the active adapter wherever you have pinned it - the **NAT-PMP Adapter** dropdown and your client's **Network Interface** binding.
+> **Proton's new protocols:** ProtonVPN 5.x.y adds in-house protocols (Proton WireGuard and Proton Stealth) whose tunnel adapter is named `ProTUN`. The earlier protocols name it `ProtonVPN` (standard WireGuard) or `ProtonVPN TUN` (OpenVPN). qbPortWeaver detects all of them automatically. If you switch between the earlier and the in-house protocols, reselect the active adapter wherever you have pinned it - the **NAT-PMP Adapter** dropdown and your client's **Network Interface** binding.
 
 ### 4. PIA Configuration (if using PIA instead of ProtonVPN)
 

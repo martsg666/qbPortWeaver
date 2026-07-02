@@ -161,7 +161,9 @@ public sealed class TransmissionClient : BitTorrentClientBase
         try
         {
             const string body = """{"method":"port-test"}""";
-            using var response = await SendRpcAsync(body, cancellationToken, LogLevel.Debug).ConfigureAwait(false);
+            // port-test blocks on Transmission's external port-check round trip, which can exceed the
+            // default 10s HTTP budget - give it the longer client-test allowance.
+            using var response = await SendRpcAsync(body, cancellationToken, LogLevel.Debug, AppConstants.ClientTestTimeoutSeconds).ConfigureAwait(false);
             if (response is null || !response.IsSuccessStatusCode) return null;
 
             var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
@@ -346,8 +348,13 @@ public sealed class TransmissionClient : BitTorrentClientBase
     // (port sync, set-port - actionable), but the best-effort port verification probe passes
     // Debug so an unreachable daemon during a verify cycle does not raise an Error, matching
     // qBittorrent's and Deluge's verify-path handling.
-    private async Task<HttpResponseMessage?> SendRpcAsync(string jsonBody, CancellationToken cancellationToken = default, LogLevel failureLevel = LogLevel.Error)
+    // timeoutSeconds bounds this single call: the client's own HttpClient.Timeout is infinite so
+    // that a slow RPC (notably port-test, which blocks on Transmission's external port-check round
+    // trip) is governed by an explicit per-call budget rather than the shared 10s HTTP cap.
+    private async Task<HttpResponseMessage?> SendRpcAsync(string jsonBody, CancellationToken cancellationToken = default, LogLevel failureLevel = LogLevel.Error, int timeoutSeconds = AppConstants.HttpTimeoutSeconds)
     {
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeoutCts.CancelAfter(TimeSpan.FromSeconds(timeoutSeconds));
         try
         {
             var rpcUrl = $"{Url}{RpcPath}";
@@ -358,7 +365,7 @@ public sealed class TransmissionClient : BitTorrentClientBase
             if (_sessionId is not null)
                 request.Headers.Add(SessionIdHeader, _sessionId);
 
-            var response = await HttpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
+            var response = await HttpClient.SendAsync(request, timeoutCts.Token).ConfigureAwait(false);
 
             // 401 is handled here (not per caller) so every RPC call - including the post-409
             // retry below - reports the same actionable credentials message.
@@ -388,7 +395,7 @@ public sealed class TransmissionClient : BitTorrentClientBase
                 Content = new StringContent(jsonBody, Encoding.UTF8, JsonContentType)
             };
             retry.Headers.Add(SessionIdHeader, _sessionId);
-            var retryResponse = await HttpClient.SendAsync(retry, cancellationToken).ConfigureAwait(false);
+            var retryResponse = await HttpClient.SendAsync(retry, timeoutCts.Token).ConfigureAwait(false);
             return IsUnauthorized(retryResponse, failureLevel) ? null : retryResponse;
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
@@ -457,7 +464,9 @@ public sealed class TransmissionClient : BitTorrentClientBase
     private static HttpClient CreateBasicAuthHttpClient(string userName, string password)
     {
         string credentials = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{userName}:{password}"));
-        var client = new HttpClient { Timeout = TimeSpan.FromSeconds(AppConstants.HttpTimeoutSeconds) };
+        // Infinite client timeout: every RPC call is bounded by an explicit per-call budget inside
+        // SendRpcAsync instead (so a slow port-test can be given more headroom than routine calls).
+        var client = new HttpClient { Timeout = Timeout.InfiniteTimeSpan };
         client.DefaultRequestHeaders.Authorization =
             new System.Net.Http.Headers.AuthenticationHeaderValue("Basic", credentials);
         return client;

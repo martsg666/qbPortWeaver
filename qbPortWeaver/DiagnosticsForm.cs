@@ -4,21 +4,30 @@ namespace qbPortWeaver;
 
 /// <summary>
 /// Read-only results dialog for a <see cref="DiagnosticsService"/> run: a color-coded checklist with a
-/// per-check detail line and fix hint, plus a Copy Report button that yields a plain-text version for
-/// pasting into a bug report. Built in code (no designer) because its content is entirely dynamic.
+/// per-check detail line and fix hint, a point-in-time timestamp, a Re-run button that refreshes the
+/// report in place, and a Copy Report button that yields a plain-text version for pasting into a bug
+/// report. Built in code (no designer) because its content is entirely dynamic.
 /// </summary>
 internal sealed class DiagnosticsForm : Form
 {
-    private readonly IReadOnlyList<DiagnosticResult> _results;
     private readonly bool _isDarkMode;
+    private IReadOnlyList<DiagnosticResult> _results;
+    private DateTime _ranAt;
     private RichTextBox _report = null!;
+    private Button _btnRerun = null!;
+
+    /// <summary>Raised when the user clicks Re-run. MainForm handles it by re-running the diagnostics
+    /// and pushing the new results back via <see cref="SetResults"/>, toggling the button via
+    /// <see cref="SetRunning"/>.</summary>
+    internal event EventHandler? RefreshRequested;
 
     internal DiagnosticsForm(IReadOnlyList<DiagnosticResult> results)
     {
         _results = results;
+        _ranAt = DateTime.Now;
         _isDarkMode = AppConstants.IsDarkModeEnabled();
 
-        Text = $"{AppIdentity.AppName} | Diagnostics";
+        Text = $"{AppIdentity.AppName} | Diagnostics ({_ranAt:HH:mm:ss})";
         FormBorderStyle = FormBorderStyle.Sizable;
         MaximizeBox = true;
         MinimizeBox = false;
@@ -35,6 +44,25 @@ internal sealed class DiagnosticsForm : Form
 
         BuildControls();
         RenderReport();
+    }
+
+    /// <summary>Replaces the displayed report with a fresh run's results (updates the timestamp too).</summary>
+    internal void SetResults(IReadOnlyList<DiagnosticResult> results)
+    {
+        if (IsDisposed) return;
+        _results = results;
+        _ranAt = DateTime.Now;
+        Text = $"{AppIdentity.AppName} | Diagnostics ({_ranAt:HH:mm:ss})";
+        RenderReport();
+    }
+
+    /// <summary>Toggles the Re-run button between its idle and in-progress states while a refresh runs.
+    /// The previous report stays visible until the new results arrive.</summary>
+    internal void SetRunning(bool running)
+    {
+        if (IsDisposed) return;
+        _btnRerun.Enabled = !running;
+        _btnRerun.Text = running ? "Running…" : "Re-run";
     }
 
     private void BuildControls()
@@ -64,6 +92,16 @@ internal sealed class DiagnosticsForm : Form
         btnCopy.Click += (_, _) => AppConstants.TrySetClipboardText(BuildPlainReport());
         Controls.Add(btnCopy);
 
+        _btnRerun = new Button
+        {
+            Text = "Re-run",
+            Size = new Size(90, 28),
+            Location = new Point(130, ClientSize.Height - 40),
+            Anchor = AnchorStyles.Bottom | AnchorStyles.Left,
+        };
+        _btnRerun.Click += (_, _) => RefreshRequested?.Invoke(this, EventArgs.Empty);
+        Controls.Add(_btnRerun);
+
         var btnClose = new Button
         {
             Text = "Close",
@@ -79,14 +117,14 @@ internal sealed class DiagnosticsForm : Form
         CancelButton = btnClose;
     }
 
-    // Renders the checklist with color runs: a bold colored glyph + check name, an indented detail line,
-    // and an indented gray hint line. SelectionFont assignments apply RTF formatting immediately, so the
-    // transient fonts are safe to dispose after this method returns (same pattern as WhatsNewForm).
+    // Renders the checklist with color runs: a summary line, a timestamp, then per-check a bold colored
+    // glyph + check name, an indented detail line, and an indented gray hint line. SelectionFont
+    // assignments apply RTF formatting immediately, so the transient fonts are safe to dispose after
+    // this method returns (same pattern as WhatsNewForm).
     private void RenderReport()
     {
         Color textColor = _isDarkMode ? AppConstants.DarkModeText : SystemColors.WindowText;
         Color metaColor = _isDarkMode ? AppConstants.DarkModeSecondaryText : SystemColors.GrayText;
-        _report.ForeColor = textColor;
 
         using var summaryFont = new Font(_report.Font.FontFamily, _report.Font.Size + 1.5f, FontStyle.Bold);
         using var boldFont = new Font(_report.Font, FontStyle.Bold);
@@ -94,6 +132,9 @@ internal sealed class DiagnosticsForm : Form
         int pass = _results.Count(r => r.Status == DiagnosticStatus.Pass);
         int warn = _results.Count(r => r.Status == DiagnosticStatus.Warn);
         int fail = _results.Count(r => r.Status == DiagnosticStatus.Fail);
+
+        _report.Clear();
+        _report.ForeColor = textColor;
 
         _report.SelectionFont = summaryFont;
         _report.SelectionColor = textColor;
@@ -135,7 +176,7 @@ internal sealed class DiagnosticsForm : Form
     private string BuildPlainReport()
     {
         var sb = new StringBuilder();
-        sb.AppendLine($"{AppIdentity.AppName} {AppConstants.AppVersion} diagnostics");
+        sb.AppendLine($"{AppIdentity.AppName} {AppConstants.AppVersion} diagnostics - {_ranAt:yyyy-MM-dd HH:mm:ss}");
         sb.AppendLine();
         foreach (var r in _results)
         {

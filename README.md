@@ -81,26 +81,18 @@ After installing, open **Settings** from the tray icon to configure the applicat
   Optionally shows a tray balloon tip when the BitTorrent client's listening port is successfully updated to a new value. Enabled by default. Configurable via Settings > General.
 
 - **Log Alert Notifications**
-  When a warning or error is written to the log, a tray balloon tip appears once to get your attention. Clicking the balloon opens the log viewer at the most recent warning or error. The **Show Logs** menu item shows a running count (e.g. "Show Logs (2 warnings, 1 error)"), and hovering over the tray icon shows the same count in plain text (e.g. "2 Warnings, 1 Error"). All alerts clear automatically when the log viewer is opened or logs are cleared.
+  When a warning or error is logged, a one-shot tray balloon appears; clicking it opens the log viewer at the latest issue. The **Show Logs** item and the tray tooltip show a running warning/error count, which clears when you open the log viewer or clear the logs.
 
 - **Auto-Recovery**
-  Automatically recovers when a configurable number of consecutive sync cycles fail - whether the VPN is disconnected or port detection fails despite the VPN being connected. For ProtonVPN and PIA (direct or NAT-PMP mode), the helper restarts the Windows service and the tray app restarts the client process. For NAT-PMP with a generic (non-ProtonVPN/PIA) gateway, the helper cycles the network adapter (disable/enable via netsh). All privileged operations are delegated to a lightweight helper Windows service (`qbPortWeaverHelper`) running as LocalSystem - no UAC prompt required.
-
-  Recovery also requires that the failures have persisted long enough, not just reached the cycle count. When a sync runs early (for example a burst of network-change re-syncs while a router reboots), the failures can pile up in seconds; recovery is held until at least the time it would normally take to reach the threshold at the configured interval has elapsed. This keeps a brief network blip - which usually clears on its own - from force-restarting the VPN service.
-
-  A second, independent trigger can run the same recovery when port verification confirms the port closed for a configurable number of checks (on by default; requires **Verify port after sync**). It fires at most once and re-arms only after the port tests open again, so a false "closed" reading can never cause repeated recovery actions. Use with care on qBittorrent, where an idle client can report closed indefinitely.
+  After a configurable number of consecutive failed cycles (VPN disconnected, or connected but no port assigned), recovery runs through a lightweight helper service (`qbPortWeaverHelper`, LocalSystem, no UAC): for ProtonVPN/PIA it restarts the VPN service and client; for a generic NAT-PMP gateway it cycles the adapter via netsh. Recovery is also held until the failures have *persisted* long enough, so a brief blip raced through by network-change re-syncs does not force a restart. A second, independent trigger runs the same recovery when port verification confirms the port closed for a set number of checks (on by default; requires **Verify port after sync**); it fires once and re-arms only when the port tests open again. Use with care on qBittorrent, where an idle client can report closed indefinitely.
 
 - **Post-Update Command**
   Optionally run a custom command after a successful port update (fire-and-forget). See SampleSendMail.ps1 for an example of sending an email notification with status details.
 
 - **Media Manager**
-  Automatically imports movie and TV episode files into Plex-compatible library folders on each sync cycle. Queries [The Movie Database (TMDB)](https://www.themoviedb.org) to identify titles and release years, then imports files using Plex naming conventions (`Title (Year).ext` for movies, `Show (Year) - SxxExx.ext` for single-episode files and `Show (Year) - SxxExxExx.ext` for multi-episode files) via hardlink (with automatic fallback to copy for cross-volume scenarios), copy, or move.
+  Imports movie and TV episode files into Plex-compatible library folders each cycle, using [TMDB](https://www.themoviedb.org) for titles and years and Plex naming (`Title (Year).ext`, `Show (Year) - SxxExx.ext`, multi-episode `SxxExxExx`) via hardlink (falling back to copy across volumes), copy, or move. Beyond the `SxxExx` pattern, episodes in season subfolders with numbered filenames (`Show/Season N/01-Title.mp4`) are recognised too (English, French, Spanish, and Italian season indicators). It can create Plex subfolders (`Movies/Title (Year)/`, `TV Shows/Show (Year)/Season XX/`) and delete emptied source folders (including `.nfo`-only ones).
 
-  In addition to the SxxExx naming pattern, episodes organised into season subfolders with numbered filenames (e.g. `Show Name/Season N/01-Title.mp4`) are also recognised as TV shows. The show name is taken from the parent folder, the season number from the season subfolder, and the episode number from the filename prefix. English, French, Spanish and Italian season indicators are accepted.
-
-  Optionally organises files into Plex-recommended subfolders (`Movies/Title (Year)/` and `TV Shows/Show (Year)/Season XX/`), and cleans up source folders left empty after importing (including folders containing only `.nfo` files).
-
-  A dedicated **Media Manager** dialog (tray menu → Media Manager) lets you configure source and library folders, preview imports before they run (**Scan Now**), and apply or correct them manually (**Import Now**). Uncertain TMDB matches are highlighted for review. A free TMDB API key is required.
+  A dedicated **Media Manager** dialog (tray menu → Media Manager) configures source and library folders, previews imports (**Scan Now**), and applies or corrects them (**Import Now**), highlighting uncertain TMDB matches. A free TMDB API key is required.
 
 - **Tray Icon Interface**
   Runs quietly in the background with a system tray icon for quick access to logs, settings, and controls.
@@ -109,7 +101,10 @@ After installing, open **Settings** from the tray icon to configure the applicat
   After each sync cycle the tray icon shows a colored status dot: **green** (ports aligned), **orange** (VPN not connected), **red** (error), **gray** (sync paused), or **no dot** (port sync disabled). Hovering over the icon displays the current port and status, and an unviewed log count if warnings or errors have occurred (e.g. "2 Warnings, 1 Error").
 
 - **Status Panel**
-  A **Status** window (tray menu → Show Status, or double-click the tray icon) shows the live state of the sync chain at a glance: VPN provider and connection state, the forwarded port, the client and whether it is running, the client's listening port (with an in-sync indicator), reachability, and the time and result of the last sync. Color accents flag anything out of sync, closed, or in error. It refreshes automatically after each sync cycle, and a **Sync Now** button runs an immediate cycle on demand. A **Test Port** button checks the listening port's reachability on demand, independently of the periodic verification. It reflects the same data written to the status file.
+  A **Status** window (tray menu → Show Status, or double-click the tray icon) shows the live sync chain at a glance: VPN provider and connection, forwarded port, client and whether it is running, listening port (with an in-sync indicator), reachability, and the last sync time and result. Color accents flag anything out of sync, closed, or in error. It refreshes after each cycle; a **Sync Now** button runs an immediate cycle and **Test Port** checks reachability on demand.
+
+- **Diagnostics**
+  A **Run Diagnostics** action (Status panel and tray menu) runs a read-only health check across the whole sync chain and shows a pass/warning/fail checklist with a fix hint for each step: configuration, helper service, VPN connection and forwarded port, client running and reachable, ports in sync, interface binding, and outside reachability. **Re-run** refreshes it and **Copy Report** puts the results on the clipboard for a support request. It never changes the port or restarts anything.
 
 - **Settings Dialog**
   All configuration options are editable through a dedicated Settings form (tray menu → Settings), organised into **General**, **Client**, and **Extra** tabs, with inline descriptions and tooltips for each option. A **Detect** button on the General tab finds a running or installed client (qBittorrent, Transmission, or Deluge) and fills in its selection and process details, asking you to choose when more than one is found.
@@ -126,8 +121,8 @@ After installing, open **Settings** from the tray icon to configure the applicat
 - **Last-Run Status File**
   Writes a JSON status file (`%LocalAppData%\qbPortWeaver\qbPortWeaver.status.json`) after each sync cycle, exposing VPN port, client port, timestamps, and completion status for external scripts.
 
-- **Automatic Update Checker**
-  Checks GitHub for new releases on startup and every 12 hours. When a newer version is found, an **Update available (X.Y.Z)** item appears at the top of the tray menu and the tooltip is updated; clicking the menu item opens the update form. The 12-hour background check uses a one-shot tray notification instead of opening the update form, so the app does not interrupt you. The startup check additionally opens the update form by default; this can be turned off via **Settings > General > Show update form on startup** (the tray indicators still appear). A **Check for Updates** item in the tray menu lets you check on demand at any time and always reports a result, even when you are already up to date. The **About** dialog (tray menu → About) also shows the current and latest version, update status, contributor links, and a **What's New** button to review the current release highlights.
+- **Automatic Update Checker & In-App Update**
+  Checks GitHub for new releases on startup and every 12 hours, surfacing a newer version via an **Update available (X.Y.Z)** tray item and tooltip (the 12-hour check is non-intrusive; the startup form can be turned off under **Settings > General**). A **Check for Updates** item checks on demand and always reports a result. When an update is available, the update window offers **Download & Install** - it downloads the installer, runs it, and the app relaunches when the update finishes (falling back to the release page if anything goes wrong). The **About** dialog shows the current and latest version, update status, contributor links, and a **What's New** button.
 
 - **Startup Option**
   Allows enabling or disabling automatic startup with Windows.
@@ -253,8 +248,9 @@ Configured via tray menu → **Media Manager**.
 ### Tray Menu Options
 
 - **Sync Port Now** - triggers an immediate sync cycle, skipping the current wait interval (works while paused, running a single cycle)
-- **Show Status** - opens the Status panel showing the live sync chain (also opened by double-clicking the tray icon); includes a Sync Now button to run an immediate cycle
 - **Pause Syncing / Resume Syncing** - temporarily stops sync cycles, including Media Manager imports; the tray icon and tooltip show the paused state. Not persisted: syncing always resumes when the application restarts
+- **Show Status** - opens the Status panel showing the live sync chain (also opened by double-clicking the tray icon); includes Sync Now, Test Port, and Run Diagnostics
+- **Run Diagnostics** - runs a read-only health check of the whole sync chain and shows a pass/warning/fail report with fix hints
 - **Show Logs** - opens the built-in Log Viewer; shows a warning/error count badge when unviewed entries exist
 - **Clear Logs** - deletes all log files and starts a fresh log
 - **Settings** - opens the Settings dialog

@@ -54,6 +54,7 @@ internal sealed partial class UpdateAvailableForm : Form
         SetDownloadingUi(true);
         _downloadCts?.Dispose(); // dispose any prior (cancelled) source before starting a fresh download
         _downloadCts = new CancellationTokenSource();
+        _downloadCts.CancelAfter(TimeSpan.FromMinutes(20)); // safety net for a stalled connection; the user can also Cancel
 
         var progress = new Progress<double>(fraction =>
         {

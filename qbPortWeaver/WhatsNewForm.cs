@@ -11,12 +11,12 @@ public partial class WhatsNewForm : Form
     private const string ReleaseFeaturesText =
         "New in 2.6.0\n\n" +
         "One-click diagnostics\n" +
-        "The Status panel has a new Run Diagnostics button that checks your entire port-sync setup in one " +
-        "pass and shows a pass, warning, or fail result for each step: VPN connected and forwarding a port, " +
-        "client running and reachable, ports in sync, client bound to the VPN adapter, and the port " +
-        "reachable from the Internet. Each result includes a short hint on how to fix it, and a Copy Report " +
-        "button puts the whole report on your clipboard for pasting into a support request. It is read-only " +
-        "- it never changes your port or restarts anything.\n\n" +
+        "A new Run Diagnostics action - on the Status panel and the tray menu - checks your entire " +
+        "port-sync setup in one pass and shows a pass, warning, or fail result for each step: VPN " +
+        "connected and forwarding a port, client running and reachable, ports in sync, client bound to " +
+        "the VPN adapter, and the port reachable from the Internet. Each result includes a short hint on " +
+        "how to fix it, a Re-run button refreshes the report, and Copy Report puts it on your clipboard " +
+        "for a support request. It is read-only - it never changes your port or restarts anything.\n\n" +
         "In-app update\n" +
         "When a new version is available, the update window can now download and install it for you. " +
         "Click Download & Install and qbPortWeaver fetches the installer and runs it; the update " +

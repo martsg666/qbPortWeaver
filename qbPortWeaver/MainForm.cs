@@ -476,10 +476,10 @@ public partial class MainForm : Form
         LogManager.Instance.LogMessage($"Manual port test result: {result}", LogLevel.Info);
     }
 
-    // Runs the read-only diagnostics (from the Status panel button or the tray menu) and shows the
+    // From the Status panel button or the tray menu: runs diagnostics and opens (or refreshes) the
     // results dialog. 'form' is the Status panel when triggered there (so its button can be toggled),
-    // or null from the tray. Builds fresh managers/clients off the saved settings, so it is safe to run
-    // alongside a sync cycle; guarded so the two entry points cannot run it concurrently.
+    // or null from the tray. Guarded so the two entry points and the dialog's Re-run cannot run
+    // concurrently.
     private async Task RunDiagnosticsAsync(StatusForm? form)
     {
         if (_diagnosticsRunning) return;
@@ -488,25 +488,8 @@ public partial class MainForm : Form
         LogManager.Instance.LogMessage("Diagnostics requested", LogLevel.Info);
         try
         {
-            using var cts = CancellationTokenSource.CreateLinkedTokenSource(_shutdownCts.Token);
-            cts.CancelAfter(TimeSpan.FromSeconds(AppConstants.DiagnosticsTimeoutSeconds));
-            IReadOnlyList<DiagnosticResult> results;
-            try
-            {
-                results = await DiagnosticsService.RunAsync(cts.Token);
-            }
-            catch (OperationCanceledException)
-            {
-                if (!_shutdownCts.IsCancellationRequested)
-                    LogManager.Instance.LogMessage($"Diagnostics timed out after {AppConstants.DiagnosticsTimeoutSeconds}s", LogLevel.Warn);
-                return;
-            }
-            catch (Exception ex)
-            {
-                LogManager.Instance.LogMessage($"Diagnostics failed: {ex.Message}", LogLevel.Error);
-                return;
-            }
-            ShowDiagnosticsResults(results);
+            var results = await RunDiagnosticsCoreAsync();
+            if (results is not null) ShowDiagnosticsResults(results);
         }
         finally
         {
@@ -515,15 +498,63 @@ public partial class MainForm : Form
         }
     }
 
-    // Opens the diagnostics results dialog, replacing any previous one so a fresh run never stacks
-    // windows or shows stale results.
+    // From the results dialog's Re-run button: re-runs diagnostics and refreshes the dialog in place.
+    private async Task RerunDiagnosticsAsync(DiagnosticsForm form)
+    {
+        if (_diagnosticsRunning) return;
+        _diagnosticsRunning = true;
+        form.SetRunning(true);
+        LogManager.Instance.LogMessage("Diagnostics re-run requested", LogLevel.Info);
+        try
+        {
+            var results = await RunDiagnosticsCoreAsync();
+            if (results is not null && !form.IsDisposed) form.SetResults(results);
+        }
+        finally
+        {
+            _diagnosticsRunning = false;
+            if (!form.IsDisposed) form.SetRunning(false);
+        }
+    }
+
+    // Runs the diagnostics service with the standard shutdown-linked timeout and error handling. Builds
+    // fresh managers/clients off the saved settings, so it is safe to run alongside a sync cycle.
+    // Returns the results, or null when cancelled, timed out, or failed (already logged).
+    private async Task<IReadOnlyList<DiagnosticResult>?> RunDiagnosticsCoreAsync()
+    {
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(_shutdownCts.Token);
+        cts.CancelAfter(TimeSpan.FromSeconds(AppConstants.DiagnosticsTimeoutSeconds));
+        try
+        {
+            return await DiagnosticsService.RunAsync(cts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            if (!_shutdownCts.IsCancellationRequested)
+                LogManager.Instance.LogMessage($"Diagnostics timed out after {AppConstants.DiagnosticsTimeoutSeconds}s", LogLevel.Warn);
+            return null;
+        }
+        catch (Exception ex)
+        {
+            LogManager.Instance.LogMessage($"Diagnostics failed: {ex.Message}", LogLevel.Error);
+            return null;
+        }
+    }
+
+    // Opens the diagnostics results dialog, or refreshes the already-open one in place, so a fresh run
+    // never stacks windows or shows stale results.
     private void ShowDiagnosticsResults(IReadOnlyList<DiagnosticResult> results)
     {
         if (_shutdownCts.IsCancellationRequested) return;
-        if (_diagnosticsForm is { IsDisposed: false })
-            _diagnosticsForm.Close();
+        if (_diagnosticsForm is { IsDisposed: false } existing)
+        {
+            existing.SetResults(results);
+            existing.Activate();
+            return;
+        }
         var frm = new DiagnosticsForm(results);
         _diagnosticsForm = frm;
+        frm.RefreshRequested += async (_, _) => await RerunDiagnosticsAsync(frm); // async void event handler (WinForms)
         frm.FormClosed += (_, _) => { if (ReferenceEquals(_diagnosticsForm, frm)) _diagnosticsForm = null; };
         frm.Show();
     }

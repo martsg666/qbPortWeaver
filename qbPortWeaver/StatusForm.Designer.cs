@@ -8,7 +8,6 @@ partial class StatusForm
     {
         if (disposing)
         {
-            lblHeader.Font?.Dispose();
             components?.Dispose();
         }
         base.Dispose(disposing);
@@ -16,7 +15,6 @@ partial class StatusForm
 
     private void InitializeComponent()
     {
-        lblHeader = new Label();
         grpStatus = new GroupBox();
         lblVpnProviderLabel = new Label();
         lblVpnProviderValue = new Label();
@@ -39,13 +37,6 @@ partial class StatusForm
         lblDiagnosticsHint = new Label();
         grpStatus.SuspendLayout();
         SuspendLayout();
-        // ── Header ────────────────────────────────────────────────────
-        lblHeader.Font = new Font("Segoe UI", 13F, FontStyle.Bold);
-        lblHeader.Location = new Point(8, 10);
-        lblHeader.Name = "lblHeader";
-        lblHeader.Size = new Size(454, 26);
-        lblHeader.TabIndex = 0;
-        lblHeader.Text = "Connection status";
         // ── grpStatus ─────────────────────────────────────────────────
         grpStatus.Controls.Add(lblVpnProviderLabel);
         grpStatus.Controls.Add(lblVpnProviderValue);
@@ -61,12 +52,12 @@ partial class StatusForm
         grpStatus.Controls.Add(lblReachableValue);
         grpStatus.Controls.Add(lblLastSyncLabel);
         grpStatus.Controls.Add(lblLastSyncValue);
-        grpStatus.Location = new Point(8, 44);
+        grpStatus.Location = new Point(8, 12);
         grpStatus.Name = "grpStatus";
         grpStatus.Size = new Size(454, 236);
-        grpStatus.TabIndex = 1;
+        grpStatus.TabIndex = 0;
         grpStatus.TabStop = false;
-        grpStatus.Text = "Sync chain";
+        grpStatus.Text = "Connection status";
         lblVpnProviderLabel.Location = new Point(12, 24);
         lblVpnProviderLabel.Name = "lblVpnProviderLabel";
         lblVpnProviderLabel.Size = new Size(130, 23);
@@ -152,34 +143,34 @@ partial class StatusForm
         lblLastSyncValue.Text = "-";
         lblLastSyncValue.TextAlign = ContentAlignment.MiddleLeft;
         // ── Diagnostics hint (shown only when a cycle looks wrong; color set in StatusForm) ──
-        lblDiagnosticsHint.Location = new Point(8, 288);
+        lblDiagnosticsHint.Location = new Point(8, 252);
         lblDiagnosticsHint.Name = "lblDiagnosticsHint";
-        lblDiagnosticsHint.Size = new Size(454, 22);
-        lblDiagnosticsHint.TabIndex = 14;
+        lblDiagnosticsHint.Size = new Size(454, 20);
+        lblDiagnosticsHint.TabIndex = 1;
         lblDiagnosticsHint.Text = "Something looks off. Click Run Diagnostics for details.";
         lblDiagnosticsHint.TextAlign = ContentAlignment.MiddleLeft;
         lblDiagnosticsHint.Visible = false;
         // ── Buttons ───────────────────────────────────────────────────
-        btnSyncNow.Location = new Point(8, 320);
+        btnSyncNow.Location = new Point(8, 278);
         btnSyncNow.Name = "btnSyncNow";
         btnSyncNow.Size = new Size(96, 28);
         btnSyncNow.TabIndex = 2;
         btnSyncNow.Text = "Sync Now";
         btnSyncNow.Click += btnSyncNow_Click;
-        btnTestPort.Location = new Point(112, 320);
+        btnTestPort.Location = new Point(112, 278);
         btnTestPort.Name = "btnTestPort";
         btnTestPort.Size = new Size(96, 28);
         btnTestPort.TabIndex = 3;
         btnTestPort.Text = "Test Port";
         btnTestPort.Click += btnTestPort_Click;
-        btnRunDiagnostics.Location = new Point(216, 320);
+        btnRunDiagnostics.Location = new Point(216, 278);
         btnRunDiagnostics.Name = "btnRunDiagnostics";
         btnRunDiagnostics.Size = new Size(118, 28);
         btnRunDiagnostics.TabIndex = 4;
         btnRunDiagnostics.Text = "Run Diagnostics";
         btnRunDiagnostics.Click += btnRunDiagnostics_Click;
         btnClose.DialogResult = DialogResult.Cancel;
-        btnClose.Location = new Point(380, 320);
+        btnClose.Location = new Point(380, 278);
         btnClose.Name = "btnClose";
         btnClose.Size = new Size(82, 28);
         btnClose.TabIndex = 5;
@@ -189,8 +180,7 @@ partial class StatusForm
         AutoScaleDimensions = new SizeF(7F, 15F);
         AutoScaleMode = AutoScaleMode.Font;
         CancelButton = btnClose;
-        ClientSize = new Size(470, 356);
-        Controls.Add(lblHeader);
+        ClientSize = new Size(470, 314);
         Controls.Add(grpStatus);
         Controls.Add(lblDiagnosticsHint);
         Controls.Add(btnSyncNow);
@@ -209,7 +199,6 @@ partial class StatusForm
         ResumeLayout(false);
     }
 
-    private Label    lblHeader;
     private GroupBox grpStatus;
     private Label    lblVpnProviderLabel;
     private Label    lblVpnProviderValue;

@@ -37,6 +37,10 @@ public static class AppConstants
     // port-check round trip. Shared so both test paths time out consistently.
     public const int ClientTestTimeoutSeconds = 20;
 
+    // Upper bound for a full diagnostics run. It chains several probes (VPN port, client auth, port
+    // reachability), each already individually bounded, so the total needs more headroom than a single test.
+    public const int DiagnosticsTimeoutSeconds = 60;
+
     // GitHub - only the owner is a literal; all URLs are derived
     public const string GitHubRepoOwner = "martsg666";
     public static readonly string GitHubRepoUrl = $"https://github.com/{GitHubRepoOwner}/{AppIdentity.AppName}";

@@ -34,14 +34,16 @@ partial class StatusForm
         lblLastSyncValue = new Label();
         btnSyncNow = new Button();
         btnTestPort = new Button();
+        btnRunDiagnostics = new Button();
         btnClose = new Button();
+        lblDiagnosticsHint = new Label();
         grpStatus.SuspendLayout();
         SuspendLayout();
         // ── Header ────────────────────────────────────────────────────
         lblHeader.Font = new Font("Segoe UI", 13F, FontStyle.Bold);
         lblHeader.Location = new Point(8, 10);
         lblHeader.Name = "lblHeader";
-        lblHeader.Size = new Size(364, 26);
+        lblHeader.Size = new Size(454, 26);
         lblHeader.TabIndex = 0;
         lblHeader.Text = "Connection status";
         // ── grpStatus ─────────────────────────────────────────────────
@@ -61,7 +63,7 @@ partial class StatusForm
         grpStatus.Controls.Add(lblLastSyncValue);
         grpStatus.Location = new Point(8, 44);
         grpStatus.Name = "grpStatus";
-        grpStatus.Size = new Size(364, 236);
+        grpStatus.Size = new Size(454, 236);
         grpStatus.TabIndex = 1;
         grpStatus.TabStop = false;
         grpStatus.Text = "Sync chain";
@@ -149,35 +151,51 @@ partial class StatusForm
         lblLastSyncValue.TabIndex = 13;
         lblLastSyncValue.Text = "-";
         lblLastSyncValue.TextAlign = ContentAlignment.MiddleLeft;
+        // ── Diagnostics hint (shown only when a cycle looks wrong; color set in StatusForm) ──
+        lblDiagnosticsHint.Location = new Point(8, 288);
+        lblDiagnosticsHint.Name = "lblDiagnosticsHint";
+        lblDiagnosticsHint.Size = new Size(454, 22);
+        lblDiagnosticsHint.TabIndex = 14;
+        lblDiagnosticsHint.Text = "Something looks off. Click Run Diagnostics for details.";
+        lblDiagnosticsHint.TextAlign = ContentAlignment.MiddleLeft;
+        lblDiagnosticsHint.Visible = false;
         // ── Buttons ───────────────────────────────────────────────────
-        btnSyncNow.Location = new Point(8, 290);
+        btnSyncNow.Location = new Point(8, 320);
         btnSyncNow.Name = "btnSyncNow";
         btnSyncNow.Size = new Size(96, 28);
         btnSyncNow.TabIndex = 2;
         btnSyncNow.Text = "Sync Now";
         btnSyncNow.Click += btnSyncNow_Click;
-        btnTestPort.Location = new Point(112, 290);
+        btnTestPort.Location = new Point(112, 320);
         btnTestPort.Name = "btnTestPort";
         btnTestPort.Size = new Size(96, 28);
         btnTestPort.TabIndex = 3;
         btnTestPort.Text = "Test Port";
         btnTestPort.Click += btnTestPort_Click;
+        btnRunDiagnostics.Location = new Point(216, 320);
+        btnRunDiagnostics.Name = "btnRunDiagnostics";
+        btnRunDiagnostics.Size = new Size(118, 28);
+        btnRunDiagnostics.TabIndex = 4;
+        btnRunDiagnostics.Text = "Run Diagnostics";
+        btnRunDiagnostics.Click += btnRunDiagnostics_Click;
         btnClose.DialogResult = DialogResult.Cancel;
-        btnClose.Location = new Point(290, 290);
+        btnClose.Location = new Point(380, 320);
         btnClose.Name = "btnClose";
         btnClose.Size = new Size(82, 28);
-        btnClose.TabIndex = 4;
+        btnClose.TabIndex = 5;
         btnClose.Text = "Close";
         btnClose.Click += btnClose_Click;
         // ── StatusForm ────────────────────────────────────────────────
         AutoScaleDimensions = new SizeF(7F, 15F);
         AutoScaleMode = AutoScaleMode.Font;
         CancelButton = btnClose;
-        ClientSize = new Size(380, 326);
+        ClientSize = new Size(470, 356);
         Controls.Add(lblHeader);
         Controls.Add(grpStatus);
+        Controls.Add(lblDiagnosticsHint);
         Controls.Add(btnSyncNow);
         Controls.Add(btnTestPort);
+        Controls.Add(btnRunDiagnostics);
         Controls.Add(btnClose);
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
@@ -209,5 +227,7 @@ partial class StatusForm
     private Label    lblLastSyncValue;
     private Button   btnSyncNow;
     private Button   btnTestPort;
+    private Button   btnRunDiagnostics;
     private Button   btnClose;
+    private Label    lblDiagnosticsHint;
 }

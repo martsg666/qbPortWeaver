@@ -9,6 +9,15 @@ public partial class WhatsNewForm : Form
         "If you find qbPortWeaver useful, please star it on GitHub.";
 
     private const string ReleaseFeaturesText =
+        "New in 2.6.0\n\n" +
+        "One-click diagnostics\n" +
+        "The Status panel has a new Run Diagnostics button that checks your entire port-sync setup in one " +
+        "pass and shows a pass, warning, or fail result for each step: VPN connected and forwarding a port, " +
+        "client running and reachable, ports in sync, client bound to the VPN adapter, and the port " +
+        "reachable from the Internet. Each result includes a short hint on how to fix it, and a Copy Report " +
+        "button puts the whole report on your clipboard for pasting into a support request. It is read-only " +
+        "- it never changes your port or restarts anything.\n\n" +
+        "Previously released\n\n" +
         "New in 2.5.8\n\n" +
         "Test your port on demand\n" +
         "The Status panel now has a Test Port button that checks whether your listening port is reachable " +
@@ -25,7 +34,6 @@ public partial class WhatsNewForm : Form
         "automatically, in both log-file and NAT-PMP modes. After switching to one of these protocols, " +
         "reselect the active adapter wherever you have pinned it - the NAT-PMP Adapter setting and your " +
         "client's network interface binding.\n\n" +
-        "Previously released\n\n" +
         "New in 2.5.7\n\n" +
         "Status panel\n" +
         "A new Status window shows the live state of your port sync at a glance: your VPN provider and " +

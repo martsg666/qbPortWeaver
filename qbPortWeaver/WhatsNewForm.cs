@@ -230,7 +230,7 @@ public partial class WhatsNewForm : Form
         base.OnLoad(e);
         _isDarkMode = AppConstants.IsDarkModeEnabled();
         rtbFeatures.Font = Font;
-        rtbFeatures.ForeColor = SystemColors.WindowText; // native, mode-aware under SetColorMode
+        rtbFeatures.ForeColor = SystemColors.ControlText; // match the group box (mode-aware, blends in)
         if (_isDarkMode)
             lnkCommunity.LinkColor = AppConstants.LinkDark;
         RenderFeatures();

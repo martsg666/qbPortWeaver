@@ -947,7 +947,7 @@ public partial class LogViewerForm : Form
     }
 
     // Convenience colour for meta/status messages (not log entries)
-    private Color MetaColor => SystemColors.GrayText; // mode-aware under SetColorMode
+    private static Color MetaColor => SystemColors.GrayText; // mode-aware under SetColorMode
 
     // Writes the RTF document header for BuildRtf:
     // Unicode-safe, Consolas 9pt (18 half-points), no paragraph spacing, colour table.

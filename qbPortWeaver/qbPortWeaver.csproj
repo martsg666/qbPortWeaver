@@ -27,7 +27,7 @@
          S1215 - intentional GC after explicit large release on log viewer close (LogViewerForm.cs)
          S2068 - registry key name contains "Password", value is masked (PortSyncService.cs)
          S2221 - bare catch before LogManager is initialized; any failure must fall back safely (Program.cs)
-         S2325 - WinForms handlers and helpers that access instance members (Close, Invoke, ShowBalloonTip, UseWaitCursor/IsDisposed) cannot be static (MainForm.cs, AboutForm.cs, MediaManagerForm.cs, SettingsForm.cs, WhatsNewForm.cs)
+         S2325 - handlers/helpers that access instance members (Close, Invoke, ShowBalloonTip, UseWaitCursor/IsDisposed, or a called instance method) cannot be static (MainForm.cs, AboutForm.cs, MediaManagerForm.cs, SettingsForm.cs, WhatsNewForm.cs, TransmissionClient.cs)
          S2486 - same as S108, SonarCloud cloud rule counterpart (BitTorrentClientBase.cs, TransmissionClient.cs)
          S2589 - defensive runtime fallback after a Debug.Assert that only fires in dev builds (WhatsNewForm.cs)
          S3881 - abstract base class; all sealed subclasses have no additional disposable resources (BitTorrentClientBase.cs)

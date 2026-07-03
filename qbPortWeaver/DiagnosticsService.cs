@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.ServiceProcess;
 
 namespace qbPortWeaver;
@@ -192,7 +193,7 @@ public static class DiagnosticsService
             results.Add(new(Checks.PortReachable, DiagnosticStatus.Skip, "Client unreachable"));
             return;
         }
-        results.Add(new(Checks.ClientReachable, DiagnosticStatus.Pass, $"{client.ClientName} reachable, listening on port {cp}"));
+        results.Add(new(Checks.ClientReachable, DiagnosticStatus.Pass, $"{client.ClientName} reachable; listening port is {cp}"));
 
         AddInSyncResult(results, cp, vpnPort);
         if (client.SupportsInterfaceMismatchWarning)
@@ -249,9 +250,62 @@ public static class DiagnosticsService
         if (open == true)
             results.Add(new(Checks.PortReachable, DiagnosticStatus.Pass, "Listening port is reachable from the Internet"));
         else if (open == false)
-            results.Add(new(Checks.PortReachable, DiagnosticStatus.Warn, "Listening port appears closed from the Internet",
-                "Allow a moment after a port change. qBittorrent infers this from incoming connections, so an idle client may report closed."));
+        {
+            // qBittorrent deduces reachability from incoming connections (so an idle client reads
+            // closed); Transmission and Deluge actively probe via their online check services.
+            string hint = client is QBittorrentClient
+                ? "Allow a moment after a port change. qBittorrent infers this from incoming connections, so an idle client may report closed."
+                : "Allow a moment after a port change, then re-run. A persistently closed port usually means port forwarding is not active on the VPN.";
+            results.Add(new(Checks.PortReachable, DiagnosticStatus.Warn, "Listening port appears closed from the Internet", hint));
+        }
         else
             results.Add(new(Checks.PortReachable, DiagnosticStatus.Skip, "Could not determine (client, internet, or port-check service unavailable)"));
+    }
+
+    /// <summary>The running app's version (e.g. "2.6.0"), for the diagnostics header and report.</summary>
+    internal static string AppVersion => AppConstants.AppVersion;
+
+    /// <summary>
+    /// The installed helper service's file version, or <see langword="null"/> when the service is not
+    /// installed or its executable cannot be read. Read from the service's on-disk ImagePath so it
+    /// reflects the actually-installed helper (surfacing a version mismatch after a partial upgrade).
+    /// </summary>
+    internal static string? GetHelperServiceVersion()
+    {
+        try
+        {
+            string? exe = AppConstants.GetServiceExePath(HelperProtocol.PipeName);
+            if (exe is null || !File.Exists(exe)) return null;
+            string? raw = FileVersionInfo.GetVersionInfo(exe).FileVersion;
+            if (string.IsNullOrWhiteSpace(raw)) return null;
+            // Normalise to Major.Minor.Build so it matches the app version's format ("2.6.0", not "2.6.0.0").
+            return Version.TryParse(raw, out var v) ? $"{v.Major}.{v.Minor}.{Math.Max(v.Build, 0)}" : raw;
+        }
+        catch (Exception ex)
+        {
+            LogManager.Instance.LogDebug($"DiagnosticsService.GetHelperServiceVersion: {ex.Message}");
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Returns the port-sync-relevant registry settings (general, the active client, and extra),
+    /// grouped by section, for the diagnostics report. Sensitive values are masked; sections with no
+    /// stored values are omitted.
+    /// </summary>
+    internal static IReadOnlyList<(string Section, IReadOnlyList<(string Key, string Value)> Values)> GetSettingsSnapshot()
+    {
+        string clientSetting = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyBitTorrentClient);
+        var (activeClientSection, _, _) = ResolveClient(clientSetting);
+
+        string[] sections = [RegistrySettingsManager.SectionGeneral, activeClientSection, RegistrySettingsManager.SectionExtra];
+        var snapshot = new List<(string Section, IReadOnlyList<(string Key, string Value)> Values)>();
+        foreach (var section in sections)
+        {
+            var values = RegistrySettingsManager.GetSectionSnapshot(section);
+            if (values.Count > 0)
+                snapshot.Add((section, values));
+        }
+        return snapshot;
     }
 }

@@ -179,9 +179,19 @@ public static class AppConstants
     /// Reads the <c>ImagePath</c> for the named Windows service from the registry and returns
     /// the directory containing the service executable, or <see langword="null"/> if the
     /// service key is absent or the path cannot be resolved.
-    /// Handles quoted paths and trailing arguments: <c>"C:\path\exe.exe" -arg</c>.
     /// </summary>
     internal static string? GetServiceExeDirectory(string serviceName)
+    {
+        string? exePath = GetServiceExePath(serviceName);
+        return exePath is null ? null : Path.GetDirectoryName(exePath);
+    }
+
+    /// <summary>
+    /// Reads the <c>ImagePath</c> for the named Windows service from the registry and returns the
+    /// full path to the service executable, or <see langword="null"/> if the service key is absent
+    /// or the path cannot be resolved. Handles quoted paths and trailing arguments: <c>"C:\path\exe.exe" -arg</c>.
+    /// </summary>
+    internal static string? GetServiceExePath(string serviceName)
     {
         try
         {
@@ -200,11 +210,11 @@ public static class AppConstants
                 if (space > 0) imagePath = imagePath[..space];
             }
 
-            return Path.GetDirectoryName(Path.GetFullPath(imagePath));
+            return Path.GetFullPath(imagePath);
         }
         catch (Exception ex)
         {
-            LogManager.Instance.LogDebug($"AppConstants.GetServiceExeDirectory: {serviceName} - {ex.Message}");
+            LogManager.Instance.LogDebug($"AppConstants.GetServiceExePath: {serviceName} - {ex.Message}");
             return null;
         }
     }

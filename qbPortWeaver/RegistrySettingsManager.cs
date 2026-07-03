@@ -323,6 +323,31 @@ public static class RegistrySettingsManager
         return fallback;
     }
 
+    /// <summary>
+    /// Returns every stored key/value in a section, sorted by key, with sensitive values (passwords,
+    /// API keys, tokens) masked as <c>***</c>. Intended for the diagnostics report. Returns an empty
+    /// list when the section has no stored values or cannot be read.
+    /// </summary>
+    internal static IReadOnlyList<(string Key, string Value)> GetSectionSnapshot(string section)
+    {
+        var result = new List<(string Key, string Value)>();
+        try
+        {
+            using var regKey = Registry.CurrentUser.OpenSubKey($@"{BaseKeyPath}\{section}");
+            if (regKey is null) return result;
+            foreach (var name in regKey.GetValueNames().OrderBy(n => n, StringComparer.OrdinalIgnoreCase))
+            {
+                string value = regKey.GetValue(name)?.ToString() ?? string.Empty;
+                result.Add((name, MaskSensitiveValue(name, value)));
+            }
+        }
+        catch (Exception ex)
+        {
+            LogManager.Instance.LogDebug($"RegistrySettingsManager.GetSectionSnapshot: [{section}] - {ex.Message}");
+        }
+        return result;
+    }
+
     /// <summary>Reads a bool value from the registry. Returns the registered default if the key is missing or not parseable.</summary>
     public static bool GetBool(string section, string key)
     {

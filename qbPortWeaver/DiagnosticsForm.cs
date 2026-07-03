@@ -10,10 +10,17 @@ namespace qbPortWeaver;
 /// </summary>
 internal sealed class DiagnosticsForm : Form
 {
+    // Paragraph indent (pixels) for the detail/hint lines under each check - keeps wrapped lines aligned.
+    private const int DetailIndentPixels = 22;
+
     private readonly bool _isDarkMode;
+    // Resolved once when the dialog is created (a re-run keeps the same process, so these do not change).
+    private readonly string _appVersion = DiagnosticsService.AppVersion;
+    private readonly string? _helperVersion = DiagnosticsService.GetHelperServiceVersion();
     private IReadOnlyList<DiagnosticResult> _results;
     private DateTime _ranAt;
     private RichTextBox _report = null!;
+    private Font? _reportFont; // owned by this form (a Font assigned to a control is not auto-disposed)
     private Button _btnRerun = null!;
 
     /// <summary>Raised when the user clicks Re-run. MainForm handles it by re-running the diagnostics
@@ -39,11 +46,17 @@ internal sealed class DiagnosticsForm : Form
         AutoScaleMode = AutoScaleMode.Font;
         // Sized to show a full 10-check report without scrolling in the common case; still resizable
         // and scrollable for a report with many fix hints.
-        ClientSize = new Size(560, 640);
+        ClientSize = new Size(560, 720);
         MinimumSize = new Size(460, 400);
 
         BuildControls();
         RenderReport();
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        base.Dispose(disposing);
+        if (disposing) _reportFont?.Dispose();
     }
 
     /// <summary>Replaces the displayed report with a fresh run's results (updates the timestamp too).</summary>
@@ -70,11 +83,13 @@ internal sealed class DiagnosticsForm : Form
         Color bg = _isDarkMode ? AppConstants.DarkModeBackground : SystemColors.Window;
         BackColor = bg;
 
+        _reportFont = new Font(Font.FontFamily, Font.Size + 1f);
         _report = new RichTextBox
         {
             ReadOnly = true,
             BorderStyle = BorderStyle.None,
             BackColor = bg,
+            Font = _reportFont,
             TabStop = false,
             Location = new Point(12, 12),
             Size = new Size(ClientSize.Width - 24, ClientSize.Height - 60),
@@ -136,27 +151,43 @@ internal sealed class DiagnosticsForm : Form
         _report.Clear();
         _report.ForeColor = textColor;
 
+        // Summary line with colored counts; a zero count stays neutral so "0 failed" is not an alarming red.
+        _report.SelectionIndent = 0;
         _report.SelectionFont = summaryFont;
-        _report.SelectionColor = textColor;
-        _report.AppendText($"{pass} passed, {warn} warning(s), {fail} failed\n\n");
+        AppendColored($"{pass} passed", PassColor);
+        AppendColored(", ", textColor);
+        AppendColored($"{warn} warning{(warn == 1 ? "" : "s")}", warn > 0 ? WarnColor : metaColor);
+        AppendColored(", ", textColor);
+        AppendColored($"{fail} failed\n", fail > 0 ? FailColor : metaColor);
+
+        // Version subline: app and installed helper-service versions (surfaces a post-upgrade mismatch).
+        _report.SelectionFont = _report.Font;
+        _report.SelectionColor = metaColor;
+        // Blank line before the version subline (space above it, not below), one blank line after.
+        _report.AppendText($"\n{AppIdentity.AppName} {_appVersion}   •   Helper service {_helperVersion ?? "not installed"}\n\n");
 
         foreach (var r in _results)
         {
             var (glyph, color) = GlyphFor(r.Status);
+            _report.SelectionIndent = 0;
             _report.SelectionFont = boldFont;
             _report.SelectionColor = color;
             _report.AppendText($"{glyph}  ");
             _report.SelectionColor = textColor;
             _report.AppendText($"{r.Check}\n");
 
+            // Indent the detail/hint paragraphs so a wrapped second line stays aligned under the
+            // first instead of falling back to the left margin (leading spaces only indent line one).
+            _report.SelectionIndent = DetailIndentPixels;
             _report.SelectionFont = _report.Font;
             _report.SelectionColor = textColor;
-            _report.AppendText($"      {r.Detail}\n");
+            _report.AppendText($"{r.Detail}\n");
             if (!string.IsNullOrEmpty(r.Hint))
             {
                 _report.SelectionColor = metaColor;
-                _report.AppendText($"      {r.Hint}\n");
+                _report.AppendText($"{r.Hint}\n");
             }
+            _report.SelectionIndent = 0;
             _report.AppendText("\n");
         }
 
@@ -172,11 +203,23 @@ internal sealed class DiagnosticsForm : Form
         _ => ("–", _isDarkMode ? AppConstants.DarkModeSecondaryText : SystemColors.GrayText),
     };
 
+    private Color PassColor => _isDarkMode ? AppConstants.StatusOk : AppConstants.StatusOkLight;
+    private Color WarnColor => _isDarkMode ? AppConstants.StatusWarning : AppConstants.StatusWarningLight;
+    private static Color FailColor => AppConstants.StatusError;
+
+    // Appends a colored run at the current caret, keeping the active SelectionFont.
+    private void AppendColored(string text, Color color)
+    {
+        _report.SelectionColor = color;
+        _report.AppendText(text);
+    }
+
     // Plain-text version for the Copy Report button - safe to paste into a GitHub issue.
     private string BuildPlainReport()
     {
         var sb = new StringBuilder();
-        sb.AppendLine($"{AppIdentity.AppName} {AppConstants.AppVersion} diagnostics - {_ranAt:yyyy-MM-dd HH:mm:ss}");
+        sb.AppendLine($"{AppIdentity.AppName} {_appVersion} diagnostics - {_ranAt:yyyy-MM-dd HH:mm:ss}");
+        sb.AppendLine($"Helper service: {_helperVersion ?? "not installed"}");
         sb.AppendLine();
         foreach (var r in _results)
         {
@@ -190,6 +233,20 @@ internal sealed class DiagnosticsForm : Form
             sb.AppendLine($"[{tag}] {r.Check}: {r.Detail}");
             if (!string.IsNullOrEmpty(r.Hint))
                 sb.AppendLine($"       {r.Hint}");
+        }
+
+        // Settings (sensitive values masked) so a pasted report is self-contained for a bug report.
+        var snapshot = DiagnosticsService.GetSettingsSnapshot();
+        if (snapshot.Count > 0)
+        {
+            sb.AppendLine();
+            sb.AppendLine("Settings:");
+            foreach (var (section, values) in snapshot)
+            {
+                sb.AppendLine($"  [{section}]");
+                foreach (var (key, value) in values)
+                    sb.AppendLine($"    {key} = {value}");
+            }
         }
         return sb.ToString();
     }

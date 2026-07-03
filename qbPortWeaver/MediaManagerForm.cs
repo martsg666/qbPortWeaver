@@ -453,11 +453,19 @@ public partial class MediaManagerForm : Form
             return;
         }
 
+        // Mode-aware confirmation: only Move removes the source, so only Move is truly irreversible.
+        // Hardlink and Copy leave the source in place, so a plainer prompt avoids over-warning.
+        var importMode = MediaManagerService.ParseImportMode(cboImportMode.SelectedItem?.ToString() ?? RegistrySettingsManager.ImportModeHardlink);
+        string fileCount = $"{toApply.Count} file{(toApply.Count == 1 ? "" : "s")}";
+        var (message, icon) = importMode == ImportMode.Move
+            ? ($"{fileCount} will be moved into the library and removed from the source folder. This cannot be undone.\n\nContinue?", MessageBoxIcon.Warning)
+            : ($"{fileCount} will be imported into the library.\n\nContinue?", MessageBoxIcon.Question);
+
         var confirm = MessageBox.Show(
-            $"{toApply.Count} file{(toApply.Count == 1 ? "" : "s")} will be imported. This cannot be undone.\n\nContinue?",
+            message,
             $"{AppIdentity.AppName} | Media Manager",
             MessageBoxButtons.YesNo,
-            MessageBoxIcon.Warning);
+            icon);
 
         if (confirm != DialogResult.Yes) return;
 

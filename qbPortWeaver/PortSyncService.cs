@@ -197,41 +197,48 @@ public sealed class PortSyncService
             {
                 StatusManager.Write(status);
                 LogCycleOutcome(status[StatusKeys.Status] as string);
-
-                bool success = status[StatusKeys.Status] as string == SyncStatusValues.Success;
-
-                // Run the post-update command AFTER the status file is written, so a script that reads
-                // the status file (e.g. an email notifier) sees this cycle's fresh result rather than
-                // the previous cycle's. Fires only on a successful port change. Read fresh from the
-                // registry here since the cycle's SyncConfig is not in scope in this outer finally.
-                if (success && status[StatusKeys.PortChanged] is true)
-                {
-                    string postUpdateCmd = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionExtra, RegistrySettingsManager.KeyPostUpdateCmd);
-                    if (!string.IsNullOrWhiteSpace(postUpdateCmd))
-                        RunPostUpdateCommand(postUpdateCmd);
-                }
-
-                bool vpnConnected = status[StatusKeys.VpnConnected] is true;
-                int? port = status[StatusKeys.ClientPort] as int?;
-                string message = status[StatusKeys.Message] as string ?? string.Empty;
-                string? provider = status[StatusKeys.VpnProvider] as string;
-                bool isDisabled = string.Equals(provider, RegistrySettingsManager.VpnProviderDisabled, StringComparison.OrdinalIgnoreCase);
-                // An unrecognized provider value (only reachable via a manual registry edit) is a
-                // configuration error, not a disconnection - surface it as Error so the tray shows
-                // red with the "not recognized" message rather than orange "VPN not connected".
-                bool isKnownProvider = isDisabled || IsRecognizedProvider(provider);
-
-                SyncState state;
-                if (isDisabled) state = SyncState.Disabled;
-                else if (!isKnownProvider) state = SyncState.Error;
-                else if (!vpnConnected) state = SyncState.VpnDisconnected;
-                else if (success) state = SyncState.Synced;
-                else state = SyncState.Error;
-
-                try { SyncCompleted?.Invoke(new TrayStatus(state, port, message)); }
-                catch (Exception ex) { LogManager.Instance.LogMessage($"SyncCompleted handler failed: {ex.Message}", LogLevel.Warn); }
+                LaunchPostUpdateCommandIfChanged(status);
+                RaiseSyncCompleted(status);
             }
         }
+    }
+
+    // Launches the post-update command after the status file has been written, so a script that reads
+    // the status file (e.g. an email notifier) sees this cycle's result rather than the previous cycle's.
+    // Fires only on a successful port change. Read fresh from the registry since the cycle's SyncConfig
+    // is not in scope in RunAsync's finally.
+    private static void LaunchPostUpdateCommandIfChanged(Dictionary<string, object?> status)
+    {
+        if (status[StatusKeys.Status] as string != SyncStatusValues.Success || status[StatusKeys.PortChanged] is not true)
+            return;
+        string postUpdateCmd = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionExtra, RegistrySettingsManager.KeyPostUpdateCmd);
+        if (!string.IsNullOrWhiteSpace(postUpdateCmd))
+            RunPostUpdateCommand(postUpdateCmd);
+    }
+
+    // Maps the finalized status dictionary to a tray SyncState and raises the SyncCompleted event.
+    private void RaiseSyncCompleted(Dictionary<string, object?> status)
+    {
+        bool success = status[StatusKeys.Status] as string == SyncStatusValues.Success;
+        bool vpnConnected = status[StatusKeys.VpnConnected] is true;
+        int? port = status[StatusKeys.ClientPort] as int?;
+        string message = status[StatusKeys.Message] as string ?? string.Empty;
+        string? provider = status[StatusKeys.VpnProvider] as string;
+        bool isDisabled = string.Equals(provider, RegistrySettingsManager.VpnProviderDisabled, StringComparison.OrdinalIgnoreCase);
+        // An unrecognized provider value (only reachable via a manual registry edit) is a
+        // configuration error, not a disconnection - surface it as Error so the tray shows
+        // red with the "not recognized" message rather than orange "VPN not connected".
+        bool isKnownProvider = isDisabled || IsRecognizedProvider(provider);
+
+        SyncState state;
+        if (isDisabled) state = SyncState.Disabled;
+        else if (!isKnownProvider) state = SyncState.Error;
+        else if (!vpnConnected) state = SyncState.VpnDisconnected;
+        else if (success) state = SyncState.Synced;
+        else state = SyncState.Error;
+
+        try { SyncCompleted?.Invoke(new TrayStatus(state, port, message)); }
+        catch (Exception ex) { LogManager.Instance.LogMessage($"SyncCompleted handler failed: {ex.Message}", LogLevel.Warn); }
     }
 
     // Core logic separated so the outer method handles status writing via finally

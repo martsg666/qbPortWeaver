@@ -299,6 +299,11 @@ public static class AppConstants
     public static readonly Color StatusError        = Color.Red;  // same in both modes
     public static readonly Color StatusPaused       = Color.Gray; // same in both modes; tray dot only
 
+    // Mode-resolved status accents: pick the dark or light variant for the active OS theme, so callers
+    // outside a hot path can use these instead of hand-writing the dark/light ternary.
+    public static Color StatusOk      => IsDarkModeEnabled() ? StatusOkDark : StatusOkLight;
+    public static Color StatusWarning => IsDarkModeEnabled() ? StatusWarningDark : StatusWarningLight;
+
     // Tray icon dot border
     public static readonly Color TrayIconDotBorder = Color.FromArgb(60, 60, 60);
 

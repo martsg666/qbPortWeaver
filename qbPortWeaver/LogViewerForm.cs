@@ -236,33 +236,36 @@ public partial class LogViewerForm : Form
     // Applies theme colors to the background, filter buttons, and search controls
     private void ApplyTheme()
     {
-        // Native surface colors: SystemColors track the active dark/light mode under Application.SetColorMode,
-        // so the viewer matches the rest of the app. Only the per-level filter buttons use accent colors.
-        Color bg = SystemColors.Window;
+        // Native surface colors: SystemColors track the active dark/light mode under Application.SetColorMode.
+        // Chrome and the read-only log use the dialog surface (Control) so the viewer matches the rest of the
+        // app; editable fields use the input surface (Window) like every other form. Only the per-level
+        // filter buttons use accent colors.
+        Color surface = SystemColors.Control;
+        Color input = SystemColors.Window;
         Color fg = SystemColors.WindowText;
         Color border = SystemColors.ControlDark;
 
-        BackColor = bg;
-        pnlToolbar.BackColor = bg;
-        rtbLog.BackColor = bg;
+        BackColor = surface;
+        pnlToolbar.BackColor = surface;
+        rtbLog.BackColor = surface;
 
         ApplyFilterButtonStyle(chkError, _themeColors[0]);
         ApplyFilterButtonStyle(chkWarn, _themeColors[1]);
         ApplyFilterButtonStyle(chkInfo, _themeColors[2]);
         ApplyFilterButtonStyle(chkDebug, _themeColors[3]);
 
-        cboSubsystem.BackColor = bg;
+        cboSubsystem.BackColor = input;
         cboSubsystem.ForeColor = fg;
 
-        cboLogFile.BackColor = bg;
+        cboLogFile.BackColor = input;
         cboLogFile.ForeColor = fg;
 
-        txtSearch.BackColor = bg;
+        txtSearch.BackColor = input;
         txtSearch.ForeColor = fg;
 
         foreach (var btn in new[] { btnPrev, btnNext, btnIssuePrev, btnIssueNext })
         {
-            btn.BackColor = bg;
+            btn.BackColor = surface;
             btn.ForeColor = fg;
             btn.FlatAppearance.BorderColor = border;
         }
@@ -272,7 +275,7 @@ public partial class LogViewerForm : Form
         btnClearSearch.ForeColor = SystemColors.GrayText;
         btnClearSearch.FlatAppearance.BorderSize = 0;
 
-        lblMatchCount.BackColor = bg;
+        lblMatchCount.BackColor = surface;
         lblMatchCount.ForeColor = SystemColors.GrayText;
     }
 

@@ -13,7 +13,6 @@ internal sealed class DiagnosticsForm : Form
     // Paragraph indent (pixels) for the detail/hint lines under each check - keeps wrapped lines aligned.
     private const int DetailIndentPixels = 22;
 
-    private readonly bool _isDarkMode;
     // Resolved once when the dialog is created (a re-run keeps the same process, so these do not change).
     private readonly string _appVersion = DiagnosticsService.AppVersion;
     private readonly string? _helperVersion = DiagnosticsService.GetHelperServiceVersion();
@@ -31,7 +30,6 @@ internal sealed class DiagnosticsForm : Form
     {
         _results = results;
         _ranAt = DateTime.Now;
-        _isDarkMode = AppConstants.IsDarkModeEnabled();
 
         Text = $"{AppIdentity.AppName} | Diagnostics ({_ranAt:HH:mm:ss})";
         FormBorderStyle = FormBorderStyle.FixedDialog;
@@ -72,16 +70,16 @@ internal sealed class DiagnosticsForm : Form
 
     private void BuildControls()
     {
-        // Native surface colors so the report matches the rest of the app under Application.SetColorMode
-        // (SystemColors track the active dark/light mode); only the status glyphs use accent colors.
-        Color bg = SystemColors.Window;
-        BackColor = bg;
+        // Control is the shared dialog surface, mode-aware under Application.SetColorMode, so the report
+        // matches the rest of the app; only the status glyphs use accent colors. The RichTextBox needs it
+        // set explicitly - it defaults to SystemColors.Window and does not inherit the form's BackColor.
+        BackColor = SystemColors.Control;
 
         _report = new RichTextBox
         {
             ReadOnly = true,
             BorderStyle = BorderStyle.None,
-            BackColor = bg,
+            BackColor = SystemColors.Control,
             TabStop = false,
             Location = new Point(12, 12),
             Size = new Size(ClientSize.Width - 24, ClientSize.Height - 60),
@@ -205,16 +203,16 @@ internal sealed class DiagnosticsForm : Form
         ClientSize = new Size(ClientSize.Width, height);
     }
 
-    private (string Glyph, Color Color) GlyphFor(DiagnosticStatus status) => status switch
+    private static (string Glyph, Color Color) GlyphFor(DiagnosticStatus status) => status switch
     {
-        DiagnosticStatus.Pass => ("✓", _isDarkMode ? AppConstants.StatusOkDark : AppConstants.StatusOkLight),
-        DiagnosticStatus.Warn => ("⚠", _isDarkMode ? AppConstants.StatusWarningDark : AppConstants.StatusWarningLight),
-        DiagnosticStatus.Fail => ("✗", AppConstants.StatusError),
+        DiagnosticStatus.Pass => ("✓", PassColor),
+        DiagnosticStatus.Warn => ("⚠", WarnColor),
+        DiagnosticStatus.Fail => ("✗", FailColor),
         _ => ("–", SystemColors.GrayText),
     };
 
-    private Color PassColor => _isDarkMode ? AppConstants.StatusOkDark : AppConstants.StatusOkLight;
-    private Color WarnColor => _isDarkMode ? AppConstants.StatusWarningDark : AppConstants.StatusWarningLight;
+    private static Color PassColor => AppConstants.StatusOk;
+    private static Color WarnColor => AppConstants.StatusWarning;
     private static Color FailColor => AppConstants.StatusError;
 
     // Appends a colored run at the current caret, keeping the active SelectionFont.

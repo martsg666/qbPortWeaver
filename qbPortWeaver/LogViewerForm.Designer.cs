@@ -232,7 +232,7 @@ partial class LogViewerForm
         rtbLog.ContextMenuStrip = ctxLog;
 
         // rtbLog
-        rtbLog.BackColor        = System.Drawing.SystemColors.Window;
+        rtbLog.BackColor        = System.Drawing.SystemColors.Control;
         rtbLog.BorderStyle      = System.Windows.Forms.BorderStyle.None;
         rtbLog.Dock             = System.Windows.Forms.DockStyle.Fill;
         rtbLog.Font             = new System.Drawing.Font("Consolas", 9F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point);

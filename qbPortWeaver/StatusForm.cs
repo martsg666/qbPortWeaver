@@ -8,8 +8,6 @@ namespace qbPortWeaver;
 /// </summary>
 public partial class StatusForm : Form
 {
-    private bool _isDarkMode;
-
     /// <summary>Raised when the user clicks Sync Now. MainForm handles it by triggering an immediate
     /// sync cycle; the resulting cycle completion repaints this panel via <see cref="RefreshStatus"/>.</summary>
     public event EventHandler? SyncRequested;
@@ -33,7 +31,6 @@ public partial class StatusForm : Form
     protected override void OnLoad(EventArgs e)
     {
         base.OnLoad(e);
-        _isDarkMode = AppConstants.IsDarkModeEnabled();
         RefreshStatus();
     }
 
@@ -175,8 +172,8 @@ public partial class StatusForm : Form
     }
 
     // Accent colors follow AboutForm: brighter variants in dark mode, deeper ones in light mode.
-    private Color OkColor => _isDarkMode ? AppConstants.StatusOkDark : AppConstants.StatusOkLight;
-    private Color WarnColor => _isDarkMode ? AppConstants.StatusWarningDark : AppConstants.StatusWarningLight;
+    private static Color OkColor => AppConstants.StatusOk;
+    private static Color WarnColor => AppConstants.StatusWarning;
     private static Color ErrorColor => AppConstants.StatusError;
     private static Color NeutralColor => SystemColors.GrayText;
 

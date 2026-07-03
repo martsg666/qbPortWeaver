@@ -136,14 +136,14 @@ public partial class AboutForm : Form
         if (info.IsNewer)
         {
             lblStatusValue.Text = "Update available";
-            lblStatusValue.ForeColor = _isDarkMode ? AppConstants.StatusWarningDark : AppConstants.StatusWarningLight;
+            lblStatusValue.ForeColor = AppConstants.StatusWarning;
             btnCheckForUpdates.Text = "Update";
             _availableUpdate = info;
         }
         else
         {
             lblStatusValue.Text = "Up to date";
-            lblStatusValue.ForeColor = _isDarkMode ? AppConstants.StatusOkDark : AppConstants.StatusOkLight;
+            lblStatusValue.ForeColor = AppConstants.StatusOk;
             btnCheckForUpdates.Text = "Check for Updates";
         }
     }

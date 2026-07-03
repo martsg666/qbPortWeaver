@@ -199,6 +199,18 @@ public sealed class PortSyncService
                 LogCycleOutcome(status[StatusKeys.Status] as string);
 
                 bool success = status[StatusKeys.Status] as string == SyncStatusValues.Success;
+
+                // Run the post-update command AFTER the status file is written, so a script that reads
+                // the status file (e.g. an email notifier) sees this cycle's fresh result rather than
+                // the previous cycle's. Fires only on a successful port change. Read fresh from the
+                // registry here since the cycle's SyncConfig is not in scope in this outer finally.
+                if (success && status[StatusKeys.PortChanged] is true)
+                {
+                    string postUpdateCmd = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionExtra, RegistrySettingsManager.KeyPostUpdateCmd);
+                    if (!string.IsNullOrWhiteSpace(postUpdateCmd))
+                        RunPostUpdateCommand(postUpdateCmd);
+                }
+
                 bool vpnConnected = status[StatusKeys.VpnConnected] is true;
                 int? port = status[StatusKeys.ClientPort] as int?;
                 string message = status[StatusKeys.Message] as string ?? string.Empty;
@@ -862,8 +874,8 @@ public sealed class PortSyncService
         catch (Exception ex) { LogManager.Instance.LogMessage($"PortUpdated handler failed: {ex.Message}", LogLevel.Warn); }
     }
 
-    // Sets the listening port, optionally restarts the client and runs the post-update command.
-    // Returns false if any step fails.
+    // Sets the listening port and optionally restarts the client. Returns false if any step fails.
+    // The post-update command is launched later (in RunAsync's finally, after the status file write).
     private static async Task<bool> ApplyPortUpdateAsync(IBitTorrentClient manager, int targetPort, SyncConfig config, Dictionary<string, object?> status, CancellationToken cancellationToken)
     {
         LogManager.Instance.LogMessage($"Ports do not match - updating {manager.ClientName} port to {targetPort}", LogLevel.Info);
@@ -888,10 +900,8 @@ public sealed class PortSyncService
             LogManager.Instance.LogMessage($"Restarted {manager.ClientName}", LogLevel.Info);
         }
 
-        // Run post-update command if configured (fire-and-forget)
-        if (!string.IsNullOrWhiteSpace(config.PostUpdateCommand))
-            RunPostUpdateCommand(config.PostUpdateCommand);
-
+        // The post-update command is launched by the outer finally in RunAsync, after the status file
+        // is written, so a script that reads that file sees this cycle's result (not the prior cycle's).
         return true;
     }
 

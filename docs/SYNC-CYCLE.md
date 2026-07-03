@@ -38,11 +38,8 @@ flowchart TD
 
     UPDATE --> RESTART{Restart enabled?}
     RESTART -- Yes --> DO_RESTART[Restart client]
-    RESTART -- No --> POST_CMD
-    DO_RESTART --> POST_CMD{Post-update command?}
-    POST_CMD -- Yes --> RUN_CMD[Run command fire-and-forget]
-    POST_CMD -- No --> DONE_CHECK
-    RUN_CMD --> DONE_CHECK
+    RESTART -- No --> DONE_CHECK
+    DO_RESTART --> DONE_CHECK
 
     DONE_CHECK{restartOnDisconnect AND\nrestart not attempted this cycle?}
     DONE_CHECK -- Yes --> CONN_STATUS[Check client connection status]
@@ -60,7 +57,10 @@ flowchart TD
     ERROR_CLIENT --> FINALLY
     SKIP --> FINALLY
     SUCCESS --> FINALLY
-    FINALLY([Write status JSON + raise SyncCompleted event])
+    FINALLY([Write status JSON + raise SyncCompleted event]) --> POST_CMD{Successful port change?}
+    POST_CMD -- Yes --> RUN_CMD[Run post-update command fire-and-forget]
+    POST_CMD -- No --> END([Cycle done])
+    RUN_CMD --> END
 ```
 
 ## VPN Manager Creation
@@ -168,15 +168,16 @@ All client communication goes through the `IBitTorrentClient` interface, with im
 
 3. (optional) Show tray balloon tip if NotifyOnPortUpdate is enabled (raises PortUpdated event)
 4. (optional) Restart client process or service (if restart enabled)
-5. (optional) Run post-update shell command
-6. (optional, qBittorrent only) GET /api/v2/transfer/info → check connection_status
+5. (optional, qBittorrent only) GET /api/v2/transfer/info → check connection_status
               If "disconnected" → restart qBittorrent
               Skipped if step 4 already restarted (avoids redundant restart)
-7. (optional) Verify outside reachability of the port (see Port Verification below):
+6. (optional) Verify outside reachability of the port (see Port Verification below):
    GET /api/v2/transfer/info     → connection_status connected/firewalled    [qBittorrent]
    port_test (ip_protocol=ipv4)  → port-is-open                              [Transmission]
    core.test_listen_port         → true/false                                [Deluge]
 ```
+
+> The **post-update command** (if configured) is not part of this sequence: it is launched at the very end of the cycle, *after* the status JSON file is written (see Status Output) and only on a successful port change - so a script that reads the status file sees this cycle's result rather than the previous one.
 
 ### Interface Mismatch Warning *(qBittorrent only)*
 
@@ -298,8 +299,7 @@ RunAsync
          ├─ CheckInterfaceMatch (qBittorrent only)
          ├─ ApplyPortUpdateAsync
          │   ├─ IBitTorrentClient.SetListeningPortAsync
-         │   ├─ IBitTorrentClient.RestartAsync
-         │   └─ RunPostUpdateCommand
+         │   └─ IBitTorrentClient.RestartAsync
          ├─ PortUpdated?.Invoke (if NotifyOnPortUpdate and port changed)
          ├─ CheckAndRestartIfDisconnectedAsync (qBittorrent only; skipped if already restarted)
          │   └─ IBitTorrentClient.RestartAsync
@@ -312,6 +312,8 @@ RunAsync
          │       └─ DispatchRecoveryAsync
          └─ SetSyncResult
 ```
+
+> `RunPostUpdateCommand` is not shown above because it is launched from `RunAsync`'s `finally` block - after `StatusManager.Write` - and only when the port changed this cycle, so a script that reads the status file sees the current cycle's result.
 
 ---
 

@@ -180,7 +180,7 @@ public sealed class TransmissionClient : BitTorrentClientBase
 
     // Runs one port-test RPC. Returns the port-is-open result (null when undeterminable) and whether
     // the daemon rejected the method name (so the caller can fall back to the legacy method).
-    private async Task<(bool? Open, bool MethodUnknown)> RunPortTestAsync(string body, CancellationToken cancellationToken)
+    private async Task<(bool? Open, bool MethodUnknown)> RunPortTestAsync(string body, CancellationToken cancellationToken) // NOSONAR S2325 - calls the instance method SendRpcAsync, so it cannot be static
     {
         using var response = await SendRpcAsync(body, cancellationToken, LogLevel.Debug).ConfigureAwait(false);
         if (response is null || !response.IsSuccessStatusCode) return (null, false);

@@ -163,6 +163,7 @@ internal sealed partial class UpdateAvailableForm : Form
 
     protected override void OnFormClosed(FormClosedEventArgs e)
     {
+        _userCancelled = true; // closing the dialog mid-download is a cancel, not the timeout fallback
         _downloadCts?.Cancel();
         _downloadCts?.Dispose();
         base.OnFormClosed(e);

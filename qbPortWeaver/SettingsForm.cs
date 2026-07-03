@@ -128,12 +128,7 @@ public partial class SettingsForm : Form
             cboVpnProvider.SelectedIndex = 0;
 
         cboBitTorrentClient.Items.Clear();
-        cboBitTorrentClient.Items.AddRange(
-        [
-            RegistrySettingsManager.BitTorrentClientQBittorrent,
-            RegistrySettingsManager.BitTorrentClientTransmission,
-            RegistrySettingsManager.BitTorrentClientDeluge
-        ]);
+        cboBitTorrentClient.Items.AddRange(ClientRegistry.All.Select(c => (object)c.Name).ToArray());
         cboBitTorrentClient.SelectedItem = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyBitTorrentClient);
         if (cboBitTorrentClient.SelectedIndex < 0) cboBitTorrentClient.SelectedIndex = 0;
 

@@ -23,8 +23,7 @@ public partial class MediaManagerForm : Form
     // btnImportNow.Enabled appropriately based on the current grid state.
     private Control[] _busyControls;
 
-    // Row confidence colors - set once in OnLoad based on active theme
-    private bool _isDarkMode;
+    // Row confidence colors - resolved once in OnLoad for the active theme
     private Color _colorUncertain;
     private Color _colorUnmatched;
 
@@ -49,9 +48,8 @@ public partial class MediaManagerForm : Form
     {
         base.OnLoad(e);
         MinimumSize = Size; // lock minimum to initial window size so controls are never clipped
-        _isDarkMode = AppConstants.IsDarkModeEnabled();
-        _colorUncertain = _isDarkMode ? AppConstants.LogWarningDark : AppConstants.LogWarningLight;
-        _colorUnmatched = _isDarkMode ? AppConstants.LogErrorDark : AppConstants.LogErrorLight;
+        _colorUncertain = AppConstants.LogWarning;
+        _colorUnmatched = AppConstants.LogError;
         lblLegendUncertain.ForeColor = _colorUncertain;
         lblLegendUnmatched.ForeColor = _colorUnmatched;
         rtbTmdbOverview.Font = Font;

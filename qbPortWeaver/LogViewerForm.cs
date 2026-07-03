@@ -23,8 +23,7 @@ public partial class LogViewerForm : Form
     // on the threadpool, so without this guard a stale event would read the newly-active
     // file at a freshly-reset offset and duplicate content against LoadInitialContentAsync.
     private int _watcherGeneration;
-    private bool _isDarkMode;
-    private Color[] _themeColors = []; // overwritten in OnLoad after _isDarkMode is set
+    private Color[] _themeColors = []; // per-level line palette; resolved for the active theme in OnLoad
     private System.Windows.Forms.Timer? _searchDebounceTimer;
     // Reclaims memory once the viewer goes idle after a burst of content. Live appends and the
     // initial load build transient RTF strings that land on the Large Object Heap; a normal
@@ -97,10 +96,7 @@ public partial class LogViewerForm : Form
     protected override void OnLoad(EventArgs e)
     {
         base.OnLoad(e);
-        _isDarkMode = AppConstants.IsDarkModeEnabled();
-        _themeColors = _isDarkMode
-            ? [AppConstants.LogErrorDark, AppConstants.LogWarningDark, AppConstants.LogInfoDark, AppConstants.LogDebug, SystemColors.WindowText]
-            : [AppConstants.LogErrorLight, AppConstants.LogWarningLight, AppConstants.LogInfoLight, AppConstants.LogDebug, SystemColors.WindowText];
+        _themeColors = [AppConstants.LogError, AppConstants.LogWarning, AppConstants.LogInfo, AppConstants.LogDebug, SystemColors.WindowText];
         Text = $"{AppIdentity.AppName} | Log Viewer";
         ApplyTheme();
         // Vertically center the search box - single-line TextBox auto-sizes its height from the font,
@@ -458,7 +454,7 @@ public partial class LogViewerForm : Form
 
         int savedStart = rtbLog.SelectionStart;
         int savedLen = rtbLog.SelectionLength;
-        Color bg = _isDarkMode ? AppConstants.SearchHighlightDark : AppConstants.SearchHighlightLight;
+        Color bg = AppConstants.SearchHighlight;
         int len = txtSearch.Text.Length;
         int count = Math.Min(_searchMatches.Count, MaxHighlights);
 
@@ -673,9 +669,8 @@ public partial class LogViewerForm : Form
         }
         catch (Exception ex)
         {
-            // _themeColors[0] is the error color for whichever theme is active (LogErrorDark
-            // or LogErrorLight); using the literal LogErrorDark would fall through to the
-            // foreground text colour in light mode and lose the visual emphasis.
+            // _themeColors[0] is the error color already resolved for the active theme; using a
+            // fixed dark variant would clash with the foreground text colour in light mode.
             if (!IsDisposed)
                 SetMetaMessage($"(Error reading log: {ex.Message})", _themeColors[0]);
         }

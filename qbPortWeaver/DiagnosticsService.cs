@@ -82,29 +82,19 @@ public static class DiagnosticsService
             results.Add(new(Checks.VpnProvider, DiagnosticStatus.Fail, $"'{provider}' is not a recognized provider",
                 "Reselect the VPN provider in Settings > General."));
 
-        var (section, urlKey, name) = ResolveClient(clientSetting);
-        string url = RegistrySettingsManager.GetValue(section, urlKey);
+        var client = ClientRegistry.Resolve(clientSetting);
+        string url = RegistrySettingsManager.GetValue(client.Section, client.UrlKey);
         if (string.IsNullOrWhiteSpace(url))
-            results.Add(new(Checks.Client, DiagnosticStatus.Warn, $"{name} selected, but no URL is configured",
-                $"Enter the {name} Web UI/RPC URL in Settings."));
+            results.Add(new(Checks.Client, DiagnosticStatus.Warn, $"{client.Name} selected, but no URL is configured",
+                $"Enter the {client.Name} Web UI/RPC URL in Settings."));
         else
-            results.Add(new(Checks.Client, DiagnosticStatus.Pass, $"{name} ({url})"));
+            results.Add(new(Checks.Client, DiagnosticStatus.Pass, $"{client.Name} ({url})"));
     }
 
     private static bool IsRecognizedProvider(string provider) =>
         provider.Equals(RegistrySettingsManager.VpnProviderProtonVpn, StringComparison.OrdinalIgnoreCase) ||
         provider.Equals(RegistrySettingsManager.VpnProviderPia, StringComparison.OrdinalIgnoreCase) ||
         provider.Equals(RegistrySettingsManager.VpnProviderNatPmp, StringComparison.OrdinalIgnoreCase);
-
-    // Maps the client setting to its registry section, URL key, and display name.
-    private static (string Section, string UrlKey, string Name) ResolveClient(string clientSetting)
-    {
-        if (clientSetting.Equals(RegistrySettingsManager.BitTorrentClientTransmission, StringComparison.OrdinalIgnoreCase))
-            return (RegistrySettingsManager.SectionTransmission, RegistrySettingsManager.KeyTransmissionUrl, "Transmission");
-        if (clientSetting.Equals(RegistrySettingsManager.BitTorrentClientDeluge, StringComparison.OrdinalIgnoreCase))
-            return (RegistrySettingsManager.SectionDeluge, RegistrySettingsManager.KeyDelugeUrl, "Deluge");
-        return (RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyQBittorrentUrl, "qBittorrent");
-    }
 
     // Helper Windows service: needed only for auto-recovery, so a missing/stopped service is a Warn, not a Fail.
     private static void AddHelperServiceResult(List<DiagnosticResult> results)
@@ -296,7 +286,7 @@ public static class DiagnosticsService
     internal static IReadOnlyList<(string Section, IReadOnlyList<(string Key, string Value)> Values)> GetSettingsSnapshot()
     {
         string clientSetting = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyBitTorrentClient);
-        var (activeClientSection, _, _) = ResolveClient(clientSetting);
+        string activeClientSection = ClientRegistry.Resolve(clientSetting).Section;
 
         string[] sections = [RegistrySettingsManager.SectionGeneral, activeClientSection, RegistrySettingsManager.SectionExtra];
         var snapshot = new List<(string Section, IReadOnlyList<(string Key, string Value)> Values)>();

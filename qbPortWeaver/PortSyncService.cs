@@ -95,9 +95,9 @@ public sealed class PortSyncService
     );
 
     // All values read from the registry for a single sync cycle.
-    // Adding a 4th BitTorrent client: add a ClientConfig field below, populate it in ReadConfig,
-    // map the client name to its registry section in GetActiveClientSection, add an arm in
-    // GetActiveClient, an arm in CreateBitTorrentClient, and a branch in LogConfigDebug.
+    // Adding a 4th BitTorrent client: add an entry in ClientRegistry (name/section/URL key), add a
+    // ClientConfig field below, populate it in ReadConfig, add an arm in GetActiveClient, an arm in
+    // CreateBitTorrentClient, and a branch in LogConfigDebug.
     // qBittorrent-only flags (interface mismatch warn, restart on disconnect) stay at the
     // top level since the other clients do not expose the necessary RPC fields.
     private sealed record AppConfig(
@@ -451,10 +451,24 @@ public sealed class PortSyncService
 
     // Instantiates the appropriate VPN manager for the configured provider.
     // Returns null (with status already set) if the provider is disabled or cannot be initialised.
-    // Adding a new VPN provider: add a VpnProvider* constant in RegistrySettingsManager, an
-    // instantiation arm here AND in BuildActiveVpnManagerAsync (the read-only diagnostics path),
-    // the keyword in IsRecognizedProvider below, an entry in VpnProviderRegistry.KnownProviders
-    // (when service-restart recovery applies), and the value in SettingsForm's cboVpnProvider list.
+    // PIA and ProtonVPN are stateless and adapter-independent, so the sync loop and the read-only
+    // diagnostics path build them identically. NAT-PMP differs between the two (sticky fallback vs.
+    // plain probe) and stays with each caller. Returns null for any other provider value.
+    private static IVpnManager? CreateStatelessVpnManager(string provider)
+    {
+        if (provider.Equals(RegistrySettingsManager.VpnProviderPia, StringComparison.OrdinalIgnoreCase))
+            return new PiaVpnManager();
+        if (provider.Equals(RegistrySettingsManager.VpnProviderProtonVpn, StringComparison.OrdinalIgnoreCase))
+            return new ProtonVpnManager(AppConstants.GetProtonVpnLogFilePath());
+        return null;
+    }
+
+    // Adding a new VPN provider: add a VpnProvider* constant in RegistrySettingsManager; if it is
+    // stateless (like PIA/ProtonVPN) add an arm in CreateStatelessVpnManager (shared by the sync loop
+    // and diagnostics), otherwise add an arm in both this method and BuildActiveVpnManagerAsync (as
+    // NAT-PMP does); then add the keyword in IsRecognizedProvider below, an entry in
+    // VpnProviderRegistry.KnownProviders (when service-restart recovery applies), and the value in
+    // SettingsForm's cboVpnProvider list.
     private async Task<IVpnManager?> CreateVpnManagerAsync(AppConfig cfg, Dictionary<string, object?> status, CancellationToken cancellationToken)
     {
         if (cfg.VpnProvider.Equals(RegistrySettingsManager.VpnProviderDisabled, StringComparison.OrdinalIgnoreCase))
@@ -465,14 +479,11 @@ public sealed class PortSyncService
             return null;
         }
 
-        if (cfg.VpnProvider.Equals(RegistrySettingsManager.VpnProviderPia, StringComparison.OrdinalIgnoreCase))
-            return new PiaVpnManager();
+        if (CreateStatelessVpnManager(cfg.VpnProvider) is { } manager)
+            return manager;
 
         if (cfg.VpnProvider.Equals(RegistrySettingsManager.VpnProviderNatPmp, StringComparison.OrdinalIgnoreCase))
             return await CreateNatPmpVpnManagerAsync(cfg, status, cancellationToken).ConfigureAwait(false);
-
-        if (cfg.VpnProvider.Equals(RegistrySettingsManager.VpnProviderProtonVpn, StringComparison.OrdinalIgnoreCase))
-            return new ProtonVpnManager(AppConstants.GetProtonVpnLogFilePath());
 
         LogManager.Instance.LogMessage($"VPN provider '{cfg.VpnProvider}' is not recognized - check Settings", LogLevel.Warn);
         status[StatusKeys.Status] = SyncStatusValues.Error;
@@ -602,16 +613,17 @@ public sealed class PortSyncService
     /// <see cref="DiagnosticsService"/>), without the sync loop's status side effects or NAT-PMP
     /// fallback state. Returns <see langword="null"/> when the provider is Disabled/unrecognized, the
     /// NAT-PMP adapter is unset, or the adapter cannot currently be reached. Mirrors the provider
-    /// dispatch in <see cref="CreateVpnManagerAsync"/> - keep the two in step when adding a provider.
+    /// dispatch in <see cref="CreateVpnManagerAsync"/>: stateless providers come from the shared
+    /// <see cref="CreateStatelessVpnManager"/>; only the NAT-PMP arm is per-path (plain probe here, sticky
+    /// fallback there) - keep that arm in step when adding a non-stateless provider.
     /// </summary>
     internal static async Task<IVpnManager?> BuildActiveVpnManagerAsync(CancellationToken cancellationToken = default)
     {
         string provider = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyVpnProvider);
 
-        if (provider.Equals(RegistrySettingsManager.VpnProviderPia, StringComparison.OrdinalIgnoreCase))
-            return new PiaVpnManager();
-        if (provider.Equals(RegistrySettingsManager.VpnProviderProtonVpn, StringComparison.OrdinalIgnoreCase))
-            return new ProtonVpnManager(AppConstants.GetProtonVpnLogFilePath());
+        if (CreateStatelessVpnManager(provider) is { } manager)
+            return manager;
+
         if (provider.Equals(RegistrySettingsManager.VpnProviderNatPmp, StringComparison.OrdinalIgnoreCase))
         {
             string adapter = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyNatPmpAdapterName);
@@ -1049,14 +1061,7 @@ public sealed class PortSyncService
 
     // Returns the registry settings section for the active BitTorrent client.
     // Used to read DefaultPort and to determine which restart options to apply.
-    private static string GetActiveClientSection(string client)
-    {
-        if (client.Equals(RegistrySettingsManager.BitTorrentClientTransmission, StringComparison.OrdinalIgnoreCase))
-            return RegistrySettingsManager.SectionTransmission;
-        if (client.Equals(RegistrySettingsManager.BitTorrentClientDeluge, StringComparison.OrdinalIgnoreCase))
-            return RegistrySettingsManager.SectionDeluge;
-        return RegistrySettingsManager.SectionQBittorrent;
-    }
+    private static string GetActiveClientSection(string client) => ClientRegistry.Resolve(client).Section;
 
     // Returns the per-client config block for the active BitTorrent client.
     // Defaults to qBittorrent when the section is unrecognised (matches GetActiveClientSection).

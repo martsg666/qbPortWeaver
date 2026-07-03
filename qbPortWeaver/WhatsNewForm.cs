@@ -198,8 +198,6 @@ public partial class WhatsNewForm : Form
         "v1.0.0 - Initial release\n" +
         "Automatic ProtonVPN port sync for qBittorrent.";
 
-    private bool _isDarkMode;
-
     public WhatsNewForm()
     {
         InitializeComponent();
@@ -228,10 +226,9 @@ public partial class WhatsNewForm : Form
     protected override void OnLoad(EventArgs e)
     {
         base.OnLoad(e);
-        _isDarkMode = AppConstants.IsDarkModeEnabled();
         rtbFeatures.Font = Font;
         rtbFeatures.ForeColor = SystemColors.ControlText; // match the group box (mode-aware, blends in)
-        if (_isDarkMode)
+        if (AppConstants.IsDarkModeEnabled())
             lnkCommunity.LinkColor = AppConstants.LinkDark;
         RenderFeatures();
     }

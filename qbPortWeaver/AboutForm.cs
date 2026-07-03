@@ -5,7 +5,6 @@ public partial class AboutForm : Form
 {
     // The newer release when an update is available; null when up-to-date or not yet checked.
     private LatestReleaseInfo? _availableUpdate;
-    private bool _isDarkMode;
 
     /// <summary>Raised when the user clicks Update for an available release. MainForm handles it by
     /// opening the shared update dialog (in-app download and install), the same as the tray entry point.</summary>
@@ -28,8 +27,7 @@ public partial class AboutForm : Form
     protected override void OnLoad(EventArgs e)
     {
         base.OnLoad(e);
-        _isDarkMode = AppConstants.IsDarkModeEnabled();
-        if (_isDarkMode)
+        if (AppConstants.IsDarkModeEnabled())
         {
             lnkAuthor.LinkColor = AppConstants.LinkDark;
             lnkGitHub.LinkColor = AppConstants.LinkDark;

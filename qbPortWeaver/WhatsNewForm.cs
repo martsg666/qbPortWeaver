@@ -22,6 +22,10 @@ public partial class WhatsNewForm : Form
         "Click Download & Install and qbPortWeaver fetches the installer and runs it; the update " +
         "relaunches the app when it finishes. The release notes stay one click away, and it falls back " +
         "to the download page if anything goes wrong.\n\n" +
+        "Better Transmission support\n" +
+        "The port reachability check - port verification, the Status panel's Test Port, and diagnostics - " +
+        "now works correctly with recent Transmission versions, which had changed how their built-in port " +
+        "test works.\n\n" +
         "Previously released\n\n" +
         "New in 2.5.8\n\n" +
         "Test your port on demand\n" +

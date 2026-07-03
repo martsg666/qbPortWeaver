@@ -77,7 +77,7 @@ jobs:
           dotnet-version: '10.x'
 
       # -----------------------------------------------------------------------
-      # 4. Verify that <Version> in both .csproj files matches the tag version.
+      # 4. Verify that <Version> in all three .csproj files matches the tag version.
       #    Catches cases where a .csproj was not updated before tagging.
       # -----------------------------------------------------------------------
       - name: Verify csproj version matches tag

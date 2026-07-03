@@ -20,7 +20,6 @@ internal sealed class DiagnosticsForm : Form
     private IReadOnlyList<DiagnosticResult> _results;
     private DateTime _ranAt;
     private RichTextBox _report = null!;
-    private Font? _reportFont; // owned by this form (a Font assigned to a control is not auto-disposed)
     private Button _btnRerun = null!;
 
     /// <summary>Raised when the user clicks Re-run. MainForm handles it by re-running the diagnostics
@@ -35,8 +34,8 @@ internal sealed class DiagnosticsForm : Form
         _isDarkMode = AppConstants.IsDarkModeEnabled();
 
         Text = $"{AppIdentity.AppName} | Diagnostics ({_ranAt:HH:mm:ss})";
-        FormBorderStyle = FormBorderStyle.Sizable;
-        MaximizeBox = true;
+        FormBorderStyle = FormBorderStyle.FixedDialog;
+        MaximizeBox = false;
         MinimizeBox = false;
         ShowIcon = false;
         ShowInTaskbar = false;
@@ -44,19 +43,12 @@ internal sealed class DiagnosticsForm : Form
         // Match the designer forms' 96-DPI autoscale baseline so the manually-placed controls scale.
         AutoScaleDimensions = new SizeF(7F, 15F);
         AutoScaleMode = AutoScaleMode.Font;
-        // Sized to show a full 10-check report without scrolling in the common case; still resizable
-        // and scrollable for a report with many fix hints.
-        ClientSize = new Size(560, 720);
-        MinimumSize = new Size(460, 400);
+        // Initial width; SizeToContent (after the report renders) sets the final height to fit.
+        ClientSize = new Size(560, 690);
 
         BuildControls();
         RenderReport();
-    }
-
-    protected override void Dispose(bool disposing)
-    {
-        base.Dispose(disposing);
-        if (disposing) _reportFont?.Dispose();
+        SizeToContent();
     }
 
     /// <summary>Replaces the displayed report with a fresh run's results (updates the timestamp too).</summary>
@@ -80,16 +72,16 @@ internal sealed class DiagnosticsForm : Form
 
     private void BuildControls()
     {
-        Color bg = _isDarkMode ? AppConstants.DarkModeBackground : SystemColors.Window;
+        // Native surface colors so the report matches the rest of the app under Application.SetColorMode
+        // (SystemColors track the active dark/light mode); only the status glyphs use accent colors.
+        Color bg = SystemColors.Window;
         BackColor = bg;
 
-        _reportFont = new Font(Font.FontFamily, Font.Size + 1f);
         _report = new RichTextBox
         {
             ReadOnly = true,
             BorderStyle = BorderStyle.None,
             BackColor = bg,
-            Font = _reportFont,
             TabStop = false,
             Location = new Point(12, 12),
             Size = new Size(ClientSize.Width - 24, ClientSize.Height - 60),
@@ -138,8 +130,8 @@ internal sealed class DiagnosticsForm : Form
     // this method returns (same pattern as WhatsNewForm).
     private void RenderReport()
     {
-        Color textColor = _isDarkMode ? AppConstants.DarkModeText : SystemColors.WindowText;
-        Color metaColor = _isDarkMode ? AppConstants.DarkModeSecondaryText : SystemColors.GrayText;
+        Color textColor = SystemColors.WindowText;
+        Color metaColor = SystemColors.GrayText;
 
         using var summaryFont = new Font(_report.Font.FontFamily, _report.Font.Size + 1.5f, FontStyle.Bold);
         using var boldFont = new Font(_report.Font, FontStyle.Bold);
@@ -195,16 +187,34 @@ internal sealed class DiagnosticsForm : Form
         _report.ScrollToCaret();
     }
 
+    // Sizes this fixed dialog to fit the rendered report plus the button row, so a short report
+    // (e.g. Transmission's 9 checks) leaves no dead space and qBittorrent's fuller 10-check report
+    // still fits without scrolling. Capped so a report with many fix hints scrolls rather than
+    // growing off-screen. Runs once at construction; a Re-run keeps the size and scrolls if taller.
+    private void SizeToContent()
+    {
+        int lineHeight = _report.Font.Height;
+        int lines = 4; // summary line, blank, version subline, blank
+        foreach (var r in _results)
+            lines += string.IsNullOrEmpty(r.Hint) ? 3 : 4; // name + detail (+ hint) + trailing blank
+
+        const int reportTop = 12;   // _report.Location.Y
+        const int buttonArea = 48;  // space from the report's bottom to the form's bottom (button row)
+        int reportHeight = lines * lineHeight + lineHeight; // one extra line of breathing room
+        int height = Math.Min(reportTop + reportHeight + buttonArea, 760);
+        ClientSize = new Size(ClientSize.Width, height);
+    }
+
     private (string Glyph, Color Color) GlyphFor(DiagnosticStatus status) => status switch
     {
-        DiagnosticStatus.Pass => ("✓", _isDarkMode ? AppConstants.StatusOk : AppConstants.StatusOkLight),
-        DiagnosticStatus.Warn => ("⚠", _isDarkMode ? AppConstants.StatusWarning : AppConstants.StatusWarningLight),
+        DiagnosticStatus.Pass => ("✓", _isDarkMode ? AppConstants.StatusOkDark : AppConstants.StatusOkLight),
+        DiagnosticStatus.Warn => ("⚠", _isDarkMode ? AppConstants.StatusWarningDark : AppConstants.StatusWarningLight),
         DiagnosticStatus.Fail => ("✗", AppConstants.StatusError),
-        _ => ("–", _isDarkMode ? AppConstants.DarkModeSecondaryText : SystemColors.GrayText),
+        _ => ("–", SystemColors.GrayText),
     };
 
-    private Color PassColor => _isDarkMode ? AppConstants.StatusOk : AppConstants.StatusOkLight;
-    private Color WarnColor => _isDarkMode ? AppConstants.StatusWarning : AppConstants.StatusWarningLight;
+    private Color PassColor => _isDarkMode ? AppConstants.StatusOkDark : AppConstants.StatusOkLight;
+    private Color WarnColor => _isDarkMode ? AppConstants.StatusWarningDark : AppConstants.StatusWarningLight;
     private static Color FailColor => AppConstants.StatusError;
 
     // Appends a colored run at the current caret, keeping the active SelectionFont.

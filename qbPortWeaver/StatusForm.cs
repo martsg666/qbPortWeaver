@@ -175,8 +175,8 @@ public partial class StatusForm : Form
     }
 
     // Accent colors follow AboutForm: brighter variants in dark mode, deeper ones in light mode.
-    private Color OkColor => _isDarkMode ? AppConstants.StatusOk : AppConstants.StatusOkLight;
-    private Color WarnColor => _isDarkMode ? AppConstants.StatusWarning : AppConstants.StatusWarningLight;
+    private Color OkColor => _isDarkMode ? AppConstants.StatusOkDark : AppConstants.StatusOkLight;
+    private Color WarnColor => _isDarkMode ? AppConstants.StatusWarningDark : AppConstants.StatusWarningLight;
     private static Color ErrorColor => AppConstants.StatusError;
     private static Color NeutralColor => SystemColors.GrayText;
 

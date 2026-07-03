@@ -31,8 +31,8 @@ public partial class AboutForm : Form
         _isDarkMode = AppConstants.IsDarkModeEnabled();
         if (_isDarkMode)
         {
-            lnkAuthor.LinkColor = AppConstants.DarkModeLinkColor;
-            lnkGitHub.LinkColor = AppConstants.DarkModeLinkColor;
+            lnkAuthor.LinkColor = AppConstants.LinkDark;
+            lnkGitHub.LinkColor = AppConstants.LinkDark;
         }
         _ = LoadGitHubDataAsync(); // fire-and-forget; exceptions are handled inside LoadGitHubDataAsync
     }
@@ -136,14 +136,14 @@ public partial class AboutForm : Form
         if (info.IsNewer)
         {
             lblStatusValue.Text = "Update available";
-            lblStatusValue.ForeColor = _isDarkMode ? AppConstants.StatusWarning : AppConstants.StatusWarningLight;
+            lblStatusValue.ForeColor = _isDarkMode ? AppConstants.StatusWarningDark : AppConstants.StatusWarningLight;
             btnCheckForUpdates.Text = "Update";
             _availableUpdate = info;
         }
         else
         {
             lblStatusValue.Text = "Up to date";
-            lblStatusValue.ForeColor = _isDarkMode ? AppConstants.StatusOk : AppConstants.StatusOkLight;
+            lblStatusValue.ForeColor = _isDarkMode ? AppConstants.StatusOkDark : AppConstants.StatusOkLight;
             btnCheckForUpdates.Text = "Check for Updates";
         }
     }

@@ -36,7 +36,7 @@ internal sealed partial class UpdateAvailableForm : Form
     {
         base.OnLoad(e);
         if (AppConstants.IsDarkModeEnabled())
-            lnkReleaseNotes.LinkColor = AppConstants.DarkModeLinkColor;
+            lnkReleaseNotes.LinkColor = AppConstants.LinkDark;
     }
 
     // Update button: in-app download+install when the release has an MSI asset, otherwise the release page.

@@ -270,37 +270,37 @@ public static class AppConstants
     public static bool IsDarkModeEnabled() =>
         SystemColors.Control.GetBrightness() < 0.5f;
 
-    public static readonly Color DarkModeBackground = Color.FromArgb(30, 30, 30);
-    public static readonly Color DarkModeBorder = Color.FromArgb(80, 80, 80);
-    public static readonly Color DarkModeSecondaryText = Color.FromArgb(160, 160, 160);
-    public static readonly Color DarkModeCheckedBack = Color.FromArgb(55, 55, 55);
-    public static readonly Color DarkModeSearchHighlight = Color.FromArgb(100, 85, 0);
-    public static readonly Color LightModeDimmed = Color.FromArgb(180, 180, 180);
-    public static readonly Color LightModeCheckedBack = Color.FromArgb(225, 225, 235);
+    // Theme accent colors. Surfaces and body text follow the OS theme natively (Application.SetColorMode
+    // + SystemColors); only these semantic accents are defined here. Accents that need a different shade
+    // per mode - for contrast against the mode-aware background - are paired with a Dark and a Light
+    // variant; the rest look the same in both modes. Naming: <Group><Semantic>[Dark|Light].
+
+    // Search-match highlight background (log viewer)
+    public static readonly Color SearchHighlightDark  = Color.FromArgb(100, 85, 0);
+    public static readonly Color SearchHighlightLight = Color.Yellow;
+
+    // Link text (dark only; light mode uses the LinkLabel default blue)
+    public static readonly Color LinkDark = Color.CornflowerBlue;
+
+    // Log viewer per-level line colors
+    public static readonly Color LogErrorDark    = Color.OrangeRed;
+    public static readonly Color LogErrorLight   = Color.Crimson;
+    public static readonly Color LogWarningDark  = Color.Gold;
+    public static readonly Color LogWarningLight = Color.Goldenrod;
+    public static readonly Color LogInfoDark     = Color.DodgerBlue;
+    public static readonly Color LogInfoLight    = Color.SteelBlue;
+    public static readonly Color LogDebug        = Color.DarkOrange; // same in both modes
+
+    // Status colors: tray icon dots (mode-independent - use the vivid Dark variant) and status labels
+    public static readonly Color StatusOkDark       = Color.LimeGreen;
+    public static readonly Color StatusOkLight      = Color.Green;
+    public static readonly Color StatusWarningDark  = Color.Orange;
+    public static readonly Color StatusWarningLight = Color.DarkOrange;
+    public static readonly Color StatusError        = Color.Red;  // same in both modes
+    public static readonly Color StatusPaused       = Color.Gray; // same in both modes; tray dot only
+
+    // Tray icon dot border
     public static readonly Color TrayIconDotBorder = Color.FromArgb(60, 60, 60);
-
-    // Text and link colors
-    public static readonly Color DarkModeText = Color.Gainsboro;
-    public static readonly Color DarkModeLinkColor = Color.CornflowerBlue;
-    public static readonly Color DarkModeMeta = Color.DimGray;
-    public static readonly Color LightModeSearchHighlight = Color.Yellow;
-
-    // Severity / confidence level colors (paired dark/light)
-    public static readonly Color DarkModeError = Color.OrangeRed;
-    public static readonly Color LightModeError = Color.Crimson;
-    public static readonly Color DarkModeWarning = Color.Gold;
-    public static readonly Color LightModeWarning = Color.Goldenrod;
-    public static readonly Color DarkModeInfo = Color.DodgerBlue;
-    public static readonly Color LightModeInfo = Color.SteelBlue;
-    public static readonly Color LogLevelDebug = Color.DarkOrange;     // same in both modes
-
-    // Status indicator colors (tray icon dots and status labels)
-    public static readonly Color StatusOk = Color.LimeGreen;      // tray dot and dark mode label
-    public static readonly Color StatusOkLight = Color.Green;          // light mode label
-    public static readonly Color StatusWarning = Color.Orange;         // tray dot and dark mode label
-    public static readonly Color StatusWarningLight = Color.DarkOrange;     // light mode label
-    public static readonly Color StatusError = Color.Red;            // tray dot
-    public static readonly Color StatusPaused = Color.Gray;          // tray dot - syncing paused by the user (intentionally idle)
 
     /// <summary>Opens a URL in the default browser using ShellExecute.</summary>
     public static void OpenUrl(string url)

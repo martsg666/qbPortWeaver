@@ -58,7 +58,7 @@ partial class WhatsNewForm
         grpFeatures.TabStop  = false;
         grpFeatures.Text     = "New in this release";
 
-        rtbFeatures.BackColor   = SystemColors.Control;
+        rtbFeatures.BackColor   = SystemColors.Window;
         rtbFeatures.BorderStyle = BorderStyle.None;
         rtbFeatures.Location    = new Point(12, 20);
         rtbFeatures.Name        = "rtbFeatures";

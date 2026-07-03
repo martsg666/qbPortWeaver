@@ -230,12 +230,9 @@ public partial class WhatsNewForm : Form
         base.OnLoad(e);
         _isDarkMode = AppConstants.IsDarkModeEnabled();
         rtbFeatures.Font = Font;
-        rtbFeatures.ForeColor = ForeColor;
+        rtbFeatures.ForeColor = SystemColors.WindowText; // native, mode-aware under SetColorMode
         if (_isDarkMode)
-        {
-            lnkCommunity.LinkColor = AppConstants.DarkModeLinkColor;
-            rtbFeatures.ForeColor = AppConstants.DarkModeText;
-        }
+            lnkCommunity.LinkColor = AppConstants.LinkDark;
         RenderFeatures();
     }
 

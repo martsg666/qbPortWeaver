@@ -270,8 +270,8 @@ public partial class MainForm : Form
     private void InitializeStatusIcons()
     {
         _iconBase = Properties.Resources.qbPortWeaver;
-        _iconOk = CreateStatusIcon(_iconBase, AppConstants.StatusOk);
-        _iconWarning = CreateStatusIcon(_iconBase, AppConstants.StatusWarning);
+        _iconOk = CreateStatusIcon(_iconBase, AppConstants.StatusOkDark);
+        _iconWarning = CreateStatusIcon(_iconBase, AppConstants.StatusWarningDark);
         _iconError = CreateStatusIcon(_iconBase, AppConstants.StatusError);
         _iconPaused = CreateStatusIcon(_iconBase, AppConstants.StatusPaused);
     }
@@ -314,6 +314,9 @@ public partial class MainForm : Form
     private void InitializeTrayIcon()
     {
         _trayMenu = new ContextMenuStrip();
+        // Render with the system renderer so the menu follows the app color mode (Application.SetColorMode)
+        // like the rest of the UI, instead of the light "professional" gradient the default renderer uses.
+        _trayMenu.RenderMode = ToolStripRenderMode.System;
 
         // Update notification - inserted at the top so it is the first thing the user sees
         // when an update is pending. Hidden until a check reports a newer version.

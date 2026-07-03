@@ -355,7 +355,7 @@ partial class MediaManagerForm
         lblTmdbConfidence.TabIndex = 3;
         lblTmdbConfidence.TextAlign = ContentAlignment.MiddleRight;
         rtbTmdbOverview.Anchor    = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
-        rtbTmdbOverview.BackColor = SystemColors.Control;
+        rtbTmdbOverview.BackColor = SystemColors.Control; // blend with the detail panel (read-only display)
         rtbTmdbOverview.BorderStyle = BorderStyle.None;
         rtbTmdbOverview.Location  = new Point(84, 58);
         rtbTmdbOverview.Name      = "rtbTmdbOverview";

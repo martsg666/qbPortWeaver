@@ -99,8 +99,8 @@ public partial class LogViewerForm : Form
         base.OnLoad(e);
         _isDarkMode = AppConstants.IsDarkModeEnabled();
         _themeColors = _isDarkMode
-            ? [AppConstants.DarkModeError, AppConstants.DarkModeWarning, AppConstants.DarkModeInfo, AppConstants.LogLevelDebug, AppConstants.DarkModeText]
-            : [AppConstants.LightModeError, AppConstants.LightModeWarning, AppConstants.LightModeInfo, AppConstants.LogLevelDebug, SystemColors.WindowText];
+            ? [AppConstants.LogErrorDark, AppConstants.LogWarningDark, AppConstants.LogInfoDark, AppConstants.LogDebug, SystemColors.WindowText]
+            : [AppConstants.LogErrorLight, AppConstants.LogWarningLight, AppConstants.LogInfoLight, AppConstants.LogDebug, SystemColors.WindowText];
         Text = $"{AppIdentity.AppName} | Log Viewer";
         ApplyTheme();
         // Vertically center the search box - single-line TextBox auto-sizes its height from the font,
@@ -236,9 +236,11 @@ public partial class LogViewerForm : Form
     // Applies theme colors to the background, filter buttons, and search controls
     private void ApplyTheme()
     {
-        Color bg = _isDarkMode ? AppConstants.DarkModeBackground : SystemColors.Window;
-        Color fg = _isDarkMode ? AppConstants.DarkModeText : SystemColors.WindowText;
-        Color border = _isDarkMode ? AppConstants.DarkModeBorder : SystemColors.ControlDark;
+        // Native surface colors: SystemColors track the active dark/light mode under Application.SetColorMode,
+        // so the viewer matches the rest of the app. Only the per-level filter buttons use accent colors.
+        Color bg = SystemColors.Window;
+        Color fg = SystemColors.WindowText;
+        Color border = SystemColors.ControlDark;
 
         BackColor = bg;
         pnlToolbar.BackColor = bg;
@@ -267,20 +269,21 @@ public partial class LogViewerForm : Form
 
         // Clear button sits inside the search box - blend it in rather than styling it like the nav buttons
         btnClearSearch.BackColor = txtSearch.BackColor;
-        btnClearSearch.ForeColor = _isDarkMode ? AppConstants.DarkModeSecondaryText : SystemColors.GrayText;
+        btnClearSearch.ForeColor = SystemColors.GrayText;
         btnClearSearch.FlatAppearance.BorderSize = 0;
 
         lblMatchCount.BackColor = bg;
-        lblMatchCount.ForeColor = _isDarkMode ? AppConstants.DarkModeSecondaryText : SystemColors.GrayText;
+        lblMatchCount.ForeColor = SystemColors.GrayText;
     }
 
-    // Sets filter button foreground and border to the level colour when active, dimmed when inactive
+    // Sets filter button foreground and border to the level colour when active, and the native
+    // dimmed/disabled gray when inactive. The checked background is a subtle native tint; all three
+    // track the color mode through SystemColors.
     private void ApplyFilterButtonStyle(CheckBox chk, Color levelColor)
     {
-        Color dimmed = _isDarkMode ? AppConstants.DarkModeBorder : AppConstants.LightModeDimmed;
-        chk.ForeColor = chk.Checked ? levelColor : dimmed;
-        chk.FlatAppearance.BorderColor = chk.Checked ? levelColor : dimmed;
-        chk.FlatAppearance.CheckedBackColor = _isDarkMode ? AppConstants.DarkModeCheckedBack : AppConstants.LightModeCheckedBack;
+        chk.ForeColor = chk.Checked ? levelColor : SystemColors.GrayText;
+        chk.FlatAppearance.BorderColor = chk.Checked ? levelColor : SystemColors.GrayText;
+        chk.FlatAppearance.CheckedBackColor = SystemColors.ControlLight;
         chk.BackColor = pnlToolbar.BackColor;
     }
 
@@ -452,7 +455,7 @@ public partial class LogViewerForm : Form
 
         int savedStart = rtbLog.SelectionStart;
         int savedLen = rtbLog.SelectionLength;
-        Color bg = _isDarkMode ? AppConstants.DarkModeSearchHighlight : AppConstants.LightModeSearchHighlight;
+        Color bg = _isDarkMode ? AppConstants.SearchHighlightDark : AppConstants.SearchHighlightLight;
         int len = txtSearch.Text.Length;
         int count = Math.Min(_searchMatches.Count, MaxHighlights);
 
@@ -667,8 +670,8 @@ public partial class LogViewerForm : Form
         }
         catch (Exception ex)
         {
-            // _themeColors[0] is the error color for whichever theme is active (DarkModeError
-            // or LightModeError); using the literal DarkModeError would fall through to the
+            // _themeColors[0] is the error color for whichever theme is active (LogErrorDark
+            // or LogErrorLight); using the literal LogErrorDark would fall through to the
             // foreground text colour in light mode and lose the visual emphasis.
             if (!IsDisposed)
                 SetMetaMessage($"(Error reading log: {ex.Message})", _themeColors[0]);
@@ -944,7 +947,7 @@ public partial class LogViewerForm : Form
     }
 
     // Convenience colour for meta/status messages (not log entries)
-    private Color MetaColor => _isDarkMode ? AppConstants.DarkModeMeta : SystemColors.GrayText;
+    private Color MetaColor => SystemColors.GrayText; // mode-aware under SetColorMode
 
     // Writes the RTF document header for BuildRtf:
     // Unicode-safe, Consolas 9pt (18 half-points), no paragraph spacing, colour table.

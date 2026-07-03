@@ -16,6 +16,8 @@ internal sealed partial class UpdateAvailableForm : Form
     private bool _downloading;
     private bool _userCancelled; // distinguishes a user Cancel from the safety-net timeout (both surface as OCE)
 
+    public UpdateAvailableForm() : this(string.Empty, string.Empty, null) { } // designer support only
+
     internal UpdateAvailableForm(string version, string releaseUrl, string? msiUrl)
     {
         _version = version;

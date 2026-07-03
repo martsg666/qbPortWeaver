@@ -249,8 +249,14 @@ public static class DiagnosticsService
         if (open == true)
             results.Add(new(Checks.PortReachable, DiagnosticStatus.Pass, "Listening port is reachable from the Internet"));
         else if (open == false)
-            results.Add(new(Checks.PortReachable, DiagnosticStatus.Warn, "Listening port appears closed from the Internet",
-                "Allow a moment after a port change. qBittorrent infers this from incoming connections, so an idle client may report closed."));
+        {
+            // qBittorrent deduces reachability from incoming connections (so an idle client reads
+            // closed); Transmission and Deluge actively probe via their online check services.
+            string hint = client is QBittorrentClient
+                ? "Allow a moment after a port change. qBittorrent infers this from incoming connections, so an idle client may report closed."
+                : "Allow a moment after a port change, then re-run. A persistently closed port usually means port forwarding is not active on the VPN.";
+            results.Add(new(Checks.PortReachable, DiagnosticStatus.Warn, "Listening port appears closed from the Internet", hint));
+        }
         else
             results.Add(new(Checks.PortReachable, DiagnosticStatus.Skip, "Could not determine (client, internet, or port-check service unavailable)"));
     }

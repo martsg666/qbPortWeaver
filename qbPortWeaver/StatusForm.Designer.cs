@@ -177,6 +177,7 @@ partial class StatusForm
         btnClose.Text = "Close";
         btnClose.Click += btnClose_Click;
         // ── StatusForm ────────────────────────────────────────────────
+        AcceptButton = btnClose;
         AutoScaleDimensions = new SizeF(7F, 15F);
         AutoScaleMode = AutoScaleMode.Font;
         CancelButton = btnClose;

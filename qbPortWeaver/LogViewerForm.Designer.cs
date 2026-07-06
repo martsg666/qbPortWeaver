@@ -113,6 +113,10 @@ partial class LogViewerForm
         chkWarn.CheckedChanged  += filterButton_CheckedChanged;
         chkInfo.CheckedChanged  += filterButton_CheckedChanged;
         chkDebug.CheckedChanged += filterButton_CheckedChanged;
+        toolTip.SetToolTip(chkError, "Show or hide ERROR entries");
+        toolTip.SetToolTip(chkWarn,  "Show or hide WARN entries");
+        toolTip.SetToolTip(chkInfo,  "Show or hide INFO entries");
+        toolTip.SetToolTip(chkDebug, "Show or hide DEBUG entries");
 
         // Issue navigation buttons - grouped with the level filter buttons, navigate between WARN/ERROR lines.
         // Positioned immediately after chkDebug; y/h kept at filter-button values (no OnLoad adjustment).
@@ -144,6 +148,7 @@ partial class LogViewerForm
         cboSubsystem.SelectedIndex = 0;
         // Wire event after setting SelectedIndex to avoid premature RebuildDisplay
         cboSubsystem.SelectedIndexChanged += cboSubsystem_SelectedIndexChanged;
+        toolTip.SetToolTip(cboSubsystem, "Filter entries by subsystem");
 
         // Log file picker - populated in OnLoad; event wired there after population to avoid premature load
         cboLogFile.Anchor        = System.Windows.Forms.AnchorStyles.Left | System.Windows.Forms.AnchorStyles.Top;
@@ -167,6 +172,7 @@ partial class LogViewerForm
         txtSearch.TabIndex        = 8;
         txtSearch.TextChanged    += txtSearch_TextChanged;
         txtSearch.KeyDown        += txtSearch_KeyDown;
+        toolTip.SetToolTip(txtSearch, "Search the log (highlights matches)");
 
         // btnClearSearch - overlays the right interior of txtSearch; sized and positioned in OnLoad.
         // Right-margin set to txtSearch.RightMargin - 2 so the button always stays 2px inside the box on resize.
@@ -183,6 +189,7 @@ partial class LogViewerForm
         btnClearSearch.TabStop                   = false;
         btnClearSearch.Visible                   = false;
         btnClearSearch.Click                    += btnClearSearch_Click;
+        toolTip.SetToolTip(btnClearSearch, "Clear search");
 
         // btnPrev
         btnPrev.Anchor    = rightAnchor;
@@ -192,6 +199,7 @@ partial class LogViewerForm
         btnPrev.TabIndex  = 10;
         btnPrev.Text      = "▲";
         btnPrev.Click    += btnPrev_Click;
+        toolTip.SetToolTip(btnPrev, "Previous match");
 
         // btnNext
         btnNext.Anchor    = rightAnchor;
@@ -201,6 +209,7 @@ partial class LogViewerForm
         btnNext.TabIndex  = 11;
         btnNext.Text      = "▼";
         btnNext.Click    += btnNext_Click;
+        toolTip.SetToolTip(btnNext, "Next match");
 
         // lblMatchCount
         lblMatchCount.Anchor    = rightAnchor;

@@ -309,6 +309,15 @@ public static class AppConstants
     public static Color StatusOk        => IsDarkModeEnabled() ? StatusOkDark : StatusOkLight;
     public static Color StatusWarning   => IsDarkModeEnabled() ? StatusWarningDark : StatusWarningLight;
 
+    // Vivid, mode-independent colors for the tray status dots (the taskbar's brightness is independent of
+    // the app theme, so a dot must look the same in both modes). Used as a complete set so a tray dot
+    // never reaches for the mode-resolved StatusOk/StatusWarning label accessors above by mistake: OK and
+    // Warning take the vivid Dark accents; Error and Paused pass through the single-value colors.
+    public static Color TrayDotOk      => StatusOkDark;
+    public static Color TrayDotWarning => StatusWarningDark;
+    public static Color TrayDotError   => StatusError;
+    public static Color TrayDotPaused  => StatusPaused;
+
     // Tray icon dot border
     public static readonly Color TrayIconDotBorder = Color.FromArgb(60, 60, 60);
 

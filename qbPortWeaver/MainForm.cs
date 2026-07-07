@@ -270,10 +270,10 @@ public partial class MainForm : Form
     private void InitializeStatusIcons()
     {
         _iconBase = Properties.Resources.qbPortWeaver;
-        _iconOk = CreateStatusIcon(_iconBase, AppConstants.StatusOkDark);
-        _iconWarning = CreateStatusIcon(_iconBase, AppConstants.StatusWarningDark);
-        _iconError = CreateStatusIcon(_iconBase, AppConstants.StatusError);
-        _iconPaused = CreateStatusIcon(_iconBase, AppConstants.StatusPaused);
+        _iconOk = CreateStatusIcon(_iconBase, AppConstants.TrayDotOk);
+        _iconWarning = CreateStatusIcon(_iconBase, AppConstants.TrayDotWarning);
+        _iconError = CreateStatusIcon(_iconBase, AppConstants.TrayDotError);
+        _iconPaused = CreateStatusIcon(_iconBase, AppConstants.TrayDotPaused);
     }
 
     // Draws a small filled circle onto a 16x16 copy of the base icon and returns it as an Icon

@@ -237,6 +237,15 @@ public partial class WhatsNewForm : Form
         RenderFeatures();
     }
 
+    protected override void OnShown(EventArgs e)
+    {
+        base.OnShown(e);
+        // Shown non-modally on first run by the tray-only app (no foreground window), so it can open
+        // behind whatever launched us (e.g. the installer). If the user never sees it they never
+        // dismiss it, and the "last seen version" is never recorded - so it keeps reappearing.
+        AppConstants.BringFormToFront(this);
+    }
+
     // Renders ReleaseFeaturesText into the RichTextBox with a visual hierarchy instead of flat text:
     // version dividers ("New in X.Y.Z", "Previously released") in bold and slightly larger, each
     // feature's title line in bold, and body paragraphs in the normal font. ReleaseFeaturesText stays

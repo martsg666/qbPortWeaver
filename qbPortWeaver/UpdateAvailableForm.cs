@@ -39,6 +39,14 @@ internal sealed partial class UpdateAvailableForm : Form
             lnkReleaseNotes.LinkColor = AppConstants.LinkDark;
     }
 
+    protected override void OnShown(EventArgs e)
+    {
+        base.OnShown(e);
+        // The intrusive startup update check shows this non-modally while the tray-only app has no
+        // foreground window, so it can open behind the window that launched us. Force it to the front.
+        AppConstants.BringFormToFront(this);
+    }
+
     // Update button: in-app download+install when the release has an MSI asset, otherwise the release page.
     private async void btnUpdate_Click(object? sender, EventArgs e) // async void is correct here (WinForms event handler)
     {

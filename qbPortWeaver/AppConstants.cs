@@ -334,6 +334,20 @@ public static class AppConstants
         }
     }
 
+    /// <summary>
+    /// Raises a form to the foreground. The tray-only app has no foreground window, so a form shown
+    /// non-modally at startup (What's New, the update prompt) can open behind the window that launched
+    /// us; this forces it up. The brief TopMost toggle raises the z-order past the foreground lock
+    /// without leaving the window permanently always-on-top.
+    /// </summary>
+    public static void BringFormToFront(Form form)
+    {
+        form.BringToFront();
+        form.TopMost = true;
+        form.TopMost = false;
+        form.Activate();
+    }
+
     /// <summary>Copies text to the clipboard, swallowing the transient <see cref="ExternalException"/> thrown
     /// when another process holds the clipboard open (clipboard managers, RDP). Empty text is replaced with a
     /// single space because <see cref="Clipboard.SetText(string)"/> rejects an empty string.</summary>

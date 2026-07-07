@@ -26,6 +26,10 @@ public partial class WhatsNewForm : Form
         "The port reachability check - port verification, the Status panel's Test Port, and diagnostics - " +
         "now works correctly with recent Transmission versions, which had changed how their built-in port " +
         "test works.\n\n" +
+        "Consistent theming across every window\n" +
+        "Every window - Settings, Status, Diagnostics, the log viewer, Media Manager, and the tray menu - now " +
+        "follows your color theme (System, Dark, or Light) uniformly, using the native Windows colors so text " +
+        "and surfaces stay legible in both light and dark mode.\n\n" +
         "Previously released\n\n" +
         "New in 2.5.8\n\n" +
         "Test your port on demand\n" +

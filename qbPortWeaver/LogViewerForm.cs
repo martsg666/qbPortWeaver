@@ -1,4 +1,5 @@
 ﻿using System.ComponentModel;
+using System.Drawing.Drawing2D;
 using System.Runtime;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -106,12 +107,23 @@ public partial class LogViewerForm : Form
         cboSubsystem.Top = (pnlToolbar.Height - cboSubsystem.Height) / 2;
         cboLogFile.Top = (pnlToolbar.Height - cboLogFile.Height) / 2;
 
-        // Size all nav buttons to match the search box height so arrows render consistently
+        // Size all nav buttons to match the search box height. Their up/down chevrons are owner-drawn
+        // in NavButton_Paint (crisp, perfectly centered, using the button's ForeColor) rather than a
+        // font glyph, which never centered cleanly.
         int navH = txtSearch.Height;
         foreach (var btn in new[] { btnPrev, btnNext, btnIssuePrev, btnIssueNext })
         {
             btn.Height = navH;
             btn.Top = searchTop;
+            btn.Paint += NavButton_Paint;
+        }
+
+        // Match the level-filter buttons to the same height and vertical centering as the rest of the
+        // toolbar (the designer gives them a taller, top-aligned box), so the whole row lines up.
+        foreach (var chk in new[] { chkError, chkWarn, chkInfo, chkDebug })
+        {
+            chk.Height = navH;
+            chk.Top = searchTop;
         }
         lblMatchCount.Top = searchTop + (txtSearch.Height - lblMatchCount.Height) / 2;
 
@@ -266,6 +278,11 @@ public partial class LogViewerForm : Form
             btn.FlatAppearance.BorderColor = border;
         }
 
+        // Issue-nav jumps between WARN/ERROR lines; tint it with the OS accent (severity-neutral,
+        // mode-aware) so it reads as distinct from the neutral search-match arrows by the search box.
+        btnIssuePrev.ForeColor = SystemColors.HotTrack;
+        btnIssueNext.ForeColor = SystemColors.HotTrack;
+
         // Clear button sits inside the search box - blend it in rather than styling it like the nav buttons
         btnClearSearch.BackColor = txtSearch.BackColor;
         btnClearSearch.ForeColor = SystemColors.GrayText;
@@ -284,6 +301,34 @@ public partial class LogViewerForm : Form
         chk.FlatAppearance.BorderColor = chk.Checked ? levelColor : SystemColors.GrayText;
         chk.FlatAppearance.CheckedBackColor = SystemColors.ControlLight;
         chk.BackColor = pnlToolbar.BackColor;
+    }
+
+    // Owner-draws a crisp up/down chevron centered in a nav button, in the button's ForeColor (neutral
+    // WindowText for the search-match arrows, the accent for the issue-nav arrows). Drawn instead of a
+    // font glyph so it is always centered and its size/weight are exact. btnPrev/btnIssuePrev point up.
+    private void NavButton_Paint(object? sender, PaintEventArgs e)
+    {
+        if (sender is not Button btn) return;
+        bool up = btn == btnPrev || btn == btnIssuePrev;
+
+        float scale = btn.DeviceDpi / 96f;
+        float halfW = 5f * scale;     // chevron half-width
+        float halfH = 3.25f * scale;  // chevron half-height
+        float cx = btn.ClientSize.Width / 2f;
+        float cy = btn.ClientSize.Height / 2f;
+        float armY  = up ? cy + halfH : cy - halfH; // the two ends
+        float apexY = up ? cy - halfH : cy + halfH; // the point
+
+        PointF[] chevron = [new(cx - halfW, armY), new(cx, apexY), new(cx + halfW, armY)];
+
+        e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+        using var pen = new Pen(btn.ForeColor, 1.8f * scale)
+        {
+            StartCap = LineCap.Round,
+            EndCap = LineCap.Round,
+            LineJoin = LineJoin.Round,
+        };
+        e.Graphics.DrawLines(pen, chevron);
     }
 
     // Called when any filter CheckBox changes - updates its style and rebuilds the display

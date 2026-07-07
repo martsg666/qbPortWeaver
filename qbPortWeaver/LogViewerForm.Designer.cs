@@ -125,7 +125,7 @@ partial class LogViewerForm
         btnIssuePrev.Location  = new System.Drawing.Point(296, 4);
         btnIssuePrev.Size      = new System.Drawing.Size(26, 26);
         btnIssuePrev.TabIndex  = 4;
-        btnIssuePrev.Text      = "▲";
+        btnIssuePrev.Text      = ""; // up chevron owner-drawn in NavButton_Paint
         btnIssuePrev.Click    += btnIssuePrev_Click;
         toolTip.SetToolTip(btnIssuePrev, "Previous warning or error");
 
@@ -134,7 +134,7 @@ partial class LogViewerForm
         btnIssueNext.Location  = new System.Drawing.Point(322, 4);
         btnIssueNext.Size      = new System.Drawing.Size(26, 26);
         btnIssueNext.TabIndex  = 5;
-        btnIssueNext.Text      = "▼";
+        btnIssueNext.Text      = ""; // down chevron owner-drawn in NavButton_Paint
         btnIssueNext.Click    += btnIssueNext_Click;
         toolTip.SetToolTip(btnIssueNext, "Next warning or error");
 
@@ -197,7 +197,7 @@ partial class LogViewerForm
         btnPrev.Location  = new System.Drawing.Point(1044, 5);
         btnPrev.Size      = new System.Drawing.Size(26, 26);
         btnPrev.TabIndex  = 10;
-        btnPrev.Text      = "▲";
+        btnPrev.Text      = ""; // up chevron owner-drawn in NavButton_Paint
         btnPrev.Click    += btnPrev_Click;
         toolTip.SetToolTip(btnPrev, "Previous match");
 
@@ -207,7 +207,7 @@ partial class LogViewerForm
         btnNext.Location  = new System.Drawing.Point(1070, 5);
         btnNext.Size      = new System.Drawing.Size(26, 26);
         btnNext.TabIndex  = 11;
-        btnNext.Text      = "▼";
+        btnNext.Text      = ""; // down chevron owner-drawn in NavButton_Paint
         btnNext.Click    += btnNext_Click;
         toolTip.SetToolTip(btnNext, "Next match");
 

@@ -37,13 +37,13 @@ $ErrorActionPreference = 'Stop'
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
 
-function Write-Step([string]$msg) { Write-Host "`n==> $msg" -ForegroundColor Cyan }
-function Write-Ok([string]$msg)   { Write-Host "    $msg"   -ForegroundColor Green }
+function Show-Step([string]$msg) { Write-Host "`n==> $msg" -ForegroundColor Cyan }
+function Show-Ok([string]$msg)   { Write-Host "    $msg"   -ForegroundColor Green }
 
 # ---------------------------------------------------------------------------
 # Step 1: Resolve version - read from qbPortWeaver.csproj if not provided
 # ---------------------------------------------------------------------------
-Write-Step 'Resolving version...'
+Show-Step 'Resolving version...'
 
 if (-not $Version) {
     $csprojPath = Join-Path $repoRoot 'qbPortWeaver\qbPortWeaver.csproj'
@@ -54,14 +54,14 @@ if (-not $Version) {
     $Version = $match.Matches[0].Groups[1].Value
 }
 
-Write-Ok "Version : $Version"
+Show-Ok "Version : $Version"
 
 # ---------------------------------------------------------------------------
 # Step 2: Publish both projects as self-contained single-file win-x64 executables
 #         This matches the CI build-release.yml publish step exactly.
 #         Output lands in: <project>\bin\Release\<tfm>\win-x64\publish\
 # ---------------------------------------------------------------------------
-Write-Step 'Publishing self-contained single-file executables...'
+Show-Step 'Publishing self-contained single-file executables...'
 
 $tfm = (Select-String -Path (Join-Path $repoRoot 'qbPortWeaver\qbPortWeaver.csproj') -Pattern '<TargetFramework>([^<]+)</TargetFramework>').Matches[0].Groups[1].Value
 
@@ -91,14 +91,14 @@ $publishedExes = @(
 
 foreach ($exe in $publishedExes) {
     if (-not (Test-Path $exe)) { throw "Expected publish output not found: $exe" }
-    Write-Ok "Published : $exe"
+    Show-Ok "Published : $exe"
 }
 
 # ---------------------------------------------------------------------------
 # Step 3: Build the MSI installer using WiX Toolset v4
 #         Output: installer\qbPortWeaver_{version}_Setup.msi
 # ---------------------------------------------------------------------------
-Write-Step 'Building MSI installer with WiX Toolset v4...'
+Show-Step 'Building MSI installer with WiX Toolset v4...'
 
 # Ensure WiX is installed (update is idempotent - installs if missing, updates if present)
 dotnet tool update --global wix --version "4.0.6"
@@ -127,5 +127,5 @@ if (-not (Test-Path $setupMsi)) {
     throw "Expected installer not found: $setupMsi"
 }
 
-Write-Ok "Installer : $setupMsi"
+Show-Ok "Installer : $setupMsi"
 Write-Host "`nDone." -ForegroundColor Green

@@ -918,7 +918,7 @@ public sealed class PortSyncService
 
     // Port detection failed despite the VPN being connected. Logs at Warn (the other two
     // failure paths use Info because they correspond to expected disconnection states).
-    private Task HandlePortDetectionFailureAsync(IVpnManager vpnManager, AppConfig cfg, CancellationToken cancellationToken) =>
+    private Task HandlePortDetectionFailureAsync(IVpnManager vpnManager, AppConfig cfg, CancellationToken cancellationToken) => // NOSONAR S2325 - calls the instance method RegisterFailureAndTryRecoveryAsync, so it cannot be static
         RegisterFailureAndTryRecoveryAsync(
             $"Port detection failed on '{vpnManager.ProviderName}'", LogLevel.Warn,
             vpnManager.GetRecoveryAction(), vpnManager.GetRecoveryTarget(), vpnManager.ProviderName,

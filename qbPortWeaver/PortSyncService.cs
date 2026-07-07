@@ -81,23 +81,11 @@ public sealed class PortSyncService
     // Thread-safety: only accessed inside RunCoreAsync, serialised by MainForm._updateSemaphore.
     private NatPmpManager? _lastKnownNatPmpManager;
 
-    // Per-client connection and behaviour settings; one instance per BT client section.
-    // UserName is empty for clients that do not authenticate by username (e.g. Deluge).
-    private sealed record ClientConfig(
-        string Url,
-        string UserName,
-        string Password,
-        string ProcessName,
-        string ExePath,
-        bool Restart,
-        bool ForceStart,
-        int DefaultPort
-    );
-
-    // All values read from the registry for a single sync cycle.
-    // Adding a 4th BitTorrent client: add an entry in ClientRegistry (name/section/URL key), add a
-    // ClientConfig field below, populate it in ReadConfig, add an arm in GetActiveClient, an arm in
-    // CreateBitTorrentClient, and a branch in LogConfigDebug.
+    // All values read from the registry for a single sync cycle. Only the active client's connection
+    // settings are read, into a single Client block (see ReadConfig); the other clients' sections are
+    // not touched. Adding a 4th BitTorrent client: add one entry to ClientRegistry (its keys + factory)
+    // plus its Settings UI - ReadConfig, CreateBitTorrentClient, and LogConfigDebug are all driven from
+    // that table and pick it up with no change here.
     // qBittorrent-only flags (interface mismatch warn, restart on disconnect) stay at the
     // top level since the other clients do not expose the necessary RPC fields.
     private sealed record AppConfig(
@@ -105,9 +93,7 @@ public sealed class PortSyncService
         string NatPmpAdapterName,
         int UpdateInterval,
         string BitTorrentClient,
-        ClientConfig QBittorrent,
-        ClientConfig Transmission,
-        ClientConfig Deluge,
+        ClientConfig Client,
         bool QBittorrentWarnOnInterfaceMismatch,
         bool QBittorrentRestartOnDisconnect,
         string PostUpdateCommand,
@@ -248,7 +234,7 @@ public sealed class PortSyncService
         LogManager.Instance.DebugMode = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionExtra, RegistrySettingsManager.KeyDebugMode);
 
         var (cfg, activeSection) = ReadConfig();
-        int defaultPort = GetDefaultPort(cfg, activeSection);
+        int defaultPort = GetDefaultPort(cfg);
         LogConfigDebug(cfg, activeSection);
         status[StatusKeys.VpnProvider] = cfg.VpnProvider;
         status[StatusKeys.UpdateIntervalSeconds] = cfg.UpdateInterval;
@@ -343,46 +329,27 @@ public sealed class PortSyncService
         int vpnAutoRecoveryTriggerCycles = Math.Max(1, RegistrySettingsManager.GetInt(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyVpnAutoRecoveryTriggerCycles));
 
         string bitTorrentClient = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyBitTorrentClient);
-        string activeSection = GetActiveClientSection(bitTorrentClient);
+        var activeClient = ClientRegistry.Resolve(bitTorrentClient);
 
-        var qBittorrent = new ClientConfig(
-            Url: RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyQBittorrentUrl),
-            UserName: RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyQBittorrentUserName),
-            Password: RegistrySettingsManager.GetQBittorrentPassword(),
-            ProcessName: RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyQBittorrentProcessName),
-            ExePath: RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyQBittorrentExePath),
-            Restart: RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyRestartQBittorrent),
-            ForceStart: RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyForceStartQBittorrent),
-            DefaultPort: RegistrySettingsManager.GetInt(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyDefaultPort));
-
-        var transmission = new ClientConfig(
-            Url: RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionTransmission, RegistrySettingsManager.KeyTransmissionUrl),
-            UserName: RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionTransmission, RegistrySettingsManager.KeyTransmissionUserName),
-            Password: RegistrySettingsManager.GetTransmissionPassword(),
-            ProcessName: RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionTransmission, RegistrySettingsManager.KeyTransmissionProcessName),
-            ExePath: RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionTransmission, RegistrySettingsManager.KeyTransmissionExePath),
-            Restart: RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionTransmission, RegistrySettingsManager.KeyRestartTransmission),
-            ForceStart: RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionTransmission, RegistrySettingsManager.KeyForceStartTransmission),
-            DefaultPort: RegistrySettingsManager.GetInt(RegistrySettingsManager.SectionTransmission, RegistrySettingsManager.KeyDefaultPort));
-
-        var deluge = new ClientConfig(
-            Url: RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionDeluge, RegistrySettingsManager.KeyDelugeUrl),
-            UserName: string.Empty, // Deluge Web UI uses password only
-            Password: RegistrySettingsManager.GetDelugePassword(),
-            ProcessName: RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionDeluge, RegistrySettingsManager.KeyDelugeProcessName),
-            ExePath: RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionDeluge, RegistrySettingsManager.KeyDelugeExePath),
-            Restart: RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionDeluge, RegistrySettingsManager.KeyRestartDeluge),
-            ForceStart: RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionDeluge, RegistrySettingsManager.KeyForceStartDeluge),
-            DefaultPort: RegistrySettingsManager.GetInt(RegistrySettingsManager.SectionDeluge, RegistrySettingsManager.KeyDefaultPort));
+        // Only the active client's section is read. UserNameKey is null for clients without a username
+        // (Deluge); the password is DPAPI-decrypted via GetEncryptedValue (same as the per-client
+        // GetXxxPassword helpers). DefaultPort shares one key across all clients.
+        var clientConfig = new ClientConfig(
+            Url: RegistrySettingsManager.GetValue(activeClient.Section, activeClient.UrlKey),
+            UserName: activeClient.UserNameKey is null ? string.Empty : RegistrySettingsManager.GetValue(activeClient.Section, activeClient.UserNameKey),
+            Password: RegistrySettingsManager.GetEncryptedValue(activeClient.Section, activeClient.PasswordKey),
+            ProcessName: RegistrySettingsManager.GetValue(activeClient.Section, activeClient.ProcessNameKey),
+            ExePath: RegistrySettingsManager.GetValue(activeClient.Section, activeClient.ExePathKey),
+            Restart: RegistrySettingsManager.GetBool(activeClient.Section, activeClient.RestartKey),
+            ForceStart: RegistrySettingsManager.GetBool(activeClient.Section, activeClient.ForceStartKey),
+            DefaultPort: RegistrySettingsManager.GetInt(activeClient.Section, RegistrySettingsManager.KeyDefaultPort));
 
         return (new AppConfig(
             VpnProvider: RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyVpnProvider),
             NatPmpAdapterName: RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyNatPmpAdapterName),
             UpdateInterval: updateInterval,
             BitTorrentClient: bitTorrentClient,
-            QBittorrent: qBittorrent,
-            Transmission: transmission,
-            Deluge: deluge,
+            Client: clientConfig,
             QBittorrentWarnOnInterfaceMismatch: RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyWarnOnInterfaceMismatch),
             QBittorrentRestartOnDisconnect: RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyRestartOnDisconnect),
             PostUpdateCommand: RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionExtra, RegistrySettingsManager.KeyPostUpdateCmd),
@@ -392,11 +359,13 @@ public sealed class PortSyncService
             VerifyPortAfterSync: RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyVerifyPortAfterSync),
             PortClosedRecoveryEnabled: RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyPortClosedRecoveryEnabled),
             PortClosedRecoveryTriggerChecks: Math.Max(1, RegistrySettingsManager.GetInt(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyPortClosedRecoveryTriggerChecks))
-        ), activeSection);
+        ), activeClient.Section);
     }
 
     // Dumps the active AppConfig to the log file when debug mode is enabled.
     // Three lines (general / active client / extra) keep each section independently greppable.
+    // The client line is built from the active client's ClientRegistry key names, so it stays in
+    // step with whatever ReadConfig read - no per-client branch.
     private static void LogConfigDebug(AppConfig cfg, string activeSection)
     {
         if (!LogManager.Instance.DebugMode) return;
@@ -412,37 +381,22 @@ public sealed class PortSyncService
             $"{RegistrySettingsManager.KeyPortClosedRecoveryEnabled}={cfg.PortClosedRecoveryEnabled}, " +
             $"{RegistrySettingsManager.KeyPortClosedRecoveryTriggerChecks}={cfg.PortClosedRecoveryTriggerChecks}");
 
-        if (activeSection == RegistrySettingsManager.SectionTransmission)
-            LogManager.Instance.LogDebug(
-                $"PortSyncService.RunCoreAsync [transmission]: {RegistrySettingsManager.KeyTransmissionUrl}={cfg.Transmission.Url}, " +
-                $"{RegistrySettingsManager.KeyTransmissionUserName}={cfg.Transmission.UserName}, " +
-                $"{RegistrySettingsManager.KeyTransmissionPassword}=***, " + // NOSONAR S2068 - value is masked, not a real credential
-                $"{RegistrySettingsManager.KeyTransmissionProcessName}={cfg.Transmission.ProcessName}, " +
-                $"{RegistrySettingsManager.KeyTransmissionExePath}={cfg.Transmission.ExePath}, " +
-                $"{RegistrySettingsManager.KeyRestartTransmission}={cfg.Transmission.Restart}, " +
-                $"{RegistrySettingsManager.KeyForceStartTransmission}={cfg.Transmission.ForceStart}, " +
-                $"{RegistrySettingsManager.KeyDefaultPort}={cfg.Transmission.DefaultPort}");
-        else if (activeSection == RegistrySettingsManager.SectionDeluge)
-            LogManager.Instance.LogDebug(
-                $"PortSyncService.RunCoreAsync [deluge]: {RegistrySettingsManager.KeyDelugeUrl}={cfg.Deluge.Url}, " +
-                $"{RegistrySettingsManager.KeyDelugePassword}=***, " + // NOSONAR S2068 - value is masked, not a real credential
-                $"{RegistrySettingsManager.KeyDelugeProcessName}={cfg.Deluge.ProcessName}, " +
-                $"{RegistrySettingsManager.KeyDelugeExePath}={cfg.Deluge.ExePath}, " +
-                $"{RegistrySettingsManager.KeyRestartDeluge}={cfg.Deluge.Restart}, " +
-                $"{RegistrySettingsManager.KeyForceStartDeluge}={cfg.Deluge.ForceStart}, " +
-                $"{RegistrySettingsManager.KeyDefaultPort}={cfg.Deluge.DefaultPort}");
-        else
-            LogManager.Instance.LogDebug(
-                $"PortSyncService.RunCoreAsync [qBittorrent]: {RegistrySettingsManager.KeyQBittorrentUrl}={cfg.QBittorrent.Url}, " +
-                $"{RegistrySettingsManager.KeyQBittorrentUserName}={cfg.QBittorrent.UserName}, " +
-                $"{RegistrySettingsManager.KeyQBittorrentPassword}=***, " + // NOSONAR S2068 - value is masked, not a real credential
-                $"{RegistrySettingsManager.KeyQBittorrentProcessName}={cfg.QBittorrent.ProcessName}, " +
-                $"{RegistrySettingsManager.KeyQBittorrentExePath}={cfg.QBittorrent.ExePath}, " +
-                $"{RegistrySettingsManager.KeyRestartQBittorrent}={cfg.QBittorrent.Restart}, " +
-                $"{RegistrySettingsManager.KeyForceStartQBittorrent}={cfg.QBittorrent.ForceStart}, " +
-                $"{RegistrySettingsManager.KeyDefaultPort}={cfg.QBittorrent.DefaultPort}, " +
-                $"{RegistrySettingsManager.KeyWarnOnInterfaceMismatch}={cfg.QBittorrentWarnOnInterfaceMismatch}, " +
-                $"{RegistrySettingsManager.KeyRestartOnDisconnect}={cfg.QBittorrentRestartOnDisconnect}");
+        var ci = ClientRegistry.Resolve(cfg.BitTorrentClient);
+        string clientLine =
+            $"PortSyncService.RunCoreAsync [{ci.Name}]: {ci.UrlKey}={cfg.Client.Url}, " +
+            (ci.UserNameKey is not null ? $"{ci.UserNameKey}={cfg.Client.UserName}, " : string.Empty) +
+            $"{ci.PasswordKey}=***, " + // NOSONAR S2068 - value is masked, not a real credential
+            $"{ci.ProcessNameKey}={cfg.Client.ProcessName}, " +
+            $"{ci.ExePathKey}={cfg.Client.ExePath}, " +
+            $"{ci.RestartKey}={cfg.Client.Restart}, " +
+            $"{ci.ForceStartKey}={cfg.Client.ForceStart}, " +
+            $"{RegistrySettingsManager.KeyDefaultPort}={cfg.Client.DefaultPort}";
+        // qBittorrent exposes two extra RPC-backed flags; append them only for that client.
+        if (activeSection == RegistrySettingsManager.SectionQBittorrent)
+            clientLine +=
+                $", {RegistrySettingsManager.KeyWarnOnInterfaceMismatch}={cfg.QBittorrentWarnOnInterfaceMismatch}" +
+                $", {RegistrySettingsManager.KeyRestartOnDisconnect}={cfg.QBittorrentRestartOnDisconnect}";
+        LogManager.Instance.LogDebug(clientLine);
 
         LogManager.Instance.LogDebug(
             $"PortSyncService.RunCoreAsync [extra]: {RegistrySettingsManager.KeyPostUpdateCmd}={cfg.PostUpdateCommand}, " +
@@ -553,22 +507,11 @@ public sealed class PortSyncService
         return null;
     }
 
-    // Creates the active IBitTorrentClient based on the BitTorrentClient config value.
-    // Defaults to QBittorrentClient when the value is unrecognized.
-    private static IBitTorrentClient CreateBitTorrentClient(AppConfig cfg)
-    {
-        if (cfg.BitTorrentClient.Equals(RegistrySettingsManager.BitTorrentClientTransmission, StringComparison.OrdinalIgnoreCase))
-            return new TransmissionClient(
-                cfg.Transmission.Url, cfg.Transmission.UserName, cfg.Transmission.Password,
-                cfg.Transmission.ProcessName, cfg.Transmission.ExePath);
-
-        if (cfg.BitTorrentClient.Equals(RegistrySettingsManager.BitTorrentClientDeluge, StringComparison.OrdinalIgnoreCase))
-            return new DelugeClient(cfg.Deluge.Url, cfg.Deluge.Password, cfg.Deluge.ProcessName, cfg.Deluge.ExePath);
-
-        return new QBittorrentClient(
-            cfg.QBittorrent.Url, cfg.QBittorrent.UserName, cfg.QBittorrent.Password,
-            cfg.QBittorrent.ProcessName, cfg.QBittorrent.ExePath);
-    }
+    // Creates the active IBitTorrentClient via its ClientRegistry factory from the config block
+    // ReadConfig built for the active client. Resolve defaults to qBittorrent when the value is
+    // unrecognized (matching ReadConfig).
+    private static IBitTorrentClient CreateBitTorrentClient(AppConfig cfg) =>
+        ClientRegistry.Resolve(cfg.BitTorrentClient).Factory(cfg.Client);
 
     /// <summary>
     /// Tests on demand whether the currently configured client's listening port is reachable from
@@ -1059,35 +1002,19 @@ public sealed class PortSyncService
             LogManager.Instance.LogMessage($"Unknown recovery action '{action}' for '{displayName}' - skipping", LogLevel.Warn);
     }
 
-    // Returns the registry settings section for the active BitTorrent client.
-    // Used to read DefaultPort and to determine which restart options to apply.
-    private static string GetActiveClientSection(string client) => ClientRegistry.Resolve(client).Section;
-
-    // Returns the per-client config block for the active BitTorrent client.
-    // Defaults to qBittorrent when the section is unrecognised (matches GetActiveClientSection).
-    private static ClientConfig GetActiveClient(AppConfig cfg, string activeSection) =>
-        activeSection switch
-        {
-            RegistrySettingsManager.SectionTransmission => cfg.Transmission,
-            RegistrySettingsManager.SectionDeluge => cfg.Deluge,
-            _ => cfg.QBittorrent,
-        };
-
     private static (bool ForceStart, bool Restart, bool RestartOnDisconnect, bool WarnOnInterfaceMismatch) GetClientBehaviorConfig(AppConfig cfg, string activeSection)
     {
-        var client = GetActiveClient(cfg, activeSection);
         // RestartOnDisconnect and WarnOnInterfaceMismatch are qBittorrent-only: Transmission and Deluge
         // do not expose a connection-state API, so neither feature can be implemented for them.
         bool isQBittorrent = activeSection == RegistrySettingsManager.SectionQBittorrent;
         return (
-            client.ForceStart,
-            client.Restart,
+            cfg.Client.ForceStart,
+            cfg.Client.Restart,
             isQBittorrent && cfg.QBittorrentRestartOnDisconnect,
             isQBittorrent && cfg.QBittorrentWarnOnInterfaceMismatch);
     }
 
-    private static int GetDefaultPort(AppConfig cfg, string activeSection) =>
-        GetActiveClient(cfg, activeSection).DefaultPort;
+    private static int GetDefaultPort(AppConfig cfg) => cfg.Client.DefaultPort;
 
     // Sets the cycle status and message in the status dict, logs the message, and adds a closing bookend on failure.
     // Pass an explicit level to override the default (Info on success, Error on failure).

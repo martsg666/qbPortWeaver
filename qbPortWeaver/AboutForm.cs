@@ -46,7 +46,9 @@ public partial class AboutForm : Form
 
     private void btnWhatsNew_Click(object? sender, EventArgs e)
     {
-        using var form = new WhatsNewForm();
+        // Center on the About dialog (its parent), since here it is shown modally - unlike the
+        // non-modal first-run path (from MainForm) where it keeps its designer default CenterScreen.
+        using var form = new WhatsNewForm { StartPosition = FormStartPosition.CenterParent };
         form.ShowDialog(this);
     }
 

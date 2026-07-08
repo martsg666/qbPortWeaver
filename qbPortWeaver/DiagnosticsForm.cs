@@ -81,8 +81,8 @@ internal sealed class DiagnosticsForm : Form
             BorderStyle = BorderStyle.None,
             BackColor = SystemColors.Control,
             TabStop = false,
-            Location = new Point(12, 12),
-            Size = new Size(ClientSize.Width - 24, ClientSize.Height - 60),
+            Location = new Point(8, 12),
+            Size = new Size(ClientSize.Width - 16, ClientSize.Height - 56),
             Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right,
         };
         Controls.Add(_report);
@@ -91,7 +91,7 @@ internal sealed class DiagnosticsForm : Form
         {
             Text = "Copy Report",
             Size = new Size(110, 28),
-            Location = new Point(12, ClientSize.Height - 40),
+            Location = new Point(8, ClientSize.Height - 36),
             Anchor = AnchorStyles.Bottom | AnchorStyles.Left,
         };
         btnCopy.Click += (_, _) => AppConstants.TrySetClipboardText(BuildPlainReport());
@@ -101,7 +101,7 @@ internal sealed class DiagnosticsForm : Form
         {
             Text = "Re-run",
             Size = new Size(90, 28),
-            Location = new Point(130, ClientSize.Height - 40),
+            Location = new Point(126, ClientSize.Height - 36),
             Anchor = AnchorStyles.Bottom | AnchorStyles.Left,
         };
         _btnRerun.Click += (_, _) => RefreshRequested?.Invoke(this, EventArgs.Empty);
@@ -112,7 +112,7 @@ internal sealed class DiagnosticsForm : Form
             Text = "Close",
             DialogResult = DialogResult.Cancel,
             Size = new Size(82, 28),
-            Location = new Point(ClientSize.Width - 94, ClientSize.Height - 40),
+            Location = new Point(ClientSize.Width - 90, ClientSize.Height - 36),
             Anchor = AnchorStyles.Bottom | AnchorStyles.Right,
         };
         btnClose.Click += (_, _) => Close(); // NOSONAR S2325 - Close() is an instance method, handler cannot be static
@@ -197,7 +197,7 @@ internal sealed class DiagnosticsForm : Form
             lines += string.IsNullOrEmpty(r.Hint) ? 3 : 4; // name + detail (+ hint) + trailing blank
 
         const int reportTop = 12;   // _report.Location.Y
-        const int buttonArea = 48;  // space from the report's bottom to the form's bottom (button row)
+        const int buttonArea = 44;  // report bottom to form bottom: 8px gap + 28px button + 8px margin
         int reportHeight = lines * lineHeight + lineHeight; // one extra line of breathing room
         int height = Math.Min(reportTop + reportHeight + buttonArea, 760);
         ClientSize = new Size(ClientSize.Width, height);

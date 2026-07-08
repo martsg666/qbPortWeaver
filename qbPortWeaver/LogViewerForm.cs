@@ -99,6 +99,7 @@ public partial class LogViewerForm : Form
         base.OnLoad(e);
         _themeColors = [AppConstants.LogError, AppConstants.LogWarning, AppConstants.LogInfo, AppConstants.LogDebug, SystemColors.WindowText];
         Text = $"{AppIdentity.AppName} | Log Viewer";
+        KeyPreview = true; // form sees keys before the focused control - see OnKeyDown (Escape to close)
         ApplyTheme();
         // Vertically center the search box - single-line TextBox auto-sizes its height from the font,
         // so the actual height is only known after layout; compute the top offset here.
@@ -149,6 +150,19 @@ public partial class LogViewerForm : Form
         // label was never actually drawn. By OnShown the form is painted, so the overlay below
         // renders before the blocking read/RTF parse begins.
         _ = LoadInitialContentAsync(); // fire-and-forget; exceptions are handled inside LoadInitialContentAsync
+    }
+
+    // Escape closes the viewer, except while the search box has focus - there Escape clears the search
+    // (handled in txtSearch_KeyDown). KeyPreview (set in OnLoad) lets the form see the key first.
+    protected override void OnKeyDown(KeyEventArgs e)
+    {
+        if (e.KeyCode == Keys.Escape && !txtSearch.Focused)
+        {
+            Close();
+            e.Handled = true;
+            return;
+        }
+        base.OnKeyDown(e);
     }
 
     protected override void OnFormClosed(FormClosedEventArgs e)

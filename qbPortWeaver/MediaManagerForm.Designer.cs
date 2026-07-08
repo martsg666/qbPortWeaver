@@ -205,7 +205,7 @@ partial class MediaManagerForm
         btnAddSourceFolder.Text     = "Add...";
         btnAddSourceFolder.Click   += btnAddSourceFolder_Click;
         btnRemoveSourceFolder.Anchor   = AnchorStyles.Bottom | AnchorStyles.Left;
-        btnRemoveSourceFolder.Location = new Point(92, 84);
+        btnRemoveSourceFolder.Location = new Point(95, 84); // 8px gap after btnAddSourceFolder (ends at x=87)
         btnRemoveSourceFolder.Name     = "btnRemoveSourceFolder";
         btnRemoveSourceFolder.Size     = new Size(75, 23);
         btnRemoveSourceFolder.TabIndex = 2;

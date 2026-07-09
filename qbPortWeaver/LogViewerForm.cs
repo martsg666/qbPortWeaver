@@ -222,7 +222,7 @@ public partial class LogViewerForm : Form
     // Fires on the UI thread. Once the viewer has been idle for ReclaimIdleSeconds after the last
     // content change, runs one LOH-compacting reclaim and disarms until the next content arrives.
     // Gating on idle keeps the blocking GC out of the active logging path: a continuous scan keeps
-    // pushing _lastActivityUtc forward, so the reclaim waits until the stream stops.
+    // pushing _lastActivityTicks forward, so the reclaim waits until the stream stops.
     //
     // Do NOT convert this to a fixed/max-interval reclaim: ReclaimUnusedMemory is process-wide (the
     // blocking gen2 GC suspends all managed threads and EmptyWorkingSet trims the whole process), so
@@ -1060,8 +1060,7 @@ public partial class LogViewerForm : Form
         }
     }
 
-    // Displays a one-off meta/error message (e.g. "No log entries yet", watcher errors).
-    // Shows a centred status/placeholder message (loading, empty, error) over the log area.
+    // Shows a centered status/placeholder message (loading, empty, error) over the log area.
     // The overlay Label fully covers rtbLog with the same background, so it reads as the log's
     // own empty/error state; it is hidden again as soon as real content is displayed.
     private void SetMetaMessage(string text, Color color)

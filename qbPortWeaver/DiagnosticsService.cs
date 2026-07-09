@@ -58,7 +58,7 @@ public static class DiagnosticsService
         var (vpn, vpnPort) = await AddVpnResultsAsync(results, disabled, provider, cancellationToken).ConfigureAwait(false);
         await AddClientResultsAsync(results, vpn, vpnPort, cancellationToken).ConfigureAwait(false);
 
-        // Per-check detail at Debug so the full report is in the logfile when debug mode is on,
+        // Per-check detail at Debug so the full report is in the log file when debug mode is on,
         // without raising the Warn/Error tray badge (the user is already viewing the results).
         foreach (var r in results)
             LogManager.Instance.LogDebug($"DiagnosticsService.RunAsync: [{r.Status}] {r.Check} - {r.Detail}");

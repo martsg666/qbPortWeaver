@@ -41,11 +41,11 @@ public sealed class PortSyncService
     // Consecutive sync cycles in which the VPN was disconnected or port detection failed.
     // Serialised by MainForm._updateSemaphore (same guarantee as _lastKnownNatPmpManager).
     private int _consecutiveFailedCycles;
-    // Wall-clock time the current failure streak began (stamped on the 0 -> 1 transition,
-    // cleared whenever the streak resets). Auto-recovery gates on this in addition to the cycle
-    // count so a burst of early wakes (network-change re-syncs interrupting the inter-cycle delay)
-    // cannot fast-track a heavy recovery action during a transient outage that would self-heal.
-    // Kept in lockstep with _consecutiveFailedCycles via RegisterFailure/ResetFailureStreak.
+    // Wall-clock time the current failure streak began (re-stamped on every 0 -> 1 transition
+    // of the counter, so it always describes the streak in progress). Auto-recovery gates on
+    // this in addition to the cycle count so a burst of early wakes (network-change re-syncs
+    // interrupting the inter-cycle delay) cannot fast-track a heavy recovery action during a
+    // transient outage that would self-heal. Only meaningful while the counter is non-zero.
     private DateTime _failureStreakStartedUtc;
     // Tracks the last interface-mismatch message shown as a balloon tip to suppress repeat invocations
     // for the same persistent mismatch. Cleared when the mismatch resolves so the balloon re-fires if it returns.
@@ -933,8 +933,10 @@ public sealed class PortSyncService
         await TryTriggerRecoveryAsync(recoveryAction, recoveryTarget, displayName, cfg, cancellationToken).ConfigureAwait(false);
     }
 
-    // Resets the failure streak. Keeps the count and its start timestamp in lockstep so the
-    // time gate in TryTriggerRecoveryAsync cannot read a stale start time on the next streak.
+    // Resets the failure streak counter. The start timestamp is deliberately left alone: it is
+    // re-stamped on the next streak's first failure (see RegisterFailureAndTryRecoveryAsync),
+    // and the time gate in TryTriggerRecoveryAsync only reads it while the counter is non-zero,
+    // so a stale value can never be observed.
     private void ResetFailureStreak() => _consecutiveFailedCycles = 0;
 
     // Triggers auto-recovery if enabled and both gates are cleared: the failure cycle threshold

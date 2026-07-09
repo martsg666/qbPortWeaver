@@ -10,6 +10,7 @@ partial class LogViewerForm
         {
             _watcher?.Dispose();
             _searchDebounceTimer?.Dispose();
+            _reclaimTimer?.Dispose();
 
             // Dispose explicitly created fonts (WinForms controls do not own their Font)
             rtbLog?.Font?.Dispose();

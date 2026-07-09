@@ -212,7 +212,7 @@ public static class RegistrySettingsManager
             [KeyPiactlProcessName] = "piactl",
         };
 
-    /// <summary>Reads a string value from the app-level registry key (<c>HKCU\Software\qbPortWeaver</c>), above the settings sections. Returns the hardcoded default if the key is missing.</summary>
+    /// <summary>Reads a string value from the app-level registry key (<c>HKCU\Software\qbPortWeaver</c>), above the settings sections. Returns the registered default if the key is missing.</summary>
     public static string GetAppValue(string key)
     {
         try
@@ -269,7 +269,7 @@ public static class RegistrySettingsManager
         }
     }
 
-    /// <summary>Ensures all settings keys exist in the registry, writing hardcoded defaults for any that are missing.</summary>
+    /// <summary>Ensures all settings keys exist in the registry, writing the registered defaults for any that are missing.</summary>
     public static void EnsureDefaults()
     {
         bool anyWritten = false;
@@ -304,7 +304,7 @@ public static class RegistrySettingsManager
             LogManager.Instance.LogMessage("Registry default values written for missing keys", LogLevel.Info);
     }
 
-    /// <summary>Reads a string value from the registry. Returns the hardcoded default if the key is missing or unreadable.</summary>
+    /// <summary>Reads a string value from the registry. Returns the registered default if the key is missing or unreadable.</summary>
     public static string GetValue(string section, string key)
     {
         try
@@ -378,7 +378,7 @@ public static class RegistrySettingsManager
     public static string GetTmdbApiKey() =>
         GetEncryptedValue(SectionMedia, KeyTmdbApiKey);
 
-    /// <summary>Reads a DPAPI-encrypted string value from the registry. Returns the hardcoded default if the key is missing, empty, or decryption fails.</summary>
+    /// <summary>Reads a DPAPI-encrypted string value from the registry. Returns the registered default if the key is missing or empty, or an empty string if the stored value cannot be decrypted.</summary>
     public static string GetEncryptedValue(string section, string key)
     {
         try
@@ -535,7 +535,7 @@ public static class RegistrySettingsManager
     private static string MaskSensitiveValue(string key, string value) =>
         _logMaskedKeys.Contains(key) ? "***" : value;
 
-    // Returns the hardcoded default for a setting; returns empty string if the section or key is not found
+    // Returns the registered default for a setting; returns empty string if the section or key is not found
     private static string GetDefault(string section, string key)
     {
         if (_defaults.TryGetValue(section, out var sectionDefaults) &&

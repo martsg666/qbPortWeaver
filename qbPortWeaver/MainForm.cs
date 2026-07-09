@@ -142,9 +142,11 @@ public partial class MainForm : Form
         LogManager.Instance.WarnOrErrorLogged += OnWarnOrErrorLogged;
     }
 
-    private void MainForm_Load(object? sender, EventArgs e) => _ = MainForm_LoadAsync();
+    private void MainForm_Load(object? sender, EventArgs e) => InitializeAfterLoad();
 
-    private async Task MainForm_LoadAsync()
+    // Not async: everything here is either synchronous or explicitly fire-and-forget
+    // (Task.Run/PerformUpdateCheckAsync are intentionally not awaited).
+    private void InitializeAfterLoad()
     {
         try
         {
@@ -208,7 +210,7 @@ public partial class MainForm : Form
     // Prevents the form from ever becoming visible - this is a tray-only app with no visible window.
     // Application.Run() calls Show() internally; overriding SetVisibleCore blocks it permanently.
     // CreateHandle() ensures the window handle exists for the message pump, and OnLoad() fires
-    // the Load event exactly once so MainForm_LoadAsync (sync loop, timers, etc.) runs normally.
+    // the Load event exactly once so InitializeAfterLoad (sync loop, timers, etc.) runs normally.
     protected override void SetVisibleCore(bool value)
     {
         if (!IsHandleCreated)
@@ -270,10 +272,10 @@ public partial class MainForm : Form
     private void InitializeStatusIcons()
     {
         _iconBase = Properties.Resources.qbPortWeaver;
-        _iconOk = CreateStatusIcon(_iconBase, AppConstants.StatusOk);
-        _iconWarning = CreateStatusIcon(_iconBase, AppConstants.StatusWarning);
-        _iconError = CreateStatusIcon(_iconBase, AppConstants.StatusError);
-        _iconPaused = CreateStatusIcon(_iconBase, AppConstants.StatusPaused);
+        _iconOk = CreateStatusIcon(_iconBase, AppConstants.TrayDotOk);
+        _iconWarning = CreateStatusIcon(_iconBase, AppConstants.TrayDotWarning);
+        _iconError = CreateStatusIcon(_iconBase, AppConstants.TrayDotError);
+        _iconPaused = CreateStatusIcon(_iconBase, AppConstants.TrayDotPaused);
     }
 
     // Draws a small filled circle onto a 16x16 copy of the base icon and returns it as an Icon
@@ -314,6 +316,9 @@ public partial class MainForm : Form
     private void InitializeTrayIcon()
     {
         _trayMenu = new ContextMenuStrip();
+        // Render with the system renderer so the menu follows the app color mode (Application.SetColorMode)
+        // like the rest of the UI, instead of the light "professional" gradient the default renderer uses.
+        _trayMenu.RenderMode = ToolStripRenderMode.System;
 
         // Update notification - inserted at the top so it is the first thing the user sees
         // when an update is pending. Hidden until a check reports a newer version.

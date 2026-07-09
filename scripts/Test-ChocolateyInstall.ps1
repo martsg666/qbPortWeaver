@@ -23,13 +23,13 @@ $chocoSrc   = Join-Path $repoRoot 'choco'
 $csprojPath = Join-Path $repoRoot 'qbPortWeaver\qbPortWeaver.csproj'
 $stagingDir = Join-Path ([System.IO.Path]::GetTempPath()) "qbPortWeaver-choco-test-$([System.Guid]::NewGuid().ToString('N'))"
 
-function Write-Step([string]$msg) { Write-Host "`n==> $msg" -ForegroundColor Cyan }
-function Write-Ok([string]$msg)   { Write-Host "    $msg"   -ForegroundColor Green }
+function Show-Step([string]$msg) { Write-Host "`n==> $msg" -ForegroundColor Cyan }
+function Show-Ok([string]$msg)   { Write-Host "    $msg"   -ForegroundColor Green }
 
 # ---------------------------------------------------------------------------
 # Step 1: Resolve version and locate MSI
 # ---------------------------------------------------------------------------
-Write-Step 'Resolving version and locating MSI...'
+Show-Step 'Resolving version and locating MSI...'
 
 $match = Select-String -Path $csprojPath -Pattern '<Version>([^<]+)</Version>'
 if (-not $match) { throw "Could not find <Version> in qbPortWeaver.csproj." }
@@ -43,14 +43,14 @@ if (-not (Test-Path $setupMsi)) {
 $localUrl = 'file:///' + $setupMsi.Replace('\', '/')
 $checksum = (Get-FileHash -Path $setupMsi -Algorithm SHA256).Hash.ToUpper()
 
-Write-Ok "Version : $version"
-Write-Ok "MSI     : $setupMsi"
-Write-Ok "URL     : $localUrl"
+Show-Ok "Version : $version"
+Show-Ok "MSI     : $setupMsi"
+Show-Ok "URL     : $localUrl"
 
 # ---------------------------------------------------------------------------
 # Step 2: Stage, stamp placeholders with local URL, pack, and install
 # ---------------------------------------------------------------------------
-Write-Step 'Staging and stamping Chocolatey package files...'
+Show-Step 'Staging and stamping Chocolatey package files...'
 
 Copy-Item -Recurse -Path $chocoSrc -Destination $stagingDir
 try {
@@ -71,14 +71,14 @@ try {
     }
     if ($unreplaced) { throw 'Unreplaced TEMPLATE_ placeholders found - stamping failed.' }
 
-    Write-Step 'Installing community validation extension and packing...'
+    Show-Step 'Installing community validation extension and packing...'
     choco install chocolatey-community-validation.extension --version 0.2.0 -y --no-progress
     if ($LASTEXITCODE -ne 0) { throw 'Failed to install chocolatey-community-validation.extension.' }
 
     choco pack $nuspecPath --output-directory $stagingDir
     if ($LASTEXITCODE -ne 0) { throw 'choco pack failed.' }
 
-    Write-Step 'Installing Chocolatey package...'
+    Show-Step 'Installing Chocolatey package...'
     # --ignore-checksums: Chocolatey's checksum verification is unreliable with
     # file:// URLs. Integrity is not a concern here - the MSI was built locally.
     choco install qbportweaver --version $version --source $stagingDir -y --ignore-checksums --force

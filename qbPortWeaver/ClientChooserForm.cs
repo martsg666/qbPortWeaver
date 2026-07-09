@@ -26,17 +26,18 @@ internal sealed class ClientChooserForm : Form
         MinimizeBox = false;
         MaximizeBox = false;
         ShowInTaskbar = false;
+        ShowIcon = false; // match the other modal dialogs (no title-bar icon)
         // Match the designer forms' autoscale baseline (9pt Segoe UI at 96 DPI) so the runtime scales
         // these manually-placed controls on high-DPI displays instead of leaving them at design pixels.
         AutoScaleDimensions = new SizeF(7F, 15F);
         AutoScaleMode = AutoScaleMode.Font;
-        ClientSize = new Size(330, 100 + clients.Count * RowHeight);
+        ClientSize = new Size(330, 98 + clients.Count * RowHeight);
 
         Controls.Add(new Label
         {
             Text = "More than one client was found. Select the one to use:",
-            Location = new Point(12, 12),
-            Size = new Size(306, 32),
+            Location = new Point(8, 12),
+            Size = new Size(314, 32),
             AutoSize = false
         });
 
@@ -60,9 +61,9 @@ internal sealed class ClientChooserForm : Form
             _options[0].Checked = true;
 
         int btnY = 50 + clients.Count * RowHeight + 12;
-        var btnOk = new Button { Text = "OK", DialogResult = DialogResult.OK, Location = new Point(ClientSize.Width - 178, btnY), Size = new Size(80, 26) };
+        var btnOk = new Button { Text = "OK", DialogResult = DialogResult.OK, Location = new Point(ClientSize.Width - 180, btnY), Size = new Size(82, 28) };
         btnOk.Click += CaptureSelection;
-        var btnCancel = new Button { Text = "Cancel", DialogResult = DialogResult.Cancel, Location = new Point(ClientSize.Width - 92, btnY), Size = new Size(80, 26) };
+        var btnCancel = new Button { Text = "Cancel", DialogResult = DialogResult.Cancel, Location = new Point(ClientSize.Width - 90, btnY), Size = new Size(82, 28) };
 
         Controls.Add(btnOk);
         Controls.Add(btnCancel);

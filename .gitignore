@@ -366,6 +366,9 @@ FodyWeavers.xsd
 CLAUDE.md
 .claude/
 
+# Local-only codebase review prompt (kept on disk for reference, not committed)
+docs/CODE-REVIEW.md
+
 # Build folder
 \!Build/
 

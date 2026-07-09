@@ -58,7 +58,7 @@ public static class DiagnosticsService
         var (vpn, vpnPort) = await AddVpnResultsAsync(results, disabled, provider, cancellationToken).ConfigureAwait(false);
         await AddClientResultsAsync(results, vpn, vpnPort, cancellationToken).ConfigureAwait(false);
 
-        // Per-check detail at Debug so the full report is in the logfile when debug mode is on,
+        // Per-check detail at Debug so the full report is in the log file when debug mode is on,
         // without raising the Warn/Error tray badge (the user is already viewing the results).
         foreach (var r in results)
             LogManager.Instance.LogDebug($"DiagnosticsService.RunAsync: [{r.Status}] {r.Check} - {r.Detail}");
@@ -76,34 +76,19 @@ public static class DiagnosticsService
         if (disabled)
             results.Add(new(Checks.VpnProvider, DiagnosticStatus.Warn, "Port sync is disabled",
                 "Select a VPN provider in Settings > General to enable port syncing."));
-        else if (IsRecognizedProvider(provider))
+        else if (VpnProviderRegistry.IsRecognizedProvider(provider))
             results.Add(new(Checks.VpnProvider, DiagnosticStatus.Pass, provider));
         else
             results.Add(new(Checks.VpnProvider, DiagnosticStatus.Fail, $"'{provider}' is not a recognized provider",
                 "Reselect the VPN provider in Settings > General."));
 
-        var (section, urlKey, name) = ResolveClient(clientSetting);
-        string url = RegistrySettingsManager.GetValue(section, urlKey);
+        var client = ClientRegistry.Resolve(clientSetting);
+        string url = RegistrySettingsManager.GetValue(client.Section, client.UrlKey);
         if (string.IsNullOrWhiteSpace(url))
-            results.Add(new(Checks.Client, DiagnosticStatus.Warn, $"{name} selected, but no URL is configured",
-                $"Enter the {name} Web UI/RPC URL in Settings."));
+            results.Add(new(Checks.Client, DiagnosticStatus.Warn, $"{client.Name} selected, but no URL is configured",
+                $"Enter the {client.Name} Web UI/RPC URL in Settings."));
         else
-            results.Add(new(Checks.Client, DiagnosticStatus.Pass, $"{name} ({url})"));
-    }
-
-    private static bool IsRecognizedProvider(string provider) =>
-        provider.Equals(RegistrySettingsManager.VpnProviderProtonVpn, StringComparison.OrdinalIgnoreCase) ||
-        provider.Equals(RegistrySettingsManager.VpnProviderPia, StringComparison.OrdinalIgnoreCase) ||
-        provider.Equals(RegistrySettingsManager.VpnProviderNatPmp, StringComparison.OrdinalIgnoreCase);
-
-    // Maps the client setting to its registry section, URL key, and display name.
-    private static (string Section, string UrlKey, string Name) ResolveClient(string clientSetting)
-    {
-        if (clientSetting.Equals(RegistrySettingsManager.BitTorrentClientTransmission, StringComparison.OrdinalIgnoreCase))
-            return (RegistrySettingsManager.SectionTransmission, RegistrySettingsManager.KeyTransmissionUrl, "Transmission");
-        if (clientSetting.Equals(RegistrySettingsManager.BitTorrentClientDeluge, StringComparison.OrdinalIgnoreCase))
-            return (RegistrySettingsManager.SectionDeluge, RegistrySettingsManager.KeyDelugeUrl, "Deluge");
-        return (RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyQBittorrentUrl, "qBittorrent");
+            results.Add(new(Checks.Client, DiagnosticStatus.Pass, $"{client.Name} ({url})"));
     }
 
     // Helper Windows service: needed only for auto-recovery, so a missing/stopped service is a Warn, not a Fail.
@@ -296,7 +281,7 @@ public static class DiagnosticsService
     internal static IReadOnlyList<(string Section, IReadOnlyList<(string Key, string Value)> Values)> GetSettingsSnapshot()
     {
         string clientSetting = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyBitTorrentClient);
-        var (activeClientSection, _, _) = ResolveClient(clientSetting);
+        string activeClientSection = ClientRegistry.Resolve(clientSetting).Section;
 
         string[] sections = [RegistrySettingsManager.SectionGeneral, activeClientSection, RegistrySettingsManager.SectionExtra];
         var snapshot = new List<(string Section, IReadOnlyList<(string Key, string Value)> Values)>();

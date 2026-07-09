@@ -10,6 +10,7 @@ partial class LogViewerForm
         {
             _watcher?.Dispose();
             _searchDebounceTimer?.Dispose();
+            _reclaimTimer?.Dispose();
 
             // Dispose explicitly created fonts (WinForms controls do not own their Font)
             rtbLog?.Font?.Dispose();
@@ -113,6 +114,10 @@ partial class LogViewerForm
         chkWarn.CheckedChanged  += filterButton_CheckedChanged;
         chkInfo.CheckedChanged  += filterButton_CheckedChanged;
         chkDebug.CheckedChanged += filterButton_CheckedChanged;
+        toolTip.SetToolTip(chkError, "Show or hide ERROR entries");
+        toolTip.SetToolTip(chkWarn,  "Show or hide WARN entries");
+        toolTip.SetToolTip(chkInfo,  "Show or hide INFO entries");
+        toolTip.SetToolTip(chkDebug, "Show or hide DEBUG entries");
 
         // Issue navigation buttons - grouped with the level filter buttons, navigate between WARN/ERROR lines.
         // Positioned immediately after chkDebug; y/h kept at filter-button values (no OnLoad adjustment).
@@ -121,7 +126,7 @@ partial class LogViewerForm
         btnIssuePrev.Location  = new System.Drawing.Point(296, 4);
         btnIssuePrev.Size      = new System.Drawing.Size(26, 26);
         btnIssuePrev.TabIndex  = 4;
-        btnIssuePrev.Text      = "▲";
+        btnIssuePrev.Text      = ""; // up chevron owner-drawn in NavButton_Paint
         btnIssuePrev.Click    += btnIssuePrev_Click;
         toolTip.SetToolTip(btnIssuePrev, "Previous warning or error");
 
@@ -130,7 +135,7 @@ partial class LogViewerForm
         btnIssueNext.Location  = new System.Drawing.Point(322, 4);
         btnIssueNext.Size      = new System.Drawing.Size(26, 26);
         btnIssueNext.TabIndex  = 5;
-        btnIssueNext.Text      = "▼";
+        btnIssueNext.Text      = ""; // down chevron owner-drawn in NavButton_Paint
         btnIssueNext.Click    += btnIssueNext_Click;
         toolTip.SetToolTip(btnIssueNext, "Next warning or error");
 
@@ -144,6 +149,7 @@ partial class LogViewerForm
         cboSubsystem.SelectedIndex = 0;
         // Wire event after setting SelectedIndex to avoid premature RebuildDisplay
         cboSubsystem.SelectedIndexChanged += cboSubsystem_SelectedIndexChanged;
+        toolTip.SetToolTip(cboSubsystem, "Filter entries by subsystem");
 
         // Log file picker - populated in OnLoad; event wired there after population to avoid premature load
         cboLogFile.Anchor        = System.Windows.Forms.AnchorStyles.Left | System.Windows.Forms.AnchorStyles.Top;
@@ -167,6 +173,7 @@ partial class LogViewerForm
         txtSearch.TabIndex        = 8;
         txtSearch.TextChanged    += txtSearch_TextChanged;
         txtSearch.KeyDown        += txtSearch_KeyDown;
+        toolTip.SetToolTip(txtSearch, "Search the log (highlights matches)");
 
         // btnClearSearch - overlays the right interior of txtSearch; sized and positioned in OnLoad.
         // Right-margin set to txtSearch.RightMargin - 2 so the button always stays 2px inside the box on resize.
@@ -183,6 +190,7 @@ partial class LogViewerForm
         btnClearSearch.TabStop                   = false;
         btnClearSearch.Visible                   = false;
         btnClearSearch.Click                    += btnClearSearch_Click;
+        toolTip.SetToolTip(btnClearSearch, "Clear search");
 
         // btnPrev
         btnPrev.Anchor    = rightAnchor;
@@ -190,8 +198,9 @@ partial class LogViewerForm
         btnPrev.Location  = new System.Drawing.Point(1044, 5);
         btnPrev.Size      = new System.Drawing.Size(26, 26);
         btnPrev.TabIndex  = 10;
-        btnPrev.Text      = "▲";
+        btnPrev.Text      = ""; // up chevron owner-drawn in NavButton_Paint
         btnPrev.Click    += btnPrev_Click;
+        toolTip.SetToolTip(btnPrev, "Previous match");
 
         // btnNext
         btnNext.Anchor    = rightAnchor;
@@ -199,8 +208,9 @@ partial class LogViewerForm
         btnNext.Location  = new System.Drawing.Point(1070, 5);
         btnNext.Size      = new System.Drawing.Size(26, 26);
         btnNext.TabIndex  = 11;
-        btnNext.Text      = "▼";
+        btnNext.Text      = ""; // down chevron owner-drawn in NavButton_Paint
         btnNext.Click    += btnNext_Click;
+        toolTip.SetToolTip(btnNext, "Next match");
 
         // lblMatchCount
         lblMatchCount.Anchor    = rightAnchor;
@@ -232,7 +242,7 @@ partial class LogViewerForm
         rtbLog.ContextMenuStrip = ctxLog;
 
         // rtbLog
-        rtbLog.BackColor        = System.Drawing.SystemColors.Window;
+        rtbLog.BackColor        = System.Drawing.SystemColors.Control;
         rtbLog.BorderStyle      = System.Windows.Forms.BorderStyle.None;
         rtbLog.Dock             = System.Windows.Forms.DockStyle.Fill;
         rtbLog.Font             = new System.Drawing.Font("Consolas", 9F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point);

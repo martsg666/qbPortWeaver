@@ -5,7 +5,6 @@ public partial class AboutForm : Form
 {
     // The newer release when an update is available; null when up-to-date or not yet checked.
     private LatestReleaseInfo? _availableUpdate;
-    private bool _isDarkMode;
 
     /// <summary>Raised when the user clicks Update for an available release. MainForm handles it by
     /// opening the shared update dialog (in-app download and install), the same as the tray entry point.</summary>
@@ -28,11 +27,10 @@ public partial class AboutForm : Form
     protected override void OnLoad(EventArgs e)
     {
         base.OnLoad(e);
-        _isDarkMode = AppConstants.IsDarkModeEnabled();
-        if (_isDarkMode)
+        if (AppConstants.IsDarkModeEnabled())
         {
-            lnkAuthor.LinkColor = AppConstants.DarkModeLinkColor;
-            lnkGitHub.LinkColor = AppConstants.DarkModeLinkColor;
+            lnkAuthor.LinkColor = AppConstants.LinkDark;
+            lnkGitHub.LinkColor = AppConstants.LinkDark;
         }
         _ = LoadGitHubDataAsync(); // fire-and-forget; exceptions are handled inside LoadGitHubDataAsync
     }
@@ -48,7 +46,9 @@ public partial class AboutForm : Form
 
     private void btnWhatsNew_Click(object? sender, EventArgs e)
     {
-        using var form = new WhatsNewForm();
+        // Center on the About dialog (its parent), since here it is shown modally - unlike the
+        // non-modal first-run path (from MainForm) where it keeps its designer default CenterScreen.
+        using var form = new WhatsNewForm { StartPosition = FormStartPosition.CenterParent };
         form.ShowDialog(this);
     }
 
@@ -136,14 +136,14 @@ public partial class AboutForm : Form
         if (info.IsNewer)
         {
             lblStatusValue.Text = "Update available";
-            lblStatusValue.ForeColor = _isDarkMode ? AppConstants.StatusWarning : AppConstants.StatusWarningLight;
+            lblStatusValue.ForeColor = AppConstants.StatusWarning;
             btnCheckForUpdates.Text = "Update";
             _availableUpdate = info;
         }
         else
         {
             lblStatusValue.Text = "Up to date";
-            lblStatusValue.ForeColor = _isDarkMode ? AppConstants.StatusOk : AppConstants.StatusOkLight;
+            lblStatusValue.ForeColor = AppConstants.StatusOk;
             btnCheckForUpdates.Text = "Check for Updates";
         }
     }

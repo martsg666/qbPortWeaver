@@ -270,37 +270,56 @@ public static class AppConstants
     public static bool IsDarkModeEnabled() =>
         SystemColors.Control.GetBrightness() < 0.5f;
 
-    public static readonly Color DarkModeBackground = Color.FromArgb(30, 30, 30);
-    public static readonly Color DarkModeBorder = Color.FromArgb(80, 80, 80);
-    public static readonly Color DarkModeSecondaryText = Color.FromArgb(160, 160, 160);
-    public static readonly Color DarkModeCheckedBack = Color.FromArgb(55, 55, 55);
-    public static readonly Color DarkModeSearchHighlight = Color.FromArgb(100, 85, 0);
-    public static readonly Color LightModeDimmed = Color.FromArgb(180, 180, 180);
-    public static readonly Color LightModeCheckedBack = Color.FromArgb(225, 225, 235);
+    // Theme accent colors. Surfaces and body text follow the OS theme natively (Application.SetColorMode
+    // + SystemColors); only these semantic accents are defined here. Accents that need a different shade
+    // per mode - for contrast against the mode-aware background - are paired with a Dark and a Light
+    // variant; the rest look the same in both modes. Naming: <Group><Semantic>[Dark|Light].
+
+    // Search-match highlight background (log viewer)
+    public static readonly Color SearchHighlightDark  = Color.FromArgb(100, 85, 0);
+    public static readonly Color SearchHighlightLight = Color.Yellow;
+
+    // Link text (dark only; light mode uses the LinkLabel default blue)
+    public static readonly Color LinkDark = Color.CornflowerBlue;
+
+    // Log viewer per-level line colors
+    public static readonly Color LogErrorDark    = Color.OrangeRed;
+    public static readonly Color LogErrorLight   = Color.Crimson;
+    public static readonly Color LogWarningDark  = Color.Gold;
+    public static readonly Color LogWarningLight = Color.Goldenrod;
+    public static readonly Color LogInfoDark     = Color.DodgerBlue;
+    public static readonly Color LogInfoLight    = Color.SteelBlue;
+    public static readonly Color LogDebug        = Color.DarkOrange; // same in both modes
+
+    // Status colors: tray icon dots (mode-independent - use the vivid Dark variant) and status labels
+    public static readonly Color StatusOkDark       = Color.LimeGreen;
+    public static readonly Color StatusOkLight      = Color.Green;
+    public static readonly Color StatusWarningDark  = Color.Orange;
+    public static readonly Color StatusWarningLight = Color.DarkOrange;
+    public static readonly Color StatusError        = Color.Red;  // same in both modes
+    public static readonly Color StatusPaused       = Color.Gray; // same in both modes; tray dot only
+
+    // Mode-resolved accents: each returns the Dark or Light variant for the active OS theme, so callers
+    // pick the right shade without hand-writing the dark/light ternary. Accents with a single
+    // mode-independent value (LogDebug, StatusError, StatusPaused) need no resolver.
+    public static Color SearchHighlight => IsDarkModeEnabled() ? SearchHighlightDark : SearchHighlightLight;
+    public static Color LogError        => IsDarkModeEnabled() ? LogErrorDark : LogErrorLight;
+    public static Color LogWarning      => IsDarkModeEnabled() ? LogWarningDark : LogWarningLight;
+    public static Color LogInfo         => IsDarkModeEnabled() ? LogInfoDark : LogInfoLight;
+    public static Color StatusOk        => IsDarkModeEnabled() ? StatusOkDark : StatusOkLight;
+    public static Color StatusWarning   => IsDarkModeEnabled() ? StatusWarningDark : StatusWarningLight;
+
+    // Vivid, mode-independent colors for the tray status dots (the taskbar's brightness is independent of
+    // the app theme, so a dot must look the same in both modes). Used as a complete set so a tray dot
+    // never reaches for the mode-resolved StatusOk/StatusWarning label accessors above by mistake: OK and
+    // Warning take the vivid Dark accents; Error and Paused pass through the single-value colors.
+    public static Color TrayDotOk      => StatusOkDark;
+    public static Color TrayDotWarning => StatusWarningDark;
+    public static Color TrayDotError   => StatusError;
+    public static Color TrayDotPaused  => StatusPaused;
+
+    // Tray icon dot border
     public static readonly Color TrayIconDotBorder = Color.FromArgb(60, 60, 60);
-
-    // Text and link colors
-    public static readonly Color DarkModeText = Color.Gainsboro;
-    public static readonly Color DarkModeLinkColor = Color.CornflowerBlue;
-    public static readonly Color DarkModeMeta = Color.DimGray;
-    public static readonly Color LightModeSearchHighlight = Color.Yellow;
-
-    // Severity / confidence level colors (paired dark/light)
-    public static readonly Color DarkModeError = Color.OrangeRed;
-    public static readonly Color LightModeError = Color.Crimson;
-    public static readonly Color DarkModeWarning = Color.Gold;
-    public static readonly Color LightModeWarning = Color.Goldenrod;
-    public static readonly Color DarkModeInfo = Color.DodgerBlue;
-    public static readonly Color LightModeInfo = Color.SteelBlue;
-    public static readonly Color LogLevelDebug = Color.DarkOrange;     // same in both modes
-
-    // Status indicator colors (tray icon dots and status labels)
-    public static readonly Color StatusOk = Color.LimeGreen;      // tray dot and dark mode label
-    public static readonly Color StatusOkLight = Color.Green;          // light mode label
-    public static readonly Color StatusWarning = Color.Orange;         // tray dot and dark mode label
-    public static readonly Color StatusWarningLight = Color.DarkOrange;     // light mode label
-    public static readonly Color StatusError = Color.Red;            // tray dot
-    public static readonly Color StatusPaused = Color.Gray;          // tray dot - syncing paused by the user (intentionally idle)
 
     /// <summary>Opens a URL in the default browser using ShellExecute.</summary>
     public static void OpenUrl(string url)
@@ -313,6 +332,20 @@ public static class AppConstants
         {
             LogManager.Instance.LogMessage($"Failed to open URL '{url}': {ex.Message}", LogLevel.Warn);
         }
+    }
+
+    /// <summary>
+    /// Raises a form to the foreground. The tray-only app has no foreground window, so a form shown
+    /// non-modally at startup (What's New, the update prompt) can open behind the window that launched
+    /// us; this forces it up. The brief TopMost toggle raises the z-order past the foreground lock
+    /// without leaving the window permanently always-on-top.
+    /// </summary>
+    public static void BringFormToFront(Form form)
+    {
+        form.BringToFront();
+        form.TopMost = true;
+        form.TopMost = false;
+        form.Activate();
     }
 
     /// <summary>Copies text to the clipboard, swallowing the transient <see cref="ExternalException"/> thrown

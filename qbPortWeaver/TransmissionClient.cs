@@ -1,5 +1,6 @@
 ﻿using System.Diagnostics;
 using System.Net;
+using System.Runtime.CompilerServices;
 using System.ServiceProcess;
 using System.Text;
 using System.Text.Json;
@@ -52,6 +53,66 @@ public sealed class TransmissionClient : BitTorrentClientBase
         : base(url, processName, exePath, CreateBasicAuthHttpClient(userName, password))
     {
         _userName = userName;
+    }
+
+    /// <inheritdoc/>
+    public override bool IsRunning()
+    {
+        string? serviceName = GetEffectiveServiceName();
+        if (serviceName is not null)
+        {
+            try
+            {
+                using var sc = new ServiceController(serviceName);
+                sc.Refresh();
+                if (sc.Status == ServiceControllerStatus.Running) return true;
+            }
+            catch { } // NOSONAR S108 - ServiceController throws if the service name is invalid or access is denied; fall through to the process-based check in the base class
+        }
+
+        return base.IsRunning();
+    }
+
+    /// <inheritdoc/>
+    public override async Task<bool> ForceStartAsync(CancellationToken cancellationToken = default)
+    {
+        string? serviceName = GetEffectiveServiceName();
+        if (serviceName is not null)
+            return await RestartServiceModeAsync(serviceName, cancellationToken).ConfigureAwait(false);
+
+        return await base.ForceStartAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <inheritdoc/>
+    /// <remarks>Auto-detects mode from <c>config-dir</c> via RPC and service discovery. Service
+    /// mode: a Windows service containing "Transmission" is installed AND either <c>config-dir</c>
+    /// confirms a system-wide location, or the daemon RPC is unreachable (the most likely cause
+    /// of restart being triggered, so service mode is assumed in that case). Process mode: no
+    /// service is installed, or <c>config-dir</c> is user-specific (the Qt desktop client is
+    /// running instead).</remarks>
+    public override async Task<bool> RestartAsync(CancellationToken cancellationToken = default)
+    {
+        string? serviceName = GetEffectiveServiceName();
+        // Only query RPC if a service is installed - otherwise mode is unambiguously process mode.
+        bool? detected = serviceName is not null
+            ? await TryDetectServiceModeAsync(cancellationToken).ConfigureAwait(false)
+            : null;
+        // When a service is installed but RPC is unreachable, assume service mode: the daemon
+        // being hung is the most likely cause of restart being triggered, and a process-mode
+        // launch would bypass the service. A wrong guess here is recoverable - the helper-side
+        // restart of a dormant service either succeeds or fails cleanly.
+        bool isService = serviceName is not null && (detected ?? true);
+        string modeDescription;
+        if (!isService)
+            modeDescription = "process mode";
+        else if (detected.HasValue)
+            modeDescription = $"service mode. Service name: {serviceName}";
+        else
+            modeDescription = $"service mode (assumed; daemon RPC unreachable). Service name: {serviceName}";
+        LogManager.Instance.LogMessage($"{ClientName} restarting in {modeDescription}", LogLevel.Info);
+        return isService
+            ? await RestartServiceModeAsync(serviceName!, cancellationToken).ConfigureAwait(false)
+            : await RestartProcessModeAsync(cancellationToken).ConfigureAwait(false);
     }
 
     /// <inheritdoc/>
@@ -183,7 +244,12 @@ public sealed class TransmissionClient : BitTorrentClientBase
     private async Task<(bool? Open, bool MethodUnknown)> RunPortTestAsync(string body, CancellationToken cancellationToken) // NOSONAR S2325 - calls the instance method SendRpcAsync, so it cannot be static
     {
         using var response = await SendRpcAsync(body, cancellationToken, LogLevel.Debug).ConfigureAwait(false);
-        if (response is null || !response.IsSuccessStatusCode) return (null, false);
+        if (response is null) return (null, false);
+        if (!response.IsSuccessStatusCode)
+        {
+            LogManager.Instance.LogDebug($"TransmissionClient.RunPortTestAsync: Failed to test {ClientName} port (HTTP {(int)response.StatusCode} {response.StatusCode})");
+            return (null, false);
+        }
 
         var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
         using var doc = JsonDocument.Parse(json);
@@ -199,66 +265,6 @@ public sealed class TransmissionClient : BitTorrentClientBase
         // "no method name" / "method name not recognized" => the daemon lacks this method (old version).
         bool methodUnknown = result is not null && result.Contains("method", StringComparison.OrdinalIgnoreCase);
         return (null, methodUnknown);
-    }
-
-    /// <inheritdoc/>
-    public override bool IsRunning()
-    {
-        string? serviceName = GetEffectiveServiceName();
-        if (serviceName is not null)
-        {
-            try
-            {
-                using var sc = new ServiceController(serviceName);
-                sc.Refresh();
-                if (sc.Status == ServiceControllerStatus.Running) return true;
-            }
-            catch { } // NOSONAR S108 - ServiceController throws if the service name is invalid or access is denied; fall through to the process-based check in the base class
-        }
-
-        return base.IsRunning();
-    }
-
-    /// <inheritdoc/>
-    public override async Task<bool> ForceStartAsync(CancellationToken cancellationToken = default)
-    {
-        string? serviceName = GetEffectiveServiceName();
-        if (serviceName is not null)
-            return await RestartServiceModeAsync(serviceName, cancellationToken).ConfigureAwait(false);
-
-        return await base.ForceStartAsync(cancellationToken).ConfigureAwait(false);
-    }
-
-    /// <inheritdoc/>
-    /// <remarks>Auto-detects mode from <c>config-dir</c> via RPC and service discovery. Service
-    /// mode: a Windows service containing "Transmission" is installed AND either <c>config-dir</c>
-    /// confirms a system-wide location, or the daemon RPC is unreachable (the most likely cause
-    /// of restart being triggered, so service mode is assumed in that case). Process mode: no
-    /// service is installed, or <c>config-dir</c> is user-specific (the Qt desktop client is
-    /// running instead).</remarks>
-    public override async Task<bool> RestartAsync(CancellationToken cancellationToken = default)
-    {
-        string? serviceName = GetEffectiveServiceName();
-        // Only query RPC if a service is installed - otherwise mode is unambiguously process mode.
-        bool? detected = serviceName is not null
-            ? await TryDetectServiceModeAsync(cancellationToken).ConfigureAwait(false)
-            : null;
-        // When a service is installed but RPC is unreachable, assume service mode: the daemon
-        // being hung is the most likely cause of restart being triggered, and a process-mode
-        // launch would bypass the service. A wrong guess here is recoverable - the helper-side
-        // restart of a dormant service either succeeds or fails cleanly.
-        bool isService = serviceName is not null && (detected ?? true);
-        string modeDescription;
-        if (!isService)
-            modeDescription = "process mode";
-        else if (detected.HasValue)
-            modeDescription = $"service mode. Service name: {serviceName}";
-        else
-            modeDescription = $"service mode (assumed; daemon RPC unreachable). Service name: {serviceName}";
-        LogManager.Instance.LogMessage($"{ClientName} restarting in {modeDescription}", LogLevel.Info);
-        return isService
-            ? await RestartServiceModeAsync(serviceName!, cancellationToken).ConfigureAwait(false)
-            : await RestartProcessModeAsync(cancellationToken).ConfigureAwait(false);
     }
 
     // Transmission authenticates per request via SendRpcAsync's X-Transmission-Session-Id CSRF
@@ -356,7 +362,11 @@ public sealed class TransmissionClient : BitTorrentClientBase
     // (port sync, set-port - actionable), but the best-effort port verification probe passes
     // Debug so an unreachable daemon during a verify cycle does not raise an Error, matching
     // qBittorrent's and Deluge's verify-path handling.
-    private async Task<HttpResponseMessage?> SendRpcAsync(string jsonBody, CancellationToken cancellationToken = default, LogLevel failureLevel = LogLevel.Error)
+    // callerName is captured automatically so the transport-failure log below names the public
+    // method that actually failed (GetPreferencesAsync, SetListeningPortAsync, etc.), matching
+    // how QBittorrentClient and DelugeClient report their own method name at each call site.
+    private async Task<HttpResponseMessage?> SendRpcAsync(string jsonBody, CancellationToken cancellationToken = default,
+        LogLevel failureLevel = LogLevel.Error, [CallerMemberName] string callerName = "")
     {
         try
         {
@@ -404,7 +414,7 @@ public sealed class TransmissionClient : BitTorrentClientBase
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
         catch (Exception ex)
         {
-            LogHttpException("SendRpcAsync", ex, failureLevel);
+            LogHttpException(callerName, ex, failureLevel);
             return null;
         }
     }

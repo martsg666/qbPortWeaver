@@ -57,7 +57,7 @@ partial class StatusForm
         grpStatus.Size = new Size(454, 236);
         grpStatus.TabIndex = 0;
         grpStatus.TabStop = false;
-        grpStatus.Text = "Connection status";
+        grpStatus.Text = "Connection Status";
         lblVpnProviderLabel.Location = new Point(12, 24);
         lblVpnProviderLabel.Name = "lblVpnProviderLabel";
         lblVpnProviderLabel.Size = new Size(130, 23);
@@ -177,6 +177,7 @@ partial class StatusForm
         btnClose.Text = "Close";
         btnClose.Click += btnClose_Click;
         // ── StatusForm ────────────────────────────────────────────────
+        AcceptButton = btnClose;
         AutoScaleDimensions = new SizeF(7F, 15F);
         AutoScaleMode = AutoScaleMode.Font;
         CancelButton = btnClose;

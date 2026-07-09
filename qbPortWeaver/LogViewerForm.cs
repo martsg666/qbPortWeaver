@@ -1,4 +1,5 @@
 ﻿using System.ComponentModel;
+using System.Drawing.Drawing2D;
 using System.Runtime;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -23,8 +24,7 @@ public partial class LogViewerForm : Form
     // on the threadpool, so without this guard a stale event would read the newly-active
     // file at a freshly-reset offset and duplicate content against LoadInitialContentAsync.
     private int _watcherGeneration;
-    private bool _isDarkMode;
-    private Color[] _themeColors = []; // overwritten in OnLoad after _isDarkMode is set
+    private Color[] _themeColors = []; // per-level line palette; resolved for the active theme in OnLoad
     private System.Windows.Forms.Timer? _searchDebounceTimer;
     // Reclaims memory once the viewer goes idle after a burst of content. Live appends and the
     // initial load build transient RTF strings that land on the Large Object Heap; a normal
@@ -97,11 +97,9 @@ public partial class LogViewerForm : Form
     protected override void OnLoad(EventArgs e)
     {
         base.OnLoad(e);
-        _isDarkMode = AppConstants.IsDarkModeEnabled();
-        _themeColors = _isDarkMode
-            ? [AppConstants.DarkModeError, AppConstants.DarkModeWarning, AppConstants.DarkModeInfo, AppConstants.LogLevelDebug, AppConstants.DarkModeText]
-            : [AppConstants.LightModeError, AppConstants.LightModeWarning, AppConstants.LightModeInfo, AppConstants.LogLevelDebug, SystemColors.WindowText];
+        _themeColors = [AppConstants.LogError, AppConstants.LogWarning, AppConstants.LogInfo, AppConstants.LogDebug, SystemColors.WindowText];
         Text = $"{AppIdentity.AppName} | Log Viewer";
+        KeyPreview = true; // form sees keys before the focused control - see OnKeyDown (Escape to close)
         ApplyTheme();
         // Vertically center the search box - single-line TextBox auto-sizes its height from the font,
         // so the actual height is only known after layout; compute the top offset here.
@@ -110,20 +108,34 @@ public partial class LogViewerForm : Form
         cboSubsystem.Top = (pnlToolbar.Height - cboSubsystem.Height) / 2;
         cboLogFile.Top = (pnlToolbar.Height - cboLogFile.Height) / 2;
 
-        // Size all nav buttons to match the search box height so arrows render consistently
+        // Size all nav buttons to match the search box height. Their up/down chevrons are owner-drawn
+        // in NavButton_Paint (crisp, perfectly centered, using the button's ForeColor) rather than a
+        // font glyph, which never centered cleanly.
         int navH = txtSearch.Height;
         foreach (var btn in new[] { btnPrev, btnNext, btnIssuePrev, btnIssueNext })
         {
             btn.Height = navH;
             btn.Top = searchTop;
+            btn.Paint += NavButton_Paint;
+        }
+
+        // Match the level-filter buttons to the same height and vertical centering as the rest of the
+        // toolbar (the designer gives them a taller, top-aligned box), so the whole row lines up.
+        foreach (var chk in new[] { chkError, chkWarn, chkInfo, chkDebug })
+        {
+            chk.Height = navH;
+            chk.Top = searchTop;
         }
         lblMatchCount.Top = searchTop + (txtSearch.Height - lblMatchCount.Height) / 2;
 
         // Position the × button inside the right edge of the search box.
         // Done here so the button tracks the auto-sized TextBox height and right-anchor position.
-        int cbSize = txtSearch.Height - ClearButtonInset;
+        // Scale the logical-pixel constants with DPI so the button stays proportional at 125%+.
+        int clearButtonInset = LogicalToDeviceUnits(ClearButtonInset);
+        int clearButtonMargin = LogicalToDeviceUnits(ClearButtonMargin);
+        int cbSize = txtSearch.Height - clearButtonInset;
         btnClearSearch.Size = new Size(cbSize, cbSize);
-        btnClearSearch.Location = new Point(txtSearch.Right - cbSize - ClearButtonMargin, searchTop + ClearButtonMargin);
+        btnClearSearch.Location = new Point(txtSearch.Right - cbSize - clearButtonMargin, searchTop + clearButtonMargin);
         // Must be in front of the native TextBox HWND or it will be hidden behind it
         btnClearSearch.BringToFront();
         PopulateLogFileDropdown();
@@ -141,6 +153,19 @@ public partial class LogViewerForm : Form
         // label was never actually drawn. By OnShown the form is painted, so the overlay below
         // renders before the blocking read/RTF parse begins.
         _ = LoadInitialContentAsync(); // fire-and-forget; exceptions are handled inside LoadInitialContentAsync
+    }
+
+    // Escape closes the viewer, except while the search box has focus - there Escape clears the search
+    // (handled in txtSearch_KeyDown). KeyPreview (set in OnLoad) lets the form see the key first.
+    protected override void OnKeyDown(KeyEventArgs e)
+    {
+        if (e.KeyCode == Keys.Escape && !txtSearch.Focused)
+        {
+            Close();
+            e.Handled = true;
+            return;
+        }
+        base.OnKeyDown(e);
     }
 
     protected override void OnFormClosed(FormClosedEventArgs e)
@@ -197,7 +222,7 @@ public partial class LogViewerForm : Form
     // Fires on the UI thread. Once the viewer has been idle for ReclaimIdleSeconds after the last
     // content change, runs one LOH-compacting reclaim and disarms until the next content arrives.
     // Gating on idle keeps the blocking GC out of the active logging path: a continuous scan keeps
-    // pushing _lastActivityUtc forward, so the reclaim waits until the stream stops.
+    // pushing _lastActivityTicks forward, so the reclaim waits until the stream stops.
     //
     // Do NOT convert this to a fixed/max-interval reclaim: ReclaimUnusedMemory is process-wide (the
     // blocking gen2 GC suspends all managed threads and EmptyWorkingSet trims the whole process), so
@@ -236,52 +261,91 @@ public partial class LogViewerForm : Form
     // Applies theme colors to the background, filter buttons, and search controls
     private void ApplyTheme()
     {
-        Color bg = _isDarkMode ? AppConstants.DarkModeBackground : SystemColors.Window;
-        Color fg = _isDarkMode ? AppConstants.DarkModeText : SystemColors.WindowText;
-        Color border = _isDarkMode ? AppConstants.DarkModeBorder : SystemColors.ControlDark;
+        // Native surface colors: SystemColors track the active dark/light mode under Application.SetColorMode.
+        // Chrome and the read-only log use the dialog surface (Control) so the viewer matches the rest of the
+        // app; editable fields use the input surface (Window) like every other form. Only the per-level
+        // filter buttons use accent colors.
+        Color surface = SystemColors.Control;
+        Color input = SystemColors.Window;
+        Color fg = SystemColors.WindowText;
+        Color border = SystemColors.ControlDark;
 
-        BackColor = bg;
-        pnlToolbar.BackColor = bg;
-        rtbLog.BackColor = bg;
+        BackColor = surface;
+        pnlToolbar.BackColor = surface;
+        rtbLog.BackColor = surface;
 
         ApplyFilterButtonStyle(chkError, _themeColors[0]);
         ApplyFilterButtonStyle(chkWarn, _themeColors[1]);
         ApplyFilterButtonStyle(chkInfo, _themeColors[2]);
         ApplyFilterButtonStyle(chkDebug, _themeColors[3]);
 
-        cboSubsystem.BackColor = bg;
+        cboSubsystem.BackColor = input;
         cboSubsystem.ForeColor = fg;
 
-        cboLogFile.BackColor = bg;
+        cboLogFile.BackColor = input;
         cboLogFile.ForeColor = fg;
 
-        txtSearch.BackColor = bg;
+        txtSearch.BackColor = input;
         txtSearch.ForeColor = fg;
 
         foreach (var btn in new[] { btnPrev, btnNext, btnIssuePrev, btnIssueNext })
         {
-            btn.BackColor = bg;
+            btn.BackColor = surface;
             btn.ForeColor = fg;
             btn.FlatAppearance.BorderColor = border;
         }
 
+        // Issue-nav jumps between WARN/ERROR lines; tint it with the OS accent (severity-neutral,
+        // mode-aware) so it reads as distinct from the neutral search-match arrows by the search box.
+        btnIssuePrev.ForeColor = SystemColors.HotTrack;
+        btnIssueNext.ForeColor = SystemColors.HotTrack;
+
         // Clear button sits inside the search box - blend it in rather than styling it like the nav buttons
         btnClearSearch.BackColor = txtSearch.BackColor;
-        btnClearSearch.ForeColor = _isDarkMode ? AppConstants.DarkModeSecondaryText : SystemColors.GrayText;
+        btnClearSearch.ForeColor = SystemColors.GrayText;
         btnClearSearch.FlatAppearance.BorderSize = 0;
 
-        lblMatchCount.BackColor = bg;
-        lblMatchCount.ForeColor = _isDarkMode ? AppConstants.DarkModeSecondaryText : SystemColors.GrayText;
+        lblMatchCount.BackColor = surface;
+        lblMatchCount.ForeColor = SystemColors.GrayText;
     }
 
-    // Sets filter button foreground and border to the level colour when active, dimmed when inactive
+    // Sets filter button foreground and border to the level colour when active, and the native
+    // dimmed/disabled gray when inactive. The checked background is a subtle native tint; all three
+    // track the color mode through SystemColors.
     private void ApplyFilterButtonStyle(CheckBox chk, Color levelColor)
     {
-        Color dimmed = _isDarkMode ? AppConstants.DarkModeBorder : AppConstants.LightModeDimmed;
-        chk.ForeColor = chk.Checked ? levelColor : dimmed;
-        chk.FlatAppearance.BorderColor = chk.Checked ? levelColor : dimmed;
-        chk.FlatAppearance.CheckedBackColor = _isDarkMode ? AppConstants.DarkModeCheckedBack : AppConstants.LightModeCheckedBack;
+        chk.ForeColor = chk.Checked ? levelColor : SystemColors.GrayText;
+        chk.FlatAppearance.BorderColor = chk.Checked ? levelColor : SystemColors.GrayText;
+        chk.FlatAppearance.CheckedBackColor = SystemColors.ControlLight;
         chk.BackColor = pnlToolbar.BackColor;
+    }
+
+    // Owner-draws a crisp up/down chevron centered in a nav button, in the button's ForeColor (neutral
+    // WindowText for the search-match arrows, the accent for the issue-nav arrows). Drawn instead of a
+    // font glyph so it is always centered and its size/weight are exact. btnPrev/btnIssuePrev point up.
+    private void NavButton_Paint(object? sender, PaintEventArgs e)
+    {
+        if (sender is not Button btn) return;
+        bool up = btn == btnPrev || btn == btnIssuePrev;
+
+        float scale = btn.DeviceDpi / 96f;
+        float halfW = 5f * scale;     // chevron half-width
+        float halfH = 3.25f * scale;  // chevron half-height
+        float cx = btn.ClientSize.Width / 2f;
+        float cy = btn.ClientSize.Height / 2f;
+        float armY  = up ? cy + halfH : cy - halfH; // the two ends
+        float apexY = up ? cy - halfH : cy + halfH; // the point
+
+        PointF[] chevron = [new(cx - halfW, armY), new(cx, apexY), new(cx + halfW, armY)];
+
+        e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+        using var pen = new Pen(btn.ForeColor, 1.8f * scale)
+        {
+            StartCap = LineCap.Round,
+            EndCap = LineCap.Round,
+            LineJoin = LineJoin.Round,
+        };
+        e.Graphics.DrawLines(pen, chevron);
     }
 
     // Called when any filter CheckBox changes - updates its style and rebuilds the display
@@ -452,7 +516,7 @@ public partial class LogViewerForm : Form
 
         int savedStart = rtbLog.SelectionStart;
         int savedLen = rtbLog.SelectionLength;
-        Color bg = _isDarkMode ? AppConstants.DarkModeSearchHighlight : AppConstants.LightModeSearchHighlight;
+        Color bg = AppConstants.SearchHighlight;
         int len = txtSearch.Text.Length;
         int count = Math.Min(_searchMatches.Count, MaxHighlights);
 
@@ -667,9 +731,8 @@ public partial class LogViewerForm : Form
         }
         catch (Exception ex)
         {
-            // _themeColors[0] is the error color for whichever theme is active (DarkModeError
-            // or LightModeError); using the literal DarkModeError would fall through to the
-            // foreground text colour in light mode and lose the visual emphasis.
+            // _themeColors[0] is the error color already resolved for the active theme; using a
+            // fixed dark variant would clash with the foreground text colour in light mode.
             if (!IsDisposed)
                 SetMetaMessage($"(Error reading log: {ex.Message})", _themeColors[0]);
         }
@@ -944,7 +1007,7 @@ public partial class LogViewerForm : Form
     }
 
     // Convenience colour for meta/status messages (not log entries)
-    private Color MetaColor => _isDarkMode ? AppConstants.DarkModeMeta : SystemColors.GrayText;
+    private static Color MetaColor => SystemColors.GrayText; // mode-aware under SetColorMode
 
     // Writes the RTF document header for BuildRtf:
     // Unicode-safe, Consolas 9pt (18 half-points), no paragraph spacing, colour table.
@@ -997,8 +1060,7 @@ public partial class LogViewerForm : Form
         }
     }
 
-    // Displays a one-off meta/error message (e.g. "No log entries yet", watcher errors).
-    // Shows a centred status/placeholder message (loading, empty, error) over the log area.
+    // Shows a centered status/placeholder message (loading, empty, error) over the log area.
     // The overlay Label fully covers rtbLog with the same background, so it reads as the log's
     // own empty/error state; it is hidden again as soon as real content is displayed.
     private void SetMetaMessage(string text, Color color)

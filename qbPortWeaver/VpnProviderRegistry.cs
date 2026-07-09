@@ -31,4 +31,16 @@ internal static class VpnProviderRegistry
     /// <summary>Returns the provider entry whose <see cref="VpnProvider.Keyword"/> equals <paramref name="keyword"/> (case-insensitive), or <see langword="null"/> if no provider matches.</summary>
     internal static VpnProvider? FindByKeyword(string keyword) =>
         KnownProviders.FirstOrDefault(p => p.Keyword.Equals(keyword, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>
+    /// Returns <see langword="true"/> if <paramref name="provider"/> is one of the three VPN providers
+    /// selectable in Settings (ProtonVPN, PIA, NAT-PMP). Broader than <see cref="KnownProviders"/>,
+    /// which only lists providers with a dedicated service-restart recovery config - NAT-PMP recovers
+    /// via generic adapter cycling instead, so it is valid here but absent from <see cref="KnownProviders"/>.
+    /// </summary>
+    internal static bool IsRecognizedProvider(string? provider) =>
+        provider is not null && (
+            provider.Equals(RegistrySettingsManager.VpnProviderProtonVpn, StringComparison.OrdinalIgnoreCase) ||
+            provider.Equals(RegistrySettingsManager.VpnProviderPia, StringComparison.OrdinalIgnoreCase) ||
+            provider.Equals(RegistrySettingsManager.VpnProviderNatPmp, StringComparison.OrdinalIgnoreCase));
 }

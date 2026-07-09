@@ -26,6 +26,10 @@ public partial class WhatsNewForm : Form
         "The port reachability check - port verification, the Status panel's Test Port, and diagnostics - " +
         "now works correctly with recent Transmission versions, which had changed how their built-in port " +
         "test works.\n\n" +
+        "Consistent theming across every window\n" +
+        "Every window - Settings, Status, Diagnostics, the log viewer, Media Manager, and the tray menu - now " +
+        "follows your color theme (System, Dark, or Light) uniformly, using the native Windows colors so text " +
+        "and surfaces stay legible in both light and dark mode.\n\n" +
         "Previously released\n\n" +
         "New in 2.5.8\n\n" +
         "Test your port on demand\n" +
@@ -198,8 +202,6 @@ public partial class WhatsNewForm : Form
         "v1.0.0 - Initial release\n" +
         "Automatic ProtonVPN port sync for qBittorrent.";
 
-    private bool _isDarkMode;
-
     public WhatsNewForm()
     {
         InitializeComponent();
@@ -228,15 +230,20 @@ public partial class WhatsNewForm : Form
     protected override void OnLoad(EventArgs e)
     {
         base.OnLoad(e);
-        _isDarkMode = AppConstants.IsDarkModeEnabled();
         rtbFeatures.Font = Font;
-        rtbFeatures.ForeColor = ForeColor;
-        if (_isDarkMode)
-        {
-            lnkCommunity.LinkColor = AppConstants.DarkModeLinkColor;
-            rtbFeatures.ForeColor = AppConstants.DarkModeText;
-        }
+        rtbFeatures.ForeColor = SystemColors.ControlText; // match the group box (mode-aware, blends in)
+        if (AppConstants.IsDarkModeEnabled())
+            lnkCommunity.LinkColor = AppConstants.LinkDark;
         RenderFeatures();
+    }
+
+    protected override void OnShown(EventArgs e)
+    {
+        base.OnShown(e);
+        // Shown non-modally on first run by the tray-only app (no foreground window), so it can open
+        // behind whatever launched us (e.g. the installer). If the user never sees it they never
+        // dismiss it, and the "last seen version" is never recorded - so it keeps reappearing.
+        AppConstants.BringFormToFront(this);
     }
 
     // Renders ReleaseFeaturesText into the RichTextBox with a visual hierarchy instead of flat text:

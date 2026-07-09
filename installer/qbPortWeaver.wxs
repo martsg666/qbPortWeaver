@@ -50,7 +50,6 @@
 		     twice (~40s total). RM closes and relaunches them cleanly, so no util:CloseApplication is
 		     needed either. The tray app's single-instance mutex guards against any double-launch. -->
 
-
 		<!-- Block install if legacy NSIS version is present (fires in both UI and silent installs) -->
 		<Launch Condition="NOT NSIS_UNINST_EXE_X64 AND NOT NSIS_UNINST_EXE_X86"
 				Message="A legacy version of qbPortWeaver is already installed. Please uninstall it before continuing." />

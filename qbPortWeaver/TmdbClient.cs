@@ -226,37 +226,52 @@ public sealed class TmdbClient(string apiKey)
         Func<T, bool> hasYear,
         CancellationToken cancellationToken = default) where T : class
     {
-        var afterDash = info is null ? ExtractAfterDash(title) : null;
-        if (afterDash is not null)
-        {
-            LogManager.Instance.LogDebug($"TmdbClient.TryFallbackLookupsAsync: Retrying with after-dash title '{afterDash}'", Subsystem.MediaManager);
-            var afterDashResults = await search(afterDash, year, cancellationToken).ConfigureAwait(false);
-            var afterDashInfo = afterDashResults is { Count: > 0 } ? afterDashResults[0] : null;
-            if (afterDashInfo is not null)
-            {
-                info = afterDashInfo;
-                isConfident = false;
-            }
-        }
+        (info, isConfident) = await TryAfterDashLookupAsync(title, year, info, isConfident, search, cancellationToken).ConfigureAwait(false);
 
         if (info is null || (!hasYear(info) && !isConfident))
-        {
-            var withoutNum = StripTrailingNumber(title);
-            if (withoutNum is not null)
-            {
-                LogManager.Instance.LogDebug($"TmdbClient.TryFallbackLookupsAsync: Retrying without trailing number '{withoutNum}'", Subsystem.MediaManager);
-                var withoutNumResults = await search(withoutNum, year, cancellationToken).ConfigureAwait(false);
-                var withoutNumInfo = withoutNumResults is { Count: > 0 } ? withoutNumResults[0] : null;
-                if (withoutNumInfo is not null && hasYear(withoutNumInfo))
-                {
-                    info = withoutNumInfo;
-                    isConfident = false;
-                }
-            }
-        }
+            (info, isConfident) = await TryTrailingNumberLookupAsync(title, year, info, isConfident, search, hasYear, cancellationToken).ConfigureAwait(false);
 
         return (info, isConfident);
     }
+
+    // After-dash strategy: retries with the part after " - " when info is null. No-op if info is
+    // already set or the title has no " - " separator.
+    private static async Task<(T? Info, bool IsConfident)> TryAfterDashLookupAsync<T>(
+        string title, int? year, T? info, bool isConfident,
+        Func<string, int?, CancellationToken, Task<IReadOnlyList<T>?>> search,
+        CancellationToken cancellationToken) where T : class
+    {
+        if (info is not null) return (info, isConfident);
+
+        var afterDash = ExtractAfterDash(title);
+        if (afterDash is null) return (info, isConfident);
+
+        LogManager.Instance.LogDebug($"TmdbClient.TryFallbackLookupsAsync: Retrying with after-dash title '{afterDash}'", Subsystem.MediaManager);
+        var results = await search(afterDash, year, cancellationToken).ConfigureAwait(false);
+        var candidate = FirstOrNull(results);
+        return candidate is not null ? (candidate, false) : (info, isConfident);
+    }
+
+    // Trailing-number strategy: retries without a trailing digit. Only called when info is null OR
+    // the result has no year (a year-less result is ambiguous; a stripped-title result that includes
+    // a year is higher quality).
+    private static async Task<(T? Info, bool IsConfident)> TryTrailingNumberLookupAsync<T>(
+        string title, int? year, T? info, bool isConfident,
+        Func<string, int?, CancellationToken, Task<IReadOnlyList<T>?>> search,
+        Func<T, bool> hasYear,
+        CancellationToken cancellationToken) where T : class
+    {
+        var withoutNum = StripTrailingNumber(title);
+        if (withoutNum is null) return (info, isConfident);
+
+        LogManager.Instance.LogDebug($"TmdbClient.TryFallbackLookupsAsync: Retrying without trailing number '{withoutNum}'", Subsystem.MediaManager);
+        var results = await search(withoutNum, year, cancellationToken).ConfigureAwait(false);
+        var candidate = FirstOrNull(results);
+        return candidate is not null && hasYear(candidate) ? (candidate, false) : (info, isConfident);
+    }
+
+    private static T? FirstOrNull<T>(IReadOnlyList<T>? results) where T : class =>
+        results is { Count: > 0 } ? results[0] : null;
 
     // Returns the substring after the first " - " separator, or null if not present.
     private static string? ExtractAfterDash(string title)

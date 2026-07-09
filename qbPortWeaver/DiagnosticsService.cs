@@ -76,7 +76,7 @@ public static class DiagnosticsService
         if (disabled)
             results.Add(new(Checks.VpnProvider, DiagnosticStatus.Warn, "Port sync is disabled",
                 "Select a VPN provider in Settings > General to enable port syncing."));
-        else if (IsRecognizedProvider(provider))
+        else if (VpnProviderRegistry.IsRecognizedProvider(provider))
             results.Add(new(Checks.VpnProvider, DiagnosticStatus.Pass, provider));
         else
             results.Add(new(Checks.VpnProvider, DiagnosticStatus.Fail, $"'{provider}' is not a recognized provider",
@@ -90,11 +90,6 @@ public static class DiagnosticsService
         else
             results.Add(new(Checks.Client, DiagnosticStatus.Pass, $"{client.Name} ({url})"));
     }
-
-    private static bool IsRecognizedProvider(string provider) =>
-        provider.Equals(RegistrySettingsManager.VpnProviderProtonVpn, StringComparison.OrdinalIgnoreCase) ||
-        provider.Equals(RegistrySettingsManager.VpnProviderPia, StringComparison.OrdinalIgnoreCase) ||
-        provider.Equals(RegistrySettingsManager.VpnProviderNatPmp, StringComparison.OrdinalIgnoreCase);
 
     // Helper Windows service: needed only for auto-recovery, so a missing/stopped service is a Warn, not a Fail.
     private static void AddHelperServiceResult(List<DiagnosticResult> results)

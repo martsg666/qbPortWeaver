@@ -214,7 +214,7 @@ public sealed class PortSyncService
         // An unrecognized provider value (only reachable via a manual registry edit) is a
         // configuration error, not a disconnection - surface it as Error so the tray shows
         // red with the "not recognized" message rather than orange "VPN not connected".
-        bool isKnownProvider = isDisabled || IsRecognizedProvider(provider);
+        bool isKnownProvider = isDisabled || VpnProviderRegistry.IsRecognizedProvider(provider);
 
         SyncState state;
         if (isDisabled) state = SyncState.Disabled;
@@ -420,7 +420,7 @@ public sealed class PortSyncService
     // Adding a new VPN provider: add a VpnProvider* constant in RegistrySettingsManager; if it is
     // stateless (like PIA/ProtonVPN) add an arm in CreateStatelessVpnManager (shared by the sync loop
     // and diagnostics), otherwise add an arm in both this method and BuildActiveVpnManagerAsync (as
-    // NAT-PMP does); then add the keyword in IsRecognizedProvider below, an entry in
+    // NAT-PMP does); then add the keyword in VpnProviderRegistry.IsRecognizedProvider, an entry in
     // VpnProviderRegistry.KnownProviders (when service-restart recovery applies), and the value in
     // SettingsForm's cboVpnProvider list.
     private async Task<IVpnManager?> CreateVpnManagerAsync(AppConfig cfg, Dictionary<string, object?> status, CancellationToken cancellationToken)
@@ -444,14 +444,6 @@ public sealed class PortSyncService
         status[StatusKeys.Message] = $"VPN provider '{cfg.VpnProvider}' is not recognized";
         return null;
     }
-
-    // Returns true if the configured provider value is one the app knows how to drive.
-    // Used by the tray-state mapping to distinguish a misconfigured provider (Error) from a
-    // genuine disconnection. The "Disabled" value is handled separately by the caller.
-    private static bool IsRecognizedProvider(string? provider) =>
-        string.Equals(provider, RegistrySettingsManager.VpnProviderProtonVpn, StringComparison.OrdinalIgnoreCase) ||
-        string.Equals(provider, RegistrySettingsManager.VpnProviderPia, StringComparison.OrdinalIgnoreCase) ||
-        string.Equals(provider, RegistrySettingsManager.VpnProviderNatPmp, StringComparison.OrdinalIgnoreCase);
 
     // Resolves the NAT-PMP VPN manager for the configured adapter, handling the disconnected
     // fallback cases and auto-recovery triggering when no adapter is reachable.

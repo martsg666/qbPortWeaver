@@ -121,7 +121,7 @@ internal static class HelperServiceClient
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
-            LogManager.Instance.LogDebug($"HelperServiceClient.ReadResponseAsync: Helper response timed out for '{action}'");
+            LogManager.Instance.LogMessage($"HelperServiceClient.ReadResponseAsync: Helper response timed out for '{action}'", LogLevel.Warn);
             return null;
         }
     }

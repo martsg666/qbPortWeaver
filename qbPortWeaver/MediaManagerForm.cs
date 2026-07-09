@@ -665,7 +665,14 @@ public partial class MediaManagerForm : Form
         }
 
         picTmdbPoster.Visible = false;
-        await LoadThumbnailAsync(posterPath, newCts.Token);
+        try
+        {
+            await LoadThumbnailAsync(posterPath, newCts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            // Expected when the user selects another row before the poster finishes loading.
+        }
     }
 
     private async Task LoadThumbnailAsync(string posterPath, CancellationToken cancellationToken)

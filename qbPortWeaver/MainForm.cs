@@ -142,9 +142,11 @@ public partial class MainForm : Form
         LogManager.Instance.WarnOrErrorLogged += OnWarnOrErrorLogged;
     }
 
-    private void MainForm_Load(object? sender, EventArgs e) => _ = MainForm_LoadAsync();
+    private void MainForm_Load(object? sender, EventArgs e) => InitializeAfterLoad();
 
-    private async Task MainForm_LoadAsync()
+    // Not async: everything here is either synchronous or explicitly fire-and-forget
+    // (Task.Run/PerformUpdateCheckAsync are intentionally not awaited).
+    private void InitializeAfterLoad()
     {
         try
         {
@@ -208,7 +210,7 @@ public partial class MainForm : Form
     // Prevents the form from ever becoming visible - this is a tray-only app with no visible window.
     // Application.Run() calls Show() internally; overriding SetVisibleCore blocks it permanently.
     // CreateHandle() ensures the window handle exists for the message pump, and OnLoad() fires
-    // the Load event exactly once so MainForm_LoadAsync (sync loop, timers, etc.) runs normally.
+    // the Load event exactly once so InitializeAfterLoad (sync loop, timers, etc.) runs normally.
     protected override void SetVisibleCore(bool value)
     {
         if (!IsHandleCreated)

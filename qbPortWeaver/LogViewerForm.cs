@@ -130,9 +130,12 @@ public partial class LogViewerForm : Form
 
         // Position the × button inside the right edge of the search box.
         // Done here so the button tracks the auto-sized TextBox height and right-anchor position.
-        int cbSize = txtSearch.Height - ClearButtonInset;
+        // Scale the logical-pixel constants with DPI so the button stays proportional at 125%+.
+        int clearButtonInset = LogicalToDeviceUnits(ClearButtonInset);
+        int clearButtonMargin = LogicalToDeviceUnits(ClearButtonMargin);
+        int cbSize = txtSearch.Height - clearButtonInset;
         btnClearSearch.Size = new Size(cbSize, cbSize);
-        btnClearSearch.Location = new Point(txtSearch.Right - cbSize - ClearButtonMargin, searchTop + ClearButtonMargin);
+        btnClearSearch.Location = new Point(txtSearch.Right - cbSize - clearButtonMargin, searchTop + clearButtonMargin);
         // Must be in front of the native TextBox HWND or it will be hidden behind it
         btnClearSearch.BringToFront();
         PopulateLogFileDropdown();

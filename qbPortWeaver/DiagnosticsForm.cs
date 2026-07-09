@@ -168,7 +168,8 @@ internal sealed class DiagnosticsForm : Form
 
             // Indent the detail/hint paragraphs so a wrapped second line stays aligned under the
             // first instead of falling back to the left margin (leading spaces only indent line one).
-            _report.SelectionIndent = DetailIndentPixels;
+            // Scaled with DPI since RichTextBox.SelectionIndent is not part of WinForms' auto-scaling pipeline.
+            _report.SelectionIndent = LogicalToDeviceUnits(DetailIndentPixels);
             _report.SelectionFont = _report.Font;
             _report.SelectionColor = textColor;
             _report.AppendText($"{r.Detail}\n");

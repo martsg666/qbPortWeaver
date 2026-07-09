@@ -230,7 +230,8 @@ public sealed class TmdbClient(string apiKey)
         if (afterDash is not null)
         {
             LogManager.Instance.LogDebug($"TmdbClient.TryFallbackLookupsAsync: Retrying with after-dash title '{afterDash}'", Subsystem.MediaManager);
-            var afterDashInfo = (await search(afterDash, year, cancellationToken).ConfigureAwait(false))?[0]; // safe: search delegates return null (not empty list) for no results
+            var afterDashResults = await search(afterDash, year, cancellationToken).ConfigureAwait(false);
+            var afterDashInfo = afterDashResults is { Count: > 0 } ? afterDashResults[0] : null;
             if (afterDashInfo is not null)
             {
                 info = afterDashInfo;
@@ -244,7 +245,8 @@ public sealed class TmdbClient(string apiKey)
             if (withoutNum is not null)
             {
                 LogManager.Instance.LogDebug($"TmdbClient.TryFallbackLookupsAsync: Retrying without trailing number '{withoutNum}'", Subsystem.MediaManager);
-                var withoutNumInfo = (await search(withoutNum, year, cancellationToken).ConfigureAwait(false))?[0]; // safe: search delegates return null (not empty list) for no results
+                var withoutNumResults = await search(withoutNum, year, cancellationToken).ConfigureAwait(false);
+                var withoutNumInfo = withoutNumResults is { Count: > 0 } ? withoutNumResults[0] : null;
                 if (withoutNumInfo is not null && hasYear(withoutNumInfo))
                 {
                     info = withoutNumInfo;

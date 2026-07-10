@@ -1,4 +1,4 @@
-﻿using System.ComponentModel;
+using System.ComponentModel;
 using System.Drawing.Drawing2D;
 using System.Runtime;
 using System.Runtime.InteropServices;
@@ -9,12 +9,31 @@ namespace qbPortWeaver;
 /// <summary>Modeless log viewer with live tail updates and log-level colour coding. Opened via the tray menu or tray icon double-click; only one instance is allowed at a time (enforced by MainForm.ShowOrActivate).</summary>
 public partial class LogViewerForm : Form
 {
+    // One parsed log line: the raw text and its level classified once at parse time
+    // (indexes match _themeColors; LevelMeta = unclassified, e.g. lines without a level column).
+    private readonly record struct LogLine(string Text, byte Level);
+
+    private const byte LevelError = 0;
+    private const byte LevelWarn = 1;
+    private const byte LevelInfo = 2;
+    private const byte LevelDebug = 3;
+    private const byte LevelMeta = 4;
+
     private readonly string _logFilePath;
     private string _activeLogFilePath;
     private bool _navigateToLatestIssue;
     private readonly object _readLock = new();
-    private readonly List<string> _allLines = new(); // all raw lines from file; display is rebuilt from these on filter change
-    private readonly List<int> _searchMatches = new(); // character indices of current search hits in rtbLog
+    // Source of truth: every parsed line of the active file, in order. The virtual list view
+    // renders rows on demand from this store via _visibleRows, so no second copy of the log
+    // exists inside a native control and a filter change never re-renders the document.
+    private readonly List<LogLine> _allLines = new();
+    // Indices into _allLines that pass the current level/subsystem filters, in order. This is
+    // what the list view shows: row r displays _allLines[_visibleRows[r]]. Rebuilt in one pass
+    // on any filter change (milliseconds even for very large logs).
+    private readonly List<int> _visibleRows = new();
+    // Search hits over the visible rows, sorted by (Row, Offset). Painted per visible row in
+    // lvLog_DrawItem, so no highlight cap is needed - offscreen matches cost nothing.
+    private readonly List<(int Row, int Offset)> _searchMatches = new();
     private int _searchIndex = -1;
     private long _lastReadPosition;
     private FileSystemWatcher? _watcher;
@@ -25,30 +44,32 @@ public partial class LogViewerForm : Form
     // file at a freshly-reset offset and duplicate content against LoadInitialContentAsync.
     private int _watcherGeneration;
     private Color[] _themeColors = []; // per-level line palette; resolved for the active theme in OnLoad
-    private System.Windows.Forms.Timer? _searchDebounceTimer;
-    // Reclaims memory once the viewer goes idle after a burst of content. Live appends and the
-    // initial load build transient RTF strings that land on the Large Object Heap; a normal
-    // pressure-driven GC frees them but never compacts the LOH, so committed-but-empty segments
-    // keep the working set inflated to hundreds of MB on an otherwise small log (it only returns
-    // to baseline on close, which forces LOH compaction). This timer runs that same compaction
-    // ~ReclaimIdleSeconds after the last content change, gated on idle so the blocking GC never
-    // fires while logging is actively streaming in. Content stays visible - only garbage is freed.
-    private System.Windows.Forms.Timer? _reclaimTimer;
-    private long _lastActivityTicks; // Environment.TickCount64 (monotonic ms) at the last content change
-    private bool _reclaimPending;
-    private const int ReclaimTimerIntervalMs = 1000;
-    private const int ReclaimIdleSeconds = 3;
-    // Overlay shown for status/placeholder text (loading, empty, error). A RichTextBox cannot
-    // vertically centre its content, so these messages live on a Label that covers the log area.
+    // Longest visible line in characters; drives the single column's width so the horizontal
+    // scrollbar covers the widest line. chars * _charWidth is approximate for lines containing
+    // font-fallback glyphs (a few px of scroll-range slack - invisible); highlight runs use the
+    // exact MeasureMatchRun instead.
+    private int _maxLineLength;
+    private float _charWidth;   // measured monospace character width, device pixels
+    private int _textPadding;   // left text inset inside a row, device pixels
+    // Overlay shown for status/placeholder text (loading, empty, error). A ListView cannot
+    // vertically centre a message, so these live on a Label that covers the log area.
     private Label? _metaLabel;
+    // Mouse drag-selection state - see the comment block on lvLog_MouseDown for the design.
+    private int _dragAnchorRow = -1;
+    private int _dragLastRow = -1;
+    private System.Windows.Forms.Timer? _dragScrollTimer;
+    private int _dragScrollDirection; // -1 = scrolling up, +1 = scrolling down, 0 = idle
+    private const int DragScrollIntervalMs = 60; // ~17 rows/s edge auto-scroll
 
     [LibraryImport("user32.dll", EntryPoint = "SendMessageW")]
     private static partial IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
 
     [LibraryImport("user32.dll", EntryPoint = "SendMessageW")]
-    private static partial IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, ref NativePoint lParam);
+    private static partial IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, ref NativeListViewItem lParam);
 
-    // Asks Windows to trim the calling process's working set. Pages page back in on next access.
+    // Asks Windows to trim the calling process's working set so Task Manager reflects live
+    // memory. Used only on close (see OnFormClosed) - trimming pages out live memory too, so
+    // running it while the viewer is open would make the next interaction pay a page-fault storm.
     [LibraryImport("psapi.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static partial bool EmptyWorkingSet(IntPtr hProcess);
@@ -58,26 +79,38 @@ public partial class LogViewerForm : Form
     [LibraryImport("kernel32.dll")]
     private static partial IntPtr GetCurrentProcess();
 
+    // Minimal LVITEM layout for LVM_SETITEMSTATE (only mask/state fields are read for state changes).
     [StructLayout(LayoutKind.Sequential)]
-    private struct NativePoint { public int X, Y; }
+    private struct NativeListViewItem
+    {
+        public uint Mask;
+        public int Item;
+        public int SubItem;
+        public uint State;
+        public uint StateMask;
+        public IntPtr Text;
+        public int TextMax;
+        public int Image;
+        public IntPtr LParam;
+    }
 
     private static class WinMsg
     {
         public const int WM_PAINT = 0x000F;
-        public const int WM_SETREDRAW = 0x000B;
-        public const int WM_VSCROLL = 0x0115;
-        public const int SB_BOTTOM = 7;
-        public const int EM_GETSCROLLPOS = 0x04DD;
-        public const int EM_SETSCROLLPOS = 0x04DE;
+        public const int LVM_SCROLL = 0x1014;
+        public const int LVM_SETITEMSTATE = 0x102B;
+        public const int LVM_GETITEMSTATE = 0x102C;
+        public const uint LVIF_STATE = 0x0008;
+        public const uint LVIS_FOCUSED = 0x0001;
+        public const uint LVIS_SELECTED = 0x0002;
     }
 
-    // Log column markers (format: "| LEVEL | ") and corresponding search terms
+    // Log column markers (format: "| LEVEL | ") used to classify lines once at parse time
     private const string ColError = "| ERROR |";
     private const string ColWarn = "| WARN  |";
     private const string ColInfo = "| INFO  |";
     private const string ColDebug = "| DEBUG |";
-    private const int MaxHighlights = 500;
-    private const long LoadingIndicatorMinBytes = 1_000_000; // show "Loading..." only for logs large enough that the read + RTF parse is perceptible
+    private const long LoadingIndicatorMinBytes = 1_000_000; // show "Loading..." only for logs large enough that the read + parse is perceptible
     private const int ClearButtonInset = 4; // shrinks button to fit inside the TextBox border (2 px top + 2 px bottom)
     private const int ClearButtonMargin = 2; // inner gap from TextBox right edge and top
 
@@ -101,6 +134,18 @@ public partial class LogViewerForm : Form
         Text = $"{AppIdentity.AppName} | Log Viewer";
         KeyPreview = true; // form sees keys before the focused control - see OnKeyDown (Escape to close)
         ApplyTheme();
+        // Measure the monospace character width once for the active font/DPI. Averaged over a
+        // block of characters so GDI padding rounding does not skew the per-char value; used for
+        // the column width and to position search-highlight runs within a row.
+        const int MeasureChars = 64;
+        _charWidth = TextRenderer.MeasureText(new string('0', MeasureChars), lvLog.Font,
+            Size.Empty, TextFormatFlags.NoPrefix | TextFormatFlags.NoPadding).Width / (float)MeasureChars;
+        _textPadding = LogicalToDeviceUnits(4);
+        // Invalidate after a size change: rows newly exposed by growing the window (e.g.
+        // maximize) are otherwise painted by the control's default renderer - plain white text
+        // in dark mode - until the next append happens to trigger the owner-draw pass.
+        lvLog.ClientSizeChanged += (_, _) => { UpdateColumnWidth(); lvLog.Invalidate(); };
+
         // Vertically center the search box - single-line TextBox auto-sizes its height from the font,
         // so the actual height is only known after layout; compute the top offset here.
         int searchTop = (pnlToolbar.Height - txtSearch.Height) / 2;
@@ -138,20 +183,25 @@ public partial class LogViewerForm : Form
         btnClearSearch.Location = new Point(txtSearch.Right - cbSize - clearButtonMargin, searchTop + clearButtonMargin);
         // Must be in front of the native TextBox HWND or it will be hidden behind it
         btnClearSearch.BringToFront();
+
+        // Lock the minimum width so the right-anchored search block can never slide over the
+        // left-side filter controls (same runtime-MinimumSize approach as MediaManagerForm, but
+        // computed from the actual toolbar layout so the window still shrinks below its default
+        // size). txtSearch is the leftmost right-anchored control; cboLogFile ends the left block.
+        int toolbarGap = LogicalToDeviceUnits(8);
+        int minClientWidth = cboLogFile.Right + toolbarGap + (ClientSize.Width - txtSearch.Left);
+        MinimumSize = new Size(Width - ClientSize.Width + minClientWidth, MinimumSize.Height);
+
         PopulateLogFileDropdown();
         // Wire event after population to avoid triggering a load before the initial LoadInitialContentAsync below
         cboLogFile.SelectedIndexChanged += cboLogFile_SelectedIndexChanged;
-        CreateReclaimTimer();
     }
 
     protected override void OnShown(EventArgs e)
     {
         base.OnShown(e);
-        // Start the load only after the form's first paint. Kicking it off in OnLoad raced the
-        // form's initial WM_PAINT: the "Loading..." overlay was made visible, but for a fast read
-        // the background task's continuation ran HideMetaLabel before any paint occurred, so the
-        // label was never actually drawn. By OnShown the form is painted, so the overlay below
-        // renders before the blocking read/RTF parse begins.
+        // Start the load only after the form's first paint so the "Loading..." overlay below is
+        // actually drawn before the blocking read/parse begins (see LoadInitialContentAsync).
         _ = LoadInitialContentAsync(); // fire-and-forget; exceptions are handled inside LoadInitialContentAsync
     }
 
@@ -170,92 +220,33 @@ public partial class LogViewerForm : Form
 
     protected override void OnFormClosed(FormClosedEventArgs e)
     {
-        // Stop events/ticks before the form is fully disposed to prevent callbacks on a dead form.
+        // Stop watcher events before the form is fully disposed to prevent callbacks on a dead form.
         // Actual disposal is handled in Dispose(bool) in the Designer file.
         if (_watcher is not null)
             _watcher.EnableRaisingEvents = false;
 
-        _searchDebounceTimer?.Stop();
-        _searchDebounceTimer?.Dispose();
-        _searchDebounceTimer = null;
-
-        _reclaimTimer?.Stop();
-        _reclaimTimer?.Dispose();
-        _reclaimTimer = null;
-        _reclaimPending = false;
-
-        // Release the large log content before Dispose runs. The native RichEdit control caches
-        // its document buffer and is slow to release after handle destruction, so clearing while
-        // the handle is still alive forces the buffer free now. _allLines is the matching managed
-        // backing store; clearing + TrimExcess hands its array straight to GC instead of waiting
-        // for a Gen 2 collection.
-        try { rtbLog?.Clear(); }
-        catch (ObjectDisposedException) { /* control already disposed - nothing to clear */ }
+        // Release the line store now instead of waiting for heap pressure: on a large log it is
+        // the process's dominant allocation, and without an explicit collection the freed memory
+        // sits in the heap (and Task Manager) long after the viewer is gone. The store's backing
+        // arrays live on the Large Object Heap, which only a compacting collection returns to the
+        // OS; the working-set trim then pages out the remainder. Both are free here - nobody
+        // interacts with the window after close (this is also why neither runs while it is open).
         _allLines.Clear();
         _allLines.TrimExcess();
-
-        // Content already cleared above; compact the LOH and trim the working set now rather than
-        // waiting for heap pressure. Shared with the periodic idle reclaim - see ReclaimUnusedMemory.
-        ReclaimUnusedMemory();
-
-        base.OnFormClosed(e);
-    }
-
-    // Creates the idle-reclaim timer in a stopped state. It is started on content activity and
-    // stopped again once the reclaim has run, so an idle or empty viewer has no periodic wakeups.
-    private void CreateReclaimTimer()
-    {
-        _reclaimTimer = new System.Windows.Forms.Timer { Interval = ReclaimTimerIntervalMs };
-        _reclaimTimer.Tick += reclaimTimer_Tick;
-    }
-
-    // Records that content was just added (initial load or live append), arms a reclaim, and starts
-    // the timer if it is not already running. Called on the UI thread; resets the idle clock so the
-    // reclaim only fires after activity has settled.
-    private void MarkContentActivity()
-    {
-        _lastActivityTicks = Environment.TickCount64;
-        _reclaimPending = true;
-        _reclaimTimer?.Start(); // idempotent if already running
-    }
-
-    // Fires on the UI thread. Once the viewer has been idle for ReclaimIdleSeconds after the last
-    // content change, runs one LOH-compacting reclaim and disarms until the next content arrives.
-    // Gating on idle keeps the blocking GC out of the active logging path: a continuous scan keeps
-    // pushing _lastActivityTicks forward, so the reclaim waits until the stream stops.
-    //
-    // Do NOT convert this to a fixed/max-interval reclaim: ReclaimUnusedMemory is process-wide (the
-    // blocking gen2 GC suspends all managed threads and EmptyWorkingSet trims the whole process), so
-    // firing it on an interval would perturb an actively-running media scan that has merely paused
-    // its logging. Idle-gating confines those costs to genuinely quiet moments.
-    private void reclaimTimer_Tick(object? sender, EventArgs e)
-    {
-        if (!_reclaimPending) return;
-        if (Environment.TickCount64 - _lastActivityTicks < ReclaimIdleSeconds * 1000L) return;
-        _reclaimPending = false;
-        _reclaimTimer?.Stop(); // nothing more to do until the next content activity
-        ReclaimUnusedMemory();
-    }
-
-    // Forces a blocking Gen2 collection with one-time LOH compaction, then trims the working set.
-    // The transient RTF strings built on each append/load sit mostly on the Large Object Heap, which
-    // a normal pressure-driven GC frees but never compacts - the committed-but-empty segments are
-    // what keep the viewer's footprint inflated to hundreds of MB on an otherwise small log.
-    // CompactOnce returns those segments; EmptyWorkingSet then asks Windows to page out the freed
-    // pages so Task Manager reflects live memory. Callers invoke this only when idle (after a burst
-    // settles) or on close - never mid-append - so the blocking pause is not user-visible.
-    private static void ReclaimUnusedMemory()
-    {
+        _visibleRows.Clear();
+        _visibleRows.TrimExcess();
+        _searchMatches.Clear();
+        _searchMatches.TrimExcess();
         GCSettings.LargeObjectHeapCompactionMode = GCLargeObjectHeapCompactionMode.CompactOnce;
-        // Forced (not Optimized): Optimized lets the GC decline the collection, which would leave
-        // the CompactOnce flag armed to fire on an unpredictable later gen2 (possibly mid-scan).
-        // blocking: true is required - background/concurrent collections do not compact the LOH.
+        // Forced + blocking: Optimized lets the GC decline the collection (leaving the CompactOnce
+        // flag armed to fire on an unpredictable later gen2), and background collections do not
+        // compact the LOH.
         GC.Collect(2, GCCollectionMode.Forced, blocking: true); // NOSONAR S1215 - blocking required for LOH compaction
-        // No WaitForPendingFinalizers: the reclaimed garbage (RTF strings, char[]/string[] buffers)
-        // is non-finalizable, so the forced collection above reaps it directly.
-        // best-effort: return value ignored by design (a failed trim just leaves pages resident,
+        // Best-effort: return value ignored by design (a failed trim just leaves pages resident,
         // to be evicted later under memory pressure); pseudo-handle, so nothing to dispose.
         EmptyWorkingSet(GetCurrentProcess());
+
+        base.OnFormClosed(e);
     }
 
     // Applies theme colors to the background, filter buttons, and search controls
@@ -272,12 +263,13 @@ public partial class LogViewerForm : Form
 
         BackColor = surface;
         pnlToolbar.BackColor = surface;
-        rtbLog.BackColor = surface;
+        lvLog.BackColor = surface;
+        lvLog.ForeColor = fg;
 
-        ApplyFilterButtonStyle(chkError, _themeColors[0]);
-        ApplyFilterButtonStyle(chkWarn, _themeColors[1]);
-        ApplyFilterButtonStyle(chkInfo, _themeColors[2]);
-        ApplyFilterButtonStyle(chkDebug, _themeColors[3]);
+        ApplyFilterButtonStyle(chkError, _themeColors[LevelError]);
+        ApplyFilterButtonStyle(chkWarn, _themeColors[LevelWarn]);
+        ApplyFilterButtonStyle(chkInfo, _themeColors[LevelInfo]);
+        ApplyFilterButtonStyle(chkDebug, _themeColors[LevelDebug]);
 
         cboSubsystem.BackColor = input;
         cboSubsystem.ForeColor = fg;
@@ -348,7 +340,7 @@ public partial class LogViewerForm : Form
         e.Graphics.DrawLines(pen, chevron);
     }
 
-    // Called when any filter CheckBox changes - updates its style and rebuilds the display
+    // Called when any filter CheckBox changes - updates its style and rebuilds the visible rows
     private void filterButton_CheckedChanged(object? sender, EventArgs e)
     {
         if (sender is CheckBox chk)
@@ -356,12 +348,12 @@ public partial class LogViewerForm : Form
         RebuildDisplay();
     }
 
-    // Called when the subsystem filter ComboBox changes - rebuilds the display
+    // Called when the subsystem filter ComboBox changes - rebuilds the visible rows
     private void cboSubsystem_SelectedIndexChanged(object? sender, EventArgs e) => RebuildDisplay();
 
     // Returns the padded subsystem column token to match (e.g. "| MainApp       |"),
     // or null when "All" is selected (no filter). Built here, once per rebuild, so the
-    // per-line check in IsLineVisibleWithFilters is a single allocation-free Contains.
+    // per-line check in IsLineVisible is a single allocation-free Contains.
     // Matching the full padded column (not a bare "| Name" prefix) prevents false hits
     // on message text that happens to contain the same characters.
     private string? GetSubsystemFilter()
@@ -374,18 +366,18 @@ public partial class LogViewerForm : Form
 
     private Color GetButtonLevelColor(CheckBox chk)
     {
-        if (chk == chkError) return _themeColors[0];
-        if (chk == chkWarn) return _themeColors[1];
-        if (chk == chkInfo) return _themeColors[2];
-        return _themeColors[3];
+        if (chk == chkError) return _themeColors[LevelError];
+        if (chk == chkWarn) return _themeColors[LevelWarn];
+        if (chk == chkInfo) return _themeColors[LevelInfo];
+        return _themeColors[LevelDebug];
     }
 
     private void ctxLog_Opening(object? sender, System.ComponentModel.CancelEventArgs e)
-        => ctxCopy.Enabled = rtbLog.SelectionLength > 0;
+        => ctxCopy.Enabled = lvLog.SelectedIndices.Count > 0;
 
-    private void ctxCopy_Click(object? sender, EventArgs e) => rtbLog.Copy();
-    private void ctxCopyAll_Click(object? sender, EventArgs e) => AppConstants.TrySetClipboardText(rtbLog.Text);
-    private void ctxSelectAll_Click(object? sender, EventArgs e) => rtbLog.SelectAll();
+    private void ctxCopy_Click(object? sender, EventArgs e) => CopySelectedRows();
+    private void ctxCopyAll_Click(object? sender, EventArgs e) => CopyAllVisibleRows();
+    private void ctxSelectAll_Click(object? sender, EventArgs e) => SelectAllRows();
 
     private void btnClearSearch_Click(object? sender, EventArgs e) => txtSearch.Clear();
     private void btnPrev_Click(object? sender, EventArgs e) => SearchPrev();
@@ -393,35 +385,14 @@ public partial class LogViewerForm : Form
     private void btnIssuePrev_Click(object? sender, EventArgs e) => IssuePrev();
     private void btnIssueNext_Click(object? sender, EventArgs e) => IssueNext();
 
-    // Triggered when the search text changes - shows/hides the clear button, updates match
-    // count and navigation immediately (fast text scan), then debounces the RTF rebuild
-    // so that highlights appear without blocking typing.
+    // Triggered when the search text changes - shows/hides the clear button and refreshes matches.
+    // Highlights are painted per visible row in lvLog_DrawItem, so a repaint is all that is needed
+    // to show or clear them - no document rebuild.
     private void txtSearch_TextChanged(object? sender, EventArgs e)
     {
         btnClearSearch.Visible = txtSearch.Text.Length > 0;
-
-        if (_searchDebounceTimer is null)
-        {
-            var timer = new System.Windows.Forms.Timer { Interval = 250 };
-            timer.Tick += (_, _) => { timer.Stop(); RebuildDisplay(); };
-            _searchDebounceTimer = timer;
-        }
-
-        if (txtSearch.Text.Length == 0)
-        {
-            // Search cleared - rebuild immediately to remove highlights (clean RTF = clean slate).
-            // RebuildDisplay calls RefreshSearch internally, so no separate call needed here.
-            _searchDebounceTimer.Stop();
-            RebuildDisplay();
-        }
-        else
-        {
-            // Immediate match-count feedback while the user types (fast IndexOf scan).
-            // The debounced RebuildDisplay applies the actual highlights afterward.
-            RefreshSearch(navigateToFirst: true);
-            _searchDebounceTimer.Stop();
-            _searchDebounceTimer.Start();
-        }
+        RefreshSearch(navigateToFirst: true);
+        lvLog.Invalidate();
     }
 
     // Handles Enter (next), Shift+Enter (prev), and Escape (clear) in the search box
@@ -439,8 +410,131 @@ public partial class LogViewerForm : Form
         }
     }
 
-    // scrollToMatch: when false, updates match list and count label but does not scroll.
-    // Used by AppendNewLines to avoid yanking the user away from their scroll position.
+    // Keyboard shortcuts on the log list mirroring the context menu
+    private void lvLog_KeyDown(object? sender, KeyEventArgs e)
+    {
+        if (!e.Control) return;
+        switch (e.KeyCode)
+        {
+            case Keys.C:
+                CopySelectedRows();
+                e.Handled = true;
+                break;
+            case Keys.A:
+                SelectAllRows();
+                e.Handled = true;
+                break;
+        }
+    }
+
+    // Mouse drag-selection: a native ListView only range-selects via Shift+Click, so dragging
+    // across rows (the way one selects in a text box) is implemented here. MouseDown anchors on
+    // the pressed row; MouseMove extends the selection to the row under the cursor. Holding the
+    // cursor past the top or bottom edge keeps scrolling via _dragScrollTimer - MouseMove alone
+    // cannot drive that, because it only fires while the pointer actually moves.
+    private void lvLog_MouseDown(object? sender, MouseEventArgs e)
+    {
+        if (e.Button != MouseButtons.Left) return;
+        // Shift/Ctrl clicks are native range/toggle selection - do not start a drag anchor for them.
+        if ((ModifierKeys & (Keys.Shift | Keys.Control)) != 0) return;
+        _dragAnchorRow = lvLog.HitTest(e.Location).Item?.Index ?? -1;
+        _dragLastRow = _dragAnchorRow;
+    }
+
+    private void lvLog_MouseMove(object? sender, MouseEventArgs e)
+    {
+        if (e.Button != MouseButtons.Left || _dragAnchorRow < 0) return;
+
+        // Outside the vertical bounds: hand off to the edge auto-scroll timer, which keeps
+        // advancing while the cursor is held there (the control captures the mouse, so these
+        // out-of-bounds coordinates are seen, but only as long as the pointer moves).
+        int direction = 0;
+        if (e.Y < 0) direction = -1;
+        else if (e.Y >= lvLog.ClientSize.Height) direction = 1;
+        SetDragScroll(direction);
+        if (direction != 0) return;
+
+        int row = lvLog.HitTest(new Point(
+            Math.Clamp(e.X, 0, lvLog.ClientSize.Width - 1), e.Y)).Item?.Index ?? -1;
+        if (row < 0 || row == _dragLastRow) return;
+        lvLog.EnsureVisible(row);
+        ExtendDragSelection(row);
+        _dragLastRow = row;
+    }
+
+    private void lvLog_MouseUp(object? sender, MouseEventArgs e)
+    {
+        if (e.Button != MouseButtons.Left) return;
+        SetDragScroll(0);
+        _dragAnchorRow = -1;
+        _dragLastRow = -1;
+    }
+
+    // Arms or disarms the edge auto-scroll for the given direction. The timer is created lazily
+    // on first use and lives for the form's lifetime (disposed in the Designer's Dispose).
+    private void SetDragScroll(int direction)
+    {
+        if (direction == _dragScrollDirection) return;
+        _dragScrollDirection = direction;
+        if (direction == 0)
+        {
+            _dragScrollTimer?.Stop();
+            return;
+        }
+        if (_dragScrollTimer is null)
+        {
+            _dragScrollTimer = new System.Windows.Forms.Timer { Interval = DragScrollIntervalMs };
+            _dragScrollTimer.Tick += dragScrollTimer_Tick;
+        }
+        _dragScrollTimer.Start();
+    }
+
+    // Advances the drag selection one row per tick in the held direction, scrolling with it.
+    private void dragScrollTimer_Tick(object? sender, EventArgs e)
+    {
+        if (_dragAnchorRow < 0 || _dragScrollDirection == 0)
+        {
+            SetDragScroll(0);
+            return;
+        }
+        int row = Math.Clamp(_dragLastRow + _dragScrollDirection, 0, lvLog.VirtualListSize - 1);
+        if (row == _dragLastRow) return; // hit the first/last row - keep the timer armed in case rows are appended
+        lvLog.EnsureVisible(row);
+        ExtendDragSelection(row);
+        _dragLastRow = row;
+    }
+
+    // Extends the drag selection from _dragLastRow to newRow, touching only the delta rows so
+    // the per-move cost is proportional to the mouse movement, not the total range - a clear-all
+    // plus full re-select per move would make a long edge-scroll drag quadratic and freeze the
+    // UI. Rows entering the [anchor, newRow] span are selected; rows leaving it (dragging back
+    // toward or past the anchor) are deselected. The anchor row itself always stays selected.
+    private void ExtendDragSelection(int newRow)
+    {
+        int anchor = _dragAnchorRow;
+        int last = _dragLastRow;
+
+        // Deselect rows no longer in the span (present relative to 'last', absent relative to 'newRow').
+        int oldLo = Math.Min(anchor, last), oldHi = Math.Max(anchor, last);
+        int newLo = Math.Min(anchor, newRow), newHi = Math.Max(anchor, newRow);
+        for (int r = oldLo; r <= oldHi; r++)
+        {
+            if (r < newLo || r > newHi)
+                SetRowState(r, 0, WinMsg.LVIS_SELECTED);
+        }
+        // Select rows newly in the span.
+        for (int r = newLo; r <= newHi; r++)
+        {
+            if (r < oldLo || r > oldHi)
+                SetRowState(r, WinMsg.LVIS_SELECTED, WinMsg.LVIS_SELECTED);
+        }
+        lvLog.Invalidate();
+    }
+
+    // Rescans the visible rows for the current query and rebuilds the sorted match list.
+    // scrollToMatch: when false, updates the match list and count label but does not scroll -
+    // used by RebuildDisplay, which has already positioned the viewport (bottom or anchor line)
+    // and must not have a filter toggle yank the user to the first match.
     private void RefreshSearch(bool navigateToFirst = false, bool scrollToMatch = true)
     {
         _searchMatches.Clear();
@@ -448,28 +542,17 @@ public partial class LogViewerForm : Form
         string query = txtSearch.Text;
         if (string.IsNullOrEmpty(query))
         {
+            _searchIndex = -1;
             lblMatchCount.Text = string.Empty;
-            rtbLog.SelectionLength = 0;
             return;
         }
 
-        // Scan plain text with IndexOf - avoids calling rtbLog.Find() which changes the
-        // RichTextBox selection on every call and causes visible flashing.
-        string text = rtbLog.Text;
-        int start = 0;
-        while (true)
-        {
-            int found = text.IndexOf(query, start, StringComparison.OrdinalIgnoreCase);
-            if (found < 0) break;
-            _searchMatches.Add(found);
-            start = found + 1;
-        }
+        ScanRowsForMatches(0, query);
 
         if (_searchMatches.Count == 0)
         {
             _searchIndex = -1;
             lblMatchCount.Text = "0 / 0";
-            rtbLog.SelectionLength = 0;
             return;
         }
 
@@ -480,6 +563,24 @@ public partial class LogViewerForm : Form
             NavigateToMatch(_searchIndex);
         else
             lblMatchCount.Text = $"{_searchIndex + 1} / {_searchMatches.Count}";
+    }
+
+    // Appends matches for visible rows from startRow onward (0 = full rescan). Matches stay
+    // sorted by (Row, Offset) because rows are scanned in order.
+    private void ScanRowsForMatches(int startRow, string query)
+    {
+        for (int r = startRow; r < _visibleRows.Count; r++)
+        {
+            string text = _allLines[_visibleRows[r]].Text;
+            int start = 0;
+            while (true)
+            {
+                int found = text.IndexOf(query, start, StringComparison.OrdinalIgnoreCase);
+                if (found < 0) break;
+                _searchMatches.Add((r, found));
+                start = found + 1;
+            }
+        }
     }
 
     private void SearchNext()
@@ -497,112 +598,76 @@ public partial class LogViewerForm : Form
     private void NavigateToMatch(int index)
     {
         _searchIndex = index;
-        rtbLog.Select(_searchMatches[index], txtSearch.Text.Length);
-        rtbLog.ScrollToCaret();
+        var (row, offset) = _searchMatches[index];
+        SelectRow(row);
+        ScrollMatchIntoHorizontalView(row, offset);
         lblMatchCount.Text = $"{_searchIndex + 1} / {_searchMatches.Count}";
     }
 
-    // Paints yellow background on search matches using SelectionBackColor.
-    // RTF-based highlighting (\cb, \highlight) does not render in WinForms RichTextBox.
-    // Called after RebuildDisplay (clean slate) and AppendNewLines (re-paints all matches
-    // including previously highlighted ones, which is harmless since the colour is the same).
-    // Capped at 500 highlights to avoid freezing on very large result sets.
-    // Callers must bracket this method with WinMsg.WM_SETREDRAW(false)/WinMsg.WM_SETREDRAW(true)
-    // and call Invalidate() afterward to avoid flicker during the Select loop.
-    private void ApplySearchHighlights()
+    // Scrolls the list horizontally so the match run at (row, offset) is inside the viewport
+    // (EnsureVisible in SelectRow handles only the vertical axis). The row's item rect X already
+    // reflects the current horizontal scroll, so the run's on-screen position is rect.X plus the
+    // character-offset pixels; LVM_SCROLL shifts by the delta needed to bring it into view with
+    // a small margin. Left-edge correction is applied after the right-edge one so a run wider
+    // than the viewport keeps its start visible.
+    private void ScrollMatchIntoHorizontalView(int row, int offset)
     {
-        if (_searchMatches.Count == 0 || txtSearch.Text.Length == 0 || rtbLog.TextLength == 0)
-            return;
+        Rectangle itemRect = lvLog.GetItemRect(row);
+        int margin = LogicalToDeviceUnits(16);
+        var (left, width) = MeasureMatchRun(_allLines[_visibleRows[row]].Text, offset, txtSearch.Text.Length);
+        int runLeft = itemRect.X + _textPadding + left;
+        int runRight = runLeft + width;
 
-        int savedStart = rtbLog.SelectionStart;
-        int savedLen = rtbLog.SelectionLength;
-        Color bg = AppConstants.SearchHighlight;
-        int len = txtSearch.Text.Length;
-        int count = Math.Min(_searchMatches.Count, MaxHighlights);
+        int dx = 0;
+        if (runRight > lvLog.ClientSize.Width)
+            dx = runRight - lvLog.ClientSize.Width + margin;
+        if (runLeft - dx < 0)
+            dx = runLeft - margin;
 
-        for (int i = 0; i < count; i++)
+        if (dx != 0)
+            SendMessage(lvLog.Handle, WinMsg.LVM_SCROLL, dx, 0);
+    }
+
+    // Selects a single row, gives it the keyboard focus (so arrow/Shift+arrow navigation
+    // continues from it), and scrolls it into view. Shared by search and issue navigation.
+    private void SelectRow(int row)
+    {
+        if (row < 0 || row >= lvLog.VirtualListSize) return;
+        SetAllRowsSelected(false);
+        SetRowState(row, WinMsg.LVIS_SELECTED | WinMsg.LVIS_FOCUSED, WinMsg.LVIS_SELECTED | WinMsg.LVIS_FOCUSED);
+        lvLog.EnsureVisible(row);
+        lvLog.Invalidate(); // repaint so the previous selection clears immediately
+    }
+
+    // Applies the given state bits within stateMask on one row via LVM_SETITEMSTATE
+    // (state = stateMask sets the bits; state = 0 clears them).
+    private void SetRowState(int row, uint state, uint stateMask)
+    {
+        var item = new NativeListViewItem
         {
-            rtbLog.Select(_searchMatches[i], len);
-            rtbLog.SelectionBackColor = bg;
-        }
-
-        rtbLog.Select(savedStart, savedLen);
+            Mask = WinMsg.LVIF_STATE,
+            State = state,
+            StateMask = stateMask,
+        };
+        SendMessage(lvLog.Handle, WinMsg.LVM_SETITEMSTATE, row, ref item);
     }
 
-    // Rebuilds the RTF display from the in-memory line store with the current filter,
-    // then re-applies search highlights. Preserves scroll: only scrolls to bottom if the user was there.
-    private void RebuildDisplay()
-    {
-        bool wasAtBottom = IsAtBottom();
-        bool[] filters = [chkError.Checked, chkWarn.Checked, chkInfo.Checked, chkDebug.Checked];
-        string? subsystemFilter = GetSubsystemFilter();
-        string[] filtered = _allLines.Where(l => IsLineVisibleWithFilters(l, filters, subsystemFilter)).ToArray();
-
-        // Rebuild under redraw suppression so the swap + scroll + highlight paint a single settled
-        // frame. Setting Rtf resets the scroll to the top, so doing it inside the suppression avoids
-        // a brief flash where the new content shows at the top before scrolling.
-        WithRedrawSuppressed(() =>
-        {
-            HideMetaLabel();
-            rtbLog.Rtf = BuildRtf(filtered, _themeColors);
-            if (wasAtBottom) ScrollToBottom();
-            RefreshSearch(navigateToFirst: true);
-            ApplySearchHighlights();
-        });
-    }
-
-    // Returns true if the user is scrolled to the bottom of the log.
-    // Compares line numbers rather than char indices: GetCharIndexFromPosition at the
-    // bottom-left of the viewport returns the *first* char of the bottom-visible line,
-    // which for a long last line is far below TextLength-2, making a char-index comparison
-    // return false even when fully scrolled to the end.
-    private bool IsAtBottom()
-    {
-        if (rtbLog.TextLength == 0) return true;
-        int lastVisibleLine = rtbLog.GetLineFromCharIndex(
-            rtbLog.GetCharIndexFromPosition(new Point(0, rtbLog.ClientSize.Height - 1)));
-        int totalLines = rtbLog.GetLineFromCharIndex(rtbLog.TextLength);
-        return lastVisibleLine >= totalLines - 1;
-    }
+    // Anchor row for issue navigation: the selected row, or -1 when nothing is selected.
+    private int SelectedRow => lvLog.SelectedIndices.Count > 0 ? lvLog.SelectedIndices[0] : -1;
 
     // Scrolls to the previous (older) WARN or ERROR line relative to the current selection.
-    // Matches the level-column markers (e.g. "| WARN  |") so settings names like
-    // warnOnInterfaceMismatch=True are not falsely matched.
     private void IssuePrev()
     {
-        int end = rtbLog.SelectionStart;
-        if (end <= 0 || rtbLog.TextLength == 0) return;
-        int prevError = rtbLog.Find(ColError, 0, end, RichTextBoxFinds.Reverse);
-        int prevWarn = rtbLog.Find(ColWarn, 0, end, RichTextBoxFinds.Reverse);
-        int prev = (prevError, prevWarn) switch
-        {
-            ( < 0, _) => prevWarn,
-            (_, < 0) => prevError,
-            _ => Math.Max(prevError, prevWarn)
-        };
-        if (prev < 0) return;
-        rtbLog.Select(prev, 0);
-        rtbLog.ScrollToCaret();
+        int start = (SelectedRow < 0 ? _visibleRows.Count : SelectedRow) - 1;
+        int row = FindIssueRow(start, step: -1);
+        if (row >= 0) SelectRow(row);
     }
 
     // Scrolls to the next (newer) WARN or ERROR line relative to the current selection.
-    // Matches the level-column markers (e.g. "| WARN  |") so settings names like
-    // warnOnInterfaceMismatch=True are not falsely matched.
     private void IssueNext()
     {
-        int start = rtbLog.SelectionStart + 1;
-        if (start >= rtbLog.TextLength) return;
-        int nextError = rtbLog.Find(ColError, start, RichTextBoxFinds.None);
-        int nextWarn = rtbLog.Find(ColWarn, start, RichTextBoxFinds.None);
-        int next = (nextError, nextWarn) switch
-        {
-            ( < 0, _) => nextWarn,
-            (_, < 0) => nextError,
-            _ => Math.Min(nextError, nextWarn)
-        };
-        if (next < 0) return;
-        rtbLog.Select(next, 0);
-        rtbLog.ScrollToCaret();
+        int row = FindIssueRow(SelectedRow + 1, step: 1);
+        if (row >= 0) SelectRow(row);
     }
 
     /// <summary>Scrolls to the most recent (last) WARN or ERROR line in the log, falling back to
@@ -610,56 +675,334 @@ public partial class LogViewerForm : Form
     /// alerts (via tray balloon click or Show Logs).</summary>
     public void NavigateToLatestIssue()
     {
-        if (rtbLog.TextLength == 0) { ScrollToBottom(); return; }
-        int lastError = rtbLog.Find(ColError, 0, rtbLog.TextLength, RichTextBoxFinds.Reverse);
-        int lastWarn = rtbLog.Find(ColWarn, 0, rtbLog.TextLength, RichTextBoxFinds.Reverse);
-        int lastIdx = Math.Max(lastError, lastWarn);
-        if (lastIdx < 0) { ScrollToBottom(); return; }
-        rtbLog.Select(lastIdx, 0);
-        rtbLog.ScrollToCaret();
+        int row = FindIssueRow(_visibleRows.Count - 1, step: -1);
+        if (row >= 0) SelectRow(row);
+        else ScrollToBottom();
+    }
+
+    // Walks the visible rows from start in the given direction (+1 down, -1 up) and returns the
+    // first WARN or ERROR row, or -1 when none is found. Single "what counts as an issue"
+    // predicate shared by both issue-nav directions and the latest-issue jump.
+    private int FindIssueRow(int start, int step)
+    {
+        for (int r = start; r >= 0 && r < _visibleRows.Count; r += step)
+        {
+            if (_allLines[_visibleRows[r]].Level is LevelError or LevelWarn)
+                return r;
+        }
+        return -1;
     }
 
     private void ScrollToBottom()
     {
-        SendMessage(rtbLog.Handle, WinMsg.WM_VSCROLL, (IntPtr)WinMsg.SB_BOTTOM, IntPtr.Zero);
+        if (lvLog.VirtualListSize > 0)
+            lvLog.EnsureVisible(lvLog.VirtualListSize - 1);
     }
 
-    // Batches a set of RichTextBox mutations (Rtf/SelectedRtf swap, scroll, highlight) into a single
-    // visible frame: suppresses painting, runs the update, then re-enables redraw and repaints once.
-    // Without this the intermediate states (content at top, caret at end, highlight loop) flicker.
-    private void WithRedrawSuppressed(Action update)
+    // Returns true if the user is scrolled to the bottom of the log (last row visible).
+    private bool IsAtBottom()
     {
-        SendMessage(rtbLog.Handle, WinMsg.WM_SETREDRAW, IntPtr.Zero, IntPtr.Zero);
-        try
-        {
-            update();
-        }
-        finally
-        {
-            SendMessage(rtbLog.Handle, WinMsg.WM_SETREDRAW, (IntPtr)1, IntPtr.Zero);
-            rtbLog.Invalidate();
-        }
+        int count = lvLog.VirtualListSize;
+        if (count == 0) return true;
+        var top = lvLog.TopItem;
+        if (top is null) return true;
+        // >= count - 1 (not count): RowsPerPage floors, so a last row that is only partially
+        // visible would otherwise read as "not at bottom" and silently stop the tail-follow.
+        // Erring the other way is imperceptible (one extra scroll-to-bottom on append).
+        return top.Index + RowsPerPage(top) >= count - 1;
     }
 
-    // Ensures the existing text ends with \n so the next SelectedRtf insert starts on
-    // its own line. The last \par in an RTF document does not always produce a trailing
-    // newline in WinForms RichTextBox, which causes line merging on append.
-    private void EnsureTrailingNewline()
+    // Rows that fit in the viewport, derived from the first visible row's height.
+    private int RowsPerPage(ListViewItem topItem)
     {
-        int len = rtbLog.TextLength;
-        if (len == 0) return;
-        rtbLog.Select(len - 1, 1);
-        if (rtbLog.SelectedText != "\n")
+        int rowHeight = Math.Max(1, topItem.Bounds.Height);
+        return Math.Max(1, lvLog.ClientSize.Height / rowHeight);
+    }
+
+    // Rebuilds the visible-row index from the in-memory line store with the current filters,
+    // then re-runs the search over the new rows. This is an index pass over cached levels - no
+    // document is re-rendered, so it completes in milliseconds regardless of log size.
+    // Preserves the viewport: stays at the bottom if the user was there, otherwise keeps the
+    // previously top-most line in view.
+    private void RebuildDisplay()
+    {
+        bool wasAtBottom = IsAtBottom();
+        // Remember which source line was at the top so the viewport can be re-anchored after the
+        // visible set changes (the same line may land on a different row index).
+        int anchorLine = -1;
+        var top = lvLog.TopItem;
+        if (!wasAtBottom && top is not null && top.Index < _visibleRows.Count)
+            anchorLine = _visibleRows[top.Index];
+
+        RebuildVisibleRows();
+        SetVirtualListSize(_visibleRows.Count);
+        UpdateColumnWidth();
+        UpdateMetaForRowCount();
+
+        if (wasAtBottom)
+            ScrollToBottom();
+        else if (anchorLine >= 0)
+            ScrollRowToTop(NearestRowForLine(anchorLine));
+
+        RefreshSearch(navigateToFirst: true, scrollToMatch: false);
+        lvLog.Invalidate();
+    }
+
+    // Applies a new row count to the virtual list. When the count shrinks, the native control
+    // could otherwise still hold a selected/focused item at a now-out-of-range index - the
+    // classic virtual-mode out-of-range fault, triggered unpredictably from paint, keyboard
+    // focus restoration, or accessibility tooling - so selection and focus are cleared first.
+    // Losing the selection on a shrink is acceptable: the row set changed anyway.
+    private void SetVirtualListSize(int count)
+    {
+        if (count < lvLog.VirtualListSize)
         {
-            rtbLog.Select(len, 0);
-            rtbLog.SelectedText = "\n";
+            // One native broadcast (index -1) clearing both bits; ListView.FocusedItem cannot be
+            // set to null from managed code, so the focus bit must be cleared the same way.
+            var item = new NativeListViewItem
+            {
+                Mask = WinMsg.LVIF_STATE,
+                State = 0,
+                StateMask = WinMsg.LVIS_SELECTED | WinMsg.LVIS_FOCUSED,
+            };
+            SendMessage(lvLog.Handle, WinMsg.LVM_SETITEMSTATE, -1, ref item);
+        }
+        lvLog.VirtualListSize = count;
+    }
+
+    // Recomputes _visibleRows (and the widest-line measurement) from _allLines and the current filters.
+    private void RebuildVisibleRows()
+    {
+        _visibleRows.Clear();
+        _maxLineLength = 0;
+        AppendVisibleRows(fromLine: 0);
+    }
+
+    // Appends the lines from fromLine onward that pass the current filters to _visibleRows,
+    // updating the widest-line measurement. Single filtering pass shared by the full rebuild
+    // (fromLine 0 after a clear) and the live-tail append (fromLine = first new line), so both
+    // paths always apply the identical visibility and width rules.
+    // Meta rows (the blank cycle separators LogManager writes) are shown in filtered views too,
+    // but deduplicated: never as the first visible row and never two in a row, so a view whose
+    // filter drops entire cycles (e.g. ERROR only) shows one separator between groups instead of
+    // a wall of blank lines.
+    private void AppendVisibleRows(int fromLine)
+    {
+        bool[] filters = [chkError.Checked, chkWarn.Checked, chkInfo.Checked, chkDebug.Checked];
+        string? subsystemFilter = GetSubsystemFilter();
+
+        for (int i = fromLine; i < _allLines.Count; i++)
+        {
+            LogLine line = _allLines[i];
+            if (line.Level == LevelMeta)
+            {
+                if (_visibleRows.Count == 0 || _allLines[_visibleRows[^1]].Level == LevelMeta) continue;
+            }
+            else if (!IsLineVisible(line, filters, subsystemFilter))
+            {
+                continue;
+            }
+            _visibleRows.Add(i);
+            if (line.Text.Length > _maxLineLength) _maxLineLength = line.Text.Length;
         }
     }
 
-    // Reads the full log file and builds its RTF representation on a background thread,
-    // then sets rtbLog.Rtf in a single UI-thread operation for near-instant rendering.
-    // StartWatcher is called in the finally block so _lastReadPosition is set before
-    // any live-update events can fire.
+    // First visible row whose source line is at or after the given line index (binary search -
+    // _visibleRows is sorted). Clamped to the last row when the line is beyond the visible end.
+    private int NearestRowForLine(int line)
+    {
+        int idx = _visibleRows.BinarySearch(line);
+        if (idx < 0) idx = ~idx;
+        return Math.Min(idx, _visibleRows.Count - 1);
+    }
+
+    // Scrolls so the given row is the top-most visible row: EnsureVisible only scrolls minimally,
+    // so first bring a row one page further into view, then the target row.
+    private void ScrollRowToTop(int row)
+    {
+        if (row < 0 || lvLog.VirtualListSize == 0) return;
+        var top = lvLog.TopItem;
+        int page = top is not null ? RowsPerPage(top) : 1;
+        lvLog.EnsureVisible(Math.Min(lvLog.VirtualListSize - 1, row + page - 1));
+        lvLog.EnsureVisible(row);
+    }
+
+    // Resolves the meta overlay against the current row count: hides it when rows are showing,
+    // and otherwise names the reason the view is empty - filters excluding everything, or a log
+    // with no entries at all. Called after every load, rebuild, and visible append so a
+    // "Loading…" overlay can never be left stranded over an empty view.
+    private void UpdateMetaForRowCount()
+    {
+        if (_visibleRows.Count > 0)
+            HideMetaLabel();
+        else if (_allLines.Count > 0)
+            SetMetaMessage("(No entries match the current filters)", MetaColor);
+        else
+            SetMetaMessage("(No log entries yet)", MetaColor);
+    }
+
+    // Level/subsystem visibility for classified lines. Meta rows (blank separators) never reach
+    // this method - AppendVisibleRows handles them with its own dedup rule so cycle separators
+    // stay visible in filtered views without ever stacking up.
+    private static bool IsLineVisible(LogLine line, bool[] filters, string? subsystemToken)
+    {
+        if (!filters[line.Level]) return false;                     // level filtered out
+        if (subsystemToken is not null && !line.Text.Contains(subsystemToken, StringComparison.Ordinal)) return false;
+        return true;
+    }
+
+    // Convenience colour for meta/status messages (not log entries)
+    private static Color MetaColor => SystemColors.GrayText; // mode-aware under SetColorMode
+
+    // Supplies the virtual list view with an item on demand. Owner drawing reads the store
+    // directly, but the item text is still provided for accessibility tooling.
+    private void lvLog_RetrieveVirtualItem(object? sender, RetrieveVirtualItemEventArgs e)
+    {
+        e.Item = new ListViewItem(
+            e.ItemIndex >= 0 && e.ItemIndex < _visibleRows.Count
+                ? _allLines[_visibleRows[e.ItemIndex]].Text
+                : string.Empty);
+    }
+
+    // Owner-draws one visible row: surface background (plus a translucent selection tint when
+    // the row is selected), search-match highlight runs, then the line text in its level colour.
+    // Only on-screen rows are ever drawn, so highlight count and log size have no effect on
+    // paint cost.
+    private void lvLog_DrawItem(object? sender, DrawListViewItemEventArgs e)
+    {
+        if (e.ItemIndex < 0 || e.ItemIndex >= _visibleRows.Count) return;
+        LogLine line = _allLines[_visibleRows[e.ItemIndex]];
+        bool selected = IsRowSelected(e.ItemIndex);
+
+        // Selection is a translucent tint over the normal background rather than the solid
+        // system bar with HighlightText: the per-level line colors ARE the viewer's information
+        // (a navigated-to WARN must still read as gold), and the solid bar + HighlightText combo
+        // crushed them into low-contrast text in dark mode.
+        using (var back = new SolidBrush(lvLog.BackColor))
+            e.Graphics.FillRectangle(back, e.Bounds);
+        if (selected)
+        {
+            using var selection = new SolidBrush(Color.FromArgb(90, SystemColors.Highlight));
+            e.Graphics.FillRectangle(selection, e.Bounds);
+        }
+
+        // Search-match highlight runs, positioned by measuring the actual rendered text so they
+        // stay glyph-exact even when a line contains non-ASCII characters (font-fallback glyphs
+        // have different advances than the averaged _charWidth; accented media file names are the
+        // realistic case). Cost is bounded: only match runs on rows actually painted are measured.
+        // Drawn on selected rows too - navigation selects the current match's row, and without
+        // the runs the active row would be the one place the matches are invisible. The CURRENT
+        // match paints in the full highlight color while the others use a translucent version,
+        // so Next/Prev visibly steps between occurrences even when several share one line.
+        int queryLength = txtSearch.Text.Length;
+        if (queryLength > 0 && _searchMatches.Count > 0)
+        {
+            (int Row, int Offset) current = _searchIndex >= 0 && _searchIndex < _searchMatches.Count
+                ? _searchMatches[_searchIndex]
+                : (-1, -1);
+            using var currentHighlight = new SolidBrush(AppConstants.SearchHighlight);
+            using var otherHighlight = new SolidBrush(Color.FromArgb(110, AppConstants.SearchHighlight));
+            foreach (int offset in MatchOffsetsForRow(e.ItemIndex))
+            {
+                bool isCurrent = current.Row == e.ItemIndex && current.Offset == offset;
+                var (runLeft, runWidth) = MeasureMatchRun(line.Text, offset, queryLength);
+                var run = new Rectangle(
+                    e.Bounds.Left + _textPadding + runLeft,
+                    e.Bounds.Top,
+                    runWidth,
+                    e.Bounds.Height);
+                e.Graphics.FillRectangle(isCurrent ? currentHighlight : otherHighlight, run);
+            }
+        }
+
+        var textBounds = new Rectangle(e.Bounds.Left + _textPadding, e.Bounds.Top, e.Bounds.Width - _textPadding, e.Bounds.Height);
+        TextRenderer.DrawText(e.Graphics, line.Text, lvLog.Font, textBounds,
+            _themeColors[line.Level],
+            TextFormatFlags.NoPrefix | TextFormatFlags.NoPadding | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter | TextFormatFlags.Left);
+    }
+
+    // Queries the native control for a row's real selection state. DrawListViewItemEventArgs.State
+    // is documented as unreliable in Details view (it reported every row as selected here), so the
+    // owner-draw path asks via LVM_GETITEMSTATE instead - an O(1) message per painted row.
+    private bool IsRowSelected(int row) =>
+        ((long)SendMessage(lvLog.Handle, WinMsg.LVM_GETITEMSTATE, row, (nint)WinMsg.LVIS_SELECTED) & WinMsg.LVIS_SELECTED) != 0;
+
+    // Measures a match run's pixel position within a line by measuring the rendered prefix and
+    // the matched substring - exact for any content or font, unlike offset * _charWidth which
+    // drifts on font-fallback glyphs. Shared by the draw path and horizontal scroll-to-match.
+    private (int Left, int Width) MeasureMatchRun(string text, int offset, int length)
+    {
+        const TextFormatFlags flags = TextFormatFlags.NoPrefix | TextFormatFlags.NoPadding | TextFormatFlags.SingleLine;
+        int left = offset == 0 ? 0 : TextRenderer.MeasureText(text[..offset], lvLog.Font, Size.Empty, flags).Width;
+        int width = TextRenderer.MeasureText(text.Substring(offset, length), lvLog.Font, Size.Empty, flags).Width;
+        return (left, width);
+    }
+
+    // Yields the match offsets for one row from the sorted match list (binary search to the
+    // first entry of the row, then walk while the row matches).
+    private IEnumerable<int> MatchOffsetsForRow(int row)
+    {
+        int lo = 0, hi = _searchMatches.Count;
+        while (lo < hi)
+        {
+            int mid = (lo + hi) / 2;
+            if (_searchMatches[mid].Row < row) lo = mid + 1; else hi = mid;
+        }
+        for (int i = lo; i < _searchMatches.Count && _searchMatches[i].Row == row; i++)
+            yield return _searchMatches[i].Offset;
+    }
+
+    // Keeps the single column wide enough for the longest visible line (so the horizontal
+    // scrollbar covers it) and never narrower than the viewport (so the selection bar spans
+    // the full width on short lines).
+    private void UpdateColumnWidth()
+    {
+        int contentWidth = _textPadding * 2 + (int)Math.Ceiling(_maxLineLength * _charWidth);
+        colLog.Width = Math.Max(contentWidth, lvLog.ClientSize.Width);
+    }
+
+    private void CopySelectedRows()
+    {
+        if (lvLog.SelectedIndices.Count == 0) return;
+        var sb = new StringBuilder();
+        foreach (int row in lvLog.SelectedIndices)
+            sb.AppendLine(_allLines[_visibleRows[row]].Text);
+        AppConstants.TrySetClipboardText(sb.ToString());
+    }
+
+    private void CopyAllVisibleRows()
+    {
+        var sb = new StringBuilder();
+        foreach (int line in _visibleRows)
+            sb.AppendLine(_allLines[line].Text);
+        AppConstants.TrySetClipboardText(sb.ToString());
+    }
+
+    // Selects every row via one native LVM_SETITEMSTATE broadcast (item index -1 = all items).
+    // Adding rows to SelectedIndices one by one would send a message per row, which stalls for
+    // seconds on very large logs.
+    private void SelectAllRows()
+    {
+        if (lvLog.VirtualListSize == 0) return;
+        SetAllRowsSelected(true);
+        lvLog.Invalidate();
+    }
+
+    // Sets or clears the selected bit on all rows in one native broadcast (item index -1).
+    private void SetAllRowsSelected(bool selected)
+    {
+        var item = new NativeListViewItem
+        {
+            Mask = WinMsg.LVIF_STATE,
+            State = selected ? WinMsg.LVIS_SELECTED : 0,
+            StateMask = WinMsg.LVIS_SELECTED,
+        };
+        SendMessage(lvLog.Handle, WinMsg.LVM_SETITEMSTATE, -1, ref item);
+    }
+
+    // Reads the full log file and parses it on a background thread, then swaps the store and
+    // visible rows in on the UI thread. StartWatcher is called in the finally block so
+    // _lastReadPosition is set before any live-update events can fire.
     private async Task LoadInitialContentAsync()
     {
         try
@@ -671,70 +1014,50 @@ public partial class LogViewerForm : Form
                 return;
             }
 
-            // Show a loading hint, but only for logs large enough that the read + RTF parse is
+            // Show a loading hint, but only for logs large enough that the read + parse is
             // perceptible - small logs (the common case) would otherwise flicker a "Loading" frame.
             if (new FileInfo(loadPath).Length > LoadingIndicatorMinBytes)
             {
-                SetMetaMessage("Loading\u2026", MetaColor);
-                // Force the overlay to paint now, before the blocking read/RTF parse below. Without
-                // this, the read can finish and its continuation can hide the label before the next
-                // paint, leaving the label invisible despite being momentarily set visible.
+                SetMetaMessage("Loading…", MetaColor);
+                // Force the overlay to paint now, before the read/parse below completes and hides it.
                 _metaLabel!.Refresh();
             }
 
-            // Capture UI-thread state before entering the background task
-            Color[] colors = _themeColors;
-            bool[] filters = [chkError.Checked, chkWarn.Checked, chkInfo.Checked, chkDebug.Checked];
-            string? subsystemFilter = GetSubsystemFilter();
-
-            (string rtf, long position, string[] allLines) = await Task.Run(() =>
+            (LogLine[] lines, long position) = await Task.Run(() =>
             {
                 lock (_readLock)
                 {
                     using var fs = new FileStream(loadPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
                     using var reader = new StreamReader(fs, Encoding.UTF8);
-                    string[] lines = ParseLogLines(reader.ReadToEnd());
-                    string[] filtered = lines.Where(l => IsLineVisibleWithFilters(l, filters, subsystemFilter)).ToArray();
-                    return (BuildRtf(filtered, colors), fs.Position, lines);
+                    return (ParseLogLines(reader.ReadToEnd()), fs.Position);
                 }
             });
 
             if (IsDisposed) return;
 
-            _allLines.AddRange(allLines);
+            _allLines.AddRange(lines);
             _lastReadPosition = position;
 
-            // Populate under redraw suppression so the user sees one final frame (scrolled to the
-            // bottom / latest issue) instead of content painting at the top and then visibly jumping.
-            WithRedrawSuppressed(() =>
-            {
-                rtbLog.Rtf = rtf;
-                // Native RichEdit records every Rtf/SelectedRtf assignment in its undo buffer.
-                // The viewer is read-only so undo is unreachable - clear it so the buffer does
-                // not hold a redundant copy of the document content.
-                rtbLog.ClearUndo();
-                if (_navigateToLatestIssue) { NavigateToLatestIssue(); _navigateToLatestIssue = false; } else ScrollToBottom();
-                if (!string.IsNullOrEmpty(txtSearch.Text))
-                {
-                    RefreshSearch(navigateToFirst: true);
-                    ApplySearchHighlights();
-                }
-                // Hide the "Loading..." overlay only after the (slow) Rtf parse and scroll have
-                // completed. rtbLog's painting is suppressed during this block, so keeping the
-                // sibling overlay visible here means the user sees "Loading..." for the whole parse
-                // instead of a blank frozen window, then a single settled frame of real content.
-                HideMetaLabel();
-            });
+            RebuildVisibleRows();
+            SetVirtualListSize(_visibleRows.Count);
+            UpdateColumnWidth();
+            UpdateMetaForRowCount();
 
-            // Arm a reclaim so the transient RTF built for this load is compacted once idle.
-            MarkContentActivity();
+            if (_navigateToLatestIssue) { NavigateToLatestIssue(); _navigateToLatestIssue = false; } else ScrollToBottom();
+            if (!string.IsNullOrEmpty(txtSearch.Text))
+                RefreshSearch(navigateToFirst: true);
+
+            // Give the list keyboard focus so arrow/Shift+arrow selection works immediately -
+            // unless the user has already started typing a search.
+            if (!txtSearch.Focused)
+                lvLog.Focus();
         }
         catch (Exception ex)
         {
-            // _themeColors[0] is the error color already resolved for the active theme; using a
+            // _themeColors[LevelError] is the error color already resolved for the active theme; using a
             // fixed dark variant would clash with the foreground text colour in light mode.
             if (!IsDisposed)
-                SetMetaMessage($"(Error reading log: {ex.Message})", _themeColors[0]);
+                SetMetaMessage($"(Error reading log: {ex.Message})", _themeColors[LevelError]);
         }
         finally
         {
@@ -778,7 +1101,7 @@ public partial class LogViewerForm : Form
         }
     }
 
-    // Reads any new content appended since the last read and appends visible lines to the display.
+    // Reads any new content appended since the last read and appends the parsed lines to the store.
     // Only scrolls to the bottom if the user was already there before the update.
     // The generation parameter holds the value of _watcherGeneration at watcher-subscription time.
     // Events with a stale generation are ignored to defend against the race between in-flight
@@ -787,7 +1110,7 @@ public partial class LogViewerForm : Form
     {
         try
         {
-            string[] newLines;
+            LogLine[] newLines;
             lock (_readLock)
             {
                 // Bail if a file switch happened between this event being queued and us
@@ -867,8 +1190,7 @@ public partial class LogViewerForm : Form
             Invoke(() =>
             {
                 if (generation != _watcherGeneration) return;
-                _allLines.Clear();
-                rtbLog.Clear();
+                ClearDisplayState();
             });
         }
         catch (ObjectDisposedException) { /* form disposed between IsDisposed check and Invoke - expected on close */ }
@@ -904,12 +1226,27 @@ public partial class LogViewerForm : Form
         {
             // Invalidate any in-flight events from the disposed watcher before clearing state.
             _watcherGeneration++;
-            _allLines.Clear();
             _lastReadPosition = 0;
         }
-        rtbLog.Clear();
+        ClearDisplayState();
 
         _ = LoadInitialContentAsync();
+    }
+
+    // Resets the line store and everything derived from it (visible rows, search state, column
+    // width, row count, meta overlay). Single reset path shared by the log-file switch and the
+    // file-deleted handler so no derived state can be forgotten at one of the sites.
+    // Must be called on the UI thread.
+    private void ClearDisplayState()
+    {
+        _allLines.Clear();
+        _visibleRows.Clear();
+        _searchMatches.Clear();
+        _searchIndex = -1;
+        _maxLineLength = 0;
+        SetVirtualListSize(0);
+        UpdateMetaForRowCount();
+        lvLog.Invalidate();
     }
 
     private readonly record struct LogFileEntry(string DisplayName, string FilePath)
@@ -917,156 +1254,73 @@ public partial class LogViewerForm : Form
         public override string ToString() => DisplayName;
     }
 
-    // Appends new lines to the in-memory store and inserts visible lines into the display
-    // via SelectedRtf. Unlike a full RTF rebuild, SelectedRtf does not reset the scroll
-    // position, so the user's viewport stays stable and there is no flicker.
-    // Must be called on the UI thread.
-    private void AppendNewLines(string[] newLines)
+    // Appends new lines to the store and extends the visible rows for those that pass the
+    // current filters - no re-render of existing rows. Only scrolls if the user was at the
+    // bottom, so the viewport stays stable during a live tail. Must be called on the UI thread.
+    private void AppendNewLines(LogLine[] newLines)
     {
-        // Any append (even one filtered to nothing visible) parses lines and grows _allLines,
-        // producing transient garbage; arm a reclaim so it is compacted once logging settles.
-        MarkContentActivity();
-
         bool wasAtBottom = IsAtBottom();
-        bool[] filters = [chkError.Checked, chkWarn.Checked, chkInfo.Checked, chkDebug.Checked];
-        string? subsystemFilter = GetSubsystemFilter();
 
+        int firstNewRow = _visibleRows.Count;
+        int firstNewLine = _allLines.Count;
         _allLines.AddRange(newLines);
+        AppendVisibleRows(firstNewLine);
 
-        string[] visibleNew = newLines.Where(l => IsLineVisibleWithFilters(l, filters, subsystemFilter)).ToArray();
-        if (visibleNew.Length == 0)
-            return;
+        if (_visibleRows.Count == firstNewRow) return; // nothing visible was added
 
-        // Save caret, selection, and scroll so the append is invisible to the user.
-        // Text is appended at the end, so existing character positions remain valid.
-        int savedSelStart = rtbLog.SelectionStart;
-        int savedSelLen = rtbLog.SelectionLength;
-        NativePoint scrollPos = default;
-        if (!wasAtBottom)
-            SendMessage(rtbLog.Handle, WinMsg.EM_GETSCROLLPOS, IntPtr.Zero, ref scrollPos);
+        UpdateMetaForRowCount();
+        lvLog.VirtualListSize = _visibleRows.Count; // append only grows the count - no shrink guard needed
+        UpdateColumnWidth();
 
-        // Suppress painting so intermediate states (caret at end, highlight loop) don't flicker.
-        // The scroll restore is the last step of the batch (it depends on whether the user was at the
-        // bottom before the append); the helper handles re-enabling redraw and the single repaint.
-        WithRedrawSuppressed(() =>
+        // Extend the match list for the appended rows only (full rescan not needed - existing
+        // rows are untouched by an append).
+        if (txtSearch.Text.Length > 0)
         {
-            HideMetaLabel();
-            EnsureTrailingNewline();
-            rtbLog.SelectionStart = rtbLog.TextLength;
-            rtbLog.SelectionLength = 0;
-            rtbLog.SelectedRtf = BuildRtf(visibleNew, _themeColors);
-            // Native RichEdit records every SelectedRtf insertion in its undo buffer; left
-            // unchecked the buffer accumulates a copy of every appended batch and grows the
-            // working set linearly with append count. The viewer is read-only so undo is
-            // unreachable - clear it after each insertion to bound the buffer.
-            rtbLog.ClearUndo();
+            ScanRowsForMatches(firstNewRow, txtSearch.Text);
+            if (_searchMatches.Count > 0 && _searchIndex < 0) _searchIndex = 0;
+            if (_searchMatches.Count > 0)
+                lblMatchCount.Text = $"{_searchIndex + 1} / {_searchMatches.Count}";
+        }
 
-            if (!string.IsNullOrEmpty(txtSearch.Text))
-            {
-                RefreshSearch(navigateToFirst: false, scrollToMatch: false);
-                ApplySearchHighlights();
-            }
-
-            rtbLog.Select(savedSelStart, savedSelLen);
-
-            if (wasAtBottom)
-                ScrollToBottom();
-            else
-                SendMessage(rtbLog.Handle, WinMsg.EM_SETSCROLLPOS, IntPtr.Zero, ref scrollPos);
-        });
+        if (wasAtBottom)
+            ScrollToBottom();
     }
 
-    // Splits raw log content on newlines and strips trailing \r so CRLF and LF files produce identical lines.
-    private static string[] ParseLogLines(string raw) =>
-        raw.Split('\n', StringSplitOptions.RemoveEmptyEntries)
-           .Select(l => l.TrimEnd('\r'))
-           .ToArray();
+    // Splits raw log content on newlines, strips trailing \r so CRLF and LF files produce
+    // identical lines, and classifies each line's level once (the level drives filtering and
+    // row colouring for the rest of the line's lifetime). Blank lines are kept as meta rows:
+    // LogManager writes one before each "Sync cycle started" as a deliberate visual separator
+    // between cycles (AppendVisibleRows dedups them in filtered views so they never stack up).
+    private static LogLine[] ParseLogLines(string raw)
+    {
+        string[] parts = raw.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        var lines = new List<LogLine>(parts.Length);
+        foreach (string part in parts)
+        {
+            string text = part.TrimEnd('\r');
+            lines.Add(new LogLine(text, ClassifyLine(text)));
+        }
+        return lines.ToArray();
+    }
 
-    // Returns the 0-based colour index for a log line, used by BuildRtf and IsLineVisibleWithFilters.
+    // Returns the level index for a log line, matching the _themeColors palette.
     // Log format: "yyyy-MM-dd HH:mm:ss | LEVEL | Subsystem     | message" (level padded to 5 chars)
-    private static int GetLineColorIndex(string line)
+    private static byte ClassifyLine(string line)
     {
-        if (line.Contains(ColError, StringComparison.Ordinal)) return 0;
-        if (line.Contains(ColWarn, StringComparison.Ordinal)) return 1;
-        if (line.Contains(ColInfo, StringComparison.Ordinal)) return 2;
-        if (line.Contains(ColDebug, StringComparison.Ordinal)) return 3;
-        return 4;
-    }
-
-    // Static - safe to call from background threads (no UI state access).
-    // Meta/unclassified lines (index >= 4, e.g. blank cycle separators) are shown only when
-    // all level filters are active and no subsystem filter is set; hiding them otherwise
-    // prevents blank lines from appearing in a filtered view.
-    private static bool IsLineVisibleWithFilters(string line, bool[] filters, string? subsystemToken)
-    {
-        int idx = GetLineColorIndex(line);
-        if (idx >= filters.Length) return subsystemToken is null && Array.TrueForAll(filters, f => f);
-        if (!filters[idx]) return false;                            // level filtered out
-        if (subsystemToken is not null && !line.Contains(subsystemToken, StringComparison.Ordinal)) return false;
-        return true;
-    }
-
-    // Convenience colour for meta/status messages (not log entries)
-    private static Color MetaColor => SystemColors.GrayText; // mode-aware under SetColorMode
-
-    // Writes the RTF document header for BuildRtf:
-    // Unicode-safe, Consolas 9pt (18 half-points), no paragraph spacing, colour table.
-    private static void AppendRtfHeader(StringBuilder sb, Color[] colors)
-    {
-        sb.Append("{\\rtf1\\ansi\\uc0\\deff0");
-        sb.Append("{\\fonttbl{\\f0\\fmodern\\fprq1\\fcharset0 Consolas;}}");
-        sb.Append("{\\colortbl ;");
-        foreach (var c in colors)
-            sb.Append($"\\red{c.R}\\green{c.G}\\blue{c.B};");
-        sb.Append('}');
-        sb.Append("\\f0\\fs18\\sb0\\sa0 ");
-    }
-
-    // Builds an RTF document from log lines using the provided colour palette.
-    // Thread-safe (no UI state access); called from both background and UI threads.
-    private static string BuildRtf(string[] lines, Color[] colors)
-    {
-        var sb = new StringBuilder(lines.Length * 100);
-        AppendRtfHeader(sb, colors);
-
-        foreach (string line in lines)
-        {
-            int cf = GetLineColorIndex(line) + 1; // RTF colour table is 1-based
-            sb.Append($"\\cf{cf} ");
-            AppendRtfText(sb, line);
-            sb.Append("\\par ");
-        }
-
-        sb.Append('}');
-        return sb.ToString();
-    }
-
-    // Appends RTF-escaped text, encoding RTF special characters and non-ASCII as Unicode escapes
-    private static void AppendRtfText(StringBuilder sb, string text)
-    {
-        foreach (char c in text)
-        {
-            switch (c)
-            {
-                case '\\': sb.Append("\\\\"); break;
-                case '{': sb.Append("\\{"); break;
-                case '}': sb.Append("\\}"); break;
-                default:
-                    if (c == '\0') break; // NUL terminates RTF in RichEdit; skip to avoid corrupting the document
-                    if (c > 127) sb.Append($"\\u{(int)(short)c} ");
-                    else sb.Append(c);
-                    break;
-            }
-        }
+        if (line.Contains(ColError, StringComparison.Ordinal)) return LevelError;
+        if (line.Contains(ColWarn, StringComparison.Ordinal)) return LevelWarn;
+        if (line.Contains(ColInfo, StringComparison.Ordinal)) return LevelInfo;
+        if (line.Contains(ColDebug, StringComparison.Ordinal)) return LevelDebug;
+        return LevelMeta;
     }
 
     // Shows a centered status/placeholder message (loading, empty, error) over the log area.
-    // The overlay Label fully covers rtbLog with the same background, so it reads as the log's
+    // The overlay Label fully covers lvLog with the same background, so it reads as the log's
     // own empty/error state; it is hidden again as soon as real content is displayed.
     private void SetMetaMessage(string text, Color color)
     {
         EnsureMetaLabel();
-        _metaLabel!.BackColor = rtbLog.BackColor;
+        _metaLabel!.BackColor = lvLog.BackColor;
         _metaLabel.ForeColor = color;
         _metaLabel.Text = text;
         SyncMetaLabelBounds();
@@ -1074,8 +1328,8 @@ public partial class LogViewerForm : Form
         _metaLabel.BringToFront();
     }
 
-    // Creates the overlay Label as a sibling of rtbLog (not a child - a RichTextBox does not host
-    // child controls reliably across repaints) and keeps it aligned to rtbLog's bounds.
+    // Creates the overlay Label as a sibling of lvLog (not a child - list views do not host
+    // child controls reliably across repaints) and keeps it aligned to lvLog's bounds.
     private void EnsureMetaLabel()
     {
         if (_metaLabel is not null) return;
@@ -1083,23 +1337,33 @@ public partial class LogViewerForm : Form
         {
             AutoSize = false,
             TextAlign = ContentAlignment.MiddleCenter,
-            Font = rtbLog.Font,
+            Font = lvLog.Font,
             Visible = false,
         };
-        rtbLog.Parent!.Controls.Add(_metaLabel);
+        lvLog.Parent!.Controls.Add(_metaLabel);
         SyncMetaLabelBounds();
-        rtbLog.SizeChanged += (_, _) => SyncMetaLabelBounds();
-        rtbLog.LocationChanged += (_, _) => SyncMetaLabelBounds();
+        lvLog.SizeChanged += (_, _) => SyncMetaLabelBounds();
+        lvLog.LocationChanged += (_, _) => SyncMetaLabelBounds();
     }
 
     private void SyncMetaLabelBounds()
     {
-        if (_metaLabel is not null) _metaLabel.Bounds = rtbLog.Bounds;
+        if (_metaLabel is not null) _metaLabel.Bounds = lvLog.Bounds;
     }
 
     private void HideMetaLabel()
     {
         if (_metaLabel is not null) _metaLabel.Visible = false;
+    }
+
+    // Double-buffered virtual list view: the base ListView flickers on scroll and repaint when
+    // owner-drawn, and DoubleBuffered is protected, so a minimal subclass enables it.
+    private sealed class BufferedListView : ListView
+    {
+        public BufferedListView()
+        {
+            DoubleBuffered = true;
+        }
     }
 
     // Custom TextBox that draws a vertically-centered placeholder.

@@ -13,7 +13,9 @@ public partial class WhatsNewForm : Form
         "Log viewer fixes\n" +
         "Filtering the log while the window is maximized no longer leaves entries misplaced or " +
         "hidden until you scroll. Switching between log files while a large one is still loading " +
-        "no longer mixes or duplicates entries, and a rare crash while drag-selecting was fixed.\n\n" +
+        "no longer mixes or duplicates entries, and a rare crash while drag-selecting was fixed. " +
+        "The log file list now refreshes each time you open it, so new backups appear without " +
+        "reopening the viewer.\n\n" +
         "Previously released\n\n" +
         "New in 2.6.0\n\n" +
         "One-click diagnostics\n" +

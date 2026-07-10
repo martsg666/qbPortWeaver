@@ -193,8 +193,12 @@ public partial class LogViewerForm : Form
         MinimumSize = new Size(Width - ClientSize.Width + minClientWidth, MinimumSize.Height);
 
         PopulateLogFileDropdown();
-        // Wire event after population to avoid triggering a load before the initial LoadInitialContentAsync below
+        cboLogFile.SelectedIndex = 0; // "Current"
+        // Wire events after population/selection to avoid triggering a load before the initial
+        // LoadInitialContentAsync below. DropDown re-syncs the list with the on-disk files each
+        // time the user opens it (rotation and Clear Logs change them while the viewer is open).
         cboLogFile.SelectedIndexChanged += cboLogFile_SelectedIndexChanged;
+        cboLogFile.DropDown += cboLogFile_DropDown;
     }
 
     protected override void OnShown(EventArgs e)
@@ -1219,15 +1223,52 @@ public partial class LogViewerForm : Form
         catch (InvalidOperationException) { /* handle destroyed by Close() before Dispose() - expected on close */ }
     }
 
-    // Populates the log file dropdown with the current log and any existing rotated backups.
-    // Called once on load; event is wired afterward to prevent a premature file switch.
+    // Fills the log file dropdown from the on-disk state: the current log plus the contiguous
+    // rotated backups. Leaves nothing selected - callers set the selection (initial load picks
+    // "Current"; the drop-down refresh restores the active entry by path).
     private void PopulateLogFileDropdown()
     {
         cboLogFile.Items.Clear();
         cboLogFile.Items.Add(new LogFileEntry("Current", _logFilePath));
         for (int i = 1; File.Exists($"{_logFilePath}.{i}"); i++)
             cboLogFile.Items.Add(new LogFileEntry($"Backup {i}", $"{_logFilePath}.{i}"));
-        cboLogFile.SelectedIndex = 0;
+    }
+
+    // Refreshes the log file list at the moment the user opens the dropdown, so it reflects the
+    // current on-disk state: rotation shifts backups and Clear Logs deletes them while the
+    // viewer is open. Refreshing here (not from the watcher) covers every staleness source -
+    // the watcher only runs while viewing "Current", never sees backup deletions, and a closed
+    // combo shows no stale content anyway. The selection is restored by file path, or kept as
+    // an extra entry when the active file no longer exists on disk, so opening the list never
+    // switches the view (the path guard in cboLogFile_SelectedIndexChanged makes re-selecting
+    // the active entry a no-op).
+    private void cboLogFile_DropDown(object? sender, EventArgs e)
+    {
+        if (cboLogFile.SelectedItem is not LogFileEntry active) return;
+
+        cboLogFile.BeginUpdate();
+        PopulateLogFileDropdown();
+
+        int index = 0; // "Current" is always item 0
+        if (active.FilePath != _logFilePath)
+        {
+            index = -1;
+            for (int i = 1; i < cboLogFile.Items.Count; i++)
+            {
+                if (cboLogFile.Items[i] is LogFileEntry entry && entry.FilePath == active.FilePath)
+                {
+                    index = i;
+                    break;
+                }
+            }
+            if (index < 0)
+            {
+                cboLogFile.Items.Add(active);
+                index = cboLogFile.Items.Count - 1;
+            }
+        }
+        cboLogFile.SelectedIndex = index;
+        cboLogFile.EndUpdate();
     }
 
     private void cboLogFile_SelectedIndexChanged(object? sender, EventArgs e)

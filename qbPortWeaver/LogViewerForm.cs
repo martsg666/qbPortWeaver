@@ -45,7 +45,9 @@ public partial class LogViewerForm : Form
     private int _watcherGeneration;
     private Color[] _themeColors = []; // per-level line palette; resolved for the active theme in OnLoad
     // Longest visible line in characters; drives the single column's width so the horizontal
-    // scrollbar covers the widest line (monospace font, so chars * _charWidth is exact).
+    // scrollbar covers the widest line. chars * _charWidth is approximate for lines containing
+    // font-fallback glyphs (a few px of scroll-range slack - invisible); highlight runs use the
+    // exact MeasureMatchRun instead.
     private int _maxLineLength;
     private float _charWidth;   // measured monospace character width, device pixels
     private int _textPadding;   // left text inset inside a row, device pixels

@@ -492,7 +492,9 @@ public partial class LogViewerForm : Form
     // Advances the drag selection one row per tick in the held direction, scrolling with it.
     private void dragScrollTimer_Tick(object? sender, EventArgs e)
     {
-        if (_dragAnchorRow < 0 || _dragScrollDirection == 0)
+        // VirtualListSize == 0 also ends the drag: the list can empty mid-drag (log deleted or
+        // cleared externally), and Math.Clamp below throws when max (count - 1) drops below min.
+        if (_dragAnchorRow < 0 || _dragScrollDirection == 0 || lvLog.VirtualListSize == 0)
         {
             SetDragScroll(0);
             return;
@@ -1014,6 +1016,13 @@ public partial class LogViewerForm : Form
     // _lastReadPosition is set before any live-update events can fire.
     private async Task LoadInitialContentAsync()
     {
+        // Capture the generation at entry (UI thread, same thread that increments it) so a load
+        // whose file was switched away from mid-read can detect it is stale after the await and
+        // bail. Without this, switching Current -> Backup -> Current while a large file loads
+        // lets the stale load append the wrong file's lines into the new view, and its finally
+        // would start a second watcher on the same generation - overwriting _watcher without
+        // dispose, after which every tail append is processed twice (duplicated lines).
+        int generation = _watcherGeneration;
         try
         {
             string loadPath = _activeLogFilePath;
@@ -1042,7 +1051,7 @@ public partial class LogViewerForm : Form
                 }
             });
 
-            if (IsDisposed) return;
+            if (IsDisposed || generation != _watcherGeneration) return;
 
             _allLines.AddRange(lines);
             _lastReadPosition = position;
@@ -1065,12 +1074,16 @@ public partial class LogViewerForm : Form
         {
             // _themeColors[LevelError] is the error color already resolved for the active theme; using a
             // fixed dark variant would clash with the foreground text colour in light mode.
-            if (!IsDisposed)
+            if (!IsDisposed && generation == _watcherGeneration)
                 SetMetaMessage($"(Error reading log: {ex.Message})", _themeColors[LevelError]);
         }
         finally
         {
-            StartWatcher();
+            // A stale load must not start a watcher: the switch handler already disposed the old
+            // one, and the load for the new file will start its own (see the generation comment
+            // at the top of this method).
+            if (generation == _watcherGeneration)
+                StartWatcher();
         }
     }
 

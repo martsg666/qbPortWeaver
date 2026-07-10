@@ -54,6 +54,12 @@ public partial class LogViewerForm : Form
     // Overlay shown for status/placeholder text (loading, empty, error). A ListView cannot
     // vertically centre a message, so these live on a Label that covers the log area.
     private Label? _metaLabel;
+    // Mouse drag-selection state - see the comment block on lvLog_MouseDown for the design.
+    private int _dragAnchorRow = -1;
+    private int _dragLastRow = -1;
+    private System.Windows.Forms.Timer? _dragScrollTimer;
+    private int _dragScrollDirection; // -1 = scrolling up, +1 = scrolling down, 0 = idle
+    private const int DragScrollIntervalMs = 60; // ~17 rows/s edge auto-scroll
 
     [LibraryImport("user32.dll", EntryPoint = "SendMessageW")]
     private static partial IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
@@ -423,12 +429,6 @@ public partial class LogViewerForm : Form
     // the pressed row; MouseMove extends the selection to the row under the cursor. Holding the
     // cursor past the top or bottom edge keeps scrolling via _dragScrollTimer - MouseMove alone
     // cannot drive that, because it only fires while the pointer actually moves.
-    private int _dragAnchorRow = -1;
-    private int _dragLastRow = -1;
-    private System.Windows.Forms.Timer? _dragScrollTimer;
-    private int _dragScrollDirection; // -1 = scrolling up, +1 = scrolling down, 0 = idle
-    private const int DragScrollIntervalMs = 60; // ~17 rows/s edge auto-scroll
-
     private void lvLog_MouseDown(object? sender, MouseEventArgs e)
     {
         if (e.Button != MouseButtons.Left) return;
@@ -529,8 +529,9 @@ public partial class LogViewerForm : Form
     }
 
     // Rescans the visible rows for the current query and rebuilds the sorted match list.
-    // scrollToMatch: when false, updates match list and count label but does not scroll.
-    // Used by AppendNewLines to avoid yanking the user away from their scroll position.
+    // scrollToMatch: when false, updates the match list and count label but does not scroll -
+    // used by RebuildDisplay, which has already positioned the viewport (bottom or anchor line)
+    // and must not have a filter toggle yank the user to the first match.
     private void RefreshSearch(bool navigateToFirst = false, bool scrollToMatch = true)
     {
         _searchMatches.Clear();
@@ -538,6 +539,7 @@ public partial class LogViewerForm : Form
         string query = txtSearch.Text;
         if (string.IsNullOrEmpty(query))
         {
+            _searchIndex = -1;
             lblMatchCount.Text = string.Empty;
             return;
         }
@@ -859,9 +861,10 @@ public partial class LogViewerForm : Form
                 : string.Empty);
     }
 
-    // Owner-draws one visible row: selection or surface background, search-match highlight runs,
-    // then the line text in its level colour. Only on-screen rows are ever drawn, so highlight
-    // count and log size have no effect on paint cost.
+    // Owner-draws one visible row: surface background (plus a translucent selection tint when
+    // the row is selected), search-match highlight runs, then the line text in its level colour.
+    // Only on-screen rows are ever drawn, so highlight count and log size have no effect on
+    // paint cost.
     private void lvLog_DrawItem(object? sender, DrawListViewItemEventArgs e)
     {
         if (e.ItemIndex < 0 || e.ItemIndex >= _visibleRows.Count) return;

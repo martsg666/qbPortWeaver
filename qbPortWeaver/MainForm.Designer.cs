@@ -13,6 +13,8 @@ partial class MainForm
             _shutdownCts?.Cancel();
             _shutdownCts?.Dispose();
 
+            _resyncDebounceTimer?.Dispose();
+
             _trayIcon?.Dispose();
             _trayMenu?.Dispose();
             _iconBase?.Dispose();

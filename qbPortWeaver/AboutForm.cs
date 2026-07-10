@@ -3,9 +3,12 @@
 /// <summary>About dialog showing version info, update availability, and contributor credits.</summary>
 public partial class AboutForm : Form
 {
-    // Set to the release URL when an update is available; null when up-to-date or not yet checked
-    private string? _releaseUrl;
-    private bool _isDarkMode;
+    // The newer release when an update is available; null when up-to-date or not yet checked.
+    private LatestReleaseInfo? _availableUpdate;
+
+    /// <summary>Raised when the user clicks Update for an available release. MainForm handles it by
+    /// opening the shared update dialog (in-app download and install), the same as the tray entry point.</summary>
+    public event Action<LatestReleaseInfo>? UpdateRequested;
     // Cancels in-flight GitHub requests when the form closes so they do not run to completion
     // in the background after the user has dismissed the dialog.
     private readonly CancellationTokenSource _githubCts = new();
@@ -24,11 +27,10 @@ public partial class AboutForm : Form
     protected override void OnLoad(EventArgs e)
     {
         base.OnLoad(e);
-        _isDarkMode = AppConstants.IsDarkModeEnabled();
-        if (_isDarkMode)
+        if (AppConstants.IsDarkModeEnabled())
         {
-            lnkAuthor.LinkColor = AppConstants.DarkModeLinkColor;
-            lnkGitHub.LinkColor = AppConstants.DarkModeLinkColor;
+            lnkAuthor.LinkColor = AppConstants.LinkDark;
+            lnkGitHub.LinkColor = AppConstants.LinkDark;
         }
         _ = LoadGitHubDataAsync(); // fire-and-forget; exceptions are handled inside LoadGitHubDataAsync
     }
@@ -44,15 +46,17 @@ public partial class AboutForm : Form
 
     private void btnWhatsNew_Click(object? sender, EventArgs e)
     {
-        using var form = new WhatsNewForm();
+        // Center on the About dialog (its parent), since here it is shown modally - unlike the
+        // non-modal first-run path (from MainForm) where it keeps its designer default CenterScreen.
+        using var form = new WhatsNewForm { StartPosition = FormStartPosition.CenterParent };
         form.ShowDialog(this);
     }
 
-    // Opens the release page if an update is available; otherwise re-runs the update check
+    // Opens the in-app update dialog if an update is available; otherwise re-runs the update check.
     private void btnCheckForUpdates_Click(object? sender, EventArgs e)
     {
-        if (_releaseUrl is not null)
-            AppConstants.OpenUrl(_releaseUrl);
+        if (_availableUpdate is not null)
+            UpdateRequested?.Invoke(_availableUpdate);
         else
         {
             btnCheckForUpdates.Enabled = false;
@@ -82,7 +86,7 @@ public partial class AboutForm : Form
             lblLatestVersionValue.Text = "Checking\u2026";
             lblLatestVersionValue.ForeColor = SystemColors.GrayText;
             lblStatusValue.Text = string.Empty;
-            _releaseUrl = null;
+            _availableUpdate = null;
 
             // Fetch release info and contributor list in parallel
             var releaseTask = UpdateChecker.GetLatestReleaseInfoAsync(_githubCts.Token);
@@ -132,14 +136,14 @@ public partial class AboutForm : Form
         if (info.IsNewer)
         {
             lblStatusValue.Text = "Update available";
-            lblStatusValue.ForeColor = _isDarkMode ? AppConstants.StatusWarning : AppConstants.StatusWarningLight;
+            lblStatusValue.ForeColor = AppConstants.StatusWarning;
             btnCheckForUpdates.Text = "Update";
-            _releaseUrl = info.ReleaseUrl;
+            _availableUpdate = info;
         }
         else
         {
             lblStatusValue.Text = "Up to date";
-            lblStatusValue.ForeColor = _isDarkMode ? AppConstants.StatusOk : AppConstants.StatusOkLight;
+            lblStatusValue.ForeColor = AppConstants.StatusOk;
             btnCheckForUpdates.Text = "Check for Updates";
         }
     }

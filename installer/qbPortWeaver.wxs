@@ -43,18 +43,12 @@
 			</DirectorySearch>
 		</Property>
 
-		<!-- Gracefully close the tray app before install/upgrade/uninstall.
-		     Sends WM_CLOSE first; force-terminates after 5 s if it hasn't exited. -->
-		<util:CloseApplication
-			Id="CloseTrayApp"
-			Target="qbPortWeaver.exe"
-			CloseMessage="yes"
-			RebootPrompt="no"
-			Timeout="5" />
-
-		<!-- Disable the Restart Manager - we handle process closure ourselves via
-		     util:CloseApplication above, so RM's "Files in Use" dialog is unnecessary. -->
-		<Property Id="MSIRESTARTMANAGERCONTROL" Value="Disable" />
+		<!-- The Restart Manager (enabled by default) stops and restarts the running tray app and
+		     helper service - both windowless - during an upgrade, without needing a window. Do NOT
+		     disable it: the legacy FilesInUse fallback stalls ~20s per InstallValidate hunting for a
+		     window these windowless processes do not have, and a major upgrade runs InstallValidate
+		     twice (~40s total). RM closes and relaunches them cleanly, so no util:CloseApplication is
+		     needed either. The tray app's single-instance mutex guards against any double-launch. -->
 
 		<!-- Block install if legacy NSIS version is present (fires in both UI and silent installs) -->
 		<Launch Condition="NOT NSIS_UNINST_EXE_X64 AND NOT NSIS_UNINST_EXE_X86"

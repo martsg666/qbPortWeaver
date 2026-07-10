@@ -16,20 +16,9 @@ internal static class ClientDetector
     /// pre-fill (executable null when no default install was found), and how it was detected.</summary>
     internal sealed record DetectedClient(string ClientName, string ProcessName, string? ExePath, DetectionKind Kind);
 
-    // ProcessNames[0] doubles as the default process-name field value. DefaultExeFolder/File mirror the
-    // RegistrySettingsManager defaults but are resolved under the real Program Files folder at runtime.
-    private sealed record Candidate(string ClientName, string[] ProcessNames, string DefaultExeFolder, string DefaultExeFile);
-
-    private static readonly Candidate[] Candidates =
-    [
-        new(RegistrySettingsManager.BitTorrentClientQBittorrent,  ["qbittorrent"],                              "qBittorrent",  "qbittorrent.exe"),
-        new(RegistrySettingsManager.BitTorrentClientTransmission, ["transmission-qt", "transmission-daemon"],   "Transmission", "transmission-qt.exe"),
-        new(RegistrySettingsManager.BitTorrentClientDeluge,       ["deluge", "deluged"],                        "Deluge",       "deluge.exe"),
-    ];
-
     /// <summary>
     /// Returns every supported client that is currently running or installed in its default location,
-    /// in candidate order (qBittorrent, Transmission, Deluge). Each client appears at most once, marked
+    /// in canonical order (qBittorrent, Transmission, Deluge). Each client appears at most once, marked
     /// <see cref="DetectionKind.Running"/> when a matching process is live, otherwise
     /// <see cref="DetectionKind.Installed"/>. An empty list means none were found. The caller decides
     /// how to resolve multiple matches (e.g. prefer running, or prompt). Never throws.
@@ -37,7 +26,7 @@ internal static class ClientDetector
     internal static IReadOnlyList<DetectedClient> DetectAll()
     {
         var results = new List<DetectedClient>();
-        foreach (var c in Candidates)
+        foreach (var c in ClientRegistry.All)
         {
             string? defaultExe = ResolveDefaultExe(c);
 
@@ -47,11 +36,11 @@ internal static class ClientDetector
                 // executable path. Fall back to the default install path only when the real path could
                 // not be read (access denied / bitness mismatch) but a default install exists.
                 string? exe = runningExe ?? defaultExe;
-                results.Add(new DetectedClient(c.ClientName, matched ?? c.ProcessNames[0], exe, DetectionKind.Running));
+                results.Add(new DetectedClient(c.Name, matched ?? c.ProcessNames[0], exe, DetectionKind.Running));
             }
             else if (defaultExe is not null)
             {
-                results.Add(new DetectedClient(c.ClientName, c.ProcessNames[0], defaultExe, DetectionKind.Installed));
+                results.Add(new DetectedClient(c.Name, c.ProcessNames[0], defaultExe, DetectionKind.Installed));
             }
         }
         return results;
@@ -60,7 +49,7 @@ internal static class ClientDetector
     // Returns the candidate's default install path, checking both the 64-bit and 32-bit Program Files
     // roots (a client such as Deluge may ship a 32-bit build under "Program Files (x86)"), or null if
     // the executable is not at either default location.
-    private static string? ResolveDefaultExe(Candidate c)
+    private static string? ResolveDefaultExe(ClientRegistry.ClientInfo c)
     {
         foreach (var root in (ReadOnlySpan<Environment.SpecialFolder>)[Environment.SpecialFolder.ProgramFiles, Environment.SpecialFolder.ProgramFilesX86])
         {

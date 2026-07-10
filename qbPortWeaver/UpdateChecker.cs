@@ -7,7 +7,8 @@ namespace qbPortWeaver;
 /// <param name="TagName">Git tag name (e.g. "v2.1.0").</param>
 /// <param name="ReleaseUrl">URL of the GitHub release page.</param>
 /// <param name="IsNewer">True when the release version is greater than <see cref="AppConstants.AppVersion"/>.</param>
-public sealed record LatestReleaseInfo(string TagName, string ReleaseUrl, bool IsNewer)
+/// <param name="MsiUrl">Direct download URL of the release's .msi installer asset, or <see langword="null"/> if the release has none.</param>
+public sealed record LatestReleaseInfo(string TagName, string ReleaseUrl, bool IsNewer, string? MsiUrl = null)
 {
     /// <summary>Tag name with the leading 'v'/'V' stripped (e.g. "v2.1.0" becomes "2.1.0").</summary>
     public string Version => TagName.TrimStart('v', 'V');
@@ -23,11 +24,17 @@ public static class UpdateChecker
 {
     private const string JsonPropTagName = "tag_name";
     private const string JsonPropHtmlUrl = "html_url";
+    private const string JsonPropAssets = "assets";
+    private const string JsonPropAssetName = "name";
+    private const string JsonPropAssetDownloadUrl = "browser_download_url";
 
     private static readonly string _gitHubBaseApiUrl = $"https://api.github.com/repos/{AppConstants.GitHubRepoOwner}/{AppIdentity.AppName}";
     private static readonly string _gitHubApiUrl = _gitHubBaseApiUrl + "/releases/latest";
 
     private static readonly HttpClient _httpClient = CreateHttpClient(); // Not disposed - static lifetime matches process lifetime (recommended pattern for HttpClient)
+    // Separate client for asset downloads: no timeout (an installer download is far larger and slower
+    // than an API call - the caller's CancellationToken bounds it instead). Static, process-lifetime.
+    private static readonly HttpClient _downloadClient = CreateDownloadClient();
 
     /// <summary>Returns full release info from GitHub including whether a newer version exists; null on any error.</summary>
     public static async Task<LatestReleaseInfo?> GetLatestReleaseInfoAsync(CancellationToken cancellationToken = default)
@@ -53,7 +60,7 @@ public static class UpdateChecker
                            Version.TryParse(AppConstants.AppVersion, out var current) &&
                            latest > current;
 
-            return new LatestReleaseInfo(tagName, releaseUrl, isNewer);
+            return new LatestReleaseInfo(tagName, releaseUrl, isNewer, TryGetMsiAssetUrl(root));
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -141,6 +148,59 @@ public static class UpdateChecker
         client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github+json"));
         client.DefaultRequestHeaders.Add("X-GitHub-Api-Version", "2022-11-28");
         return client;
+    }
+
+    // Download client sends the required GitHub User-Agent but no timeout (see field comment).
+    private static HttpClient CreateDownloadClient()
+    {
+        var client = new HttpClient { Timeout = Timeout.InfiniteTimeSpan };
+        client.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue(AppIdentity.AppName, AppConstants.AppVersion));
+        return client;
+    }
+
+    // Returns the download URL of the release's first .msi asset, or null when the release has none
+    // (e.g. assets not yet uploaded). Callers fall back to opening the release page.
+    private static string? TryGetMsiAssetUrl(JsonElement root)
+    {
+        if (!root.TryGetProperty(JsonPropAssets, out var assets) || assets.ValueKind != JsonValueKind.Array)
+            return null;
+
+        foreach (var asset in assets.EnumerateArray())
+        {
+            string name = asset.TryGetProperty(JsonPropAssetName, out var nameEl) ? nameEl.GetString() ?? string.Empty : string.Empty;
+            if (name.EndsWith(".msi", StringComparison.OrdinalIgnoreCase) &&
+                asset.TryGetProperty(JsonPropAssetDownloadUrl, out var urlEl) &&
+                urlEl.GetString() is { Length: > 0 } url)
+                return url;
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Downloads <paramref name="url"/> to <paramref name="destPath"/> (overwriting it), reporting
+    /// fractional progress (0.0-1.0) when the response length is known. Throws
+    /// <see cref="OperationCanceledException"/> on cancellation and <see cref="HttpRequestException"/>
+    /// or <see cref="IOException"/> on a transfer failure. The caller's token bounds the transfer time.
+    /// </summary>
+    public static async Task DownloadFileAsync(string url, string destPath, IProgress<double>? progress, CancellationToken cancellationToken = default)
+    {
+        using var response = await _downloadClient.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
+        response.EnsureSuccessStatusCode();
+        long? total = response.Content.Headers.ContentLength;
+
+        await using var source = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+        await using var dest = new FileStream(destPath, FileMode.Create, FileAccess.Write, FileShare.None);
+
+        var buffer = new byte[81920];
+        long received = 0;
+        int read;
+        while ((read = await source.ReadAsync(buffer, cancellationToken).ConfigureAwait(false)) > 0)
+        {
+            await dest.WriteAsync(buffer.AsMemory(0, read), cancellationToken).ConfigureAwait(false);
+            received += read;
+            if (total is > 0)
+                progress?.Report((double)received / total.Value);
+        }
     }
 
     private static bool IsBot(string login, string type) =>

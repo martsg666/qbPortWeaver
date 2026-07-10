@@ -205,7 +205,7 @@ partial class MediaManagerForm
         btnAddSourceFolder.Text     = "Add...";
         btnAddSourceFolder.Click   += btnAddSourceFolder_Click;
         btnRemoveSourceFolder.Anchor   = AnchorStyles.Bottom | AnchorStyles.Left;
-        btnRemoveSourceFolder.Location = new Point(92, 84);
+        btnRemoveSourceFolder.Location = new Point(95, 84); // 8px gap after btnAddSourceFolder (ends at x=87)
         btnRemoveSourceFolder.Name     = "btnRemoveSourceFolder";
         btnRemoveSourceFolder.Size     = new Size(75, 23);
         btnRemoveSourceFolder.TabIndex = 2;
@@ -355,7 +355,7 @@ partial class MediaManagerForm
         lblTmdbConfidence.TabIndex = 3;
         lblTmdbConfidence.TextAlign = ContentAlignment.MiddleRight;
         rtbTmdbOverview.Anchor    = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
-        rtbTmdbOverview.BackColor = SystemColors.Control;
+        rtbTmdbOverview.BackColor = SystemColors.Control; // blend with the detail panel (read-only display)
         rtbTmdbOverview.BorderStyle = BorderStyle.None;
         rtbTmdbOverview.Location  = new Point(84, 58);
         rtbTmdbOverview.Name      = "rtbTmdbOverview";

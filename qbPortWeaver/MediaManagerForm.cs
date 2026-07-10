@@ -23,8 +23,7 @@ public partial class MediaManagerForm : Form
     // btnImportNow.Enabled appropriately based on the current grid state.
     private Control[] _busyControls;
 
-    // Row confidence colors - set once in OnLoad based on active theme
-    private bool _isDarkMode;
+    // Row confidence colors - resolved once in OnLoad for the active theme
     private Color _colorUncertain;
     private Color _colorUnmatched;
 
@@ -49,15 +48,12 @@ public partial class MediaManagerForm : Form
     {
         base.OnLoad(e);
         MinimumSize = Size; // lock minimum to initial window size so controls are never clipped
-        _isDarkMode = AppConstants.IsDarkModeEnabled();
-        _colorUncertain = _isDarkMode ? AppConstants.DarkModeWarning : AppConstants.LightModeWarning;
-        _colorUnmatched = _isDarkMode ? AppConstants.DarkModeError : AppConstants.LightModeError;
+        _colorUncertain = AppConstants.LogWarning;
+        _colorUnmatched = AppConstants.LogError;
         lblLegendUncertain.ForeColor = _colorUncertain;
         lblLegendUnmatched.ForeColor = _colorUnmatched;
         rtbTmdbOverview.Font = Font;
-        rtbTmdbOverview.ForeColor = ForeColor;
-        if (_isDarkMode)
-            rtbTmdbOverview.ForeColor = AppConstants.DarkModeText;
+        rtbTmdbOverview.ForeColor = SystemColors.ControlText; // match the panel labels (mode-aware, blends in)
         SetupTooltips();
         SetupGridContextMenu();
         LoadSettings();
@@ -453,11 +449,19 @@ public partial class MediaManagerForm : Form
             return;
         }
 
+        // Mode-aware confirmation: only Move removes the source, so only Move is truly irreversible.
+        // Hardlink and Copy leave the source in place, so a plainer prompt avoids over-warning.
+        var importMode = MediaManagerService.ParseImportMode(cboImportMode.SelectedItem?.ToString() ?? RegistrySettingsManager.ImportModeHardlink);
+        string fileCount = $"{toApply.Count} file{(toApply.Count == 1 ? "" : "s")}";
+        var (message, icon) = importMode == ImportMode.Move
+            ? ($"{fileCount} will be moved into the library and removed from the source folder. This cannot be undone.\n\nContinue?", MessageBoxIcon.Warning)
+            : ($"{fileCount} will be imported into the library.\n\nContinue?", MessageBoxIcon.Question);
+
         var confirm = MessageBox.Show(
-            $"{toApply.Count} file{(toApply.Count == 1 ? "" : "s")} will be imported. This cannot be undone.\n\nContinue?",
+            message,
             $"{AppIdentity.AppName} | Media Manager",
             MessageBoxButtons.YesNo,
-            MessageBoxIcon.Warning);
+            icon);
 
         if (confirm != DialogResult.Yes) return;
 
@@ -661,7 +665,14 @@ public partial class MediaManagerForm : Form
         }
 
         picTmdbPoster.Visible = false;
-        await LoadThumbnailAsync(posterPath, newCts.Token);
+        try
+        {
+            await LoadThumbnailAsync(posterPath, newCts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            // Expected when the user selects another row before the poster finishes loading.
+        }
     }
 
     private async Task LoadThumbnailAsync(string posterPath, CancellationToken cancellationToken)

@@ -38,11 +38,8 @@ flowchart TD
 
     UPDATE --> RESTART{Restart enabled?}
     RESTART -- Yes --> DO_RESTART[Restart client]
-    RESTART -- No --> POST_CMD
-    DO_RESTART --> POST_CMD{Post-update command?}
-    POST_CMD -- Yes --> RUN_CMD[Run command fire-and-forget]
-    POST_CMD -- No --> DONE_CHECK
-    RUN_CMD --> DONE_CHECK
+    RESTART -- No --> DONE_CHECK
+    DO_RESTART --> DONE_CHECK
 
     DONE_CHECK{restartOnDisconnect AND\nrestart not attempted this cycle?}
     DONE_CHECK -- Yes --> CONN_STATUS[Check client connection status]
@@ -60,7 +57,10 @@ flowchart TD
     ERROR_CLIENT --> FINALLY
     SKIP --> FINALLY
     SUCCESS --> FINALLY
-    FINALLY([Write status JSON + raise SyncCompleted event])
+    FINALLY([Write status JSON + raise SyncCompleted event]) --> POST_CMD{Successful port change?}
+    POST_CMD -- Yes --> RUN_CMD[Run post-update command fire-and-forget]
+    POST_CMD -- No --> END([Cycle done])
+    RUN_CMD --> END
 ```
 
 ## VPN Manager Creation
@@ -115,7 +115,7 @@ When the VPN is detected as disconnected - or port detection fails despite the V
    - Sends the recovery request to the helper service (runs as SYSTEM) via named pipe
    - If the target matches a known provider's client process, restarts it in the user session
 
-The time floor exists because a cycle can start early - a manual sync, a settings change, or (most commonly) a burst of network-change re-syncs while connectivity flaps during a router reboot. Without it, several early cycles can drive the counter to the threshold within seconds and force-restart the VPN service during a transient blip that would have cleared on its own. `(threshold - 1) x interval` is exactly the elapsed time the streak would take under normal scheduled cycling (failure 1 at t=0, failure N at t=`(N-1) x interval`), so a genuine sustained outage still triggers at the same moment it always did - the floor only defers recovery when failures arrive faster than the schedule. The streak's start time is stamped on the first failure and reset in lockstep with the counter.
+The time floor exists because a cycle can start early - a manual sync, a settings change, or (most commonly) a burst of network-change re-syncs while connectivity flaps during a router reboot. Without it, several early cycles can drive the counter to the threshold within seconds and force-restart the VPN service during a transient blip that would have cleared on its own. `(threshold - 1) x interval` is exactly the elapsed time the streak would take under normal scheduled cycling (failure 1 at t=0, failure N at t=`(N-1) x interval`), so a genuine sustained outage still triggers at the same moment it always did - the floor only defers recovery when failures arrive faster than the schedule. The streak's start time is re-stamped on each streak's first failure, so it always describes the streak in progress.
 
 ```
 interval=45s, threshold=3 → time floor = (3-1) x 45 = 90s
@@ -143,11 +143,11 @@ Cycle 4: VPN connected, port failed  → counter=3 → TRIGGER RECOVERY → coun
 
 ### Counter Reset Rules
 
-The counter (and its streak start time) reset in two cases:
+The counter resets in two cases (the streak start time is simply re-stamped when the next streak begins):
 - **Successful port detection**: `GetVpnPortAsync` returns a valid port. Applies uniformly to all providers; both VPN disconnection and port detection failure accumulate toward the threshold.
 - **Auto-recovery disabled**: if the feature is turned off, the counter resets each cycle so it does not carry over stale state when the feature is re-enabled.
 
-All resets flow through a single `ResetFailureStreak` helper so the streak start time used by the time floor can never drift out of sync with the counter.
+All resets flow through a single `ResetFailureStreak` helper. It only zeroes the counter; the time floor never reads a stale start time because the timestamp is re-stamped on the next streak's first failure and is only consulted while the counter is non-zero.
 
 ## BitTorrent Client Interaction
 
@@ -168,15 +168,16 @@ All client communication goes through the `IBitTorrentClient` interface, with im
 
 3. (optional) Show tray balloon tip if NotifyOnPortUpdate is enabled (raises PortUpdated event)
 4. (optional) Restart client process or service (if restart enabled)
-5. (optional) Run post-update shell command
-6. (optional, qBittorrent only) GET /api/v2/transfer/info → check connection_status
+5. (optional, qBittorrent only) GET /api/v2/transfer/info → check connection_status
               If "disconnected" → restart qBittorrent
               Skipped if step 4 already restarted (avoids redundant restart)
-7. (optional) Verify outside reachability of the port (see Port Verification below):
+6. (optional) Verify outside reachability of the port (see Port Verification below):
    GET /api/v2/transfer/info     → connection_status connected/firewalled    [qBittorrent]
-   port-test                     → port-is-open                              [Transmission]
+   port_test (ip_protocol=ipv4)  → port-is-open                              [Transmission]
    core.test_listen_port         → true/false                                [Deluge]
 ```
+
+> The **post-update command** (if configured) is not part of this sequence: it is launched at the very end of the cycle, *after* the status JSON file is written (see Status Output) and only on a successful port change - so a script that reads the status file sees this cycle's result rather than the previous one.
 
 ### Interface Mismatch Warning *(qBittorrent only)*
 
@@ -191,7 +192,7 @@ When `verifyPortAfterSync` is enabled (General settings, default on) and the VPN
 | Client | Mechanism | Notes |
 |---|---|---|
 | qBittorrent | `connection_status` from `transfer/info`: connected = open, firewalled = closed | Inferred from incoming peer activity; an idle client may report closed indefinitely |
-| Transmission | `port-test` RPC method | Active probe via Transmission's online port-check service |
+| Transmission | `port_test` RPC (`ip_protocol=ipv4`) | Active probe via Transmission's online port-check service. Uses the Transmission 4.1 method name, pinned to IPv4; falls back to the legacy `port-test` method on pre-4.1 daemons |
 | Deluge | `core.test_listen_port` | Active probe via Deluge's online port-check service |
 
 **Throttle** - because two of the three mechanisms contact external check services, the test runs when the port changed this cycle, every cycle while a result awaits confirmation, and every cycle while confirmed-closed *and* port-closed recovery is still armed (so the recovery counter advances toward its trigger). Otherwise - and once recovery has fired (disarmed) or is off - it runs every 5th cycle, which still detects a reopen without hammering the external check services. The counter is initialised above the threshold so the first increment triggers immediately on the first eligible cycle after startup.
@@ -218,7 +219,7 @@ All three indicators reset when the user opens the log viewer or clears the logs
 
 ### Update Notifications
 
-The update check is separate from the sync cycle. It runs once at startup (from `MainForm_LoadAsync`), every 12 hours (from a `System.Windows.Forms.Timer`), and on demand when the user clicks **Check for Updates** in the tray menu (`checkUpdates_Click`). These paths call `PerformUpdateCheckAsync(bool intrusive, bool manual)`; `intrusive` controls whether the `UpdateAvailableForm` opens automatically, and `manual` (set only by the tray click) bypasses the same-version dedup and adds an "up to date" or failure balloon so the click is never silent.
+The update check is separate from the sync cycle. It runs once at startup (from `InitializeAfterLoad`), every 12 hours (from a `System.Windows.Forms.Timer`), and on demand when the user clicks **Check for Updates** in the tray menu (`checkUpdates_Click`). These paths call `PerformUpdateCheckAsync(bool intrusive, bool manual)`; `intrusive` controls whether the `UpdateAvailableForm` opens automatically, and `manual` (set only by the tray click) bypasses the same-version dedup and adds an "up to date" or failure balloon so the click is never silent.
 
 | Trigger | `intrusive` / `manual` | Behaviour when newer version found |
 |---|---|---|
@@ -228,6 +229,8 @@ The update check is separate from the sync cycle. It runs once at startup (from 
 | Manual "Check for Updates" tray click | `true` / `true` | Tray menu item + tooltip line + opens `UpdateAvailableForm`; also shows an "up to date" or failure balloon, and ignores the same-version dedup, so the click always reports a result |
 
 The persistent tray indicators (menu item "Update available (X.Y.Z)" and tooltip line) appear in every scenario so the prompt is never silent. `_lastNotifiedVersion` dedups repeat notifications for the same version across timer ticks (skipped for manual checks). `_pendingUpdate` clears naturally on the next process launch once the user updates (GitHub returns a matching version → no detection). The manual handler disables the **Check for Updates** menu item while a request is in flight so rapid clicks do not stack HTTP calls.
+
+When opened, `UpdateAvailableForm` offers an in-app **Download & Install**: it downloads the release's MSI asset (`UpdateChecker.DownloadFileAsync`, with a progress bar), launches it interactively, and exits so the installer can replace the files and relaunch the updated app. It falls back to opening the release page when the release has no MSI asset or a download/launch fails. The **About** dialog's Update button routes into this same dialog (`AboutForm.UpdateRequested`).
 
 The update balloon is informational only - Windows 11 routes `ToolTipIcon.Info` balloons through Action Center and does not reliably fire `BalloonTipClicked`, so the tray menu item is the only clickable entry point. The same applies to the port update and "Logs cleared" balloons (also `ToolTipIcon.Info`); they are visual hints with no associated action.
 
@@ -261,6 +264,10 @@ The `status` field is one of:
 - **`error`** - something failed (VPN port unreadable, client unreachable, etc.)
 - **`skipped`** - VPN disconnected and no default port configured (no-op cycle)
 
+## Diagnostics
+
+**Run Diagnostics** (Status panel button and tray menu) runs `DiagnosticsService.RunAsync`, a read-only health check that walks the whole sync chain once and reports pass/warn/fail per step with a fix hint: configuration, helper service, VPN connection, forwarded port, client running, client reachable, ports in sync, interface binding, and outside reachability. It reuses the sync loop's own managers and clients via `PortSyncService.BuildActiveVpnManagerAsync` / `BuildActiveClient` (construction stays single-source) and mirrors the loop's rules - e.g. it skips the reachability check when the VPN is disconnected. It never changes the port or restarts anything. Results render in `DiagnosticsForm` with a Re-run button (refreshes in place) and Copy Report - a plain-text report that includes the app and installed helper-service versions plus a masked snapshot of the port-sync settings (general, active client, extra), so it is self-contained for a bug report. Each result is also logged at Debug, with an Info summary line.
+
 ## Method Call Map
 
 ```
@@ -292,8 +299,7 @@ RunAsync
          ├─ CheckInterfaceMatch (qBittorrent only)
          ├─ ApplyPortUpdateAsync
          │   ├─ IBitTorrentClient.SetListeningPortAsync
-         │   ├─ IBitTorrentClient.RestartAsync
-         │   └─ RunPostUpdateCommand
+         │   └─ IBitTorrentClient.RestartAsync
          ├─ PortUpdated?.Invoke (if NotifyOnPortUpdate and port changed)
          ├─ CheckAndRestartIfDisconnectedAsync (qBittorrent only; skipped if already restarted)
          │   └─ IBitTorrentClient.RestartAsync
@@ -306,6 +312,8 @@ RunAsync
          │       └─ DispatchRecoveryAsync
          └─ SetSyncResult
 ```
+
+> `RunPostUpdateCommand` is not shown above because it is launched from `RunAsync`'s `finally` block - after `StatusManager.Write` - and only when the port changed this cycle, so a script that reads the status file sees the current cycle's result.
 
 ---
 

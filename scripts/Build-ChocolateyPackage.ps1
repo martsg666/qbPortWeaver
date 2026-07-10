@@ -52,13 +52,13 @@ $chocoSrc   = Join-Path $repoRoot 'choco'
 $outputDir  = if ($OutputDirectory) { $OutputDirectory } else { $chocoSrc }
 $stagingDir = Join-Path ([System.IO.Path]::GetTempPath()) "qbPortWeaver-choco-$([System.Guid]::NewGuid().ToString('N'))"
 
-function Write-Step([string]$msg) { Write-Host "`n==> $msg" -ForegroundColor Cyan }
-function Write-Ok([string]$msg)   { Write-Host "    $msg"   -ForegroundColor Green }
+function Show-Step([string]$msg) { Write-Host "`n==> $msg" -ForegroundColor Cyan }
+function Show-Ok([string]$msg)   { Write-Host "    $msg"   -ForegroundColor Green }
 
 # ---------------------------------------------------------------------------
 # Step 1: Resolve version from csproj if not provided
 # ---------------------------------------------------------------------------
-Write-Step 'Resolving version...'
+Show-Step 'Resolving version...'
 
 if (-not $Version) {
     $csprojPath = Join-Path $repoRoot 'qbPortWeaver\qbPortWeaver.csproj'
@@ -73,15 +73,15 @@ $tag         = "v$Version"
 $assetName   = "qbPortWeaver_${Version}_Setup.msi"
 $downloadUrl = "https://github.com/martsg666/qbPortWeaver/releases/download/$tag/$assetName"
 
-Write-Ok "Version : $Version"
-Write-Ok "Tag     : $tag"
+Show-Ok "Version : $Version"
+Show-Ok "Tag     : $tag"
 
 # ---------------------------------------------------------------------------
 # Step 2: Publish both projects as self-contained single-file win-x64 executables
 #         This matches the CI build-release.yml publish step exactly.
 #         Output lands in: <project>\bin\Release\<tfm>\win-x64\publish\
 # ---------------------------------------------------------------------------
-Write-Step 'Publishing self-contained single-file executables...'
+Show-Step 'Publishing self-contained single-file executables...'
 
 $tfm = (Select-String -Path (Join-Path $repoRoot 'qbPortWeaver\qbPortWeaver.csproj') -Pattern '<TargetFramework>([^<]+)</TargetFramework>').Matches[0].Groups[1].Value
 
@@ -111,14 +111,14 @@ $publishedExes = @(
 
 foreach ($exe in $publishedExes) {
     if (-not (Test-Path $exe)) { throw "Expected publish output not found: $exe" }
-    Write-Ok "Published : $exe"
+    Show-Ok "Published : $exe"
 }
 
 # ---------------------------------------------------------------------------
 # Step 3: Build the MSI installer using WiX Toolset v4
 #         Output: installer\qbPortWeaver_{version}_Setup.msi
 # ---------------------------------------------------------------------------
-Write-Step 'Building MSI installer with WiX Toolset v4...'
+Show-Step 'Building MSI installer with WiX Toolset v4...'
 
 # Install/update WiX (idempotent - installs if missing, updates if present)
 dotnet tool update --global wix --version "4.0.6"
@@ -147,22 +147,22 @@ if (-not (Test-Path $setupMsi)) {
     throw "Expected installer not found: $setupMsi"
 }
 
-Write-Ok "Installer : $setupMsi"
+Show-Ok "Installer : $setupMsi"
 
 # ---------------------------------------------------------------------------
 # Step 4: Compute SHA256 checksum of the local MSI
 # ---------------------------------------------------------------------------
-Write-Step 'Computing installer checksum...'
+Show-Step 'Computing installer checksum...'
 
 $checksum = (Get-FileHash -Path $setupMsi -Algorithm SHA256).Hash.ToUpper()
 
-Write-Ok "SHA256    : $checksum"
-Write-Ok "URL       : $downloadUrl"
+Show-Ok "SHA256    : $checksum"
+Show-Ok "URL       : $downloadUrl"
 
 # ---------------------------------------------------------------------------
 # Step 5: Stage package source and stamp placeholders
 # ---------------------------------------------------------------------------
-Write-Step 'Staging and stamping Chocolatey package source...'
+Show-Step 'Staging and stamping Chocolatey package source...'
 
 Copy-Item -Recurse -Path $chocoSrc -Destination $stagingDir
 try {
@@ -173,7 +173,7 @@ try {
     (Get-Content $installPath -Encoding utf8) -replace 'TEMPLATE_URL',      $downloadUrl `
                                -replace 'TEMPLATE_CHECKSUM', $checksum      | Set-Content $installPath -Encoding utf8
 
-    Write-Ok "Placeholders stamped"
+    Show-Ok "Placeholders stamped"
 
     # Verify no TEMPLATE_ placeholders survived the substitution
     $unreplaced = $false
@@ -190,7 +190,7 @@ try {
     #         The extension hooks into choco pack and runs validation rules
     #         automatically - no separate validate command needed in v2.x.
     # ---------------------------------------------------------------------------
-    Write-Step 'Installing community validation extension and packing...'
+    Show-Step 'Installing community validation extension and packing...'
 
     # Install the community validation extension if not already present (idempotent).
     # When installed, it automatically validates the package during choco pack.
@@ -204,7 +204,7 @@ try {
 }
 
 $nupkg = Get-Item (Join-Path $outputDir "qbportweaver.$Version.nupkg")
-Write-Ok "Package   : $($nupkg.FullName)"
+Show-Ok "Package   : $($nupkg.FullName)"
 
 Write-Host "`nTo push to the Chocolatey Community Repository, run:" -ForegroundColor Yellow
 Write-Host "  choco push '$($nupkg.FullName)' --source https://push.chocolatey.org/ --api-key <key>" -ForegroundColor Yellow

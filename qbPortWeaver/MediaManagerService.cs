@@ -247,6 +247,10 @@ public static class MediaManagerService
                 {
                     MediaImporter.AddFileToLibrary(proposal.OriginalPath, proposal.ProposedPath, importMode);
                 }
+                // Deliberately broad: this is the outermost per-item boundary of a user-initiated batch.
+                // AddFileToLibrary already handles the expected IO/permission cases, so anything reaching
+                // here is unexpected - log it at Error and keep going so one bad file cannot strand the
+                // rest of the batch. (Narrowing this would abort the remaining imports on a surprise.)
                 catch (Exception ex)
                 {
                     LogManager.Instance.LogMessage(

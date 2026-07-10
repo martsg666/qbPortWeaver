@@ -17,8 +17,8 @@ public static class SyncStatusValues
 
 /// <summary>
 /// Typed view of the last sync cycle written to the JSON status file. Property names map to the
-/// literal status keys (PortSyncService's StatusKeys constants); only the fields the Status panel
-/// surfaces are modelled here. Unmapped keys in the file are ignored.
+/// literal status keys (PortSyncService's StatusKeys constants); only a subset of those keys are
+/// modelled here. Unmapped keys in the file are ignored.
 /// </summary>
 public sealed record StatusSnapshot
 {

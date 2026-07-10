@@ -94,27 +94,27 @@ public sealed partial class ProtonVpnManager : IVpnManager
         {
             if (string.IsNullOrWhiteSpace(_logFilePath))
             {
-                LogManager.Instance.LogDebug("ProtonVpnManager.GetVpnPortCore: Logfile path is null or empty");
+                LogManager.Instance.LogDebug("ProtonVpnManager.GetVpnPortCore: Log file path is null or empty");
                 return null;
             }
 
             if (!File.Exists(_logFilePath))
             {
-                LogManager.Instance.LogDebug($"ProtonVpnManager.GetVpnPortCore: Logfile does not exist: {_logFilePath}");
+                LogManager.Instance.LogDebug($"ProtonVpnManager.GetVpnPortCore: Log file does not exist: {_logFilePath}");
                 return null;
             }
 
-            LogManager.Instance.LogDebug($"ProtonVpnManager.GetVpnPortCore: Reading logfile: {_logFilePath}");
+            LogManager.Instance.LogDebug($"ProtonVpnManager.GetVpnPortCore: Reading log file: {_logFilePath}");
 
             int? port = ReadLastPortFromLog();
 
             if (port.HasValue)
             {
-                LogManager.Instance.LogDebug($"ProtonVpnManager.GetVpnPortCore: Found port {port.Value} in logfile");
+                LogManager.Instance.LogDebug($"ProtonVpnManager.GetVpnPortCore: Found port {port.Value} in log file");
                 return port.Value;
             }
 
-            LogManager.Instance.LogDebug("ProtonVpnManager.GetVpnPortCore: No port found in logfile");
+            LogManager.Instance.LogDebug("ProtonVpnManager.GetVpnPortCore: No port found in log file");
             return null;
         }
         catch (Exception ex)

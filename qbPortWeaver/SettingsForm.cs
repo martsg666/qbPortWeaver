@@ -27,11 +27,11 @@ public partial class SettingsForm : Form
         // sits flush after its indented "Trigger after" label rather than on the form's field column.
         // PreferredSize.Width is the measured text width (correct even before this tab has laid out),
         // so both identical rows resolve to the same X and stay aligned with each other.
-        int InlineGap = LogicalToDeviceUnits(6); // scale the 6px gap with DPI so it stays proportional at 125%+
-        nudPortClosedChecks.Left     = lblPortClosedChecks.Left + lblPortClosedChecks.PreferredSize.Width + InlineGap;
-        lblPortClosedChecksUnit.Left = nudPortClosedChecks.Left + nudPortClosedChecks.Width + InlineGap;
-        nudRecoveryCycles.Left       = lblRecoveryCycles.Left + lblRecoveryCycles.PreferredSize.Width + InlineGap;
-        lblRecoveryCyclesUnit.Left   = nudRecoveryCycles.Left + nudRecoveryCycles.Width + InlineGap;
+        int inlineGap = LogicalToDeviceUnits(6); // scale the 6px gap with DPI so it stays proportional at 125%+
+        nudPortClosedChecks.Left     = lblPortClosedChecks.Left + lblPortClosedChecks.PreferredSize.Width + inlineGap;
+        lblPortClosedChecksUnit.Left = nudPortClosedChecks.Left + nudPortClosedChecks.Width + inlineGap;
+        nudRecoveryCycles.Left       = lblRecoveryCycles.Left + lblRecoveryCycles.PreferredSize.Width + inlineGap;
+        lblRecoveryCyclesUnit.Left   = nudRecoveryCycles.Left + nudRecoveryCycles.Width + inlineGap;
 
         // The "Trigger after" labels are AutoSize (~15px tall) but share a row with the 23px-tall
         // spinner and unit label. Pinned at the same top they float above the spinner's centre, so
@@ -128,12 +128,7 @@ public partial class SettingsForm : Form
             cboVpnProvider.SelectedIndex = 0;
 
         cboBitTorrentClient.Items.Clear();
-        cboBitTorrentClient.Items.AddRange(
-        [
-            RegistrySettingsManager.BitTorrentClientQBittorrent,
-            RegistrySettingsManager.BitTorrentClientTransmission,
-            RegistrySettingsManager.BitTorrentClientDeluge
-        ]);
+        cboBitTorrentClient.Items.AddRange(ClientRegistry.All.Select(c => (object)c.Name).ToArray());
         cboBitTorrentClient.SelectedItem = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyBitTorrentClient);
         if (cboBitTorrentClient.SelectedIndex < 0) cboBitTorrentClient.SelectedIndex = 0;
 

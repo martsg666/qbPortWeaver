@@ -151,7 +151,7 @@ partial class AboutForm
         btnCheckForUpdates.TabIndex = 5;
         btnCheckForUpdates.Text     = "Check for Updates";
         btnCheckForUpdates.Click   += btnCheckForUpdates_Click;
-        btnWhatsNew.Location        = new Point(148, 316);
+        btnWhatsNew.Location        = new Point(144, 316); // 8px gap after btnCheckForUpdates (ends at x=136)
         btnWhatsNew.Name            = "btnWhatsNew";
         btnWhatsNew.Size            = new Size(96, 28);
         btnWhatsNew.TabIndex        = 6;
@@ -165,6 +165,7 @@ partial class AboutForm
         btnClose.Text               = "Close";
         btnClose.Click             += btnClose_Click;
         // ── AboutForm ─────────────────────────────────────────────────
+        AcceptButton = btnClose;
         AutoScaleDimensions = new SizeF(7F, 15F);
         AutoScaleMode = AutoScaleMode.Font;
         CancelButton = btnClose;

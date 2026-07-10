@@ -1,4 +1,4 @@
-﻿namespace qbPortWeaver;
+namespace qbPortWeaver;
 
 partial class LogViewerForm
 {
@@ -9,10 +9,10 @@ partial class LogViewerForm
         if (disposing)
         {
             _watcher?.Dispose();
-            _searchDebounceTimer?.Dispose();
+            _dragScrollTimer?.Dispose();
 
             // Dispose explicitly created fonts (WinForms controls do not own their Font)
-            rtbLog?.Font?.Dispose();
+            lvLog?.Font?.Dispose();
             chkError?.Font?.Dispose();
             chkWarn?.Font?.Dispose();
             chkInfo?.Font?.Dispose();
@@ -27,7 +27,8 @@ partial class LogViewerForm
 
     private void InitializeComponent()
     {
-        rtbLog        = new System.Windows.Forms.RichTextBox();
+        lvLog         = new BufferedListView();
+        colLog        = new System.Windows.Forms.ColumnHeader();
         pnlToolbar    = new System.Windows.Forms.Panel();
         chkError      = new System.Windows.Forms.CheckBox();
         chkWarn       = new System.Windows.Forms.CheckBox();
@@ -113,6 +114,10 @@ partial class LogViewerForm
         chkWarn.CheckedChanged  += filterButton_CheckedChanged;
         chkInfo.CheckedChanged  += filterButton_CheckedChanged;
         chkDebug.CheckedChanged += filterButton_CheckedChanged;
+        toolTip.SetToolTip(chkError, "Show or hide ERROR entries");
+        toolTip.SetToolTip(chkWarn,  "Show or hide WARN entries");
+        toolTip.SetToolTip(chkInfo,  "Show or hide INFO entries");
+        toolTip.SetToolTip(chkDebug, "Show or hide DEBUG entries");
 
         // Issue navigation buttons - grouped with the level filter buttons, navigate between WARN/ERROR lines.
         // Positioned immediately after chkDebug; y/h kept at filter-button values (no OnLoad adjustment).
@@ -121,7 +126,7 @@ partial class LogViewerForm
         btnIssuePrev.Location  = new System.Drawing.Point(296, 4);
         btnIssuePrev.Size      = new System.Drawing.Size(26, 26);
         btnIssuePrev.TabIndex  = 4;
-        btnIssuePrev.Text      = "▲";
+        btnIssuePrev.Text      = ""; // up chevron owner-drawn in NavButton_Paint
         btnIssuePrev.Click    += btnIssuePrev_Click;
         toolTip.SetToolTip(btnIssuePrev, "Previous warning or error");
 
@@ -130,7 +135,7 @@ partial class LogViewerForm
         btnIssueNext.Location  = new System.Drawing.Point(322, 4);
         btnIssueNext.Size      = new System.Drawing.Size(26, 26);
         btnIssueNext.TabIndex  = 5;
-        btnIssueNext.Text      = "▼";
+        btnIssueNext.Text      = ""; // down chevron owner-drawn in NavButton_Paint
         btnIssueNext.Click    += btnIssueNext_Click;
         toolTip.SetToolTip(btnIssueNext, "Next warning or error");
 
@@ -144,6 +149,7 @@ partial class LogViewerForm
         cboSubsystem.SelectedIndex = 0;
         // Wire event after setting SelectedIndex to avoid premature RebuildDisplay
         cboSubsystem.SelectedIndexChanged += cboSubsystem_SelectedIndexChanged;
+        toolTip.SetToolTip(cboSubsystem, "Filter entries by subsystem");
 
         // Log file picker - populated in OnLoad; event wired there after population to avoid premature load
         cboLogFile.Anchor        = System.Windows.Forms.AnchorStyles.Left | System.Windows.Forms.AnchorStyles.Top;
@@ -167,6 +173,7 @@ partial class LogViewerForm
         txtSearch.TabIndex        = 8;
         txtSearch.TextChanged    += txtSearch_TextChanged;
         txtSearch.KeyDown        += txtSearch_KeyDown;
+        toolTip.SetToolTip(txtSearch, "Search the log (highlights matches)");
 
         // btnClearSearch - overlays the right interior of txtSearch; sized and positioned in OnLoad.
         // Right-margin set to txtSearch.RightMargin - 2 so the button always stays 2px inside the box on resize.
@@ -183,6 +190,7 @@ partial class LogViewerForm
         btnClearSearch.TabStop                   = false;
         btnClearSearch.Visible                   = false;
         btnClearSearch.Click                    += btnClearSearch_Click;
+        toolTip.SetToolTip(btnClearSearch, "Clear search");
 
         // btnPrev
         btnPrev.Anchor    = rightAnchor;
@@ -190,8 +198,9 @@ partial class LogViewerForm
         btnPrev.Location  = new System.Drawing.Point(1044, 5);
         btnPrev.Size      = new System.Drawing.Size(26, 26);
         btnPrev.TabIndex  = 10;
-        btnPrev.Text      = "▲";
+        btnPrev.Text      = ""; // up chevron owner-drawn in NavButton_Paint
         btnPrev.Click    += btnPrev_Click;
+        toolTip.SetToolTip(btnPrev, "Previous match");
 
         // btnNext
         btnNext.Anchor    = rightAnchor;
@@ -199,8 +208,9 @@ partial class LogViewerForm
         btnNext.Location  = new System.Drawing.Point(1070, 5);
         btnNext.Size      = new System.Drawing.Size(26, 26);
         btnNext.TabIndex  = 11;
-        btnNext.Text      = "▼";
+        btnNext.Text      = ""; // down chevron owner-drawn in NavButton_Paint
         btnNext.Click    += btnNext_Click;
+        toolTip.SetToolTip(btnNext, "Next match");
 
         // lblMatchCount
         lblMatchCount.Anchor    = rightAnchor;
@@ -229,30 +239,45 @@ partial class LogViewerForm
         ctxSelectAll.Click += ctxSelectAll_Click;
         ctxLog.Items.AddRange(new System.Windows.Forms.ToolStripItem[] { ctxCopy, ctxCopyAll, ctxSelectAll });
         ctxLog.Opening += ctxLog_Opening;
-        rtbLog.ContextMenuStrip = ctxLog;
+        lvLog.ContextMenuStrip = ctxLog;
 
-        // rtbLog
-        rtbLog.BackColor        = System.Drawing.SystemColors.Window;
-        rtbLog.BorderStyle      = System.Windows.Forms.BorderStyle.None;
-        rtbLog.Dock             = System.Windows.Forms.DockStyle.Fill;
-        rtbLog.Font             = new System.Drawing.Font("Consolas", 9F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point);
-        rtbLog.ReadOnly         = true;
-        rtbLog.DetectUrls       = false;
-        rtbLog.ScrollBars       = System.Windows.Forms.RichTextBoxScrollBars.Both;
-        rtbLog.ShortcutsEnabled = true;
-        rtbLog.Size             = new System.Drawing.Size(1100, 524);
-        rtbLog.TabIndex         = 1;
-        rtbLog.WordWrap         = false;
+        // lvLog - owner-drawn virtual list over the in-memory line store. VirtualMode renders
+        // rows on demand, so filter changes and appends never re-render the whole document.
+        // One header-less column provides the horizontal scrollbar; its width tracks the
+        // widest visible line (see UpdateColumnWidth).
+        colLog.Text  = "";
+        colLog.Width = 1100;
+        lvLog.BackColor       = System.Drawing.SystemColors.Control;
+        lvLog.BorderStyle     = System.Windows.Forms.BorderStyle.None;
+        lvLog.Columns.Add(colLog);
+        lvLog.Dock            = System.Windows.Forms.DockStyle.Fill;
+        lvLog.Font            = new System.Drawing.Font("Consolas", 9F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point);
+        lvLog.FullRowSelect   = true;
+        lvLog.HeaderStyle     = System.Windows.Forms.ColumnHeaderStyle.None;
+        lvLog.MultiSelect     = true;
+        lvLog.OwnerDraw       = true;
+        lvLog.ShowGroups      = false;
+        lvLog.Size            = new System.Drawing.Size(1100, 524);
+        lvLog.TabIndex        = 1;
+        lvLog.UseCompatibleStateImageBehavior = false;
+        lvLog.View            = System.Windows.Forms.View.Details;
+        lvLog.VirtualMode     = true;
+        lvLog.RetrieveVirtualItem += lvLog_RetrieveVirtualItem;
+        lvLog.DrawItem            += lvLog_DrawItem;
+        lvLog.KeyDown             += lvLog_KeyDown;
+        lvLog.MouseDown           += lvLog_MouseDown;
+        lvLog.MouseMove           += lvLog_MouseMove;
+        lvLog.MouseUp             += lvLog_MouseUp;
 
         // LogViewerForm
         AutoScaleDimensions = new System.Drawing.SizeF(7F, 15F);
         AutoScaleMode       = System.Windows.Forms.AutoScaleMode.Font;
         ClientSize          = new System.Drawing.Size(1100, 680);
-        Controls.Add(rtbLog);
+        Controls.Add(lvLog);
         Controls.Add(pnlToolbar);
         MaximizeBox         = true;
         MinimizeBox         = true;
-        MinimumSize         = new System.Drawing.Size(600, 300);
+        MinimumSize         = new System.Drawing.Size(600, 300); // width raised at runtime in OnLoad from the toolbar layout
         Name                = "LogViewerForm";
         Icon                = Properties.Resources.qbPortWeaver;
         ShowIcon            = true;
@@ -264,7 +289,8 @@ partial class LogViewerForm
         ResumeLayout(false);
     }
 
-    private System.Windows.Forms.RichTextBox       rtbLog;
+    private BufferedListView                       lvLog;
+    private System.Windows.Forms.ColumnHeader      colLog;
     private System.Windows.Forms.Panel             pnlToolbar;
     private System.Windows.Forms.CheckBox          chkError;
     private System.Windows.Forms.CheckBox          chkWarn;

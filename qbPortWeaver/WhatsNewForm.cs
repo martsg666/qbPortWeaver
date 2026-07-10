@@ -30,11 +30,11 @@ public partial class WhatsNewForm : Form
         "Every window - Settings, Status, Diagnostics, the log viewer, Media Manager, and the tray menu - now " +
         "follows your color theme (System, Dark, or Light) uniformly, using the native Windows colors so text " +
         "and surfaces stay legible in both light and dark mode.\n\n" +
-        "Smoother log viewer\n" +
-        "Changing the level or subsystem filters on a large log no longer freezes the window - the view is " +
-        "prepared in the background behind a brief Applying filter overlay. Resizing is smoother too, and " +
-        "memory is reclaimed on a gentler schedule, so the viewer stays fast and lean even when left open " +
-        "for days.\n\n" +
+        "A faster log viewer\n" +
+        "The log viewer now handles very large logs effortlessly: switching level and subsystem filters " +
+        "applies instantly, scrolling and resizing stay smooth, and memory usage stays low even when the " +
+        "viewer is left open for days. Selection now works per line - click or drag to select entries and " +
+        "copy them.\n\n" +
         "Previously released\n\n" +
         "New in 2.5.8\n\n" +
         "Test your port on demand\n" +

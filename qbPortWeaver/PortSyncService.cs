@@ -594,16 +594,9 @@ public sealed class PortSyncService
             status[StatusKeys.ClientPort] = currentPort.Value;
             LogManager.Instance.LogMessage($"{manager.ClientName} ports match - no update needed", LogLevel.Info);
         }
-        else
+        else if (!await UpdatePortAndNotifyAsync(manager, targetPort, currentPort.Value, config, status, cancellationToken).ConfigureAwait(false))
         {
-            if (!await ApplyPortUpdateAsync(manager, targetPort, config, status, cancellationToken).ConfigureAwait(false))
-                return; // port update failed - skip RestartOnDisconnect check; next cycle will retry
-            PortHistoryManager.Append(PortHistoryKind.PortChanged, targetPort,
-                config.VpnManager is null
-                    ? $"Default port applied (was {currentPort.Value})"
-                    : $"VPN assigned new port (was {currentPort.Value})");
-            if (config.NotifyOnPortUpdate)
-                NotifyPortUpdated(manager.ClientName, targetPort);
+            return; // port update failed - skip RestartOnDisconnect check; next cycle will retry
         }
 
         // Check connection status and restart if offline - skip if a restart was already performed
@@ -619,6 +612,22 @@ public sealed class PortSyncService
             await VerifyPortAsync(manager, targetPort, config, status, cancellationToken).ConfigureAwait(false);
 
         SetSyncResult(status, true, "Sync cycle completed");
+    }
+
+    // Applies the port update, records it in the port history (with the cause: VPN-assigned or
+    // default-port fallback), and raises the optional tray notification. Returns false when the
+    // update failed - the caller skips the cycle's remaining steps and the next cycle retries.
+    private async Task<bool> UpdatePortAndNotifyAsync(IBitTorrentClient manager, int targetPort, int previousPort, SyncConfig config, Dictionary<string, object?> status, CancellationToken cancellationToken)
+    {
+        if (!await ApplyPortUpdateAsync(manager, targetPort, config, status, cancellationToken).ConfigureAwait(false))
+            return false;
+        PortHistoryManager.Append(PortHistoryKind.PortChanged, targetPort,
+            config.VpnManager is null
+                ? $"Default port applied (was {previousPort})"
+                : $"VPN assigned new port (was {previousPort})");
+        if (config.NotifyOnPortUpdate)
+            NotifyPortUpdated(manager.ClientName, targetPort);
+        return true;
     }
 
     // Throttles the reachability test: Transmission's and Deluge's tests contact their projects'

@@ -89,6 +89,7 @@ public partial class LogViewerForm : Form
     private static class WinMsg
     {
         public const int WM_PAINT = 0x000F;
+        public const int LVM_SCROLL = 0x1014;
         public const int LVM_SETITEMSTATE = 0x102B;
         public const int LVM_GETITEMSTATE = 0x102C;
         public const uint LVIF_STATE = 0x0008;
@@ -417,11 +418,14 @@ public partial class LogViewerForm : Form
 
     // Mouse drag-selection: a native ListView only range-selects via Shift+Click, so dragging
     // across rows (the way one selects in a text box) is implemented here. MouseDown anchors on
-    // the pressed row; MouseMove extends the selection to the row under the cursor, scrolling
-    // when the drag leaves the viewport (the control captures the mouse, so out-of-bounds
-    // coordinates keep arriving).
+    // the pressed row; MouseMove extends the selection to the row under the cursor. Holding the
+    // cursor past the top or bottom edge keeps scrolling via _dragScrollTimer - MouseMove alone
+    // cannot drive that, because it only fires while the pointer actually moves.
     private int _dragAnchorRow = -1;
     private int _dragLastRow = -1;
+    private System.Windows.Forms.Timer? _dragScrollTimer;
+    private int _dragScrollDirection; // -1 = scrolling up, +1 = scrolling down, 0 = idle
+    private const int DragScrollIntervalMs = 60; // ~17 rows/s edge auto-scroll
 
     private void lvLog_MouseDown(object? sender, MouseEventArgs e)
     {
@@ -436,38 +440,89 @@ public partial class LogViewerForm : Form
     {
         if (e.Button != MouseButtons.Left || _dragAnchorRow < 0) return;
 
-        // Clamp to the client area for the hit test; the raw Y decides edge auto-scroll below.
-        var probe = new Point(
-            Math.Clamp(e.X, 0, lvLog.ClientSize.Width - 1),
-            Math.Clamp(e.Y, 0, lvLog.ClientSize.Height - 1));
-        int row = lvLog.HitTest(probe).Item?.Index ?? -1;
-        if (row < 0) return;
+        // Outside the vertical bounds: hand off to the edge auto-scroll timer, which keeps
+        // advancing while the cursor is held there (the control captures the mouse, so these
+        // out-of-bounds coordinates are seen, but only as long as the pointer moves).
+        int direction = 0;
+        if (e.Y < 0) direction = -1;
+        else if (e.Y >= lvLog.ClientSize.Height) direction = 1;
+        SetDragScroll(direction);
+        if (direction != 0) return;
 
-        // Dragging past the top or bottom edge advances one row per move event.
-        if (e.Y < 0 && row > 0) row--;
-        else if (e.Y > lvLog.ClientSize.Height && row < lvLog.VirtualListSize - 1) row++;
-
-        if (row == _dragLastRow) return;
-        _dragLastRow = row;
+        int row = lvLog.HitTest(new Point(
+            Math.Clamp(e.X, 0, lvLog.ClientSize.Width - 1), e.Y)).Item?.Index ?? -1;
+        if (row < 0 || row == _dragLastRow) return;
         lvLog.EnsureVisible(row);
-        SelectRowRange(_dragAnchorRow, row);
+        ExtendDragSelection(row);
+        _dragLastRow = row;
     }
 
     private void lvLog_MouseUp(object? sender, MouseEventArgs e)
     {
         if (e.Button != MouseButtons.Left) return;
+        SetDragScroll(0);
         _dragAnchorRow = -1;
         _dragLastRow = -1;
     }
 
-    // Replaces the selection with the inclusive row range [a, b] (either order).
-    private void SelectRowRange(int a, int b)
+    // Arms or disarms the edge auto-scroll for the given direction. The timer is created lazily
+    // on first use and lives for the form's lifetime (disposed in the Designer's Dispose).
+    private void SetDragScroll(int direction)
     {
-        SetAllRowsSelected(false);
-        int lo = Math.Min(a, b);
-        int hi = Math.Max(a, b);
-        for (int r = lo; r <= hi; r++)
-            SetRowState(r, WinMsg.LVIS_SELECTED);
+        if (direction == _dragScrollDirection) return;
+        _dragScrollDirection = direction;
+        if (direction == 0)
+        {
+            _dragScrollTimer?.Stop();
+            return;
+        }
+        if (_dragScrollTimer is null)
+        {
+            _dragScrollTimer = new System.Windows.Forms.Timer { Interval = DragScrollIntervalMs };
+            _dragScrollTimer.Tick += dragScrollTimer_Tick;
+        }
+        _dragScrollTimer.Start();
+    }
+
+    // Advances the drag selection one row per tick in the held direction, scrolling with it.
+    private void dragScrollTimer_Tick(object? sender, EventArgs e)
+    {
+        if (_dragAnchorRow < 0 || _dragScrollDirection == 0)
+        {
+            SetDragScroll(0);
+            return;
+        }
+        int row = Math.Clamp(_dragLastRow + _dragScrollDirection, 0, lvLog.VirtualListSize - 1);
+        if (row == _dragLastRow) return; // hit the first/last row - keep the timer armed in case rows are appended
+        lvLog.EnsureVisible(row);
+        ExtendDragSelection(row);
+        _dragLastRow = row;
+    }
+
+    // Extends the drag selection from _dragLastRow to newRow, touching only the delta rows so
+    // the per-move cost is proportional to the mouse movement, not the total range - a clear-all
+    // plus full re-select per move would make a long edge-scroll drag quadratic and freeze the
+    // UI. Rows entering the [anchor, newRow] span are selected; rows leaving it (dragging back
+    // toward or past the anchor) are deselected. The anchor row itself always stays selected.
+    private void ExtendDragSelection(int newRow)
+    {
+        int anchor = _dragAnchorRow;
+        int last = _dragLastRow;
+
+        // Deselect rows no longer in the span (present relative to 'last', absent relative to 'newRow').
+        int oldLo = Math.Min(anchor, last), oldHi = Math.Max(anchor, last);
+        int newLo = Math.Min(anchor, newRow), newHi = Math.Max(anchor, newRow);
+        for (int r = oldLo; r <= oldHi; r++)
+        {
+            if (r < newLo || r > newHi)
+                SetRowState(r, 0, WinMsg.LVIS_SELECTED);
+        }
+        // Select rows newly in the span.
+        for (int r = newLo; r <= newHi; r++)
+        {
+            if (r < oldLo || r > oldHi)
+                SetRowState(r, WinMsg.LVIS_SELECTED, WinMsg.LVIS_SELECTED);
+        }
         lvLog.Invalidate();
     }
 
@@ -536,8 +591,34 @@ public partial class LogViewerForm : Form
     private void NavigateToMatch(int index)
     {
         _searchIndex = index;
-        SelectRow(_searchMatches[index].Row);
+        var (row, offset) = _searchMatches[index];
+        SelectRow(row);
+        ScrollMatchIntoHorizontalView(row, offset);
         lblMatchCount.Text = $"{_searchIndex + 1} / {_searchMatches.Count}";
+    }
+
+    // Scrolls the list horizontally so the match run at (row, offset) is inside the viewport
+    // (EnsureVisible in SelectRow handles only the vertical axis). The row's item rect X already
+    // reflects the current horizontal scroll, so the run's on-screen position is rect.X plus the
+    // character-offset pixels; LVM_SCROLL shifts by the delta needed to bring it into view with
+    // a small margin. Left-edge correction is applied after the right-edge one so a run wider
+    // than the viewport keeps its start visible.
+    private void ScrollMatchIntoHorizontalView(int row, int offset)
+    {
+        Rectangle itemRect = lvLog.GetItemRect(row);
+        int margin = LogicalToDeviceUnits(16);
+        var (left, width) = MeasureMatchRun(_allLines[_visibleRows[row]].Text, offset, txtSearch.Text.Length);
+        int runLeft = itemRect.X + _textPadding + left;
+        int runRight = runLeft + width;
+
+        int dx = 0;
+        if (runRight > lvLog.ClientSize.Width)
+            dx = runRight - lvLog.ClientSize.Width + margin;
+        if (runLeft - dx < 0)
+            dx = runLeft - margin;
+
+        if (dx != 0)
+            SendMessage(lvLog.Handle, WinMsg.LVM_SCROLL, dx, 0);
     }
 
     // Selects a single row, gives it the keyboard focus (so arrow/Shift+arrow navigation
@@ -546,19 +627,20 @@ public partial class LogViewerForm : Form
     {
         if (row < 0 || row >= lvLog.VirtualListSize) return;
         SetAllRowsSelected(false);
-        SetRowState(row, WinMsg.LVIS_SELECTED | WinMsg.LVIS_FOCUSED);
+        SetRowState(row, WinMsg.LVIS_SELECTED | WinMsg.LVIS_FOCUSED, WinMsg.LVIS_SELECTED | WinMsg.LVIS_FOCUSED);
         lvLog.EnsureVisible(row);
         lvLog.Invalidate(); // repaint so the previous selection clears immediately
     }
 
-    // Sets the given state bits (selected/focused) on one row via LVM_SETITEMSTATE.
-    private void SetRowState(int row, uint state)
+    // Applies the given state bits within stateMask on one row via LVM_SETITEMSTATE
+    // (state = stateMask sets the bits; state = 0 clears them).
+    private void SetRowState(int row, uint state, uint stateMask)
     {
         var item = new NativeListViewItem
         {
             Mask = WinMsg.LVIF_STATE,
             State = state,
-            StateMask = state,
+            StateMask = stateMask,
         };
         SendMessage(lvLog.Handle, WinMsg.LVM_SETITEMSTATE, row, ref item);
     }
@@ -570,27 +652,15 @@ public partial class LogViewerForm : Form
     private void IssuePrev()
     {
         int start = (SelectedRow < 0 ? _visibleRows.Count : SelectedRow) - 1;
-        for (int r = start; r >= 0; r--)
-        {
-            if (_allLines[_visibleRows[r]].Level is LevelError or LevelWarn)
-            {
-                SelectRow(r);
-                return;
-            }
-        }
+        int row = FindIssueRow(start, step: -1);
+        if (row >= 0) SelectRow(row);
     }
 
     // Scrolls to the next (newer) WARN or ERROR line relative to the current selection.
     private void IssueNext()
     {
-        for (int r = SelectedRow + 1; r < _visibleRows.Count; r++)
-        {
-            if (_allLines[_visibleRows[r]].Level is LevelError or LevelWarn)
-            {
-                SelectRow(r);
-                return;
-            }
-        }
+        int row = FindIssueRow(SelectedRow + 1, step: 1);
+        if (row >= 0) SelectRow(row);
     }
 
     /// <summary>Scrolls to the most recent (last) WARN or ERROR line in the log, falling back to
@@ -598,15 +668,22 @@ public partial class LogViewerForm : Form
     /// alerts (via tray balloon click or Show Logs).</summary>
     public void NavigateToLatestIssue()
     {
-        for (int r = _visibleRows.Count - 1; r >= 0; r--)
+        int row = FindIssueRow(_visibleRows.Count - 1, step: -1);
+        if (row >= 0) SelectRow(row);
+        else ScrollToBottom();
+    }
+
+    // Walks the visible rows from start in the given direction (+1 down, -1 up) and returns the
+    // first WARN or ERROR row, or -1 when none is found. Single "what counts as an issue"
+    // predicate shared by both issue-nav directions and the latest-issue jump.
+    private int FindIssueRow(int start, int step)
+    {
+        for (int r = start; r >= 0 && r < _visibleRows.Count; r += step)
         {
             if (_allLines[_visibleRows[r]].Level is LevelError or LevelWarn)
-            {
-                SelectRow(r);
-                return;
-            }
+                return r;
         }
-        ScrollToBottom();
+        return -1;
     }
 
     private void ScrollToBottom()
@@ -622,7 +699,10 @@ public partial class LogViewerForm : Form
         if (count == 0) return true;
         var top = lvLog.TopItem;
         if (top is null) return true;
-        return top.Index + RowsPerPage(top) >= count;
+        // >= count - 1 (not count): RowsPerPage floors, so a last row that is only partially
+        // visible would otherwise read as "not at bottom" and silently stop the tail-follow.
+        // Erring the other way is imperceptible (one extra scroll-to-bottom on append).
+        return top.Index + RowsPerPage(top) >= count - 1;
     }
 
     // Rows that fit in the viewport, derived from the first visible row's height.
@@ -648,10 +728,9 @@ public partial class LogViewerForm : Form
             anchorLine = _visibleRows[top.Index];
 
         RebuildVisibleRows();
-        lvLog.VirtualListSize = _visibleRows.Count;
+        SetVirtualListSize(_visibleRows.Count);
         UpdateColumnWidth();
-        if (_visibleRows.Count > 0)
-            HideMetaLabel();
+        UpdateMetaForRowCount();
 
         if (wasAtBottom)
             ScrollToBottom();
@@ -662,15 +741,46 @@ public partial class LogViewerForm : Form
         lvLog.Invalidate();
     }
 
+    // Applies a new row count to the virtual list. When the count shrinks, the native control
+    // could otherwise still hold a selected/focused item at a now-out-of-range index - the
+    // classic virtual-mode out-of-range fault, triggered unpredictably from paint, keyboard
+    // focus restoration, or accessibility tooling - so selection and focus are cleared first.
+    // Losing the selection on a shrink is acceptable: the row set changed anyway.
+    private void SetVirtualListSize(int count)
+    {
+        if (count < lvLog.VirtualListSize)
+        {
+            // One native broadcast (index -1) clearing both bits; ListView.FocusedItem cannot be
+            // set to null from managed code, so the focus bit must be cleared the same way.
+            var item = new NativeListViewItem
+            {
+                Mask = WinMsg.LVIF_STATE,
+                State = 0,
+                StateMask = WinMsg.LVIS_SELECTED | WinMsg.LVIS_FOCUSED,
+            };
+            SendMessage(lvLog.Handle, WinMsg.LVM_SETITEMSTATE, -1, ref item);
+        }
+        lvLog.VirtualListSize = count;
+    }
+
     // Recomputes _visibleRows (and the widest-line measurement) from _allLines and the current filters.
     private void RebuildVisibleRows()
+    {
+        _visibleRows.Clear();
+        _maxLineLength = 0;
+        AppendVisibleRows(fromLine: 0);
+    }
+
+    // Appends the lines from fromLine onward that pass the current filters to _visibleRows,
+    // updating the widest-line measurement. Single filtering pass shared by the full rebuild
+    // (fromLine 0 after a clear) and the live-tail append (fromLine = first new line), so both
+    // paths always apply the identical visibility and width rules.
+    private void AppendVisibleRows(int fromLine)
     {
         bool[] filters = [chkError.Checked, chkWarn.Checked, chkInfo.Checked, chkDebug.Checked];
         string? subsystemFilter = GetSubsystemFilter();
 
-        _visibleRows.Clear();
-        _maxLineLength = 0;
-        for (int i = 0; i < _allLines.Count; i++)
+        for (int i = fromLine; i < _allLines.Count; i++)
         {
             if (!IsLineVisible(_allLines[i], filters, subsystemFilter)) continue;
             _visibleRows.Add(i);
@@ -696,6 +806,20 @@ public partial class LogViewerForm : Form
         int page = top is not null ? RowsPerPage(top) : 1;
         lvLog.EnsureVisible(Math.Min(lvLog.VirtualListSize - 1, row + page - 1));
         lvLog.EnsureVisible(row);
+    }
+
+    // Resolves the meta overlay against the current row count: hides it when rows are showing,
+    // and otherwise names the reason the view is empty - filters excluding everything, or a log
+    // with no entries at all. Called after every load, rebuild, and visible append so a
+    // "Loading…" overlay can never be left stranded over an empty view.
+    private void UpdateMetaForRowCount()
+    {
+        if (_visibleRows.Count > 0)
+            HideMetaLabel();
+        else if (_allLines.Count > 0)
+            SetMetaMessage("(No entries match the current filters)", MetaColor);
+        else
+            SetMetaMessage("(No log entries yet)", MetaColor);
     }
 
     // Meta/unclassified lines (e.g. lines without a level column) are shown only when all level
@@ -734,20 +858,32 @@ public partial class LogViewerForm : Form
         using (var back = new SolidBrush(selected ? SystemColors.Highlight : lvLog.BackColor))
             e.Graphics.FillRectangle(back, e.Bounds);
 
-        // Search-match highlight runs (monospace font, so offset * _charWidth is exact).
-        // Skipped on the selected row - the selection background already marks it.
+        // Search-match highlight runs, positioned by measuring the actual rendered text so they
+        // stay glyph-exact even when a line contains non-ASCII characters (font-fallback glyphs
+        // have different advances than the averaged _charWidth; accented media file names are the
+        // realistic case). Cost is bounded: only match runs on rows actually painted are measured.
+        // Drawn on selected rows too - navigation selects the current match's row, and without
+        // the runs the active row would be the one place the matches are invisible. The CURRENT
+        // match paints in the full highlight color while the others use a translucent version,
+        // so Next/Prev visibly steps between occurrences even when several share one line.
         int queryLength = txtSearch.Text.Length;
-        if (!selected && queryLength > 0 && _searchMatches.Count > 0)
+        if (queryLength > 0 && _searchMatches.Count > 0)
         {
-            using var highlight = new SolidBrush(AppConstants.SearchHighlight);
+            (int Row, int Offset) current = _searchIndex >= 0 && _searchIndex < _searchMatches.Count
+                ? _searchMatches[_searchIndex]
+                : (-1, -1);
+            using var currentHighlight = new SolidBrush(AppConstants.SearchHighlight);
+            using var otherHighlight = new SolidBrush(Color.FromArgb(110, AppConstants.SearchHighlight));
             foreach (int offset in MatchOffsetsForRow(e.ItemIndex))
             {
-                var run = new RectangleF(
-                    e.Bounds.Left + _textPadding + offset * _charWidth,
+                bool isCurrent = current.Row == e.ItemIndex && current.Offset == offset;
+                var (runLeft, runWidth) = MeasureMatchRun(line.Text, offset, queryLength);
+                var run = new Rectangle(
+                    e.Bounds.Left + _textPadding + runLeft,
                     e.Bounds.Top,
-                    queryLength * _charWidth,
+                    runWidth,
                     e.Bounds.Height);
-                e.Graphics.FillRectangle(highlight, run);
+                e.Graphics.FillRectangle(isCurrent ? currentHighlight : otherHighlight, run);
             }
         }
 
@@ -762,6 +898,17 @@ public partial class LogViewerForm : Form
     // owner-draw path asks via LVM_GETITEMSTATE instead - an O(1) message per painted row.
     private bool IsRowSelected(int row) =>
         ((long)SendMessage(lvLog.Handle, WinMsg.LVM_GETITEMSTATE, row, (nint)WinMsg.LVIS_SELECTED) & WinMsg.LVIS_SELECTED) != 0;
+
+    // Measures a match run's pixel position within a line by measuring the rendered prefix and
+    // the matched substring - exact for any content or font, unlike offset * _charWidth which
+    // drifts on font-fallback glyphs. Shared by the draw path and horizontal scroll-to-match.
+    private (int Left, int Width) MeasureMatchRun(string text, int offset, int length)
+    {
+        const TextFormatFlags flags = TextFormatFlags.NoPrefix | TextFormatFlags.NoPadding | TextFormatFlags.SingleLine;
+        int left = offset == 0 ? 0 : TextRenderer.MeasureText(text[..offset], lvLog.Font, Size.Empty, flags).Width;
+        int width = TextRenderer.MeasureText(text.Substring(offset, length), lvLog.Font, Size.Empty, flags).Width;
+        return (left, width);
+    }
 
     // Yields the match offsets for one row from the sorted match list (binary search to the
     // first entry of the row, then walk while the row matches).
@@ -864,10 +1011,9 @@ public partial class LogViewerForm : Form
             _lastReadPosition = position;
 
             RebuildVisibleRows();
-            lvLog.VirtualListSize = _visibleRows.Count;
+            SetVirtualListSize(_visibleRows.Count);
             UpdateColumnWidth();
-            if (_visibleRows.Count > 0)
-                HideMetaLabel();
+            UpdateMetaForRowCount();
 
             if (_navigateToLatestIssue) { NavigateToLatestIssue(); _navigateToLatestIssue = false; } else ScrollToBottom();
             if (!string.IsNullOrEmpty(txtSearch.Text))
@@ -1016,13 +1162,7 @@ public partial class LogViewerForm : Form
             Invoke(() =>
             {
                 if (generation != _watcherGeneration) return;
-                _allLines.Clear();
-                _visibleRows.Clear();
-                _searchMatches.Clear();
-                _searchIndex = -1;
-                _maxLineLength = 0;
-                lvLog.VirtualListSize = 0;
-                lvLog.Invalidate();
+                ClearDisplayState();
             });
         }
         catch (ObjectDisposedException) { /* form disposed between IsDisposed check and Invoke - expected on close */ }
@@ -1058,17 +1198,27 @@ public partial class LogViewerForm : Form
         {
             // Invalidate any in-flight events from the disposed watcher before clearing state.
             _watcherGeneration++;
-            _allLines.Clear();
             _lastReadPosition = 0;
         }
+        ClearDisplayState();
+
+        _ = LoadInitialContentAsync();
+    }
+
+    // Resets the line store and everything derived from it (visible rows, search state, column
+    // width, row count, meta overlay). Single reset path shared by the log-file switch and the
+    // file-deleted handler so no derived state can be forgotten at one of the sites.
+    // Must be called on the UI thread.
+    private void ClearDisplayState()
+    {
+        _allLines.Clear();
         _visibleRows.Clear();
         _searchMatches.Clear();
         _searchIndex = -1;
         _maxLineLength = 0;
-        lvLog.VirtualListSize = 0;
+        SetVirtualListSize(0);
+        UpdateMetaForRowCount();
         lvLog.Invalidate();
-
-        _ = LoadInitialContentAsync();
     }
 
     private readonly record struct LogFileEntry(string DisplayName, string FilePath)
@@ -1082,24 +1232,16 @@ public partial class LogViewerForm : Form
     private void AppendNewLines(LogLine[] newLines)
     {
         bool wasAtBottom = IsAtBottom();
-        bool[] filters = [chkError.Checked, chkWarn.Checked, chkInfo.Checked, chkDebug.Checked];
-        string? subsystemFilter = GetSubsystemFilter();
 
         int firstNewRow = _visibleRows.Count;
         int firstNewLine = _allLines.Count;
         _allLines.AddRange(newLines);
-
-        for (int i = firstNewLine; i < _allLines.Count; i++)
-        {
-            if (!IsLineVisible(_allLines[i], filters, subsystemFilter)) continue;
-            _visibleRows.Add(i);
-            if (_allLines[i].Text.Length > _maxLineLength) _maxLineLength = _allLines[i].Text.Length;
-        }
+        AppendVisibleRows(firstNewLine);
 
         if (_visibleRows.Count == firstNewRow) return; // nothing visible was added
 
-        HideMetaLabel();
-        lvLog.VirtualListSize = _visibleRows.Count;
+        UpdateMetaForRowCount();
+        lvLog.VirtualListSize = _visibleRows.Count; // append only grows the count - no shrink guard needed
         UpdateColumnWidth();
 
         // Extend the match list for the appended rows only (full rescan not needed - existing

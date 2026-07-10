@@ -9,6 +9,7 @@ partial class LogViewerForm
         if (disposing)
         {
             _watcher?.Dispose();
+            _dragScrollTimer?.Dispose();
 
             // Dispose explicitly created fonts (WinForms controls do not own their Font)
             lvLog?.Font?.Dispose();

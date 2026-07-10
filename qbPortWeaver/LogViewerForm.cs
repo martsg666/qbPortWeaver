@@ -775,6 +775,10 @@ public partial class LogViewerForm : Form
     // updating the widest-line measurement. Single filtering pass shared by the full rebuild
     // (fromLine 0 after a clear) and the live-tail append (fromLine = first new line), so both
     // paths always apply the identical visibility and width rules.
+    // Meta rows (the blank cycle separators LogManager writes) are shown in filtered views too,
+    // but deduplicated: never as the first visible row and never two in a row, so a view whose
+    // filter drops entire cycles (e.g. ERROR only) shows one separator between groups instead of
+    // a wall of blank lines.
     private void AppendVisibleRows(int fromLine)
     {
         bool[] filters = [chkError.Checked, chkWarn.Checked, chkInfo.Checked, chkDebug.Checked];
@@ -782,9 +786,17 @@ public partial class LogViewerForm : Form
 
         for (int i = fromLine; i < _allLines.Count; i++)
         {
-            if (!IsLineVisible(_allLines[i], filters, subsystemFilter)) continue;
+            LogLine line = _allLines[i];
+            if (line.Level == LevelMeta)
+            {
+                if (_visibleRows.Count == 0 || _allLines[_visibleRows[^1]].Level == LevelMeta) continue;
+            }
+            else if (!IsLineVisible(line, filters, subsystemFilter))
+            {
+                continue;
+            }
             _visibleRows.Add(i);
-            if (_allLines[i].Text.Length > _maxLineLength) _maxLineLength = _allLines[i].Text.Length;
+            if (line.Text.Length > _maxLineLength) _maxLineLength = line.Text.Length;
         }
     }
 
@@ -822,12 +834,11 @@ public partial class LogViewerForm : Form
             SetMetaMessage("(No log entries yet)", MetaColor);
     }
 
-    // Meta/unclassified lines (e.g. lines without a level column) are shown only when all level
-    // filters are active and no subsystem filter is set; hiding them otherwise prevents stray
-    // lines from appearing in a filtered view.
+    // Level/subsystem visibility for classified lines. Meta rows (blank separators) never reach
+    // this method - AppendVisibleRows handles them with its own dedup rule so cycle separators
+    // stay visible in filtered views without ever stacking up.
     private static bool IsLineVisible(LogLine line, bool[] filters, string? subsystemToken)
     {
-        if (line.Level == LevelMeta) return subsystemToken is null && Array.TrueForAll(filters, f => f);
         if (!filters[line.Level]) return false;                     // level filtered out
         if (subsystemToken is not null && !line.Text.Contains(subsystemToken, StringComparison.Ordinal)) return false;
         return true;
@@ -855,8 +866,17 @@ public partial class LogViewerForm : Form
         LogLine line = _allLines[_visibleRows[e.ItemIndex]];
         bool selected = IsRowSelected(e.ItemIndex);
 
-        using (var back = new SolidBrush(selected ? SystemColors.Highlight : lvLog.BackColor))
+        // Selection is a translucent tint over the normal background rather than the solid
+        // system bar with HighlightText: the per-level line colors ARE the viewer's information
+        // (a navigated-to WARN must still read as gold), and the solid bar + HighlightText combo
+        // crushed them into low-contrast text in dark mode.
+        using (var back = new SolidBrush(lvLog.BackColor))
             e.Graphics.FillRectangle(back, e.Bounds);
+        if (selected)
+        {
+            using var selection = new SolidBrush(Color.FromArgb(90, SystemColors.Highlight));
+            e.Graphics.FillRectangle(selection, e.Bounds);
+        }
 
         // Search-match highlight runs, positioned by measuring the actual rendered text so they
         // stay glyph-exact even when a line contains non-ASCII characters (font-fallback glyphs
@@ -889,7 +909,7 @@ public partial class LogViewerForm : Form
 
         var textBounds = new Rectangle(e.Bounds.Left + _textPadding, e.Bounds.Top, e.Bounds.Width - _textPadding, e.Bounds.Height);
         TextRenderer.DrawText(e.Graphics, line.Text, lvLog.Font, textBounds,
-            selected ? SystemColors.HighlightText : _themeColors[line.Level],
+            _themeColors[line.Level],
             TextFormatFlags.NoPrefix | TextFormatFlags.NoPadding | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter | TextFormatFlags.Left);
     }
 
@@ -1262,7 +1282,7 @@ public partial class LogViewerForm : Form
     // identical lines, and classifies each line's level once (the level drives filtering and
     // row colouring for the rest of the line's lifetime). Blank lines are kept as meta rows:
     // LogManager writes one before each "Sync cycle started" as a deliberate visual separator
-    // between cycles (IsLineVisible hides them in filtered views so no stray gaps appear).
+    // between cycles (AppendVisibleRows dedups them in filtered views so they never stack up).
     private static LogLine[] ParseLogLines(string raw)
     {
         string[] parts = raw.Split('\n', StringSplitOptions.RemoveEmptyEntries);

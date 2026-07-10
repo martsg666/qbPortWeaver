@@ -38,9 +38,25 @@ public partial class LogViewerForm : Form
     private bool _reclaimPending;
     private const int ReclaimTimerIntervalMs = 1000;
     private const int ReclaimIdleSeconds = 3;
+    // Trims the process working set on a fixed cadence, independent of log activity (the sync
+    // loop writes to the log every cycle, so a content-idle gate would rarely fire on a viewer
+    // left open). Kept separate from the idle reclaim above because trimming pages out LIVE
+    // memory (including the native RichEdit document buffer): the next interaction after a trim
+    // pays a page-fault storm, which made resizing feel laggy when the trim re-armed after every
+    // 3-second lull. On a 10-minute cadence that cost is bounded to one sluggish first touch per
+    // window at most, while a viewer open for days still keeps its working-set figure lean.
+    private System.Windows.Forms.Timer? _trimTimer;
+    private const int TrimIntervalMs = 10 * 60 * 1000;
     // Overlay shown for status/placeholder text (loading, empty, error). A RichTextBox cannot
     // vertically centre its content, so these messages live on a Label that covers the log area.
     private Label? _metaLabel;
+    // Bumped by every RebuildDisplayAsync call (UI thread only) so a rebuild that was superseded
+    // by a newer filter toggle while its background work was in flight discards its result
+    // instead of overwriting the newer state. Same idea as _watcherGeneration.
+    private int _rebuildGeneration;
+    // Below this line count a rebuild completes in milliseconds; the "Applying filter…" overlay
+    // would only flicker, so it is shown for larger stores only.
+    private const int RebuildOverlayMinLines = 10_000;
 
     [LibraryImport("user32.dll", EntryPoint = "SendMessageW")]
     private static partial IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
@@ -184,6 +200,10 @@ public partial class LogViewerForm : Form
         _reclaimTimer = null;
         _reclaimPending = false;
 
+        _trimTimer?.Stop();
+        _trimTimer?.Dispose();
+        _trimTimer = null;
+
         // Release the large log content before Dispose runs. The native RichEdit control caches
         // its document buffer and is slow to release after handle destruction, so clearing while
         // the handle is still alive forces the buffer free now. _allLines is the matching managed
@@ -195,18 +215,25 @@ public partial class LogViewerForm : Form
         _allLines.TrimExcess();
 
         // Content already cleared above; compact the LOH and trim the working set now rather than
-        // waiting for heap pressure. Shared with the periodic idle reclaim - see ReclaimUnusedMemory.
+        // waiting for heap pressure - nobody interacts with the window after close, so the trim's
+        // page-fault cost is free here. See ReclaimUnusedMemory / TrimWorkingSet.
         ReclaimUnusedMemory();
+        TrimWorkingSet();
 
         base.OnFormClosed(e);
     }
 
-    // Creates the idle-reclaim timer in a stopped state. It is started on content activity and
-    // stopped again once the reclaim has run, so an idle or empty viewer has no periodic wakeups.
+    // Creates the idle-reclaim timer in a stopped state (started on content activity and stopped
+    // again once the reclaim has run, so an idle or empty viewer has no reclaim wakeups) and the
+    // always-running 10-minute working-set trim timer (see the _trimTimer field comment).
     private void CreateReclaimTimer()
     {
         _reclaimTimer = new System.Windows.Forms.Timer { Interval = ReclaimTimerIntervalMs };
         _reclaimTimer.Tick += reclaimTimer_Tick;
+
+        _trimTimer = new System.Windows.Forms.Timer { Interval = TrimIntervalMs };
+        _trimTimer.Tick += (_, _) => TrimWorkingSet();
+        _trimTimer.Start();
     }
 
     // Records that content was just added (initial load or live append), arms a reclaim, and starts
@@ -224,10 +251,11 @@ public partial class LogViewerForm : Form
     // Gating on idle keeps the blocking GC out of the active logging path: a continuous scan keeps
     // pushing _lastActivityTicks forward, so the reclaim waits until the stream stops.
     //
-    // Do NOT convert this to a fixed/max-interval reclaim: ReclaimUnusedMemory is process-wide (the
-    // blocking gen2 GC suspends all managed threads and EmptyWorkingSet trims the whole process), so
-    // firing it on an interval would perturb an actively-running media scan that has merely paused
-    // its logging. Idle-gating confines those costs to genuinely quiet moments.
+    // Do NOT convert this to a fixed/max-interval reclaim: ReclaimUnusedMemory is process-wide
+    // (the blocking gen2 GC suspends all managed threads), so firing it on an interval would
+    // perturb an actively-running media scan that has merely paused its logging. Idle-gating
+    // confines that cost to genuinely quiet moments. (The working-set trim is the one exception:
+    // it runs on the fixed _trimTimer cadence - see the field comment for why.)
     private void reclaimTimer_Tick(object? sender, EventArgs e)
     {
         if (!_reclaimPending) return;
@@ -237,13 +265,16 @@ public partial class LogViewerForm : Form
         ReclaimUnusedMemory();
     }
 
-    // Forces a blocking Gen2 collection with one-time LOH compaction, then trims the working set.
-    // The transient RTF strings built on each append/load sit mostly on the Large Object Heap, which
-    // a normal pressure-driven GC frees but never compacts - the committed-but-empty segments are
-    // what keep the viewer's footprint inflated to hundreds of MB on an otherwise small log.
-    // CompactOnce returns those segments; EmptyWorkingSet then asks Windows to page out the freed
-    // pages so Task Manager reflects live memory. Callers invoke this only when idle (after a burst
-    // settles) or on close - never mid-append - so the blocking pause is not user-visible.
+    // Forces a blocking Gen2 collection with one-time LOH compaction. The transient RTF strings
+    // built on each append/load sit mostly on the Large Object Heap, which a normal
+    // pressure-driven GC frees but never compacts - the committed-but-empty segments are what
+    // keep the viewer's footprint inflated to hundreds of MB on an otherwise small log.
+    // CompactOnce returns those segments to the OS, so this alone bounds committed memory on a
+    // viewer left open for days. Callers invoke this only when idle (after a burst settles) or
+    // on close - never mid-append - so the blocking pause is not user-visible.
+    // Deliberately does NOT call TrimWorkingSet: trimming pages out live memory and makes the
+    // next interaction pay a page-fault storm (laggy resize), so the trim runs on its own
+    // 10-minute cadence (trimTimer_Tick) and on close instead.
     private static void ReclaimUnusedMemory()
     {
         GCSettings.LargeObjectHeapCompactionMode = GCLargeObjectHeapCompactionMode.CompactOnce;
@@ -253,10 +284,14 @@ public partial class LogViewerForm : Form
         GC.Collect(2, GCCollectionMode.Forced, blocking: true); // NOSONAR S1215 - blocking required for LOH compaction
         // No WaitForPendingFinalizers: the reclaimed garbage (RTF strings, char[]/string[] buffers)
         // is non-finalizable, so the forced collection above reaps it directly.
-        // best-effort: return value ignored by design (a failed trim just leaves pages resident,
-        // to be evicted later under memory pressure); pseudo-handle, so nothing to dispose.
-        EmptyWorkingSet(GetCurrentProcess());
     }
+
+    // Asks Windows to page the process's resident-but-unused pages out of RAM so the working-set
+    // figure tracks live memory. Best-effort: return value ignored by design (a failed trim just
+    // leaves pages resident, to be evicted later under memory pressure); pseudo-handle, so
+    // nothing to dispose. Runs on the 10-minute _trimTimer and once on close - see the _trimTimer
+    // field comment for why it is kept off the frequent idle-reclaim path.
+    private static void TrimWorkingSet() => EmptyWorkingSet(GetCurrentProcess());
 
     // Applies theme colors to the background, filter buttons, and search controls
     private void ApplyTheme()
@@ -530,25 +565,77 @@ public partial class LogViewerForm : Form
     }
 
     // Rebuilds the RTF display from the in-memory line store with the current filter,
-    // then re-applies search highlights. Preserves scroll: only scrolls to bottom if the user was there.
-    private void RebuildDisplay()
+    // then re-applies search highlights. Preserves scroll: only scrolls to bottom if the user was
+    // there. Kicks off the async rebuild fire-and-forget; exceptions are handled inside.
+    private void RebuildDisplay() => _ = RebuildDisplayAsync();
+
+    // Async core of RebuildDisplay. The filter pass and RTF construction run on a background
+    // thread behind an "Applying filter…" overlay so toggling a level or subsystem filter does
+    // not freeze the UI on a large log (the final Rtf assignment still blocks for the native
+    // RichEdit parse, which is the irreducible part). Rapid toggles coalesce: each call bumps
+    // _rebuildGeneration and a stale continuation discards its result, so only the latest filter
+    // state renders. Lines appended by the live tail while the rebuild was in flight are rendered
+    // afterwards from the snapshot tail, so nothing is lost.
+    private async Task RebuildDisplayAsync()
     {
+        int generation = ++_rebuildGeneration;
         bool wasAtBottom = IsAtBottom();
         bool[] filters = [chkError.Checked, chkWarn.Checked, chkInfo.Checked, chkDebug.Checked];
         string? subsystemFilter = GetSubsystemFilter();
-        string[] filtered = _allLines.Where(l => IsLineVisibleWithFilters(l, filters, subsystemFilter)).ToArray();
+        Color[] colors = _themeColors;
 
-        // Rebuild under redraw suppression so the swap + scroll + highlight paint a single settled
-        // frame. Setting Rtf resets the scroll to the top, so doing it inside the suppression avoids
-        // a brief flash where the new content shows at the top before scrolling.
-        WithRedrawSuppressed(() =>
+        // Overlay only for stores large enough that the rebuild is perceptible - a small log
+        // rebuilds in milliseconds and the overlay would just flicker. Refresh forces the paint
+        // now, before the UI thread is next blocked by the Rtf parse (same as the initial load).
+        bool showOverlay = _allLines.Count >= RebuildOverlayMinLines;
+        if (showOverlay)
         {
-            HideMetaLabel();
-            rtbLog.Rtf = BuildRtf(filtered, _themeColors);
-            if (wasAtBottom) ScrollToBottom();
-            RefreshSearch(navigateToFirst: true);
-            ApplySearchHighlights();
-        });
+            SetMetaMessage("Applying filter…", MetaColor);
+            _metaLabel!.Refresh();
+        }
+
+        // Snapshot for the background thread: _allLines is only mutated on the UI thread, so the
+        // copy is consistent; its length also marks how far this rebuild covers (see tail below).
+        string[] snapshot = _allLines.ToArray();
+
+        try
+        {
+            string rtf = await Task.Run(() =>
+            {
+                string[] filtered = Array.FindAll(snapshot, l => IsLineVisibleWithFilters(l, filters, subsystemFilter));
+                return BuildRtf(filtered, colors);
+            });
+
+            if (IsDisposed || generation != _rebuildGeneration) return; // closed or superseded by a newer toggle
+
+            // Rebuild under redraw suppression so the swap + scroll + highlight paint a single settled
+            // frame. Setting Rtf resets the scroll to the top, so doing it inside the suppression avoids
+            // a brief flash where the new content shows at the top before scrolling.
+            WithRedrawSuppressed(() =>
+            {
+                HideMetaLabel();
+                rtbLog.Rtf = rtf;
+                // The viewer is read-only so undo is unreachable - drop the redundant document copy
+                // RichEdit records for every Rtf assignment (same as the initial load and appends).
+                rtbLog.ClearUndo();
+                if (wasAtBottom) ScrollToBottom();
+                RefreshSearch(navigateToFirst: true);
+                ApplySearchHighlights();
+            });
+
+            // Live-tail lines that arrived while the rebuild was in flight are in _allLines but not
+            // in the snapshot just rendered - append them now through the normal append path.
+            if (_allLines.Count > snapshot.Length)
+                RenderAppendedLines(_allLines.GetRange(snapshot.Length, _allLines.Count - snapshot.Length).ToArray());
+
+            // Arm a reclaim so the transient RTF built for this rebuild is compacted once idle.
+            MarkContentActivity();
+        }
+        catch (Exception ex)
+        {
+            if (!IsDisposed)
+                SetMetaMessage($"(Error rendering log: {ex.Message})", _themeColors[0]);
+        }
     }
 
     // Returns true if the user is scrolled to the bottom of the log.
@@ -917,9 +1004,7 @@ public partial class LogViewerForm : Form
         public override string ToString() => DisplayName;
     }
 
-    // Appends new lines to the in-memory store and inserts visible lines into the display
-    // via SelectedRtf. Unlike a full RTF rebuild, SelectedRtf does not reset the scroll
-    // position, so the user's viewport stays stable and there is no flicker.
+    // Appends new lines to the in-memory store and inserts visible lines into the display.
     // Must be called on the UI thread.
     private void AppendNewLines(string[] newLines)
     {
@@ -927,11 +1012,20 @@ public partial class LogViewerForm : Form
         // producing transient garbage; arm a reclaim so it is compacted once logging settles.
         MarkContentActivity();
 
+        _allLines.AddRange(newLines);
+        RenderAppendedLines(newLines);
+    }
+
+    // Inserts the visible subset of already-stored lines at the end of the display via
+    // SelectedRtf. Unlike a full RTF rebuild, SelectedRtf does not reset the scroll position, so
+    // the user's viewport stays stable and there is no flicker. Split from AppendNewLines so
+    // RebuildDisplayAsync can render lines that arrived while its rebuild was in flight (already
+    // in _allLines) without re-adding them to the store. Must be called on the UI thread.
+    private void RenderAppendedLines(string[] newLines)
+    {
         bool wasAtBottom = IsAtBottom();
         bool[] filters = [chkError.Checked, chkWarn.Checked, chkInfo.Checked, chkDebug.Checked];
         string? subsystemFilter = GetSubsystemFilter();
-
-        _allLines.AddRange(newLines);
 
         string[] visibleNew = newLines.Where(l => IsLineVisibleWithFilters(l, filters, subsystemFilter)).ToArray();
         if (visibleNew.Length == 0)

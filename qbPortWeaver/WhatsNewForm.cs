@@ -10,9 +10,10 @@ public partial class WhatsNewForm : Form
 
     private const string ReleaseFeaturesText =
         "New in 2.6.1\n\n" +
-        "Placeholder\n" +
-        "Release notes for 2.6.1 will be written as features land in this cycle. Replace this " +
-        "block before tagging.\n\n" +
+        "Log viewer fixes\n" +
+        "Filtering the log while the window is maximized no longer leaves entries misplaced or " +
+        "hidden until you scroll. Switching between log files while a large one is still loading " +
+        "no longer mixes or duplicates entries, and a rare crash while drag-selecting was fixed.\n\n" +
         "Previously released\n\n" +
         "New in 2.6.0\n\n" +
         "One-click diagnostics\n" +

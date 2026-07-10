@@ -330,7 +330,7 @@ public partial class HelpForm : Form
         rtbHelp.AppendText(text);
     }
 
-    private void rtbHelp_MouseUp(object? sender, MouseEventArgs e)
+    private void rtbHelp_MouseUp(object? sender, MouseEventArgs e) // NOSONAR S2325 - calls the instance method LinkUrlAtPoint, cannot be static
     {
         if (e.Button != MouseButtons.Left) return;
         string? url = LinkUrlAtPoint(e.Location);

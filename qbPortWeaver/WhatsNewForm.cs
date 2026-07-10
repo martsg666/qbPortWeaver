@@ -10,6 +10,9 @@ public partial class WhatsNewForm : Form
 
     private const string ReleaseFeaturesText =
         "New in 2.6.1\n\n" +
+        "Port history on the Status panel\n" +
+        "The Status window now lists your recent port changes and recovery events with " +
+        "timestamps, kept across restarts - see at a glance when your port last changed and why.\n\n" +
         "Built-in user guide\n" +
         "A new Help item in the tray menu opens the full user guide in its own window - setup " +
         "instructions, feature descriptions, and recommended configuration are now available " +

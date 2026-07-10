@@ -598,6 +598,10 @@ public sealed class PortSyncService
         {
             if (!await ApplyPortUpdateAsync(manager, targetPort, config, status, cancellationToken).ConfigureAwait(false))
                 return; // port update failed - skip RestartOnDisconnect check; next cycle will retry
+            PortHistoryManager.Append(PortHistoryKind.PortChanged, targetPort,
+                config.VpnManager is null
+                    ? $"Default port applied (was {currentPort.Value})"
+                    : $"VPN assigned new port (was {currentPort.Value})");
             if (config.NotifyOnPortUpdate)
                 NotifyPortUpdated(manager.ClientName, targetPort);
         }
@@ -704,6 +708,9 @@ public sealed class PortSyncService
         _portCheckPendingConfirmation = false;
         _portConfirmedClosed = true;
         _confirmedClosedCount = 1;
+        // History records the transition into confirmed-closed only (like the balloon), not the
+        // per-cycle re-confirmations - the persistent condition is one event, not many.
+        PortHistoryManager.Append(PortHistoryKind.PortClosed, port, "Port confirmed closed from outside");
         string confirmedSuffix = BuildPortClosedRecoverySuffix(config);
         LogManager.Instance.LogMessage($"{clientName} port {port} is not reachable from outside (confirmed by two checks){confirmedSuffix}", LogLevel.Warn);
         try { PortVerificationFailed?.Invoke($"{clientName} port {port} is not reachable from outside."); }
@@ -989,11 +996,19 @@ public sealed class PortSyncService
     private static async Task DispatchRecoveryAsync(string action, string recoveryTarget, string displayName, CancellationToken cancellationToken)
     {
         if (action == HelperProtocol.ActionRestart)
+        {
+            PortHistoryManager.Append(PortHistoryKind.Recovery, null, $"Auto-recovery restarted '{displayName}'");
             await AutoRecoveryManager.TriggerRestartAsync(recoveryTarget, cancellationToken).ConfigureAwait(false);
+        }
         else if (action == HelperProtocol.ActionCycleAdapter)
+        {
+            PortHistoryManager.Append(PortHistoryKind.Recovery, null, $"Auto-recovery cycled the adapter for '{displayName}'");
             await AutoRecoveryManager.TriggerCycleAdapterAsync(recoveryTarget, cancellationToken).ConfigureAwait(false);
+        }
         else
+        {
             LogManager.Instance.LogMessage($"Unknown recovery action '{action}' for '{displayName}' - skipping", LogLevel.Warn);
+        }
     }
 
     private static (bool ForceStart, bool Restart, bool RestartOnDisconnect, bool WarnOnInterfaceMismatch) GetClientBehaviorConfig(AppConfig cfg, string activeSection)

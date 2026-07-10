@@ -43,6 +43,7 @@ public partial class StatusForm : Form
         // JSON the app just wrote, read at most once per sync cycle - offloading it would add
         // background/marshal complexity for no measurable gain.
         var snapshot = StatusManager.TryRead();
+        PopulateHistory();
         if (snapshot is null)
         {
             // No cycle has run yet (or the file was momentarily unreadable). Only show the
@@ -52,6 +53,39 @@ public partial class StatusForm : Form
             return;
         }
         Populate(snapshot);
+    }
+
+    // Repaints the port history list from the persisted history file, newest first. Rebuilt in
+    // full on each refresh - the history is capped at 50 entries, so this is a trivial repaint
+    // once per sync cycle, and full rebuild keeps it correct across trims and file resets.
+    private void PopulateHistory()
+    {
+        var entries = PortHistoryManager.Read();
+        lvHistory.BeginUpdate();
+        lvHistory.Items.Clear();
+        if (entries.Count == 0)
+        {
+            lvHistory.Items.Add(new ListViewItem(["-", "", "No port changes recorded yet"]) { ForeColor = NeutralColor });
+        }
+        else
+        {
+            for (int i = entries.Count - 1; i >= 0; i--)
+            {
+                PortHistoryEntry entry = entries[i];
+                lvHistory.Items.Add(new ListViewItem(
+                    [
+                        entry.Timestamp.LocalDateTime.ToString("yyyy-MM-dd HH:mm"),
+                        entry.Port?.ToString() ?? "-",
+                        entry.Event,
+                    ])
+                {
+                    // Normal port changes read in the default text color; confirmed-closed and
+                    // recovery events carry the warning accent, mirroring the panel's other values.
+                    ForeColor = entry.Kind == PortHistoryKind.PortChanged ? SystemColors.WindowText : WarnColor,
+                });
+            }
+        }
+        lvHistory.EndUpdate();
     }
 
     private void Populate(StatusSnapshot s)

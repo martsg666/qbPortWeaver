@@ -86,6 +86,15 @@ public static class PortHistoryManager
         }
     }
 
+    /// <summary>Deletes the persisted history. Never throws.</summary>
+    public static void Clear()
+    {
+        lock (_lock)
+        {
+            AppConstants.DeleteFileSafely(AppConstants.GetDataFilePath(HistoryFileName));
+        }
+    }
+
     private static List<PortHistoryEntry> ReadCore()
     {
         string path = AppConstants.GetDataFilePath(HistoryFileName);

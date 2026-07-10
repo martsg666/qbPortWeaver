@@ -35,6 +35,10 @@ partial class StatusForm
         colHistoryTime = new ColumnHeader();
         colHistoryPort = new ColumnHeader();
         colHistoryEvent = new ColumnHeader();
+        ctxHistory = new ContextMenuStrip();
+        ctxClearHistory = new ToolStripMenuItem();
+        components = new System.ComponentModel.Container();
+        components.Add(ctxHistory);
         btnSyncNow = new Button();
         btnTestPort = new Button();
         btnRunDiagnostics = new Button();
@@ -174,6 +178,12 @@ partial class StatusForm
         lvHistory.TabIndex = 0;
         lvHistory.UseCompatibleStateImageBehavior = false;
         lvHistory.View = View.Details;
+        // Discrete clear option - right-click the history list (mirrors the log viewer's context menu)
+        ctxClearHistory.Text = "Clear History";
+        ctxClearHistory.Click += ctxClearHistory_Click;
+        ctxHistory.Items.Add(ctxClearHistory);
+        ctxHistory.Opening += ctxHistory_Opening;
+        lvHistory.ContextMenuStrip = ctxHistory;
         // ── Diagnostics hint (shown only when a cycle looks wrong; color set in StatusForm) ──
         lblDiagnosticsHint.Location = new Point(8, 414);
         lblDiagnosticsHint.Name = "lblDiagnosticsHint";
@@ -240,6 +250,8 @@ partial class StatusForm
     private ColumnHeader colHistoryTime;
     private ColumnHeader colHistoryPort;
     private ColumnHeader colHistoryEvent;
+    private ContextMenuStrip ctxHistory;
+    private ToolStripMenuItem ctxClearHistory;
     private Label    lblVpnProviderLabel;
     private Label    lblVpnProviderValue;
     private Label    lblVpnStatusLabel;

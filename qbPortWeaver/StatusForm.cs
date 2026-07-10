@@ -58,9 +58,14 @@ public partial class StatusForm : Form
     // Repaints the port history list from the persisted history file, newest first. Rebuilt in
     // full on each refresh - the history is capped at 50 entries, so this is a trivial repaint
     // once per sync cycle, and full rebuild keeps it correct across trims and file resets.
+    // Whether the history list currently shows real entries (false = empty-state row).
+    // Gates the Clear History context item so it cannot "clear" an already-empty history.
+    private bool _historyHasEntries;
+
     private void PopulateHistory()
     {
         var entries = PortHistoryManager.Read();
+        _historyHasEntries = entries.Count > 0;
         lvHistory.BeginUpdate();
         lvHistory.Items.Clear();
         if (entries.Count == 0)
@@ -219,6 +224,15 @@ public partial class StatusForm : Form
 
     private static void SetDefault(Label label, string text) => SetColor(label, text, SystemColors.ControlText);
     private static void SetNeutral(Label label, string text) => SetColor(label, text, NeutralColor);
+
+    private void ctxHistory_Opening(object? sender, System.ComponentModel.CancelEventArgs e)
+        => ctxClearHistory.Enabled = _historyHasEntries;
+
+    private void ctxClearHistory_Click(object? sender, EventArgs e)
+    {
+        PortHistoryManager.Clear();
+        PopulateHistory();
+    }
 
     private void btnSyncNow_Click(object? sender, EventArgs e) => SyncRequested?.Invoke(this, EventArgs.Empty);
 

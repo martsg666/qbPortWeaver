@@ -141,7 +141,10 @@ public partial class LogViewerForm : Form
         _charWidth = TextRenderer.MeasureText(new string('0', MeasureChars), lvLog.Font,
             Size.Empty, TextFormatFlags.NoPrefix | TextFormatFlags.NoPadding).Width / (float)MeasureChars;
         _textPadding = LogicalToDeviceUnits(4);
-        lvLog.ClientSizeChanged += (_, _) => UpdateColumnWidth();
+        // Invalidate after a size change: rows newly exposed by growing the window (e.g.
+        // maximize) are otherwise painted by the control's default renderer - plain white text
+        // in dark mode - until the next append happens to trigger the owner-draw pass.
+        lvLog.ClientSizeChanged += (_, _) => { UpdateColumnWidth(); lvLog.Invalidate(); };
 
         // Vertically center the search box - single-line TextBox auto-sizes its height from the font,
         // so the actual height is only known after layout; compute the top offset here.

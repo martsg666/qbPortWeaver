@@ -766,6 +766,15 @@ public partial class LogViewerForm : Form
                 StateMask = WinMsg.LVIS_SELECTED | WinMsg.LVIS_FOCUSED,
             };
             SendMessage(lvLog.Handle, WinMsg.LVM_SETITEMSTATE, -1, ref item);
+
+            // Reset the scroll origin before shrinking. The native control clamps its scroll
+            // range on a shrink but keeps painting items at the stale offset until the next
+            // scroll or mouse interaction recomputes it, so a filter applied while scrolled
+            // down in a large log shows the rows floating mid-viewport (or not at all) until
+            // the user nudges the view. Scrolling to row 0 first zeroes the origin; the caller
+            // (RebuildDisplay) re-positions the viewport to the bottom or anchor afterwards.
+            if (lvLog.VirtualListSize > 0)
+                lvLog.EnsureVisible(0);
         }
         lvLog.VirtualListSize = count;
     }

@@ -49,6 +49,7 @@ public partial class MainForm : Form
     private SettingsForm? _settingsForm;
     private MediaManagerForm? _mediaManagerForm;
     private AboutForm? _aboutForm;
+    private HelpForm? _helpForm;
     private StatusForm? _statusForm;
     private UpdateAvailableForm? _updateAvailableForm;
     private DiagnosticsForm? _diagnosticsForm;
@@ -366,6 +367,7 @@ public partial class MainForm : Form
         _checkUpdatesMenuItem = new ToolStripMenuItem("Check for Updates");
         _checkUpdatesMenuItem.Click += checkUpdates_Click;
         _trayMenu.Items.Add(_checkUpdatesMenuItem);
+        _trayMenu.Items.Add("Help", null, showHelp_Click);
         _trayMenu.Items.Add("About", null, showAbout_Click);
         _trayMenu.Items.Add(new ToolStripSeparator());
 
@@ -422,6 +424,11 @@ public partial class MainForm : Form
     private void showAbout_Click(object? sender, EventArgs e)
     {
         ShowOrActivate(() => _aboutForm, f => _aboutForm = f, CreateAboutForm);
+    }
+
+    private void showHelp_Click(object? sender, EventArgs e)
+    {
+        ShowOrActivate(() => _helpForm, f => _helpForm = f, () => new HelpForm());
     }
 
     // Builds the About dialog and routes its Update button into the shared in-app update dialog,

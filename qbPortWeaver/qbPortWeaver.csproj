@@ -82,6 +82,10 @@
     <None Include="..\README.md">
       <Pack>True</Pack>
       <PackagePath>\</PackagePath>
+      <!-- Copied next to the exe so dev builds match the installed layout; the Help window
+           (HelpForm) loads it from AppContext.BaseDirectory. The MSI ships its own copy. -->
+      <Link>README.md</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
   </ItemGroup>
 

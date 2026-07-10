@@ -10,6 +10,10 @@ public partial class WhatsNewForm : Form
 
     private const string ReleaseFeaturesText =
         "New in 2.6.1\n\n" +
+        "Built-in user guide\n" +
+        "A new Help item in the tray menu opens the full user guide in its own window - setup " +
+        "instructions, feature descriptions, and recommended configuration are now available " +
+        "right in the app, no browser or internet connection needed.\n\n" +
         "Log viewer fixes\n" +
         "Filtering the log while the window is maximized no longer leaves entries misplaced or " +
         "hidden until you scroll. Switching between log files while a large one is still loading " +

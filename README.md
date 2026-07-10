@@ -127,6 +127,9 @@ After installing, open **Settings** from the tray icon to configure the applicat
 - **Automatic Update Checker & In-App Update**
   Checks GitHub for new releases on startup and every 12 hours, surfacing a newer version via an **Update available (X.Y.Z)** tray item and tooltip (the 12-hour check is non-intrusive; the startup form can be turned off under **Settings > General**). A **Check for Updates** item checks on demand and always reports a result. When an update is available, the update window offers **Download & Install** - it downloads the installer, runs it, and the app relaunches when the update finishes (falling back to the release page if anything goes wrong). The **About** dialog shows the current and latest version, update status, contributor links, and a **What's New** button.
 
+- **Built-in User Guide**
+  A **Help** item in the tray menu opens this user guide in a built-in viewer with formatted headings, tables, and clickable links - no browser or internet connection needed.
+
 - **Startup Option**
   Allows enabling or disabling automatic startup with Windows.
 
@@ -258,6 +261,7 @@ Configured via tray menu → **Media Manager**.
 - **Settings** - opens the Settings dialog
 - **Media Manager** - opens the Media Manager dialog to configure source and library folders, preview imports (Scan Now), apply them (Import Now), and clear fingerprint caches (Clear Cache)
 - **Check for Updates** - checks GitHub for a newer release on demand and reports the result (also shown when already up to date)
+- **Help** - opens the user guide in a built-in viewer
 - **About** - shows version info and update status
 - **Start Automatically with Windows** - toggles the Windows startup registry entry
 - **Exit** - shuts down the application

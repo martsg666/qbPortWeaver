@@ -9,6 +9,11 @@ public partial class WhatsNewForm : Form
         "If you find qbPortWeaver useful, please star it on GitHub.";
 
     private const string ReleaseFeaturesText =
+        "New in 2.6.1\n\n" +
+        "Placeholder\n" +
+        "Release notes for 2.6.1 will be written as features land in this cycle. Replace this " +
+        "block before tagging.\n\n" +
+        "Previously released\n\n" +
         "New in 2.6.0\n\n" +
         "One-click diagnostics\n" +
         "A new Run Diagnostics action - on the Status panel and the tray menu - checks your entire " +
@@ -35,7 +40,6 @@ public partial class WhatsNewForm : Form
         "applies instantly, scrolling and resizing stay smooth, and memory usage stays low even when the " +
         "viewer is left open for days. Selection now works per line - click or drag to select entries and " +
         "copy them.\n\n" +
-        "Previously released\n\n" +
         "New in 2.5.8\n\n" +
         "Test your port on demand\n" +
         "The Status panel now has a Test Port button that checks whether your listening port is reachable " +

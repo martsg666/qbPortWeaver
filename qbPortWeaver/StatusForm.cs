@@ -55,13 +55,13 @@ public partial class StatusForm : Form
         Populate(snapshot);
     }
 
-    // Repaints the port history list from the persisted history file, newest first. Rebuilt in
-    // full on each refresh - the history is capped at 50 entries, so this is a trivial repaint
-    // once per sync cycle, and full rebuild keeps it correct across trims and file resets.
     // Whether the history list currently shows real entries (false = empty-state row).
     // Gates the Clear History context item so it cannot "clear" an already-empty history.
     private bool _historyHasEntries;
 
+    // Repaints the port history list from the persisted history file, newest first. Rebuilt in
+    // full on each refresh - the history is capped at 50 entries, so this is a trivial repaint
+    // once per sync cycle, and full rebuild keeps it correct across trims and file resets.
     private void PopulateHistory()
     {
         var entries = PortHistoryManager.Read();

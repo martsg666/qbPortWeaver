@@ -165,7 +165,7 @@ partial class StatusForm
         colHistoryPort.Text = "Port";
         colHistoryPort.Width = 52;
         colHistoryEvent.Text = "Event";
-        colHistoryEvent.Width = 236;
+        colHistoryEvent.Width = 256; // fills the list width (with Time + Port) so no stray blank column area shows
         lvHistory.BackColor = SystemColors.Window;
         lvHistory.Columns.AddRange(new[] { colHistoryTime, colHistoryPort, colHistoryEvent });
         lvHistory.FullRowSelect = true;

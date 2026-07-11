@@ -1,5 +1,3 @@
-using System.ComponentModel;
-using System.Drawing.Drawing2D;
 using System.Runtime;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -96,7 +94,6 @@ public partial class LogViewerForm : Form
 
     private static class WinMsg
     {
-        public const int WM_PAINT = 0x000F;
         public const int LVM_SCROLL = 0x1014;
         public const int LVM_SETITEMSTATE = 0x102B;
         public const int LVM_GETITEMSTATE = 0x102C;
@@ -316,32 +313,12 @@ public partial class LogViewerForm : Form
         chk.BackColor = pnlToolbar.BackColor;
     }
 
-    // Owner-draws a crisp up/down chevron centered in a nav button, in the button's ForeColor (neutral
-    // WindowText for the search-match arrows, the accent for the issue-nav arrows). Drawn instead of a
-    // font glyph so it is always centered and its size/weight are exact. btnPrev/btnIssuePrev point up.
+    // Paints the nav chevrons via the shared drawer, in the button's ForeColor (neutral WindowText
+    // for the search-match arrows, the accent for the issue-nav arrows). btnPrev/btnIssuePrev point up.
     private void NavButton_Paint(object? sender, PaintEventArgs e)
     {
         if (sender is not Button btn) return;
-        bool up = btn == btnPrev || btn == btnIssuePrev;
-
-        float scale = btn.DeviceDpi / 96f;
-        float halfW = 5f * scale;     // chevron half-width
-        float halfH = 3.25f * scale;  // chevron half-height
-        float cx = btn.ClientSize.Width / 2f;
-        float cy = btn.ClientSize.Height / 2f;
-        float armY  = up ? cy + halfH : cy - halfH; // the two ends
-        float apexY = up ? cy - halfH : cy + halfH; // the point
-
-        PointF[] chevron = [new(cx - halfW, armY), new(cx, apexY), new(cx + halfW, armY)];
-
-        e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-        using var pen = new Pen(btn.ForeColor, 1.8f * scale)
-        {
-            StartCap = LineCap.Round,
-            EndCap = LineCap.Round,
-            LineJoin = LineJoin.Round,
-        };
-        e.Graphics.DrawLines(pen, chevron);
+        AppConstants.DrawNavChevron(btn, e.Graphics, up: btn == btnPrev || btn == btnIssuePrev);
     }
 
     // Called when any filter CheckBox changes - updates its style and rebuilds the visible rows
@@ -1429,35 +1406,4 @@ public partial class LogViewerForm : Form
         }
     }
 
-    // Custom TextBox that draws a vertically-centered placeholder.
-    // Shadowing PlaceholderText prevents the base class from sending EM_SETCUEBANNER,
-    // which renders the native cue at the top-left regardless of the control height.
-    private sealed class PlaceholderTextBox : TextBox
-    {
-        private string _placeholderText = string.Empty;
-
-        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
-        public new string PlaceholderText
-        {
-            get => _placeholderText;
-            set { _placeholderText = value; Invalidate(); }
-        }
-
-        protected override void OnGotFocus(EventArgs e) { base.OnGotFocus(e); Invalidate(); }
-        protected override void OnLostFocus(EventArgs e) { base.OnLostFocus(e); Invalidate(); }
-
-        protected override void WndProc(ref Message m)
-        {
-            base.WndProc(ref m);
-            if (m.Msg == WinMsg.WM_PAINT && TextLength == 0 && !Focused && _placeholderText.Length > 0)
-            {
-                using var g = Graphics.FromHwnd(Handle);
-                var rect = ClientRectangle;
-                rect.Inflate(-2, 0);
-                TextRenderer.DrawText(g, _placeholderText, Font, rect, SystemColors.GrayText,
-                    TextFormatFlags.VerticalCenter | TextFormatFlags.Left |
-                    TextFormatFlags.SingleLine | TextFormatFlags.NoPadding);
-            }
-        }
-    }
 }

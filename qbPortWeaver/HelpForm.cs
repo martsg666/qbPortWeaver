@@ -1,15 +1,29 @@
 namespace qbPortWeaver;
 
 /// <summary>Displays the shipped user guide (README.md, installed next to the executable) rendered
-/// with lightweight formatting. Opened via the tray menu Help item; only one instance is allowed
+/// with lightweight formatting, a table-of-contents tree built from the guide's headings, and
+/// text search (Ctrl+F). Opened via the tray menu Help item; only one instance is allowed
 /// at a time (enforced by MainForm.ShowOrActivate).</summary>
 public partial class HelpForm : Form
 {
     private const string GuideFileName = "README.md";
+    private const int ClearButtonInset = 4; // shrinks button to fit inside the TextBox border (2 px top + 2 px bottom)
+    private const int ClearButtonMargin = 2; // inner gap from TextBox right edge and top
 
     // Clickable link runs in rtbHelp, tracked by character range. The content is rendered once
     // and the box is read-only, so the ranges stay valid for the form's lifetime.
     private readonly List<(int Start, int Length, string Url)> _links = new();
+
+    // Headings in document order, recorded while rendering; BuildToc turns them into the
+    // contents tree. CharIndex is the heading's start position in the rendered document.
+    private readonly List<(int CharIndex, int Level, string Text)> _headings = new();
+
+    // Search state: match start positions in document order, index of the current match, and
+    // the rendered document's plain text cached once after rendering (RichTextBox.Text walks
+    // the native control on every call, so per-keystroke scans use the cache).
+    private readonly List<int> _searchMatches = new();
+    private int _searchIndex = -1;
+    private string _documentText = string.Empty;
 
     // Heading/inline fonts, created once in OnLoad for the active base font and disposed in the
     // Designer's Dispose.
@@ -31,8 +45,41 @@ public partial class HelpForm : Form
     {
         base.OnLoad(e);
         Text = $"{AppIdentity.AppName} | Help";
-        KeyPreview = true; // form sees keys before the focused control - see OnKeyDown (Escape to close)
-        BackColor = rtbHelp.BackColor; // form padding blends with the document surface
+        KeyPreview = true; // form sees keys before the focused control - see OnKeyDown (Escape to close, Ctrl+F)
+        ApplyTheme();
+
+        // Lay out the search group against the toolbar's actual docked width - the form Padding
+        // shrinks the docked panel below its design-time width, which breaks the captured
+        // right-anchor margins (the log viewer's toolbar spans its full client width, so it can
+        // rely on the designer positions). Setting the bounds here re-captures the anchor
+        // margins, so the group tracks the right edge on subsequent resizes. Vertical centering
+        // is also done here because a single-line TextBox auto-sizes its height from the font.
+        int gap = LogicalToDeviceUnits(4);
+        int searchTop = (pnlToolbar.Height - txtSearch.Height) / 2;
+        // No gap at the right edge: the form's right Padding already insets the toolbar by the
+        // 4px the log viewer keeps between its buttons and the window edge.
+        btnNext.Left = pnlToolbar.ClientSize.Width - btnNext.Width;
+        btnPrev.Left = btnNext.Left - btnPrev.Width;
+        lblMatchCount.Left = btnPrev.Left - gap - lblMatchCount.Width;
+        txtSearch.Left = lblMatchCount.Left - gap - txtSearch.Width;
+        txtSearch.Top = searchTop;
+        foreach (var btn in new[] { btnPrev, btnNext })
+        {
+            btn.Height = txtSearch.Height;
+            btn.Top = searchTop;
+        }
+        lblMatchCount.Top = searchTop + (txtSearch.Height - lblMatchCount.Height) / 2;
+
+        // Position the × button inside the right edge of the search box. Done here so the button
+        // tracks the auto-sized TextBox height and right-anchor position. Scale the logical-pixel
+        // constants with DPI so the button stays proportional at 125%+.
+        int clearButtonInset = LogicalToDeviceUnits(ClearButtonInset);
+        int clearButtonMargin = LogicalToDeviceUnits(ClearButtonMargin);
+        int cbSize = txtSearch.Height - clearButtonInset;
+        btnClearSearch.Size = new Size(cbSize, cbSize);
+        btnClearSearch.Location = new Point(txtSearch.Right - cbSize - clearButtonMargin, searchTop + clearButtonMargin);
+        // Must be in front of the native TextBox HWND or it will be hidden behind it
+        btnClearSearch.BringToFront();
 
         Font baseFont = rtbHelp.Font;
         _h1Font = new Font(baseFont.FontFamily, baseFont.Size + 6f, FontStyle.Bold);
@@ -47,18 +94,67 @@ public partial class HelpForm : Form
         _linkColor = AppConstants.IsDarkModeEnabled() ? AppConstants.LinkDark : SystemColors.HotTrack;
 
         RenderMarkdown(LoadGuideText());
+        _documentText = rtbHelp.Text;
+        BuildToc();
 
-        // Reset to the top so the window opens at the start of the document.
+        // Open with the first section highlighted and the contents tree focused (not the search
+        // box), then reset to the top so the document starts at the beginning - the intro text
+        // above the first section stays visible.
+        if (tvToc.Nodes.Count > 0)
+            tvToc.SelectedNode = tvToc.Nodes[0];
+        ActiveControl = tvToc;
         rtbHelp.Select(0, 0);
         rtbHelp.ScrollToCaret();
     }
 
+    // Native surface colors: SystemColors track the active dark/light mode under
+    // Application.SetColorMode. Chrome and the read-only document use the dialog surface
+    // (Control) so the viewer matches the log viewer; only the editable search box uses the
+    // input surface (Window).
+    private void ApplyTheme()
+    {
+        Color surface = SystemColors.Control;
+        Color fg = SystemColors.WindowText;
+
+        BackColor = surface;
+        pnlToolbar.BackColor = surface;
+        splitMain.BackColor = surface;
+        tvToc.BackColor = surface;
+        tvToc.ForeColor = fg;
+
+        txtSearch.BackColor = SystemColors.Window;
+        txtSearch.ForeColor = fg;
+
+        foreach (var btn in new[] { btnPrev, btnNext })
+        {
+            btn.BackColor = surface;
+            btn.ForeColor = fg;
+            btn.FlatAppearance.BorderColor = SystemColors.ControlDark;
+        }
+
+        // Clear button sits inside the search box - blend it in rather than styling it like the
+        // nav buttons
+        btnClearSearch.BackColor = txtSearch.BackColor;
+        btnClearSearch.ForeColor = SystemColors.GrayText;
+
+        lblMatchCount.BackColor = surface;
+        lblMatchCount.ForeColor = SystemColors.GrayText;
+    }
+
     protected override void OnKeyDown(KeyEventArgs e)
     {
-        if (e.KeyCode == Keys.Escape)
+        if (e.KeyCode == Keys.Escape && !txtSearch.Focused)
         {
             Close();
             e.Handled = true;
+            return;
+        }
+        if (e.Control && e.KeyCode == Keys.F)
+        {
+            txtSearch.Focus();
+            txtSearch.SelectAll();
+            e.Handled = true;
+            e.SuppressKeyPress = true;
             return;
         }
         base.OnKeyDown(e);
@@ -129,8 +225,67 @@ public partial class HelpForm : Form
         while (level < line.Length && line[level] == '#') level++;
         Font font = level switch { 1 => _h1Font!, 2 => _h2Font!, 3 => _h3Font!, _ => _h4Font! };
         BeginParagraph(0, 0);
-        Append(line[level..].TrimStart(), font, rtbHelp.ForeColor);
+        string text = line[level..].TrimStart();
+        _headings.Add((rtbHelp.TextLength, level, TocText(text)));
+        Append(text, font, rtbHelp.ForeColor);
         Append("\n", rtbHelp.Font, rtbHelp.ForeColor);
+    }
+
+    // Node label for the contents tree: inline markers stripped and "[text](url)" reduced to
+    // its text (the changelog's release headings link to GitHub Releases).
+    private static string TocText(string heading)
+    {
+        string text = StripInlineMarkers(heading);
+        while (true)
+        {
+            int open = text.IndexOf('[');
+            if (open < 0) return text;
+            int close = text.IndexOf("](", open, StringComparison.Ordinal);
+            if (close < 0) return text;
+            int end = text.IndexOf(')', close);
+            if (end < 0) return text;
+            text = text[..open] + text[(open + 1)..close] + text[(end + 1)..];
+        }
+    }
+
+    // Builds the contents tree from the recorded headings, nesting each heading under the
+    // nearest preceding heading of a lower level. A single leading H1 is the document title -
+    // the window itself plays that role - so its sections become the tree roots.
+    private void BuildToc()
+    {
+        int first = _headings.Count > 1 && _headings[0].Level == 1 && _headings.Skip(1).All(h => h.Level > 1) ? 1 : 0;
+        var parents = new Stack<(int Level, TreeNode Node)>();
+        tvToc.BeginUpdate();
+        for (int h = first; h < _headings.Count; h++)
+        {
+            var (charIndex, level, text) = _headings[h];
+            while (parents.Count > 0 && parents.Peek().Level >= level)
+                parents.Pop();
+            var node = new TreeNode(text) { Tag = charIndex };
+            if (parents.Count == 0)
+                tvToc.Nodes.Add(node);
+            else
+                parents.Peek().Node.Nodes.Add(node);
+            parents.Push((level, node));
+        }
+        tvToc.EndUpdate();
+    }
+
+    private void tvToc_AfterSelect(object? sender, TreeViewEventArgs e)
+    {
+        if (e.Node?.Tag is int charIndex)
+            ScrollToPosition(charIndex);
+    }
+
+    // Scrolls so the target lands at the top of the viewport: jump to the document end first,
+    // then back to the target - RichTextBox scrolls minimally, and scrolling upward places the
+    // caret line at the top instead of the bottom.
+    private void ScrollToPosition(int charIndex)
+    {
+        rtbHelp.Select(rtbHelp.TextLength, 0);
+        rtbHelp.ScrollToCaret();
+        rtbHelp.Select(charIndex, 0);
+        rtbHelp.ScrollToCaret();
     }
 
     private void AppendQuote(string line)
@@ -328,6 +483,93 @@ public partial class HelpForm : Form
         rtbHelp.SelectionFont = font;
         rtbHelp.SelectionColor = color;
         rtbHelp.AppendText(text);
+    }
+
+    // Triggered when the search text changes - shows/hides the clear button and rescans.
+    private void txtSearch_TextChanged(object? sender, EventArgs e)
+    {
+        btnClearSearch.Visible = txtSearch.Text.Length > 0;
+        RefreshSearch();
+    }
+
+    // Handles Enter (next), Shift+Enter (prev), and Escape (clear) in the search box
+    private void txtSearch_KeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.KeyCode == Keys.Enter)
+        {
+            if (e.Shift) SearchPrev(); else SearchNext();
+            e.SuppressKeyPress = true;
+        }
+        else if (e.KeyCode == Keys.Escape)
+        {
+            txtSearch.Clear();
+            e.SuppressKeyPress = true;
+        }
+    }
+
+    private void btnClearSearch_Click(object? sender, EventArgs e) => txtSearch.Clear();
+    private void btnPrev_Click(object? sender, EventArgs e) => SearchPrev();
+    private void btnNext_Click(object? sender, EventArgs e) => SearchNext();
+
+    // Rescans the document for the current query, rebuilds the match list, and navigates to the
+    // first match. The current match is shown via the selection (HideSelection is false, so it
+    // stays visible while the search box has focus).
+    private void RefreshSearch()
+    {
+        _searchMatches.Clear();
+        _searchIndex = -1;
+
+        string query = txtSearch.Text;
+        if (query.Length == 0)
+        {
+            lblMatchCount.Text = string.Empty;
+            rtbHelp.SelectionLength = 0; // drop the leftover match highlight
+            return;
+        }
+
+        int start = 0;
+        while (true)
+        {
+            int found = _documentText.IndexOf(query, start, StringComparison.OrdinalIgnoreCase);
+            if (found < 0) break;
+            _searchMatches.Add(found);
+            start = found + 1;
+        }
+
+        if (_searchMatches.Count == 0)
+        {
+            lblMatchCount.Text = "0 / 0";
+            rtbHelp.SelectionLength = 0;
+            return;
+        }
+        NavigateToMatch(0);
+    }
+
+    private void SearchNext()
+    {
+        if (_searchMatches.Count == 0) return;
+        NavigateToMatch((_searchIndex + 1) % _searchMatches.Count);
+    }
+
+    private void SearchPrev()
+    {
+        if (_searchMatches.Count == 0) return;
+        NavigateToMatch(_searchIndex <= 0 ? _searchMatches.Count - 1 : _searchIndex - 1);
+    }
+
+    private void NavigateToMatch(int index)
+    {
+        _searchIndex = index;
+        rtbHelp.Select(_searchMatches[index], txtSearch.Text.Length);
+        rtbHelp.ScrollToCaret();
+        lblMatchCount.Text = $"{_searchIndex + 1} / {_searchMatches.Count}";
+    }
+
+    // Paints the search-nav chevrons (btnPrev points up) via the shared drawer.
+    private void NavButton_Paint(object? sender, PaintEventArgs e)
+    {
+        if (sender is not Button btn) return;
+        AppConstants.DrawNavChevron(btn, e.Graphics, up: btn == btnPrev);
     }
 
     private void rtbHelp_MouseUp(object? sender, MouseEventArgs e) // NOSONAR S2325 - calls the instance method LinkUrlAtPoint, cannot be static

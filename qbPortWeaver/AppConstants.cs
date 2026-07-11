@@ -1,5 +1,6 @@
 ﻿using Microsoft.Win32;
 using System.Diagnostics;
+using System.Drawing.Drawing2D;
 using System.Runtime.InteropServices;
 using System.ServiceProcess;
 
@@ -320,6 +321,33 @@ public static class AppConstants
 
     // Tray icon dot border
     public static readonly Color TrayIconDotBorder = Color.FromArgb(60, 60, 60);
+
+    /// <summary>
+    /// Owner-draws a crisp up/down chevron centered in a nav button, in the button's ForeColor.
+    /// Drawn instead of a font glyph so it is always centered and its size/weight are exact.
+    /// Shared by the log viewer's and help viewer's search-nav Paint handlers.
+    /// </summary>
+    public static void DrawNavChevron(Button btn, Graphics g, bool up)
+    {
+        float scale = btn.DeviceDpi / 96f;
+        float halfW = 5f * scale;     // chevron half-width
+        float halfH = 3.25f * scale;  // chevron half-height
+        float cx = btn.ClientSize.Width / 2f;
+        float cy = btn.ClientSize.Height / 2f;
+        float armY  = up ? cy + halfH : cy - halfH; // the two ends
+        float apexY = up ? cy - halfH : cy + halfH; // the point
+
+        PointF[] chevron = [new(cx - halfW, armY), new(cx, apexY), new(cx + halfW, armY)];
+
+        g.SmoothingMode = SmoothingMode.AntiAlias;
+        using var pen = new Pen(btn.ForeColor, 1.8f * scale)
+        {
+            StartCap = LineCap.Round,
+            EndCap = LineCap.Round,
+            LineJoin = LineJoin.Round,
+        };
+        g.DrawLines(pen, chevron);
+    }
 
     /// <summary>Opens a URL in the default browser using ShellExecute.</summary>
     public static void OpenUrl(string url)

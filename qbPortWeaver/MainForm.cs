@@ -261,6 +261,7 @@ public partial class MainForm : Form
         _settingsForm?.Close();
         _mediaManagerForm?.Close();
         _aboutForm?.Close();
+        _helpForm?.Close();
         _statusForm?.Close();
         _updateAvailableForm?.Close();
         _diagnosticsForm?.Close();

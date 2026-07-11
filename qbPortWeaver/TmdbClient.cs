@@ -125,7 +125,7 @@ public sealed class TmdbClient(string apiKey)
         if (info is null && year.HasValue)
         {
             candidates = await search(title, null, cancellationToken).ConfigureAwait(false);
-            info = candidates?[0];
+            info = FirstOrNull(candidates);
             if (info is not null) isConfident = false;
         }
 

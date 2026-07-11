@@ -22,6 +22,10 @@ public partial class StatusForm : Form
     /// <see cref="SetDiagnosticsRunning"/>.</summary>
     public event EventHandler? DiagnosticsRequested;
 
+    // Whether the history list currently shows real entries (false = empty-state row).
+    // Gates the Clear History context item so it cannot "clear" an already-empty history.
+    private bool _historyHasEntries;
+
     public StatusForm()
     {
         InitializeComponent();
@@ -54,10 +58,6 @@ public partial class StatusForm : Form
         }
         Populate(snapshot);
     }
-
-    // Whether the history list currently shows real entries (false = empty-state row).
-    // Gates the Clear History context item so it cannot "clear" an already-empty history.
-    private bool _historyHasEntries;
 
     // Repaints the port history list from the persisted history file, newest first. Rebuilt in
     // full on each refresh - the history is capped at 50 entries, so this is a trivial repaint

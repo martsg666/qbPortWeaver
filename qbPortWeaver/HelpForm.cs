@@ -7,8 +7,6 @@ namespace qbPortWeaver;
 public partial class HelpForm : Form
 {
     private const string GuideFileName = "README.md";
-    private const int ClearButtonInset = 4; // shrinks button to fit inside the TextBox border (2 px top + 2 px bottom)
-    private const int ClearButtonMargin = 2; // inner gap from TextBox right edge and top
 
     // Clickable link runs in rtbHelp, tracked by character range. The content is rendered once
     // and the box is read-only, so the ranges stay valid for the form's lifetime.
@@ -48,38 +46,12 @@ public partial class HelpForm : Form
         KeyPreview = true; // form sees keys before the focused control - see OnKeyDown (Escape to close, Ctrl+F)
         ApplyTheme();
 
-        // Lay out the search group against the toolbar's actual docked width - the form Padding
-        // shrinks the docked panel below its design-time width, which breaks the captured
-        // right-anchor margins (the log viewer's toolbar spans its full client width, so it can
-        // rely on the designer positions). Setting the bounds here re-captures the anchor
-        // margins, so the group tracks the right edge on subsequent resizes. Vertical centering
-        // is also done here because a single-line TextBox auto-sizes its height from the font.
-        int gap = LogicalToDeviceUnits(4);
-        int searchTop = (pnlToolbar.Height - txtSearch.Height) / 2;
-        // No gap at the right edge: the form's right Padding already insets the toolbar by the
-        // 4px the log viewer keeps between its buttons and the window edge.
-        btnNext.Left = pnlToolbar.ClientSize.Width - btnNext.Width;
-        btnPrev.Left = btnNext.Left - btnPrev.Width;
-        lblMatchCount.Left = btnPrev.Left - gap - lblMatchCount.Width;
-        txtSearch.Left = lblMatchCount.Left - gap - txtSearch.Width;
-        txtSearch.Top = searchTop;
-        foreach (var btn in new[] { btnPrev, btnNext })
-        {
-            btn.Height = txtSearch.Height;
-            btn.Top = searchTop;
-        }
-        lblMatchCount.Top = searchTop + (txtSearch.Height - lblMatchCount.Height) / 2;
-
-        // Position the × button inside the right edge of the search box. Done here so the button
-        // tracks the auto-sized TextBox height and right-anchor position. Scale the logical-pixel
-        // constants with DPI so the button stays proportional at 125%+.
-        int clearButtonInset = LogicalToDeviceUnits(ClearButtonInset);
-        int clearButtonMargin = LogicalToDeviceUnits(ClearButtonMargin);
-        int cbSize = txtSearch.Height - clearButtonInset;
-        btnClearSearch.Size = new Size(cbSize, cbSize);
-        btnClearSearch.Location = new Point(txtSearch.Right - cbSize - clearButtonMargin, searchTop + clearButtonMargin);
-        // Must be in front of the native TextBox HWND or it will be hidden behind it
-        btnClearSearch.BringToFront();
+        // Lay out the right-aligned search group (shared with the log viewer). rightMargin 0: the
+        // form's own right Padding already supplies the visual gap between the last button and the
+        // window edge, so no extra inset is baked into the layout. Computing from the toolbar's real
+        // width is required here because the form Padding shrinks the docked panel below its design
+        // width, which would leave designer-anchored positions off the right edge.
+        AppConstants.LayoutSearchToolbar(pnlToolbar, txtSearch, lblMatchCount, btnPrev, btnNext, btnClearSearch, rightMargin: 0);
 
         Font baseFont = rtbHelp.Font;
         _h1Font = new Font(baseFont.FontFamily, baseFont.Size + 6f, FontStyle.Bold);

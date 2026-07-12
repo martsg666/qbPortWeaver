@@ -164,7 +164,7 @@ partial class LogViewerForm
         // btnClearSearch floats inside the right edge of txtSearch (z-order above it); positioned in OnLoad.
         System.Windows.Forms.AnchorStyles rightAnchor = System.Windows.Forms.AnchorStyles.Right | System.Windows.Forms.AnchorStyles.Top;
 
-        // txtSearch - font set explicitly so height is predictable; vertically centered in the 36px toolbar
+        // txtSearch - height is auto-sized by its font; vertically centered in the 36px toolbar in OnLoad
         txtSearch.Anchor          = rightAnchor;
         txtSearch.BorderStyle     = System.Windows.Forms.BorderStyle.FixedSingle;
         txtSearch.Location        = new System.Drawing.Point(752, 8);
@@ -173,7 +173,7 @@ partial class LogViewerForm
         txtSearch.TabIndex        = 8;
         txtSearch.TextChanged    += txtSearch_TextChanged;
         txtSearch.KeyDown        += txtSearch_KeyDown;
-        toolTip.SetToolTip(txtSearch, "Search the log (highlights matches)");
+        toolTip.SetToolTip(txtSearch, "Search the log (Ctrl+F)");
 
         // btnClearSearch - overlays the right interior of txtSearch; sized and positioned in OnLoad.
         // Right-margin set to txtSearch.RightMargin - 2 so the button always stays 2px inside the box on resize.

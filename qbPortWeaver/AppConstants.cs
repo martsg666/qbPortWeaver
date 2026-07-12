@@ -349,6 +349,43 @@ public static class AppConstants
         g.DrawLines(pen, chevron);
     }
 
+    /// <summary>
+    /// Lays out the right-aligned search group shared by the log viewer and help viewer toolbars:
+    /// the search box, match counter, and prev/next nav buttons pinned to the toolbar's right edge,
+    /// with the clear (×) button floating inside the search box. Positions are computed from the
+    /// toolbar's actual client width (not designer coordinates) so the group lands correctly whatever
+    /// the form padding or DPI. <paramref name="rightMargin"/> is the logical-pixel gap between the
+    /// last button and the toolbar's right edge - 0 when the form's own padding already supplies the
+    /// visual margin (help viewer), or the desired inset when it does not (log viewer). Vertical
+    /// centering uses the search box's font-driven height, known only after layout, so call from OnLoad.
+    /// </summary>
+    public static void LayoutSearchToolbar(Control toolbar, TextBox search, Label matchCount, Button prev, Button next, Button clear, int rightMargin)
+    {
+        int gap = toolbar.LogicalToDeviceUnits(4);
+        int margin = toolbar.LogicalToDeviceUnits(rightMargin);
+        int top = (toolbar.Height - search.Height) / 2;
+
+        // Right-aligned group, positioned from the toolbar's right edge inward.
+        next.Left = toolbar.ClientSize.Width - margin - next.Width;
+        prev.Left = next.Left - prev.Width;
+        matchCount.Left = prev.Left - gap - matchCount.Width;
+        search.Left = matchCount.Left - gap - search.Width;
+
+        // Vertically center the group on the search box; the nav buttons match its height.
+        search.Top = top;
+        prev.Height = next.Height = search.Height;
+        prev.Top = next.Top = top;
+        matchCount.Top = top + (search.Height - matchCount.Height) / 2;
+
+        // Clear button floats inside the right interior of the search box. The 4px inset shrinks it to
+        // fit within the box's 2px top/bottom border; the 2px margin keeps it clear of the right edge.
+        int size = search.Height - toolbar.LogicalToDeviceUnits(4);
+        int clearMargin = toolbar.LogicalToDeviceUnits(2);
+        clear.Size = new Size(size, size);
+        clear.Location = new Point(search.Right - size - clearMargin, top + clearMargin);
+        clear.BringToFront(); // must sit above the native TextBox HWND or it is hidden behind it
+    }
+
     /// <summary>Opens a URL in the default browser using ShellExecute.</summary>
     public static void OpenUrl(string url)
     {

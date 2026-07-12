@@ -108,8 +108,6 @@ public partial class LogViewerForm : Form
     private const string ColInfo = "| INFO  |";
     private const string ColDebug = "| DEBUG |";
     private const long LoadingIndicatorMinBytes = 1_000_000; // show "Loading..." only for logs large enough that the read + parse is perceptible
-    private const int ClearButtonInset = 4; // shrinks button to fit inside the TextBox border (2 px top + 2 px bottom)
-    private const int ClearButtonMargin = 2; // inner gap from TextBox right edge and top
 
     public LogViewerForm() : this(string.Empty) { } // designer support only
 
@@ -129,7 +127,7 @@ public partial class LogViewerForm : Form
         base.OnLoad(e);
         _themeColors = [AppConstants.LogError, AppConstants.LogWarning, AppConstants.LogInfo, AppConstants.LogDebug, SystemColors.WindowText];
         Text = $"{AppIdentity.AppName} | Log Viewer";
-        KeyPreview = true; // form sees keys before the focused control - see OnKeyDown (Escape to close)
+        KeyPreview = true; // form sees keys before the focused control - see OnKeyDown (Escape to close, Ctrl+F)
         ApplyTheme();
         // Measure the monospace character width once for the active font/DPI. Averaged over a
         // block of characters so GDI padding rounding does not skew the per-char value; used for
@@ -143,43 +141,33 @@ public partial class LogViewerForm : Form
         // in dark mode - until the next append happens to trigger the owner-draw pass.
         lvLog.ClientSizeChanged += (_, _) => { UpdateColumnWidth(); lvLog.Invalidate(); };
 
-        // Vertically center the search box - single-line TextBox auto-sizes its height from the font,
-        // so the actual height is only known after layout; compute the top offset here.
+        // Vertically center the two left-side combos - single-line controls auto-size their height
+        // from the font, so the actual height is only known after layout.
         int searchTop = (pnlToolbar.Height - txtSearch.Height) / 2;
-        txtSearch.Top = searchTop;
         cboSubsystem.Top = (pnlToolbar.Height - cboSubsystem.Height) / 2;
         cboLogFile.Top = (pnlToolbar.Height - cboLogFile.Height) / 2;
 
-        // Size all nav buttons to match the search box height. Their up/down chevrons are owner-drawn
-        // in NavButton_Paint (crisp, perfectly centered, using the button's ForeColor) rather than a
-        // font glyph, which never centered cleanly.
+        // Lay out the right-aligned search group (search box, match counter, prev/next, clear button)
+        // - shared with the help viewer. rightMargin 4: no form padding here, so the edge gap is baked
+        // into the layout (the help viewer passes 0 and lets its form padding supply the gap).
+        AppConstants.LayoutSearchToolbar(pnlToolbar, txtSearch, lblMatchCount, btnPrev, btnNext, btnClearSearch, rightMargin: 4);
+
+        // Owner-draw the up/down chevrons on all four nav buttons (crisp and centered via the button's
+        // ForeColor, unlike a font glyph). LayoutSearchToolbar already sized and centered btnPrev/btnNext;
+        // match the issue-nav buttons and level-filter checkboxes to the same height and vertical center.
         int navH = txtSearch.Height;
         foreach (var btn in new[] { btnPrev, btnNext, btnIssuePrev, btnIssueNext })
+            btn.Paint += NavButton_Paint;
+        foreach (var btn in new[] { btnIssuePrev, btnIssueNext })
         {
             btn.Height = navH;
             btn.Top = searchTop;
-            btn.Paint += NavButton_Paint;
         }
-
-        // Match the level-filter buttons to the same height and vertical centering as the rest of the
-        // toolbar (the designer gives them a taller, top-aligned box), so the whole row lines up.
         foreach (var chk in new[] { chkError, chkWarn, chkInfo, chkDebug })
         {
             chk.Height = navH;
             chk.Top = searchTop;
         }
-        lblMatchCount.Top = searchTop + (txtSearch.Height - lblMatchCount.Height) / 2;
-
-        // Position the × button inside the right edge of the search box.
-        // Done here so the button tracks the auto-sized TextBox height and right-anchor position.
-        // Scale the logical-pixel constants with DPI so the button stays proportional at 125%+.
-        int clearButtonInset = LogicalToDeviceUnits(ClearButtonInset);
-        int clearButtonMargin = LogicalToDeviceUnits(ClearButtonMargin);
-        int cbSize = txtSearch.Height - clearButtonInset;
-        btnClearSearch.Size = new Size(cbSize, cbSize);
-        btnClearSearch.Location = new Point(txtSearch.Right - cbSize - clearButtonMargin, searchTop + clearButtonMargin);
-        // Must be in front of the native TextBox HWND or it will be hidden behind it
-        btnClearSearch.BringToFront();
 
         // Lock the minimum width so the right-anchored search block can never slide over the
         // left-side filter controls (same runtime-MinimumSize approach as MediaManagerForm, but
@@ -207,13 +195,22 @@ public partial class LogViewerForm : Form
     }
 
     // Escape closes the viewer, except while the search box has focus - there Escape clears the search
-    // (handled in txtSearch_KeyDown). KeyPreview (set in OnLoad) lets the form see the key first.
+    // (handled in txtSearch_KeyDown). Ctrl+F focuses the search box (same as the Help viewer).
+    // KeyPreview (set in OnLoad) lets the form see the keys first.
     protected override void OnKeyDown(KeyEventArgs e)
     {
         if (e.KeyCode == Keys.Escape && !txtSearch.Focused)
         {
             Close();
             e.Handled = true;
+            return;
+        }
+        if (e.Control && e.KeyCode == Keys.F)
+        {
+            txtSearch.Focus();
+            txtSearch.SelectAll();
+            e.Handled = true;
+            e.SuppressKeyPress = true;
             return;
         }
         base.OnKeyDown(e);

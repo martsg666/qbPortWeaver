@@ -4,6 +4,10 @@
 public partial class MediaManagerForm : Form
 {
     private const int MaxStatusFileNameLength = 40;
+    // How much the window may shrink below its initial height. The results grid is bottom-anchored,
+    // so the reduction comes out of the grid while the button row and detail panel stay on screen -
+    // keeping the dialog usable on shorter work areas (e.g. 150% display scaling).
+    private const int HeightShrinkAllowance = 150;
     [System.Text.RegularExpressions.GeneratedRegex(@"\(\d{4}\)$")]
     private static partial System.Text.RegularExpressions.Regex TitleYearFolderRegex();
 
@@ -47,7 +51,10 @@ public partial class MediaManagerForm : Form
     protected override void OnLoad(EventArgs e)
     {
         base.OnLoad(e);
-        MinimumSize = Size; // lock minimum to initial window size so controls are never clipped
+        // Lock the minimum width to the initial width so the grid columns and top controls are never
+        // clipped, but allow the height to shrink (the bottom-anchored grid absorbs it) so the dialog
+        // stays usable on shorter work areas without pushing the button row off-screen.
+        MinimumSize = new Size(Size.Width, Size.Height - HeightShrinkAllowance);
         _colorUncertain = AppConstants.LogWarning;
         _colorUnmatched = AppConstants.LogError;
         lblLegendUncertain.ForeColor = _colorUncertain;
@@ -106,10 +113,8 @@ public partial class MediaManagerForm : Form
     {
         _operationCts?.Cancel();
         _operationCts?.Dispose();
-        _operationCts = null; // prevent double-dispose in Dispose(bool)
         _thumbnailCts?.Cancel();
         _thumbnailCts?.Dispose();
-        _thumbnailCts = null;
         foreach (var img in _posterCache.Values) img.Dispose();
         _posterCache.Clear();
         base.OnFormClosed(e);

@@ -685,7 +685,7 @@ partial class SettingsForm
         tabSettings.Controls.Add(tabClient);
         tabSettings.Controls.Add(tabExtra);
         tabSettings.Padding       = new Point(16, 5); // larger native tabs - auto-sized to text, centered and theme-correct in dark mode
-        tabSettings.Location      = new Point(6, 8);
+        tabSettings.Location      = new Point(8, 8);
         tabSettings.Name          = "tabSettings";
         tabSettings.SelectedIndex = 0;
         tabSettings.Size          = new Size(508, 431);
@@ -705,14 +705,14 @@ partial class SettingsForm
         tabExtra.Name = "tabExtra";
         tabExtra.Text = "Extra";
         // ── Buttons ───────────────────────────────────────────────────
-        btnOK.Location = new Point(340, 449);
+        btnOK.Location = new Point(344, 449);
         btnOK.Name     = "btnOK";
         btnOK.Size     = new Size(82, 28);
         btnOK.TabIndex = 1;
         btnOK.Text     = "OK";
         btnOK.Click   += btnOK_Click;
         btnCancel.DialogResult = DialogResult.Cancel;
-        btnCancel.Location     = new Point(430, 449);
+        btnCancel.Location     = new Point(434, 449);
         btnCancel.Name         = "btnCancel";
         btnCancel.Size         = new Size(82, 28);
         btnCancel.TabIndex     = 2;
@@ -723,7 +723,7 @@ partial class SettingsForm
         AutoScaleDimensions = new SizeF(7F, 15F);
         AutoScaleMode       = AutoScaleMode.Font;
         CancelButton        = btnCancel;
-        ClientSize          = new Size(520, 485);
+        ClientSize          = new Size(524, 485);
         Controls.Add(tabSettings);
         Controls.Add(btnOK);
         Controls.Add(btnCancel);

@@ -101,7 +101,7 @@ After installing, open **Settings** from the tray icon to configure the applicat
   After each sync cycle the tray icon shows a colored status dot: **green** (ports aligned), **orange** (VPN not connected), **red** (error), **gray** (sync paused), or **no dot** (port sync disabled). Hovering over the icon displays the current port and status, and an unviewed log count if warnings or errors have occurred (e.g. "2 Warnings, 1 Error").
 
 - **Status Panel**
-  A **Status** window (tray menu → Show Status, or double-click the tray icon) shows the live sync chain at a glance: VPN provider and connection, forwarded port, client and whether it is running, listening port (with an in-sync indicator), reachability, and the last sync time and result. Color accents flag anything out of sync, closed, or in error. It refreshes after each cycle; a **Sync Now** button runs an immediate cycle and **Test Port** checks reachability on demand.
+  A **Status** window (tray menu → Show Status, or double-click the tray icon) shows the live sync chain at a glance: VPN provider and connection, forwarded port, client and whether it is running, listening port (with an in-sync indicator), reachability, and the last sync time and result. Color accents flag anything out of sync, closed, or in error. A **Recent Port Changes** list shows the latest port assignments, confirmed-closed results, and auto-recovery actions with timestamps, kept across restarts (right-click the list to clear it). It refreshes after each cycle; a **Sync Now** button runs an immediate cycle and **Test Port** checks reachability on demand.
 
 - **Diagnostics**
   A **Run Diagnostics** action (Status panel and tray menu) runs a read-only health check across the whole sync chain and shows a pass/warning/fail checklist with a fix hint for each step: configuration, helper service, VPN connection and forwarded port, client running and reachable, ports in sync, interface binding, and outside reachability. **Re-run** refreshes it and **Copy Report** puts the results on the clipboard for a support request. It never changes the port or restarts anything.
@@ -113,7 +113,7 @@ After installing, open **Settings** from the tray icon to configure the applicat
   Each client section in Settings has a **Test** button next to the URL. It checks the connection to qBittorrent, Transmission, or Deluge using the values currently entered (no need to save first), then reports success along with the current listening port, or points you to the log if it cannot connect.
 
 - **Log Viewer**
-  Built-in log viewer (tray menu → Show Logs) displays the log file with color-coded entries by level (error, warn, info, debug) and follows new entries in real time. Includes a search bar with match highlighting and prev/next navigation, dedicated prev/next buttons to step between warnings and errors without affecting the search, toggle buttons to filter by log level, and a subsystem filter to isolate entries from a specific component. The view is virtualized, so filters apply instantly and scrolling stays smooth even on very large logs, and the viewer keeps a low, steady memory footprint when left open for days. Adapts to the application color theme (System, Dark, or Light).
+  Built-in log viewer (tray menu → Show Logs) displays the log file with color-coded entries by level (error, warn, info, debug) and follows new entries in real time. Includes a search bar with match highlighting and prev/next navigation, dedicated prev/next buttons to step between warnings and errors without affecting the search, toggle buttons to filter by log level, a subsystem filter to isolate entries from a specific component, and a file picker to browse rotated backup files. The view is virtualized, so filters apply instantly and scrolling stays smooth even on very large logs, and the viewer keeps a low, steady memory footprint when left open for days. Adapts to the application color theme (System, Dark, or Light).
 
 - **Consistent Theming**
   All windows - Settings, Status, Diagnostics, the log viewer, Media Manager, and the tray menu - follow your chosen color theme (System, Dark, or Light) uniformly, using the native Windows colors so text and surfaces stay legible in both light and dark mode.
@@ -126,6 +126,9 @@ After installing, open **Settings** from the tray icon to configure the applicat
 
 - **Automatic Update Checker & In-App Update**
   Checks GitHub for new releases on startup and every 12 hours, surfacing a newer version via an **Update available (X.Y.Z)** tray item and tooltip (the 12-hour check is non-intrusive; the startup form can be turned off under **Settings > General**). A **Check for Updates** item checks on demand and always reports a result. When an update is available, the update window offers **Download & Install** - it downloads the installer, runs it, and the app relaunches when the update finishes (falling back to the release page if anything goes wrong). The **About** dialog shows the current and latest version, update status, contributor links, and a **What's New** button.
+
+- **Built-in User Guide**
+  A **Help** item in the tray menu opens this user guide in a built-in viewer with a browsable table of contents, text search (Ctrl+F with match navigation), formatted headings, tables, and clickable links - no browser or internet connection needed.
 
 - **Startup Option**
   Allows enabling or disabling automatic startup with Windows.
@@ -258,6 +261,7 @@ Configured via tray menu → **Media Manager**.
 - **Settings** - opens the Settings dialog
 - **Media Manager** - opens the Media Manager dialog to configure source and library folders, preview imports (Scan Now), apply them (Import Now), and clear fingerprint caches (Clear Cache)
 - **Check for Updates** - checks GitHub for a newer release on demand and reports the result (also shown when already up to date)
+- **Help** - opens the user guide in a built-in viewer with a contents tree and search
 - **About** - shows version info and update status
 - **Start Automatically with Windows** - toggles the Windows startup registry entry
 - **Exit** - shuts down the application

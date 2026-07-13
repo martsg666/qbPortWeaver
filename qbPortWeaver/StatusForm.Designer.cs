@@ -30,12 +30,22 @@ partial class StatusForm
         lblReachableValue = new Label();
         lblLastSyncLabel = new Label();
         lblLastSyncValue = new Label();
+        grpHistory = new GroupBox();
+        lvHistory = new ListView();
+        colHistoryTime = new ColumnHeader();
+        colHistoryPort = new ColumnHeader();
+        colHistoryEvent = new ColumnHeader();
+        ctxHistory = new ContextMenuStrip();
+        ctxClearHistory = new ToolStripMenuItem();
+        components = new System.ComponentModel.Container();
+        components.Add(ctxHistory);
         btnSyncNow = new Button();
         btnTestPort = new Button();
         btnRunDiagnostics = new Button();
         btnClose = new Button();
         lblDiagnosticsHint = new Label();
         grpStatus.SuspendLayout();
+        grpHistory.SuspendLayout();
         SuspendLayout();
         // ── grpStatus ─────────────────────────────────────────────────
         grpStatus.Controls.Add(lblVpnProviderLabel);
@@ -142,8 +152,43 @@ partial class StatusForm
         lblLastSyncValue.TabIndex = 13;
         lblLastSyncValue.Text = "-";
         lblLastSyncValue.TextAlign = ContentAlignment.MiddleLeft;
+        // ── grpHistory (recent port changes and recovery events; populated in PopulateHistory) ──
+        grpHistory.Controls.Add(lvHistory);
+        grpHistory.Location = new Point(8, 254);
+        grpHistory.Name = "grpHistory";
+        grpHistory.Size = new Size(454, 156);
+        grpHistory.TabIndex = 6;
+        grpHistory.TabStop = false;
+        grpHistory.Text = "Recent Port Changes";
+        colHistoryTime.Text = "Time";
+        colHistoryTime.Width = 118;
+        colHistoryPort.Text = "Port";
+        colHistoryPort.Width = 52;
+        colHistoryEvent.Text = "Event";
+        colHistoryEvent.Width = 256; // fills the list width (with Time + Port) so no stray blank column area shows
+        // Window (input surface), not the Control chrome: this is an embedded data panel inside a
+        // label-heavy dialog, so it reads as a distinct data box (like MediaManagerForm.dgvResults).
+        // Contrast with LogViewerForm.lvLog, which uses Control because it fills the whole window.
+        lvHistory.BackColor = SystemColors.Window;
+        lvHistory.Columns.AddRange(new[] { colHistoryTime, colHistoryPort, colHistoryEvent });
+        lvHistory.FullRowSelect = true;
+        lvHistory.HeaderStyle = ColumnHeaderStyle.Nonclickable;
+        lvHistory.Location = new Point(12, 22);
+        lvHistory.MultiSelect = false;
+        lvHistory.Name = "lvHistory";
+        lvHistory.ShowGroups = false;
+        lvHistory.Size = new Size(430, 122);
+        lvHistory.TabIndex = 0;
+        lvHistory.UseCompatibleStateImageBehavior = false;
+        lvHistory.View = View.Details;
+        // Discrete clear option - right-click the history list (mirrors the log viewer's context menu)
+        ctxClearHistory.Text = "Clear History";
+        ctxClearHistory.Click += ctxClearHistory_Click;
+        ctxHistory.Items.Add(ctxClearHistory);
+        ctxHistory.Opening += ctxHistory_Opening;
+        lvHistory.ContextMenuStrip = ctxHistory;
         // ── Diagnostics hint (shown only when a cycle looks wrong; color set in StatusForm) ──
-        lblDiagnosticsHint.Location = new Point(8, 252);
+        lblDiagnosticsHint.Location = new Point(8, 414);
         lblDiagnosticsHint.Name = "lblDiagnosticsHint";
         lblDiagnosticsHint.Size = new Size(454, 20);
         lblDiagnosticsHint.TabIndex = 1;
@@ -151,26 +196,26 @@ partial class StatusForm
         lblDiagnosticsHint.TextAlign = ContentAlignment.MiddleLeft;
         lblDiagnosticsHint.Visible = false;
         // ── Buttons ───────────────────────────────────────────────────
-        btnSyncNow.Location = new Point(8, 278);
+        btnSyncNow.Location = new Point(8, 440);
         btnSyncNow.Name = "btnSyncNow";
         btnSyncNow.Size = new Size(96, 28);
         btnSyncNow.TabIndex = 2;
         btnSyncNow.Text = "Sync Now";
         btnSyncNow.Click += btnSyncNow_Click;
-        btnTestPort.Location = new Point(112, 278);
+        btnTestPort.Location = new Point(112, 440);
         btnTestPort.Name = "btnTestPort";
         btnTestPort.Size = new Size(96, 28);
         btnTestPort.TabIndex = 3;
         btnTestPort.Text = "Test Port";
         btnTestPort.Click += btnTestPort_Click;
-        btnRunDiagnostics.Location = new Point(216, 278);
+        btnRunDiagnostics.Location = new Point(216, 440);
         btnRunDiagnostics.Name = "btnRunDiagnostics";
         btnRunDiagnostics.Size = new Size(118, 28);
         btnRunDiagnostics.TabIndex = 4;
         btnRunDiagnostics.Text = "Run Diagnostics";
         btnRunDiagnostics.Click += btnRunDiagnostics_Click;
         btnClose.DialogResult = DialogResult.Cancel;
-        btnClose.Location = new Point(380, 278);
+        btnClose.Location = new Point(380, 440);
         btnClose.Name = "btnClose";
         btnClose.Size = new Size(82, 28);
         btnClose.TabIndex = 5;
@@ -181,8 +226,9 @@ partial class StatusForm
         AutoScaleDimensions = new SizeF(7F, 15F);
         AutoScaleMode = AutoScaleMode.Font;
         CancelButton = btnClose;
-        ClientSize = new Size(470, 314);
+        ClientSize = new Size(470, 476);
         Controls.Add(grpStatus);
+        Controls.Add(grpHistory);
         Controls.Add(lblDiagnosticsHint);
         Controls.Add(btnSyncNow);
         Controls.Add(btnTestPort);
@@ -197,10 +243,18 @@ partial class StatusForm
         StartPosition = FormStartPosition.CenterScreen;
         Text = "qbPortWeaver | Status"; // overridden in constructor
         grpStatus.ResumeLayout(false);
+        grpHistory.ResumeLayout(false);
         ResumeLayout(false);
     }
 
     private GroupBox grpStatus;
+    private GroupBox grpHistory;
+    private ListView lvHistory;
+    private ColumnHeader colHistoryTime;
+    private ColumnHeader colHistoryPort;
+    private ColumnHeader colHistoryEvent;
+    private ContextMenuStrip ctxHistory;
+    private ToolStripMenuItem ctxClearHistory;
     private Label    lblVpnProviderLabel;
     private Label    lblVpnProviderValue;
     private Label    lblVpnStatusLabel;

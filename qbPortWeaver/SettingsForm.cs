@@ -10,9 +10,9 @@ public partial class SettingsForm : Form
     private const string NoAdaptersFoundPlaceholder = "No NAT-PMP adapters found";
     private const string DefaultPortTooltip = "Port to apply when the VPN is disconnected (0 = do nothing when disconnected)";
 
-    // Cancels in-flight NAT-PMP adapter discovery when the form closes so the UDP probes do not
-    // run to completion in the background after the dialog is dismissed.
-    private readonly CancellationTokenSource _discoveryCts = new();
+    // Cancels in-flight async work (NAT-PMP adapter discovery, client connection tests) when the
+    // form closes so probes do not run to completion in the background after the dialog is dismissed.
+    private readonly CancellationTokenSource _formCloseCts = new();
 
     public SettingsForm()
     {
@@ -44,8 +44,8 @@ public partial class SettingsForm : Form
 
     protected override void OnFormClosed(FormClosedEventArgs e)
     {
-        _discoveryCts.Cancel();
-        _discoveryCts.Dispose();
+        _formCloseCts.Cancel();
+        _formCloseCts.Dispose();
         base.OnFormClosed(e);
     }
 
@@ -507,7 +507,10 @@ public partial class SettingsForm : Form
         UseWaitCursor = true;
         try
         {
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(AppConstants.ClientTestTimeoutSeconds));
+            // Linked to the form-close token (like every other in-flight form operation) so closing
+            // the dialog cancels the probe instead of letting it run out its timeout in the background.
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(_formCloseCts.Token);
+            cts.CancelAfter(TimeSpan.FromSeconds(AppConstants.ClientTestTimeoutSeconds));
             var (listenPort, _) = await client.GetPreferencesAsync(cts.Token);
             if (IsDisposed) return;
             if (listenPort is not null)
@@ -598,7 +601,7 @@ public partial class SettingsForm : Form
         try
         {
             // No ConfigureAwait(false) - continuation must run on the UI thread to update controls.
-            var adapters = await NatPmpManager.DiscoverAdaptersAsync(cancellationToken: _discoveryCts.Token);
+            var adapters = await NatPmpManager.DiscoverAdaptersAsync(cancellationToken: _formCloseCts.Token);
 
             // Guard against the form being closed while adapter discovery was in flight.
             // IsDisposed check + ObjectDisposedException catch covers the TOCTOU window between
@@ -630,7 +633,7 @@ public partial class SettingsForm : Form
         }
         catch (OperationCanceledException)
         {
-            // Form is closing - discovery was cancelled via _discoveryCts; nothing to update.
+            // Form is closing - discovery was cancelled via _formCloseCts; nothing to update.
         }
         catch (Exception ex)
         {

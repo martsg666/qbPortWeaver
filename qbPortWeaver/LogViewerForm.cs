@@ -1,5 +1,3 @@
-using System.ComponentModel;
-using System.Drawing.Drawing2D;
 using System.Runtime;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -96,7 +94,6 @@ public partial class LogViewerForm : Form
 
     private static class WinMsg
     {
-        public const int WM_PAINT = 0x000F;
         public const int LVM_SCROLL = 0x1014;
         public const int LVM_SETITEMSTATE = 0x102B;
         public const int LVM_GETITEMSTATE = 0x102C;
@@ -111,8 +108,6 @@ public partial class LogViewerForm : Form
     private const string ColInfo = "| INFO  |";
     private const string ColDebug = "| DEBUG |";
     private const long LoadingIndicatorMinBytes = 1_000_000; // show "Loading..." only for logs large enough that the read + parse is perceptible
-    private const int ClearButtonInset = 4; // shrinks button to fit inside the TextBox border (2 px top + 2 px bottom)
-    private const int ClearButtonMargin = 2; // inner gap from TextBox right edge and top
 
     public LogViewerForm() : this(string.Empty) { } // designer support only
 
@@ -132,7 +127,7 @@ public partial class LogViewerForm : Form
         base.OnLoad(e);
         _themeColors = [AppConstants.LogError, AppConstants.LogWarning, AppConstants.LogInfo, AppConstants.LogDebug, SystemColors.WindowText];
         Text = $"{AppIdentity.AppName} | Log Viewer";
-        KeyPreview = true; // form sees keys before the focused control - see OnKeyDown (Escape to close)
+        KeyPreview = true; // form sees keys before the focused control - see OnKeyDown (Escape to close, Ctrl+F)
         ApplyTheme();
         // Measure the monospace character width once for the active font/DPI. Averaged over a
         // block of characters so GDI padding rounding does not skew the per-char value; used for
@@ -146,55 +141,40 @@ public partial class LogViewerForm : Form
         // in dark mode - until the next append happens to trigger the owner-draw pass.
         lvLog.ClientSizeChanged += (_, _) => { UpdateColumnWidth(); lvLog.Invalidate(); };
 
-        // Vertically center the search box - single-line TextBox auto-sizes its height from the font,
-        // so the actual height is only known after layout; compute the top offset here.
+        // Vertically center the two left-side combos - single-line controls auto-size their height
+        // from the font, so the actual height is only known after layout.
         int searchTop = (pnlToolbar.Height - txtSearch.Height) / 2;
-        txtSearch.Top = searchTop;
         cboSubsystem.Top = (pnlToolbar.Height - cboSubsystem.Height) / 2;
         cboLogFile.Top = (pnlToolbar.Height - cboLogFile.Height) / 2;
 
-        // Size all nav buttons to match the search box height. Their up/down chevrons are owner-drawn
-        // in NavButton_Paint (crisp, perfectly centered, using the button's ForeColor) rather than a
-        // font glyph, which never centered cleanly.
+        // Lay out the right-aligned search group (search box, match counter, prev/next, clear button)
+        // - shared with the help viewer. rightMargin 4: no form padding here, so the edge gap is baked
+        // into the layout (the help viewer passes 0 and lets its form padding supply the gap).
+        AppConstants.LayoutSearchToolbar(pnlToolbar, txtSearch, lblMatchCount, btnPrev, btnNext, btnClearSearch, rightMargin: 4);
+
+        // Owner-draw the chevrons on all four nav buttons; size/center the issue-nav buttons and the
+        // level-filter checkboxes (LayoutSearchToolbar already sized and centered btnPrev/btnNext).
         int navH = txtSearch.Height;
         foreach (var btn in new[] { btnPrev, btnNext, btnIssuePrev, btnIssueNext })
+            btn.Paint += NavButton_Paint;
+        foreach (var btn in new[] { btnIssuePrev, btnIssueNext })
         {
             btn.Height = navH;
             btn.Top = searchTop;
-            btn.Paint += NavButton_Paint;
         }
-
-        // Match the level-filter buttons to the same height and vertical centering as the rest of the
-        // toolbar (the designer gives them a taller, top-aligned box), so the whole row lines up.
         foreach (var chk in new[] { chkError, chkWarn, chkInfo, chkDebug })
         {
             chk.Height = navH;
             chk.Top = searchTop;
         }
-        lblMatchCount.Top = searchTop + (txtSearch.Height - lblMatchCount.Height) / 2;
-
-        // Position the × button inside the right edge of the search box.
-        // Done here so the button tracks the auto-sized TextBox height and right-anchor position.
-        // Scale the logical-pixel constants with DPI so the button stays proportional at 125%+.
-        int clearButtonInset = LogicalToDeviceUnits(ClearButtonInset);
-        int clearButtonMargin = LogicalToDeviceUnits(ClearButtonMargin);
-        int cbSize = txtSearch.Height - clearButtonInset;
-        btnClearSearch.Size = new Size(cbSize, cbSize);
-        btnClearSearch.Location = new Point(txtSearch.Right - cbSize - clearButtonMargin, searchTop + clearButtonMargin);
-        // Must be in front of the native TextBox HWND or it will be hidden behind it
-        btnClearSearch.BringToFront();
-
-        // Lock the minimum width so the right-anchored search block can never slide over the
-        // left-side filter controls (same runtime-MinimumSize approach as MediaManagerForm, but
-        // computed from the actual toolbar layout so the window still shrinks below its default
-        // size). txtSearch is the leftmost right-anchored control; cboLogFile ends the left block.
-        int toolbarGap = LogicalToDeviceUnits(8);
-        int minClientWidth = cboLogFile.Right + toolbarGap + (ClientSize.Width - txtSearch.Left);
-        MinimumSize = new Size(Width - ClientSize.Width + minClientWidth, MinimumSize.Height);
 
         PopulateLogFileDropdown();
-        // Wire event after population to avoid triggering a load before the initial LoadInitialContentAsync below
+        cboLogFile.SelectedIndex = 0; // "Current"
+        // Wire events after population/selection to avoid triggering a load before the initial
+        // LoadInitialContentAsync below. DropDown re-syncs the list with the on-disk files each
+        // time the user opens it (rotation and Clear Logs change them while the viewer is open).
         cboLogFile.SelectedIndexChanged += cboLogFile_SelectedIndexChanged;
+        cboLogFile.DropDown += cboLogFile_DropDown;
     }
 
     protected override void OnShown(EventArgs e)
@@ -206,13 +186,22 @@ public partial class LogViewerForm : Form
     }
 
     // Escape closes the viewer, except while the search box has focus - there Escape clears the search
-    // (handled in txtSearch_KeyDown). KeyPreview (set in OnLoad) lets the form see the key first.
+    // (handled in txtSearch_KeyDown). Ctrl+F focuses the search box (same as the Help viewer).
+    // KeyPreview (set in OnLoad) lets the form see the keys first.
     protected override void OnKeyDown(KeyEventArgs e)
     {
         if (e.KeyCode == Keys.Escape && !txtSearch.Focused)
         {
             Close();
             e.Handled = true;
+            return;
+        }
+        if (e.Control && e.KeyCode == Keys.F)
+        {
+            txtSearch.Focus();
+            txtSearch.SelectAll();
+            e.Handled = true;
+            e.SuppressKeyPress = true;
             return;
         }
         base.OnKeyDown(e);
@@ -263,6 +252,10 @@ public partial class LogViewerForm : Form
 
         BackColor = surface;
         pnlToolbar.BackColor = surface;
+        // lvLog uses the Control chrome (not the Window input surface) because it fills the whole
+        // window and reads as the document itself. Embedded read-only data tables inside label-heavy
+        // dialogs (StatusForm.lvHistory, MediaManagerForm.dgvResults) deliberately use Window instead,
+        // so they read as a distinct data box - keep that distinction if revisiting theming.
         lvLog.BackColor = surface;
         lvLog.ForeColor = fg;
 
@@ -312,32 +305,12 @@ public partial class LogViewerForm : Form
         chk.BackColor = pnlToolbar.BackColor;
     }
 
-    // Owner-draws a crisp up/down chevron centered in a nav button, in the button's ForeColor (neutral
-    // WindowText for the search-match arrows, the accent for the issue-nav arrows). Drawn instead of a
-    // font glyph so it is always centered and its size/weight are exact. btnPrev/btnIssuePrev point up.
+    // Paints the nav chevrons via the shared drawer, in the button's ForeColor (neutral WindowText
+    // for the search-match arrows, the accent for the issue-nav arrows). btnPrev/btnIssuePrev point up.
     private void NavButton_Paint(object? sender, PaintEventArgs e)
     {
         if (sender is not Button btn) return;
-        bool up = btn == btnPrev || btn == btnIssuePrev;
-
-        float scale = btn.DeviceDpi / 96f;
-        float halfW = 5f * scale;     // chevron half-width
-        float halfH = 3.25f * scale;  // chevron half-height
-        float cx = btn.ClientSize.Width / 2f;
-        float cy = btn.ClientSize.Height / 2f;
-        float armY  = up ? cy + halfH : cy - halfH; // the two ends
-        float apexY = up ? cy - halfH : cy + halfH; // the point
-
-        PointF[] chevron = [new(cx - halfW, armY), new(cx, apexY), new(cx + halfW, armY)];
-
-        e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-        using var pen = new Pen(btn.ForeColor, 1.8f * scale)
-        {
-            StartCap = LineCap.Round,
-            EndCap = LineCap.Round,
-            LineJoin = LineJoin.Round,
-        };
-        e.Graphics.DrawLines(pen, chevron);
+        AppConstants.DrawNavChevron(btn, e.Graphics, up: btn == btnPrev || btn == btnIssuePrev);
     }
 
     // Called when any filter CheckBox changes - updates its style and rebuilds the visible rows
@@ -492,7 +465,9 @@ public partial class LogViewerForm : Form
     // Advances the drag selection one row per tick in the held direction, scrolling with it.
     private void dragScrollTimer_Tick(object? sender, EventArgs e)
     {
-        if (_dragAnchorRow < 0 || _dragScrollDirection == 0)
+        // VirtualListSize == 0 also ends the drag: the list can empty mid-drag (log deleted or
+        // cleared externally), and Math.Clamp below throws when max (count - 1) drops below min.
+        if (_dragAnchorRow < 0 || _dragScrollDirection == 0 || lvLog.VirtualListSize == 0)
         {
             SetDragScroll(0);
             return;
@@ -766,6 +741,15 @@ public partial class LogViewerForm : Form
                 StateMask = WinMsg.LVIS_SELECTED | WinMsg.LVIS_FOCUSED,
             };
             SendMessage(lvLog.Handle, WinMsg.LVM_SETITEMSTATE, -1, ref item);
+
+            // Reset the scroll origin before shrinking. The native control clamps its scroll
+            // range on a shrink but keeps painting items at the stale offset until the next
+            // scroll or mouse interaction recomputes it, so a filter applied while scrolled
+            // down in a large log shows the rows floating mid-viewport (or not at all) until
+            // the user nudges the view. Scrolling to row 0 first zeroes the origin; the caller
+            // (RebuildDisplay) re-positions the viewport to the bottom or anchor afterwards.
+            if (lvLog.VirtualListSize > 0)
+                lvLog.EnsureVisible(0);
         }
         lvLog.VirtualListSize = count;
     }
@@ -1005,6 +989,13 @@ public partial class LogViewerForm : Form
     // _lastReadPosition is set before any live-update events can fire.
     private async Task LoadInitialContentAsync()
     {
+        // Capture the generation at entry (UI thread, same thread that increments it) so a load
+        // whose file was switched away from mid-read can detect it is stale after the await and
+        // bail. Without this, switching Current -> Backup -> Current while a large file loads
+        // lets the stale load append the wrong file's lines into the new view, and its finally
+        // would start a second watcher on the same generation - overwriting _watcher without
+        // dispose, after which every tail append is processed twice (duplicated lines).
+        int generation = _watcherGeneration;
         try
         {
             string loadPath = _activeLogFilePath;
@@ -1033,7 +1024,7 @@ public partial class LogViewerForm : Form
                 }
             });
 
-            if (IsDisposed) return;
+            if (IsDisposed || generation != _watcherGeneration) return;
 
             _allLines.AddRange(lines);
             _lastReadPosition = position;
@@ -1056,12 +1047,16 @@ public partial class LogViewerForm : Form
         {
             // _themeColors[LevelError] is the error color already resolved for the active theme; using a
             // fixed dark variant would clash with the foreground text colour in light mode.
-            if (!IsDisposed)
+            if (!IsDisposed && generation == _watcherGeneration)
                 SetMetaMessage($"(Error reading log: {ex.Message})", _themeColors[LevelError]);
         }
         finally
         {
-            StartWatcher();
+            // A stale load must not start a watcher: the switch handler already disposed the old
+            // one, and the load for the new file will start its own (see the generation comment
+            // at the top of this method).
+            if (generation == _watcherGeneration)
+                StartWatcher();
         }
     }
 
@@ -1197,15 +1192,52 @@ public partial class LogViewerForm : Form
         catch (InvalidOperationException) { /* handle destroyed by Close() before Dispose() - expected on close */ }
     }
 
-    // Populates the log file dropdown with the current log and any existing rotated backups.
-    // Called once on load; event is wired afterward to prevent a premature file switch.
+    // Fills the log file dropdown from the on-disk state: the current log plus the contiguous
+    // rotated backups. Leaves nothing selected - callers set the selection (initial load picks
+    // "Current"; the drop-down refresh restores the active entry by path).
     private void PopulateLogFileDropdown()
     {
         cboLogFile.Items.Clear();
         cboLogFile.Items.Add(new LogFileEntry("Current", _logFilePath));
         for (int i = 1; File.Exists($"{_logFilePath}.{i}"); i++)
             cboLogFile.Items.Add(new LogFileEntry($"Backup {i}", $"{_logFilePath}.{i}"));
-        cboLogFile.SelectedIndex = 0;
+    }
+
+    // Refreshes the log file list at the moment the user opens the dropdown, so it reflects the
+    // current on-disk state: rotation shifts backups and Clear Logs deletes them while the
+    // viewer is open. Refreshing here (not from the watcher) covers every staleness source -
+    // the watcher only runs while viewing "Current", never sees backup deletions, and a closed
+    // combo shows no stale content anyway. The selection is restored by file path, or kept as
+    // an extra entry when the active file no longer exists on disk, so opening the list never
+    // switches the view (the path guard in cboLogFile_SelectedIndexChanged makes re-selecting
+    // the active entry a no-op).
+    private void cboLogFile_DropDown(object? sender, EventArgs e)
+    {
+        if (cboLogFile.SelectedItem is not LogFileEntry active) return;
+
+        cboLogFile.BeginUpdate();
+        PopulateLogFileDropdown();
+
+        int index = 0; // "Current" is always item 0
+        if (active.FilePath != _logFilePath)
+        {
+            index = -1;
+            for (int i = 1; i < cboLogFile.Items.Count; i++)
+            {
+                if (cboLogFile.Items[i] is LogFileEntry entry && entry.FilePath == active.FilePath)
+                {
+                    index = i;
+                    break;
+                }
+            }
+            if (index < 0)
+            {
+                cboLogFile.Items.Add(active);
+                index = cboLogFile.Items.Count - 1;
+            }
+        }
+        cboLogFile.SelectedIndex = index;
+        cboLogFile.EndUpdate();
     }
 
     private void cboLogFile_SelectedIndexChanged(object? sender, EventArgs e)
@@ -1366,35 +1398,4 @@ public partial class LogViewerForm : Form
         }
     }
 
-    // Custom TextBox that draws a vertically-centered placeholder.
-    // Shadowing PlaceholderText prevents the base class from sending EM_SETCUEBANNER,
-    // which renders the native cue at the top-left regardless of the control height.
-    private sealed class PlaceholderTextBox : TextBox
-    {
-        private string _placeholderText = string.Empty;
-
-        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
-        public new string PlaceholderText
-        {
-            get => _placeholderText;
-            set { _placeholderText = value; Invalidate(); }
-        }
-
-        protected override void OnGotFocus(EventArgs e) { base.OnGotFocus(e); Invalidate(); }
-        protected override void OnLostFocus(EventArgs e) { base.OnLostFocus(e); Invalidate(); }
-
-        protected override void WndProc(ref Message m)
-        {
-            base.WndProc(ref m);
-            if (m.Msg == WinMsg.WM_PAINT && TextLength == 0 && !Focused && _placeholderText.Length > 0)
-            {
-                using var g = Graphics.FromHwnd(Handle);
-                var rect = ClientRectangle;
-                rect.Inflate(-2, 0);
-                TextRenderer.DrawText(g, _placeholderText, Font, rect, SystemColors.GrayText,
-                    TextFormatFlags.VerticalCenter | TextFormatFlags.Left |
-                    TextFormatFlags.SingleLine | TextFormatFlags.NoPadding);
-            }
-        }
-    }
 }

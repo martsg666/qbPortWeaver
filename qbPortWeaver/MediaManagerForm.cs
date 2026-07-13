@@ -47,7 +47,6 @@ public partial class MediaManagerForm : Form
     protected override void OnLoad(EventArgs e)
     {
         base.OnLoad(e);
-        MinimumSize = Size; // lock minimum to initial window size so controls are never clipped
         _colorUncertain = AppConstants.LogWarning;
         _colorUnmatched = AppConstants.LogError;
         lblLegendUncertain.ForeColor = _colorUncertain;
@@ -106,10 +105,8 @@ public partial class MediaManagerForm : Form
     {
         _operationCts?.Cancel();
         _operationCts?.Dispose();
-        _operationCts = null; // prevent double-dispose in Dispose(bool)
         _thumbnailCts?.Cancel();
         _thumbnailCts?.Dispose();
-        _thumbnailCts = null;
         foreach (var img in _posterCache.Values) img.Dispose();
         _posterCache.Clear();
         base.OnFormClosed(e);

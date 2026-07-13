@@ -9,6 +9,25 @@ public partial class WhatsNewForm : Form
         "If you find qbPortWeaver useful, please star it on GitHub.";
 
     private const string ReleaseFeaturesText =
+        "New in 2.6.1\n\n" +
+        "Port history on the Status panel\n" +
+        "The Status window now lists your recent port changes and recovery events with " +
+        "timestamps, kept across restarts - see at a glance when your port last changed and why.\n\n" +
+        "Built-in user guide\n" +
+        "A new Help item in the tray menu opens the full user guide in its own window - browse " +
+        "it by section from a contents list or search it with Ctrl+F. Setup instructions, feature " +
+        "descriptions, and recommended configuration are available right in the app, no browser " +
+        "or internet connection needed.\n\n" +
+        "Media Manager layout\n" +
+        "The Media Manager window is now organised into General and Folders tabs, so it fits " +
+        "comfortably on smaller screens and higher display scaling.\n\n" +
+        "Log viewer fixes\n" +
+        "Filtering the log while the window is maximized no longer leaves entries misplaced or " +
+        "hidden until you scroll. Switching between log files while a large one is still loading " +
+        "no longer mixes or duplicates entries, and a rare crash while drag-selecting was fixed. " +
+        "The log file list now refreshes each time you open it, so new backups appear without " +
+        "reopening the viewer.\n\n" +
+        "Previously released\n\n" +
         "New in 2.6.0\n\n" +
         "One-click diagnostics\n" +
         "A new Run Diagnostics action - on the Status panel and the tray menu - checks your entire " +
@@ -35,7 +54,6 @@ public partial class WhatsNewForm : Form
         "applies instantly, scrolling and resizing stay smooth, and memory usage stays low even when the " +
         "viewer is left open for days. Selection now works per line - click or drag to select entries and " +
         "copy them.\n\n" +
-        "Previously released\n\n" +
         "New in 2.5.8\n\n" +
         "Test your port on demand\n" +
         "The Status panel now has a Test Port button that checks whether your listening port is reachable " +

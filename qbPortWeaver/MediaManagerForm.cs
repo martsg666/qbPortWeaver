@@ -53,8 +53,9 @@ public partial class MediaManagerForm : Form
         base.OnLoad(e);
         // Lock the minimum width to the initial width so the grid columns and top controls are never
         // clipped, but allow the height to shrink (the bottom-anchored grid absorbs it) so the dialog
-        // stays usable on shorter work areas without pushing the button row off-screen.
-        MinimumSize = new Size(Size.Width, Size.Height - HeightShrinkAllowance);
+        // stays usable on shorter work areas without pushing the button row off-screen. The allowance
+        // is DPI-scaled (Size.Height is already scaled at this point) so the shrink is proportional.
+        MinimumSize = new Size(Size.Width, Size.Height - LogicalToDeviceUnits(HeightShrinkAllowance));
         _colorUncertain = AppConstants.LogWarning;
         _colorUnmatched = AppConstants.LogError;
         lblLegendUncertain.ForeColor = _colorUncertain;

@@ -152,9 +152,8 @@ public partial class LogViewerForm : Form
         // into the layout (the help viewer passes 0 and lets its form padding supply the gap).
         AppConstants.LayoutSearchToolbar(pnlToolbar, txtSearch, lblMatchCount, btnPrev, btnNext, btnClearSearch, rightMargin: 4);
 
-        // Owner-draw the up/down chevrons on all four nav buttons (crisp and centered via the button's
-        // ForeColor, unlike a font glyph). LayoutSearchToolbar already sized and centered btnPrev/btnNext;
-        // match the issue-nav buttons and level-filter checkboxes to the same height and vertical center.
+        // Owner-draw the chevrons on all four nav buttons; size/center the issue-nav buttons and the
+        // level-filter checkboxes (LayoutSearchToolbar already sized and centered btnPrev/btnNext).
         int navH = txtSearch.Height;
         foreach (var btn in new[] { btnPrev, btnNext, btnIssuePrev, btnIssueNext })
             btn.Paint += NavButton_Paint;

@@ -260,6 +260,10 @@ public partial class LogViewerForm : Form
 
         BackColor = surface;
         pnlToolbar.BackColor = surface;
+        // lvLog uses the Control chrome (not the Window input surface) because it fills the whole
+        // window and reads as the document itself. Embedded read-only data tables inside label-heavy
+        // dialogs (StatusForm.lvHistory, MediaManagerForm.dgvResults) deliberately use Window instead,
+        // so they read as a distinct data box - keep that distinction if revisiting theming.
         lvLog.BackColor = surface;
         lvLog.ForeColor = fg;
 

@@ -300,6 +300,9 @@ partial class MediaManagerForm
         dgvResults.AllowUserToDeleteRows = false;
         dgvResults.AllowUserToResizeRows = false;
         dgvResults.AutoSizeColumnsMode   = DataGridViewAutoSizeColumnsMode.Fill;
+        // Window (input surface), not the Control chrome: an embedded data grid reads as a distinct
+        // data box (like StatusForm.lvHistory). Contrast with LogViewerForm.lvLog, which fills the
+        // whole window and so uses Control to blend with the app chrome.
         dgvResults.BackgroundColor       = SystemColors.Window;
         dgvResults.BorderStyle           = BorderStyle.Fixed3D;
         dgvResults.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.AutoSize;

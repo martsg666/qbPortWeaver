@@ -84,13 +84,13 @@ partial class MediaManagerForm
         grpGeneral.Controls.Add(chkDeleteEmptyFolders);
         grpGeneral.Controls.Add(lblImportMode);
         grpGeneral.Controls.Add(cboImportMode);
-        // Fixed size (not docked or anchored) - matches SettingsForm's tab groups. A fixed-size group
-        // never resizes, so its anchored children (the stretchy path/key fields, right-pinned browse
-        // buttons) render at their designer size instead of re-capturing margins against a transient
-        // tab-page size, which is what made them overflow / clip when the group was docked or anchored.
-        grpGeneral.Location = new Point(4, 4);
+        // Fixed size and position (not docked or anchored), inset (6,6) like SettingsForm's tab groups.
+        // A fixed-size group never resizes, so its fixed-position children render exactly where placed
+        // instead of re-capturing anchor margins against a transient tab-page size - which is what made
+        // them overflow / clip when the group was docked or anchored.
+        grpGeneral.Location = new Point(6, 6);
         grpGeneral.Name     = "grpGeneral";
-        grpGeneral.Size     = new Size(668, 204);
+        grpGeneral.Size     = new Size(664, 204);
         grpGeneral.TabIndex = 0;
         grpGeneral.TabStop  = false;
         grpGeneral.Text     = "General";
@@ -145,9 +145,9 @@ partial class MediaManagerForm
         grpLibrary.Controls.Add(txtTvShowsLibraryPath);
         grpLibrary.Controls.Add(btnBrowseTvShowsLibrary);
         // Fixed size (see grpGeneral) - stacked above grpSourceFolders on the Folders tab.
-        grpLibrary.Location = new Point(4, 4);
+        grpLibrary.Location = new Point(6, 6);
         grpLibrary.Name     = "grpLibrary";
-        grpLibrary.Size     = new Size(668, 88);
+        grpLibrary.Size     = new Size(664, 88);
         grpLibrary.TabIndex = 1;
         grpLibrary.TabStop  = false;
         grpLibrary.Text     = "Library Folders";
@@ -187,10 +187,10 @@ partial class MediaManagerForm
         grpSourceFolders.Controls.Add(lstSourceFolders);
         grpSourceFolders.Controls.Add(btnAddSourceFolder);
         grpSourceFolders.Controls.Add(btnRemoveSourceFolder);
-        // Fixed size (see grpGeneral) - below grpLibrary on the Folders tab.
-        grpSourceFolders.Location = new Point(4, 100);
+        // Fixed size (see grpGeneral) - below grpLibrary on the Folders tab (8px gap after its bottom).
+        grpSourceFolders.Location = new Point(6, 102);
         grpSourceFolders.Name     = "grpSourceFolders";
-        grpSourceFolders.Size     = new Size(668, 119);
+        grpSourceFolders.Size     = new Size(664, 119);
         grpSourceFolders.TabIndex = 2;
         grpSourceFolders.TabStop  = false;
         grpSourceFolders.Text     = "Source Folders";
@@ -239,33 +239,33 @@ partial class MediaManagerForm
         btnScanNow.Location = new Point(8, 278);
         btnScanNow.Name     = "btnScanNow";
         btnScanNow.Size     = new Size(90, 28);
-        btnScanNow.TabIndex = 3;
+        btnScanNow.TabIndex = 1;
         btnScanNow.Text     = "Scan Now";
         btnScanNow.Click   += btnScanNow_Click;
         btnImportNow.Enabled  = false;
         btnImportNow.Location = new Point(106, 278);
         btnImportNow.Name     = "btnImportNow";
         btnImportNow.Size     = new Size(100, 28);
-        btnImportNow.TabIndex = 4;
+        btnImportNow.TabIndex = 2;
         btnImportNow.Text     = "Import Now";
         btnImportNow.Click   += btnImportNow_Click;
         btnClearCache.Location = new Point(214, 278);
         btnClearCache.Name     = "btnClearCache";
         btnClearCache.Size     = new Size(100, 28);
-        btnClearCache.TabIndex = 5;
+        btnClearCache.TabIndex = 3;
         btnClearCache.Text     = "Clear Cache";
         btnClearCache.Click   += btnClearCache_Click;
         btnRematch.Location = new Point(322, 278);
         btnRematch.Name     = "btnRematch";
         btnRematch.Size     = new Size(90, 28);
-        btnRematch.TabIndex = 6;
+        btnRematch.TabIndex = 4;
         btnRematch.Text     = "Re-match";
         btnRematch.Click   += btnRematch_Click;
         lblScanStatus.Anchor    = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
         lblScanStatus.Location  = new Point(420, 278);
         lblScanStatus.Name      = "lblScanStatus";
         lblScanStatus.Size      = new Size(272, 28);
-        lblScanStatus.TabIndex  = 7;
+        lblScanStatus.TabIndex  = 5;
         lblScanStatus.TextAlign = ContentAlignment.MiddleLeft;
         lblScanStatus.ForeColor = SystemColors.GrayText;
         // ── Results grid ──────────────────────────────────────────────
@@ -273,7 +273,7 @@ partial class MediaManagerForm
         chkShowOnlyReview.Location = new Point(8, 527);
         chkShowOnlyReview.Name     = "chkShowOnlyReview";
         chkShowOnlyReview.AutoSize = true;
-        chkShowOnlyReview.TabIndex = 10;
+        chkShowOnlyReview.TabIndex = 8;
         chkShowOnlyReview.Text     = "Show only rows with uncertain or no TMDB match";
         chkShowOnlyReview.CheckedChanged += chkShowOnlyReview_CheckedChanged;
         lblLegendUncertain.Anchor    = AnchorStyles.Bottom | AnchorStyles.Right;
@@ -281,20 +281,20 @@ partial class MediaManagerForm
         lblLegendUncertain.Name      = "lblLegendUncertain";
         lblLegendUncertain.Size      = new Size(130, 20);
         lblLegendUncertain.TextAlign = ContentAlignment.MiddleRight;
-        lblLegendUncertain.TabIndex  = 11;
+        lblLegendUncertain.TabIndex  = 9;
         lblLegendUncertain.Text      = "\u25cf Uncertain TMDB";
         lblLegendUnmatched.Anchor    = AnchorStyles.Bottom | AnchorStyles.Right;
         lblLegendUnmatched.Location  = new Point(572, 527);
         lblLegendUnmatched.Name      = "lblLegendUnmatched";
         lblLegendUnmatched.Size      = new Size(120, 20);
         lblLegendUnmatched.TextAlign = ContentAlignment.MiddleRight;
-        lblLegendUnmatched.TabIndex  = 12;
+        lblLegendUnmatched.TabIndex  = 10;
         lblLegendUnmatched.Text      = "\u25cf No TMDB match";
         prgScan.Anchor   = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
         prgScan.Location = new Point(8, 310);
         prgScan.Name     = "prgScan";
         prgScan.Size     = new Size(684, 16);
-        prgScan.TabIndex = 8;
+        prgScan.TabIndex = 6;
         prgScan.Visible  = false;
         dgvResults.AllowUserToAddRows    = false;
         dgvResults.AllowUserToDeleteRows = false;
@@ -314,7 +314,7 @@ partial class MediaManagerForm
         dgvResults.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
         dgvResults.Size         = new Size(684, 196);
         dgvResults.ClipboardCopyMode = DataGridViewClipboardCopyMode.EnableWithoutHeaderText;
-        dgvResults.TabIndex          = 9;
+        dgvResults.TabIndex          = 7;
         dgvResults.TabStop           = false;
         dgvResults.CellFormatting          += dgvResults_CellFormatting;
         dgvResults.CellContentClick        += dgvResults_CellContentClick;
@@ -355,7 +355,7 @@ partial class MediaManagerForm
         pnlTmdbDetail.Location    = new Point(8, 554);
         pnlTmdbDetail.Name        = "pnlTmdbDetail";
         pnlTmdbDetail.Size        = new Size(684, 136);
-        pnlTmdbDetail.TabIndex    = 13;
+        pnlTmdbDetail.TabIndex    = 11;
         picTmdbPoster.Location    = new Point(8, 8);
         picTmdbPoster.Name        = "picTmdbPoster";
         picTmdbPoster.Size        = new Size(67, 94);
@@ -396,7 +396,7 @@ partial class MediaManagerForm
         btnOK.Location = new Point(520, 697);
         btnOK.Name     = "btnOK";
         btnOK.Size     = new Size(82, 28);
-        btnOK.TabIndex = 14;
+        btnOK.TabIndex = 12;
         btnOK.Text     = "OK";
         btnOK.Click   += btnOK_Click;
         btnCancel.DialogResult = DialogResult.Cancel;
@@ -404,7 +404,7 @@ partial class MediaManagerForm
         btnCancel.Location     = new Point(610, 697);
         btnCancel.Name         = "btnCancel";
         btnCancel.Size         = new Size(82, 28);
-        btnCancel.TabIndex     = 15;
+        btnCancel.TabIndex     = 13;
         btnCancel.Text         = "Cancel";
         btnCancel.Click       += btnCancel_Click;
         // ── MediaManagerForm ──────────────────────────────────────────

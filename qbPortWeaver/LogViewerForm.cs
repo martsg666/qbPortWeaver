@@ -168,14 +168,6 @@ public partial class LogViewerForm : Form
             chk.Top = searchTop;
         }
 
-        // Lock the minimum width so the right-anchored search block can never slide over the
-        // left-side filter controls (same runtime-MinimumSize approach as MediaManagerForm, but
-        // computed from the actual toolbar layout so the window still shrinks below its default
-        // size). txtSearch is the leftmost right-anchored control; cboLogFile ends the left block.
-        int toolbarGap = LogicalToDeviceUnits(8);
-        int minClientWidth = cboLogFile.Right + toolbarGap + (ClientSize.Width - txtSearch.Left);
-        MinimumSize = new Size(Width - ClientSize.Width + minClientWidth, MinimumSize.Height);
-
         PopulateLogFileDropdown();
         cboLogFile.SelectedIndex = 0; // "Current"
         // Wire events after population/selection to avoid triggering a load before the initial

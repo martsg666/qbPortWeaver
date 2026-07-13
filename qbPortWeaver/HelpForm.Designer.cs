@@ -177,6 +177,9 @@ partial class HelpForm
         Controls.Add(splitMain);  // fill control first so it lays out after the docked toolbar
         Controls.Add(pnlToolbar);
         Icon                = Properties.Resources.qbPortWeaver;
+        // Static designer minimum (DPI-scaled by AutoScaleMode.Font), the pattern shared by all
+        // sizable forms. Width clears the SplitContainer's panel minimums (120 + 240 + 6) and the
+        // toolbar search group; height keeps the split and toolbar usable.
         MinimumSize         = new Size(480, 360);
         Name                = "HelpForm";
         Padding             = new Padding(12, 8, 4, 8); // right stays slim so the scrollbar hugs the edge

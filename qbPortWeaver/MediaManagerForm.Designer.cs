@@ -430,8 +430,11 @@ partial class MediaManagerForm
         FormBorderStyle = FormBorderStyle.Sizable;
         MaximizeBox     = true;
         MinimizeBox     = true;
-        // MinimumSize is set at runtime in OnLoad (locks width, allows a bounded height shrink) so
-        // the dialog fits shorter work areas; a static designer value here would be overridden anyway.
+        // Static designer minimum (DPI-scaled by AutoScaleMode.Font), the pattern shared by all
+        // sizable forms. Width = the fixed tab/grid width (684 + 8+8 margins = 700 client + ~16
+        // border). Height lets the bottom-anchored grid shrink to a couple of rows while the button
+        // row and detail panel stay on screen (733 client - ~150 grid shrink + ~39 title/border).
+        MinimumSize     = new Size(716, 622);
         Name            = "MediaManagerForm";
         Icon            = Properties.Resources.qbPortWeaver;
         ShowIcon        = true;

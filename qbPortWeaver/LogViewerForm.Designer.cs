@@ -277,7 +277,11 @@ partial class LogViewerForm
         Controls.Add(pnlToolbar);
         MaximizeBox         = true;
         MinimizeBox         = true;
-        MinimumSize         = new System.Drawing.Size(600, 300); // width raised at runtime in OnLoad from the toolbar layout
+        // Static designer minimum (DPI-scaled by AutoScaleMode.Font), the pattern shared by all
+        // sizable forms. Width is the point where the right-anchored search block would meet the left
+        // filter/combo block: cboLogFile.Right (624) + gap (8) + search-block width (344) = 976 client
+        // + ~16 window border. Height keeps the toolbar plus a usable log area.
+        MinimumSize         = new System.Drawing.Size(992, 300);
         Name                = "LogViewerForm";
         Icon                = Properties.Resources.qbPortWeaver;
         ShowIcon            = true;

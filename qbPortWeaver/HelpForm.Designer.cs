@@ -38,6 +38,10 @@ partial class HelpForm
         splitMain      = new SplitContainer();
         tvToc          = new TreeView();
         rtbHelp        = new RichTextBox();
+        ctxHelp          = new ContextMenuStrip(components);
+        ctxHelpCopy      = new ToolStripMenuItem();
+        ctxHelpCopyAll   = new ToolStripMenuItem();
+        ctxHelpSelectAll = new ToolStripMenuItem();
         SuspendLayout();
 
         // Search controls - anchored Right so they stay at the toolbar's right edge on resize,
@@ -140,6 +144,18 @@ partial class HelpForm
         rtbHelp.MouseUp      += rtbHelp_MouseUp;
         rtbHelp.MouseMove    += rtbHelp_MouseMove;
 
+        // Right-click context menu on the read-only document: copy the selection, copy the whole
+        // guide, or select all (mirrors the log viewer's context menu).
+        ctxHelpCopy.Text      = "Copy";
+        ctxHelpCopyAll.Text   = "Copy All";
+        ctxHelpSelectAll.Text = "Select All";
+        ctxHelpCopy.Click      += ctxHelpCopy_Click;
+        ctxHelpCopyAll.Click   += ctxHelpCopyAll_Click;
+        ctxHelpSelectAll.Click += ctxHelpSelectAll_Click;
+        ctxHelp.Items.AddRange(new ToolStripItem[] { ctxHelpCopy, ctxHelpCopyAll, ctxHelpSelectAll });
+        ctxHelp.Opening += ctxHelp_Opening;
+        rtbHelp.ContextMenuStrip = ctxHelp;
+
         // splitMain - contents tree on the left (fixed on resize), document on the right.
         // Size must be set before SplitterDistance so the distance is valid against the min sizes.
         splitMain.Dock          = DockStyle.Fill;
@@ -182,4 +198,8 @@ partial class HelpForm
     private SplitContainer splitMain;
     private TreeView       tvToc;
     private RichTextBox    rtbHelp;
+    private ContextMenuStrip  ctxHelp;
+    private ToolStripMenuItem ctxHelpCopy;
+    private ToolStripMenuItem ctxHelpCopyAll;
+    private ToolStripMenuItem ctxHelpSelectAll;
 }

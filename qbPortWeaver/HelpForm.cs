@@ -544,6 +544,20 @@ public partial class HelpForm : Form
         AppConstants.DrawNavChevron(btn, e.Graphics, up: btn == btnPrev);
     }
 
+    // Enable "Copy" only when there is a selection; "Copy All" and "Select All" always apply.
+    private void ctxHelp_Opening(object? sender, System.ComponentModel.CancelEventArgs e)
+        => ctxHelpCopy.Enabled = rtbHelp.SelectionLength > 0;
+
+    private void ctxHelpCopy_Click(object? sender, EventArgs e)
+    {
+        if (rtbHelp.SelectionLength > 0)
+            AppConstants.TrySetClipboardText(rtbHelp.SelectedText);
+    }
+
+    private void ctxHelpCopyAll_Click(object? sender, EventArgs e) => AppConstants.TrySetClipboardText(rtbHelp.Text);
+
+    private void ctxHelpSelectAll_Click(object? sender, EventArgs e) => rtbHelp.SelectAll();
+
     private void rtbHelp_MouseUp(object? sender, MouseEventArgs e) // NOSONAR S2325 - calls the instance method LinkUrlAtPoint, cannot be static
     {
         if (e.Button != MouseButtons.Left) return;

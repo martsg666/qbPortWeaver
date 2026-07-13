@@ -18,6 +18,9 @@ public partial class WhatsNewForm : Form
         "it by section from a contents list or search it with Ctrl+F. Setup instructions, feature " +
         "descriptions, and recommended configuration are available right in the app, no browser " +
         "or internet connection needed.\n\n" +
+        "Media Manager layout\n" +
+        "The Media Manager window is now organised into General and Folders tabs, so it fits " +
+        "comfortably on smaller screens and higher display scaling.\n\n" +
         "Log viewer fixes\n" +
         "Filtering the log while the window is maximized no longer leaves entries misplaced or " +
         "hidden until you scroll. Switching between log files while a large one is still loading " +

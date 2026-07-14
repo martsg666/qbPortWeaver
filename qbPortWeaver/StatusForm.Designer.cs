@@ -76,7 +76,7 @@ partial class StatusForm
         lblVpnProviderLabel.TextAlign = ContentAlignment.MiddleLeft;
         lblVpnProviderValue.Location = new Point(148, 24);
         lblVpnProviderValue.Name = "lblVpnProviderValue";
-        lblVpnProviderValue.Size = new Size(200, 23);
+        lblVpnProviderValue.Size = new Size(290, 23);
         lblVpnProviderValue.TabIndex = 1;
         lblVpnProviderValue.Text = "-";
         lblVpnProviderValue.TextAlign = ContentAlignment.MiddleLeft;
@@ -88,7 +88,7 @@ partial class StatusForm
         lblVpnStatusLabel.TextAlign = ContentAlignment.MiddleLeft;
         lblVpnStatusValue.Location = new Point(148, 53);
         lblVpnStatusValue.Name = "lblVpnStatusValue";
-        lblVpnStatusValue.Size = new Size(200, 23);
+        lblVpnStatusValue.Size = new Size(290, 23);
         lblVpnStatusValue.TabIndex = 3;
         lblVpnStatusValue.Text = "-";
         lblVpnStatusValue.TextAlign = ContentAlignment.MiddleLeft;
@@ -100,7 +100,7 @@ partial class StatusForm
         lblForwardedPortLabel.TextAlign = ContentAlignment.MiddleLeft;
         lblForwardedPortValue.Location = new Point(148, 82);
         lblForwardedPortValue.Name = "lblForwardedPortValue";
-        lblForwardedPortValue.Size = new Size(200, 23);
+        lblForwardedPortValue.Size = new Size(290, 23);
         lblForwardedPortValue.TabIndex = 5;
         lblForwardedPortValue.Text = "-";
         lblForwardedPortValue.TextAlign = ContentAlignment.MiddleLeft;
@@ -112,7 +112,7 @@ partial class StatusForm
         lblClientLabel.TextAlign = ContentAlignment.MiddleLeft;
         lblClientValue.Location = new Point(148, 111);
         lblClientValue.Name = "lblClientValue";
-        lblClientValue.Size = new Size(200, 23);
+        lblClientValue.Size = new Size(290, 23);
         lblClientValue.TabIndex = 7;
         lblClientValue.Text = "-";
         lblClientValue.TextAlign = ContentAlignment.MiddleLeft;
@@ -124,7 +124,7 @@ partial class StatusForm
         lblListeningPortLabel.TextAlign = ContentAlignment.MiddleLeft;
         lblListeningPortValue.Location = new Point(148, 140);
         lblListeningPortValue.Name = "lblListeningPortValue";
-        lblListeningPortValue.Size = new Size(200, 23);
+        lblListeningPortValue.Size = new Size(290, 23);
         lblListeningPortValue.TabIndex = 9;
         lblListeningPortValue.Text = "-";
         lblListeningPortValue.TextAlign = ContentAlignment.MiddleLeft;
@@ -136,7 +136,7 @@ partial class StatusForm
         lblReachableLabel.TextAlign = ContentAlignment.MiddleLeft;
         lblReachableValue.Location = new Point(148, 169);
         lblReachableValue.Name = "lblReachableValue";
-        lblReachableValue.Size = new Size(200, 23);
+        lblReachableValue.Size = new Size(290, 23);
         lblReachableValue.TabIndex = 11;
         lblReachableValue.Text = "-";
         lblReachableValue.TextAlign = ContentAlignment.MiddleLeft;
@@ -148,7 +148,7 @@ partial class StatusForm
         lblLastSyncLabel.TextAlign = ContentAlignment.MiddleLeft;
         lblLastSyncValue.Location = new Point(148, 198);
         lblLastSyncValue.Name = "lblLastSyncValue";
-        lblLastSyncValue.Size = new Size(200, 23);
+        lblLastSyncValue.Size = new Size(290, 23);
         lblLastSyncValue.TabIndex = 13;
         lblLastSyncValue.Text = "-";
         lblLastSyncValue.TextAlign = ContentAlignment.MiddleLeft;

@@ -62,7 +62,6 @@ public partial class MediaManagerForm : Form
     {
         toolTip.SetToolTip(chkEnabled, "Enable or disable Media Manager - when enabled, files are imported on each sync cycle");
         toolTip.SetToolTip(txtTmdbApiKey, "Your TMDB credential - accepts both the API Key (v3, 32-char hex) and the API Read Access Token (v4, JWT). Get one free at themoviedb.org/settings/api.");
-        toolTip.SetToolTip(lblTmdbApiKey, "Your TMDB credential - accepts both the API Key (v3, 32-char hex) and the API Read Access Token (v4, JWT). Get one free at themoviedb.org/settings/api.");
         toolTip.SetToolTip(chkDryRun, "When checked, the automatic sync cycle will only log what it would import without touching any files");
         toolTip.SetToolTip(chkCreateFolders, "Import each title into its own Plex-recommended folder: Movies/Title (Year)/Title (Year).ext");
         toolTip.SetToolTip(chkDeleteEmptyFolders, "Delete source folders left empty after importing - folders containing only .nfo files are also removed");

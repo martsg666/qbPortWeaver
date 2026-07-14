@@ -68,7 +68,6 @@ public partial class SettingsForm : Form
         toolTip.SetToolTip(chkRestartQBittorrent, "Restart qBittorrent after updating the port - recommended for the change to take effect immediately");
         toolTip.SetToolTip(chkForceStartQBittorrent, "Automatically launch qBittorrent if it is not already running");
         toolTip.SetToolTip(nudDefaultPort, DefaultPortTooltip);
-        toolTip.SetToolTip(lblDefaultPort, DefaultPortTooltip);
         toolTip.SetToolTip(chkWarnOnInterfaceMismatch, "Show a warning when qBittorrent's network interface does not match the configured VPN provider");
         toolTip.SetToolTip(chkRestartOnDisconnect, "Automatically restart qBittorrent when its connection status becomes disconnected");
         toolTip.SetToolTip(txtTransmissionURL, "URL for the Transmission RPC endpoint (e.g. http://127.0.0.1:9091). Remote access must be enabled in Transmission Preferences > Remote (not required when running as a service).");
@@ -81,7 +80,6 @@ public partial class SettingsForm : Form
         toolTip.SetToolTip(chkRestartTransmission, "Restart Transmission after updating the port - recommended for the change to take effect immediately");
         toolTip.SetToolTip(chkForceStartTransmission, "Automatically launch Transmission if it is not already running");
         toolTip.SetToolTip(nudTransmissionDefaultPort, DefaultPortTooltip);
-        toolTip.SetToolTip(lblTransmissionDefaultPort, DefaultPortTooltip);
         toolTip.SetToolTip(txtDelugeURL, "URL for the Deluge Web UI (e.g. http://127.0.0.1:8112). The Web UI plugin must be enabled in Deluge's Plugin Manager.");
         toolTip.SetToolTip(txtDelugePassword, "Password for the Deluge Web UI");
         toolTip.SetToolTip(txtDelugeExePath, "Path to the Deluge executable, used to start or restart the application");
@@ -91,7 +89,6 @@ public partial class SettingsForm : Form
         toolTip.SetToolTip(chkRestartDeluge, "Restart Deluge after updating the port - recommended for the change to take effect immediately");
         toolTip.SetToolTip(chkForceStartDeluge, "Automatically launch Deluge if it is not already running");
         toolTip.SetToolTip(nudDelugeDefaultPort, DefaultPortTooltip);
-        toolTip.SetToolTip(lblDelugeDefaultPort, DefaultPortTooltip);
         toolTip.SetToolTip(txtPostUpdateCmd, "Shell command to run after a successful port update (leave empty to disable)");
         toolTip.SetToolTip(chkDebugMode, "Write verbose debug entries to the log file");
         toolTip.SetToolTip(cboColorTheme, "Application color theme (System, Dark, or Light) - a restart prompt will appear if changed");

@@ -283,14 +283,13 @@ Configured via tray menu → **Media Manager**.
 - Enable **Split Tunneling** and route only your BitTorrent client through the VPN.
 - Enable **Port Forwarding** (required for qbPortWeaver to work).
 - Select a **P2P server**.
-- Enable **NetShield**.
-- Use **OpenVPN (UDP)** as the protocol to avoid DNS resolution issues that can occur with WireGuard.
+- Use **Proton WireGuard (UDP)** as the protocol, listed under **Proton Protocols** (the new protocol family introduced in ProtonVPN 5.1.5). If you run into connection trouble on it, **OpenVPN (UDP)** is still available as a fallback.
 - Set ProtonVPN to **start with Windows**.
 - Set `VPN Provider` to `ProtonVPN` in qbPortWeaver Settings (reads the forwarded port from the ProtonVPN log file).
 
 > **Alternative:** ProtonVPN also supports NAT-PMP. If you prefer not to rely on log file parsing, set `VPN Provider` to `NAT-PMP` instead and select the ProtonVPN virtual adapter in the NAT-PMP Adapter dropdown. See the NAT-PMP Configuration section below.
 
-> **Proton's new protocols:** ProtonVPN 5.x.y adds in-house protocols (Proton WireGuard and Proton Stealth) whose tunnel adapter is named `ProTUN`. The earlier protocols name it `ProtonVPN` (standard WireGuard) or `ProtonVPN TUN` (OpenVPN). qbPortWeaver detects all of them automatically. If you switch between the earlier and the in-house protocols, reselect the active adapter wherever you have pinned it - the **NAT-PMP Adapter** dropdown and your client's **Network Interface** binding.
+> **Tunnel adapter names:** the **Proton Protocols** (Proton WireGuard, Proton Stealth) name the tunnel adapter `ProTUN` - so the recommended setup above gives you `ProTUN`. The earlier protocols name it `ProtonVPN` (standard WireGuard) or `ProtonVPN TUN` (OpenVPN). qbPortWeaver detects all of them automatically. If you switch protocols, reselect the active adapter wherever you have pinned it - the **NAT-PMP Adapter** dropdown and your client's **Network Interface** binding.
 
 ### 4. PIA Configuration (if using PIA instead of ProtonVPN)
 
@@ -329,7 +328,7 @@ NAT-PMP (RFC 6886) is a protocol for requesting port mappings directly from a ga
 - Enable **Anonymous Mode** (Options > BitTorrent).
 - Enable **Web UI** (Options > Web UI) and configure a username and password matching your qbPortWeaver Settings.
 - Bind the **network interface** to your VPN adapter (Options > Advanced > Network Interface) to prevent traffic leaks outside the VPN.
-  > **Note:** If you change ProtonVPN protocols, reselect the adapter here - the tunnel adapter is named `ProTUN` on the in-house protocols (Proton WireGuard, Proton Stealth), or `ProtonVPN` / `ProtonVPN TUN` on the earlier ones (standard WireGuard / OpenVPN). A stale binding triggers the interface mismatch warning.
+  > **Note:** If you change ProtonVPN protocols, reselect the adapter here - the tunnel adapter is named `ProTUN` on the Proton Protocols (Proton WireGuard, Proton Stealth), or `ProtonVPN` / `ProtonVPN TUN` on the earlier ones (standard WireGuard / OpenVPN). A stale binding triggers the interface mismatch warning.
 - Set qBittorrent to **start with Windows**.
 
 #### Transmission

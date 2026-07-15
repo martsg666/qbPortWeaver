@@ -228,8 +228,19 @@ public partial class StatusForm : Form
     private void ctxHistory_Opening(object? sender, System.ComponentModel.CancelEventArgs e)
         => ctxClearHistory.Enabled = _historyHasEntries;
 
+    // Confirmed like Clear Logs: the history file is deleted outright and cannot be recovered.
+    // ctxHistory_Opening already disables the item on an empty list, so this only ever prompts
+    // when there is something to lose.
     private void ctxClearHistory_Click(object? sender, EventArgs e)
     {
+        var confirm = MessageBox.Show(
+            "The recorded port history will be deleted. This cannot be undone.\n\nContinue?",
+            AppIdentity.AppName,
+            MessageBoxButtons.YesNo,
+            MessageBoxIcon.Warning);
+
+        if (confirm != DialogResult.Yes) return;
+
         PortHistoryManager.Clear();
         PopulateHistory();
     }

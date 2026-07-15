@@ -395,8 +395,18 @@ public partial class MainForm : Form
 
     private void showLogs_Click(object? sender, EventArgs e) => ShowLogViewer();
 
+    // Confirmed because the deletion is irreversible and the item sits directly below Show Logs -
+    // the user reaching for the log viewer is the one who can least afford to lose the history.
     private void clearLogs_Click(object? sender, EventArgs e)
     {
+        var confirm = MessageBox.Show(
+            "All log files, including rotated backups, will be deleted. This cannot be undone.\n\nContinue?",
+            AppIdentity.AppName,
+            MessageBoxButtons.YesNo,
+            MessageBoxIcon.Warning);
+
+        if (confirm != DialogResult.Yes) return;
+
         LogManager.Instance.ClearLogs();
         ResetLogAlerts();
         _trayIcon.ShowBalloonTip(AppConstants.BalloonTipDurationMs, AppIdentity.AppName, "Logs cleared", ToolTipIcon.Info);

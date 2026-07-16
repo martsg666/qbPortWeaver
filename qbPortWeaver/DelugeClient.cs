@@ -201,9 +201,12 @@ public sealed class DelugeClient : BitTorrentClientBase
             using var doc = JsonDocument.Parse(json);
             var root = doc.RootElement;
 
+            // Any non-null error object lands here, not only credential failures - keep the hint
+            // soft and let the raw server error carry the diagnosis. The definitive wrong-password
+            // case is the result:false branch below (Deluge returns false, not an error, for that).
             if (root.TryGetProperty(JsonPropError, out var error) && error.ValueKind != JsonValueKind.Null)
             {
-                LogManager.Instance.LogMessage($"{ClientName} authentication failed: {error} - wrong password - check the credentials in Settings", LogLevel.Error);
+                LogManager.Instance.LogMessage($"{ClientName} authentication failed: {error} - check the password in Settings and that the Web UI is running", LogLevel.Error);
                 return false;
             }
 

@@ -47,7 +47,6 @@ public partial class MediaManagerForm : Form
     protected override void OnLoad(EventArgs e)
     {
         base.OnLoad(e);
-        MinimumSize = Size; // lock minimum to initial window size so controls are never clipped
         _colorUncertain = AppConstants.LogWarning;
         _colorUnmatched = AppConstants.LogError;
         lblLegendUncertain.ForeColor = _colorUncertain;
@@ -63,7 +62,6 @@ public partial class MediaManagerForm : Form
     {
         toolTip.SetToolTip(chkEnabled, "Enable or disable Media Manager - when enabled, files are imported on each sync cycle");
         toolTip.SetToolTip(txtTmdbApiKey, "Your TMDB credential - accepts both the API Key (v3, 32-char hex) and the API Read Access Token (v4, JWT). Get one free at themoviedb.org/settings/api.");
-        toolTip.SetToolTip(lblTmdbApiKey, "Your TMDB credential - accepts both the API Key (v3, 32-char hex) and the API Read Access Token (v4, JWT). Get one free at themoviedb.org/settings/api.");
         toolTip.SetToolTip(chkDryRun, "When checked, the automatic sync cycle will only log what it would import without touching any files");
         toolTip.SetToolTip(chkCreateFolders, "Import each title into its own Plex-recommended folder: Movies/Title (Year)/Title (Year).ext");
         toolTip.SetToolTip(chkDeleteEmptyFolders, "Delete source folders left empty after importing - folders containing only .nfo files are also removed");
@@ -85,11 +83,14 @@ public partial class MediaManagerForm : Form
 
     protected override void OnFormClosing(FormClosingEventArgs e)
     {
-        if (_isBusy)
+        // Prompt only on a user-initiated close. Windows shutdown/logoff and Application.Exit
+        // close the form regardless of the answer, and a modal prompt during shutdown blocks it
+        // until Windows flags the app as preventing shutdown.
+        if (_isBusy && e.CloseReason == CloseReason.UserClosing)
         {
             var result = MessageBox.Show(
                 "A scan or import is in progress.\n\nClosing will cancel the operation. Any files already imported will remain in the library.\n\nClose anyway?",
-                $"{AppIdentity.AppName} | Media Manager",
+                AppIdentity.AppName,
                 MessageBoxButtons.YesNo,
                 MessageBoxIcon.Warning);
 
@@ -106,10 +107,8 @@ public partial class MediaManagerForm : Form
     {
         _operationCts?.Cancel();
         _operationCts?.Dispose();
-        _operationCts = null; // prevent double-dispose in Dispose(bool)
         _thumbnailCts?.Cancel();
         _thumbnailCts?.Dispose();
-        _thumbnailCts = null;
         foreach (var img in _posterCache.Values) img.Dispose();
         _posterCache.Clear();
         base.OnFormClosed(e);
@@ -459,7 +458,7 @@ public partial class MediaManagerForm : Form
 
         var confirm = MessageBox.Show(
             message,
-            $"{AppIdentity.AppName} | Media Manager",
+            AppIdentity.AppName,
             MessageBoxButtons.YesNo,
             icon);
 

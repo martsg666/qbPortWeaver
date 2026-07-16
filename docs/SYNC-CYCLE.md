@@ -76,7 +76,7 @@ The sync cycle instantiates a provider-specific `IVpnManager` based on the confi
 
 `Disabled` is the default for new installations.
 
-> **ProtonVPN adapter names:** ProtonVPN's tunnel adapter is named `ProtonVPN` (standard WireGuard) or `ProtonVPN TUN` (OpenVPN) on the earlier protocols, and `ProTUN` on the new in-house protocols (Proton WireGuard, Proton Stealth). The earlier names are matched via the registry-driven `protonVpnAdapterName` value (bidirectional substring) and `ProTUN` via `protonVpnNativeAdapterName`, so detection and interface matching work across protocols without reconfiguration.
+> **ProtonVPN adapter names:** ProtonVPN's tunnel adapter is named `ProtonVPN` (standard WireGuard) or `ProtonVPN TUN` (OpenVPN) on the earlier protocols, and `ProTUN` on the newer Proton Protocols (Proton WireGuard, Proton Stealth). The earlier names are matched via the registry-driven `protonVpnAdapterName` value (bidirectional substring) and `ProTUN` via `protonVpnNativeAdapterName`, so detection and interface matching work across protocols without reconfiguration.
 
 ### NAT-PMP Manager Creation
 
@@ -166,7 +166,9 @@ All client communication goes through the `IBitTorrentClient` interface, with im
    session-set                                                            [Transmission]
    core.set_config                                                        [Deluge]
 
-3. (optional) Show tray balloon tip if NotifyOnPortUpdate is enabled (raises PortUpdated event)
+3. Record the change in the port history file (always on success - see Port History under
+   Status Output), and (optional) show a tray balloon tip if NotifyOnPortUpdate is enabled
+   (raises PortUpdated event)
 4. (optional) Restart client process or service (if restart enabled)
 5. (optional, qBittorrent only) GET /api/v2/transfer/info → check connection_status
               If "disconnected" → restart qBittorrent
@@ -236,7 +238,7 @@ The update balloon is informational only - Windows 11 routes `ToolTipIcon.Info` 
 
 ## Status Output
 
-Every cycle writes a JSON status file (`qbPortWeaver.status.json` in `%LocalAppData%\qbPortWeaver\`) capturing the full cycle outcome. External tools can read this file to monitor sync health, and the in-app Status panel (tray menu -> Show Status, or double-click the tray icon) renders the same data live, refreshing after each cycle. The panel also exposes a **Sync Now** action and a **Test Port** button that runs the reachability check on demand (see Port Verification).
+Every cycle writes a JSON status file (`qbPortWeaver.status.json` in `%LocalAppData%\qbPortWeaver\`) capturing the full cycle outcome. External tools can read this file to monitor sync health, and the in-app Status panel (tray menu -> Show Status, or double-click the tray icon) renders the same data live, refreshing after each cycle. The panel also exposes a **Sync Now** action, a **Test Port** button that runs the reachability check on demand (see Port Verification), and a **Recent Port Changes** list backed by the persisted port history (see below; right-click the list to clear it).
 
 ```json
 {
@@ -263,6 +265,16 @@ The `status` field is one of:
 - **`success`** - port synced (or already matched)
 - **`error`** - something failed (VPN port unreadable, client unreachable, etc.)
 - **`skipped`** - VPN disconnected and no default port configured (no-op cycle)
+
+### Port History
+
+Alongside the per-cycle status file, `PortHistoryManager` keeps a persisted history of port-affecting events in `qbPortWeaver.history.json` (same folder), capped at the 50 most recent entries. Three points record into it:
+
+- **Successful port change** (`UpdatePortAndNotifyAsync`) - with the cause (VPN-assigned or default-port fallback) and the previous port
+- **Confirmed-closed transition** (`HandlePortClosedResult`) - one entry per persistent condition, not one per re-confirming cycle, mirroring the balloon
+- **Auto-recovery dispatch** (`DispatchRecoveryAsync`, both the failed-sync and port-closed triggers) - recorded as "triggered" at dispatch, before the helper reports the outcome; the log file carries the actual result
+
+Appends run on the sync loop thread, serialized by a lock with an atomic file replace. The Status panel reads the file on the UI thread without taking the lock; it can only ever see a complete old or new version, so the worst case is one transient empty refresh. The history persists across restarts deliberately - port changes are rare (VPN reconnects), so a session-only list would usually be empty.
 
 ## Diagnostics
 
@@ -297,17 +309,19 @@ RunAsync
          ├─ EnsureClientRunningAsync
          ├─ IBitTorrentClient.GetPreferencesAsync
          ├─ CheckInterfaceMatch (qBittorrent only)
-         ├─ ApplyPortUpdateAsync
-         │   ├─ IBitTorrentClient.SetListeningPortAsync
-         │   └─ IBitTorrentClient.RestartAsync
-         ├─ PortUpdated?.Invoke (if NotifyOnPortUpdate and port changed)
+         ├─ UpdatePortAndNotifyAsync (when ports differ)
+         │   ├─ ApplyPortUpdateAsync
+         │   │   ├─ IBitTorrentClient.SetListeningPortAsync
+         │   │   └─ IBitTorrentClient.RestartAsync
+         │   ├─ PortHistoryManager.Append (on successful change)
+         │   └─ PortUpdated?.Invoke (if NotifyOnPortUpdate)
          ├─ CheckAndRestartIfDisconnectedAsync (qBittorrent only; skipped if already restarted)
          │   └─ IBitTorrentClient.RestartAsync
          ├─ VerifyPortAsync (if verifyPortAfterSync and VPN connected)
          │   ├─ ShouldVerifyThisCycle (throttle)
          │   ├─ IBitTorrentClient.TestListeningPortAsync
          │   ├─ HandlePortOpenResult (re-arms port-closed recovery)
-         │   ├─ HandlePortClosedResult (PortVerificationFailed event on confirmed transition)
+         │   ├─ HandlePortClosedResult (PortVerificationFailed event + history entry on confirmed transition)
          │   └─ MaybeTriggerPortClosedRecoveryAsync (one-shot)
          │       └─ DispatchRecoveryAsync
          └─ SetSyncResult

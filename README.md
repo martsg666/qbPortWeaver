@@ -101,7 +101,7 @@ After installing, open **Settings** from the tray icon to configure the applicat
   After each sync cycle the tray icon shows a colored status dot: **green** (ports aligned), **orange** (VPN not connected), **red** (error), **gray** (sync paused), or **no dot** (port sync disabled). Hovering over the icon displays the current port and status, and an unviewed log count if warnings or errors have occurred (e.g. "2 Warnings, 1 Error").
 
 - **Status Panel**
-  A **Status** window (tray menu → Show Status, or double-click the tray icon) shows the live sync chain at a glance: VPN provider and connection, forwarded port, client and whether it is running, listening port (with an in-sync indicator), reachability, and the last sync time and result. Color accents flag anything out of sync, closed, or in error. It refreshes after each cycle; a **Sync Now** button runs an immediate cycle and **Test Port** checks reachability on demand.
+  A **Status** window (tray menu → Show Status, or double-click the tray icon) shows the live sync chain at a glance: VPN provider and connection, forwarded port, client and whether it is running, listening port (with an in-sync indicator), reachability, and the last sync time and result. Color accents flag anything out of sync, closed, or in error. A **Recent Port Changes** list shows the latest port assignments, confirmed-closed results, and auto-recovery actions with timestamps, kept across restarts (right-click the list to clear it). It refreshes after each cycle; a **Sync Now** button runs an immediate cycle and **Test Port** checks reachability on demand.
 
 - **Diagnostics**
   A **Run Diagnostics** action (Status panel and tray menu) runs a read-only health check across the whole sync chain and shows a pass/warning/fail checklist with a fix hint for each step: configuration, helper service, VPN connection and forwarded port, client running and reachable, ports in sync, interface binding, and outside reachability. **Re-run** refreshes it and **Copy Report** puts the results on the clipboard for a support request. It never changes the port or restarts anything.
@@ -113,7 +113,7 @@ After installing, open **Settings** from the tray icon to configure the applicat
   Each client section in Settings has a **Test** button next to the URL. It checks the connection to qBittorrent, Transmission, or Deluge using the values currently entered (no need to save first), then reports success along with the current listening port, or points you to the log if it cannot connect.
 
 - **Log Viewer**
-  Built-in log viewer (tray menu → Show Logs) displays the log file with color-coded entries by level (error, warn, info, debug) and follows new entries in real time. Includes a search bar with match highlighting and prev/next navigation, dedicated prev/next buttons to step between warnings and errors without affecting the search, toggle buttons to filter by log level, and a subsystem filter to isolate entries from a specific component. The view is virtualized, so filters apply instantly and scrolling stays smooth even on very large logs, and the viewer keeps a low, steady memory footprint when left open for days. Adapts to the application color theme (System, Dark, or Light).
+  Built-in log viewer (tray menu → Show Logs) displays the log file with color-coded entries by level (error, warn, info, debug) and follows new entries in real time. Includes a search bar with match highlighting and prev/next navigation, dedicated prev/next buttons to step between warnings and errors without affecting the search, toggle buttons to filter by log level, a subsystem filter to isolate entries from a specific component, and a file picker to browse rotated backup files. The view is virtualized, so filters apply instantly and scrolling stays smooth even on very large logs, and the viewer keeps a low, steady memory footprint when left open for days. Adapts to the application color theme (System, Dark, or Light).
 
 - **Consistent Theming**
   All windows - Settings, Status, Diagnostics, the log viewer, Media Manager, and the tray menu - follow your chosen color theme (System, Dark, or Light) uniformly, using the native Windows colors so text and surfaces stay legible in both light and dark mode.
@@ -126,6 +126,9 @@ After installing, open **Settings** from the tray icon to configure the applicat
 
 - **Automatic Update Checker & In-App Update**
   Checks GitHub for new releases on startup and every 12 hours, surfacing a newer version via an **Update available (X.Y.Z)** tray item and tooltip (the 12-hour check is non-intrusive; the startup form can be turned off under **Settings > General**). A **Check for Updates** item checks on demand and always reports a result. When an update is available, the update window offers **Download & Install** - it downloads the installer, runs it, and the app relaunches when the update finishes (falling back to the release page if anything goes wrong). The **About** dialog shows the current and latest version, update status, contributor links, and a **What's New** button.
+
+- **Built-in User Guide**
+  A **Help** item in the tray menu opens this user guide in a built-in viewer with a browsable table of contents, text search (Ctrl+F with match navigation), formatted headings, tables, and clickable links - no browser or internet connection needed.
 
 - **Startup Option**
   Allows enabling or disabling automatic startup with Windows.
@@ -156,9 +159,6 @@ On first run, all settings are initialized with sensible defaults.
 | Trigger after (confirmed closed checks) | Number of confirmed closed checks before auto-recovery is triggered | `3` |
 | Notify on port update | Show a tray balloon tip when the client's listening port is successfully updated | `True` |
 | Show update form on startup | When checked, opens the update form at startup if a newer version is found. When unchecked, only a tray notification is shown (the 12-hour periodic check is always non-intrusive) | `True` |
-| Post-update command | Command to run after a successful port update (leave empty to disable) | - |
-| Color theme | Application color theme: `System` (follows Windows), `Dark`, or `Light`. Requires a restart to take effect | `System` |
-| Debug logging | Enable verbose debug logging to the log file | `False` |
 
 #### qBittorrent
 
@@ -199,6 +199,14 @@ On first run, all settings are initialized with sensible defaults.
 | Restart after port change | Restart Deluge after updating the port (recommended) | `True` |
 | Force start if not running | Automatically launch Deluge if it is not running | `True` |
 | Default port (0 = disabled) | Fallback port to apply when VPN is not connected | `0` |
+
+#### Extra
+
+| Setting | Description | Default |
+|---|---|---|
+| Color theme | Application color theme: `System` (follows Windows), `Dark`, or `Light`. Requires a restart to take effect | `System` |
+| Post-update command | Command to run after a successful port update (leave empty to disable) | - |
+| Debug logging | Enable verbose debug logging to the log file | `False` |
 
 ### Media Manager Settings
 
@@ -258,6 +266,7 @@ Configured via tray menu → **Media Manager**.
 - **Settings** - opens the Settings dialog
 - **Media Manager** - opens the Media Manager dialog to configure source and library folders, preview imports (Scan Now), apply them (Import Now), and clear fingerprint caches (Clear Cache)
 - **Check for Updates** - checks GitHub for a newer release on demand and reports the result (also shown when already up to date)
+- **Help** - opens the user guide in a built-in viewer with a contents tree and search
 - **About** - shows version info and update status
 - **Start Automatically with Windows** - toggles the Windows startup registry entry
 - **Exit** - shuts down the application
@@ -279,14 +288,13 @@ Configured via tray menu → **Media Manager**.
 - Enable **Split Tunneling** and route only your BitTorrent client through the VPN.
 - Enable **Port Forwarding** (required for qbPortWeaver to work).
 - Select a **P2P server**.
-- Enable **NetShield**.
-- Use **OpenVPN (UDP)** as the protocol to avoid DNS resolution issues that can occur with WireGuard.
+- Use **Proton WireGuard (UDP)** as the protocol, listed under **Proton Protocols** (the new protocol family introduced in ProtonVPN 5.1.5). If you run into connection trouble on it, **OpenVPN (UDP)** is still available as a fallback.
 - Set ProtonVPN to **start with Windows**.
 - Set `VPN Provider` to `ProtonVPN` in qbPortWeaver Settings (reads the forwarded port from the ProtonVPN log file).
 
 > **Alternative:** ProtonVPN also supports NAT-PMP. If you prefer not to rely on log file parsing, set `VPN Provider` to `NAT-PMP` instead and select the ProtonVPN virtual adapter in the NAT-PMP Adapter dropdown. See the NAT-PMP Configuration section below.
 
-> **Proton's new protocols:** ProtonVPN 5.x.y adds in-house protocols (Proton WireGuard and Proton Stealth) whose tunnel adapter is named `ProTUN`. The earlier protocols name it `ProtonVPN` (standard WireGuard) or `ProtonVPN TUN` (OpenVPN). qbPortWeaver detects all of them automatically. If you switch between the earlier and the in-house protocols, reselect the active adapter wherever you have pinned it - the **NAT-PMP Adapter** dropdown and your client's **Network Interface** binding.
+> **Tunnel adapter names:** the **Proton Protocols** (Proton WireGuard, Proton Stealth) name the tunnel adapter `ProTUN` - so the recommended setup above gives you `ProTUN`. The earlier protocols name it `ProtonVPN` (standard WireGuard) or `ProtonVPN TUN` (OpenVPN). qbPortWeaver detects all of them automatically. If you switch protocols, reselect the active adapter wherever you have pinned it - the **NAT-PMP Adapter** dropdown and your client's **Network Interface** binding.
 
 ### 4. PIA Configuration (if using PIA instead of ProtonVPN)
 
@@ -325,7 +333,7 @@ NAT-PMP (RFC 6886) is a protocol for requesting port mappings directly from a ga
 - Enable **Anonymous Mode** (Options > BitTorrent).
 - Enable **Web UI** (Options > Web UI) and configure a username and password matching your qbPortWeaver Settings.
 - Bind the **network interface** to your VPN adapter (Options > Advanced > Network Interface) to prevent traffic leaks outside the VPN.
-  > **Note:** If you change ProtonVPN protocols, reselect the adapter here - the tunnel adapter is named `ProTUN` on the in-house protocols (Proton WireGuard, Proton Stealth), or `ProtonVPN` / `ProtonVPN TUN` on the earlier ones (standard WireGuard / OpenVPN). A stale binding triggers the interface mismatch warning.
+  > **Note:** If you change ProtonVPN protocols, reselect the adapter here - the tunnel adapter is named `ProTUN` on the Proton Protocols (Proton WireGuard, Proton Stealth), or `ProtonVPN` / `ProtonVPN TUN` on the earlier ones (standard WireGuard / OpenVPN). A stale binding triggers the interface mismatch warning.
 - Set qBittorrent to **start with Windows**.
 
 #### Transmission

@@ -49,6 +49,7 @@ public partial class MainForm : Form
     private SettingsForm? _settingsForm;
     private MediaManagerForm? _mediaManagerForm;
     private AboutForm? _aboutForm;
+    private HelpForm? _helpForm;
     private StatusForm? _statusForm;
     private UpdateAvailableForm? _updateAvailableForm;
     private DiagnosticsForm? _diagnosticsForm;
@@ -260,6 +261,7 @@ public partial class MainForm : Form
         _settingsForm?.Close();
         _mediaManagerForm?.Close();
         _aboutForm?.Close();
+        _helpForm?.Close();
         _statusForm?.Close();
         _updateAvailableForm?.Close();
         _diagnosticsForm?.Close();
@@ -316,9 +318,8 @@ public partial class MainForm : Form
     private void InitializeTrayIcon()
     {
         _trayMenu = new ContextMenuStrip();
-        // Render with the system renderer so the menu follows the app color mode (Application.SetColorMode)
-        // like the rest of the UI, instead of the light "professional" gradient the default renderer uses.
-        _trayMenu.RenderMode = ToolStripRenderMode.System;
+        // Dark-mode rendering (system renderer) is applied globally in Program.cs via
+        // ToolStripManager.RenderMode, so no per-menu setting is needed here.
 
         // Update notification - inserted at the top so it is the first thing the user sees
         // when an update is pending. Hidden until a check reports a newer version.
@@ -366,6 +367,7 @@ public partial class MainForm : Form
         _checkUpdatesMenuItem = new ToolStripMenuItem("Check for Updates");
         _checkUpdatesMenuItem.Click += checkUpdates_Click;
         _trayMenu.Items.Add(_checkUpdatesMenuItem);
+        _trayMenu.Items.Add("Help", null, showHelp_Click);
         _trayMenu.Items.Add("About", null, showAbout_Click);
         _trayMenu.Items.Add(new ToolStripSeparator());
 
@@ -393,8 +395,18 @@ public partial class MainForm : Form
 
     private void showLogs_Click(object? sender, EventArgs e) => ShowLogViewer();
 
+    // Confirmed because the deletion is irreversible and the item sits directly below Show Logs -
+    // the user reaching for the log viewer is the one who can least afford to lose the history.
     private void clearLogs_Click(object? sender, EventArgs e)
     {
+        var confirm = MessageBox.Show(
+            "All log files, including rotated backups, will be deleted. This cannot be undone.\n\nContinue?",
+            AppIdentity.AppName,
+            MessageBoxButtons.YesNo,
+            MessageBoxIcon.Warning);
+
+        if (confirm != DialogResult.Yes) return;
+
         LogManager.Instance.ClearLogs();
         ResetLogAlerts();
         _trayIcon.ShowBalloonTip(AppConstants.BalloonTipDurationMs, AppIdentity.AppName, "Logs cleared", ToolTipIcon.Info);
@@ -422,6 +434,11 @@ public partial class MainForm : Form
     private void showAbout_Click(object? sender, EventArgs e)
     {
         ShowOrActivate(() => _aboutForm, f => _aboutForm = f, CreateAboutForm);
+    }
+
+    private void showHelp_Click(object? sender, EventArgs e)
+    {
+        ShowOrActivate(() => _helpForm, f => _helpForm = f, () => new HelpForm());
     }
 
     // Builds the About dialog and routes its Update button into the shared in-app update dialog,

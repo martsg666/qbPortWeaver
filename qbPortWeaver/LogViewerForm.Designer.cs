@@ -164,7 +164,7 @@ partial class LogViewerForm
         // btnClearSearch floats inside the right edge of txtSearch (z-order above it); positioned in OnLoad.
         System.Windows.Forms.AnchorStyles rightAnchor = System.Windows.Forms.AnchorStyles.Right | System.Windows.Forms.AnchorStyles.Top;
 
-        // txtSearch - font set explicitly so height is predictable; vertically centered in the 36px toolbar
+        // txtSearch - height is auto-sized by its font; vertically centered in the 36px toolbar in OnLoad
         txtSearch.Anchor          = rightAnchor;
         txtSearch.BorderStyle     = System.Windows.Forms.BorderStyle.FixedSingle;
         txtSearch.Location        = new System.Drawing.Point(752, 8);
@@ -173,7 +173,7 @@ partial class LogViewerForm
         txtSearch.TabIndex        = 8;
         txtSearch.TextChanged    += txtSearch_TextChanged;
         txtSearch.KeyDown        += txtSearch_KeyDown;
-        toolTip.SetToolTip(txtSearch, "Search the log (highlights matches)");
+        toolTip.SetToolTip(txtSearch, "Search the log (Ctrl+F)");
 
         // btnClearSearch - overlays the right interior of txtSearch; sized and positioned in OnLoad.
         // Right-margin set to txtSearch.RightMargin - 2 so the button always stays 2px inside the box on resize.
@@ -277,7 +277,11 @@ partial class LogViewerForm
         Controls.Add(pnlToolbar);
         MaximizeBox         = true;
         MinimizeBox         = true;
-        MinimumSize         = new System.Drawing.Size(600, 300); // width raised at runtime in OnLoad from the toolbar layout
+        // Static designer minimum (DPI-scaled by AutoScaleMode.Font), the pattern shared by all
+        // sizable forms. Width is the point where the right-anchored search block would meet the left
+        // filter/combo block: cboLogFile.Right (624) + gap (8) + search-block width (344) = 976 client
+        // + ~16 window border. Height keeps the toolbar plus a usable log area.
+        MinimumSize         = new System.Drawing.Size(992, 300);
         Name                = "LogViewerForm";
         Icon                = Properties.Resources.qbPortWeaver;
         ShowIcon            = true;

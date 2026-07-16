@@ -126,8 +126,9 @@ public sealed class QBittorrentClient : BitTorrentClientBase
     // Core implementation shared by GetConnectionStatusAsync (restart-on-disconnect, failureLevel
     // = Error) and TestListeningPortAsync (best-effort port verification, failureLevel = Debug).
     // The failure level keeps the verification path's logging symmetric with Transmission/Deluge,
-    // which log their best-effort port-test failures at Debug. callerName labels the log lines with
-    // the public method that initiated the call, so a verify failure reads TestListeningPortAsync.
+    // which log their best-effort port-test failures at Debug. callerName labels the Debug-level
+    // lines with the public method that initiated the call, so a verify failure reads
+    // TestListeningPortAsync; Error-level lines stay plain prose like every other client error.
     private async Task<string?> GetConnectionStatusCoreAsync(LogLevel failureLevel, string callerName, CancellationToken cancellationToken)
     {
         if (!await EnsureAuthenticatedAsync(cancellationToken).ConfigureAwait(false)) return null;
@@ -138,7 +139,10 @@ public sealed class QBittorrentClient : BitTorrentClientBase
 
             if (!response.IsSuccessStatusCode)
             {
-                LogManager.Instance.LogMessage($"QBittorrentClient.{callerName}: Failed to get {ClientName} transfer info (HTTP {(int)response.StatusCode} {response.StatusCode})", failureLevel);
+                // Class.Method prefix only at Debug: user-facing Warn/Error entries are plain prose
+                // app-wide; the greppable prefix convention belongs to Debug entries.
+                string prefix = failureLevel == LogLevel.Debug ? $"QBittorrentClient.{callerName}: " : string.Empty;
+                LogManager.Instance.LogMessage($"{prefix}Failed to get {ClientName} transfer info (HTTP {(int)response.StatusCode} {response.StatusCode})", failureLevel);
                 return null;
             }
 

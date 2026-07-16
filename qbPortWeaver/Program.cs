@@ -13,6 +13,11 @@ internal static class Program
         TaskScheduler.UnobservedTaskException += OnUnobservedTaskException;
 
         Application.SetColorMode(ReadColorTheme());
+        // Route every menu (tray + all context menus) through the system renderer so they follow the
+        // app color mode set above. The default professional renderer paints a light gradient that
+        // ignores dark mode; setting this once here means no individual ContextMenuStrip has to
+        // remember it. Must come after SetColorMode and before any menu is created.
+        ToolStripManager.RenderMode = ToolStripManagerRenderMode.System;
         ApplicationConfiguration.Initialize();
 
         // Enforce single instance per Windows user using a named mutex.

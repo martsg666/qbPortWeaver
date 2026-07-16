@@ -22,6 +22,10 @@ public partial class StatusForm : Form
     /// <see cref="SetDiagnosticsRunning"/>.</summary>
     public event EventHandler? DiagnosticsRequested;
 
+    // Whether the history list currently shows real entries (false = empty-state row).
+    // Gates the Clear History context item so it cannot "clear" an already-empty history.
+    private bool _historyHasEntries;
+
     public StatusForm()
     {
         InitializeComponent();
@@ -43,6 +47,7 @@ public partial class StatusForm : Form
         // JSON the app just wrote, read at most once per sync cycle - offloading it would add
         // background/marshal complexity for no measurable gain.
         var snapshot = StatusManager.TryRead();
+        PopulateHistory();
         if (snapshot is null)
         {
             // No cycle has run yet (or the file was momentarily unreadable). Only show the
@@ -52,6 +57,40 @@ public partial class StatusForm : Form
             return;
         }
         Populate(snapshot);
+    }
+
+    // Repaints the port history list from the persisted history file, newest first. Rebuilt in
+    // full on each refresh - the history is capped at 50 entries, so this is a trivial repaint
+    // once per sync cycle, and full rebuild keeps it correct across trims and file resets.
+    private void PopulateHistory()
+    {
+        var entries = PortHistoryManager.Read();
+        _historyHasEntries = entries.Count > 0;
+        lvHistory.BeginUpdate();
+        lvHistory.Items.Clear();
+        if (entries.Count == 0)
+        {
+            lvHistory.Items.Add(new ListViewItem(["-", "-", "No port changes recorded yet"]) { ForeColor = NeutralColor });
+        }
+        else
+        {
+            for (int i = entries.Count - 1; i >= 0; i--)
+            {
+                PortHistoryEntry entry = entries[i];
+                lvHistory.Items.Add(new ListViewItem(
+                    [
+                        entry.Timestamp.LocalDateTime.ToString("yyyy-MM-dd HH:mm"),
+                        entry.Port?.ToString() ?? "-",
+                        entry.Event,
+                    ])
+                {
+                    // Normal port changes read in the default text color; confirmed-closed and
+                    // recovery events carry the warning accent, mirroring the panel's other values.
+                    ForeColor = entry.Kind == PortHistoryKind.PortChanged ? SystemColors.WindowText : WarnColor,
+                });
+            }
+        }
+        lvHistory.EndUpdate();
     }
 
     private void Populate(StatusSnapshot s)
@@ -185,6 +224,26 @@ public partial class StatusForm : Form
 
     private static void SetDefault(Label label, string text) => SetColor(label, text, SystemColors.ControlText);
     private static void SetNeutral(Label label, string text) => SetColor(label, text, NeutralColor);
+
+    private void ctxHistory_Opening(object? sender, System.ComponentModel.CancelEventArgs e)
+        => ctxClearHistory.Enabled = _historyHasEntries;
+
+    // Confirmed like Clear Logs: the history file is deleted outright and cannot be recovered.
+    // ctxHistory_Opening already disables the item on an empty list, so this only ever prompts
+    // when there is something to lose.
+    private void ctxClearHistory_Click(object? sender, EventArgs e)
+    {
+        var confirm = MessageBox.Show(
+            "The recorded port history will be deleted. This cannot be undone.\n\nContinue?",
+            AppIdentity.AppName,
+            MessageBoxButtons.YesNo,
+            MessageBoxIcon.Warning);
+
+        if (confirm != DialogResult.Yes) return;
+
+        PortHistoryManager.Clear();
+        PopulateHistory();
+    }
 
     private void btnSyncNow_Click(object? sender, EventArgs e) => SyncRequested?.Invoke(this, EventArgs.Empty);
 

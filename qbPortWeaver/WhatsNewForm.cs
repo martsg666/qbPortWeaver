@@ -9,6 +9,10 @@ public partial class WhatsNewForm : Form
         "If you find qbPortWeaver useful, please star it on GitHub.";
 
     private const string ReleaseFeaturesText =
+        "New in 2.6.2\n\n" +
+        "PLACEHOLDER\n" +
+        "Replace this section with the 2.6.2 release notes before tagging.\n\n" +
+        "Previously released\n\n" +
         "New in 2.6.1\n\n" +
         "Port history on the Status panel\n" +
         "The Status window now lists your recent port changes and recovery events with " +
@@ -30,7 +34,6 @@ public partial class WhatsNewForm : Form
         "Confirmation before clearing\n" +
         "Clearing your logs or your port history now asks you to confirm first, so a stray click " +
         "cannot wipe them.\n\n" +
-        "Previously released\n\n" +
         "New in 2.6.0\n\n" +
         "One-click diagnostics\n" +
         "A new Run Diagnostics action - on the Status panel and the tray menu - checks your entire " +

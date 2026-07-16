@@ -68,8 +68,8 @@ public partial class WhatsNewForm : Form
         "or installed and fills in its process and executable details. If more than one is found, it asks " +
         "you to choose. Review the connection settings, use Test, then Save.\n\n" +
         "Support for Proton's new protocols\n" +
-        "ProtonVPN 5.x.y adds the Proton Protocols (Proton WireGuard and Proton Stealth) that " +
-        "name their tunnel adapter differently than the earlier protocols. qbPortWeaver now detects it " +
+        "ProtonVPN 5.1.5 adds the Proton Protocols (Proton WireGuard and Proton Stealth) that " +
+        "name their tunnel adapter differently than the earlier protocols. qbPortWeaver now detects them " +
         "automatically, in both log-file and NAT-PMP modes. After switching to one of these protocols, " +
         "reselect the active adapter wherever you have pinned it - the NAT-PMP Adapter setting and your " +
         "client's network interface binding.\n\n" +

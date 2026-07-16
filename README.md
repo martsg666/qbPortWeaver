@@ -159,9 +159,6 @@ On first run, all settings are initialized with sensible defaults.
 | Trigger after (confirmed closed checks) | Number of confirmed closed checks before auto-recovery is triggered | `3` |
 | Notify on port update | Show a tray balloon tip when the client's listening port is successfully updated | `True` |
 | Show update form on startup | When checked, opens the update form at startup if a newer version is found. When unchecked, only a tray notification is shown (the 12-hour periodic check is always non-intrusive) | `True` |
-| Post-update command | Command to run after a successful port update (leave empty to disable) | - |
-| Color theme | Application color theme: `System` (follows Windows), `Dark`, or `Light`. Requires a restart to take effect | `System` |
-| Debug logging | Enable verbose debug logging to the log file | `False` |
 
 #### qBittorrent
 
@@ -202,6 +199,14 @@ On first run, all settings are initialized with sensible defaults.
 | Restart after port change | Restart Deluge after updating the port (recommended) | `True` |
 | Force start if not running | Automatically launch Deluge if it is not running | `True` |
 | Default port (0 = disabled) | Fallback port to apply when VPN is not connected | `0` |
+
+#### Extra
+
+| Setting | Description | Default |
+|---|---|---|
+| Color theme | Application color theme: `System` (follows Windows), `Dark`, or `Light`. Requires a restart to take effect | `System` |
+| Post-update command | Command to run after a successful port update (leave empty to disable) | - |
+| Debug logging | Enable verbose debug logging to the log file | `False` |
 
 ### Media Manager Settings
 

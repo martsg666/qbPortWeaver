@@ -83,11 +83,14 @@ public partial class MediaManagerForm : Form
 
     protected override void OnFormClosing(FormClosingEventArgs e)
     {
-        if (_isBusy)
+        // Prompt only on a user-initiated close. Windows shutdown/logoff and Application.Exit
+        // close the form regardless of the answer, and a modal prompt during shutdown blocks it
+        // until Windows flags the app as preventing shutdown.
+        if (_isBusy && e.CloseReason == CloseReason.UserClosing)
         {
             var result = MessageBox.Show(
                 "A scan or import is in progress.\n\nClosing will cancel the operation. Any files already imported will remain in the library.\n\nClose anyway?",
-                $"{AppIdentity.AppName} | Media Manager",
+                AppIdentity.AppName,
                 MessageBoxButtons.YesNo,
                 MessageBoxIcon.Warning);
 
@@ -455,7 +458,7 @@ public partial class MediaManagerForm : Form
 
         var confirm = MessageBox.Show(
             message,
-            $"{AppIdentity.AppName} | Media Manager",
+            AppIdentity.AppName,
             MessageBoxButtons.YesNo,
             icon);
 

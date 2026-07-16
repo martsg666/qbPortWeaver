@@ -70,7 +70,7 @@ public partial class StatusForm : Form
         lvHistory.Items.Clear();
         if (entries.Count == 0)
         {
-            lvHistory.Items.Add(new ListViewItem(["-", "", "No port changes recorded yet"]) { ForeColor = NeutralColor });
+            lvHistory.Items.Add(new ListViewItem(["-", "-", "No port changes recorded yet"]) { ForeColor = NeutralColor });
         }
         else
         {

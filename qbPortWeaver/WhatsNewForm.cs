@@ -10,8 +10,10 @@ public partial class WhatsNewForm : Form
 
     private const string ReleaseFeaturesText =
         "New in 2.6.2\n\n" +
-        "PLACEHOLDER\n" +
-        "Replace this section with the 2.6.2 release notes before tagging.\n\n" +
+        "Statistics on the Status panel\n" +
+        "A new Statistics section on the Status window shows how long your current port has " +
+        "been held, how many times it changed today, and this session's sync and recovery " +
+        "counts - a quick read on whether your setup is stable or churning.\n\n" +
         "Previously released\n\n" +
         "New in 2.6.1\n\n" +
         "Port history on the Status panel\n" +

@@ -15,7 +15,13 @@ public static class SessionStats
     /// <summary>When monitoring started. Uses the process start time rather than a class-load
     /// timestamp, so the value is accurate even though this class is first touched later (first
     /// sync cycle or Status panel open).</summary>
-    public static DateTimeOffset StartedAt { get; } = Process.GetCurrentProcess().StartTime;
+    public static DateTimeOffset StartedAt { get; }
+
+    static SessionStats()
+    {
+        using var process = Process.GetCurrentProcess();
+        StartedAt = process.StartTime;
+    }
 
     private static int _syncCount;
     private static int _syncOkCount;

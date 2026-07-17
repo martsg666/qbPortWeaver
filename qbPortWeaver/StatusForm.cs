@@ -124,11 +124,15 @@ public partial class StatusForm : Form
 
         SetDefault(lblChangesTodayValue, changesToday.ToString());
 
+        // OK count is read before the total: the sync loop increments the total first, so this
+        // order guarantees the displayed OK count never exceeds the displayed total even when a
+        // cycle completes between the two reads.
+        int syncsOk = SessionStats.SyncOkCount;
         int syncs = SessionStats.SyncCount;
         if (syncs == 0)
             SetNeutral(lblSyncsValue, "-");
         else
-            SetDefault(lblSyncsValue, $"{syncs} ({SessionStats.SyncOkCount} OK)");
+            SetDefault(lblSyncsValue, $"{syncs} ({syncsOk} OK)");
 
         SetDefault(lblRecoveriesValue, SessionStats.RecoveryCount.ToString());
 

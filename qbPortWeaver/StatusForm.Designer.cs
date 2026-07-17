@@ -246,6 +246,9 @@ partial class StatusForm
         lblSyncsLabel.TabIndex = 4;
         lblSyncsLabel.Text = "Syncs this session:";
         lblSyncsLabel.TextAlign = ContentAlignment.MiddleLeft;
+        // AutoEllipsis: after very long sessions the value ("10080 (10079 OK)") can outgrow the
+        // column; an ellipsis beats silent clipping.
+        lblSyncsValue.AutoEllipsis = true;
         lblSyncsValue.Location = new Point(148, 53);
         lblSyncsValue.Name = "lblSyncsValue";
         lblSyncsValue.Size = new Size(96, 23);

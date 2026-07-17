@@ -182,7 +182,10 @@ public sealed class PortSyncService
             if (!cancellationToken.IsCancellationRequested)
             {
                 StatusManager.Write(status);
-                LogCycleOutcome(status[StatusKeys.Status] as string);
+                string? outcome = status[StatusKeys.Status] as string;
+                LogCycleOutcome(outcome);
+                if (outcome != SyncStatusValues.Skipped)
+                    SessionStats.RecordSync(outcome == SyncStatusValues.Success);
                 LaunchPostUpdateCommandIfChanged(status);
                 RaiseSyncCompleted(status);
             }
@@ -1009,11 +1012,13 @@ public sealed class PortSyncService
             // "triggered", not "restarted": the entry is recorded at dispatch, before the
             // helper reports the outcome - the log file carries the actual result.
             PortHistoryManager.Append(PortHistoryKind.Recovery, null, $"Auto-recovery triggered for '{displayName}' (service restart)");
+            SessionStats.RecordRecovery();
             await AutoRecoveryManager.TriggerRestartAsync(recoveryTarget, cancellationToken).ConfigureAwait(false);
         }
         else if (action == HelperProtocol.ActionCycleAdapter)
         {
             PortHistoryManager.Append(PortHistoryKind.Recovery, null, $"Auto-recovery triggered for '{displayName}' (adapter cycle)");
+            SessionStats.RecordRecovery();
             await AutoRecoveryManager.TriggerCycleAdapterAsync(recoveryTarget, cancellationToken).ConfigureAwait(false);
         }
         else

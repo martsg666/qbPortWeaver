@@ -47,7 +47,7 @@ public partial class StatusForm : Form
         // JSON the app just wrote, read at most once per sync cycle - offloading it would add
         // background/marshal complexity for no measurable gain.
         var snapshot = StatusManager.TryRead();
-        PopulateHistory();
+        PopulateHistoryAndStatistics();
         if (snapshot is null)
         {
             // No cycle has run yet (or the file was momentarily unreadable). Only show the
@@ -59,12 +59,20 @@ public partial class StatusForm : Form
         Populate(snapshot);
     }
 
-    // Repaints the port history list from the persisted history file, newest first. Rebuilt in
-    // full on each refresh - the history is capped at 50 entries, so this is a trivial repaint
-    // once per sync cycle, and full rebuild keeps it correct across trims and file resets.
-    private void PopulateHistory()
+    // Reads the persisted history once and feeds both consumers: the history list and the
+    // history-derived statistics values.
+    private void PopulateHistoryAndStatistics()
     {
         var entries = PortHistoryManager.Read();
+        PopulateHistory(entries);
+        PopulateStatistics(entries);
+    }
+
+    // Repaints the port history list, newest first. Rebuilt in full on each refresh - the history
+    // is capped at 50 entries, so this is a trivial repaint once per sync cycle, and full rebuild
+    // keeps it correct across trims and file resets.
+    private void PopulateHistory(IReadOnlyList<PortHistoryEntry> entries)
+    {
         _historyHasEntries = entries.Count > 0;
         lvHistory.BeginUpdate();
         lvHistory.Items.Clear();
@@ -91,6 +99,54 @@ public partial class StatusForm : Form
             }
         }
         lvHistory.EndUpdate();
+    }
+
+    // Fills the Statistics group: two figures derived from the persisted port history (current
+    // port held, changes today) plus the in-memory session counters. Refreshed on the same tick
+    // as the rest of the panel, so "held" durations advance once per sync cycle.
+    private void PopulateStatistics(IReadOnlyList<PortHistoryEntry> entries)
+    {
+        PortHistoryEntry? lastChange = null;
+        int changesToday = 0;
+        DateTime today = DateTime.Now.Date;
+        foreach (PortHistoryEntry entry in entries)
+        {
+            if (entry.Kind != PortHistoryKind.PortChanged) continue;
+            lastChange = entry; // entries are oldest first, so the last hit is the newest
+            if (entry.Timestamp.LocalDateTime.Date == today)
+                changesToday++;
+        }
+
+        if (lastChange is null)
+            SetNeutral(lblPortHeldValue, "-");
+        else
+            SetDefault(lblPortHeldValue, FormatElapsed(DateTimeOffset.Now - lastChange.Timestamp));
+
+        SetDefault(lblChangesTodayValue, changesToday.ToString());
+
+        int syncs = SessionStats.SyncCount;
+        if (syncs == 0)
+            SetNeutral(lblSyncsValue, "-");
+        else
+            SetDefault(lblSyncsValue, $"{syncs} ({SessionStats.SyncOkCount} OK)");
+
+        SetDefault(lblRecoveriesValue, SessionStats.RecoveryCount.ToString());
+
+        DateTimeOffset started = SessionStats.StartedAt;
+        string startedText = started.LocalDateTime.Date == today
+            ? started.LocalDateTime.ToString("HH:mm")
+            : started.LocalDateTime.ToString("yyyy-MM-dd HH:mm");
+        SetDefault(lblMonitoringSinceValue, $"{startedText} ({FormatElapsed(DateTimeOffset.Now - started)})");
+    }
+
+    // Compact elapsed-time display for the statistics values: "3d 4h", "8h 28m", "12m", "<1m".
+    private static string FormatElapsed(TimeSpan elapsed)
+    {
+        if (elapsed < TimeSpan.Zero) elapsed = TimeSpan.Zero;
+        if (elapsed.TotalDays >= 1) return $"{(int)elapsed.TotalDays}d {elapsed.Hours}h";
+        if (elapsed.TotalHours >= 1) return $"{(int)elapsed.TotalHours}h {elapsed.Minutes}m";
+        if (elapsed.TotalMinutes >= 1) return $"{(int)elapsed.TotalMinutes}m";
+        return "<1m";
     }
 
     private void Populate(StatusSnapshot s)
@@ -242,7 +298,7 @@ public partial class StatusForm : Form
         if (confirm != DialogResult.Yes) return;
 
         PortHistoryManager.Clear();
-        PopulateHistory();
+        PopulateHistoryAndStatistics();
     }
 
     private void btnSyncNow_Click(object? sender, EventArgs e) => SyncRequested?.Invoke(this, EventArgs.Empty);

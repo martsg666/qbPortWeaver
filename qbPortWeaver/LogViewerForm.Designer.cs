@@ -140,8 +140,11 @@ partial class LogViewerForm
         toolTip.SetToolTip(btnIssueNext, "Next warning or error");
 
         // Subsystem filter - positioned after the level buttons and issue nav buttons
+        // FlatStyle.Flat on every combo (app-wide): the themed DropDownList face ignores dark
+        // mode and renders light; the flat face is drawn with the mode-aware BackColor instead.
         cboSubsystem.Anchor        = System.Windows.Forms.AnchorStyles.Left | System.Windows.Forms.AnchorStyles.Top;
         cboSubsystem.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
+        cboSubsystem.FlatStyle     = System.Windows.Forms.FlatStyle.Flat;
         cboSubsystem.Items.AddRange(new object[] { "All", Subsystem.MainApp, Subsystem.MediaManager, Subsystem.HelperService });
         cboSubsystem.Location      = new System.Drawing.Point(380, 6);
         cboSubsystem.Size          = new System.Drawing.Size(130, 23);
@@ -154,6 +157,7 @@ partial class LogViewerForm
         // Log file picker - populated in OnLoad; event wired there after population to avoid premature load
         cboLogFile.Anchor        = System.Windows.Forms.AnchorStyles.Left | System.Windows.Forms.AnchorStyles.Top;
         cboLogFile.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
+        cboLogFile.FlatStyle     = System.Windows.Forms.FlatStyle.Flat;
         cboLogFile.Location      = new System.Drawing.Point(514, 6);
         cboLogFile.Size          = new System.Drawing.Size(110, 23);
         cboLogFile.TabIndex      = 7;

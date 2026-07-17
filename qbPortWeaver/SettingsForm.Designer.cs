@@ -167,7 +167,10 @@ partial class SettingsForm
         lblBitTorrentClient.TextAlign = ContentAlignment.MiddleLeft;
         // Field width and button column match the client groups' URL + Test rows (field 244 wide,
         // button at x=398), so the buttons line up across tabs.
+        // FlatStyle.Flat on every combo (app-wide): the themed DropDownList face ignores dark
+        // mode and renders light; the flat face is drawn with the mode-aware BackColor instead.
         cboBitTorrentClient.DropDownStyle        = ComboBoxStyle.DropDownList;
+        cboBitTorrentClient.FlatStyle            = FlatStyle.Flat;
         cboBitTorrentClient.Location             = new Point(148, 24);
         cboBitTorrentClient.Name                 = "cboBitTorrentClient";
         cboBitTorrentClient.Size                 = new Size(244, 23);
@@ -211,10 +214,12 @@ partial class SettingsForm
         lblVpnProvider.TabIndex  = 7;
         lblVpnProvider.Text      = "VPN provider:";
         lblVpnProvider.TextAlign = ContentAlignment.MiddleLeft;
+        // Fills the row to the button column's right edge (x=468), like the adapter row below.
         cboVpnProvider.DropDownStyle        = ComboBoxStyle.DropDownList;
+        cboVpnProvider.FlatStyle            = FlatStyle.Flat;
         cboVpnProvider.Location             = new Point(148, 82);
         cboVpnProvider.Name                 = "cboVpnProvider";
-        cboVpnProvider.Size                 = new Size(244, 23);
+        cboVpnProvider.Size                 = new Size(320, 23);
         cboVpnProvider.TabIndex             = 8;
         cboVpnProvider.SelectedIndexChanged += cboVpnProvider_SelectedIndexChanged;
         lblNatPmpAdapter.Location  = new Point(12, 111);
@@ -224,6 +229,7 @@ partial class SettingsForm
         lblNatPmpAdapter.Text      = "NAT-PMP adapter:";
         lblNatPmpAdapter.TextAlign = ContentAlignment.MiddleLeft;
         cboNatPmpAdapter.DropDownStyle = ComboBoxStyle.DropDownList;
+        cboNatPmpAdapter.FlatStyle     = FlatStyle.Flat;
         cboNatPmpAdapter.Location      = new Point(148, 111);
         cboNatPmpAdapter.Name          = "cboNatPmpAdapter";
         cboNatPmpAdapter.Size          = new Size(290, 23);
@@ -668,9 +674,10 @@ partial class SettingsForm
         lblColorTheme.Text      = "Color theme:";
         lblColorTheme.TextAlign = ContentAlignment.MiddleLeft;
         cboColorTheme.DropDownStyle = ComboBoxStyle.DropDownList;
+        cboColorTheme.FlatStyle     = FlatStyle.Flat;
         cboColorTheme.Location      = new Point(148, 24);
         cboColorTheme.Name          = "cboColorTheme";
-        cboColorTheme.Size          = new Size(150, 23);
+        cboColorTheme.Size          = new Size(320, 23);
         cboColorTheme.TabIndex      = 1;
         lblPostUpdateCmd.Location  = new Point(12, 53);
         lblPostUpdateCmd.Name      = "lblPostUpdateCmd";

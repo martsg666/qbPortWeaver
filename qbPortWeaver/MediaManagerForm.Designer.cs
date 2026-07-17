@@ -131,11 +131,14 @@ partial class MediaManagerForm
         lblImportMode.TabIndex  = 6;
         lblImportMode.Text      = "Import mode:";
         lblImportMode.TextAlign = ContentAlignment.MiddleLeft;
+        // FlatStyle.Flat on every combo (app-wide): the themed DropDownList face ignores dark
+        // mode and renders light; the flat face is drawn with the mode-aware BackColor instead.
         cboImportMode.DropDownStyle = ComboBoxStyle.DropDownList;
+        cboImportMode.FlatStyle     = FlatStyle.Flat;
         cboImportMode.Items.AddRange(new object[] { "Hardlink", "Copy", "Move" });
         cboImportMode.Location = new Point(148, 169);
         cboImportMode.Name     = "cboImportMode";
-        cboImportMode.Size     = new Size(120, 23);
+        cboImportMode.Size     = new Size(508, 23); // fills the field column like txtTmdbApiKey above
         cboImportMode.TabIndex = 7;
         // ── grpLibrary ────────────────────────────────────────────────
         grpLibrary.Controls.Add(lblMoviesLibraryPath);

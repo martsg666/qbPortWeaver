@@ -314,6 +314,17 @@ public partial class StatusForm : Form
         PopulateHistoryAndStatistics();
     }
 
+    private void ctxStats_Opening(object? sender, System.ComponentModel.CancelEventArgs e)
+        => ctxClearStats.Enabled = SessionStats.SyncCount > 0 || SessionStats.RecoveryCount > 0;
+
+    // No confirmation, unlike Clear History: these are in-memory session counters that reset on
+    // every app restart anyway - nothing irreversible is lost (per the confirmation convention).
+    private void ctxClearStats_Click(object? sender, EventArgs e)
+    {
+        SessionStats.Reset();
+        PopulateHistoryAndStatistics();
+    }
+
     private void btnSyncNow_Click(object? sender, EventArgs e) => SyncRequested?.Invoke(this, EventArgs.Empty);
 
     private void btnTestPort_Click(object? sender, EventArgs e) => TestPortRequested?.Invoke(this, EventArgs.Empty);

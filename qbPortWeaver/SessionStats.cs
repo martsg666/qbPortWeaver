@@ -12,10 +12,11 @@ namespace qbPortWeaver;
 /// </summary>
 public static class SessionStats
 {
-    /// <summary>When monitoring started. Uses the process start time rather than a class-load
-    /// timestamp, so the value is accurate even though this class is first touched later (first
-    /// sync cycle or Status panel open).</summary>
-    public static DateTimeOffset StartedAt { get; }
+    /// <summary>When the current counting window started: the process start time, or the moment
+    /// of the last <see cref="Reset"/>. Process start rather than a class-load timestamp, so the
+    /// initial value is accurate even though this class is first touched later (first sync cycle
+    /// or Status panel open).</summary>
+    public static DateTimeOffset StartedAt { get; private set; }
 
     static SessionStats()
     {
@@ -47,4 +48,16 @@ public static class SessionStats
 
     /// <summary>Records one dispatched auto-recovery action.</summary>
     public static void RecordRecovery() => Interlocked.Increment(ref _recoveryCount);
+
+    /// <summary>Zeroes the counters and re-stamps <see cref="StartedAt"/> (the Status panel's
+    /// Clear Statistics command), so the figures read "since the clear". A RecordSync racing the
+    /// reset can leave one increment behind; harmless for display counters and gone by the next
+    /// clear or restart.</summary>
+    public static void Reset()
+    {
+        Interlocked.Exchange(ref _syncCount, 0);
+        Interlocked.Exchange(ref _syncOkCount, 0);
+        Interlocked.Exchange(ref _recoveryCount, 0);
+        StartedAt = DateTimeOffset.Now;
+    }
 }

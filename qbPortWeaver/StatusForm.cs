@@ -99,7 +99,16 @@ public partial class StatusForm : Form
             }
         }
         lvHistory.EndUpdate();
+        // Size the Event column to its longest entry so long events (recovery entries, cause
+        // annotations) can be read by scrolling horizontally, but never narrower than the
+        // designer width so short content still fills the list without a stray blank area.
+        colHistoryEvent.AutoResize(ColumnHeaderAutoResizeStyle.ColumnContent);
+        if (colHistoryEvent.Width < EventColumnMinWidth)
+            colHistoryEvent.Width = EventColumnMinWidth;
     }
+
+    // Matches the Event column's designer width, which fills the list (with Time + Port) exactly.
+    private const int EventColumnMinWidth = 256;
 
     // Fills the Statistics group: two figures derived from the persisted port history (current
     // port held, changes today) plus the in-memory session counters. Refreshed on the same tick

@@ -161,7 +161,7 @@ public sealed class PortSyncService
     /// <summary>Runs one port sync cycle and returns the configured update interval in seconds.
     /// <paramref name="networkChangeTriggered"/> marks a cycle started by the network-change
     /// re-sync; a port change it detects is annotated accordingly in the port history.</summary>
-    public async Task<int> RunAsync(CancellationToken cancellationToken = default, bool networkChangeTriggered = false)
+    public async Task<int> RunAsync(bool networkChangeTriggered = false, CancellationToken cancellationToken = default)
     {
         _networkChangeCycle = networkChangeTriggered;
         _recoveryPendingThisCycle = _recoveryDispatched;

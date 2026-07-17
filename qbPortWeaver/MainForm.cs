@@ -755,7 +755,7 @@ public partial class MainForm : Form
             LogManager.Instance.LogMessage("Sync cycle started", LogLevel.Info);
             bool networkChangeSync = _networkChangeSyncPending;
             _networkChangeSyncPending = false;
-            updateInterval = await _portSyncService.RunAsync(_shutdownCts.Token, networkChangeSync);
+            updateInterval = await _portSyncService.RunAsync(networkChangeSync, _shutdownCts.Token);
         }
         finally
         {

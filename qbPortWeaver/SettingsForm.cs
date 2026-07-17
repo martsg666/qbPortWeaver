@@ -468,7 +468,11 @@ public partial class SettingsForm : Form
         if (confirm != DialogResult.Yes) return;
 
         string provider = cboVpnProvider.SelectedItem?.ToString() ?? RegistrySettingsManager.VpnProviderDisabled;
-        string adapter = cboNatPmpAdapter.SelectedItem?.ToString() ?? string.Empty;
+        // While discovery is pending the combo is disabled and holds placeholder text, not an
+        // adapter name (same guard as SaveSettings); an empty adapter takes the clean no-manager path.
+        string adapter = cboNatPmpAdapter.Enabled
+            ? cboNatPmpAdapter.SelectedItem?.ToString() ?? string.Empty
+            : string.Empty;
 
         btnTestRecovery.Enabled = false;
         UseWaitCursor = true;

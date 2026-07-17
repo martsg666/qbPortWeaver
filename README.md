@@ -28,18 +28,28 @@ The application runs in the system tray, manages configuration and logging, and 
 
 ## Installation
 
-### Chocolatey (recommended)
-
-```
-choco install qbportweaver
-```
-
-Run from an elevated prompt. A newly released version may briefly lag behind the GitHub release while it is in Chocolatey moderation.
+All options install the same application. New versions appear on the GitHub release page first; the package managers follow once the new version clears their moderation.
 
 ### Manual (MSI)
 
 1. Download `qbPortWeaver_<version>_Setup.msi` from the [latest release](https://github.com/martsg666/qbPortWeaver/releases/latest).
 2. Run the installer (see the SmartScreen note above for the first-run warning).
+
+### winget
+
+```
+winget install qbportweaver
+```
+
+Built into Windows 10/11, no extra tooling needed.
+
+### Chocolatey
+
+```
+choco install qbportweaver
+```
+
+Run from an elevated prompt.
 
 After installing, open **Settings** from the tray icon to configure the application.
 

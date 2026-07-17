@@ -58,6 +58,7 @@ public partial class SettingsForm : Form
         toolTip.SetToolTip(nudUpdateInterval, "How often to run the sync cycle, in seconds - controls both port sync and Media Manager frequency");
         toolTip.SetToolTip(cboBitTorrentClient, "BitTorrent client to control (qBittorrent, Transmission, or Deluge)");
         toolTip.SetToolTip(btnDetectClient, "Detect a running or installed client and fill in its selection and process details");
+        toolTip.SetToolTip(btnTestRecovery, "Run the recovery action now to verify it works - restarts the VPN service (or cycles the adapter), so the VPN connection drops briefly");
         toolTip.SetToolTip(txtQBittorrentURL, "URL for the qBittorrent Web UI (e.g. http://127.0.0.1:8080). The Web UI must be enabled in qBittorrent under Tools > Options > Web UI.");
         toolTip.SetToolTip(txtQBittorrentUserName, "Username for the qBittorrent Web UI");
         toolTip.SetToolTip(txtQBittorrentPassword, "Password for the qBittorrent Web UI");
@@ -454,6 +455,53 @@ public partial class SettingsForm : Form
             target.Text = dlg.FileName;
     }
 
+    // Runs the configured recovery action on demand so the recovery chain (helper service,
+    // service discovery, VPN client relaunch) can be verified before a real failure needs it.
+    // Uses the in-form provider selection like the client Test buttons. Confirmed first because
+    // the action is disruptive (drops the VPN connection briefly) - Question icon, not Warning,
+    // per the confirmation convention: nothing is irreversibly lost.
+    private async void btnTestRecovery_Click(object? sender, EventArgs e) // async void is correct here (WinForms event handler)
+    {
+        var confirm = MessageBox.Show(
+            "This will run the recovery action now: the VPN service is restarted (or the adapter cycled) and the VPN connection drops briefly.\n\nContinue?",
+            AppIdentity.AppName, MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+        if (confirm != DialogResult.Yes) return;
+
+        string provider = cboVpnProvider.SelectedItem?.ToString() ?? RegistrySettingsManager.VpnProviderDisabled;
+        string adapter = cboNatPmpAdapter.SelectedItem?.ToString() ?? string.Empty;
+
+        btnTestRecovery.Enabled = false;
+        UseWaitCursor = true;
+        try
+        {
+            // Linked to the form-close token like the connection tests. No extra timeout: the
+            // helper pipe wait already has its own (the service stop/start takes a while by design).
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(_formCloseCts.Token);
+            bool dispatched = await PortSyncService.TestRecoveryAsync(provider, adapter, cts.Token);
+            if (IsDisposed) return;
+            if (dispatched)
+                MessageBox.Show(
+                    "Recovery action completed. See the log for the detailed outcome.",
+                    AppIdentity.AppName, MessageBoxButtons.OK, MessageBoxIcon.Information);
+            else
+                MessageBox.Show(
+                    "The recovery test could not run.\n\nCheck the VPN provider selection and see the log for details.",
+                    AppIdentity.AppName, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        }
+        catch (OperationCanceledException)
+        {
+            // Form closed while the test was in flight - nothing to report.
+        }
+        finally
+        {
+            if (!IsDisposed)
+            {
+                btnTestRecovery.Enabled = true;
+                UseWaitCursor = false;
+            }
+        }
+    }
+
     private async void btnTestQBittorrent_Click(object? sender, EventArgs e) // async void is correct here (WinForms event handler)
     {
         await RunConnectionTestAsync(
@@ -574,6 +622,7 @@ public partial class SettingsForm : Form
         btnDetectClient.Enabled = enabled;
         chkVerifyPort.Enabled = enabled;
         chkAutoRecovery.Enabled = enabled;
+        btnTestRecovery.Enabled = enabled;
         UpdateAutoRecoverySubControls();
 
         // qBittorrent / Deluge / Transmission section

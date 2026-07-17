@@ -75,6 +75,23 @@ public sealed class PortSyncService
     private int _confirmedClosedCount;
     private bool _portClosedRecoveryArmed = true;
 
+    // Set when a recovery action is dispatched (automatic or manual test) and consumed by the
+    // next successful cycle: a port change in that cycle gets the "after recovery" history
+    // annotation. Static because DispatchRecoveryAsync is shared by the sync loop's instance
+    // paths and the static manual-test entry point (TestRecoveryAsync); the app runs a single
+    // sync service, and volatile covers the manual test setting it from the UI thread.
+    private static volatile bool _recoveryDispatched;
+
+    // Snapshot of _recoveryDispatched taken at cycle start, so a recovery dispatched mid-cycle
+    // (port-closed trigger fires after the port update step) is never consumed by the same
+    // cycle that dispatched it. Serialised by MainForm._updateSemaphore.
+    private bool _recoveryPendingThisCycle;
+
+    // Whether the running cycle was triggered by a network change (passed in by MainForm's
+    // debounced NetworkChange handler). Drives the "after network change" history annotation.
+    // Overwritten at the start of every cycle; serialised by MainForm._updateSemaphore.
+    private bool _networkChangeCycle;
+
     // Fallback for when TryCreateForAdapterAsync cannot reach the configured adapter (e.g. VPN is
     // between disconnect and reconnect) - returned so IsVpnConnected() reports false and
     // RunCoreAsync handles disconnection gracefully. Cleared when the adapter name changes in settings.
@@ -141,9 +158,13 @@ public sealed class PortSyncService
         // Values for the Status key live in the public SyncStatusValues (shared with the Status panel).
     }
 
-    /// <summary>Runs one port sync cycle and returns the configured update interval in seconds.</summary>
-    public async Task<int> RunAsync(CancellationToken cancellationToken = default)
+    /// <summary>Runs one port sync cycle and returns the configured update interval in seconds.
+    /// <paramref name="networkChangeTriggered"/> marks a cycle started by the network-change
+    /// re-sync; a port change it detects is annotated accordingly in the port history.</summary>
+    public async Task<int> RunAsync(CancellationToken cancellationToken = default, bool networkChangeTriggered = false)
     {
+        _networkChangeCycle = networkChangeTriggered;
+        _recoveryPendingThisCycle = _recoveryDispatched;
         // Initialize status with default values. This is written to the status file at the end of the method (in finally)
         // so it captures the final state even if an exception occurs.
         // The RunCoreAsync method updates this dictionary as it progresses.
@@ -186,6 +207,12 @@ public sealed class PortSyncService
                 LogCycleOutcome(outcome);
                 if (outcome != SyncStatusValues.Skipped)
                     SessionStats.RecordSync(outcome == SyncStatusValues.Success);
+                // A successful cycle concludes a pending recovery whether or not the port
+                // changed (the annotation, if due, was applied during the cycle). Only the
+                // cycle-start snapshot is cleared, so a recovery dispatched mid-cycle
+                // stays pending for the next one.
+                if (outcome == SyncStatusValues.Success && _recoveryPendingThisCycle)
+                    _recoveryDispatched = false; // NOSONAR S2696 - the app runs a single sync service; the field is static only because the manual-test dispatch path is static
                 LaunchPostUpdateCommandIfChanged(status);
                 RaiseSyncCompleted(status);
             }
@@ -555,20 +582,57 @@ public sealed class PortSyncService
     /// <see cref="CreateStatelessVpnManager"/>; only the NAT-PMP arm is per-path (plain probe here, sticky
     /// fallback there) - keep that arm in step when adding a non-stateless provider.
     /// </summary>
-    internal static async Task<IVpnManager?> BuildActiveVpnManagerAsync(CancellationToken cancellationToken = default)
+    internal static Task<IVpnManager?> BuildActiveVpnManagerAsync(CancellationToken cancellationToken = default)
     {
         string provider = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyVpnProvider);
+        string adapter = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyNatPmpAdapterName);
+        return BuildVpnManagerForAsync(provider, adapter, cancellationToken);
+    }
 
+    // Core of BuildActiveVpnManagerAsync with the provider selection passed in, so the Settings
+    // form's recovery test can build from its in-form (possibly unsaved) selection - the same
+    // convention the client Test buttons follow.
+    private static async Task<IVpnManager?> BuildVpnManagerForAsync(string provider, string? natPmpAdapterName, CancellationToken cancellationToken)
+    {
         if (CreateStatelessVpnManager(provider) is { } manager)
             return manager;
 
         if (provider.Equals(RegistrySettingsManager.VpnProviderNatPmp, StringComparison.OrdinalIgnoreCase))
         {
-            string adapter = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyNatPmpAdapterName);
-            if (string.IsNullOrWhiteSpace(adapter)) return null;
-            return await NatPmpManager.TryCreateForAdapterAsync(adapter, cancellationToken: cancellationToken).ConfigureAwait(false);
+            if (string.IsNullOrWhiteSpace(natPmpAdapterName)) return null;
+            return await NatPmpManager.TryCreateForAdapterAsync(natPmpAdapterName, cancellationToken: cancellationToken).ConfigureAwait(false);
         }
         return null; // Disabled or unrecognized
+    }
+
+    /// <summary>
+    /// Dispatches the recovery action for the given provider selection on demand (the Settings
+    /// form's Auto-recovery Test button). Runs the exact same action as automatic recovery (VPN
+    /// service restart, or adapter cycle for NAT-PMP) so the recovery chain - helper service,
+    /// service discovery, VPN client relaunch - can be verified before a real failure needs it.
+    /// Returns <see langword="false"/> when nothing could be dispatched (provider disabled or
+    /// unrecognized, adapter unreachable, or no recovery target); the outcome of a dispatched
+    /// action is reported through the log exactly like an automatic recovery.
+    /// </summary>
+    public static async Task<bool> TestRecoveryAsync(string vpnProvider, string? natPmpAdapterName, CancellationToken cancellationToken = default)
+    {
+        IVpnManager? vpnManager = await BuildVpnManagerForAsync(vpnProvider, natPmpAdapterName, cancellationToken).ConfigureAwait(false);
+        if (vpnManager is null)
+        {
+            LogManager.Instance.LogMessage($"Recovery test: no VPN manager available for provider '{vpnProvider}' - nothing to test", LogLevel.Warn);
+            return false;
+        }
+
+        string? target = vpnManager.GetRecoveryTarget();
+        if (target is null)
+        {
+            LogManager.Instance.LogMessage($"Recovery test: no recovery target found for '{vpnManager.ProviderName}'", LogLevel.Warn);
+            return false;
+        }
+
+        LogManager.Instance.LogMessage($"Recovery test requested for '{vpnManager.ProviderName}'", LogLevel.Info);
+        await DispatchRecoveryAsync(vpnManager.GetRecoveryAction(), target, vpnManager.ProviderName, cancellationToken, manualTest: true).ConfigureAwait(false);
+        return true;
     }
 
     // Ensures the BitTorrent client is running, then updates its port if it differs from the target port
@@ -624,10 +688,15 @@ public sealed class PortSyncService
     {
         if (!await ApplyPortUpdateAsync(manager, targetPort, config, status, cancellationToken).ConfigureAwait(false))
             return false;
+        // Cause annotation: recovery takes precedence over network change (a recovery usually
+        // produces a network change too, and the recovery is the root cause).
+        string cause = string.Empty;
+        if (_recoveryPendingThisCycle) cause = " - after recovery";
+        else if (_networkChangeCycle) cause = " - after network change";
         PortHistoryManager.Append(PortHistoryKind.PortChanged, targetPort,
-            config.VpnManager is null
+            (config.VpnManager is null
                 ? $"Default port applied (was {previousPort})"
-                : $"VPN assigned new port (was {previousPort})");
+                : $"VPN assigned new port (was {previousPort})") + cause);
         if (config.NotifyOnPortUpdate)
             NotifyPortUpdated(manager.ClientName, targetPort);
         return true;
@@ -1004,21 +1073,27 @@ public sealed class PortSyncService
     }
 
     // Dispatches a recovery action to the helper service. Shared by the failed-cycle trigger
-    // (TryTriggerRecoveryAsync) and the port-closed trigger (MaybeTriggerPortClosedRecoveryAsync).
-    private static async Task DispatchRecoveryAsync(string action, string recoveryTarget, string displayName, CancellationToken cancellationToken)
+    // (TryTriggerRecoveryAsync), the port-closed trigger (MaybeTriggerPortClosedRecoveryAsync),
+    // and the on-demand recovery test (TestRecoveryAsync, manualTest = true). A manual test is
+    // not counted in the session's auto-recovery statistic (the label says "Auto-recoveries")
+    // but is recorded in the history and arms the "after recovery" annotation like a real one.
+    private static async Task DispatchRecoveryAsync(string action, string recoveryTarget, string displayName, CancellationToken cancellationToken, bool manualTest = false)
     {
+        string trigger = manualTest ? "Recovery test" : "Auto-recovery";
         if (action == HelperProtocol.ActionRestart)
         {
             // "triggered", not "restarted": the entry is recorded at dispatch, before the
             // helper reports the outcome - the log file carries the actual result.
-            PortHistoryManager.Append(PortHistoryKind.Recovery, null, $"Auto-recovery triggered for '{displayName}' (service restart)");
-            SessionStats.RecordRecovery();
+            PortHistoryManager.Append(PortHistoryKind.Recovery, null, $"{trigger} triggered for '{displayName}' (service restart)");
+            if (!manualTest) SessionStats.RecordRecovery();
+            _recoveryDispatched = true;
             await AutoRecoveryManager.TriggerRestartAsync(recoveryTarget, cancellationToken).ConfigureAwait(false);
         }
         else if (action == HelperProtocol.ActionCycleAdapter)
         {
-            PortHistoryManager.Append(PortHistoryKind.Recovery, null, $"Auto-recovery triggered for '{displayName}' (adapter cycle)");
-            SessionStats.RecordRecovery();
+            PortHistoryManager.Append(PortHistoryKind.Recovery, null, $"{trigger} triggered for '{displayName}' (adapter cycle)");
+            if (!manualTest) SessionStats.RecordRecovery();
+            _recoveryDispatched = true;
             await AutoRecoveryManager.TriggerCycleAdapterAsync(recoveryTarget, cancellationToken).ConfigureAwait(false);
         }
         else

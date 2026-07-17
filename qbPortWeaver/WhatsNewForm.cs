@@ -14,6 +14,13 @@ public partial class WhatsNewForm : Form
         "A new Statistics section on the Status window shows how long your current port has " +
         "been held, how many times it changed today, and this session's sync and recovery " +
         "counts - a quick read on whether your setup is stable or churning.\n\n" +
+        "Test your auto-recovery\n" +
+        "A new Test button next to the Auto-recovery settings runs the recovery action on " +
+        "demand, so you can confirm the whole chain works - helper service, VPN restart, " +
+        "client relaunch - before a real failure needs it.\n\n" +
+        "Port history shows the cause\n" +
+        "Port changes in the Status window's history now note what prompted them - a network " +
+        "change or a recovery - so you can see at a glance why your port moved.\n\n" +
         "Previously released\n\n" +
         "New in 2.6.1\n\n" +
         "Port history on the Status panel\n" +

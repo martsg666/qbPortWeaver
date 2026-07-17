@@ -630,8 +630,11 @@ public sealed class PortSyncService
             return false;
         }
 
-        LogManager.Instance.LogMessage($"Recovery test requested for '{vpnManager.ProviderName}'", LogLevel.Info);
+        // Bookend the test in the log so its start and end stand out from automatic recovery
+        // entries - the dispatched action's own entries land between the two lines.
+        LogManager.Instance.LogMessage($"Recovery test started manually for '{vpnManager.ProviderName}'", LogLevel.Info);
         await DispatchRecoveryAsync(vpnManager.GetRecoveryAction(), target, vpnManager.ProviderName, cancellationToken, manualTest: true).ConfigureAwait(false);
+        LogManager.Instance.LogMessage($"Recovery test completed for '{vpnManager.ProviderName}' - see the entries above for the outcome", LogLevel.Info);
         return true;
     }
 

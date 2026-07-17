@@ -165,15 +165,17 @@ partial class SettingsForm
         lblBitTorrentClient.TabIndex  = 0;
         lblBitTorrentClient.Text      = "Client:";
         lblBitTorrentClient.TextAlign = ContentAlignment.MiddleLeft;
+        // Field width and button column match the client groups' URL + Test rows (field 244 wide,
+        // button at x=398), so the buttons line up across tabs.
         cboBitTorrentClient.DropDownStyle        = ComboBoxStyle.DropDownList;
         cboBitTorrentClient.Location             = new Point(148, 24);
         cboBitTorrentClient.Name                 = "cboBitTorrentClient";
-        cboBitTorrentClient.Size                 = new Size(200, 23);
+        cboBitTorrentClient.Size                 = new Size(244, 23);
         cboBitTorrentClient.TabIndex             = 1;
         cboBitTorrentClient.SelectedIndexChanged += cboBitTorrentClient_SelectedIndexChanged;
-        btnDetectClient.Location = new Point(354, 24);
+        btnDetectClient.Location = new Point(398, 24);
         btnDetectClient.Name     = "btnDetectClient";
-        btnDetectClient.Size     = new Size(80, 23);
+        btnDetectClient.Size     = new Size(70, 23);
         btnDetectClient.TabIndex = 2;
         btnDetectClient.Text     = "Detect";
         btnDetectClient.Click   += btnDetectClient_Click;
@@ -212,7 +214,7 @@ partial class SettingsForm
         cboVpnProvider.DropDownStyle        = ComboBoxStyle.DropDownList;
         cboVpnProvider.Location             = new Point(148, 82);
         cboVpnProvider.Name                 = "cboVpnProvider";
-        cboVpnProvider.Size                 = new Size(200, 23);
+        cboVpnProvider.Size                 = new Size(244, 23);
         cboVpnProvider.TabIndex             = 8;
         cboVpnProvider.SelectedIndexChanged += cboVpnProvider_SelectedIndexChanged;
         lblNatPmpAdapter.Location  = new Point(12, 111);

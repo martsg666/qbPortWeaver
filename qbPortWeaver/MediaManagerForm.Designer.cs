@@ -309,6 +309,15 @@ partial class MediaManagerForm
         dgvResults.BackgroundColor       = SystemColors.Window;
         dgvResults.BorderStyle           = BorderStyle.Fixed3D;
         dgvResults.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.AutoSize;
+        // Header visual styles ignore the color theme and always render light; disabling them
+        // lets the headers use the mode-aware system colors like the rest of the grid.
+        dgvResults.EnableHeadersVisualStyles = false;
+        dgvResults.ColumnHeadersDefaultCellStyle.BackColor = SystemColors.Control;
+        dgvResults.ColumnHeadersDefaultCellStyle.ForeColor = SystemColors.ControlText;
+        // Selection variants match the normal colors so headers never flash the selection
+        // blue when their column's cells are selected (FullRowSelect).
+        dgvResults.ColumnHeadersDefaultCellStyle.SelectionBackColor = SystemColors.Control;
+        dgvResults.ColumnHeadersDefaultCellStyle.SelectionForeColor = SystemColors.ControlText;
         dgvResults.Columns.AddRange(colInclude, colType, colCurrent, colProposed);
         dgvResults.Anchor       = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Bottom;
         dgvResults.Location     = new Point(8, 328);

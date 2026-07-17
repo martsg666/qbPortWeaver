@@ -238,7 +238,7 @@ The update balloon is informational only - Windows 11 routes `ToolTipIcon.Info` 
 
 ## Status Output
 
-Every cycle writes a JSON status file (`qbPortWeaver.status.json` in `%LocalAppData%\qbPortWeaver\`) capturing the full cycle outcome. External tools can read this file to monitor sync health, and the in-app Status panel (tray menu -> Show Status, or double-click the tray icon) renders the same data live, refreshing after each cycle. The panel also exposes a **Sync Now** action, a **Test Port** button that runs the reachability check on demand (see Port Verification), and a **Recent Port Changes** list backed by the persisted port history (see below; right-click the list to clear it).
+Every cycle writes a JSON status file (`qbPortWeaver.status.json` in `%LocalAppData%\qbPortWeaver\`) capturing the full cycle outcome. External tools can read this file to monitor sync health, and the in-app Status panel (tray menu -> Show Status, or double-click the tray icon) renders the same data live, refreshing after each cycle. The panel also exposes a **Sync Now** action, a **Test Port** button that runs the reachability check on demand (see Port Verification), a **Recent Port Changes** list backed by the persisted port history (see below; right-click the list to clear it), and a **Statistics** group (see Session Statistics).
 
 ```json
 {
@@ -275,6 +275,12 @@ Alongside the per-cycle status file, `PortHistoryManager` keeps a persisted hist
 - **Auto-recovery dispatch** (`DispatchRecoveryAsync`, both the failed-sync and port-closed triggers) - recorded as "triggered" at dispatch, before the helper reports the outcome; the log file carries the actual result
 
 Appends run on the sync loop thread, serialized by a lock with an atomic file replace. The Status panel reads the file on the UI thread without taking the lock; it can only ever see a complete old or new version, so the worst case is one transient empty refresh. The history persists across restarts deliberately - port changes are rare (VPN reconnects), so a session-only list would usually be empty.
+
+### Session Statistics
+
+The Status panel's **Statistics** group combines two sources. Two figures are derived from the persisted port history on each panel refresh: how long the current port has been held (time since the newest port-change entry) and how many port changes were recorded today. The rest come from `SessionStats`, in-memory session counters: completed sync cycles and how many succeeded, auto-recovery dispatches, and the monitoring start time (taken from the process start time). `PortSyncService` records a sync outcome in `RunAsync`'s `finally` block - skipped cycles are excluded, since they are no-op cycles rather than attempts - and records a recovery at dispatch, next to the history append in `DispatchRecoveryAsync`.
+
+The counters are incremented on the sync loop thread with `Interlocked` and read on the UI thread with `Volatile`; the panel reads the success count before the total so the displayed pair can never show more successes than syncs. They are deliberately not persisted - "this session" is the scope that makes the numbers meaningful, and they reset naturally on restart. The group refreshes on the same per-cycle tick as the rest of the panel, so elapsed values advance once per cycle while the panel is open.
 
 ## Diagnostics
 

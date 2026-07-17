@@ -284,16 +284,14 @@ partial class StatusForm
         lblMonitoringSinceValue.TextAlign = ContentAlignment.MiddleLeft;
         // Discrete clear option - right-click the Statistics group (mirrors the history list's
         // context menu). Session counters only: the history-derived figures (port held, changes
-        // today) are cleared through the history list's own Clear History. ContextMenuStrip does
-        // not propagate to child controls, and the group's face is mostly labels, so the same
-        // menu is attached to every child as well.
+        // today) are cleared through the history list's own Clear History. The menu is also
+        // attached to every child label in the constructor (AttachStatsContextMenu), since
+        // ContextMenuStrip does not propagate from a container to its children.
         ctxClearStats.Text = "Clear Statistics";
         ctxClearStats.Click += ctxClearStats_Click;
         ctxStats.Items.Add(ctxClearStats);
         ctxStats.Opening += ctxStats_Opening;
         grpStats.ContextMenuStrip = ctxStats;
-        foreach (Control child in grpStats.Controls)
-            child.ContextMenuStrip = ctxStats;
         // ── Diagnostics hint (shown only when a cycle looks wrong; color set in StatusForm) ──
         lblDiagnosticsHint.Location = new Point(8, 532);
         lblDiagnosticsHint.Name = "lblDiagnosticsHint";

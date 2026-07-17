@@ -30,6 +30,17 @@ public partial class StatusForm : Form
     {
         InitializeComponent();
         Text = $"{AppIdentity.AppName} | Status";
+        AttachStatsContextMenu();
+    }
+
+    // The Statistics group's Clear menu also has to be attached to each child label:
+    // ContextMenuStrip does not propagate from a container to its children, and the group's
+    // face is almost entirely labels. Kept out of the designer file so a designer round-trip
+    // cannot strip it.
+    private void AttachStatsContextMenu()
+    {
+        foreach (Control child in grpStats.Controls)
+            child.ContextMenuStrip = ctxStats;
     }
 
     protected override void OnLoad(EventArgs e)
@@ -135,9 +146,12 @@ public partial class StatusForm : Form
 
         // OK count is read before the total: the sync loop increments the total first, so this
         // order guarantees the displayed OK count never exceeds the displayed total even when a
-        // cycle completes between the two reads.
+        // cycle completes between the two reads. The clamp additionally covers the Clear
+        // Statistics reset race, where a sync straddling the non-atomic Reset can briefly leave
+        // the stored OK above the stored total.
         int syncsOk = SessionStats.SyncOkCount;
         int syncs = SessionStats.SyncCount;
+        if (syncsOk > syncs) syncsOk = syncs;
         if (syncs == 0)
             SetNeutral(lblSyncsValue, "-");
         else

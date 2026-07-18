@@ -452,7 +452,7 @@ partial class MediaManagerForm
         ShowIcon        = true;
         ShowInTaskbar   = true;
         StartPosition   = FormStartPosition.CenterScreen;
-        Text            = "qbPortWeaver | Media Manager";
+        Text            = "qbPortWeaver | Media Manager"; // overridden in constructor
         grpGeneral.ResumeLayout(false);
         grpGeneral.PerformLayout();
         grpLibrary.ResumeLayout(false);

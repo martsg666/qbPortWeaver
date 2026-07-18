@@ -752,7 +752,7 @@ partial class SettingsForm
         ShowIcon        = false;
         ShowInTaskbar   = false;
         StartPosition   = FormStartPosition.CenterScreen;
-        Text            = "qbPortWeaver | Settings";
+        Text            = "qbPortWeaver | Settings"; // overridden in constructor
         grpGeneral.ResumeLayout(false);
         grpGeneral.PerformLayout();
         ((System.ComponentModel.ISupportInitialize)nudUpdateInterval).EndInit();

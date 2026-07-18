@@ -108,7 +108,7 @@ partial class UpdateAvailableForm
         ShowIcon        = false;
         ShowInTaskbar   = false;
         StartPosition   = FormStartPosition.CenterScreen;
-        Text            = "Update Available";
+        Text            = "Update Available"; // overridden in constructor
 
         grpInfo.ResumeLayout(false);
         ResumeLayout(false);

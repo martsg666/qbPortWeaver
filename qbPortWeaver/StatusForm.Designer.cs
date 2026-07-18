@@ -15,6 +15,7 @@ partial class StatusForm
 
     private void InitializeComponent()
     {
+        components = new System.ComponentModel.Container();
         grpStatus = new GroupBox();
         lblVpnProviderLabel = new Label();
         lblVpnProviderValue = new Label();
@@ -35,7 +36,7 @@ partial class StatusForm
         colHistoryTime = new ColumnHeader();
         colHistoryPort = new ColumnHeader();
         colHistoryEvent = new ColumnHeader();
-        ctxHistory = new ContextMenuStrip();
+        ctxHistory = new ContextMenuStrip(components);
         ctxClearHistory = new ToolStripMenuItem();
         grpStats = new GroupBox();
         lblPortHeldLabel = new Label();
@@ -48,11 +49,9 @@ partial class StatusForm
         lblRecoveriesValue = new Label();
         lblMonitoringSinceLabel = new Label();
         lblMonitoringSinceValue = new Label();
-        ctxStats = new ContextMenuStrip();
+        ctxStats = new ContextMenuStrip(components);
         ctxClearStats = new ToolStripMenuItem();
-        components = new System.ComponentModel.Container();
-        components.Add(ctxHistory);
-        components.Add(ctxStats);
+        toolTip = new ToolTip(components);
         btnSyncNow = new Button();
         btnTestPort = new Button();
         btnRunDiagnostics = new Button();
@@ -307,18 +306,21 @@ partial class StatusForm
         btnSyncNow.TabIndex = 4;
         btnSyncNow.Text = "Sync Now";
         btnSyncNow.Click += btnSyncNow_Click;
+        toolTip.SetToolTip(btnSyncNow, "Run a sync cycle immediately instead of waiting for the next interval (works while paused, for one cycle)");
         btnTestPort.Location = new Point(112, 558);
         btnTestPort.Name = "btnTestPort";
         btnTestPort.Size = new Size(96, 28);
         btnTestPort.TabIndex = 5;
         btnTestPort.Text = "Test Port";
         btnTestPort.Click += btnTestPort_Click;
+        toolTip.SetToolTip(btnTestPort, "Check now whether the listening port is reachable from the Internet (may take up to 20 seconds)");
         btnRunDiagnostics.Location = new Point(216, 558);
         btnRunDiagnostics.Name = "btnRunDiagnostics";
         btnRunDiagnostics.Size = new Size(118, 28);
         btnRunDiagnostics.TabIndex = 6;
         btnRunDiagnostics.Text = "Run Diagnostics";
         btnRunDiagnostics.Click += btnRunDiagnostics_Click;
+        toolTip.SetToolTip(btnRunDiagnostics, "Run a read-only health check of the whole sync chain - never changes the port or restarts anything");
         btnClose.DialogResult = DialogResult.Cancel;
         btnClose.Location = new Point(380, 558);
         btnClose.Name = "btnClose";
@@ -394,4 +396,5 @@ partial class StatusForm
     private Button   btnRunDiagnostics;
     private Button   btnClose;
     private Label    lblDiagnosticsHint;
+    private ToolTip  toolTip;
 }

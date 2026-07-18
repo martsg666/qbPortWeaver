@@ -84,6 +84,11 @@ public partial class MainForm : Form
     // does NOT override pause or log as a manual sync.
     private volatile bool _quickRecheckPending;
 
+    // Marks the next cycle as network-change triggered so a port change it detects gets the
+    // "after network change" annotation in the port history. One-shot: consumed by the next
+    // cycle, unlike _quickRecheckPending which also drives the short re-check that follows.
+    private volatile bool _networkChangeSyncPending;
+
     // Pause flag for the sync loop (thread-safe with volatile). Deliberately in-memory only:
     // a restart always resumes syncing, so the app can never silently sit in a paused state
     // the user forgot about. While paused the whole cycle body is skipped - port sync AND the
@@ -643,6 +648,7 @@ public partial class MainForm : Form
         LogManager.Instance.LogMessage("Network change detected, triggering sync cycle", LogLevel.Info);
         // Set before interrupting so the triggered cycle observes it and schedules a short re-check.
         _quickRecheckPending = true;
+        _networkChangeSyncPending = true;
         InterruptDelay();
     }
 
@@ -747,7 +753,9 @@ public partial class MainForm : Form
         {
             LogManager.Instance.LogBlankLine();
             LogManager.Instance.LogMessage("Sync cycle started", LogLevel.Info);
-            updateInterval = await _portSyncService.RunAsync(_shutdownCts.Token);
+            bool networkChangeSync = _networkChangeSyncPending;
+            _networkChangeSyncPending = false;
+            updateInterval = await _portSyncService.RunAsync(networkChangeSync, _shutdownCts.Token);
         }
         finally
         {

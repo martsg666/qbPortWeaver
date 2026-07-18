@@ -15,6 +15,7 @@ partial class StatusForm
 
     private void InitializeComponent()
     {
+        components = new System.ComponentModel.Container();
         grpStatus = new GroupBox();
         lblVpnProviderLabel = new Label();
         lblVpnProviderValue = new Label();
@@ -35,10 +36,22 @@ partial class StatusForm
         colHistoryTime = new ColumnHeader();
         colHistoryPort = new ColumnHeader();
         colHistoryEvent = new ColumnHeader();
-        ctxHistory = new ContextMenuStrip();
+        ctxHistory = new ContextMenuStrip(components);
         ctxClearHistory = new ToolStripMenuItem();
-        components = new System.ComponentModel.Container();
-        components.Add(ctxHistory);
+        grpStats = new GroupBox();
+        lblPortHeldLabel = new Label();
+        lblPortHeldValue = new Label();
+        lblChangesTodayLabel = new Label();
+        lblChangesTodayValue = new Label();
+        lblSyncsLabel = new Label();
+        lblSyncsValue = new Label();
+        lblRecoveriesLabel = new Label();
+        lblRecoveriesValue = new Label();
+        lblMonitoringSinceLabel = new Label();
+        lblMonitoringSinceValue = new Label();
+        ctxStats = new ContextMenuStrip(components);
+        ctxClearStats = new ToolStripMenuItem();
+        toolTip = new ToolTip(components);
         btnSyncNow = new Button();
         btnTestPort = new Button();
         btnRunDiagnostics = new Button();
@@ -46,6 +59,7 @@ partial class StatusForm
         lblDiagnosticsHint = new Label();
         grpStatus.SuspendLayout();
         grpHistory.SuspendLayout();
+        grpStats.SuspendLayout();
         SuspendLayout();
         // ── grpStatus ─────────────────────────────────────────────────
         grpStatus.Controls.Add(lblVpnProviderLabel);
@@ -165,7 +179,7 @@ partial class StatusForm
         colHistoryPort.Text = "Port";
         colHistoryPort.Width = 52;
         colHistoryEvent.Text = "Event";
-        colHistoryEvent.Width = 256; // fills the list width (with Time + Port) so no stray blank column area shows
+        colHistoryEvent.Width = 256; // fills the list width (with Time + Port); grown to the longest entry on populate (horizontal scroll) but never below this (StatusForm.EventColumnMinWidth)
         // Window (input surface), not the Control chrome: this is an embedded data panel inside a
         // label-heavy dialog, so it reads as a distinct data box (like MediaManagerForm.dgvResults).
         // Contrast with LogViewerForm.lvLog, which uses Control because it fills the whole window.
@@ -187,38 +201,131 @@ partial class StatusForm
         ctxHistory.Items.Add(ctxClearHistory);
         ctxHistory.Opening += ctxHistory_Opening;
         lvHistory.ContextMenuStrip = ctxHistory;
+        // ── grpStats (session counters + history-derived figures; populated in PopulateStatistics) ──
+        grpStats.Controls.Add(lblPortHeldLabel);
+        grpStats.Controls.Add(lblPortHeldValue);
+        grpStats.Controls.Add(lblChangesTodayLabel);
+        grpStats.Controls.Add(lblChangesTodayValue);
+        grpStats.Controls.Add(lblSyncsLabel);
+        grpStats.Controls.Add(lblSyncsValue);
+        grpStats.Controls.Add(lblRecoveriesLabel);
+        grpStats.Controls.Add(lblRecoveriesValue);
+        grpStats.Controls.Add(lblMonitoringSinceLabel);
+        grpStats.Controls.Add(lblMonitoringSinceValue);
+        grpStats.Location = new Point(8, 416);
+        grpStats.Name = "grpStats";
+        grpStats.Size = new Size(454, 110);
+        grpStats.TabIndex = 2;
+        grpStats.TabStop = false;
+        grpStats.Text = "Statistics";
+        lblPortHeldLabel.Location = new Point(12, 24);
+        lblPortHeldLabel.Name = "lblPortHeldLabel";
+        lblPortHeldLabel.Size = new Size(130, 23);
+        lblPortHeldLabel.TabIndex = 0;
+        lblPortHeldLabel.Text = "Current port held:";
+        lblPortHeldLabel.TextAlign = ContentAlignment.MiddleLeft;
+        lblPortHeldValue.Location = new Point(148, 24);
+        lblPortHeldValue.Name = "lblPortHeldValue";
+        lblPortHeldValue.Size = new Size(96, 23);
+        lblPortHeldValue.TabIndex = 1;
+        lblPortHeldValue.Text = "-";
+        lblPortHeldValue.TextAlign = ContentAlignment.MiddleLeft;
+        lblChangesTodayLabel.Location = new Point(248, 24);
+        lblChangesTodayLabel.Name = "lblChangesTodayLabel";
+        lblChangesTodayLabel.Size = new Size(134, 23);
+        lblChangesTodayLabel.TabIndex = 2;
+        lblChangesTodayLabel.Text = "Port changes today:";
+        lblChangesTodayLabel.TextAlign = ContentAlignment.MiddleLeft;
+        lblChangesTodayValue.Location = new Point(386, 24);
+        lblChangesTodayValue.Name = "lblChangesTodayValue";
+        lblChangesTodayValue.Size = new Size(56, 23);
+        lblChangesTodayValue.TabIndex = 3;
+        lblChangesTodayValue.Text = "-";
+        lblChangesTodayValue.TextAlign = ContentAlignment.MiddleLeft;
+        lblSyncsLabel.Location = new Point(12, 53);
+        lblSyncsLabel.Name = "lblSyncsLabel";
+        lblSyncsLabel.Size = new Size(130, 23);
+        lblSyncsLabel.TabIndex = 4;
+        lblSyncsLabel.Text = "Syncs this session:";
+        lblSyncsLabel.TextAlign = ContentAlignment.MiddleLeft;
+        // AutoEllipsis: after very long sessions the value ("10080 (10079 OK)") can outgrow the
+        // column; an ellipsis beats silent clipping.
+        lblSyncsValue.AutoEllipsis = true;
+        lblSyncsValue.Location = new Point(148, 53);
+        lblSyncsValue.Name = "lblSyncsValue";
+        lblSyncsValue.Size = new Size(96, 23);
+        lblSyncsValue.TabIndex = 5;
+        lblSyncsValue.Text = "-";
+        lblSyncsValue.TextAlign = ContentAlignment.MiddleLeft;
+        lblRecoveriesLabel.Location = new Point(248, 53);
+        lblRecoveriesLabel.Name = "lblRecoveriesLabel";
+        lblRecoveriesLabel.Size = new Size(134, 23);
+        lblRecoveriesLabel.TabIndex = 6;
+        lblRecoveriesLabel.Text = "Auto-recoveries:";
+        lblRecoveriesLabel.TextAlign = ContentAlignment.MiddleLeft;
+        lblRecoveriesValue.Location = new Point(386, 53);
+        lblRecoveriesValue.Name = "lblRecoveriesValue";
+        lblRecoveriesValue.Size = new Size(56, 23);
+        lblRecoveriesValue.TabIndex = 7;
+        lblRecoveriesValue.Text = "-";
+        lblRecoveriesValue.TextAlign = ContentAlignment.MiddleLeft;
+        lblMonitoringSinceLabel.Location = new Point(12, 82);
+        lblMonitoringSinceLabel.Name = "lblMonitoringSinceLabel";
+        lblMonitoringSinceLabel.Size = new Size(130, 23);
+        lblMonitoringSinceLabel.TabIndex = 8;
+        lblMonitoringSinceLabel.Text = "Monitoring since:";
+        lblMonitoringSinceLabel.TextAlign = ContentAlignment.MiddleLeft;
+        lblMonitoringSinceValue.Location = new Point(148, 82);
+        lblMonitoringSinceValue.Name = "lblMonitoringSinceValue";
+        lblMonitoringSinceValue.Size = new Size(294, 23);
+        lblMonitoringSinceValue.TabIndex = 9;
+        lblMonitoringSinceValue.Text = "-";
+        lblMonitoringSinceValue.TextAlign = ContentAlignment.MiddleLeft;
+        // Discrete clear option - right-click the Statistics group (mirrors the history list's
+        // context menu). Session counters only: the history-derived figures (port held, changes
+        // today) are cleared through the history list's own Clear History. The menu is also
+        // attached to every child label in the constructor (AttachStatsContextMenu), since
+        // ContextMenuStrip does not propagate from a container to its children.
+        ctxClearStats.Text = "Clear Statistics";
+        ctxClearStats.Click += ctxClearStats_Click;
+        ctxStats.Items.Add(ctxClearStats);
+        ctxStats.Opening += ctxStats_Opening;
+        grpStats.ContextMenuStrip = ctxStats;
         // ── Diagnostics hint (shown only when a cycle looks wrong; color set in StatusForm) ──
-        lblDiagnosticsHint.Location = new Point(8, 414);
+        lblDiagnosticsHint.Location = new Point(8, 532);
         lblDiagnosticsHint.Name = "lblDiagnosticsHint";
         lblDiagnosticsHint.Size = new Size(454, 20);
-        lblDiagnosticsHint.TabIndex = 2;
+        lblDiagnosticsHint.TabIndex = 3;
         lblDiagnosticsHint.Text = "Something looks off. Click Run Diagnostics for details.";
         lblDiagnosticsHint.TextAlign = ContentAlignment.MiddleLeft;
         lblDiagnosticsHint.Visible = false;
         // ── Buttons ───────────────────────────────────────────────────
-        btnSyncNow.Location = new Point(8, 440);
+        btnSyncNow.Location = new Point(8, 558);
         btnSyncNow.Name = "btnSyncNow";
         btnSyncNow.Size = new Size(96, 28);
-        btnSyncNow.TabIndex = 3;
+        btnSyncNow.TabIndex = 4;
         btnSyncNow.Text = "Sync Now";
         btnSyncNow.Click += btnSyncNow_Click;
-        btnTestPort.Location = new Point(112, 440);
+        toolTip.SetToolTip(btnSyncNow, "Run a sync cycle immediately instead of waiting for the next interval (works while paused, for one cycle)");
+        btnTestPort.Location = new Point(112, 558);
         btnTestPort.Name = "btnTestPort";
         btnTestPort.Size = new Size(96, 28);
-        btnTestPort.TabIndex = 4;
+        btnTestPort.TabIndex = 5;
         btnTestPort.Text = "Test Port";
         btnTestPort.Click += btnTestPort_Click;
-        btnRunDiagnostics.Location = new Point(216, 440);
+        toolTip.SetToolTip(btnTestPort, "Check now whether the listening port is reachable from the Internet (may take up to 20 seconds)");
+        btnRunDiagnostics.Location = new Point(216, 558);
         btnRunDiagnostics.Name = "btnRunDiagnostics";
         btnRunDiagnostics.Size = new Size(118, 28);
-        btnRunDiagnostics.TabIndex = 5;
+        btnRunDiagnostics.TabIndex = 6;
         btnRunDiagnostics.Text = "Run Diagnostics";
         btnRunDiagnostics.Click += btnRunDiagnostics_Click;
+        toolTip.SetToolTip(btnRunDiagnostics, "Run a read-only health check of the whole sync chain - never changes the port or restarts anything");
         btnClose.DialogResult = DialogResult.Cancel;
-        btnClose.Location = new Point(380, 440);
+        btnClose.Location = new Point(380, 558);
         btnClose.Name = "btnClose";
         btnClose.Size = new Size(82, 28);
-        btnClose.TabIndex = 6;
+        btnClose.TabIndex = 7;
         btnClose.Text = "Close";
         btnClose.Click += btnClose_Click;
         // ── StatusForm ────────────────────────────────────────────────
@@ -226,9 +333,10 @@ partial class StatusForm
         AutoScaleDimensions = new SizeF(7F, 15F);
         AutoScaleMode = AutoScaleMode.Font;
         CancelButton = btnClose;
-        ClientSize = new Size(470, 476);
+        ClientSize = new Size(470, 594);
         Controls.Add(grpStatus);
         Controls.Add(grpHistory);
+        Controls.Add(grpStats);
         Controls.Add(lblDiagnosticsHint);
         Controls.Add(btnSyncNow);
         Controls.Add(btnTestPort);
@@ -244,11 +352,25 @@ partial class StatusForm
         Text = "qbPortWeaver | Status"; // overridden in constructor
         grpStatus.ResumeLayout(false);
         grpHistory.ResumeLayout(false);
+        grpStats.ResumeLayout(false);
         ResumeLayout(false);
     }
 
     private GroupBox grpStatus;
     private GroupBox grpHistory;
+    private GroupBox grpStats;
+    private Label    lblPortHeldLabel;
+    private Label    lblPortHeldValue;
+    private Label    lblChangesTodayLabel;
+    private Label    lblChangesTodayValue;
+    private Label    lblSyncsLabel;
+    private Label    lblSyncsValue;
+    private Label    lblRecoveriesLabel;
+    private Label    lblRecoveriesValue;
+    private Label    lblMonitoringSinceLabel;
+    private Label    lblMonitoringSinceValue;
+    private ContextMenuStrip  ctxStats;
+    private ToolStripMenuItem ctxClearStats;
     private ListView lvHistory;
     private ColumnHeader colHistoryTime;
     private ColumnHeader colHistoryPort;
@@ -274,4 +396,5 @@ partial class StatusForm
     private Button   btnRunDiagnostics;
     private Button   btnClose;
     private Label    lblDiagnosticsHint;
+    private ToolTip  toolTip;
 }

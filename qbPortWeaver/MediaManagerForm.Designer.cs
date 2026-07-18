@@ -131,11 +131,14 @@ partial class MediaManagerForm
         lblImportMode.TabIndex  = 6;
         lblImportMode.Text      = "Import mode:";
         lblImportMode.TextAlign = ContentAlignment.MiddleLeft;
+        // FlatStyle.Flat on every combo (app-wide): the themed DropDownList face ignores dark
+        // mode and renders light; the flat face is drawn with the mode-aware BackColor instead.
         cboImportMode.DropDownStyle = ComboBoxStyle.DropDownList;
+        cboImportMode.FlatStyle     = FlatStyle.Flat;
         cboImportMode.Items.AddRange(new object[] { "Hardlink", "Copy", "Move" });
         cboImportMode.Location = new Point(148, 169);
         cboImportMode.Name     = "cboImportMode";
-        cboImportMode.Size     = new Size(120, 23);
+        cboImportMode.Size     = new Size(508, 23); // fills the field column like txtTmdbApiKey above
         cboImportMode.TabIndex = 7;
         // ── grpLibrary ────────────────────────────────────────────────
         grpLibrary.Controls.Add(lblMoviesLibraryPath);
@@ -306,6 +309,15 @@ partial class MediaManagerForm
         dgvResults.BackgroundColor       = SystemColors.Window;
         dgvResults.BorderStyle           = BorderStyle.Fixed3D;
         dgvResults.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.AutoSize;
+        // Header visual styles ignore the color theme and always render light; disabling them
+        // lets the headers use the mode-aware system colors like the rest of the grid.
+        dgvResults.EnableHeadersVisualStyles = false;
+        dgvResults.ColumnHeadersDefaultCellStyle.BackColor = SystemColors.Control;
+        dgvResults.ColumnHeadersDefaultCellStyle.ForeColor = SystemColors.ControlText;
+        // Selection variants match the normal colors so headers never flash the selection
+        // blue when their column's cells are selected (FullRowSelect).
+        dgvResults.ColumnHeadersDefaultCellStyle.SelectionBackColor = SystemColors.Control;
+        dgvResults.ColumnHeadersDefaultCellStyle.SelectionForeColor = SystemColors.ControlText;
         dgvResults.Columns.AddRange(colInclude, colType, colCurrent, colProposed);
         dgvResults.Anchor       = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Bottom;
         dgvResults.Location     = new Point(8, 328);
@@ -440,7 +452,7 @@ partial class MediaManagerForm
         ShowIcon        = true;
         ShowInTaskbar   = true;
         StartPosition   = FormStartPosition.CenterScreen;
-        Text            = "qbPortWeaver | Media Manager";
+        Text            = "qbPortWeaver | Media Manager"; // overridden in constructor
         grpGeneral.ResumeLayout(false);
         grpGeneral.PerformLayout();
         grpLibrary.ResumeLayout(false);

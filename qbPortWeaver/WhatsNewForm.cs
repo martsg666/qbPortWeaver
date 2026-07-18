@@ -9,6 +9,19 @@ public partial class WhatsNewForm : Form
         "If you find qbPortWeaver useful, please star it on GitHub.";
 
     private const string ReleaseFeaturesText =
+        "New in 2.6.2\n\n" +
+        "Statistics on the Status panel\n" +
+        "A new Statistics section on the Status window shows how long your current port has " +
+        "been held, how many times it changed today, and this session's sync and recovery " +
+        "counts - a quick read on whether your setup is stable or churning.\n\n" +
+        "Test your auto-recovery\n" +
+        "A new Test button next to the Auto-recovery settings runs the recovery action on " +
+        "demand, so you can confirm the whole chain works - helper service, VPN restart, " +
+        "client relaunch - before a real failure needs it.\n\n" +
+        "Port history shows the cause\n" +
+        "Port changes in the Status window's history now note what prompted them - a network " +
+        "change or a recovery - so you can see at a glance why your port moved.\n\n" +
+        "Previously released\n\n" +
         "New in 2.6.1\n\n" +
         "Port history on the Status panel\n" +
         "The Status window now lists your recent port changes and recovery events with " +
@@ -30,7 +43,6 @@ public partial class WhatsNewForm : Form
         "Confirmation before clearing\n" +
         "Clearing your logs or your port history now asks you to confirm first, so a stray click " +
         "cannot wipe them.\n\n" +
-        "Previously released\n\n" +
         "New in 2.6.0\n\n" +
         "One-click diagnostics\n" +
         "A new Run Diagnostics action - on the Status panel and the tray menu - checks your entire " +

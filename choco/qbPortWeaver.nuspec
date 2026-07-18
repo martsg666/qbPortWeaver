@@ -36,7 +36,7 @@ Imports movie and TV episode files into Plex-compatible library folders on each 
 
 ### Other Features
 
-- Status panel and color-coded tray icon showing the live sync state, with a persisted history of recent port changes and an on-demand port reachability test
+- Status panel and color-coded tray icon showing the live sync state, with a persisted history of recent port changes, session statistics, and an on-demand port reachability test
 - One-click diagnostics that health-check the whole sync chain and suggest fixes
 - In-app update that downloads and installs new versions, plus an automatic update checker
 - Built-in user guide with a browsable contents tree and search, available offline from the tray menu

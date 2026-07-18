@@ -222,9 +222,10 @@ public static class AppConstants
 
     /// <summary>
     /// Resolves an executable path from the directory of a Windows service, caching the result.
-    /// Returns <see langword="null"/> if the service or file is not found; the cache is left as
-    /// <see langword="null"/> or <see cref="string.Empty"/> on any miss or transient error so
-    /// the next cycle retries. Only a successful resolution is cached permanently (non-empty string).
+    /// Returns <see langword="null"/> if the service or file is not found; on any miss or transient
+    /// error the cache is left untouched (still at the caller's <see langword="null"/> or
+    /// <see cref="string.Empty"/> sentinel) so the next cycle retries. Only a successful resolution
+    /// is cached permanently (non-empty string).
     /// Callers may initialize the cache field to either <see langword="null"/> or
     /// <see cref="string.Empty"/> - both are treated as "not yet searched".
     /// </summary>

@@ -26,6 +26,16 @@ public partial class StatusForm : Form
     // Gates the Clear History context item so it cannot "clear" an already-empty history.
     private bool _historyHasEntries;
 
+    // Last non-null snapshot read from the status file. Retained so the statistics figures that
+    // need live snapshot data (current port) and the next-sync estimate keep their last good value
+    // when a refresh momentarily cannot read the file.
+    private StatusSnapshot? _lastSnapshot;
+
+    /// <summary>Set by MainForm before each refresh so the Next sync estimate can show "Paused"
+    /// instead of a countdown that will never fire while sync is paused.</summary>
+    [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
+    public bool SyncPaused { get; set; }
+
     public StatusForm()
     {
         InitializeComponent();
@@ -58,6 +68,7 @@ public partial class StatusForm : Form
         // JSON the app just wrote, read at most once per sync cycle - offloading it would add
         // background/marshal complexity for no measurable gain.
         var snapshot = StatusManager.TryRead();
+        if (snapshot is not null) _lastSnapshot = snapshot;
         PopulateHistoryAndStatistics();
         if (snapshot is null)
         {
@@ -121,41 +132,46 @@ public partial class StatusForm : Form
     // Matches the Event column's designer width, which fills the list (with Time + Port) exactly.
     private const int EventColumnMinWidth = 256;
 
-    // Fills the Statistics group: two figures derived from the persisted port history (current
-    // port held, changes today) plus the in-memory session counters. Refreshed on the same tick
-    // as the rest of the panel, so "held" durations advance once per sync cycle.
+    // Fills the Statistics group: the currently held port and today's change count (from the
+    // persisted port history) plus the in-memory session counters. Refreshed on the same tick as
+    // the rest of the panel. Scope is spelled out per figure - "today" for the calendar-day change
+    // count, "(session)" for the process-lifetime counters - so the two clocks do not read alike.
     private void PopulateStatistics(IReadOnlyList<PortHistoryEntry> entries)
     {
-        PortHistoryEntry? lastChange = null;
         int changesToday = 0;
         DateTime today = DateTime.Now.Date;
         foreach (PortHistoryEntry entry in entries)
         {
             if (entry.Kind != PortHistoryKind.PortChanged) continue;
-            lastChange = entry; // entries are oldest first, so the last hit is the newest
             if (entry.Timestamp.LocalDateTime.Date == today)
                 changesToday++;
         }
 
-        if (lastChange is null)
-            SetNeutral(lblPortHeldValue, "No changes recorded");
+        // The port the app is currently managing: the client's listening port, falling back to the
+        // VPN-forwarded port when the client's is unknown (client down / not yet read).
+        int? currentPort = _lastSnapshot?.ClientPort ?? _lastSnapshot?.VpnPort;
+        if (currentPort is int port)
+            SetDefault(lblCurrentPortValue, port.ToString());
         else
-            SetDefault(lblPortHeldValue, FormatElapsed(DateTimeOffset.Now - lastChange.Timestamp));
+            SetNeutral(lblCurrentPortValue, "-");
 
         SetDefault(lblChangesTodayValue, changesToday.ToString());
 
         // OK count is read before the total: the sync loop increments the total first, so this
-        // order guarantees the displayed OK count never exceeds the displayed total even when a
-        // cycle completes between the two reads. The clamp additionally covers the Clear
-        // Statistics reset race, where a sync straddling the non-atomic Reset can briefly leave
-        // the stored OK above the stored total.
+        // order guarantees the derived failure count is never negative even when a cycle completes
+        // between the two reads. The clamp additionally covers the Clear Statistics reset race,
+        // where a sync straddling the non-atomic Reset can briefly leave the stored OK above the
+        // stored total. Failures (not OKs) are surfaced - that is the number worth acting on.
         int syncsOk = SessionStats.SyncOkCount;
         int syncs = SessionStats.SyncCount;
         if (syncsOk > syncs) syncsOk = syncs;
         if (syncs == 0)
             SetNeutral(lblSyncsValue, "-");
         else
-            SetDefault(lblSyncsValue, $"{syncs} ({syncsOk} OK)");
+        {
+            int failed = syncs - syncsOk;
+            SetDefault(lblSyncsValue, failed == 0 ? $"{syncs} (all OK)" : $"{syncs} ({failed} failed)");
+        }
 
         SetDefault(lblRecoveriesValue, SessionStats.RecoveryCount.ToString());
 
@@ -192,6 +208,7 @@ public partial class StatusForm : Form
         if (btnTestPort.Enabled)
             PopulateReachable(s);
         PopulateLastSync(s);
+        PopulateNextSync(s);
         UpdateDiagnosticsHint(s, disabled);
     }
 
@@ -290,7 +307,47 @@ public partial class StatusForm : Form
             SyncStatusValues.Error => ("Error", ErrorColor),
             _ => (string.IsNullOrEmpty(s.Status) ? "Unknown" : s.Status, ErrorColor)
         };
-        SetColor(lblLastSyncValue, $"{time}  -  {result}", color);
+        // Relative suffix so "how recent was this?" reads at a glance without mental arithmetic.
+        string elapsed = FormatElapsed(DateTimeOffset.Now - ts);
+        string ago = elapsed == "<1m" ? "just now" : $"{elapsed} ago";
+        SetColor(lblLastSyncValue, $"{time}  -  {result} ({ago})", color);
+    }
+
+    // Best-effort estimate of when the next scheduled cycle runs: the last sync time plus the
+    // configured interval. Approximate by nature (a manual sync, a network-change re-sync, or an
+    // error backoff can move it), hence the "~". Shows "Paused" while sync is paused - the countdown
+    // would otherwise imply a cycle that will not fire - and "-" before the first cycle.
+    private void PopulateNextSync(StatusSnapshot s)
+    {
+        if (SyncPaused)
+        {
+            SetNeutral(lblNextSyncValue, "Paused");
+            return;
+        }
+        if (s.Timestamp is not DateTimeOffset ts)
+        {
+            SetNeutral(lblNextSyncValue, "-");
+            return;
+        }
+
+        int interval = RegistrySettingsManager.GetInt(
+            RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyUpdateIntervalSeconds);
+        if (interval < AppConstants.MinUpdateIntervalSeconds)
+            interval = AppConstants.DefaultUpdateIntervalSeconds;
+
+        TimeSpan remaining = ts.AddSeconds(interval) - DateTimeOffset.Now;
+        if (remaining <= TimeSpan.Zero)
+            SetDefault(lblNextSyncValue, "due now");
+        else
+            SetDefault(lblNextSyncValue, $"~{FormatCountdown(remaining)}");
+    }
+
+    // Compact countdown for the next-sync estimate: "2h 5m", "3m", "45s".
+    private static string FormatCountdown(TimeSpan remaining)
+    {
+        if (remaining.TotalHours >= 1) return $"{(int)remaining.TotalHours}h {remaining.Minutes}m";
+        if (remaining.TotalMinutes >= 1) return $"{(int)remaining.TotalMinutes}m";
+        return $"{(int)remaining.TotalSeconds}s";
     }
 
     // Accent colors follow AboutForm: brighter variants in dark mode, deeper ones in light mode.

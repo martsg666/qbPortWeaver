@@ -469,6 +469,7 @@ public partial class MainForm : Form
     private StatusForm CreateStatusForm()
     {
         var form = new StatusForm();
+        form.SyncPaused = _syncPaused;
         form.SyncRequested += (_, _) => RequestManualSync();
         form.TestPortRequested += async (_, _) => await RunManualPortTestAsync(form); // async void event handler (WinForms)
         form.DiagnosticsRequested += async (_, _) => await RunDiagnosticsAsync(form); // async void event handler (WinForms)
@@ -677,7 +678,10 @@ public partial class MainForm : Form
                 // Refresh the Status panel live if it is open (the status file was written before
                 // this event fired, so it reflects the cycle that just completed).
                 if (_statusForm is { IsDisposed: false })
+                {
+                    _statusForm.SyncPaused = _syncPaused;
                     _statusForm.RefreshStatus();
+                }
             });
     }
 

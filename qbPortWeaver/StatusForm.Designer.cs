@@ -83,7 +83,7 @@ partial class StatusForm
         grpStatus.Controls.Add(lblNextSyncValue);
         grpStatus.Location = new Point(8, 12);
         grpStatus.Name = "grpStatus";
-        grpStatus.Size = new Size(454, 265);
+        grpStatus.Size = new Size(544, 265);
         grpStatus.TabIndex = 0;
         grpStatus.TabStop = false;
         grpStatus.Text = "Connection Status";
@@ -190,7 +190,7 @@ partial class StatusForm
         grpHistory.Controls.Add(lvHistory);
         grpHistory.Location = new Point(8, 283);
         grpHistory.Name = "grpHistory";
-        grpHistory.Size = new Size(454, 156);
+        grpHistory.Size = new Size(544, 156);
         grpHistory.TabIndex = 1;
         grpHistory.TabStop = false;
         grpHistory.Text = "Recent Port Changes";
@@ -199,7 +199,7 @@ partial class StatusForm
         colHistoryPort.Text = "Port";
         colHistoryPort.Width = 52;
         colHistoryEvent.Text = "Event";
-        colHistoryEvent.Width = 256; // fills the list width (with Time + Port); grown to the longest entry on populate (horizontal scroll) but never below this (StatusForm.EventColumnMinWidth)
+        colHistoryEvent.Width = 350; // fills the list width (with Time + Port); grown to the longest entry on populate (horizontal scroll) but never below this (StatusForm.EventColumnMinWidth)
         // Window (input surface), not the Control chrome: this is an embedded data panel inside a
         // label-heavy dialog, so it reads as a distinct data box (like MediaManagerForm.dgvResults).
         // Contrast with LogViewerForm.lvLog, which uses Control because it fills the whole window.
@@ -211,7 +211,7 @@ partial class StatusForm
         lvHistory.MultiSelect = false;
         lvHistory.Name = "lvHistory";
         lvHistory.ShowGroups = false;
-        lvHistory.Size = new Size(430, 122);
+        lvHistory.Size = new Size(520, 122);
         lvHistory.TabIndex = 0;
         lvHistory.UseCompatibleStateImageBehavior = false;
         lvHistory.View = View.Details;
@@ -234,7 +234,7 @@ partial class StatusForm
         grpStats.Controls.Add(lblMonitoringSinceValue);
         grpStats.Location = new Point(8, 445);
         grpStats.Name = "grpStats";
-        grpStats.Size = new Size(454, 110);
+        grpStats.Size = new Size(544, 110);
         grpStats.TabIndex = 2;
         grpStats.TabStop = false;
         grpStats.Text = "Statistics";
@@ -250,15 +250,15 @@ partial class StatusForm
         lblCurrentPortValue.TabIndex = 1;
         lblCurrentPortValue.Text = "-";
         lblCurrentPortValue.TextAlign = ContentAlignment.MiddleLeft;
-        lblChangesTodayLabel.Location = new Point(248, 24);
+        lblChangesTodayLabel.Location = new Point(300, 24);
         lblChangesTodayLabel.Name = "lblChangesTodayLabel";
         lblChangesTodayLabel.Size = new Size(150, 23);
         lblChangesTodayLabel.TabIndex = 2;
         lblChangesTodayLabel.Text = "Port changes today:";
         lblChangesTodayLabel.TextAlign = ContentAlignment.MiddleLeft;
-        lblChangesTodayValue.Location = new Point(400, 24);
+        lblChangesTodayValue.Location = new Point(452, 24);
         lblChangesTodayValue.Name = "lblChangesTodayValue";
-        lblChangesTodayValue.Size = new Size(48, 23);
+        lblChangesTodayValue.Size = new Size(60, 23);
         lblChangesTodayValue.TabIndex = 3;
         lblChangesTodayValue.Text = "-";
         lblChangesTodayValue.TextAlign = ContentAlignment.MiddleLeft;
@@ -277,15 +277,15 @@ partial class StatusForm
         lblSyncsValue.TabIndex = 5;
         lblSyncsValue.Text = "-";
         lblSyncsValue.TextAlign = ContentAlignment.MiddleLeft;
-        lblRecoveriesLabel.Location = new Point(248, 53);
+        lblRecoveriesLabel.Location = new Point(300, 53);
         lblRecoveriesLabel.Name = "lblRecoveriesLabel";
         lblRecoveriesLabel.Size = new Size(150, 23);
         lblRecoveriesLabel.TabIndex = 6;
         lblRecoveriesLabel.Text = "Recoveries (session):";
         lblRecoveriesLabel.TextAlign = ContentAlignment.MiddleLeft;
-        lblRecoveriesValue.Location = new Point(400, 53);
+        lblRecoveriesValue.Location = new Point(452, 53);
         lblRecoveriesValue.Name = "lblRecoveriesValue";
-        lblRecoveriesValue.Size = new Size(48, 23);
+        lblRecoveriesValue.Size = new Size(60, 23);
         lblRecoveriesValue.TabIndex = 7;
         lblRecoveriesValue.Text = "-";
         lblRecoveriesValue.TextAlign = ContentAlignment.MiddleLeft;
@@ -297,7 +297,7 @@ partial class StatusForm
         lblMonitoringSinceLabel.TextAlign = ContentAlignment.MiddleLeft;
         lblMonitoringSinceValue.Location = new Point(148, 82);
         lblMonitoringSinceValue.Name = "lblMonitoringSinceValue";
-        lblMonitoringSinceValue.Size = new Size(294, 23);
+        lblMonitoringSinceValue.Size = new Size(364, 23);
         lblMonitoringSinceValue.TabIndex = 9;
         lblMonitoringSinceValue.Text = "-";
         lblMonitoringSinceValue.TextAlign = ContentAlignment.MiddleLeft;
@@ -314,7 +314,7 @@ partial class StatusForm
         // ── Diagnostics hint (shown only when a cycle looks wrong; color set in StatusForm) ──
         lblDiagnosticsHint.Location = new Point(8, 561);
         lblDiagnosticsHint.Name = "lblDiagnosticsHint";
-        lblDiagnosticsHint.Size = new Size(454, 20);
+        lblDiagnosticsHint.Size = new Size(544, 20);
         lblDiagnosticsHint.TabIndex = 3;
         lblDiagnosticsHint.Text = "Something looks off. Click Run Diagnostics for details.";
         lblDiagnosticsHint.TextAlign = ContentAlignment.MiddleLeft;
@@ -349,7 +349,7 @@ partial class StatusForm
         btnRunDiagnostics.Click += btnRunDiagnostics_Click;
         toolTip.SetToolTip(btnRunDiagnostics, "Run a read-only health check of the whole sync chain - never changes the port or restarts anything");
         btnClose.DialogResult = DialogResult.Cancel;
-        btnClose.Location = new Point(380, 621);
+        btnClose.Location = new Point(470, 587);
         btnClose.Name = "btnClose";
         btnClose.Size = new Size(82, 28);
         btnClose.TabIndex = 8;
@@ -360,7 +360,7 @@ partial class StatusForm
         AutoScaleDimensions = new SizeF(7F, 15F);
         AutoScaleMode = AutoScaleMode.Font;
         CancelButton = btnClose;
-        ClientSize = new Size(470, 657);
+        ClientSize = new Size(560, 623);
         Controls.Add(grpStatus);
         Controls.Add(grpHistory);
         Controls.Add(grpStats);

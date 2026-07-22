@@ -180,7 +180,7 @@ public partial class StatusForm : Form
     }
 
     // Matches the Event column's designer width, which fills the list (with Time + Port) exactly.
-    private const int EventColumnMinWidth = 256;
+    private const int EventColumnMinWidth = 350;
 
     // Fills the Statistics group: the currently managed port (from the live snapshot), today's
     // change count (from the persisted port history), and the in-memory session counters. Refreshed
@@ -362,7 +362,7 @@ public partial class StatusForm : Form
     {
         if (_lastReachable is bool reachable)
         {
-            string age = FormatCheckedAgo(_reachableCheckedAt);
+            string age = FormatReachableAge(_reachableCheckedAt);
             if (reachable)
                 SetColor(lblReachableValue, $"Open{age}", OkColor);
             else
@@ -374,13 +374,12 @@ public partial class StatusForm : Form
             SetNeutral(lblReachableValue, "Not checked");
     }
 
-    // " (checked just now)" / " (checked 4m ago)" suffix for the Reachable label; empty when the
-    // check time is unknown.
-    private static string FormatCheckedAgo(DateTimeOffset? checkedAt)
+    // " (now)" / " (4m ago)" freshness suffix for the Reachable label - same wording as Last sync
+    // (see FormatAgo); empty when the check time is unknown.
+    private static string FormatReachableAge(DateTimeOffset? checkedAt)
     {
         if (checkedAt is not DateTimeOffset at) return string.Empty;
-        string elapsed = FormatElapsed(DateTimeOffset.Now - at);
-        return elapsed == "<1m" ? " (checked just now)" : $" (checked {elapsed} ago)";
+        return $" ({FormatAgo(DateTimeOffset.Now - at)})";
     }
 
     private void PopulateLastSync(StatusSnapshot s)
@@ -403,9 +402,15 @@ public partial class StatusForm : Form
             _ => (string.IsNullOrEmpty(s.Status) ? "Unknown" : s.Status, ErrorColor)
         };
         // Relative suffix so "how recent was this?" reads at a glance without mental arithmetic.
-        string elapsed = FormatElapsed(DateTimeOffset.Now - ts);
-        string ago = elapsed == "<1m" ? "just now" : $"{elapsed} ago";
-        SetColor(lblLastSyncValue, $"{time}  -  {result} ({ago})", color);
+        SetColor(lblLastSyncValue, $"{time}  -  {result} ({FormatAgo(DateTimeOffset.Now - ts)})", color);
+    }
+
+    // Relative age of a past event: "now" under a minute, otherwise "12m ago" / "2h 5m ago".
+    // Shared by the Last sync and Reachable lines so their freshness suffix reads identically.
+    private static string FormatAgo(TimeSpan elapsed)
+    {
+        string e = FormatElapsed(elapsed);
+        return e == "<1m" ? "now" : $"{e} ago";
     }
 
     // Best-effort estimate of when the next scheduled cycle runs: the last sync time plus the

@@ -31,6 +31,11 @@ public partial class StatusForm : Form
     // when a refresh momentarily cannot read the file.
     private StatusSnapshot? _lastSnapshot;
 
+    // Ticks once per second while the panel is open to advance the time-derived values (the Next
+    // sync countdown and the Last sync "ago" suffix) between sync cycles, without re-reading the
+    // status file. Full refreshes still happen on each cycle via MainForm.
+    private System.Windows.Forms.Timer? _clockTimer;
+
     /// <summary>Set by MainForm before each refresh so the Next sync estimate can show "Paused"
     /// instead of a countdown that will never fire while sync is paused.</summary>
     [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
@@ -57,6 +62,28 @@ public partial class StatusForm : Form
     {
         base.OnLoad(e);
         RefreshStatus();
+        _clockTimer = new System.Windows.Forms.Timer { Interval = 1000 };
+        _clockTimer.Tick += ClockTimer_Tick;
+        _clockTimer.Start();
+    }
+
+    protected override void OnFormClosed(FormClosedEventArgs e)
+    {
+        _clockTimer?.Stop();
+        _clockTimer?.Dispose();
+        _clockTimer = null;
+        base.OnFormClosed(e);
+    }
+
+    // Recomputes only the values that drift with the wall clock, from the cached snapshot - the
+    // Next sync countdown and the Last sync "ago" suffix. The rest of the panel changes only when a
+    // cycle completes, so it is left untouched here (and the reachable label must not be repainted
+    // mid-test, which this deliberately avoids).
+    private void ClockTimer_Tick(object? sender, EventArgs e)
+    {
+        if (IsDisposed || _lastSnapshot is null) return;
+        PopulateLastSync(_lastSnapshot);
+        PopulateNextSync(_lastSnapshot);
     }
 
     /// <summary>Re-reads the status file and repaints the panel. Called on load, on Refresh, and by

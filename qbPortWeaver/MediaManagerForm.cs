@@ -508,7 +508,7 @@ public partial class MediaManagerForm : Form
             prgScan.Maximum = p.Total > 0 ? p.Total : 1;
             prgScan.Value = Math.Min(p.Current, prgScan.Maximum);
             string name = p.FileName.Length > MaxStatusFileNameLength
-                ? string.Concat(p.FileName.AsSpan(0, MaxStatusFileNameLength - 3), "...")
+                ? string.Concat(p.FileName.AsSpan(0, MaxStatusFileNameLength - 1), "…")
                 : p.FileName;
             lblScanStatus.Text = $"Importing {p.Current}/{p.Total} - {name}";
         });

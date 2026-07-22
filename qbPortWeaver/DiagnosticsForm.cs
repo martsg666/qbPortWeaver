@@ -81,8 +81,8 @@ internal sealed class DiagnosticsForm : Form
             BorderStyle = BorderStyle.None,
             BackColor = SystemColors.Control,
             TabStop = false,
-            Location = new Point(8, 12),
-            Size = new Size(ClientSize.Width - 16, ClientSize.Height - 56),
+            Location = new Point(8, 8),
+            Size = new Size(ClientSize.Width - 16, ClientSize.Height - 52),
             Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right,
         };
         Controls.Add(_report);
@@ -197,7 +197,7 @@ internal sealed class DiagnosticsForm : Form
         foreach (var r in _results)
             lines += string.IsNullOrEmpty(r.Hint) ? 3 : 4; // name + detail (+ hint) + trailing blank
 
-        const int reportTop = 12;   // _report.Location.Y
+        const int reportTop = 8;    // _report.Location.Y
         const int buttonArea = 44;  // report bottom to form bottom: 8px gap + 28px button + 8px margin
         int reportHeight = lines * lineHeight + lineHeight; // one extra line of breathing room
         int height = Math.Min(reportTop + reportHeight + buttonArea, 760);

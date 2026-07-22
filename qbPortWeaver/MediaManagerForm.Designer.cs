@@ -168,7 +168,7 @@ partial class MediaManagerForm
         btnBrowseMoviesLibrary.Name     = "btnBrowseMoviesLibrary";
         btnBrowseMoviesLibrary.Size     = new Size(40, 23);
         btnBrowseMoviesLibrary.TabIndex = 2;
-        btnBrowseMoviesLibrary.Text     = "...";
+        btnBrowseMoviesLibrary.Text     = "…";
         btnBrowseMoviesLibrary.Click   += btnBrowseMoviesLibrary_Click;
         lblTvShowsLibraryPath.Location  = new Point(12, 53);
         lblTvShowsLibraryPath.Name      = "lblTvShowsLibraryPath";
@@ -184,7 +184,7 @@ partial class MediaManagerForm
         btnBrowseTvShowsLibrary.Name     = "btnBrowseTvShowsLibrary";
         btnBrowseTvShowsLibrary.Size     = new Size(40, 23);
         btnBrowseTvShowsLibrary.TabIndex = 5;
-        btnBrowseTvShowsLibrary.Text     = "...";
+        btnBrowseTvShowsLibrary.Text     = "…";
         btnBrowseTvShowsLibrary.Click   += btnBrowseTvShowsLibrary_Click;
         // ── grpSourceFolders ──────────────────────────────────────────
         grpSourceFolders.Controls.Add(lstSourceFolders);
@@ -205,7 +205,7 @@ partial class MediaManagerForm
         btnAddSourceFolder.Name     = "btnAddSourceFolder";
         btnAddSourceFolder.Size     = new Size(75, 23);
         btnAddSourceFolder.TabIndex = 1;
-        btnAddSourceFolder.Text     = "Add...";
+        btnAddSourceFolder.Text     = "Add…";
         btnAddSourceFolder.Click   += btnAddSourceFolder_Click;
         btnRemoveSourceFolder.Location = new Point(95, 84); // 8px gap after btnAddSourceFolder (ends at x=87)
         btnRemoveSourceFolder.Name     = "btnRemoveSourceFolder";
@@ -376,7 +376,7 @@ partial class MediaManagerForm
         picTmdbPoster.TabStop     = false;
         picTmdbPoster.Visible     = false;
         lblTmdbTitle.Anchor       = AnchorStyles.Top | AnchorStyles.Left;
-        lblTmdbTitle.Font         = new System.Drawing.Font(Font.FontFamily, Font.Size, System.Drawing.FontStyle.Bold);
+        lblTmdbTitle.Font         = new Font("Segoe UI", 9F, FontStyle.Bold);
         lblTmdbTitle.Location     = new Point(84, 10);
         lblTmdbTitle.Name         = "lblTmdbTitle";
         lblTmdbTitle.Size         = new Size(390, 20);

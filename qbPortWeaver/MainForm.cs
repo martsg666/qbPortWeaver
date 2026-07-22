@@ -469,7 +469,9 @@ public partial class MainForm : Form
     private StatusForm CreateStatusForm()
     {
         var form = new StatusForm();
+        form.SyncPaused = _syncPaused;
         form.SyncRequested += (_, _) => RequestManualSync();
+        form.PauseResumeRequested += (_, _) => ToggleSyncPaused();
         form.TestPortRequested += async (_, _) => await RunManualPortTestAsync(form); // async void event handler (WinForms)
         form.DiagnosticsRequested += async (_, _) => await RunDiagnosticsAsync(form); // async void event handler (WinForms)
         return form;
@@ -610,7 +612,13 @@ public partial class MainForm : Form
     // Toggles the sync pause. On pause the tray feedback flips immediately (the loop itself
     // only notices at its next wakeup, but no cycle can start once the flag is set, so the
     // pause is already effective). On resume the delay is interrupted so a cycle starts now.
-    private void pauseSync_Click(object? sender, EventArgs e)
+    private void pauseSync_Click(object? sender, EventArgs e) => ToggleSyncPaused();
+
+    // Shared by the tray menu's Pause/Resume item and the Status panel's Pause/Resume button.
+    // On pause the tray feedback flips immediately via OnSyncCompleted, which also refreshes the
+    // panel; on resume the delay is interrupted so a cycle starts now, and the panel is refreshed
+    // directly so its button label and Next sync estimate update without waiting for that cycle.
+    private void ToggleSyncPaused()
     {
         _syncPaused = !_syncPaused;
         _pauseSyncMenuItem.Text = _syncPaused ? ResumeSyncingMenuText : PauseSyncingMenuText;
@@ -623,6 +631,11 @@ public partial class MainForm : Form
         {
             LogManager.Instance.LogMessage("Syncing resumed by user", LogLevel.Info);
             InterruptDelay();
+            if (_statusForm is { IsDisposed: false })
+            {
+                _statusForm.SyncPaused = false;
+                _statusForm.RefreshStatus();
+            }
         }
     }
 
@@ -677,7 +690,10 @@ public partial class MainForm : Form
                 // Refresh the Status panel live if it is open (the status file was written before
                 // this event fired, so it reflects the cycle that just completed).
                 if (_statusForm is { IsDisposed: false })
+                {
+                    _statusForm.SyncPaused = _syncPaused;
                     _statusForm.RefreshStatus();
+                }
             });
     }
 

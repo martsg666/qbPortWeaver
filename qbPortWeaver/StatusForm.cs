@@ -12,6 +12,10 @@ public partial class StatusForm : Form
     /// sync cycle; the resulting cycle completion repaints this panel via <see cref="RefreshStatus"/>.</summary>
     public event EventHandler? SyncRequested;
 
+    /// <summary>Raised when the user clicks Pause/Resume. MainForm handles it by toggling the sync
+    /// pause (the same toggle as the tray menu item) and refreshing the panel.</summary>
+    public event EventHandler? PauseResumeRequested;
+
     /// <summary>Raised when the user clicks Test Port. MainForm handles it by running an on-demand
     /// reachability check and reporting the outcome via <see cref="SetReachableChecking"/> /
     /// <see cref="SetReachableResult"/>.</summary>
@@ -25,6 +29,32 @@ public partial class StatusForm : Form
     // Whether the history list currently shows real entries (false = empty-state row).
     // Gates the Clear History context item so it cannot "clear" an already-empty history.
     private bool _historyHasEntries;
+
+    // Last non-null snapshot read from the status file. Retained so the statistics figures that
+    // need live snapshot data (current port) and the next-sync estimate keep their last good value
+    // when a refresh momentarily cannot read the file.
+    private StatusSnapshot? _lastSnapshot;
+
+    // Ticks once per second while the panel is open to advance the time-derived values (the Next
+    // sync countdown, the Last sync "ago" suffix, the Monitoring since elapsed, and the Reachable
+    // age) between sync cycles, without re-reading the status file. Full refreshes still happen on
+    // each cycle via MainForm.
+    private System.Windows.Forms.Timer? _clockTimer;
+
+    // Remembered reachability so the panel can show "Open (4m ago)" and carry it across the cycles
+    // where verification is throttled (the snapshot's portVerified is null on those cycles).
+    // _reachableCheckedAt is the source event's time (the verifying cycle's timestamp, or now for a
+    // manual Test Port); a later result is only adopted when its time is at least as recent, so a
+    // stale snapshot never overrides a fresh manual result. _reachableUndetermined records that the
+    // last thing learned was an inconclusive manual test, distinct from never having checked.
+    private bool? _lastReachable;
+    private DateTimeOffset? _reachableCheckedAt;
+    private bool _reachableUndetermined;
+
+    /// <summary>Set by MainForm before each refresh so the Next sync estimate can show "Paused"
+    /// instead of a countdown that will never fire while sync is paused.</summary>
+    [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
+    public bool SyncPaused { get; set; }
 
     public StatusForm()
     {
@@ -47,6 +77,34 @@ public partial class StatusForm : Form
     {
         base.OnLoad(e);
         RefreshStatus();
+        _clockTimer = new System.Windows.Forms.Timer { Interval = 1000 };
+        _clockTimer.Tick += ClockTimer_Tick;
+        _clockTimer.Start();
+    }
+
+    protected override void OnFormClosed(FormClosedEventArgs e)
+    {
+        _clockTimer?.Stop();
+        _clockTimer?.Dispose();
+        _clockTimer = null;
+        base.OnFormClosed(e);
+    }
+
+    // Recomputes only the values that drift with the wall clock - the Next sync countdown, the Last
+    // sync "ago" suffix, the Monitoring since elapsed duration, and the Reachable age. The remaining
+    // values change only when a cycle completes, so they are left untouched here. Monitoring since
+    // needs no snapshot, so it advances even before the first cycle has produced one.
+    private void ClockTimer_Tick(object? sender, EventArgs e)
+    {
+        if (IsDisposed) return;
+        PopulateMonitoringSince();
+        if (_lastSnapshot is null) return;
+        PopulateLastSync(_lastSnapshot);
+        PopulateNextSync(_lastSnapshot);
+        // Advance the Reachable age, but never while a manual Test Port is in flight (button
+        // disabled) - SetReachableResult owns the label until the result arrives.
+        if (btnTestPort.Enabled)
+            PopulateReachable(_lastSnapshot);
     }
 
     /// <summary>Re-reads the status file and repaints the panel. Called on load, on Refresh, and by
@@ -57,7 +115,9 @@ public partial class StatusForm : Form
         // Synchronous read on the UI thread is intentional: the status file is a sub-1KB local
         // JSON the app just wrote, read at most once per sync cycle - offloading it would add
         // background/marshal complexity for no measurable gain.
+        UpdatePauseButton();
         var snapshot = StatusManager.TryRead();
+        if (snapshot is not null) _lastSnapshot = snapshot;
         PopulateHistoryAndStatistics();
         if (snapshot is null)
         {
@@ -119,61 +179,77 @@ public partial class StatusForm : Form
     }
 
     // Matches the Event column's designer width, which fills the list (with Time + Port) exactly.
-    private const int EventColumnMinWidth = 256;
+    private const int EventColumnMinWidth = 350;
 
-    // Fills the Statistics group: two figures derived from the persisted port history (current
-    // port held, changes today) plus the in-memory session counters. Refreshed on the same tick
-    // as the rest of the panel, so "held" durations advance once per sync cycle.
+    // Fills the Statistics group: the currently managed port (from the live snapshot), today's
+    // change count (from the persisted port history), and the in-memory session counters. Refreshed
+    // on the same tick as the rest of the panel. Scope is spelled out per figure - "today" for the
+    // calendar-day change count, "(session)" for the process-lifetime counters - so the two clocks
+    // do not read alike.
     private void PopulateStatistics(IReadOnlyList<PortHistoryEntry> entries)
     {
-        PortHistoryEntry? lastChange = null;
         int changesToday = 0;
         DateTime today = DateTime.Now.Date;
         foreach (PortHistoryEntry entry in entries)
         {
             if (entry.Kind != PortHistoryKind.PortChanged) continue;
-            lastChange = entry; // entries are oldest first, so the last hit is the newest
             if (entry.Timestamp.LocalDateTime.Date == today)
                 changesToday++;
         }
 
-        if (lastChange is null)
-            SetNeutral(lblPortHeldValue, "-");
+        // The client's confirmed listening port. Shown only when the client actually reports one -
+        // "-" otherwise (client down / not yet read), rather than substituting the VPN-forwarded
+        // port the app intends to apply, which the client may not be listening on.
+        if (_lastSnapshot?.ClientPort is int port)
+            SetDefault(lblCurrentPortValue, port.ToString());
         else
-            SetDefault(lblPortHeldValue, FormatElapsed(DateTimeOffset.Now - lastChange.Timestamp));
+            SetNeutral(lblCurrentPortValue, "-");
 
         SetDefault(lblChangesTodayValue, changesToday.ToString());
 
         // OK count is read before the total: the sync loop increments the total first, so this
-        // order guarantees the displayed OK count never exceeds the displayed total even when a
-        // cycle completes between the two reads. The clamp additionally covers the Clear
-        // Statistics reset race, where a sync straddling the non-atomic Reset can briefly leave
-        // the stored OK above the stored total.
+        // order guarantees the derived failure count is never negative even when a cycle completes
+        // between the two reads. The clamp additionally covers the Clear Statistics reset race,
+        // where a sync straddling the non-atomic Reset can briefly leave the stored OK above the
+        // stored total. Failures (not OKs) are surfaced - that is the number worth acting on.
         int syncsOk = SessionStats.SyncOkCount;
         int syncs = SessionStats.SyncCount;
         if (syncsOk > syncs) syncsOk = syncs;
         if (syncs == 0)
             SetNeutral(lblSyncsValue, "-");
         else
-            SetDefault(lblSyncsValue, $"{syncs} ({syncsOk} OK)");
+        {
+            int failed = syncs - syncsOk;
+            SetDefault(lblSyncsValue, failed == 0 ? $"{syncs} (all OK)" : $"{syncs} ({failed} failed)");
+        }
 
         SetDefault(lblRecoveriesValue, SessionStats.RecoveryCount.ToString());
 
-        DateTimeOffset started = SessionStats.StartedAt;
-        string startedText = started.LocalDateTime.Date == today
-            ? started.LocalDateTime.ToString("HH:mm")
-            : started.LocalDateTime.ToString("yyyy-MM-dd HH:mm");
-        SetDefault(lblMonitoringSinceValue, $"{startedText} ({FormatElapsed(DateTimeOffset.Now - started)})");
+        PopulateMonitoringSince();
     }
 
-    // Compact elapsed-time display for the statistics values: "3d 4h", "8h 28m", "12m", "<1m".
-    private static string FormatElapsed(TimeSpan elapsed)
+    // The session start time plus its live elapsed duration. Split out so the clock tick can
+    // advance the elapsed suffix once a second, matching the Last sync and Next sync values -
+    // without re-running the counter reads or the history file scan in PopulateStatistics.
+    private void PopulateMonitoringSince()
     {
-        if (elapsed < TimeSpan.Zero) elapsed = TimeSpan.Zero;
-        if (elapsed.TotalDays >= 1) return $"{(int)elapsed.TotalDays}d {elapsed.Hours}h";
-        if (elapsed.TotalHours >= 1) return $"{(int)elapsed.TotalHours}h {elapsed.Minutes}m";
-        if (elapsed.TotalMinutes >= 1) return $"{(int)elapsed.TotalMinutes}m";
-        return "<1m";
+        DateTimeOffset started = SessionStats.StartedAt;
+        string startedText = started.LocalDateTime.Date == DateTime.Now.Date
+            ? started.LocalDateTime.ToString("HH:mm")
+            : started.LocalDateTime.ToString("yyyy-MM-dd HH:mm");
+        SetDefault(lblMonitoringSinceValue, $"{startedText} ({FormatDuration(DateTimeOffset.Now - started)})");
+    }
+
+    // The single compact duration formatter for every relative-time value on the panel: "3d 4h",
+    // "8h 28m", "12m", "45s". Shared by Monitoring since, the Next sync countdown, and the ">1 minute"
+    // part of the "ago" suffix so their granularity (including seconds under a minute) reads alike.
+    private static string FormatDuration(TimeSpan span)
+    {
+        if (span < TimeSpan.Zero) span = TimeSpan.Zero;
+        if (span.TotalDays >= 1) return $"{(int)span.TotalDays}d {span.Hours}h";
+        if (span.TotalHours >= 1) return $"{(int)span.TotalHours}h {span.Minutes}m";
+        if (span.TotalMinutes >= 1) return $"{(int)span.TotalMinutes}m";
+        return $"{(int)span.TotalSeconds}s";
     }
 
     private void Populate(StatusSnapshot s)
@@ -192,6 +268,7 @@ public partial class StatusForm : Form
         if (btnTestPort.Enabled)
             PopulateReachable(s);
         PopulateLastSync(s);
+        PopulateNextSync(s);
         UpdateDiagnosticsHint(s, disabled);
     }
 
@@ -263,12 +340,47 @@ public partial class StatusForm : Form
 
     private void PopulateReachable(StatusSnapshot s)
     {
-        switch (s.PortVerified)
+        // Adopt this cycle's verification result only when it is a definite value from a source at
+        // least as recent as the one already shown, so a throttled cycle (portVerified null) keeps
+        // the last known result and a stale snapshot cannot override a fresh manual test.
+        if (s.PortVerified is bool verified)
         {
-            case true: SetColor(lblReachableValue, "Open", OkColor); break;
-            case false: SetColor(lblReachableValue, "Closed", WarnColor); break;
-            default: SetNeutral(lblReachableValue, "Not checked"); break;
+            DateTimeOffset checkedAt = s.Timestamp ?? DateTimeOffset.Now;
+            if (_reachableCheckedAt is null || checkedAt >= _reachableCheckedAt)
+            {
+                _lastReachable = verified;
+                _reachableCheckedAt = checkedAt;
+                _reachableUndetermined = false;
+            }
         }
+        RenderReachable();
+    }
+
+    // Paints the Reachable label from the remembered result plus a live "ago" age. Shared by the
+    // per-cycle refresh, the once-a-second tick, and the manual Test Port result so all three
+    // render identically.
+    private void RenderReachable()
+    {
+        if (_lastReachable is bool reachable)
+        {
+            string age = FormatReachableAge(_reachableCheckedAt);
+            if (reachable)
+                SetColor(lblReachableValue, $"Open{age}", OkColor);
+            else
+                SetColor(lblReachableValue, $"Closed{age}", WarnColor);
+        }
+        else if (_reachableUndetermined)
+            SetNeutral(lblReachableValue, "Could not determine");
+        else
+            SetNeutral(lblReachableValue, "Not checked");
+    }
+
+    // " (now)" / " (4m ago)" freshness suffix for the Reachable label - same wording as Last sync
+    // (see FormatAgo); empty when the check time is unknown.
+    private static string FormatReachableAge(DateTimeOffset? checkedAt)
+    {
+        if (checkedAt is not DateTimeOffset at) return string.Empty;
+        return $" ({FormatAgo(DateTimeOffset.Now - at)})";
     }
 
     private void PopulateLastSync(StatusSnapshot s)
@@ -290,7 +402,46 @@ public partial class StatusForm : Form
             SyncStatusValues.Error => ("Error", ErrorColor),
             _ => (string.IsNullOrEmpty(s.Status) ? "Unknown" : s.Status, ErrorColor)
         };
-        SetColor(lblLastSyncValue, $"{time}  -  {result}", color);
+        // Relative suffix so "how recent was this?" reads at a glance without mental arithmetic.
+        SetColor(lblLastSyncValue, $"{time} - {result} ({FormatAgo(DateTimeOffset.Now - ts)})", color);
+    }
+
+    // Relative age of a past event: "now" under a minute, otherwise "12m ago" / "2h 5m ago". Shared
+    // by the Last sync and Reachable lines so their freshness suffix reads identically. Sub-minute
+    // reads "now" (not "45s ago") - for a freshness cue the exact seconds do not matter.
+    private static string FormatAgo(TimeSpan elapsed)
+    {
+        if (elapsed < TimeSpan.FromMinutes(1)) return "now";
+        return $"{FormatDuration(elapsed)} ago";
+    }
+
+    // Best-effort estimate of when the next scheduled cycle runs: the last sync time plus the
+    // configured interval. Approximate by nature (a manual sync, a network-change re-sync, or an
+    // error backoff can move it), hence the "~". Shows "Paused" while sync is paused - the countdown
+    // would otherwise imply a cycle that will not fire - and "-" before the first cycle.
+    private void PopulateNextSync(StatusSnapshot s)
+    {
+        if (SyncPaused)
+        {
+            SetNeutral(lblNextSyncValue, "Paused");
+            return;
+        }
+        if (s.Timestamp is not DateTimeOffset ts)
+        {
+            SetNeutral(lblNextSyncValue, "-");
+            return;
+        }
+
+        int interval = RegistrySettingsManager.GetInt(
+            RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyUpdateIntervalSeconds);
+        if (interval < AppConstants.MinUpdateIntervalSeconds)
+            interval = AppConstants.DefaultUpdateIntervalSeconds;
+
+        TimeSpan remaining = ts.AddSeconds(interval) - DateTimeOffset.Now;
+        if (remaining <= TimeSpan.Zero)
+            SetDefault(lblNextSyncValue, "Due now");
+        else
+            SetDefault(lblNextSyncValue, $"~{FormatDuration(remaining)}");
     }
 
     // Accent colors follow AboutForm: brighter variants in dark mode, deeper ones in light mode.
@@ -341,7 +492,13 @@ public partial class StatusForm : Form
 
     private void btnSyncNow_Click(object? sender, EventArgs e) => SyncRequested?.Invoke(this, EventArgs.Empty);
 
+    private void btnPauseResume_Click(object? sender, EventArgs e) => PauseResumeRequested?.Invoke(this, EventArgs.Empty);
+
     private void btnTestPort_Click(object? sender, EventArgs e) => TestPortRequested?.Invoke(this, EventArgs.Empty);
+
+    // The button label is the action it performs: "Resume" while paused, "Pause" while running.
+    // MainForm keeps SyncPaused current before each refresh, so this reflects the live state.
+    private void UpdatePauseButton() => btnPauseResume.Text = SyncPaused ? "Resume" : "Pause";
 
     private void btnRunDiagnostics_Click(object? sender, EventArgs e) => DiagnosticsRequested?.Invoke(this, EventArgs.Empty);
 
@@ -370,12 +527,20 @@ public partial class StatusForm : Form
     public void SetReachableResult(bool? open)
     {
         if (IsDisposed) return;
-        switch (open)
+        // Stamp the check time to now so this manual result is the most recent (a later snapshot
+        // from an older cycle will not override it) and its "ago" age ticks from here.
+        _reachableCheckedAt = DateTimeOffset.Now;
+        if (open is bool v)
         {
-            case true: SetColor(lblReachableValue, "Open", OkColor); break;
-            case false: SetColor(lblReachableValue, "Closed", WarnColor); break;
-            default: SetNeutral(lblReachableValue, "Could not determine"); break;
+            _lastReachable = v;
+            _reachableUndetermined = false;
         }
+        else
+        {
+            _lastReachable = null;
+            _reachableUndetermined = true;
+        }
+        RenderReachable();
         btnTestPort.Enabled = true;
     }
 

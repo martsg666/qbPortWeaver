@@ -138,7 +138,7 @@ public partial class StatusForm : Form
         }
 
         if (lastChange is null)
-            SetNeutral(lblPortHeldValue, "-");
+            SetNeutral(lblPortHeldValue, "No changes recorded");
         else
             SetDefault(lblPortHeldValue, FormatElapsed(DateTimeOffset.Now - lastChange.Timestamp));
 

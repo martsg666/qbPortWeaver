@@ -222,8 +222,11 @@ partial class StatusForm
         lblPortHeldLabel.Name = "lblPortHeldLabel";
         lblPortHeldLabel.Size = new Size(130, 23);
         lblPortHeldLabel.TabIndex = 0;
-        lblPortHeldLabel.Text = "Current port held:";
+        lblPortHeldLabel.Text = "Since last change:";
         lblPortHeldLabel.TextAlign = ContentAlignment.MiddleLeft;
+        // AutoEllipsis: the "No changes recorded" placeholder is wider than the "<1m"-style
+        // elapsed values this column normally holds.
+        lblPortHeldValue.AutoEllipsis = true;
         lblPortHeldValue.Location = new Point(148, 24);
         lblPortHeldValue.Name = "lblPortHeldValue";
         lblPortHeldValue.Size = new Size(96, 23);

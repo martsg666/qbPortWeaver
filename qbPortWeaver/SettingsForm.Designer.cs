@@ -204,7 +204,7 @@ partial class SettingsForm
         // Shares the update-interval row: the interval is the scheduled cadence, this adds an
         // immediate sync on network/VPN change. AutoSize so the label sits flush after "seconds".
         chkResyncOnNetworkChange.AutoSize = true;
-        chkResyncOnNetworkChange.Location = new Point(300, 54);
+        chkResyncOnNetworkChange.Location = new Point(300, 53);
         chkResyncOnNetworkChange.Name     = "chkResyncOnNetworkChange";
         chkResyncOnNetworkChange.TabIndex = 6;
         chkResyncOnNetworkChange.Text     = "Sync on network change";
@@ -254,13 +254,13 @@ partial class SettingsForm
         chkShowUpdateForm.Text          = "Show update form on startup";
         // "Trigger after" labels use AutoSize so the NUD sits immediately after the text.
         lblAutoRecoveryHeader.AutoSize = true;
-        lblAutoRecoveryHeader.Font     = new Font("Segoe UI", 9F, FontStyle.Bold, GraphicsUnit.Point);
+        lblAutoRecoveryHeader.Font     = new Font("Segoe UI", 9F, FontStyle.Bold);
         lblAutoRecoveryHeader.Location = new Point(12, 198);
         lblAutoRecoveryHeader.Name     = "lblAutoRecoveryHeader";
         lblAutoRecoveryHeader.TabIndex = 14;
         lblAutoRecoveryHeader.Text     = "Auto-recovery";
         // Shares the header row, matching the client groups' Test button placement (x=398).
-        btnTestRecovery.Location = new Point(398, 196);
+        btnTestRecovery.Location = new Point(398, 198);
         btnTestRecovery.Name     = "btnTestRecovery";
         btnTestRecovery.Size     = new Size(70, 23);
         btnTestRecovery.TabIndex = 15;
@@ -400,7 +400,7 @@ partial class SettingsForm
         btnBrowseQBittorrentExePath.Name     = "btnBrowseQBittorrentExePath";
         btnBrowseQBittorrentExePath.Size     = new Size(40, 23);
         btnBrowseQBittorrentExePath.TabIndex = 9;
-        btnBrowseQBittorrentExePath.Text     = "...";
+        btnBrowseQBittorrentExePath.Text     = "…";
         btnBrowseQBittorrentExePath.Click   += btnBrowseQBittorrentExePath_Click;
         lblQBittorrentProcessName.Location  = new Point(12, 140);
         lblQBittorrentProcessName.Name      = "lblQBittorrentProcessName";
@@ -510,7 +510,7 @@ partial class SettingsForm
         btnBrowseDelugeExePath.Name     = "btnBrowseDelugeExePath";
         btnBrowseDelugeExePath.Size     = new Size(40, 23);
         btnBrowseDelugeExePath.TabIndex = 7;
-        btnBrowseDelugeExePath.Text     = "...";
+        btnBrowseDelugeExePath.Text     = "…";
         btnBrowseDelugeExePath.Click   += btnBrowseDelugeExePath_Click;
         lblDelugeProcessName.Location  = new Point(12, 111);
         lblDelugeProcessName.Name      = "lblDelugeProcessName";
@@ -620,7 +620,7 @@ partial class SettingsForm
         btnBrowseTransmissionExePath.Name     = "btnBrowseTransmissionExePath";
         btnBrowseTransmissionExePath.Size     = new Size(40, 23);
         btnBrowseTransmissionExePath.TabIndex = 9;
-        btnBrowseTransmissionExePath.Text     = "...";
+        btnBrowseTransmissionExePath.Text     = "…";
         btnBrowseTransmissionExePath.Click   += btnBrowseTransmissionExePath_Click;
         lblTransmissionProcessName.Location  = new Point(12, 140);
         lblTransmissionProcessName.Name      = "lblTransmissionProcessName";

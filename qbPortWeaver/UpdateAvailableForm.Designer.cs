@@ -27,7 +27,7 @@ partial class UpdateAvailableForm
 
         // ── Header ────────────────────────────────────────────────────
         lblTitle.Font     = new Font("Segoe UI", 13F, FontStyle.Bold);
-        lblTitle.Location = new Point(8, 14);
+        lblTitle.Location = new Point(8, 8);
         lblTitle.Name     = "lblTitle";
         lblTitle.Size     = new Size(384, 26);
         lblTitle.TabIndex = 0;
@@ -35,7 +35,7 @@ partial class UpdateAvailableForm
 
         // ── grpInfo ───────────────────────────────────────────────────
         grpInfo.Controls.Add(lblMessage);
-        grpInfo.Location = new Point(8, 48);
+        grpInfo.Location = new Point(8, 42);
         grpInfo.Name     = "grpInfo";
         grpInfo.Size     = new Size(384, 106);
         grpInfo.TabIndex = 1;
@@ -51,14 +51,14 @@ partial class UpdateAvailableForm
         lblMessage.UseMnemonic = false; // render a literal '&' (e.g. "Download & Install") instead of treating it as a mnemonic
 
         // ── Download progress (shown only during an in-app download) ──
-        prgDownload.Location = new Point(8, 162);
+        prgDownload.Location = new Point(8, 156);
         prgDownload.Name     = "prgDownload";
         prgDownload.Size     = new Size(384, 18);
         prgDownload.TabIndex = 2;
         prgDownload.Visible  = false;
 
         lblStatus.AutoSize    = false;
-        lblStatus.Location    = new Point(8, 184);
+        lblStatus.Location    = new Point(8, 178);
         lblStatus.Name        = "lblStatus";
         lblStatus.Size        = new Size(384, 20);
         lblStatus.TabIndex    = 3;
@@ -68,20 +68,20 @@ partial class UpdateAvailableForm
 
         // ── Release notes link + buttons ──────────────────────────────
         lnkReleaseNotes.AutoSize     = true;
-        lnkReleaseNotes.Location     = new Point(8, 218);
+        lnkReleaseNotes.Location     = new Point(8, 212);
         lnkReleaseNotes.Name         = "lnkReleaseNotes";
         lnkReleaseNotes.TabIndex     = 4;
         lnkReleaseNotes.Text         = "View release notes";
         lnkReleaseNotes.LinkClicked += lnkReleaseNotes_LinkClicked;
 
-        btnUpdate.Location = new Point(172, 212);
+        btnUpdate.Location = new Point(172, 206);
         btnUpdate.Name     = "btnUpdate";
         btnUpdate.Size     = new Size(130, 28);
         btnUpdate.TabIndex = 5;
         btnUpdate.Text     = "Download && Install";
         btnUpdate.Click   += btnUpdate_Click;
 
-        btnLater.Location = new Point(310, 212);
+        btnLater.Location = new Point(310, 206);
         btnLater.Name     = "btnLater";
         btnLater.Size     = new Size(82, 28);
         btnLater.TabIndex = 6;
@@ -93,7 +93,7 @@ partial class UpdateAvailableForm
         AutoScaleDimensions = new SizeF(7F, 15F);
         AutoScaleMode       = AutoScaleMode.Font;
         CancelButton        = btnLater;
-        ClientSize          = new Size(400, 248);
+        ClientSize          = new Size(400, 242);
         Controls.Add(lblTitle);
         Controls.Add(grpInfo);
         Controls.Add(prgDownload);

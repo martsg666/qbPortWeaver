@@ -26,7 +26,7 @@ partial class WhatsNewForm
 
         // ── Header ────────────────────────────────────────────────────
         lblTitle.Font     = new Font("Segoe UI", 13F, FontStyle.Bold);
-        lblTitle.Location = new Point(8, 14);
+        lblTitle.Location = new Point(8, 8);
         lblTitle.Name     = "lblTitle";
         lblTitle.Size     = new Size(384, 26);
         lblTitle.TabIndex = 0;
@@ -34,7 +34,7 @@ partial class WhatsNewForm
 
         // ── grpCommunity ──────────────────────────────────────────────
         grpCommunity.Controls.Add(lnkCommunity);
-        grpCommunity.Location = new Point(8, 48);
+        grpCommunity.Location = new Point(8, 42);
         grpCommunity.Name     = "grpCommunity";
         grpCommunity.Size     = new Size(384, 90);
         grpCommunity.TabIndex = 1;
@@ -51,7 +51,7 @@ partial class WhatsNewForm
 
         // ── grpFeatures ───────────────────────────────────────────────
         grpFeatures.Controls.Add(rtbFeatures);
-        grpFeatures.Location = new Point(8, 146);
+        grpFeatures.Location = new Point(8, 140);
         grpFeatures.Name     = "grpFeatures";
         grpFeatures.Size     = new Size(384, 310);
         grpFeatures.TabIndex = 2;
@@ -71,7 +71,7 @@ partial class WhatsNewForm
 
         // ── Buttons ───────────────────────────────────────────────────
         btnClose.DialogResult = DialogResult.Cancel;
-        btnClose.Location     = new Point(310, 468);
+        btnClose.Location     = new Point(310, 462);
         btnClose.Name         = "btnClose";
         btnClose.Size         = new Size(82, 28);
         btnClose.TabIndex     = 3;
@@ -83,7 +83,7 @@ partial class WhatsNewForm
         AutoScaleDimensions = new SizeF(7F, 15F);
         AutoScaleMode       = AutoScaleMode.Font;
         CancelButton        = btnClose;
-        ClientSize          = new Size(400, 504);
+        ClientSize          = new Size(400, 498);
         Controls.Add(lblTitle);
         Controls.Add(grpCommunity);
         Controls.Add(grpFeatures);

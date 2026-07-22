@@ -107,7 +107,7 @@ public partial class LogViewerForm : Form
     private const string ColWarn = "| WARN  |";
     private const string ColInfo = "| INFO  |";
     private const string ColDebug = "| DEBUG |";
-    private const long LoadingIndicatorMinBytes = 1_000_000; // show "Loading..." only for logs large enough that the read + parse is perceptible
+    private const long LoadingIndicatorMinBytes = 1_000_000; // show "Loading…" only for logs large enough that the read + parse is perceptible
 
     public LogViewerForm() : this(string.Empty) { } // designer support only
 
@@ -180,7 +180,7 @@ public partial class LogViewerForm : Form
     protected override void OnShown(EventArgs e)
     {
         base.OnShown(e);
-        // Start the load only after the form's first paint so the "Loading..." overlay below is
+        // Start the load only after the form's first paint so the "Loading…" overlay below is
         // actually drawn before the blocking read/parse begins (see LoadInitialContentAsync).
         _ = LoadInitialContentAsync(); // fire-and-forget; exceptions are handled inside LoadInitialContentAsync
     }

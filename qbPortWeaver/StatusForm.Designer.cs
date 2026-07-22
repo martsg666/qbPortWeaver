@@ -81,7 +81,7 @@ partial class StatusForm
         grpStatus.Controls.Add(lblLastSyncValue);
         grpStatus.Controls.Add(lblNextSyncLabel);
         grpStatus.Controls.Add(lblNextSyncValue);
-        grpStatus.Location = new Point(8, 12);
+        grpStatus.Location = new Point(8, 8);
         grpStatus.Name = "grpStatus";
         grpStatus.Size = new Size(544, 265);
         grpStatus.TabIndex = 0;
@@ -95,7 +95,7 @@ partial class StatusForm
         lblVpnProviderLabel.TextAlign = ContentAlignment.MiddleLeft;
         lblVpnProviderValue.Location = new Point(148, 24);
         lblVpnProviderValue.Name = "lblVpnProviderValue";
-        lblVpnProviderValue.Size = new Size(290, 23);
+        lblVpnProviderValue.Size = new Size(384, 23);
         lblVpnProviderValue.TabIndex = 1;
         lblVpnProviderValue.Text = "-";
         lblVpnProviderValue.TextAlign = ContentAlignment.MiddleLeft;
@@ -107,7 +107,7 @@ partial class StatusForm
         lblVpnStatusLabel.TextAlign = ContentAlignment.MiddleLeft;
         lblVpnStatusValue.Location = new Point(148, 53);
         lblVpnStatusValue.Name = "lblVpnStatusValue";
-        lblVpnStatusValue.Size = new Size(290, 23);
+        lblVpnStatusValue.Size = new Size(384, 23);
         lblVpnStatusValue.TabIndex = 3;
         lblVpnStatusValue.Text = "-";
         lblVpnStatusValue.TextAlign = ContentAlignment.MiddleLeft;
@@ -119,7 +119,7 @@ partial class StatusForm
         lblForwardedPortLabel.TextAlign = ContentAlignment.MiddleLeft;
         lblForwardedPortValue.Location = new Point(148, 82);
         lblForwardedPortValue.Name = "lblForwardedPortValue";
-        lblForwardedPortValue.Size = new Size(290, 23);
+        lblForwardedPortValue.Size = new Size(384, 23);
         lblForwardedPortValue.TabIndex = 5;
         lblForwardedPortValue.Text = "-";
         lblForwardedPortValue.TextAlign = ContentAlignment.MiddleLeft;
@@ -131,7 +131,7 @@ partial class StatusForm
         lblClientLabel.TextAlign = ContentAlignment.MiddleLeft;
         lblClientValue.Location = new Point(148, 111);
         lblClientValue.Name = "lblClientValue";
-        lblClientValue.Size = new Size(290, 23);
+        lblClientValue.Size = new Size(384, 23);
         lblClientValue.TabIndex = 7;
         lblClientValue.Text = "-";
         lblClientValue.TextAlign = ContentAlignment.MiddleLeft;
@@ -143,7 +143,7 @@ partial class StatusForm
         lblListeningPortLabel.TextAlign = ContentAlignment.MiddleLeft;
         lblListeningPortValue.Location = new Point(148, 140);
         lblListeningPortValue.Name = "lblListeningPortValue";
-        lblListeningPortValue.Size = new Size(290, 23);
+        lblListeningPortValue.Size = new Size(384, 23);
         lblListeningPortValue.TabIndex = 9;
         lblListeningPortValue.Text = "-";
         lblListeningPortValue.TextAlign = ContentAlignment.MiddleLeft;
@@ -155,7 +155,7 @@ partial class StatusForm
         lblReachableLabel.TextAlign = ContentAlignment.MiddleLeft;
         lblReachableValue.Location = new Point(148, 169);
         lblReachableValue.Name = "lblReachableValue";
-        lblReachableValue.Size = new Size(290, 23);
+        lblReachableValue.Size = new Size(384, 23);
         lblReachableValue.TabIndex = 11;
         lblReachableValue.Text = "-";
         lblReachableValue.TextAlign = ContentAlignment.MiddleLeft;
@@ -167,7 +167,7 @@ partial class StatusForm
         lblLastSyncLabel.TextAlign = ContentAlignment.MiddleLeft;
         lblLastSyncValue.Location = new Point(148, 198);
         lblLastSyncValue.Name = "lblLastSyncValue";
-        lblLastSyncValue.Size = new Size(290, 23);
+        lblLastSyncValue.Size = new Size(384, 23);
         lblLastSyncValue.TabIndex = 13;
         lblLastSyncValue.Text = "-";
         lblLastSyncValue.TextAlign = ContentAlignment.MiddleLeft;
@@ -182,13 +182,13 @@ partial class StatusForm
         lblNextSyncLabel.TextAlign = ContentAlignment.MiddleLeft;
         lblNextSyncValue.Location = new Point(148, 227);
         lblNextSyncValue.Name = "lblNextSyncValue";
-        lblNextSyncValue.Size = new Size(290, 23);
+        lblNextSyncValue.Size = new Size(384, 23);
         lblNextSyncValue.TabIndex = 15;
         lblNextSyncValue.Text = "-";
         lblNextSyncValue.TextAlign = ContentAlignment.MiddleLeft;
         // ── grpHistory (recent port changes and recovery events; populated in PopulateHistory) ──
         grpHistory.Controls.Add(lvHistory);
-        grpHistory.Location = new Point(8, 283);
+        grpHistory.Location = new Point(8, 279);
         grpHistory.Name = "grpHistory";
         grpHistory.Size = new Size(544, 156);
         grpHistory.TabIndex = 1;
@@ -232,9 +232,9 @@ partial class StatusForm
         grpStats.Controls.Add(lblRecoveriesValue);
         grpStats.Controls.Add(lblMonitoringSinceLabel);
         grpStats.Controls.Add(lblMonitoringSinceValue);
-        grpStats.Location = new Point(8, 445);
+        grpStats.Location = new Point(8, 441);
         grpStats.Name = "grpStats";
-        grpStats.Size = new Size(544, 110);
+        grpStats.Size = new Size(544, 120);
         grpStats.TabIndex = 2;
         grpStats.TabStop = false;
         grpStats.Text = "Statistics";
@@ -246,7 +246,7 @@ partial class StatusForm
         lblCurrentPortLabel.TextAlign = ContentAlignment.MiddleLeft;
         lblCurrentPortValue.Location = new Point(148, 24);
         lblCurrentPortValue.Name = "lblCurrentPortValue";
-        lblCurrentPortValue.Size = new Size(96, 23);
+        lblCurrentPortValue.Size = new Size(140, 23);
         lblCurrentPortValue.TabIndex = 1;
         lblCurrentPortValue.Text = "-";
         lblCurrentPortValue.TextAlign = ContentAlignment.MiddleLeft;
@@ -273,7 +273,7 @@ partial class StatusForm
         lblSyncsValue.AutoEllipsis = true;
         lblSyncsValue.Location = new Point(148, 53);
         lblSyncsValue.Name = "lblSyncsValue";
-        lblSyncsValue.Size = new Size(96, 23);
+        lblSyncsValue.Size = new Size(140, 23);
         lblSyncsValue.TabIndex = 5;
         lblSyncsValue.Text = "-";
         lblSyncsValue.TextAlign = ContentAlignment.MiddleLeft;
@@ -312,7 +312,7 @@ partial class StatusForm
         ctxStats.Opening += ctxStats_Opening;
         grpStats.ContextMenuStrip = ctxStats;
         // ── Diagnostics hint (shown only when a cycle looks wrong; color set in StatusForm) ──
-        lblDiagnosticsHint.Location = new Point(8, 561);
+        lblDiagnosticsHint.Location = new Point(8, 567);
         lblDiagnosticsHint.Name = "lblDiagnosticsHint";
         lblDiagnosticsHint.Size = new Size(544, 20);
         lblDiagnosticsHint.TabIndex = 3;
@@ -320,28 +320,28 @@ partial class StatusForm
         lblDiagnosticsHint.TextAlign = ContentAlignment.MiddleLeft;
         lblDiagnosticsHint.Visible = false;
         // ── Buttons ───────────────────────────────────────────────────
-        btnSyncNow.Location = new Point(8, 587);
+        btnSyncNow.Location = new Point(8, 593);
         btnSyncNow.Name = "btnSyncNow";
         btnSyncNow.Size = new Size(96, 28);
         btnSyncNow.TabIndex = 4;
         btnSyncNow.Text = "Sync Now";
         btnSyncNow.Click += btnSyncNow_Click;
         toolTip.SetToolTip(btnSyncNow, "Run a sync cycle immediately instead of waiting for the next interval (works while paused, for one cycle)");
-        btnPauseResume.Location = new Point(112, 587);
+        btnPauseResume.Location = new Point(112, 593);
         btnPauseResume.Name = "btnPauseResume";
         btnPauseResume.Size = new Size(96, 28);
         btnPauseResume.TabIndex = 5;
         btnPauseResume.Text = "Pause";
         btnPauseResume.Click += btnPauseResume_Click;
         toolTip.SetToolTip(btnPauseResume, "Pause or resume automatic sync cycles (same as the tray menu; always resumes on restart)");
-        btnTestPort.Location = new Point(216, 587);
+        btnTestPort.Location = new Point(216, 593);
         btnTestPort.Name = "btnTestPort";
         btnTestPort.Size = new Size(96, 28);
         btnTestPort.TabIndex = 6;
         btnTestPort.Text = "Test Port";
         btnTestPort.Click += btnTestPort_Click;
         toolTip.SetToolTip(btnTestPort, "Check now whether the listening port is reachable from the Internet (may take up to 20 seconds)");
-        btnRunDiagnostics.Location = new Point(320, 587);
+        btnRunDiagnostics.Location = new Point(320, 593);
         btnRunDiagnostics.Name = "btnRunDiagnostics";
         btnRunDiagnostics.Size = new Size(118, 28);
         btnRunDiagnostics.TabIndex = 7;
@@ -349,7 +349,7 @@ partial class StatusForm
         btnRunDiagnostics.Click += btnRunDiagnostics_Click;
         toolTip.SetToolTip(btnRunDiagnostics, "Run a read-only health check of the whole sync chain - never changes the port or restarts anything");
         btnClose.DialogResult = DialogResult.Cancel;
-        btnClose.Location = new Point(470, 587);
+        btnClose.Location = new Point(470, 593);
         btnClose.Name = "btnClose";
         btnClose.Size = new Size(82, 28);
         btnClose.TabIndex = 8;
@@ -360,7 +360,7 @@ partial class StatusForm
         AutoScaleDimensions = new SizeF(7F, 15F);
         AutoScaleMode = AutoScaleMode.Font;
         CancelButton = btnClose;
-        ClientSize = new Size(560, 623);
+        ClientSize = new Size(560, 629);
         Controls.Add(grpStatus);
         Controls.Add(grpHistory);
         Controls.Add(grpStats);

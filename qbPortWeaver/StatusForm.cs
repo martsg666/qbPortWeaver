@@ -37,12 +37,12 @@ public partial class StatusForm : Form
 
     // Ticks once per second while the panel is open to advance the time-derived values (the Next
     // sync countdown, the Last sync "ago" suffix, the Monitoring since elapsed, and the Reachable
-    // "checked ago" age) between sync cycles, without re-reading the status file. Full refreshes
-    // still happen on each cycle via MainForm.
+    // age) between sync cycles, without re-reading the status file. Full refreshes still happen on
+    // each cycle via MainForm.
     private System.Windows.Forms.Timer? _clockTimer;
 
-    // Remembered reachability so the panel can show "Open (checked 4m ago)" and carry it across the
-    // cycles where verification is throttled (the snapshot's portVerified is null on those cycles).
+    // Remembered reachability so the panel can show "Open (4m ago)" and carry it across the cycles
+    // where verification is throttled (the snapshot's portVerified is null on those cycles).
     // _reachableCheckedAt is the source event's time (the verifying cycle's timestamp, or now for a
     // manual Test Port); a later result is only adopted when its time is at least as recent, so a
     // stale snapshot never overrides a fresh manual result. _reachableUndetermined records that the
@@ -90,11 +90,10 @@ public partial class StatusForm : Form
         base.OnFormClosed(e);
     }
 
-    // Recomputes only the values that drift with the wall clock - the Next sync countdown, the
-    // Last sync "ago" suffix, and the Monitoring since elapsed duration. The rest of the panel
-    // changes only when a cycle completes, so it is left untouched here (and the reachable label
-    // must not be repainted mid-test, which this deliberately avoids). Monitoring since needs no
-    // snapshot, so it advances even before the first cycle has produced one.
+    // Recomputes only the values that drift with the wall clock - the Next sync countdown, the Last
+    // sync "ago" suffix, the Monitoring since elapsed duration, and the Reachable age. The remaining
+    // values change only when a cycle completes, so they are left untouched here. Monitoring since
+    // needs no snapshot, so it advances even before the first cycle has produced one.
     private void ClockTimer_Tick(object? sender, EventArgs e)
     {
         if (IsDisposed) return;
@@ -102,7 +101,7 @@ public partial class StatusForm : Form
         if (_lastSnapshot is null) return;
         PopulateLastSync(_lastSnapshot);
         PopulateNextSync(_lastSnapshot);
-        // Advance the "checked ago" age, but never while a manual Test Port is in flight (button
+        // Advance the Reachable age, but never while a manual Test Port is in flight (button
         // disabled) - SetReachableResult owns the label until the result arrives.
         if (btnTestPort.Enabled)
             PopulateReachable(_lastSnapshot);
@@ -238,17 +237,19 @@ public partial class StatusForm : Form
         string startedText = started.LocalDateTime.Date == DateTime.Now.Date
             ? started.LocalDateTime.ToString("HH:mm")
             : started.LocalDateTime.ToString("yyyy-MM-dd HH:mm");
-        SetDefault(lblMonitoringSinceValue, $"{startedText} ({FormatElapsed(DateTimeOffset.Now - started)})");
+        SetDefault(lblMonitoringSinceValue, $"{startedText} ({FormatDuration(DateTimeOffset.Now - started)})");
     }
 
-    // Compact elapsed-time display for the statistics values: "3d 4h", "8h 28m", "12m", "<1m".
-    private static string FormatElapsed(TimeSpan elapsed)
+    // The single compact duration formatter for every relative-time value on the panel: "3d 4h",
+    // "8h 28m", "12m", "45s". Shared by Monitoring since, the Next sync countdown, and the ">1 minute"
+    // part of the "ago" suffix so their granularity (including seconds under a minute) reads alike.
+    private static string FormatDuration(TimeSpan span)
     {
-        if (elapsed < TimeSpan.Zero) elapsed = TimeSpan.Zero;
-        if (elapsed.TotalDays >= 1) return $"{(int)elapsed.TotalDays}d {elapsed.Hours}h";
-        if (elapsed.TotalHours >= 1) return $"{(int)elapsed.TotalHours}h {elapsed.Minutes}m";
-        if (elapsed.TotalMinutes >= 1) return $"{(int)elapsed.TotalMinutes}m";
-        return "<1m";
+        if (span < TimeSpan.Zero) span = TimeSpan.Zero;
+        if (span.TotalDays >= 1) return $"{(int)span.TotalDays}d {span.Hours}h";
+        if (span.TotalHours >= 1) return $"{(int)span.TotalHours}h {span.Minutes}m";
+        if (span.TotalMinutes >= 1) return $"{(int)span.TotalMinutes}m";
+        return $"{(int)span.TotalSeconds}s";
     }
 
     private void Populate(StatusSnapshot s)
@@ -355,8 +356,8 @@ public partial class StatusForm : Form
         RenderReachable();
     }
 
-    // Paints the Reachable label from the remembered result plus a live "checked ago" age. Shared by
-    // the per-cycle refresh, the once-a-second tick, and the manual Test Port result so all three
+    // Paints the Reachable label from the remembered result plus a live "ago" age. Shared by the
+    // per-cycle refresh, the once-a-second tick, and the manual Test Port result so all three
     // render identically.
     private void RenderReachable()
     {
@@ -402,15 +403,16 @@ public partial class StatusForm : Form
             _ => (string.IsNullOrEmpty(s.Status) ? "Unknown" : s.Status, ErrorColor)
         };
         // Relative suffix so "how recent was this?" reads at a glance without mental arithmetic.
-        SetColor(lblLastSyncValue, $"{time}  -  {result} ({FormatAgo(DateTimeOffset.Now - ts)})", color);
+        SetColor(lblLastSyncValue, $"{time} - {result} ({FormatAgo(DateTimeOffset.Now - ts)})", color);
     }
 
-    // Relative age of a past event: "now" under a minute, otherwise "12m ago" / "2h 5m ago".
-    // Shared by the Last sync and Reachable lines so their freshness suffix reads identically.
+    // Relative age of a past event: "now" under a minute, otherwise "12m ago" / "2h 5m ago". Shared
+    // by the Last sync and Reachable lines so their freshness suffix reads identically. Sub-minute
+    // reads "now" (not "45s ago") - for a freshness cue the exact seconds do not matter.
     private static string FormatAgo(TimeSpan elapsed)
     {
-        string e = FormatElapsed(elapsed);
-        return e == "<1m" ? "now" : $"{e} ago";
+        if (elapsed < TimeSpan.FromMinutes(1)) return "now";
+        return $"{FormatDuration(elapsed)} ago";
     }
 
     // Best-effort estimate of when the next scheduled cycle runs: the last sync time plus the
@@ -437,17 +439,9 @@ public partial class StatusForm : Form
 
         TimeSpan remaining = ts.AddSeconds(interval) - DateTimeOffset.Now;
         if (remaining <= TimeSpan.Zero)
-            SetDefault(lblNextSyncValue, "due now");
+            SetDefault(lblNextSyncValue, "Due now");
         else
-            SetDefault(lblNextSyncValue, $"~{FormatCountdown(remaining)}");
-    }
-
-    // Compact countdown for the next-sync estimate: "2h 5m", "3m", "45s".
-    private static string FormatCountdown(TimeSpan remaining)
-    {
-        if (remaining.TotalHours >= 1) return $"{(int)remaining.TotalHours}h {remaining.Minutes}m";
-        if (remaining.TotalMinutes >= 1) return $"{(int)remaining.TotalMinutes}m";
-        return $"{(int)remaining.TotalSeconds}s";
+            SetDefault(lblNextSyncValue, $"~{FormatDuration(remaining)}");
     }
 
     // Accent colors follow AboutForm: brighter variants in dark mode, deeper ones in light mode.
@@ -534,7 +528,7 @@ public partial class StatusForm : Form
     {
         if (IsDisposed) return;
         // Stamp the check time to now so this manual result is the most recent (a later snapshot
-        // from an older cycle will not override it) and its "checked ago" age ticks from here.
+        // from an older cycle will not override it) and its "ago" age ticks from here.
         _reachableCheckedAt = DateTimeOffset.Now;
         if (open is bool v)
         {

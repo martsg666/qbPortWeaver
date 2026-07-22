@@ -31,12 +31,12 @@ internal sealed class ClientChooserForm : Form
         // these manually-placed controls on high-DPI displays instead of leaving them at design pixels.
         AutoScaleDimensions = new SizeF(7F, 15F);
         AutoScaleMode = AutoScaleMode.Font;
-        ClientSize = new Size(330, 98 + clients.Count * RowHeight);
+        ClientSize = new Size(330, 94 + clients.Count * RowHeight);
 
         Controls.Add(new Label
         {
             Text = "More than one client was found. Select the one to use:",
-            Location = new Point(8, 12),
+            Location = new Point(8, 8),
             Size = new Size(314, 32),
             AutoSize = false
         });
@@ -49,7 +49,7 @@ internal sealed class ClientChooserForm : Form
             var rb = new RadioButton
             {
                 Text = $"{c.ClientName} ({status})",
-                Location = new Point(20, 50 + i * RowHeight),
+                Location = new Point(20, 46 + i * RowHeight),
                 Size = new Size(290, 24),
                 Checked = c.ClientName == preferredClientName
             };
@@ -60,7 +60,7 @@ internal sealed class ClientChooserForm : Form
         if (!Array.Exists(_options, o => o.Checked) && _options.Length > 0)
             _options[0].Checked = true;
 
-        int btnY = 50 + clients.Count * RowHeight + 12;
+        int btnY = 46 + clients.Count * RowHeight + 12;
         var btnOk = new Button { Text = "OK", DialogResult = DialogResult.OK, Location = new Point(ClientSize.Width - 180, btnY), Size = new Size(82, 28) };
         btnOk.Click += CaptureSelection;
         var btnCancel = new Button { Text = "Cancel", DialogResult = DialogResult.Cancel, Location = new Point(ClientSize.Width - 90, btnY), Size = new Size(82, 28) };

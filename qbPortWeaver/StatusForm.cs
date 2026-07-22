@@ -75,13 +75,16 @@ public partial class StatusForm : Form
         base.OnFormClosed(e);
     }
 
-    // Recomputes only the values that drift with the wall clock, from the cached snapshot - the
-    // Next sync countdown and the Last sync "ago" suffix. The rest of the panel changes only when a
-    // cycle completes, so it is left untouched here (and the reachable label must not be repainted
-    // mid-test, which this deliberately avoids).
+    // Recomputes only the values that drift with the wall clock - the Next sync countdown, the
+    // Last sync "ago" suffix, and the Monitoring since elapsed duration. The rest of the panel
+    // changes only when a cycle completes, so it is left untouched here (and the reachable label
+    // must not be repainted mid-test, which this deliberately avoids). Monitoring since needs no
+    // snapshot, so it advances even before the first cycle has produced one.
     private void ClockTimer_Tick(object? sender, EventArgs e)
     {
-        if (IsDisposed || _lastSnapshot is null) return;
+        if (IsDisposed) return;
+        PopulateMonitoringSince();
+        if (_lastSnapshot is null) return;
         PopulateLastSync(_lastSnapshot);
         PopulateNextSync(_lastSnapshot);
     }
@@ -159,10 +162,11 @@ public partial class StatusForm : Form
     // Matches the Event column's designer width, which fills the list (with Time + Port) exactly.
     private const int EventColumnMinWidth = 256;
 
-    // Fills the Statistics group: the currently held port and today's change count (from the
-    // persisted port history) plus the in-memory session counters. Refreshed on the same tick as
-    // the rest of the panel. Scope is spelled out per figure - "today" for the calendar-day change
-    // count, "(session)" for the process-lifetime counters - so the two clocks do not read alike.
+    // Fills the Statistics group: the currently managed port (from the live snapshot), today's
+    // change count (from the persisted port history), and the in-memory session counters. Refreshed
+    // on the same tick as the rest of the panel. Scope is spelled out per figure - "today" for the
+    // calendar-day change count, "(session)" for the process-lifetime counters - so the two clocks
+    // do not read alike.
     private void PopulateStatistics(IReadOnlyList<PortHistoryEntry> entries)
     {
         int changesToday = 0;
@@ -174,10 +178,10 @@ public partial class StatusForm : Form
                 changesToday++;
         }
 
-        // The port the app is currently managing: the client's listening port, falling back to the
-        // VPN-forwarded port when the client's is unknown (client down / not yet read).
-        int? currentPort = _lastSnapshot?.ClientPort ?? _lastSnapshot?.VpnPort;
-        if (currentPort is int port)
+        // The client's confirmed listening port. Shown only when the client actually reports one -
+        // "-" otherwise (client down / not yet read), rather than substituting the VPN-forwarded
+        // port the app intends to apply, which the client may not be listening on.
+        if (_lastSnapshot?.ClientPort is int port)
             SetDefault(lblCurrentPortValue, port.ToString());
         else
             SetNeutral(lblCurrentPortValue, "-");
@@ -202,8 +206,16 @@ public partial class StatusForm : Form
 
         SetDefault(lblRecoveriesValue, SessionStats.RecoveryCount.ToString());
 
+        PopulateMonitoringSince();
+    }
+
+    // The session start time plus its live elapsed duration. Split out so the clock tick can
+    // advance the elapsed suffix once a second, matching the Last sync and Next sync values -
+    // without re-running the counter reads or the history file scan in PopulateStatistics.
+    private void PopulateMonitoringSince()
+    {
         DateTimeOffset started = SessionStats.StartedAt;
-        string startedText = started.LocalDateTime.Date == today
+        string startedText = started.LocalDateTime.Date == DateTime.Now.Date
             ? started.LocalDateTime.ToString("HH:mm")
             : started.LocalDateTime.ToString("yyyy-MM-dd HH:mm");
         SetDefault(lblMonitoringSinceValue, $"{startedText} ({FormatElapsed(DateTimeOffset.Now - started)})");

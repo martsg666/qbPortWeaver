@@ -11,9 +11,10 @@ public partial class WhatsNewForm : Form
     private const string ReleaseFeaturesText =
         "New in 2.6.2\n\n" +
         "Statistics on the Status panel\n" +
-        "A new Statistics section on the Status window shows how long your current port has " +
-        "been held, how many times it changed today, and this session's sync and recovery " +
-        "counts - a quick read on whether your setup is stable or churning.\n\n" +
+        "A new Statistics section on the Status window shows your current port, how many times " +
+        "it changed today, and this session's sync and recovery counts - a quick read on whether " +
+        "your setup is stable or churning. The Status window now also estimates when the next " +
+        "sync is due and how long ago the last one ran, updating live.\n\n" +
         "Test your auto-recovery\n" +
         "A new Test button next to the Auto-recovery settings runs the recovery action on " +
         "demand, so you can confirm the whole chain works - helper service, VPN restart, " +

@@ -14,7 +14,9 @@ public partial class WhatsNewForm : Form
         "A new Statistics section on the Status window shows your current port, how many times " +
         "it changed today, and this session's sync and recovery counts - a quick read on whether " +
         "your setup is stable or churning. The Status window now also estimates when the next " +
-        "sync is due and how long ago the last one ran, updating live.\n\n" +
+        "sync is due, how long ago the last one ran, and when the port was last checked, updating " +
+        "live, and adds a Pause/Resume button so you can hold and restart syncing without leaving " +
+        "the window.\n\n" +
         "Test your auto-recovery\n" +
         "A new Test button next to the Auto-recovery settings runs the recovery action on " +
         "demand, so you can confirm the whole chain works - helper service, VPN restart, " +

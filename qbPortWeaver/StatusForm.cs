@@ -12,6 +12,10 @@ public partial class StatusForm : Form
     /// sync cycle; the resulting cycle completion repaints this panel via <see cref="RefreshStatus"/>.</summary>
     public event EventHandler? SyncRequested;
 
+    /// <summary>Raised when the user clicks Pause/Resume. MainForm handles it by toggling the sync
+    /// pause (the same toggle as the tray menu item) and refreshing the panel.</summary>
+    public event EventHandler? PauseResumeRequested;
+
     /// <summary>Raised when the user clicks Test Port. MainForm handles it by running an on-demand
     /// reachability check and reporting the outcome via <see cref="SetReachableChecking"/> /
     /// <see cref="SetReachableResult"/>.</summary>
@@ -32,9 +36,20 @@ public partial class StatusForm : Form
     private StatusSnapshot? _lastSnapshot;
 
     // Ticks once per second while the panel is open to advance the time-derived values (the Next
-    // sync countdown and the Last sync "ago" suffix) between sync cycles, without re-reading the
-    // status file. Full refreshes still happen on each cycle via MainForm.
+    // sync countdown, the Last sync "ago" suffix, the Monitoring since elapsed, and the Reachable
+    // "checked ago" age) between sync cycles, without re-reading the status file. Full refreshes
+    // still happen on each cycle via MainForm.
     private System.Windows.Forms.Timer? _clockTimer;
+
+    // Remembered reachability so the panel can show "Open (checked 4m ago)" and carry it across the
+    // cycles where verification is throttled (the snapshot's portVerified is null on those cycles).
+    // _reachableCheckedAt is the source event's time (the verifying cycle's timestamp, or now for a
+    // manual Test Port); a later result is only adopted when its time is at least as recent, so a
+    // stale snapshot never overrides a fresh manual result. _reachableUndetermined records that the
+    // last thing learned was an inconclusive manual test, distinct from never having checked.
+    private bool? _lastReachable;
+    private DateTimeOffset? _reachableCheckedAt;
+    private bool _reachableUndetermined;
 
     /// <summary>Set by MainForm before each refresh so the Next sync estimate can show "Paused"
     /// instead of a countdown that will never fire while sync is paused.</summary>
@@ -87,6 +102,10 @@ public partial class StatusForm : Form
         if (_lastSnapshot is null) return;
         PopulateLastSync(_lastSnapshot);
         PopulateNextSync(_lastSnapshot);
+        // Advance the "checked ago" age, but never while a manual Test Port is in flight (button
+        // disabled) - SetReachableResult owns the label until the result arrives.
+        if (btnTestPort.Enabled)
+            PopulateReachable(_lastSnapshot);
     }
 
     /// <summary>Re-reads the status file and repaints the panel. Called on load, on Refresh, and by
@@ -97,6 +116,7 @@ public partial class StatusForm : Form
         // Synchronous read on the UI thread is intentional: the status file is a sub-1KB local
         // JSON the app just wrote, read at most once per sync cycle - offloading it would add
         // background/marshal complexity for no measurable gain.
+        UpdatePauseButton();
         var snapshot = StatusManager.TryRead();
         if (snapshot is not null) _lastSnapshot = snapshot;
         PopulateHistoryAndStatistics();
@@ -319,12 +339,48 @@ public partial class StatusForm : Form
 
     private void PopulateReachable(StatusSnapshot s)
     {
-        switch (s.PortVerified)
+        // Adopt this cycle's verification result only when it is a definite value from a source at
+        // least as recent as the one already shown, so a throttled cycle (portVerified null) keeps
+        // the last known result and a stale snapshot cannot override a fresh manual test.
+        if (s.PortVerified is bool verified)
         {
-            case true: SetColor(lblReachableValue, "Open", OkColor); break;
-            case false: SetColor(lblReachableValue, "Closed", WarnColor); break;
-            default: SetNeutral(lblReachableValue, "Not checked"); break;
+            DateTimeOffset checkedAt = s.Timestamp ?? DateTimeOffset.Now;
+            if (_reachableCheckedAt is null || checkedAt >= _reachableCheckedAt)
+            {
+                _lastReachable = verified;
+                _reachableCheckedAt = checkedAt;
+                _reachableUndetermined = false;
+            }
         }
+        RenderReachable();
+    }
+
+    // Paints the Reachable label from the remembered result plus a live "checked ago" age. Shared by
+    // the per-cycle refresh, the once-a-second tick, and the manual Test Port result so all three
+    // render identically.
+    private void RenderReachable()
+    {
+        if (_lastReachable is bool reachable)
+        {
+            string age = FormatCheckedAgo(_reachableCheckedAt);
+            if (reachable)
+                SetColor(lblReachableValue, $"Open{age}", OkColor);
+            else
+                SetColor(lblReachableValue, $"Closed{age}", WarnColor);
+        }
+        else if (_reachableUndetermined)
+            SetNeutral(lblReachableValue, "Could not determine");
+        else
+            SetNeutral(lblReachableValue, "Not checked");
+    }
+
+    // " (checked just now)" / " (checked 4m ago)" suffix for the Reachable label; empty when the
+    // check time is unknown.
+    private static string FormatCheckedAgo(DateTimeOffset? checkedAt)
+    {
+        if (checkedAt is not DateTimeOffset at) return string.Empty;
+        string elapsed = FormatElapsed(DateTimeOffset.Now - at);
+        return elapsed == "<1m" ? " (checked just now)" : $" (checked {elapsed} ago)";
     }
 
     private void PopulateLastSync(StatusSnapshot s)
@@ -437,7 +493,13 @@ public partial class StatusForm : Form
 
     private void btnSyncNow_Click(object? sender, EventArgs e) => SyncRequested?.Invoke(this, EventArgs.Empty);
 
+    private void btnPauseResume_Click(object? sender, EventArgs e) => PauseResumeRequested?.Invoke(this, EventArgs.Empty);
+
     private void btnTestPort_Click(object? sender, EventArgs e) => TestPortRequested?.Invoke(this, EventArgs.Empty);
+
+    // The button label is the action it performs: "Resume" while paused, "Pause" while running.
+    // MainForm keeps SyncPaused current before each refresh, so this reflects the live state.
+    private void UpdatePauseButton() => btnPauseResume.Text = SyncPaused ? "Resume" : "Pause";
 
     private void btnRunDiagnostics_Click(object? sender, EventArgs e) => DiagnosticsRequested?.Invoke(this, EventArgs.Empty);
 
@@ -466,12 +528,20 @@ public partial class StatusForm : Form
     public void SetReachableResult(bool? open)
     {
         if (IsDisposed) return;
-        switch (open)
+        // Stamp the check time to now so this manual result is the most recent (a later snapshot
+        // from an older cycle will not override it) and its "checked ago" age ticks from here.
+        _reachableCheckedAt = DateTimeOffset.Now;
+        if (open is bool v)
         {
-            case true: SetColor(lblReachableValue, "Open", OkColor); break;
-            case false: SetColor(lblReachableValue, "Closed", WarnColor); break;
-            default: SetNeutral(lblReachableValue, "Could not determine"); break;
+            _lastReachable = v;
+            _reachableUndetermined = false;
         }
+        else
+        {
+            _lastReachable = null;
+            _reachableUndetermined = true;
+        }
+        RenderReachable();
         btnTestPort.Enabled = true;
     }
 

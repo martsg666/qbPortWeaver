@@ -386,7 +386,7 @@ public sealed class NatPmpManager : IVpnManager
             try
             {
                 using var udp = new UdpClient();
-                await udp.SendAsync(request, new IPEndPoint(gateway, NatPmpPort)).ConfigureAwait(false);
+                await udp.SendAsync(request, new IPEndPoint(gateway, NatPmpPort), cancellationToken).ConfigureAwait(false);
 
                 using var timeoutCts = new CancellationTokenSource(timeoutMs);
                 using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);

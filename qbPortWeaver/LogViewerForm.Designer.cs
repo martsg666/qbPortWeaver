@@ -27,86 +27,84 @@ partial class LogViewerForm
 
     private void InitializeComponent()
     {
-        lvLog         = new BufferedListView();
-        colLog        = new System.Windows.Forms.ColumnHeader();
-        pnlToolbar    = new System.Windows.Forms.Panel();
-        chkError      = new System.Windows.Forms.CheckBox();
-        chkWarn       = new System.Windows.Forms.CheckBox();
-        chkInfo       = new System.Windows.Forms.CheckBox();
-        chkDebug      = new System.Windows.Forms.CheckBox();
-        cboSubsystem  = new System.Windows.Forms.ComboBox();
-        cboLogFile    = new System.Windows.Forms.ComboBox();
-        btnIssuePrev   = new System.Windows.Forms.Button();
-        btnIssueNext   = new System.Windows.Forms.Button();
-        txtSearch      = new PlaceholderTextBox();
-        btnClearSearch = new System.Windows.Forms.Button();
-        btnPrev        = new System.Windows.Forms.Button();
-        btnNext        = new System.Windows.Forms.Button();
-        lblMatchCount  = new System.Windows.Forms.Label();
-        ctxLog         = new System.Windows.Forms.ContextMenuStrip();
-        ctxCopy        = new System.Windows.Forms.ToolStripMenuItem();
-        ctxCopyAll     = new System.Windows.Forms.ToolStripMenuItem();
-        ctxSelectAll   = new System.Windows.Forms.ToolStripMenuItem();
-        toolTip        = new System.Windows.Forms.ToolTip();
         components     = new System.ComponentModel.Container();
-        components.Add(ctxLog);
-        components.Add(toolTip);
+        lvLog          = new BufferedListView();
+        colLog         = new ColumnHeader();
+        pnlToolbar     = new Panel();
+        chkError       = new CheckBox();
+        chkWarn        = new CheckBox();
+        chkInfo        = new CheckBox();
+        chkDebug       = new CheckBox();
+        cboSubsystem   = new ComboBox();
+        cboLogFile     = new ComboBox();
+        btnIssuePrev   = new Button();
+        btnIssueNext   = new Button();
+        txtSearch      = new PlaceholderTextBox();
+        btnClearSearch = new Button();
+        btnPrev        = new Button();
+        btnNext        = new Button();
+        lblMatchCount  = new Label();
+        ctxLog         = new ContextMenuStrip(components);
+        ctxCopy        = new ToolStripMenuItem();
+        ctxCopyAll     = new ToolStripMenuItem();
+        ctxSelectAll   = new ToolStripMenuItem();
+        toolTip        = new ToolTip(components);
         pnlToolbar.SuspendLayout();
         SuspendLayout();
 
         // Filter CheckBoxes - colors applied in OnLoad after theme is determined
-        System.Windows.Forms.AnchorStyles leftAnchor = System.Windows.Forms.AnchorStyles.Left | System.Windows.Forms.AnchorStyles.Top;
+        AnchorStyles leftAnchor = AnchorStyles.Left | AnchorStyles.Top;
 
         chkError.Anchor                  = leftAnchor;
-        chkError.Appearance              = System.Windows.Forms.Appearance.Button;
+        chkError.Appearance              = Appearance.Button;
         chkError.AutoSize                = false;
         chkError.Checked                 = true;
-        chkError.FlatStyle               = System.Windows.Forms.FlatStyle.Flat;
-        chkError.Font                    = new System.Drawing.Font("Segoe UI", 8.25F, System.Drawing.FontStyle.Bold);
-        chkError.Location                = new System.Drawing.Point(4, 4);
-        chkError.Size                    = new System.Drawing.Size(68, 26);
+        chkError.FlatStyle               = FlatStyle.Flat;
+        chkError.Font                    = new Font("Segoe UI", 8.25F, FontStyle.Bold);
+        chkError.Location                = new Point(4, 4);
+        chkError.Size                    = new Size(68, 26);
         chkError.TabIndex                = 0;
         chkError.Text                    = "ERROR";
-        chkError.TextAlign               = System.Drawing.ContentAlignment.MiddleCenter;
+        chkError.TextAlign               = ContentAlignment.MiddleCenter;
         chkError.UseVisualStyleBackColor = false;
 
         chkWarn.Anchor                  = leftAnchor;
-        chkWarn.Appearance              = System.Windows.Forms.Appearance.Button;
+        chkWarn.Appearance              = Appearance.Button;
         chkWarn.AutoSize                = false;
         chkWarn.Checked                 = true;
-        chkWarn.FlatStyle               = System.Windows.Forms.FlatStyle.Flat;
-        chkWarn.Font                    = new System.Drawing.Font("Segoe UI", 8.25F, System.Drawing.FontStyle.Bold);
-        chkWarn.Location                = new System.Drawing.Point(76, 4);
-        chkWarn.Size                    = new System.Drawing.Size(68, 26);
+        chkWarn.FlatStyle               = FlatStyle.Flat;
+        chkWarn.Font                    = new Font("Segoe UI", 8.25F, FontStyle.Bold);
+        chkWarn.Location                = new Point(76, 4);
+        chkWarn.Size                    = new Size(68, 26);
         chkWarn.TabIndex                = 1;
         chkWarn.Text                    = "WARN";
-        chkWarn.TextAlign               = System.Drawing.ContentAlignment.MiddleCenter;
+        chkWarn.TextAlign               = ContentAlignment.MiddleCenter;
         chkWarn.UseVisualStyleBackColor = false;
 
         chkInfo.Anchor                  = leftAnchor;
-        chkInfo.Appearance              = System.Windows.Forms.Appearance.Button;
+        chkInfo.Appearance              = Appearance.Button;
         chkInfo.AutoSize                = false;
         chkInfo.Checked                 = true;
-        chkInfo.FlatStyle               = System.Windows.Forms.FlatStyle.Flat;
-        chkInfo.Font                    = new System.Drawing.Font("Segoe UI", 8.25F, System.Drawing.FontStyle.Bold);
-        chkInfo.Location                = new System.Drawing.Point(148, 4);
-        chkInfo.Size                    = new System.Drawing.Size(68, 26);
+        chkInfo.FlatStyle               = FlatStyle.Flat;
+        chkInfo.Font                    = new Font("Segoe UI", 8.25F, FontStyle.Bold);
+        chkInfo.Location                = new Point(148, 4);
+        chkInfo.Size                    = new Size(68, 26);
         chkInfo.TabIndex                = 2;
         chkInfo.Text                    = "INFO";
-        chkInfo.TextAlign               = System.Drawing.ContentAlignment.MiddleCenter;
+        chkInfo.TextAlign               = ContentAlignment.MiddleCenter;
         chkInfo.UseVisualStyleBackColor = false;
 
         chkDebug.Anchor                  = leftAnchor;
-        chkDebug.Appearance              = System.Windows.Forms.Appearance.Button;
+        chkDebug.Appearance              = Appearance.Button;
         chkDebug.AutoSize                = false;
         chkDebug.Checked                 = true;
-        chkDebug.FlatStyle               = System.Windows.Forms.FlatStyle.Flat;
-        chkDebug.Font                    = new System.Drawing.Font("Segoe UI", 8.25F, System.Drawing.FontStyle.Bold);
-        chkDebug.Location                = new System.Drawing.Point(220, 4);
-        chkDebug.Size                    = new System.Drawing.Size(68, 26);
+        chkDebug.FlatStyle               = FlatStyle.Flat;
+        chkDebug.Font                    = new Font("Segoe UI", 8.25F, FontStyle.Bold);
+        chkDebug.Location                = new Point(220, 4);
+        chkDebug.Size                    = new Size(68, 26);
         chkDebug.TabIndex                = 3;
         chkDebug.Text                    = "DEBUG";
-        chkDebug.TextAlign               = System.Drawing.ContentAlignment.MiddleCenter;
+        chkDebug.TextAlign               = ContentAlignment.MiddleCenter;
         chkDebug.UseVisualStyleBackColor = false;
 
         // Wire filter events after setting Checked = true to avoid premature filterButton_CheckedChanged
@@ -122,29 +120,32 @@ partial class LogViewerForm
         // Issue navigation buttons - grouped with the level filter buttons, navigate between WARN/ERROR lines.
         // Positioned immediately after chkDebug; y/h kept at filter-button values (no OnLoad adjustment).
         btnIssuePrev.Anchor    = leftAnchor;
-        btnIssuePrev.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
-        btnIssuePrev.Location  = new System.Drawing.Point(296, 4);
-        btnIssuePrev.Size      = new System.Drawing.Size(26, 26);
+        btnIssuePrev.FlatStyle = FlatStyle.Flat;
+        btnIssuePrev.Location  = new Point(296, 4);
+        btnIssuePrev.Size      = new Size(26, 26);
         btnIssuePrev.TabIndex  = 4;
         btnIssuePrev.Text      = ""; // up chevron owner-drawn in NavButton_Paint
         btnIssuePrev.Click    += btnIssuePrev_Click;
         toolTip.SetToolTip(btnIssuePrev, "Previous warning or error");
 
         btnIssueNext.Anchor    = leftAnchor;
-        btnIssueNext.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
-        btnIssueNext.Location  = new System.Drawing.Point(322, 4);
-        btnIssueNext.Size      = new System.Drawing.Size(26, 26);
+        btnIssueNext.FlatStyle = FlatStyle.Flat;
+        btnIssueNext.Location  = new Point(322, 4);
+        btnIssueNext.Size      = new Size(26, 26);
         btnIssueNext.TabIndex  = 5;
         btnIssueNext.Text      = ""; // down chevron owner-drawn in NavButton_Paint
         btnIssueNext.Click    += btnIssueNext_Click;
         toolTip.SetToolTip(btnIssueNext, "Next warning or error");
 
         // Subsystem filter - positioned after the level buttons and issue nav buttons
-        cboSubsystem.Anchor        = System.Windows.Forms.AnchorStyles.Left | System.Windows.Forms.AnchorStyles.Top;
-        cboSubsystem.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
+        // FlatStyle.Flat on every combo (app-wide): the themed DropDownList face ignores dark
+        // mode and renders light; the flat face is drawn with the mode-aware BackColor instead.
+        cboSubsystem.Anchor        = AnchorStyles.Left | AnchorStyles.Top;
+        cboSubsystem.DropDownStyle = ComboBoxStyle.DropDownList;
+        cboSubsystem.FlatStyle     = FlatStyle.Flat;
         cboSubsystem.Items.AddRange(new object[] { "All", Subsystem.MainApp, Subsystem.MediaManager, Subsystem.HelperService });
-        cboSubsystem.Location      = new System.Drawing.Point(380, 6);
-        cboSubsystem.Size          = new System.Drawing.Size(130, 23);
+        cboSubsystem.Location      = new Point(380, 6);
+        cboSubsystem.Size          = new Size(130, 23);
         cboSubsystem.TabIndex      = 6;
         cboSubsystem.SelectedIndex = 0;
         // Wire event after setting SelectedIndex to avoid premature RebuildDisplay
@@ -152,22 +153,23 @@ partial class LogViewerForm
         toolTip.SetToolTip(cboSubsystem, "Filter entries by subsystem");
 
         // Log file picker - populated in OnLoad; event wired there after population to avoid premature load
-        cboLogFile.Anchor        = System.Windows.Forms.AnchorStyles.Left | System.Windows.Forms.AnchorStyles.Top;
-        cboLogFile.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
-        cboLogFile.Location      = new System.Drawing.Point(514, 6);
-        cboLogFile.Size          = new System.Drawing.Size(110, 23);
+        cboLogFile.Anchor        = AnchorStyles.Left | AnchorStyles.Top;
+        cboLogFile.DropDownStyle = ComboBoxStyle.DropDownList;
+        cboLogFile.FlatStyle     = FlatStyle.Flat;
+        cboLogFile.Location      = new Point(514, 6);
+        cboLogFile.Size          = new Size(110, 23);
         cboLogFile.TabIndex      = 7;
         toolTip.SetToolTip(cboLogFile, "Select log file");
 
         // Search controls - anchored Right so they stay visible when the form is resized
         // Layout from right: [4] [btnNext:26] [btnPrev:26] [4] [lblMatchCount:64] [4] [txtSearch:220] [8]
         // btnClearSearch floats inside the right edge of txtSearch (z-order above it); positioned in OnLoad.
-        System.Windows.Forms.AnchorStyles rightAnchor = System.Windows.Forms.AnchorStyles.Right | System.Windows.Forms.AnchorStyles.Top;
+        AnchorStyles rightAnchor = AnchorStyles.Right | AnchorStyles.Top;
 
         // txtSearch - height is auto-sized by its font; vertically centered in the 36px toolbar in OnLoad
         txtSearch.Anchor          = rightAnchor;
-        txtSearch.BorderStyle     = System.Windows.Forms.BorderStyle.FixedSingle;
-        txtSearch.Location        = new System.Drawing.Point(752, 8);
+        txtSearch.BorderStyle     = BorderStyle.FixedSingle;
+        txtSearch.Location        = new Point(752, 8);
         txtSearch.PlaceholderText = "Search…";
         txtSearch.Width           = 220; // height is auto-sized by font; vertically centered in OnLoad
         txtSearch.TabIndex        = 8;
@@ -178,14 +180,14 @@ partial class LogViewerForm
         // btnClearSearch - overlays the right interior of txtSearch; sized and positioned in OnLoad.
         // Right-margin set to txtSearch.RightMargin - 2 so the button always stays 2px inside the box on resize.
         btnClearSearch.Anchor                    = rightAnchor;
-        btnClearSearch.FlatStyle                 = System.Windows.Forms.FlatStyle.Flat;
+        btnClearSearch.FlatStyle                 = FlatStyle.Flat;
         btnClearSearch.FlatAppearance.BorderSize = 0;
-        btnClearSearch.Font                      = new System.Drawing.Font("Segoe UI", 7F, System.Drawing.FontStyle.Bold);
-        btnClearSearch.Location                  = new System.Drawing.Point(950, 5); // fine-tuned in OnLoad
-        btnClearSearch.Padding                   = new System.Windows.Forms.Padding(0);
-        btnClearSearch.Size                      = new System.Drawing.Size(16, 16);  // fine-tuned in OnLoad
+        btnClearSearch.Font                      = new Font("Segoe UI", 7F, FontStyle.Bold);
+        btnClearSearch.Location                  = new Point(950, 5); // fine-tuned in OnLoad
+        btnClearSearch.Padding                   = new Padding(0);
+        btnClearSearch.Size                      = new Size(16, 16);  // fine-tuned in OnLoad
         btnClearSearch.Text                      = "X";
-        btnClearSearch.TextAlign                 = System.Drawing.ContentAlignment.MiddleCenter;
+        btnClearSearch.TextAlign                 = ContentAlignment.MiddleCenter;
         btnClearSearch.TabIndex                  = 9;
         btnClearSearch.TabStop                   = false;
         btnClearSearch.Visible                   = false;
@@ -194,9 +196,9 @@ partial class LogViewerForm
 
         // btnPrev
         btnPrev.Anchor    = rightAnchor;
-        btnPrev.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
-        btnPrev.Location  = new System.Drawing.Point(1044, 5);
-        btnPrev.Size      = new System.Drawing.Size(26, 26);
+        btnPrev.FlatStyle = FlatStyle.Flat;
+        btnPrev.Location  = new Point(1044, 5);
+        btnPrev.Size      = new Size(26, 26);
         btnPrev.TabIndex  = 10;
         btnPrev.Text      = ""; // up chevron owner-drawn in NavButton_Paint
         btnPrev.Click    += btnPrev_Click;
@@ -204,9 +206,9 @@ partial class LogViewerForm
 
         // btnNext
         btnNext.Anchor    = rightAnchor;
-        btnNext.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
-        btnNext.Location  = new System.Drawing.Point(1070, 5);
-        btnNext.Size      = new System.Drawing.Size(26, 26);
+        btnNext.FlatStyle = FlatStyle.Flat;
+        btnNext.Location  = new Point(1070, 5);
+        btnNext.Size      = new Size(26, 26);
         btnNext.TabIndex  = 11;
         btnNext.Text      = ""; // down chevron owner-drawn in NavButton_Paint
         btnNext.Click    += btnNext_Click;
@@ -215,19 +217,19 @@ partial class LogViewerForm
         // lblMatchCount
         lblMatchCount.Anchor    = rightAnchor;
         lblMatchCount.AutoSize  = false;
-        lblMatchCount.Font      = new System.Drawing.Font("Segoe UI", 8F);
-        lblMatchCount.Location  = new System.Drawing.Point(976, 11);
-        lblMatchCount.Size      = new System.Drawing.Size(64, 14);
-        lblMatchCount.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
+        lblMatchCount.Font      = new Font("Segoe UI", 8F);
+        lblMatchCount.Location  = new Point(976, 11);
+        lblMatchCount.Size      = new Size(64, 14);
+        lblMatchCount.TextAlign = ContentAlignment.MiddleLeft;
 
         // pnlToolbar - Width must be set explicitly before right-anchored children are added,
         // otherwise the default panel width (~200px) produces a negative right-margin and
         // causes right-anchored controls to fly off-screen when the panel expands to form width.
-        pnlToolbar.Controls.AddRange(new System.Windows.Forms.Control[] {
+        pnlToolbar.Controls.AddRange(new Control[] {
             chkError, chkWarn, chkInfo, chkDebug, cboSubsystem, cboLogFile, btnIssuePrev, btnIssueNext,
             txtSearch, btnClearSearch, btnPrev, btnNext, lblMatchCount });
-        pnlToolbar.Dock     = System.Windows.Forms.DockStyle.Top;
-        pnlToolbar.Size     = new System.Drawing.Size(1100, 36);
+        pnlToolbar.Dock     = DockStyle.Top;
+        pnlToolbar.Size     = new Size(1100, 36);
         pnlToolbar.TabIndex = 0;
 
         // ctxLog - right-click context menu for the log viewer
@@ -237,7 +239,7 @@ partial class LogViewerForm
         ctxCopy.Click      += ctxCopy_Click;
         ctxCopyAll.Click   += ctxCopyAll_Click;
         ctxSelectAll.Click += ctxSelectAll_Click;
-        ctxLog.Items.AddRange(new System.Windows.Forms.ToolStripItem[] { ctxCopy, ctxCopyAll, ctxSelectAll });
+        ctxLog.Items.AddRange(new ToolStripItem[] { ctxCopy, ctxCopyAll, ctxSelectAll });
         ctxLog.Opening += ctxLog_Opening;
         lvLog.ContextMenuStrip = ctxLog;
 
@@ -247,20 +249,20 @@ partial class LogViewerForm
         // widest visible line (see UpdateColumnWidth).
         colLog.Text  = "";
         colLog.Width = 1100;
-        lvLog.BackColor       = System.Drawing.SystemColors.Control;
-        lvLog.BorderStyle     = System.Windows.Forms.BorderStyle.None;
+        lvLog.BackColor       = SystemColors.Control;
+        lvLog.BorderStyle     = BorderStyle.None;
         lvLog.Columns.Add(colLog);
-        lvLog.Dock            = System.Windows.Forms.DockStyle.Fill;
-        lvLog.Font            = new System.Drawing.Font("Consolas", 9F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point);
+        lvLog.Dock            = DockStyle.Fill;
+        lvLog.Font            = new Font("Consolas", 9F, FontStyle.Regular, GraphicsUnit.Point);
         lvLog.FullRowSelect   = true;
-        lvLog.HeaderStyle     = System.Windows.Forms.ColumnHeaderStyle.None;
+        lvLog.HeaderStyle     = ColumnHeaderStyle.None;
         lvLog.MultiSelect     = true;
         lvLog.OwnerDraw       = true;
         lvLog.ShowGroups      = false;
-        lvLog.Size            = new System.Drawing.Size(1100, 524);
+        lvLog.Size            = new Size(1100, 524);
         lvLog.TabIndex        = 1;
         lvLog.UseCompatibleStateImageBehavior = false;
-        lvLog.View            = System.Windows.Forms.View.Details;
+        lvLog.View            = View.Details;
         lvLog.VirtualMode     = true;
         lvLog.RetrieveVirtualItem += lvLog_RetrieveVirtualItem;
         lvLog.DrawItem            += lvLog_DrawItem;
@@ -270,9 +272,9 @@ partial class LogViewerForm
         lvLog.MouseUp             += lvLog_MouseUp;
 
         // LogViewerForm
-        AutoScaleDimensions = new System.Drawing.SizeF(7F, 15F);
-        AutoScaleMode       = System.Windows.Forms.AutoScaleMode.Font;
-        ClientSize          = new System.Drawing.Size(1100, 680);
+        AutoScaleDimensions = new SizeF(7F, 15F);
+        AutoScaleMode       = AutoScaleMode.Font;
+        ClientSize          = new Size(1100, 680);
         Controls.Add(lvLog);
         Controls.Add(pnlToolbar);
         MaximizeBox         = true;
@@ -281,37 +283,37 @@ partial class LogViewerForm
         // sizable forms. Width is the point where the right-anchored search block would meet the left
         // filter/combo block: cboLogFile.Right (624) + gap (8) + search-block width (344) = 976 client
         // + ~16 window border. Height keeps the toolbar plus a usable log area.
-        MinimumSize         = new System.Drawing.Size(992, 300);
+        MinimumSize         = new Size(992, 300);
         Name                = "LogViewerForm";
         Icon                = Properties.Resources.qbPortWeaver;
         ShowIcon            = true;
         ShowInTaskbar       = true;
-        StartPosition       = System.Windows.Forms.FormStartPosition.CenterScreen;
+        StartPosition       = FormStartPosition.CenterScreen;
         Text                = "qbPortWeaver | Log Viewer"; // overridden in OnLoad with AppIdentity.AppName
 
         pnlToolbar.ResumeLayout(false);
         ResumeLayout(false);
     }
 
-    private BufferedListView                       lvLog;
-    private System.Windows.Forms.ColumnHeader      colLog;
-    private System.Windows.Forms.Panel             pnlToolbar;
-    private System.Windows.Forms.CheckBox          chkError;
-    private System.Windows.Forms.CheckBox          chkWarn;
-    private System.Windows.Forms.CheckBox          chkInfo;
-    private System.Windows.Forms.CheckBox          chkDebug;
-    private System.Windows.Forms.ComboBox          cboSubsystem;
-    private System.Windows.Forms.ComboBox          cboLogFile;
-    private System.Windows.Forms.Button            btnIssuePrev;
-    private System.Windows.Forms.Button            btnIssueNext;
-    private PlaceholderTextBox                     txtSearch;
-    private System.Windows.Forms.Button            btnClearSearch;
-    private System.Windows.Forms.Button            btnPrev;
-    private System.Windows.Forms.Button            btnNext;
-    private System.Windows.Forms.Label             lblMatchCount;
-    private System.Windows.Forms.ContextMenuStrip  ctxLog;
-    private System.Windows.Forms.ToolStripMenuItem ctxCopy;
-    private System.Windows.Forms.ToolStripMenuItem ctxCopyAll;
-    private System.Windows.Forms.ToolStripMenuItem ctxSelectAll;
-    private System.Windows.Forms.ToolTip           toolTip;
+    private BufferedListView   lvLog;
+    private ColumnHeader       colLog;
+    private Panel              pnlToolbar;
+    private CheckBox           chkError;
+    private CheckBox           chkWarn;
+    private CheckBox           chkInfo;
+    private CheckBox           chkDebug;
+    private ComboBox           cboSubsystem;
+    private ComboBox           cboLogFile;
+    private Button             btnIssuePrev;
+    private Button             btnIssueNext;
+    private PlaceholderTextBox txtSearch;
+    private Button             btnClearSearch;
+    private Button             btnPrev;
+    private Button             btnNext;
+    private Label              lblMatchCount;
+    private ContextMenuStrip   ctxLog;
+    private ToolStripMenuItem  ctxCopy;
+    private ToolStripMenuItem  ctxCopyAll;
+    private ToolStripMenuItem  ctxSelectAll;
+    private ToolTip            toolTip;
 }

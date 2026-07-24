@@ -13,9 +13,9 @@
     <Product>qbPortWeaver</Product>
     <Authors>martsg666</Authors>
     <Copyright>© 2026 martsg666</Copyright>
-    <Version>2.6.1</Version>
-    <FileVersion>2.6.1.0</FileVersion>
-    <AssemblyVersion>2.6.1.0</AssemblyVersion>
+    <Version>2.6.2</Version>
+    <FileVersion>2.6.2.0</FileVersion>
+    <AssemblyVersion>2.6.2.0</AssemblyVersion>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <SignAssembly>False</SignAssembly>
     <PackageReadmeFile>README.md</PackageReadmeFile>
@@ -30,11 +30,12 @@
          S2325 - handlers/helpers that access instance members (Close, Invoke, ShowBalloonTip, UseWaitCursor/IsDisposed, or a called instance method) cannot be static (AboutForm.cs, HelpForm.cs, MainForm.cs, MediaManagerForm.cs, PortSyncService.cs, SettingsForm.cs, TransmissionClient.cs, WhatsNewForm.cs)
          S2486 - same as S108, SonarCloud cloud rule counterpart (BitTorrentClientBase.cs, TransmissionClient.cs)
          S2589 - defensive runtime fallback after a Debug.Assert that only fires in dev builds (WhatsNewForm.cs)
+         S2696 - single sync service instance clears a static flag shared with the static manual-test dispatch path (PortSyncService.cs)
          S3881 - abstract base class; all sealed subclasses have no additional disposable resources (BitTorrentClientBase.cs)
          S4721 - post-update command is user-configured, arbitrary execution is intended (PortSyncService.cs)
          S4790 - TMDB credential sent over HTTPS only; v3 API key in query param, v4 JWT as Bearer header (TmdbClient.cs)
          S6966 - non-modal Show() on child forms is intentional (WhatsNewForm directly; others via the ShowOrActivate helper, MainForm.cs) -->
-    <NoWarn>S108;S125;S1075;S1125;S1215;S2068;S2221;S2325;S2486;S2589;S3881;S4721;S4790;S6966</NoWarn>
+    <NoWarn>S108;S125;S1075;S1125;S1215;S2068;S2221;S2325;S2486;S2589;S2696;S3881;S4721;S4790;S6966</NoWarn>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 

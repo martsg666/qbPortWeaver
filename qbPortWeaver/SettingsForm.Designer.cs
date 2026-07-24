@@ -39,6 +39,7 @@ partial class SettingsForm
         chkNotifyOnPortUpdate     = new CheckBox();
         chkShowUpdateForm         = new CheckBox();
         lblAutoRecoveryHeader     = new Label();
+        btnTestRecovery           = new Button();
         chkVerifyPort             = new CheckBox();
         chkPortClosedRecovery     = new CheckBox();
         lblPortClosedChecks       = new Label();
@@ -140,6 +141,7 @@ partial class SettingsForm
         grpGeneral.Controls.Add(chkNotifyOnPortUpdate);
         grpGeneral.Controls.Add(chkShowUpdateForm);
         grpGeneral.Controls.Add(lblAutoRecoveryHeader);
+        grpGeneral.Controls.Add(btnTestRecovery);
         grpGeneral.Controls.Add(chkVerifyPort);
         grpGeneral.Controls.Add(chkPortClosedRecovery);
         grpGeneral.Controls.Add(lblPortClosedChecks);
@@ -163,15 +165,20 @@ partial class SettingsForm
         lblBitTorrentClient.TabIndex  = 0;
         lblBitTorrentClient.Text      = "Client:";
         lblBitTorrentClient.TextAlign = ContentAlignment.MiddleLeft;
+        // Field width and button column match the client groups' URL + Test rows (field 244 wide,
+        // button at x=398), so the buttons line up across tabs.
+        // FlatStyle.Flat on every combo (app-wide): the themed DropDownList face ignores dark
+        // mode and renders light; the flat face is drawn with the mode-aware BackColor instead.
         cboBitTorrentClient.DropDownStyle        = ComboBoxStyle.DropDownList;
+        cboBitTorrentClient.FlatStyle            = FlatStyle.Flat;
         cboBitTorrentClient.Location             = new Point(148, 24);
         cboBitTorrentClient.Name                 = "cboBitTorrentClient";
-        cboBitTorrentClient.Size                 = new Size(200, 23);
+        cboBitTorrentClient.Size                 = new Size(244, 23);
         cboBitTorrentClient.TabIndex             = 1;
         cboBitTorrentClient.SelectedIndexChanged += cboBitTorrentClient_SelectedIndexChanged;
-        btnDetectClient.Location = new Point(354, 24);
+        btnDetectClient.Location = new Point(398, 24);
         btnDetectClient.Name     = "btnDetectClient";
-        btnDetectClient.Size     = new Size(80, 23);
+        btnDetectClient.Size     = new Size(70, 23);
         btnDetectClient.TabIndex = 2;
         btnDetectClient.Text     = "Detect";
         btnDetectClient.Click   += btnDetectClient_Click;
@@ -197,7 +204,7 @@ partial class SettingsForm
         // Shares the update-interval row: the interval is the scheduled cadence, this adds an
         // immediate sync on network/VPN change. AutoSize so the label sits flush after "seconds".
         chkResyncOnNetworkChange.AutoSize = true;
-        chkResyncOnNetworkChange.Location = new Point(300, 54);
+        chkResyncOnNetworkChange.Location = new Point(300, 53);
         chkResyncOnNetworkChange.Name     = "chkResyncOnNetworkChange";
         chkResyncOnNetworkChange.TabIndex = 6;
         chkResyncOnNetworkChange.Text     = "Sync on network change";
@@ -207,10 +214,12 @@ partial class SettingsForm
         lblVpnProvider.TabIndex  = 7;
         lblVpnProvider.Text      = "VPN provider:";
         lblVpnProvider.TextAlign = ContentAlignment.MiddleLeft;
+        // Fills the row to the button column's right edge (x=468), like the adapter row below.
         cboVpnProvider.DropDownStyle        = ComboBoxStyle.DropDownList;
+        cboVpnProvider.FlatStyle            = FlatStyle.Flat;
         cboVpnProvider.Location             = new Point(148, 82);
         cboVpnProvider.Name                 = "cboVpnProvider";
-        cboVpnProvider.Size                 = new Size(200, 23);
+        cboVpnProvider.Size                 = new Size(320, 23);
         cboVpnProvider.TabIndex             = 8;
         cboVpnProvider.SelectedIndexChanged += cboVpnProvider_SelectedIndexChanged;
         lblNatPmpAdapter.Location  = new Point(12, 111);
@@ -220,6 +229,7 @@ partial class SettingsForm
         lblNatPmpAdapter.Text      = "NAT-PMP adapter:";
         lblNatPmpAdapter.TextAlign = ContentAlignment.MiddleLeft;
         cboNatPmpAdapter.DropDownStyle = ComboBoxStyle.DropDownList;
+        cboNatPmpAdapter.FlatStyle     = FlatStyle.Flat;
         cboNatPmpAdapter.Location      = new Point(148, 111);
         cboNatPmpAdapter.Name          = "cboNatPmpAdapter";
         cboNatPmpAdapter.Size          = new Size(290, 23);
@@ -244,21 +254,28 @@ partial class SettingsForm
         chkShowUpdateForm.Text          = "Show update form on startup";
         // "Trigger after" labels use AutoSize so the NUD sits immediately after the text.
         lblAutoRecoveryHeader.AutoSize = true;
-        lblAutoRecoveryHeader.Font     = new Font("Segoe UI", 9F, FontStyle.Bold, GraphicsUnit.Point);
+        lblAutoRecoveryHeader.Font     = new Font("Segoe UI", 9F, FontStyle.Bold);
         lblAutoRecoveryHeader.Location = new Point(12, 198);
         lblAutoRecoveryHeader.Name     = "lblAutoRecoveryHeader";
         lblAutoRecoveryHeader.TabIndex = 14;
         lblAutoRecoveryHeader.Text     = "Auto-recovery";
+        // Shares the header row, matching the client groups' Test button placement (x=398).
+        btnTestRecovery.Location = new Point(398, 198);
+        btnTestRecovery.Name     = "btnTestRecovery";
+        btnTestRecovery.Size     = new Size(70, 23);
+        btnTestRecovery.TabIndex = 15;
+        btnTestRecovery.Text     = "Test";
+        btnTestRecovery.Click   += btnTestRecovery_Click;
         chkVerifyPort.AutoSize        = true;
         chkVerifyPort.Location        = new Point(15, 227);
         chkVerifyPort.Name            = "chkVerifyPort";
-        chkVerifyPort.TabIndex        = 15;
+        chkVerifyPort.TabIndex        = 16;
         chkVerifyPort.Text            = "Check that the forwarded port is open after each sync";
         chkVerifyPort.CheckedChanged += chkVerifyPort_CheckedChanged;
         chkPortClosedRecovery.AutoSize       = true;
         chkPortClosedRecovery.Location       = new Point(15, 256);
         chkPortClosedRecovery.Name           = "chkPortClosedRecovery";
-        chkPortClosedRecovery.TabIndex       = 16;
+        chkPortClosedRecovery.TabIndex       = 17;
         chkPortClosedRecovery.Text           = "Trigger auto-recovery when port stays closed";
         chkPortClosedRecovery.CheckedChanged += chkPortClosedRecovery_CheckedChanged;
         // "Trigger after" sub-rows align with the parent checkbox's text at x=28 (checkbox left 12 +
@@ -266,7 +283,7 @@ partial class SettingsForm
         lblPortClosedChecks.AutoSize  = true;
         lblPortClosedChecks.Location  = new Point(28, 285);
         lblPortClosedChecks.Name      = "lblPortClosedChecks";
-        lblPortClosedChecks.TabIndex  = 17;
+        lblPortClosedChecks.TabIndex  = 18;
         lblPortClosedChecks.Text      = "Trigger after";
         lblPortClosedChecks.TextAlign = ContentAlignment.MiddleLeft;
         nudPortClosedChecks.Location = new Point(112, 285);
@@ -274,24 +291,24 @@ partial class SettingsForm
         nudPortClosedChecks.Minimum  = new decimal(new int[] { 1, 0, 0, 0 });
         nudPortClosedChecks.Name     = "nudPortClosedChecks";
         nudPortClosedChecks.Size     = new Size(50, 23);
-        nudPortClosedChecks.TabIndex = 18;
+        nudPortClosedChecks.TabIndex = 19;
         nudPortClosedChecks.Value    = new decimal(new int[] { 3, 0, 0, 0 });
         lblPortClosedChecksUnit.Location  = new Point(168, 285);
         lblPortClosedChecksUnit.Name      = "lblPortClosedChecksUnit";
         lblPortClosedChecksUnit.Size      = new Size(270, 23);
-        lblPortClosedChecksUnit.TabIndex  = 19;
+        lblPortClosedChecksUnit.TabIndex  = 20;
         lblPortClosedChecksUnit.Text      = "confirmed closed checks";
         lblPortClosedChecksUnit.TextAlign = ContentAlignment.MiddleLeft;
         chkAutoRecovery.AutoSize       = true;
         chkAutoRecovery.Location       = new Point(15, 314);
         chkAutoRecovery.Name           = "chkAutoRecovery";
-        chkAutoRecovery.TabIndex       = 20;
+        chkAutoRecovery.TabIndex       = 21;
         chkAutoRecovery.Text           = "Trigger auto-recovery when no port assigned or disconnected";
         chkAutoRecovery.CheckedChanged += chkAutoRecovery_CheckedChanged;
         lblRecoveryCycles.AutoSize  = true;
         lblRecoveryCycles.Location  = new Point(28, 343);
         lblRecoveryCycles.Name      = "lblRecoveryCycles";
-        lblRecoveryCycles.TabIndex  = 21;
+        lblRecoveryCycles.TabIndex  = 22;
         lblRecoveryCycles.Text      = "Trigger after";
         lblRecoveryCycles.TextAlign = ContentAlignment.MiddleLeft;
         nudRecoveryCycles.Location = new Point(112, 343);
@@ -299,12 +316,12 @@ partial class SettingsForm
         nudRecoveryCycles.Minimum  = new decimal(new int[] { 1, 0, 0, 0 });
         nudRecoveryCycles.Name     = "nudRecoveryCycles";
         nudRecoveryCycles.Size     = new Size(50, 23);
-        nudRecoveryCycles.TabIndex = 22;
+        nudRecoveryCycles.TabIndex = 23;
         nudRecoveryCycles.Value    = new decimal(new int[] { 3, 0, 0, 0 });
         lblRecoveryCyclesUnit.Location  = new Point(168, 343);
         lblRecoveryCyclesUnit.Name      = "lblRecoveryCyclesUnit";
         lblRecoveryCyclesUnit.Size      = new Size(270, 23);
-        lblRecoveryCyclesUnit.TabIndex  = 23;
+        lblRecoveryCyclesUnit.TabIndex  = 24;
         lblRecoveryCyclesUnit.Text      = "consecutive failed cycles";
         lblRecoveryCyclesUnit.TextAlign = ContentAlignment.MiddleLeft;
         // ── grpQBittorrent ────────────────────────────────────────────
@@ -383,7 +400,7 @@ partial class SettingsForm
         btnBrowseQBittorrentExePath.Name     = "btnBrowseQBittorrentExePath";
         btnBrowseQBittorrentExePath.Size     = new Size(40, 23);
         btnBrowseQBittorrentExePath.TabIndex = 9;
-        btnBrowseQBittorrentExePath.Text     = "...";
+        btnBrowseQBittorrentExePath.Text     = "…";
         btnBrowseQBittorrentExePath.Click   += btnBrowseQBittorrentExePath_Click;
         lblQBittorrentProcessName.Location  = new Point(12, 140);
         lblQBittorrentProcessName.Name      = "lblQBittorrentProcessName";
@@ -493,7 +510,7 @@ partial class SettingsForm
         btnBrowseDelugeExePath.Name     = "btnBrowseDelugeExePath";
         btnBrowseDelugeExePath.Size     = new Size(40, 23);
         btnBrowseDelugeExePath.TabIndex = 7;
-        btnBrowseDelugeExePath.Text     = "...";
+        btnBrowseDelugeExePath.Text     = "…";
         btnBrowseDelugeExePath.Click   += btnBrowseDelugeExePath_Click;
         lblDelugeProcessName.Location  = new Point(12, 111);
         lblDelugeProcessName.Name      = "lblDelugeProcessName";
@@ -603,7 +620,7 @@ partial class SettingsForm
         btnBrowseTransmissionExePath.Name     = "btnBrowseTransmissionExePath";
         btnBrowseTransmissionExePath.Size     = new Size(40, 23);
         btnBrowseTransmissionExePath.TabIndex = 9;
-        btnBrowseTransmissionExePath.Text     = "...";
+        btnBrowseTransmissionExePath.Text     = "…";
         btnBrowseTransmissionExePath.Click   += btnBrowseTransmissionExePath_Click;
         lblTransmissionProcessName.Location  = new Point(12, 140);
         lblTransmissionProcessName.Name      = "lblTransmissionProcessName";
@@ -657,9 +674,10 @@ partial class SettingsForm
         lblColorTheme.Text      = "Color theme:";
         lblColorTheme.TextAlign = ContentAlignment.MiddleLeft;
         cboColorTheme.DropDownStyle = ComboBoxStyle.DropDownList;
+        cboColorTheme.FlatStyle     = FlatStyle.Flat;
         cboColorTheme.Location      = new Point(148, 24);
         cboColorTheme.Name          = "cboColorTheme";
-        cboColorTheme.Size          = new Size(150, 23);
+        cboColorTheme.Size          = new Size(320, 23);
         cboColorTheme.TabIndex      = 1;
         lblPostUpdateCmd.Location  = new Point(12, 53);
         lblPostUpdateCmd.Name      = "lblPostUpdateCmd";
@@ -734,7 +752,7 @@ partial class SettingsForm
         ShowIcon        = false;
         ShowInTaskbar   = false;
         StartPosition   = FormStartPosition.CenterScreen;
-        Text            = "qbPortWeaver | Settings";
+        Text            = "qbPortWeaver | Settings"; // overridden in constructor
         grpGeneral.ResumeLayout(false);
         grpGeneral.PerformLayout();
         ((System.ComponentModel.ISupportInitialize)nudUpdateInterval).EndInit();
@@ -779,6 +797,7 @@ partial class SettingsForm
     private CheckBox      chkNotifyOnPortUpdate;
     private CheckBox      chkShowUpdateForm;
     private Label         lblAutoRecoveryHeader;
+    private Button        btnTestRecovery;
     private CheckBox      chkVerifyPort;
     private CheckBox      chkPortClosedRecovery;
     private Label         lblPortClosedChecks;

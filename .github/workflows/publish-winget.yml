@@ -1,0 +1,127 @@
+name: Publish to winget
+
+# Run manually after the GitHub Release for the tag exists (the MSI asset must be
+# published). Uses wingetcreate to update the martsg666.qbPortWeaver manifests in
+# microsoft/winget-pkgs and open the submission PR from the martsg666/winget-pkgs fork.
+#
+# Requires the WINGET_TOKEN secret: a classic PAT with the public_repo scope, used by
+# wingetcreate to push the manifest branch to the fork and open the PR.
+#
+# The package must already exist in winget-pkgs (first submission was a manual PR);
+# this workflow only submits version updates. wingetcreate downloads the MSI itself,
+# so the new SHA256 and ProductCode are read from the installer automatically.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to publish - must include the v prefix (e.g. v1.2.3)'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  publish-winget:
+    runs-on: windows-latest
+    timeout-minutes: 15
+
+    steps:
+      # -----------------------------------------------------------------------
+      # 1. Derive the semver version from the tag (strip leading 'v')
+      # -----------------------------------------------------------------------
+      - name: Resolve tag and version
+        id: version
+        shell: pwsh
+        env:
+          GH_INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $tag = $env:GH_INPUT_TAG
+          if (-not $tag.StartsWith('v')) {
+            throw "Tag must start with 'v' (e.g. v2.4.0). Got: $tag"
+          }
+          $version = $tag.TrimStart('v')
+          "TAG=$tag"         | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "VERSION=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          Write-Host "Publishing version: $version  (tag: $tag)"
+
+      # -----------------------------------------------------------------------
+      # 2. Validate required secrets are present before attempting the submission
+      # -----------------------------------------------------------------------
+      - name: Validate required secrets
+        shell: pwsh
+        env:
+          WINGET_TOKEN: ${{ secrets.WINGET_TOKEN }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (-not $env:WINGET_TOKEN) {
+            throw "WINGET_TOKEN secret is not configured. Add a classic PAT with the public_repo scope in Settings > Secrets before running this workflow."
+          }
+          Write-Host "Required secrets validated."
+
+      # -----------------------------------------------------------------------
+      # 3. Verify the MSI asset exists on the release and the version is not
+      #    already in winget-pkgs, so re-runs are safe.
+      # -----------------------------------------------------------------------
+      - name: Verify release asset and winget state
+        id: verify
+        shell: pwsh
+        env:
+          GH_TOKEN:        ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG:     ${{ steps.version.outputs.TAG }}
+          RELEASE_VERSION: ${{ steps.version.outputs.VERSION }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $tag     = $env:RELEASE_TAG
+          $version = $env:RELEASE_VERSION
+          $msi     = "qbPortWeaver_${version}_Setup.msi"
+
+          $assets = gh release view $tag --repo $env:GITHUB_REPOSITORY --json assets --jq '.assets[].name'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if ($assets -notcontains $msi) {
+            throw "Release $tag does not contain the expected MSI asset: $msi"
+          }
+          Write-Host "Release asset found: $msi"
+
+          # Skip the submission if this version is already in winget-pkgs (e.g. workflow re-run).
+          # 2xx -> already present, skip.
+          # 404 -> not yet present, proceed.
+          # anything else (5xx, network error) -> re-throw so the step fails loudly rather than
+          #         silently assuming "not published" and risking a duplicate submission.
+          $alreadyPublished = $false
+          try {
+            Invoke-WebRequest `
+              -Uri "https://api.github.com/repos/microsoft/winget-pkgs/contents/manifests/m/martsg666/qbPortWeaver/$version" `
+              -Headers @{ 'User-Agent' = 'qbPortWeaver-CI'; 'Authorization' = "Bearer $env:GH_TOKEN" } `
+              -Method Head | Out-Null
+            $alreadyPublished = $true
+          } catch {
+            if ($_.Exception.Response?.StatusCode -ne [System.Net.HttpStatusCode]::NotFound) { throw }
+          }
+          if ($alreadyPublished) {
+            Write-Host "martsg666.qbPortWeaver $version is already in winget-pkgs - skipping submission."
+          }
+          "ALREADY_PUBLISHED=$alreadyPublished" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "MSI_URL=https://github.com/$env:GITHUB_REPOSITORY/releases/download/$tag/$msi" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+      # -----------------------------------------------------------------------
+      # 4. Update the manifests with wingetcreate and open the winget-pkgs PR
+      # -----------------------------------------------------------------------
+      - name: Submit manifest update to winget-pkgs
+        if: steps.verify.outputs.ALREADY_PUBLISHED != 'True'
+        shell: pwsh
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.VERSION }}
+          MSI_URL:         ${{ steps.verify.outputs.MSI_URL }}
+          WINGET_TOKEN:    ${{ secrets.WINGET_TOKEN }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Invoke-WebRequest -Uri 'https://aka.ms/wingetcreate/latest' -OutFile wingetcreate.exe
+          .\wingetcreate.exe update martsg666.qbPortWeaver `
+            --version $env:RELEASE_VERSION `
+            --urls $env:MSI_URL `
+            --submit `
+            --token $env:WINGET_TOKEN
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Write-Host "winget-pkgs submission PR opened for $env:RELEASE_VERSION."

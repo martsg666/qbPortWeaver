@@ -113,7 +113,7 @@ internal static partial class AutoRecovery
             }
             logger.LogMessage($"Re-enabled adapter '{adapterName}'", LogLevel.Info);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             logger.LogMessage($"Failed to cycle adapter: {ex.Message}", LogLevel.Error);
         }
@@ -444,7 +444,7 @@ internal static partial class AutoRecovery
 
             return true;
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             logger.LogMessage($"Failed to run netsh: {ex.Message}", LogLevel.Warn);
             return false;

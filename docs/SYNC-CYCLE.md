@@ -149,6 +149,10 @@ The counter resets in two cases (the streak start time is simply re-stamped when
 
 All resets flow through a single `ResetFailureStreak` helper. It only zeroes the counter; the time floor never reads a stale start time because the timestamp is re-stamped on the next streak's first failure and is only consulted while the counter is non-zero.
 
+### Manual Recovery Test
+
+The Settings form's **Test** button (Auto-recovery header row) dispatches the same recovery action on demand via `PortSyncService.TestRecoveryAsync`, after a confirmation dialog. It uses the in-form provider selection (like the client Test buttons), bypasses every gate - counters, time floor, arming - and goes straight to `DispatchRecoveryAsync` with `manualTest = true`. A test is recorded in the port history as "Recovery test triggered" but is not counted in the session's Recoveries statistic; it arms the "after recovery" history annotation like an automatic dispatch, since its effect on the port is the same.
+
 ## BitTorrent Client Interaction
 
 All client communication goes through the `IBitTorrentClient` interface, with implementations for qBittorrent (`QBittorrentClient`), Transmission (`TransmissionClient`), and Deluge (`DelugeClient`). The active implementation is selected each cycle based on the configured client setting.
@@ -238,7 +242,7 @@ The update balloon is informational only - Windows 11 routes `ToolTipIcon.Info` 
 
 ## Status Output
 
-Every cycle writes a JSON status file (`qbPortWeaver.status.json` in `%LocalAppData%\qbPortWeaver\`) capturing the full cycle outcome. External tools can read this file to monitor sync health, and the in-app Status panel (tray menu -> Show Status, or double-click the tray icon) renders the same data live, refreshing after each cycle. The panel also exposes a **Sync Now** action, a **Test Port** button that runs the reachability check on demand (see Port Verification), and a **Recent Port Changes** list backed by the persisted port history (see below; right-click the list to clear it).
+Every cycle writes a JSON status file (`qbPortWeaver.status.json` in `%LocalAppData%\qbPortWeaver\`) capturing the full cycle outcome. External tools can read this file to monitor sync health, and the in-app Status panel (tray menu -> Show Status, or double-click the tray icon) renders the same data live, refreshing after each cycle. Alongside the last sync time and result, the panel shows a **Next sync** estimate - the last sync time plus `updateIntervalSeconds` - displayed as a live countdown (`~3m`, `Due now`), or "Paused" while sync is paused and "-" before the first cycle. The panel also exposes a **Sync Now** action, a **Pause/Resume** button that toggles automatic cycles (the same in-memory pause as the tray menu item, routed through `MainForm.ToggleSyncPaused`), a **Test Port** button that runs the reachability check on demand (see Port Verification), a **Recent Port Changes** list backed by the persisted port history (see below; right-click the list to clear it), and a **Statistics** group (see Session Statistics). The **Reachable** line carries a relative age ("now" / "N ago", the same wording as Last sync); because verification is throttled (see Port Verification), the panel remembers the last definite open/closed result and its verifying cycle's timestamp and keeps showing it across the cycles where no test ran, so the age reflects the real last check rather than blanking to "Not checked".
 
 ```json
 {
@@ -270,11 +274,19 @@ The `status` field is one of:
 
 Alongside the per-cycle status file, `PortHistoryManager` keeps a persisted history of port-affecting events in `qbPortWeaver.history.json` (same folder), capped at the 50 most recent entries. Three points record into it:
 
-- **Successful port change** (`UpdatePortAndNotifyAsync`) - with the cause (VPN-assigned or default-port fallback) and the previous port
+- **Successful port change** (`UpdatePortAndNotifyAsync`) - with the cause (VPN-assigned or default-port fallback) and the previous port. When the change follows a recovery dispatch or a network-change-triggered cycle, the entry carries an "after recovery" / "after network change" suffix: MainForm marks a network-change cycle via a `RunAsync` parameter, and a dispatched recovery arms a pending flag that the next successful cycle consumes (recovery wins when both apply - it is the root cause)
 - **Confirmed-closed transition** (`HandlePortClosedResult`) - one entry per persistent condition, not one per re-confirming cycle, mirroring the balloon
-- **Auto-recovery dispatch** (`DispatchRecoveryAsync`, both the failed-sync and port-closed triggers) - recorded as "triggered" at dispatch, before the helper reports the outcome; the log file carries the actual result
+- **Auto-recovery dispatch** (`DispatchRecoveryAsync`, the failed-sync and port-closed triggers plus the manual recovery test) - recorded as "triggered" at dispatch, before the helper reports the outcome; the log file carries the actual result
 
 Appends run on the sync loop thread, serialized by a lock with an atomic file replace. The Status panel reads the file on the UI thread without taking the lock; it can only ever see a complete old or new version, so the worst case is one transient empty refresh. The history persists across restarts deliberately - port changes are rare (VPN reconnects), so a session-only list would usually be empty.
+
+### Session Statistics
+
+The Status panel's **Statistics** group combines two sources. The current port comes from the live status snapshot (the client's confirmed listening port, "-" when the client reports none), and one figure is derived from the persisted port history on each panel refresh: how many port changes were recorded today. The rest come from `SessionStats`, in-memory session counters: completed sync cycles and how many failed (displayed as "N (M failed)" / "N (all OK)" - failures are the number worth acting on), auto-recovery dispatches (manual recovery tests are excluded - the label says "Recoveries (session)"), and the monitoring start time (taken from the process start time). `PortSyncService` records a sync outcome in `RunAsync`'s `finally` block - skipped cycles are excluded, since they are no-op cycles rather than attempts - and records a recovery at dispatch, next to the history append in `DispatchRecoveryAsync`.
+
+The counters are incremented on the sync loop thread with `Interlocked` and read on the UI thread with `Volatile`; the panel reads the OK count before the total so the derived failure count can never be negative. They are deliberately not persisted - "this session" is the scope that makes the numbers meaningful, and they reset naturally on restart. The counters and the today's-changes figure refresh on the same per-cycle tick as the rest of the panel; the time-derived values (the Last sync age, the Next sync countdown, the Reachable age, and the Monitoring since elapsed) advance every second while the panel is open, driven by a one-second UI timer that recomputes only those values from the cached snapshot.
+
+Right-clicking the group offers **Clear Statistics**: the session counters zero and the monitoring baseline re-stamps to the clear time, so the figures read "since the clear". The history-derived figures are unaffected - those clear through the history list's own **Clear History**. No confirmation is asked, matching the confirmation convention: the counters are in-memory and reset on every restart anyway, so nothing irreversible is lost.
 
 ## Diagnostics
 

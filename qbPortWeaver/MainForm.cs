@@ -84,6 +84,11 @@ public partial class MainForm : Form
     // does NOT override pause or log as a manual sync.
     private volatile bool _quickRecheckPending;
 
+    // Marks the next cycle as network-change triggered so a port change it detects gets the
+    // "after network change" annotation in the port history. One-shot: consumed by the next
+    // cycle, unlike _quickRecheckPending which also drives the short re-check that follows.
+    private volatile bool _networkChangeSyncPending;
+
     // Pause flag for the sync loop (thread-safe with volatile). Deliberately in-memory only:
     // a restart always resumes syncing, so the app can never silently sit in a paused state
     // the user forgot about. While paused the whole cycle body is skipped - port sync AND the
@@ -464,7 +469,9 @@ public partial class MainForm : Form
     private StatusForm CreateStatusForm()
     {
         var form = new StatusForm();
+        form.SyncPaused = _syncPaused;
         form.SyncRequested += (_, _) => RequestManualSync();
+        form.PauseResumeRequested += (_, _) => ToggleSyncPaused();
         form.TestPortRequested += async (_, _) => await RunManualPortTestAsync(form); // async void event handler (WinForms)
         form.DiagnosticsRequested += async (_, _) => await RunDiagnosticsAsync(form); // async void event handler (WinForms)
         return form;
@@ -605,7 +612,13 @@ public partial class MainForm : Form
     // Toggles the sync pause. On pause the tray feedback flips immediately (the loop itself
     // only notices at its next wakeup, but no cycle can start once the flag is set, so the
     // pause is already effective). On resume the delay is interrupted so a cycle starts now.
-    private void pauseSync_Click(object? sender, EventArgs e)
+    private void pauseSync_Click(object? sender, EventArgs e) => ToggleSyncPaused();
+
+    // Shared by the tray menu's Pause/Resume item and the Status panel's Pause/Resume button.
+    // On pause the tray feedback flips immediately via OnSyncCompleted, which also refreshes the
+    // panel; on resume the delay is interrupted so a cycle starts now, and the panel is refreshed
+    // directly so its button label and Next sync estimate update without waiting for that cycle.
+    private void ToggleSyncPaused()
     {
         _syncPaused = !_syncPaused;
         _pauseSyncMenuItem.Text = _syncPaused ? ResumeSyncingMenuText : PauseSyncingMenuText;
@@ -618,6 +631,11 @@ public partial class MainForm : Form
         {
             LogManager.Instance.LogMessage("Syncing resumed by user", LogLevel.Info);
             InterruptDelay();
+            if (_statusForm is { IsDisposed: false })
+            {
+                _statusForm.SyncPaused = false;
+                _statusForm.RefreshStatus();
+            }
         }
     }
 
@@ -643,6 +661,7 @@ public partial class MainForm : Form
         LogManager.Instance.LogMessage("Network change detected, triggering sync cycle", LogLevel.Info);
         // Set before interrupting so the triggered cycle observes it and schedules a short re-check.
         _quickRecheckPending = true;
+        _networkChangeSyncPending = true;
         InterruptDelay();
     }
 
@@ -671,7 +690,10 @@ public partial class MainForm : Form
                 // Refresh the Status panel live if it is open (the status file was written before
                 // this event fired, so it reflects the cycle that just completed).
                 if (_statusForm is { IsDisposed: false })
+                {
+                    _statusForm.SyncPaused = _syncPaused;
                     _statusForm.RefreshStatus();
+                }
             });
     }
 
@@ -747,7 +769,9 @@ public partial class MainForm : Form
         {
             LogManager.Instance.LogBlankLine();
             LogManager.Instance.LogMessage("Sync cycle started", LogLevel.Info);
-            updateInterval = await _portSyncService.RunAsync(_shutdownCts.Token);
+            bool networkChangeSync = _networkChangeSyncPending;
+            _networkChangeSyncPending = false;
+            updateInterval = await _portSyncService.RunAsync(networkChangeSync, _shutdownCts.Token);
         }
         finally
         {

@@ -46,13 +46,13 @@ jobs:
       - name: Checkout repository
         # Pinned to a commit SHA rather than a floating tag so a compromised or force-pushed tag
         # cannot silently introduce malicious code into the pipeline (see build.yml).
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           fetch-depth: 0
 
       - name: Setup .NET
         # Pinned to a commit SHA - see checkout step for rationale.
-        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9  # v4
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68  # v6.0.0
         with:
           dotnet-version: '10.x'
 

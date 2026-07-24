@@ -1,0 +1,84 @@
+name: SonarCloud
+
+# Analyzes the codebase with SonarCloud through the real MSBuild build (SonarScanner for .NET),
+# so the analyzer honours the project's MSBuild settings - notably <Nullable>enable</Nullable>,
+# which SonarCloud Automatic Analysis cannot see (it does not run the build). This replaces
+# Automatic Analysis: turn Automatic Analysis OFF in the SonarCloud project settings, otherwise
+# this CI analysis is rejected with "you are running CI analysis while Automatic Analysis is enabled".
+#
+# Requires the SONAR_TOKEN secret (SonarCloud > My Account > Security > Generate Token).
+# Verify the project key below matches your SonarCloud project (Project > Information, or the URL).
+
+on:
+  push:
+    branches:
+      - master
+      - '2.*'   # release branches
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  sonarcloud:
+    name: Analyze
+    runs-on: windows-latest
+    timeout-minutes: 15
+
+    steps:
+      # -----------------------------------------------------------------------
+      # 1. Validate the SONAR_TOKEN secret before doing any work
+      # -----------------------------------------------------------------------
+      - name: Validate required secrets
+        shell: pwsh
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (-not $env:SONAR_TOKEN) {
+            throw "SONAR_TOKEN secret is not configured. Add it in Settings > Secrets before running this workflow."
+          }
+          Write-Host "Required secrets validated."
+
+      # -----------------------------------------------------------------------
+      # 2. Checkout with full history so SonarCloud blame / new-code detection is accurate
+      # -----------------------------------------------------------------------
+      - name: Checkout repository
+        # Pinned to a commit SHA rather than a floating tag so a compromised or force-pushed tag
+        # cannot silently introduce malicious code into the pipeline (see build.yml).
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET
+        # Pinned to a commit SHA - see checkout step for rationale.
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9  # v4
+        with:
+          dotnet-version: '10.x'
+
+      # Installed in its own step so the global-tools path is on PATH for the analyze step.
+      - name: Install SonarScanner for .NET
+        shell: pwsh
+        run: dotnet tool install --global dotnet-sonarscanner
+
+      # -----------------------------------------------------------------------
+      # 3. Run the analysis around the real build so MSBuild settings are honoured
+      # -----------------------------------------------------------------------
+      - name: Build and analyze
+        shell: pwsh
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          # The SonarScanner runs on Java; use the runner's pre-installed JDK 17.
+          $env:JAVA_HOME = $env:JAVA_HOME_17_X64
+
+          dotnet-sonarscanner begin `
+            /k:"martsg666_qbPortWeaver" `
+            /o:"martsg666" `
+            /d:sonar.token="$env:SONAR_TOKEN" `
+            /d:sonar.host.url="https://sonarcloud.io"
+
+          dotnet build qbPortWeaver.slnx --configuration Release
+
+          dotnet-sonarscanner end /d:sonar.token="$env:SONAR_TOKEN"

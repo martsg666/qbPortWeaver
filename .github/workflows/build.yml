@@ -12,6 +12,9 @@ concurrency:
   group: build-${{ github.ref }}
   cancel-in-progress: true  # cancel superseded builds on the same branch
 
+permissions:
+  contents: read  # least privilege - the build only reads the repo
+
 jobs:
   build:
     runs-on: windows-latest

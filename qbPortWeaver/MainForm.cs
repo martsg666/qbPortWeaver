@@ -166,7 +166,9 @@ public partial class MainForm : Form
             // Fire-and-forget: exceptions inside the while loop are caught per-cycle.
             // A synchronous throw before the loop body (e.g. during Task.Run startup) would be
             // silently lost - acceptable since RunMainLoopAsync has no synchronous preamble.
-            _ = Task.Run(RunMainLoopAsync);
+            // CancellationToken.None is explicit: the loop owns its lifetime via _shutdownCts
+            // (checked each iteration), so Task.Run's scheduling token is not used here.
+            _ = Task.Run(RunMainLoopAsync, CancellationToken.None);
 
             // Wake the loop promptly on a network change (e.g. VPN reconnect) instead of waiting
             // out the full interval. The timer starts disarmed; OnNetworkAddressChanged arms it.

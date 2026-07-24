@@ -417,7 +417,7 @@ internal static partial class AutoRecovery
             Task<string> stdoutTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
             Task<string> stderrTask = process.StandardError.ReadToEndAsync(cancellationToken);
 
-            bool exited = await Task.Run(() => process.WaitForExit(NetshTimeoutMs)).ConfigureAwait(false);
+            bool exited = await Task.Run(() => process.WaitForExit(NetshTimeoutMs), cancellationToken).ConfigureAwait(false);
             if (!exited)
             {
                 // netsh is a short-lived system utility that always responds to Process.Kill -

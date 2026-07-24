@@ -917,8 +917,8 @@ public partial class LogViewerForm : Form
     private (int Left, int Width) MeasureMatchRun(string text, int offset, int length)
     {
         const TextFormatFlags flags = TextFormatFlags.NoPrefix | TextFormatFlags.NoPadding | TextFormatFlags.SingleLine;
-        int left = offset == 0 ? 0 : TextRenderer.MeasureText(text[..offset], lvLog.Font, Size.Empty, flags).Width;
-        int width = TextRenderer.MeasureText(text.Substring(offset, length), lvLog.Font, Size.Empty, flags).Width;
+        int left = offset == 0 ? 0 : TextRenderer.MeasureText(text.AsSpan(0, offset), lvLog.Font, Size.Empty, flags).Width;
+        int width = TextRenderer.MeasureText(text.AsSpan(offset, length), lvLog.Font, Size.Empty, flags).Width;
         return (left, width);
     }
 

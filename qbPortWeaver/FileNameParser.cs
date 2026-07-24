@@ -183,8 +183,10 @@ public static partial class FileNameParser
         if (string.IsNullOrWhiteSpace(rawTitle))
             return null;
 
-        int.TryParse(match.Groups[1].Value, out int season);
-        int.TryParse(match.Groups[2].Value, out int episode);
+        // The regex captures season/episode as digit groups, but TryParse can still fail on
+        // overflow (an absurdly long number); treat any parse failure as "not an episode".
+        if (!int.TryParse(match.Groups[1].Value, out int season) || !int.TryParse(match.Groups[2].Value, out int episode))
+            return null;
         int? endEpisode = match.Groups[3].Success && int.TryParse(match.Groups[3].Value, out int ep2) ? ep2 : null;
 
         // Season or episode 0 is not a valid episode (e.g. S00E00 matches the regex but is not importable)

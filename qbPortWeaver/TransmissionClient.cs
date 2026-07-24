@@ -121,7 +121,7 @@ public sealed class TransmissionClient : BitTorrentClientBase
         try
         {
             const string body = """{"method":"session-get","arguments":{"fields":["peer-port","bind-address-ipv4"]}}""";
-            using var response = await SendRpcAsync(body, cancellationToken).ConfigureAwait(false);
+            using var response = await SendRpcAsync(body, cancellationToken: cancellationToken).ConfigureAwait(false);
             if (response is null) return (null, null);
 
             if (!response.IsSuccessStatusCode)
@@ -179,7 +179,7 @@ public sealed class TransmissionClient : BitTorrentClientBase
             // port-forwarding-enabled=false is Transmission's combined UPnP/NAT-PMP off switch,
             // equivalent to qBittorrent's and Deluge's separate upnp=false + natpmp=false fields.
             var body = $$$"""{"method":"session-set","arguments":{"peer-port":{{{port}}},"peer-port-random-on-start":false,"port-forwarding-enabled":false}}""";
-            using var response = await SendRpcAsync(body, cancellationToken).ConfigureAwait(false);
+            using var response = await SendRpcAsync(body, cancellationToken: cancellationToken).ConfigureAwait(false);
             if (response is null) return false;
 
             if (!response.IsSuccessStatusCode)
@@ -243,7 +243,7 @@ public sealed class TransmissionClient : BitTorrentClientBase
     // the daemon rejected the method name (so the caller can fall back to the legacy method).
     private async Task<(bool? Open, bool MethodUnknown)> RunPortTestAsync(string body, CancellationToken cancellationToken) // NOSONAR S2325 - calls the instance method SendRpcAsync, so it cannot be static
     {
-        using var response = await SendRpcAsync(body, cancellationToken, LogLevel.Debug).ConfigureAwait(false);
+        using var response = await SendRpcAsync(body, LogLevel.Debug, cancellationToken).ConfigureAwait(false);
         if (response is null) return (null, false);
         if (!response.IsSuccessStatusCode)
         {
@@ -365,8 +365,8 @@ public sealed class TransmissionClient : BitTorrentClientBase
     // callerName is captured automatically so the transport-failure log below names the public
     // method that actually failed (GetPreferencesAsync, SetListeningPortAsync, etc.), matching
     // how QBittorrentClient and DelugeClient report their own method name at each call site.
-    private async Task<HttpResponseMessage?> SendRpcAsync(string jsonBody, CancellationToken cancellationToken = default,
-        LogLevel failureLevel = LogLevel.Error, [CallerMemberName] string callerName = "")
+    private async Task<HttpResponseMessage?> SendRpcAsync(string jsonBody, LogLevel failureLevel = LogLevel.Error,
+        CancellationToken cancellationToken = default, [CallerMemberName] string callerName = "")
     {
         try
         {
@@ -443,7 +443,7 @@ public sealed class TransmissionClient : BitTorrentClientBase
         try
         {
             const string body = """{"method":"session-get","arguments":{"fields":["config-dir"]}}""";
-            using var response = await SendRpcAsync(body, cancellationToken).ConfigureAwait(false);
+            using var response = await SendRpcAsync(body, cancellationToken: cancellationToken).ConfigureAwait(false);
             if (response is null || !response.IsSuccessStatusCode) return null;
 
             var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);

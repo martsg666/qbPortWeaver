@@ -853,7 +853,9 @@ public partial class MainForm : Form
             {
                 Interlocked.Exchange(ref _mediaImportRunning, 0);
             }
-        });
+        // CancellationToken.None is explicit: the import owns its cancellation via the
+        // _shutdownCts token passed to ImportAsync, so Task.Run's scheduling token is not used.
+        }, CancellationToken.None);
     }
 
     // Waits for the next cycle interval, handling manual-update interrupts.

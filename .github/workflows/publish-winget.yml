@@ -84,13 +84,21 @@ jobs:
           }
           Write-Host "Release asset found: $msi"
 
-          # 2xx -> version already in winget-pkgs, skip the submission.
+          # Skip the submission if this version is already in winget-pkgs (e.g. workflow re-run).
+          # 2xx -> already present, skip.
           # 404 -> not yet present, proceed.
+          # anything else (5xx, network error) -> re-throw so the step fails loudly rather than
+          #         silently assuming "not published" and risking a duplicate submission.
           $alreadyPublished = $false
           try {
-            gh api "repos/microsoft/winget-pkgs/contents/manifests/m/martsg666/qbPortWeaver/$version" | Out-Null
-            if ($LASTEXITCODE -eq 0) { $alreadyPublished = $true }
-          } catch {}
+            Invoke-WebRequest `
+              -Uri "https://api.github.com/repos/microsoft/winget-pkgs/contents/manifests/m/martsg666/qbPortWeaver/$version" `
+              -Headers @{ 'User-Agent' = 'qbPortWeaver-CI'; 'Authorization' = "Bearer $env:GH_TOKEN" } `
+              -Method Head | Out-Null
+            $alreadyPublished = $true
+          } catch {
+            if ($_.Exception.Response?.StatusCode -ne [System.Net.HttpStatusCode]::NotFound) { throw }
+          }
           if ($alreadyPublished) {
             Write-Host "martsg666.qbPortWeaver $version is already in winget-pkgs - skipping submission."
           }

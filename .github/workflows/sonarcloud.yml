@@ -16,6 +16,10 @@ on:
       - '2.*'   # release branches
   pull_request:
 
+concurrency:
+  group: sonar-${{ github.ref }}
+  cancel-in-progress: true  # always analyze the latest commit on the ref
+
 permissions:
   contents: read
 

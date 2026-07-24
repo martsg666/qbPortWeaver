@@ -9,6 +9,10 @@ public partial class WhatsNewForm : Form
         "If you find qbPortWeaver useful, please star it on GitHub.";
 
     private const string ReleaseFeaturesText =
+        "New in 2.6.3\n\n" +
+        "PLACEHOLDER\n" +
+        "Replace this section with the 2.6.3 release notes before tagging.\n\n" +
+        "Previously released\n\n" +
         "New in 2.6.2\n\n" +
         "Statistics on the Status panel\n" +
         "A new Statistics section on the Status window shows your current port, how many times " +
@@ -24,7 +28,6 @@ public partial class WhatsNewForm : Form
         "Port history shows the cause\n" +
         "Port changes in the Status window's history now note what prompted them - a network " +
         "change or a recovery - so you can see at a glance why your port moved.\n\n" +
-        "Previously released\n\n" +
         "New in 2.6.1\n\n" +
         "Port history on the Status panel\n" +
         "The Status window now lists your recent port changes and recovery events with " +

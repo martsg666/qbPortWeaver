@@ -927,7 +927,7 @@ public partial class MediaManagerForm : Form
         return newCts.Token;
     }
 
-    private IProgress<(int Current, int Total)> CreateScanProgress(string verb)
+    private Progress<(int Current, int Total)> CreateScanProgress(string verb)
         => new Progress<(int Current, int Total)>(p =>
         {
             if (IsDisposed) return;

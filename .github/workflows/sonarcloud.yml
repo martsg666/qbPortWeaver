@@ -26,6 +26,10 @@ permissions:
 jobs:
   sonarcloud:
     name: Analyze
+    # Skip on fork PRs: repository secrets (SONAR_TOKEN) are not exposed to forked pull requests,
+    # so the analysis cannot authenticate and would fail. This runs on pushes (master/release
+    # branches) and on same-repo PRs; a fork PR skips the job cleanly instead of red-x'ing.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: windows-latest
     timeout-minutes: 15
 

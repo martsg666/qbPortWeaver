@@ -272,7 +272,7 @@ public partial class SettingsForm : Form
             cboNatPmpAdapter.Enabled &&
             cboNatPmpAdapter.SelectedItem?.ToString() == NoAdaptersFoundPlaceholder)
         {
-            MessageBox.Show(
+            ThemedMessageBox.Show(
                 "No NAT-PMP capable adapters were found.\n\nEnsure the adapter is up and its gateway is responding to NAT-PMP, then click \u21bb to retry.",
                 AppIdentity.AppName,
                 MessageBoxButtons.OK,
@@ -290,7 +290,7 @@ public partial class SettingsForm : Form
             (!Uri.TryCreate(urlText, UriKind.Absolute, out var uri) ||
              (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps)))
         {
-            MessageBox.Show(
+            ThemedMessageBox.Show(
                 $"The {clientName} URL is not valid. Enter a URL starting with http:// or https://",
                 AppIdentity.AppName,
                 MessageBoxButtons.OK,
@@ -307,7 +307,7 @@ public partial class SettingsForm : Form
         // Color theme takes effect at startup via Application.SetColorMode - restart if it changed
         if (selectedColorTheme != previousColorTheme)
         {
-            var result = MessageBox.Show(
+            var result = ThemedMessageBox.Show(
                 "The color theme change takes effect after restarting.\n\nRestart now?",
                 AppIdentity.AppName,
                 MessageBoxButtons.YesNo,
@@ -332,7 +332,7 @@ public partial class SettingsForm : Form
         var detected = ClientDetector.DetectAll();
         if (detected.Count == 0)
         {
-            MessageBox.Show(
+            ThemedMessageBox.Show(
                 "No supported client was found running or installed in its default location.\n\nSelect your client manually and enter its connection details.",
                 AppIdentity.AppName, MessageBoxButtons.OK, MessageBoxIcon.Information);
             return;
@@ -366,7 +366,7 @@ public partial class SettingsForm : Form
         if (autoSelected)
         {
             string how = chosen.Kind == ClientDetector.DetectionKind.Running ? "running now" : "installed";
-            MessageBox.Show(
+            ThemedMessageBox.Show(
                 $"Detected {chosen.ClientName} ({how}).\n\nThe client selection and its process details have been filled in. Review the connection settings, then use Test before saving.",
                 AppIdentity.AppName, MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
@@ -462,7 +462,7 @@ public partial class SettingsForm : Form
     // per the confirmation convention: nothing is irreversibly lost.
     private async void btnTestRecovery_Click(object? sender, EventArgs e) // async void is correct here (WinForms event handler)
     {
-        var confirm = MessageBox.Show(
+        var confirm = ThemedMessageBox.Show(
             "This will run the recovery action now: the VPN service is restarted (or the adapter cycled) and the VPN connection drops briefly.\n\nContinue?",
             AppIdentity.AppName, MessageBoxButtons.YesNo, MessageBoxIcon.Question);
         if (confirm != DialogResult.Yes) return;
@@ -484,11 +484,11 @@ public partial class SettingsForm : Form
             bool dispatched = await PortSyncService.TestRecoveryAsync(provider, adapter, cts.Token);
             if (IsDisposed) return;
             if (dispatched)
-                MessageBox.Show(
+                ThemedMessageBox.Show(
                     "Recovery action completed. See the log for the detailed outcome.",
                     AppIdentity.AppName, MessageBoxButtons.OK, MessageBoxIcon.Information);
             else
-                MessageBox.Show(
+                ThemedMessageBox.Show(
                     "The recovery test could not run.\n\nCheck the VPN provider selection and see the log for details.",
                     AppIdentity.AppName, MessageBoxButtons.OK, MessageBoxIcon.Warning);
         }
@@ -545,7 +545,7 @@ public partial class SettingsForm : Form
             !Uri.TryCreate(url, UriKind.Absolute, out var uri) ||
             (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
         {
-            MessageBox.Show(
+            ThemedMessageBox.Show(
                 $"Enter a valid {clientName} URL starting with http:// or https:// before testing.",
                 AppIdentity.AppName, MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return;
@@ -563,18 +563,18 @@ public partial class SettingsForm : Form
             var (listenPort, _) = await client.GetPreferencesAsync(cts.Token);
             if (IsDisposed) return;
             if (listenPort is not null)
-                MessageBox.Show(
+                ThemedMessageBox.Show(
                     $"Connected to {clientName} successfully.\n\nCurrent listening port: {listenPort}",
                     AppIdentity.AppName, MessageBoxButtons.OK, MessageBoxIcon.Information);
             else
-                MessageBox.Show(
+                ThemedMessageBox.Show(
                     $"Could not connect to {clientName}.\n\nCheck the URL and credentials, then see the log for details.",
                     AppIdentity.AppName, MessageBoxButtons.OK, MessageBoxIcon.Warning);
         }
         catch (OperationCanceledException)
         {
             if (!IsDisposed)
-                MessageBox.Show(
+                ThemedMessageBox.Show(
                     $"The {clientName} connection test timed out after {AppConstants.ClientTestTimeoutSeconds} seconds.\n\nCheck the URL and that the client is running.",
                     AppIdentity.AppName, MessageBoxButtons.OK, MessageBoxIcon.Warning);
         }

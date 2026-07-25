@@ -34,7 +34,7 @@ internal static class Program
 
         if (!isNewInstance)
         {
-            MessageBox.Show(
+            ThemedMessageBox.Show(
                 $"{AppIdentity.AppName} is already running.",
                 AppIdentity.AppName,
                 MessageBoxButtons.OK,

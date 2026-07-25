@@ -467,7 +467,7 @@ public partial class StatusForm : Form
     // when there is something to lose.
     private void ctxClearHistory_Click(object? sender, EventArgs e)
     {
-        var confirm = MessageBox.Show(
+        var confirm = ThemedMessageBox.Show(
             "The recorded port history will be deleted. This cannot be undone.\n\nContinue?",
             AppIdentity.AppName,
             MessageBoxButtons.YesNo,

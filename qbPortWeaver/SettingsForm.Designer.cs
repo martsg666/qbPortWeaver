@@ -201,11 +201,12 @@ partial class SettingsForm
         lblSeconds.TabIndex  = 5;
         lblSeconds.Text      = "seconds";
         lblSeconds.TextAlign = ContentAlignment.MiddleLeft;
-        // Shares the update-interval row: the interval is the scheduled cadence, this adds an
-        // immediate sync on network/VPN change. AutoSize so the label sits flush after "seconds".
-        chkResyncOnNetworkChange.AutoSize = true;
+        // Shares the update-interval row. Fixed height 23 (not AutoSize) so its text vertically
+        // centers with the row's 23px-tall label, NUD, and "seconds" instead of sitting ~2px high.
+        chkResyncOnNetworkChange.AutoSize = false;
         chkResyncOnNetworkChange.Location = new Point(300, 53);
         chkResyncOnNetworkChange.Name     = "chkResyncOnNetworkChange";
+        chkResyncOnNetworkChange.Size     = new Size(170, 23);
         chkResyncOnNetworkChange.TabIndex = 6;
         chkResyncOnNetworkChange.Text     = "Sync on network change";
         lblVpnProvider.Location  = new Point(12, 82);

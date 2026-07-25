@@ -1014,6 +1014,7 @@ public partial class MainForm : Form
             SyncState.Error => _iconError ?? _iconBase!,
             SyncState.Disabled => _iconBase!,
             SyncState.Paused => _iconPaused ?? _iconBase!,
+            SyncState.WaitingForVpn => _iconBase!, // neutral during the startup grace window, not orange
             _ => _iconBase!
         };
     }
@@ -1028,6 +1029,8 @@ public partial class MainForm : Form
             { State: SyncState.VpnDisconnected } => "VPN not connected",
             { State: SyncState.Disabled } => "Port sync disabled",
             { State: SyncState.Paused } => "Port sync paused",
+            { State: SyncState.WaitingForVpn, Message: var m } when !string.IsNullOrEmpty(m) => m,
+            { State: SyncState.WaitingForVpn } => "Waiting for VPN\u2026",
             { State: SyncState.Error, Message: var m } => $"Error | {m}",
             _ => "Starting\u2026"
         };

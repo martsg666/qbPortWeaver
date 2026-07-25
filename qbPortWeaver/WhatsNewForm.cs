@@ -10,8 +10,13 @@ public partial class WhatsNewForm : Form
 
     private const string ReleaseFeaturesText =
         "New in 2.6.3\n\n" +
-        "PLACEHOLDER\n" +
-        "Replace this section with the 2.6.3 release notes before tagging.\n\n" +
+        "Pop-up messages match your theme\n" +
+        "Confirmation and alert pop-ups now follow your chosen theme, so in dark mode they no " +
+        "longer appear in bright white.\n\n" +
+        "Waits for your VPN at startup\n" +
+        "If the app starts before your VPN has finished connecting, it now waits quietly for a " +
+        "short time instead of reporting the VPN as disconnected, and syncs your port as soon as " +
+        "the connection is up. You can turn this off in Settings.\n\n" +
         "Previously released\n\n" +
         "New in 2.6.2\n\n" +
         "Statistics on the Status panel\n" +

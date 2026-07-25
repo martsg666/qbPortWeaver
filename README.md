@@ -69,6 +69,9 @@ After installing, open **Settings** from the tray icon to configure the applicat
 - **Default Port Fallback**
   When VPN is not connected, optionally sets the client's listening port to a configured default. Useful if you have a port forwarded in your router for direct connections without VPN.
 
+- **Wait for VPN at Startup**
+  For a short grace period after the app starts, a VPN that is still connecting is treated as expected rather than a failure: the tray stays neutral, no warning is logged, and the default-port fallback and auto-recovery are held. The port syncs as soon as the VPN comes up. Enabled by default; configurable via Settings > General.
+
 - **Restart After Port Change**
   Optionally restart the BitTorrent client after updating the port to ensure changes take effect immediately.
 
@@ -126,7 +129,7 @@ After installing, open **Settings** from the tray icon to configure the applicat
   Built-in log viewer (tray menu → Show Logs) displays the log file with color-coded entries by level (error, warn, info, debug) and follows new entries in real time. Includes a search bar with match highlighting and prev/next navigation, dedicated prev/next buttons to step between warnings and errors without affecting the search, toggle buttons to filter by log level, a subsystem filter to isolate entries from a specific component, and a file picker to browse rotated backup files. The view is virtualized, so filters apply instantly and scrolling stays smooth even on very large logs, and the viewer keeps a low, steady memory footprint when left open for days. Adapts to the application color theme (System, Dark, or Light).
 
 - **Consistent Theming**
-  All windows - Settings, Status, Diagnostics, the log viewer, Media Manager, and the tray menu - follow your chosen color theme (System, Dark, or Light) uniformly, using the native Windows colors so text and surfaces stay legible in both light and dark mode.
+  All windows - Settings, Status, Diagnostics, the log viewer, Media Manager, and the tray menu - follow your chosen color theme (System, Dark, or Light) uniformly, using the native Windows colors so text and surfaces stay legible in both light and dark mode. Confirmation and alert pop-ups are themed to match, so they no longer appear in bright white in dark mode.
 
 - **Logging**
   Logs all operations and errors, with automatic log size management (20 MB per file, up to 5 files total). Clear logs directly from the tray menu.
@@ -162,6 +165,7 @@ On first run, all settings are initialized with sensible defaults.
 | NAT-PMP Adapter | Network adapter to use for NAT-PMP port mapping (only enabled when NAT-PMP is selected) | - |
 | Update interval | How often to check and sync the port (seconds) | `180` |
 | Sync on network change | Also run a sync immediately when a network or VPN connection change is detected, instead of waiting for the next interval (rapid changes are coalesced; pausing still suppresses it) | `True` |
+| Wait for VPN on startup | For a short grace period after the app starts, wait quietly while the VPN is still connecting instead of reporting it as disconnected, applying the default-port fallback, or triggering auto-recovery. Syncs as soon as the VPN comes up | `True` |
 | Verify port after sync | After each sync, check that the listening port is reachable from the Internet (after a port change and every 5th cycle) | `True` |
 | Trigger auto-recovery when no port assigned or disconnected | Trigger auto-recovery (a VPN service restart, or adapter cycle for generic NAT-PMP gateways) after N consecutive cycles where the VPN is disconnected or assigns no forwarded port. Client-side failures do not count | `True` |
 | Trigger after (consecutive failed cycles) | Number of consecutive cycles without an assigned port before auto-recovery is triggered. Recovery is also held until the failures have persisted for the time these cycles would normally span, so a brief network blip that races through several early re-syncs does not trigger it | `3` |
@@ -247,6 +251,7 @@ Configured via tray menu → **Media Manager**.
 
 1. If VPN Provider is set to **Disabled**, the entire port sync is skipped and the cycle proceeds directly to the Media Manager step. This is useful when you only want automatic media importing without VPN port sync.
 2. Checks whether the configured VPN provider is connected.
+   - During the first 90 seconds after the app starts, if **Wait for VPN on startup** is enabled and the VPN is not yet connected (or has not assigned a port yet), the cycle waits quietly instead: the tray stays neutral, nothing is logged as a failure, the default-port fallback and auto-recovery are held, and the check repeats every 15 seconds so the port syncs promptly once the VPN comes up.
    - If **not connected** and **Default port** is 0: skips the cycle and waits for the next interval.
    - If **not connected** and **Default port** is set: uses the default port as the target and continues.
    - If **Auto-Recovery** is enabled, the failed cycle count reaches the configured threshold, and the failures have persisted long enough (so a brief blip raced through by early re-syncs is ignored): automatically triggers recovery (via the helper Windows service) - for ProtonVPN and PIA (direct or NAT-PMP mode), restarts the VPN service and client; for NAT-PMP with a generic gateway, cycles the network adapter.

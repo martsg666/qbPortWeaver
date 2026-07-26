@@ -298,12 +298,13 @@ public sealed class PortSyncService
         _waitingForVpnThisCycle = true;
         _graceHoldActive = true;
         status[StatusKeys.Status] = SyncStatusValues.Skipped;
-        status[StatusKeys.Message] = message; // tray tooltip / Status panel keep the plain message
-        status[StatusKeys.WaitingForVpn] = true; // Status panel shows "Waiting for VPN" instead of a countdown
-        // The log line adds the grace context and remaining time, so repeated checks read as a
-        // countdown rather than identical lines and the window's end is visible without the source.
+        // Consistent "startup grace period" wording across the tray tooltip, the Status panel, and the
+        // log, so the user can tell this quiet wait is the startup grace period rather than a normal outage.
+        status[StatusKeys.Message] = $"{message} (startup grace period)";
+        status[StatusKeys.WaitingForVpn] = true;
+        // The log adds the remaining time so repeated checks read as a countdown to the window's end.
         int secondsLeft = Math.Max(0, StartupGracePeriodSeconds - (int)(DateTime.UtcNow - _startedUtc).TotalSeconds);
-        LogManager.Instance.LogMessage($"{message} (startup grace, ~{secondsLeft}s left)", LogLevel.Info);
+        LogManager.Instance.LogMessage($"{message} (startup grace period, ~{secondsLeft}s left)", LogLevel.Info);
     }
 
     // Core logic separated so the outer method handles status writing via finally

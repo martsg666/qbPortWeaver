@@ -429,8 +429,9 @@ public partial class StatusForm : Form
         if (s.WaitingForVpn)
         {
             // Startup grace window: the cycle re-checks on a short poll, so a full-interval countdown
-            // would mislead. Report the state instead, matching the "Waiting for ..." status message.
-            SetNeutral(lblNextSyncValue, "Waiting for VPN");
+            // would mislead. Report the state instead, matching the "startup grace period" wording used
+            // in the status message and the log.
+            SetNeutral(lblNextSyncValue, "Startup grace period");
             return;
         }
         if (s.Timestamp is not DateTimeOffset ts)

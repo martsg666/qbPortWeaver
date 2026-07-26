@@ -1030,7 +1030,7 @@ public partial class MainForm : Form
             { State: SyncState.Disabled } => "Port sync disabled",
             { State: SyncState.Paused } => "Port sync paused",
             { State: SyncState.WaitingForVpn, Message: var m } when !string.IsNullOrEmpty(m) => m,
-            { State: SyncState.WaitingForVpn } => "Waiting for VPN\u2026",
+            { State: SyncState.WaitingForVpn } => "Startup grace period",
             { State: SyncState.Error, Message: var m } => $"Error | {m}",
             _ => "Starting\u2026"
         };

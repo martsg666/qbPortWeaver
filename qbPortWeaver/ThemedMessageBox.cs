@@ -28,13 +28,8 @@ internal static class ThemedMessageBox
 
     private sealed class ThemedMessageBoxForm : Form
     {
-        private const int EdgeMargin = 16;
-        private const int BottomMargin = 12;
         private const int IconSize = 32;
         private const int IconTextGap = 12;
-        private const int ButtonGap = 8;
-        private const int ButtonWidth = 82;
-        private const int ButtonHeight = 28;
         private const int MessageMaxWidth = 360;
 
         private readonly SystemSound? _sound;
@@ -49,9 +44,11 @@ internal static class ThemedMessageBox
             MaximizeBox = false;
             ShowInTaskbar = false;
             ShowIcon = false;
-            // Match the designer forms' 96-DPI autoscale baseline so the manually-placed controls scale.
+            // The layout containers size the form; AutoScaleMode.Font (designer baseline) scales fonts.
             AutoScaleDimensions = new SizeF(7F, 15F);
             AutoScaleMode = AutoScaleMode.Font;
+            AutoSize = true;
+            AutoSizeMode = AutoSizeMode.GrowAndShrink;
 
             _sound = SoundFor(icon);
             BuildLayout(text, icon, buttons);
@@ -59,60 +56,70 @@ internal static class ThemedMessageBox
 
         private void BuildLayout(string text, MessageBoxIcon icon, MessageBoxButtons buttons)
         {
-            // Icon (optional). SystemIcons are shared statics - never dispose them; ToBitmap() makes a
-            // copy we own, disposed with the form.
-            Icon? sysIcon = IconFor(icon);
-            if (sysIcon is not null)
+            var root = new TableLayoutPanel
             {
-                _iconBitmap = sysIcon.ToBitmap();
-                Controls.Add(new PictureBox
-                {
-                    Image = _iconBitmap,
-                    Size = new Size(IconSize, IconSize),
-                    Location = new Point(EdgeMargin, EdgeMargin),
-                    SizeMode = PictureBoxSizeMode.Zoom,
-                });
-            }
+                Dock = DockStyle.Fill,
+                AutoSize = true,
+                AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                ColumnCount = 1,
+                RowCount = 2,
+                Padding = new Padding(DialogLayout.EdgeMargin, DialogLayout.EdgeMargin, DialogLayout.EdgeMargin, DialogLayout.BottomMargin),
+            };
+            root.RowStyles.Add(new RowStyle(SizeType.AutoSize)); // content
+            root.RowStyles.Add(new RowStyle(SizeType.AutoSize)); // buttons
+            root.Controls.Add(BuildContent(text, icon), 0, 0);
 
-            int textLeft = sysIcon is not null ? EdgeMargin + IconSize + IconTextGap : EdgeMargin;
+            var specs = ButtonSpecs(buttons);
+            var buttons2 = new Button[specs.Length];
+            for (int i = 0; i < specs.Length; i++)
+            {
+                var b = DialogLayout.DialogButton(specs[i].Text, specs[i].Result);
+                if (specs[i].IsDefault) AcceptButton = b; // Enter triggers the default (affirmative) button
+                if (specs[i].IsCancel) CancelButton = b;  // Escape triggers the cancel-like button, or nothing for Yes/No
+                buttons2[i] = b;
+            }
+            root.Controls.Add(DialogLayout.ButtonRow(buttons2), 0, 1);
+
+            Controls.Add(root);
+        }
+
+        // Builds the content row: the message label, preceded by the severity icon when there is one.
+        private Control BuildContent(string text, MessageBoxIcon icon)
+        {
             var lbl = new Label
             {
                 Text = text,
                 AutoSize = true,
                 UseMnemonic = false, // render a literal '&' in messages instead of a mnemonic underline
                 MaximumSize = new Size(MessageMaxWidth, 0),
-                Location = new Point(textLeft, EdgeMargin),
+                Margin = new Padding(0),
             };
-            Controls.Add(lbl);
 
-            // Content bottom = lower of the icon and the (possibly wrapped, multi-line) message.
-            int contentBottom = Math.Max(sysIcon is not null ? EdgeMargin + IconSize : 0, lbl.Bottom);
+            // SystemIcons are shared statics - never dispose them; ToBitmap() makes a copy we own,
+            // disposed with the form.
+            Icon? sysIcon = IconFor(icon);
+            if (sysIcon is null)
+                return lbl;
 
-            var specs = ButtonSpecs(buttons);
-            int buttonsWidth = specs.Length * ButtonWidth + (specs.Length - 1) * ButtonGap;
-            int clientWidth = Math.Max(lbl.Right + EdgeMargin, buttonsWidth + 2 * EdgeMargin);
-            int buttonTop = contentBottom + EdgeMargin;
-
-            Button? accept = null, cancel = null;
-            int x = clientWidth - EdgeMargin - buttonsWidth; // right-aligned button group
-            foreach (var (btnText, result, isDefault, isCancel) in specs)
+            _iconBitmap = sysIcon.ToBitmap();
+            var content = new TableLayoutPanel
             {
-                var b = new Button
-                {
-                    Text = btnText,
-                    DialogResult = result,
-                    Size = new Size(ButtonWidth, ButtonHeight),
-                    Location = new Point(x, buttonTop),
-                };
-                Controls.Add(b);
-                if (isDefault) accept = b;
-                if (isCancel) cancel = b;
-                x += ButtonWidth + ButtonGap;
-            }
-            AcceptButton = accept;   // Enter triggers the default (affirmative) button
-            CancelButton = cancel;   // Escape triggers the cancel-like button, or nothing for Yes/No
-
-            ClientSize = new Size(clientWidth, buttonTop + ButtonHeight + BottomMargin);
+                AutoSize = true,
+                AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                ColumnCount = 2,
+                RowCount = 1,
+                Margin = new Padding(0),
+            };
+            content.Controls.Add(new PictureBox
+            {
+                Image = _iconBitmap,
+                Size = new Size(IconSize, IconSize),
+                SizeMode = PictureBoxSizeMode.Zoom,
+                Margin = new Padding(0, 0, IconTextGap, 0),
+            }, 0, 0);
+            lbl.Anchor = AnchorStyles.Left; // vertically center a short message against the icon
+            content.Controls.Add(lbl, 1, 0);
+            return content;
         }
 
         protected override void OnShown(EventArgs e)

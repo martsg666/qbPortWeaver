@@ -71,6 +71,10 @@ public sealed class PortSyncService
     // RaiseSyncCompleted maps it to the neutral WaitingForVpn tray state instead of orange
     // VpnDisconnected. Reset at the start of every cycle; serialised by MainForm._updateSemaphore.
     private bool _waitingForVpnThisCycle;
+    // Latches across cycles while the app is holding for the VPN during startup, so the one-time
+    // "grace period ended" marker fires exactly once when the window elapses (or the VPN comes up).
+    // Unlike _waitingForVpnThisCycle (per-cycle), this persists. Serialised by MainForm._updateSemaphore.
+    private bool _graceHoldActive;
 
     // Port verification state. Serialised by MainForm._updateSemaphore (same guarantee as
     // _consecutiveFailedCycles). Deliberately not reset on a port change: the condition being
@@ -282,16 +286,24 @@ public sealed class PortSyncService
     private bool ShouldWaitForVpnStartup(bool waitEnabled) =>
         waitEnabled && (DateTime.UtcNow - _startedUtc).TotalSeconds < StartupGracePeriodSeconds;
 
+    // Interval to wait after a grace-window check: the fast poll, but never slower than the user's
+    // configured interval (a sub-15s interval would otherwise be slowed down during startup).
+    private static int GraceStartupInterval(int updateInterval) => Math.Min(updateInterval, StartupGracePollSeconds);
+
     // Records a quiet "waiting for VPN" outcome for the current cycle: a neutral tray state (via
     // _waitingForVpnThisCycle, read in RaiseSyncCompleted), an informational log line (not Warn), and a
     // Skipped status. No failure is registered, so no recovery runs and no default port is applied.
     private void MarkWaitingForVpn(Dictionary<string, object?> status, string message)
     {
         _waitingForVpnThisCycle = true;
+        _graceHoldActive = true;
         status[StatusKeys.Status] = SyncStatusValues.Skipped;
-        status[StatusKeys.Message] = message;
+        status[StatusKeys.Message] = message; // tray tooltip / Status panel keep the plain message
         status[StatusKeys.WaitingForVpn] = true; // Status panel shows "Waiting for VPN" instead of a countdown
-        LogManager.Instance.LogMessage(message, LogLevel.Info);
+        // The log line adds the grace context and remaining time, so repeated checks read as a
+        // countdown rather than identical lines and the window's end is visible without the source.
+        int secondsLeft = Math.Max(0, StartupGracePeriodSeconds - (int)(DateTime.UtcNow - _startedUtc).TotalSeconds);
+        LogManager.Instance.LogMessage($"{message} (startup grace, ~{secondsLeft}s left)", LogLevel.Info);
     }
 
     // Core logic separated so the outer method handles status writing via finally
@@ -306,11 +318,20 @@ public sealed class PortSyncService
         status[StatusKeys.VpnProvider] = cfg.VpnProvider;
         status[StatusKeys.UpdateIntervalSeconds] = cfg.UpdateInterval;
 
+        // If we were holding for the VPN during startup and the grace window has now elapsed (or the
+        // setting was turned off), note the transition once so the log explains why quiet "waiting"
+        // lines give way to normal handling (a still-disconnected VPN now warns and can trigger recovery).
+        if (_graceHoldActive && !ShouldWaitForVpnStartup(cfg.WaitForVpnOnStartup))
+        {
+            _graceHoldActive = false;
+            LogManager.Instance.LogMessage("Startup grace period ended - resuming normal handling", LogLevel.Info);
+        }
+
         // Instantiate VPN manager based on configured provider
         IVpnManager? vpnManager = await CreateVpnManagerAsync(cfg, status, cancellationToken).ConfigureAwait(false);
         if (vpnManager is null)
             // A null from a startup wait (e.g. NAT-PMP adapter not up yet) re-checks on the fast grace poll.
-            return _waitingForVpnThisCycle ? StartupGracePollSeconds : cfg.UpdateInterval;
+            return _waitingForVpnThisCycle ? GraceStartupInterval(cfg.UpdateInterval) : cfg.UpdateInterval;
 
         var (forceStart, restart, restartOnDisconnect, warnOnInterfaceMismatch) = GetClientBehaviorConfig(cfg, activeSection);
 
@@ -324,7 +345,7 @@ public sealed class PortSyncService
             if (ShouldWaitForVpnStartup(cfg.WaitForVpnOnStartup))
             {
                 MarkWaitingForVpn(status, $"Waiting for {vpnManager.ProviderName} to connect");
-                return StartupGracePollSeconds;
+                return GraceStartupInterval(cfg.UpdateInterval);
             }
 
             string disconnectedMsg = $"{vpnManager.ProviderName} is not connected";
@@ -360,13 +381,14 @@ public sealed class PortSyncService
                 if (ShouldWaitForVpnStartup(cfg.WaitForVpnOnStartup))
                 {
                     MarkWaitingForVpn(status, $"Waiting for {vpnManager.ProviderName} to assign a port");
-                    return StartupGracePollSeconds;
+                    return GraceStartupInterval(cfg.UpdateInterval);
                 }
                 await HandlePortDetectionFailureAsync(vpnManager, cfg, cancellationToken).ConfigureAwait(false);
                 SetSyncResult(status, false, $"Failed to determine {vpnManager.ProviderName} port", LogLevel.Warn);
                 return cfg.UpdateInterval;
             }
             ResetFailureStreak(); // Reset only after a successful port fetch
+            _graceHoldActive = false; // VPN is up within the grace window - clear the hold without a marker
             status[StatusKeys.VpnPort] = vpnPort.Value;
             LogManager.Instance.LogMessage($"{vpnManager.ProviderName} port found: {vpnPort.Value}", LogLevel.Info);
 

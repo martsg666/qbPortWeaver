@@ -170,6 +170,7 @@ public sealed class PortSyncService
         public const string UpdateIntervalSeconds = "updateIntervalSeconds";
         public const string Status = "status";
         public const string Message = "message";
+        public const string WaitingForVpn = "waitingForVpn";
 
         // Values for the Status key live in the public SyncStatusValues (shared with the Status panel).
     }
@@ -289,6 +290,7 @@ public sealed class PortSyncService
         _waitingForVpnThisCycle = true;
         status[StatusKeys.Status] = SyncStatusValues.Skipped;
         status[StatusKeys.Message] = message;
+        status[StatusKeys.WaitingForVpn] = true; // Status panel shows "Waiting for VPN" instead of a countdown
         LogManager.Instance.LogMessage(message, LogLevel.Info);
     }
 

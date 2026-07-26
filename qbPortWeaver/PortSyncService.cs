@@ -335,74 +335,16 @@ public sealed class PortSyncService
 
         var (forceStart, restart, restartOnDisconnect, warnOnInterfaceMismatch) = GetClientBehaviorConfig(cfg, activeSection);
 
-        int targetPort;
-        IVpnManager? syncVpnManager;
+        // Resolve which port to sync (or whether to stop this cycle) from the VPN state. Split into
+        // per-state helpers so this method's control flow stays flat.
+        TargetPortResult resolved = vpnManager.IsVpnConnected()
+            ? await HandleVpnConnectedAsync(vpnManager, cfg, status, cancellationToken).ConfigureAwait(false)
+            : await HandleVpnDisconnectedAsync(vpnManager, cfg, defaultPort, status, cancellationToken).ConfigureAwait(false);
+        if (resolved.EarlyInterval is int earlyInterval)
+            return earlyInterval;
 
-        if (!vpnManager.IsVpnConnected())
-        {
-            // During the startup grace window, a not-yet-connected VPN is expected. Hold quietly and
-            // re-check soon rather than registering a failure or applying the default-port fallback.
-            if (ShouldWaitForVpnStartup(cfg.WaitForVpnOnStartup))
-            {
-                MarkWaitingForVpn(status, $"Waiting for {vpnManager.ProviderName} to connect");
-                return GraceStartupInterval(cfg.UpdateInterval);
-            }
-
-            string disconnectedMsg = $"{vpnManager.ProviderName} is not connected";
-            await RegisterFailureAndTryRecoveryAsync(
-                disconnectedMsg, LogLevel.Info,
-                vpnManager.GetRecoveryAction(), vpnManager.GetRecoveryTarget(), vpnManager.ProviderName,
-                cfg, cancellationToken).ConfigureAwait(false);
-
-            if (defaultPort == 0)
-            {
-                status[StatusKeys.Status] = SyncStatusValues.Skipped;
-                status[StatusKeys.Message] = disconnectedMsg;
-                LogManager.Instance.LogMessage($"{vpnManager.ProviderName} default port is 0 - skipping port update", LogLevel.Info);
-                return cfg.UpdateInterval;
-            }
-            LogManager.Instance.LogMessage($"{vpnManager.ProviderName} default port is {defaultPort} - applying to {cfg.BitTorrentClient}", LogLevel.Info);
-            targetPort = defaultPort;
-            syncVpnManager = null;
-        }
-        else
-        {
-            // Counter is only reset after a successful port detection (see below) so that
-            // port detection failures also accumulate toward the auto-recovery threshold.
-            status[StatusKeys.VpnConnected] = true;
-
-            LogManager.Instance.LogMessage($"{vpnManager.ProviderName} is connected", LogLevel.Info);
-
-            int? vpnPort = await vpnManager.GetVpnPortAsync(cancellationToken).ConfigureAwait(false);
-            if (!vpnPort.HasValue)
-            {
-                // Connected but no port yet (e.g. NAT-PMP mapping still establishing). Within the
-                // startup grace window, wait quietly instead of warning.
-                if (ShouldWaitForVpnStartup(cfg.WaitForVpnOnStartup))
-                {
-                    MarkWaitingForVpn(status, $"Waiting for {vpnManager.ProviderName} to assign a port");
-                    return GraceStartupInterval(cfg.UpdateInterval);
-                }
-                await HandlePortDetectionFailureAsync(vpnManager, cfg, cancellationToken).ConfigureAwait(false);
-                SetSyncResult(status, false, $"Failed to determine {vpnManager.ProviderName} port", LogLevel.Warn);
-                return cfg.UpdateInterval;
-            }
-            ResetFailureStreak(); // Reset only after a successful port fetch
-            _graceHoldActive = false; // VPN is up within the grace window - clear the hold without a marker
-            status[StatusKeys.VpnPort] = vpnPort.Value;
-            LogManager.Instance.LogMessage($"{vpnManager.ProviderName} port found: {vpnPort.Value}", LogLevel.Info);
-
-            // Warn if the NAT-PMP lease will expire before the next sync cycle renews it
-            if (vpnManager is NatPmpManager natPmp &&
-                natPmp.LastGrantedLifetime > 0 &&
-                cfg.UpdateInterval > natPmp.LastGrantedLifetime)
-                LogManager.Instance.LogMessage(
-                    $"NAT-PMP sync interval ({cfg.UpdateInterval}s) exceeds lease lifetime ({natPmp.LastGrantedLifetime}s) - port mapping will expire before the next sync cycle",
-                    LogLevel.Warn);
-
-            targetPort = vpnPort.Value;
-            syncVpnManager = vpnManager;
-        }
+        int targetPort = resolved.TargetPort;
+        IVpnManager? syncVpnManager = resolved.SyncVpnManager;
 
         using var manager = CreateBitTorrentClient(cfg);
         status[StatusKeys.Client] = manager.ClientName;
@@ -423,6 +365,83 @@ public sealed class PortSyncService
             cancellationToken).ConfigureAwait(false);
 
         return cfg.UpdateInterval;
+    }
+
+    // Outcome of resolving which port to sync this cycle. EarlyInterval set => nothing to sync, return it
+    // now; otherwise sync TargetPort (SyncVpnManager is the connected manager, or null for the default-port
+    // fallback so outside-reachability verification is skipped).
+    private readonly record struct TargetPortResult(int? EarlyInterval, int TargetPort, IVpnManager? SyncVpnManager);
+
+    // VPN not connected: hold quietly during the startup grace window, otherwise register the failure
+    // (which may trigger recovery) and either fall back to the configured default port or skip the cycle.
+    private async Task<TargetPortResult> HandleVpnDisconnectedAsync(IVpnManager vpnManager, AppConfig cfg, int defaultPort, Dictionary<string, object?> status, CancellationToken cancellationToken)
+    {
+        // During the startup grace window, a not-yet-connected VPN is expected. Hold quietly and re-check
+        // soon rather than registering a failure or applying the default-port fallback.
+        if (ShouldWaitForVpnStartup(cfg.WaitForVpnOnStartup))
+        {
+            MarkWaitingForVpn(status, $"Waiting for {vpnManager.ProviderName} to connect");
+            return new TargetPortResult(GraceStartupInterval(cfg.UpdateInterval), 0, null);
+        }
+
+        string disconnectedMsg = $"{vpnManager.ProviderName} is not connected";
+        await RegisterFailureAndTryRecoveryAsync(
+            disconnectedMsg, LogLevel.Info,
+            vpnManager.GetRecoveryAction(), vpnManager.GetRecoveryTarget(), vpnManager.ProviderName,
+            cfg, cancellationToken).ConfigureAwait(false);
+
+        if (defaultPort == 0)
+        {
+            status[StatusKeys.Status] = SyncStatusValues.Skipped;
+            status[StatusKeys.Message] = disconnectedMsg;
+            LogManager.Instance.LogMessage($"{vpnManager.ProviderName} default port is 0 - skipping port update", LogLevel.Info);
+            return new TargetPortResult(cfg.UpdateInterval, 0, null);
+        }
+        LogManager.Instance.LogMessage($"{vpnManager.ProviderName} default port is {defaultPort} - applying to {cfg.BitTorrentClient}", LogLevel.Info);
+        return new TargetPortResult(null, defaultPort, null); // fall back to the default port (no tunnel to verify)
+    }
+
+    // VPN connected: read the assigned port. Hold quietly during the grace window if none is assigned yet,
+    // otherwise treat a missing port as a failure. On success, sync the VPN-assigned port.
+    private async Task<TargetPortResult> HandleVpnConnectedAsync(IVpnManager vpnManager, AppConfig cfg, Dictionary<string, object?> status, CancellationToken cancellationToken)
+    {
+        // Counter is only reset after a successful port detection (see below) so that port detection
+        // failures also accumulate toward the auto-recovery threshold.
+        status[StatusKeys.VpnConnected] = true;
+        LogManager.Instance.LogMessage($"{vpnManager.ProviderName} is connected", LogLevel.Info);
+
+        int? vpnPort = await vpnManager.GetVpnPortAsync(cancellationToken).ConfigureAwait(false);
+        if (!vpnPort.HasValue)
+        {
+            // Connected but no port yet (e.g. NAT-PMP mapping still establishing). Within the startup
+            // grace window, wait quietly instead of warning.
+            if (ShouldWaitForVpnStartup(cfg.WaitForVpnOnStartup))
+            {
+                MarkWaitingForVpn(status, $"Waiting for {vpnManager.ProviderName} to assign a port");
+                return new TargetPortResult(GraceStartupInterval(cfg.UpdateInterval), 0, null);
+            }
+            await HandlePortDetectionFailureAsync(vpnManager, cfg, cancellationToken).ConfigureAwait(false);
+            SetSyncResult(status, false, $"Failed to determine {vpnManager.ProviderName} port", LogLevel.Warn);
+            return new TargetPortResult(cfg.UpdateInterval, 0, null);
+        }
+
+        ResetFailureStreak(); // Reset only after a successful port fetch
+        _graceHoldActive = false; // VPN is up within the grace window - clear the hold without a marker
+        status[StatusKeys.VpnPort] = vpnPort.Value;
+        LogManager.Instance.LogMessage($"{vpnManager.ProviderName} port found: {vpnPort.Value}", LogLevel.Info);
+        WarnIfNatPmpLeaseTooShort(vpnManager, cfg);
+        return new TargetPortResult(null, vpnPort.Value, vpnManager);
+    }
+
+    // Warns if a NAT-PMP lease will expire before the next sync cycle renews it.
+    private static void WarnIfNatPmpLeaseTooShort(IVpnManager vpnManager, AppConfig cfg)
+    {
+        if (vpnManager is NatPmpManager natPmp &&
+            natPmp.LastGrantedLifetime > 0 &&
+            cfg.UpdateInterval > natPmp.LastGrantedLifetime)
+            LogManager.Instance.LogMessage(
+                $"NAT-PMP sync interval ({cfg.UpdateInterval}s) exceeds lease lifetime ({natPmp.LastGrantedLifetime}s) - port mapping will expire before the next sync cycle",
+                LogLevel.Warn);
     }
 
     // Reads all configuration values from the registry into a single AppConfig record

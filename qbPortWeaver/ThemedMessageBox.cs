@@ -20,10 +20,14 @@ internal static class ThemedMessageBox
     {
         using var form = new ThemedMessageBoxForm(text, caption, buttons, icon);
         var owner = Form.ActiveForm;
-        // Centre on the active window when there is one (and it is not this dialog), else on screen.
-        return owner is not null && !owner.IsDisposed && owner != form
-            ? form.ShowDialog(owner)
-            : form.ShowDialog();
+        if (owner is not null && !owner.IsDisposed && owner.Visible && owner != form)
+            return form.ShowDialog(owner); // CenterParent (set in the form) centres over the owner window
+
+        // No visible active owner (e.g. invoked from the tray menu, where the host form is hidden):
+        // CenterParent would fall back to the OS default location (top-left), so centre on the screen
+        // instead - matching how the native MessageBox behaved for these tray-triggered dialogs.
+        form.StartPosition = FormStartPosition.CenterScreen;
+        return form.ShowDialog();
     }
 
     private sealed class ThemedMessageBoxForm : Form

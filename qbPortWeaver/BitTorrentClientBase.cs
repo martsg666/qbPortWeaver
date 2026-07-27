@@ -151,7 +151,7 @@ public abstract class BitTorrentClientBase : IBitTorrentClient // NOSONAR S3881 
             {
                 using var probeCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
                 probeCts.CancelAfter(TimeSpan.FromSeconds(ApiProbeTimeoutSeconds));
-                using var response = await HttpClient.GetAsync(Url, probeCts.Token).ConfigureAwait(false);
+                using var response = await HttpClient.GetAsync(ResolveUrl(), probeCts.Token).ConfigureAwait(false);
                 return;
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
@@ -163,6 +163,13 @@ public abstract class BitTorrentClientBase : IBitTorrentClient // NOSONAR S3881 
         }
         LogManager.Instance.LogDebug($"{GetType().Name}.WaitForApiReadyAsync: {ClientName} API did not respond within {ApiReadyTimeoutSeconds}s after start");
     }
+
+    /// <summary>
+    /// The base URL to use for requests right now. Defaults to the configured <see cref="Url"/>.
+    /// Overridden by clients whose endpoint is discovered at runtime rather than configured, so
+    /// the readiness probe follows the endpoint the client actually moved to.
+    /// </summary>
+    protected virtual string ResolveUrl() => Url;
 
     /// <summary>Resets the per-instance auth state so the next API call triggers a fresh authentication handshake.</summary>
     protected virtual void ResetAuthState() => IsAuthenticated = false;

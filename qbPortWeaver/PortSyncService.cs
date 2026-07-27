@@ -100,11 +100,11 @@ public sealed class PortSyncService
 
     // All values read from the registry for a single sync cycle. Only the active client's connection
     // settings are read, into a single Client block (see ReadConfig); the other clients' sections are
-    // not touched. Adding a 4th BitTorrent client: add one entry to ClientRegistry (its keys + factory)
+    // not touched. Adding another client: add one entry to ClientRegistry (its keys + factory)
     // plus its Settings UI - ReadConfig, CreateBitTorrentClient, and LogConfigDebug are all driven from
     // that table and pick it up with no change here.
-    // qBittorrent-only flags (interface mismatch warn, restart on disconnect) stay at the
-    // top level since the other clients do not expose the necessary RPC fields.
+    // Per-client behaviour flags stay at the top level: restart-on-disconnect is qBittorrent-only,
+    // and the interface-mismatch warning applies only to the clients that report an adapter name.
     private sealed record AppConfig(
         string VpnProvider,
         string NatPmpAdapterName,
@@ -113,6 +113,7 @@ public sealed class PortSyncService
         ClientConfig Client,
         bool QBittorrentWarnOnInterfaceMismatch,
         bool QBittorrentRestartOnDisconnect,
+        bool NicotineWarnOnInterfaceMismatch,
         string PostUpdateCommand,
         bool VpnAutoRecoveryEnabled,
         int VpnAutoRecoveryTriggerCycles,
@@ -382,6 +383,7 @@ public sealed class PortSyncService
             Client: clientConfig,
             QBittorrentWarnOnInterfaceMismatch: RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyWarnOnInterfaceMismatch),
             QBittorrentRestartOnDisconnect: RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyRestartOnDisconnect),
+            NicotineWarnOnInterfaceMismatch: RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionNicotine, RegistrySettingsManager.KeyNicotineWarnOnInterfaceMismatch),
             PostUpdateCommand: RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionExtra, RegistrySettingsManager.KeyPostUpdateCmd),
             VpnAutoRecoveryEnabled: RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyVpnAutoRecoveryEnabled),
             VpnAutoRecoveryTriggerCycles: vpnAutoRecoveryTriggerCycles,
@@ -1107,14 +1109,19 @@ public sealed class PortSyncService
 
     private static (bool ForceStart, bool Restart, bool RestartOnDisconnect, bool WarnOnInterfaceMismatch) GetClientBehaviorConfig(AppConfig cfg, string activeSection)
     {
-        // RestartOnDisconnect and WarnOnInterfaceMismatch are qBittorrent-only: Transmission and Deluge
-        // do not expose a connection-state API, so neither feature can be implemented for them.
+        // RestartOnDisconnect is qBittorrent-only: it is the only client where restarting is both
+        // possible and the right response to a dropped connection. Nicotine+ reconnects itself,
+        // and restarting it would discard its configuration.
+        // WarnOnInterfaceMismatch needs a named adapter, which qBittorrent and Nicotine+ both
+        // report; Transmission and Deluge expose only a bind address, which the VPN rotates.
         bool isQBittorrent = activeSection == RegistrySettingsManager.SectionQBittorrent;
+        bool isNicotine = activeSection == RegistrySettingsManager.SectionNicotine;
         return (
             cfg.Client.ForceStart,
             cfg.Client.Restart,
             isQBittorrent && cfg.QBittorrentRestartOnDisconnect,
-            isQBittorrent && cfg.QBittorrentWarnOnInterfaceMismatch);
+            (isQBittorrent && cfg.QBittorrentWarnOnInterfaceMismatch) ||
+            (isNicotine && cfg.NicotineWarnOnInterfaceMismatch));
     }
 
     private static int GetDefaultPort(AppConfig cfg) => cfg.Client.DefaultPort;

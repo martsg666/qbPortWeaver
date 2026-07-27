@@ -8,7 +8,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <ApplicationIcon>qbPortWeaver.ico</ApplicationIcon>
     <AssemblyTitle>qbPortWeaver</AssemblyTitle>
-    <Description>Syncs the listening port of qBittorrent, Transmission, or Deluge with the port assigned by your VPN provider (ProtonVPN, PIA, or any NAT-PMP capable gateway)</Description>
+    <Description>Syncs the listening port of qBittorrent, Transmission, Deluge, or Nicotine+ with the port assigned by your VPN provider (ProtonVPN, PIA, or any NAT-PMP capable gateway)</Description>
     <Company>martsg666</Company>
     <Product>qbPortWeaver</Product>
     <Authors>martsg666</Authors>
@@ -73,6 +73,23 @@
       <Generator>ResXFileCodeGenerator</Generator>
       <LastGenOutput>Resources.Designer.cs</LastGenOutput>
     </EmbeddedResource>
+  </ItemGroup>
+
+  <!-- The Nicotine+ bridge plugin is embedded rather than shipped as loose files. The app is
+       published as a single self-contained executable and the MSI installs only that plus
+       README.md, so loose content would need its own installer components and parallel handling in
+       the portable and Chocolatey layouts. Embedding keeps one copy and makes Settings' "Install
+       plugin" behave identically everywhere. Resource names derive from Link, which
+       NicotinePluginInstaller maps back to relative paths.
+       The plugin is licensed GPL-3.0-or-later (see plugins\qbpw_nicotine_bridge\LICENSE); it is
+       carried here as a separate work, not linked into this assembly's own licence. -->
+  <ItemGroup>
+    <!-- Exclude Python's bytecode cache: it is build output, is tied to the interpreter version
+         that produced it (so it is wrong for whichever Python the user's Nicotine+ runs), and its
+         dotted filenames do not survive the resource-name-to-path mapping. -->
+    <EmbeddedResource Include="..\plugins\qbpw_nicotine_bridge\**\*"
+                      Exclude="..\plugins\qbpw_nicotine_bridge\**\__pycache__\**;..\plugins\qbpw_nicotine_bridge\**\*.pyc"
+                      Link="Plugins\Nicotine\qbpw_nicotine_bridge\%(RecursiveDir)%(Filename)%(Extension)" />
   </ItemGroup>
 
   <ItemGroup>

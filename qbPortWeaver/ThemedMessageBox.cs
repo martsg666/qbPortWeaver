@@ -70,15 +70,15 @@ internal static class ThemedMessageBox
             root.Controls.Add(BuildContent(text, icon), 0, 0);
 
             var specs = ButtonSpecs(buttons);
-            var buttons2 = new Button[specs.Length];
+            var buttonControls = new Button[specs.Length];
             for (int i = 0; i < specs.Length; i++)
             {
                 var b = DialogLayout.DialogButton(specs[i].Text, specs[i].Result);
                 if (specs[i].IsDefault) AcceptButton = b; // Enter triggers the default (affirmative) button
                 if (specs[i].IsCancel) CancelButton = b;  // Escape triggers the cancel-like button, or nothing for Yes/No
-                buttons2[i] = b;
+                buttonControls[i] = b;
             }
-            root.Controls.Add(DialogLayout.ButtonRow(buttons2), 0, 1);
+            root.Controls.Add(DialogLayout.ButtonRow(buttonControls), 0, 1);
 
             Controls.Add(root);
         }

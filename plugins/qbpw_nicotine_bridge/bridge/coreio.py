@@ -231,7 +231,14 @@ class CoreIO:
         # Check the port is free before touching the config. A bind failure inside Nicotine+
         # is silent - it just retries every five seconds forever, staying offline - so the
         # only good time to catch a stolen port is before we tear down a working connection.
-        if port != active and not self._can_bind(port):
+        #
+        # Only probe when the port is actually changing. Nicotine+ binds its listening socket
+        # when it connects but only learns the port the server saw once login completes, so
+        # active_port is None for a window in which the socket is already bound - and probing
+        # then would find Nicotine+'s own socket and refuse to re-apply the port it is already
+        # configured for. Which port a listener belongs to cannot be told apart from outside,
+        # so the configured port is treated as ours.
+        if port not in (active, previous) and not self._can_bind(port):
             raise errors.port_in_use(port)
 
         warnings = []

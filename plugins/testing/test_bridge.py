@@ -192,6 +192,41 @@ def run_tests(plugin):
     finally:
         blocker.close()
 
+    print("\nRe-applying the configured port while it is already bound")
+    # Nicotine+ binds its listening socket when it connects, but only learns the port the server
+    # saw once login completes - so active_port is None for a window in which the socket is
+    # already in use. Re-applying the same port then must not be mistaken for someone else
+    # holding it, or every sync cycle fails for as long as the client is not logged in.
+    CORE.users.login_status = fake_nicotine.UserStatus.OFFLINE
+    CORE.users.public_port = None
+
+    holder = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    holder.bind(("0.0.0.0", 0))
+    holder.listen(1)
+    held = holder.getsockname()[1]
+    try:
+        CONFIG.sections["server"]["portrange"] = (held, held)
+        status, payload = request(plugin, "POST", "/v1/port", body={"port": held})
+        check("re-applying the configured port is not refused", status == 200,
+              f"status {status} {payload.get('error', {}).get('code')}")
+
+        # A genuinely different port that something else holds must still be refused.
+        other = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        other.bind(("0.0.0.0", 0))
+        other.listen(1)
+        other_port = other.getsockname()[1]
+        try:
+            status, payload = request(plugin, "POST", "/v1/port", body={"port": other_port})
+            check("a different port held by another process is still refused", status == 409,
+                  f"status {status}")
+        finally:
+            other.close()
+    finally:
+        holder.close()
+
+    CORE.users.login_status = fake_nicotine.UserStatus.ONLINE
+    CORE.users.public_port = CONFIG.sections["server"]["portrange"][0]
+
     print("\nThe --port lock")
     CORE.cli_listen_port = 12345
     status, payload = request(plugin, "POST", "/v1/port", body={"port": 51415})

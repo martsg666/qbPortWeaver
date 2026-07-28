@@ -94,6 +94,7 @@ public partial class SettingsForm : Form
         toolTip.SetToolTip(chkDebugMode, "Write verbose debug entries to the log file");
         toolTip.SetToolTip(cboColorTheme, "Application color theme (System, Dark, or Light) - a restart prompt will appear if changed");
         toolTip.SetToolTip(chkResyncOnNetworkChange, "When a network or VPN connection change is detected, run a sync right away instead of waiting for the next interval - so the client follows a VPN reconnect within seconds. Pausing still suppresses the cycle.");
+        toolTip.SetToolTip(chkWaitForVpnOnStartup, "For the first minute and a half after the app starts, wait quietly while the VPN is still connecting instead of reporting it as disconnected or applying the default port. The port syncs as soon as the VPN comes up.");
         toolTip.SetToolTip(chkVerifyPort, "After each sync, check that the port is reachable from the Internet. Transmission and Deluge use their built-in online port checkers; qBittorrent infers it from incoming peer activity (an idle client may report closed). Runs after a port change and periodically.");
         toolTip.SetToolTip(chkAutoRecovery, "Triggers auto-recovery (VPN service restart, or adapter cycle for NAT-PMP gateways) after the configured number of consecutive cycles where the VPN is disconnected or assigns no forwarded port. Client-side problems do not count - auto-recovery cannot fix those.");
         toolTip.SetToolTip(nudRecoveryCycles, "Number of consecutive cycles without an assigned port or VPN connection before auto-recovery is triggered");
@@ -151,6 +152,7 @@ public partial class SettingsForm : Form
         chkNotifyOnPortUpdate.Checked = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyNotifyOnPortUpdate);
         chkShowUpdateForm.Checked     = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyShowUpdateFormOnStartup);
         chkResyncOnNetworkChange.Checked = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyResyncOnNetworkChange);
+        chkWaitForVpnOnStartup.Checked = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyWaitForVpnOnStartup);
         chkVerifyPort.Checked         = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyVerifyPortAfterSync);
 
         // qBittorrent
@@ -227,6 +229,7 @@ public partial class SettingsForm : Form
         RegistrySettingsManager.SetBool(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyNotifyOnPortUpdate, chkNotifyOnPortUpdate.Checked);
         RegistrySettingsManager.SetBool(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyShowUpdateFormOnStartup, chkShowUpdateForm.Checked);
         RegistrySettingsManager.SetBool(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyResyncOnNetworkChange, chkResyncOnNetworkChange.Checked);
+        RegistrySettingsManager.SetBool(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyWaitForVpnOnStartup, chkWaitForVpnOnStartup.Checked);
         RegistrySettingsManager.SetBool(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyVerifyPortAfterSync, chkVerifyPort.Checked);
 
         // qBittorrent
@@ -272,7 +275,7 @@ public partial class SettingsForm : Form
             cboNatPmpAdapter.Enabled &&
             cboNatPmpAdapter.SelectedItem?.ToString() == NoAdaptersFoundPlaceholder)
         {
-            MessageBox.Show(
+            ThemedMessageBox.Show(
                 "No NAT-PMP capable adapters were found.\n\nEnsure the adapter is up and its gateway is responding to NAT-PMP, then click \u21bb to retry.",
                 AppIdentity.AppName,
                 MessageBoxButtons.OK,
@@ -290,7 +293,7 @@ public partial class SettingsForm : Form
             (!Uri.TryCreate(urlText, UriKind.Absolute, out var uri) ||
              (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps)))
         {
-            MessageBox.Show(
+            ThemedMessageBox.Show(
                 $"The {clientName} URL is not valid. Enter a URL starting with http:// or https://",
                 AppIdentity.AppName,
                 MessageBoxButtons.OK,
@@ -307,7 +310,7 @@ public partial class SettingsForm : Form
         // Color theme takes effect at startup via Application.SetColorMode - restart if it changed
         if (selectedColorTheme != previousColorTheme)
         {
-            var result = MessageBox.Show(
+            var result = ThemedMessageBox.Show(
                 "The color theme change takes effect after restarting.\n\nRestart now?",
                 AppIdentity.AppName,
                 MessageBoxButtons.YesNo,
@@ -332,7 +335,7 @@ public partial class SettingsForm : Form
         var detected = ClientDetector.DetectAll();
         if (detected.Count == 0)
         {
-            MessageBox.Show(
+            ThemedMessageBox.Show(
                 "No supported client was found running or installed in its default location.\n\nSelect your client manually and enter its connection details.",
                 AppIdentity.AppName, MessageBoxButtons.OK, MessageBoxIcon.Information);
             return;
@@ -366,7 +369,7 @@ public partial class SettingsForm : Form
         if (autoSelected)
         {
             string how = chosen.Kind == ClientDetector.DetectionKind.Running ? "running now" : "installed";
-            MessageBox.Show(
+            ThemedMessageBox.Show(
                 $"Detected {chosen.ClientName} ({how}).\n\nThe client selection and its process details have been filled in. Review the connection settings, then use Test before saving.",
                 AppIdentity.AppName, MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
@@ -462,7 +465,7 @@ public partial class SettingsForm : Form
     // per the confirmation convention: nothing is irreversibly lost.
     private async void btnTestRecovery_Click(object? sender, EventArgs e) // async void is correct here (WinForms event handler)
     {
-        var confirm = MessageBox.Show(
+        var confirm = ThemedMessageBox.Show(
             "This will run the recovery action now: the VPN service is restarted (or the adapter cycled) and the VPN connection drops briefly.\n\nContinue?",
             AppIdentity.AppName, MessageBoxButtons.YesNo, MessageBoxIcon.Question);
         if (confirm != DialogResult.Yes) return;
@@ -484,11 +487,11 @@ public partial class SettingsForm : Form
             bool dispatched = await PortSyncService.TestRecoveryAsync(provider, adapter, cts.Token);
             if (IsDisposed) return;
             if (dispatched)
-                MessageBox.Show(
+                ThemedMessageBox.Show(
                     "Recovery action completed. See the log for the detailed outcome.",
                     AppIdentity.AppName, MessageBoxButtons.OK, MessageBoxIcon.Information);
             else
-                MessageBox.Show(
+                ThemedMessageBox.Show(
                     "The recovery test could not run.\n\nCheck the VPN provider selection and see the log for details.",
                     AppIdentity.AppName, MessageBoxButtons.OK, MessageBoxIcon.Warning);
         }
@@ -545,7 +548,7 @@ public partial class SettingsForm : Form
             !Uri.TryCreate(url, UriKind.Absolute, out var uri) ||
             (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
         {
-            MessageBox.Show(
+            ThemedMessageBox.Show(
                 $"Enter a valid {clientName} URL starting with http:// or https:// before testing.",
                 AppIdentity.AppName, MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return;
@@ -563,18 +566,18 @@ public partial class SettingsForm : Form
             var (listenPort, _) = await client.GetPreferencesAsync(cts.Token);
             if (IsDisposed) return;
             if (listenPort is not null)
-                MessageBox.Show(
+                ThemedMessageBox.Show(
                     $"Connected to {clientName} successfully.\n\nCurrent listening port: {listenPort}",
                     AppIdentity.AppName, MessageBoxButtons.OK, MessageBoxIcon.Information);
             else
-                MessageBox.Show(
+                ThemedMessageBox.Show(
                     $"Could not connect to {clientName}.\n\nCheck the URL and credentials, then see the log for details.",
                     AppIdentity.AppName, MessageBoxButtons.OK, MessageBoxIcon.Warning);
         }
         catch (OperationCanceledException)
         {
             if (!IsDisposed)
-                MessageBox.Show(
+                ThemedMessageBox.Show(
                     $"The {clientName} connection test timed out after {AppConstants.ClientTestTimeoutSeconds} seconds.\n\nCheck the URL and that the client is running.",
                     AppIdentity.AppName, MessageBoxButtons.OK, MessageBoxIcon.Warning);
         }

@@ -426,6 +426,14 @@ public partial class StatusForm : Form
             SetNeutral(lblNextSyncValue, "Paused");
             return;
         }
+        if (s.WaitingForVpn)
+        {
+            // Startup grace window: the cycle re-checks on a short poll, so a full-interval countdown
+            // would mislead. Report the state instead, matching the "startup grace period" wording used
+            // in the status message and the log.
+            SetNeutral(lblNextSyncValue, "Startup grace period");
+            return;
+        }
         if (s.Timestamp is not DateTimeOffset ts)
         {
             SetNeutral(lblNextSyncValue, "-");
@@ -467,7 +475,7 @@ public partial class StatusForm : Form
     // when there is something to lose.
     private void ctxClearHistory_Click(object? sender, EventArgs e)
     {
-        var confirm = MessageBox.Show(
+        var confirm = ThemedMessageBox.Show(
             "The recorded port history will be deleted. This cannot be undone.\n\nContinue?",
             AppIdentity.AppName,
             MessageBoxButtons.YesNo,

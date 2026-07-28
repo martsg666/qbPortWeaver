@@ -63,6 +63,8 @@ flowchart TD
     RUN_CMD --> END
 ```
 
+> During the startup grace period (see Startup Grace Period), the *Handle disconnection* and *port not found* paths - and the NAT-PMP "adapter not found" path - instead hold quietly and re-check on a fast poll, without incrementing the failure counter or applying the default port.
+
 ## VPN Manager Creation
 
 The sync cycle instantiates a provider-specific `IVpnManager` based on the configured VPN provider setting.
@@ -94,12 +96,25 @@ flowchart TD
     COPY --> RETURN([Return new manager])
     D -- No --> E{Has cached fallback manager?}
     E -- Yes --> FALLBACK([Return cached manager - will report disconnected])
-    E -- No --> F[Increment failed counter]
+    E -- No --> GRACE{Startup grace period?}
+    GRACE -- Yes --> HOLD([HOLD: waiting for VPN, fast re-check])
+    GRACE -- No --> F[Increment failed counter]
     F --> G[TryTriggerRecoveryAsync]
     G --> SKIP_STATUS([SKIP: Adapter not found])
 ```
 
 **Why the fallback?** When a VPN reconnects, the network adapter may briefly disappear. Returning the last known `NatPmpManager` lets `IsVpnConnected()` report `false`, so the main flow handles disconnection gracefully (applies the default port or skips) instead of erroring out.
+
+## Startup Grace Period
+
+Right after the app starts, the VPN is often still connecting (VPN clients launch at login and take a few seconds to a minute to establish). When **Wait for VPN on startup** is enabled (General settings, default on), for the first `StartupGracePeriodSeconds` (90s, measured from `PortSyncService` construction) a not-yet-usable VPN is treated as expected rather than a failure. During this window, if the VPN is disconnected, is connected but has not assigned a port yet, or (NAT-PMP) its adapter is not yet discoverable, the cycle holds quietly instead of taking the normal disconnection path:
+
+- The tray shows a dedicated neutral `WaitingForVpn` state (not the orange disconnected state), the outcome is logged at `Info` (not `Warn`), and the status is written as `skipped` with `waitingForVpn: true`.
+- No failure is registered, so the auto-recovery counter does not advance and no recovery runs.
+- No default-port fallback is applied.
+- The cycle re-checks quickly - it returns `min(StartupGracePollSeconds (15s), update interval)` as the next wait instead of the full interval - so the port syncs within seconds of the VPN coming up.
+
+`ShouldWaitForVpnStartup` gates all three hold points; `MarkWaitingForVpn` records the quiet outcome. The per-check log line carries a countdown (`... (startup grace period, ~45s left)`), and the same "startup grace period" wording appears in the tray tooltip and the Status panel. A successful connection within the window clears the hold silently; if the window elapses with the VPN still down (or the setting is turned off), a one-time `Startup grace period ended - resuming normal handling` line is logged and the cycle falls through to the normal disconnection handling below.
 
 ## VPN Disconnection Handling
 
@@ -242,7 +257,7 @@ The update balloon is informational only - Windows 11 routes `ToolTipIcon.Info` 
 
 ## Status Output
 
-Every cycle writes a JSON status file (`qbPortWeaver.status.json` in `%LocalAppData%\qbPortWeaver\`) capturing the full cycle outcome. External tools can read this file to monitor sync health, and the in-app Status panel (tray menu -> Show Status, or double-click the tray icon) renders the same data live, refreshing after each cycle. Alongside the last sync time and result, the panel shows a **Next sync** estimate - the last sync time plus `updateIntervalSeconds` - displayed as a live countdown (`~3m`, `Due now`), or "Paused" while sync is paused and "-" before the first cycle. The panel also exposes a **Sync Now** action, a **Pause/Resume** button that toggles automatic cycles (the same in-memory pause as the tray menu item, routed through `MainForm.ToggleSyncPaused`), a **Test Port** button that runs the reachability check on demand (see Port Verification), a **Recent Port Changes** list backed by the persisted port history (see below; right-click the list to clear it), and a **Statistics** group (see Session Statistics). The **Reachable** line carries a relative age ("now" / "N ago", the same wording as Last sync); because verification is throttled (see Port Verification), the panel remembers the last definite open/closed result and its verifying cycle's timestamp and keeps showing it across the cycles where no test ran, so the age reflects the real last check rather than blanking to "Not checked".
+Every cycle writes a JSON status file (`qbPortWeaver.status.json` in `%LocalAppData%\qbPortWeaver\`) capturing the full cycle outcome. External tools can read this file to monitor sync health, and the in-app Status panel (tray menu -> Show Status, or double-click the tray icon) renders the same data live, refreshing after each cycle. Alongside the last sync time and result, the panel shows a **Next sync** estimate - the last sync time plus `updateIntervalSeconds` - displayed as a live countdown (`~3m`, `Due now`), or "Paused" while sync is paused, "Startup grace period" during the startup grace window, and "-" before the first cycle. The panel also exposes a **Sync Now** action, a **Pause/Resume** button that toggles automatic cycles (the same in-memory pause as the tray menu item, routed through `MainForm.ToggleSyncPaused`), a **Test Port** button that runs the reachability check on demand (see Port Verification), a **Recent Port Changes** list backed by the persisted port history (see below; right-click the list to clear it), and a **Statistics** group (see Session Statistics). The **Reachable** line carries a relative age ("now" / "N ago", the same wording as Last sync); because verification is throttled (see Port Verification), the panel remembers the last definite open/closed result and its verifying cycle's timestamp and keeps showing it across the cycles where no test ran, so the age reflects the real last check rather than blanking to "Not checked".
 
 ```json
 {
@@ -265,10 +280,12 @@ Every cycle writes a JSON status file (`qbPortWeaver.status.json` in `%LocalAppD
 
 The `portVerified` field is `true` when the reachability test reported the port open, `false` when it reported closed, and `null` when no test ran this cycle (verification disabled, VPN disconnected, throttled, or the result could not be determined).
 
+The `waitingForVpn` field (omitted from the example above) is written as `true` only while the cycle is holding for the VPN during the startup grace period (see Startup Grace Period); the Status panel reads it to show "Startup grace period" in place of a next-sync countdown. It is absent (effectively `false`) on all other cycles.
+
 The `status` field is one of:
 - **`success`** - port synced (or already matched)
 - **`error`** - something failed (VPN port unreadable, client unreachable, etc.)
-- **`skipped`** - VPN disconnected and no default port configured (no-op cycle)
+- **`skipped`** - a no-op cycle: VPN disconnected with no default port configured, port sync disabled, or holding for the VPN during the startup grace period (`waitingForVpn: true`)
 
 ### Port History
 
@@ -300,23 +317,27 @@ RunAsync
      ├─ ReadConfig
      ├─ CreateVpnManagerAsync
      │   └─ CreateNatPmpVpnManagerAsync (NAT-PMP only)
+     │       ├─ MarkWaitingForVpn (startup grace: adapter not discoverable yet)
      │       └─ RegisterFailureAndTryRecoveryAsync
      │           ├─ BuildCycleCountMessage
      │           └─ TryTriggerRecoveryAsync
      │               └─ DispatchRecoveryAsync
      ├─ IVpnManager.IsVpnConnected
-     ├─ (if disconnected)
+     ├─ HandleVpnDisconnectedAsync (if disconnected)
+     │   ├─ MarkWaitingForVpn (startup grace: VPN not connected)
      │   └─ RegisterFailureAndTryRecoveryAsync
      │       ├─ BuildCycleCountMessage
      │       └─ TryTriggerRecoveryAsync
      │           └─ DispatchRecoveryAsync
-     ├─ (if connected)
+     ├─ HandleVpnConnectedAsync (if connected)
      │   ├─ IVpnManager.GetVpnPortAsync
-     │   └─ HandlePortDetectionFailureAsync (if port null, all providers)
-     │       └─ RegisterFailureAndTryRecoveryAsync
-     │           ├─ BuildCycleCountMessage
-     │           └─ TryTriggerRecoveryAsync
-     │               └─ DispatchRecoveryAsync
+     │   ├─ MarkWaitingForVpn (startup grace: no port assigned yet)
+     │   ├─ HandlePortDetectionFailureAsync (if port null, all providers)
+     │   │   └─ RegisterFailureAndTryRecoveryAsync
+     │   │       ├─ BuildCycleCountMessage
+     │   │       └─ TryTriggerRecoveryAsync
+     │   │           └─ DispatchRecoveryAsync
+     │   └─ WarnIfNatPmpLeaseTooShort (NAT-PMP only)
      └─ EnsureRunningAndUpdatePortAsync
          ├─ EnsureClientRunningAsync
          ├─ IBitTorrentClient.GetPreferencesAsync

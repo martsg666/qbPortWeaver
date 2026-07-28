@@ -8,7 +8,8 @@ namespace qbPortWeaver;
 /// </summary>
 internal sealed class ClientChooserForm : Form
 {
-    private const int RowHeight = 28;
+    // Wrap width for the prompt label and the width the radio list fills toward.
+    private const int ContentWidth = 300;
 
     private readonly RadioButton[] _options;
     private readonly IReadOnlyList<ClientDetector.DetectedClient> _clients;
@@ -27,18 +28,38 @@ internal sealed class ClientChooserForm : Form
         MaximizeBox = false;
         ShowInTaskbar = false;
         ShowIcon = false; // match the other modal dialogs (no title-bar icon)
-        // Match the designer forms' autoscale baseline (9pt Segoe UI at 96 DPI) so the runtime scales
-        // these manually-placed controls on high-DPI displays instead of leaving them at design pixels.
+        // The layout containers size the form; AutoScaleMode.Font (designer baseline) scales fonts.
         AutoScaleDimensions = new SizeF(7F, 15F);
         AutoScaleMode = AutoScaleMode.Font;
-        ClientSize = new Size(330, 94 + clients.Count * RowHeight);
+        AutoSize = true;
+        AutoSizeMode = AutoSizeMode.GrowAndShrink;
 
-        Controls.Add(new Label
+        var root = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            ColumnCount = 1,
+            RowCount = 2,
+            Padding = new Padding(DialogLayout.EdgeMargin, DialogLayout.EdgeMargin, DialogLayout.EdgeMargin, DialogLayout.BottomMargin),
+        };
+        root.RowStyles.Add(new RowStyle(SizeType.AutoSize)); // prompt + options
+        root.RowStyles.Add(new RowStyle(SizeType.AutoSize)); // buttons
+
+        var content = new FlowLayoutPanel
+        {
+            FlowDirection = FlowDirection.TopDown,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            WrapContents = false,
+            Margin = new Padding(0),
+        };
+        content.Controls.Add(new Label
         {
             Text = "More than one client was found. Select the one to use:",
-            Location = new Point(8, 8),
-            Size = new Size(314, 32),
-            AutoSize = false
+            AutoSize = true,
+            MaximumSize = new Size(ContentWidth, 0),
+            Margin = new Padding(0, 0, 0, 8),
         });
 
         _options = new RadioButton[clients.Count];
@@ -49,26 +70,26 @@ internal sealed class ClientChooserForm : Form
             var rb = new RadioButton
             {
                 Text = $"{c.ClientName} ({status})",
-                Location = new Point(20, 46 + i * RowHeight),
-                Size = new Size(290, 24),
-                Checked = c.ClientName == preferredClientName
+                AutoSize = true,
+                Checked = c.ClientName == preferredClientName,
+                Margin = new Padding(16, 2, 0, 2), // indent under the prompt
             };
             _options[i] = rb;
-            Controls.Add(rb);
+            content.Controls.Add(rb);
         }
         // Default to the currently selected client if it is among the matches, otherwise the first.
         if (!Array.Exists(_options, o => o.Checked) && _options.Length > 0)
             _options[0].Checked = true;
+        root.Controls.Add(content, 0, 0);
 
-        int btnY = 46 + clients.Count * RowHeight + 12;
-        var btnOk = new Button { Text = "OK", DialogResult = DialogResult.OK, Location = new Point(ClientSize.Width - 180, btnY), Size = new Size(82, 28) };
+        var btnOk = DialogLayout.DialogButton("OK", DialogResult.OK);
         btnOk.Click += CaptureSelection;
-        var btnCancel = new Button { Text = "Cancel", DialogResult = DialogResult.Cancel, Location = new Point(ClientSize.Width - 90, btnY), Size = new Size(82, 28) };
-
-        Controls.Add(btnOk);
-        Controls.Add(btnCancel);
+        var btnCancel = DialogLayout.DialogButton("Cancel", DialogResult.Cancel);
+        root.Controls.Add(DialogLayout.ButtonRow(btnOk, btnCancel), 0, 1);
         AcceptButton = btnOk;
         CancelButton = btnCancel;
+
+        Controls.Add(root);
     }
 
     private void CaptureSelection(object? sender, EventArgs e)

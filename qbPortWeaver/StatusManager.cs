@@ -34,6 +34,7 @@ public sealed record StatusSnapshot
     [JsonPropertyName("portVerified")] public bool? PortVerified { get; init; }
     [JsonPropertyName("status")] public string? Status { get; init; }
     [JsonPropertyName("message")] public string? Message { get; init; }
+    [JsonPropertyName("waitingForVpn")] public bool WaitingForVpn { get; init; }
 }
 
 /// <summary>

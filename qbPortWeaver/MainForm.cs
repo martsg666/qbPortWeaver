@@ -166,7 +166,9 @@ public partial class MainForm : Form
             // Fire-and-forget: exceptions inside the while loop are caught per-cycle.
             // A synchronous throw before the loop body (e.g. during Task.Run startup) would be
             // silently lost - acceptable since RunMainLoopAsync has no synchronous preamble.
-            _ = Task.Run(RunMainLoopAsync);
+            // CancellationToken.None is explicit: the loop owns its lifetime via _shutdownCts
+            // (checked each iteration), so Task.Run's scheduling token is not used here.
+            _ = Task.Run(RunMainLoopAsync, CancellationToken.None);
 
             // Wake the loop promptly on a network change (e.g. VPN reconnect) instead of waiting
             // out the full interval. The timer starts disarmed; OnNetworkAddressChanged arms it.
@@ -201,6 +203,8 @@ public partial class MainForm : Form
             {
                 InvokeOnUiThread(() =>
                 {
+                    // Native MessageBox here by design: on the fatal-startup path the themed dialog's
+                    // layout/theming machinery may itself be unusable, and this box only precedes exit.
                     MessageBox.Show($"Fatal startup error: {ex.Message}\n\nThe application will now exit.",
                         AppIdentity.AppName, MessageBoxButtons.OK, MessageBoxIcon.Error);
                     Application.Exit();
@@ -404,7 +408,7 @@ public partial class MainForm : Form
     // the user reaching for the log viewer is the one who can least afford to lose the history.
     private void clearLogs_Click(object? sender, EventArgs e)
     {
-        var confirm = MessageBox.Show(
+        var confirm = ThemedMessageBox.Show(
             "All log files, including rotated backups, will be deleted. This cannot be undone.\n\nContinue?",
             AppIdentity.AppName,
             MessageBoxButtons.YesNo,
@@ -851,7 +855,9 @@ public partial class MainForm : Form
             {
                 Interlocked.Exchange(ref _mediaImportRunning, 0);
             }
-        });
+        // CancellationToken.None is explicit: the import owns its cancellation via the
+        // _shutdownCts token passed to ImportAsync, so Task.Run's scheduling token is not used.
+        }, CancellationToken.None);
     }
 
     // Waits for the next cycle interval, handling manual-update interrupts.
@@ -1010,6 +1016,7 @@ public partial class MainForm : Form
             SyncState.Error => _iconError ?? _iconBase!,
             SyncState.Disabled => _iconBase!,
             SyncState.Paused => _iconPaused ?? _iconBase!,
+            SyncState.WaitingForVpn => _iconBase!, // neutral during the startup grace window, not orange
             _ => _iconBase!
         };
     }
@@ -1024,6 +1031,8 @@ public partial class MainForm : Form
             { State: SyncState.VpnDisconnected } => "VPN not connected",
             { State: SyncState.Disabled } => "Port sync disabled",
             { State: SyncState.Paused } => "Port sync paused",
+            { State: SyncState.WaitingForVpn, Message: var m } when !string.IsNullOrEmpty(m) => m,
+            { State: SyncState.WaitingForVpn } => "Startup grace period",
             { State: SyncState.Error, Message: var m } => $"Error | {m}",
             _ => "Starting\u2026"
         };

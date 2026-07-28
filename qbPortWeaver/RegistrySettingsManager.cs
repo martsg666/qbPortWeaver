@@ -122,6 +122,7 @@ public static class RegistrySettingsManager
 
     // Registry key names - general section (sync triggering)
     public const string KeyResyncOnNetworkChange = "resyncOnNetworkChange";
+    public const string KeyWaitForVpnOnStartup = "waitForVpnOnStartup";
 
     // Default values for all settings (single source of truth)
     private static readonly Dictionary<string, Dictionary<string, string>> _defaults =
@@ -138,6 +139,7 @@ public static class RegistrySettingsManager
                 [KeyNotifyOnPortUpdate] = ValueTrue,
                 [KeyShowUpdateFormOnStartup] = ValueTrue,
                 [KeyResyncOnNetworkChange] = ValueTrue,
+                [KeyWaitForVpnOnStartup] = ValueTrue,
                 [KeyVerifyPortAfterSync] = ValueTrue,
                 [KeyPortClosedRecoveryEnabled] = ValueTrue,
                 [KeyPortClosedRecoveryTriggerChecks] = "3"

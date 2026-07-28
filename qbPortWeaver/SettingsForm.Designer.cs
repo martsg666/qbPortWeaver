@@ -38,6 +38,7 @@ partial class SettingsForm
         btnRefreshAdapters        = new Button();
         chkNotifyOnPortUpdate     = new CheckBox();
         chkShowUpdateForm         = new CheckBox();
+        chkWaitForVpnOnStartup    = new CheckBox();
         lblAutoRecoveryHeader     = new Label();
         btnTestRecovery           = new Button();
         chkVerifyPort             = new CheckBox();
@@ -140,6 +141,7 @@ partial class SettingsForm
         grpGeneral.Controls.Add(btnRefreshAdapters);
         grpGeneral.Controls.Add(chkNotifyOnPortUpdate);
         grpGeneral.Controls.Add(chkShowUpdateForm);
+        grpGeneral.Controls.Add(chkWaitForVpnOnStartup);
         grpGeneral.Controls.Add(lblAutoRecoveryHeader);
         grpGeneral.Controls.Add(btnTestRecovery);
         grpGeneral.Controls.Add(chkVerifyPort);
@@ -201,11 +203,12 @@ partial class SettingsForm
         lblSeconds.TabIndex  = 5;
         lblSeconds.Text      = "seconds";
         lblSeconds.TextAlign = ContentAlignment.MiddleLeft;
-        // Shares the update-interval row: the interval is the scheduled cadence, this adds an
-        // immediate sync on network/VPN change. AutoSize so the label sits flush after "seconds".
-        chkResyncOnNetworkChange.AutoSize = true;
+        // Shares the update-interval row. Fixed height 23 (not AutoSize) so its text vertically
+        // centers with the row's 23px-tall label, NUD, and "seconds" instead of sitting ~2px high.
+        chkResyncOnNetworkChange.AutoSize = false;
         chkResyncOnNetworkChange.Location = new Point(300, 53);
         chkResyncOnNetworkChange.Name     = "chkResyncOnNetworkChange";
+        chkResyncOnNetworkChange.Size     = new Size(170, 23);
         chkResyncOnNetworkChange.TabIndex = 6;
         chkResyncOnNetworkChange.Text     = "Sync on network change";
         lblVpnProvider.Location  = new Point(12, 82);
@@ -252,30 +255,36 @@ partial class SettingsForm
         chkShowUpdateForm.Name          = "chkShowUpdateForm";
         chkShowUpdateForm.TabIndex      = 13;
         chkShowUpdateForm.Text          = "Show update form on startup";
+        // Right column of the startup-behaviour row, aligned under "Sync on network change" (x=300).
+        chkWaitForVpnOnStartup.AutoSize = true;
+        chkWaitForVpnOnStartup.Location = new Point(300, 169);
+        chkWaitForVpnOnStartup.Name     = "chkWaitForVpnOnStartup";
+        chkWaitForVpnOnStartup.TabIndex = 14;
+        chkWaitForVpnOnStartup.Text     = "Wait for VPN on startup";
         // "Trigger after" labels use AutoSize so the NUD sits immediately after the text.
         lblAutoRecoveryHeader.AutoSize = true;
         lblAutoRecoveryHeader.Font     = new Font("Segoe UI", 9F, FontStyle.Bold);
         lblAutoRecoveryHeader.Location = new Point(12, 198);
         lblAutoRecoveryHeader.Name     = "lblAutoRecoveryHeader";
-        lblAutoRecoveryHeader.TabIndex = 14;
+        lblAutoRecoveryHeader.TabIndex = 15;
         lblAutoRecoveryHeader.Text     = "Auto-recovery";
         // Shares the header row, matching the client groups' Test button placement (x=398).
         btnTestRecovery.Location = new Point(398, 198);
         btnTestRecovery.Name     = "btnTestRecovery";
         btnTestRecovery.Size     = new Size(70, 23);
-        btnTestRecovery.TabIndex = 15;
+        btnTestRecovery.TabIndex = 16;
         btnTestRecovery.Text     = "Test";
         btnTestRecovery.Click   += btnTestRecovery_Click;
         chkVerifyPort.AutoSize        = true;
         chkVerifyPort.Location        = new Point(15, 227);
         chkVerifyPort.Name            = "chkVerifyPort";
-        chkVerifyPort.TabIndex        = 16;
+        chkVerifyPort.TabIndex        = 17;
         chkVerifyPort.Text            = "Check that the forwarded port is open after each sync";
         chkVerifyPort.CheckedChanged += chkVerifyPort_CheckedChanged;
         chkPortClosedRecovery.AutoSize       = true;
         chkPortClosedRecovery.Location       = new Point(15, 256);
         chkPortClosedRecovery.Name           = "chkPortClosedRecovery";
-        chkPortClosedRecovery.TabIndex       = 17;
+        chkPortClosedRecovery.TabIndex       = 18;
         chkPortClosedRecovery.Text           = "Trigger auto-recovery when port stays closed";
         chkPortClosedRecovery.CheckedChanged += chkPortClosedRecovery_CheckedChanged;
         // "Trigger after" sub-rows align with the parent checkbox's text at x=28 (checkbox left 12 +
@@ -283,7 +292,7 @@ partial class SettingsForm
         lblPortClosedChecks.AutoSize  = true;
         lblPortClosedChecks.Location  = new Point(28, 285);
         lblPortClosedChecks.Name      = "lblPortClosedChecks";
-        lblPortClosedChecks.TabIndex  = 18;
+        lblPortClosedChecks.TabIndex  = 19;
         lblPortClosedChecks.Text      = "Trigger after";
         lblPortClosedChecks.TextAlign = ContentAlignment.MiddleLeft;
         nudPortClosedChecks.Location = new Point(112, 285);
@@ -291,24 +300,24 @@ partial class SettingsForm
         nudPortClosedChecks.Minimum  = new decimal(new int[] { 1, 0, 0, 0 });
         nudPortClosedChecks.Name     = "nudPortClosedChecks";
         nudPortClosedChecks.Size     = new Size(50, 23);
-        nudPortClosedChecks.TabIndex = 19;
+        nudPortClosedChecks.TabIndex = 20;
         nudPortClosedChecks.Value    = new decimal(new int[] { 3, 0, 0, 0 });
         lblPortClosedChecksUnit.Location  = new Point(168, 285);
         lblPortClosedChecksUnit.Name      = "lblPortClosedChecksUnit";
         lblPortClosedChecksUnit.Size      = new Size(270, 23);
-        lblPortClosedChecksUnit.TabIndex  = 20;
+        lblPortClosedChecksUnit.TabIndex  = 21;
         lblPortClosedChecksUnit.Text      = "confirmed closed checks";
         lblPortClosedChecksUnit.TextAlign = ContentAlignment.MiddleLeft;
         chkAutoRecovery.AutoSize       = true;
         chkAutoRecovery.Location       = new Point(15, 314);
         chkAutoRecovery.Name           = "chkAutoRecovery";
-        chkAutoRecovery.TabIndex       = 21;
+        chkAutoRecovery.TabIndex       = 22;
         chkAutoRecovery.Text           = "Trigger auto-recovery when no port assigned or disconnected";
         chkAutoRecovery.CheckedChanged += chkAutoRecovery_CheckedChanged;
         lblRecoveryCycles.AutoSize  = true;
         lblRecoveryCycles.Location  = new Point(28, 343);
         lblRecoveryCycles.Name      = "lblRecoveryCycles";
-        lblRecoveryCycles.TabIndex  = 22;
+        lblRecoveryCycles.TabIndex  = 23;
         lblRecoveryCycles.Text      = "Trigger after";
         lblRecoveryCycles.TextAlign = ContentAlignment.MiddleLeft;
         nudRecoveryCycles.Location = new Point(112, 343);
@@ -316,12 +325,12 @@ partial class SettingsForm
         nudRecoveryCycles.Minimum  = new decimal(new int[] { 1, 0, 0, 0 });
         nudRecoveryCycles.Name     = "nudRecoveryCycles";
         nudRecoveryCycles.Size     = new Size(50, 23);
-        nudRecoveryCycles.TabIndex = 23;
+        nudRecoveryCycles.TabIndex = 24;
         nudRecoveryCycles.Value    = new decimal(new int[] { 3, 0, 0, 0 });
         lblRecoveryCyclesUnit.Location  = new Point(168, 343);
         lblRecoveryCyclesUnit.Name      = "lblRecoveryCyclesUnit";
         lblRecoveryCyclesUnit.Size      = new Size(270, 23);
-        lblRecoveryCyclesUnit.TabIndex  = 24;
+        lblRecoveryCyclesUnit.TabIndex  = 25;
         lblRecoveryCyclesUnit.Text      = "consecutive failed cycles";
         lblRecoveryCyclesUnit.TextAlign = ContentAlignment.MiddleLeft;
         // ── grpQBittorrent ────────────────────────────────────────────
@@ -796,6 +805,7 @@ partial class SettingsForm
     private Button        btnRefreshAdapters;
     private CheckBox      chkNotifyOnPortUpdate;
     private CheckBox      chkShowUpdateForm;
+    private CheckBox      chkWaitForVpnOnStartup;
     private Label         lblAutoRecoveryHeader;
     private Button        btnTestRecovery;
     private CheckBox      chkVerifyPort;

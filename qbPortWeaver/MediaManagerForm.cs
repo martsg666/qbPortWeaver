@@ -88,7 +88,7 @@ public partial class MediaManagerForm : Form
         // until Windows flags the app as preventing shutdown.
         if (_isBusy && e.CloseReason == CloseReason.UserClosing)
         {
-            var result = MessageBox.Show(
+            var result = ThemedMessageBox.Show(
                 "A scan or import is in progress.\n\nClosing will cancel the operation. Any files already imported will remain in the library.\n\nClose anyway?",
                 AppIdentity.AppName,
                 MessageBoxButtons.YesNo,
@@ -456,7 +456,7 @@ public partial class MediaManagerForm : Form
             ? ($"{fileCount} will be moved into the library and removed from the source folder. This cannot be undone.\n\nContinue?", MessageBoxIcon.Warning)
             : ($"{fileCount} will be imported into the library.\n\nContinue?", MessageBoxIcon.Question);
 
-        var confirm = MessageBox.Show(
+        var confirm = ThemedMessageBox.Show(
             message,
             AppIdentity.AppName,
             MessageBoxButtons.YesNo,
@@ -927,7 +927,7 @@ public partial class MediaManagerForm : Form
         return newCts.Token;
     }
 
-    private IProgress<(int Current, int Total)> CreateScanProgress(string verb)
+    private Progress<(int Current, int Total)> CreateScanProgress(string verb)
         => new Progress<(int Current, int Total)>(p =>
         {
             if (IsDisposed) return;

@@ -11,9 +11,9 @@
     <Product>qbPortWeaver</Product>
     <Authors>martsg666</Authors>
     <Copyright>© 2026 martsg666</Copyright>
-    <Version>2.6.2</Version>
-    <FileVersion>2.6.2.0</FileVersion>
-    <AssemblyVersion>2.6.2.0</AssemblyVersion>
+    <Version>2.6.3</Version>
+    <FileVersion>2.6.3.0</FileVersion>
+    <AssemblyVersion>2.6.3.0</AssemblyVersion>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <!-- Suppress known SonarAnalyzer false positives (each has a matching // NOSONAR comment):
          S108  - empty catch body is intentional (HelperPipeServer.cs)

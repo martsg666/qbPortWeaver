@@ -76,7 +76,7 @@ internal static class NicotinePluginInstaller
                 "Plugin: not installed", pluginFolder, null, null);
         }
 
-        if (!string.IsNullOrEmpty(BundledVersion) && installedVersion != BundledVersion)
+        if (IsBundledVersionNewer(installedVersion, BundledVersion))
         {
             return new NicotinePluginStatus(NicotinePluginState.Outdated,
                 $"Plugin: {installedVersion} installed, {BundledVersion} available",
@@ -540,6 +540,19 @@ internal static class NicotinePluginInstaller
         }
 
         return null;
+    }
+
+    // Only offer to replace an installed plugin when the bundled version is demonstrably newer.
+    // Treat an unparseable non-empty installed version as unknown rather than outdated: overwriting
+    // it could silently downgrade a prerelease or a future version format this build does not know.
+    private static bool IsBundledVersionNewer(string installedVersion, string bundledVersion)
+    {
+        if (string.IsNullOrWhiteSpace(bundledVersion)) return false;
+        if (string.IsNullOrWhiteSpace(installedVersion)) return true;
+
+        return Version.TryParse(installedVersion, out var installed) &&
+               Version.TryParse(bundledVersion, out var bundled) &&
+               bundled > installed;
     }
 
     private static string? ReadResourceText(string resourceName)

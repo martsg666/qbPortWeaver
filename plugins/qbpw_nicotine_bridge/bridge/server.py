@@ -137,17 +137,19 @@ class BridgeHandler(BaseHTTPRequestHandler):
         """Reject anything that looks like it came from a web page.
 
         A browser on this machine can reach a loopback server, so refuse requests carrying an
-        Origin header, and refuse a Host that is not loopback so a hostile page cannot use a
-        rebound DNS name to get here.
+        Origin header. While the bridge is in its default loopback-only mode, also refuse a Host
+        that is not loopback so a hostile page cannot use a rebound DNS name to get here.
+
+        A non-loopback bind is an explicit opt-in for a qbPortWeaver instance on another machine.
+        Its normal Host header names the server's LAN address, so the loopback Host restriction
+        cannot apply in that mode; authenticated endpoints remain protected by the bearer token.
         """
         if self.headers.get("Origin"):
             raise errors.forbidden_origin()
 
         host = (self.headers.get("Host") or "").split(":", 1)[0].strip("[]")
-        if host and host not in ("127.0.0.1", "localhost", "::1"):
+        if _is_loopback_host(bridge.bind_host) and host and not _is_loopback_host(host):
             raise errors.forbidden_origin()
-
-        del bridge  # signature kept uniform with the other checks
 
     def _authenticate(self, bridge):
         header = self.headers.get("Authorization") or ""
@@ -207,6 +209,7 @@ class Bridge:
         self.log_requests = log_requests
         self.plugin_version = plugin_version
         self.nicotine_version = nicotine_version
+        self.bind_host = bind_host
 
         self._set_port_lock = threading.Lock()
 
@@ -317,3 +320,7 @@ def _validate_port(value):
     if not 1 <= value <= 65535:
         raise errors.bad_request("'port' must be between 1 and 65535.")
     return value
+
+
+def _is_loopback_host(host):
+    return (host or "").strip("[]").lower() in ("127.0.0.1", "localhost", "::1")

@@ -127,6 +127,15 @@ def run_tests(plugin):
     status, _ = request(plugin, "GET", "/v1/preferences", headers={"Host": "evil.example"})
     check("non-loopback Host is refused", status == 403, f"status {status}")
 
+    # A user who explicitly exposes the bridge for qbPortWeaver on another machine will address
+    # it by its LAN host, not localhost. The bearer token remains mandatory in this mode.
+    plugin._bridge.bind_host = "0.0.0.0"
+    status, _ = request(plugin, "GET", "/v1/preferences", token=plugin._bridge.token,
+                        headers={"Host": "192.0.2.10"})
+    check("remote Host is accepted after a non-loopback bind", status == 200,
+          f"status {status}")
+    plugin._bridge.bind_host = "127.0.0.1"
+
     status, _ = request(plugin, "GET", "/v1/nope")
     check("unknown path is 404", status == 404, f"status {status}")
 

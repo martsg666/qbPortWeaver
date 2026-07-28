@@ -129,14 +129,21 @@ class CoreIO:
         return getattr(users, "public_port", None) if users is not None else None
 
     def interface_name(self):
-        """The adapter Nicotine+ binds to, or None for "any".
+        """The adapter Nicotine+ binds to.
 
         On Windows this is the adapter friendly name, the same string space qBittorrent
         reports, so qbPortWeaver's interface-mismatch check can consume it directly.
+
+        Three distinct answers, and they must stay distinct: a name means bound to that
+        adapter, an empty string means bound to every adapter - which is what qbPortWeaver
+        warns about as a possible leak outside the VPN - and None means this Nicotine+ does
+        not expose the setting at all, so no check can be made. Folding the empty string
+        into None would silently turn the leak warning off.
         """
         if not self.capabilities.get("interface_name"):
             return None
-        return self._server_section().get(KEY_INTERFACE) or None
+        value = self._server_section().get(KEY_INTERFACE)
+        return value if isinstance(value, str) else None
 
     def upnp_enabled(self):
         if not self.capabilities.get("upnp"):
@@ -241,6 +248,12 @@ class CoreIO:
         if port not in (active, previous) and not self._can_bind(port):
             raise errors.port_in_use(port)
 
+        # Only the port needs a rebind. Reaching here with the port already configured and bound
+        # means UPnP is the only thing changing, and Nicotine+'s own Preferences dialog tears the
+        # mapping down without reconnecting - so doing so here would drop the connection for five
+        # seconds for nothing, every time the client is switched to Nicotine+ with UPnP still on.
+        needs_rebind = previous != port or active != port
+
         warnings = []
         server[KEY_PORTRANGE] = (port, port)
         if will_disable_upnp:
@@ -251,10 +264,11 @@ class CoreIO:
         if will_disable_upnp:
             self._remove_port_mapping(warnings)
 
-        action = self._reconnect(warnings)
-        self._last_port_change = time.monotonic()
+        action = self._reconnect(warnings) if needs_rebind else "none"
+        if needs_rebind:
+            self._last_port_change = time.monotonic()
 
-        return {"ok": True, "changed": True, "port": port, "previous_port": previous,
+        return {"ok": True, "changed": needs_rebind, "port": port, "previous_port": previous,
                 "upnp_disabled": will_disable_upnp, "reconnect": action, "warnings": warnings}
 
     def reconnect(self):

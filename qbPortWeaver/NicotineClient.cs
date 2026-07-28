@@ -128,12 +128,14 @@ public sealed class NicotineClient : BitTorrentClientBase
                 return (null, null);
             }
 
-            // Empty means "bind to any adapter", which the mismatch check must skip rather
-            // than compare against the VPN name.
+            // Empty and absent mean different things and must not be conflated: an empty string
+            // is "bound to every adapter", which the caller warns about as a possible leak
+            // outside the VPN, while null is "this client cannot report an interface" and skips
+            // the check entirely. Same convention as qBittorrent.
             string? interfaceName = null;
             if (root.TryGetProperty("interface", out var interfaceElement) &&
                 interfaceElement.ValueKind == JsonValueKind.String)
-                interfaceName = interfaceElement.GetString() is { Length: > 0 } name ? name : null;
+                interfaceName = interfaceElement.GetString();
 
             return (listenPort, interfaceName);
         }

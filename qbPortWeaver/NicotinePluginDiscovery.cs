@@ -60,12 +60,19 @@ internal static class NicotinePluginDiscovery
         return dataFolder is null ? null : SafeCombine(dataFolder, PluginsFolderName, PluginFolderName);
     }
 
-    /// <summary>Returns <see langword="true"/> if the bridge plugin's files are present.</summary>
+    /// <summary>Returns <see langword="true"/> if the bridge plugin is installed.</summary>
+    /// <remarks>Keyed on the same marker file <see cref="NicotinePluginInstaller"/> uses to report
+    /// installation state, so a half-written folder cannot make the log and the diagnostics report
+    /// disagree about whether the plugin exists.</remarks>
     internal static bool IsPluginInstalled(string? exePathHint)
     {
         string? folder = ResolvePluginFolder(exePathHint);
-        return folder is not null && SafeFileExists(SafeCombine(folder, "__init__.py"));
+        return folder is not null && SafeFileExists(SafeCombine(folder, PluginMarkerFileName));
     }
+
+    /// <summary>File whose presence marks the plugin as installed. Nicotine+ requires it, and it
+    /// carries the version, so it is the marker both the installer and this class key on.</summary>
+    internal const string PluginMarkerFileName = "PLUGININFO";
 
     /// <summary>
     /// Reads the connection file the running plugin published, or <see langword="null"/> when the

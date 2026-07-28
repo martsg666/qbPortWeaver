@@ -40,6 +40,7 @@ class MainThreadProxy:
             raise errors.shutting_down()
 
         done = threading.Event()
+        abandoned = threading.Event()
         box = {"value": _UNSET, "error": None}
 
         def _run():
@@ -48,6 +49,12 @@ class MainThreadProxy:
             # name - so its plugin-error guard does not apply, and it calls core.quit()
             # and re-raises. An escaping exception here would terminate Nicotine+.
             try:
+                # Whoever queued this has already given up and reported a failure, so running
+                # now would apply a change that was reported as not having happened - a port
+                # set that qbPortWeaver logged as failed, for instance. Only closes the window
+                # before execution starts; a call already under way cannot be recalled.
+                if abandoned.is_set():
+                    return
                 box["value"] = func(*args)
             except BaseException as error:  # noqa: BLE001 - deliberately total; see above
                 box["error"] = error
@@ -65,9 +72,11 @@ class MainThreadProxy:
             if done.wait(min(self._WAIT_STEP, remaining)):
                 break
             if self.stopping.is_set():
+                abandoned.set()
                 raise errors.shutting_down()
             remaining -= self._WAIT_STEP
         else:
+            abandoned.set()
             raise errors.main_thread_timeout()
 
         if box["error"] is not None:

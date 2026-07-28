@@ -40,7 +40,7 @@ internal sealed record NicotinePluginActionResult(bool Success, string Message);
 internal static class NicotinePluginInstaller
 {
     private const string ResourcePrefix = "qbPortWeaver.Plugins.Nicotine.qbpw_nicotine_bridge.";
-    private const string PluginInfoFileName = "PLUGININFO";
+    private const string PluginInfoFileName = NicotinePluginDiscovery.PluginMarkerFileName;
     private const string PluginsSection = "plugins";
     private const string EnabledKey = "enabled";
     private const string EnableKey = "enable";

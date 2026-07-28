@@ -138,7 +138,7 @@ def run_tests(plugin):
     check("preferences succeed", status == 200 and payload["ok"], payload)
     check("configured port is read", payload["configured_port"] == 2234, payload)
     check("active port is read", payload["active_port"] == 2234, payload)
-    check("empty interface becomes null", payload["interface"] is None, payload)
+    check("bound-to-all interface is reported as empty, not null", payload["interface"] == "", payload)
     check("not locked by cli", payload["port_locked_by_cli"] is False, payload)
 
     print("\nSetting the port")
@@ -167,6 +167,37 @@ def run_tests(plugin):
 
     status, _ = request(plugin, "POST", "/v1/port", body={})
     check("missing port is rejected", status == 400, f"status {status}")
+
+    print("\nThe bound interface")
+    # Empty and absent must stay distinct: qbPortWeaver warns about an empty interface as a
+    # possible leak outside the VPN, and skips the check entirely when it is absent. Folding
+    # one into the other silently disables that warning.
+    status, payload = request(plugin, "GET", "/v1/preferences")
+    check("bound-to-all is reported as an empty string, not null",
+          payload["interface"] == "", repr(payload["interface"]))
+
+    CONFIG.sections["server"]["interface"] = "ProtonVPN"
+    status, payload = request(plugin, "GET", "/v1/preferences")
+    check("a named adapter is passed through", payload["interface"] == "ProtonVPN", payload["interface"])
+    CONFIG.sections["server"]["interface"] = ""
+
+    print("\nTurning UPnP off without moving the port")
+    # Only the port needs a rebind; reconnecting to toggle a port mapping would drop the
+    # Soulseek connection for five seconds for nothing.
+    CORE.users.login_status = fake_nicotine.UserStatus.ONLINE
+    current = CONFIG.sections["server"]["portrange"][0]
+    CORE.users.public_port = current
+    CONFIG.sections["server"]["upnp"] = True
+    reconnects_before = CORE.reconnect_count
+
+    status, payload = request(plugin, "POST", "/v1/port", body={"port": current})
+    check("upnp is turned off", CONFIG.sections["server"]["upnp"] is False,
+          CONFIG.sections["server"]["upnp"])
+    check("no reconnect for a upnp-only change", payload["reconnect"] == "none", payload)
+    check("the connection is not cycled", CORE.reconnect_count == reconnects_before,
+          f"{reconnects_before} -> {CORE.reconnect_count}")
+    check("a upnp-only change is not reported as a port change",
+          payload["changed"] is False, payload)
 
     print("\nReconnecting when offline")
     CORE.users.login_status = fake_nicotine.UserStatus.OFFLINE

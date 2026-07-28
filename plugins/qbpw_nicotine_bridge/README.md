@@ -1,6 +1,6 @@
 # qbPortWeaver Bridge
 
-A Nicotine+ plugin that lets [qbPortWeaver](https://github.com/DemirYerli/qbPortWeaver) keep the
+A Nicotine+ plugin that lets [qbPortWeaver](https://github.com/martsg666/qbPortWeaver) keep the
 Soulseek listening port in sync with a VPN's forwarded port.
 
 Nicotine+ has no remote-control interface, so there is no way for an external application to

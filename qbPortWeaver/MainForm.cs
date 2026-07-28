@@ -203,6 +203,8 @@ public partial class MainForm : Form
             {
                 InvokeOnUiThread(() =>
                 {
+                    // Native MessageBox here by design: on the fatal-startup path the themed dialog's
+                    // layout/theming machinery may itself be unusable, and this box only precedes exit.
                     MessageBox.Show($"Fatal startup error: {ex.Message}\n\nThe application will now exit.",
                         AppIdentity.AppName, MessageBoxButtons.OK, MessageBoxIcon.Error);
                     Application.Exit();

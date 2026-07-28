@@ -37,11 +37,14 @@ internal static class ThemedMessageBox
         private const int MessageMaxWidth = 360;
 
         private readonly SystemSound? _sound;
+        private readonly string _messageText;
+        private string[] _buttonLabels = [];
         private Bitmap? _iconBitmap;
 
         internal ThemedMessageBoxForm(string text, string caption, MessageBoxButtons buttons, MessageBoxIcon icon)
         {
             Text = caption;
+            _messageText = text;
             FormBorderStyle = FormBorderStyle.FixedDialog;
             StartPosition = FormStartPosition.CenterParent;
             MinimizeBox = false;
@@ -74,6 +77,7 @@ internal static class ThemedMessageBox
             root.Controls.Add(BuildContent(text, icon), 0, 0);
 
             var specs = ButtonSpecs(buttons);
+            _buttonLabels = Array.ConvertAll(specs, s => s.Text); // captured for the Ctrl+C copy
             var buttonControls = new Button[specs.Length];
             for (int i = 0; i < specs.Length; i++)
             {
@@ -130,6 +134,20 @@ internal static class ThemedMessageBox
         {
             base.OnShown(e);
             _sound?.Play(); // match the native MessageBox's per-icon system sound
+        }
+
+        // Ctrl+C copies caption + message + button labels to the clipboard, matching the native
+        // MessageBox affordance people use to paste an error into a support thread.
+        protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
+        {
+            if (keyData == (Keys.Control | Keys.C))
+            {
+                const string sep = "---------------------------";
+                AppConstants.TrySetClipboardText(string.Join(Environment.NewLine,
+                    sep, Text, sep, _messageText, sep, string.Join("   ", _buttonLabels), sep));
+                return true;
+            }
+            return base.ProcessCmdKey(ref msg, keyData);
         }
 
         protected override void Dispose(bool disposing)

@@ -75,51 +75,78 @@ internal sealed class DiagnosticsForm : Form
         // set explicitly - it defaults to SystemColors.Window and does not inherit the form's BackColor.
         BackColor = SystemColors.Control;
 
+        // A TableLayoutPanel positions the content at the current DPI (no hand-computed coordinates):
+        // the report fills the top row and the button bar auto-sizes below it. The form keeps a fixed
+        // width and a content-computed, capped height (SizeToContent), so it is not a pure AutoSize
+        // dialog like the smaller code-built dialogs, but it shares the same layout-container approach.
+        var root = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 1,
+            RowCount = 2,
+            Padding = new Padding(8),
+        };
+        root.RowStyles.Add(new RowStyle(SizeType.Percent, 100)); // report fills the remaining height
+        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));     // button bar
+
         _report = new RichTextBox
         {
             ReadOnly = true,
             BorderStyle = BorderStyle.None,
             BackColor = SystemColors.Control,
             TabStop = false,
-            Location = new Point(8, 8),
-            Size = new Size(ClientSize.Width - 16, ClientSize.Height - 52),
-            Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right,
+            Dock = DockStyle.Fill,
+            Margin = new Padding(0),
         };
-        Controls.Add(_report);
+        root.Controls.Add(_report, 0, 0);
 
-        var btnCopy = new Button
+        // Button bar: Copy Report + Re-run grouped on the left, Close on the right.
+        var buttonBar = new TableLayoutPanel
         {
-            Text = "Copy Report",
-            Size = new Size(110, 28),
-            Location = new Point(8, ClientSize.Height - 36),
-            Anchor = AnchorStyles.Bottom | AnchorStyles.Left,
+            Dock = DockStyle.Fill,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            ColumnCount = 2,
+            RowCount = 1,
+            Margin = new Padding(0, 8, 0, 0),
         };
+        buttonBar.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100)); // left group + spacer
+        buttonBar.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));     // Close
+
+        var leftGroup = new FlowLayoutPanel
+        {
+            FlowDirection = FlowDirection.LeftToRight,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            WrapContents = false,
+            Anchor = AnchorStyles.Left,
+            Margin = new Padding(0),
+        };
+        var btnCopy = new Button { Text = "Copy Report", Size = new Size(110, DialogLayout.ButtonHeight), Margin = new Padding(0, 0, DialogLayout.Gap, 0) };
         btnCopy.Click += (_, _) => AppConstants.TrySetClipboardText(BuildPlainReport());
-        Controls.Add(btnCopy);
+        leftGroup.Controls.Add(btnCopy);
 
-        _btnRerun = new Button
-        {
-            Text = "Re-run",
-            Size = new Size(90, 28),
-            Location = new Point(126, ClientSize.Height - 36),
-            Anchor = AnchorStyles.Bottom | AnchorStyles.Left,
-        };
+        _btnRerun = new Button { Text = "Re-run", Size = new Size(90, DialogLayout.ButtonHeight), Margin = new Padding(0) };
         _btnRerun.Click += (_, _) => RefreshRequested?.Invoke(this, EventArgs.Empty);
-        Controls.Add(_btnRerun);
+        leftGroup.Controls.Add(_btnRerun);
+        buttonBar.Controls.Add(leftGroup, 0, 0);
 
         var btnClose = new Button
         {
             Text = "Close",
             DialogResult = DialogResult.Cancel,
-            Size = new Size(82, 28),
-            Location = new Point(ClientSize.Width - 90, ClientSize.Height - 36),
-            Anchor = AnchorStyles.Bottom | AnchorStyles.Right,
+            Size = new Size(DialogLayout.ButtonWidth, DialogLayout.ButtonHeight),
+            Anchor = AnchorStyles.Right,
+            Margin = new Padding(0),
         };
         btnClose.Click += (_, _) => Close(); // NOSONAR S2325 - Close() is an instance method, handler cannot be static
-        Controls.Add(btnClose);
+        buttonBar.Controls.Add(btnClose, 1, 0);
 
+        root.Controls.Add(buttonBar, 0, 1);
         AcceptButton = btnClose;
         CancelButton = btnClose;
+
+        Controls.Add(root);
     }
 
     // Renders the checklist with color runs: a summary line, a timestamp, then per-check a bold colored

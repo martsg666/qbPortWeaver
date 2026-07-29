@@ -65,8 +65,9 @@ public sealed class PortSyncService
     // promptly once it is up, instead of waiting a full (possibly multi-minute) update interval.
     private const int StartupGracePeriodSeconds = 90;
     private const int StartupGracePollSeconds = 15;
-    // Captured once at construction - the sync service is created once at app startup.
-    private readonly DateTime _startedUtc = DateTime.UtcNow;
+    // Started once at construction (the sync service is created once at app startup). Monotonic, so a
+    // wall-clock/NTP correction during the grace window - likely just after boot/login - cannot shift it.
+    private readonly System.Diagnostics.Stopwatch _uptime = System.Diagnostics.Stopwatch.StartNew();
     // Set when the current cycle is a quiet startup wait (VPN not up within the grace window), so
     // RaiseSyncCompleted maps it to the neutral WaitingForVpn tray state instead of orange
     // VpnDisconnected. Reset at the start of every cycle; serialised by MainForm._updateSemaphore.
@@ -284,7 +285,7 @@ public sealed class PortSyncService
     // window a not-yet-connected VPN is expected (still establishing after boot/login) and is handled
     // as a quiet wait rather than a failure.
     private bool ShouldWaitForVpnStartup(bool waitEnabled) =>
-        waitEnabled && (DateTime.UtcNow - _startedUtc).TotalSeconds < StartupGracePeriodSeconds;
+        waitEnabled && _uptime.Elapsed.TotalSeconds < StartupGracePeriodSeconds;
 
     // Interval to wait after a grace-window check: the fast poll, but never slower than the user's
     // configured interval (a sub-15s interval would otherwise be slowed down during startup).
@@ -303,7 +304,7 @@ public sealed class PortSyncService
         status[StatusKeys.Message] = $"{message} (startup grace period)";
         status[StatusKeys.WaitingForVpn] = true;
         // The log adds the remaining time so repeated checks read as a countdown to the window's end.
-        int secondsLeft = Math.Max(0, StartupGracePeriodSeconds - (int)(DateTime.UtcNow - _startedUtc).TotalSeconds);
+        int secondsLeft = Math.Max(0, StartupGracePeriodSeconds - (int)_uptime.Elapsed.TotalSeconds);
         LogManager.Instance.LogMessage($"{message} (startup grace period, ~{secondsLeft}s left)", LogLevel.Info);
     }
 

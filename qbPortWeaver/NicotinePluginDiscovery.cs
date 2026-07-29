@@ -154,7 +154,7 @@ internal static class NicotinePluginDiscovery
                 ? hostElement.GetString() ?? "127.0.0.1"
                 : "127.0.0.1";
 
-            return new NicotinePluginHandshake($"http://{host}:{port}", token, path);
+            return new NicotinePluginHandshake($"http://{host}:{port}", token, path); // NOSONAR S5332 - loopback IPC bridge on 127.0.0.1; TLS is meaningless for a local-only handshake
         }
         catch (Exception ex)
         {

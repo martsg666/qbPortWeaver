@@ -239,7 +239,7 @@ class Plugin(BasePlugin):
             "api": API_VERSION,
             "plugin_version": PLUGIN_VERSION,
             "nicotine_version": self._nicotine_version(),
-            "url": f"http://{host}:{self._bridge.port}/",
+            "url": f"http://{host}:{self._bridge.port}/",  # NOSONAR S5332 - loopback bridge; TLS not applicable to a 127.0.0.1 IPC channel
             "host": host,
             "port": self._bridge.port,
             "token": self._bridge.token,

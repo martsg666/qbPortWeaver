@@ -38,7 +38,7 @@ All options install the same application. New versions appear on the GitHub rele
 ### winget
 
 ```
-winget install qbportweaver
+winget install --id martsg666.qbPortWeaver -e
 ```
 
 Built into Windows 10/11, no extra tooling needed.
@@ -414,6 +414,10 @@ The application is designed to always recover. A failing cycle never crashes the
 
 **`master`** always reflects the latest published release. Do not commit directly to `master`; it is updated only by merging a completed release branch (step 4 below).
 
+#### External contributors
+
+Fork the repository and open your pull request against the **current release branch** (the highest `2.x.y` branch), not `master`. `master` only ever moves when a finished release is merged into it, so a PR targeting `master` will be retargeted. If you are unsure which release branch is active, ask in the pull request or an issue.
+
 #### Branch naming
 
 | Purpose | Base branch | Name pattern |
@@ -464,7 +468,7 @@ master  ────────────────────────
    git tag v<new-release>
    git push origin v<new-release>
    ```
-   Pushing the tag automatically triggers the **Build and Release** pipeline, which builds the app, compiles the MSI installer, creates the GitHub Release, and uploads the MSI and Chocolatey package as release assets. Once the previous Chocolatey version is approved, run the **Publish to Chocolatey** workflow manually from the Actions tab.
+   Pushing the tag automatically triggers the **Build and Release** pipeline, which builds the app, compiles the MSI installer, creates the GitHub Release, and uploads the MSI and Chocolatey package as release assets. The package managers are then published manually from the Actions tab: run **Publish to winget** (opens the winget-pkgs submission via wingetcreate), and once the previous Chocolatey version is approved, run **Publish to Chocolatey**.
 
 4. **Merge the release branch into `master`** after the pipeline completes successfully:
    ```

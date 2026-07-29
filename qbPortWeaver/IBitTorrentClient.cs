@@ -1,38 +1,40 @@
 ﻿namespace qbPortWeaver;
 
 /// <summary>
-/// Client-agnostic contract for reading and setting the listening port and driving
-/// process lifecycle for a BitTorrent client (qBittorrent, Transmission, etc.).
+/// Client-agnostic contract for reading and setting the listening port and driving process
+/// lifecycle for a peer-to-peer client (qBittorrent, Transmission, Deluge, Nicotine+).
+/// <para>The BitTorrent name is historical - the contract carries no BitTorrent-specific
+/// assumptions, and Nicotine+ is a Soulseek client.</para>
 /// </summary>
 public interface IBitTorrentClient : IDisposable
 {
     /// <summary>
-    /// Display name of the BitTorrent client.
+    /// Display name of the client.
     /// Used in log messages and status output in place of hard-coded client names.
     /// </summary>
     string ClientName { get; }
 
     /// <summary>
     /// Returns <see langword="true"/> if this client supports network interface mismatch warnings.
-    /// qBittorrent exposes a named adapter via its API, enabling the check.
-    /// Transmission and Deluge do not expose adapter names via their APIs, so the check is skipped.
+    /// qBittorrent and Nicotine+ expose a named adapter, enabling the check. Transmission and
+    /// Deluge expose only a bind address, which the VPN rotates, so the check is skipped for them.
     /// </summary>
     bool SupportsInterfaceMismatchWarning { get; }
 
     /// <summary>
-    /// Returns <see langword="true"/> if the BitTorrent client process is currently running.
+    /// Returns <see langword="true"/> if the client process is currently running.
     /// </summary>
     bool IsRunning();
 
     /// <summary>
-    /// Launches the BitTorrent client and returns <see langword="true"/> if it starts successfully.
+    /// Launches the client and returns <see langword="true"/> if it starts successfully.
     /// For clients running as a Windows service, starts the service.
     /// For clients running as a user-space process, launches the executable directly.
     /// </summary>
     Task<bool> ForceStartAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Restarts the BitTorrent client and returns <see langword="true"/> on success.
+    /// Restarts the client and returns <see langword="true"/> on success.
     /// For clients running as a Windows service, delegates to the helper service (Session 0).
     /// For clients running as a user-space process, behaviour is client-defined: some kill and
     /// relaunch the executable; others are no-ops if the port change is already live in-place.
@@ -66,7 +68,7 @@ public interface IBitTorrentClient : IDisposable
     /// <see langword="true"/> when open, <see langword="false"/> when closed, or
     /// <see langword="null"/> when it cannot be determined (client unreachable, no internet,
     /// or port-test service unavailable).
-    /// Transmission and Deluge actively probe via their projects' online port-check services.
+    /// Transmission, Deluge and Nicotine+ actively probe via their projects' online port-check services.
     /// qBittorrent infers the result from incoming peer activity, so an idle client may report
     /// closed even when the port is open - callers should confirm before alerting.
     /// </summary>

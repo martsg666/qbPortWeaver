@@ -9,6 +9,14 @@ public partial class WhatsNewForm : Form
         "If you find qbPortWeaver useful, please star it on GitHub.";
 
     private const string ReleaseFeaturesText =
+        "New in 2.6.4\n\n" +
+        "Nicotine+ support\n" +
+        "qbPortWeaver can now keep Nicotine+ (Soulseek) on your VPN's forwarded port, alongside " +
+        "qBittorrent, Transmission and Deluge. Nicotine+ has no remote control of its own, so " +
+        "Settings has an Install plugin button that sets up a small bridge plugin for you - and " +
+        "enables it too, if Nicotine+ is closed at the time. The port then changes while " +
+        "Nicotine+ keeps running: no restart, no interrupted transfers.\n\n" +
+        "Previously released\n\n" +
         "New in 2.6.3\n\n" +
         "Pop-up messages match your theme\n" +
         "Confirmation and alert pop-ups now follow your chosen theme, so in dark mode they no " +
@@ -17,7 +25,6 @@ public partial class WhatsNewForm : Form
         "If the app starts before your VPN has finished connecting, it now waits quietly for a " +
         "short time instead of reporting the VPN as disconnected, and syncs your port as soon as " +
         "the connection is up. You can turn this off in Settings.\n\n" +
-        "Previously released\n\n" +
         "New in 2.6.2\n\n" +
         "Statistics on the Status panel\n" +
         "A new Statistics section on the Status window shows your current port, how many times " +

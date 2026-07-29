@@ -16,7 +16,9 @@ internal static class ClientRegistry
     /// <summary>
     /// The per-client facts. <paramref name="Name"/> is both the stored client setting value and the
     /// user-facing display name (the same string in this app). <paramref name="UserNameKey"/> is
-    /// <see langword="null"/> for clients that do not authenticate by username (e.g. Deluge).
+    /// <see langword="null"/> for clients that do not authenticate by username (e.g. Deluge,
+    /// Nicotine+); <paramref name="PasswordKey"/> then carries that client's single secret - a Web
+    /// UI password, or the bridge plugin token for Nicotine+.
     /// The default-port setting shares one key (<see cref="RegistrySettingsManager.KeyDefaultPort"/>)
     /// across all clients, so it is not stored here. <paramref name="ProcessNames"/>[0] doubles as the
     /// default process-name field value; <paramref name="DefaultExeFolder"/>/<paramref name="DefaultExeFile"/>
@@ -66,9 +68,22 @@ internal static class ClientRegistry
             ForceStartKey: RegistrySettingsManager.KeyForceStartDeluge,
             ProcessNames: ["deluge", "deluged"], DefaultExeFolder: "Deluge", DefaultExeFile: "deluge.exe",
             Factory: c => new DelugeClient(c.Url, c.Password, c.ProcessName, c.ExePath)),
+
+        // Nicotine+ is a Soulseek client rather than a BitTorrent one, driven through the
+        // qbPortWeaver bridge plugin's local API. It authenticates with a token the plugin issues,
+        // so UserNameKey is null and PasswordKey carries the token. The '+' in the process name is
+        // literal: Process.GetProcessesByName compares exactly, so "Nicotine+" matches
+        // "Nicotine+.exe" and nothing else.
+        new(Name: RegistrySettingsManager.BitTorrentClientNicotine, Section: RegistrySettingsManager.SectionNicotine,
+            UrlKey: RegistrySettingsManager.KeyNicotineUrl, UserNameKey: null,
+            PasswordKey: RegistrySettingsManager.KeyNicotineToken, ProcessNameKey: RegistrySettingsManager.KeyNicotineProcessName,
+            ExePathKey: RegistrySettingsManager.KeyNicotineExePath, RestartKey: RegistrySettingsManager.KeyRestartNicotine,
+            ForceStartKey: RegistrySettingsManager.KeyForceStartNicotine,
+            ProcessNames: ["Nicotine+"], DefaultExeFolder: "Nicotine+", DefaultExeFile: "Nicotine+.exe",
+            Factory: c => new NicotineClient(c.Url, c.Password, c.ProcessName, c.ExePath)),
     ];
 
-    /// <summary>All supported clients, in canonical order (qBittorrent, Transmission, Deluge).</summary>
+    /// <summary>All supported clients, in canonical order (qBittorrent, Transmission, Deluge, Nicotine+).</summary>
     internal static IReadOnlyList<ClientInfo> All => _clients;
 
     /// <summary>Resolves a stored client setting value to its facts, defaulting to qBittorrent when unrecognized.</summary>

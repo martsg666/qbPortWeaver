@@ -6,7 +6,7 @@ namespace qbPortWeaver;
 /// Best-effort detection of which supported BitTorrent client is running or installed, used by the
 /// Settings dialog's Detect button to pre-fill the client selection. A running process is a stronger
 /// signal than an on-disk install, so it wins when both are present; candidates are probed in a fixed
-/// order (qBittorrent, Transmission, Deluge) so the result is deterministic.
+/// order (qBittorrent, Transmission, Deluge, Nicotine+) so the result is deterministic.
 /// </summary>
 internal static class ClientDetector
 {
@@ -18,7 +18,7 @@ internal static class ClientDetector
 
     /// <summary>
     /// Returns every supported client that is currently running or installed in its default location,
-    /// in canonical order (qBittorrent, Transmission, Deluge). Each client appears at most once, marked
+    /// in canonical order (qBittorrent, Transmission, Deluge, Nicotine+). Each client appears at most once, marked
     /// <see cref="DetectionKind.Running"/> when a matching process is live, otherwise
     /// <see cref="DetectionKind.Installed"/>. An empty list means none were found. The caller decides
     /// how to resolve multiple matches (e.g. prefer running, or prompt). Never throws.

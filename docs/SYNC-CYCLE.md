@@ -170,7 +170,9 @@ The Settings form's **Test** button (Auto-recovery header row) dispatches the sa
 
 ## BitTorrent Client Interaction
 
-All client communication goes through the `IBitTorrentClient` interface, with implementations for qBittorrent (`QBittorrentClient`), Transmission (`TransmissionClient`), and Deluge (`DelugeClient`). The active implementation is selected each cycle based on the configured client setting.
+All client communication goes through the `IBitTorrentClient` interface, with implementations for qBittorrent (`QBittorrentClient`), Transmission (`TransmissionClient`), Deluge (`DelugeClient`), and Nicotine+ (`NicotineClient`). The active implementation is selected each cycle based on the configured client setting.
+
+> **Nicotine+** is a Soulseek client with no remote-control interface of its own. `NicotineClient` talks to the qbPortWeaver bridge plugin (`plugins/qbpw_nicotine_bridge/`), a GPL-3.0 Nicotine+ plugin that serves a token-authenticated JSON API on `127.0.0.1`. The plugin discovers itself to qbPortWeaver by writing its address and token to `%LocalAppData%\qbPortWeaver\nicotine-bridge.json`, which `NicotinePluginDiscovery` reads. It applies a port change by rewriting the setting and forcing a reconnect - the same thing the Preferences dialog does - so the port is live in roughly five seconds with no restart. Accordingly `NicotineClient.RestartAsync` is a deliberate no-op: killing Nicotine+ would discard its configuration, since it only writes it on a graceful shutdown.
 
 ### Port Update Sequence
 
@@ -179,11 +181,13 @@ All client communication goes through the `IBitTorrentClient` interface, with im
    GET /api/v2/app/preferences   → listen_port + current_interface_name  [qBittorrent]
    session-get                   → peer-port + bind-address-ipv4          [Transmission]
    core.get_config_values        → listen_ports / listen_random_port      [Deluge]
+   GET /v1/preferences           → listen_port + interface                [Nicotine+]
 
 2. Set new port (only if different):
    POST /api/v2/app/setPreferences                                        [qBittorrent]
    session-set                                                            [Transmission]
    core.set_config                                                        [Deluge]
+   POST /v1/port                                                          [Nicotine+]
 
 3. Record the change in the port history file (always on success - see Port History under
    Status Output), and (optional) show a tray balloon tip if NotifyOnPortUpdate is enabled
@@ -196,13 +200,14 @@ All client communication goes through the `IBitTorrentClient` interface, with im
    GET /api/v2/transfer/info     → connection_status connected/firewalled    [qBittorrent]
    port_test (ip_protocol=ipv4)  → port-is-open                              [Transmission]
    core.test_listen_port         → true/false                                [Deluge]
+   POST /v1/porttest             → open/closed/pending                       [Nicotine+]
 ```
 
 > The **post-update command** (if configured) is not part of this sequence: it is launched at the very end of the cycle, *after* the status JSON file is written (see Status Output) and only on a successful port change - so a script that reads the status file sees this cycle's result rather than the previous one.
 
-### Interface Mismatch Warning *(qBittorrent only)*
+### Interface Mismatch Warning *(qBittorrent and Nicotine+)*
 
-When enabled, the cycle compares qBittorrent's bound network interface (`current_interface_name` from preferences) against the configured VPN provider name. A mismatch raises the `InterfaceMismatchDetected` event, which shows a warning balloon tip from the tray icon. This helps catch cases where qBittorrent is routing traffic outside the VPN tunnel. Transmission and Deluge do not expose a named adapter via their APIs, so this check is skipped for those clients.
+When enabled, the cycle compares the client's bound network interface (`current_interface_name` from qBittorrent's preferences, `interface` from the Nicotine+ bridge - both Windows adapter friendly names) against the configured VPN provider name. A mismatch raises the `InterfaceMismatchDetected` event, which shows a warning balloon tip from the tray icon. This helps catch cases where qBittorrent is routing traffic outside the VPN tunnel. Transmission and Deluge do not expose a named adapter via their APIs, so this check is skipped for those clients.
 
 > If qBittorrent stays bound to an old adapter name after a ProtonVPN protocol change (e.g. `ProtonVPN` while the active tunnel is now `ProTUN`), this warning fires correctly - rebind qBittorrent's network interface to the active adapter to clear it.
 
@@ -215,6 +220,7 @@ When `verifyPortAfterSync` is enabled (General settings, default on) and the VPN
 | qBittorrent | `connection_status` from `transfer/info`: connected = open, firewalled = closed | Inferred from incoming peer activity; an idle client may report closed indefinitely |
 | Transmission | `port_test` RPC (`ip_protocol=ipv4`) | Active probe via Transmission's online port-check service. Uses the Transmission 4.1 method name, pinned to IPv4; falls back to the legacy `port-test` method on pre-4.1 daemons |
 | Deluge | `core.test_listen_port` | Active probe via Deluge's online port-check service |
+| Nicotine+ | `POST /v1/porttest` via the bridge plugin | Active probe via the Soulseek project's check service - but only on versions that have one. Nicotine+ 3.3.10 and earlier ship no port checker, so the plugin reports the capability as unavailable and the result is always undetermined. Where it is available, the plugin caps how long it holds the request below qbPortWeaver's HTTP timeout, so a slow check returns `pending` and is treated as undetermined rather than closed |
 
 **Throttle** - because two of the three mechanisms contact external check services, the test runs when the port changed this cycle, every cycle while a result awaits confirmation, and every cycle while confirmed-closed *and* port-closed recovery is still armed (so the recovery counter advances toward its trigger). Otherwise - and once recovery has fired (disarmed) or is off - it runs every 5th cycle, which still detects a reopen without hammering the external check services. The counter is initialised above the threshold so the first increment triggers immediately on the first eligible cycle after startup.
 
@@ -341,7 +347,7 @@ RunAsync
      └─ EnsureRunningAndUpdatePortAsync
          ├─ EnsureClientRunningAsync
          ├─ IBitTorrentClient.GetPreferencesAsync
-         ├─ CheckInterfaceMatch (qBittorrent only)
+         ├─ CheckInterfaceMatch (qBittorrent and Nicotine+)
          ├─ UpdatePortAndNotifyAsync (when ports differ)
          │   ├─ ApplyPortUpdateAsync
          │   │   ├─ IBitTorrentClient.SetListeningPortAsync

@@ -16,6 +16,7 @@ public static class RegistrySettingsManager
     public const string SectionQBittorrent = "qbittorrent";
     public const string SectionTransmission = "transmission";
     public const string SectionDeluge = "deluge";
+    public const string SectionNicotine = "nicotine";
     public const string SectionExtra = "extra";
     public const string SectionMedia = "media";
 
@@ -27,6 +28,7 @@ public static class RegistrySettingsManager
     public const string BitTorrentClientQBittorrent = "qBittorrent";
     public const string BitTorrentClientTransmission = "Transmission";
     public const string BitTorrentClientDeluge = "Deluge";
+    public const string BitTorrentClientNicotine = "Nicotine+";
 
     // Registry key name strings are frozen - changing them would silently break existing installations
     // by orphaning previously saved values.
@@ -65,6 +67,17 @@ public static class RegistrySettingsManager
     public const string KeyDelugeExePath = "delugeExePath";
     public const string KeyRestartDeluge = "restartDeluge";
     public const string KeyForceStartDeluge = "forceStartDeluge";
+
+    // Registry key names - nicotine section. Nicotine+ is reached through the qbPortWeaver
+    // bridge plugin, which authenticates with a token it issues itself - so there is no user
+    // name, and the token occupies the section's single-secret slot.
+    public const string KeyNicotineUrl = "nicotineURL";
+    public const string KeyNicotineToken = "nicotineToken";
+    public const string KeyNicotineProcessName = "nicotineProcessName";
+    public const string KeyNicotineExePath = "nicotineExePath";
+    public const string KeyRestartNicotine = "restartNicotine";
+    public const string KeyForceStartNicotine = "forceStartNicotine";
+    public const string KeyNicotineWarnOnInterfaceMismatch = "nicotineWarnOnInterfaceMismatch";
 
     // Registry key names - extra section
     public const string KeyPostUpdateCmd = "postUpdateCmd";
@@ -176,6 +189,22 @@ public static class RegistrySettingsManager
                 [KeyDelugeExePath] = @"C:\Program Files\Deluge\deluge.exe",
                 [KeyRestartDeluge] = ValueTrue,
                 [KeyForceStartDeluge] = ValueTrue,
+                [KeyDefaultPort] = "0"
+            },
+            [SectionNicotine] = new(StringComparer.OrdinalIgnoreCase)
+            {
+                // The URL and token are normally discovered from the bridge plugin's connection
+                // file; these defaults only matter when that file cannot be found (Nicotine+
+                // started with a custom data folder) and the user fills them in by hand.
+                [KeyNicotineUrl] = "http://127.0.0.1:38472",
+                [KeyNicotineToken] = "",
+                [KeyNicotineProcessName] = "Nicotine+",
+                [KeyNicotineExePath] = @"C:\Program Files\Nicotine+\Nicotine+.exe",
+                // The bridge applies the port to the running client, so there is nothing a
+                // restart would fix - and killing Nicotine+ discards its configuration.
+                [KeyRestartNicotine] = ValueFalse,
+                [KeyForceStartNicotine] = ValueTrue,
+                [KeyNicotineWarnOnInterfaceMismatch] = ValueTrue,
                 [KeyDefaultPort] = "0"
             },
             [SectionExtra] = new(StringComparer.OrdinalIgnoreCase)
@@ -376,6 +405,10 @@ public static class RegistrySettingsManager
     public static string GetDelugePassword() =>
         GetEncryptedValue(SectionDeluge, KeyDelugePassword);
 
+    /// <summary>Reads the Nicotine+ bridge plugin token from the registry and decrypts it with DPAPI (CurrentUser scope). Returns an empty string if missing or decryption fails.</summary>
+    public static string GetNicotineToken() =>
+        GetEncryptedValue(SectionNicotine, KeyNicotineToken);
+
     /// <summary>Reads the TMDB API key from the registry and decrypts it with DPAPI (CurrentUser scope). Returns an empty string if missing or decryption fails.</summary>
     public static string GetTmdbApiKey() =>
         GetEncryptedValue(SectionMedia, KeyTmdbApiKey);
@@ -459,6 +492,10 @@ public static class RegistrySettingsManager
         SetEncryptedValue(SectionDeluge, KeyDelugePassword, plaintext);
 
     /// <summary>Encrypts <paramref name="plaintext"/> with DPAPI (CurrentUser scope) and writes the result to the registry.</summary>
+    public static void SetNicotineToken(string plaintext) =>
+        SetEncryptedValue(SectionNicotine, KeyNicotineToken, plaintext);
+
+    /// <summary>Encrypts <paramref name="plaintext"/> with DPAPI (CurrentUser scope) and writes the result to the registry.</summary>
     public static void SetTmdbApiKey(string plaintext) =>
         SetEncryptedValue(SectionMedia, KeyTmdbApiKey, plaintext);
 
@@ -486,6 +523,7 @@ public static class RegistrySettingsManager
         KeyQBittorrentPassword,
         KeyTransmissionPassword,
         KeyDelugePassword,
+        KeyNicotineToken,
         KeyTmdbApiKey
     };
 
@@ -497,6 +535,7 @@ public static class RegistrySettingsManager
         KeyQBittorrentPassword,
         KeyTransmissionPassword,
         KeyDelugePassword,
+        KeyNicotineToken,
         KeyTmdbApiKey,
         AppIdentity.PipeSessionTokenKey
     };

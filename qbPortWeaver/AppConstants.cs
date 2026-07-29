@@ -52,7 +52,10 @@ public static class AppConstants
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), AppIdentity.AppName)
     ).FullName);
 
-    private static string AppDataFolder => _appDataFolder.Value;
+    /// <summary>The application's own data folder under <c>%LocalAppData%</c>, created on first access.</summary>
+    /// <remarks>Also where the Nicotine+ bridge plugin publishes its connection details, since it is
+    /// a fixed path both sides can derive without knowing how the other was installed.</remarks>
+    internal static string AppDataFolder => _appDataFolder.Value;
 
     /// <summary>Returns the full path to the application log file.</summary>
     public static string GetLogFilePath() => Path.Combine(AppDataFolder, AppIdentity.LogFileName);

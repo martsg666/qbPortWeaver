@@ -32,7 +32,8 @@ public static class DiagnosticsService
     private static class Checks
     {
         public const string VpnProvider = "VPN provider";
-        public const string Client = "BitTorrent client";
+        public const string Client = "Client";
+        public const string ClientPlugin = "Client plugin";
         public const string HelperService = "Helper service";
         public const string VpnConnection = "VPN connection";
         public const string ForwardedPort = "Forwarded port";
@@ -167,6 +168,11 @@ public static class DiagnosticsService
             results.Add(new(Checks.ClientRunning, DiagnosticStatus.Warn, $"{client.ClientName} process not detected",
                 "Start your client, or enable Force start in Settings. Service/remote setups may still be reachable below."));
 
+        // Nicotine+ is only reachable through the bridge plugin, so its state is the first thing
+        // worth knowing - "not installed", "not enabled", and "Nicotine+ never started" all look
+        // identical from the reachability check alone but need different fixes.
+        if (client is NicotineClient) AddNicotinePluginResult(results);
+
         var (clientPort, interfaceName) = await client.GetPreferencesAsync(cancellationToken).ConfigureAwait(false);
         if (clientPort is not int cp)
         {
@@ -184,6 +190,63 @@ public static class DiagnosticsService
         if (client.SupportsInterfaceMismatchWarning)
             AddInterfaceResult(results, vpn, interfaceName);
         await AddPortReachableResultAsync(results, client, vpnPort, cancellationToken).ConfigureAwait(false);
+    }
+
+    // Reports the bridge plugin's state from files alone, so it stays useful precisely when the
+    // plugin is unreachable and every other client check has nothing to say.
+    private static void AddNicotinePluginResult(List<DiagnosticResult> results)
+    {
+        string exePath = RegistrySettingsManager.GetValue(
+            RegistrySettingsManager.SectionNicotine, RegistrySettingsManager.KeyNicotineExePath);
+        var status = NicotinePluginInstaller.GetStatus(exePath);
+
+        DiagnosticResult result = status.State switch
+        {
+            NicotinePluginState.DataFolderMissing => new(Checks.ClientPlugin, DiagnosticStatus.Warn,
+                "Nicotine+'s data folder was not found",
+                "Start Nicotine+ once, or set the Executable path in Settings for a portable installation."),
+
+            NicotinePluginState.NotInstalled => new(Checks.ClientPlugin, DiagnosticStatus.Fail,
+                "The qbPortWeaver bridge plugin is not installed",
+                "Nicotine+ has no remote control of its own. Click Install plugin in Settings, under the Nicotine+ section."),
+
+            NicotinePluginState.Outdated => new(Checks.ClientPlugin, DiagnosticStatus.Warn,
+                $"Bridge plugin {status.InstalledVersion} is installed; this build ships {NicotinePluginInstaller.BundledVersion}",
+                "Click Update plugin in Settings, then restart Nicotine+."),
+
+            NicotinePluginState.NotEnabled => new(Checks.ClientPlugin, DiagnosticStatus.Fail,
+                "The bridge plugin is installed but not enabled",
+                "In Nicotine+, open Preferences, Plugins, and tick \"qbPortWeaver Bridge\"."),
+
+            NicotinePluginState.NotRunning => new(Checks.ClientPlugin, DiagnosticStatus.Warn,
+                "The bridge plugin is enabled but has not published its connection details",
+                "Start Nicotine+. If it is already running, check its log for a qbPortWeaver Bridge error."),
+
+            _ => BuildReadyPluginResult(status)
+        };
+
+        results.Add(result);
+    }
+
+    // Ready, but the saved connection settings may still point somewhere else - which works (the
+    // client re-reads the file) yet costs a failed request every cycle, so it is worth flagging.
+    private static DiagnosticResult BuildReadyPluginResult(NicotinePluginStatus status)
+    {
+        string savedUrl = RegistrySettingsManager.GetValue(
+            RegistrySettingsManager.SectionNicotine, RegistrySettingsManager.KeyNicotineUrl);
+        string savedToken = RegistrySettingsManager.GetNicotineToken();
+
+        if (status.Handshake is { } handshake &&
+            (!string.Equals(savedUrl.TrimEnd('/'), handshake.Url.TrimEnd('/'), StringComparison.OrdinalIgnoreCase) ||
+             !string.Equals(savedToken, handshake.Token, StringComparison.Ordinal)))
+        {
+            return new(Checks.ClientPlugin, DiagnosticStatus.Warn,
+                $"The bridge plugin is on {handshake.Url}, which differs from the saved settings",
+                "Open Settings, click the refresh button next to the Plugin token, then save.");
+        }
+
+        return new(Checks.ClientPlugin, DiagnosticStatus.Pass,
+            $"Bridge plugin {status.InstalledVersion} is installed and active on {status.Handshake?.Url}");
     }
 
     private static void AddInSyncResult(List<DiagnosticResult> results, int clientPort, int? vpnPort)
@@ -237,7 +300,9 @@ public static class DiagnosticsService
         else if (open == false)
         {
             // qBittorrent deduces reachability from incoming connections (so an idle client reads
-            // closed); Transmission and Deluge actively probe via their online check services.
+            // closed); the others actively probe through their projects' online check services -
+            // Nicotine+ via the bridge plugin, which reports undetermined rather than false when
+            // the check cannot complete, so it never reaches this branch on a slow result.
             string hint = client is QBittorrentClient
                 ? "Allow a moment after a port change. qBittorrent infers this from incoming connections, so an idle client may report closed."
                 : "Allow a moment after a port change, then re-run. A persistently closed port usually means port forwarding is not active on the VPN.";

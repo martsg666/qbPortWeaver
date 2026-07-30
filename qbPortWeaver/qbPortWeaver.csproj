@@ -30,7 +30,7 @@
          S2325 - handlers/helpers that access instance members (Close, Invoke, ShowBalloonTip, UseWaitCursor/IsDisposed, or a called instance method) cannot be static (AboutForm.cs, HelpForm.cs, MainForm.cs, MediaManagerForm.cs, PortSyncService.cs, SettingsForm.cs, TransmissionClient.cs, WhatsNewForm.cs)
          S2486 - same as S108, SonarCloud cloud rule counterpart (BitTorrentClientBase.cs, TransmissionClient.cs)
          S2589 - defensive runtime fallback after a Debug.Assert that only fires in dev builds (WhatsNewForm.cs)
-         S2696 - single sync service instance clears a static flag shared with the static manual-test dispatch path (PortSyncService.cs)
+         S2696 - static field written from a single-instance context: the sync-service flag shared with the static manual-test dispatch (PortSyncService.cs) and the process-wide warning dedupe (NicotineClient.cs)
          S3881 - abstract base class; all sealed subclasses have no additional disposable resources (BitTorrentClientBase.cs)
          S4721 - post-update command is user-configured, arbitrary execution is intended (PortSyncService.cs)
          S4790 - TMDB credential sent over HTTPS only; v3 API key in query param, v4 JWT as Bearer header (TmdbClient.cs)

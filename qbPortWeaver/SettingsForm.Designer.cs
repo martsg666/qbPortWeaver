@@ -8,9 +8,6 @@ partial class SettingsForm
     {
         if (disposing)
         {
-            // Explicitly created font - WinForms controls do not own their Font (matches the
-            // disposal pattern in the other forms' designers).
-            lblAutoRecoveryHeader.Font?.Dispose();
             components?.Dispose();
         }
         base.Dispose(disposing);
@@ -23,9 +20,9 @@ partial class SettingsForm
         tabGeneral                = new TabPage();
         tabClient                 = new TabPage();
         tabExtra                  = new TabPage();
-        tabRecovery               = new TabPage();
+        tabAutoRecovery               = new TabPage();
         grpGeneral                = new GroupBox();
-        grpRecovery               = new GroupBox();
+        grpAutoRecovery               = new GroupBox();
         lblVpnProvider            = new Label();
         cboVpnProvider            = new ComboBox();
         lblClient       = new Label();
@@ -41,7 +38,6 @@ partial class SettingsForm
         chkNotifyOnPortUpdate     = new CheckBox();
         chkShowUpdateForm         = new CheckBox();
         chkWaitForVpnOnStartup    = new CheckBox();
-        lblAutoRecoveryHeader     = new Label();
         btnTestRecovery           = new Button();
         chkVerifyPort             = new CheckBox();
         chkPortClosedRecovery     = new CheckBox();
@@ -134,9 +130,9 @@ partial class SettingsForm
         tabGeneral.SuspendLayout();
         tabClient.SuspendLayout();
         tabExtra.SuspendLayout();
-        tabRecovery.SuspendLayout();
+        tabAutoRecovery.SuspendLayout();
         grpGeneral.SuspendLayout();
-        grpRecovery.SuspendLayout();
+        grpAutoRecovery.SuspendLayout();
         ((System.ComponentModel.ISupportInitialize)nudUpdateInterval).BeginInit();
         ((System.ComponentModel.ISupportInitialize)nudRecoveryCycles).BeginInit();
         ((System.ComponentModel.ISupportInitialize)nudPortClosedChecks).BeginInit();
@@ -166,17 +162,16 @@ partial class SettingsForm
         grpGeneral.Controls.Add(chkNotifyOnPortUpdate);
         grpGeneral.Controls.Add(chkShowUpdateForm);
         grpGeneral.Controls.Add(chkWaitForVpnOnStartup);
-        grpRecovery.Controls.Add(lblAutoRecoveryHeader);
-        grpRecovery.Controls.Add(btnTestRecovery);
-        grpRecovery.Controls.Add(chkVerifyPort);
-        grpRecovery.Controls.Add(chkPortClosedRecovery);
-        grpRecovery.Controls.Add(lblPortClosedChecks);
-        grpRecovery.Controls.Add(nudPortClosedChecks);
-        grpRecovery.Controls.Add(lblPortClosedChecksUnit);
-        grpRecovery.Controls.Add(chkAutoRecovery);
-        grpRecovery.Controls.Add(lblRecoveryCycles);
-        grpRecovery.Controls.Add(nudRecoveryCycles);
-        grpRecovery.Controls.Add(lblRecoveryCyclesUnit);
+        grpAutoRecovery.Controls.Add(btnTestRecovery);
+        grpAutoRecovery.Controls.Add(chkVerifyPort);
+        grpAutoRecovery.Controls.Add(chkPortClosedRecovery);
+        grpAutoRecovery.Controls.Add(lblPortClosedChecks);
+        grpAutoRecovery.Controls.Add(nudPortClosedChecks);
+        grpAutoRecovery.Controls.Add(lblPortClosedChecksUnit);
+        grpAutoRecovery.Controls.Add(chkAutoRecovery);
+        grpAutoRecovery.Controls.Add(lblRecoveryCycles);
+        grpAutoRecovery.Controls.Add(nudRecoveryCycles);
+        grpAutoRecovery.Controls.Add(lblRecoveryCyclesUnit);
         // All five group boxes share one size that fills the tab page with an even margin,
         // so every tab shows an identical frame regardless of how much content it holds.
         grpGeneral.Location = new Point(6, 6);
@@ -185,12 +180,12 @@ partial class SettingsForm
         grpGeneral.TabIndex = 0;
         grpGeneral.TabStop  = false;
         grpGeneral.Text     = "General";
-        grpRecovery.Location = new Point(6, 6);
-        grpRecovery.Name     = "grpRecovery";
-        grpRecovery.Size     = new Size(488, 380);
-        grpRecovery.TabIndex = 0;
-        grpRecovery.TabStop  = false;
-        grpRecovery.Text     = "Recovery";
+        grpAutoRecovery.Location = new Point(6, 6);
+        grpAutoRecovery.Name     = "grpAutoRecovery";
+        grpAutoRecovery.Size     = new Size(488, 380);
+        grpAutoRecovery.TabIndex = 0;
+        grpAutoRecovery.TabStop  = false;
+        grpAutoRecovery.Text     = "Auto-Recovery";
         lblClient.Location  = new Point(12, 24);
         lblClient.Name      = "lblClient";
         lblClient.Size      = new Size(130, 23);
@@ -281,24 +276,18 @@ partial class SettingsForm
         chkNotifyOnPortUpdate.TabIndex  = 12;
         chkNotifyOnPortUpdate.Text      = "Show notification when port updates";
         chkShowUpdateForm.AutoSize      = true;
-        chkShowUpdateForm.Location      = new Point(15, 169);
+        chkShowUpdateForm.Location      = new Point(15, 198);
         chkShowUpdateForm.Name          = "chkShowUpdateForm";
-        chkShowUpdateForm.TabIndex      = 13;
+        chkShowUpdateForm.TabIndex      = 14;
         chkShowUpdateForm.Text          = "Show update form on startup";
-        // Right column of the startup-behaviour row, aligned under "Sync on network change" (x=300).
+        // Sits directly under "Show notification when port updates".
         chkWaitForVpnOnStartup.AutoSize = true;
-        chkWaitForVpnOnStartup.Location = new Point(300, 169);
+        chkWaitForVpnOnStartup.Location = new Point(15, 169);
         chkWaitForVpnOnStartup.Name     = "chkWaitForVpnOnStartup";
-        chkWaitForVpnOnStartup.TabIndex = 14;
+        chkWaitForVpnOnStartup.TabIndex = 13;
         chkWaitForVpnOnStartup.Text     = "Wait for VPN on startup";
         // "Trigger after" labels use AutoSize so the NUD sits immediately after the text.
-        lblAutoRecoveryHeader.AutoSize = true;
-        lblAutoRecoveryHeader.Font     = new Font("Segoe UI", 9F, FontStyle.Bold);
-        lblAutoRecoveryHeader.Location = new Point(12, 24);
-        lblAutoRecoveryHeader.Name     = "lblAutoRecoveryHeader";
-        lblAutoRecoveryHeader.TabIndex = 15;
-        lblAutoRecoveryHeader.Text     = "Auto-recovery";
-        // Shares the header row, matching the client groups' Test button placement (x=398).
+        // Top-right action button, on the first row with the Verify-port checkbox (x=398 matches the client groups' Test button).
         btnTestRecovery.Location = new Point(398, 24);
         btnTestRecovery.Name     = "btnTestRecovery";
         btnTestRecovery.Size     = new Size(70, 23);
@@ -306,13 +295,13 @@ partial class SettingsForm
         btnTestRecovery.Text     = "Test";
         btnTestRecovery.Click   += btnTestRecovery_Click;
         chkVerifyPort.AutoSize        = true;
-        chkVerifyPort.Location        = new Point(15, 53);
+        chkVerifyPort.Location        = new Point(15, 24);
         chkVerifyPort.Name            = "chkVerifyPort";
         chkVerifyPort.TabIndex        = 17;
         chkVerifyPort.Text            = "Check that the forwarded port is open after each sync";
         chkVerifyPort.CheckedChanged += chkVerifyPort_CheckedChanged;
         chkPortClosedRecovery.AutoSize       = true;
-        chkPortClosedRecovery.Location       = new Point(15, 82);
+        chkPortClosedRecovery.Location       = new Point(15, 53);
         chkPortClosedRecovery.Name           = "chkPortClosedRecovery";
         chkPortClosedRecovery.TabIndex       = 18;
         chkPortClosedRecovery.Text           = "Trigger auto-recovery when port stays closed";
@@ -320,44 +309,44 @@ partial class SettingsForm
         // "Trigger after" sub-rows align with the parent checkbox's text at x=28 (checkbox left 12 +
         // ~16px glyph/margin). NUD and unit-label X are finalized in OnLoad via PreferredSize.Width.
         lblPortClosedChecks.AutoSize  = true;
-        lblPortClosedChecks.Location  = new Point(28, 111);
+        lblPortClosedChecks.Location  = new Point(28, 82);
         lblPortClosedChecks.Name      = "lblPortClosedChecks";
         lblPortClosedChecks.TabIndex  = 19;
         lblPortClosedChecks.Text      = "Trigger after";
         lblPortClosedChecks.TextAlign = ContentAlignment.MiddleLeft;
-        nudPortClosedChecks.Location = new Point(112, 111);
+        nudPortClosedChecks.Location = new Point(112, 82);
         nudPortClosedChecks.Maximum  = new decimal(new int[] { 10, 0, 0, 0 });
         nudPortClosedChecks.Minimum  = new decimal(new int[] { 1, 0, 0, 0 });
         nudPortClosedChecks.Name     = "nudPortClosedChecks";
         nudPortClosedChecks.Size     = new Size(50, 23);
         nudPortClosedChecks.TabIndex = 20;
         nudPortClosedChecks.Value    = new decimal(new int[] { 3, 0, 0, 0 });
-        lblPortClosedChecksUnit.Location  = new Point(168, 111);
+        lblPortClosedChecksUnit.Location  = new Point(168, 82);
         lblPortClosedChecksUnit.Name      = "lblPortClosedChecksUnit";
         lblPortClosedChecksUnit.Size      = new Size(270, 23);
         lblPortClosedChecksUnit.TabIndex  = 21;
         lblPortClosedChecksUnit.Text      = "confirmed closed checks";
         lblPortClosedChecksUnit.TextAlign = ContentAlignment.MiddleLeft;
         chkAutoRecovery.AutoSize       = true;
-        chkAutoRecovery.Location       = new Point(15, 140);
+        chkAutoRecovery.Location       = new Point(15, 111);
         chkAutoRecovery.Name           = "chkAutoRecovery";
         chkAutoRecovery.TabIndex       = 22;
         chkAutoRecovery.Text           = "Trigger auto-recovery when no port assigned or disconnected";
         chkAutoRecovery.CheckedChanged += chkAutoRecovery_CheckedChanged;
         lblRecoveryCycles.AutoSize  = true;
-        lblRecoveryCycles.Location  = new Point(28, 169);
+        lblRecoveryCycles.Location  = new Point(28, 140);
         lblRecoveryCycles.Name      = "lblRecoveryCycles";
         lblRecoveryCycles.TabIndex  = 23;
         lblRecoveryCycles.Text      = "Trigger after";
         lblRecoveryCycles.TextAlign = ContentAlignment.MiddleLeft;
-        nudRecoveryCycles.Location = new Point(112, 169);
+        nudRecoveryCycles.Location = new Point(112, 140);
         nudRecoveryCycles.Maximum  = new decimal(new int[] { 10, 0, 0, 0 });
         nudRecoveryCycles.Minimum  = new decimal(new int[] { 1, 0, 0, 0 });
         nudRecoveryCycles.Name     = "nudRecoveryCycles";
         nudRecoveryCycles.Size     = new Size(50, 23);
         nudRecoveryCycles.TabIndex = 24;
         nudRecoveryCycles.Value    = new decimal(new int[] { 3, 0, 0, 0 });
-        lblRecoveryCyclesUnit.Location  = new Point(168, 169);
+        lblRecoveryCyclesUnit.Location  = new Point(168, 140);
         lblRecoveryCyclesUnit.Name      = "lblRecoveryCyclesUnit";
         lblRecoveryCyclesUnit.Size      = new Size(270, 23);
         lblRecoveryCyclesUnit.TabIndex  = 25;
@@ -859,7 +848,7 @@ partial class SettingsForm
         // other on the Client tab; their existing visibility toggling is unchanged.
         tabSettings.Controls.Add(tabGeneral);
         tabSettings.Controls.Add(tabClient);
-        tabSettings.Controls.Add(tabRecovery);
+        tabSettings.Controls.Add(tabAutoRecovery);
         tabSettings.Controls.Add(tabExtra);
         tabSettings.Padding       = new Point(16, 5); // larger native tabs - auto-sized to text, centered and theme-correct in dark mode
         tabSettings.Location      = new Point(8, 8);
@@ -879,9 +868,9 @@ partial class SettingsForm
         tabClient.Controls.Add(grpTransmission);
         tabClient.Name = "tabClient";
         tabClient.Text = "Client";
-        tabRecovery.Controls.Add(grpRecovery);
-        tabRecovery.Name = "tabRecovery";
-        tabRecovery.Text = "Recovery";
+        tabAutoRecovery.Controls.Add(grpAutoRecovery);
+        tabAutoRecovery.Name = "tabAutoRecovery";
+        tabAutoRecovery.Text = "Auto-Recovery";
         tabExtra.Controls.Add(grpExtra);
         tabExtra.Name = "tabExtra";
         tabExtra.Text = "Extra";
@@ -918,8 +907,8 @@ partial class SettingsForm
         Text            = "qbPortWeaver | Settings"; // overridden in constructor
         grpGeneral.ResumeLayout(false);
         grpGeneral.PerformLayout();
-        grpRecovery.ResumeLayout(false);
-        grpRecovery.PerformLayout();
+        grpAutoRecovery.ResumeLayout(false);
+        grpAutoRecovery.PerformLayout();
         ((System.ComponentModel.ISupportInitialize)nudUpdateInterval).EndInit();
         ((System.ComponentModel.ISupportInitialize)nudRecoveryCycles).EndInit();
         ((System.ComponentModel.ISupportInitialize)nudPortClosedChecks).EndInit();
@@ -939,7 +928,7 @@ partial class SettingsForm
         grpExtra.PerformLayout();
         tabGeneral.ResumeLayout(false);
         tabClient.ResumeLayout(false);
-        tabRecovery.ResumeLayout(false);
+        tabAutoRecovery.ResumeLayout(false);
         tabExtra.ResumeLayout(false);
         tabSettings.ResumeLayout(false);
         ResumeLayout(false);
@@ -949,10 +938,10 @@ partial class SettingsForm
     private TabPage       tabGeneral;
     private TabPage       tabClient;
     private TabPage       tabExtra;
-    private TabPage       tabRecovery;
+    private TabPage       tabAutoRecovery;
 
     private GroupBox      grpGeneral;
-    private GroupBox      grpRecovery;
+    private GroupBox      grpAutoRecovery;
     private Label         lblClient;
     private ComboBox      cboClient;
     private Button        btnDetectClient;
@@ -968,7 +957,6 @@ partial class SettingsForm
     private CheckBox      chkNotifyOnPortUpdate;
     private CheckBox      chkShowUpdateForm;
     private CheckBox      chkWaitForVpnOnStartup;
-    private Label         lblAutoRecoveryHeader;
     private Button        btnTestRecovery;
     private CheckBox      chkVerifyPort;
     private CheckBox      chkPortClosedRecovery;

@@ -84,16 +84,12 @@ jobs:
           # No test project exists, so exclude everything from coverage: this leaves "Coverage on
           # New Code" with no lines to evaluate (N/A) instead of 0%, so the default "Sonar way"
           # quality gate's coverage condition does not fail. Narrow this if a test suite is added.
-          # Exclude the Python test harness under plugins/testing from analysis: it is developer
-          # scaffolding a maintainer runs by hand with their own arguments, not shipped product code,
-          # so SAST rules about CLI-argument paths (e.g. S8707) do not apply to it.
           dotnet-sonarscanner begin `
             /k:"martsg666_qbPortWeaver" `
             /o:"martsg666" `
             /d:sonar.token="$env:SONAR_TOKEN" `
             /d:sonar.host.url="https://sonarcloud.io" `
-            /d:sonar.coverage.exclusions="**/*" `
-            /d:sonar.exclusions="plugins/testing/**"
+            /d:sonar.coverage.exclusions="**/*"
 
           dotnet build qbPortWeaver.slnx --configuration Release
 

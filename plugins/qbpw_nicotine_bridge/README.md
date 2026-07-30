@@ -89,23 +89,6 @@ missing is reported as unsupported on the relevant endpoint and logged, rather t
 If a Nicotine+ update breaks something, the failure should be a clear message in the log and an
 error in qbPortWeaver's diagnostics - not a broken Nicotine+.
 
-## Development
-
-A fake Nicotine+ lets the plugin run and be tested without the real thing:
-
-```bash
-python plugins/testing/test_bridge.py
-```
-
-To run the bridge on its own for qbPortWeaver to talk to:
-
-```bash
-python plugins/testing/bridge_harness.py --scenario normal
-```
-
-`--scenario` reproduces the awkward states: `locked`, `offline`, `porttest-none`, `porttest-off`,
-`stalled`.
-
 ## Licence
 
 GPL-3.0-or-later - see `LICENSE`. This differs from the rest of qbPortWeaver because the plugin

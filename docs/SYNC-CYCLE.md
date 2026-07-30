@@ -170,7 +170,7 @@ The Settings form's **Test** button (Auto-recovery header row) dispatches the sa
 
 ## BitTorrent Client Interaction
 
-All client communication goes through the `IBitTorrentClient` interface, with implementations for qBittorrent (`QBittorrentClient`), Transmission (`TransmissionClient`), Deluge (`DelugeClient`), and Nicotine+ (`NicotineClient`). The active implementation is selected each cycle based on the configured client setting.
+All client communication goes through the `IManagedClient` interface, with implementations for qBittorrent (`QBittorrentClient`), Transmission (`TransmissionClient`), Deluge (`DelugeClient`), and Nicotine+ (`NicotineClient`). The active implementation is selected each cycle based on the configured client setting.
 
 > **Nicotine+** is a Soulseek client with no remote-control interface of its own. `NicotineClient` talks to the qbPortWeaver bridge plugin (`plugins/qbpw_nicotine_bridge/`), a GPL-3.0 Nicotine+ plugin that serves a token-authenticated JSON API on `127.0.0.1`. The plugin discovers itself to qbPortWeaver by writing its address and token to `%LocalAppData%\qbPortWeaver\nicotine-bridge.json`, which `NicotinePluginDiscovery` reads. It applies a port change by rewriting the setting and forcing a reconnect - the same thing the Preferences dialog does - so the port is live in roughly five seconds with no restart. Accordingly `NicotineClient.RestartAsync` is a deliberate no-op: killing Nicotine+ would discard its configuration, since it only writes it on a graceful shutdown.
 
@@ -346,19 +346,19 @@ RunAsync
      │   └─ WarnIfNatPmpLeaseTooShort (NAT-PMP only)
      └─ EnsureRunningAndUpdatePortAsync
          ├─ EnsureClientRunningAsync
-         ├─ IBitTorrentClient.GetPreferencesAsync
+         ├─ IManagedClient.GetPreferencesAsync
          ├─ CheckInterfaceMatch (qBittorrent and Nicotine+)
          ├─ UpdatePortAndNotifyAsync (when ports differ)
          │   ├─ ApplyPortUpdateAsync
-         │   │   ├─ IBitTorrentClient.SetListeningPortAsync
-         │   │   └─ IBitTorrentClient.RestartAsync
+         │   │   ├─ IManagedClient.SetListeningPortAsync
+         │   │   └─ IManagedClient.RestartAsync
          │   ├─ PortHistoryManager.Append (on successful change)
          │   └─ PortUpdated?.Invoke (if NotifyOnPortUpdate)
          ├─ CheckAndRestartIfDisconnectedAsync (qBittorrent only; skipped if already restarted)
-         │   └─ IBitTorrentClient.RestartAsync
+         │   └─ IManagedClient.RestartAsync
          ├─ VerifyPortAsync (if verifyPortAfterSync and VPN connected)
          │   ├─ ShouldVerifyThisCycle (throttle)
-         │   ├─ IBitTorrentClient.TestListeningPortAsync
+         │   ├─ IManagedClient.TestListeningPortAsync
          │   ├─ HandlePortOpenResult (re-arms port-closed recovery)
          │   ├─ HandlePortClosedResult (PortVerificationFailed event + history entry on confirmed transition)
          │   └─ MaybeTriggerPortClosedRecoveryAsync (one-shot)

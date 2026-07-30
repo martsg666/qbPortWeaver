@@ -8,7 +8,7 @@ using System.Text.Json;
 namespace qbPortWeaver;
 
 /// <summary>Manages Transmission via its RPC API: authentication, port configuration, and process lifecycle.</summary>
-public sealed class TransmissionClient : BitTorrentClientBase
+public sealed class TransmissionClient : ManagedClientBase
 {
     // Transmission Qt's session refresh interval is 5s by default (see the "Update interval"
     // preference in Edit -> Preferences). After SetListeningPortAsync the new port lives only

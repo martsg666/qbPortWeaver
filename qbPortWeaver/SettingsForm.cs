@@ -695,7 +695,7 @@ public partial class SettingsForm : Form
     }
 
     // Uses the in-form process name rather than the saved one, so a user who has just corrected it
-    // gets the right answer without saving first. Matches BitTorrentClientBase.IsRunning.
+    // gets the right answer without saving first. Matches ManagedClientBase.IsRunning.
     private bool IsNicotineRunning()
     {
         string processName = txtNicotineProcessName.Text.Trim();
@@ -748,7 +748,7 @@ public partial class SettingsForm : Form
     // auth + API round-trip that already logs detailed, client-specific failure reasons to the log
     // viewer. A non-null listening port is the success signal. The client is disposed via 'using'
     // and the button re-enabled in finally, even on cancel or form disposal.
-    private async Task RunConnectionTestAsync(Func<IBitTorrentClient> clientFactory, Button button, string url, string clientName) // NOSONAR S2325 - accesses instance state (UseWaitCursor, IsDisposed) for post-await UI safety
+    private async Task RunConnectionTestAsync(Func<IManagedClient> clientFactory, Button button, string url, string clientName) // NOSONAR S2325 - accesses instance state (UseWaitCursor, IsDisposed) for post-await UI safety
     {
         if (string.IsNullOrEmpty(url) ||
             !Uri.TryCreate(url, UriKind.Absolute, out var uri) ||

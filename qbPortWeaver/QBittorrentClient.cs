@@ -4,7 +4,7 @@ using System.Text.Json;
 namespace qbPortWeaver;
 
 /// <summary>Manages qBittorrent via its Web API: authentication, port configuration, and process lifecycle.</summary>
-public sealed class QBittorrentClient : BitTorrentClientBase
+public sealed class QBittorrentClient : ManagedClientBase
 {
     private const string AuthOkResponse = "Ok.";
     private const string ConnectionStatusConnected = "connected";

@@ -635,10 +635,10 @@ public sealed class PortSyncService
         return null;
     }
 
-    // Creates the active IBitTorrentClient via its ClientRegistry factory from the config block
+    // Creates the active IManagedClient via its ClientRegistry factory from the config block
     // ReadConfig built for the active client. Resolve defaults to qBittorrent when the value is
     // unrecognized (matching ReadConfig).
-    private static IBitTorrentClient CreateBitTorrentClient(AppConfig cfg) =>
+    private static IManagedClient CreateBitTorrentClient(AppConfig cfg) =>
         ClientRegistry.Resolve(cfg.BitTorrentClient).Factory(cfg.Client);
 
     /// <summary>
@@ -673,7 +673,7 @@ public sealed class PortSyncService
     /// shared state). The caller owns disposal. Shared by <see cref="TestActivePortAsync"/> and
     /// <see cref="DiagnosticsService"/> so client construction stays single-source.
     /// </summary>
-    internal static IBitTorrentClient BuildActiveClient()
+    internal static IManagedClient BuildActiveClient()
     {
         var (cfg, _) = ReadConfig();
         return CreateBitTorrentClient(cfg);
@@ -745,7 +745,7 @@ public sealed class PortSyncService
     }
 
     // Ensures the BitTorrent client is running, then updates its port if it differs from the target port
-    private async Task EnsureRunningAndUpdatePortAsync(IBitTorrentClient manager, int targetPort, SyncConfig config, Dictionary<string, object?> status, CancellationToken cancellationToken)
+    private async Task EnsureRunningAndUpdatePortAsync(IManagedClient manager, int targetPort, SyncConfig config, Dictionary<string, object?> status, CancellationToken cancellationToken)
     {
         if (!await EnsureClientRunningAsync(manager, config, status, cancellationToken).ConfigureAwait(false))
             return;
@@ -793,7 +793,7 @@ public sealed class PortSyncService
     // Applies the port update, records it in the port history (with the cause: VPN-assigned or
     // default-port fallback), and raises the optional tray notification. Returns false when the
     // update failed - the caller skips the cycle's remaining steps and the next cycle retries.
-    private async Task<bool> UpdatePortAndNotifyAsync(IBitTorrentClient manager, int targetPort, int previousPort, SyncConfig config, Dictionary<string, object?> status, CancellationToken cancellationToken)
+    private async Task<bool> UpdatePortAndNotifyAsync(IManagedClient manager, int targetPort, int previousPort, SyncConfig config, Dictionary<string, object?> status, CancellationToken cancellationToken)
     {
         if (!await ApplyPortUpdateAsync(manager, targetPort, config, status, cancellationToken).ConfigureAwait(false))
             return false;
@@ -837,7 +837,7 @@ public sealed class PortSyncService
     // idle-firewalled false positive and transient check-service glitches); the second
     // consecutive closed result is confirmed - see HandlePortClosedResult. Null results
     // (client unreachable, test service unavailable) leave the verification state unchanged.
-    private async Task VerifyPortAsync(IBitTorrentClient manager, int port, SyncConfig config, Dictionary<string, object?> status, CancellationToken cancellationToken)
+    private async Task VerifyPortAsync(IManagedClient manager, int port, SyncConfig config, Dictionary<string, object?> status, CancellationToken cancellationToken)
     {
         if (!ShouldVerifyThisCycle(status[StatusKeys.PortChanged] is true, config.PortClosedRecoveryEnabled)) return;
 
@@ -954,7 +954,7 @@ public sealed class PortSyncService
     }
 
     // Returns true if the BitTorrent client is running (or was successfully force-started), false otherwise
-    private static async Task<bool> EnsureClientRunningAsync(IBitTorrentClient manager, SyncConfig config, Dictionary<string, object?> status, CancellationToken cancellationToken)
+    private static async Task<bool> EnsureClientRunningAsync(IManagedClient manager, SyncConfig config, Dictionary<string, object?> status, CancellationToken cancellationToken)
     {
         if (manager.IsRunning())
         {
@@ -1027,7 +1027,7 @@ public sealed class PortSyncService
 
     // Sets the listening port and optionally restarts the client. Returns false if any step fails.
     // The post-update command is launched later (in RunAsync's finally, after the status file write).
-    private static async Task<bool> ApplyPortUpdateAsync(IBitTorrentClient manager, int targetPort, SyncConfig config, Dictionary<string, object?> status, CancellationToken cancellationToken)
+    private static async Task<bool> ApplyPortUpdateAsync(IManagedClient manager, int targetPort, SyncConfig config, Dictionary<string, object?> status, CancellationToken cancellationToken)
     {
         LogManager.Instance.LogMessage($"Ports do not match - updating {manager.ClientName} port to {targetPort}", LogLevel.Info);
         if (!await manager.SetListeningPortAsync(targetPort, cancellationToken).ConfigureAwait(false))
@@ -1077,7 +1077,7 @@ public sealed class PortSyncService
 
     // Checks connection status and restarts the client if it reports as disconnected.
     // Clients that do not support connection status (GetConnectionStatusAsync returns null) are skipped.
-    private static async Task CheckAndRestartIfDisconnectedAsync(IBitTorrentClient manager, CancellationToken cancellationToken)
+    private static async Task CheckAndRestartIfDisconnectedAsync(IManagedClient manager, CancellationToken cancellationToken)
     {
         string? connectionStatus = await manager.GetConnectionStatusAsync(cancellationToken).ConfigureAwait(false);
         if (connectionStatus is null)

@@ -160,7 +160,7 @@ public static class DiagnosticsService
     // Client running, reachable, in sync, correctly bound, and reachable from outside.
     private static async Task AddClientResultsAsync(List<DiagnosticResult> results, IVpnManager? vpn, int? vpnPort, CancellationToken cancellationToken)
     {
-        using IBitTorrentClient client = PortSyncService.BuildActiveClient();
+        using IManagedClient client = PortSyncService.BuildActiveClient();
 
         if (client.IsRunning())
             results.Add(new(Checks.ClientRunning, DiagnosticStatus.Pass, $"{client.ClientName} is running"));
@@ -287,7 +287,7 @@ public static class DiagnosticsService
 
     // Only meaningful when the VPN is connected with a forwarded port - mirrors the sync loop, which
     // skips verification while disconnected (a closed result would be expected noise on the default port).
-    private static async Task AddPortReachableResultAsync(List<DiagnosticResult> results, IBitTorrentClient client, int? vpnPort, CancellationToken cancellationToken)
+    private static async Task AddPortReachableResultAsync(List<DiagnosticResult> results, IManagedClient client, int? vpnPort, CancellationToken cancellationToken)
     {
         if (vpnPort is null)
         {

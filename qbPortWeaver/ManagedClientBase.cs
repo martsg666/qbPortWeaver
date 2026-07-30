@@ -4,7 +4,7 @@ using System.Net;
 namespace qbPortWeaver;
 
 /// <summary>Base class providing shared process-lifecycle and HTTP infrastructure for BitTorrent clients.</summary>
-public abstract class BitTorrentClientBase : IBitTorrentClient // NOSONAR S3881 - all subclasses are sealed with no additional disposable resources
+public abstract class ManagedClientBase : IManagedClient // NOSONAR S3881 - all subclasses are sealed with no additional disposable resources
 {
     protected const int ProcessStartDelayMs = 2000;
     protected const int ProcessKillTimeoutMs = 5000;
@@ -30,7 +30,7 @@ public abstract class BitTorrentClientBase : IBitTorrentClient // NOSONAR S3881 
     /// <param name="processName">Process name used for <see cref="IsRunning"/> checks. Pass an empty string if process mode is not used.</param>
     /// <param name="exePath">Full path to the client executable, used for force-start and restart.</param>
     /// <param name="httpClient">Pre-configured <see cref="HttpClient"/> (cookie-based or header-based auth depending on the client).</param>
-    protected BitTorrentClientBase(string url, string processName, string exePath, HttpClient httpClient)
+    protected ManagedClientBase(string url, string processName, string exePath, HttpClient httpClient)
     {
         Url = (url ?? string.Empty).TrimEnd('/');
         ProcessName = processName;

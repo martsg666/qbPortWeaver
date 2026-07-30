@@ -2,11 +2,10 @@
 
 /// <summary>
 /// Client-agnostic contract for reading and setting the listening port and driving process
-/// lifecycle for a peer-to-peer client (qBittorrent, Transmission, Deluge, Nicotine+).
-/// <para>The BitTorrent name is historical - the contract carries no BitTorrent-specific
-/// assumptions, and Nicotine+ is a Soulseek client.</para>
+/// lifecycle for a peer-to-peer client. Implemented by qBittorrent, Transmission, and Deluge
+/// (BitTorrent) and Nicotine+ (Soulseek); the contract carries no protocol-specific assumptions.
 /// </summary>
-public interface IBitTorrentClient : IDisposable
+public interface IManagedClient : IDisposable
 {
     /// <summary>
     /// Display name of the client.

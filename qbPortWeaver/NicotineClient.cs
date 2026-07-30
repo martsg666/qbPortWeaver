@@ -12,7 +12,7 @@ namespace qbPortWeaver;
 /// <remarks>Nicotine+ exposes no remote-control interface of its own, so the bridge plugin
 /// supplies one. It applies a port change to the running client and reconnects, so the new port
 /// is live within a few seconds without restarting Nicotine+.</remarks>
-public sealed class NicotineClient : BitTorrentClientBase
+public sealed class NicotineClient : ManagedClientBase
 {
     private const string PathPreferences = "/v1/preferences";
     private const string PathPort = "/v1/port";

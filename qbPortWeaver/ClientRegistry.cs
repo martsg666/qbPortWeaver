@@ -4,7 +4,7 @@ namespace qbPortWeaver;
 /// Single source of truth for everything per-client: the stored setting value (also the display
 /// name), the registry section and key names for its connection settings, its process names and
 /// default install location (used by <see cref="ClientDetector"/>), and a factory that constructs
-/// the <see cref="IBitTorrentClient"/> from a <see cref="ClientConfig"/>. Defining them once here
+/// the <see cref="IManagedClient"/> from a <see cref="ClientConfig"/>. Defining them once here
 /// keeps construction, config reading, and detection from drifting apart.
 /// <para>Adding a client: add one entry here (its key names and construction factory) plus its
 /// Settings UI. <see cref="PortSyncService"/> reads the active client's config, constructs it, and
@@ -38,7 +38,7 @@ internal static class ClientRegistry
         string[] ProcessNames,
         string DefaultExeFolder,
         string DefaultExeFile,
-        Func<ClientConfig, IBitTorrentClient> Factory);
+        Func<ClientConfig, IManagedClient> Factory);
 
     // qBittorrent is listed first: it is the default when the stored value is missing or unrecognized,
     // and detection probes candidates in this order so the result is deterministic.

@@ -343,21 +343,26 @@ internal static class NicotinePluginInstaller
                 continue;
             }
 
-            if (!inPluginsSection) continue;
-
-            // Nicotine+ parses with '=' as the only separator, so anything else is not a setting.
-            int separator = trimmed.IndexOf('=');
-            if (separator < 0) continue;
-
-            string key = trimmed[..separator].Trim();
-            if (key.Equals(EnabledKey, StringComparison.OrdinalIgnoreCase)) enabledLine = i;
-            else if (key.Equals(EnableKey, StringComparison.OrdinalIgnoreCase)) enableLine = i;
+            if (inPluginsSection)
+                RecordKeyLine(trimmed, i, ref enabledLine, ref enableLine);
         }
 
         if (inPluginsSection) sectionEndLine = lines.Length;
         if (sectionEndLine < 0) sectionEndLine = lines.Length;
 
         return (sawPluginsSection, enabledLine, enableLine, sectionEndLine);
+    }
+
+    // If this in-section line assigns the "enabled" or "enable" key, records its line index.
+    private static void RecordKeyLine(string trimmed, int lineIndex, ref int enabledLine, ref int enableLine)
+    {
+        // Nicotine+ parses with '=' as the only separator, so anything else is not a setting.
+        int separator = trimmed.IndexOf('=');
+        if (separator < 0) return;
+
+        string key = trimmed[..separator].Trim();
+        if (key.Equals(EnabledKey, StringComparison.OrdinalIgnoreCase)) enabledLine = lineIndex;
+        else if (key.Equals(EnableKey, StringComparison.OrdinalIgnoreCase)) enableLine = lineIndex;
     }
 
     // Plugins do not load at all when the master switch is off, so turning one on means turning
@@ -423,21 +428,37 @@ internal static class NicotinePluginInstaller
         int index = 0;
         while (index < inner.Length)
         {
-            while (index < inner.Length && char.IsWhiteSpace(inner[index])) index++;
+            SkipWhitespace(inner, ref index);
             if (index >= inner.Length) return false;
 
             if (!TryReadQuotedElement(inner, ref index, out string element)) return false;
             items.Add(element);
 
-            while (index < inner.Length && char.IsWhiteSpace(inner[index])) index++;
-            if (index >= inner.Length) break;
-            if (inner[index] != ',') return false;
-            index++;
-
-            // A trailing comma is valid Python and means the list has ended.
-            if (inner[index..].Trim().Length == 0) break;
+            if (!TryConsumeSeparator(inner, ref index, out bool done)) return false;
+            if (done) break;
         }
 
+        return true;
+    }
+
+    // Advances index past any run of whitespace.
+    private static void SkipWhitespace(string s, ref int index)
+    {
+        while (index < s.Length && char.IsWhiteSpace(s[index])) index++;
+    }
+
+    // After an element: skips whitespace, then requires end-of-input or a comma. Sets done when the
+    // list has ended (end reached, or a trailing comma with nothing after). Returns false on a
+    // malformed separator.
+    private static bool TryConsumeSeparator(string inner, ref int index, out bool done)
+    {
+        done = false;
+        SkipWhitespace(inner, ref index);
+        if (index >= inner.Length) { done = true; return true; }
+        if (inner[index] != ',') return false;
+        index++;
+        SkipWhitespace(inner, ref index);
+        if (index >= inner.Length) done = true;
         return true;
     }
 

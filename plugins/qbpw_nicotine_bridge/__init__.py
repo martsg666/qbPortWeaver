@@ -21,7 +21,7 @@ from bridge.port_test import PortTest
 from bridge.server import API_VERSION, APP_ID, Bridge
 
 # Keep in step with PLUGININFO; qbPortWeaver reads it to decide whether it ships a newer copy.
-PLUGIN_VERSION = "1.0.0"
+PLUGIN_VERSION = "1.1.0"
 
 DEFAULT_HTTP_PORT = 38472
 EVENT_PORT_STATUS = "check-port-status"
@@ -150,7 +150,7 @@ class Plugin(BasePlugin):
         self._bridge = self._create_bridge(self._ensure_token())
         self._bridge.start()
 
-        if capabilities.get("port_test"):
+        if capabilities.get("port_test_native"):
             events.connect(EVENT_PORT_STATUS, self._port_test.on_check_port_status)
             self._event_connected = True
 

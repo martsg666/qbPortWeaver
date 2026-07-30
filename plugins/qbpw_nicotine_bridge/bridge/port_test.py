@@ -7,13 +7,20 @@ in-flight state so a request can start a check and wait for that event, and so s
 overlapping requests share one check rather than each starting their own.
 """
 
+import re
 import threading
 import time
+import urllib.request
 
 STATE_IDLE = "idle"
 STATE_PENDING = "pending"
 STATE_DONE = "done"
 STATE_UNAVAILABLE = "unavailable"
+
+# Fallback port-test service: the same one Nicotine+'s "Check Port Status" opens in a browser. Used
+# only when this Nicotine+ has no scriptable checker (the native check-port-status API, upstream #3373,
+# is not in a release yet). The service returns an HTML page containing "<port>/tcp open|closed".
+_PORT_CHECK_URL_DEFAULT = "https://www.slsknet.org/porttest.php?port=%s"
 
 # A verdict older than this is refreshed rather than reused. Long enough that a sync cycle
 # does not re-probe the external check service every time, short enough to notice a port
@@ -77,10 +84,15 @@ class PortTest:
 
     def request(self, port, wait_seconds):
         """Start or join a check for ``port`` and wait up to ``wait_seconds`` for the verdict."""
-        if not self._core_io.capabilities.get("port_test"):
-            return self._snapshot(STATE_UNAVAILABLE, port)
-
         wait_seconds = max(0.0, min(float(wait_seconds), MAX_WAIT_SECONDS))
+
+        # Prefer Nicotine+'s native checker when this version exposes it; otherwise query the Soulseek
+        # port-test service directly, so reachability still works on releases without the native API.
+        if self._core_io.capabilities.get("port_test_native"):
+            return self._native_request(port, wait_seconds)
+        return self._web_request(port, wait_seconds)
+
+    def _native_request(self, port, wait_seconds):
         now = time.monotonic()
 
         with self._lock:
@@ -118,6 +130,28 @@ class PortTest:
         with self._lock:
             return self._snapshot()
 
+    def _web_request(self, port, wait_seconds):
+        """Fallback path: query the Soulseek port-test service over HTTP and parse the verdict. Runs
+        on the handler thread (touches no Nicotine+ internals) and caches per port for STALE_AFTER so
+        repeated checks do not hammer the service."""
+        now = time.monotonic()
+        with self._lock:
+            if self._state == STATE_DONE and self._port == port and now - self._started < STALE_AFTER:
+                return self._snapshot()
+
+        result = _web_port_check(port, wait_seconds, self._log)
+
+        with self._lock:
+            self._port = port
+            self._started = time.monotonic()
+            if result is None:
+                # Offline, service unreachable, or unparseable - transient, so the caller can retry.
+                self._state = STATE_PENDING
+            else:
+                self._state = STATE_DONE
+                self._result = result
+            return self._snapshot()
+
     def peek(self):
         """Current state without starting anything."""
         with self._lock:
@@ -137,3 +171,36 @@ class PortTest:
             "age_ms": age_ms,
             "source": "slsknet",
         }
+
+
+def _port_check_url():
+    """Nicotine+'s own port-test URL when exposed, so we track it if upstream changes it."""
+    try:
+        import pynicotine
+        url = getattr(pynicotine, "__port_checker_url__", None)
+        if isinstance(url, str) and "%s" in url:
+            return url
+    # Fall back to the known URL if the attribute moved or is absent.
+    except Exception:  # noqa: BLE001
+        pass
+    return _PORT_CHECK_URL_DEFAULT
+
+
+def _web_port_check(port, timeout, log):
+    """Query the port-test service and return True (open), False (closed), or None (undetermined)."""
+    url = _port_check_url() % port
+    try:
+        request = urllib.request.Request(url, headers={"User-Agent": "qbPortWeaver-bridge"})
+        # Fixed https host; only the integer port is interpolated, so this is not an SSRF vector.
+        with urllib.request.urlopen(request, timeout=max(1.0, timeout)) as response:  # noqa: S310
+            body = response.read(65536).decode("utf-8", "replace")
+    # Any network or parse failure means "could not determine", never a hard error.
+    except Exception as error:  # noqa: BLE001
+        log("qbPortWeaver: web port check failed: %s", (error,))
+        return None
+
+    # The service echoes "<ip> Port: <port>/tcp open|closed"; match on the port we asked about.
+    match = re.search(r"\b%d/tcp\s+(open|closed)\b" % port, body, re.IGNORECASE)
+    if match is None:
+        return None
+    return match.group(1).lower() == "open"

@@ -15,9 +15,9 @@ from pynicotine.events import events
 from pynicotine.pluginsystem import BasePlugin
 
 from bridge import handshake
-from bridge.coreio import CoreIO
-from bridge.mainthread import MainThreadProxy
-from bridge.porttest import PortTest
+from bridge.core_io import CoreIO
+from bridge.main_thread import MainThreadProxy
+from bridge.port_test import PortTest
 from bridge.server import API_VERSION, APP_ID, Bridge
 
 # Keep in step with PLUGININFO; qbPortWeaver reads it to decide whether it ships a newer copy.

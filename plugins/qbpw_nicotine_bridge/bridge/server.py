@@ -12,7 +12,7 @@ import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from bridge import errors
-from bridge.mainthread import MainThreadProxy
+from bridge.main_thread import MainThreadProxy
 
 API_VERSION = 1
 APP_ID = "qbpw-nicotine-bridge"

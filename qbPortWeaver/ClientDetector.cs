@@ -3,7 +3,7 @@ using System.Diagnostics;
 namespace qbPortWeaver;
 
 /// <summary>
-/// Best-effort detection of which supported BitTorrent client is running or installed, used by the
+/// Best-effort detection of which supported client is running or installed, used by the
 /// Settings dialog's Detect button to pre-fill the client selection. A running process is a stronger
 /// signal than an on-disk install, so it wins when both are present; candidates are probed in a fixed
 /// order (qBittorrent, Transmission, Deluge, Nicotine+) so the result is deterministic.

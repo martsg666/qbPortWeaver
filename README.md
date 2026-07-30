@@ -274,7 +274,7 @@ Configured via tray menu → **Media Manager**.
    - If **not connected** and **Default port** is set: uses the default port as the target and continues.
    - If **Auto-Recovery** is enabled, the failed cycle count reaches the configured threshold, and the failures have persisted long enough (so a brief blip raced through by early re-syncs is ignored): automatically triggers recovery (via the helper Windows service) - for ProtonVPN and PIA (direct or NAT-PMP mode), restarts the VPN service and client; for NAT-PMP with a generic gateway, cycles the network adapter.
 3. Reads the VPN-assigned port from the configured provider (skipped if using the default port fallback). If port detection fails despite the VPN being connected, the failed cycle counter increments and auto-recovery may trigger.
-4. Checks if the configured BitTorrent client is running (optionally force starts it if configured).
+4. Checks if the configured client is running (optionally force starts it if configured).
 5. Connects to the client and retrieves the current listening port.
    - For qBittorrent: also reads the bound network interface for mismatch detection.
 6. *(qBittorrent only)* If **Warn on interface mismatch** is enabled: checks that qBittorrent's network interface matches the configured VPN provider and shows a tray warning if not.
@@ -314,11 +314,11 @@ Configured via tray menu → **Media Manager**.
 
 ### 2. Windows Auto-Logon
 
-- Install [Sysinternals Autologon](https://learn.microsoft.com/en-us/sysinternals/downloads/autologon) to automatically log in to Windows after a reboot. This ensures your VPN client, BitTorrent client, and qbPortWeaver all start without manual intervention.
+- Install [Sysinternals Autologon](https://learn.microsoft.com/en-us/sysinternals/downloads/autologon) to automatically log in to Windows after a reboot. This ensures your VPN client, peer-to-peer client, and qbPortWeaver all start without manual intervention.
 
 ### 3. ProtonVPN Configuration
 
-- Enable **Split Tunneling** and route only your BitTorrent client through the VPN.
+- Enable **Split Tunneling** and route only your client through the VPN.
 - Enable **Port Forwarding** (required for qbPortWeaver to work).
 - Select a **P2P server**.
 - Use **Proton WireGuard (UDP)** as the protocol, listed under **Proton Protocols** (the new protocol family introduced in ProtonVPN 5.1.5). If you run into connection trouble on it, **OpenVPN (UDP)** is still available as a fallback.
@@ -331,7 +331,7 @@ Configured via tray menu → **Media Manager**.
 
 ### 4. PIA Configuration (if using PIA instead of ProtonVPN)
 
-- Enable **Split Tunneling** and route only your BitTorrent client through the VPN.
+- Enable **Split Tunneling** and route only your client through the VPN.
 - Enable **Port Forwarding** in the PIA desktop client settings.
 - Use **OpenVPN (UDP)** as the protocol to avoid DNS resolution issues that can occur with WireGuard.
 - Set PIA to **start with Windows**.
@@ -347,7 +347,7 @@ NAT-PMP (RFC 6886) is a protocol for requesting port mappings directly from a ga
 - Set `VPN Provider` to `NAT-PMP` in qbPortWeaver Settings.
 - Select the **ProtonVPN virtual adapter** in the NAT-PMP Adapter dropdown.
 
-> **Note:** With ProtonVPN, qbPortWeaver and the built-in port forwarding client both query the same gateway and receive the same external port - they share the same mapping rather than competing. qbPortWeaver uses that port to configure the BitTorrent client.
+> **Note:** With ProtonVPN, qbPortWeaver and the built-in port forwarding client both query the same gateway and receive the same external port - they share the same mapping rather than competing. qbPortWeaver uses that port to configure the client.
 
 **With any other NAT-PMP capable VPN client or router:**
 - The VPN gateway or router must support NAT-PMP (RFC 6886) with port forwarding enabled.
@@ -439,7 +439,7 @@ The application is designed to always recover. A failing cycle never crashes the
 - If the VPN provider is not connected and no default port is configured, the cycle is skipped and the issue is logged.
 - If the VPN provider is not connected and a default port is configured, the default port is applied instead.
 - If the VPN port cannot be determined, the issue is logged and the update is skipped. If Auto-Recovery is enabled, repeated failures trigger automatic recovery.
-- If the BitTorrent client is not running and cannot be force started or updated, errors are logged and the loop continues after the next interval.
+- If the client is not running and cannot be force started or updated, errors are logged and the loop continues after the next interval.
 
 ### Media Manager
 

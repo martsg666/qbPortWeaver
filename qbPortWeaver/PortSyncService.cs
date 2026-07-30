@@ -5,11 +5,11 @@ namespace qbPortWeaver;
 /// <summary>Outcome of a port sync cycle, used to drive the tray icon color and tooltip.</summary>
 public enum SyncState
 {
-    /// <summary>Port was successfully detected and applied to the BitTorrent client.</summary>
+    /// <summary>Port was successfully detected and applied to the client.</summary>
     Synced,
     /// <summary>VPN is not connected; no port is available to sync.</summary>
     VpnDisconnected,
-    /// <summary>Sync is paused because the BitTorrent client or VPN provider is not configured.</summary>
+    /// <summary>Sync is paused because the client or VPN provider is not configured.</summary>
     Disabled,
     /// <summary>An error occurred during the sync cycle (e.g. client unreachable, port update failed).</summary>
     Error,
@@ -22,7 +22,7 @@ public enum SyncState
 /// <summary>Snapshot of the tray icon state after a sync cycle, raised via <see cref="PortSyncService.SyncCompleted"/>.</summary>
 public sealed record TrayStatus(SyncState State, int? Port, string Message);
 
-/// <summary>Background service that syncs the BitTorrent client's listening port with the VPN-assigned port on each cycle.</summary>
+/// <summary>Background service that syncs the client's listening port with the VPN-assigned port on each cycle.</summary>
 public sealed class PortSyncService
 {
     // Connection status value returned by clients that support GetConnectionStatusAsync
@@ -31,10 +31,10 @@ public sealed class PortSyncService
     /// <summary>Raised when a sync cycle completes (success or failure) with the resulting tray status.</summary>
     public event Action<TrayStatus>? SyncCompleted;
 
-    /// <summary>Raised when the BitTorrent client's network interface does not match the configured VPN provider.</summary>
+    /// <summary>Raised when the client's network interface does not match the configured VPN provider.</summary>
     public event Action<string>? InterfaceMismatchDetected;
 
-    /// <summary>Raised when the BitTorrent client's listening port is successfully updated to a new value.</summary>
+    /// <summary>Raised when the client's listening port is successfully updated to a new value.</summary>
     public event Action<string>? PortUpdated;
 
     /// <summary>Raised once when the forwarded port is confirmed unreachable from outside (two consecutive failed checks). Transition-only - it re-fires only after the port has tested open again.</summary>
@@ -668,7 +668,7 @@ public sealed class PortSyncService
     }
 
     /// <summary>
-    /// Builds the currently-configured BitTorrent client from the saved settings. Read-only and
+    /// Builds the currently-configured client from the saved settings. Read-only and
     /// side-effect free, so it is safe to call while a sync cycle is running (fresh instance, no
     /// shared state). The caller owns disposal. Shared by <see cref="TestActivePortAsync"/> and
     /// <see cref="DiagnosticsService"/> so client construction stays single-source.
@@ -744,7 +744,7 @@ public sealed class PortSyncService
         return true;
     }
 
-    // Ensures the BitTorrent client is running, then updates its port if it differs from the target port
+    // Ensures the client is running, then updates its port if it differs from the target port
     private async Task EnsureRunningAndUpdatePortAsync(IManagedClient manager, int targetPort, SyncConfig config, Dictionary<string, object?> status, CancellationToken cancellationToken)
     {
         if (!await EnsureClientRunningAsync(manager, config, status, cancellationToken).ConfigureAwait(false))
@@ -953,7 +953,7 @@ public sealed class PortSyncService
         await DispatchRecoveryAsync(action, target, vpnManager.ProviderName, cancellationToken).ConfigureAwait(false);
     }
 
-    // Returns true if the BitTorrent client is running (or was successfully force-started), false otherwise
+    // Returns true if the client is running (or was successfully force-started), false otherwise
     private static async Task<bool> EnsureClientRunningAsync(IManagedClient manager, SyncConfig config, Dictionary<string, object?> status, CancellationToken cancellationToken)
     {
         if (manager.IsRunning())

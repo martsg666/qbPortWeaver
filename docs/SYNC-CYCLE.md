@@ -120,7 +120,7 @@ Right after the app starts, the VPN is often still connecting (VPN clients launc
 
 When the VPN is detected as disconnected - or port detection fails despite the VPN being connected - the cycle increments a consecutive-failure counter. This counter drives two behaviors:
 
-1. **Default port fallback** - if `DefaultPort > 0`, the cycle applies it to the BitTorrent client so it remains functional (typically on a non-VPN port). If `DefaultPort == 0`, the cycle is skipped entirely.
+1. **Default port fallback** - if `DefaultPort > 0`, the cycle applies it to the client so it remains functional (typically on a non-VPN port). If `DefaultPort == 0`, the cycle is skipped entirely.
 
 2. **Auto-recovery** - if enabled, once the counter reaches the configured threshold *and* the failure streak has lasted at least `(threshold - 1) x interval` seconds, the cycle:
    - Resets the counter (to prevent repeated triggers)
@@ -168,7 +168,7 @@ All resets flow through a single `ResetFailureStreak` helper. It only zeroes the
 
 The Settings form's **Test** button (Auto-recovery header row) dispatches the same recovery action on demand via `PortSyncService.TestRecoveryAsync`, after a confirmation dialog. It uses the in-form provider selection (like the client Test buttons), bypasses every gate - counters, time floor, arming - and goes straight to `DispatchRecoveryAsync` with `manualTest = true`. A test is recorded in the port history as "Recovery test triggered" but is not counted in the session's Recoveries statistic; it arms the "after recovery" history annotation like an automatic dispatch, since its effect on the port is the same.
 
-## BitTorrent Client Interaction
+## Client Interaction
 
 All client communication goes through the `IManagedClient` interface, with implementations for qBittorrent (`QBittorrentClient`), Transmission (`TransmissionClient`), Deluge (`DelugeClient`), and Nicotine+ (`NicotineClient`). The active implementation is selected each cycle based on the configured client setting.
 

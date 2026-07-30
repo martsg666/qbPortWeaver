@@ -1,6 +1,6 @@
 ﻿namespace qbPortWeaver;
 
-/// <summary>Settings dialog for configuring VPN provider, BitTorrent client connection, sync interval, and extra options.</summary>
+/// <summary>Settings dialog for configuring VPN provider, client connection, sync interval, and extra options.</summary>
 public partial class SettingsForm : Form
 {
     // Set to true when the user clicks Save; MainForm reads this after the dialog closes to decide whether to trigger an immediate sync.
@@ -502,7 +502,7 @@ public partial class SettingsForm : Form
         RefreshNicotinePluginStatus();
     }
 
-    // Shared OpenFileDialog driver for the three BitTorrent-client executable browse buttons.
+    // Shared OpenFileDialog driver for the client executable browse buttons.
     // Seeds InitialDirectory from the current path if the file exists so the user lands in the
     // right folder without having to navigate from scratch.
     private static void BrowseForExe(string clientName, TextBox target)

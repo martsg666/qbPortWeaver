@@ -25,10 +25,10 @@ public static class RegistrySettingsManager
     public const string VpnProviderPia = "PIA";
     public const string VpnProviderNatPmp = "NAT-PMP";
 
-    public const string BitTorrentClientQBittorrent = "qBittorrent";
-    public const string BitTorrentClientTransmission = "Transmission";
-    public const string BitTorrentClientDeluge = "Deluge";
-    public const string BitTorrentClientNicotine = "Nicotine+";
+    public const string ClientNameQBittorrent = "qBittorrent";
+    public const string ClientNameTransmission = "Transmission";
+    public const string ClientNameDeluge = "Deluge";
+    public const string ClientNameNicotine = "Nicotine+";
 
     // Registry key name strings are frozen - changing them would silently break existing installations
     // by orphaning previously saved values.
@@ -37,7 +37,7 @@ public static class RegistrySettingsManager
     public const string KeyVpnProvider = "vpnProvider";
     public const string KeyUpdateIntervalSeconds = "updateIntervalSeconds";
     public const string KeyNatPmpAdapterName = "natPmpAdapterName";
-    public const string KeyBitTorrentClient = "bitTorrentClient";
+    public const string KeyClient = "bitTorrentClient";
 
     // Registry key names - qBittorrent section
     public const string KeyQBittorrentUrl = "qBittorrentURL";
@@ -148,7 +148,7 @@ public static class RegistrySettingsManager
                 [KeyNatPmpAdapterName] = "",
                 [KeyVpnAutoRecoveryEnabled] = ValueTrue,
                 [KeyVpnAutoRecoveryTriggerCycles] = "3",
-                [KeyBitTorrentClient] = BitTorrentClientQBittorrent,
+                [KeyClient] = ClientNameQBittorrent,
                 [KeyNotifyOnPortUpdate] = ValueTrue,
                 [KeyShowUpdateFormOnStartup] = ValueTrue,
                 [KeyResyncOnNetworkChange] = ValueTrue,

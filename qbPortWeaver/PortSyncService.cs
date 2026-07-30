@@ -121,7 +121,7 @@ public sealed class PortSyncService
     // All values read from the registry for a single sync cycle. Only the active client's connection
     // settings are read, into a single Client block (see ReadConfig); the other clients' sections are
     // not touched. Adding another client: add one entry to ClientRegistry (its keys + factory)
-    // plus its Settings UI - ReadConfig, CreateBitTorrentClient, and LogConfigDebug are all driven from
+    // plus its Settings UI - ReadConfig, CreateManagedClient, and LogConfigDebug are all driven from
     // that table and pick it up with no change here.
     // Per-client behaviour flags stay at the top level: restart-on-disconnect is qBittorrent-only,
     // and the interface-mismatch warning applies only to the clients that report an adapter name.
@@ -129,7 +129,7 @@ public sealed class PortSyncService
         string VpnProvider,
         string NatPmpAdapterName,
         int UpdateInterval,
-        string BitTorrentClient,
+        string ClientName,
         ClientConfig Client,
         bool QBittorrentWarnOnInterfaceMismatch,
         bool QBittorrentRestartOnDisconnect,
@@ -349,7 +349,7 @@ public sealed class PortSyncService
         int targetPort = resolved.TargetPort;
         IVpnManager? syncVpnManager = resolved.SyncVpnManager;
 
-        using var manager = CreateBitTorrentClient(cfg);
+        using var manager = CreateManagedClient(cfg);
         status[StatusKeys.Client] = manager.ClientName;
 
         await EnsureRunningAndUpdatePortAsync(manager, targetPort,
@@ -400,7 +400,7 @@ public sealed class PortSyncService
             LogManager.Instance.LogMessage($"{vpnManager.ProviderName} default port is 0 - skipping port update", LogLevel.Info);
             return new TargetPortResult(cfg.UpdateInterval, 0, null);
         }
-        LogManager.Instance.LogMessage($"{vpnManager.ProviderName} default port is {defaultPort} - applying to {cfg.BitTorrentClient}", LogLevel.Info);
+        LogManager.Instance.LogMessage($"{vpnManager.ProviderName} default port is {defaultPort} - applying to {cfg.ClientName}", LogLevel.Info);
         return new TargetPortResult(null, defaultPort, null); // fall back to the default port (no tunnel to verify)
     }
 
@@ -455,8 +455,8 @@ public sealed class PortSyncService
 
         int vpnAutoRecoveryTriggerCycles = Math.Max(1, RegistrySettingsManager.GetInt(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyVpnAutoRecoveryTriggerCycles));
 
-        string bitTorrentClient = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyBitTorrentClient);
-        var activeClient = ClientRegistry.Resolve(bitTorrentClient);
+        string clientName = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyClient);
+        var activeClient = ClientRegistry.Resolve(clientName);
 
         // Only the active client's section is read. UserNameKey is null for clients without a username
         // (Deluge); the password is DPAPI-decrypted via GetEncryptedValue (same as the per-client
@@ -475,7 +475,7 @@ public sealed class PortSyncService
             VpnProvider: RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyVpnProvider),
             NatPmpAdapterName: RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyNatPmpAdapterName),
             UpdateInterval: updateInterval,
-            BitTorrentClient: bitTorrentClient,
+            ClientName: clientName,
             Client: clientConfig,
             QBittorrentWarnOnInterfaceMismatch: RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyWarnOnInterfaceMismatch),
             QBittorrentRestartOnDisconnect: RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyRestartOnDisconnect),
@@ -505,12 +505,12 @@ public sealed class PortSyncService
             $"{RegistrySettingsManager.KeyUpdateIntervalSeconds}={cfg.UpdateInterval}s, " +
             $"{RegistrySettingsManager.KeyVpnAutoRecoveryEnabled}={cfg.VpnAutoRecoveryEnabled}, " +
             $"{RegistrySettingsManager.KeyVpnAutoRecoveryTriggerCycles}={cfg.VpnAutoRecoveryTriggerCycles}, " +
-            $"{RegistrySettingsManager.KeyBitTorrentClient}={cfg.BitTorrentClient}, " +
+            $"{RegistrySettingsManager.KeyClient}={cfg.ClientName}, " +
             $"{RegistrySettingsManager.KeyVerifyPortAfterSync}={cfg.VerifyPortAfterSync}, " +
             $"{RegistrySettingsManager.KeyPortClosedRecoveryEnabled}={cfg.PortClosedRecoveryEnabled}, " +
             $"{RegistrySettingsManager.KeyPortClosedRecoveryTriggerChecks}={cfg.PortClosedRecoveryTriggerChecks}");
 
-        var ci = ClientRegistry.Resolve(cfg.BitTorrentClient);
+        var ci = ClientRegistry.Resolve(cfg.ClientName);
         string clientLine =
             $"PortSyncService.RunCoreAsync [{ci.Name}]: {ci.UrlKey}={cfg.Client.Url}, " +
             (ci.UserNameKey is not null ? $"{ci.UserNameKey}={cfg.Client.UserName}, " : string.Empty) +
@@ -638,8 +638,8 @@ public sealed class PortSyncService
     // Creates the active IManagedClient via its ClientRegistry factory from the config block
     // ReadConfig built for the active client. Resolve defaults to qBittorrent when the value is
     // unrecognized (matching ReadConfig).
-    private static IManagedClient CreateBitTorrentClient(AppConfig cfg) =>
-        ClientRegistry.Resolve(cfg.BitTorrentClient).Factory(cfg.Client);
+    private static IManagedClient CreateManagedClient(AppConfig cfg) =>
+        ClientRegistry.Resolve(cfg.ClientName).Factory(cfg.Client);
 
     /// <summary>
     /// Tests on demand whether the currently configured client's listening port is reachable from
@@ -676,7 +676,7 @@ public sealed class PortSyncService
     internal static IManagedClient BuildActiveClient()
     {
         var (cfg, _) = ReadConfig();
-        return CreateBitTorrentClient(cfg);
+        return CreateManagedClient(cfg);
     }
 
     /// <summary>

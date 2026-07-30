@@ -44,7 +44,7 @@ internal static class ClientRegistry
     // and detection probes candidates in this order so the result is deterministic.
     private static readonly ClientInfo[] _clients =
     [
-        new(Name: RegistrySettingsManager.BitTorrentClientQBittorrent, Section: RegistrySettingsManager.SectionQBittorrent,
+        new(Name: RegistrySettingsManager.ClientNameQBittorrent, Section: RegistrySettingsManager.SectionQBittorrent,
             UrlKey: RegistrySettingsManager.KeyQBittorrentUrl, UserNameKey: RegistrySettingsManager.KeyQBittorrentUserName,
             PasswordKey: RegistrySettingsManager.KeyQBittorrentPassword, ProcessNameKey: RegistrySettingsManager.KeyQBittorrentProcessName,
             ExePathKey: RegistrySettingsManager.KeyQBittorrentExePath, RestartKey: RegistrySettingsManager.KeyRestartQBittorrent,
@@ -52,7 +52,7 @@ internal static class ClientRegistry
             ProcessNames: ["qbittorrent"], DefaultExeFolder: "qBittorrent", DefaultExeFile: "qbittorrent.exe",
             Factory: c => new QBittorrentClient(c.Url, c.UserName, c.Password, c.ProcessName, c.ExePath)),
 
-        new(Name: RegistrySettingsManager.BitTorrentClientTransmission, Section: RegistrySettingsManager.SectionTransmission,
+        new(Name: RegistrySettingsManager.ClientNameTransmission, Section: RegistrySettingsManager.SectionTransmission,
             UrlKey: RegistrySettingsManager.KeyTransmissionUrl, UserNameKey: RegistrySettingsManager.KeyTransmissionUserName,
             PasswordKey: RegistrySettingsManager.KeyTransmissionPassword, ProcessNameKey: RegistrySettingsManager.KeyTransmissionProcessName,
             ExePathKey: RegistrySettingsManager.KeyTransmissionExePath, RestartKey: RegistrySettingsManager.KeyRestartTransmission,
@@ -61,7 +61,7 @@ internal static class ClientRegistry
             Factory: c => new TransmissionClient(c.Url, c.UserName, c.Password, c.ProcessName, c.ExePath)),
 
         // Deluge has no username field (Web UI uses password only), so UserNameKey is null.
-        new(Name: RegistrySettingsManager.BitTorrentClientDeluge, Section: RegistrySettingsManager.SectionDeluge,
+        new(Name: RegistrySettingsManager.ClientNameDeluge, Section: RegistrySettingsManager.SectionDeluge,
             UrlKey: RegistrySettingsManager.KeyDelugeUrl, UserNameKey: null,
             PasswordKey: RegistrySettingsManager.KeyDelugePassword, ProcessNameKey: RegistrySettingsManager.KeyDelugeProcessName,
             ExePathKey: RegistrySettingsManager.KeyDelugeExePath, RestartKey: RegistrySettingsManager.KeyRestartDeluge,
@@ -74,7 +74,7 @@ internal static class ClientRegistry
         // so UserNameKey is null and PasswordKey carries the token. The '+' in the process name is
         // literal: Process.GetProcessesByName compares exactly, so "Nicotine+" matches
         // "Nicotine+.exe" and nothing else.
-        new(Name: RegistrySettingsManager.BitTorrentClientNicotine, Section: RegistrySettingsManager.SectionNicotine,
+        new(Name: RegistrySettingsManager.ClientNameNicotine, Section: RegistrySettingsManager.SectionNicotine,
             UrlKey: RegistrySettingsManager.KeyNicotineUrl, UserNameKey: null,
             PasswordKey: RegistrySettingsManager.KeyNicotineToken, ProcessNameKey: RegistrySettingsManager.KeyNicotineProcessName,
             ExePathKey: RegistrySettingsManager.KeyNicotineExePath, RestartKey: RegistrySettingsManager.KeyRestartNicotine,

@@ -51,7 +51,7 @@ public static class DiagnosticsService
         var results = new List<DiagnosticResult>();
 
         string provider = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyVpnProvider);
-        string clientSetting = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyBitTorrentClient);
+        string clientSetting = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyClient);
         bool disabled = provider.Equals(RegistrySettingsManager.VpnProviderDisabled, StringComparison.OrdinalIgnoreCase);
 
         AddConfigurationResults(results, provider, clientSetting, disabled);
@@ -345,7 +345,7 @@ public static class DiagnosticsService
     /// </summary>
     internal static IReadOnlyList<(string Section, IReadOnlyList<(string Key, string Value)> Values)> GetSettingsSnapshot()
     {
-        string clientSetting = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyBitTorrentClient);
+        string clientSetting = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyClient);
         string activeClientSection = ClientRegistry.Resolve(clientSetting).Section;
 
         string[] sections = [RegistrySettingsManager.SectionGeneral, activeClientSection, RegistrySettingsManager.SectionExtra];

@@ -26,8 +26,8 @@ partial class SettingsForm
         grpGeneral                = new GroupBox();
         lblVpnProvider            = new Label();
         cboVpnProvider            = new ComboBox();
-        lblBitTorrentClient       = new Label();
-        cboBitTorrentClient       = new ComboBox();
+        lblClient       = new Label();
+        cboClient       = new ComboBox();
         btnDetectClient           = new Button();
         lblUpdateInterval         = new Label();
         nudUpdateInterval         = new NumericUpDown();
@@ -147,8 +147,8 @@ partial class SettingsForm
         grpExtra.SuspendLayout();
         SuspendLayout();
         // ── grpGeneral ────────────────────────────────────────────────
-        grpGeneral.Controls.Add(lblBitTorrentClient);
-        grpGeneral.Controls.Add(cboBitTorrentClient);
+        grpGeneral.Controls.Add(lblClient);
+        grpGeneral.Controls.Add(cboClient);
         grpGeneral.Controls.Add(btnDetectClient);
         grpGeneral.Controls.Add(lblUpdateInterval);
         grpGeneral.Controls.Add(nudUpdateInterval);
@@ -181,23 +181,23 @@ partial class SettingsForm
         grpGeneral.TabIndex = 0;
         grpGeneral.TabStop  = false;
         grpGeneral.Text     = "General";
-        lblBitTorrentClient.Location  = new Point(12, 24);
-        lblBitTorrentClient.Name      = "lblBitTorrentClient";
-        lblBitTorrentClient.Size      = new Size(130, 23);
-        lblBitTorrentClient.TabIndex  = 0;
-        lblBitTorrentClient.Text      = "Client:";
-        lblBitTorrentClient.TextAlign = ContentAlignment.MiddleLeft;
+        lblClient.Location  = new Point(12, 24);
+        lblClient.Name      = "lblClient";
+        lblClient.Size      = new Size(130, 23);
+        lblClient.TabIndex  = 0;
+        lblClient.Text      = "Client:";
+        lblClient.TextAlign = ContentAlignment.MiddleLeft;
         // Field width and button column match the client groups' URL + Test rows (field 244 wide,
         // button at x=398), so the buttons line up across tabs.
         // FlatStyle.Flat on every combo (app-wide): the themed DropDownList face ignores dark
         // mode and renders light; the flat face is drawn with the mode-aware BackColor instead.
-        cboBitTorrentClient.DropDownStyle        = ComboBoxStyle.DropDownList;
-        cboBitTorrentClient.FlatStyle            = FlatStyle.Flat;
-        cboBitTorrentClient.Location             = new Point(148, 24);
-        cboBitTorrentClient.Name                 = "cboBitTorrentClient";
-        cboBitTorrentClient.Size                 = new Size(244, 23);
-        cboBitTorrentClient.TabIndex             = 1;
-        cboBitTorrentClient.SelectedIndexChanged += cboBitTorrentClient_SelectedIndexChanged;
+        cboClient.DropDownStyle        = ComboBoxStyle.DropDownList;
+        cboClient.FlatStyle            = FlatStyle.Flat;
+        cboClient.Location             = new Point(148, 24);
+        cboClient.Name                 = "cboClient";
+        cboClient.Size                 = new Size(244, 23);
+        cboClient.TabIndex             = 1;
+        cboClient.SelectedIndexChanged += cboClient_SelectedIndexChanged;
         btnDetectClient.Location = new Point(398, 24);
         btnDetectClient.Name     = "btnDetectClient";
         btnDetectClient.Size     = new Size(70, 23);
@@ -934,8 +934,8 @@ partial class SettingsForm
     private TabPage       tabExtra;
 
     private GroupBox      grpGeneral;
-    private Label         lblBitTorrentClient;
-    private ComboBox      cboBitTorrentClient;
+    private Label         lblClient;
+    private ComboBox      cboClient;
     private Button        btnDetectClient;
     private Label         lblUpdateInterval;
     private NumericUpDown nudUpdateInterval;

@@ -28,13 +28,13 @@ public partial class SettingsForm : Form
 
         _clientControls = new Dictionary<string, ClientControls>(StringComparer.OrdinalIgnoreCase)
         {
-            [RegistrySettingsManager.BitTorrentClientQBittorrent] =
+            [RegistrySettingsManager.ClientNameQBittorrent] =
                 new(grpQBittorrent, txtQBittorrentURL, txtQBittorrentProcessName, txtQBittorrentExePath),
-            [RegistrySettingsManager.BitTorrentClientTransmission] =
+            [RegistrySettingsManager.ClientNameTransmission] =
                 new(grpTransmission, txtTransmissionURL, txtTransmissionProcessName, txtTransmissionExePath),
-            [RegistrySettingsManager.BitTorrentClientDeluge] =
+            [RegistrySettingsManager.ClientNameDeluge] =
                 new(grpDeluge, txtDelugeURL, txtDelugeProcessName, txtDelugeExePath),
-            [RegistrySettingsManager.BitTorrentClientNicotine] =
+            [RegistrySettingsManager.ClientNameNicotine] =
                 new(grpNicotine, txtNicotineURL, txtNicotineProcessName, txtNicotineExePath)
         };
     }
@@ -45,7 +45,7 @@ public partial class SettingsForm : Form
     {
         get
         {
-            string? selected = cboBitTorrentClient.SelectedItem?.ToString();
+            string? selected = cboClient.SelectedItem?.ToString();
             if (selected is not null && _clientControls.TryGetValue(selected, out var match))
                 return (selected, match);
 
@@ -90,7 +90,7 @@ public partial class SettingsForm : Form
         toolTip.SetToolTip(cboNatPmpAdapter, "Network adapter to use for NAT-PMP port mapping (only applies when NAT-PMP is selected)");
         toolTip.SetToolTip(btnRefreshAdapters, "Refresh the adapter list");
         toolTip.SetToolTip(nudUpdateInterval, "How often to run the sync cycle, in seconds - controls both port sync and Media Manager frequency");
-        toolTip.SetToolTip(cboBitTorrentClient, "Client to control (qBittorrent, Transmission, Deluge, or Nicotine+)");
+        toolTip.SetToolTip(cboClient, "Client to control (qBittorrent, Transmission, Deluge, or Nicotine+)");
         toolTip.SetToolTip(btnDetectClient, "Detect a running or installed client and fill in its selection and process details");
         toolTip.SetToolTip(btnTestRecovery, "Run the recovery action now to verify it works - restarts the VPN service (or cycles the adapter), so the VPN connection drops briefly");
         toolTip.SetToolTip(txtQBittorrentURL, "URL for the qBittorrent Web UI (e.g. http://127.0.0.1:8080). The Web UI must be enabled in qBittorrent under Tools > Options > Web UI.");
@@ -171,10 +171,10 @@ public partial class SettingsForm : Form
         if (cboVpnProvider.SelectedIndex < 0)
             cboVpnProvider.SelectedIndex = 0;
 
-        cboBitTorrentClient.Items.Clear();
-        cboBitTorrentClient.Items.AddRange(ClientRegistry.All.Select(c => (object)c.Name).ToArray());
-        cboBitTorrentClient.SelectedItem = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyBitTorrentClient);
-        if (cboBitTorrentClient.SelectedIndex < 0) cboBitTorrentClient.SelectedIndex = 0;
+        cboClient.Items.Clear();
+        cboClient.Items.AddRange(ClientRegistry.All.Select(c => (object)c.Name).ToArray());
+        cboClient.SelectedItem = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyClient);
+        if (cboClient.SelectedIndex < 0) cboClient.SelectedIndex = 0;
 
         // NAT-PMP adapter discovery is async to avoid blocking the UI.
         // Launched after VPN provider is set so the completion callback reads the correct state.
@@ -272,7 +272,7 @@ public partial class SettingsForm : Form
     {
         // General
         RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyVpnProvider, cboVpnProvider.SelectedItem?.ToString() ?? RegistrySettingsManager.VpnProviderDisabled);
-        RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyBitTorrentClient, cboBitTorrentClient.SelectedItem?.ToString() ?? RegistrySettingsManager.BitTorrentClientQBittorrent);
+        RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyClient, cboClient.SelectedItem?.ToString() ?? RegistrySettingsManager.ClientNameQBittorrent);
         RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyUpdateIntervalSeconds, ((int)nudUpdateInterval.Value).ToString());
         // If discovery is still pending (combo disabled), preserve the existing value to avoid
         // saving the "Discovering adapters…" placeholder text as the adapter name
@@ -387,7 +387,7 @@ public partial class SettingsForm : Form
 
     private void btnCancel_Click(object? sender, EventArgs e) => Close(); // NOSONAR S2325 - Close() is an instance method, handler cannot be static
 
-    private void cboBitTorrentClient_SelectedIndexChanged(object? sender, EventArgs e) =>
+    private void cboClient_SelectedIndexChanged(object? sender, EventArgs e) =>
         UpdateClientGroupVisibility();
 
     // Detects a running or installed supported client and pre-fills the selection plus that client's
@@ -418,14 +418,14 @@ public partial class SettingsForm : Form
         }
         else
         {
-            using var chooser = new ClientChooserForm(candidates, cboBitTorrentClient.SelectedItem?.ToString());
+            using var chooser = new ClientChooserForm(candidates, cboClient.SelectedItem?.ToString());
             if (chooser.ShowDialog(this) != DialogResult.OK) return;
             var picked = chooser.SelectedClient;
             if (picked is null) return;
             chosen = picked;
         }
 
-        cboBitTorrentClient.SelectedItem = chosen.ClientName; // triggers UpdateClientGroupVisibility
+        cboClient.SelectedItem = chosen.ClientName; // triggers UpdateClientGroupVisibility
         ApplyDetectedClientDetails(chosen);
 
         // The chooser already showed the user what they picked, so only confirm on an auto-selection.
@@ -448,7 +448,7 @@ public partial class SettingsForm : Form
         if (d.ExePath is not null) controls.ExePath.Text = d.ExePath;
 
         // The Nicotine+ status line depends on the executable path, which may have just changed.
-        if (d.ClientName == RegistrySettingsManager.BitTorrentClientNicotine) RefreshNicotinePluginStatus();
+        if (d.ClientName == RegistrySettingsManager.ClientNameNicotine) RefreshNicotinePluginStatus();
     }
 
     private void UpdateClientGroupVisibility()
@@ -459,7 +459,7 @@ public partial class SettingsForm : Form
             controls.Group.Visible = ReferenceEquals(controls, selectedControls);
 
         // Reflect the chosen client in the Client tab header.
-        tabClient.Text = cboBitTorrentClient.SelectedItem?.ToString() ?? selectedName;
+        tabClient.Text = cboClient.SelectedItem?.ToString() ?? selectedName;
     }
 
     private void cboVpnProvider_SelectedIndexChanged(object? sender, EventArgs e)
@@ -830,8 +830,8 @@ public partial class SettingsForm : Form
     private void SetPortSyncControlsEnabled(bool enabled)
     {
         // General section - client and auto-recovery controls (NAT-PMP adapter row handled by SetAdapterControlsEnabled)
-        lblBitTorrentClient.Enabled = enabled;
-        cboBitTorrentClient.Enabled = enabled;
+        lblClient.Enabled = enabled;
+        cboClient.Enabled = enabled;
         btnDetectClient.Enabled = enabled;
         chkVerifyPort.Enabled = enabled;
         chkAutoRecovery.Enabled = enabled;

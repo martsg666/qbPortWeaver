@@ -30,6 +30,9 @@ public sealed class NicotineClient : ManagedClientBase
 
     private const string ErrorPortLocked = "port_locked_by_cli";
     private const string StateDone = "done";
+    // The bridge reports this when this Nicotine+ has no scriptable port checker (the check-port-status
+    // API was added after 3.3.10; older releases only have a browser-based check the plugin cannot read).
+    private const string StateUnavailable = "unavailable";
 
     // Long enough for the plugin's own capped wait plus a round trip, short enough that the
     // shared 10 s HttpClient timeout still bounds the request.
@@ -47,6 +50,8 @@ public sealed class NicotineClient : ManagedClientBase
     // Deduplicates the --port guidance. The condition lasts for the life of the Nicotine+
     // process, so without this every sync cycle would repeat the same warning.
     private static string? _lastLockedWarning; // NOSONAR S2696 - one sync loop; the dedupe is deliberately process-wide
+    // Surfaced once, not on every verify cycle: the no-scriptable-port-checker notice for old Nicotine+.
+    private static bool _portCheckUnavailableWarned; // NOSONAR S2696 - process-wide dedupe, same rationale as above
 
     /// <inheritdoc/>
     public override string ClientName => "Nicotine+";
@@ -229,8 +234,7 @@ public sealed class NicotineClient : ManagedClientBase
 
             if (state != StateDone)
             {
-                LogManager.Instance.LogDebug(
-                    $"NicotineClient.TestListeningPortAsync: the check is '{state ?? "unknown"}' - treating the result as undetermined");
+                LogPortCheckNotDone(state);
                 return null;
             }
 
@@ -348,6 +352,25 @@ public sealed class NicotineClient : ManagedClientBase
     }
 
     // ------------------------------------------------------------------- logging
+
+    // "unavailable" means this Nicotine+ has no scriptable port checker (added after 3.3.10) - surface
+    // that clearly and once, so the user understands why the result is undetermined rather than seeing
+    // it silently. Any other non-"done" state is a transient "pending" and stays at Debug.
+    private static void LogPortCheckNotDone(string? state)
+    {
+        if (state == StateUnavailable)
+        {
+            if (_portCheckUnavailableWarned) return;
+            _portCheckUnavailableWarned = true;
+            LogManager.Instance.LogMessage(
+                "Nicotine+ has no scriptable port checker before the release after 3.3.10, so port reachability cannot be tested on this version - update Nicotine+ to enable the check",
+                LogLevel.Info);
+            return;
+        }
+
+        LogManager.Instance.LogDebug(
+            $"NicotineClient.TestListeningPortAsync: the check is '{state ?? "unknown"}' - treating the result as undetermined");
+    }
 
     private void LogSetPortFailure(JsonElement root)
     {

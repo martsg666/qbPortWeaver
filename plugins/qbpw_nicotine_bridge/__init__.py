@@ -25,6 +25,7 @@ PLUGIN_VERSION = "1.0.0"
 
 DEFAULT_HTTP_PORT = 38472
 EVENT_PORT_STATUS = "check-port-status"
+_BRIDGE_NOT_RUNNING = "The bridge is not running."
 
 
 class Plugin(BasePlugin):
@@ -274,7 +275,7 @@ class Plugin(BasePlugin):
 
     def status_command(self, _args, **_unused):
         if self._bridge is None:
-            self.output("The bridge is not running.")
+            self.output(_BRIDGE_NOT_RUNNING)
             return
 
         core_io = self._core_io
@@ -297,7 +298,7 @@ class Plugin(BasePlugin):
 
     def port_command(self, args, **_unused):
         if self._bridge is None:
-            self.output("The bridge is not running.")
+            self.output(_BRIDGE_NOT_RUNNING)
             return
 
         text = (args or "").strip()
@@ -319,7 +320,8 @@ class Plugin(BasePlugin):
         # Commands already run on the main thread, so call straight through.
         try:
             result = self._core_io.set_port(port)
-        except Exception as error:  # noqa: BLE001 - report, never break the command loop
+        # Report the failure; a command must never break the command loop.
+        except Exception as error:  # noqa: BLE001
             self.output(f"Could not set the port: {error}")
             return
 
@@ -331,7 +333,7 @@ class Plugin(BasePlugin):
 
     def test_command(self, args, **_unused):
         if self._bridge is None:
-            self.output("The bridge is not running.")
+            self.output(_BRIDGE_NOT_RUNNING)
             return
 
         if not self._core_io.capabilities.get("port_test"):
@@ -367,5 +369,6 @@ class Plugin(BasePlugin):
         try:
             self._start()
             self.output("The bridge has been restarted.")
-        except Exception as error:  # noqa: BLE001 - report, never break the command loop
+        # Report the failure; a command must never break the command loop.
+        except Exception as error:  # noqa: BLE001
             self.output(f"Could not restart the bridge: {error}")

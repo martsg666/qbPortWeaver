@@ -280,43 +280,12 @@ internal static class NicotinePluginInstaller
         updated = [];
         reason = string.Empty;
 
-        int enabledLine = -1;
-        int enableLine = -1;
-        int sectionEndLine = -1;
-        bool inPluginsSection = false;
-        bool sawPluginsSection = false;
-
-        for (int i = 0; i < lines.Length; i++)
-        {
-            string trimmed = lines[i].Trim();
-
-            if (trimmed.StartsWith('[') && trimmed.EndsWith(']'))
-            {
-                if (inPluginsSection) sectionEndLine = i;
-                inPluginsSection = trimmed[1..^1].Trim().Equals(PluginsSection, StringComparison.OrdinalIgnoreCase);
-                sawPluginsSection |= inPluginsSection;
-                continue;
-            }
-
-            if (!inPluginsSection) continue;
-
-            // Nicotine+ parses with '=' as the only separator, so anything else is not a setting.
-            int separator = trimmed.IndexOf('=');
-            if (separator < 0) continue;
-
-            string key = trimmed[..separator].Trim();
-            if (key.Equals(EnabledKey, StringComparison.OrdinalIgnoreCase)) enabledLine = i;
-            else if (key.Equals(EnableKey, StringComparison.OrdinalIgnoreCase)) enableLine = i;
-        }
-
+        var (sawPluginsSection, enabledLine, enableLine, sectionEndLine) = ScanPluginsSection(lines);
         if (!sawPluginsSection)
         {
             reason = "it has no [plugins] section";
             return false;
         }
-
-        if (inPluginsSection) sectionEndLine = lines.Length;
-        if (sectionEndLine < 0) sectionEndLine = lines.Length;
 
         var result = new List<string>(lines);
 
@@ -350,6 +319,45 @@ internal static class NicotinePluginInstaller
 
         updated = [.. result];
         return EnsureMasterSwitch(result, enableLine, sectionEndLine, ref updated, ref reason);
+    }
+
+    // Scans the config for the [plugins] section: returns whether it exists, the line indices of its
+    // "enabled" and "enable" keys (-1 if absent), and the line where the section ends (exclusive).
+    private static (bool Found, int EnabledLine, int EnableLine, int SectionEndLine) ScanPluginsSection(string[] lines)
+    {
+        int enabledLine = -1;
+        int enableLine = -1;
+        int sectionEndLine = -1;
+        bool inPluginsSection = false;
+        bool sawPluginsSection = false;
+
+        for (int i = 0; i < lines.Length; i++)
+        {
+            string trimmed = lines[i].Trim();
+
+            if (trimmed.StartsWith('[') && trimmed.EndsWith(']'))
+            {
+                if (inPluginsSection) sectionEndLine = i;
+                inPluginsSection = trimmed[1..^1].Trim().Equals(PluginsSection, StringComparison.OrdinalIgnoreCase);
+                sawPluginsSection |= inPluginsSection;
+                continue;
+            }
+
+            if (!inPluginsSection) continue;
+
+            // Nicotine+ parses with '=' as the only separator, so anything else is not a setting.
+            int separator = trimmed.IndexOf('=');
+            if (separator < 0) continue;
+
+            string key = trimmed[..separator].Trim();
+            if (key.Equals(EnabledKey, StringComparison.OrdinalIgnoreCase)) enabledLine = i;
+            else if (key.Equals(EnableKey, StringComparison.OrdinalIgnoreCase)) enableLine = i;
+        }
+
+        if (inPluginsSection) sectionEndLine = lines.Length;
+        if (sectionEndLine < 0) sectionEndLine = lines.Length;
+
+        return (sawPluginsSection, enabledLine, enableLine, sectionEndLine);
     }
 
     // Plugins do not load at all when the master switch is off, so turning one on means turning
@@ -418,29 +426,8 @@ internal static class NicotinePluginInstaller
             while (index < inner.Length && char.IsWhiteSpace(inner[index])) index++;
             if (index >= inner.Length) return false;
 
-            char quote = inner[index];
-            if (quote is not ('\'' or '"')) return false;
-
-            index++;
-            var builder = new StringBuilder();
-            bool closed = false;
-
-            while (index < inner.Length)
-            {
-                char current = inner[index];
-                if (current == '\\' && index + 1 < inner.Length)
-                {
-                    builder.Append(inner[index + 1]);
-                    index += 2;
-                    continue;
-                }
-                if (current == quote) { closed = true; index++; break; }
-                builder.Append(current);
-                index++;
-            }
-
-            if (!closed) return false;
-            items.Add(builder.ToString());
+            if (!TryReadQuotedElement(inner, ref index, out string element)) return false;
+            items.Add(element);
 
             while (index < inner.Length && char.IsWhiteSpace(inner[index])) index++;
             if (index >= inner.Length) break;
@@ -448,11 +435,38 @@ internal static class NicotinePluginInstaller
             index++;
 
             // A trailing comma is valid Python and means the list has ended.
-            string remainder = inner[index..].Trim();
-            if (remainder.Length == 0) break;
+            if (inner[index..].Trim().Length == 0) break;
         }
 
         return true;
+    }
+
+    // Reads one single- or double-quoted element beginning at index (which must sit on the opening
+    // quote), honouring backslash escapes, and advances index past the closing quote. Returns false
+    // if the character is not a quote or the element is unterminated.
+    private static bool TryReadQuotedElement(string inner, ref int index, out string element)
+    {
+        element = string.Empty;
+        char quote = inner[index];
+        if (quote is not ('\'' or '"')) return false;
+
+        index++;
+        var builder = new StringBuilder();
+        while (index < inner.Length)
+        {
+            char current = inner[index];
+            if (current == '\\' && index + 1 < inner.Length)
+            {
+                builder.Append(inner[index + 1]);
+                index += 2;
+                continue;
+            }
+            if (current == quote) { index++; element = builder.ToString(); return true; }
+            builder.Append(current);
+            index++;
+        }
+
+        return false; // unterminated
     }
 
     internal static string RenderPythonStringList(IReadOnlyList<string> items)

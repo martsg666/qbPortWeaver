@@ -173,7 +173,7 @@ class BridgeHandler(BaseHTTPRequestHandler):
         raw = self.rfile.read(length)
         try:
             payload = json.loads(raw.decode("utf-8"))
-        except (ValueError, UnicodeDecodeError) as error:
+        except ValueError as error:  # UnicodeDecodeError is a ValueError subclass, so this covers both
             raise errors.bad_request(f"Request body is not valid JSON: {error}") from None
 
         if not isinstance(payload, dict):

@@ -56,7 +56,7 @@ class MainThreadProxy:
                 if abandoned.is_set():
                     return
                 box["value"] = func(*args)
-            except BaseException as error:  # noqa: BLE001 - deliberately total; see above
+            except BaseException as error:  # NOSONAR S5754 - stored and re-raised on the caller thread (see call); must not escape here or events.emit would quit Nicotine+
                 box["error"] = error
             finally:
                 done.set()

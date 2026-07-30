@@ -167,11 +167,6 @@ On first run, all settings are initialized with sensible defaults.
 | Update interval | How often to check and sync the port (seconds) | `180` |
 | Sync on network change | Also run a sync immediately when a network or VPN connection change is detected, instead of waiting for the next interval (rapid changes are coalesced; pausing still suppresses it) | `True` |
 | Wait for VPN on startup | For a short grace period after the app starts, wait quietly while the VPN is still connecting instead of reporting it as disconnected, applying the default-port fallback, or triggering auto-recovery. Syncs as soon as the VPN comes up | `True` |
-| Verify port after sync | After each sync, check that the listening port is reachable from the Internet (after a port change and every 5th cycle) | `True` |
-| Trigger auto-recovery when no port assigned or disconnected | Trigger auto-recovery (a VPN service restart, or adapter cycle for generic NAT-PMP gateways) after N consecutive cycles where the VPN is disconnected or assigns no forwarded port. Client-side failures do not count | `True` |
-| Trigger after (consecutive failed cycles) | Number of consecutive cycles without an assigned port before auto-recovery is triggered. Recovery is also held until the failures have persisted for the time these cycles would normally span, so a brief network blip that races through several early re-syncs does not trigger it | `3` |
-| Trigger auto-recovery when port stays closed | Independent trigger: runs auto-recovery when port verification confirms the port closed for the configured number of checks. Fires at most once until the port tests open again. Requires Verify port after sync | `True` |
-| Trigger after (confirmed closed checks) | Number of confirmed closed checks before auto-recovery is triggered | `3` |
 | Notify on port update | Show a tray balloon tip when the client's listening port is successfully updated | `True` |
 | Show update form on startup | When checked, opens the update form at startup if a newer version is found. When unchecked, only a tray notification is shown (the 12-hour periodic check is always non-intrusive) | `True` |
 
@@ -231,6 +226,18 @@ so the change is live within a few seconds and a restart would only discard sett
 | Force start if not running | Automatically launch Nicotine+ if it is not running | `True` |
 | Warn on interface mismatch | Warn if Nicotine+'s network interface doesn't match the VPN | `True` |
 | Default port (0 = disabled) | Fallback port to apply when VPN is not connected | `0` |
+
+#### Recovery
+
+Auto-recovery restarts your VPN service (or cycles the adapter for a generic NAT-PMP gateway) when the VPN stops providing a working forwarded port. The **Test** button runs the recovery action on demand.
+
+| Setting | Description | Default |
+|---|---|---|
+| Verify port after sync | After each sync, check that the listening port is reachable from the Internet (after a port change and every 5th cycle) | `True` |
+| Trigger auto-recovery when port stays closed | Independent trigger: runs auto-recovery when port verification confirms the port closed for the configured number of checks. Fires at most once until the port tests open again. Requires Verify port after sync | `True` |
+| Trigger after (confirmed closed checks) | Number of confirmed closed checks before auto-recovery is triggered | `3` |
+| Trigger auto-recovery when no port assigned or disconnected | Trigger auto-recovery (a VPN service restart, or adapter cycle for generic NAT-PMP gateways) after N consecutive cycles where the VPN is disconnected or assigns no forwarded port. Client-side failures do not count | `True` |
+| Trigger after (consecutive failed cycles) | Number of consecutive cycles without an assigned port before auto-recovery is triggered. Recovery is also held until the failures have persisted for the time these cycles would normally span, so a brief network blip that races through several early re-syncs does not trigger it | `3` |
 
 #### Extra
 

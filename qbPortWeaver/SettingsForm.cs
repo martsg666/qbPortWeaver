@@ -1,6 +1,6 @@
 ﻿namespace qbPortWeaver;
 
-/// <summary>Settings dialog for configuring VPN provider, BitTorrent client connection, sync interval, and extra options.</summary>
+/// <summary>Settings dialog for configuring VPN provider, client connection, sync interval, and extra options.</summary>
 public partial class SettingsForm : Form
 {
     // Set to true when the user clicks Save; MainForm reads this after the dialog closes to decide whether to trigger an immediate sync.
@@ -14,10 +14,44 @@ public partial class SettingsForm : Form
     // form closes so probes do not run to completion in the background after the dialog is dismissed.
     private readonly CancellationTokenSource _formCloseCts = new();
 
+    // The per-client controls that the client selection switches between. Looking them up by name
+    // keeps show/hide, enable/disable, detection fill-in, and URL validation from each carrying
+    // their own chain of client comparisons - which is how those four drifted apart previously.
+    private sealed record ClientControls(GroupBox Group, TextBox Url, TextBox ProcessName, TextBox ExePath);
+
+    private readonly Dictionary<string, ClientControls> _clientControls;
+
     public SettingsForm()
     {
         InitializeComponent();
         Text = $"{AppIdentity.AppName} | Settings";
+
+        _clientControls = new Dictionary<string, ClientControls>(StringComparer.OrdinalIgnoreCase)
+        {
+            [RegistrySettingsManager.ClientNameQBittorrent] =
+                new(grpQBittorrent, txtQBittorrentURL, txtQBittorrentProcessName, txtQBittorrentExePath),
+            [RegistrySettingsManager.ClientNameTransmission] =
+                new(grpTransmission, txtTransmissionURL, txtTransmissionProcessName, txtTransmissionExePath),
+            [RegistrySettingsManager.ClientNameDeluge] =
+                new(grpDeluge, txtDelugeURL, txtDelugeProcessName, txtDelugeExePath),
+            [RegistrySettingsManager.ClientNameNicotine] =
+                new(grpNicotine, txtNicotineURL, txtNicotineProcessName, txtNicotineExePath)
+        };
+    }
+
+    // The controls for the selected client. Falls back to the registry's own default client so an
+    // unrecognised stored value behaves the same here as it does in ClientRegistry.Resolve.
+    private (string Name, ClientControls Controls) SelectedClient
+    {
+        get
+        {
+            string? selected = cboClient.SelectedItem?.ToString();
+            if (selected is not null && _clientControls.TryGetValue(selected, out var match))
+                return (selected, match);
+
+            string fallback = ClientRegistry.All[0].Name;
+            return (fallback, _clientControls[fallback]);
+        }
     }
 
     protected override void OnLoad(EventArgs e)
@@ -56,7 +90,7 @@ public partial class SettingsForm : Form
         toolTip.SetToolTip(cboNatPmpAdapter, "Network adapter to use for NAT-PMP port mapping (only applies when NAT-PMP is selected)");
         toolTip.SetToolTip(btnRefreshAdapters, "Refresh the adapter list");
         toolTip.SetToolTip(nudUpdateInterval, "How often to run the sync cycle, in seconds - controls both port sync and Media Manager frequency");
-        toolTip.SetToolTip(cboBitTorrentClient, "BitTorrent client to control (qBittorrent, Transmission, or Deluge)");
+        toolTip.SetToolTip(cboClient, "Client to control (qBittorrent, Transmission, Deluge, or Nicotine+)");
         toolTip.SetToolTip(btnDetectClient, "Detect a running or installed client and fill in its selection and process details");
         toolTip.SetToolTip(btnTestRecovery, "Run the recovery action now to verify it works - restarts the VPN service (or cycles the adapter), so the VPN connection drops briefly");
         toolTip.SetToolTip(txtQBittorrentURL, "URL for the qBittorrent Web UI (e.g. http://127.0.0.1:8080). The Web UI must be enabled in qBittorrent under Tools > Options > Web UI.");
@@ -90,6 +124,17 @@ public partial class SettingsForm : Form
         toolTip.SetToolTip(chkRestartDeluge, "Restart Deluge after updating the port - recommended for the change to take effect immediately");
         toolTip.SetToolTip(chkForceStartDeluge, "Automatically launch Deluge if it is not already running");
         toolTip.SetToolTip(nudDelugeDefaultPort, DefaultPortTooltip);
+        toolTip.SetToolTip(txtNicotineURL, "Address of the qbPortWeaver bridge plugin running inside Nicotine+ (e.g. http://127.0.0.1:38472). Found automatically - use ⟳ to fill it in.");
+        toolTip.SetToolTip(txtNicotineToken, "Access token issued by the bridge plugin. Found automatically - use ⟳ to fill it in.");
+        toolTip.SetToolTip(btnDetectNicotinePlugin, "Read the address and token from the bridge plugin's connection file");
+        toolTip.SetToolTip(txtNicotineExePath, "Path to the Nicotine+ executable, used to start it and to find a portable installation's data folder");
+        toolTip.SetToolTip(btnBrowseNicotineExePath, "Browse for the Nicotine+ executable");
+        toolTip.SetToolTip(btnTestNicotine, "Test the connection to the bridge plugin using the address and token above");
+        toolTip.SetToolTip(txtNicotineProcessName, "Process name used to detect if Nicotine+ is running (usually Nicotine+)");
+        toolTip.SetToolTip(chkForceStartNicotine, "Automatically launch Nicotine+ if it is not already running");
+        toolTip.SetToolTip(chkNicotineWarnOnInterfaceMismatch, "Show a warning when Nicotine+'s network interface does not match the configured VPN provider");
+        toolTip.SetToolTip(nudNicotineDefaultPort, DefaultPortTooltip);
+        toolTip.SetToolTip(btnInstallNicotinePlugin, "Install the qbPortWeaver bridge plugin into Nicotine+. Nicotine+ has no remote control of its own, so the plugin is what makes port sync possible.");
         toolTip.SetToolTip(txtPostUpdateCmd, "Shell command to run after a successful port update (leave empty to disable)");
         toolTip.SetToolTip(chkDebugMode, "Write verbose debug entries to the log file");
         toolTip.SetToolTip(cboColorTheme, "Application color theme (System, Dark, or Light) - a restart prompt will appear if changed");
@@ -126,10 +171,10 @@ public partial class SettingsForm : Form
         if (cboVpnProvider.SelectedIndex < 0)
             cboVpnProvider.SelectedIndex = 0;
 
-        cboBitTorrentClient.Items.Clear();
-        cboBitTorrentClient.Items.AddRange(ClientRegistry.All.Select(c => (object)c.Name).ToArray());
-        cboBitTorrentClient.SelectedItem = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyBitTorrentClient);
-        if (cboBitTorrentClient.SelectedIndex < 0) cboBitTorrentClient.SelectedIndex = 0;
+        cboClient.Items.Clear();
+        cboClient.Items.AddRange(ClientRegistry.All.Select(c => (object)c.Name).ToArray());
+        cboClient.SelectedItem = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyClient);
+        if (cboClient.SelectedIndex < 0) cboClient.SelectedIndex = 0;
 
         // NAT-PMP adapter discovery is async to avoid blocking the UI.
         // Launched after VPN provider is set so the completion callback reads the correct state.
@@ -194,6 +239,19 @@ public partial class SettingsForm : Form
             RegistrySettingsManager.GetInt(RegistrySettingsManager.SectionDeluge, RegistrySettingsManager.KeyDefaultPort),
             (int)nudDelugeDefaultPort.Minimum, (int)nudDelugeDefaultPort.Maximum);
 
+        // Nicotine+
+        txtNicotineURL.Text = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionNicotine, RegistrySettingsManager.KeyNicotineUrl);
+        txtNicotineToken.Text = RegistrySettingsManager.GetNicotineToken();
+        txtNicotineExePath.Text = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionNicotine, RegistrySettingsManager.KeyNicotineExePath);
+        txtNicotineProcessName.Text = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionNicotine, RegistrySettingsManager.KeyNicotineProcessName);
+        chkForceStartNicotine.Checked = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionNicotine, RegistrySettingsManager.KeyForceStartNicotine);
+        chkNicotineWarnOnInterfaceMismatch.Checked = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionNicotine, RegistrySettingsManager.KeyNicotineWarnOnInterfaceMismatch);
+        nudNicotineDefaultPort.Value = Math.Clamp(
+            RegistrySettingsManager.GetInt(RegistrySettingsManager.SectionNicotine, RegistrySettingsManager.KeyDefaultPort),
+            (int)nudNicotineDefaultPort.Minimum, (int)nudNicotineDefaultPort.Maximum);
+
+        RefreshNicotinePluginStatus();
+
         UpdateClientGroupVisibility();
 
         // Extra
@@ -214,7 +272,7 @@ public partial class SettingsForm : Form
     {
         // General
         RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyVpnProvider, cboVpnProvider.SelectedItem?.ToString() ?? RegistrySettingsManager.VpnProviderDisabled);
-        RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyBitTorrentClient, cboBitTorrentClient.SelectedItem?.ToString() ?? RegistrySettingsManager.BitTorrentClientQBittorrent);
+        RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyClient, cboClient.SelectedItem?.ToString() ?? RegistrySettingsManager.ClientNameQBittorrent);
         RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyUpdateIntervalSeconds, ((int)nudUpdateInterval.Value).ToString());
         // If discovery is still pending (combo disabled), preserve the existing value to avoid
         // saving the "Discovering adapters…" placeholder text as the adapter name
@@ -263,6 +321,15 @@ public partial class SettingsForm : Form
         RegistrySettingsManager.SetBool(RegistrySettingsManager.SectionDeluge, RegistrySettingsManager.KeyForceStartDeluge, chkForceStartDeluge.Checked);
         RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionDeluge, RegistrySettingsManager.KeyDefaultPort, ((int)nudDelugeDefaultPort.Value).ToString());
 
+        // Nicotine+ (the token is stored untrimmed, like the other clients' secrets)
+        RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionNicotine, RegistrySettingsManager.KeyNicotineUrl, txtNicotineURL.Text.Trim());
+        RegistrySettingsManager.SetNicotineToken(txtNicotineToken.Text);
+        RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionNicotine, RegistrySettingsManager.KeyNicotineExePath, txtNicotineExePath.Text.Trim());
+        RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionNicotine, RegistrySettingsManager.KeyNicotineProcessName, txtNicotineProcessName.Text.Trim());
+        RegistrySettingsManager.SetBool(RegistrySettingsManager.SectionNicotine, RegistrySettingsManager.KeyForceStartNicotine, chkForceStartNicotine.Checked);
+        RegistrySettingsManager.SetBool(RegistrySettingsManager.SectionNicotine, RegistrySettingsManager.KeyNicotineWarnOnInterfaceMismatch, chkNicotineWarnOnInterfaceMismatch.Checked);
+        RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionNicotine, RegistrySettingsManager.KeyDefaultPort, ((int)nudNicotineDefaultPort.Value).ToString());
+
         // Extra
         RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionExtra, RegistrySettingsManager.KeyColorTheme, cboColorTheme.SelectedItem?.ToString() ?? RegistrySettingsManager.ColorThemeSystem);
         RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionExtra, RegistrySettingsManager.KeyPostUpdateCmd, txtPostUpdateCmd.Text.Trim());
@@ -283,12 +350,8 @@ public partial class SettingsForm : Form
             return;
         }
 
-        bool isTransmission = cboBitTorrentClient.SelectedItem?.ToString() == RegistrySettingsManager.BitTorrentClientTransmission;
-        bool isDeluge = cboBitTorrentClient.SelectedItem?.ToString() == RegistrySettingsManager.BitTorrentClientDeluge;
-        string urlText, clientName;
-        if (isTransmission) { urlText = txtTransmissionURL.Text.Trim(); clientName = "Transmission"; }
-        else if (isDeluge) { urlText = txtDelugeURL.Text.Trim(); clientName = "Deluge"; }
-        else { urlText = txtQBittorrentURL.Text.Trim(); clientName = "qBittorrent"; }
+        var (clientName, controls) = SelectedClient;
+        string urlText = controls.Url.Text.Trim();
         if (!string.IsNullOrEmpty(urlText) &&
             (!Uri.TryCreate(urlText, UriKind.Absolute, out var uri) ||
              (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps)))
@@ -324,7 +387,7 @@ public partial class SettingsForm : Form
 
     private void btnCancel_Click(object? sender, EventArgs e) => Close(); // NOSONAR S2325 - Close() is an instance method, handler cannot be static
 
-    private void cboBitTorrentClient_SelectedIndexChanged(object? sender, EventArgs e) =>
+    private void cboClient_SelectedIndexChanged(object? sender, EventArgs e) =>
         UpdateClientGroupVisibility();
 
     // Detects a running or installed supported client and pre-fills the selection plus that client's
@@ -355,14 +418,14 @@ public partial class SettingsForm : Form
         }
         else
         {
-            using var chooser = new ClientChooserForm(candidates, cboBitTorrentClient.SelectedItem?.ToString());
+            using var chooser = new ClientChooserForm(candidates, cboClient.SelectedItem?.ToString());
             if (chooser.ShowDialog(this) != DialogResult.OK) return;
             var picked = chooser.SelectedClient;
             if (picked is null) return;
             chosen = picked;
         }
 
-        cboBitTorrentClient.SelectedItem = chosen.ClientName; // triggers UpdateClientGroupVisibility
+        cboClient.SelectedItem = chosen.ClientName; // triggers UpdateClientGroupVisibility
         ApplyDetectedClientDetails(chosen);
 
         // The chooser already showed the user what they picked, so only confirm on an auto-selection.
@@ -379,33 +442,24 @@ public partial class SettingsForm : Form
     // install was found, so a user's custom path is never blanked) on its Client-tab group.
     private void ApplyDetectedClientDetails(ClientDetector.DetectedClient d)
     {
-        if (d.ClientName == RegistrySettingsManager.BitTorrentClientTransmission)
-        {
-            txtTransmissionProcessName.Text = d.ProcessName;
-            if (d.ExePath is not null) txtTransmissionExePath.Text = d.ExePath;
-        }
-        else if (d.ClientName == RegistrySettingsManager.BitTorrentClientDeluge)
-        {
-            txtDelugeProcessName.Text = d.ProcessName;
-            if (d.ExePath is not null) txtDelugeExePath.Text = d.ExePath;
-        }
-        else
-        {
-            txtQBittorrentProcessName.Text = d.ProcessName;
-            if (d.ExePath is not null) txtQBittorrentExePath.Text = d.ExePath;
-        }
+        if (!_clientControls.TryGetValue(d.ClientName, out var controls)) return;
+
+        controls.ProcessName.Text = d.ProcessName;
+        if (d.ExePath is not null) controls.ExePath.Text = d.ExePath;
+
+        // The Nicotine+ status line depends on the executable path, which may have just changed.
+        if (d.ClientName == RegistrySettingsManager.ClientNameNicotine) RefreshNicotinePluginStatus();
     }
 
     private void UpdateClientGroupVisibility()
     {
-        string? selectedClient = cboBitTorrentClient.SelectedItem?.ToString();
-        bool isTransmission = selectedClient == RegistrySettingsManager.BitTorrentClientTransmission;
-        bool isDeluge = selectedClient == RegistrySettingsManager.BitTorrentClientDeluge;
-        grpQBittorrent.Visible = !isTransmission && !isDeluge;
-        grpDeluge.Visible = isDeluge;
-        grpTransmission.Visible = isTransmission;
-        // Reflect the chosen client in the Client tab header (qBittorrent / Transmission / Deluge).
-        tabClient.Text = selectedClient ?? "Client";
+        var (selectedName, selectedControls) = SelectedClient;
+
+        foreach (var controls in _clientControls.Values)
+            controls.Group.Visible = ReferenceEquals(controls, selectedControls);
+
+        // Reflect the chosen client in the Client tab header.
+        tabClient.Text = cboClient.SelectedItem?.ToString() ?? selectedName;
     }
 
     private void cboVpnProvider_SelectedIndexChanged(object? sender, EventArgs e)
@@ -440,7 +494,15 @@ public partial class SettingsForm : Form
     private void btnBrowseDelugeExePath_Click(object? sender, EventArgs e) => BrowseForExe("Deluge", txtDelugeExePath);
     private void btnBrowseTransmissionExePath_Click(object? sender, EventArgs e) => BrowseForExe("Transmission", txtTransmissionExePath);
 
-    // Shared OpenFileDialog driver for the three BitTorrent-client executable browse buttons.
+    private void btnBrowseNicotineExePath_Click(object? sender, EventArgs e)
+    {
+        BrowseForExe("Nicotine+", txtNicotineExePath);
+        // A portable installation's data folder is derived from the executable path, so the
+        // plugin's whereabouts may have just changed.
+        RefreshNicotinePluginStatus();
+    }
+
+    // Shared OpenFileDialog driver for the client executable browse buttons.
     // Seeds InitialDirectory from the current path if the file exists so the user lands in the
     // right folder without having to navigate from scratch.
     private static void BrowseForExe(string clientName, TextBox target)
@@ -536,13 +598,157 @@ public partial class SettingsForm : Form
             btnTestDeluge, txtDelugeURL.Text.Trim(), "Deluge");
     }
 
-    // Shared driver for the three per-client "Test" buttons. Validates the URL first, then builds the
+    private async void btnTestNicotine_Click(object? sender, EventArgs e) // async void is correct here (WinForms event handler)
+    {
+        await RunConnectionTestAsync(
+            () => new NicotineClient(
+                txtNicotineURL.Text.Trim(), txtNicotineToken.Text,
+                txtNicotineProcessName.Text.Trim(), txtNicotineExePath.Text.Trim()),
+            btnTestNicotine, txtNicotineURL.Text.Trim(), "Nicotine+");
+    }
+
+    // Reads the address and token the bridge plugin published, so the user never has to copy them.
+    private void btnDetectNicotinePlugin_Click(object? sender, EventArgs e)
+    {
+        var handshake = NicotinePluginDiscovery.TryRead(txtNicotineExePath.Text.Trim());
+        if (handshake is null)
+        {
+            var status = NicotinePluginInstaller.GetStatus(txtNicotineExePath.Text.Trim());
+            MessageBox.Show(
+                "No connection details were found.\r\n\r\n" + DescribeNextStep(status) +
+                "\r\n\r\nIf Nicotine+ runs with a custom data folder, run /qbpw-connection-file inside " +
+                "Nicotine+ and enter the address and token here by hand.",
+                AppIdentity.AppName, MessageBoxButtons.OK, MessageBoxIcon.Information);
+            RefreshNicotinePluginStatus();
+            return;
+        }
+
+        txtNicotineURL.Text = handshake.Url;
+        txtNicotineToken.Text = handshake.Token;
+        RefreshNicotinePluginStatus();
+
+        MessageBox.Show(
+            $"Found the bridge plugin on {handshake.Url}.\r\n\r\nThe address and token have been filled in. " +
+            "Use Test to confirm, then save.",
+            AppIdentity.AppName, MessageBoxButtons.OK, MessageBoxIcon.Information);
+    }
+
+    // Installs the bridge plugin and, when Nicotine+ is closed, offers to enable it too. Nicotine+
+    // has no remote control of its own, so without the plugin there is nothing to sync against.
+    private void btnInstallNicotinePlugin_Click(object? sender, EventArgs e)
+    {
+        string exePath = txtNicotineExePath.Text.Trim();
+
+        var install = NicotinePluginInstaller.InstallFiles(exePath);
+        if (!install.Success)
+        {
+            MessageBox.Show(install.Message, AppIdentity.AppName, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            RefreshNicotinePluginStatus();
+            return;
+        }
+
+        bool running = IsNicotineRunning();
+        if (running)
+        {
+            // Editing Nicotine+'s config now would be pointless: it rewrites the whole file from
+            // memory when it exits, discarding anything changed underneath it.
+            MessageBox.Show(
+                $"Plugin installed to:\r\n{install.Message}\r\n\r\n" +
+                "Nicotine+ is running, so enable it there: open Preferences → Plugins, tick " +
+                "\"qbPortWeaver Bridge\", and apply. No restart is needed.\r\n\r\n" +
+                "Then click ⟳ here to pick up the connection details.\r\n\r\n" +
+                "Alternatively, close Nicotine+ and click Install plugin again to have it enabled automatically.",
+                AppIdentity.AppName, MessageBoxButtons.OK, MessageBoxIcon.Information);
+            RefreshNicotinePluginStatus();
+            return;
+        }
+
+        var choice = MessageBox.Show(
+            $"Plugin installed to:\r\n{install.Message}\r\n\r\n" +
+            "Nicotine+ is closed, so it can be enabled for you now. Enable it?\r\n\r\n" +
+            "Your current Nicotine+ configuration will be backed up first, and only the plugin list is changed.",
+            AppIdentity.AppName, MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+
+        if (choice != DialogResult.Yes)
+        {
+            MessageBox.Show(
+                "Plugin installed but not enabled.\r\n\r\nEnable \"qbPortWeaver Bridge\" in Nicotine+ under " +
+                "Preferences → Plugins, then click ⟳ here.",
+                AppIdentity.AppName, MessageBoxButtons.OK, MessageBoxIcon.Information);
+            RefreshNicotinePluginStatus();
+            return;
+        }
+
+        var enable = NicotinePluginInstaller.TryEnable(exePath, IsNicotineRunning);
+        RefreshNicotinePluginStatus();
+
+        if (!enable.Success)
+        {
+            MessageBox.Show(enable.Message, AppIdentity.AppName, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
+
+        MessageBox.Show(
+            "The plugin is installed and enabled.\r\n\r\nStart Nicotine+, then click ⟳ here to read its " +
+            "connection details.",
+            AppIdentity.AppName, MessageBoxButtons.OK, MessageBoxIcon.Information);
+    }
+
+    // Uses the in-form process name rather than the saved one, so a user who has just corrected it
+    // gets the right answer without saving first. Matches ManagedClientBase.IsRunning.
+    private bool IsNicotineRunning()
+    {
+        string processName = txtNicotineProcessName.Text.Trim();
+        if (processName.Length == 0) processName = "Nicotine+";
+
+        try
+        {
+            var processes = System.Diagnostics.Process.GetProcessesByName(processName);
+            foreach (var process in processes) process.Dispose();
+            return processes.Length > 0;
+        }
+        catch (InvalidOperationException)
+        {
+            return false;
+        }
+    }
+
+    // Describes the plugin's state on the Nicotine+ group, from files alone - no network calls, so
+    // this is safe to call while loading the form and after every action that could change it.
+    private void RefreshNicotinePluginStatus()
+    {
+        var status = NicotinePluginInstaller.GetStatus(txtNicotineExePath.Text.Trim());
+        lblNicotinePluginStatus.Text = status.Summary;
+
+        btnInstallNicotinePlugin.Text = status.State switch
+        {
+            NicotinePluginState.NotInstalled => "Install plugin…",
+            NicotinePluginState.Outdated => "Update plugin…",
+            NicotinePluginState.NotEnabled => "Enable plugin…",
+            _ => "Reinstall plugin…"
+        };
+    }
+
+    private static string DescribeNextStep(NicotinePluginStatus status) => status.State switch
+    {
+        NicotinePluginState.DataFolderMissing =>
+            "Nicotine+'s data folder was not found. Start Nicotine+ once, or set the Executable path above for a portable installation.",
+        NicotinePluginState.NotInstalled =>
+            "The bridge plugin is not installed. Click \"Install plugin\" first.",
+        NicotinePluginState.Outdated =>
+            "An older version of the bridge plugin is installed. Click \"Update plugin\".",
+        NicotinePluginState.NotEnabled =>
+            "The plugin is installed but not enabled. Enable \"qbPortWeaver Bridge\" in Nicotine+ under Preferences → Plugins.",
+        _ => "The plugin is enabled but has not published its details yet. Start Nicotine+ and try again."
+    };
+
+    // Shared driver for the per-client "Test" buttons. Validates the URL first, then builds the
     // client from the in-form values (not the saved registry values) via the supplied factory so the
     // client is created only when the URL is valid. Probes it with GetPreferencesAsync - a full
     // auth + API round-trip that already logs detailed, client-specific failure reasons to the log
     // viewer. A non-null listening port is the success signal. The client is disposed via 'using'
     // and the button re-enabled in finally, even on cancel or form disposal.
-    private async Task RunConnectionTestAsync(Func<IBitTorrentClient> clientFactory, Button button, string url, string clientName) // NOSONAR S2325 - accesses instance state (UseWaitCursor, IsDisposed) for post-await UI safety
+    private async Task RunConnectionTestAsync(Func<IManagedClient> clientFactory, Button button, string url, string clientName) // NOSONAR S2325 - accesses instance state (UseWaitCursor, IsDisposed) for post-await UI safety
     {
         if (string.IsNullOrEmpty(url) ||
             !Uri.TryCreate(url, UriKind.Absolute, out var uri) ||
@@ -624,18 +830,16 @@ public partial class SettingsForm : Form
     private void SetPortSyncControlsEnabled(bool enabled)
     {
         // General section - client and auto-recovery controls (NAT-PMP adapter row handled by SetAdapterControlsEnabled)
-        lblBitTorrentClient.Enabled = enabled;
-        cboBitTorrentClient.Enabled = enabled;
+        lblClient.Enabled = enabled;
+        cboClient.Enabled = enabled;
         btnDetectClient.Enabled = enabled;
         chkVerifyPort.Enabled = enabled;
         chkAutoRecovery.Enabled = enabled;
         btnTestRecovery.Enabled = enabled;
         UpdateAutoRecoverySubControls();
 
-        // qBittorrent / Deluge / Transmission section
-        grpQBittorrent.Enabled = enabled;
-        grpDeluge.Enabled = enabled;
-        grpTransmission.Enabled = enabled;
+        // Every client's section, whichever is currently shown
+        foreach (var controls in _clientControls.Values) controls.Group.Enabled = enabled;
 
         // Extra section - post-update command (color mode and debug mode stay enabled)
         lblPostUpdateCmd.Enabled = enabled;

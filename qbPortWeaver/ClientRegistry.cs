@@ -4,7 +4,7 @@ namespace qbPortWeaver;
 /// Single source of truth for everything per-client: the stored setting value (also the display
 /// name), the registry section and key names for its connection settings, its process names and
 /// default install location (used by <see cref="ClientDetector"/>), and a factory that constructs
-/// the <see cref="IBitTorrentClient"/> from a <see cref="ClientConfig"/>. Defining them once here
+/// the <see cref="IManagedClient"/> from a <see cref="ClientConfig"/>. Defining them once here
 /// keeps construction, config reading, and detection from drifting apart.
 /// <para>Adding a client: add one entry here (its key names and construction factory) plus its
 /// Settings UI. <see cref="PortSyncService"/> reads the active client's config, constructs it, and
@@ -16,7 +16,9 @@ internal static class ClientRegistry
     /// <summary>
     /// The per-client facts. <paramref name="Name"/> is both the stored client setting value and the
     /// user-facing display name (the same string in this app). <paramref name="UserNameKey"/> is
-    /// <see langword="null"/> for clients that do not authenticate by username (e.g. Deluge).
+    /// <see langword="null"/> for clients that do not authenticate by username (e.g. Deluge,
+    /// Nicotine+); <paramref name="PasswordKey"/> then carries that client's single secret - a Web
+    /// UI password, or the bridge plugin token for Nicotine+.
     /// The default-port setting shares one key (<see cref="RegistrySettingsManager.KeyDefaultPort"/>)
     /// across all clients, so it is not stored here. <paramref name="ProcessNames"/>[0] doubles as the
     /// default process-name field value; <paramref name="DefaultExeFolder"/>/<paramref name="DefaultExeFile"/>
@@ -36,13 +38,13 @@ internal static class ClientRegistry
         string[] ProcessNames,
         string DefaultExeFolder,
         string DefaultExeFile,
-        Func<ClientConfig, IBitTorrentClient> Factory);
+        Func<ClientConfig, IManagedClient> Factory);
 
     // qBittorrent is listed first: it is the default when the stored value is missing or unrecognized,
     // and detection probes candidates in this order so the result is deterministic.
     private static readonly ClientInfo[] _clients =
     [
-        new(Name: RegistrySettingsManager.BitTorrentClientQBittorrent, Section: RegistrySettingsManager.SectionQBittorrent,
+        new(Name: RegistrySettingsManager.ClientNameQBittorrent, Section: RegistrySettingsManager.SectionQBittorrent,
             UrlKey: RegistrySettingsManager.KeyQBittorrentUrl, UserNameKey: RegistrySettingsManager.KeyQBittorrentUserName,
             PasswordKey: RegistrySettingsManager.KeyQBittorrentPassword, ProcessNameKey: RegistrySettingsManager.KeyQBittorrentProcessName,
             ExePathKey: RegistrySettingsManager.KeyQBittorrentExePath, RestartKey: RegistrySettingsManager.KeyRestartQBittorrent,
@@ -50,7 +52,7 @@ internal static class ClientRegistry
             ProcessNames: ["qbittorrent"], DefaultExeFolder: "qBittorrent", DefaultExeFile: "qbittorrent.exe",
             Factory: c => new QBittorrentClient(c.Url, c.UserName, c.Password, c.ProcessName, c.ExePath)),
 
-        new(Name: RegistrySettingsManager.BitTorrentClientTransmission, Section: RegistrySettingsManager.SectionTransmission,
+        new(Name: RegistrySettingsManager.ClientNameTransmission, Section: RegistrySettingsManager.SectionTransmission,
             UrlKey: RegistrySettingsManager.KeyTransmissionUrl, UserNameKey: RegistrySettingsManager.KeyTransmissionUserName,
             PasswordKey: RegistrySettingsManager.KeyTransmissionPassword, ProcessNameKey: RegistrySettingsManager.KeyTransmissionProcessName,
             ExePathKey: RegistrySettingsManager.KeyTransmissionExePath, RestartKey: RegistrySettingsManager.KeyRestartTransmission,
@@ -59,16 +61,29 @@ internal static class ClientRegistry
             Factory: c => new TransmissionClient(c.Url, c.UserName, c.Password, c.ProcessName, c.ExePath)),
 
         // Deluge has no username field (Web UI uses password only), so UserNameKey is null.
-        new(Name: RegistrySettingsManager.BitTorrentClientDeluge, Section: RegistrySettingsManager.SectionDeluge,
+        new(Name: RegistrySettingsManager.ClientNameDeluge, Section: RegistrySettingsManager.SectionDeluge,
             UrlKey: RegistrySettingsManager.KeyDelugeUrl, UserNameKey: null,
             PasswordKey: RegistrySettingsManager.KeyDelugePassword, ProcessNameKey: RegistrySettingsManager.KeyDelugeProcessName,
             ExePathKey: RegistrySettingsManager.KeyDelugeExePath, RestartKey: RegistrySettingsManager.KeyRestartDeluge,
             ForceStartKey: RegistrySettingsManager.KeyForceStartDeluge,
             ProcessNames: ["deluge", "deluged"], DefaultExeFolder: "Deluge", DefaultExeFile: "deluge.exe",
             Factory: c => new DelugeClient(c.Url, c.Password, c.ProcessName, c.ExePath)),
+
+        // Nicotine+ is a Soulseek client rather than a BitTorrent one, driven through the
+        // qbPortWeaver bridge plugin's local API. It authenticates with a token the plugin issues,
+        // so UserNameKey is null and PasswordKey carries the token. The '+' in the process name is
+        // literal: Process.GetProcessesByName compares exactly, so "Nicotine+" matches
+        // "Nicotine+.exe" and nothing else.
+        new(Name: RegistrySettingsManager.ClientNameNicotine, Section: RegistrySettingsManager.SectionNicotine,
+            UrlKey: RegistrySettingsManager.KeyNicotineUrl, UserNameKey: null,
+            PasswordKey: RegistrySettingsManager.KeyNicotineToken, ProcessNameKey: RegistrySettingsManager.KeyNicotineProcessName,
+            ExePathKey: RegistrySettingsManager.KeyNicotineExePath, RestartKey: RegistrySettingsManager.KeyRestartNicotine,
+            ForceStartKey: RegistrySettingsManager.KeyForceStartNicotine,
+            ProcessNames: ["Nicotine+"], DefaultExeFolder: "Nicotine+", DefaultExeFile: "Nicotine+.exe",
+            Factory: c => new NicotineClient(c.Url, c.Password, c.ProcessName, c.ExePath)),
     ];
 
-    /// <summary>All supported clients, in canonical order (qBittorrent, Transmission, Deluge).</summary>
+    /// <summary>All supported clients, in canonical order (qBittorrent, Transmission, Deluge, Nicotine+).</summary>
     internal static IReadOnlyList<ClientInfo> All => _clients;
 
     /// <summary>Resolves a stored client setting value to its facts, defaulting to qBittorrent when unrecognized.</summary>

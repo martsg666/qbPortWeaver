@@ -3,8 +3,8 @@ using System.Net;
 
 namespace qbPortWeaver;
 
-/// <summary>Base class providing shared process-lifecycle and HTTP infrastructure for BitTorrent clients.</summary>
-public abstract class BitTorrentClientBase : IBitTorrentClient // NOSONAR S3881 - all subclasses are sealed with no additional disposable resources
+/// <summary>Base class providing shared process-lifecycle and HTTP infrastructure for the peer-to-peer clients.</summary>
+public abstract class ManagedClientBase : IManagedClient // NOSONAR S3881 - all subclasses are sealed with no additional disposable resources
 {
     protected const int ProcessStartDelayMs = 2000;
     protected const int ProcessKillTimeoutMs = 5000;
@@ -25,12 +25,12 @@ public abstract class BitTorrentClientBase : IBitTorrentClient // NOSONAR S3881 
     protected bool IsAuthenticated;
     private bool _disposed;
 
-    /// <summary>Initialises the shared fields used by all BitTorrent client implementations.</summary>
+    /// <summary>Initialises the shared fields used by all client implementations.</summary>
     /// <param name="url">Base URL of the client's Web UI or RPC endpoint.</param>
     /// <param name="processName">Process name used for <see cref="IsRunning"/> checks. Pass an empty string if process mode is not used.</param>
     /// <param name="exePath">Full path to the client executable, used for force-start and restart.</param>
     /// <param name="httpClient">Pre-configured <see cref="HttpClient"/> (cookie-based or header-based auth depending on the client).</param>
-    protected BitTorrentClientBase(string url, string processName, string exePath, HttpClient httpClient)
+    protected ManagedClientBase(string url, string processName, string exePath, HttpClient httpClient)
     {
         Url = (url ?? string.Empty).TrimEnd('/');
         ProcessName = processName;
@@ -151,7 +151,7 @@ public abstract class BitTorrentClientBase : IBitTorrentClient // NOSONAR S3881 
             {
                 using var probeCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
                 probeCts.CancelAfter(TimeSpan.FromSeconds(ApiProbeTimeoutSeconds));
-                using var response = await HttpClient.GetAsync(Url, probeCts.Token).ConfigureAwait(false);
+                using var response = await HttpClient.GetAsync(ResolveUrl(), probeCts.Token).ConfigureAwait(false);
                 return;
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
@@ -163,6 +163,13 @@ public abstract class BitTorrentClientBase : IBitTorrentClient // NOSONAR S3881 
         }
         LogManager.Instance.LogDebug($"{GetType().Name}.WaitForApiReadyAsync: {ClientName} API did not respond within {ApiReadyTimeoutSeconds}s after start");
     }
+
+    /// <summary>
+    /// The base URL to use for requests right now. Defaults to the configured <see cref="Url"/>.
+    /// Overridden by clients whose endpoint is discovered at runtime rather than configured, so
+    /// the readiness probe follows the endpoint the client actually moved to.
+    /// </summary>
+    protected virtual string ResolveUrl() => Url;
 
     /// <summary>Resets the per-instance auth state so the next API call triggers a fresh authentication handshake.</summary>
     protected virtual void ResetAuthState() => IsAuthenticated = false;

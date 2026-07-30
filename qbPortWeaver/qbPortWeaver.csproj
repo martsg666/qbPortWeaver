@@ -8,19 +8,19 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <ApplicationIcon>qbPortWeaver.ico</ApplicationIcon>
     <AssemblyTitle>qbPortWeaver</AssemblyTitle>
-    <Description>Syncs the listening port of qBittorrent, Transmission, or Deluge with the port assigned by your VPN provider (ProtonVPN, PIA, or any NAT-PMP capable gateway)</Description>
+    <Description>Syncs the listening port of qBittorrent, Transmission, Deluge, or Nicotine+ with the port assigned by your VPN provider (ProtonVPN, PIA, or any NAT-PMP capable gateway)</Description>
     <Company>martsg666</Company>
     <Product>qbPortWeaver</Product>
     <Authors>martsg666</Authors>
     <Copyright>© 2026 martsg666</Copyright>
-    <Version>2.6.3</Version>
-    <FileVersion>2.6.3.0</FileVersion>
-    <AssemblyVersion>2.6.3.0</AssemblyVersion>
+    <Version>2.6.4</Version>
+    <FileVersion>2.6.4.0</FileVersion>
+    <AssemblyVersion>2.6.4.0</AssemblyVersion>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <SignAssembly>False</SignAssembly>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <!-- Suppress known SonarAnalyzer false positives (each has a matching // NOSONAR comment):
-         S108  - empty catch bodies are intentional (BitTorrentClientBase.cs, TransmissionClient.cs)
+         S108  - empty catch bodies are intentional (ManagedClientBase.cs, TransmissionClient.cs)
          S125  - documentation comments containing qualified identifiers (e.g. Class.Member) are falsely flagged as commented-out code
          S1075 - TMDB base URL is intentionally hardcoded (TmdbClient.cs)
          S1125 - C# pattern matching 'is true' / 'is not true' requires the boolean literal (MediaManagerForm.cs)
@@ -28,14 +28,15 @@
          S2068 - registry key name contains "Password", value is masked (PortSyncService.cs)
          S2221 - bare catch before LogManager is initialized; any failure must fall back safely (Program.cs)
          S2325 - handlers/helpers that access instance members (Close, Invoke, ShowBalloonTip, UseWaitCursor/IsDisposed, or a called instance method) cannot be static (AboutForm.cs, HelpForm.cs, MainForm.cs, MediaManagerForm.cs, PortSyncService.cs, SettingsForm.cs, TransmissionClient.cs, WhatsNewForm.cs)
-         S2486 - same as S108, SonarCloud cloud rule counterpart (BitTorrentClientBase.cs, TransmissionClient.cs)
+         S2486 - same as S108, SonarCloud cloud rule counterpart (ManagedClientBase.cs, TransmissionClient.cs)
          S2589 - defensive runtime fallback after a Debug.Assert that only fires in dev builds (WhatsNewForm.cs)
-         S2696 - single sync service instance clears a static flag shared with the static manual-test dispatch path (PortSyncService.cs)
-         S3881 - abstract base class; all sealed subclasses have no additional disposable resources (BitTorrentClientBase.cs)
+         S2696 - static field written from a single-instance context: the sync-service flag shared with the static manual-test dispatch (PortSyncService.cs) and the process-wide warning dedupe (NicotineClient.cs)
+         S3881 - abstract base class; all sealed subclasses have no additional disposable resources (ManagedClientBase.cs)
          S4721 - post-update command is user-configured, arbitrary execution is intended (PortSyncService.cs)
          S4790 - TMDB credential sent over HTTPS only; v3 API key in query param, v4 JWT as Bearer header (TmdbClient.cs)
+         S5332 - loopback IPC bridge on 127.0.0.1; TLS is meaningless for a local-only handshake (NicotinePluginDiscovery.cs)
          S6966 - non-modal Show() on child forms is intentional (WhatsNewForm directly; others via the ShowOrActivate helper, MainForm.cs) -->
-    <NoWarn>S108;S125;S1075;S1125;S1215;S2068;S2221;S2325;S2486;S2589;S2696;S3881;S4721;S4790;S6966</NoWarn>
+    <NoWarn>S108;S125;S1075;S1125;S1215;S2068;S2221;S2325;S2486;S2589;S2696;S3881;S4721;S4790;S5332;S6966</NoWarn>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
@@ -73,6 +74,23 @@
       <Generator>ResXFileCodeGenerator</Generator>
       <LastGenOutput>Resources.Designer.cs</LastGenOutput>
     </EmbeddedResource>
+  </ItemGroup>
+
+  <!-- The Nicotine+ bridge plugin is embedded rather than shipped as loose files. The app is
+       published as a single self-contained executable and the MSI installs only that plus
+       README.md, so loose content would need its own installer components and parallel handling in
+       the portable and Chocolatey layouts. Embedding keeps one copy and makes Settings' "Install
+       plugin" behave identically everywhere. Resource names derive from Link, which
+       NicotinePluginInstaller maps back to relative paths.
+       The plugin is licensed GPL-3.0-or-later (see plugins\qbpw_nicotine_bridge\LICENSE); it is
+       carried here as a separate work, not linked into this assembly's own licence. -->
+  <ItemGroup>
+    <!-- Exclude Python's bytecode cache: it is build output, is tied to the interpreter version
+         that produced it (so it is wrong for whichever Python the user's Nicotine+ runs), and its
+         dotted filenames do not survive the resource-name-to-path mapping. -->
+    <EmbeddedResource Include="..\plugins\qbpw_nicotine_bridge\**\*"
+                      Exclude="..\plugins\qbpw_nicotine_bridge\**\__pycache__\**;..\plugins\qbpw_nicotine_bridge\**\*.pyc"
+                      Link="Plugins\Nicotine\qbpw_nicotine_bridge\%(RecursiveDir)%(Filename)%(Extension)" />
   </ItemGroup>
 
   <ItemGroup>

@@ -4,7 +4,7 @@ using System.Text.Json;
 namespace qbPortWeaver;
 
 /// <summary>Manages Deluge via its Web JSON-RPC API: authentication, port configuration, and process lifecycle.</summary>
-public sealed class DelugeClient : BitTorrentClientBase
+public sealed class DelugeClient : ManagedClientBase
 {
     // Deluge's config writer debounces disk flushes by ~5 s; waiting 6 s ensures
     // core.conf is on disk before the process is killed on restart.

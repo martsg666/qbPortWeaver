@@ -1,0 +1,31 @@
+qbPortWeaver Bridge - a Nicotine+ plugin
+Copyright (C) 2026 qbPortWeaver contributors
+
+This program is free software: you can redistribute it and/or modify it under
+the terms of the GNU General Public License as published by the Free Software
+Foundation, either version 3 of the License, or (at your option) any later
+version.
+
+This program is distributed in the hope that it will be useful, but WITHOUT ANY
+WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
+PARTICULAR PURPOSE. See the GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License along with
+this program. If not, see <https://www.gnu.org/licenses/>.
+
+--------------------------------------------------------------------------------
+
+Why this folder is licensed differently from the rest of qbPortWeaver
+
+This plugin imports Nicotine+ internals and is loaded into the Nicotine+ process,
+which makes it a derivative work of Nicotine+ (GPL-3.0-or-later). It is therefore
+licensed GPL-3.0-or-later, and that licence applies to everything in this folder.
+
+The rest of qbPortWeaver is not affected. qbPortWeaver is a separate program in a
+separate process that talks to this plugin over a documented HTTP/JSON protocol -
+the same arm's-length relationship it has with qBittorrent's Web API - so no GPL
+obligation extends to it.
+
+The full text of the GNU General Public License version 3 is available at
+<https://www.gnu.org/licenses/gpl-3.0.txt>, and is also distributed with
+Nicotine+ itself.

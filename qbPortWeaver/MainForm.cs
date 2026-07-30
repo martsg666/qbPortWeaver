@@ -709,7 +709,7 @@ public partial class MainForm : Form
         InvokeOnUiThread(() => { _logAlertBalloonPending = false; _trayIcon.ShowBalloonTip(AppConstants.BalloonTipDurationMs, AppIdentity.AppName, message, ToolTipIcon.Warning); });
     }
 
-    // Called by PortSyncService when the BitTorrent client's listening port is successfully updated.
+    // Called by PortSyncService when the client's listening port is successfully updated.
     // Info balloons are not clickable on Windows 11 (routed silently through Action Center), so there
     // is no need to clear _logAlertBalloonPending here - a click on this balloon will not fire
     // BalloonTipClicked, so it cannot mistakenly trigger the log viewer.

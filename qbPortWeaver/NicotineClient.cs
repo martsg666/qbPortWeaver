@@ -1,0 +1,451 @@
+using System.Net;
+using System.Runtime.CompilerServices;
+using System.Text;
+using System.Text.Json;
+
+namespace qbPortWeaver;
+
+/// <summary>
+/// Manages Nicotine+ through the qbPortWeaver bridge plugin's local JSON API: token
+/// authentication, port configuration, and process lifecycle.
+/// </summary>
+/// <remarks>Nicotine+ exposes no remote-control interface of its own, so the bridge plugin
+/// supplies one. It applies a port change to the running client and reconnects, so the new port
+/// is live within a few seconds without restarting Nicotine+.</remarks>
+public sealed class NicotineClient : ManagedClientBase
+{
+    private const string PathPreferences = "/v1/preferences";
+    private const string PathPort = "/v1/port";
+    private const string PathStatus = "/v1/status";
+    private const string PathPortTest = "/v1/porttest";
+    private const string JsonContentType = "application/json";
+    private const string AuthorizationHeader = "Authorization";
+
+    private const string JsonPropOk = "ok";
+    private const string JsonPropError = "error";
+    private const string JsonPropCode = "code";
+    private const string JsonPropMessage = "message";
+    private const string JsonPropState = "state";
+    private const string JsonPropResult = "result";
+
+    private const string ErrorPortLocked = "port_locked_by_cli";
+    private const string StateDone = "done";
+
+    // Long enough for the plugin's own capped wait plus a round trip, short enough that the
+    // shared 10 s HttpClient timeout still bounds the request.
+    private const int PortTestWaitMs = 8000;
+
+    // Nicotine+ reports "connecting" while the bridge's own reconnect is in flight. Treated as
+    // still-connected so a port change is never mistaken for the client dropping offline.
+    private const string StatusConnecting = "connecting";
+
+    private readonly string _exePathHint;
+    private string _endpoint;
+    private string _token;
+    private bool _rediscoveryAttempted;
+
+    // Deduplicates the --port guidance. The condition lasts for the life of the Nicotine+
+    // process, so without this every sync cycle would repeat the same warning.
+    private static string? _lastLockedWarning; // NOSONAR S2696 - one sync loop; the dedupe is deliberately process-wide
+
+    /// <inheritdoc/>
+    public override string ClientName => "Nicotine+";
+
+    /// <inheritdoc/>
+    /// <remarks>Nicotine+ stores a network adapter's friendly name, the same form qBittorrent
+    /// reports, so the mismatch check works against it directly.</remarks>
+    public override bool SupportsInterfaceMismatchWarning => true;
+
+    /// <inheritdoc/>
+    protected override string ApiLabel => "bridge plugin";
+
+    /// <summary>Creates a new client bound to the Nicotine+ bridge plugin's local API.</summary>
+    /// <param name="url">Base URL of the bridge plugin (e.g. <c>http://127.0.0.1:38472</c>).</param>
+    /// <param name="token">Bearer token issued by the plugin.</param>
+    /// <param name="processName">Process name used to detect whether Nicotine+ is running (e.g. <c>Nicotine+</c>).</param>
+    /// <param name="exePath">Full path to the Nicotine+ executable, used for force-start and to locate a portable data folder.</param>
+    public NicotineClient(string url, string token, string processName, string exePath)
+        : base(url, processName, exePath, CreatePlainHttpClient())
+    {
+        _exePathHint = exePath ?? string.Empty;
+        _endpoint = Url;
+        _token = token ?? string.Empty;
+
+        // The connection file is authoritative: the plugin may have bound elsewhere if its
+        // configured port was taken. Prefer it over the saved settings from the start, so the
+        // common case needs no failed request to correct itself.
+        ApplyHandshake(NicotinePluginDiscovery.TryRead(_exePathHint), logChange: false);
+    }
+
+    /// <inheritdoc/>
+    /// <remarks>The endpoint is discovered rather than configured, so the readiness probe after a
+    /// launch must use the current value rather than the one saved in Settings.</remarks>
+    protected override string ResolveUrl() => _endpoint;
+
+    /// <inheritdoc/>
+    /// <remarks>A cold start makes the plugin publish a fresh connection file; re-read it so the
+    /// rest of this cycle talks to the endpoint it actually bound.</remarks>
+    public override async Task<bool> ForceStartAsync(CancellationToken cancellationToken = default)
+    {
+        bool started = await base.ForceStartAsync(cancellationToken).ConfigureAwait(false);
+        if (started) TryRediscover();
+        return started;
+    }
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// Deliberately a no-op. The bridge plugin applies the port to the running client and
+    /// reconnects, so the change is already live and a restart would fix nothing.
+    /// <para>It would also do harm: Nicotine+ only writes its configuration on a graceful
+    /// shutdown, which killing the process does not produce on Windows, so the base class's
+    /// kill-and-relaunch would discard the user's settings. Closing the main window is no better
+    /// - Nicotine+ normally sits minimised to the tray with no window to close, so that path
+    /// falls through to the same hard kill.</para>
+    /// </remarks>
+    public override Task<bool> RestartAsync(CancellationToken cancellationToken = default)
+    {
+        LogManager.Instance.LogMessage(
+            $"{ClientName} applies port changes to the running client, so no restart is needed", LogLevel.Info);
+        return Task.FromResult(true);
+    }
+
+    /// <inheritdoc/>
+    public override async Task<(int? ListenPort, string? CurrentInterfaceName)> GetPreferencesAsync(CancellationToken cancellationToken = default)
+    {
+        using var response = await SendAsync(HttpMethod.Get, PathPreferences, null,
+            LogLevel.Error, cancellationToken).ConfigureAwait(false);
+        if (response is null) return (null, null);
+
+        try
+        {
+            using var doc = await ReadJsonAsync(response, cancellationToken).ConfigureAwait(false);
+            var root = doc.RootElement;
+
+            if (!root.TryGetProperty("listen_port", out var portElement) ||
+                !portElement.TryGetInt32(out int listenPort))
+            {
+                LogManager.Instance.LogDebug("NicotineClient.GetPreferencesAsync: 'listen_port' missing or not an integer in the plugin response");
+                return (null, null);
+            }
+
+            // Empty and absent mean different things and must not be conflated: an empty string
+            // is "bound to every adapter", which the caller warns about as a possible leak
+            // outside the VPN, while null is "this client cannot report an interface" and skips
+            // the check entirely. Same convention as qBittorrent.
+            string? interfaceName = null;
+            if (root.TryGetProperty("interface", out var interfaceElement) &&
+                interfaceElement.ValueKind == JsonValueKind.String)
+                interfaceName = interfaceElement.GetString();
+
+            return (listenPort, interfaceName);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+        catch (Exception ex)
+        {
+            LogManager.Instance.LogDebug($"NicotineClient.GetPreferencesAsync: {ex.Message}");
+            return (null, null);
+        }
+    }
+
+    /// <inheritdoc/>
+    public override async Task<bool> SetListeningPortAsync(int port, CancellationToken cancellationToken = default)
+    {
+        // Turning off Nicotine+'s own port forwarding alongside the change, as the other clients
+        // do, so its port mapper cannot fight the externally managed port.
+        var body = $$"""{"port":{{port}},"disable_upnp":true}""";
+
+        using var response = await SendAsync(HttpMethod.Post, PathPort, body,
+            LogLevel.Error, cancellationToken).ConfigureAwait(false);
+        if (response is null) return false;
+
+        try
+        {
+            using var doc = await ReadJsonAsync(response, cancellationToken).ConfigureAwait(false);
+            var root = doc.RootElement;
+
+            if (root.TryGetProperty(JsonPropOk, out var ok) && ok.ValueKind == JsonValueKind.True)
+                return true;
+
+            LogSetPortFailure(root);
+            return false;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+        catch (Exception ex)
+        {
+            LogHttpException("SetListeningPortAsync", ex);
+            return false;
+        }
+    }
+
+    /// <inheritdoc/>
+    /// <remarks>Reports <c>"connected"</c> or <c>"disconnected"</c>. The plugin's own
+    /// <c>"connecting"</c> state - which covers the few seconds after a port change while the
+    /// client rebinds - is reported as connected, so a sync never reads its own work as an outage.</remarks>
+    public override async Task<string?> GetConnectionStatusAsync(CancellationToken cancellationToken = default)
+    {
+        using var response = await SendAsync(HttpMethod.Get, PathStatus, null,
+            LogLevel.Error, cancellationToken).ConfigureAwait(false);
+        if (response is null) return null;
+
+        try
+        {
+            using var doc = await ReadJsonAsync(response, cancellationToken).ConfigureAwait(false);
+            if (!doc.RootElement.TryGetProperty("connection", out var connection) ||
+                connection.ValueKind != JsonValueKind.String)
+                return null;
+
+            string? status = connection.GetString();
+            return status == StatusConnecting ? "connected" : status;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+        catch (Exception ex)
+        {
+            LogManager.Instance.LogDebug($"NicotineClient.GetConnectionStatusAsync: {ex.Message}");
+            return null;
+        }
+    }
+
+    /// <inheritdoc/>
+    /// <remarks>Runs Nicotine+'s own reachability check, which probes the port through the
+    /// Soulseek project's online check service. The plugin caps how long it will hold the request,
+    /// so a slow check comes back as still pending and is reported here as undeterminable rather
+    /// than as a closed port. Failures log at Debug only - this is a best-effort probe.</remarks>
+    public override async Task<bool?> TestListeningPortAsync(CancellationToken cancellationToken = default)
+    {
+        var body = $$"""{"wait_ms":{{PortTestWaitMs}}}""";
+
+        using var response = await SendAsync(HttpMethod.Post, PathPortTest, body,
+            LogLevel.Debug, cancellationToken).ConfigureAwait(false);
+        if (response is null) return null;
+
+        try
+        {
+            using var doc = await ReadJsonAsync(response, cancellationToken).ConfigureAwait(false);
+            var root = doc.RootElement;
+
+            string? state = root.TryGetProperty(JsonPropState, out var stateElement)
+                ? stateElement.GetString()
+                : null;
+
+            if (state != StateDone)
+            {
+                LogManager.Instance.LogDebug(
+                    $"NicotineClient.TestListeningPortAsync: the check is '{state ?? "unknown"}' - treating the result as undetermined");
+                return null;
+            }
+
+            if (root.TryGetProperty(JsonPropResult, out var result) &&
+                result.ValueKind is JsonValueKind.True or JsonValueKind.False)
+                return result.GetBoolean();
+
+            return null;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+        catch (Exception ex)
+        {
+            LogManager.Instance.LogDebug($"NicotineClient.TestListeningPortAsync: {ex.Message}");
+            return null;
+        }
+    }
+
+    // ------------------------------------------------------------------ transport
+
+    // One request, with a single retry after re-reading the connection file. The plugin keeps its
+    // port and token across restarts, so a failure that rediscovery fixes means it was reinstalled
+    // or had to fall back to a different port - worth one extra round trip rather than failing the
+    // whole cycle. Caller disposes the response.
+    private async Task<HttpResponseMessage?> SendAsync(HttpMethod method, string path, string? jsonBody,
+        LogLevel failureLevel, CancellationToken cancellationToken,
+        [CallerMemberName] string callerName = "")
+    {
+        var (response, exception) = await SendOnceAsync(method, path, jsonBody, cancellationToken).ConfigureAwait(false);
+
+        bool worthRetrying = response is null || response.StatusCode == HttpStatusCode.Unauthorized;
+        if (worthRetrying && TryRediscover())
+        {
+            response?.Dispose();
+            (response, exception) = await SendOnceAsync(method, path, jsonBody, cancellationToken).ConfigureAwait(false);
+        }
+
+        if (response is null)
+        {
+            LogTransportFailure(callerName, exception, failureLevel);
+            return null;
+        }
+
+        if (response.IsSuccessStatusCode) return response;
+
+        await LogHttpFailureAsync(response, path, failureLevel, cancellationToken).ConfigureAwait(false);
+        response.Dispose();
+        return null;
+    }
+
+    private async Task<(HttpResponseMessage? Response, Exception? Error)> SendOnceAsync(
+        HttpMethod method, string path, string? jsonBody, CancellationToken cancellationToken)
+    {
+        StringContent? content = null;
+        try
+        {
+            using var request = new HttpRequestMessage(method, $"{_endpoint}{path}");
+
+            // TryAddWithoutValidation rather than AuthenticationHeaderValue: a token pasted with
+            // stray whitespace would make the latter throw, and the constructor must never fail
+            // on user input. An unusable token becomes a clean 401 instead.
+            request.Headers.TryAddWithoutValidation(AuthorizationHeader, $"Bearer {_token}");
+
+            if (jsonBody is not null)
+            {
+                content = new StringContent(jsonBody, Encoding.UTF8, JsonContentType);
+                request.Content = content;
+            }
+
+            var response = await HttpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
+            return (response, null);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+        catch (Exception ex)
+        {
+            return (null, ex);
+        }
+        finally
+        {
+            content?.Dispose();
+        }
+    }
+
+    // Re-reads the connection file, adopting a changed endpoint or token. Runs at most once per
+    // instance, and each sync cycle builds a fresh instance, so a persistently missing plugin
+    // costs one file check per cycle rather than one per request.
+    private bool TryRediscover()
+    {
+        if (_rediscoveryAttempted) return false;
+        _rediscoveryAttempted = true;
+
+        return ApplyHandshake(NicotinePluginDiscovery.TryRead(_exePathHint), logChange: true);
+    }
+
+    private bool ApplyHandshake(NicotinePluginHandshake? handshake, bool logChange)
+    {
+        if (handshake is null) return false;
+        if (handshake.Url == _endpoint && handshake.Token == _token) return false;
+
+        if (logChange && handshake.Url != _endpoint)
+        {
+            LogManager.Instance.LogMessage(
+                $"{ClientName} bridge plugin moved to {handshake.Url} - update the URL in Settings to skip this lookup each cycle",
+                LogLevel.Info);
+        }
+
+        _endpoint = handshake.Url;
+        _token = handshake.Token;
+        return true;
+    }
+
+    private static async Task<JsonDocument> ReadJsonAsync(HttpResponseMessage response, CancellationToken cancellationToken)
+    {
+        string json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+        return JsonDocument.Parse(json);
+    }
+
+    // ------------------------------------------------------------------- logging
+
+    private void LogSetPortFailure(JsonElement root)
+    {
+        var (code, message) = ReadError(root);
+
+        if (code == ErrorPortLocked)
+        {
+            // Not a transient failure: the port cannot change until Nicotine+ is restarted
+            // without the option. Warn rather than Error, once per distinct message.
+            string warning = $"Cannot set the {ClientName} port: {message}";
+            if (_lastLockedWarning != warning)
+            {
+                _lastLockedWarning = warning;
+                LogManager.Instance.LogMessage(warning, LogLevel.Warn);
+            }
+            return;
+        }
+
+        LogManager.Instance.LogMessage($"Failed to set {ClientName} port: {message}", LogLevel.Error);
+    }
+
+    private async Task LogHttpFailureAsync(HttpResponseMessage response, string path,
+        LogLevel failureLevel, CancellationToken cancellationToken)
+    {
+        string detail = await ReadErrorDetailAsync(response, cancellationToken).ConfigureAwait(false);
+
+        string message = response.StatusCode switch
+        {
+            HttpStatusCode.Unauthorized =>
+                $"{ClientName} bridge plugin rejected the token - use Refresh next to the Plugin token in Settings to read the current one",
+            HttpStatusCode.NotFound =>
+                $"{ClientName} bridge plugin does not provide {path} - reinstall it from Settings to match this version of qbPortWeaver",
+            _ => $"{ClientName} bridge plugin returned HTTP {(int)response.StatusCode} {response.StatusCode} for {path}{detail}"
+        };
+
+        Log(message, failureLevel);
+    }
+
+    private static async Task<string> ReadErrorDetailAsync(HttpResponseMessage response, CancellationToken cancellationToken)
+    {
+        try
+        {
+            string json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+            using var doc = JsonDocument.Parse(json);
+            var (_, message) = ReadError(doc.RootElement);
+            return message.Length > 0 ? $": {message}" : string.Empty;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+        catch (Exception)
+        {
+            // An error body is a nicety; its absence must not mask the status code.
+            return string.Empty;
+        }
+    }
+
+    private static (string Code, string Message) ReadError(JsonElement root)
+    {
+        if (!root.TryGetProperty(JsonPropError, out var error) || error.ValueKind != JsonValueKind.Object)
+            return (string.Empty, string.Empty);
+
+        string code = error.TryGetProperty(JsonPropCode, out var codeElement)
+            ? codeElement.GetString() ?? string.Empty
+            : string.Empty;
+        string message = error.TryGetProperty(JsonPropMessage, out var messageElement)
+            ? messageElement.GetString() ?? string.Empty
+            : string.Empty;
+
+        return (code, message);
+    }
+
+    private void LogTransportFailure(string callerName, Exception? exception, LogLevel failureLevel)
+    {
+        if (exception is not null)
+        {
+            LogHttpException(callerName, exception, failureLevel);
+        }
+        else
+        {
+            Log($"{ClientName} bridge plugin is not reachable at {_endpoint}", failureLevel);
+        }
+
+        // Distinguish "plugin missing" from "Nicotine+ down", which need different fixes.
+        if (failureLevel == LogLevel.Error && !NicotinePluginDiscovery.IsPluginInstalled(_exePathHint))
+        {
+            LogManager.Instance.LogMessage(
+                $"The qbPortWeaver bridge plugin is not installed in {ClientName} - install it from Settings, then enable it in Nicotine+ under Preferences, Plugins",
+                LogLevel.Error);
+        }
+    }
+
+    private static void Log(string message, LogLevel level)
+    {
+        if (level == LogLevel.Debug) LogManager.Instance.LogDebug(message);
+        else LogManager.Instance.LogMessage(message, level);
+    }
+
+    // No cookie container and no default headers: the bridge authenticates per request with a
+    // bearer token, which is attached in SendOnceAsync so rediscovery can swap it mid-instance.
+    private static HttpClient CreatePlainHttpClient() =>
+        new() { Timeout = TimeSpan.FromSeconds(AppConstants.HttpTimeoutSeconds) };
+}

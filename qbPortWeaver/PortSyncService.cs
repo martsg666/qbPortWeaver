@@ -5,11 +5,11 @@ namespace qbPortWeaver;
 /// <summary>Outcome of a port sync cycle, used to drive the tray icon color and tooltip.</summary>
 public enum SyncState
 {
-    /// <summary>Port was successfully detected and applied to the BitTorrent client.</summary>
+    /// <summary>Port was successfully detected and applied to the client.</summary>
     Synced,
     /// <summary>VPN is not connected; no port is available to sync.</summary>
     VpnDisconnected,
-    /// <summary>Sync is paused because the BitTorrent client or VPN provider is not configured.</summary>
+    /// <summary>Sync is paused because the client or VPN provider is not configured.</summary>
     Disabled,
     /// <summary>An error occurred during the sync cycle (e.g. client unreachable, port update failed).</summary>
     Error,
@@ -22,7 +22,7 @@ public enum SyncState
 /// <summary>Snapshot of the tray icon state after a sync cycle, raised via <see cref="PortSyncService.SyncCompleted"/>.</summary>
 public sealed record TrayStatus(SyncState State, int? Port, string Message);
 
-/// <summary>Background service that syncs the BitTorrent client's listening port with the VPN-assigned port on each cycle.</summary>
+/// <summary>Background service that syncs the client's listening port with the VPN-assigned port on each cycle.</summary>
 public sealed class PortSyncService
 {
     // Connection status value returned by clients that support GetConnectionStatusAsync
@@ -31,10 +31,10 @@ public sealed class PortSyncService
     /// <summary>Raised when a sync cycle completes (success or failure) with the resulting tray status.</summary>
     public event Action<TrayStatus>? SyncCompleted;
 
-    /// <summary>Raised when the BitTorrent client's network interface does not match the configured VPN provider.</summary>
+    /// <summary>Raised when the client's network interface does not match the configured VPN provider.</summary>
     public event Action<string>? InterfaceMismatchDetected;
 
-    /// <summary>Raised when the BitTorrent client's listening port is successfully updated to a new value.</summary>
+    /// <summary>Raised when the client's listening port is successfully updated to a new value.</summary>
     public event Action<string>? PortUpdated;
 
     /// <summary>Raised once when the forwarded port is confirmed unreachable from outside (two consecutive failed checks). Transition-only - it re-fires only after the port has tested open again.</summary>
@@ -120,19 +120,20 @@ public sealed class PortSyncService
 
     // All values read from the registry for a single sync cycle. Only the active client's connection
     // settings are read, into a single Client block (see ReadConfig); the other clients' sections are
-    // not touched. Adding a 4th BitTorrent client: add one entry to ClientRegistry (its keys + factory)
-    // plus its Settings UI - ReadConfig, CreateBitTorrentClient, and LogConfigDebug are all driven from
+    // not touched. Adding another client: add one entry to ClientRegistry (its keys + factory)
+    // plus its Settings UI - ReadConfig, CreateManagedClient, and LogConfigDebug are all driven from
     // that table and pick it up with no change here.
-    // qBittorrent-only flags (interface mismatch warn, restart on disconnect) stay at the
-    // top level since the other clients do not expose the necessary RPC fields.
+    // Per-client behaviour flags stay at the top level: restart-on-disconnect is qBittorrent-only,
+    // and the interface-mismatch warning applies only to the clients that report an adapter name.
     private sealed record AppConfig(
         string VpnProvider,
         string NatPmpAdapterName,
         int UpdateInterval,
-        string BitTorrentClient,
+        string ClientName,
         ClientConfig Client,
         bool QBittorrentWarnOnInterfaceMismatch,
         bool QBittorrentRestartOnDisconnect,
+        bool NicotineWarnOnInterfaceMismatch,
         string PostUpdateCommand,
         bool VpnAutoRecoveryEnabled,
         int VpnAutoRecoveryTriggerCycles,
@@ -348,7 +349,7 @@ public sealed class PortSyncService
         int targetPort = resolved.TargetPort;
         IVpnManager? syncVpnManager = resolved.SyncVpnManager;
 
-        using var manager = CreateBitTorrentClient(cfg);
+        using var manager = CreateManagedClient(cfg);
         status[StatusKeys.Client] = manager.ClientName;
 
         await EnsureRunningAndUpdatePortAsync(manager, targetPort,
@@ -399,7 +400,7 @@ public sealed class PortSyncService
             LogManager.Instance.LogMessage($"{vpnManager.ProviderName} default port is 0 - skipping port update", LogLevel.Info);
             return new TargetPortResult(cfg.UpdateInterval, 0, null);
         }
-        LogManager.Instance.LogMessage($"{vpnManager.ProviderName} default port is {defaultPort} - applying to {cfg.BitTorrentClient}", LogLevel.Info);
+        LogManager.Instance.LogMessage($"{vpnManager.ProviderName} default port is {defaultPort} - applying to {cfg.ClientName}", LogLevel.Info);
         return new TargetPortResult(null, defaultPort, null); // fall back to the default port (no tunnel to verify)
     }
 
@@ -454,8 +455,8 @@ public sealed class PortSyncService
 
         int vpnAutoRecoveryTriggerCycles = Math.Max(1, RegistrySettingsManager.GetInt(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyVpnAutoRecoveryTriggerCycles));
 
-        string bitTorrentClient = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyBitTorrentClient);
-        var activeClient = ClientRegistry.Resolve(bitTorrentClient);
+        string clientName = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyClient);
+        var activeClient = ClientRegistry.Resolve(clientName);
 
         // Only the active client's section is read. UserNameKey is null for clients without a username
         // (Deluge); the password is DPAPI-decrypted via GetEncryptedValue (same as the per-client
@@ -474,10 +475,11 @@ public sealed class PortSyncService
             VpnProvider: RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyVpnProvider),
             NatPmpAdapterName: RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyNatPmpAdapterName),
             UpdateInterval: updateInterval,
-            BitTorrentClient: bitTorrentClient,
+            ClientName: clientName,
             Client: clientConfig,
             QBittorrentWarnOnInterfaceMismatch: RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyWarnOnInterfaceMismatch),
             QBittorrentRestartOnDisconnect: RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyRestartOnDisconnect),
+            NicotineWarnOnInterfaceMismatch: RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionNicotine, RegistrySettingsManager.KeyNicotineWarnOnInterfaceMismatch),
             PostUpdateCommand: RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionExtra, RegistrySettingsManager.KeyPostUpdateCmd),
             VpnAutoRecoveryEnabled: RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyVpnAutoRecoveryEnabled),
             VpnAutoRecoveryTriggerCycles: vpnAutoRecoveryTriggerCycles,
@@ -503,12 +505,12 @@ public sealed class PortSyncService
             $"{RegistrySettingsManager.KeyUpdateIntervalSeconds}={cfg.UpdateInterval}s, " +
             $"{RegistrySettingsManager.KeyVpnAutoRecoveryEnabled}={cfg.VpnAutoRecoveryEnabled}, " +
             $"{RegistrySettingsManager.KeyVpnAutoRecoveryTriggerCycles}={cfg.VpnAutoRecoveryTriggerCycles}, " +
-            $"{RegistrySettingsManager.KeyBitTorrentClient}={cfg.BitTorrentClient}, " +
+            $"{RegistrySettingsManager.KeyClient}={cfg.ClientName}, " +
             $"{RegistrySettingsManager.KeyVerifyPortAfterSync}={cfg.VerifyPortAfterSync}, " +
             $"{RegistrySettingsManager.KeyPortClosedRecoveryEnabled}={cfg.PortClosedRecoveryEnabled}, " +
             $"{RegistrySettingsManager.KeyPortClosedRecoveryTriggerChecks}={cfg.PortClosedRecoveryTriggerChecks}");
 
-        var ci = ClientRegistry.Resolve(cfg.BitTorrentClient);
+        var ci = ClientRegistry.Resolve(cfg.ClientName);
         string clientLine =
             $"PortSyncService.RunCoreAsync [{ci.Name}]: {ci.UrlKey}={cfg.Client.Url}, " +
             (ci.UserNameKey is not null ? $"{ci.UserNameKey}={cfg.Client.UserName}, " : string.Empty) +
@@ -633,11 +635,11 @@ public sealed class PortSyncService
         return null;
     }
 
-    // Creates the active IBitTorrentClient via its ClientRegistry factory from the config block
+    // Creates the active IManagedClient via its ClientRegistry factory from the config block
     // ReadConfig built for the active client. Resolve defaults to qBittorrent when the value is
     // unrecognized (matching ReadConfig).
-    private static IBitTorrentClient CreateBitTorrentClient(AppConfig cfg) =>
-        ClientRegistry.Resolve(cfg.BitTorrentClient).Factory(cfg.Client);
+    private static IManagedClient CreateManagedClient(AppConfig cfg) =>
+        ClientRegistry.Resolve(cfg.ClientName).Factory(cfg.Client);
 
     /// <summary>
     /// Tests on demand whether the currently configured client's listening port is reachable from
@@ -666,15 +668,15 @@ public sealed class PortSyncService
     }
 
     /// <summary>
-    /// Builds the currently-configured BitTorrent client from the saved settings. Read-only and
+    /// Builds the currently-configured client from the saved settings. Read-only and
     /// side-effect free, so it is safe to call while a sync cycle is running (fresh instance, no
     /// shared state). The caller owns disposal. Shared by <see cref="TestActivePortAsync"/> and
     /// <see cref="DiagnosticsService"/> so client construction stays single-source.
     /// </summary>
-    internal static IBitTorrentClient BuildActiveClient()
+    internal static IManagedClient BuildActiveClient()
     {
         var (cfg, _) = ReadConfig();
-        return CreateBitTorrentClient(cfg);
+        return CreateManagedClient(cfg);
     }
 
     /// <summary>
@@ -742,8 +744,8 @@ public sealed class PortSyncService
         return true;
     }
 
-    // Ensures the BitTorrent client is running, then updates its port if it differs from the target port
-    private async Task EnsureRunningAndUpdatePortAsync(IBitTorrentClient manager, int targetPort, SyncConfig config, Dictionary<string, object?> status, CancellationToken cancellationToken)
+    // Ensures the client is running, then updates its port if it differs from the target port
+    private async Task EnsureRunningAndUpdatePortAsync(IManagedClient manager, int targetPort, SyncConfig config, Dictionary<string, object?> status, CancellationToken cancellationToken)
     {
         if (!await EnsureClientRunningAsync(manager, config, status, cancellationToken).ConfigureAwait(false))
             return;
@@ -791,7 +793,7 @@ public sealed class PortSyncService
     // Applies the port update, records it in the port history (with the cause: VPN-assigned or
     // default-port fallback), and raises the optional tray notification. Returns false when the
     // update failed - the caller skips the cycle's remaining steps and the next cycle retries.
-    private async Task<bool> UpdatePortAndNotifyAsync(IBitTorrentClient manager, int targetPort, int previousPort, SyncConfig config, Dictionary<string, object?> status, CancellationToken cancellationToken)
+    private async Task<bool> UpdatePortAndNotifyAsync(IManagedClient manager, int targetPort, int previousPort, SyncConfig config, Dictionary<string, object?> status, CancellationToken cancellationToken)
     {
         if (!await ApplyPortUpdateAsync(manager, targetPort, config, status, cancellationToken).ConfigureAwait(false))
             return false;
@@ -835,7 +837,7 @@ public sealed class PortSyncService
     // idle-firewalled false positive and transient check-service glitches); the second
     // consecutive closed result is confirmed - see HandlePortClosedResult. Null results
     // (client unreachable, test service unavailable) leave the verification state unchanged.
-    private async Task VerifyPortAsync(IBitTorrentClient manager, int port, SyncConfig config, Dictionary<string, object?> status, CancellationToken cancellationToken)
+    private async Task VerifyPortAsync(IManagedClient manager, int port, SyncConfig config, Dictionary<string, object?> status, CancellationToken cancellationToken)
     {
         if (!ShouldVerifyThisCycle(status[StatusKeys.PortChanged] is true, config.PortClosedRecoveryEnabled)) return;
 
@@ -951,8 +953,8 @@ public sealed class PortSyncService
         await DispatchRecoveryAsync(action, target, vpnManager.ProviderName, cancellationToken).ConfigureAwait(false);
     }
 
-    // Returns true if the BitTorrent client is running (or was successfully force-started), false otherwise
-    private static async Task<bool> EnsureClientRunningAsync(IBitTorrentClient manager, SyncConfig config, Dictionary<string, object?> status, CancellationToken cancellationToken)
+    // Returns true if the client is running (or was successfully force-started), false otherwise
+    private static async Task<bool> EnsureClientRunningAsync(IManagedClient manager, SyncConfig config, Dictionary<string, object?> status, CancellationToken cancellationToken)
     {
         if (manager.IsRunning())
         {
@@ -1025,7 +1027,7 @@ public sealed class PortSyncService
 
     // Sets the listening port and optionally restarts the client. Returns false if any step fails.
     // The post-update command is launched later (in RunAsync's finally, after the status file write).
-    private static async Task<bool> ApplyPortUpdateAsync(IBitTorrentClient manager, int targetPort, SyncConfig config, Dictionary<string, object?> status, CancellationToken cancellationToken)
+    private static async Task<bool> ApplyPortUpdateAsync(IManagedClient manager, int targetPort, SyncConfig config, Dictionary<string, object?> status, CancellationToken cancellationToken)
     {
         LogManager.Instance.LogMessage($"Ports do not match - updating {manager.ClientName} port to {targetPort}", LogLevel.Info);
         if (!await manager.SetListeningPortAsync(targetPort, cancellationToken).ConfigureAwait(false))
@@ -1075,7 +1077,7 @@ public sealed class PortSyncService
 
     // Checks connection status and restarts the client if it reports as disconnected.
     // Clients that do not support connection status (GetConnectionStatusAsync returns null) are skipped.
-    private static async Task CheckAndRestartIfDisconnectedAsync(IBitTorrentClient manager, CancellationToken cancellationToken)
+    private static async Task CheckAndRestartIfDisconnectedAsync(IManagedClient manager, CancellationToken cancellationToken)
     {
         string? connectionStatus = await manager.GetConnectionStatusAsync(cancellationToken).ConfigureAwait(false);
         if (connectionStatus is null)
@@ -1211,14 +1213,19 @@ public sealed class PortSyncService
 
     private static (bool ForceStart, bool Restart, bool RestartOnDisconnect, bool WarnOnInterfaceMismatch) GetClientBehaviorConfig(AppConfig cfg, string activeSection)
     {
-        // RestartOnDisconnect and WarnOnInterfaceMismatch are qBittorrent-only: Transmission and Deluge
-        // do not expose a connection-state API, so neither feature can be implemented for them.
+        // RestartOnDisconnect is qBittorrent-only: it is the only client where restarting is both
+        // possible and the right response to a dropped connection. Nicotine+ reconnects itself,
+        // and restarting it would discard its configuration.
+        // WarnOnInterfaceMismatch needs a named adapter, which qBittorrent and Nicotine+ both
+        // report; Transmission and Deluge expose only a bind address, which the VPN rotates.
         bool isQBittorrent = activeSection == RegistrySettingsManager.SectionQBittorrent;
+        bool isNicotine = activeSection == RegistrySettingsManager.SectionNicotine;
         return (
             cfg.Client.ForceStart,
             cfg.Client.Restart,
             isQBittorrent && cfg.QBittorrentRestartOnDisconnect,
-            isQBittorrent && cfg.QBittorrentWarnOnInterfaceMismatch);
+            (isQBittorrent && cfg.QBittorrentWarnOnInterfaceMismatch) ||
+            (isNicotine && cfg.NicotineWarnOnInterfaceMismatch));
     }
 
     private static int GetDefaultPort(AppConfig cfg) => cfg.Client.DefaultPort;

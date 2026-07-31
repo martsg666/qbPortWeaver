@@ -5,6 +5,11 @@
 arrives later as a ``check-port-status`` event on the main thread. This module holds the
 in-flight state so a request can start a check and wait for that event, and so several
 overlapping requests share one check rather than each starting their own.
+
+Releases without that native checker (the ``check-port-status`` API is not in a stable
+Nicotine+ yet) fall back to querying the Soulseek port-test service over HTTP and parsing the
+verdict directly - see ``_web_request`` / ``_web_port_check``. ``request()`` picks the path
+from the ``port_test_native`` capability.
 """
 
 import re

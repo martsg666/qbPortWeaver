@@ -607,7 +607,7 @@ internal static partial class MediaImporter
     private static bool IsHostCachedUnreachable(string host)
     {
         if (!_unreachableHosts.TryGetValue(host, out long failedAt)) return false;
-        if (Environment.TickCount64 - failedAt < UnreachableHostCacheSeconds * 1000L) return true;
+        if (Environment.TickCount64 - failedAt < UnreachableHostCacheSeconds * AppConstants.MillisecondsPerSecond) return true;
         _unreachableHosts.TryRemove(host, out _); // stale - allow a fresh check
         return false;
     }

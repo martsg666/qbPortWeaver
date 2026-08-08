@@ -25,6 +25,10 @@ internal static class NicotinePluginDiscovery
     /// <summary>Identifier the plugin reports, used to confirm a connection file is really ours.</summary>
     internal const string PluginAppId = "qbpw-nicotine-bridge";
 
+    /// <summary>File whose presence marks the plugin as installed. Nicotine+ requires it, and it
+    /// carries the version, so it is the marker both the installer and this class key on.</summary>
+    internal const string PluginMarkerFileName = "PLUGININFO";
+
     private const string PrimaryFileName = "nicotine-bridge.json";
     private const string SecondaryFileName = "qbportweaver-bridge.json";
     private const string NicotineDataFolderName = "nicotine";
@@ -57,8 +61,14 @@ internal static class NicotinePluginDiscovery
     internal static string? ResolvePluginFolder(string? exePathHint)
     {
         string? dataFolder = ResolveDataFolder(exePathHint);
-        return dataFolder is null ? null : SafeCombine(dataFolder, PluginsFolderName, PluginFolderName);
+        return dataFolder is null ? null : CombinePluginFolder(dataFolder);
     }
+
+    /// <summary>Combines an already-resolved Nicotine+ data folder with the plugin's install location.</summary>
+    /// <remarks>Single source for the layout, so the installer and this class can never disagree
+    /// about where the plugin lives.</remarks>
+    internal static string CombinePluginFolder(string dataFolder) =>
+        SafeCombine(dataFolder, PluginsFolderName, PluginFolderName);
 
     /// <summary>Returns <see langword="true"/> if the bridge plugin is installed.</summary>
     /// <remarks>Keyed on the same marker file <see cref="NicotinePluginInstaller"/> uses to report
@@ -69,10 +79,6 @@ internal static class NicotinePluginDiscovery
         string? folder = ResolvePluginFolder(exePathHint);
         return folder is not null && SafeFileExists(SafeCombine(folder, PluginMarkerFileName));
     }
-
-    /// <summary>File whose presence marks the plugin as installed. Nicotine+ requires it, and it
-    /// carries the version, so it is the marker both the installer and this class key on.</summary>
-    internal const string PluginMarkerFileName = "PLUGININFO";
 
     /// <summary>
     /// Reads the connection file the running plugin published, or <see langword="null"/> when the
@@ -141,8 +147,9 @@ internal static class NicotinePluginDiscovery
             }
 
             // A stale file left by a crash could name a port some unrelated process has since
-            // taken. The liveness check plus the identity probe the client runs on first contact
-            // are what stop us talking to it.
+            // taken. This liveness check is the first guard; the second is the bearer token, which
+            // an unrelated listener cannot honour, so it answers with something other than a valid
+            // bridge response and the request fails cleanly.
             if (root.TryGetProperty("pid", out var pidElement) && pidElement.TryGetInt32(out int pid) &&
                 !IsProcessAlive(pid))
             {

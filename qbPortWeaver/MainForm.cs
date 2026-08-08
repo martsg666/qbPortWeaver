@@ -1066,10 +1066,25 @@ public partial class MainForm : Form
     // Marshals an action to the UI thread, using Invoke if called from a background thread
     private void InvokeOnUiThread(Action action) // NOSONAR S2325 - InvokeRequired/Invoke are instance members, method cannot be static
     {
-        if (InvokeRequired)
-            Invoke(action);
-        else
+        if (!InvokeRequired)
+        {
             action();
+            return;
+        }
+
+        try
+        {
+            Invoke(action);
+        }
+        // The callers' lambdas re-check IsDisposed, but Invoke itself throws if the handle is
+        // destroyed between InvokeRequired returning true and the marshalling completing. That
+        // window is narrow and only opens during shutdown, but this runs on the sync loop and
+        // LogManager's event thread, where an escaping exception would take the process down
+        // instead of ending a teardown that was already in progress.
+        catch (Exception ex) when (ex is ObjectDisposedException or InvalidOperationException)
+        {
+            LogManager.Instance.LogDebug($"MainForm.InvokeOnUiThread: form torn down before the action ran ({ex.GetType().Name})");
+        }
     }
 
     // Called from background threads via LogManager.WarnOrErrorLogged; marshals to UI thread

@@ -162,9 +162,9 @@ class PortTest:
         with self._lock:
             return self._snapshot()
 
-    def _snapshot(self, state=None, port=None):
-        state = state or self._state
-        port = port if port is not None else self._port
+    def _snapshot(self):
+        state = self._state
+        port = self._port
         age_ms = 0
         if self._started:
             age_ms = int((time.monotonic() - self._started) * 1000)

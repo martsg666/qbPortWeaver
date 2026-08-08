@@ -51,6 +51,13 @@ class BridgeHandler(BaseHTTPRequestHandler):
     server_version = "qbpwNicotineBridge/1.0"
     sys_version = ""
 
+    # Read/write deadline for an accepted connection. Required: a timeout set on the listening
+    # socket is NOT inherited by the sockets accept() returns, so without this a client that
+    # connects and then stalls - or promises a Content-Length it never sends - parks a handler
+    # thread forever. Threads are unbounded here, so those leak for the life of Nicotine+.
+    # StreamRequestHandler.setup() applies this to the connection.
+    timeout = SOCKET_TIMEOUT_SECONDS
+
     # -------------------------------------------------------------- entry points
 
     def do_GET(self):  # noqa: N802 - name mandated by BaseHTTPRequestHandler
@@ -215,8 +222,8 @@ class Bridge:
 
         self._server = BridgeHTTPServer((bind_host, bind_port), BridgeHandler)
         self._server.bridge = self
+        # Bounds accept() itself; the per-connection deadline is BridgeHandler.timeout.
         self._server.timeout = 1.0
-        self._server.socket.settimeout(SOCKET_TIMEOUT_SECONDS)
         self.port = self._server.server_address[1]
 
         self._thread = threading.Thread(target=self._serve, name="qbpwBridgeHTTP", daemon=True)

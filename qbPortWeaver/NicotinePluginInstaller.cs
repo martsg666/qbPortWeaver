@@ -67,7 +67,7 @@ internal static class NicotinePluginInstaller
                 "Nicotine+'s data folder was not found", null, null, null);
         }
 
-        string pluginFolder = Path.Combine(dataFolder, "plugins", NicotinePluginDiscovery.PluginFolderName);
+        string pluginFolder = NicotinePluginDiscovery.CombinePluginFolder(dataFolder);
         string? installedVersion = ReadInstalledVersion(pluginFolder);
 
         if (installedVersion is null)
@@ -106,9 +106,13 @@ internal static class NicotinePluginInstaller
     // ------------------------------------------------------------------ install
 
     /// <summary>
-    /// Writes the bundled plugin into Nicotine+'s plugin folder, replacing any earlier copy.
+    /// Writes the bundled plugin into Nicotine+'s plugin folder, overwriting any earlier copy of
+    /// each bundled file.
     /// <para>Safe while Nicotine+ is running: the plugin's own settings live in Nicotine+'s config,
     /// not in this folder, so nothing the user configured is lost.</para>
+    /// <para>Files an older layout had that this build no longer ships are left in place rather
+    /// than pruned - an orphaned module is inert because nothing imports it, and deleting from a
+    /// folder a running Nicotine+ may hold open is the riskier of the two failure modes.</para>
     /// </summary>
     internal static NicotinePluginActionResult InstallFiles(string? exePathHint)
     {
@@ -121,7 +125,7 @@ internal static class NicotinePluginInstaller
                 "above if this is a portable installation.");
         }
 
-        string pluginFolder = Path.Combine(dataFolder, "plugins", NicotinePluginDiscovery.PluginFolderName);
+        string pluginFolder = NicotinePluginDiscovery.CombinePluginFolder(dataFolder);
 
         try
         {
@@ -300,8 +304,8 @@ internal static class NicotinePluginInstaller
 
             if (names.Contains(NicotinePluginDiscovery.PluginFolderName, StringComparer.Ordinal))
             {
-                // Already enabled; still emit the file so the caller's flow is uniform.
-                updated = [.. result];
+                // Already listed; the master switch may still need turning on, and EnsureMasterSwitch
+                // emits the file either way so the caller's flow is uniform.
                 return EnsureMasterSwitch(result, enableLine, sectionEndLine, ref updated, ref reason);
             }
 
@@ -317,7 +321,6 @@ internal static class NicotinePluginInstaller
             sectionEndLine++;
         }
 
-        updated = [.. result];
         return EnsureMasterSwitch(result, enableLine, sectionEndLine, ref updated, ref reason);
     }
 

@@ -21,8 +21,30 @@ from bridge.main_thread import MainThreadProxy
 from bridge.port_test import MAX_WAIT_SECONDS, STATE_DONE, PortTest
 from bridge.server import API_VERSION, APP_ID, Bridge
 
-# Keep in step with PLUGININFO; qbPortWeaver reads it to decide whether it ships a newer copy.
-PLUGIN_VERSION = "1.1.0"
+
+def _read_plugin_version():
+    """Read the version out of PLUGININFO, next to this file.
+
+    PLUGININFO is the file Nicotine+ requires and the one qbPortWeaver reads to decide whether it
+    ships a newer copy, so it is the version that matters. Deriving the reported version from it
+    rather than repeating the number here means the two cannot drift apart. Parsing matches
+    qbPortWeaver's reader: first "Version" key wins, surrounding quotes stripped.
+    """
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "PLUGININFO")
+    try:
+        with open(path, encoding="utf-8") as handle:
+            for line in handle:
+                key, separator, value = line.partition("=")
+                if separator and key.strip().lower() == "version":
+                    return value.strip().strip("\"'")
+    # Nicotine+ will not load a plugin without this file, so this is close to unreachable - but a
+    # missing version must never stop the bridge from starting.
+    except OSError:
+        pass
+    return "unknown"
+
+
+PLUGIN_VERSION = _read_plugin_version()
 
 DEFAULT_HTTP_PORT = 38472
 EVENT_PORT_STATUS = "check-port-status"

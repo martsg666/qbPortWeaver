@@ -73,11 +73,11 @@ class CoreIO:
             "connect": callable(getattr(self._core, "connect", None)),
             "portmapper": callable(
                 getattr(getattr(self._core, "portmapper", None), "remove_port_mapping", None)),
-            # Native scriptable checker (upstream #3373). When it is absent, PortTest falls back to the
-            # Soulseek web port-test service, so testing itself ("port_test") is always available - only
-            # the native path is version-gated.
+            # Native scriptable checker (upstream #3373). When it is absent, PortTest falls back to
+            # the Soulseek web port-test service, so testing itself always works - only the native
+            # path is version-gated, and that fallback is a property of this plugin rather than of
+            # the running Nicotine+, so it is not a capability.
             "port_test_native": self._probe_port_test(),
-            "port_test": True,
         }
 
         # port_test_native has a web fallback, so its absence is not a degraded capability to warn about.

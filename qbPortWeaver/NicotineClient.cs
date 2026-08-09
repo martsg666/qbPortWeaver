@@ -353,11 +353,16 @@ public sealed class NicotineClient : ManagedClientBase
     {
         var (code, message) = ReadError(root);
 
+        // A plugin built against a different version of this client can report a failure in a
+        // shape ReadError does not recognise, leaving no message. Say that plainly instead of
+        // trailing a colon with nothing after it, on the one log line that explains the failure.
+        string detail = message.Length > 0 ? $": {message}" : " (the plugin gave no reason)";
+
         if (code == ErrorPortLocked)
         {
             // Not a transient failure: the port cannot change until Nicotine+ is restarted
             // without the option. Warn rather than Error, once per distinct message.
-            string warning = $"Cannot set the {ClientName} port: {message}";
+            string warning = $"Cannot set the {ClientName} port{detail}";
             if (_lastLockedWarning != warning)
             {
                 _lastLockedWarning = warning;
@@ -366,7 +371,7 @@ public sealed class NicotineClient : ManagedClientBase
             return;
         }
 
-        LogManager.Instance.LogMessage($"Failed to set {ClientName} port: {message}", LogLevel.Error);
+        LogManager.Instance.LogMessage($"Failed to set {ClientName} port{detail}", LogLevel.Error);
     }
 
     private async Task LogHttpFailureAsync(HttpResponseMessage response, string path,

@@ -10,6 +10,7 @@ never has to be restarted.
 
 import os
 import secrets
+import threading
 
 from pynicotine.events import events
 from pynicotine.pluginsystem import BasePlugin
@@ -17,7 +18,7 @@ from pynicotine.pluginsystem import BasePlugin
 from bridge import handshake
 from bridge.core_io import CoreIO
 from bridge.main_thread import MainThreadProxy
-from bridge.port_test import PortTest
+from bridge.port_test import MAX_WAIT_SECONDS, STATE_DONE, PortTest
 from bridge.server import API_VERSION, APP_ID, Bridge
 
 # Keep in step with PLUGININFO; qbPortWeaver reads it to decide whether it ships a newer copy.
@@ -336,10 +337,6 @@ class Plugin(BasePlugin):
             self.output(_BRIDGE_NOT_RUNNING)
             return
 
-        if not self._core_io.capabilities.get("port_test"):
-            self.output("This version of Nicotine+ has no port check.")
-            return
-
         text = (args or "").strip()
         try:
             port = int(text) if text else (self._core_io.active_port()
@@ -349,9 +346,31 @@ class Plugin(BasePlugin):
             return
 
         self.output(f"Checking port {port}; the result will appear here shortly.")
-        checker = self._core_io.port_checker()
-        if checker is not None:
-            checker.check_status(port)
+
+        # Go through PortTest.request rather than the native checker directly, so the command
+        # works on releases without the native API - the same dispatch /v1/porttest uses.
+        # On a worker thread: request() blocks for up to MAX_WAIT_SECONDS, and its native path
+        # marshals onto the main thread, which is where commands already run - calling it inline
+        # would stall there until the proxy timed out, with the interface frozen meanwhile.
+        threading.Thread(target=self._run_port_test, args=(port,),
+                         name="qbpwPortTestCommand", daemon=True).start()
+
+    def _run_port_test(self, port):
+        try:
+            snapshot = self._port_test.request(port, MAX_WAIT_SECONDS)
+        # Report the failure; a worker thread must never die silently.
+        except Exception as error:  # noqa: BLE001
+            self.output(f"Could not check port {port}: {error}")
+            return
+
+        if snapshot["state"] != STATE_DONE:
+            # Undetermined rather than closed: the check service was unreachable, or the verdict
+            # had not arrived yet. Saying "closed" here would send the user chasing a firewall.
+            self.output(f"Could not determine whether port {port} is reachable. Try again shortly.")
+        elif snapshot["result"]:
+            self.output(f"Port {port} is open.")
+        else:
+            self.output(f"Port {port} is closed. Check the forwarded port on your VPN.")
 
     def connection_file_command(self, _args, **_unused):
         if not self._handshake_paths:

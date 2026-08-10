@@ -425,11 +425,10 @@ public sealed class PortSyncService
         // applying 0 makes most clients pick a random port, quietly undoing the forwarding this app
         // maintains while the cycle still reports success. Falls through to the no-port branch, so
         // the grace window, the failure streak and auto-recovery all behave as they already do.
-        // A null does not match a relational pattern, so the no-port case falls through untouched.
-        if (vpnPort is < AppConstants.MinPortNumber or > AppConstants.MaxPortNumber)
+        if (vpnPort is int reportedPort && !AppConstants.IsUsablePort(reportedPort))
         {
             LogManager.Instance.LogMessage(
-                $"{vpnManager.ProviderName} reported an unusable port ({vpnPort.Value}) - ignoring it", LogLevel.Warn);
+                $"{vpnManager.ProviderName} reported an unusable port ({reportedPort}) - ignoring it", LogLevel.Warn);
             vpnPort = null;
         }
 

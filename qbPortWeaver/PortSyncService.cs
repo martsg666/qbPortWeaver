@@ -53,6 +53,14 @@ public sealed class PortSyncService
     // hold recovery off indefinitely; a forward jump would fire it on the first failure, which is
     // precisely the transient-blip restart the floor exists to prevent.
     private TimeSpan _failureStreakStarted;
+    // Consecutive restarts issued because the client reported itself disconnected, reset the moment it
+    // reports anything else. Restarting only helps when the cause is the client's own state; when the
+    // cause is persisted configuration - a stale network-interface binding, say - every restart re-reads
+    // the same value and reports disconnected again, so an uncapped loop restarts once per cycle forever
+    // while being structurally unable to fix anything. Each restart also interrupts transfers and can
+    // trigger rechecks, so the loop costs the user more than doing nothing would.
+    // Serialised by MainForm._updateSemaphore (same guarantee as _consecutiveFailedCycles).
+    private int _consecutiveDisconnectRestarts;
     // Tracks the last interface-mismatch message shown as a balloon tip to suppress repeat invocations
     // for the same persistent mismatch. Cleared when the mismatch resolves so the balloon re-fires if it returns.
     // Thread-safety: only read/written inside CheckInterfaceMatch via EnsureRunningAndUpdatePortAsync,
@@ -69,6 +77,10 @@ public sealed class PortSyncService
     // promptly once it is up, instead of waiting a full (possibly multi-minute) update interval.
     private const int StartupGracePeriodSeconds = 90;
     private const int StartupGracePollSeconds = 15;
+    // How many times a disconnected client is restarted before the attempts are suspended. Matches the
+    // auto-recovery trigger default: enough for a genuinely transient client fault to clear, few enough
+    // that an unfixable cause stops costing the user interrupted transfers.
+    private const int MaxDisconnectRestarts = 3;
     // Started once at construction (the sync service is created once at app startup). Monotonic, so a
     // wall-clock/NTP correction during the grace window - likely just after boot/login - cannot shift it.
     private readonly System.Diagnostics.Stopwatch _uptime = System.Diagnostics.Stopwatch.StartNew();
@@ -1103,7 +1115,7 @@ public sealed class PortSyncService
 
     // Checks connection status and restarts the client if it reports as disconnected.
     // Clients that do not support connection status (GetConnectionStatusAsync returns null) are skipped.
-    private static async Task CheckAndRestartIfDisconnectedAsync(IManagedClient manager, CancellationToken cancellationToken)
+    private async Task CheckAndRestartIfDisconnectedAsync(IManagedClient manager, CancellationToken cancellationToken)
     {
         string? connectionStatus = await manager.GetConnectionStatusAsync(cancellationToken).ConfigureAwait(false);
         if (connectionStatus is null)
@@ -1112,13 +1124,41 @@ public sealed class PortSyncService
         LogManager.Instance.LogDebug($"PortSyncService.CheckAndRestartIfDisconnectedAsync: {manager.ClientName} connection status: {connectionStatus}");
 
         if (!connectionStatus.Equals(ClientDisconnectedStatus, StringComparison.OrdinalIgnoreCase))
+        {
+            // Any non-disconnected status re-arms the allowance, so a later unrelated disconnect gets
+            // the full number of attempts rather than inheriting an exhausted counter.
+            if (_consecutiveDisconnectRestarts > 0)
+                LogManager.Instance.LogDebug(
+                    $"PortSyncService.CheckAndRestartIfDisconnectedAsync: {manager.ClientName} is no longer disconnected - restart attempts re-armed");
+            _consecutiveDisconnectRestarts = 0;
             return;
+        }
 
-        LogManager.Instance.LogMessage($"{manager.ClientName} connection status is disconnected - restarting", LogLevel.Warn);
+        if (_consecutiveDisconnectRestarts >= MaxDisconnectRestarts)
+        {
+            LogManager.Instance.LogDebug(
+                $"PortSyncService.CheckAndRestartIfDisconnectedAsync: {manager.ClientName} still disconnected, restarts remain suspended");
+            return;
+        }
+
+        _consecutiveDisconnectRestarts++;
+        LogManager.Instance.LogMessage(
+            $"{manager.ClientName} connection status is disconnected - restarting (attempt {_consecutiveDisconnectRestarts} of {MaxDisconnectRestarts})",
+            LogLevel.Warn);
+
         if (!await manager.RestartAsync(cancellationToken).ConfigureAwait(false))
             LogManager.Instance.LogMessage($"Failed to restart {manager.ClientName} after connection disconnect", LogLevel.Error);
         else
             LogManager.Instance.LogMessage($"Restarted {manager.ClientName} after connection disconnect", LogLevel.Info);
+
+        // Logged once, on the transition to the cap, so a persistent cause does not repeat this every
+        // cycle. The hint names the most common unfixable-by-restart cause: a binding the client keeps
+        // in its own configuration, which a restart re-reads unchanged.
+        if (_consecutiveDisconnectRestarts == MaxDisconnectRestarts)
+            LogManager.Instance.LogMessage(
+                $"Restarting has not cleared {manager.ClientName}'s disconnected status after {MaxDisconnectRestarts} attempts - " +
+                $"no further restarts until it reconnects. If it is bound to a VPN adapter, re-select the network interface in {manager.ClientName}'s settings.",
+                LogLevel.Warn);
     }
 
     // Builds a failure log message with cycle count and optional recovery trigger suffix

@@ -48,12 +48,10 @@ public static class UpdateChecker
             using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken).ConfigureAwait(false);
             var root = doc.RootElement;
 
-            if (!root.TryGetProperty(JsonPropTagName, out var tagElement) ||
-                !root.TryGetProperty(JsonPropHtmlUrl, out var urlElement))
+            if (root.GetStringOrNull(JsonPropTagName) is not { } tagName ||
+                root.GetStringOrNull(JsonPropHtmlUrl) is not { } releaseUrl)
                 return null;
 
-            string tagName = tagElement.GetString() ?? string.Empty;
-            string releaseUrl = urlElement.GetString() ?? string.Empty;
             string versionStr = tagName.TrimStart('v', 'V');
 
             bool isNewer = Version.TryParse(versionStr, out var latest) &&
@@ -116,13 +114,13 @@ public static class UpdateChecker
     // is missing a login, is a bot, or cannot be interpreted as a human contributor.
     private static ContributorInfo? TryParseContributor(JsonElement item)
     {
-        string login = item.TryGetProperty("login", out var loginEl) ? loginEl.GetString() ?? string.Empty : string.Empty;
+        string login = item.GetStringOrNull("login") ?? string.Empty;
         if (string.IsNullOrEmpty(login)) return null;
 
-        string type = item.TryGetProperty("type", out var typeEl) ? typeEl.GetString() ?? string.Empty : string.Empty;
+        string type = item.GetStringOrNull("type") ?? string.Empty;
         if (IsBot(login, type)) return null;
 
-        string url = item.TryGetProperty(JsonPropHtmlUrl, out var urlEl) ? urlEl.GetString() ?? string.Empty : string.Empty;
+        string url = item.GetStringOrNull(JsonPropHtmlUrl) ?? string.Empty;
         return new ContributorInfo(login, url);
     }
 
@@ -162,15 +160,14 @@ public static class UpdateChecker
     // (e.g. assets not yet uploaded). Callers fall back to opening the release page.
     private static string? TryGetMsiAssetUrl(JsonElement root)
     {
-        if (!root.TryGetProperty(JsonPropAssets, out var assets) || assets.ValueKind != JsonValueKind.Array)
+        if (!root.TryGetProperty(JsonPropAssets, out var assetsElement) || assetsElement.ValueKind != JsonValueKind.Array)
             return null;
 
-        foreach (var asset in assets.EnumerateArray())
+        foreach (var asset in assetsElement.EnumerateArray())
         {
-            string name = asset.TryGetProperty(JsonPropAssetName, out var nameEl) ? nameEl.GetString() ?? string.Empty : string.Empty;
+            string name = asset.GetStringOrNull(JsonPropAssetName) ?? string.Empty;
             if (name.EndsWith(".msi", StringComparison.OrdinalIgnoreCase) &&
-                asset.TryGetProperty(JsonPropAssetDownloadUrl, out var urlEl) &&
-                urlEl.GetString() is { Length: > 0 } url)
+                asset.GetStringOrNull(JsonPropAssetDownloadUrl) is { Length: > 0 } url)
                 return url;
         }
         return null;

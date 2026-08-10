@@ -124,7 +124,7 @@ internal static class NicotinePluginDiscovery
             using var doc = JsonDocument.Parse(json);
             var root = doc.RootElement;
 
-            if (!root.TryGetProperty("app", out var app) || app.GetString() != PluginAppId)
+            if (root.GetStringOrNull("app") != PluginAppId)
             {
                 LogManager.Instance.LogDebug($"NicotinePluginDiscovery.TryReadFile: {path} is not a qbPortWeaver bridge file");
                 return null;
@@ -137,9 +137,7 @@ internal static class NicotinePluginDiscovery
                 return null;
             }
 
-            string token = root.TryGetProperty("token", out var tokenElement)
-                ? tokenElement.GetString() ?? string.Empty
-                : string.Empty;
+            string token = root.GetStringOrNull("token") ?? string.Empty;
             if (token.Length == 0)
             {
                 LogManager.Instance.LogDebug($"NicotinePluginDiscovery.TryReadFile: {path} has no token");
@@ -157,9 +155,7 @@ internal static class NicotinePluginDiscovery
                 return null;
             }
 
-            string host = root.TryGetProperty("host", out var hostElement)
-                ? hostElement.GetString() ?? "127.0.0.1"
-                : "127.0.0.1";
+            string host = root.GetStringOrNull("host") ?? "127.0.0.1";
 
             return new NicotinePluginHandshake($"http://{host}:{port}", token, path); // NOSONAR S5332 - loopback IPC bridge on 127.0.0.1; TLS is meaningless for a local-only handshake
         }

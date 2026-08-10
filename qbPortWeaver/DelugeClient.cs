@@ -57,26 +57,24 @@ public sealed class DelugeClient : ManagedClientBase
 
             // Surface RPC-level errors (e.g. "Not Authenticated", "No daemon connected") with the
             // actual server message before falling through to the generic result-missing path.
-            if (root.TryGetProperty(JsonPropError, out var error) && error.ValueKind != JsonValueKind.Null)
+            if (root.TryGetProperty(JsonPropError, out var errorElement) && errorElement.ValueKind != JsonValueKind.Null)
             {
-                LogManager.Instance.LogMessage($"{ClientName} RPC returned an error for core.get_config_values: {error}", LogLevel.Error);
+                LogManager.Instance.LogMessage($"{ClientName} RPC returned an error for core.get_config_values: {errorElement}", LogLevel.Error);
                 return (null, null);
             }
 
-            if (!root.TryGetProperty(JsonPropResult, out var result) || result.ValueKind == JsonValueKind.Null)
+            if (!root.TryGetProperty(JsonPropResult, out var resultElement) || resultElement.ValueKind == JsonValueKind.Null)
             {
                 LogManager.Instance.LogDebug("DelugeClient.GetPreferencesAsync: 'result' key missing or null in RPC response");
                 return (null, null);
             }
 
-            int? listenPort = ParseListenPort(result);
+            int? listenPort = ParseListenPort(resultElement);
 
             if (listenPort is null)
                 LogManager.Instance.LogDebug("DelugeClient.GetPreferencesAsync: listen_ports not parsed in RPC response");
 
-            string? bindAddress = null;
-            if (result.TryGetProperty("listen_interface", out var ifaceElement))
-                bindAddress = ifaceElement.GetString();
+            string? bindAddress = resultElement.GetStringOrNull("listen_interface");
 
             return (listenPort, bindAddress);
         }
@@ -110,10 +108,10 @@ public sealed class DelugeClient : ManagedClientBase
             var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
             using var doc = JsonDocument.Parse(json);
             // Deluge returns {"result":null,"error":null,"id":N} on success
-            if (doc.RootElement.TryGetProperty(JsonPropError, out var error) &&
-                error.ValueKind != JsonValueKind.Null)
+            if (doc.RootElement.TryGetProperty(JsonPropError, out var errorElement) &&
+                errorElement.ValueKind != JsonValueKind.Null)
             {
-                LogManager.Instance.LogMessage($"{ClientName} RPC returned an error for core.set_config: {error}", LogLevel.Error);
+                LogManager.Instance.LogMessage($"{ClientName} RPC returned an error for core.set_config: {errorElement}", LogLevel.Error);
                 return false;
             }
 
@@ -155,15 +153,15 @@ public sealed class DelugeClient : ManagedClientBase
             using var doc = JsonDocument.Parse(json);
             var root = doc.RootElement;
 
-            if (root.TryGetProperty(JsonPropError, out var error) && error.ValueKind != JsonValueKind.Null)
+            if (root.TryGetProperty(JsonPropError, out var errorElement) && errorElement.ValueKind != JsonValueKind.Null)
             {
-                LogManager.Instance.LogDebug($"DelugeClient.TestListeningPortAsync: RPC returned an error: {error}");
+                LogManager.Instance.LogDebug($"DelugeClient.TestListeningPortAsync: RPC returned an error: {errorElement}");
                 return null;
             }
 
-            if (root.TryGetProperty(JsonPropResult, out var result) &&
-                result.ValueKind is JsonValueKind.True or JsonValueKind.False)
-                return result.GetBoolean();
+            if (root.TryGetProperty(JsonPropResult, out var resultElement) &&
+                resultElement.ValueKind is JsonValueKind.True or JsonValueKind.False)
+                return resultElement.GetBoolean();
 
             return null;
         }
@@ -204,13 +202,13 @@ public sealed class DelugeClient : ManagedClientBase
             // Any non-null error object lands here, not only credential failures - keep the hint
             // soft and let the raw server error carry the diagnosis. The definitive wrong-password
             // case is the result:false branch below (Deluge returns false, not an error, for that).
-            if (root.TryGetProperty(JsonPropError, out var error) && error.ValueKind != JsonValueKind.Null)
+            if (root.TryGetProperty(JsonPropError, out var errorElement) && errorElement.ValueKind != JsonValueKind.Null)
             {
-                LogManager.Instance.LogMessage($"{ClientName} authentication failed: {error} - check the password in Settings and that the Web UI is running", LogLevel.Error);
+                LogManager.Instance.LogMessage($"{ClientName} authentication failed: {errorElement} - check the password in Settings and that the Web UI is running", LogLevel.Error);
                 return false;
             }
 
-            if (root.TryGetProperty(JsonPropResult, out var result) && result.ValueKind == JsonValueKind.True)
+            if (root.TryGetProperty(JsonPropResult, out var resultElement) && resultElement.ValueKind == JsonValueKind.True)
                 return true;
 
             LogManager.Instance.LogMessage($"{ClientName} authentication failed: wrong password - check the credentials in Settings", LogLevel.Error);
@@ -224,20 +222,20 @@ public sealed class DelugeClient : ManagedClientBase
         }
     }
 
-    private static int? ParseListenPort(JsonElement result)
+    private static int? ParseListenPort(JsonElement resultElement)
     {
-        bool randomPort = result.TryGetProperty("random_port", out var randomPortElement) &&
+        bool randomPort = resultElement.TryGetProperty("random_port", out var randomPortElement) &&
                           randomPortElement.ValueKind == JsonValueKind.True;
 
         if (randomPort)
         {
-            if (result.TryGetProperty("listen_random_port", out var randomPortValElement) &&
-                randomPortValElement.TryGetInt32(out int parsed))
+            if (resultElement.TryGetProperty("listen_random_port", out var listenRandomPortElement) &&
+                listenRandomPortElement.TryGetInt32(out int parsed))
                 return parsed;
         }
         else
         {
-            if (result.TryGetProperty("listen_ports", out var listenPortsElement) &&
+            if (resultElement.TryGetProperty("listen_ports", out var listenPortsElement) &&
                 listenPortsElement.ValueKind == JsonValueKind.Array &&
                 listenPortsElement.GetArrayLength() > 0 &&
                 listenPortsElement[0].TryGetInt32(out int parsed))

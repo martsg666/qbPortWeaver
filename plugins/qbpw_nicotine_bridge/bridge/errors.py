@@ -61,10 +61,6 @@ def unsupported(what):
     )
 
 
-def core_not_ready():
-    return ApiError(503, "core_not_ready", "Nicotine+ is still starting up.")
-
-
 def shutting_down():
     return ApiError(503, "shutting_down", "Nicotine+ is shutting down.")
 

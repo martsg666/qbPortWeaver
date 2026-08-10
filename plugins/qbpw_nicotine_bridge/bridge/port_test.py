@@ -136,9 +136,14 @@ class PortTest:
             return self._snapshot()
 
     def _web_request(self, port, wait_seconds):
-        """Fallback path: query the Soulseek port-test service over HTTP and parse the verdict. Runs
-        on the handler thread (touches no Nicotine+ internals) and caches per port for STALE_AFTER so
-        repeated checks do not hammer the service."""
+        """Fallback path: query the Soulseek port-test service over HTTP and parse the verdict.
+
+        Runs on the handler thread and touches no Nicotine+ internals. A verdict is cached per port
+        for STALE_AFTER, so repeated checks return the cached answer rather than re-querying the
+        service. The lock is released across the HTTP call, so two checks starting at the same time
+        both query it - unlike the native path, which joins an in-flight check. That costs one extra
+        request in a rare race, which is cheaper than a second implementation of the join logic.
+        """
         now = time.monotonic()
         with self._lock:
             if self._state == STATE_DONE and self._port == port and now - self._started < STALE_AFTER:

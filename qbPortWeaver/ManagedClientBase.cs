@@ -188,9 +188,13 @@ public abstract class ManagedClientBase : IManagedClient // NOSONAR S3881 - all 
 
     /// <summary>
     /// Performs the client-specific authentication handshake. Returns <see langword="true"/> on success.
-    /// Default implementation is a no-op for clients that authenticate per-request (e.g. Transmission's
-    /// X-Transmission-Session-Id CSRF handshake). Cookie-based clients (qBittorrent, Deluge) override
-    /// this with their login flow.
+    /// <para>The four clients fall into two groups. <b>Session-based</b> clients - qBittorrent and
+    /// Deluge - override this with their login flow and reach it through
+    /// <see cref="EnsureAuthenticatedAsync"/>, which runs it once per instance.
+    /// <b>Per-request</b> clients need no handshake and keep this default: Transmission negotiates an
+    /// X-Transmission-Session-Id CSRF token inline on each RPC call, and Nicotine+ attaches a bearer
+    /// token to every request. Both therefore never call <see cref="EnsureAuthenticatedAsync"/> at
+    /// all - that is expected, not an omission.</para>
     /// </summary>
     protected virtual Task<bool> AuthenticateAsync(CancellationToken cancellationToken = default) => Task.FromResult(true);
 

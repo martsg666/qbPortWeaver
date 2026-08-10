@@ -561,6 +561,15 @@ public partial class SettingsForm : Form
         {
             // Form closed while the test was in flight - nothing to report.
         }
+        // The caller is an async void event handler, so an escape here would take the app down.
+        catch (Exception ex)
+        {
+            LogManager.Instance.LogMessage($"Recovery test failed: {ex.Message}", LogLevel.Warn);
+            if (!IsDisposed)
+                ThemedMessageBox.Show(
+                    $"The recovery test could not run.\n\n{ex.Message}",
+                    AppIdentity.AppName, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        }
         finally
         {
             if (!IsDisposed)
@@ -760,11 +769,15 @@ public partial class SettingsForm : Form
             return;
         }
 
-        using var client = clientFactory();
+        // Constructed inside the try so nothing can throw past the catch to the async void caller,
+        // or past the finally that restores the button and cursor. Disposed there instead of by a
+        // `using`, which the try-scoping displaces.
+        IManagedClient? client = null;
         button.Enabled = false;
         UseWaitCursor = true;
         try
         {
+            client = clientFactory();
             // Linked to the form-close token (like every other in-flight form operation) so closing
             // the dialog cancels the probe instead of letting it run out its timeout in the background.
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(_formCloseCts.Token);
@@ -787,8 +800,19 @@ public partial class SettingsForm : Form
                     $"The {clientName} connection test timed out after {AppConstants.ClientTestTimeoutSeconds} seconds.\n\nCheck the URL and that the client is running.",
                     AppIdentity.AppName, MessageBoxButtons.OK, MessageBoxIcon.Warning);
         }
+        // The caller is an async void event handler, so an escape here would take the app down.
+        // A failed connection test is never worth that.
+        catch (Exception ex)
+        {
+            LogManager.Instance.LogMessage($"{clientName} connection test failed: {ex.Message}", LogLevel.Warn);
+            if (!IsDisposed)
+                ThemedMessageBox.Show(
+                    $"The {clientName} connection test could not run.\n\n{ex.Message}",
+                    AppIdentity.AppName, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        }
         finally
         {
+            client?.Dispose();
             if (!IsDisposed)
             {
                 UseWaitCursor = false;

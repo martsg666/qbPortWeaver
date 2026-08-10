@@ -6,10 +6,15 @@ namespace qbPortWeaver;
 /// <summary>Base class providing shared process-lifecycle and HTTP infrastructure for the peer-to-peer clients.</summary>
 public abstract class ManagedClientBase : IManagedClient // NOSONAR S3881 - all subclasses are sealed with no additional disposable resources
 {
-    protected const int ProcessStartDelayMs = 2000;
+    // Two launch settle delays, differing only in how warm the start is. A cold start (ForceStart:
+    // the client was not running) waits longer because the executable and its dependencies are being
+    // paged in for the first time; a restart (the image is already in the file cache, and the process
+    // was alive moments ago) registers with the OS sooner. Both are only the wait before the
+    // IsRunning check - API readiness is polled separately by WaitForApiReadyAsync.
+    protected const int ProcessStartDelayMs = 2000;   // cold start, via ForceStartAsync
+    protected const int ProcessInitDelayMs = 1000;    // warm restart, via RestartAsync
     protected const int ProcessKillTimeoutMs = 5000;
     protected const int ProcessKillRetryDelayMs = 1000;
-    protected const int ProcessInitDelayMs = 1000;
     private const int ApiReadyPollIntervalMs = 500;
     private const int ApiReadyTimeoutSeconds = 30;
     private const int ApiProbeTimeoutSeconds = 2;
@@ -120,8 +125,14 @@ public abstract class ManagedClientBase : IManagedClient // NOSONAR S3881 - all 
     /// <summary>Called by <see cref="RestartAsync"/> before the kill step. Override to inject pre-kill work (e.g. waiting for a config flush).</summary>
     protected virtual Task PreRestartAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 
-    // Launches the process, waits for the OS to register it, confirms it is running,
-    // then polls the API URL until it accepts connections or the timeout elapses.
+    // Launches the process, waits for the OS to register it, confirms it is running, then polls the
+    // API URL until it accepts connections or the timeout elapses.
+    //
+    // Only the process check gates the result: API readiness is best-effort and its outcome is
+    // deliberately not propagated. A client whose process is up but whose Web UI is still warming
+    // still returns true, because the alternative - reporting a start failure for a slow-but-healthy
+    // client - is the worse error, and the first real request produces a far better-targeted message
+    // than this probe could. A probe timeout is recorded at Debug and nowhere else.
     protected async Task<bool> LaunchAndWaitAsync(int initialDelayMs, CancellationToken cancellationToken)
     {
         Process.Start(CreateStartInfo())?.Dispose();

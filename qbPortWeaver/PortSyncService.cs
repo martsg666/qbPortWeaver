@@ -80,6 +80,11 @@ public sealed class PortSyncService
     // Port verification throttle: full reachability tests run at most every N cycles because
     // Transmission's and Deluge's tests contact their projects' online check services.
     private const int VerifyEveryNCycles = 5;
+    // How many consecutive undetermined results are tolerated while a closed result awaits
+    // confirmation before the pending state is dropped and the normal throttle resumes. Three keeps
+    // a genuine confirmation reachable across a couple of transient glitches without polling an
+    // unavailable check service every cycle for as long as it stays down.
+    private const int MaxPendingUndetermined = 3;
 
     // Startup grace window: right after the app starts the VPN is often still connecting (boot/login).
     // For this long, a not-yet-connected VPN is held quietly - no failure, recovery, default-port
@@ -113,6 +118,11 @@ public sealed class PortSyncService
     private int _cyclesSinceVerify = VerifyEveryNCycles;
     private bool _portCheckPendingConfirmation; // one unconfirmed closed result seen
     private bool _portConfirmedClosed;          // closed confirmed by two consecutive checks
+    // Consecutive undetermined results while awaiting confirmation. An undetermined result cannot
+    // resolve the pending state, but pending forces a check every cycle - so a checker outage would
+    // otherwise be polled at full rate indefinitely, by every install at once. Counts only while
+    // pending; any definite result clears it.
+    private int _pendingUndeterminedCount;
 
     // Port-closed recovery state (serialised by MainForm._updateSemaphore like the rest).
     // The armed flag implements one-shot recovery: a persistent false "closed" (e.g. qBittorrent's
@@ -906,8 +916,21 @@ public sealed class PortSyncService
         if (open is null)
         {
             LogManager.Instance.LogDebug($"PortSyncService.VerifyPortAsync: {manager.ClientName} port reachability could not be determined");
+            // Only pending forces a check every cycle, so only pending needs bounding. Give up
+            // waiting for a confirmation the check service is not able to supply and fall back to
+            // the normal throttle; a later definite closed result simply starts the sequence again.
+            if (_portCheckPendingConfirmation && ++_pendingUndeterminedCount >= MaxPendingUndetermined)
+            {
+                _portCheckPendingConfirmation = false;
+                _pendingUndeterminedCount = 0;
+                LogManager.Instance.LogMessage(
+                    $"{manager.ClientName} port reachability stayed undetermined for {MaxPendingUndetermined} checks - " +
+                    "the earlier closed result could not be confirmed, resuming the normal check interval",
+                    LogLevel.Info);
+            }
             return;
         }
+        _pendingUndeterminedCount = 0;
         status[StatusKeys.PortVerified] = open.Value;
 
         if (open.Value)

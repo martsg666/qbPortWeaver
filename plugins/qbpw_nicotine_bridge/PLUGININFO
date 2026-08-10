@@ -1,4 +1,4 @@
 Name = "qbPortWeaver Bridge"
-Version = "1.1.0"
+Version = "1.2.0"
 Authors = ["qbPortWeaver"]
 Description = "Lets qbPortWeaver keep the Soulseek listening port in sync with a VPN's forwarded port. Exposes a token-authenticated JSON API on 127.0.0.1 only; the port is applied live, without restarting Nicotine+."

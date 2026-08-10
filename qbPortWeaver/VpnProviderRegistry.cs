@@ -5,9 +5,13 @@ internal sealed record VpnProvider(string Keyword, VpnRegistryConfig Config);
 
 /// <summary>
 /// Single source of truth for the VPN providers qbPortWeaver knows how to drive in auto-recovery.
-/// Adding a 4th provider: add one entry to <see cref="KnownProviders"/> here. Both
-/// <see cref="NatPmpManager.FindProviderToken"/> and <see cref="AutoRecoveryManager"/>
-/// derive their behaviour from this list, so no other code needs to change.
+/// <para><b>Adding a provider.</b> Add one entry to <see cref="KnownProviders"/>; everything in this
+/// class derives from it, as do <see cref="NatPmpManager.FindProviderToken"/> and
+/// <see cref="AutoRecoveryManager"/>. That is not the whole job, though - you must also add the
+/// keyword constant in <see cref="RegistrySettingsManager"/>, the dispatch in
+/// <c>PortSyncService.CreateVpnManagerAsync</c> that decides which manager to construct, and the
+/// entry in the Settings provider dropdown. Only the recovery behaviour is derived; provider
+/// selection and construction are not.</para>
 /// </summary>
 internal static class VpnProviderRegistry
 {
@@ -40,7 +44,11 @@ internal static class VpnProviderRegistry
     /// </summary>
     internal static bool IsRecognizedProvider(string? provider) =>
         provider is not null && (
-            provider.Equals(RegistrySettingsManager.VpnProviderProtonVpn, StringComparison.OrdinalIgnoreCase) ||
-            provider.Equals(RegistrySettingsManager.VpnProviderPia, StringComparison.OrdinalIgnoreCase) ||
+            // Derived rather than re-listed, so a provider added to KnownProviders is recognised here
+            // automatically. Re-listing them meant a new provider recovered correctly but was reported
+            // as unrecognised by Diagnostics.
+            KnownProviders.Any(p => p.Keyword.Equals(provider, StringComparison.OrdinalIgnoreCase)) ||
+            // NAT-PMP stays explicit: it is deliberately absent from KnownProviders (no service to
+            // restart - it recovers by cycling the adapter) while still being selectable in Settings.
             provider.Equals(RegistrySettingsManager.VpnProviderNatPmp, StringComparison.OrdinalIgnoreCase));
 }

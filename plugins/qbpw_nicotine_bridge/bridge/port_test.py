@@ -205,7 +205,9 @@ def _web_port_check(port, timeout, log):
     url = _port_check_url() % port
     try:
         request = urllib.request.Request(url, headers={"User-Agent": "qbPortWeaver-bridge"})
-        # Fixed https host; only the integer port is interpolated, so this is not an SSRF vector.
+        # Not an SSRF vector: the port is a validated integer (see _validate_port) and the URL
+        # comes from pynicotine or the hardcoded fallback - never from a request. Code able to
+        # set __port_checker_url__ is already running inside this process, so trusting it is free.
         with urllib.request.urlopen(request, timeout=max(1.0, timeout)) as response:  # noqa: S310
             body = response.read(65536).decode("utf-8", "replace")
     # Any network or parse failure means "could not determine", never a hard error.

@@ -161,7 +161,11 @@ internal static class AutoRecoveryManager
                 }
                 catch (Exception ex) { LogManager.Instance.LogDebug($"AutoRecoveryManager.KillClientProcesses: Kill '{processName}': {ex.Message}"); }
             }
-            if (exePath is not null)
+            // Discriminate on whether anything was running, not on whether the exe path was readable.
+            // exePath is also null when instances *were* killed but MainModule threw (the 32/64-bit
+            // mismatch and access-denied cases handled above), and VPN clients commonly run elevated -
+            // so using it here would report "was not running" immediately after killing them.
+            if (processes.Length > 0)
                 LogManager.Instance.LogMessage($"Killed client process '{processName}'", LogLevel.Info);
             else
                 LogManager.Instance.LogDebug($"AutoRecoveryManager.KillClientProcesses: Client process '{processName}' was not running");

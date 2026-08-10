@@ -418,6 +418,21 @@ public sealed class PortSyncService
         LogManager.Instance.LogMessage($"{vpnManager.ProviderName} is connected", LogLevel.Info);
 
         int? vpnPort = await vpnManager.GetVpnPortAsync(cancellationToken).ConfigureAwait(false);
+
+        // A provider can report a value outside the usable range - ProtonVPN's log carries a port
+        // pair while a mapping is being torn down, and NAT-PMP/PIA each guard this case themselves.
+        // Guarding here covers every provider at the point the value becomes the client's config:
+        // applying 0 makes most clients pick a random port, quietly undoing the forwarding this app
+        // maintains while the cycle still reports success. Falls through to the no-port branch, so
+        // the grace window, the failure streak and auto-recovery all behave as they already do.
+        // A null does not match a relational pattern, so the no-port case falls through untouched.
+        if (vpnPort is < AppConstants.MinPortNumber or > AppConstants.MaxPortNumber)
+        {
+            LogManager.Instance.LogMessage(
+                $"{vpnManager.ProviderName} reported an unusable port ({vpnPort.Value}) - ignoring it", LogLevel.Warn);
+            vpnPort = null;
+        }
+
         if (!vpnPort.HasValue)
         {
             // Connected but no port yet (e.g. NAT-PMP mapping still establishing). Within the startup

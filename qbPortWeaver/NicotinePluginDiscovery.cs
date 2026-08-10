@@ -131,7 +131,8 @@ internal static class NicotinePluginDiscovery
             }
 
             if (!root.TryGetProperty("port", out var portElement) ||
-                !portElement.TryGetInt32(out int port) || port is < 1 or > 65535)
+                !portElement.TryGetInt32(out int port) ||
+                port is < AppConstants.MinPortNumber or > AppConstants.MaxPortNumber)
             {
                 LogManager.Instance.LogDebug($"NicotinePluginDiscovery.TryReadFile: {path} has no usable port");
                 return null;

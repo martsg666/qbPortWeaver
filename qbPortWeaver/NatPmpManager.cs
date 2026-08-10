@@ -107,18 +107,23 @@ public sealed class NatPmpManager : IVpnManager
             _lastExternalPort = result.ExternalPort;
             LastGrantedLifetime = result.LifetimeGranted;
 
+            // Map TCP before reporting, so the one line the user sees states which protocols are
+            // actually forwarded. UDP and TCP are separate mappings (RFC 6886) and a gateway can
+            // grant one without the other, so naming only one of them - or neither - would leave
+            // the reader guessing about the very thing this log line exists to confirm.
+            bool tcpMapped = await RequestTcpMappingAsync(result.ExternalPort, cancellationToken).ConfigureAwait(false);
+            string protocols = tcpMapped ? "UDP and TCP" : "UDP only";
+
             // All three cases log at Info deliberately: NAT-PMP leases have finite lifetimes
             // so every renewal is a meaningful event (confirms the gateway is still reachable
             // and the mapping is still active). Renewals are not high-frequency at typical
             // sync intervals (30-60s) relative to lease lifetimes (several minutes).
             if (suggested != 0 && result.ExternalPort == suggested)
-                LogManager.Instance.LogMessage($"NAT-PMP lease renewed: port {result.ExternalPort}, lifetime {result.LifetimeGranted}s", LogLevel.Info);
+                LogManager.Instance.LogMessage($"NAT-PMP lease renewed: port {result.ExternalPort} ({protocols}), lifetime {result.LifetimeGranted}s", LogLevel.Info);
             else if (suggested != 0)
-                LogManager.Instance.LogMessage($"NAT-PMP lease granted new port {result.ExternalPort} (suggested {suggested} unavailable), lifetime {result.LifetimeGranted}s", LogLevel.Info);
+                LogManager.Instance.LogMessage($"NAT-PMP lease granted new port {result.ExternalPort} ({protocols}, suggested {suggested} unavailable), lifetime {result.LifetimeGranted}s", LogLevel.Info);
             else
-                LogManager.Instance.LogMessage($"NAT-PMP lease granted: port {result.ExternalPort}, lifetime {result.LifetimeGranted}s", LogLevel.Info);
-
-            await RequestTcpMappingAsync(result.ExternalPort, cancellationToken).ConfigureAwait(false);
+                LogManager.Instance.LogMessage($"NAT-PMP lease granted: port {result.ExternalPort} ({protocols}), lifetime {result.LifetimeGranted}s", LogLevel.Info);
 
             return result.ExternalPort;
         }
@@ -138,7 +143,8 @@ public sealed class NatPmpManager : IVpnManager
     // Deliberately non-fatal: the UDP mapping is already granted and usable, so a gateway that
     // rejects opcode 2 must not cost the user a working port. Warn rather than Error for the same
     // reason - it is a partial result, not a failed cycle.
-    private async Task RequestTcpMappingAsync(ushort udpPort, CancellationToken cancellationToken)
+    /// <returns><see langword="true"/> when TCP is mapped on the same port as UDP.</returns>
+    private async Task<bool> RequestTcpMappingAsync(ushort udpPort, CancellationToken cancellationToken)
     {
         var tcp = await RequestPortMappingAsync(_gateway, _mappingLifetime, OpcodeMapTcp, udpPort, cancellationToken).ConfigureAwait(false);
 
@@ -148,7 +154,7 @@ public sealed class NatPmpManager : IVpnManager
                 $"NAT-PMP TCP mapping for port {udpPort} was not granted on '{_adapter.Name}': {tcp.Error} - " +
                 "UDP is mapped, so this only matters if the gateway does not forward both protocols together",
                 LogLevel.Warn);
-            return;
+            return false;
         }
 
         if (tcp.ExternalPort != udpPort)
@@ -157,10 +163,23 @@ public sealed class NatPmpManager : IVpnManager
                 $"NAT-PMP granted TCP port {tcp.ExternalPort} but UDP port {udpPort} on '{_adapter.Name}' - " +
                 "the client listens on one port, so inbound TCP may not reach it",
                 LogLevel.Warn);
-            return;
+            return false;
         }
 
-        LogManager.Instance.LogDebug($"NatPmpManager.RequestTcpMappingAsync: TCP mapped on port {tcp.ExternalPort}, lifetime {tcp.LifetimeGranted}s");
+        // Track the shorter of the two leases. WarnIfNatPmpLeaseTooShort compares the user's sync
+        // interval against LastGrantedLifetime, which until here holds the UDP grant only - a TCP
+        // mapping that expired first would stop inbound TCP between cycles with nothing reported.
+        uint udpLifetime = LastGrantedLifetime;
+        LastGrantedLifetime = Math.Min(udpLifetime, tcp.LifetimeGranted);
+
+        // No success line: the caller's Info entry already reports "(UDP and TCP)" with the
+        // lifetime. Only a disagreement is worth logging, because it is what shortens the
+        // renewal budget the interval is checked against.
+        if (tcp.LifetimeGranted != udpLifetime)
+            LogManager.Instance.LogDebug(
+                $"NatPmpManager.RequestTcpMappingAsync: TCP lease is {tcp.LifetimeGranted}s against UDP's {udpLifetime}s - renewal follows the shorter one");
+
+        return true;
     }
 
     /// <inheritdoc />

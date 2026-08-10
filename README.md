@@ -80,7 +80,7 @@ After installing, open **Settings** from the tray icon to configure the applicat
   Optionally launch the client automatically if it is not running.
 
 - **Restart on Disconnect** *(qBittorrent only)*
-  Optionally restart qBittorrent when its connection status changes to disconnected. Requires the Executable and Process name to be configured.
+  Optionally restart qBittorrent when its connection status changes to disconnected. Requires the Executable and Process name to be configured. Restarts stop after three consecutive attempts that do not clear the disconnect, since a cause the client keeps in its own configuration cannot be fixed by restarting; they resume automatically once it reconnects.
 
 - **Port Verification**
   After each sync, optionally checks that the listening port is actually reachable from the Internet - not just configured. Runs after a port change and periodically (every 5th cycle); a closed result is confirmed on the next cycle before a warning is logged and a tray notification is shown. Transmission and Deluge use their projects' online port checkers; qBittorrent infers reachability from incoming connections, so an idle client may report closed. Nicotine+ is checked through its bridge plugin: it uses Nicotine+'s own native port checker when the version has one, and otherwise queries the Soulseek port-test service directly, so reachability works on current releases too. Enabled by default.
@@ -90,6 +90,9 @@ After installing, open **Settings** from the tray icon to configure the applicat
 
 - **VPN Interface Mismatch Warning** *(qBittorrent and Nicotine+)*
   Shows a tray balloon tip and logs a warning if the client's network interface does not match the configured VPN provider, or if it is bound to all interfaces (which may cause traffic leaks). Transmission and Deluge expose only a bind address, which the VPN rotates on reconnect, so the check does not apply to them.
+
+- **Stale Interface Binding Detection** *(qBittorrent only)*
+  qBittorrent stores its network interface as an internal identifier as well as a name. When a VPN destroys and recreates its adapter the identifier stops resolving while the name still reads correctly, so qBittorrent listens on nothing and a restart cannot fix it - the value is in its own configuration. qbPortWeaver checks the identifier against qBittorrent's live adapter list each cycle and warns when it has gone stale. **Fix the network interface binding when it goes stale** re-applies it automatically, restoring the adapter you selected. Enabled by default; turn it off to be warned instead.
 
 - **Port Update Notification**
   Optionally shows a tray balloon tip when the client's listening port is successfully updated to a new value. Enabled by default. Configurable via Settings > General.
@@ -184,6 +187,7 @@ On first run, all settings are initialized with sensible defaults.
 | Default port (0 = disabled) | Fallback port to apply when VPN is not connected | `0` |
 | Warn on interface mismatch | Warn if qBittorrent's network interface doesn't match the VPN | `True` |
 | Restart on disconnect | Restart qBittorrent when its connection status changes to disconnected (requires Executable and Process name) | `True` |
+| Fix the network interface binding when it goes stale | Re-apply qBittorrent's network interface when its stored identifier no longer matches the adapter it names | `True` |
 
 #### Transmission
 
@@ -285,11 +289,12 @@ Configured via tray menu → **Media Manager**.
 5. Connects to the client and retrieves the current listening port.
    - For qBittorrent: also reads the bound network interface for mismatch detection.
 6. *(qBittorrent only)* If **Warn on interface mismatch** is enabled: checks that qBittorrent's network interface matches the configured VPN provider and shows a tray warning if not.
+   Also checks that qBittorrent's stored interface identifier still resolves to the adapter it names, and warns - or re-applies it, if **Fix the network interface binding when it goes stale** is enabled - when it does not. This check runs whatever the VPN provider is, since the binding can go stale without the VPN being involved.
 7. If ports differ:
    - Updates the client's listening port.
    - Shows a tray balloon tip if **Notify on port update** is enabled.
    - Restarts the client if configured.
-8. *(qBittorrent only)* If **Restart on disconnect** is enabled (and qBittorrent was not already restarted in step 7): checks qBittorrent's connection status and restarts it if disconnected.
+8. *(qBittorrent only)* If **Restart on disconnect** is enabled (and qBittorrent was not already restarted in step 7): checks qBittorrent's connection status and restarts it if disconnected. After three consecutive restarts that leave it disconnected, further restarts are suspended until it reconnects.
 9. If **Verify port after sync** is enabled and the VPN is connected: checks that the port is reachable from the Internet (after a port change and every 5th cycle otherwise). A closed result is re-tested on the next cycle before a warning is raised. If **Trigger auto-recovery when port stays closed** is enabled, repeated confirmed closed checks trigger auto-recovery (a VPN service restart, or adapter cycle for NAT-PMP), at most once until the port tests open again.
 10. Writes the JSON status file (`%LocalAppData%\qbPortWeaver\qbPortWeaver.status.json`) and updates the tray icon and tooltip. If the port changed this cycle, the optional post-update command is then launched (fire-and-forget) - after the status file is written, so a script that reads it (e.g. `powershell -File "C:\path\to\SampleSendMail.ps1"`) sees this cycle's result rather than the previous one.
 11. Waits for the configured interval before repeating. If a manual sync was triggered, the wait is shortened to 10 seconds.

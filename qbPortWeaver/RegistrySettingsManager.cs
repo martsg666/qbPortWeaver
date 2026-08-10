@@ -177,9 +177,12 @@ public static class RegistrySettingsManager
                 [KeyDefaultPort] = "0",
                 [KeyWarnOnInterfaceMismatch] = ValueTrue,
                 [KeyRestartOnDisconnect] = ValueTrue,
-                // Off by default: this writes to qBittorrent's own configuration, so it stays opt-in.
-                // Detection runs regardless and warns; only the repair is gated by this.
-                [KeyFixInterfaceBinding] = ValueFalse
+                // On by default, like the app's other remediation settings. The write is the same
+                // setPreferences call the port sync already makes every cycle, and it restores the
+                // adapter the user picked rather than choosing one - a far smaller intervention than
+                // auto-recovery, which restarts services by default. Turning it off downgrades the
+                // behaviour to a warning; detection runs either way.
+                [KeyFixInterfaceBinding] = ValueTrue
             },
             [SectionTransmission] = new(StringComparer.OrdinalIgnoreCase)
             {

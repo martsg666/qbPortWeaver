@@ -44,8 +44,11 @@ flowchart TD
     DONE_CHECK{restartOnDisconnect AND\nrestart not attempted this cycle?}
     DONE_CHECK -- Yes --> CONN_STATUS[Check client connection status]
     DONE_CHECK -- No --> VERIFY
-    CONN_STATUS -- disconnected --> RESTART_CLIENT[Restart client]
-    CONN_STATUS -- connected/firewalled --> VERIFY
+    CONN_STATUS -- disconnected --> RESTART_CAP{Under the restart cap?}
+    CONN_STATUS -- connected/firewalled --> RESET_CAP[Re-arm restart attempts]
+    RESET_CAP --> VERIFY
+    RESTART_CAP -- Yes --> RESTART_CLIENT[Restart client]
+    RESTART_CAP -- No --> VERIFY
     RESTART_CLIENT --> VERIFY
 
     VERIFY{verifyPortAfterSync AND\nVPN connected?}
@@ -210,6 +213,51 @@ All client communication goes through the `IManagedClient` interface, with imple
 When enabled, the cycle compares the client's bound network interface (`current_interface_name` from qBittorrent's preferences, `interface` from the Nicotine+ bridge - both Windows adapter friendly names) against the configured VPN provider name. A mismatch raises the `InterfaceMismatchDetected` event, which shows a warning balloon tip from the tray icon. This helps catch cases where qBittorrent is routing traffic outside the VPN tunnel. Transmission and Deluge do not expose a named adapter via their APIs, so this check is skipped for those clients.
 
 > If qBittorrent stays bound to an old adapter name after a ProtonVPN protocol change (e.g. `ProtonVPN` while the active tunnel is now `ProTUN`), this warning fires correctly - rebind qBittorrent's network interface to the active adapter to clear it.
+
+### Stale Interface Binding *(qBittorrent only)*
+
+The check above compares the adapter *name*, but qBittorrent binds by a separate value.
+`current_network_interface` holds an opaque token of the form `<type>_<index>` - `iftype53_32768`,
+`ethernet_32768`, `loopback_0` - and that is what libtorrent resolves. `current_interface_name` is
+the display name only.
+
+When a VPN destroys and recreates its adapter, Windows issues a new index while the name is reused.
+The stored token then resolves to nothing, so qBittorrent logs `The configured network interface is
+invalid` and listens on no port - while the name check above still passes, because the name is
+genuinely correct. Restarting cannot help: the token is persisted configuration and is re-read
+unchanged. If the token instead resolves to a *different* live adapter of the same type, the client
+reports itself connected while its traffic leaves outside the tunnel.
+
+Each cycle, `QBittorrentClient.CheckInterfaceBindingAsync` reads the live pairs from
+`GET /api/v2/app/networkInterfaceList` and looks up the entry whose `name` equals
+`current_interface_name`. Resolution is by name, so the differing token formats never need parsing.
+The binding is reported stale only when that entry exists and its token differs from the stored one;
+every ambiguous case - no name, bound to all interfaces, adapter absent (the VPN is simply down), or
+the endpoint missing on an older qBittorrent - is treated as "nothing to say".
+
+Detection always runs, whatever the VPN provider is, because the binding can go stale without the
+VPN being involved. What happens next depends on `fixInterfaceBinding` (qBittorrent section,
+default on):
+
+| setting | behaviour |
+|---------|-----------|
+| off | Warn plus a one-shot balloon, naming the stale binding and how to clear it |
+| on  | `POST /api/v2/app/setPreferences` re-applies the resolved token **and** the name together, as the Web UI does when an adapter is picked |
+
+The repair never writes an empty token: empty means *bind to every interface*, which would replace a
+client that cannot connect with one reachable outside the tunnel. It is also attempted once per stale
+streak - if the binding is still wrong on the next cycle something else is overwriting it, and
+repeating the write every cycle would be its own loop. The attempt re-arms as soon as the binding
+reads healthy.
+
+### Restart-on-Disconnect Cap *(qBittorrent only)*
+
+`restartOnDisconnect` restarts the client when it reports `disconnected`. That helps only when the
+cause is the client's own state; when the cause is persisted configuration - a stale interface
+binding being the known example - every restart re-reads the same value and reports disconnected
+again. Restarts are therefore capped at three consecutive attempts, after which a single Warn names
+the likely cause and further restarts are suspended. Any non-disconnected status re-arms the
+allowance, so a later unrelated disconnect gets the full three attempts.
 
 ### Port Verification
 

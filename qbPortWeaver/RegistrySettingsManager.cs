@@ -50,6 +50,11 @@ public static class RegistrySettingsManager
     public const string KeyQBittorrentProcessName = "qBittorrentProcessName";
     public const string KeyRestartQBittorrent = "restartqBittorrent";
     public const string KeyForceStartQBittorrent = "forceStartqBittorrent";
+    // Unprefixed keys are per-client settings whose name is scoped by the section they live in, so the
+    // same name is reused across sections rather than being repeated with each client's name.
+    // DefaultPort is stored in all four client sections; WarnOnInterfaceMismatch in the two whose
+    // clients can report a bound interface (qBittorrent, Nicotine+); the last two are qBittorrent-only
+    // today but would keep these names if another client ever needed them.
     public const string KeyDefaultPort = "defaultPort";
     public const string KeyWarnOnInterfaceMismatch = "warnOnInterfaceMismatch";
     public const string KeyRestartOnDisconnect = "restartOnDisconnect";
@@ -81,7 +86,6 @@ public static class RegistrySettingsManager
     public const string KeyNicotineExePath = "nicotineExePath";
     public const string KeyRestartNicotine = "restartNicotine";
     public const string KeyForceStartNicotine = "forceStartNicotine";
-    public const string KeyNicotineWarnOnInterfaceMismatch = "nicotineWarnOnInterfaceMismatch";
 
     // Registry key names - extra section
     public const string KeyPostUpdateCmd = "postUpdateCmd";
@@ -211,7 +215,7 @@ public static class RegistrySettingsManager
                 // restart would fix - and killing Nicotine+ discards its configuration.
                 [KeyRestartNicotine] = ValueFalse,
                 [KeyForceStartNicotine] = ValueTrue,
-                [KeyNicotineWarnOnInterfaceMismatch] = ValueTrue,
+                [KeyWarnOnInterfaceMismatch] = ValueTrue,
                 [KeyDefaultPort] = "0"
             },
             [SectionExtra] = new(StringComparer.OrdinalIgnoreCase)

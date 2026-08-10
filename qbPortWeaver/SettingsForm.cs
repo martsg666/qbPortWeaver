@@ -250,7 +250,7 @@ public partial class SettingsForm : Form
         txtNicotineExePath.Text = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionNicotine, RegistrySettingsManager.KeyNicotineExePath);
         txtNicotineProcessName.Text = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionNicotine, RegistrySettingsManager.KeyNicotineProcessName);
         chkForceStartNicotine.Checked = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionNicotine, RegistrySettingsManager.KeyForceStartNicotine);
-        chkNicotineWarnOnInterfaceMismatch.Checked = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionNicotine, RegistrySettingsManager.KeyNicotineWarnOnInterfaceMismatch);
+        chkNicotineWarnOnInterfaceMismatch.Checked = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionNicotine, RegistrySettingsManager.KeyWarnOnInterfaceMismatch);
         nudNicotineDefaultPort.Value = Math.Clamp(
             RegistrySettingsManager.GetInt(RegistrySettingsManager.SectionNicotine, RegistrySettingsManager.KeyDefaultPort),
             (int)nudNicotineDefaultPort.Minimum, (int)nudNicotineDefaultPort.Maximum);
@@ -333,7 +333,7 @@ public partial class SettingsForm : Form
         RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionNicotine, RegistrySettingsManager.KeyNicotineExePath, txtNicotineExePath.Text.Trim());
         RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionNicotine, RegistrySettingsManager.KeyNicotineProcessName, txtNicotineProcessName.Text.Trim());
         RegistrySettingsManager.SetBool(RegistrySettingsManager.SectionNicotine, RegistrySettingsManager.KeyForceStartNicotine, chkForceStartNicotine.Checked);
-        RegistrySettingsManager.SetBool(RegistrySettingsManager.SectionNicotine, RegistrySettingsManager.KeyNicotineWarnOnInterfaceMismatch, chkNicotineWarnOnInterfaceMismatch.Checked);
+        RegistrySettingsManager.SetBool(RegistrySettingsManager.SectionNicotine, RegistrySettingsManager.KeyWarnOnInterfaceMismatch, chkNicotineWarnOnInterfaceMismatch.Checked);
         RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionNicotine, RegistrySettingsManager.KeyDefaultPort, ((int)nudNicotineDefaultPort.Value).ToString());
 
         // Extra

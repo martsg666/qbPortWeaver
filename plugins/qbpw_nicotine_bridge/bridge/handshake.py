@@ -6,8 +6,14 @@ way, so the bridge writes both to a file at a path both sides can derive indepen
 
 Two locations are written. The primary one sits in qbPortWeaver's own data folder, which is a
 fixed path regardless of how Nicotine+ was installed. The secondary one sits in the Nicotine+
-data folder, which is where a user would go looking, and which is the only one that works when
-Nicotine+ and qbPortWeaver run under different Windows accounts.
+data folder, which is where a user would go looking.
+
+Both paths are per-user, so if Nicotine+ and qbPortWeaver run under different Windows accounts
+neither is reachable by default: each side derives its own profile's folder. The secondary path
+is the only one that can bridge that gap, and only for a portable Nicotine+ install, whose data
+folder sits beside the executable outside any user profile and so can be readable by both
+accounts. A roaming install offers no shared location and needs the address and token entered
+manually in Settings.
 
 The token is not a strong secret and is not treated as one: any process running as this user
 could read Nicotine+'s config directly and do everything the token permits. Its job is to keep

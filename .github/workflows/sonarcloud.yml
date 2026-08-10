@@ -13,7 +13,13 @@ on:
   push:
     branches:
       - master
-      - '2.*'   # release branches
+      - '*.*'    # release branches (2.6.4, 3.0.0, ...)
+      # These need their own entries: '*' does not match '/', so '*.*' cannot reach them.
+      # qa/ and rc/ are pushed to directly rather than via PR, so the pull_request trigger
+      # misses them too; feature/ is analysed from the first push rather than only at PR time.
+      - 'qa/*'
+      - 'rc/*'
+      - 'feature/*'
   pull_request:
 
 concurrency:

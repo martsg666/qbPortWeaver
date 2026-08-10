@@ -247,7 +247,7 @@ internal static class NicotinePluginInstaller
     /// Whether Nicotine+ is configured to load the plugin. <see langword="null"/> when the config
     /// cannot be read or understood, which is not the same as a definite no.
     /// </summary>
-    internal static bool? IsEnabledInConfig(string dataFolder)
+    private static bool? IsEnabledInConfig(string dataFolder)
     {
         try
         {

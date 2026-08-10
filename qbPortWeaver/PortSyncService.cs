@@ -66,6 +66,11 @@ public sealed class PortSyncService
     // stick is not retried every cycle, which would be the same unbounded-remedy loop as the restarts.
     // Serialised by MainForm._updateSemaphore (same guarantee as _consecutiveFailedCycles).
     private bool _interfaceBindingRepairAttempted;
+    // One latch per condition, each owned by exactly one method. They must not be shared:
+    // CheckInterfaceMatch clears its latch on every healthy cycle, which would defeat the dedupe for
+    // any other condition writing to the same field - a persistent binding warning would then balloon
+    // on every cycle instead of once.
+    private string? _lastBindingWarningMessage;
     // Tracks the last interface-mismatch message shown as a balloon tip to suppress repeat invocations
     // for the same persistent mismatch. Cleared when the mismatch resolves so the balloon re-fires if it returns.
     // Thread-safety: only read/written inside CheckInterfaceMatch via EnsureRunningAndUpdatePortAsync,
@@ -814,10 +819,12 @@ public sealed class PortSyncService
             CheckInterfaceMatch(manager.ClientName, currentInterfaceName, config.VpnManager);
 
         // The name check above cannot see a stale interface *token*, which is a qBittorrent-only
-        // concern - see CheckInterfaceBindingAsync. Runs whatever the VPN provider is, since the
-        // binding can go stale without the VPN being involved.
+        // concern. Deliberately not gated on the two conditions above: a binding can go stale with
+        // no VPN configured at all, and the client test is narrower than SupportsInterfaceMismatchWarning.
+        // WarnOnInterfaceMismatch is a preference rather than a capability, so it is applied inside,
+        // to the warning only - the repair runs either way.
         if (manager is QBittorrentClient qbClient)
-            await CheckInterfaceBindingAsync(qbClient, currentInterfaceName, config, cancellationToken).ConfigureAwait(false);
+            await CheckAndRepairInterfaceBindingAsync(qbClient, currentInterfaceName, config, cancellationToken).ConfigureAwait(false);
 
         if (currentPort.Value == targetPort)
         {
@@ -1067,21 +1074,25 @@ public sealed class PortSyncService
             return;
         }
 
-        RaiseInterfaceBalloon(balloonMessage);
+        _lastInterfaceMismatchMessage = RaiseInterfaceBalloonIfNew(balloonMessage, _lastInterfaceMismatchMessage);
     }
 
-    // Detects a stale qBittorrent interface binding and, when the user has opted in, re-points it at
-    // the adapter qBittorrent already names. Detection always runs: the stored token can drift to a
-    // different live adapter while the client still reports itself connected, which no other check in
-    // the cycle would notice and which is the case that can carry traffic outside the tunnel.
-    private async Task CheckInterfaceBindingAsync(QBittorrentClient client, string? interfaceName, SyncConfig config, CancellationToken cancellationToken)
+    // Detects a stale qBittorrent interface binding and re-points it at the adapter qBittorrent
+    // already names. Detection always runs: the stored token can drift to a different live adapter
+    // while the client still reports itself connected, which no other check in the cycle would
+    // notice and which is the case that can carry traffic outside the tunnel.
+    // Two independent settings govern what follows - fixInterfaceBinding decides whether the binding
+    // is repaired, warnOnInterfaceMismatch decides whether an unrepaired one is reported.
+    private async Task CheckAndRepairInterfaceBindingAsync(QBittorrentClient client, string? interfaceName, SyncConfig config, CancellationToken cancellationToken)
     {
         var (stale, expectedToken) = await client.CheckInterfaceBindingAsync(interfaceName, cancellationToken).ConfigureAwait(false);
 
         if (!stale || expectedToken is null || interfaceName is null)
         {
-            // Healthy, or nothing to say. Re-arm so a later drift gets a fresh repair attempt.
+            // Healthy, or nothing to say. Re-arm so a later drift gets a fresh repair attempt, and
+            // clear this condition's own balloon latch so a future stale binding notifies again.
             _interfaceBindingRepairAttempted = false;
+            _lastBindingWarningMessage = null;
             return;
         }
 
@@ -1091,10 +1102,26 @@ public sealed class PortSyncService
 
         if (!config.FixInterfaceBinding)
         {
-            LogManager.Instance.LogMessage(
-                $"{warning}. Re-select the network interface in {client.ClientName}, or turn on \"Fix the network interface binding when it goes stale\" in Settings.",
-                LogLevel.Warn);
-            RaiseInterfaceBalloon($"{client.ClientName}: network interface binding is stale - re-select it or enable the automatic fix.");
+            // Only the warning honours WarnOnInterfaceMismatch. Detection above is a capability gate
+            // and has to run either way - the repair must work whether or not the user wants to be
+            // told - but this branch produces exactly the kind of notification that setting turns
+            // off, through the same event and balloon as the adapter-name warning beside it. Warning
+            // here while "bound to all interfaces - traffic may leak" stays silent would be the
+            // stricter of the two, which is backwards.
+            if (config.WarnOnInterfaceMismatch)
+            {
+                LogManager.Instance.LogMessage(
+                    $"{warning}. Re-select the network interface in {client.ClientName}, or turn on \"Fix the network interface binding when it goes stale\" in Settings.",
+                    LogLevel.Warn);
+                    _lastBindingWarningMessage = RaiseInterfaceBalloonIfNew(
+                    $"{client.ClientName}: network interface binding is stale - re-select it or enable the automatic fix.",
+                    _lastBindingWarningMessage);
+            }
+            else
+            {
+                LogManager.Instance.LogDebug(
+                    $"PortSyncService.CheckAndRepairInterfaceBindingAsync: {client.ClientName} binding is stale, but both the fix and the interface warning are off");
+            }
             return;
         }
 
@@ -1103,7 +1130,7 @@ public sealed class PortSyncService
         if (_interfaceBindingRepairAttempted)
         {
             LogManager.Instance.LogDebug(
-                $"PortSyncService.CheckInterfaceBindingAsync: {client.ClientName} binding still stale after a repair - not retrying until it is healthy");
+                $"PortSyncService.CheckAndRepairInterfaceBindingAsync: {client.ClientName} binding still stale after a repair - not retrying until it is healthy");
             return;
         }
 
@@ -1116,14 +1143,15 @@ public sealed class PortSyncService
             LogManager.Instance.LogMessage($"Could not re-apply the {client.ClientName} network interface binding - re-select it in {client.ClientName}", LogLevel.Error);
     }
 
-    // Shared balloon dispatch for interface problems, deduplicated on the message so a persistent
-    // condition notifies once rather than every cycle (same latch CheckInterfaceMatch uses).
-    private void RaiseInterfaceBalloon(string balloonMessage)
+    // Balloon dispatch for interface problems, deduplicated so a persistent condition notifies once
+    // rather than every cycle. Returns the latch value the caller should store, so each condition owns
+    // its own latch and no caller can clear another's.
+    private string? RaiseInterfaceBalloonIfNew(string balloonMessage, string? lastMessage)
     {
-        if (balloonMessage == _lastInterfaceMismatchMessage) return;
-        _lastInterfaceMismatchMessage = balloonMessage;
+        if (balloonMessage == lastMessage) return lastMessage;
         try { InterfaceMismatchDetected?.Invoke(balloonMessage); }
         catch (Exception ex) { LogManager.Instance.LogMessage($"InterfaceMismatchDetected handler failed: {ex.Message}", LogLevel.Warn); }
+        return balloonMessage;
     }
 
     private void NotifyPortUpdated(string clientName, int port)

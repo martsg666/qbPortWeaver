@@ -53,6 +53,7 @@ public static class RegistrySettingsManager
     public const string KeyDefaultPort = "defaultPort";
     public const string KeyWarnOnInterfaceMismatch = "warnOnInterfaceMismatch";
     public const string KeyRestartOnDisconnect = "restartOnDisconnect";
+    public const string KeyFixInterfaceBinding = "fixInterfaceBinding";
 
     // Registry key names - transmission section
     public const string KeyTransmissionUrl = "transmissionURL";
@@ -171,7 +172,10 @@ public static class RegistrySettingsManager
                 [KeyForceStartQBittorrent] = ValueTrue,
                 [KeyDefaultPort] = "0",
                 [KeyWarnOnInterfaceMismatch] = ValueTrue,
-                [KeyRestartOnDisconnect] = ValueTrue
+                [KeyRestartOnDisconnect] = ValueTrue,
+                // Off by default: this writes to qBittorrent's own configuration, so it stays opt-in.
+                // Detection runs regardless and warns; only the repair is gated by this.
+                [KeyFixInterfaceBinding] = ValueFalse
             },
             [SectionTransmission] = new(StringComparer.OrdinalIgnoreCase)
             {

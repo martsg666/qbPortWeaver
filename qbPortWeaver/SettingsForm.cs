@@ -105,6 +105,10 @@ public partial class SettingsForm : Form
         toolTip.SetToolTip(nudQBittorrentDefaultPort, DefaultPortTooltip);
         toolTip.SetToolTip(chkWarnOnInterfaceMismatch, "Show a warning when qBittorrent's network interface does not match the configured VPN provider");
         toolTip.SetToolTip(chkRestartOnDisconnect, "Automatically restart qBittorrent when its connection status becomes disconnected");
+        toolTip.SetToolTip(chkFixInterfaceBinding,
+            "qBittorrent stores its network interface as an internal identifier that stops resolving when a VPN " +
+            "recreates its adapter. It then listens on nothing while still showing the right adapter name, and a " +
+            "restart cannot fix it. Re-applies the binding automatically when that happens.");
         toolTip.SetToolTip(txtTransmissionURL, "URL for the Transmission RPC endpoint (e.g. http://127.0.0.1:9091). Remote access must be enabled in Transmission Preferences > Remote (not required when running as a service).");
         toolTip.SetToolTip(txtTransmissionUserName, "Username for the Transmission RPC (leave empty if authentication is disabled)");
         toolTip.SetToolTip(txtTransmissionPassword, "Password for the Transmission RPC (leave empty if authentication is disabled)");
@@ -211,6 +215,7 @@ public partial class SettingsForm : Form
         chkForceStartQBittorrent.Checked = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyForceStartQBittorrent);
         chkWarnOnInterfaceMismatch.Checked = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyWarnOnInterfaceMismatch);
         chkRestartOnDisconnect.Checked = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyRestartOnDisconnect);
+        chkFixInterfaceBinding.Checked = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyFixInterfaceBinding);
 
         nudQBittorrentDefaultPort.Value = Math.Clamp(
             RegistrySettingsManager.GetInt(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyDefaultPort),
@@ -301,6 +306,7 @@ public partial class SettingsForm : Form
         RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyDefaultPort, ((int)nudQBittorrentDefaultPort.Value).ToString());
         RegistrySettingsManager.SetBool(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyWarnOnInterfaceMismatch, chkWarnOnInterfaceMismatch.Checked);
         RegistrySettingsManager.SetBool(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyRestartOnDisconnect, chkRestartOnDisconnect.Checked);
+        RegistrySettingsManager.SetBool(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyFixInterfaceBinding, chkFixInterfaceBinding.Checked);
 
         // Transmission
         RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionTransmission, RegistrySettingsManager.KeyTransmissionUrl, txtTransmissionURL.Text.Trim());

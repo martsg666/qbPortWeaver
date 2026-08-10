@@ -61,6 +61,11 @@ public sealed class PortSyncService
     // trigger rechecks, so the loop costs the user more than doing nothing would.
     // Serialised by MainForm._updateSemaphore (same guarantee as _consecutiveFailedCycles).
     private int _consecutiveDisconnectRestarts;
+    // True once a stale interface binding has been re-applied for the current stale streak. Cleared as
+    // soon as the binding reads healthy, so a later drift is repaired again - but a write that does not
+    // stick is not retried every cycle, which would be the same unbounded-remedy loop as the restarts.
+    // Serialised by MainForm._updateSemaphore (same guarantee as _consecutiveFailedCycles).
+    private bool _interfaceBindingRepairAttempted;
     // Tracks the last interface-mismatch message shown as a balloon tip to suppress repeat invocations
     // for the same persistent mismatch. Cleared when the mismatch resolves so the balloon re-fires if it returns.
     // Thread-safety: only read/written inside CheckInterfaceMatch via EnsureRunningAndUpdatePortAsync,
@@ -149,6 +154,7 @@ public sealed class PortSyncService
         ClientConfig Client,
         bool QBittorrentWarnOnInterfaceMismatch,
         bool QBittorrentRestartOnDisconnect,
+        bool QBittorrentFixInterfaceBinding,
         bool NicotineWarnOnInterfaceMismatch,
         string PostUpdateCommand,
         bool VpnAutoRecoveryEnabled,
@@ -168,6 +174,7 @@ public sealed class PortSyncService
         IVpnManager? VpnManager,
         bool WarnOnInterfaceMismatch,
         bool RestartOnDisconnect,
+        bool FixInterfaceBinding,
         bool NotifyOnPortUpdate,
         bool VerifyPort,
         bool PortClosedRecoveryEnabled,
@@ -376,6 +383,7 @@ public sealed class PortSyncService
                 VpnManager: syncVpnManager,
                 WarnOnInterfaceMismatch: warnOnInterfaceMismatch,
                 RestartOnDisconnect: restartOnDisconnect,
+                FixInterfaceBinding: cfg.QBittorrentFixInterfaceBinding,
                 NotifyOnPortUpdate: cfg.NotifyOnPortUpdate,
                 VerifyPort: cfg.VerifyPortAfterSync,
                 PortClosedRecoveryEnabled: cfg.PortClosedRecoveryEnabled,
@@ -509,6 +517,7 @@ public sealed class PortSyncService
             Client: clientConfig,
             QBittorrentWarnOnInterfaceMismatch: RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyWarnOnInterfaceMismatch),
             QBittorrentRestartOnDisconnect: RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyRestartOnDisconnect),
+            QBittorrentFixInterfaceBinding: RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyFixInterfaceBinding),
             NicotineWarnOnInterfaceMismatch: RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionNicotine, RegistrySettingsManager.KeyNicotineWarnOnInterfaceMismatch),
             PostUpdateCommand: RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionExtra, RegistrySettingsManager.KeyPostUpdateCmd),
             VpnAutoRecoveryEnabled: RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyVpnAutoRecoveryEnabled),
@@ -554,7 +563,8 @@ public sealed class PortSyncService
         if (activeSection == RegistrySettingsManager.SectionQBittorrent)
             clientLine +=
                 $", {RegistrySettingsManager.KeyWarnOnInterfaceMismatch}={cfg.QBittorrentWarnOnInterfaceMismatch}" +
-                $", {RegistrySettingsManager.KeyRestartOnDisconnect}={cfg.QBittorrentRestartOnDisconnect}";
+                $", {RegistrySettingsManager.KeyRestartOnDisconnect}={cfg.QBittorrentRestartOnDisconnect}" +
+                $", {RegistrySettingsManager.KeyFixInterfaceBinding}={cfg.QBittorrentFixInterfaceBinding}";
         LogManager.Instance.LogDebug(clientLine);
 
         LogManager.Instance.LogDebug(
@@ -802,6 +812,12 @@ public sealed class PortSyncService
         // Warn if the client's network interface doesn't match the configured VPN provider
         if (config.VpnManager is not null && config.WarnOnInterfaceMismatch && manager.SupportsInterfaceMismatchWarning)
             CheckInterfaceMatch(manager.ClientName, currentInterfaceName, config.VpnManager);
+
+        // The name check above cannot see a stale interface *token*, which is a qBittorrent-only
+        // concern - see CheckInterfaceBindingAsync. Runs whatever the VPN provider is, since the
+        // binding can go stale without the VPN being involved.
+        if (manager is QBittorrentClient qbClient)
+            await CheckInterfaceBindingAsync(qbClient, currentInterfaceName, config, cancellationToken).ConfigureAwait(false);
 
         if (currentPort.Value == targetPort)
         {
@@ -1051,6 +1067,59 @@ public sealed class PortSyncService
             return;
         }
 
+        RaiseInterfaceBalloon(balloonMessage);
+    }
+
+    // Detects a stale qBittorrent interface binding and, when the user has opted in, re-points it at
+    // the adapter qBittorrent already names. Detection always runs: the stored token can drift to a
+    // different live adapter while the client still reports itself connected, which no other check in
+    // the cycle would notice and which is the case that can carry traffic outside the tunnel.
+    private async Task CheckInterfaceBindingAsync(QBittorrentClient client, string? interfaceName, SyncConfig config, CancellationToken cancellationToken)
+    {
+        var (stale, expectedToken) = await client.CheckInterfaceBindingAsync(interfaceName, cancellationToken).ConfigureAwait(false);
+
+        if (!stale || expectedToken is null || interfaceName is null)
+        {
+            // Healthy, or nothing to say. Re-arm so a later drift gets a fresh repair attempt.
+            _interfaceBindingRepairAttempted = false;
+            return;
+        }
+
+        string warning =
+            $"{client.ClientName} is bound to '{interfaceName}' by a stale identifier, so it is not listening on that adapter - " +
+            "restarting cannot fix this because the value is stored in its configuration";
+
+        if (!config.FixInterfaceBinding)
+        {
+            LogManager.Instance.LogMessage(
+                $"{warning}. Re-select the network interface in {client.ClientName}, or turn on \"Fix the network interface binding when it goes stale\" in Settings.",
+                LogLevel.Warn);
+            RaiseInterfaceBalloon($"{client.ClientName}: network interface binding is stale - re-select it or enable the automatic fix.");
+            return;
+        }
+
+        // One attempt per stale streak: if the write lands but the binding is still wrong next cycle,
+        // something else is overwriting it and repeating the write every cycle would be its own loop.
+        if (_interfaceBindingRepairAttempted)
+        {
+            LogManager.Instance.LogDebug(
+                $"PortSyncService.CheckInterfaceBindingAsync: {client.ClientName} binding still stale after a repair - not retrying until it is healthy");
+            return;
+        }
+
+        _interfaceBindingRepairAttempted = true;
+        LogManager.Instance.LogMessage($"{warning}. Re-applying it.", LogLevel.Warn);
+
+        if (await client.RepairInterfaceBindingAsync(interfaceName, expectedToken, cancellationToken).ConfigureAwait(false))
+            LogManager.Instance.LogMessage($"Re-applied the {client.ClientName} network interface binding to '{interfaceName}'", LogLevel.Info);
+        else
+            LogManager.Instance.LogMessage($"Could not re-apply the {client.ClientName} network interface binding - re-select it in {client.ClientName}", LogLevel.Error);
+    }
+
+    // Shared balloon dispatch for interface problems, deduplicated on the message so a persistent
+    // condition notifies once rather than every cycle (same latch CheckInterfaceMatch uses).
+    private void RaiseInterfaceBalloon(string balloonMessage)
+    {
         if (balloonMessage == _lastInterfaceMismatchMessage) return;
         _lastInterfaceMismatchMessage = balloonMessage;
         try { InterfaceMismatchDetected?.Invoke(balloonMessage); }

@@ -149,6 +149,18 @@ public static class DiagnosticsService
         results.Add(new(Checks.VpnConnection, DiagnosticStatus.Pass, $"{vpn.ProviderName} is connected"));
 
         int? port = await vpn.GetVpnPortAsync(cancellationToken).ConfigureAwait(false);
+
+        // Same usability rule the sync loop applies, so the report cannot pass a port the loop
+        // would ignore. An unusable value is discarded here too, leaving the later in-sync check
+        // to skip rather than compare the client against nonsense.
+        if (port is int reported && !AppConstants.IsUsablePort(reported))
+        {
+            results.Add(new(Checks.ForwardedPort, DiagnosticStatus.Fail,
+                $"{vpn.ProviderName} reported an unusable port ({reported})",
+                "The VPN is connected but has not assigned a usable forwarded port. Re-check that port forwarding is enabled on a P2P server."));
+            return (vpn, null);
+        }
+
         if (port is int p)
             results.Add(new(Checks.ForwardedPort, DiagnosticStatus.Pass, $"Port {p}"));
         else

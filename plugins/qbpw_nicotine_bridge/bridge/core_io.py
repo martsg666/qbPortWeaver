@@ -73,10 +73,16 @@ class CoreIO:
             "connect": callable(getattr(self._core, "connect", None)),
             "portmapper": callable(
                 getattr(getattr(self._core, "portmapper", None), "remove_port_mapping", None)),
-            "port_test": self._probe_port_test(),
+            # Native scriptable checker (upstream #3373). When it is absent, PortTest falls back to
+            # the Soulseek web port-test service, so testing itself always works - only the native
+            # path is version-gated, and that fallback is a property of this plugin rather than of
+            # the running Nicotine+, so it is not a capability.
+            "port_test_native": self._probe_port_test(),
         }
 
-        missing = sorted(name for name, present in caps.items() if not present)
+        # port_test_native has a web fallback, so its absence is not a degraded capability to warn about.
+        missing = sorted(name for name, present in caps.items()
+                         if not present and name != "port_test_native")
         if missing:
             self._log("Some Nicotine+ features are unavailable in this version: %s. "
                       "The matching API endpoints will report them as unsupported.",

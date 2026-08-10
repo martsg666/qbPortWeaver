@@ -121,8 +121,8 @@ public sealed class NicotineClient : ManagedClientBase
             using var doc = await ReadJsonAsync(response, cancellationToken).ConfigureAwait(false);
             var root = doc.RootElement;
 
-            if (!root.TryGetProperty("listen_port", out var portElement) ||
-                !portElement.TryGetInt32(out int listenPort))
+            if (!root.TryGetProperty("listen_port", out var listenPortElement) ||
+                !listenPortElement.TryGetInt32(out int listenPort))
             {
                 LogManager.Instance.LogDebug("NicotineClient.GetPreferencesAsync: 'listen_port' missing or not an integer in the plugin response");
                 return (null, null);
@@ -132,10 +132,7 @@ public sealed class NicotineClient : ManagedClientBase
             // is "bound to every adapter", which the caller warns about as a possible leak
             // outside the VPN, while null is "this client cannot report an interface" and skips
             // the check entirely. Same convention as qBittorrent.
-            string? interfaceName = null;
-            if (root.TryGetProperty("interface", out var interfaceElement) &&
-                interfaceElement.ValueKind == JsonValueKind.String)
-                interfaceName = interfaceElement.GetString();
+            string? interfaceName = root.GetStringOrNull("interface");
 
             return (listenPort, interfaceName);
         }
@@ -163,7 +160,7 @@ public sealed class NicotineClient : ManagedClientBase
             using var doc = await ReadJsonAsync(response, cancellationToken).ConfigureAwait(false);
             var root = doc.RootElement;
 
-            if (root.TryGetProperty(JsonPropOk, out var ok) && ok.ValueKind == JsonValueKind.True)
+            if (root.TryGetProperty(JsonPropOk, out var okElement) && okElement.ValueKind == JsonValueKind.True)
                 return true;
 
             LogSetPortFailure(root);
@@ -190,11 +187,7 @@ public sealed class NicotineClient : ManagedClientBase
         try
         {
             using var doc = await ReadJsonAsync(response, cancellationToken).ConfigureAwait(false);
-            if (!doc.RootElement.TryGetProperty("connection", out var connection) ||
-                connection.ValueKind != JsonValueKind.String)
-                return null;
-
-            string? status = connection.GetString();
+            string? status = doc.RootElement.GetStringOrNull("connection");
             return status == StatusConnecting ? "connected" : status;
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
@@ -223,9 +216,7 @@ public sealed class NicotineClient : ManagedClientBase
             using var doc = await ReadJsonAsync(response, cancellationToken).ConfigureAwait(false);
             var root = doc.RootElement;
 
-            string? state = root.TryGetProperty(JsonPropState, out var stateElement)
-                ? stateElement.GetString()
-                : null;
+            string? state = root.GetStringOrNull(JsonPropState);
 
             if (state != StateDone)
             {
@@ -234,9 +225,9 @@ public sealed class NicotineClient : ManagedClientBase
                 return null;
             }
 
-            if (root.TryGetProperty(JsonPropResult, out var result) &&
-                result.ValueKind is JsonValueKind.True or JsonValueKind.False)
-                return result.GetBoolean();
+            if (root.TryGetProperty(JsonPropResult, out var resultElement) &&
+                resultElement.ValueKind is JsonValueKind.True or JsonValueKind.False)
+                return resultElement.GetBoolean();
 
             return null;
         }
@@ -353,11 +344,16 @@ public sealed class NicotineClient : ManagedClientBase
     {
         var (code, message) = ReadError(root);
 
+        // A plugin built against a different version of this client can report a failure in a
+        // shape ReadError does not recognise, leaving no message. Say that plainly instead of
+        // trailing a colon with nothing after it, on the one log line that explains the failure.
+        string detail = message.Length > 0 ? $": {message}" : " (the plugin gave no reason)";
+
         if (code == ErrorPortLocked)
         {
             // Not a transient failure: the port cannot change until Nicotine+ is restarted
             // without the option. Warn rather than Error, once per distinct message.
-            string warning = $"Cannot set the {ClientName} port: {message}";
+            string warning = $"Cannot set the {ClientName} port{detail}";
             if (_lastLockedWarning != warning)
             {
                 _lastLockedWarning = warning;
@@ -366,7 +362,7 @@ public sealed class NicotineClient : ManagedClientBase
             return;
         }
 
-        LogManager.Instance.LogMessage($"Failed to set {ClientName} port: {message}", LogLevel.Error);
+        LogManager.Instance.LogMessage($"Failed to set {ClientName} port{detail}", LogLevel.Error);
     }
 
     private async Task LogHttpFailureAsync(HttpResponseMessage response, string path,
@@ -405,15 +401,13 @@ public sealed class NicotineClient : ManagedClientBase
 
     private static (string Code, string Message) ReadError(JsonElement root)
     {
-        if (!root.TryGetProperty(JsonPropError, out var error) || error.ValueKind != JsonValueKind.Object)
+        if (!root.TryGetProperty(JsonPropError, out var errorElement) || errorElement.ValueKind != JsonValueKind.Object)
             return (string.Empty, string.Empty);
 
-        string code = error.TryGetProperty(JsonPropCode, out var codeElement)
-            ? codeElement.GetString() ?? string.Empty
-            : string.Empty;
-        string message = error.TryGetProperty(JsonPropMessage, out var messageElement)
-            ? messageElement.GetString() ?? string.Empty
-            : string.Empty;
+        // Read independently: a code in an unexpected shape must not cost us the message, which is
+        // the half the user actually reads.
+        string code = errorElement.GetStringOrNull(JsonPropCode) ?? string.Empty;
+        string message = errorElement.GetStringOrNull(JsonPropMessage) ?? string.Empty;
 
         return (code, message);
     }

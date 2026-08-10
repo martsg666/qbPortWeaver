@@ -144,8 +144,9 @@ public abstract class ManagedClientBase : IManagedClient // NOSONAR S3881 - all 
     // A short per-probe cancellation avoids blocking on a slow response mid-startup.
     private async Task WaitForApiReadyAsync(CancellationToken cancellationToken)
     {
-        var deadline = DateTime.UtcNow.AddSeconds(ApiReadyTimeoutSeconds);
-        while (DateTime.UtcNow < deadline)
+        // Monotonic: a clock correction mid-startup must not cut the probe short or extend it.
+        var probeTimer = Stopwatch.StartNew();
+        while (probeTimer.Elapsed.TotalSeconds < ApiReadyTimeoutSeconds)
         {
             try
             {

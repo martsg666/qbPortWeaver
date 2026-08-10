@@ -5,15 +5,27 @@
 arrives later as a ``check-port-status`` event on the main thread. This module holds the
 in-flight state so a request can start a check and wait for that event, and so several
 overlapping requests share one check rather than each starting their own.
+
+Releases without that native checker (the ``check-port-status`` API is not in a stable
+Nicotine+ yet) fall back to querying the Soulseek port-test service over HTTP and parsing the
+verdict directly - see ``_web_request`` / ``_web_port_check``. ``request()`` picks the path
+from the ``port_test_native`` capability.
 """
 
+import re
 import threading
 import time
+import urllib.request
 
 STATE_IDLE = "idle"
 STATE_PENDING = "pending"
 STATE_DONE = "done"
 STATE_UNAVAILABLE = "unavailable"
+
+# Fallback port-test service: the same one Nicotine+'s "Check Port Status" opens in a browser. Used
+# only when this Nicotine+ has no scriptable checker (the native check-port-status API, upstream #3373,
+# is not in a release yet). The service returns an HTML page containing "<port>/tcp open|closed".
+_PORT_CHECK_URL_DEFAULT = "https://www.slsknet.org/porttest.php?port=%s"
 
 # A verdict older than this is refreshed rather than reused. Long enough that a sync cycle
 # does not re-probe the external check service every time, short enough to notice a port
@@ -77,10 +89,15 @@ class PortTest:
 
     def request(self, port, wait_seconds):
         """Start or join a check for ``port`` and wait up to ``wait_seconds`` for the verdict."""
-        if not self._core_io.capabilities.get("port_test"):
-            return self._snapshot(STATE_UNAVAILABLE, port)
-
         wait_seconds = max(0.0, min(float(wait_seconds), MAX_WAIT_SECONDS))
+
+        # Prefer Nicotine+'s native checker when this version exposes it; otherwise query the Soulseek
+        # port-test service directly, so reachability still works on releases without the native API.
+        if self._core_io.capabilities.get("port_test_native"):
+            return self._native_request(port, wait_seconds)
+        return self._web_request(port, wait_seconds)
+
+    def _native_request(self, port, wait_seconds):
         now = time.monotonic()
 
         with self._lock:
@@ -118,14 +135,45 @@ class PortTest:
         with self._lock:
             return self._snapshot()
 
+    def _web_request(self, port, wait_seconds):
+        """Fallback path: query the Soulseek port-test service over HTTP and parse the verdict.
+
+        Runs on the handler thread and touches no Nicotine+ internals. A verdict is cached per port
+        for STALE_AFTER, so repeated checks return the cached answer rather than re-querying the
+        service. The lock is released across the HTTP call, so two checks starting at the same time
+        both query it - unlike the native path, which joins an in-flight check. That costs one extra
+        request in a rare race, which is cheaper than a second implementation of the join logic.
+        """
+        now = time.monotonic()
+        with self._lock:
+            if self._state == STATE_DONE and self._port == port and now - self._started < STALE_AFTER:
+                return self._snapshot()
+
+        result = _web_port_check(port, wait_seconds, self._log)
+
+        with self._lock:
+            self._port = port
+            self._started = time.monotonic()
+            if result is None:
+                # Offline, service unreachable, or unparseable - transient, so the caller can retry.
+                # Drop any earlier verdict with it, as the native path does when it starts a check:
+                # otherwise a result outlives the state that gave it meaning, and only _snapshot's
+                # state check keeps it from being read as current.
+                self._state = STATE_PENDING
+                self._result = None
+            else:
+                self._state = STATE_DONE
+                self._result = result
+            return self._snapshot()
+
     def peek(self):
         """Current state without starting anything."""
         with self._lock:
             return self._snapshot()
 
-    def _snapshot(self, state=None, port=None):
-        state = state or self._state
-        port = port if port is not None else self._port
+    def _snapshot(self):
+        state = self._state
+        port = self._port
         age_ms = 0
         if self._started:
             age_ms = int((time.monotonic() - self._started) * 1000)
@@ -137,3 +185,38 @@ class PortTest:
             "age_ms": age_ms,
             "source": "slsknet",
         }
+
+
+def _port_check_url():
+    """Nicotine+'s own port-test URL when exposed, so we track it if upstream changes it."""
+    try:
+        import pynicotine
+        url = getattr(pynicotine, "__port_checker_url__", None)
+        if isinstance(url, str) and "%s" in url:
+            return url
+    # Fall back to the known URL if the attribute moved or is absent.
+    except Exception:  # noqa: BLE001
+        pass
+    return _PORT_CHECK_URL_DEFAULT
+
+
+def _web_port_check(port, timeout, log):
+    """Query the port-test service and return True (open), False (closed), or None (undetermined)."""
+    url = _port_check_url() % port
+    try:
+        request = urllib.request.Request(url, headers={"User-Agent": "qbPortWeaver-bridge"})
+        # Not an SSRF vector: the port is a validated integer (see _validate_port) and the URL
+        # comes from pynicotine or the hardcoded fallback - never from a request. Code able to
+        # set __port_checker_url__ is already running inside this process, so trusting it is free.
+        with urllib.request.urlopen(request, timeout=max(1.0, timeout)) as response:  # noqa: S310
+            body = response.read(65536).decode("utf-8", "replace")
+    # Any network or parse failure means "could not determine", never a hard error.
+    except Exception as error:  # noqa: BLE001
+        log("qbPortWeaver: web port check failed: %s", (error,))
+        return None
+
+    # The service echoes "<ip> Port: <port>/tcp open|closed"; match on the port we asked about.
+    match = re.search(r"\b%d/tcp\s+(open|closed)\b" % port, body, re.IGNORECASE)
+    if match is None:
+        return None
+    return match.group(1).lower() == "open"

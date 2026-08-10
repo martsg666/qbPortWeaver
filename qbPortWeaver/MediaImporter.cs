@@ -64,7 +64,9 @@ internal static partial class MediaImporter
     // Hosts whose bounded existence check recently timed out, keyed by host name with the UTC time of
     // the timeout. Lets multiple paths on one dead host (e.g. \\NAS\A and \\NAS\B) fail fast without
     // each spawning another blocked check.
-    private static readonly ConcurrentDictionary<string, DateTime> _unreachableHosts =
+    // Keyed on Environment.TickCount64 (monotonic) rather than a wall-clock timestamp, so a clock
+    // correction cannot make an entry look arbitrarily old or arbitrarily fresh.
+    private static readonly ConcurrentDictionary<string, long> _unreachableHosts =
         new(StringComparer.OrdinalIgnoreCase);
 
     private static readonly JsonSerializerOptions _jsonWriteOptions = new() { WriteIndented = true };
@@ -575,7 +577,7 @@ internal static partial class MediaImporter
         // so sibling paths and later cycles fail fast instead of each waiting out the timeout.
         if (isUnc && first is null && second is null)
         {
-            _unreachableHosts[host] = DateTime.UtcNow;
+            _unreachableHosts[host] = Environment.TickCount64;
             LogManager.Instance.LogDebug(
                 $"MediaImporter.DirectoryExistsWithSmbRetry: '{folder}' did not respond within {UncExistsTimeoutMs}ms on two attempts, treating host as unreachable",
                 Subsystem.MediaManager);
@@ -604,8 +606,8 @@ internal static partial class MediaImporter
     // next check probes fresh.
     private static bool IsHostCachedUnreachable(string host)
     {
-        if (!_unreachableHosts.TryGetValue(host, out var failedAt)) return false;
-        if ((DateTime.UtcNow - failedAt).TotalSeconds < UnreachableHostCacheSeconds) return true;
+        if (!_unreachableHosts.TryGetValue(host, out long failedAt)) return false;
+        if (Environment.TickCount64 - failedAt < UnreachableHostCacheSeconds * AppConstants.MillisecondsPerSecond) return true;
         _unreachableHosts.TryRemove(host, out _); // stale - allow a fresh check
         return false;
     }

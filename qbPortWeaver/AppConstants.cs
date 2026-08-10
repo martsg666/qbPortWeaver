@@ -23,6 +23,18 @@ public static class AppConstants
     // bursts when an adapter comes up, so a single reconnect is coalesced into one wake.
     public const int ResyncDebounceMs = 2500;
 
+    // Ports
+    // Usable TCP/UDP listening port range. A provider reporting anything outside it is reporting
+    // "no port" - 0 in particular is not a port but an instruction to most clients to pick one at
+    // random, which would silently undo the forwarding this app maintains.
+    public const int MinPortNumber = 1;
+    public const int MaxPortNumber = 65535;
+
+    /// <summary>Returns <see langword="true"/> when <paramref name="port"/> is a usable listening port.</summary>
+    /// <remarks>Shared by every consumer of a provider-reported port - the sync loop and the
+    /// diagnostics report - so the two can never disagree about what counts as usable.</remarks>
+    public static bool IsUsablePort(int port) => port is >= MinPortNumber and <= MaxPortNumber;
+
     // UI
     public const int MaxTooltipLength = 127; // NotifyIcon.Text max in modern Windows / .NET (the historic 63-char limit was pre-Windows 2000)
     // Passed as the timeout to NotifyIcon.ShowBalloonTip. Modern Windows ignores this value -

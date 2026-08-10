@@ -672,6 +672,13 @@ public partial class MediaManagerForm : Form
         {
             // Expected when the user selects another row before the poster finishes loading.
         }
+        // An exception escaping an async void handler kills the app, and a thumbnail is never
+        // worth that. Matches the general catch the other handlers in this form already have.
+        catch (Exception ex)
+        {
+            LogManager.Instance.LogDebug(
+                $"MediaManagerForm.dgvResults_SelectionChanged: {ex.Message}", Subsystem.MediaManager);
+        }
     }
 
     private async Task LoadThumbnailAsync(string posterPath, CancellationToken cancellationToken)
@@ -951,7 +958,16 @@ public partial class MediaManagerForm : Form
         prgScan.Visible = false;
     }
 
-    private string GetProposedName(DataGridViewRow row) => row.Cells[colProposed.Index].Value?.ToString() ?? string.Empty;
+    // The Proposed cell is a file NAME: RebuildProposedDir derives the destination folder from it and
+    // Path.Combine appends it to the library path. An absolute path would make Path.Combine discard
+    // the library directory entirely and import the file somewhere else silently, and a relative one
+    // could climb out of the library - so keep only the file name. SanitizeFileName then puts a
+    // hand-edited name through the same normalisation every scan-generated name already gets.
+    private string GetProposedName(DataGridViewRow row)
+    {
+        string raw = row.Cells[colProposed.Index].Value?.ToString() ?? string.Empty;
+        return raw.Length == 0 ? raw : FileNameParser.SanitizeFileName(Path.GetFileName(raw));
+    }
 
     private void SetBusy(bool busy)
     {

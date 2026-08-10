@@ -74,7 +74,7 @@ The sync cycle instantiates a provider-specific `IVpnManager` based on the confi
 | Disabled   | _(none)_           | Port sync is skipped entirely; cycle proceeds to Media Manager |
 | ProtonVPN  | `ProtonVpnManager` | Parses the ProtonVPN log file for the last assigned port |
 | PIA        | `PiaVpnManager`    | Runs `piactl get portforward` and parses stdout |
-| NAT-PMP    | `NatPmpManager`    | Sends a UDP port mapping request (RFC 6886) to the gateway |
+| NAT-PMP    | `NatPmpManager`    | Sends a port mapping request (RFC 6886) to the gateway, for UDP then TCP |
 
 `Disabled` is the default for new installations.
 
@@ -220,9 +220,9 @@ When `verifyPortAfterSync` is enabled (General settings, default on) and the VPN
 | qBittorrent | `connection_status` from `transfer/info`: connected = open, firewalled = closed | Inferred from incoming peer activity; an idle client may report closed indefinitely |
 | Transmission | `port_test` RPC (`ip_protocol=ipv4`) | Active probe via Transmission's online port-check service. Uses the Transmission 4.1 method name, pinned to IPv4; falls back to the legacy `port-test` method on pre-4.1 daemons |
 | Deluge | `core.test_listen_port` | Active probe via Deluge's online port-check service |
-| Nicotine+ | `POST /v1/porttest` via the bridge plugin | Active probe via the Soulseek project's check service - but only on versions that have one. Nicotine+ 3.3.10 and earlier ship no port checker, so the plugin reports the capability as unavailable and the result is always undetermined. Where it is available, the plugin caps how long it holds the request below qbPortWeaver's HTTP timeout, so a slow check returns `pending` and is treated as undetermined rather than closed |
+| Nicotine+ | `POST /v1/porttest` via the bridge plugin | The plugin uses Nicotine+'s native checker when the version exposes it (the `check-port-status` API, upstream #3373, not yet in a stable release); otherwise it falls back to querying the Soulseek port-test service (`slsknet.org/porttest.php`) over HTTP and parsing the `<port>/tcp open\|closed` verdict. Either way the plugin caps the wait below qbPortWeaver's HTTP timeout, so a slow or offline check returns `pending` and is treated as undetermined rather than closed |
 
-**Throttle** - because two of the three mechanisms contact external check services, the test runs when the port changed this cycle, every cycle while a result awaits confirmation, and every cycle while confirmed-closed *and* port-closed recovery is still armed (so the recovery counter advances toward its trigger). Otherwise - and once recovery has fired (disarmed) or is off - it runs every 5th cycle, which still detects a reopen without hammering the external check services. The counter is initialised above the threshold so the first increment triggers immediately on the first eligible cycle after startup.
+**Throttle** - because three of the four mechanisms contact external check services, the test runs when the port changed this cycle, every cycle while a result awaits confirmation, and every cycle while confirmed-closed *and* port-closed recovery is still armed (so the recovery counter advances toward its trigger). Otherwise - and once recovery has fired (disarmed) or is off - it runs every 5th cycle, which still detects a reopen without hammering the external check services. The counter is initialised above the threshold so the first increment triggers immediately on the first eligible cycle after startup.
 
 **Confirmation rule** - a single closed result logs at Info and forces a re-test on the next cycle; only the second consecutive closed result is treated as confirmed. This absorbs qBittorrent's idle-firewalled false positive and transient check-service glitches. A confirmed-closed port logs at Warn every cycle (so the log alert badge tracks the persistent condition, like the interface mismatch check) and raises the `PortVerificationFailed` event once, on the transition, for a tray warning balloon. Results that cannot be determined (client unreachable, check service down) leave the verification state unchanged.
 
@@ -232,7 +232,7 @@ When `verifyPortAfterSync` is enabled (General settings, default on) and the VPN
 
 ### Port Update Notification
 
-When `NotifyOnPortUpdate` is enabled (General settings, default on), a successful port change raises the `PortUpdated` event immediately after `ApplyPortUpdateAsync` returns. `MainForm` handles this with a tray balloon tip (`ToolTipIcon.Info`). The notification fires for all three clients.
+When `NotifyOnPortUpdate` is enabled (General settings, default on), a successful port change raises the `PortUpdated` event immediately after `ApplyPortUpdateAsync` returns. `MainForm` handles this with a tray balloon tip (`ToolTipIcon.Info`). The notification fires for all four clients.
 
 ### Log Alert Notifications
 

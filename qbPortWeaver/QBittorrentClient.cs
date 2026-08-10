@@ -56,28 +56,28 @@ public sealed class QBittorrentClient : ManagedClientBase
             using var doc = JsonDocument.Parse(json);
             var root = doc.RootElement;
 
+            bool hasListenPort = root.TryGetProperty("listen_port", out var listenPortElement);
+
             int? listenPort = null;
-            if (root.TryGetProperty("listen_port", out var portElement))
+            if (hasListenPort)
             {
                 // listen_port may be a JSON number or string depending on qBittorrent version
                 int parsed;
-                if (portElement.ValueKind == JsonValueKind.Number && portElement.TryGetInt32(out parsed))
+                if (listenPortElement.ValueKind == JsonValueKind.Number && listenPortElement.TryGetInt32(out parsed))
                     listenPort = parsed;
-                else if (portElement.ValueKind == JsonValueKind.String && int.TryParse(portElement.GetString(), out parsed))
+                else if (int.TryParse(listenPortElement.AsStringOrNull(), out parsed))
                     listenPort = parsed;
             }
 
             if (listenPort is null)
             {
-                string portDiag = root.TryGetProperty("listen_port", out var diagElement)
-                    ? $"listen_port kind={diagElement.ValueKind} value={diagElement}"
+                string portDiag = hasListenPort
+                    ? $"listen_port kind={listenPortElement.ValueKind} value={listenPortElement}"
                     : "listen_port key absent";
                 LogManager.Instance.LogDebug($"QBittorrentClient.GetPreferencesAsync: listen_port not parsed in preferences JSON ({portDiag})");
             }
 
-            string? currentInterfaceName = null;
-            if (root.TryGetProperty("current_interface_name", out var nameElement))
-                currentInterfaceName = nameElement.GetString();
+            string? currentInterfaceName = root.GetStringOrNull("current_interface_name");
 
             return (listenPort, currentInterfaceName);
         }
@@ -148,8 +148,8 @@ public sealed class QBittorrentClient : ManagedClientBase
 
             var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
             using var doc = JsonDocument.Parse(json);
-            if (doc.RootElement.TryGetProperty("connection_status", out var statusElement))
-                return statusElement.GetString();
+            if (doc.RootElement.GetStringOrNull("connection_status") is { } connectionStatus)
+                return connectionStatus;
 
             LogManager.Instance.LogDebug($"QBittorrentClient.{callerName}: connection_status not found in transfer/info response");
             return null;

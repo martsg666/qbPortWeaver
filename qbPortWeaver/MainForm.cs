@@ -503,6 +503,15 @@ public partial class MainForm : Form
             LogManager.Instance.LogMessage($"Manual port test timed out after {AppConstants.ClientTestTimeoutSeconds}s", LogLevel.Warn);
             return;
         }
+        // The caller is an async void event handler, so an escape here would take the app down.
+        // Report undetermined instead, which also re-enables the button for a retry.
+        catch (Exception ex)
+        {
+            if (form.IsDisposed) return;
+            form.SetReachableResult(null);
+            LogManager.Instance.LogMessage($"Manual port test failed: {ex.Message}", LogLevel.Warn);
+            return;
+        }
         if (form.IsDisposed) return;
         form.SetReachableResult(open);
         string result = open switch { true => "open", false => "closed", _ => "could not be determined" };
@@ -1066,10 +1075,25 @@ public partial class MainForm : Form
     // Marshals an action to the UI thread, using Invoke if called from a background thread
     private void InvokeOnUiThread(Action action) // NOSONAR S2325 - InvokeRequired/Invoke are instance members, method cannot be static
     {
-        if (InvokeRequired)
-            Invoke(action);
-        else
+        if (!InvokeRequired)
+        {
             action();
+            return;
+        }
+
+        try
+        {
+            Invoke(action);
+        }
+        // The callers' lambdas re-check IsDisposed, but Invoke itself throws if the handle is
+        // destroyed between InvokeRequired returning true and the marshalling completing. That
+        // window is narrow and only opens during shutdown, but this runs on the sync loop and
+        // LogManager's event thread, where an escaping exception would take the process down
+        // instead of ending a teardown that was already in progress.
+        catch (Exception ex) when (ex is ObjectDisposedException or InvalidOperationException)
+        {
+            LogManager.Instance.LogDebug($"MainForm.InvokeOnUiThread: form torn down before the action ran ({ex.GetType().Name})");
+        }
     }
 
     // Called from background threads via LogManager.WarnOrErrorLogged; marshals to UI thread

@@ -18,7 +18,15 @@ API_VERSION = 1
 APP_ID = "qbpw-nicotine-bridge"
 
 MAX_BODY_BYTES = 8 * 1024
+# Read/write deadline for one accepted connection (applied via BridgeHandler.timeout).
 SOCKET_TIMEOUT_SECONDS = 10
+# How long a single accept() may block. Only reached if serve_forever's selector says the socket
+# is readable and the peer then vanishes, so this is a backstop rather than the polling knob.
+ACCEPT_POLL_SECONDS = 1.0
+# How often the accept loop re-checks whether shutdown() has been called.
+SERVE_POLL_SECONDS = 0.2
+# How long stop() waits for the accept loop to unwind before reporting that it did not.
+SHUTDOWN_JOIN_SECONDS = 5.0
 
 PATH_ROOT = "/"
 PATH_PREFERENCES = "/v1/preferences"
@@ -50,6 +58,13 @@ class BridgeHandler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
     server_version = "qbpwNicotineBridge/1.0"
     sys_version = ""
+
+    # Read/write deadline for an accepted connection. Required: a timeout set on the listening
+    # socket is NOT inherited by the sockets accept() returns, so without this a client that
+    # connects and then stalls - or promises a Content-Length it never sends - parks a handler
+    # thread forever. Threads are unbounded here, so those leak for the life of Nicotine+.
+    # StreamRequestHandler.setup() applies this to the connection.
+    timeout = SOCKET_TIMEOUT_SECONDS
 
     # -------------------------------------------------------------- entry points
 
@@ -215,8 +230,8 @@ class Bridge:
 
         self._server = BridgeHTTPServer((bind_host, bind_port), BridgeHandler)
         self._server.bridge = self
-        self._server.timeout = 1.0
-        self._server.socket.settimeout(SOCKET_TIMEOUT_SECONDS)
+        # Bounds accept() itself; the per-connection deadline is BridgeHandler.timeout.
+        self._server.timeout = ACCEPT_POLL_SECONDS
         self.port = self._server.server_address[1]
 
         self._thread = threading.Thread(target=self._serve, name="qbpwBridgeHTTP", daemon=True)
@@ -228,7 +243,7 @@ class Bridge:
 
     def _serve(self):
         try:
-            self._server.serve_forever(poll_interval=0.2)
+            self._server.serve_forever(poll_interval=SERVE_POLL_SECONDS)
         except Exception as error:  # noqa: BLE001 - the accept loop must not die silently
             self.log("The connection bridge stopped unexpectedly: %s", (error,))
 
@@ -245,9 +260,11 @@ class Bridge:
         except Exception:  # noqa: BLE001 - already stopping
             pass
         if self._thread.is_alive() and self._thread is not threading.current_thread():
-            self._thread.join(timeout=5.0)
+            self._thread.join(timeout=SHUTDOWN_JOIN_SECONDS)
             if self._thread.is_alive():
-                self.log("The connection bridge did not stop within 5 seconds.")
+                # %g so the message reads "5 seconds", not "5.0 seconds".
+                self.log("The connection bridge did not stop within %g seconds.",
+                         (SHUTDOWN_JOIN_SECONDS,))
 
     # ---------------------------------------------------------------- endpoints
 

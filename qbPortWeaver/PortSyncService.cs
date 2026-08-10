@@ -43,12 +43,16 @@ public sealed class PortSyncService
     // Consecutive sync cycles in which the VPN was disconnected or port detection failed.
     // Serialised by MainForm._updateSemaphore (same guarantee as _lastKnownNatPmpManager).
     private int _consecutiveFailedCycles;
-    // Wall-clock time the current failure streak began (re-stamped on every 0 -> 1 transition
-    // of the counter, so it always describes the streak in progress). Auto-recovery gates on
-    // this in addition to the cycle count so a burst of early wakes (network-change re-syncs
+    // Uptime reading (from _uptime) at which the current failure streak began - re-stamped on every
+    // 0 -> 1 transition of the counter, so it always describes the streak in progress. Auto-recovery
+    // gates on this in addition to the cycle count so a burst of early wakes (network-change re-syncs
     // interrupting the inter-cycle delay) cannot fast-track a heavy recovery action during a
     // transient outage that would self-heal. Only meaningful while the counter is non-zero.
-    private DateTime _failureStreakStartedUtc;
+    // Monotonic rather than wall-clock: a VPN reconnect frequently triggers an NTP correction, so a
+    // clock jump is *correlated* with the failure streak this gate measures. A backward jump would
+    // hold recovery off indefinitely; a forward jump would fire it on the first failure, which is
+    // precisely the transient-blip restart the floor exists to prevent.
+    private TimeSpan _failureStreakStarted;
     // Tracks the last interface-mismatch message shown as a balloon tip to suppress repeat invocations
     // for the same persistent mismatch. Cleared when the mismatch resolves so the balloon re-fires if it returns.
     // Thread-safety: only read/written inside CheckInterfaceMatch via EnsureRunningAndUpdatePortAsync,
@@ -414,6 +418,20 @@ public sealed class PortSyncService
         LogManager.Instance.LogMessage($"{vpnManager.ProviderName} is connected", LogLevel.Info);
 
         int? vpnPort = await vpnManager.GetVpnPortAsync(cancellationToken).ConfigureAwait(false);
+
+        // A provider can report a value outside the usable range - ProtonVPN's log carries a port
+        // pair while a mapping is being torn down, and NAT-PMP/PIA each guard this case themselves.
+        // Guarding here covers every provider at the point the value becomes the client's config:
+        // applying 0 makes most clients pick a random port, quietly undoing the forwarding this app
+        // maintains while the cycle still reports success. Falls through to the no-port branch, so
+        // the grace window, the failure streak and auto-recovery all behave as they already do.
+        if (vpnPort is int reportedPort && !AppConstants.IsUsablePort(reportedPort))
+        {
+            LogManager.Instance.LogMessage(
+                $"{vpnManager.ProviderName} reported an unusable port ({reportedPort}) - ignoring it", LogLevel.Warn);
+            vpnPort = null;
+        }
+
         if (!vpnPort.HasValue)
         {
             // Connected but no port yet (e.g. NAT-PMP mapping still establishing). Within the startup
@@ -651,9 +669,12 @@ public sealed class PortSyncService
     /// </summary>
     public static async Task<bool?> TestActivePortAsync(CancellationToken cancellationToken = default)
     {
-        using var client = BuildActiveClient();
+        // Construction inside the try as well: this method's contract is "null on failure", so no
+        // statement of its own should be able to throw past its catch to an async void caller.
+        IManagedClient? client = null;
         try
         {
+            client = BuildActiveClient();
             return await client.TestListeningPortAsync(cancellationToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
@@ -664,6 +685,11 @@ public sealed class PortSyncService
         {
             LogManager.Instance.LogMessage($"Manual port test failed: {ex.Message}", LogLevel.Warn);
             return null;
+        }
+        finally
+        {
+            // Replaces the `using` the try-scoping displaced: null when construction itself failed.
+            client?.Dispose();
         }
     }
 
@@ -1123,7 +1149,7 @@ public sealed class PortSyncService
         string recoveryAction, string? recoveryTarget, string displayName,
         AppConfig cfg, CancellationToken cancellationToken)
     {
-        if (_consecutiveFailedCycles == 0) _failureStreakStartedUtc = DateTime.UtcNow;
+        if (_consecutiveFailedCycles == 0) _failureStreakStarted = _uptime.Elapsed;
         _consecutiveFailedCycles++;
         int count = _consecutiveFailedCycles;
         LogManager.Instance.LogMessage(BuildCycleCountMessage(reason, count, cfg), logLevel);
@@ -1137,7 +1163,7 @@ public sealed class PortSyncService
     private void ResetFailureStreak() => _consecutiveFailedCycles = 0;
 
     // Triggers auto-recovery if enabled and both gates are cleared: the failure cycle threshold
-    // AND enough wall-clock time has elapsed since the streak began. The time gate (derived from
+    // AND enough monotonic time has elapsed since the streak began. The time gate (derived from
     // the normal cycle cadence) prevents a burst of early wakes from fast-tracking recovery during
     // a transient outage. Resets the counter before the target check so the warning does not fire
     // every cycle when no recovery target is found.
@@ -1154,7 +1180,7 @@ public sealed class PortSyncService
         // scheduled cycling ((TriggerCycles - 1) intervals between the first and last failure).
         // A streak driven faster than this by early wakes is held until the time also clears.
         TimeSpan minSustainedFailure = TimeSpan.FromSeconds((cfg.VpnAutoRecoveryTriggerCycles - 1) * cfg.UpdateInterval);
-        TimeSpan elapsed = DateTime.UtcNow - _failureStreakStartedUtc;
+        TimeSpan elapsed = _uptime.Elapsed - _failureStreakStarted;
         if (elapsed < minSustainedFailure)
         {
             LogManager.Instance.LogMessage(

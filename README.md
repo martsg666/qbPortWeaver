@@ -65,7 +65,7 @@ After installing, open **Settings** from the tray icon to configure the applicat
   In addition to the scheduled interval, qbPortWeaver can run a sync the moment a network or VPN connection change is detected, so the client follows a VPN reconnect within seconds instead of waiting for the next cycle. Rapid changes are coalesced into a single sync, and pausing still suppresses it. Enabled by default; configurable via Settings > General.
 
 - **Multi-VPN Support**
-  Supports **ProtonVPN** (via log file parsing or NAT-PMP), **Private Internet Access** (via `piactl` CLI), and any **NAT-PMP capable VPN gateway or router** (via RFC 6886 UDP port mapping). Configurable through the Settings dialog.
+  Supports **ProtonVPN** (via log file parsing or NAT-PMP), **Private Internet Access** (via `piactl` CLI), and any **NAT-PMP capable VPN gateway or router** (via RFC 6886 port mapping, requested for both TCP and UDP). Configurable through the Settings dialog.
 
 - **Default Port Fallback**
   When VPN is not connected, optionally sets the client's listening port to a configured default. Useful if you have a port forwarded in your router for direct connections without VPN.
@@ -83,7 +83,7 @@ After installing, open **Settings** from the tray icon to configure the applicat
   Optionally restart qBittorrent when its connection status changes to disconnected. Requires the Executable and Process name to be configured.
 
 - **Port Verification**
-  After each sync, optionally checks that the listening port is actually reachable from the Internet - not just configured. Runs after a port change and periodically (every 5th cycle); a closed result is confirmed on the next cycle before a warning is logged and a tray notification is shown. Transmission and Deluge use their projects' online port checkers; qBittorrent infers reachability from incoming connections, so an idle client may report closed. Nicotine+ only gained a port checker after 3.3.10, so on current releases the result is reported as undetermined and no warning is raised. Enabled by default.
+  After each sync, optionally checks that the listening port is actually reachable from the Internet - not just configured. Runs after a port change and periodically (every 5th cycle); a closed result is confirmed on the next cycle before a warning is logged and a tray notification is shown. Transmission and Deluge use their projects' online port checkers; qBittorrent infers reachability from incoming connections, so an idle client may report closed. Nicotine+ is checked through its bridge plugin: it uses Nicotine+'s own native port checker when the version has one, and otherwise queries the Soulseek port-test service directly, so reachability works on current releases too. Enabled by default.
 
 - **Pause and Resume Syncing**
   A **Pause Syncing** item in the tray menu temporarily stops sync cycles (including Media Manager imports) without changing any settings. While paused, **Sync Port Now** still runs a single cycle on demand. Syncing always resumes when the application restarts.
@@ -121,7 +121,7 @@ After installing, open **Settings** from the tray icon to configure the applicat
   A **Run Diagnostics** action (Status panel and tray menu) runs a read-only health check across the whole sync chain and shows a pass/warning/fail checklist with a fix hint for each step: configuration, helper service, VPN connection and forwarded port, client running and reachable, ports in sync, interface binding, and outside reachability. **Re-run** refreshes it and **Copy Report** puts the results on the clipboard for a support request. It never changes the port or restarts anything.
 
 - **Settings Dialog**
-  All configuration options are editable through a dedicated Settings form (tray menu → Settings), organised into **General**, **Client**, and **Extra** tabs, with inline descriptions and tooltips for each option. A **Detect** button on the General tab finds a running or installed client (qBittorrent, Transmission, Deluge, or Nicotine+) and fills in its selection and process details, asking you to choose when more than one is found.
+  All configuration options are editable through a dedicated Settings form (tray menu → Settings), organised into **General**, **Client**, **Auto-Recovery**, and **Extra** tabs, with inline descriptions and tooltips for each option. A **Detect** button on the General tab finds a running or installed client (qBittorrent, Transmission, Deluge, or Nicotine+) and fills in its selection and process details, asking you to choose when more than one is found.
 
 - **Connection Test**
   Each client section in Settings has a **Test** button next to the URL. It checks the connection to the selected client using the values currently entered (no need to save first), then reports success along with the current listening port, or points you to the log if it cannot connect.
@@ -227,7 +227,7 @@ so the change is live within a few seconds and a restart would only discard sett
 | Warn on interface mismatch | Warn if Nicotine+'s network interface doesn't match the VPN | `True` |
 | Default port (0 = disabled) | Fallback port to apply when VPN is not connected | `0` |
 
-#### Recovery
+#### Auto-Recovery
 
 Auto-recovery restarts your VPN service (or cycles the adapter for a generic NAT-PMP gateway) when the VPN stops providing a working forwarded port. The **Test** button runs the recovery action on demand.
 

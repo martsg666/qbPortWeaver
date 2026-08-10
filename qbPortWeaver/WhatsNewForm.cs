@@ -16,9 +16,15 @@ public partial class WhatsNewForm : Form
         "Settings has an Install plugin button that sets up a small bridge plugin for you - and " +
         "enables it too, if Nicotine+ is closed at the time. The port then changes while " +
         "Nicotine+ keeps running: no restart, no interrupted transfers.\n\n" +
-        "Recovery settings on their own tab\n" +
-        "The port-verification and auto-recovery options have moved to a dedicated Recovery tab in " +
-        "Settings, so the General tab is less crowded and the recovery options are easier to find.\n\n" +
+        "Auto-Recovery settings on their own tab\n" +
+        "The port-verification and auto-recovery options have moved to a dedicated Auto-Recovery tab " +
+        "in Settings, so the General tab is less crowded and the recovery options are easier to find.\n\n" +
+        "Steadier port forwarding\n" +
+        "Port mappings on NAT-PMP gateways now cover both TCP and UDP, so gateways that treat the two " +
+        "separately forward everything your client needs. A port your VPN reports that cannot be used " +
+        "is now ignored instead of being passed to your client, which previously could leave it on a " +
+        "random port while everything still looked healthy. Auto-recovery also always restores your " +
+        "network adapter now, even if it is interrupted part-way through cycling it.\n\n" +
         "Previously released\n\n" +
         "New in 2.6.3\n\n" +
         "Pop-up messages match your theme\n" +

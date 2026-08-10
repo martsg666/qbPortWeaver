@@ -84,7 +84,8 @@ local users and stray localhost clients - not against code already running as yo
 Nicotine+ exposes no stable plugin API for any of this, so the plugin reaches into its internals
 the same way the Preferences dialog does. Every such access is probed once at startup: anything
 missing is reported as unsupported on the relevant endpoint and logged, rather than crashing.
-`GET /` lists what is available, so qbPortWeaver can report a version mismatch clearly.
+`GET /` reports the plugin and Nicotine+ versions and lists which capabilities resolved, so a
+mismatch can be pinned down directly rather than inferred from a failing endpoint.
 
 If a Nicotine+ update breaks something, the failure should be a clear message in the log and an
 error in qbPortWeaver's diagnostics - not a broken Nicotine+.

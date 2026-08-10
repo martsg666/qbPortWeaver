@@ -151,7 +151,11 @@ class PortTest:
             self._started = time.monotonic()
             if result is None:
                 # Offline, service unreachable, or unparseable - transient, so the caller can retry.
+                # Drop any earlier verdict with it, as the native path does when it starts a check:
+                # otherwise a result outlives the state that gave it meaning, and only _snapshot's
+                # state check keeps it from being read as current.
                 self._state = STATE_PENDING
+                self._result = None
             else:
                 self._state = STATE_DONE
                 self._result = result

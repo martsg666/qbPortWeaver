@@ -104,14 +104,23 @@ internal static partial class AutoRecovery
             }
             logger.LogMessage($"Adapter '{adapterName}' disabled", LogLevel.Info);
 
-            await Task.Delay(AdapterCycleDelayMs, cancellationToken).ConfigureAwait(false);
-
-            if (!await RunNetshAsync([NetshInterface, "set", NetshInterface, adapterName, "admin=enable"], logger, cancellationToken).ConfigureAwait(false))
+            // Past this point the adapter is administratively DOWN, and that state persists across
+            // reboots. Neither shutdown nor an unexpected error may leave it there, so the re-enable
+            // runs from a finally block and deliberately ignores the cancellation token: a few
+            // seconds of delayed service stop is a far better outcome than a machine that boots
+            // with no network on this adapter, which the user would have to fix by hand.
+            try
             {
-                logger.LogMessage($"Failed to re-enable adapter '{adapterName}'", LogLevel.Warn);
-                return;
+                await Task.Delay(AdapterCycleDelayMs, CancellationToken.None).ConfigureAwait(false);
             }
-            logger.LogMessage($"Re-enabled adapter '{adapterName}'", LogLevel.Info);
+            finally
+            {
+                if (await RunNetshAsync([NetshInterface, "set", NetshInterface, adapterName, "admin=enable"],
+                        logger, CancellationToken.None).ConfigureAwait(false))
+                    logger.LogMessage($"Re-enabled adapter '{adapterName}'", LogLevel.Info);
+                else
+                    logger.LogMessage($"Failed to re-enable adapter '{adapterName}'", LogLevel.Warn);
+            }
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {

@@ -503,6 +503,15 @@ public partial class MainForm : Form
             LogManager.Instance.LogMessage($"Manual port test timed out after {AppConstants.ClientTestTimeoutSeconds}s", LogLevel.Warn);
             return;
         }
+        // The caller is an async void event handler, so an escape here would take the app down.
+        // Report undetermined instead, which also re-enables the button for a retry.
+        catch (Exception ex)
+        {
+            if (form.IsDisposed) return;
+            form.SetReachableResult(null);
+            LogManager.Instance.LogMessage($"Manual port test failed: {ex.Message}", LogLevel.Warn);
+            return;
+        }
         if (form.IsDisposed) return;
         form.SetReachableResult(open);
         string result = open switch { true => "open", false => "closed", _ => "could not be determined" };

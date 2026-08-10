@@ -672,6 +672,13 @@ public partial class MediaManagerForm : Form
         {
             // Expected when the user selects another row before the poster finishes loading.
         }
+        // An exception escaping an async void handler kills the app, and a thumbnail is never
+        // worth that. Matches the general catch the other handlers in this form already have.
+        catch (Exception ex)
+        {
+            LogManager.Instance.LogDebug(
+                $"MediaManagerForm.dgvResults_SelectionChanged: {ex.Message}", Subsystem.MediaManager);
+        }
     }
 
     private async Task LoadThumbnailAsync(string posterPath, CancellationToken cancellationToken)

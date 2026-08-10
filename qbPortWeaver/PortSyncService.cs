@@ -669,9 +669,12 @@ public sealed class PortSyncService
     /// </summary>
     public static async Task<bool?> TestActivePortAsync(CancellationToken cancellationToken = default)
     {
-        using var client = BuildActiveClient();
+        // Construction inside the try as well: this method's contract is "null on failure", so no
+        // statement of its own should be able to throw past its catch to an async void caller.
+        IManagedClient? client = null;
         try
         {
+            client = BuildActiveClient();
             return await client.TestListeningPortAsync(cancellationToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
@@ -682,6 +685,11 @@ public sealed class PortSyncService
         {
             LogManager.Instance.LogMessage($"Manual port test failed: {ex.Message}", LogLevel.Warn);
             return null;
+        }
+        finally
+        {
+            // Replaces the `using` the try-scoping displaced: null when construction itself failed.
+            client?.Dispose();
         }
     }
 

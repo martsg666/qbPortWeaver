@@ -281,7 +281,7 @@ Configured via tray menu → **Media Manager**.
 1. If VPN Provider is set to **Disabled**, the entire port sync is skipped and the cycle proceeds directly to the Media Manager step. This is useful when you only want automatic media importing without VPN port sync.
 2. Checks whether the configured VPN provider is connected.
    - During the first 90 seconds after the app starts, if **Wait for VPN on startup** is enabled and the VPN is not yet connected (or has not assigned a port yet), the cycle waits quietly instead: the tray stays neutral, nothing is logged as a failure, the default-port fallback and auto-recovery are held, and the check repeats every 15 seconds (or your update interval, if that is shorter) so the port syncs promptly once the VPN comes up.
-   - If **not connected** and **Default port** is 0: skips the cycle and waits for the next interval.
+   - If **not connected** and **Default port** is 0 (or not a usable port number): skips the cycle and waits for the next interval.
    - If **not connected** and **Default port** is set: uses the default port as the target and continues.
    - If **Auto-Recovery** is enabled, the failed cycle count reaches the configured threshold, and the failures have persisted long enough (so a brief blip raced through by early re-syncs is ignored): automatically triggers recovery (via the helper Windows service) - for ProtonVPN and PIA (direct or NAT-PMP mode), restarts the VPN service and client; for NAT-PMP with a generic gateway, cycles the network adapter.
 3. Reads the VPN-assigned port from the configured provider (skipped if using the default port fallback). If port detection fails despite the VPN being connected, the failed cycle counter increments and auto-recovery may trigger.

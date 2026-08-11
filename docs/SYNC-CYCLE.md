@@ -25,7 +25,7 @@ flowchart TD
     PORT_OK -- No --> HANDLE_FAIL[Increment counter + try auto-recovery]
     HANDLE_FAIL --> ERROR_PORT([ERROR: Failed to determine port])
 
-    DISCONNECTED --> DEFAULT{Default port > 0?}
+    DISCONNECTED --> DEFAULT{Default port usable?}
     DEFAULT -- Yes --> CLIENT
     DEFAULT -- No --> SKIP([SKIP: No default port configured])
 
@@ -123,7 +123,7 @@ Right after the app starts, the VPN is often still connecting (VPN clients launc
 
 When the VPN is detected as disconnected - or port detection fails despite the VPN being connected - the cycle increments a consecutive-failure counter. This counter drives two behaviors:
 
-1. **Default port fallback** - if `DefaultPort > 0`, the cycle applies it to the client so it remains functional (typically on a non-VPN port). If `DefaultPort == 0`, the cycle is skipped entirely.
+1. **Default port fallback** - if `DefaultPort` is a usable port, the cycle applies it to the client so it remains functional (typically on a non-VPN port). If it is `0`, or outside the usable range, the cycle is skipped entirely.
 
 2. **Auto-recovery** - if enabled, once the counter reaches the configured threshold *and* the failure streak has lasted at least `(threshold - 1) x interval` seconds, the cycle:
    - Resets the counter (to prevent repeated triggers)
@@ -132,6 +132,15 @@ When the VPN is detected as disconnected - or port detection fails despite the V
      - **NAT-PMP with a generic gateway:** action = `cycle-adapter`, target = adapter name - the helper disables and re-enables the adapter via netsh
    - Sends the recovery request to the helper service (runs as SYSTEM) via named pipe
    - If the target matches a known provider's client process, restarts it in the user session
+
+### Usable Port Rule
+
+Both ports that can reach the client go through the same check (`AppConstants.IsUsablePort`, 1-65535).
+
+- A **provider-reported** port outside the range is logged at Warn and discarded, and the cycle falls through to its no-port branch, so the grace window, the failure streak and auto-recovery behave exactly as they do when no port was reported at all. ProtonVPN's log carries a port pair while a mapping is being torn down, which is the case this was added for.
+- A **default port** outside the range is logged at Warn and treated as `0`, so the cycle is skipped rather than applying it. Only a hand-edited registry value can get there (the Settings spinner caps it, and re-saving clamps it back), so this is a floor under that rather than the primary validation.
+
+The rule exists because most clients treat `0` as "pick a random port", which would quietly undo the forwarding the app maintains while the cycle still reported success.
 
 The time floor exists because a cycle can start early - a manual sync, a settings change, or (most commonly) a burst of network-change re-syncs while connectivity flaps during a router reboot. Without it, several early cycles can drive the counter to the threshold within seconds and force-restart the VPN service during a transient blip that would have cleared on its own. `(threshold - 1) x interval` is exactly the elapsed time the streak would take under normal scheduled cycling (failure 1 at t=0, failure N at t=`(N-1) x interval`), so a genuine sustained outage still triggers at the same moment it always did - the floor only defers recovery when failures arrive faster than the schedule. The streak's start time is re-stamped on each streak's first failure, so it always describes the streak in progress.
 

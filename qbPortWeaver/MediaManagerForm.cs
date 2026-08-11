@@ -1079,13 +1079,13 @@ public partial class MediaManagerForm : Form
     {
         listBox.Items.Clear();
         var value = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionMedia, key);
-        foreach (var folder in value.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        foreach (var folder in value.Split(RegistrySettingsManager.ListSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
             listBox.Items.Add(folder);
     }
 
     private static void SaveFolderList(ListBox listBox, string key)
     {
         var folders = listBox.Items.Cast<string>();
-        RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionMedia, key, string.Join(';', folders));
+        RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionMedia, key, string.Join(RegistrySettingsManager.ListSeparator, folders));
     }
 }

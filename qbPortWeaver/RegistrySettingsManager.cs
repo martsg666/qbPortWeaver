@@ -12,6 +12,13 @@ public static class RegistrySettingsManager
     private const string ValueTrue = "True";
     private const string ValueFalse = "False";
 
+    /// <summary>Separator for settings that store a list in a single value (currently the media source folders).</summary>
+    /// <remarks>The same character the helper service uses to delimit its pipe messages, and chosen for the
+    /// same reason: it is in <see cref="Path.GetInvalidFileNameChars"/>, so no path can contain one and a
+    /// folder name can never be mistaken for a delimiter. Replaced <c>;</c>, which is legal in a Windows
+    /// path; <see cref="MigrateFolderListSeparator"/> carries existing values over.</remarks>
+    public const char ListSeparator = '|';
+
     public const string SectionGeneral = "general";
     public const string SectionQBittorrent = "qbittorrent";
     public const string SectionTransmission = "transmission";
@@ -320,6 +327,7 @@ public static class RegistrySettingsManager
         // Must run before defaults are written below: a renamed key's new name does not exist yet on
         // an existing install, so without the carry-over EnsureDefaults would write the default over it.
         MigrateLegacyKeys();
+        MigrateFolderListSeparator();
 
         bool anyWritten = false;
         foreach (var section in _defaults)
@@ -372,6 +380,34 @@ public static class RegistrySettingsManager
         catch (Exception ex)
         {
             LogManager.Instance.LogDebug($"RegistrySettingsManager.MigrateLegacyKeys: {ex.Message}");
+        }
+    }
+
+    /// <summary>Rewrites a folder list still stored with the former <c>;</c> separator onto <see cref="ListSeparator"/>, once, on startup.</summary>
+    /// <remarks>
+    /// <para>Only migrates when every <c>;</c>-delimited segment is a rooted path. That is what tells a
+    /// legacy multi-folder value apart from a single folder whose own name contains a <c>;</c> - the case
+    /// the separator change exists to fix. A single path cannot contain a rooted-looking segment, because
+    /// <c>:</c> and <c>\</c> are both invalid in a folder name, so the test cannot misfire.</para>
+    /// <para>Idempotent: after the rewrite no <c>;</c> remains, and a value that fails the test is left
+    /// alone and then reads correctly as one folder under the new separator.</para>
+    /// </remarks>
+    private static void MigrateFolderListSeparator()
+    {
+        try
+        {
+            using var regKey = Registry.CurrentUser.OpenSubKey($@"{BaseKeyPath}\{SectionMedia}", writable: true);
+            if (regKey?.GetValue(KeyMediaSourceFolders) is not string stored || !stored.Contains(';')) return;
+
+            var segments = stored.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            if (segments.Length < 2 || !Array.TrueForAll(segments, Path.IsPathRooted)) return;
+
+            regKey.SetValue(KeyMediaSourceFolders, string.Join(ListSeparator, segments), RegistryValueKind.String);
+            LogManager.Instance.LogMessage($"Migrated {segments.Length} media source folders to the new list separator", LogLevel.Info);
+        }
+        catch (Exception ex)
+        {
+            LogManager.Instance.LogDebug($"RegistrySettingsManager.MigrateFolderListSeparator: {ex.Message}");
         }
     }
 

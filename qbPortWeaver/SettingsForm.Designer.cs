@@ -695,11 +695,12 @@ partial class SettingsForm
         btnInstallNicotinePlugin.Text     = "Install plugin…";
         btnInstallNicotinePlugin.Click   += btnInstallNicotinePlugin_Click;
         lblNicotinePluginStatus.AutoSize  = true;
+        lblNicotinePluginStatus.ForeColor = SystemColors.GrayText; // neutral until RefreshNicotinePluginStatus resolves the real state
         lblNicotinePluginStatus.Location  = new Point(175, 242);
         lblNicotinePluginStatus.Name      = "lblNicotinePluginStatus";
         lblNicotinePluginStatus.Size      = new Size(120, 15);
         lblNicotinePluginStatus.TabIndex  = 16;
-        lblNicotinePluginStatus.Text      = "Plugin: checking…";
+        lblNicotinePluginStatus.Text      = "Checking…";
         // ── grpTransmission ───────────────────────────────────────────
         grpTransmission.Controls.Add(lblTransmissionURL);
         grpTransmission.Controls.Add(txtTransmissionURL);

@@ -735,6 +735,16 @@ public partial class SettingsForm : Form
         var status = NicotinePluginInstaller.GetStatus(txtNicotineExePath.Text.Trim());
         lblNicotinePluginStatus.Text = status.Summary;
 
+        // Same accents the Status panel uses for its values, and the same severity DiagnosticsService
+        // assigns to each of these states - so the Settings label, the diagnostics report and the
+        // status panel never disagree about how bad a given plugin state is.
+        lblNicotinePluginStatus.ForeColor = status.State switch
+        {
+            NicotinePluginState.Ready => AppConstants.StatusOk,
+            NicotinePluginState.NotInstalled or NicotinePluginState.NotEnabled => AppConstants.StatusError,
+            _ => AppConstants.StatusWarning,
+        };
+
         btnInstallNicotinePlugin.Text = status.State switch
         {
             NicotinePluginState.NotInstalled => "Install plugin…",

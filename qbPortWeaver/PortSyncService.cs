@@ -1147,7 +1147,7 @@ public sealed class PortSyncService
             if (config.WarnOnInterfaceMismatch)
             {
                 LogManager.Instance.LogMessage(
-                    $"{warning}. Re-select the network interface in {client.ClientName}, or turn on \"Fix the network interface binding when it goes stale\" in Settings.",
+                    $"{warning}. Re-select the network interface in {client.ClientName}, or turn on \"Fix the network interface binding when it goes stale\" in Settings",
                     LogLevel.Warn);
                     _lastBindingWarningMessage = RaiseInterfaceBalloonIfNew(
                     $"{client.ClientName}: network interface binding is stale - re-select it or enable the automatic fix.",
@@ -1171,7 +1171,7 @@ public sealed class PortSyncService
         }
 
         _interfaceBindingRepairAttempted = true;
-        LogManager.Instance.LogMessage($"{warning}. Re-applying it.", LogLevel.Warn);
+        LogManager.Instance.LogMessage($"{warning}. Re-applying it", LogLevel.Warn);
 
         if (await client.RepairInterfaceBindingAsync(interfaceName, expectedToken, cancellationToken).ConfigureAwait(false))
             LogManager.Instance.LogMessage($"Re-applied the {client.ClientName} network interface binding to '{interfaceName}'", LogLevel.Info);
@@ -1290,7 +1290,7 @@ public sealed class PortSyncService
         if (_consecutiveDisconnectRestarts == MaxDisconnectRestarts)
             LogManager.Instance.LogMessage(
                 $"Restarting has not cleared {manager.ClientName}'s disconnected status after {MaxDisconnectRestarts} attempts - " +
-                $"no further restarts until it reconnects. If it is bound to a VPN adapter, re-select the network interface in {manager.ClientName}'s settings.",
+                $"no further restarts until it reconnects. If it is bound to a VPN adapter, re-select the network interface in {manager.ClientName}'s settings",
                 LogLevel.Warn);
     }
 

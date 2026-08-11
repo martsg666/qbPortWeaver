@@ -418,7 +418,11 @@ public sealed class NicotineClient : ManagedClientBase
         string code = errorElement.GetStringOrNull(JsonPropCode) ?? string.Empty;
         string message = errorElement.GetStringOrNull(JsonPropMessage) ?? string.Empty;
 
-        return (code, message);
+        // The plugin terminates its messages with a full stop - correct for an API field shown on
+        // its own, and for the chat commands that echo it. Our log lines never end in one, and this
+        // message is always appended to one, so strip it at the boundary rather than asking the
+        // plugin to punctuate for our format. Only the trailing stop goes; internal ones stay.
+        return (code, message.TrimEnd().TrimEnd('.'));
     }
 
     private void LogTransportFailure(string callerName, Exception? exception, LogLevel failureLevel)

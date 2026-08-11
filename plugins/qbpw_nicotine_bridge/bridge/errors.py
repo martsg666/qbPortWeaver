@@ -4,6 +4,10 @@
 Every failure the API can report is an ``ApiError`` carrying an HTTP status and a stable
 machine-readable code. The code is what qbPortWeaver branches on; the message is for the
 user and may be reworded freely.
+
+Messages are complete sentences and end with a full stop: they are shown on their own, both in the
+JSON ``error.message`` field and in the chat commands that echo it. qbPortWeaver strips the trailing
+stop when it appends one to a log line, so do not drop it here to suit that format.
 """
 
 
@@ -33,11 +37,11 @@ def forbidden_origin():
 
 
 def not_found(path):
-    return ApiError(404, "not_found", f"No such endpoint: {path}")
+    return ApiError(404, "not_found", f"No such endpoint: {path}.")
 
 
 def method_not_allowed(method, path):
-    return ApiError(405, "method_not_allowed", f"{method} is not allowed on {path}")
+    return ApiError(405, "method_not_allowed", f"{method} is not allowed on {path}.")
 
 
 def port_locked_by_cli(cli_port):

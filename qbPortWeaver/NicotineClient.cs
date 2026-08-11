@@ -45,7 +45,10 @@ public sealed class NicotineClient : ManagedClientBase
     private bool _rediscoveryAttempted;
 
     // Deduplicates the --port guidance. The condition lasts for the life of the Nicotine+
-    // process, so without this every sync cycle would repeat the same warning.
+    // process and each sync cycle builds a fresh client, so the latch has to outlive the
+    // instance or every cycle would repeat the same warning. Cleared on a successful port
+    // change (see SetListeningPortAsync): the lock is then gone, and a later one must warn
+    // again rather than be suppressed as a repeat of a condition that has since been fixed.
     private static string? _lastLockedWarning; // NOSONAR S2696 - one sync loop; the dedupe is deliberately process-wide
 
     /// <inheritdoc/>
@@ -161,7 +164,13 @@ public sealed class NicotineClient : ManagedClientBase
             var root = doc.RootElement;
 
             if (root.TryGetProperty(JsonPropOk, out var okElement) && okElement.ValueKind == JsonValueKind.True)
+            {
+                // The plugin rejects a locked port before any write, so a success means the lock
+                // is gone. Re-arm the warning latch so a later one is reported instead of being
+                // swallowed as a repeat - same rule as the interface latches in PortSyncService.
+                _lastLockedWarning = null;
                 return true;
+            }
 
             LogSetPortFailure(root);
             return false;

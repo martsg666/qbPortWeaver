@@ -432,6 +432,19 @@ public sealed class PortSyncService
             vpnManager.GetRecoveryAction(), vpnManager.GetRecoveryTarget(), vpnManager.ProviderName,
             cfg, cancellationToken).ConfigureAwait(false);
 
+        // The same usable-port rule HandleVpnConnectedAsync applies to a provider-reported port. The
+        // fallback reaches the client through the same SetListeningPortAsync call, so a value the loop
+        // would refuse from a provider must not get through just because it came from settings. Only a
+        // hand-edited registry value can be out of range (the Settings spinner caps it, and re-saving
+        // clamps it back), so this is a floor under that rather than the primary validation. Zeroing
+        // falls through to the branch below, which already skips the update and reports it.
+        if (defaultPort != 0 && !AppConstants.IsUsablePort(defaultPort))
+        {
+            LogManager.Instance.LogMessage(
+                $"Configured default port ({defaultPort}) is not usable - ignoring it", LogLevel.Warn);
+            defaultPort = 0;
+        }
+
         if (defaultPort == 0)
         {
             status[StatusKeys.Status] = SyncStatusValues.Skipped;

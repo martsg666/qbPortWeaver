@@ -287,9 +287,9 @@ Configured via tray menu → **Media Manager**.
 3. Reads the VPN-assigned port from the configured provider (skipped if using the default port fallback). If port detection fails despite the VPN being connected, the failed cycle counter increments and auto-recovery may trigger.
 4. Checks if the configured client is running (optionally force starts it if configured).
 5. Connects to the client and retrieves the current listening port.
-   - For qBittorrent: also reads the bound network interface for mismatch detection.
-6. *(qBittorrent only)* If **Warn on interface mismatch** is enabled: checks that qBittorrent's network interface matches the configured VPN provider and shows a tray warning if not.
-   Also checks that qBittorrent's stored interface identifier still resolves to the adapter it names, and warns - or re-applies it, if **Fix the network interface binding when it goes stale** is enabled - when it does not. This check runs whatever the VPN provider is, since the binding can go stale without the VPN being involved.
+   - For qBittorrent and Nicotine+: also reads the bound network interface for mismatch detection.
+6. *(qBittorrent and Nicotine+)* If **Warn on interface mismatch** is enabled: checks that the client's network interface matches the configured VPN provider and shows a tray warning if not. Transmission and Deluge expose only a bind address, which the VPN rotates, so the check does not apply to them.
+   *(qBittorrent only)* Also checks that qBittorrent's stored interface identifier still resolves to the adapter it names, and warns - or re-applies it, if **Fix the network interface binding when it goes stale** is enabled - when it does not. This check runs whatever the VPN provider is, since the binding can go stale without the VPN being involved.
 7. If ports differ:
    - Updates the client's listening port.
    - Shows a tray balloon tip if **Notify on port update** is enabled.
@@ -482,11 +482,12 @@ Fork the repository and open your pull request against the **current release bra
 | Purpose | Base branch | Name pattern |
 |---|---|---|
 | Release | Previous release branch | `2.x.y` |
-| Release candidate | Release branch | `rc/<name>-<version>` |
+| QA | Release branch | `qa/<version>` |
+| Release candidate | Release branch | `rc/<version>-rc<n>` |
 | Hotfix | Corresponding release branch | `fix/<description>` |
 | Feature | Corresponding release branch | `feature/<description>` |
 
-Hotfix, feature, and release-candidate branches are all merged into the release branch via pull request; release-candidate branches stage a batch of changes for final testing before the release is tagged.
+Hotfix and feature branches are merged into the release branch via pull request. QA and release-candidate branches stage a batch of changes for final testing before the release is tagged; they take direct commits, and only `master` and the bare `2.x.y` release branches require a pull request to update.
 
 #### Workflow diagram
 
@@ -494,14 +495,14 @@ Hotfix, feature, and release-candidate branches are all merged into the release 
 master  ──────────────────────────────────────────────────────────────► (always latest release)
            │                                                          ▲
            │  git checkout -b <new-release> origin/<previous-release>│ git merge --no-ff <new-release>
-           ▼                                                          │
-<new-release> ──┬────────────────────────── git tag v<new-release> ──┘
-           │                                                  │
-           ├── fix/some-bug   → PR → merge into <new-release> └─► CI/CD pipeline triggers
-           └── feature/new-ui → PR → merge into <new-release>       ├─ dotnet publish (self-contained win-x64)
-                                                                      ├─ WiX MSI build
-                                                                      ├─ GitHub Release created
-                                                                      └─ MSI + .nupkg uploaded to release
+           ▼                                                          │ then read the SonarCloud run on master
+<new-release> ──┬─────────────────────────────────────────────────────┴── git tag v<new-release>
+           │                                                                  │
+           ├── fix/some-bug   → PR → merge into <new-release>                 └─► CI/CD pipeline triggers
+           └── feature/new-ui → PR → merge into <new-release>                      ├─ dotnet publish (self-contained win-x64)
+                                                                                   ├─ WiX MSI build
+                                                                                   ├─ GitHub Release created
+                                                                                   └─ MSI + .nupkg uploaded to release
 ```
 
 #### Workflow steps
@@ -520,7 +521,15 @@ master  ────────────────────────
    ```
    Opening the pull request runs the **Build Check** workflow (a Release build with warnings treated as errors); make sure it passes before merging.
 
-3. **Tag the release branch** once all testing is complete - this triggers the pipeline:
+3. **Merge the release branch into `master`** once all testing is complete, before tagging:
+   ```
+   git checkout master
+   git merge --no-ff <new-release>
+   git push origin master
+   ```
+   This runs the **SonarCloud** workflow on `master`. Read that run before tagging: analysis of any other branch is not readable on the project's current plan, so the `master` run is the only one that can inform the release. Merging before tagging is also what carries every contributor's commits into `master`, so they appear in the repository's contributor list.
+
+4. **Tag the release branch** - this triggers the pipeline:
    ```
    git checkout <new-release>
    git pull --ff-only
@@ -528,13 +537,6 @@ master  ────────────────────────
    git push origin v<new-release>
    ```
    Pushing the tag automatically triggers the **Build and Release** pipeline, which builds the app, compiles the MSI installer, creates the GitHub Release, and uploads the MSI and Chocolatey package as release assets. The package managers are then published manually from the Actions tab: run **Publish to winget** (opens the winget-pkgs submission via wingetcreate), and once the previous Chocolatey version is approved, run **Publish to Chocolatey**.
-
-4. **Merge the release branch into `master`** after the pipeline completes successfully:
-   ```
-   git checkout master
-   git merge --no-ff <new-release>
-   git push origin master
-   ```
 
 5. **Do not delete release branches.** They serve as the base for future hotfixes. If a branch is accidentally deleted it can be reconstructed from its tag:
    ```

@@ -37,6 +37,10 @@
          S5332 - loopback IPC bridge on 127.0.0.1; TLS is meaningless for a local-only handshake (NicotinePluginDiscovery.cs)
          S6966 - non-modal Show() on child forms is intentional (WhatsNewForm directly; others via the ShowOrActivate helper, MainForm.cs) -->
     <NoWarn>S108;S125;S1075;S1125;S1215;S2068;S2221;S2325;S2486;S2589;S2696;S3881;S4721;S4790;S5332;S6966</NoWarn>
+    <!-- Required by [LibraryImport]: the interop source generator emits `unsafe partial` types into
+         obj/.../LibraryImports.g.cs, so the partial classes declaring those imports (MainForm,
+         LogViewerForm, MediaImporter) will not compile without it. No `unsafe` keyword appears in
+         hand-written source, so removing this looks safe and is not - it fails with SYSLIB1062. -->
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 

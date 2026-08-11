@@ -49,6 +49,35 @@ Type these in any Nicotine+ chat window:
 | `/qbpw-connection-file` | Where the connection details are published |
 | `/qbpw-restart` | Restart the bridge without reloading the plugin |
 
+## HTTP API
+
+Every response is JSON. A failure carries `{"ok": false, "error": {"code": ..., "message": ...}}`;
+the `code` is stable and is what qbPortWeaver branches on, the `message` is for people and may be
+reworded between versions.
+
+All paths except `GET /` require `Authorization: Bearer <token>`.
+
+| Method | Path | What it does | Called by |
+|---|---|---|---|
+| `GET` | `/` | Liveness, plugin and Nicotine+ versions, and which capabilities resolved. No token required | Diagnosis |
+| `GET` | `/v1/preferences` | Listening port, bound interface, UPnP state, connection state | qbPortWeaver |
+| `POST` | `/v1/port` | Set the listening port, turn Nicotine+'s own UPnP off, and reconnect | qbPortWeaver |
+| `GET` | `/v1/port` | Alias of `GET /v1/preferences` | Diagnosis |
+| `GET` | `/v1/status` | Connection state, username, public IP, active port | qbPortWeaver |
+| `POST` | `/v1/porttest` | Run a reachability check and wait up to `wait_ms` for the verdict | qbPortWeaver |
+| `GET` | `/v1/porttest` | The last verdict, without starting a check | Diagnosis |
+| `POST` | `/v1/reconnect` | Cycle the Soulseek connection without changing the port | Diagnosis |
+
+The rows marked **Diagnosis** are deliberately not called by qbPortWeaver. They exist to make a
+misbehaving bridge inspectable by hand with `curl`, which is the point at which the other rows are
+by definition not answering. `GET /` is the one to start with: it reports the versions on both
+sides and the capability map, so a Nicotine+ update that removed something the bridge depends on
+can be identified directly rather than inferred from a failing endpoint.
+
+`POST /v1/porttest` never blocks longer than the plugin's own cap, so a slow check returns
+`state: "pending"` rather than timing out. Treat anything other than `state: "done"` as
+undetermined, not as a closed port.
+
 ## Settings
 
 **Preferences → Plugins → qbPortWeaver Bridge**. The defaults are fine.

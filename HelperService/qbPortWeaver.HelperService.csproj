@@ -19,6 +19,9 @@
          S108  - empty catch body is intentional (HelperPipeServer.cs)
          S2486 - same as S108, SonarCloud cloud rule counterpart (HelperPipeServer.cs) -->
     <NoWarn>S108;S2486</NoWarn>
+    <!-- Required by [LibraryImport] in AutoRecovery (QueryServiceStatusEx): the interop source
+         generator emits `unsafe partial` types, so the declaring class will not compile without it.
+         No `unsafe` keyword appears in hand-written source, so removing this looks safe and is not. -->
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 

@@ -272,7 +272,7 @@ class CoreIO:
 
         action = self._reconnect(warnings) if needs_rebind else "none"
         if needs_rebind:
-            self._last_port_change = time.monotonic()
+            self.note_port_changed()
 
         return {"ok": True, "changed": needs_rebind, "port": port, "previous_port": previous,
                 "upnp_disabled": will_disable_upnp, "reconnect": action, "warnings": warnings}
@@ -359,4 +359,9 @@ class CoreIO:
         self._manual_disconnect = bool(user_initiated)
 
     def note_port_changed(self):
+        """Opens the reconnect grace window read by ``connection_state``.
+
+        Called from ``set_port`` after a rebind, so ``_last_port_change`` has one write site -
+        the same shape as the two hooks above, which are the only writers of their own fields.
+        """
         self._last_port_change = time.monotonic()

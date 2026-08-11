@@ -67,7 +67,7 @@ public static class DiagnosticsService
         int pass = results.Count(r => r.Status == DiagnosticStatus.Pass);
         int warn = results.Count(r => r.Status == DiagnosticStatus.Warn);
         int fail = results.Count(r => r.Status == DiagnosticStatus.Fail);
-        LogManager.Instance.LogMessage($"Diagnostics completed: {pass} passed, {warn} warning(s), {fail} failed", LogLevel.Info);
+        LogManager.Instance.LogMessage($"Diagnostics completed: {pass} passed, {AppConstants.Pluralize(warn, "warning")}, {fail} failed", LogLevel.Info);
         return results;
     }
 
@@ -97,7 +97,7 @@ public static class DiagnosticsService
     {
         try
         {
-            using var sc = new ServiceController(HelperProtocol.PipeName);
+            using var sc = new ServiceController(HelperProtocol.ServiceName);
             ServiceControllerStatus status = sc.Status; // throws InvalidOperationException when the service is not installed
             if (status == ServiceControllerStatus.Running)
                 results.Add(new(Checks.HelperService, DiagnosticStatus.Pass, "Installed and running"));
@@ -178,7 +178,7 @@ public static class DiagnosticsService
             results.Add(new(Checks.ClientRunning, DiagnosticStatus.Pass, $"{client.ClientName} is running"));
         else
             results.Add(new(Checks.ClientRunning, DiagnosticStatus.Warn, $"{client.ClientName} process not detected",
-                "Start your client, or enable Force start in Settings. Service/remote setups may still be reachable below."));
+                "Start your client, or enable Force-start in Settings. Service/remote setups may still be reachable below."));
 
         // Nicotine+ is only reachable through the bridge plugin, so its state is the first thing
         // worth knowing - "not installed", "not enabled", and "Nicotine+ never started" all look
@@ -354,7 +354,7 @@ public static class DiagnosticsService
     {
         try
         {
-            string? exe = AppConstants.GetServiceExePath(HelperProtocol.PipeName);
+            string? exe = AppConstants.GetServiceExePath(HelperProtocol.ServiceName);
             if (exe is null || !File.Exists(exe)) return null;
             string? raw = FileVersionInfo.GetVersionInfo(exe).FileVersion;
             if (string.IsNullOrWhiteSpace(raw)) return null;

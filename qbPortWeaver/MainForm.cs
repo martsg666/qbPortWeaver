@@ -1043,14 +1043,14 @@ public partial class MainForm : Form
             { State: SyncState.WaitingForVpn, Message: var m } when !string.IsNullOrEmpty(m) => m,
             { State: SyncState.WaitingForVpn } => "Startup grace period",
             { State: SyncState.Error, Message: var m } => $"Error | {m}",
-            _ => "Starting\u2026"
+            _ => "Starting…"
         };
 
         string countSuffix = string.Empty;
         if (_unviewedWarnCount > 0 || _unviewedErrorCount > 0)
         {
-            string wPart = _unviewedWarnCount > 0 ? Pluralize(_unviewedWarnCount, "Warning") : "";
-            string ePart = _unviewedErrorCount > 0 ? Pluralize(_unviewedErrorCount, "Error") : "";
+            string wPart = _unviewedWarnCount > 0 ? AppConstants.Pluralize(_unviewedWarnCount, "Warning") : "";
+            string ePart = _unviewedErrorCount > 0 ? AppConstants.Pluralize(_unviewedErrorCount, "Error") : "";
             string sep = (wPart.Length > 0 && ePart.Length > 0) ? ", " : "";
             countSuffix = $"\n{wPart}{sep}{ePart}";
         }
@@ -1131,8 +1131,8 @@ public partial class MainForm : Form
             return;
         }
 
-        string warnPart = _unviewedWarnCount > 0 ? Pluralize(_unviewedWarnCount, "warning") : "";
-        string errorPart = _unviewedErrorCount > 0 ? Pluralize(_unviewedErrorCount, "error") : "";
+        string warnPart = _unviewedWarnCount > 0 ? AppConstants.Pluralize(_unviewedWarnCount, "warning") : "";
+        string errorPart = _unviewedErrorCount > 0 ? AppConstants.Pluralize(_unviewedErrorCount, "error") : "";
         string badge = (warnPart.Length > 0 && errorPart.Length > 0) ? $"{warnPart}, {errorPart}" : $"{warnPart}{errorPart}";
         _showLogsMenuItem.Text = $"{ShowLogsMenuText} ({badge})";
     }
@@ -1192,8 +1192,6 @@ public partial class MainForm : Form
         frm.Show();
         onActivated?.Invoke(frm);
     }
-
-    private static string Pluralize(int count, string noun) => $"{count} {noun}{(count == 1 ? "" : "s")}";
 
     [LibraryImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]

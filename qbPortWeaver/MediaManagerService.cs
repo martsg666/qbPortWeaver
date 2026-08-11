@@ -82,7 +82,7 @@ public static class MediaManagerService
         MediaImporter.SaveSourceCache();
         MediaImporter.SaveLibraryCache();
         importSw.Stop();
-        LogManager.Instance.LogMessage($"Import completed: {total} file(s) in {importSw.ElapsedMilliseconds}ms", LogLevel.Info, Subsystem.MediaManager);
+        LogManager.Instance.LogMessage($"Import completed: {AppConstants.Pluralize(total, "file")} in {importSw.ElapsedMilliseconds}ms", LogLevel.Info, Subsystem.MediaManager);
     }
 
     /// <summary>
@@ -133,7 +133,7 @@ public static class MediaManagerService
         MediaImporter.SaveSourceCache();
         MediaImporter.SaveLibraryCache();
         scanSw.Stop();
-        LogManager.Instance.LogMessage($"Scan completed: {proposals.Count} proposal(s) in {scanSw.ElapsedMilliseconds}ms", LogLevel.Info, Subsystem.MediaManager);
+        LogManager.Instance.LogMessage($"Scan completed: {AppConstants.Pluralize(proposals.Count, "proposal")} in {scanSw.ElapsedMilliseconds}ms", LogLevel.Info, Subsystem.MediaManager);
         return proposals;
     }
 
@@ -168,7 +168,7 @@ public static class MediaManagerService
                 proposals.AddRange(await TryRunAsync(() => tvShowProcessor.ScanFolderClassifiedAsync(items.FolderTvFiles, onItemProcessed, cancellationToken), folder).ConfigureAwait(false));
         }
 
-        LogManager.Instance.LogMessage($"Scanned source folder '{folder}': {proposals.Count} proposal(s)", LogLevel.Info, Subsystem.MediaManager);
+        LogManager.Instance.LogMessage($"Scanned source folder '{folder}': {AppConstants.Pluralize(proposals.Count, "proposal")}", LogLevel.Info, Subsystem.MediaManager);
         return proposals;
     }
 
@@ -202,7 +202,7 @@ public static class MediaManagerService
         }
 
         int totalFiles = items.MovieFiles.Length + items.TvShowFiles.Length + items.FolderTvFiles.Length;
-        LogManager.Instance.LogMessage($"Processed source folder '{folder}': {totalFiles} file(s)", LogLevel.Info, Subsystem.MediaManager);
+        LogManager.Instance.LogMessage($"Processed source folder '{folder}': {AppConstants.Pluralize(totalFiles, "file")}", LogLevel.Info, Subsystem.MediaManager);
     }
 
     // Runs folder cleanup for all configured source folders.
@@ -291,7 +291,7 @@ public static class MediaManagerService
             .Count(dir => TryCleanupFolder(dir, dryRun));
 
         if (deleted > 0)
-            LogManager.Instance.LogDebug($"MediaManagerService.CleanupEmptyFolders: {deleted} folder(s) {(dryRun ? "would be deleted" : "deleted")} under '{rootFolder}'", Subsystem.MediaManager);
+            LogManager.Instance.LogDebug($"MediaManagerService.CleanupEmptyFolders: {AppConstants.Pluralize(deleted, "folder")} {(dryRun ? "would be deleted" : "deleted")} under '{rootFolder}'", Subsystem.MediaManager);
     }
 
     // Checks whether a single directory is removable and deletes (or dry-run logs) it. Returns true if the folder was processed.
@@ -403,7 +403,7 @@ public static class MediaManagerService
     private static async Task<List<(string Folder, List<FileInfo> Candidates)>> EnumerateSourceFoldersAsync(
         List<string> validFolders, CancellationToken cancellationToken)
     {
-        LogManager.Instance.LogMessage($"Enumerating source files across {validFolders.Count} folder(s)", LogLevel.Info, Subsystem.MediaManager);
+        LogManager.Instance.LogMessage($"Enumerating source files across {AppConstants.Pluralize(validFolders.Count, "folder")}", LogLevel.Info, Subsystem.MediaManager);
         return (await Task.WhenAll(validFolders.Select(f =>
             Task.Run(() =>
             {

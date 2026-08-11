@@ -53,7 +53,7 @@ internal static class AutoRecoveryManager
             else if (!restartResult.Completed)
                 reason = "helper service was unreachable (see prior log entry)";
             else
-                reason = $"helper service reported {restartResult.ErrorCount} error{(restartResult.ErrorCount == 1 ? "" : "s")} during the service restart (see helper log entries)";
+                reason = $"helper service reported {AppConstants.Pluralize(restartResult.ErrorCount, "error")} during the service restart (see helper log entries)";
             LogManager.Instance.LogMessage($"Skipping VPN client app restart for '{providerKeyword}' - {reason}", LogLevel.Warn);
             return;
         }
@@ -83,7 +83,7 @@ internal static class AutoRecoveryManager
         else if (cycleResult.ErrorCount == 0)
             LogManager.Instance.LogMessage($"Adapter cycle completed for '{adapterName}'", LogLevel.Info);
         else
-            LogManager.Instance.LogMessage($"Adapter cycle for '{adapterName}' completed with {cycleResult.ErrorCount} error{(cycleResult.ErrorCount == 1 ? "" : "s")} - see helper log entries", LogLevel.Warn);
+            LogManager.Instance.LogMessage($"Adapter cycle for '{adapterName}' completed with {AppConstants.Pluralize(cycleResult.ErrorCount, "error")} - see helper log entries", LogLevel.Warn);
     }
 
     // Kills all instances of the named client process (capturing the exe path first),

@@ -6,7 +6,7 @@ public partial class SettingsForm : Form
     // Set to true when the user clicks Save; MainForm reads this after the dialog closes to decide whether to trigger an immediate sync.
     internal bool SettingsSaved { get; private set; }
 
-    private const string DiscoveringAdaptersPlaceholder = "Discovering adapters\u2026";
+    private const string DiscoveringAdaptersPlaceholder = "Discovering adapters…";
     private const string NoAdaptersFoundPlaceholder = "No NAT-PMP adapters found";
     private const string DefaultPortTooltip = "Port to apply when the VPN is disconnected (0 = do nothing when disconnected)";
 
@@ -349,7 +349,7 @@ public partial class SettingsForm : Form
             cboNatPmpAdapter.SelectedItem?.ToString() == NoAdaptersFoundPlaceholder)
         {
             ThemedMessageBox.Show(
-                "No NAT-PMP capable adapters were found.\n\nEnsure the adapter is up and its gateway is responding to NAT-PMP, then click \u21bb to retry.",
+                "No NAT-PMP capable adapters were found.\n\nEnsure the adapter is up and its gateway is responding to NAT-PMP, then click ⟳ to retry.",
                 AppIdentity.AppName,
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Warning);
@@ -630,8 +630,8 @@ public partial class SettingsForm : Form
         {
             var status = NicotinePluginInstaller.GetStatus(txtNicotineExePath.Text.Trim());
             ThemedMessageBox.Show(
-                "No connection details were found.\r\n\r\n" + DescribeNextStep(status) +
-                "\r\n\r\nIf Nicotine+ runs with a custom data folder, run /qbpw-connection-file inside " +
+                "No connection details were found.\n\n" + DescribeNextStep(status) +
+                "\n\nIf Nicotine+ runs with a custom data folder, run /qbpw-connection-file inside " +
                 "Nicotine+ and enter the address and token here by hand.",
                 AppIdentity.AppName, MessageBoxButtons.OK, MessageBoxIcon.Information);
             RefreshNicotinePluginStatus();
@@ -643,7 +643,7 @@ public partial class SettingsForm : Form
         RefreshNicotinePluginStatus();
 
         ThemedMessageBox.Show(
-            $"Found the bridge plugin on {handshake.Url}.\r\n\r\nThe address and token have been filled in. " +
+            $"Found the bridge plugin on {handshake.Url}.\n\nThe address and token have been filled in. " +
             "Use Test to confirm, then save.",
             AppIdentity.AppName, MessageBoxButtons.OK, MessageBoxIcon.Information);
     }
@@ -668,10 +668,10 @@ public partial class SettingsForm : Form
             // Editing Nicotine+'s config now would be pointless: it rewrites the whole file from
             // memory when it exits, discarding anything changed underneath it.
             ThemedMessageBox.Show(
-                $"Plugin installed to:\r\n{install.Message}\r\n\r\n" +
+                $"Plugin installed to:\n{install.Message}\n\n" +
                 "Nicotine+ is running, so enable it there: open Preferences → Plugins, tick " +
-                "\"qbPortWeaver Bridge\", and apply. No restart is needed.\r\n\r\n" +
-                "Then click ⟳ here to pick up the connection details.\r\n\r\n" +
+                "\"qbPortWeaver Bridge\", and apply. No restart is needed.\n\n" +
+                "Then click ⟳ here to pick up the connection details.\n\n" +
                 "Alternatively, close Nicotine+ and click Install plugin again to have it enabled automatically.",
                 AppIdentity.AppName, MessageBoxButtons.OK, MessageBoxIcon.Information);
             RefreshNicotinePluginStatus();
@@ -679,15 +679,15 @@ public partial class SettingsForm : Form
         }
 
         var choice = ThemedMessageBox.Show(
-            $"Plugin installed to:\r\n{install.Message}\r\n\r\n" +
-            "Nicotine+ is closed, so it can be enabled for you now. Enable it?\r\n\r\n" +
+            $"Plugin installed to:\n{install.Message}\n\n" +
+            "Nicotine+ is closed, so it can be enabled for you now. Enable it?\n\n" +
             "Your current Nicotine+ configuration will be backed up first, and only the plugin list is changed.",
             AppIdentity.AppName, MessageBoxButtons.YesNo, MessageBoxIcon.Question);
 
         if (choice != DialogResult.Yes)
         {
             ThemedMessageBox.Show(
-                "Plugin installed but not enabled.\r\n\r\nEnable \"qbPortWeaver Bridge\" in Nicotine+ under " +
+                "Plugin installed but not enabled.\n\nEnable \"qbPortWeaver Bridge\" in Nicotine+ under " +
                 "Preferences → Plugins, then click ⟳ here.",
                 AppIdentity.AppName, MessageBoxButtons.OK, MessageBoxIcon.Information);
             RefreshNicotinePluginStatus();
@@ -704,7 +704,7 @@ public partial class SettingsForm : Form
         }
 
         ThemedMessageBox.Show(
-            "The plugin is installed and enabled.\r\n\r\nStart Nicotine+, then click ⟳ here to read its " +
+            "The plugin is installed and enabled.\n\nStart Nicotine+, then click ⟳ here to read its " +
             "connection details.",
             AppIdentity.AppName, MessageBoxButtons.OK, MessageBoxIcon.Information);
     }

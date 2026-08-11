@@ -268,7 +268,7 @@ partial class SettingsForm
         btnRefreshAdapters.Name     = "btnRefreshAdapters";
         btnRefreshAdapters.Size     = new Size(26, 23);
         btnRefreshAdapters.TabIndex = 11;
-        btnRefreshAdapters.Text     = "↻";
+        btnRefreshAdapters.Text     = "⟳";
         btnRefreshAdapters.Click   += btnRefreshAdapters_Click;
         // Notify and show-update rows follow immediately after the NAT-PMP row at 29px spacing
         chkNotifyOnPortUpdate.AutoSize  = true;
@@ -453,7 +453,7 @@ partial class SettingsForm
         chkForceStartQBittorrent.Name     = "chkForceStartQBittorrent";
         chkForceStartQBittorrent.Size     = new Size(217, 19);
         chkForceStartQBittorrent.TabIndex = 13;
-        chkForceStartQBittorrent.Text     = "Force start qBittorrent if not running";
+        chkForceStartQBittorrent.Text     = "Force-start qBittorrent if not running";
         lblQBittorrentDefaultPort.Location  = new Point(12, 227);
         lblQBittorrentDefaultPort.Name      = "lblQBittorrentDefaultPort";
         lblQBittorrentDefaultPort.Size      = new Size(130, 23);
@@ -569,7 +569,7 @@ partial class SettingsForm
         chkForceStartDeluge.Name     = "chkForceStartDeluge";
         chkForceStartDeluge.Size     = new Size(204, 19);
         chkForceStartDeluge.TabIndex = 11;
-        chkForceStartDeluge.Text     = "Force start Deluge if not running";
+        chkForceStartDeluge.Text     = "Force-start Deluge if not running";
         lblDelugeDefaultPort.Location  = new Point(12, 198);
         lblDelugeDefaultPort.Name      = "lblDelugeDefaultPort";
         lblDelugeDefaultPort.Size      = new Size(130, 23);
@@ -670,7 +670,7 @@ partial class SettingsForm
         chkForceStartNicotine.Name     = "chkForceStartNicotine";
         chkForceStartNicotine.Size     = new Size(220, 19);
         chkForceStartNicotine.TabIndex = 11;
-        chkForceStartNicotine.Text     = "Force start Nicotine+ if not running";
+        chkForceStartNicotine.Text     = "Force-start Nicotine+ if not running";
         chkNicotineWarnOnInterfaceMismatch.AutoSize = true;
         chkNicotineWarnOnInterfaceMismatch.Location = new Point(15, 169);
         chkNicotineWarnOnInterfaceMismatch.Name     = "chkNicotineWarnOnInterfaceMismatch";
@@ -799,7 +799,7 @@ partial class SettingsForm
         chkForceStartTransmission.Name     = "chkForceStartTransmission";
         chkForceStartTransmission.Size     = new Size(214, 19);
         chkForceStartTransmission.TabIndex = 13;
-        chkForceStartTransmission.Text     = "Force start Transmission if not running";
+        chkForceStartTransmission.Text     = "Force-start Transmission if not running";
         lblTransmissionDefaultPort.Location  = new Point(12, 227);
         lblTransmissionDefaultPort.Name      = "lblTransmissionDefaultPort";
         lblTransmissionDefaultPort.Size      = new Size(130, 23);

@@ -76,7 +76,7 @@ After installing, open **Settings** from the tray icon to configure the applicat
 - **Restart After Port Change**
   Optionally restart the client after updating the port to ensure changes take effect immediately. Nicotine+ needs no restart - its plugin applies the port to the running client - so it has no such setting.
 
-- **Force Start**
+- **Force-Start**
   Optionally launch the client automatically if it is not running.
 
 - **Restart on Disconnect** *(qBittorrent only)*
@@ -183,7 +183,7 @@ On first run, all settings are initialized with sensible defaults.
 | Executable | Path to qBittorrent executable | `C:\Program Files\qBittorrent\qbittorrent.exe` |
 | Process name | Process name used to detect if qBittorrent is running | `qbittorrent` |
 | Restart after port change | Restart qBittorrent after updating the port (recommended) | `True` |
-| Force start if not running | Automatically launch qBittorrent if it is not running | `True` |
+| Force-start if not running | Automatically launch qBittorrent if it is not running | `True` |
 | Default port (0 = disabled) | Fallback port to apply when VPN is not connected | `0` |
 | Warn on interface mismatch | Warn if qBittorrent's network interface doesn't match the VPN | `True` |
 | Restart on disconnect | Restart qBittorrent when its connection status changes to disconnected (requires Executable and Process name) | `True` |
@@ -199,7 +199,7 @@ On first run, all settings are initialized with sensible defaults.
 | Process name | Process name for user-space detection (e.g. `transmission-qt`) | `transmission-qt` |
 | Executable | Path to Transmission executable (user-space mode) | `C:\Program Files\Transmission\transmission-qt.exe` |
 | Restart after port change | Restart Transmission after updating the port (recommended) | `True` |
-| Force start if not running | Automatically launch Transmission if it is not running | `True` |
+| Force-start if not running | Automatically launch Transmission if it is not running | `True` |
 | Default port (0 = disabled) | Fallback port to apply when VPN is not connected | `0` |
 
 #### Deluge
@@ -211,7 +211,7 @@ On first run, all settings are initialized with sensible defaults.
 | Executable | Path to Deluge executable | `C:\Program Files\Deluge\deluge.exe` |
 | Process name | Process name used to detect if Deluge is running | `deluge` |
 | Restart after port change | Restart Deluge after updating the port (recommended) | `True` |
-| Force start if not running | Automatically launch Deluge if it is not running | `True` |
+| Force-start if not running | Automatically launch Deluge if it is not running | `True` |
 | Default port (0 = disabled) | Fallback port to apply when VPN is not connected | `0` |
 
 #### Nicotine+
@@ -227,7 +227,7 @@ so the change is live within a few seconds and a restart would only discard sett
 | Plugin token | Access token the plugin issues. Found automatically; use ⟳ to fill it in | - |
 | Executable | Path to the Nicotine+ executable, also used to find a portable installation's data folder | `C:\Program Files\Nicotine+\Nicotine+.exe` |
 | Process name | Process name used to detect if Nicotine+ is running | `Nicotine+` |
-| Force start if not running | Automatically launch Nicotine+ if it is not running | `True` |
+| Force-start if not running | Automatically launch Nicotine+ if it is not running | `True` |
 | Warn on interface mismatch | Warn if Nicotine+'s network interface doesn't match the VPN | `True` |
 | Default port (0 = disabled) | Fallback port to apply when VPN is not connected | `0` |
 
@@ -285,7 +285,7 @@ Configured via tray menu → **Media Manager**.
    - If **not connected** and **Default port** is set: uses the default port as the target and continues.
    - If **Auto-Recovery** is enabled, the failed cycle count reaches the configured threshold, and the failures have persisted long enough (so a brief blip raced through by early re-syncs is ignored): automatically triggers recovery (via the helper Windows service) - for ProtonVPN and PIA (direct or NAT-PMP mode), restarts the VPN service and client; for NAT-PMP with a generic gateway, cycles the network adapter.
 3. Reads the VPN-assigned port from the configured provider (skipped if using the default port fallback). If port detection fails despite the VPN being connected, the failed cycle counter increments and auto-recovery may trigger.
-4. Checks if the configured client is running (optionally force starts it if configured).
+4. Checks if the configured client is running (optionally force-starts it if configured).
 5. Connects to the client and retrieves the current listening port.
    - For qBittorrent and Nicotine+: also reads the bound network interface for mismatch detection.
 6. *(qBittorrent and Nicotine+)* If **Warn on interface mismatch** is enabled: checks that the client's network interface matches the configured VPN provider and shows a tray warning if not. Transmission and Deluge expose only a bind address, which the VPN rotates, so the check does not apply to them.
@@ -367,7 +367,7 @@ NAT-PMP (RFC 6886) is a protocol for requesting port mappings directly from a ga
 - Set `VPN Provider` to `NAT-PMP` in qbPortWeaver Settings.
 - Select the correct **network adapter** in the NAT-PMP Adapter dropdown - choose the virtual adapter created by your VPN client, or your LAN adapter if using a NAT-PMP capable router.
 
-> If no adapter appears in the list, ensure the adapter is up and its gateway is responding to NAT-PMP, then click the **↻** button to refresh without reopening Settings.
+> If no adapter appears in the list, ensure the adapter is up and its gateway is responding to NAT-PMP, then click the **⟳** button to refresh without reopening Settings.
 
 ### 6. Client Configuration
 
@@ -451,7 +451,7 @@ The application is designed to always recover. A failing cycle never crashes the
 - If the VPN provider is not connected and no default port is configured, the cycle is skipped and the issue is logged.
 - If the VPN provider is not connected and a default port is configured, the default port is applied instead.
 - If the VPN port cannot be determined, the issue is logged and the update is skipped. If Auto-Recovery is enabled, repeated failures trigger automatic recovery.
-- If the client is not running and cannot be force started or updated, errors are logged and the loop continues after the next interval.
+- If the client is not running and cannot be force-started or updated, errors are logged and the loop continues after the next interval.
 
 ### Media Manager
 

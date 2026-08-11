@@ -173,7 +173,7 @@ internal sealed class DiagnosticsForm : Form
         _report.SelectionFont = summaryFont;
         AppendColored($"{pass} passed", PassColor);
         AppendColored(", ", textColor);
-        AppendColored($"{warn} warning{(warn == 1 ? "" : "s")}", warn > 0 ? WarnColor : metaColor);
+        AppendColored(AppConstants.Pluralize(warn, "warning"), warn > 0 ? WarnColor : metaColor);
         AppendColored(", ", textColor);
         AppendColored($"{fail} failed\n", fail > 0 ? FailColor : metaColor);
 

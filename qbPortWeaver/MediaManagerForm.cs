@@ -179,7 +179,7 @@ public partial class MediaManagerForm : Form
         var cancellationToken = await RenewOperationCancellationTokenAsync();
         SetBusy(true);
         BeginProgress();
-        lblScanStatus.Text = "Re-matching\u2026";
+        lblScanStatus.Text = "Re-matching…";
 
         string? completionStatus = null;
         try
@@ -258,7 +258,7 @@ public partial class MediaManagerForm : Form
                 if (showInfo is not null)
                     ApplyTvRematchResult(row, showInfo, tvShowLib, createFolders, showConfident);
                 prgScan.Value = Math.Min(++done, prgScan.Maximum);
-                lblScanStatus.Text = $"Re-matching\u2026 {done}/{total}";
+                lblScanStatus.Text = $"Re-matching… {done}/{total}";
             }
         }
         return done;
@@ -280,7 +280,7 @@ public partial class MediaManagerForm : Form
                     ApplyMovieRematchResult(row, movieInfo, moviesLib, createFolders, editedName, movieConfident);
             }
             prgScan.Value = Math.Min(++done, prgScan.Maximum);
-            lblScanStatus.Text = $"Re-matching\u2026 {done}/{total}";
+            lblScanStatus.Text = $"Re-matching… {done}/{total}";
         }
         return done;
     }
@@ -397,7 +397,7 @@ public partial class MediaManagerForm : Form
 
         SetBusy(true);
         BeginProgress();
-        lblScanStatus.Text = "Scanning\u2026";
+        lblScanStatus.Text = "Scanning…";
         // Detach the poster image before disposing cached images: Rows.Clear() fires
         // SelectionChanged which awaits CancelAsync and yields, leaving picTmdbPoster.Image
         // pointing at a freshly-disposed image until the handler resumes - a paint in that
@@ -411,7 +411,7 @@ public partial class MediaManagerForm : Form
         try
         {
             bool createFolders = chkCreateFolders.Checked;
-            var proposals = await MediaManagerService.ScanAsync(apiKey, createFolders, sourceFolders, moviesLibraryPath, tvShowsLibraryPath, CreateScanProgress("Scanning\u2026"), cancellationToken);
+            var proposals = await MediaManagerService.ScanAsync(apiKey, createFolders, sourceFolders, moviesLibraryPath, tvShowsLibraryPath, CreateScanProgress("Scanning…"), cancellationToken);
 
             PopulateGrid(proposals);
         }
@@ -451,7 +451,7 @@ public partial class MediaManagerForm : Form
         // Mode-aware confirmation: only Move removes the source, so only Move is truly irreversible.
         // Hardlink and Copy leave the source in place, so a plainer prompt avoids over-warning.
         var importMode = MediaManagerService.ParseImportMode(cboImportMode.SelectedItem?.ToString() ?? RegistrySettingsManager.ImportModeHardlink);
-        string fileCount = $"{toApply.Count} file{(toApply.Count == 1 ? "" : "s")}";
+        string fileCount = AppConstants.Pluralize(toApply.Count, "file");
         var (message, icon) = importMode == ImportMode.Move
             ? ($"{fileCount} will be moved into the library and removed from the source folder. This cannot be undone.\n\nContinue?", MessageBoxIcon.Warning)
             : ($"{fileCount} will be imported into the library.\n\nContinue?", MessageBoxIcon.Question);
@@ -468,7 +468,7 @@ public partial class MediaManagerForm : Form
 
         SetBusy(true);
         BeginProgress();
-        lblScanStatus.Text = "Importing\u2026";
+        lblScanStatus.Text = "Importing…";
         lblScanStatus.Refresh();
 
         string? completionStatus = null;
@@ -519,7 +519,7 @@ public partial class MediaManagerForm : Form
         var sourceFolders = lstSourceFolders.Items.Cast<string>().ToArray();
         if (chkDeleteEmptyFolders.Checked)
         {
-            lblScanStatus.Text = "Cleaning up empty folders\u2026";
+            lblScanStatus.Text = "Cleaning up empty folders…";
             await Task.Run(() =>
             {
                 foreach (var folder in sourceFolders)
@@ -532,16 +532,16 @@ public partial class MediaManagerForm : Form
 
         if (IsDisposed) return;
 
-        lblScanStatus.Text = "Re-scanning\u2026";
+        lblScanStatus.Text = "Re-scanning…";
         BeginProgress();
         var remaining = await MediaManagerService.ScanAsync(
             txtTmdbApiKey.Text.Trim(), chkCreateFolders.Checked, sourceFolders,
-            txtMoviesLibraryPath.Text.Trim(), txtTvShowsLibraryPath.Text.Trim(), CreateScanProgress("Re-scanning\u2026"), cancellationToken);
+            txtMoviesLibraryPath.Text.Trim(), txtTvShowsLibraryPath.Text.Trim(), CreateScanProgress("Re-scanning…"), cancellationToken);
 
         if (IsDisposed) return;
         PopulateGrid(remaining);
 
-        string remainingLabel = $"{remaining.Count} file{(remaining.Count == 1 ? "" : "s")}";
+        string remainingLabel = AppConstants.Pluralize(remaining.Count, "file");
         lblScanStatus.Text = remaining.Count == 0
             ? "Done - all files imported successfully."
             : $"Done - {remainingLabel} could not be imported.";
@@ -993,8 +993,8 @@ public partial class MediaManagerForm : Form
                 included++;
         }
 
-        string includeStr = $"{included} file{(included == 1 ? "" : "s")}";
-        string unmatchedStr = $"{unmatched} file{(unmatched == 1 ? "" : "s")}";
+        string includeStr = AppConstants.Pluralize(included, "file");
+        string unmatchedStr = AppConstants.Pluralize(unmatched, "file");
 
         lblScanStatus.Text = (included, unmatched) switch
         {

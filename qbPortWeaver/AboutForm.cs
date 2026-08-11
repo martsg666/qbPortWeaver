@@ -82,8 +82,8 @@ public partial class AboutForm : Form
         try
         {
             btnCheckForUpdates.Enabled = false;
-            btnCheckForUpdates.Text = "Checking\u2026";
-            lblLatestVersionValue.Text = "Checking\u2026";
+            btnCheckForUpdates.Text = "Checking…";
+            lblLatestVersionValue.Text = "Checking…";
             lblLatestVersionValue.ForeColor = SystemColors.GrayText;
             lblStatusValue.Text = string.Empty;
             _availableUpdate = null;

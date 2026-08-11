@@ -77,28 +77,36 @@ jobs:
           dotnet-version: '10.x'
 
       # -----------------------------------------------------------------------
-      # 4. Verify that <Version> in all three .csproj files matches the tag version.
-      #    Catches cases where a .csproj was not updated before tagging.
+      # 4. Verify that the version in all three .csproj files and in the Nicotine+ plugin's
+      #    PLUGININFO matches the tag version. Catches cases where one was not updated before
+      #    tagging. The plugin tracks the app version so this gate can cover it: the installer
+      #    compares PLUGININFO against the bundled copy to decide whether to offer an update,
+      #    so a stale number silently reports an outdated plugin as up to date.
       # -----------------------------------------------------------------------
-      - name: Verify csproj version matches tag
+      - name: Verify project and plugin versions match tag
         shell: pwsh
         env:
           BUILD_VERSION: ${{ steps.version.outputs.VERSION }}
         run: |
           $ErrorActionPreference = 'Stop'
           $tagVersion = $env:BUILD_VERSION
-          $csproj = @(
-            'qbPortWeaver\qbPortWeaver.csproj'
-            'HelperService\qbPortWeaver.HelperService.csproj'
-            'qbPortWeaver.Shared\qbPortWeaver.Shared.csproj'
+          # PLUGININFO is a key = "value" file, not XML, hence the second pattern.
+          $targets = @(
+            @{ Path = 'qbPortWeaver\qbPortWeaver.csproj';                   Pattern = '<Version>([^<]+)</Version>' }
+            @{ Path = 'HelperService\qbPortWeaver.HelperService.csproj';    Pattern = '<Version>([^<]+)</Version>' }
+            @{ Path = 'qbPortWeaver.Shared\qbPortWeaver.Shared.csproj';     Pattern = '<Version>([^<]+)</Version>' }
+            @{ Path = 'plugins\qbpw_nicotine_bridge\PLUGININFO';            Pattern = 'Version\s*=\s*"([^"]+)"' }
           )
-          foreach ($proj in $csproj) {
-            $match   = Select-String -Path $proj -Pattern '<Version>([^<]+)</Version>'
+          foreach ($target in $targets) {
+            $match = Select-String -Path $target.Path -Pattern $target.Pattern
+            if (-not $match) {
+              throw "Version not found in $($target.Path). Check the file before tagging."
+            }
             $version = $match.Matches[0].Groups[1].Value
             if ($version -ne $tagVersion) {
-              throw "Version mismatch: tag is '$tagVersion' but $proj has '$version'. Update <Version> before tagging."
+              throw "Version mismatch: tag is '$tagVersion' but $($target.Path) has '$version'. Update it before tagging."
             }
-            Write-Host "Version check passed: $proj ($version)"
+            Write-Host "Version check passed: $($target.Path) ($version)"
           }
 
       # -----------------------------------------------------------------------

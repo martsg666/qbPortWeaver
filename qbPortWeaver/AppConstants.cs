@@ -154,7 +154,7 @@ public static class AppConstants
             {
                 KillProcess(proc, $"{clientName} process", killTimeoutMs);
             }
-            catch (Exception ex) { LogManager.Instance.LogDebug($"{clientName}.KillProcessesByName: Failed to kill process: {ex.Message}"); }
+            catch (Exception ex) { LogManager.Instance.LogDebug($"AppConstants.KillProcessesByName: Failed to kill a {clientName} process: {ex.Message}"); }
             finally { proc.Dispose(); }
         }
     }
@@ -428,6 +428,25 @@ public static class AppConstants
         form.TopMost = false;
         form.Activate();
     }
+
+    // Text helpers
+
+    /// <summary>
+    /// Returns "<paramref name="count"/> <paramref name="noun"/>", adding a plural "s" unless the
+    /// count is exactly 1 (e.g. <c>2 warnings</c>, <c>1 error</c>).
+    /// </summary>
+    /// <remarks>Shared so every user-facing count reads the same way. Use
+    /// <see cref="PluralizeNoun"/> when the sentence places the number away from the noun.</remarks>
+    public static string Pluralize(int count, string noun) => $"{count} {PluralizeNoun(count, noun)}";
+
+    /// <summary>
+    /// Returns <paramref name="noun"/> alone, pluralised for <paramref name="count"/> - for
+    /// sentences that state the number somewhere other than immediately before the noun
+    /// (e.g. "recovery triggers after 3 consecutive closed checks").
+    /// </summary>
+    /// <remarks>Only regular "add an s" plurals are needed here; nothing in the app's messages
+    /// pluralises irregularly, so keeping it this simple is deliberate rather than an oversight.</remarks>
+    public static string PluralizeNoun(int count, string noun) => count == 1 ? noun : noun + "s";
 
     /// <summary>Copies text to the clipboard, swallowing the transient <see cref="ExternalException"/> thrown
     /// when another process holds the clipboard open (clipboard managers, RDP). Empty text is replaced with a

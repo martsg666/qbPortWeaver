@@ -852,7 +852,7 @@ public sealed class PortSyncService
         if (currentPort.Value == targetPort)
         {
             status[StatusKeys.ClientPort] = currentPort.Value;
-            LogManager.Instance.LogMessage($"{manager.ClientName} ports match - no update needed", LogLevel.Info);
+            LogManager.Instance.LogMessage($"{manager.ClientName} port {currentPort.Value} already matches the target port - no update needed", LogLevel.Info);
         }
         else if (!await UpdatePortAndNotifyAsync(manager, targetPort, currentPort.Value, config, status, cancellationToken).ConfigureAwait(false))
         {
@@ -1014,7 +1014,7 @@ public sealed class PortSyncService
     {
         if (!config.PortClosedRecoveryEnabled || !_portClosedRecoveryArmed)
             return string.Empty;
-        string checks = _confirmedClosedCount == 1 ? "closed check" : "closed checks";
+        string checks = AppConstants.PluralizeNoun(_confirmedClosedCount, "closed check");
         return $" ({_confirmedClosedCount} consecutive {checks}, recovery triggers after {config.PortClosedRecoveryTriggerChecks} consecutive closed checks)";
     }
 
@@ -1045,7 +1045,7 @@ public sealed class PortSyncService
 
         string action = vpnManager.GetRecoveryAction();
         LogManager.Instance.LogMessage(
-            $"Triggering '{action}' for '{vpnManager.ProviderName}' after {config.PortClosedRecoveryTriggerChecks} consecutive closed {(config.PortClosedRecoveryTriggerChecks == 1 ? "check" : "checks")}",
+            $"Triggering '{action}' for '{vpnManager.ProviderName}' after {config.PortClosedRecoveryTriggerChecks} consecutive closed {AppConstants.PluralizeNoun(config.PortClosedRecoveryTriggerChecks, "check")}",
             LogLevel.Info);
         await DispatchRecoveryAsync(action, target, vpnManager.ProviderName, cancellationToken).ConfigureAwait(false);
     }
@@ -1068,7 +1068,7 @@ public sealed class PortSyncService
         LogManager.Instance.LogMessage($"{manager.ClientName} is not running - attempting to force-start", LogLevel.Info);
         if (!await manager.ForceStartAsync(cancellationToken).ConfigureAwait(false))
         {
-            SetSyncResult(status, false, $"Failed to force start {manager.ClientName}");
+            SetSyncResult(status, false, $"Failed to force-start {manager.ClientName}");
             return false;
         }
         LogManager.Instance.LogMessage($"Force-started {manager.ClientName}", LogLevel.Info);
@@ -1200,7 +1200,7 @@ public sealed class PortSyncService
     // The post-update command is launched later (in RunAsync's finally, after the status file write).
     private static async Task<bool> ApplyPortUpdateAsync(IManagedClient manager, int targetPort, SyncConfig config, Dictionary<string, object?> status, CancellationToken cancellationToken)
     {
-        LogManager.Instance.LogMessage($"Ports do not match - updating {manager.ClientName} port to {targetPort}", LogLevel.Info);
+        LogManager.Instance.LogMessage($"{manager.ClientName} port does not match the target port - updating to {targetPort}", LogLevel.Info);
         if (!await manager.SetListeningPortAsync(targetPort, cancellationToken).ConfigureAwait(false))
         {
             SetSyncResult(status, false, $"Failed to set {manager.ClientName} port to {targetPort}");
@@ -1297,7 +1297,7 @@ public sealed class PortSyncService
     // Builds a failure log message with cycle count and optional recovery trigger suffix
     private static string BuildCycleCountMessage(string prefix, int count, AppConfig cfg)
     {
-        string cycles = count == 1 ? "failed cycle" : "failed cycles";
+        string cycles = AppConstants.PluralizeNoun(count, "failed cycle");
         string recoverySuffix = cfg.VpnAutoRecoveryEnabled
             ? $", recovery may trigger after {cfg.VpnAutoRecoveryTriggerCycles} consecutive failed cycles"
             : string.Empty;
@@ -1375,7 +1375,7 @@ public sealed class PortSyncService
         ResetFailureStreak();
 
         LogManager.Instance.LogMessage(
-            $"Triggering '{action}' for '{displayName}' after {count} consecutive failed {(count == 1 ? "cycle" : "cycles")}",
+            $"Triggering '{action}' for '{displayName}' after {count} consecutive failed {AppConstants.PluralizeNoun(count, "cycle")}",
             LogLevel.Info);
         await DispatchRecoveryAsync(action, recoveryTarget, displayName, cancellationToken).ConfigureAwait(false);
     }

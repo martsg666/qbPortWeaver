@@ -408,7 +408,7 @@ internal static partial class MediaImporter
                 return false;
             }
 
-            LogManager.Instance.LogMessage($"Building library index across {libraryPaths.Length} folder(s)", LogLevel.Info, Subsystem.MediaManager);
+            LogManager.Instance.LogMessage($"Building library index across {AppConstants.Pluralize(libraryPaths.Length, "folder")}", LogLevel.Info, Subsystem.MediaManager);
             LoadLibraryCache();
 
             var sw = System.Diagnostics.Stopwatch.StartNew();

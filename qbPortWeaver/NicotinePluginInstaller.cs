@@ -125,7 +125,7 @@ internal static class NicotinePluginInstaller
         if (dataFolder is null)
         {
             return new NicotinePluginActionResult(false,
-                "Nicotine+'s data folder was not found.\r\n\r\n" +
+                "Nicotine+'s data folder was not found.\n\n" +
                 "Start Nicotine+ once so it creates its data folder, or set the Executable path " +
                 "above if this is a portable installation.");
         }
@@ -164,7 +164,7 @@ internal static class NicotinePluginInstaller
         catch (Exception ex)
         {
             LogManager.Instance.LogMessage($"Failed to install the Nicotine+ bridge plugin: {ex.Message}", LogLevel.Error);
-            return new NicotinePluginActionResult(false, $"Could not write to {pluginFolder}.\r\n\r\n{ex.Message}");
+            return new NicotinePluginActionResult(false, $"Could not write to {pluginFolder}.\n\n{ex.Message}");
         }
     }
 
@@ -217,7 +217,7 @@ internal static class NicotinePluginInstaller
                 LogManager.Instance.LogMessage(
                     $"Not enabling the Nicotine+ bridge plugin automatically: {reason}", LogLevel.Warn);
                 return new NicotinePluginActionResult(false,
-                    $"Nicotine+'s configuration could not be updated safely ({reason}).\r\n\r\n" +
+                    $"Nicotine+'s configuration could not be updated safely ({reason}).\n\n" +
                     "Nothing was changed. Enable the plugin from Preferences → Plugins inside Nicotine+ instead.");
             }
 
@@ -243,7 +243,7 @@ internal static class NicotinePluginInstaller
         {
             LogManager.Instance.LogMessage($"Failed to enable the Nicotine+ bridge plugin: {ex.Message}", LogLevel.Error);
             return new NicotinePluginActionResult(false,
-                $"Could not update Nicotine+'s configuration.\r\n\r\n{ex.Message}\r\n\r\n" +
+                $"Could not update Nicotine+'s configuration.\n\n{ex.Message}\n\n" +
                 "Enable the plugin from Preferences → Plugins inside Nicotine+ instead.");
         }
     }

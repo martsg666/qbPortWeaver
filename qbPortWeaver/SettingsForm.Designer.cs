@@ -67,6 +67,7 @@ partial class SettingsForm
         nudQBittorrentDefaultPort = new NumericUpDown();
         chkWarnOnInterfaceMismatch = new CheckBox();
         chkRestartOnDisconnect    = new CheckBox();
+        chkFixInterfaceBinding    = new CheckBox();
         grpDeluge               = new GroupBox();
         lblDelugeURL            = new Label();
         txtDelugeURL            = new TextBox();
@@ -371,6 +372,7 @@ partial class SettingsForm
         grpQBittorrent.Controls.Add(nudQBittorrentDefaultPort);
         grpQBittorrent.Controls.Add(chkWarnOnInterfaceMismatch);
         grpQBittorrent.Controls.Add(chkRestartOnDisconnect);
+        grpQBittorrent.Controls.Add(chkFixInterfaceBinding);
         grpQBittorrent.Location = new Point(6, 6);
         grpQBittorrent.Name     = "grpQBittorrent";
         grpQBittorrent.Size     = new Size(488, 380);
@@ -475,6 +477,12 @@ partial class SettingsForm
         chkRestartOnDisconnect.Size     = new Size(295, 19);
         chkRestartOnDisconnect.TabIndex = 17;
         chkRestartOnDisconnect.Text     = "Restart qBittorrent if connection status disconnects";
+        chkFixInterfaceBinding.AutoSize = true;
+        chkFixInterfaceBinding.Location = new Point(15, 314);
+        chkFixInterfaceBinding.Name     = "chkFixInterfaceBinding";
+        chkFixInterfaceBinding.Size     = new Size(330, 19);
+        chkFixInterfaceBinding.TabIndex = 18;
+        chkFixInterfaceBinding.Text     = "Fix the network interface binding when it goes stale";
         // ── grpDeluge ─────────────────────────────────────────────────
         grpDeluge.Controls.Add(lblDelugeURL);
         grpDeluge.Controls.Add(txtDelugeURL);
@@ -687,11 +695,12 @@ partial class SettingsForm
         btnInstallNicotinePlugin.Text     = "Install plugin…";
         btnInstallNicotinePlugin.Click   += btnInstallNicotinePlugin_Click;
         lblNicotinePluginStatus.AutoSize  = true;
+        lblNicotinePluginStatus.ForeColor = SystemColors.GrayText; // neutral until RefreshNicotinePluginStatus resolves the real state
         lblNicotinePluginStatus.Location  = new Point(175, 242);
         lblNicotinePluginStatus.Name      = "lblNicotinePluginStatus";
         lblNicotinePluginStatus.Size      = new Size(120, 15);
         lblNicotinePluginStatus.TabIndex  = 16;
-        lblNicotinePluginStatus.Text      = "Plugin: checking…";
+        lblNicotinePluginStatus.Text      = "Checking…";
         // ── grpTransmission ───────────────────────────────────────────
         grpTransmission.Controls.Add(lblTransmissionURL);
         grpTransmission.Controls.Add(txtTransmissionURL);
@@ -987,6 +996,7 @@ partial class SettingsForm
     private NumericUpDown nudQBittorrentDefaultPort;
     private CheckBox      chkWarnOnInterfaceMismatch;
     private CheckBox      chkRestartOnDisconnect;
+    private CheckBox      chkFixInterfaceBinding;
 
     private GroupBox      grpDeluge;
     private Label         lblDelugeURL;

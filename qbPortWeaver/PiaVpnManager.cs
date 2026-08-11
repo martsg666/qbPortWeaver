@@ -161,7 +161,9 @@ public sealed class PiaVpnManager : IVpnManager
         // Read/write the volatile field via a local so the ref pass does not strip volatile semantics (CS0420).
         string? cache = _piactlPathCache;
         var result = AppConstants.FindExeInServiceDirectory(ref cache, GetPiactlProcessName() + ".exe", Config.FindServiceName, "PiaVpnManager.GetPiactlPath");
-        _piactlPathCache = cache;
+        // Write back only a resolution - see VpnRegistryConfig.GetClientExePath for the reasoning.
+        // The cache is static, so a caller that failed must not overwrite another thread's result.
+        if (cache is { Length: > 0 }) _piactlPathCache = cache;
         return result;
     }
 }

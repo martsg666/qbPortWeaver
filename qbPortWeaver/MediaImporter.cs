@@ -230,7 +230,7 @@ internal static partial class MediaImporter
     internal static void LogDestinationConflict(string sourcePath, string destinationPath) =>
         LogManager.Instance.LogMessage(
             $"Destination conflict: '{Path.GetFileName(destinationPath)}' already exists with different content " +
-            $"(source: {DescribeFileSize(sourcePath)}, dest: {DescribeFileSize(destinationPath)}). Skipping to avoid overwriting.",
+            $"(source: {DescribeFileSize(sourcePath)}, dest: {DescribeFileSize(destinationPath)}). Skipping to avoid overwriting",
             LogLevel.Warn, Subsystem.MediaManager);
 
     /// <summary>Returns <see langword="true"/> if the destination file already exists and its fingerprint matches the source - i.e. the source was already imported.</summary>

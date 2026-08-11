@@ -21,6 +21,11 @@ internal enum NicotinePluginState
 }
 
 /// <summary>The plugin's installation state, plus what to say about it.</summary>
+/// <remarks><paramref name="Summary"/> is shown verbatim on the Settings label beside the install
+/// button, so it stays plain prose like every other user-facing status value in the app: no
+/// "Plugin:" or other Class.Member-style prefix, which is the Debug-log convention. The button and
+/// the group box already supply the context. Keep it under about 40 characters - the label is
+/// AutoSize and would otherwise overflow the group box.</remarks>
 internal sealed record NicotinePluginStatus(
     NicotinePluginState State,
     string Summary,
@@ -73,13 +78,13 @@ internal static class NicotinePluginInstaller
         if (installedVersion is null)
         {
             return new NicotinePluginStatus(NicotinePluginState.NotInstalled,
-                "Plugin: not installed", pluginFolder, null, null);
+                "Not installed", pluginFolder, null, null);
         }
 
         if (IsBundledVersionNewer(installedVersion, BundledVersion))
         {
             return new NicotinePluginStatus(NicotinePluginState.Outdated,
-                $"Plugin: {installedVersion} installed, {BundledVersion} available",
+                $"{installedVersion} installed, {BundledVersion} available",
                 pluginFolder, installedVersion, null);
         }
 
@@ -87,7 +92,7 @@ internal static class NicotinePluginInstaller
         if (handshake is not null)
         {
             return new NicotinePluginStatus(NicotinePluginState.Ready,
-                $"Plugin: ready on {handshake.Url}", pluginFolder, installedVersion, handshake);
+                $"Ready on {handshake.Url}", pluginFolder, installedVersion, handshake);
         }
 
         // No connection details. Reading Nicotine+'s config tells us whether that is because it
@@ -96,11 +101,11 @@ internal static class NicotinePluginInstaller
         if (enabled == false)
         {
             return new NicotinePluginStatus(NicotinePluginState.NotEnabled,
-                "Plugin: installed, not enabled in Nicotine+", pluginFolder, installedVersion, null);
+                "Installed, not enabled in Nicotine+", pluginFolder, installedVersion, null);
         }
 
         return new NicotinePluginStatus(NicotinePluginState.NotRunning,
-            "Plugin: enabled - start Nicotine+ to connect", pluginFolder, installedVersion, null);
+            "Enabled - start Nicotine+ to connect", pluginFolder, installedVersion, null);
     }
 
     // ------------------------------------------------------------------ install

@@ -80,7 +80,7 @@ After installing, open **Settings** from the tray icon to configure the applicat
   Optionally launch the client automatically if it is not running.
 
 - **Restart on Disconnect** *(qBittorrent only)*
-  Optionally restart qBittorrent when its connection status changes to disconnected. Requires the Executable and Process name to be configured.
+  Optionally restart qBittorrent when its connection status changes to disconnected. Requires the Executable and Process name to be configured. Restarts stop after three consecutive attempts that do not clear the disconnect, since a cause the client keeps in its own configuration cannot be fixed by restarting; they resume automatically once it reconnects.
 
 - **Port Verification**
   After each sync, optionally checks that the listening port is actually reachable from the Internet - not just configured. Runs after a port change and periodically (every 5th cycle); a closed result is confirmed on the next cycle before a warning is logged and a tray notification is shown. Transmission and Deluge use their projects' online port checkers; qBittorrent infers reachability from incoming connections, so an idle client may report closed. Nicotine+ is checked through its bridge plugin: it uses Nicotine+'s own native port checker when the version has one, and otherwise queries the Soulseek port-test service directly, so reachability works on current releases too. Enabled by default.
@@ -90,6 +90,9 @@ After installing, open **Settings** from the tray icon to configure the applicat
 
 - **VPN Interface Mismatch Warning** *(qBittorrent and Nicotine+)*
   Shows a tray balloon tip and logs a warning if the client's network interface does not match the configured VPN provider, or if it is bound to all interfaces (which may cause traffic leaks). Transmission and Deluge expose only a bind address, which the VPN rotates on reconnect, so the check does not apply to them.
+
+- **Stale Interface Binding Detection** *(qBittorrent only)*
+  qBittorrent stores its network interface as an internal identifier as well as a name. When a VPN destroys and recreates its adapter the identifier stops resolving while the name still reads correctly, so qBittorrent listens on nothing and a restart cannot fix it - the value is in its own configuration. qbPortWeaver checks the identifier against qBittorrent's live adapter list each cycle and warns when it has gone stale. **Fix the network interface binding when it goes stale** re-applies it automatically, restoring the adapter you selected. Enabled by default; turn it off to be warned instead.
 
 - **Port Update Notification**
   Optionally shows a tray balloon tip when the client's listening port is successfully updated to a new value. Enabled by default. Configurable via Settings > General.
@@ -184,6 +187,7 @@ On first run, all settings are initialized with sensible defaults.
 | Default port (0 = disabled) | Fallback port to apply when VPN is not connected | `0` |
 | Warn on interface mismatch | Warn if qBittorrent's network interface doesn't match the VPN | `True` |
 | Restart on disconnect | Restart qBittorrent when its connection status changes to disconnected (requires Executable and Process name) | `True` |
+| Fix the network interface binding when it goes stale | Re-apply qBittorrent's network interface when its stored identifier no longer matches the adapter it names | `True` |
 
 #### Transmission
 
@@ -277,19 +281,20 @@ Configured via tray menu → **Media Manager**.
 1. If VPN Provider is set to **Disabled**, the entire port sync is skipped and the cycle proceeds directly to the Media Manager step. This is useful when you only want automatic media importing without VPN port sync.
 2. Checks whether the configured VPN provider is connected.
    - During the first 90 seconds after the app starts, if **Wait for VPN on startup** is enabled and the VPN is not yet connected (or has not assigned a port yet), the cycle waits quietly instead: the tray stays neutral, nothing is logged as a failure, the default-port fallback and auto-recovery are held, and the check repeats every 15 seconds (or your update interval, if that is shorter) so the port syncs promptly once the VPN comes up.
-   - If **not connected** and **Default port** is 0: skips the cycle and waits for the next interval.
+   - If **not connected** and **Default port** is 0 (or not a usable port number): skips the cycle and waits for the next interval.
    - If **not connected** and **Default port** is set: uses the default port as the target and continues.
    - If **Auto-Recovery** is enabled, the failed cycle count reaches the configured threshold, and the failures have persisted long enough (so a brief blip raced through by early re-syncs is ignored): automatically triggers recovery (via the helper Windows service) - for ProtonVPN and PIA (direct or NAT-PMP mode), restarts the VPN service and client; for NAT-PMP with a generic gateway, cycles the network adapter.
 3. Reads the VPN-assigned port from the configured provider (skipped if using the default port fallback). If port detection fails despite the VPN being connected, the failed cycle counter increments and auto-recovery may trigger.
 4. Checks if the configured client is running (optionally force starts it if configured).
 5. Connects to the client and retrieves the current listening port.
-   - For qBittorrent: also reads the bound network interface for mismatch detection.
-6. *(qBittorrent only)* If **Warn on interface mismatch** is enabled: checks that qBittorrent's network interface matches the configured VPN provider and shows a tray warning if not.
+   - For qBittorrent and Nicotine+: also reads the bound network interface for mismatch detection.
+6. *(qBittorrent and Nicotine+)* If **Warn on interface mismatch** is enabled: checks that the client's network interface matches the configured VPN provider and shows a tray warning if not. Transmission and Deluge expose only a bind address, which the VPN rotates, so the check does not apply to them.
+   *(qBittorrent only)* Also checks that qBittorrent's stored interface identifier still resolves to the adapter it names, and warns - or re-applies it, if **Fix the network interface binding when it goes stale** is enabled - when it does not. This check runs whatever the VPN provider is, since the binding can go stale without the VPN being involved.
 7. If ports differ:
    - Updates the client's listening port.
    - Shows a tray balloon tip if **Notify on port update** is enabled.
    - Restarts the client if configured.
-8. *(qBittorrent only)* If **Restart on disconnect** is enabled (and qBittorrent was not already restarted in step 7): checks qBittorrent's connection status and restarts it if disconnected.
+8. *(qBittorrent only)* If **Restart on disconnect** is enabled (and qBittorrent was not already restarted in step 7): checks qBittorrent's connection status and restarts it if disconnected. After three consecutive restarts that leave it disconnected, further restarts are suspended until it reconnects.
 9. If **Verify port after sync** is enabled and the VPN is connected: checks that the port is reachable from the Internet (after a port change and every 5th cycle otherwise). A closed result is re-tested on the next cycle before a warning is raised. If **Trigger auto-recovery when port stays closed** is enabled, repeated confirmed closed checks trigger auto-recovery (a VPN service restart, or adapter cycle for NAT-PMP), at most once until the port tests open again.
 10. Writes the JSON status file (`%LocalAppData%\qbPortWeaver\qbPortWeaver.status.json`) and updates the tray icon and tooltip. If the port changed this cycle, the optional post-update command is then launched (fire-and-forget) - after the status file is written, so a script that reads it (e.g. `powershell -File "C:\path\to\SampleSendMail.ps1"`) sees this cycle's result rather than the previous one.
 11. Waits for the configured interval before repeating. If a manual sync was triggered, the wait is shortened to 10 seconds.
@@ -477,11 +482,12 @@ Fork the repository and open your pull request against the **current release bra
 | Purpose | Base branch | Name pattern |
 |---|---|---|
 | Release | Previous release branch | `2.x.y` |
-| Release candidate | Release branch | `rc/<name>-<version>` |
+| QA | Release branch | `qa/<version>` |
+| Release candidate | Release branch | `rc/<version>-rc<n>` |
 | Hotfix | Corresponding release branch | `fix/<description>` |
 | Feature | Corresponding release branch | `feature/<description>` |
 
-Hotfix, feature, and release-candidate branches are all merged into the release branch via pull request; release-candidate branches stage a batch of changes for final testing before the release is tagged.
+Hotfix and feature branches are merged into the release branch via pull request. QA and release-candidate branches stage a batch of changes for final testing before the release is tagged; they take direct commits, and only `master` and the bare `2.x.y` release branches require a pull request to update.
 
 #### Workflow diagram
 
@@ -489,14 +495,14 @@ Hotfix, feature, and release-candidate branches are all merged into the release 
 master  ──────────────────────────────────────────────────────────────► (always latest release)
            │                                                          ▲
            │  git checkout -b <new-release> origin/<previous-release>│ git merge --no-ff <new-release>
-           ▼                                                          │
-<new-release> ──┬────────────────────────── git tag v<new-release> ──┘
-           │                                                  │
-           ├── fix/some-bug   → PR → merge into <new-release> └─► CI/CD pipeline triggers
-           └── feature/new-ui → PR → merge into <new-release>       ├─ dotnet publish (self-contained win-x64)
-                                                                      ├─ WiX MSI build
-                                                                      ├─ GitHub Release created
-                                                                      └─ MSI + .nupkg uploaded to release
+           ▼                                                          │ then read the SonarCloud run on master
+<new-release> ──┬─────────────────────────────────────────────────────┴── git tag v<new-release>
+           │                                                                  │
+           ├── fix/some-bug   → PR → merge into <new-release>                 └─► CI/CD pipeline triggers
+           └── feature/new-ui → PR → merge into <new-release>                      ├─ dotnet publish (self-contained win-x64)
+                                                                                   ├─ WiX MSI build
+                                                                                   ├─ GitHub Release created
+                                                                                   └─ MSI + .nupkg uploaded to release
 ```
 
 #### Workflow steps
@@ -515,7 +521,15 @@ master  ────────────────────────
    ```
    Opening the pull request runs the **Build Check** workflow (a Release build with warnings treated as errors); make sure it passes before merging.
 
-3. **Tag the release branch** once all testing is complete - this triggers the pipeline:
+3. **Merge the release branch into `master`** once all testing is complete, before tagging:
+   ```
+   git checkout master
+   git merge --no-ff <new-release>
+   git push origin master
+   ```
+   This runs the **SonarCloud** workflow on `master`. Read that run before tagging: analysis of any other branch is not readable on the project's current plan, so the `master` run is the only one that can inform the release. Merging before tagging is also what carries every contributor's commits into `master`, so they appear in the repository's contributor list.
+
+4. **Tag the release branch** - this triggers the pipeline:
    ```
    git checkout <new-release>
    git pull --ff-only
@@ -523,13 +537,6 @@ master  ────────────────────────
    git push origin v<new-release>
    ```
    Pushing the tag automatically triggers the **Build and Release** pipeline, which builds the app, compiles the MSI installer, creates the GitHub Release, and uploads the MSI and Chocolatey package as release assets. The package managers are then published manually from the Actions tab: run **Publish to winget** (opens the winget-pkgs submission via wingetcreate), and once the previous Chocolatey version is approved, run **Publish to Chocolatey**.
-
-4. **Merge the release branch into `master`** after the pipeline completes successfully:
-   ```
-   git checkout master
-   git merge --no-ff <new-release>
-   git push origin master
-   ```
 
 5. **Do not delete release branches.** They serve as the base for future hotfixes. If a branch is accidentally deleted it can be reconstructed from its tag:
    ```

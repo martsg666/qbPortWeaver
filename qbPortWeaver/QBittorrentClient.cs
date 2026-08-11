@@ -12,10 +12,14 @@ public sealed class QBittorrentClient : ManagedClientBase
     private const string ApiAuthLogin = "/api/v2/auth/login";
     private const string ApiAppPreferences = "/api/v2/app/preferences";
     private const string ApiSetPreferences = "/api/v2/app/setPreferences";
+    private const string ApiNetworkInterfaceList = "/api/v2/app/networkInterfaceList";
     private const string ApiTransferInfo = "/api/v2/transfer/info";
 
     private readonly string _userName;
     private readonly string _password;
+    // The interface token qBittorrent last reported (current_network_interface), captured by
+    // GetPreferencesAsync. Null until the first successful read, or when the key is absent.
+    private string? _storedInterfaceToken;
 
     /// <inheritdoc/>
     public override string ClientName => "qBittorrent";
@@ -78,6 +82,9 @@ public sealed class QBittorrentClient : ManagedClientBase
             }
 
             string? currentInterfaceName = root.GetStringOrNull("current_interface_name");
+            // Captured here rather than re-fetched: the binding check needs the token, and this is
+            // the same response that carries the name, so it costs nothing.
+            _storedInterfaceToken = root.GetStringOrNull("current_network_interface");
 
             return (listenPort, currentInterfaceName);
         }
@@ -175,6 +182,126 @@ public sealed class QBittorrentClient : ManagedClientBase
         if (string.Equals(status, ConnectionStatusConnected, StringComparison.OrdinalIgnoreCase)) return true;
         if (string.Equals(status, ConnectionStatusFirewalled, StringComparison.OrdinalIgnoreCase)) return false;
         return null;
+    }
+
+    /// <summary>
+    /// Checks the stored network-interface binding against the adapters qBittorrent can currently see.
+    /// </summary>
+    /// <remarks>
+    /// <para>qBittorrent keeps the binding in two independent preferences: <c>current_network_interface</c>,
+    /// an opaque token of the form <c>&lt;type&gt;_&lt;index&gt;</c> (<c>iftype53_32768</c>, <c>ethernet_32768</c>)
+    /// that libtorrent actually binds to, and <c>current_interface_name</c>, the display name. When a VPN
+    /// destroys and recreates its adapter the index changes while the name is reused, so the stored token
+    /// stops resolving while every human-readable signal still looks correct: no listener, no warning, and
+    /// a restart cannot help because the token is persisted configuration.</para>
+    /// <para>Resolution is by name, not by parsing the token, so the differing token formats do not matter.</para>
+    /// </remarks>
+    /// <returns>
+    /// <c>Stale</c> is <see langword="true"/> only when the stored token disagrees with the live token for
+    /// the bound adapter. <c>ExpectedToken</c> is that live token, or <see langword="null"/> when the answer
+    /// is unknown - no name reported, bound to all interfaces, the adapter is absent (VPN likely down), or
+    /// the endpoint is unavailable on this version. Callers must treat a null expected token as "do nothing".
+    /// </returns>
+    internal async Task<(bool Stale, string? ExpectedToken)> CheckInterfaceBindingAsync(
+        string? interfaceName, CancellationToken cancellationToken = default)
+    {
+        // An empty name is "bound to all interfaces", which CheckInterfaceMatch already warns about as a
+        // leak - there is no per-adapter token to validate, so this check has nothing to say.
+        if (string.IsNullOrEmpty(interfaceName) || _storedInterfaceToken is null) return (false, null);
+
+        var live = await GetNetworkInterfacesAsync(cancellationToken).ConfigureAwait(false);
+        if (live is null) return (false, null);
+
+        string? expected = live.FirstOrDefault(i => string.Equals(i.Name, interfaceName, StringComparison.Ordinal)).Value;
+        if (expected is null)
+        {
+            // The bound adapter is not present right now. That is the ordinary VPN-disconnected state,
+            // not a stale binding, and re-pointing it at something else would be actively wrong.
+            LogManager.Instance.LogDebug(
+                $"QBittorrentClient.CheckInterfaceBindingAsync: '{interfaceName}' is not in the live adapter list - leaving the binding alone");
+            return (false, null);
+        }
+
+        return (!string.Equals(_storedInterfaceToken, expected, StringComparison.Ordinal), expected);
+    }
+
+    /// <summary>
+    /// Re-points the network-interface binding at <paramref name="expectedToken"/>, the live token for the
+    /// adapter qBittorrent already names. Returns <see langword="true"/> when the write succeeded.
+    /// </summary>
+    /// <remarks>Writes the name alongside the token, as the Web UI does when an adapter is picked, so the
+    /// two preferences cannot drift apart in the other direction. Never writes an empty token: empty means
+    /// "bind to every interface", which would replace a client that cannot connect with one that reaches
+    /// the internet outside the tunnel.</remarks>
+    internal async Task<bool> RepairInterfaceBindingAsync(string interfaceName, string expectedToken, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrEmpty(expectedToken) || string.IsNullOrEmpty(interfaceName))
+            return false;
+
+        if (!await EnsureAuthenticatedAsync(cancellationToken).ConfigureAwait(false)) return false;
+
+        try
+        {
+            string jsonBody = JsonSerializer.Serialize(new Dictionary<string, string>
+            {
+                ["current_network_interface"] = expectedToken,
+                ["current_interface_name"] = interfaceName,
+            });
+            using var content = new FormUrlEncodedContent([new("json", jsonBody)]);
+            using var response = await HttpClient.PostAsync($"{Url}{ApiSetPreferences}", content, cancellationToken).ConfigureAwait(false);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                LogManager.Instance.LogMessage(
+                    $"Failed to re-apply the {ClientName} network interface binding (HTTP {(int)response.StatusCode} {response.StatusCode})", LogLevel.Warn);
+                return false;
+            }
+
+            _storedInterfaceToken = expectedToken;
+            return true;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+        catch (Exception ex)
+        {
+            LogHttpException("RepairInterfaceBindingAsync", ex, LogLevel.Warn);
+            return false;
+        }
+    }
+
+    // Live adapters as (name, token) pairs, or null when the list cannot be read - which includes
+    // qBittorrent versions predating the endpoint, so callers degrade to doing nothing.
+    private async Task<List<(string Name, string Value)>?> GetNetworkInterfacesAsync(CancellationToken cancellationToken)
+    {
+        if (!await EnsureAuthenticatedAsync(cancellationToken).ConfigureAwait(false)) return null;
+
+        try
+        {
+            using var response = await HttpClient.GetAsync($"{Url}{ApiNetworkInterfaceList}", cancellationToken).ConfigureAwait(false);
+            if (!response.IsSuccessStatusCode)
+            {
+                LogManager.Instance.LogDebug(
+                    $"QBittorrentClient.GetNetworkInterfacesAsync: HTTP {(int)response.StatusCode} {response.StatusCode} - interface binding not checked");
+                return null;
+            }
+
+            var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+            using var doc = JsonDocument.Parse(json);
+            if (doc.RootElement.ValueKind != JsonValueKind.Array) return null;
+
+            var result = new List<(string Name, string Value)>();
+            foreach (var entry in doc.RootElement.EnumerateArray())
+            {
+                if (entry.GetStringOrNull("name") is { } name && entry.GetStringOrNull("value") is { } value)
+                    result.Add((name, value));
+            }
+            return result;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+        catch (Exception ex)
+        {
+            LogManager.Instance.LogDebug($"QBittorrentClient.GetNetworkInterfacesAsync: {ex.Message}");
+            return null;
+        }
     }
 
     /// <inheritdoc/>

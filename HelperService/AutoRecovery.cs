@@ -232,8 +232,10 @@ internal static partial class AutoRecovery
     //
     // Intentionally synchronous: the kill escalation is sequential by design (each stage must
     // complete before the next begins), and this runs only on the exceptional "service not
-    // responding" path. Worst-case blocking is 3 x ProcessKillTimeoutMs (15s) on the caller's
-    // thread-pool thread - acceptable given how rarely this path is reached.
+    // responding" path. Worst-case blocking is 4 x ProcessKillTimeoutMs (20s) on the caller's
+    // thread-pool thread - four waits, not three, because stage 2 waits for the taskkill
+    // subprocess and then again for the target. Still well inside the pipe client's 120s response
+    // timeout, and acceptable given how rarely this path is reached.
     private static void KillServiceProcess(ServiceController sc, HelperLogger logger)
     {
         try

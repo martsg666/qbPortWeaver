@@ -169,7 +169,15 @@ class BridgeHandler(BaseHTTPRequestHandler):
     def _authenticate(self, bridge):
         header = self.headers.get("Authorization") or ""
         scheme, _, presented = header.partition(" ")
-        if scheme.lower() != "bearer" or not hmac.compare_digest(presented.strip(), bridge.token):
+        # Compare as bytes. hmac.compare_digest raises TypeError when a str argument holds a
+        # non-ASCII character, and header values arrive latin-1 decoded - so a token with any high
+        # byte would escape as a 500 "internal_error" instead of a 401, telling the caller the
+        # bridge is broken when their credential is merely wrong. surrogateescape keeps the encode
+        # total for any input, so nothing a client sends can make the comparison itself throw.
+        # Bytes are also the form compare_digest is designed for; the constant-time property holds.
+        if scheme.lower() != "bearer" or not hmac.compare_digest(
+                presented.strip().encode("utf-8", "surrogateescape"),
+                bridge.token.encode("utf-8")):
             raise errors.unauthorized()
 
     # ------------------------------------------------------------------- bodies
@@ -189,7 +197,7 @@ class BridgeHandler(BaseHTTPRequestHandler):
         try:
             payload = json.loads(raw.decode("utf-8"))
         except ValueError as error:  # UnicodeDecodeError is a ValueError subclass, so this covers both
-            raise errors.bad_request(f"Request body is not valid JSON: {error}") from None
+            raise errors.bad_request(f"Request body is not valid JSON: {error}.") from None
 
         if not isinstance(payload, dict):
             raise errors.bad_request("Request body must be a JSON object.")

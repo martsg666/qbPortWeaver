@@ -53,6 +53,24 @@ public sealed class PortSyncService
     // hold recovery off indefinitely; a forward jump would fire it on the first failure, which is
     // precisely the transient-blip restart the floor exists to prevent.
     private TimeSpan _failureStreakStarted;
+    // Consecutive restarts issued because the client reported itself disconnected, reset the moment it
+    // reports anything else. Restarting only helps when the cause is the client's own state; when the
+    // cause is persisted configuration - a stale network-interface binding, say - every restart re-reads
+    // the same value and reports disconnected again, so an uncapped loop restarts once per cycle forever
+    // while being structurally unable to fix anything. Each restart also interrupts transfers and can
+    // trigger rechecks, so the loop costs the user more than doing nothing would.
+    // Serialised by MainForm._updateSemaphore (same guarantee as _consecutiveFailedCycles).
+    private int _consecutiveDisconnectRestarts;
+    // True once a stale interface binding has been re-applied for the current stale streak. Cleared as
+    // soon as the binding reads healthy, so a later drift is repaired again - but a write that does not
+    // stick is not retried every cycle, which would be the same unbounded-remedy loop as the restarts.
+    // Serialised by MainForm._updateSemaphore (same guarantee as _consecutiveFailedCycles).
+    private bool _interfaceBindingRepairAttempted;
+    // One latch per condition, each owned by exactly one method. They must not be shared:
+    // CheckInterfaceMatch clears its latch on every healthy cycle, which would defeat the dedupe for
+    // any other condition writing to the same field - a persistent binding warning would then balloon
+    // on every cycle instead of once.
+    private string? _lastBindingWarningMessage;
     // Tracks the last interface-mismatch message shown as a balloon tip to suppress repeat invocations
     // for the same persistent mismatch. Cleared when the mismatch resolves so the balloon re-fires if it returns.
     // Thread-safety: only read/written inside CheckInterfaceMatch via EnsureRunningAndUpdatePortAsync,
@@ -62,6 +80,11 @@ public sealed class PortSyncService
     // Port verification throttle: full reachability tests run at most every N cycles because
     // Transmission's and Deluge's tests contact their projects' online check services.
     private const int VerifyEveryNCycles = 5;
+    // How many consecutive undetermined results are tolerated while a closed result awaits
+    // confirmation before the pending state is dropped and the normal throttle resumes. Three keeps
+    // a genuine confirmation reachable across a couple of transient glitches without polling an
+    // unavailable check service every cycle for as long as it stays down.
+    private const int MaxPendingUndetermined = 3;
 
     // Startup grace window: right after the app starts the VPN is often still connecting (boot/login).
     // For this long, a not-yet-connected VPN is held quietly - no failure, recovery, default-port
@@ -69,6 +92,10 @@ public sealed class PortSyncService
     // promptly once it is up, instead of waiting a full (possibly multi-minute) update interval.
     private const int StartupGracePeriodSeconds = 90;
     private const int StartupGracePollSeconds = 15;
+    // How many times a disconnected client is restarted before the attempts are suspended. Matches the
+    // auto-recovery trigger default: enough for a genuinely transient client fault to clear, few enough
+    // that an unfixable cause stops costing the user interrupted transfers.
+    private const int MaxDisconnectRestarts = 3;
     // Started once at construction (the sync service is created once at app startup). Monotonic, so a
     // wall-clock/NTP correction during the grace window - likely just after boot/login - cannot shift it.
     private readonly System.Diagnostics.Stopwatch _uptime = System.Diagnostics.Stopwatch.StartNew();
@@ -91,6 +118,11 @@ public sealed class PortSyncService
     private int _cyclesSinceVerify = VerifyEveryNCycles;
     private bool _portCheckPendingConfirmation; // one unconfirmed closed result seen
     private bool _portConfirmedClosed;          // closed confirmed by two consecutive checks
+    // Consecutive undetermined results while awaiting confirmation. An undetermined result cannot
+    // resolve the pending state, but pending forces a check every cycle - so a checker outage would
+    // otherwise be polled at full rate indefinitely, by every install at once. Counts only while
+    // pending; any definite result clears it.
+    private int _pendingUndeterminedCount;
 
     // Port-closed recovery state (serialised by MainForm._updateSemaphore like the rest).
     // The armed flag implements one-shot recovery: a persistent false "closed" (e.g. qBittorrent's
@@ -137,6 +169,7 @@ public sealed class PortSyncService
         ClientConfig Client,
         bool QBittorrentWarnOnInterfaceMismatch,
         bool QBittorrentRestartOnDisconnect,
+        bool QBittorrentFixInterfaceBinding,
         bool NicotineWarnOnInterfaceMismatch,
         string PostUpdateCommand,
         bool VpnAutoRecoveryEnabled,
@@ -156,6 +189,7 @@ public sealed class PortSyncService
         IVpnManager? VpnManager,
         bool WarnOnInterfaceMismatch,
         bool RestartOnDisconnect,
+        bool FixInterfaceBinding,
         bool NotifyOnPortUpdate,
         bool VerifyPort,
         bool PortClosedRecoveryEnabled,
@@ -364,6 +398,7 @@ public sealed class PortSyncService
                 VpnManager: syncVpnManager,
                 WarnOnInterfaceMismatch: warnOnInterfaceMismatch,
                 RestartOnDisconnect: restartOnDisconnect,
+                FixInterfaceBinding: cfg.QBittorrentFixInterfaceBinding,
                 NotifyOnPortUpdate: cfg.NotifyOnPortUpdate,
                 VerifyPort: cfg.VerifyPortAfterSync,
                 PortClosedRecoveryEnabled: cfg.PortClosedRecoveryEnabled,
@@ -396,6 +431,19 @@ public sealed class PortSyncService
             disconnectedMsg, LogLevel.Info,
             vpnManager.GetRecoveryAction(), vpnManager.GetRecoveryTarget(), vpnManager.ProviderName,
             cfg, cancellationToken).ConfigureAwait(false);
+
+        // The same usable-port rule HandleVpnConnectedAsync applies to a provider-reported port. The
+        // fallback reaches the client through the same SetListeningPortAsync call, so a value the loop
+        // would refuse from a provider must not get through just because it came from settings. Only a
+        // hand-edited registry value can be out of range (the Settings spinner caps it, and re-saving
+        // clamps it back), so this is a floor under that rather than the primary validation. Zeroing
+        // falls through to the branch below, which already skips the update and reports it.
+        if (defaultPort != 0 && !AppConstants.IsUsablePort(defaultPort))
+        {
+            LogManager.Instance.LogMessage(
+                $"Configured default port ({defaultPort}) is not usable - ignoring it", LogLevel.Warn);
+            defaultPort = 0;
+        }
 
         if (defaultPort == 0)
         {
@@ -497,7 +545,8 @@ public sealed class PortSyncService
             Client: clientConfig,
             QBittorrentWarnOnInterfaceMismatch: RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyWarnOnInterfaceMismatch),
             QBittorrentRestartOnDisconnect: RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyRestartOnDisconnect),
-            NicotineWarnOnInterfaceMismatch: RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionNicotine, RegistrySettingsManager.KeyNicotineWarnOnInterfaceMismatch),
+            QBittorrentFixInterfaceBinding: RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyFixInterfaceBinding),
+            NicotineWarnOnInterfaceMismatch: RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionNicotine, RegistrySettingsManager.KeyWarnOnInterfaceMismatch),
             PostUpdateCommand: RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionExtra, RegistrySettingsManager.KeyPostUpdateCmd),
             VpnAutoRecoveryEnabled: RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyVpnAutoRecoveryEnabled),
             VpnAutoRecoveryTriggerCycles: vpnAutoRecoveryTriggerCycles,
@@ -542,7 +591,8 @@ public sealed class PortSyncService
         if (activeSection == RegistrySettingsManager.SectionQBittorrent)
             clientLine +=
                 $", {RegistrySettingsManager.KeyWarnOnInterfaceMismatch}={cfg.QBittorrentWarnOnInterfaceMismatch}" +
-                $", {RegistrySettingsManager.KeyRestartOnDisconnect}={cfg.QBittorrentRestartOnDisconnect}";
+                $", {RegistrySettingsManager.KeyRestartOnDisconnect}={cfg.QBittorrentRestartOnDisconnect}" +
+                $", {RegistrySettingsManager.KeyFixInterfaceBinding}={cfg.QBittorrentFixInterfaceBinding}";
         LogManager.Instance.LogDebug(clientLine);
 
         LogManager.Instance.LogDebug(
@@ -791,6 +841,14 @@ public sealed class PortSyncService
         if (config.VpnManager is not null && config.WarnOnInterfaceMismatch && manager.SupportsInterfaceMismatchWarning)
             CheckInterfaceMatch(manager.ClientName, currentInterfaceName, config.VpnManager);
 
+        // The name check above cannot see a stale interface *token*, which is a qBittorrent-only
+        // concern. Deliberately not gated on the two conditions above: a binding can go stale with
+        // no VPN configured at all, and the client test is narrower than SupportsInterfaceMismatchWarning.
+        // WarnOnInterfaceMismatch is a preference rather than a capability, so it is applied inside,
+        // to the warning only - the repair runs either way.
+        if (manager is QBittorrentClient qbClient)
+            await CheckAndRepairInterfaceBindingAsync(qbClient, currentInterfaceName, config, cancellationToken).ConfigureAwait(false);
+
         if (currentPort.Value == targetPort)
         {
             status[StatusKeys.ClientPort] = currentPort.Value;
@@ -871,8 +929,21 @@ public sealed class PortSyncService
         if (open is null)
         {
             LogManager.Instance.LogDebug($"PortSyncService.VerifyPortAsync: {manager.ClientName} port reachability could not be determined");
+            // Only pending forces a check every cycle, so only pending needs bounding. Give up
+            // waiting for a confirmation the check service is not able to supply and fall back to
+            // the normal throttle; a later definite closed result simply starts the sequence again.
+            if (_portCheckPendingConfirmation && ++_pendingUndeterminedCount >= MaxPendingUndetermined)
+            {
+                _portCheckPendingConfirmation = false;
+                _pendingUndeterminedCount = 0;
+                LogManager.Instance.LogMessage(
+                    $"{manager.ClientName} port reachability stayed undetermined for {MaxPendingUndetermined} checks - " +
+                    "the earlier closed result could not be confirmed, resuming the normal check interval",
+                    LogLevel.Info);
+            }
             return;
         }
+        _pendingUndeterminedCount = 0;
         status[StatusKeys.PortVerified] = open.Value;
 
         if (open.Value)
@@ -1039,10 +1110,84 @@ public sealed class PortSyncService
             return;
         }
 
-        if (balloonMessage == _lastInterfaceMismatchMessage) return;
-        _lastInterfaceMismatchMessage = balloonMessage;
+        _lastInterfaceMismatchMessage = RaiseInterfaceBalloonIfNew(balloonMessage, _lastInterfaceMismatchMessage);
+    }
+
+    // Detects a stale qBittorrent interface binding and re-points it at the adapter qBittorrent
+    // already names. Detection always runs: the stored token can drift to a different live adapter
+    // while the client still reports itself connected, which no other check in the cycle would
+    // notice and which is the case that can carry traffic outside the tunnel.
+    // Two independent settings govern what follows - fixInterfaceBinding decides whether the binding
+    // is repaired, warnOnInterfaceMismatch decides whether an unrepaired one is reported.
+    private async Task CheckAndRepairInterfaceBindingAsync(QBittorrentClient client, string? interfaceName, SyncConfig config, CancellationToken cancellationToken)
+    {
+        var (stale, expectedToken) = await client.CheckInterfaceBindingAsync(interfaceName, cancellationToken).ConfigureAwait(false);
+
+        if (!stale || expectedToken is null || interfaceName is null)
+        {
+            // Healthy, or nothing to say. Re-arm so a later drift gets a fresh repair attempt, and
+            // clear this condition's own balloon latch so a future stale binding notifies again.
+            _interfaceBindingRepairAttempted = false;
+            _lastBindingWarningMessage = null;
+            return;
+        }
+
+        string warning =
+            $"{client.ClientName} is bound to '{interfaceName}' by a stale identifier, so it is not listening on that adapter - " +
+            "restarting cannot fix this because the value is stored in its configuration";
+
+        if (!config.FixInterfaceBinding)
+        {
+            // Only the warning honours WarnOnInterfaceMismatch. Detection above is a capability gate
+            // and has to run either way - the repair must work whether or not the user wants to be
+            // told - but this branch produces exactly the kind of notification that setting turns
+            // off, through the same event and balloon as the adapter-name warning beside it. Warning
+            // here while "bound to all interfaces - traffic may leak" stays silent would be the
+            // stricter of the two, which is backwards.
+            if (config.WarnOnInterfaceMismatch)
+            {
+                LogManager.Instance.LogMessage(
+                    $"{warning}. Re-select the network interface in {client.ClientName}, or turn on \"Fix the network interface binding when it goes stale\" in Settings",
+                    LogLevel.Warn);
+                    _lastBindingWarningMessage = RaiseInterfaceBalloonIfNew(
+                    $"{client.ClientName}: network interface binding is stale - re-select it or enable the automatic fix.",
+                    _lastBindingWarningMessage);
+            }
+            else
+            {
+                LogManager.Instance.LogDebug(
+                    $"PortSyncService.CheckAndRepairInterfaceBindingAsync: {client.ClientName} binding is stale, but both the fix and the interface warning are off");
+            }
+            return;
+        }
+
+        // One attempt per stale streak: if the write lands but the binding is still wrong next cycle,
+        // something else is overwriting it and repeating the write every cycle would be its own loop.
+        if (_interfaceBindingRepairAttempted)
+        {
+            LogManager.Instance.LogDebug(
+                $"PortSyncService.CheckAndRepairInterfaceBindingAsync: {client.ClientName} binding still stale after a repair - not retrying until it is healthy");
+            return;
+        }
+
+        _interfaceBindingRepairAttempted = true;
+        LogManager.Instance.LogMessage($"{warning}. Re-applying it", LogLevel.Warn);
+
+        if (await client.RepairInterfaceBindingAsync(interfaceName, expectedToken, cancellationToken).ConfigureAwait(false))
+            LogManager.Instance.LogMessage($"Re-applied the {client.ClientName} network interface binding to '{interfaceName}'", LogLevel.Info);
+        else
+            LogManager.Instance.LogMessage($"Could not re-apply the {client.ClientName} network interface binding - re-select it in {client.ClientName}", LogLevel.Error);
+    }
+
+    // Balloon dispatch for interface problems, deduplicated so a persistent condition notifies once
+    // rather than every cycle. Returns the latch value the caller should store, so each condition owns
+    // its own latch and no caller can clear another's.
+    private string? RaiseInterfaceBalloonIfNew(string balloonMessage, string? lastMessage)
+    {
+        if (balloonMessage == lastMessage) return lastMessage;
         try { InterfaceMismatchDetected?.Invoke(balloonMessage); }
         catch (Exception ex) { LogManager.Instance.LogMessage($"InterfaceMismatchDetected handler failed: {ex.Message}", LogLevel.Warn); }
+        return balloonMessage;
     }
 
     private void NotifyPortUpdated(string clientName, int port)
@@ -1103,7 +1248,7 @@ public sealed class PortSyncService
 
     // Checks connection status and restarts the client if it reports as disconnected.
     // Clients that do not support connection status (GetConnectionStatusAsync returns null) are skipped.
-    private static async Task CheckAndRestartIfDisconnectedAsync(IManagedClient manager, CancellationToken cancellationToken)
+    private async Task CheckAndRestartIfDisconnectedAsync(IManagedClient manager, CancellationToken cancellationToken)
     {
         string? connectionStatus = await manager.GetConnectionStatusAsync(cancellationToken).ConfigureAwait(false);
         if (connectionStatus is null)
@@ -1112,13 +1257,41 @@ public sealed class PortSyncService
         LogManager.Instance.LogDebug($"PortSyncService.CheckAndRestartIfDisconnectedAsync: {manager.ClientName} connection status: {connectionStatus}");
 
         if (!connectionStatus.Equals(ClientDisconnectedStatus, StringComparison.OrdinalIgnoreCase))
+        {
+            // Any non-disconnected status re-arms the allowance, so a later unrelated disconnect gets
+            // the full number of attempts rather than inheriting an exhausted counter.
+            if (_consecutiveDisconnectRestarts > 0)
+                LogManager.Instance.LogDebug(
+                    $"PortSyncService.CheckAndRestartIfDisconnectedAsync: {manager.ClientName} is no longer disconnected - restart attempts re-armed");
+            _consecutiveDisconnectRestarts = 0;
             return;
+        }
 
-        LogManager.Instance.LogMessage($"{manager.ClientName} connection status is disconnected - restarting", LogLevel.Warn);
+        if (_consecutiveDisconnectRestarts >= MaxDisconnectRestarts)
+        {
+            LogManager.Instance.LogDebug(
+                $"PortSyncService.CheckAndRestartIfDisconnectedAsync: {manager.ClientName} still disconnected, restarts remain suspended");
+            return;
+        }
+
+        _consecutiveDisconnectRestarts++;
+        LogManager.Instance.LogMessage(
+            $"{manager.ClientName} connection status is disconnected - restarting (attempt {_consecutiveDisconnectRestarts} of {MaxDisconnectRestarts})",
+            LogLevel.Warn);
+
         if (!await manager.RestartAsync(cancellationToken).ConfigureAwait(false))
             LogManager.Instance.LogMessage($"Failed to restart {manager.ClientName} after connection disconnect", LogLevel.Error);
         else
             LogManager.Instance.LogMessage($"Restarted {manager.ClientName} after connection disconnect", LogLevel.Info);
+
+        // Logged once, on the transition to the cap, so a persistent cause does not repeat this every
+        // cycle. The hint names the most common unfixable-by-restart cause: a binding the client keeps
+        // in its own configuration, which a restart re-reads unchanged.
+        if (_consecutiveDisconnectRestarts == MaxDisconnectRestarts)
+            LogManager.Instance.LogMessage(
+                $"Restarting has not cleared {manager.ClientName}'s disconnected status after {MaxDisconnectRestarts} attempts - " +
+                $"no further restarts until it reconnects. If it is bound to a VPN adapter, re-select the network interface in {manager.ClientName}'s settings",
+                LogLevel.Warn);
     }
 
     // Builds a failure log message with cycle count and optional recovery trigger suffix

@@ -41,11 +41,18 @@ public interface IManagedClient : IDisposable
     Task<bool> RestartAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Returns the current listening port and network interface identifier from the client's settings.
-    /// For qBittorrent the interface identifier is the bound network adapter name and is consumed by
-    /// the interface mismatch check. For Transmission and Deluge the interface identifier is unused
-    /// (their RPCs only expose a bind IPv4 address, which is unreliable since the VPN-assigned IP
-    /// rotates on reconnection - users should rely on the VPN client's killswitch instead).
+    /// Returns the current listening port and the bound network interface's <b>display name</b> from
+    /// the client's settings.
+    /// <para>The name is what the interface mismatch check compares, for the clients that report one
+    /// (qBittorrent, Nicotine+). It is deliberately not the whole story for qBittorrent, which stores
+    /// the binding as a separate opaque identifier: the name can still read correctly while that
+    /// identifier no longer resolves, so <see cref="QBittorrentClient"/> validates the identifier on
+    /// its own rather than through this contract. Do not treat a plausible name here as proof that
+    /// the client is actually bound to that adapter.</para>
+    /// <para>Transmission and Deluge report a bind IPv4 address instead, which is read but not
+    /// consumed: the VPN-assigned IP rotates on reconnection, so it is not a reliable signal -
+    /// users should rely on the VPN client's killswitch instead. Both therefore return
+    /// <see cref="SupportsInterfaceMismatchWarning"/> = <see langword="false"/>.</para>
     /// Returns <c>(null, null)</c> if the client is unreachable or the values cannot be read.
     /// </summary>
     Task<(int? ListenPort, string? CurrentInterfaceName)> GetPreferencesAsync(CancellationToken cancellationToken = default);

@@ -17,6 +17,13 @@ internal readonly record struct HelperResult(bool Completed, int WarnCount, int 
     // Helper processed the command and returned its WARN/ERROR counts.
     public static HelperResult Ok(int warn, int error) => new(Completed: true, WarnCount: warn, ErrorCount: error, IsRejected: false);
 
+    // Upper bound on how many alerts a single helper response may replay. The counts come from the
+    // helper's own per-request log counters and are realistically single digits, but ParseResult
+    // accepts any int the helper sends - and these counts drive a loop that raises a UI event each
+    // time. Clamping keeps a garbled magnitude from wedging the UI thread on the recovery path,
+    // completing the garble defence ParseResult already applies to the response's structure.
+    private const int MaxAlertReplay = 100;
+
     // Surfaces helper-side log entries in the tray badge, tooltip, and balloon tip.
     // The entries themselves are already in the shared log file (written by the helper directly).
     public void RaiseLogAlerts()
@@ -26,8 +33,9 @@ internal readonly record struct HelperResult(bool Completed, int WarnCount, int 
             LogManager.Instance.LogMessage("Helper service rejected the command - session token mismatch", LogLevel.Warn);
             return;
         }
-        for (int i = 0; i < WarnCount; i++) LogManager.Instance.NotifyExternalWarnOrError(LogLevel.Warn);
-        for (int i = 0; i < ErrorCount; i++) LogManager.Instance.NotifyExternalWarnOrError(LogLevel.Error);
+        // Negative counts need no guard - the loop simply does not execute.
+        for (int i = 0; i < Math.Min(WarnCount, MaxAlertReplay); i++) LogManager.Instance.NotifyExternalWarnOrError(LogLevel.Warn);
+        for (int i = 0; i < Math.Min(ErrorCount, MaxAlertReplay); i++) LogManager.Instance.NotifyExternalWarnOrError(LogLevel.Error);
     }
 }
 

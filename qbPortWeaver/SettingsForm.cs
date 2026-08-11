@@ -105,6 +105,10 @@ public partial class SettingsForm : Form
         toolTip.SetToolTip(nudQBittorrentDefaultPort, DefaultPortTooltip);
         toolTip.SetToolTip(chkWarnOnInterfaceMismatch, "Show a warning when qBittorrent's network interface does not match the configured VPN provider");
         toolTip.SetToolTip(chkRestartOnDisconnect, "Automatically restart qBittorrent when its connection status becomes disconnected");
+        toolTip.SetToolTip(chkFixInterfaceBinding,
+            "qBittorrent stores its network interface as an internal identifier that stops resolving when a VPN " +
+            "recreates its adapter. It then listens on nothing while still showing the right adapter name, and a " +
+            "restart cannot fix it. Re-applies the binding automatically when that happens.");
         toolTip.SetToolTip(txtTransmissionURL, "URL for the Transmission RPC endpoint (e.g. http://127.0.0.1:9091). Remote access must be enabled in Transmission Preferences > Remote (not required when running as a service).");
         toolTip.SetToolTip(txtTransmissionUserName, "Username for the Transmission RPC (leave empty if authentication is disabled)");
         toolTip.SetToolTip(txtTransmissionPassword, "Password for the Transmission RPC (leave empty if authentication is disabled)");
@@ -211,6 +215,7 @@ public partial class SettingsForm : Form
         chkForceStartQBittorrent.Checked = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyForceStartQBittorrent);
         chkWarnOnInterfaceMismatch.Checked = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyWarnOnInterfaceMismatch);
         chkRestartOnDisconnect.Checked = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyRestartOnDisconnect);
+        chkFixInterfaceBinding.Checked = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyFixInterfaceBinding);
 
         nudQBittorrentDefaultPort.Value = Math.Clamp(
             RegistrySettingsManager.GetInt(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyDefaultPort),
@@ -245,7 +250,7 @@ public partial class SettingsForm : Form
         txtNicotineExePath.Text = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionNicotine, RegistrySettingsManager.KeyNicotineExePath);
         txtNicotineProcessName.Text = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionNicotine, RegistrySettingsManager.KeyNicotineProcessName);
         chkForceStartNicotine.Checked = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionNicotine, RegistrySettingsManager.KeyForceStartNicotine);
-        chkNicotineWarnOnInterfaceMismatch.Checked = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionNicotine, RegistrySettingsManager.KeyNicotineWarnOnInterfaceMismatch);
+        chkNicotineWarnOnInterfaceMismatch.Checked = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionNicotine, RegistrySettingsManager.KeyWarnOnInterfaceMismatch);
         nudNicotineDefaultPort.Value = Math.Clamp(
             RegistrySettingsManager.GetInt(RegistrySettingsManager.SectionNicotine, RegistrySettingsManager.KeyDefaultPort),
             (int)nudNicotineDefaultPort.Minimum, (int)nudNicotineDefaultPort.Maximum);
@@ -301,6 +306,7 @@ public partial class SettingsForm : Form
         RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyDefaultPort, ((int)nudQBittorrentDefaultPort.Value).ToString());
         RegistrySettingsManager.SetBool(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyWarnOnInterfaceMismatch, chkWarnOnInterfaceMismatch.Checked);
         RegistrySettingsManager.SetBool(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyRestartOnDisconnect, chkRestartOnDisconnect.Checked);
+        RegistrySettingsManager.SetBool(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyFixInterfaceBinding, chkFixInterfaceBinding.Checked);
 
         // Transmission
         RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionTransmission, RegistrySettingsManager.KeyTransmissionUrl, txtTransmissionURL.Text.Trim());
@@ -327,7 +333,7 @@ public partial class SettingsForm : Form
         RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionNicotine, RegistrySettingsManager.KeyNicotineExePath, txtNicotineExePath.Text.Trim());
         RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionNicotine, RegistrySettingsManager.KeyNicotineProcessName, txtNicotineProcessName.Text.Trim());
         RegistrySettingsManager.SetBool(RegistrySettingsManager.SectionNicotine, RegistrySettingsManager.KeyForceStartNicotine, chkForceStartNicotine.Checked);
-        RegistrySettingsManager.SetBool(RegistrySettingsManager.SectionNicotine, RegistrySettingsManager.KeyNicotineWarnOnInterfaceMismatch, chkNicotineWarnOnInterfaceMismatch.Checked);
+        RegistrySettingsManager.SetBool(RegistrySettingsManager.SectionNicotine, RegistrySettingsManager.KeyWarnOnInterfaceMismatch, chkNicotineWarnOnInterfaceMismatch.Checked);
         RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionNicotine, RegistrySettingsManager.KeyDefaultPort, ((int)nudNicotineDefaultPort.Value).ToString());
 
         // Extra
@@ -728,6 +734,16 @@ public partial class SettingsForm : Form
     {
         var status = NicotinePluginInstaller.GetStatus(txtNicotineExePath.Text.Trim());
         lblNicotinePluginStatus.Text = status.Summary;
+
+        // Same accents the Status panel uses for its values, and the same severity DiagnosticsService
+        // assigns to each of these states - so the Settings label, the diagnostics report and the
+        // status panel never disagree about how bad a given plugin state is.
+        lblNicotinePluginStatus.ForeColor = status.State switch
+        {
+            NicotinePluginState.Ready => AppConstants.StatusOk,
+            NicotinePluginState.NotInstalled or NicotinePluginState.NotEnabled => AppConstants.StatusError,
+            _ => AppConstants.StatusWarning,
+        };
 
         btnInstallNicotinePlugin.Text = status.State switch
         {

@@ -19,6 +19,17 @@ public partial class WhatsNewForm : Form
         "Auto-Recovery settings on their own tab\n" +
         "The port-verification and auto-recovery options have moved to a dedicated Auto-Recovery tab " +
         "in Settings, so the General tab is less crowded and the recovery options are easier to find.\n\n" +
+        "qBittorrent keeps listening after a VPN reconnect\n" +
+        "qBittorrent remembers its network interface as an internal identifier, and when a VPN " +
+        "recreates its adapter that identifier stops working while the adapter name still looks " +
+        "right. qBittorrent then listens on nothing, and restarting it does not help. qbPortWeaver " +
+        "now spots this and puts it right for you, restoring the adapter you selected. Diagnostics " +
+        "reports it too, instead of passing every check while nothing is listening. You can turn the " +
+        "fix off in Settings if you would rather just be warned about it.\n\n" +
+        "Fewer pointless restarts\n" +
+        "When restarting a disconnected client does not help, qbPortWeaver now stops after three " +
+        "tries and explains why, rather than restarting it every cycle and interrupting your " +
+        "transfers each time. It resumes on its own once the client reconnects.\n\n" +
         "Steadier port forwarding\n" +
         "Port mappings on NAT-PMP gateways now cover both TCP and UDP, so gateways that treat the two " +
         "separately forward everything your client needs. A port your VPN reports that cannot be used " +

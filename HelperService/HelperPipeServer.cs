@@ -13,8 +13,13 @@ namespace qbPortWeaver.HelperService;
 /// Protocol: one text line per connection, pipe-delimited: action|target|sessionToken.
 /// Supported actions: restart (restart a Windows service by name) and
 /// cycle-adapter (disable and re-enable a network adapter via netsh).
-/// The session token is validated against the caller's HKCU registry value via pipe impersonation
-/// so that only the user running the tray app can send commands to this SYSTEM-level service.
+/// The session token is validated against the caller's HKCU registry value via pipe impersonation.
+/// Note what this does and does not prove: because RunAsClient impersonates the *caller*,
+/// Registry.CurrentUser resolves to the caller's own hive, so a match shows only that the caller can
+/// read a value they own - which any authenticated user can arrange for themselves. The token is a
+/// handshake that rejects malformed and stale connections, not an authentication boundary between
+/// users; the actual boundary is the pipe ACL. See "Trust boundary" below for what is genuinely
+/// trusted, and do not treat this line as a per-user gate when deciding whether to widen that ACL.
 /// The log file path is derived from the caller's HKCU Volatile Environment during impersonation
 /// rather than being caller-supplied, so no path validation is needed.
 ///
@@ -182,8 +187,11 @@ internal sealed class HelperPipeServer(ILogger<HelperPipeServer> logger) : Backg
                 // Use constant-time comparison to prevent timing side-channel attacks.
                 // string.Equals returns early on the first mismatch, leaking token length/prefix
                 // information to a local attacker who can measure pipe response times.
-                // The primary defence is the HKCU ACL (only the session owner can read the token),
-                // but FixedTimeEquals adds defence-in-depth for a SYSTEM-level dispatch gate.
+                // Constant-time comparison is hygiene for comparing a secret on a SYSTEM-level
+                // dispatch path, not a boundary in itself: the hive read here belongs to the caller,
+                // so a caller can always present a matching value. See the class summary - the real
+                // boundary is the pipe ACL. Kept because leaking prefix/length of the tray app's
+                // token to a co-located process is still worth avoiding, and it costs nothing.
                 tokenValid = !string.IsNullOrEmpty(expectedToken) &&
                              !string.IsNullOrEmpty(pipeSessionToken) &&
                              CryptographicOperations.FixedTimeEquals(

@@ -12,6 +12,13 @@ public static class RegistrySettingsManager
     private const string ValueTrue = "True";
     private const string ValueFalse = "False";
 
+    /// <summary>Separator for settings that store a list in a single value (currently the media source folders).</summary>
+    /// <remarks>The same character the helper service uses to delimit its pipe messages, and chosen for the
+    /// same reason: it is in <see cref="Path.GetInvalidFileNameChars"/>, so no path can contain one and a
+    /// folder name can never be mistaken for a delimiter. Replaced <c>;</c>, which is legal in a Windows
+    /// path; <see cref="MigrateFolderListSeparator"/> carries existing values over.</remarks>
+    public const char ListSeparator = '|';
+
     public const string SectionGeneral = "general";
     public const string SectionQBittorrent = "qbittorrent";
     public const string SectionTransmission = "transmission";
@@ -50,9 +57,15 @@ public static class RegistrySettingsManager
     public const string KeyQBittorrentProcessName = "qBittorrentProcessName";
     public const string KeyRestartQBittorrent = "restartqBittorrent";
     public const string KeyForceStartQBittorrent = "forceStartqBittorrent";
+    // Unprefixed keys are per-client settings whose name is scoped by the section they live in, so the
+    // same name is reused across sections rather than being repeated with each client's name.
+    // DefaultPort is stored in all four client sections; WarnOnInterfaceMismatch in the two whose
+    // clients can report a bound interface (qBittorrent, Nicotine+); the last two are qBittorrent-only
+    // today but would keep these names if another client ever needed them.
     public const string KeyDefaultPort = "defaultPort";
     public const string KeyWarnOnInterfaceMismatch = "warnOnInterfaceMismatch";
     public const string KeyRestartOnDisconnect = "restartOnDisconnect";
+    public const string KeyFixInterfaceBinding = "fixInterfaceBinding";
 
     // Registry key names - transmission section
     public const string KeyTransmissionUrl = "transmissionURL";
@@ -80,7 +93,6 @@ public static class RegistrySettingsManager
     public const string KeyNicotineExePath = "nicotineExePath";
     public const string KeyRestartNicotine = "restartNicotine";
     public const string KeyForceStartNicotine = "forceStartNicotine";
-    public const string KeyNicotineWarnOnInterfaceMismatch = "nicotineWarnOnInterfaceMismatch";
 
     // Registry key names - extra section
     public const string KeyPostUpdateCmd = "postUpdateCmd";
@@ -171,7 +183,13 @@ public static class RegistrySettingsManager
                 [KeyForceStartQBittorrent] = ValueTrue,
                 [KeyDefaultPort] = "0",
                 [KeyWarnOnInterfaceMismatch] = ValueTrue,
-                [KeyRestartOnDisconnect] = ValueTrue
+                [KeyRestartOnDisconnect] = ValueTrue,
+                // On by default, like the app's other remediation settings. The write is the same
+                // setPreferences call the port sync already makes every cycle, and it restores the
+                // adapter the user picked rather than choosing one - a far smaller intervention than
+                // auto-recovery, which restarts services by default. Turning it off downgrades the
+                // behaviour to a warning; detection runs either way.
+                [KeyFixInterfaceBinding] = ValueTrue
             },
             [SectionTransmission] = new(StringComparer.OrdinalIgnoreCase)
             {
@@ -207,7 +225,7 @@ public static class RegistrySettingsManager
                 // restart would fix - and killing Nicotine+ discards its configuration.
                 [KeyRestartNicotine] = ValueFalse,
                 [KeyForceStartNicotine] = ValueTrue,
-                [KeyNicotineWarnOnInterfaceMismatch] = ValueTrue,
+                [KeyWarnOnInterfaceMismatch] = ValueTrue,
                 [KeyDefaultPort] = "0"
             },
             [SectionExtra] = new(StringComparer.OrdinalIgnoreCase)
@@ -309,6 +327,7 @@ public static class RegistrySettingsManager
         // Must run before defaults are written below: a renamed key's new name does not exist yet on
         // an existing install, so without the carry-over EnsureDefaults would write the default over it.
         MigrateLegacyKeys();
+        MigrateFolderListSeparator();
 
         bool anyWritten = false;
         foreach (var section in _defaults)
@@ -361,6 +380,34 @@ public static class RegistrySettingsManager
         catch (Exception ex)
         {
             LogManager.Instance.LogDebug($"RegistrySettingsManager.MigrateLegacyKeys: {ex.Message}");
+        }
+    }
+
+    /// <summary>Rewrites a folder list still stored with the former <c>;</c> separator onto <see cref="ListSeparator"/>, once, on startup.</summary>
+    /// <remarks>
+    /// <para>Only migrates when every <c>;</c>-delimited segment is a rooted path. That is what tells a
+    /// legacy multi-folder value apart from a single folder whose own name contains a <c>;</c> - the case
+    /// the separator change exists to fix. A single path cannot contain a rooted-looking segment, because
+    /// <c>:</c> and <c>\</c> are both invalid in a folder name, so the test cannot misfire.</para>
+    /// <para>Idempotent: after the rewrite no <c>;</c> remains, and a value that fails the test is left
+    /// alone and then reads correctly as one folder under the new separator.</para>
+    /// </remarks>
+    private static void MigrateFolderListSeparator()
+    {
+        try
+        {
+            using var regKey = Registry.CurrentUser.OpenSubKey($@"{BaseKeyPath}\{SectionMedia}", writable: true);
+            if (regKey?.GetValue(KeyMediaSourceFolders) is not string stored || !stored.Contains(';')) return;
+
+            var segments = stored.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            if (segments.Length < 2 || !Array.TrueForAll(segments, Path.IsPathRooted)) return;
+
+            regKey.SetValue(KeyMediaSourceFolders, string.Join(ListSeparator, segments), RegistryValueKind.String);
+            LogManager.Instance.LogMessage($"Migrated {segments.Length} media source folders to the new list separator", LogLevel.Info);
+        }
+        catch (Exception ex)
+        {
+            LogManager.Instance.LogDebug($"RegistrySettingsManager.MigrateFolderListSeparator: {ex.Message}");
         }
     }
 

@@ -580,7 +580,7 @@ public static class MediaManagerService
         var value = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionMedia, key);
         if (string.IsNullOrWhiteSpace(value))
             return [];
-        return value.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        return value.Split(RegistrySettingsManager.ListSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
     }
 
     /// <summary>Logs and performs the file transfer, or logs a dry-run message without touching files.

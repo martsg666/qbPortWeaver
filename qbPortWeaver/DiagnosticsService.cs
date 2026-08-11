@@ -200,7 +200,7 @@ public static class DiagnosticsService
 
         AddInSyncResult(results, cp, vpnPort);
         if (client.SupportsInterfaceMismatchWarning)
-            AddInterfaceResult(results, vpn, interfaceName);
+            await AddInterfaceResultAsync(results, client, vpn, interfaceName, cancellationToken).ConfigureAwait(false);
         await AddPortReachableResultAsync(results, client, vpnPort, cancellationToken).ConfigureAwait(false);
     }
 
@@ -275,8 +275,26 @@ public static class DiagnosticsService
                 "Use Sync Now to align them immediately; the next cycle would do it automatically."));
     }
 
-    private static void AddInterfaceResult(List<DiagnosticResult> results, IVpnManager? vpn, string? interfaceName)
+    private static async Task AddInterfaceResultAsync(List<DiagnosticResult> results, IManagedClient client,
+        IVpnManager? vpn, string? interfaceName, CancellationToken cancellationToken)
     {
+        // Checked before anything below, and independently of the VPN: a stale interface token is
+        // precisely the case where the name - which is all the other branches compare - still reads
+        // correctly while the client listens on nothing. Reporting "Bound to 'X'" as a pass here is
+        // what let this go unnoticed, so it outranks every name-based verdict.
+        if (client is QBittorrentClient qbClient)
+        {
+            var (stale, expectedToken) = await qbClient.CheckInterfaceBindingAsync(interfaceName, cancellationToken).ConfigureAwait(false);
+            if (stale && expectedToken is not null)
+            {
+                results.Add(new(Checks.InterfaceBinding, DiagnosticStatus.Fail,
+                    $"Bound to '{interfaceName}' by a stale identifier - {client.ClientName} is not listening on that adapter",
+                    $"Re-select the network interface in {client.ClientName}, or turn on \"Fix the network interface binding when it goes stale\" " +
+                    "in Settings. Restarting the client does not clear it, because the value is stored in its configuration."));
+                return;
+            }
+        }
+
         if (vpn is null)
         {
             results.Add(new(Checks.InterfaceBinding, DiagnosticStatus.Skip, "VPN unavailable"));

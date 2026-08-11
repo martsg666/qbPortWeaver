@@ -25,7 +25,7 @@ flowchart TD
     PORT_OK -- No --> HANDLE_FAIL[Increment counter + try auto-recovery]
     HANDLE_FAIL --> ERROR_PORT([ERROR: Failed to determine port])
 
-    DISCONNECTED --> DEFAULT{Default port > 0?}
+    DISCONNECTED --> DEFAULT{Default port usable?}
     DEFAULT -- Yes --> CLIENT
     DEFAULT -- No --> SKIP([SKIP: No default port configured])
 
@@ -44,8 +44,11 @@ flowchart TD
     DONE_CHECK{restartOnDisconnect AND\nrestart not attempted this cycle?}
     DONE_CHECK -- Yes --> CONN_STATUS[Check client connection status]
     DONE_CHECK -- No --> VERIFY
-    CONN_STATUS -- disconnected --> RESTART_CLIENT[Restart client]
-    CONN_STATUS -- connected/firewalled --> VERIFY
+    CONN_STATUS -- disconnected --> RESTART_CAP{Under the restart cap?}
+    CONN_STATUS -- connected/firewalled --> RESET_CAP[Re-arm restart attempts]
+    RESET_CAP --> VERIFY
+    RESTART_CAP -- Yes --> RESTART_CLIENT[Restart client]
+    RESTART_CAP -- No --> VERIFY
     RESTART_CLIENT --> VERIFY
 
     VERIFY{verifyPortAfterSync AND\nVPN connected?}
@@ -120,7 +123,7 @@ Right after the app starts, the VPN is often still connecting (VPN clients launc
 
 When the VPN is detected as disconnected - or port detection fails despite the VPN being connected - the cycle increments a consecutive-failure counter. This counter drives two behaviors:
 
-1. **Default port fallback** - if `DefaultPort > 0`, the cycle applies it to the client so it remains functional (typically on a non-VPN port). If `DefaultPort == 0`, the cycle is skipped entirely.
+1. **Default port fallback** - if `DefaultPort` is a usable port, the cycle applies it to the client so it remains functional (typically on a non-VPN port). If it is `0`, or outside the usable range, the cycle is skipped entirely.
 
 2. **Auto-recovery** - if enabled, once the counter reaches the configured threshold *and* the failure streak has lasted at least `(threshold - 1) x interval` seconds, the cycle:
    - Resets the counter (to prevent repeated triggers)
@@ -129,6 +132,15 @@ When the VPN is detected as disconnected - or port detection fails despite the V
      - **NAT-PMP with a generic gateway:** action = `cycle-adapter`, target = adapter name - the helper disables and re-enables the adapter via netsh
    - Sends the recovery request to the helper service (runs as SYSTEM) via named pipe
    - If the target matches a known provider's client process, restarts it in the user session
+
+### Usable Port Rule
+
+Both ports that can reach the client go through the same check (`AppConstants.IsUsablePort`, 1-65535).
+
+- A **provider-reported** port outside the range is logged at Warn and discarded, and the cycle falls through to its no-port branch, so the grace window, the failure streak and auto-recovery behave exactly as they do when no port was reported at all. ProtonVPN's log carries a port pair while a mapping is being torn down, which is the case this was added for.
+- A **default port** outside the range is logged at Warn and treated as `0`, so the cycle is skipped rather than applying it. Only a hand-edited registry value can get there (the Settings spinner caps it, and re-saving clamps it back), so this is a floor under that rather than the primary validation.
+
+The rule exists because most clients treat `0` as "pick a random port", which would quietly undo the forwarding the app maintains while the cycle still reported success.
 
 The time floor exists because a cycle can start early - a manual sync, a settings change, or (most commonly) a burst of network-change re-syncs while connectivity flaps during a router reboot. Without it, several early cycles can drive the counter to the threshold within seconds and force-restart the VPN service during a transient blip that would have cleared on its own. `(threshold - 1) x interval` is exactly the elapsed time the streak would take under normal scheduled cycling (failure 1 at t=0, failure N at t=`(N-1) x interval`), so a genuine sustained outage still triggers at the same moment it always did - the floor only defers recovery when failures arrive faster than the schedule. The streak's start time is re-stamped on each streak's first failure, so it always describes the streak in progress.
 
@@ -210,6 +222,51 @@ All client communication goes through the `IManagedClient` interface, with imple
 When enabled, the cycle compares the client's bound network interface (`current_interface_name` from qBittorrent's preferences, `interface` from the Nicotine+ bridge - both Windows adapter friendly names) against the configured VPN provider name. A mismatch raises the `InterfaceMismatchDetected` event, which shows a warning balloon tip from the tray icon. This helps catch cases where qBittorrent is routing traffic outside the VPN tunnel. Transmission and Deluge do not expose a named adapter via their APIs, so this check is skipped for those clients.
 
 > If qBittorrent stays bound to an old adapter name after a ProtonVPN protocol change (e.g. `ProtonVPN` while the active tunnel is now `ProTUN`), this warning fires correctly - rebind qBittorrent's network interface to the active adapter to clear it.
+
+### Stale Interface Binding *(qBittorrent only)*
+
+The check above compares the adapter *name*, but qBittorrent binds by a separate value.
+`current_network_interface` holds an opaque token of the form `<type>_<index>` - `iftype53_32768`,
+`ethernet_32768`, `loopback_0` - and that is what libtorrent resolves. `current_interface_name` is
+the display name only.
+
+When a VPN destroys and recreates its adapter, Windows issues a new index while the name is reused.
+The stored token then resolves to nothing, so qBittorrent logs `The configured network interface is
+invalid` and listens on no port - while the name check above still passes, because the name is
+genuinely correct. Restarting cannot help: the token is persisted configuration and is re-read
+unchanged. If the token instead resolves to a *different* live adapter of the same type, the client
+reports itself connected while its traffic leaves outside the tunnel.
+
+Each cycle, `QBittorrentClient.CheckInterfaceBindingAsync` reads the live pairs from
+`GET /api/v2/app/networkInterfaceList` and looks up the entry whose `name` equals
+`current_interface_name`. Resolution is by name, so the differing token formats never need parsing.
+The binding is reported stale only when that entry exists and its token differs from the stored one;
+every ambiguous case - no name, bound to all interfaces, adapter absent (the VPN is simply down), or
+the endpoint missing on an older qBittorrent - is treated as "nothing to say".
+
+Detection always runs, whatever the VPN provider is, because the binding can go stale without the
+VPN being involved. What happens next depends on `fixInterfaceBinding` (qBittorrent section,
+default on):
+
+| setting | behaviour |
+|---------|-----------|
+| off | Warn plus a one-shot balloon, naming the stale binding and how to clear it |
+| on  | `POST /api/v2/app/setPreferences` re-applies the resolved token **and** the name together, as the Web UI does when an adapter is picked |
+
+The repair never writes an empty token: empty means *bind to every interface*, which would replace a
+client that cannot connect with one reachable outside the tunnel. It is also attempted once per stale
+streak - if the binding is still wrong on the next cycle something else is overwriting it, and
+repeating the write every cycle would be its own loop. The attempt re-arms as soon as the binding
+reads healthy.
+
+### Restart-on-Disconnect Cap *(qBittorrent only)*
+
+`restartOnDisconnect` restarts the client when it reports `disconnected`. That helps only when the
+cause is the client's own state; when the cause is persisted configuration - a stale interface
+binding being the known example - every restart re-reads the same value and reports disconnected
+again. Restarts are therefore capped at three consecutive attempts, after which a single Warn names
+the likely cause and further restarts are suspended. Any non-disconnected status re-arms the
+allowance, so a later unrelated disconnect gets the full three attempts.
 
 ### Port Verification
 

@@ -24,7 +24,10 @@ public interface IVpnManager
     /// Returns the externally-reachable forwarded port, or <see langword="null"/> if it cannot be determined.
     /// For ProtonVPN this is read from the client log file.
     /// For PIA this is queried via <c>piactl get portforward</c>.
-    /// For NAT-PMP this is the external port assigned by the gateway via a UDP port-mapping request.
+    /// For NAT-PMP this is the external port assigned by the gateway, requested as two RFC 6886
+    /// mappings - UDP then TCP - since the protocols are independent and a gateway may grant one
+    /// without the other. The returned port is the UDP grant; a TCP mapping that is refused or
+    /// lands on a different port is reported but does not change the result.
     /// </summary>
     Task<int?> GetVpnPortAsync(CancellationToken cancellationToken = default);
 

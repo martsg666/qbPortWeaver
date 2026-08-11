@@ -10,16 +10,16 @@ name: SonarCloud
 # Verify the project key below matches your SonarCloud project (Project > Information, or the URL).
 
 on:
+  # master only. Branch analysis is a paid feature for this organisation, so a run on any other
+  # branch produces a result nobody can read: the API answers "Organization is not allowed to
+  # access data from non main branches", and the branch shows no analysis date in the UI. Those
+  # runs also duplicated the pull_request run on the same commit. Pull request analysis IS
+  # included, and posts a full quality gate, so every branch is still covered through its PR.
+  # Contrast with build.yml, which keeps its broad push trigger: its pass/fail is readable on any
+  # branch, and it is the only check qa/ and rc/ get, since those take direct commits without a PR.
   push:
     branches:
       - master
-      - '*.*'    # release branches (2.6.4, 3.0.0, ...)
-      # These need their own entries: '*' does not match '/', so '*.*' cannot reach them.
-      # qa/ and rc/ are pushed to directly rather than via PR, so the pull_request trigger
-      # misses them too; feature/ is analysed from the first push rather than only at PR time.
-      - 'qa/*'
-      - 'rc/*'
-      - 'feature/*'
   pull_request:
 
 concurrency:

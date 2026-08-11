@@ -178,7 +178,11 @@ public sealed class NicotineClient : ManagedClientBase
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
         catch (Exception ex)
         {
-            LogHttpException("SetListeningPortAsync", ex);
+            // Debug, like the other three read paths: SendAsync has already returned a successful
+            // response and reported any transport failure itself, so anything landing here is a
+            // malformed body. The user-facing Error comes from ApplyPortUpdateAsync, which turns
+            // the false below into "Failed to set {client} port to {n}" - this line only records why.
+            LogManager.Instance.LogDebug($"NicotineClient.SetListeningPortAsync: {ex.Message}");
             return false;
         }
     }

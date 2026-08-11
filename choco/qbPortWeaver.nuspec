@@ -24,7 +24,7 @@ A lightweight Windows system tray application that keeps the listening port of *
 
 ### VPN Support
 
-Works with **ProtonVPN** (log file or NAT-PMP), **Private Internet Access** (`piactl`), and any **NAT-PMP capable VPN or router** (RFC 6886). ProtonVPN's earlier protocols and the newer Proton Protocols (Proton WireGuard, Proton Stealth) are both detected automatically. The provider is selectable from Settings.
+Works with **ProtonVPN** (log file or NAT-PMP), **PIA** (`piactl`), and any **NAT-PMP capable VPN or router** (RFC 6886). ProtonVPN's earlier protocols and the newer Proton Protocols (Proton WireGuard, Proton Stealth) are both detected automatically. The provider is selectable from Settings.
 
 ### Port Sync
 

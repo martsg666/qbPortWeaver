@@ -231,7 +231,7 @@ internal static class NicotinePluginInstaller
             string backupPath = Path.Combine(dataFolder, ConfigFolderName, ConfigBackupFileName);
             File.Copy(sourcePath, backupPath, overwrite: true);
 
-            WriteAtomically(configPath, updated);
+            AppConstants.WriteAtomic(configPath, updated);
 
             LogManager.Instance.LogMessage(
                 $"Enabled the Nicotine+ bridge plugin in {configPath} (previous copy saved as {ConfigBackupFileName})",
@@ -397,26 +397,6 @@ internal static class NicotinePluginInstaller
 
         updated = [.. result];
         return true;
-    }
-
-    private static void WriteAtomically(string path, string[] lines)
-    {
-        string folder = Path.GetDirectoryName(path)!;
-        Directory.CreateDirectory(folder);
-        string tempPath = Path.Combine(folder, $".qbpw-{Guid.NewGuid():N}.tmp");
-
-        try
-        {
-            // Nicotine+ writes its config as UTF-8 with no byte-order mark; a BOM would end up
-            // parsed as part of the first key name.
-            File.WriteAllLines(tempPath, lines, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
-            File.Move(tempPath, path, overwrite: true);
-        }
-        catch
-        {
-            try { File.Delete(tempPath); } catch (IOException) { /* best effort */ }
-            throw;
-        }
     }
 
     // ------------------------------------------------------------ python values

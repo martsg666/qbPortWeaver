@@ -21,7 +21,9 @@ public partial class MainForm : Form
     private const string PauseSyncingMenuText = "Pause Syncing";
     private const string ResumeSyncingMenuText = "Resume Syncing";
     private const string LogAlertBalloonMessage = "Check the log viewer for warnings or errors.";
-    private const int WsExToolWindow = 0x80; // hides the form from Alt+Tab
+    // Native spelling, per the interop exception to the PascalCase constant rule: an interop
+    // constant keeps the name it has in the Windows headers so it greps against them directly.
+    private const int WS_EX_TOOLWINDOW = 0x80; // hides the form from Alt+Tab
 
     // Unviewed warn/error counts for log alert badge (UI thread only)
     private int _unviewedWarnCount;
@@ -240,7 +242,7 @@ public partial class MainForm : Form
         get
         {
             CreateParams cp = base.CreateParams;
-            cp.ExStyle |= WsExToolWindow;
+            cp.ExStyle |= WS_EX_TOOLWINDOW;
             return cp;
         }
     }

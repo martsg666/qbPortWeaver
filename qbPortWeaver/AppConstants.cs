@@ -96,14 +96,32 @@ public static class AppConstants
         }
     }
 
-    /// <summary>Writes content to a temp file then atomically renames it over the target.
-    /// If the process is killed mid-write, only the .tmp file is lost and the original is untouched.</summary>
-    internal static void WriteAtomic(string path, string content)
+    /// <summary>Writes text to a temp file then atomically renames it over the target.
+    /// If the process is killed mid-write, only the temp file is lost and the original is untouched.</summary>
+    internal static void WriteAtomic(string path, string content) =>
+        WriteAtomicCore(path, temp => File.WriteAllText(temp, content));
+
+    /// <summary>Writes lines to a temp file then atomically renames it over the target.</summary>
+    /// <remarks>UTF-8 with no byte-order mark, matching the single-string overload
+    /// (<see cref="File.WriteAllText(string, string)"/> defaults to the same). Written explicitly
+    /// because Nicotine+ parses a BOM as part of the first key name in its config file.</remarks>
+    internal static void WriteAtomic(string path, string[] lines) =>
+        WriteAtomicCore(path, temp => File.WriteAllLines(temp, lines, Utf8NoBom));
+
+    private static readonly System.Text.UTF8Encoding Utf8NoBom = new(encoderShouldEmitUTF8Identifier: false);
+
+    // Shared write-then-rename core. The temp file is a uniquely named sibling of the target rather
+    // than "<target>.tmp" so two writers to the same path cannot fight over one temp file - which
+    // no current caller does, the sync cycle being serialised, but the guarantee costs nothing.
+    // Same folder is required: File.Move is only atomic within a volume.
+    private static void WriteAtomicCore(string path, Action<string> writeTo)
     {
-        var temp = path + ".tmp";
+        string folder = Path.GetDirectoryName(path) ?? string.Empty;
+        if (folder.Length > 0) Directory.CreateDirectory(folder);
+        string temp = Path.Combine(folder, $".qbpw-{Guid.NewGuid():N}.tmp");
         try
         {
-            File.WriteAllText(temp, content);
+            writeTo(temp);
             File.Move(temp, path, overwrite: true);
         }
         catch

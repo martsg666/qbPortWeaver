@@ -270,7 +270,7 @@ public partial class WhatsNewForm : Form
         "Automatic update checker\n" +
         "Checks GitHub for new releases on startup and every 12 hours, and offers to open the download page.\n\n" +
         "New in 1.4.0\n\n" +
-        "Force start\n" +
+        "Force-start\n" +
         "Optionally launches the BitTorrent client automatically if it is not running during a sync cycle.\n\n" +
         "New in 1.3.0\n\n" +
         "Post-update command\n" +

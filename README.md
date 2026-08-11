@@ -577,7 +577,7 @@ master  ────────────────────────
 - **Automatic update checker**: notifies on startup when a new release is available on GitHub
 
 ### v1.4.0
-- New **Force start** option: automatically launches qBittorrent if it is not running during a sync cycle
+- New **Force-start** option: automatically launches qBittorrent if it is not running during a sync cycle
 
 ### v1.3.0
 - New **Post-update command** option: run a custom script or command after a successful port update (runs in the background, never blocks the sync loop)

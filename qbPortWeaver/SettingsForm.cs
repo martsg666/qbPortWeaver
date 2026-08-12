@@ -793,6 +793,12 @@ public partial class SettingsForm : Form
             return;
         }
 
+        // Bookended in the log like the manual port test and the recovery test. Without this the
+        // client's own failure entries - which the dialog tells the user to go and read - are
+        // indistinguishable from a sync-cycle failure, and the Error they raise leaves a tray alert
+        // count behind for something the user deliberately triggered.
+        LogManager.Instance.LogMessage($"{clientName} connection test requested", LogLevel.Info);
+
         // Constructed inside the try so nothing can throw past the catch to the async void caller,
         // or past the finally that restores the button and cursor. Disposed there instead of by a
         // `using`, which the try-scoping displaces.
@@ -807,6 +813,17 @@ public partial class SettingsForm : Form
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(_formCloseCts.Token);
             cts.CancelAfter(TimeSpan.FromSeconds(AppConstants.ClientTestTimeoutSeconds));
             var (listenPort, _) = await client.GetPreferencesAsync(cts.Token);
+
+            // Info on both outcomes: on failure the client has already logged the specific reason at
+            // Error just above, so repeating it at Error here would double-count the tray alert for
+            // one event. Logged before the IsDisposed check so a test whose dialog never appears
+            // (form closed as the result arrived) still leaves its outcome in the log.
+            LogManager.Instance.LogMessage(
+                listenPort is not null
+                    ? $"{clientName} connection test succeeded - listening port {listenPort}"
+                    : $"{clientName} connection test could not connect - see the entries above",
+                LogLevel.Info);
+
             if (IsDisposed) return;
             if (listenPort is not null)
                 ThemedMessageBox.Show(
@@ -819,10 +836,17 @@ public partial class SettingsForm : Form
         }
         catch (OperationCanceledException)
         {
+            // IsDisposed separates the two cancellation sources: a live form means the timeout
+            // fired and is worth reporting, a disposed one means the dialog was closed while the
+            // probe was in flight - not a fault, and nothing left to report it to.
             if (!IsDisposed)
+            {
+                LogManager.Instance.LogMessage(
+                    $"{clientName} connection test timed out after {AppConstants.ClientTestTimeoutSeconds}s", LogLevel.Warn);
                 ThemedMessageBox.Show(
                     $"The {clientName} connection test timed out after {AppConstants.ClientTestTimeoutSeconds} seconds.\n\nCheck the URL and that the client is running.",
                     AppIdentity.AppName, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
         }
         // The caller is an async void event handler, so an escape here would take the app down.
         // A failed connection test is never worth that.

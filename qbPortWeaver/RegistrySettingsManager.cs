@@ -7,7 +7,7 @@ namespace qbPortWeaver;
 /// <summary>Reads and writes application settings from the Windows registry under <c>HKCU\Software\qbPortWeaver\settings</c>.</summary>
 public static class RegistrySettingsManager
 {
-    internal const string BaseKeyPath = AppIdentity.AppRegistryKey + @"\settings";
+    internal const string BaseKeyPath = AppIdentity.SettingsRegistryKey;
     // Explicit string literals guarantee stable boolean registry serialization independent of framework internals.
     private const string ValueTrue = "True";
     private const string ValueFalse = "False";
@@ -24,7 +24,9 @@ public static class RegistrySettingsManager
     public const string SectionTransmission = "transmission";
     public const string SectionDeluge = "deluge";
     public const string SectionNicotine = "nicotine";
-    public const string SectionExtra = "extra";
+    // Shared with the helper service, which reads the debug flag from this section while
+    // impersonating the pipe client - see AppIdentity.DebugModeValueName.
+    public const string SectionExtra = AppIdentity.ExtraSettingsSection;
     public const string SectionMedia = "media";
 
     public const string VpnProviderDisabled = "Disabled";
@@ -96,7 +98,7 @@ public static class RegistrySettingsManager
 
     // Registry key names - extra section
     public const string KeyPostUpdateCmd = "postUpdateCmd";
-    public const string KeyDebugMode = "debugMode";
+    public const string KeyDebugMode = AppIdentity.DebugModeValueName;
     public const string KeyColorTheme = "colorMode";
 
     // Color theme values

@@ -342,7 +342,7 @@ public static class DiagnosticsService
             results.Add(new(Checks.PortReachable, DiagnosticStatus.Skip, "Could not determine (client, Internet, or port-check service unavailable)"));
     }
 
-    /// <summary>The running app's version (e.g. "2.6.0"), for the diagnostics header and report.</summary>
+    /// <summary>The running app's version (e.g. "X.Y.Z"), for the diagnostics header and report.</summary>
     internal static string AppVersion => AppConstants.AppVersion;
 
     /// <summary>

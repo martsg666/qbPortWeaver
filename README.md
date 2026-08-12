@@ -62,7 +62,7 @@ After installing, open **Settings** from the tray icon to configure the applicat
   Detects the current VPN port and updates the client's listening port automatically. Supports qBittorrent (Web API), Transmission (RPC), Deluge (Web JSON-RPC), and Nicotine+ (via a bridge plugin qbPortWeaver installs for you). Nicotine+ applies the change to the running client, so its port follows the VPN without a restart.
 
 - **Sync on Network Change**
-  In addition to the scheduled interval, qbPortWeaver can run a sync the moment a network or VPN connection change is detected, so the client follows a VPN reconnect within seconds instead of waiting for the next cycle. Rapid changes are coalesced into a single sync, and pausing still suppresses it. Enabled by default; configurable via Settings > General.
+  In addition to the scheduled interval, qbPortWeaver can run a sync the moment a network or VPN connection change is detected, so the client follows a VPN reconnect within seconds instead of waiting for the next cycle. Rapid changes are coalesced into a single sync, and pausing still suppresses it. Enabled by default; configurable via Settings → General.
 
 - **Multi-VPN Support**
   Supports **ProtonVPN** (via log file parsing or NAT-PMP), **PIA** (via `piactl` CLI), and any **NAT-PMP capable VPN gateway or router** (via RFC 6886 port mapping, requested for both TCP and UDP). Configurable through the Settings dialog.
@@ -71,7 +71,7 @@ After installing, open **Settings** from the tray icon to configure the applicat
   When VPN is not connected, optionally sets the client's listening port to a configured default. Useful if you have a port forwarded in your router for direct connections without VPN.
 
 - **Wait for VPN at Startup**
-  For a short grace period after the app starts, a VPN that is still connecting is treated as expected rather than a failure: the tray stays neutral, no warning is logged, and the default-port fallback and auto-recovery are held. The port syncs as soon as the VPN comes up. Enabled by default; configurable via Settings > General.
+  For a short grace period after the app starts, a VPN that is still connecting is treated as expected rather than a failure: the tray stays neutral, no warning is logged, and the default-port fallback and auto-recovery are held. The port syncs as soon as the VPN comes up. Enabled by default; configurable via Settings → General.
 
 - **Restart After Port Change**
   Optionally restart the client after updating the port to ensure changes take effect immediately. Nicotine+ needs no restart - its plugin applies the port to the running client - so it has no such setting.
@@ -95,7 +95,7 @@ After installing, open **Settings** from the tray icon to configure the applicat
   qBittorrent stores its network interface as an internal identifier as well as a name. When a VPN destroys and recreates its adapter the identifier stops resolving while the name still reads correctly, so qBittorrent listens on nothing and a restart cannot fix it - the value is in its own configuration. qbPortWeaver checks the identifier against qBittorrent's live adapter list each cycle and warns when it has gone stale. **Fix the network interface binding when it goes stale** re-applies it automatically, restoring the adapter you selected. Enabled by default; turn it off to be warned instead.
 
 - **Port Update Notification**
-  Optionally shows a tray balloon tip when the client's listening port is successfully updated to a new value. Enabled by default. Configurable via Settings > General.
+  Optionally shows a tray balloon tip when the client's listening port is successfully updated to a new value. Enabled by default. Configurable via Settings → General.
 
 - **Log Alert Notifications**
   When a warning or error is logged, a one-shot tray balloon appears; clicking it opens the log viewer at the latest issue. The **Show Logs** item and the tray tooltip show a running warning/error count, which clears when you open the log viewer or clear the logs.
@@ -142,7 +142,7 @@ After installing, open **Settings** from the tray icon to configure the applicat
   Writes a JSON status file (`%LocalAppData%\qbPortWeaver\qbPortWeaver.status.json`) after each sync cycle, exposing VPN port, client port, timestamps, and completion status for external scripts.
 
 - **Automatic Update Checker & In-App Update**
-  Checks GitHub for new releases on startup and every 12 hours, surfacing a newer version via an **Update available (X.Y.Z)** tray item and tooltip (the 12-hour check is non-intrusive; the startup form can be turned off under **Settings > General**). A **Check for Updates** item checks on demand and always reports a result. When an update is available, the update window offers **Download & Install** - it downloads the installer, runs it, and the app relaunches when the update finishes (falling back to the release page if anything goes wrong). The **About** dialog shows the current and latest version, update status, contributor links, and a **What's New** button.
+  Checks GitHub for new releases on startup and every 12 hours, surfacing a newer version via an **Update available (X.Y.Z)** tray item and tooltip (the 12-hour check is non-intrusive; the startup form can be turned off under **Settings → General**). A **Check for Updates** item checks on demand and always reports a result. When an update is available, the update window offers **Download & Install** - it downloads the installer, runs it, and the app relaunches when the update finishes (falling back to the release page if anything goes wrong). The **About** dialog shows the current and latest version, update status, contributor links, and a **What's New** button.
 
 - **Built-in User Guide**
   A **Help** item in the tray menu opens this user guide in a built-in viewer with a browsable table of contents, text search (Ctrl+F with match navigation), formatted headings, tables, and clickable links - no browser or internet connection needed.
@@ -373,11 +373,11 @@ NAT-PMP (RFC 6886) is a protocol for requesting port mappings directly from a ga
 
 #### qBittorrent
 
-- **Disable UPnP/NAT-PMP** port mapping (Options > Connection) since the port is managed externally.
+- **Disable UPnP/NAT-PMP** port mapping (Options → Connection) since the port is managed externally.
   > **Note:** qBittorrent's built-in NAT-PMP tries to open ports on your local router. qbPortWeaver's NAT-PMP mode is different - it queries your VPN gateway directly using the same protocol. Disabling qBittorrent's option does not affect qbPortWeaver.
-- Enable **Anonymous Mode** (Options > BitTorrent).
-- Enable **Web UI** (Options > Web UI) and configure a username and password matching your qbPortWeaver Settings.
-- Bind the **network interface** to your VPN adapter (Options > Advanced > Network Interface) to prevent traffic leaks outside the VPN.
+- Enable **Anonymous Mode** (Options → BitTorrent).
+- Enable **Web UI** (Options → Web UI) and configure a username and password matching your qbPortWeaver Settings.
+- Bind the **network interface** to your VPN adapter (Options → Advanced → Network Interface) to prevent traffic leaks outside the VPN.
   > **Note:** If you change ProtonVPN protocols, reselect the adapter here - the tunnel adapter is named `ProTUN` on the Proton Protocols (Proton WireGuard, Proton Stealth), or `ProtonVPN` / `ProtonVPN TUN` on the earlier ones (standard WireGuard / OpenVPN). A stale binding triggers the interface mismatch warning.
 - Set qBittorrent to **start with Windows**.
 
@@ -391,10 +391,10 @@ NAT-PMP (RFC 6886) is a protocol for requesting port mappings directly from a ga
 
 #### Deluge
 
-- Enable the **Web UI plugin** (Preferences > Plugins) and set a password.
+- Enable the **Web UI plugin** (Preferences → Plugins) and set a password.
 - Set the URL in qbPortWeaver Settings to match the Web UI address (default `http://127.0.0.1:8112`).
 - Set the Process name (e.g. `deluge`) and Executable path so qbPortWeaver can restart it after a port change.
-- Disable **UPnP** and **NAT-PMP** in Deluge preferences (Preferences > Network) since the port is managed externally.
+- Disable **UPnP** and **NAT-PMP** in Deluge preferences (Preferences → Network) since the port is managed externally.
 - **Enable your VPN client's killswitch** to prevent traffic leaks. Deluge only allows binding to an IP address (not an adapter name), and the IP assigned by the VPN typically rotates on reconnection - making bind-address rules brittle. The VPN killswitch blocks all traffic when the tunnel is down, regardless of what address Deluge is bound to. Both ProtonVPN and PIA expose this option in their desktop clients.
 
 #### Nicotine+

@@ -50,7 +50,7 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           if (-not $env:SONAR_TOKEN) {
-            throw "SONAR_TOKEN secret is not configured. Add it in Settings > Secrets before running this workflow."
+            throw "SONAR_TOKEN secret is not configured. Add it in Settings → Secrets before running this workflow."
           }
           Write-Host "Required secrets validated."
 

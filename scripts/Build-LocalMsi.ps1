@@ -15,7 +15,7 @@
     To install manually: dotnet tool update --global wix --version "4.0.6"
 
 .PARAMETER Version
-    The version string to stamp into the build (e.g. '2.3.0').
+    The version string to stamp into the build.
     Defaults to the version defined in qbPortWeaver.csproj.
 
 .EXAMPLE
@@ -24,7 +24,7 @@
 
 .EXAMPLE
     # Build with an explicit version override
-    .\scripts\Build-LocalMsi.ps1 -Version 2.5.0
+    .\scripts\Build-LocalMsi.ps1 -Version <version>
 #>
 
 [CmdletBinding()]

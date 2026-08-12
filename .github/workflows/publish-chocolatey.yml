@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Release tag to publish - must include the v prefix (e.g. v1.2.3)'
+        description: 'Release tag to publish - must include the v prefix (e.g. vX.Y.Z)'
         required: true
         type: string
 
@@ -32,7 +32,7 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $tag = $env:GH_INPUT_TAG
           if (-not $tag.StartsWith('v')) {
-            throw "Tag must start with 'v' (e.g. v2.4.0). Got: $tag"
+            throw "Tag must start with 'v' (e.g. vX.Y.Z). Got: $tag"
           }
           $version = $tag.TrimStart('v')
           "TAG=$tag"         | Out-File -FilePath $env:GITHUB_OUTPUT -Append
@@ -49,7 +49,7 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           if (-not $env:CHOCOLATEY_API_KEY) {
-            throw "CHOCOLATEY_API_KEY secret is not configured. Add it in Settings > Secrets before running this workflow."
+            throw "CHOCOLATEY_API_KEY secret is not configured. Add it in Settings → Secrets before running this workflow."
           }
           Write-Host "Required secrets validated."
 

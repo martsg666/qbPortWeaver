@@ -1,6 +1,6 @@
 name: Build and Release
 
-# Triggers on any tag push matching v* (e.g. v2.2.0).
+# Triggers on any tag push matching v* (e.g. vX.Y.Z).
 # Can also be run manually to rebuild and republish an existing tag.
 on:
   push:
@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Release tag to build - must include the v prefix (e.g. v1.2.3)'
+        description: 'Release tag to build - must include the v prefix (e.g. vX.Y.Z)'
         required: true
         type: string
 
@@ -42,7 +42,7 @@ jobs:
           if ($env:GH_EVENT_NAME -eq 'workflow_dispatch') {
             $tag = $env:GH_INPUT_TAG
             if (-not $tag.StartsWith('v')) {
-              throw "Tag must start with 'v' (e.g. v2.4.0). Got: $tag"
+              throw "Tag must start with 'v' (e.g. vX.Y.Z). Got: $tag"
             }
             git ls-remote --exit-code --tags origin $tag | Out-Null
             if ($LASTEXITCODE -ne 0) { throw "Tag '$tag' does not exist in the remote repository." }

@@ -20,7 +20,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Release tag to publish - must include the v prefix (e.g. v1.2.3)'
+        description: 'Release tag to publish - must include the v prefix (e.g. vX.Y.Z)'
         required: true
         type: string
 
@@ -45,7 +45,7 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $tag = $env:GH_INPUT_TAG
           if (-not $tag.StartsWith('v')) {
-            throw "Tag must start with 'v' (e.g. v2.4.0). Got: $tag"
+            throw "Tag must start with 'v' (e.g. vX.Y.Z). Got: $tag"
           }
           $version = $tag.TrimStart('v')
           "TAG=$tag"         | Out-File -FilePath $env:GITHUB_OUTPUT -Append
@@ -62,7 +62,7 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           if (-not $env:WINGET_TOKEN) {
-            throw "WINGET_TOKEN secret is not configured. Add a classic PAT with the public_repo scope in Settings > Secrets before running this workflow."
+            throw "WINGET_TOKEN secret is not configured. Add a classic PAT with the public_repo scope in Settings → Secrets before running this workflow."
           }
           Write-Host "Required secrets validated."
 

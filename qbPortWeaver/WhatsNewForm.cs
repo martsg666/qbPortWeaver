@@ -271,7 +271,7 @@ public partial class WhatsNewForm : Form
         "Checks GitHub for new releases on startup and every 12 hours, and offers to open the download page.\n\n" +
         "New in 1.4.0\n\n" +
         "Force-start\n" +
-        "Optionally launches the BitTorrent client automatically if it is not running during a sync cycle.\n\n" +
+        "Optionally launches qBittorrent automatically if it is not running during a sync cycle.\n\n" +
         "New in 1.3.0\n\n" +
         "Post-update command\n" +
         "Optionally runs a custom script or command after a successful port update.\n\n" +

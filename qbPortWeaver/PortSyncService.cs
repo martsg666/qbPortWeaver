@@ -9,7 +9,8 @@ public enum SyncState
     Synced,
     /// <summary>VPN is not connected; no port is available to sync.</summary>
     VpnDisconnected,
-    /// <summary>Sync is paused because the client or VPN provider is not configured.</summary>
+    /// <summary>The VPN provider is set to Disabled, so port sync is skipped entirely. An
+    /// unrecognized provider is <see cref="Error"/>, not this.</summary>
     Disabled,
     /// <summary>An error occurred during the sync cycle (e.g. client unreachable, port update failed).</summary>
     Error,

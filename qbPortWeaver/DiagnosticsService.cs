@@ -76,12 +76,12 @@ public static class DiagnosticsService
     {
         if (disabled)
             results.Add(new(Checks.VpnProvider, DiagnosticStatus.Warn, "Port sync is disabled",
-                "Select a VPN provider in Settings > General to enable port syncing."));
+                "Select a VPN provider in Settings → General to enable port syncing."));
         else if (VpnProviderRegistry.IsRecognizedProvider(provider))
             results.Add(new(Checks.VpnProvider, DiagnosticStatus.Pass, provider));
         else
             results.Add(new(Checks.VpnProvider, DiagnosticStatus.Fail, $"'{provider}' is not a recognized provider",
-                "Reselect the VPN provider in Settings > General."));
+                "Reselect the VPN provider in Settings → General."));
 
         var client = ClientRegistry.Resolve(clientSetting);
         string url = RegistrySettingsManager.GetValue(client.Section, client.UrlKey);
@@ -228,7 +228,7 @@ public static class DiagnosticsService
 
             NicotinePluginState.NotEnabled => new(Checks.ClientPlugin, DiagnosticStatus.Fail,
                 "The bridge plugin is installed but not enabled",
-                "In Nicotine+, open Preferences, Plugins, and tick \"qbPortWeaver Bridge\"."),
+                "In Nicotine+, open Preferences → Plugins and tick \"qbPortWeaver Bridge\"."),
 
             NicotinePluginState.NotRunning => new(Checks.ClientPlugin, DiagnosticStatus.Warn,
                 "The bridge plugin is enabled but has not published its connection details",
@@ -339,7 +339,7 @@ public static class DiagnosticsService
             results.Add(new(Checks.PortReachable, DiagnosticStatus.Warn, "Listening port appears closed from the Internet", hint));
         }
         else
-            results.Add(new(Checks.PortReachable, DiagnosticStatus.Skip, "Could not determine (client, internet, or port-check service unavailable)"));
+            results.Add(new(Checks.PortReachable, DiagnosticStatus.Skip, "Could not determine (client, Internet, or port-check service unavailable)"));
     }
 
     /// <summary>The running app's version (e.g. "2.6.0"), for the diagnostics header and report.</summary>

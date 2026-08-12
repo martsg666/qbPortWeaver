@@ -97,6 +97,11 @@ jobs:
             /d:sonar.host.url="https://sonarcloud.io" `
             /d:sonar.coverage.exclusions="**/*"
 
+          # Deliberately no /warnaserror here: this build only feeds the scanner. A build that
+          # fails on a warning would skip the "end" step below and upload no analysis at all -
+          # losing the report exactly when it is most useful. Warning enforcement lives in
+          # build.yml (every PR and non-tag push) and build-release.yml (every tag), so a
+          # warning still cannot reach a release.
           dotnet build qbPortWeaver.slnx --configuration Release
 
           dotnet-sonarscanner end /d:sonar.token="$env:SONAR_TOKEN"

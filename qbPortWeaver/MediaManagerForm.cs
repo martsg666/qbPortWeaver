@@ -92,7 +92,7 @@ public partial class MediaManagerForm : Form
                 "A scan or import is in progress.\n\nClosing will cancel the operation. Any files already imported will remain in the library.\n\nClose anyway?",
                 AppIdentity.AppName,
                 MessageBoxButtons.YesNo,
-                MessageBoxIcon.Warning);
+                MessageBoxIcon.Question);
 
             if (result != DialogResult.Yes)
             {

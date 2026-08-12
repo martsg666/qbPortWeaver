@@ -56,7 +56,9 @@ class BridgeHandler(BaseHTTPRequestHandler):
     """Routes one request. Every failure becomes a JSON error body, never a traceback."""
 
     protocol_version = "HTTP/1.1"
-    server_version = "qbpwNicotineBridge/1.0"
+    # Identifies the wire contract, not the build - GET / carries plugin_version for that.
+    # Derived from API_VERSION so it cannot freeze at a number that means nothing.
+    server_version = f"qbpwNicotineBridge/{API_VERSION}"
     sys_version = ""
 
     # Read/write deadline for an accepted connection. Required: a timeout set on the listening

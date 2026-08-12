@@ -135,7 +135,7 @@ public partial class WhatsNewForm : Form
         "qbPortWeaver can now run a sync the moment a network or VPN connection change is detected, " +
         "so your client follows a VPN reconnect within seconds instead of waiting for the next interval. " +
         "Rapid changes are grouped into a single sync, and pausing still suppresses it. " +
-        "Enabled by default - turn it off under Settings > General.\n\n" +
+        "Enabled by default - turn it off under Settings → General.\n\n" +
         "Smarter auto-recovery\n" +
         "Auto-recovery now waits until sync failures have persisted, not just counted up, before " +
         "restarting your VPN. A brief network blip - like a router reboot that triggers several quick " +
@@ -145,7 +145,7 @@ public partial class WhatsNewForm : Form
         "After each sync, qbPortWeaver can now check that your port is actually reachable from the Internet, " +
         "not just configured. If the port stays closed, a warning appears in the log and as a tray notification. " +
         "Optionally, auto-recovery can run automatically after a configurable number of closed checks " +
-        "(a VPN service restart, or adapter cycle for NAT-PMP gateways) - see Settings > General. " +
+        "(a VPN service restart, or adapter cycle for NAT-PMP gateways) - see Settings → General. " +
         "Verification is enabled by default: Transmission and Deluge use their " +
         "built-in online port checkers, while qBittorrent infers reachability from incoming connections " +
         "(an idle client may report closed).\n\n" +
@@ -195,7 +195,7 @@ public partial class WhatsNewForm : Form
         "The 12-hour background update check no longer interrupts you with a form. " +
         "When a new version is found, an Update available item appears at the top of the tray menu " +
         "and a one-shot tray notification is shown. Click the menu item to open the update form. " +
-        "A new setting under Settings > General lets you turn off the update form at startup; " +
+        "A new setting under Settings → General lets you turn off the update form at startup; " +
         "the tray indicators still appear when an update is available.\n\n" +
         "Lower log viewer memory usage\n" +
         "Opening the log viewer used to leave a noticeable memory footprint after closing it. " +
@@ -223,7 +223,7 @@ public partial class WhatsNewForm : Form
         "No configuration changes are required.\n\n" +
         "Port update notification\n" +
         "A tray balloon tip now appears whenever the client's listening port is successfully updated to a new value. " +
-        "Enabled by default - toggle it under Settings > General.\n\n" +
+        "Enabled by default - toggle it under Settings → General.\n\n" +
         "Media Manager - improved startup reliability\n" +
         "If library folders are temporarily unreachable at startup (for example, a NAS that powers on after the PC), " +
         "the library index is now retried each cycle until the folders become accessible, " +

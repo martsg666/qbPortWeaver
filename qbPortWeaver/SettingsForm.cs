@@ -93,7 +93,7 @@ public partial class SettingsForm : Form
         toolTip.SetToolTip(cboClient, "Client to control (qBittorrent, Transmission, Deluge, or Nicotine+)");
         toolTip.SetToolTip(btnDetectClient, "Detect a running or installed client and fill in its selection and process details");
         toolTip.SetToolTip(btnTestRecovery, "Run the recovery action now to verify it works - restarts the VPN service (or cycles the adapter), so the VPN connection drops briefly");
-        toolTip.SetToolTip(txtQBittorrentURL, "URL for the qBittorrent Web UI (e.g. http://127.0.0.1:8080). The Web UI must be enabled in qBittorrent under Tools > Options > Web UI.");
+        toolTip.SetToolTip(txtQBittorrentURL, "URL for the qBittorrent Web UI (e.g. http://127.0.0.1:8080). The Web UI must be enabled in qBittorrent under Tools → Options → Web UI.");
         toolTip.SetToolTip(txtQBittorrentUserName, "Username for the qBittorrent Web UI");
         toolTip.SetToolTip(txtQBittorrentPassword, "Password for the qBittorrent Web UI");
         toolTip.SetToolTip(txtQBittorrentExePath, "Path to the qBittorrent executable, used to start or restart the application");
@@ -109,7 +109,7 @@ public partial class SettingsForm : Form
             "qBittorrent stores its network interface as an internal identifier that stops resolving when a VPN " +
             "recreates its adapter. It then listens on nothing while still showing the right adapter name, and a " +
             "restart cannot fix it. Re-applies the binding automatically when that happens.");
-        toolTip.SetToolTip(txtTransmissionURL, "URL for the Transmission RPC endpoint (e.g. http://127.0.0.1:9091). Remote access must be enabled in Transmission Preferences > Remote (not required when running as a service).");
+        toolTip.SetToolTip(txtTransmissionURL, "URL for the Transmission RPC endpoint (e.g. http://127.0.0.1:9091). Remote access must be enabled in Transmission Preferences → Remote (not required when running as a service).");
         toolTip.SetToolTip(txtTransmissionUserName, "Username for the Transmission RPC (leave empty if authentication is disabled)");
         toolTip.SetToolTip(txtTransmissionPassword, "Password for the Transmission RPC (leave empty if authentication is disabled)");
         toolTip.SetToolTip(txtTransmissionExePath, "Path to the Transmission executable, used to start or restart the application when running as a user-space process");

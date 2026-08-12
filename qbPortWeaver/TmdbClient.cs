@@ -78,7 +78,7 @@ public sealed class TmdbClient(string apiKey)
                                          or ArgumentException or OutOfMemoryException or NotSupportedException)
         {
             LogManager.Instance.LogDebug(
-                $"TmdbClient.FetchPosterAsync: could not decode poster ({ex.GetType().Name})", Subsystem.MediaManager);
+                $"TmdbClient.FetchPosterAsync: Could not decode poster ({ex.GetType().Name})", Subsystem.MediaManager);
             return null;
         }
     }

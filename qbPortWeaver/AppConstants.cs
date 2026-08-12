@@ -273,7 +273,7 @@ public static class AppConstants
             string? serviceDir = serviceName is not null ? GetServiceExeDirectory(serviceName) : null;
             if (serviceDir is null)
             {
-                LogManager.Instance.LogDebug($"{logPrefix}: service executable directory not found");
+                LogManager.Instance.LogDebug($"{logPrefix}: Service executable directory not found");
                 return null;
             }
 

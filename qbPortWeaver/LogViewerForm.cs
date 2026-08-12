@@ -102,11 +102,14 @@ public partial class LogViewerForm : Form
         public const uint LVIS_SELECTED = 0x0002;
     }
 
-    // Log column markers (format: "| LEVEL | ") used to classify lines once at parse time
-    private const string ColError = "| ERROR |";
-    private const string ColWarn = "| WARN  |";
-    private const string ColInfo = "| INFO  |";
-    private const string ColDebug = "| DEBUG |";
+    // Log column markers (format: "| LEVEL | ") used to classify lines once at parse time.
+    // Built from the shared level labels so the viewer cannot drift from the two writers that
+    // produce these entries - LogManager (main app) and HelperLogger (helper service) both take
+    // their labels from LoggingConstants, and the labels carry their own padding to a fixed width.
+    private static readonly string ColError = $"| {LoggingConstants.LevelErrorLabel} |";
+    private static readonly string ColWarn = $"| {LoggingConstants.LevelWarnLabel} |";
+    private static readonly string ColInfo = $"| {LoggingConstants.LevelInfoLabel} |";
+    private static readonly string ColDebug = $"| {LoggingConstants.LevelDebugLabel} |";
     private const long LoadingIndicatorMinBytes = 1_000_000; // show "Loading…" only for logs large enough that the read + parse is perceptible
 
     public LogViewerForm() : this(string.Empty) { } // designer support only

@@ -770,7 +770,7 @@ public partial class MainForm : Form
     // on the tray, and this puts the paused status back.
     private void PublishPausedStatus()
     {
-        LogManager.Instance.LogDebug("MainForm.RunMainLoopAsync: Sync paused - skipping cycle");
+        LogManager.Instance.LogDebug("MainForm.PublishPausedStatus: Sync paused - skipping cycle");
         OnSyncCompleted(new TrayStatus(SyncState.Paused, null, "Port sync paused"));
     }
 
@@ -1094,7 +1094,7 @@ public partial class MainForm : Form
         // instead of ending a teardown that was already in progress.
         catch (Exception ex) when (ex is ObjectDisposedException or InvalidOperationException)
         {
-            LogManager.Instance.LogDebug($"MainForm.InvokeOnUiThread: form torn down before the action ran ({ex.GetType().Name})");
+            LogManager.Instance.LogDebug($"MainForm.InvokeOnUiThread: Form torn down before the action ran ({ex.GetType().Name})");
         }
     }
 

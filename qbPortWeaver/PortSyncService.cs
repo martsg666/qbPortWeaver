@@ -962,7 +962,7 @@ public sealed class PortSyncService
         if (_portConfirmedClosed)
             LogManager.Instance.LogMessage($"{clientName} port {port} is reachable from outside again", LogLevel.Info);
         else
-            LogManager.Instance.LogDebug($"PortSyncService.VerifyPortAsync: {clientName} port {port} verified open");
+            LogManager.Instance.LogDebug($"PortSyncService.HandlePortOpenResult: {clientName} port {port} verified open");
         _portCheckPendingConfirmation = false;
         _portConfirmedClosed = false;
         _confirmedClosedCount = 0;

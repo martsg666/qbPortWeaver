@@ -226,7 +226,7 @@ public sealed class LogManager
             var fileInfo = new FileInfo(LogFilePath);
             if (fileInfo.Length > MaxSize)
             {
-                // Shift existing backups up (.1 → .2, etc.). The highest-numbered backup
+                // Shift existing backups up (.1 -> .2, etc.). The highest-numbered backup
                 // is overwritten by the shift, so the oldest entries are dropped.
                 RotateBackupFiles();
 

@@ -583,9 +583,9 @@ public partial class MediaManagerForm : Form
     // Rebuilds the destination directory from the edited filename so the show/movie folder
     // matches the new name rather than the stale TMDB result from the original scan.
     //
-    // TV show with season subfolder:  library\OldShow\Season XX\ → library\NewShow\Season XX\
-    // Movie with title subfolder:     library\OldMovie (Year)\   → library\NewTitle (Year)\
-    // Flat layout (no subfolder):     library\                   → library\ (unchanged)
+    // TV show with season subfolder:  library\OldShow\Season XX\ -> library\NewShow\Season XX\
+    // Movie with title subfolder:     library\OldMovie (Year)\   -> library\NewTitle (Year)\
+    // Flat layout (no subfolder):     library\                   -> library\ (unchanged)
     private static string RebuildProposedDir(string originalDir, string editedFileName)
     {
         string lastSegment = Path.GetFileName(originalDir);

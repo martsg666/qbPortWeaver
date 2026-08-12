@@ -129,7 +129,7 @@ internal static partial class AutoRecovery
     }
 
     // Stops a service cleanly via the SCM, with escalating force if it doesn't respond.
-    // Escalation: SCM stop → wait → KillServiceProcess (3-stage: Process.Kill → taskkill /F /T → retry).
+    // Escalation: SCM stop -> wait -> KillServiceProcess (3-stage: Process.Kill -> taskkill /F /T -> retry).
     // ServiceController.WaitForStatus has no async overload - wrap in Task.Run to avoid
     // blocking the BackgroundService thread pool thread.
     //

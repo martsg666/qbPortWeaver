@@ -14,7 +14,7 @@ public sealed class NatPmpManager : IVpnManager
 {
     private const int NatPmpPort = 5351;
     private const int InitialTimeoutMs = 1500; // VPN NAT-PMP gateways are remote; 250ms is too aggressive
-    private const int MaxAttempts = 3;    // 1500ms → 3000ms → 6000ms
+    private const int MaxAttempts = 3;    // 1500ms -> 3000ms -> 6000ms
     private const uint DefaultMappingLifetime = 3600; // 1 hour
 
     // RFC 6886 opcodes. UDP and TCP are independent mappings and must be requested separately,

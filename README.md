@@ -154,7 +154,7 @@ After installing, open **Settings** from the tray icon to configure the applicat
 
 ## Configuration
 
-Settings are stored in the **Windows Registry** under `HKCU\Software\qbPortWeaver\Settings` and are editable through the built-in Settings dialog (right-click the tray icon → **Settings**).
+Settings are stored in the **Windows Registry** under `HKCU\Software\qbPortWeaver\settings` and are editable through the built-in Settings dialog (right-click the tray icon → **Settings**).
 
 On first run, all settings are initialized with sensible defaults.
 
@@ -552,7 +552,7 @@ master  ────────────────────────
 
 ### v2.0.0
 - **Tray status indicator**: the tray icon now shows a colored dot (green / orange / red) reflecting the last sync result, and the tooltip shows the current port and status without opening the log file
-- Settings are now stored in the **Windows Registry** (`HKCU\Software\qbPortWeaver\Settings`). Existing settings are automatically migrated from the INI file on first run
+- Settings are now stored in the **Windows Registry** (`HKCU\Software\qbPortWeaver\settings`). Existing settings are automatically migrated from the INI file on first run
 - The qBittorrent **password is now encrypted** in the registry using Windows DPAPI. Existing plaintext passwords (from INI migration or older installs) are transparently re-encrypted on first read
 - New **Settings** dialog (tray menu → Settings): all options are now editable in a dedicated form with inline descriptions and tooltips, replacing the previous Notepad shortcut
 - Tray balloon tip and log warning when qBittorrent's network interface doesn't match the configured VPN provider, or when bound to all interfaces (potential traffic leak). Configurable via **Warn on interface mismatch** in Settings

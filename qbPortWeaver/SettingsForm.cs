@@ -710,11 +710,19 @@ public partial class SettingsForm : Form
     }
 
     // Uses the in-form process name rather than the saved one, so a user who has just corrected it
-    // gets the right answer without saving first. Matches ManagedClientBase.IsRunning.
+    // gets the right answer without saving first.
+    //
+    // Deliberately unlike ManagedClientBase.IsRunning, which reports "not running" for an empty
+    // process name: a blank field here falls back to the registry's default rather than answering
+    // no. The answer gates whether Settings offers to enable the plugin by editing Nicotine+'s
+    // config, which is only safe while Nicotine+ is closed - a wrong "not running" would edit a
+    // config that a running Nicotine+ then rewrites from memory on exit, discarding the change.
+    // So the fallback is a safety measure, not a convenience.
     private bool IsNicotineRunning()
     {
         string processName = txtNicotineProcessName.Text.Trim();
-        if (processName.Length == 0) processName = "Nicotine+";
+        if (processName.Length == 0)
+            processName = ClientRegistry.Resolve(RegistrySettingsManager.ClientNameNicotine).ProcessNames[0];
 
         try
         {

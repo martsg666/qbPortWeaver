@@ -53,6 +53,26 @@ public static class RegistrySettingsManager
     public const string KeyNatPmpAdapterName = "natPmpAdapterName";
     public const string KeyClient = "client";
 
+    // general section (auto-recovery)
+    // Registry string values are frozen for backward compatibility.
+    public const string KeyVpnAutoRecoveryEnabled = "vpnAutoRecoveryEnabled";
+    public const string KeyVpnAutoRecoveryTriggerCycles = "vpnAutoRecoveryTriggerCycles";
+
+    // general section (port verification)
+    public const string KeyVerifyPortAfterSync = "verifyPortAfterSync";
+    public const string KeyPortClosedRecoveryEnabled = "portClosedRecoveryEnabled";
+    public const string KeyPortClosedRecoveryTriggerChecks = "portClosedRecoveryTriggerChecks";
+
+    // general section (notifications)
+    public const string KeyNotifyOnPortUpdate = "notifyOnPortUpdate";
+
+    // general section (updates)
+    public const string KeyShowUpdateFormOnStartup = "showUpdateFormOnStartup";
+
+    // general section (sync triggering)
+    public const string KeyResyncOnNetworkChange = "resyncOnNetworkChange";
+    public const string KeyWaitForVpnOnStartup = "waitForVpnOnStartup";
+
     // Registry key names - client sections (qbittorrent, transmission, deluge, nicotine).
     //
     // Stored names carry no client prefix: the section already says which client a value belongs to,
@@ -161,26 +181,6 @@ public static class RegistrySettingsManager
     public const string KeyPiaAdapterName = "piaAdapterName";
     public const string KeyPiaClientProcessName = "piaClientProcessName";
     public const string KeyPiactlProcessName = "piactlProcessName";
-
-    // Registry key names - general section (auto-recovery)
-    // Registry string values are frozen for backward compatibility.
-    public const string KeyVpnAutoRecoveryEnabled = "vpnAutoRecoveryEnabled";
-    public const string KeyVpnAutoRecoveryTriggerCycles = "vpnAutoRecoveryTriggerCycles";
-
-    // Registry key names - general section (notifications)
-    public const string KeyNotifyOnPortUpdate = "notifyOnPortUpdate";
-
-    // Registry key names - general section (port verification)
-    public const string KeyVerifyPortAfterSync = "verifyPortAfterSync";
-    public const string KeyPortClosedRecoveryEnabled = "portClosedRecoveryEnabled";
-    public const string KeyPortClosedRecoveryTriggerChecks = "portClosedRecoveryTriggerChecks";
-
-    // Registry key names - general section (updates)
-    public const string KeyShowUpdateFormOnStartup = "showUpdateFormOnStartup";
-
-    // Registry key names - general section (sync triggering)
-    public const string KeyResyncOnNetworkChange = "resyncOnNetworkChange";
-    public const string KeyWaitForVpnOnStartup = "waitForVpnOnStartup";
 
     // Default values for all settings (single source of truth)
     private static readonly Dictionary<string, Dictionary<string, string>> _defaults =

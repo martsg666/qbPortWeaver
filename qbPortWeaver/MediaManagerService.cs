@@ -47,7 +47,7 @@ public static class MediaManagerService
         if (LogManager.Instance.DebugMode)
             LogManager.Instance.LogDebug(
                 $"MediaManagerService.ImportAsync: {RegistrySettingsManager.KeyMediaEnabled}=true, " +
-                $"{RegistrySettingsManager.KeyTmdbApiKey}=***, " +
+                $"{RegistrySettingsManager.KeyMediaTmdbApiKey}=***, " +
                 $"{RegistrySettingsManager.KeyMediaSourceFolders}={string.Join(";", sourceFolders)}, " +
                 $"{RegistrySettingsManager.KeyMediaMoviesLibraryPath}={moviesLibraryPath}, " +
                 $"{RegistrySettingsManager.KeyMediaTvShowsLibraryPath}={tvShowsLibraryPath}, " +

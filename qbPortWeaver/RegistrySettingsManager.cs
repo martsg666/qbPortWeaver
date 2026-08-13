@@ -42,6 +42,15 @@ public static class RegistrySettingsManager
     // Registry key name strings are frozen - changing them would silently break existing installations
     // by orphaning previously saved values. The one exception is KeyClient, renamed from the legacy
     // "bitTorrentClient" to the protocol-neutral "client"; MigrateLegacyKeys carries the old value over.
+    //
+    // Three shipped values read as untidy and are deliberately left alone. They are listed here so a
+    // tidy-up pass recognises them as decided rather than missed:
+    //   "restartqBittorrent" / "forceStartqBittorrent" - lower-case q mid-word, because the brand
+    //       itself is "qBittorrent". Their constants are correctly PascalCase (KeyRestartQBittorrent).
+    //   "colorMode"   - stored value predates the "theme" wording used by KeyColorTheme and the UI.
+    //   "mediaEnabled" - carries a section prefix its eight KeyMedia* siblings drop, since the
+    //       section name already supplies it.
+    // The C# constant names, by contrast, are free to change: only the string values are persisted.
 
     // Registry key names - general section
     public const string KeyVpnProvider = "vpnProvider";
@@ -109,7 +118,7 @@ public static class RegistrySettingsManager
 
     // Registry key names - media section
     public const string KeyMediaEnabled = "mediaEnabled";
-    public const string KeyTmdbApiKey = "tmdbApiKey";
+    public const string KeyMediaTmdbApiKey = "tmdbApiKey";
     public const string KeyMediaSourceFolders = "sourceFolders";
     public const string KeyMediaCreateFolders = "createFolders";
     public const string KeyMediaDeleteEmptyFolders = "deleteEmptyFolders";
@@ -237,7 +246,7 @@ public static class RegistrySettingsManager
             [SectionMedia] = new(StringComparer.OrdinalIgnoreCase)
             {
                 [KeyMediaEnabled] = ValueFalse,
-                [KeyTmdbApiKey] = "",
+                [KeyMediaTmdbApiKey] = "",
                 [KeyMediaSourceFolders] = "",
                 [KeyMediaCreateFolders] = ValueTrue,
                 [KeyMediaDeleteEmptyFolders] = ValueFalse,
@@ -487,7 +496,7 @@ public static class RegistrySettingsManager
 
     /// <summary>Reads the TMDB API key from the registry and decrypts it with DPAPI (CurrentUser scope). Returns an empty string if missing or decryption fails.</summary>
     public static string GetTmdbApiKey() =>
-        GetEncryptedValue(SectionMedia, KeyTmdbApiKey);
+        GetEncryptedValue(SectionMedia, KeyMediaTmdbApiKey);
 
     /// <summary>Reads a DPAPI-encrypted string value from the registry. Returns the registered default if the key is missing or empty, or an empty string if the stored value cannot be decrypted.</summary>
     public static string GetEncryptedValue(string section, string key)
@@ -573,7 +582,7 @@ public static class RegistrySettingsManager
 
     /// <summary>Encrypts <paramref name="plaintext"/> with DPAPI (CurrentUser scope) and writes the result to the registry.</summary>
     public static void SetTmdbApiKey(string plaintext) =>
-        SetEncryptedValue(SectionMedia, KeyTmdbApiKey, plaintext);
+        SetEncryptedValue(SectionMedia, KeyMediaTmdbApiKey, plaintext);
 
     /// <summary>Encrypts <paramref name="plaintext"/> with DPAPI (CurrentUser scope) and writes the result to the registry under the given section and key.</summary>
     public static void SetEncryptedValue(string section, string key, string plaintext)
@@ -600,7 +609,7 @@ public static class RegistrySettingsManager
         KeyTransmissionPassword,
         KeyDelugePassword,
         KeyNicotineToken,
-        KeyTmdbApiKey
+        KeyMediaTmdbApiKey
     };
 
     // Keys whose values must never be written to logs in plaintext. Superset of _encryptedKeys
@@ -612,7 +621,7 @@ public static class RegistrySettingsManager
         KeyTransmissionPassword,
         KeyDelugePassword,
         KeyNicotineToken,
-        KeyTmdbApiKey,
+        KeyMediaTmdbApiKey,
         AppIdentity.PipeSessionTokenKey
     };
 

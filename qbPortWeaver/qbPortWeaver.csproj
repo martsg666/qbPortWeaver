@@ -19,7 +19,9 @@
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <SignAssembly>False</SignAssembly>
     <PackageReadmeFile>README.md</PackageReadmeFile>
-    <!-- Suppress known SonarAnalyzer false positives (each has a matching // NOSONAR comment):
+    <!-- Suppress known SonarAnalyzer false positives. Each is documented below; per-site
+         // NOSONAR comments mark the specific occurrences where the rule permits one
+         (S125 and S2486 cannot carry one - see their entries):
          S108  - empty catch bodies are intentional (ManagedClientBase.cs, TransmissionClient.cs)
          S125  - documentation comments containing qualified identifiers (e.g. Class.Member) are falsely flagged as commented-out code (suppressed project-wide; the rule targets XML doc comments, which cannot carry an inline // NOSONAR)
          S1075 - TMDB base URL is intentionally hardcoded (TmdbClient.cs)

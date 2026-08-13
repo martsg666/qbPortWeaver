@@ -1150,7 +1150,7 @@ public sealed class PortSyncService
                 LogManager.Instance.LogMessage(
                     $"{warning}. Re-select the network interface in {client.ClientName}, or turn on \"Fix the network interface binding when it goes stale\" in Settings",
                     LogLevel.Warn);
-                    _lastBindingWarningMessage = RaiseInterfaceBalloonIfNew(
+                _lastBindingWarningMessage = RaiseInterfaceBalloonIfNew(
                     $"{client.ClientName}: network interface binding is stale - re-select it or enable the automatic fix.",
                     _lastBindingWarningMessage);
             }

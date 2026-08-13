@@ -465,11 +465,19 @@ internal static partial class MediaImporter
     }
 
     // Loads the library cache from disk. Initialises an empty cache on first run or if the file is corrupt.
+    // The whole check-and-assign runs INSIDE the lock, matching the discipline every other access in
+    // this file follows: ClearAllCaches nulls the field and deletes the file on disk, so a load that
+    // read the field outside the lock could finish afterwards and assign the dictionary it had just
+    // read from the now-deleted file - silently undoing the user's Clear Cache. Holding the lock
+    // across the read costs one file read, and only on a cold cache (first run, or right after a clear).
     private static void LoadLibraryCache()
     {
-        if (_libraryCache is not null) return;
-        _libraryCache = LoadCacheFromDisk(LibraryCacheFileName, "Library cache");
-        _libraryCacheDirty = false;
+        lock (_libraryLock)
+        {
+            if (_libraryCache is not null) return;
+            _libraryCache = LoadCacheFromDisk(LibraryCacheFileName, "Library cache");
+            _libraryCacheDirty = false;
+        }
     }
 
     // Loads a JSON-persisted cache from disk, returning an empty cache on missing file or corruption.
@@ -868,9 +876,13 @@ internal static partial class MediaImporter
         Interlocked.Exchange(ref _sourceCachedCount, 0);
         Interlocked.Exchange(ref _sourceComputedCount, 0);
 
-        if (_sourceCache is not null) return;
-        _sourceCache = LoadCacheFromDisk(SourceCacheFileName, "Source cache");
-        _sourceCacheDirty = false;
+        // Check-and-assign inside the lock - see LoadLibraryCache for why.
+        lock (_sourceCacheLock)
+        {
+            if (_sourceCache is not null) return;
+            _sourceCache = LoadCacheFromDisk(SourceCacheFileName, "Source cache");
+            _sourceCacheDirty = false;
+        }
     }
 
     /// <summary>

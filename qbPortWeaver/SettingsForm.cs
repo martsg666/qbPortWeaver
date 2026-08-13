@@ -10,6 +10,13 @@ public partial class SettingsForm : Form
     private const string NoAdaptersFoundPlaceholder = "No NAT-PMP adapters found";
     private const string DefaultPortTooltip = "Port to apply when the VPN is disconnected (0 = do nothing when disconnected)";
 
+    // How often the Nicotine+ plugin status line re-checks itself while the dialog is open. What it
+    // reports is external state that moves without the user touching this form: the bridge plugin
+    // writes its connection file when Nicotine+ starts and removes it again on shutdown, so a status
+    // read once at load goes stale in both directions - including a green "Ready on ..." for a
+    // Nicotine+ that has since been closed. The check is local file I/O only, never a network call.
+    private const int NicotinePluginStatusPollMs = 2000;
+
     // Cancels in-flight async work (NAT-PMP adapter discovery, client connection tests) when the
     // form closes so probes do not run to completion in the background after the dialog is dismissed.
     private readonly CancellationTokenSource _formCloseCts = new();
@@ -20,6 +27,12 @@ public partial class SettingsForm : Form
     private sealed record ClientControls(GroupBox Group, TextBox Url, TextBox ProcessName, TextBox ExePath);
 
     private readonly Dictionary<string, ClientControls> _clientControls;
+
+    private System.Windows.Forms.Timer? _nicotinePluginStatusTimer;
+
+    // What the plugin status line is currently showing, so a poll that finds no change leaves the
+    // label and the install button untouched rather than reassigning identical values every tick.
+    private (NicotinePluginState State, string Summary)? _shownNicotinePluginStatus;
 
     public SettingsForm()
     {
@@ -74,10 +87,17 @@ public partial class SettingsForm : Form
         lblRecoveryCycles.Top   = nudRecoveryCycles.Top + (nudRecoveryCycles.Height - lblRecoveryCycles.Height) / 2;
         SetupTooltips();
         LoadSettings();
+
+        _nicotinePluginStatusTimer = new System.Windows.Forms.Timer { Interval = NicotinePluginStatusPollMs };
+        _nicotinePluginStatusTimer.Tick += nicotinePluginStatusTimer_Tick;
+        _nicotinePluginStatusTimer.Start();
     }
 
     protected override void OnFormClosed(FormClosedEventArgs e)
     {
+        _nicotinePluginStatusTimer?.Stop();
+        _nicotinePluginStatusTimer?.Dispose();
+        _nicotinePluginStatusTimer = null;
         _formCloseCts.Cancel();
         _formCloseCts.Dispose();
         base.OnFormClosed(e);
@@ -736,11 +756,28 @@ public partial class SettingsForm : Form
         }
     }
 
+    // The status the user is most likely to be waiting on is the one this form cannot cause: they
+    // leave Settings open, enable the plugin inside Nicotine+ or start it, and expect the line to
+    // catch up. Gated on the selected client rather than on grpNicotine.Visible so the value is
+    // already current when the Client tab is brought forward, instead of correcting a tick later.
+    private void nicotinePluginStatusTimer_Tick(object? sender, EventArgs e)
+    {
+        if (IsDisposed) return;
+        if (SelectedClient.Name != RegistrySettingsManager.ClientNameNicotine) return;
+        RefreshNicotinePluginStatus();
+    }
+
     // Describes the plugin's state on the Nicotine+ group, from files alone - no network calls, so
-    // this is safe to call while loading the form and after every action that could change it.
+    // this is safe to call while loading the form, on a poll, and after every action that could
+    // change it.
     private void RefreshNicotinePluginStatus()
     {
         var status = NicotinePluginInstaller.GetStatus(txtNicotineExePath.Text.Trim());
+
+        // Most polls find nothing has moved, so leave the controls alone unless they would change.
+        if (_shownNicotinePluginStatus == (status.State, status.Summary)) return;
+        _shownNicotinePluginStatus = (status.State, status.Summary);
+
         lblNicotinePluginStatus.Text = status.Summary;
 
         // Same accents the Status panel uses for its values, and the same severity DiagnosticsService

@@ -54,7 +54,6 @@ public static class RegistrySettingsManager
     public const string KeyClient = "client";
 
     // general section (auto-recovery)
-    // Registry string values are frozen for backward compatibility.
     public const string KeyVpnAutoRecoveryEnabled = "vpnAutoRecoveryEnabled";
     public const string KeyVpnAutoRecoveryTriggerCycles = "vpnAutoRecoveryTriggerCycles";
 

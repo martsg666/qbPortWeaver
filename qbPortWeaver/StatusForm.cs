@@ -490,10 +490,24 @@ public partial class StatusForm : Form
     private void ctxStats_Opening(object? sender, System.ComponentModel.CancelEventArgs e)
         => ctxClearStats.Enabled = SessionStats.SyncCount > 0 || SessionStats.RecoveryCount > 0;
 
-    // No confirmation, unlike Clear History: these are in-memory session counters that reset on
-    // every app restart anyway - nothing irreversible is lost (per the confirmation convention).
+    // Confirmed like Clear History. The counters are in memory rather than on disk, but that is not
+    // the line the convention draws - it asks whether the user can get the data back, and they
+    // cannot: the window runs from app start or the last clear, which on a tray app left running is
+    // easily weeks of counting. MediaManagerForm's Clear Cache stays unconfirmed because a cache
+    // genuinely does come back ("run Scan Now to re-index").
+    // ctxStats_Opening already disables the item while every counter is zero, so this only ever
+    // prompts when there is something to lose.
     private void ctxClearStats_Click(object? sender, EventArgs e)
     {
+        var confirm = ThemedMessageBox.Show(
+            $"The statistics counted over the past {FormatDuration(DateTimeOffset.Now - SessionStats.StartedAt)} " +
+            "will be reset. This cannot be undone.\n\nContinue?",
+            AppIdentity.AppName,
+            MessageBoxButtons.YesNo,
+            MessageBoxIcon.Warning);
+
+        if (confirm != DialogResult.Yes) return;
+
         SessionStats.Reset();
         PopulateHistoryAndStatistics();
     }

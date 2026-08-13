@@ -531,14 +531,14 @@ public sealed class PortSyncService
         // restarted). The password is DPAPI-decrypted via GetEncryptedValue, same as the per-client
         // GetXxxPassword helpers.
         var clientConfig = new ClientConfig(
-            Url: RegistrySettingsManager.GetValue(activeClient.Section, RegistrySettingsManager.KeyUrl),
-            UserName: activeClient.HasUserName ? RegistrySettingsManager.GetValue(activeClient.Section, RegistrySettingsManager.KeyUserName) : string.Empty,
-            Password: RegistrySettingsManager.GetEncryptedValue(activeClient.Section, RegistrySettingsManager.KeyPassword),
-            ProcessName: RegistrySettingsManager.GetValue(activeClient.Section, RegistrySettingsManager.KeyProcessName),
-            ExePath: RegistrySettingsManager.GetValue(activeClient.Section, RegistrySettingsManager.KeyExePath),
-            Restart: activeClient.HasRestart && RegistrySettingsManager.GetBool(activeClient.Section, RegistrySettingsManager.KeyRestart),
-            ForceStart: RegistrySettingsManager.GetBool(activeClient.Section, RegistrySettingsManager.KeyForceStart),
-            DefaultPort: RegistrySettingsManager.GetInt(activeClient.Section, RegistrySettingsManager.KeyDefaultPort));
+            Url: RegistrySettingsManager.GetValue(activeClient.Section, activeClient.UrlKey),
+            UserName: activeClient.UserNameKey is not null ? RegistrySettingsManager.GetValue(activeClient.Section, activeClient.UserNameKey) : string.Empty,
+            Password: RegistrySettingsManager.GetEncryptedValue(activeClient.Section, activeClient.PasswordKey),
+            ProcessName: RegistrySettingsManager.GetValue(activeClient.Section, activeClient.ProcessNameKey),
+            ExePath: RegistrySettingsManager.GetValue(activeClient.Section, activeClient.ExePathKey),
+            Restart: activeClient.RestartKey is not null && RegistrySettingsManager.GetBool(activeClient.Section, activeClient.RestartKey),
+            ForceStart: RegistrySettingsManager.GetBool(activeClient.Section, activeClient.ForceStartKey),
+            DefaultPort: RegistrySettingsManager.GetInt(activeClient.Section, activeClient.DefaultPortKey));
 
         return (new AppConfig(
             VpnProvider: RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyVpnProvider),
@@ -546,10 +546,10 @@ public sealed class PortSyncService
             UpdateInterval: updateInterval,
             ClientName: clientName,
             Client: clientConfig,
-            QBittorrentWarnOnInterfaceMismatch: RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyWarnOnInterfaceMismatch),
-            QBittorrentRestartOnDisconnect: RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyRestartOnDisconnect),
-            QBittorrentFixInterfaceBinding: RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyFixInterfaceBinding),
-            NicotineWarnOnInterfaceMismatch: RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionNicotine, RegistrySettingsManager.KeyWarnOnInterfaceMismatch),
+            QBittorrentWarnOnInterfaceMismatch: RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyQBittorrentWarnOnInterfaceMismatch),
+            QBittorrentRestartOnDisconnect: RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyQBittorrentRestartOnDisconnect),
+            QBittorrentFixInterfaceBinding: RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyQBittorrentFixInterfaceBinding),
+            NicotineWarnOnInterfaceMismatch: RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionNicotine, RegistrySettingsManager.KeyNicotineWarnOnInterfaceMismatch),
             PostUpdateCommand: RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionExtra, RegistrySettingsManager.KeyPostUpdateCmd),
             VpnAutoRecoveryEnabled: RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyVpnAutoRecoveryEnabled),
             VpnAutoRecoveryTriggerCycles: vpnAutoRecoveryTriggerCycles,
@@ -582,20 +582,20 @@ public sealed class PortSyncService
 
         var ci = ClientRegistry.Resolve(cfg.ClientName);
         string clientLine =
-            $"PortSyncService.RunCoreAsync [{ci.Name}]: {RegistrySettingsManager.KeyUrl}={cfg.Client.Url}, " +
-            (ci.HasUserName ? $"{RegistrySettingsManager.KeyUserName}={cfg.Client.UserName}, " : string.Empty) +
-            $"{RegistrySettingsManager.KeyPassword}=***, " + // NOSONAR S2068 - value is masked, not a real credential
-            $"{RegistrySettingsManager.KeyProcessName}={cfg.Client.ProcessName}, " +
-            $"{RegistrySettingsManager.KeyExePath}={cfg.Client.ExePath}, " +
-            (ci.HasRestart ? $"{RegistrySettingsManager.KeyRestart}={cfg.Client.Restart}, " : string.Empty) +
-            $"{RegistrySettingsManager.KeyForceStart}={cfg.Client.ForceStart}, " +
-            $"{RegistrySettingsManager.KeyDefaultPort}={cfg.Client.DefaultPort}";
+            $"PortSyncService.RunCoreAsync [{ci.Name}]: {ci.UrlKey}={cfg.Client.Url}, " +
+            (ci.UserNameKey is not null ? $"{ci.UserNameKey}={cfg.Client.UserName}, " : string.Empty) +
+            $"{ci.PasswordKey}=***, " + // NOSONAR S2068 - value is masked, not a real credential
+            $"{ci.ProcessNameKey}={cfg.Client.ProcessName}, " +
+            $"{ci.ExePathKey}={cfg.Client.ExePath}, " +
+            (ci.RestartKey is not null ? $"{ci.RestartKey}={cfg.Client.Restart}, " : string.Empty) +
+            $"{ci.ForceStartKey}={cfg.Client.ForceStart}, " +
+            $"{ci.DefaultPortKey}={cfg.Client.DefaultPort}";
         // qBittorrent exposes two extra RPC-backed flags; append them only for that client.
         if (activeSection == RegistrySettingsManager.SectionQBittorrent)
             clientLine +=
-                $", {RegistrySettingsManager.KeyWarnOnInterfaceMismatch}={cfg.QBittorrentWarnOnInterfaceMismatch}" +
-                $", {RegistrySettingsManager.KeyRestartOnDisconnect}={cfg.QBittorrentRestartOnDisconnect}" +
-                $", {RegistrySettingsManager.KeyFixInterfaceBinding}={cfg.QBittorrentFixInterfaceBinding}";
+                $", {RegistrySettingsManager.KeyQBittorrentWarnOnInterfaceMismatch}={cfg.QBittorrentWarnOnInterfaceMismatch}" +
+                $", {RegistrySettingsManager.KeyQBittorrentRestartOnDisconnect}={cfg.QBittorrentRestartOnDisconnect}" +
+                $", {RegistrySettingsManager.KeyQBittorrentFixInterfaceBinding}={cfg.QBittorrentFixInterfaceBinding}";
         LogManager.Instance.LogDebug(clientLine);
 
         LogManager.Instance.LogDebug(

@@ -670,14 +670,27 @@ public partial class MainForm : Form
     // immediately. Respects pause like the scheduled loop does (no cycle runs while paused).
     private void OnResyncDebounceElapsed(object? state)
     {
-        if (_shutdownCts.IsCancellationRequested || _syncPaused) return;
-        if (!RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyResyncOnNetworkChange))
-            return;
-        LogManager.Instance.LogMessage("Network change detected, triggering sync cycle", LogLevel.Info);
-        // Set before interrupting so the triggered cycle observes it and schedules a short re-check.
-        _quickRecheckPending = true;
-        _networkChangeSyncPending = true;
-        InterruptDelay();
+        // Catch-all because this is a System.Threading.Timer callback: it runs on a thread-pool
+        // thread with no caller to unwind into, so anything escaping here is an unhandled exception
+        // on that thread and terminates the process - AppDomain.UnhandledException can log it but
+        // cannot stop it. Every individual call below is already guarded internally, so this is a
+        // backstop rather than a known-failing path, and it matches the try/catch that
+        // OnNetworkAddressChanged and InterruptDelay already carry on this same thread-pool path.
+        try
+        {
+            if (_shutdownCts.IsCancellationRequested || _syncPaused) return;
+            if (!RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyResyncOnNetworkChange))
+                return;
+            LogManager.Instance.LogMessage("Network change detected, triggering sync cycle", LogLevel.Info);
+            // Set before interrupting so the triggered cycle observes it and schedules a short re-check.
+            _quickRecheckPending = true;
+            _networkChangeSyncPending = true;
+            InterruptDelay();
+        }
+        catch (Exception ex) // NOSONAR S2221 - see above: an escape from a timer callback is process-fatal
+        {
+            LogManager.Instance.LogMessage($"Network-change re-sync failed: {ex.Message}", LogLevel.Error);
+        }
     }
 
     // Interrupts the current inter-cycle delay so the next sync cycle starts immediately
@@ -1095,6 +1108,14 @@ public partial class MainForm : Form
         catch (Exception ex) when (ex is ObjectDisposedException or InvalidOperationException)
         {
             LogManager.Instance.LogDebug($"MainForm.InvokeOnUiThread: Form torn down before the action ran ({ex.GetType().Name})");
+        }
+        // Control.Invoke rethrows whatever the marshalled action threw on the *calling* thread, so a
+        // failure inside one of these UI updates would surface here on the sync loop or the logging
+        // event thread and terminate the process. Logged at Error rather than Debug because, unlike
+        // the teardown race above, this one means a UI update genuinely failed.
+        catch (Exception ex) // NOSONAR S2221 - see above: an escape here is process-fatal
+        {
+            LogManager.Instance.LogMessage($"MainForm.InvokeOnUiThread: UI update failed: {ex.Message}", LogLevel.Error);
         }
     }
 

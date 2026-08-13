@@ -525,17 +525,19 @@ public sealed class PortSyncService
         string clientName = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyClient);
         var activeClient = ClientRegistry.Resolve(clientName);
 
-        // Only the active client's section is read. UserNameKey is null for clients without a username
-        // (Deluge); the password is DPAPI-decrypted via GetEncryptedValue (same as the per-client
-        // GetXxxPassword helpers). DefaultPort shares one key across all clients.
+        // Only the active client's section is read; every client section uses the same key names, so
+        // the section is the only thing that varies here. HasUserName/HasRestart cover the two keys a
+        // client may not have at all (Deluge and Nicotine+ have no user name; Nicotine+ is never
+        // restarted). The password is DPAPI-decrypted via GetEncryptedValue, same as the per-client
+        // GetXxxPassword helpers.
         var clientConfig = new ClientConfig(
-            Url: RegistrySettingsManager.GetValue(activeClient.Section, activeClient.UrlKey),
-            UserName: activeClient.UserNameKey is null ? string.Empty : RegistrySettingsManager.GetValue(activeClient.Section, activeClient.UserNameKey),
-            Password: RegistrySettingsManager.GetEncryptedValue(activeClient.Section, activeClient.PasswordKey),
-            ProcessName: RegistrySettingsManager.GetValue(activeClient.Section, activeClient.ProcessNameKey),
-            ExePath: RegistrySettingsManager.GetValue(activeClient.Section, activeClient.ExePathKey),
-            Restart: activeClient.RestartKey is not null && RegistrySettingsManager.GetBool(activeClient.Section, activeClient.RestartKey),
-            ForceStart: RegistrySettingsManager.GetBool(activeClient.Section, activeClient.ForceStartKey),
+            Url: RegistrySettingsManager.GetValue(activeClient.Section, RegistrySettingsManager.KeyUrl),
+            UserName: activeClient.HasUserName ? RegistrySettingsManager.GetValue(activeClient.Section, RegistrySettingsManager.KeyUserName) : string.Empty,
+            Password: RegistrySettingsManager.GetEncryptedValue(activeClient.Section, RegistrySettingsManager.KeyPassword),
+            ProcessName: RegistrySettingsManager.GetValue(activeClient.Section, RegistrySettingsManager.KeyProcessName),
+            ExePath: RegistrySettingsManager.GetValue(activeClient.Section, RegistrySettingsManager.KeyExePath),
+            Restart: activeClient.HasRestart && RegistrySettingsManager.GetBool(activeClient.Section, RegistrySettingsManager.KeyRestart),
+            ForceStart: RegistrySettingsManager.GetBool(activeClient.Section, RegistrySettingsManager.KeyForceStart),
             DefaultPort: RegistrySettingsManager.GetInt(activeClient.Section, RegistrySettingsManager.KeyDefaultPort));
 
         return (new AppConfig(
@@ -580,13 +582,13 @@ public sealed class PortSyncService
 
         var ci = ClientRegistry.Resolve(cfg.ClientName);
         string clientLine =
-            $"PortSyncService.RunCoreAsync [{ci.Name}]: {ci.UrlKey}={cfg.Client.Url}, " +
-            (ci.UserNameKey is not null ? $"{ci.UserNameKey}={cfg.Client.UserName}, " : string.Empty) +
-            $"{ci.PasswordKey}=***, " + // NOSONAR S2068 - value is masked, not a real credential
-            $"{ci.ProcessNameKey}={cfg.Client.ProcessName}, " +
-            $"{ci.ExePathKey}={cfg.Client.ExePath}, " +
-            (ci.RestartKey is not null ? $"{ci.RestartKey}={cfg.Client.Restart}, " : string.Empty) +
-            $"{ci.ForceStartKey}={cfg.Client.ForceStart}, " +
+            $"PortSyncService.RunCoreAsync [{ci.Name}]: {RegistrySettingsManager.KeyUrl}={cfg.Client.Url}, " +
+            (ci.HasUserName ? $"{RegistrySettingsManager.KeyUserName}={cfg.Client.UserName}, " : string.Empty) +
+            $"{RegistrySettingsManager.KeyPassword}=***, " + // NOSONAR S2068 - value is masked, not a real credential
+            $"{RegistrySettingsManager.KeyProcessName}={cfg.Client.ProcessName}, " +
+            $"{RegistrySettingsManager.KeyExePath}={cfg.Client.ExePath}, " +
+            (ci.HasRestart ? $"{RegistrySettingsManager.KeyRestart}={cfg.Client.Restart}, " : string.Empty) +
+            $"{RegistrySettingsManager.KeyForceStart}={cfg.Client.ForceStart}, " +
             $"{RegistrySettingsManager.KeyDefaultPort}={cfg.Client.DefaultPort}";
         // qBittorrent exposes two extra RPC-backed flags; append them only for that client.
         if (activeSection == RegistrySettingsManager.SectionQBittorrent)

@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.ServiceProcess;
 
 namespace qbPortWeaver;
@@ -84,7 +84,7 @@ public static class DiagnosticsService
                 "Reselect the VPN provider in Settings → General."));
 
         var client = ClientRegistry.Resolve(clientSetting);
-        string url = RegistrySettingsManager.GetValue(client.Section, client.UrlKey);
+        string url = RegistrySettingsManager.GetValue(client.Section, RegistrySettingsManager.KeyUrl);
         if (string.IsNullOrWhiteSpace(url))
             results.Add(new(Checks.Client, DiagnosticStatus.Warn, $"{client.Name} selected, but no URL is configured",
                 $"Enter the {client.Name} Web UI/RPC URL in Settings."));
@@ -209,7 +209,7 @@ public static class DiagnosticsService
     private static void AddNicotinePluginResult(List<DiagnosticResult> results)
     {
         string exePath = RegistrySettingsManager.GetValue(
-            RegistrySettingsManager.SectionNicotine, RegistrySettingsManager.KeyNicotineExePath);
+            RegistrySettingsManager.SectionNicotine, RegistrySettingsManager.KeyExePath);
         var status = NicotinePluginInstaller.GetStatus(exePath);
 
         DiagnosticResult result = status.State switch
@@ -245,7 +245,7 @@ public static class DiagnosticsService
     private static DiagnosticResult BuildReadyPluginResult(NicotinePluginStatus status)
     {
         string savedUrl = RegistrySettingsManager.GetValue(
-            RegistrySettingsManager.SectionNicotine, RegistrySettingsManager.KeyNicotineUrl);
+            RegistrySettingsManager.SectionNicotine, RegistrySettingsManager.KeyUrl);
         string savedToken = RegistrySettingsManager.GetNicotineToken();
 
         if (status.Handshake is { } handshake &&

@@ -36,6 +36,11 @@ public partial class WhatsNewForm : Form
         "is now ignored instead of being passed to your client, which previously could leave it on a " +
         "random port while everything still looked healthy. Auto-recovery also always restores your " +
         "network adapter now, even if it is interrupted part-way through cycling it.\n\n" +
+        "Tidier settings storage\n" +
+        "Every client's settings are now stored under the same names, so they are easier to compare " +
+        "and any client added later stays consistent. Your existing settings move across on their " +
+        "own the first time you run this version. Only worth knowing if you read qbPortWeaver's " +
+        "settings from your own scripts.\n\n" +
         "Previously released\n\n" +
         "New in 2.6.3\n\n" +
         "Pop-up messages match your theme\n" +

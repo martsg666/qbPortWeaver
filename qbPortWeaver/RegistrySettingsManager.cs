@@ -39,17 +39,12 @@ public static class RegistrySettingsManager
     public const string ClientNameDeluge = "Deluge";
     public const string ClientNameNicotine = "Nicotine+";
 
-    // Registry key name strings are frozen - changing them would silently break existing installations
-    // by orphaning previously saved values. The one exception is KeyClient, renamed from the legacy
-    // "bitTorrentClient" to the protocol-neutral "client"; MigrateLegacyKeys carries the old value over.
-    //
-    // Three shipped values read as untidy and are deliberately left alone. They are listed here so a
-    // tidy-up pass recognises them as decided rather than missed:
-    //   "restartqBittorrent" / "forceStartqBittorrent" - lower-case q mid-word, because the brand
-    //       itself is "qBittorrent". Their constants are correctly PascalCase (KeyRestartQBittorrent).
-    //   "colorMode"   - stored value predates the "theme" wording used by KeyColorTheme and the UI.
+    // Registry key name strings are persisted, so changing one orphans previously saved values
+    // unless MigrateClientKeys carries it over. Two shipped values read as untidy and are left
+    // alone, listed here so a tidy-up pass recognises them as decided rather than missed:
+    //   "colorMode"    - predates the "theme" wording used by KeyColorTheme and the UI.
     //   "mediaEnabled" - carries a section prefix its eight KeyMedia* siblings drop, since the
-    //       section name already supplies it.
+    //                    section name already supplies it.
     // The C# constant names, by contrast, are free to change: only the string values are persisted.
 
     // Registry key names - general section
@@ -60,51 +55,34 @@ public static class RegistrySettingsManager
     // Former name for KeyClient, migrated to the current name on startup (see MigrateLegacyKeys).
     private const string LegacyKeyClient = "bitTorrentClient";
 
-    // Registry key names - qBittorrent section
-    public const string KeyQBittorrentUrl = "qBittorrentURL";
-    public const string KeyQBittorrentUserName = "qBittorrentUserName";
-    public const string KeyQBittorrentPassword = "qBittorrentPassword";
-    public const string KeyQBittorrentExePath = "qBittorrentExePath";
-    public const string KeyQBittorrentProcessName = "qBittorrentProcessName";
-    public const string KeyRestartQBittorrent = "restartqBittorrent";
-    public const string KeyForceStartQBittorrent = "forceStartqBittorrent";
-    // Unprefixed keys are per-client settings whose name is scoped by the section they live in, so the
-    // same name is reused across sections rather than being repeated with each client's name.
-    // DefaultPort is stored in all four client sections; WarnOnInterfaceMismatch in the two whose
-    // clients can report a bound interface (qBittorrent, Nicotine+); the last two are qBittorrent-only
-    // today but would keep these names if another client ever needed them.
+    // Registry key names - client sections (qbittorrent, transmission, deluge, nicotine).
+    //
+    // One set of names, reused verbatim in every client section: the section already says which
+    // client the value belongs to, so repeating it in the key name added nothing and was the source
+    // of the old inconsistency (client-first "qBittorrentURL" beside purpose-first
+    // "restartqBittorrent"). Every client section now holds identically named values, so the four
+    // can be compared directly, and adding a client needs no new key names at all.
+    //
+    // Not every client uses every key: KeyUserName is absent where the client has no user name
+    // (Deluge, Nicotine+) and KeyRestart where the client is never restarted (Nicotine+). See
+    // ClientRegistry, which records for each client which of these apply.
+    //
+    // KeyPassword holds the client's single secret whatever its nature - a Web UI password for
+    // three of them, the bridge plugin's bearer token for Nicotine+. The Nicotine+ UI still calls
+    // it a token, which is what the plugin issues; only the storage name is shared.
+    public const string KeyUrl = "url";
+    public const string KeyUserName = "userName";
+    public const string KeyPassword = "password";
+    public const string KeyExePath = "exePath";
+    public const string KeyProcessName = "processName";
+    public const string KeyRestart = "restart";
+    public const string KeyForceStart = "forceStart";
     public const string KeyDefaultPort = "defaultPort";
+    // Stored only in the sections whose clients can report a bound interface (qBittorrent,
+    // Nicotine+); the last two are qBittorrent-only today but need no new names if that changes.
     public const string KeyWarnOnInterfaceMismatch = "warnOnInterfaceMismatch";
     public const string KeyRestartOnDisconnect = "restartOnDisconnect";
     public const string KeyFixInterfaceBinding = "fixInterfaceBinding";
-
-    // Registry key names - transmission section
-    public const string KeyTransmissionUrl = "transmissionURL";
-    public const string KeyTransmissionUserName = "transmissionUserName";
-    public const string KeyTransmissionPassword = "transmissionPassword";
-    public const string KeyTransmissionExePath = "transmissionExePath";
-    public const string KeyTransmissionProcessName = "transmissionProcessName";
-    public const string KeyRestartTransmission = "restartTransmission";
-    public const string KeyForceStartTransmission = "forceStartTransmission";
-
-    // Registry key names - deluge section
-    public const string KeyDelugeUrl = "delugeURL";
-    public const string KeyDelugePassword = "delugePassword";
-    public const string KeyDelugeExePath = "delugeExePath";
-    public const string KeyDelugeProcessName = "delugeProcessName";
-    public const string KeyRestartDeluge = "restartDeluge";
-    public const string KeyForceStartDeluge = "forceStartDeluge";
-
-    // Registry key names - nicotine section. Nicotine+ is reached through the qbPortWeaver
-    // bridge plugin, which authenticates with a token it issues itself - so there is no user
-    // name, and the token occupies the section's single-secret slot.
-    public const string KeyNicotineUrl = "nicotineURL";
-    public const string KeyNicotineToken = "nicotineToken";
-    public const string KeyNicotineExePath = "nicotineExePath";
-    public const string KeyNicotineProcessName = "nicotineProcessName";
-    // No restartNicotine key: Nicotine+ is never restarted (see ClientRegistry), so the setting
-    // would have nothing to control.
-    public const string KeyForceStartNicotine = "forceStartNicotine";
 
     // Registry key names - extra section
     public const string KeyPostUpdateCmd = "postUpdateCmd";
@@ -186,13 +164,13 @@ public static class RegistrySettingsManager
             },
             [SectionQBittorrent] = new(StringComparer.OrdinalIgnoreCase)
             {
-                [KeyQBittorrentUrl] = "http://127.0.0.1:8080",
-                [KeyQBittorrentUserName] = "admin",
-                [KeyQBittorrentPassword] = "",
-                [KeyQBittorrentExePath] = @"C:\Program Files\qBittorrent\qbittorrent.exe",
-                [KeyQBittorrentProcessName] = "qbittorrent",
-                [KeyRestartQBittorrent] = ValueTrue,
-                [KeyForceStartQBittorrent] = ValueTrue,
+                [KeyUrl] = "http://127.0.0.1:8080",
+                [KeyUserName] = "admin",
+                [KeyPassword] = "",
+                [KeyExePath] = @"C:\Program Files\qBittorrent\qbittorrent.exe",
+                [KeyProcessName] = "qbittorrent",
+                [KeyRestart] = ValueTrue,
+                [KeyForceStart] = ValueTrue,
                 [KeyWarnOnInterfaceMismatch] = ValueTrue,
                 [KeyRestartOnDisconnect] = ValueTrue,
                 // On by default, like the app's other remediation settings. The write is the same
@@ -205,23 +183,23 @@ public static class RegistrySettingsManager
             },
             [SectionTransmission] = new(StringComparer.OrdinalIgnoreCase)
             {
-                [KeyTransmissionUrl] = "http://127.0.0.1:9091",
-                [KeyTransmissionUserName] = "",
-                [KeyTransmissionPassword] = "",
-                [KeyTransmissionExePath] = @"C:\Program Files\Transmission\transmission-qt.exe",
-                [KeyTransmissionProcessName] = "transmission-qt",
-                [KeyRestartTransmission] = ValueTrue,
-                [KeyForceStartTransmission] = ValueTrue,
+                [KeyUrl] = "http://127.0.0.1:9091",
+                [KeyUserName] = "",
+                [KeyPassword] = "",
+                [KeyExePath] = @"C:\Program Files\Transmission\transmission-qt.exe",
+                [KeyProcessName] = "transmission-qt",
+                [KeyRestart] = ValueTrue,
+                [KeyForceStart] = ValueTrue,
                 [KeyDefaultPort] = "0"
             },
             [SectionDeluge] = new(StringComparer.OrdinalIgnoreCase)
             {
-                [KeyDelugeUrl] = "http://127.0.0.1:8112",
-                [KeyDelugePassword] = "",
-                [KeyDelugeExePath] = @"C:\Program Files\Deluge\deluge.exe",
-                [KeyDelugeProcessName] = "deluge",
-                [KeyRestartDeluge] = ValueTrue,
-                [KeyForceStartDeluge] = ValueTrue,
+                [KeyUrl] = "http://127.0.0.1:8112",
+                [KeyPassword] = "",
+                [KeyExePath] = @"C:\Program Files\Deluge\deluge.exe",
+                [KeyProcessName] = "deluge",
+                [KeyRestart] = ValueTrue,
+                [KeyForceStart] = ValueTrue,
                 [KeyDefaultPort] = "0"
             },
             [SectionNicotine] = new(StringComparer.OrdinalIgnoreCase)
@@ -229,11 +207,11 @@ public static class RegistrySettingsManager
                 // The URL and token are normally discovered from the bridge plugin's connection
                 // file; these defaults only matter when that file cannot be found (Nicotine+
                 // started with a custom data folder) and the user fills them in by hand.
-                [KeyNicotineUrl] = "http://127.0.0.1:38472",
-                [KeyNicotineToken] = "",
-                [KeyNicotineExePath] = @"C:\Program Files\Nicotine+\Nicotine+.exe",
-                [KeyNicotineProcessName] = "Nicotine+",
-                [KeyForceStartNicotine] = ValueTrue,
+                [KeyUrl] = "http://127.0.0.1:38472",
+                [KeyPassword] = "",
+                [KeyExePath] = @"C:\Program Files\Nicotine+\Nicotine+.exe",
+                [KeyProcessName] = "Nicotine+",
+                [KeyForceStart] = ValueTrue,
                 [KeyWarnOnInterfaceMismatch] = ValueTrue,
                 [KeyDefaultPort] = "0"
             },
@@ -336,6 +314,7 @@ public static class RegistrySettingsManager
         // Must run before defaults are written below: a renamed key's new name does not exist yet on
         // an existing install, so without the carry-over EnsureDefaults would write the default over it.
         MigrateLegacyKeys();
+        MigrateClientKeys();
         MigrateFolderListSeparator();
 
         bool anyWritten = false;
@@ -374,6 +353,83 @@ public static class RegistrySettingsManager
     /// <remarks>Only the client-selection key has been renamed so far (<see cref="LegacyKeyClient"/> ->
     /// <see cref="KeyClient"/>). The old value is copied only when the new name is not already set, then
     /// the old value is removed, so a user's saved client choice survives the rename.</remarks>
+    // The client-prefixed names every client section used before the key names were unified, paired
+    // with the shared name that replaced each one. Ordered per section; a section's entries are
+    // independent, so a partially migrated section completes on the next run.
+    private static readonly (string Section, string LegacyKey, string NewKey)[] _legacyClientKeys =
+    [
+        (SectionQBittorrent, "qBittorrentURL",         KeyUrl),
+        (SectionQBittorrent, "qBittorrentUserName",    KeyUserName),
+        (SectionQBittorrent, "qBittorrentPassword",    KeyPassword),
+        (SectionQBittorrent, "qBittorrentExePath",     KeyExePath),
+        (SectionQBittorrent, "qBittorrentProcessName", KeyProcessName),
+        (SectionQBittorrent, "restartqBittorrent",     KeyRestart),
+        (SectionQBittorrent, "forceStartqBittorrent",  KeyForceStart),
+
+        (SectionTransmission, "transmissionURL",         KeyUrl),
+        (SectionTransmission, "transmissionUserName",    KeyUserName),
+        (SectionTransmission, "transmissionPassword",    KeyPassword),
+        (SectionTransmission, "transmissionExePath",     KeyExePath),
+        (SectionTransmission, "transmissionProcessName", KeyProcessName),
+        (SectionTransmission, "restartTransmission",     KeyRestart),
+        (SectionTransmission, "forceStartTransmission",  KeyForceStart),
+
+        (SectionDeluge, "delugeURL",         KeyUrl),
+        (SectionDeluge, "delugePassword",    KeyPassword),
+        (SectionDeluge, "delugeExePath",     KeyExePath),
+        (SectionDeluge, "delugeProcessName", KeyProcessName),
+        (SectionDeluge, "restartDeluge",     KeyRestart),
+        (SectionDeluge, "forceStartDeluge",  KeyForceStart),
+
+        // Nicotine+ never shipped, but dev and beta machines carry these from 2.6.4 pre-releases.
+        (SectionNicotine, "nicotineURL",         KeyUrl),
+        (SectionNicotine, "nicotineToken",       KeyPassword),
+        (SectionNicotine, "nicotineExePath",     KeyExePath),
+        (SectionNicotine, "nicotineProcessName", KeyProcessName),
+        (SectionNicotine, "forceStartNicotine",  KeyForceStart),
+    ];
+
+    // Moves each client section's values from their old client-prefixed names to the shared names.
+    //
+    // Values are copied as raw objects and never decrypted: three of these hold DPAPI blobs, and a
+    // decrypt/re-encrypt round trip would turn any single failure into a lost password. Copy first,
+    // delete only once the write is confirmed, and skip a key whose new name already holds a value,
+    // so an interrupted run resumes safely and a second run is a no-op.
+    //
+    // Must run before EnsureDefaults, or the defaults would populate the new names first and every
+    // real setting would be left behind under its old name.
+    private static void MigrateClientKeys()
+    {
+        int moved = 0;
+        foreach (var (section, legacyKey, newKey) in _legacyClientKeys)
+        {
+            try
+            {
+                using var regKey = Registry.CurrentUser.OpenSubKey($@"{BaseKeyPath}\{section}", writable: true);
+                if (regKey?.GetValue(legacyKey) is not object legacyValue) continue;
+
+                if (regKey.GetValue(newKey) is null)
+                {
+                    regKey.SetValue(newKey, legacyValue, regKey.GetValueKind(legacyKey));
+                    // Read back before discarding the only other copy.
+                    if (regKey.GetValue(newKey) is null) continue;
+                    moved++;
+                }
+                regKey.DeleteValue(legacyKey, throwOnMissingValue: false);
+            }
+            catch (Exception ex)
+            {
+                // Leave the legacy value in place: the setting falls back to its default for now,
+                // and the next start retries. Losing the value would be the worse outcome.
+                LogManager.Instance.LogDebug(
+                    $"RegistrySettingsManager.MigrateClientKeys: [{section}] {legacyKey} - {ex.Message}");
+            }
+        }
+
+        if (moved > 0)
+            LogManager.Instance.LogMessage($"Migrated {moved} client settings to the shared registry key names", LogLevel.Info);
+    }
+
     private static void MigrateLegacyKeys()
     {
         try
@@ -480,19 +536,19 @@ public static class RegistrySettingsManager
 
     /// <summary>Reads the qBittorrent password from the registry and decrypts it with DPAPI (CurrentUser scope). Returns an empty string if missing or decryption fails.</summary>
     public static string GetQBittorrentPassword() =>
-        GetEncryptedValue(SectionQBittorrent, KeyQBittorrentPassword);
+        GetEncryptedValue(SectionQBittorrent, KeyPassword);
 
     /// <summary>Reads the Transmission password from the registry and decrypts it with DPAPI (CurrentUser scope). Returns an empty string if missing or decryption fails.</summary>
     public static string GetTransmissionPassword() =>
-        GetEncryptedValue(SectionTransmission, KeyTransmissionPassword);
+        GetEncryptedValue(SectionTransmission, KeyPassword);
 
     /// <summary>Reads the Deluge password from the registry and decrypts it with DPAPI (CurrentUser scope). Returns an empty string if missing or decryption fails.</summary>
     public static string GetDelugePassword() =>
-        GetEncryptedValue(SectionDeluge, KeyDelugePassword);
+        GetEncryptedValue(SectionDeluge, KeyPassword);
 
     /// <summary>Reads the Nicotine+ bridge plugin token from the registry and decrypts it with DPAPI (CurrentUser scope). Returns an empty string if missing or decryption fails.</summary>
     public static string GetNicotineToken() =>
-        GetEncryptedValue(SectionNicotine, KeyNicotineToken);
+        GetEncryptedValue(SectionNicotine, KeyPassword);
 
     /// <summary>Reads the TMDB API key from the registry and decrypts it with DPAPI (CurrentUser scope). Returns an empty string if missing or decryption fails.</summary>
     public static string GetTmdbApiKey() =>
@@ -566,19 +622,19 @@ public static class RegistrySettingsManager
 
     /// <summary>Encrypts <paramref name="plaintext"/> with DPAPI (CurrentUser scope) and writes the result to the registry.</summary>
     public static void SetQBittorrentPassword(string plaintext) =>
-        SetEncryptedValue(SectionQBittorrent, KeyQBittorrentPassword, plaintext);
+        SetEncryptedValue(SectionQBittorrent, KeyPassword, plaintext);
 
     /// <summary>Encrypts <paramref name="plaintext"/> with DPAPI (CurrentUser scope) and writes the result to the registry.</summary>
     public static void SetTransmissionPassword(string plaintext) =>
-        SetEncryptedValue(SectionTransmission, KeyTransmissionPassword, plaintext);
+        SetEncryptedValue(SectionTransmission, KeyPassword, plaintext);
 
     /// <summary>Encrypts <paramref name="plaintext"/> with DPAPI (CurrentUser scope) and writes the result to the registry.</summary>
     public static void SetDelugePassword(string plaintext) =>
-        SetEncryptedValue(SectionDeluge, KeyDelugePassword, plaintext);
+        SetEncryptedValue(SectionDeluge, KeyPassword, plaintext);
 
     /// <summary>Encrypts <paramref name="plaintext"/> with DPAPI (CurrentUser scope) and writes the result to the registry.</summary>
     public static void SetNicotineToken(string plaintext) =>
-        SetEncryptedValue(SectionNicotine, KeyNicotineToken, plaintext);
+        SetEncryptedValue(SectionNicotine, KeyPassword, plaintext);
 
     /// <summary>Encrypts <paramref name="plaintext"/> with DPAPI (CurrentUser scope) and writes the result to the registry.</summary>
     public static void SetTmdbApiKey(string plaintext) =>
@@ -605,10 +661,9 @@ public static class RegistrySettingsManager
     // sensitive setting here to ensure it is stored encrypted.
     private static readonly HashSet<string> _encryptedKeys = new(StringComparer.OrdinalIgnoreCase)
     {
-        KeyQBittorrentPassword,
-        KeyTransmissionPassword,
-        KeyDelugePassword,
-        KeyNicotineToken,
+        // One entry covers all four client sections: they share the key name, and these sets are
+        // matched on the key name alone, independently of which section it was read from.
+        KeyPassword,
         KeyMediaTmdbApiKey
     };
 
@@ -617,10 +672,7 @@ public static class RegistrySettingsManager
     // session token used to authenticate messages to the SYSTEM helper service).
     private static readonly HashSet<string> _logMaskedKeys = new(StringComparer.OrdinalIgnoreCase)
     {
-        KeyQBittorrentPassword,
-        KeyTransmissionPassword,
-        KeyDelugePassword,
-        KeyNicotineToken,
+        KeyPassword,
         KeyMediaTmdbApiKey,
         AppIdentity.PipeSessionTokenKey
     };

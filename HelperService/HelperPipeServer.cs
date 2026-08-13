@@ -74,7 +74,20 @@ internal sealed class HelperPipeServer(ILogger<HelperPipeServer> logger) : Backg
             catch (Exception ex)
             {
                 logger.LogError(ex, "Pipe server error - retrying");
-                await Task.Delay(PipeErrorRetryDelayMs, stoppingToken).ConfigureAwait(false);
+
+                // The backoff needs its own guard because it runs inside this handler, where the
+                // loop's cancellation handler above can no longer absorb anything: a stop signalled
+                // during the wait would sail straight out of ExecuteAsync. BackgroundService would
+                // then report the stop as a Critical host failure, which is exactly the wrong
+                // signal for an ordinary service stop that happened to land in the retry window.
+                try
+                {
+                    await Task.Delay(PipeErrorRetryDelayMs, stoppingToken).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    break;
+                }
             }
         }
         logger.LogInformation("qbPortWeaver Helper Service stopped");

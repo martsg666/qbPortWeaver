@@ -405,6 +405,9 @@ RunAsync
          ├─ EnsureClientRunningAsync
          ├─ IManagedClient.GetPreferencesAsync
          ├─ CheckInterfaceMatch (qBittorrent and Nicotine+)
+         ├─ CheckAndRepairInterfaceBindingAsync (qBittorrent only; runs whatever the provider)
+         │   ├─ QBittorrentClient.CheckInterfaceBindingAsync (stale token detection)
+         │   └─ QBittorrentClient.RepairInterfaceBindingAsync (if fixInterfaceBinding; once per streak)
          ├─ UpdatePortAndNotifyAsync (when ports differ)
          │   ├─ ApplyPortUpdateAsync
          │   │   ├─ IManagedClient.SetListeningPortAsync

@@ -93,7 +93,8 @@ public static class RegistrySettingsManager
     public const string KeyNicotineToken = "nicotineToken";
     public const string KeyNicotineProcessName = "nicotineProcessName";
     public const string KeyNicotineExePath = "nicotineExePath";
-    public const string KeyRestartNicotine = "restartNicotine";
+    // No restartNicotine key: Nicotine+ is never restarted (see ClientRegistry), so the setting
+    // would have nothing to control.
     public const string KeyForceStartNicotine = "forceStartNicotine";
 
     // Registry key names - extra section
@@ -223,9 +224,6 @@ public static class RegistrySettingsManager
                 [KeyNicotineToken] = "",
                 [KeyNicotineProcessName] = "Nicotine+",
                 [KeyNicotineExePath] = @"C:\Program Files\Nicotine+\Nicotine+.exe",
-                // The bridge applies the port to the running client, so there is nothing a
-                // restart would fix - and killing Nicotine+ discards its configuration.
-                [KeyRestartNicotine] = ValueFalse,
                 [KeyForceStartNicotine] = ValueTrue,
                 [KeyWarnOnInterfaceMismatch] = ValueTrue,
                 [KeyDefaultPort] = "0"

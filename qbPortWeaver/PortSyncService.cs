@@ -534,7 +534,7 @@ public sealed class PortSyncService
             Password: RegistrySettingsManager.GetEncryptedValue(activeClient.Section, activeClient.PasswordKey),
             ProcessName: RegistrySettingsManager.GetValue(activeClient.Section, activeClient.ProcessNameKey),
             ExePath: RegistrySettingsManager.GetValue(activeClient.Section, activeClient.ExePathKey),
-            Restart: RegistrySettingsManager.GetBool(activeClient.Section, activeClient.RestartKey),
+            Restart: activeClient.RestartKey is not null && RegistrySettingsManager.GetBool(activeClient.Section, activeClient.RestartKey),
             ForceStart: RegistrySettingsManager.GetBool(activeClient.Section, activeClient.ForceStartKey),
             DefaultPort: RegistrySettingsManager.GetInt(activeClient.Section, RegistrySettingsManager.KeyDefaultPort));
 
@@ -585,7 +585,7 @@ public sealed class PortSyncService
             $"{ci.PasswordKey}=***, " + // NOSONAR S2068 - value is masked, not a real credential
             $"{ci.ProcessNameKey}={cfg.Client.ProcessName}, " +
             $"{ci.ExePathKey}={cfg.Client.ExePath}, " +
-            $"{ci.RestartKey}={cfg.Client.Restart}, " +
+            (ci.RestartKey is not null ? $"{ci.RestartKey}={cfg.Client.Restart}, " : string.Empty) +
             $"{ci.ForceStartKey}={cfg.Client.ForceStart}, " +
             $"{RegistrySettingsManager.KeyDefaultPort}={cfg.Client.DefaultPort}";
         // qBittorrent exposes two extra RPC-backed flags; append them only for that client.

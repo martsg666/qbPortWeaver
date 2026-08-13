@@ -19,6 +19,9 @@ internal static class ClientRegistry
     /// <see langword="null"/> for clients that do not authenticate by username (e.g. Deluge,
     /// Nicotine+); <paramref name="PasswordKey"/> then carries that client's single secret - a Web
     /// UI password, or the bridge plugin token for Nicotine+.
+    /// <paramref name="RestartKey"/> is <see langword="null"/> for clients that are never restarted
+    /// (Nicotine+), which is also why those have no restart checkbox in Settings: a setting that
+    /// cannot change anything should not exist in the registry to be found and hand-edited.
     /// The default-port setting shares one key (<see cref="RegistrySettingsManager.KeyDefaultPort"/>)
     /// across all clients, so it is not stored here. <paramref name="ProcessNames"/>[0] doubles as the
     /// default process-name field value; <paramref name="DefaultExeFolder"/>/<paramref name="DefaultExeFile"/>
@@ -33,7 +36,7 @@ internal static class ClientRegistry
         string PasswordKey,
         string ProcessNameKey,
         string ExePathKey,
-        string RestartKey,
+        string? RestartKey,
         string ForceStartKey,
         string[] ProcessNames,
         string DefaultExeFolder,
@@ -74,10 +77,14 @@ internal static class ClientRegistry
         // so UserNameKey is null and PasswordKey carries the token. The '+' in the process name is
         // literal: Process.GetProcessesByName compares exactly, so "Nicotine+" matches
         // "Nicotine+.exe" and nothing else.
+        // RestartKey is null because Nicotine+ is never restarted: the bridge applies the port to
+        // the running client, so a restart would fix nothing, and killing the process would discard
+        // its configuration (Nicotine+ only saves on a graceful shutdown). See
+        // NicotineClient.RestartAsync, which is a no-op for the same reason.
         new(Name: RegistrySettingsManager.ClientNameNicotine, Section: RegistrySettingsManager.SectionNicotine,
             UrlKey: RegistrySettingsManager.KeyNicotineUrl, UserNameKey: null,
             PasswordKey: RegistrySettingsManager.KeyNicotineToken, ProcessNameKey: RegistrySettingsManager.KeyNicotineProcessName,
-            ExePathKey: RegistrySettingsManager.KeyNicotineExePath, RestartKey: RegistrySettingsManager.KeyRestartNicotine,
+            ExePathKey: RegistrySettingsManager.KeyNicotineExePath, RestartKey: null,
             ForceStartKey: RegistrySettingsManager.KeyForceStartNicotine,
             ProcessNames: ["Nicotine+"], DefaultExeFolder: "Nicotine+", DefaultExeFile: "Nicotine+.exe",
             Factory: c => new NicotineClient(c.Url, c.Password, c.ProcessName, c.ExePath)),

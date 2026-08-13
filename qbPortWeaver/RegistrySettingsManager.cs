@@ -40,12 +40,12 @@ public static class RegistrySettingsManager
     public const string ClientNameNicotine = "Nicotine+";
 
     // Registry key name strings are persisted, so changing one orphans previously saved values
-    // unless MigrateLegacyKeys carries it over. Two shipped values read as untidy and are left
-    // alone, listed here so a tidy-up pass recognises them as decided rather than missed:
-    //   "colorMode"    - predates the "theme" wording used by KeyColorTheme and the UI.
-    //   "mediaEnabled" - carries a section prefix its eight KeyMedia* siblings drop, since the
-    //                    section name already supplies it.
-    // The C# constant names, by contrast, are free to change: only the string values are persisted.
+    // unless _legacyKeys carries it over. Renaming is allowed and has been done - it just has to
+    // come with a row in that table. The C# constant names, by contrast, are free to change on
+    // their own: only the string values are persisted.
+    //
+    // Every stored name is now the plain camel-case form of what it holds, scoped by its section:
+    // no section name repeated inside a key, and no name that disagrees with its constant.
 
     // Registry key names - general section
     public const string KeyVpnProvider = "vpnProvider";
@@ -146,7 +146,7 @@ public static class RegistrySettingsManager
     // Registry key names - extra section
     public const string KeyPostUpdateCmd = "postUpdateCmd";
     public const string KeyDebugMode = AppIdentity.DebugModeValueName;
-    public const string KeyColorTheme = "colorMode";
+    public const string KeyColorTheme = "colorTheme";
 
     // Color theme values
     public const string ColorThemeSystem = "System";
@@ -154,7 +154,7 @@ public static class RegistrySettingsManager
     public const string ColorThemeLight = "Light";
 
     // Registry key names - media section
-    public const string KeyMediaEnabled = "mediaEnabled";
+    public const string KeyMediaEnabled = "enabled";
     public const string KeyMediaTmdbApiKey = "tmdbApiKey";
     public const string KeyMediaSourceFolders = "sourceFolders";
     public const string KeyMediaCreateFolders = "createFolders";
@@ -427,9 +427,15 @@ public static class RegistrySettingsManager
         (SectionNicotine, "nicotineExePath",     KeyNicotineExePath),
         (SectionNicotine, "nicotineProcessName", KeyNicotineProcessName),
         (SectionNicotine, "forceStartNicotine",  KeyNicotineForceStart),
+
+        // Two names that disagreed with what they hold: "colorMode" predated the "theme" wording
+        // used by its constant and the UI, and "mediaEnabled" repeated its own section name where
+        // its eight siblings do not.
+        (SectionExtra, "colorMode",    KeyColorTheme),
+        (SectionMedia, "mediaEnabled", KeyMediaEnabled),
     ];
 
-    // Moves each client section's values from their old client-prefixed names to the shared names.
+    // Moves every value stored under a former key name across to its current one.
     //
     // Values are copied as raw objects and never decrypted: three of these hold DPAPI blobs, and a
     // decrypt/re-encrypt round trip would turn any single failure into a lost password. Copy first,

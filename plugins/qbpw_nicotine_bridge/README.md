@@ -76,7 +76,9 @@ can be identified directly rather than inferred from a failing endpoint.
 
 `POST /v1/porttest` never blocks longer than the plugin's own cap, so a slow check returns
 `state: "pending"` rather than timing out. Treat anything other than `state: "done"` as
-undetermined, not as a closed port.
+undetermined, not as a closed port. Both porttest responses carry `source`: `native` when the
+verdict came from Nicotine+'s own checker, `web` when it came from the fallback query, and `null`
+before any check has run. The two fail differently, so it is worth knowing which one answered.
 
 ## Settings
 

@@ -82,16 +82,16 @@ public static class RegistrySettingsManager
     public const string KeyTransmissionUrl = "transmissionURL";
     public const string KeyTransmissionUserName = "transmissionUserName";
     public const string KeyTransmissionPassword = "transmissionPassword";
-    public const string KeyTransmissionProcessName = "transmissionProcessName";
     public const string KeyTransmissionExePath = "transmissionExePath";
+    public const string KeyTransmissionProcessName = "transmissionProcessName";
     public const string KeyRestartTransmission = "restartTransmission";
     public const string KeyForceStartTransmission = "forceStartTransmission";
 
     // Registry key names - deluge section
     public const string KeyDelugeUrl = "delugeURL";
     public const string KeyDelugePassword = "delugePassword";
-    public const string KeyDelugeProcessName = "delugeProcessName";
     public const string KeyDelugeExePath = "delugeExePath";
+    public const string KeyDelugeProcessName = "delugeProcessName";
     public const string KeyRestartDeluge = "restartDeluge";
     public const string KeyForceStartDeluge = "forceStartDeluge";
 
@@ -100,8 +100,8 @@ public static class RegistrySettingsManager
     // name, and the token occupies the section's single-secret slot.
     public const string KeyNicotineUrl = "nicotineURL";
     public const string KeyNicotineToken = "nicotineToken";
-    public const string KeyNicotineProcessName = "nicotineProcessName";
     public const string KeyNicotineExePath = "nicotineExePath";
+    public const string KeyNicotineProcessName = "nicotineProcessName";
     // No restartNicotine key: Nicotine+ is never restarted (see ClientRegistry), so the setting
     // would have nothing to control.
     public const string KeyForceStartNicotine = "forceStartNicotine";
@@ -193,7 +193,6 @@ public static class RegistrySettingsManager
                 [KeyQBittorrentProcessName] = "qbittorrent",
                 [KeyRestartQBittorrent] = ValueTrue,
                 [KeyForceStartQBittorrent] = ValueTrue,
-                [KeyDefaultPort] = "0",
                 [KeyWarnOnInterfaceMismatch] = ValueTrue,
                 [KeyRestartOnDisconnect] = ValueTrue,
                 // On by default, like the app's other remediation settings. The write is the same
@@ -201,15 +200,16 @@ public static class RegistrySettingsManager
                 // adapter the user picked rather than choosing one - a far smaller intervention than
                 // auto-recovery, which restarts services by default. Turning it off downgrades the
                 // behaviour to a warning; detection runs either way.
-                [KeyFixInterfaceBinding] = ValueTrue
+                [KeyFixInterfaceBinding] = ValueTrue,
+                [KeyDefaultPort] = "0"
             },
             [SectionTransmission] = new(StringComparer.OrdinalIgnoreCase)
             {
                 [KeyTransmissionUrl] = "http://127.0.0.1:9091",
                 [KeyTransmissionUserName] = "",
                 [KeyTransmissionPassword] = "",
-                [KeyTransmissionProcessName] = "transmission-qt",
                 [KeyTransmissionExePath] = @"C:\Program Files\Transmission\transmission-qt.exe",
+                [KeyTransmissionProcessName] = "transmission-qt",
                 [KeyRestartTransmission] = ValueTrue,
                 [KeyForceStartTransmission] = ValueTrue,
                 [KeyDefaultPort] = "0"
@@ -218,8 +218,8 @@ public static class RegistrySettingsManager
             {
                 [KeyDelugeUrl] = "http://127.0.0.1:8112",
                 [KeyDelugePassword] = "",
-                [KeyDelugeProcessName] = "deluge",
                 [KeyDelugeExePath] = @"C:\Program Files\Deluge\deluge.exe",
+                [KeyDelugeProcessName] = "deluge",
                 [KeyRestartDeluge] = ValueTrue,
                 [KeyForceStartDeluge] = ValueTrue,
                 [KeyDefaultPort] = "0"
@@ -231,8 +231,8 @@ public static class RegistrySettingsManager
                 // started with a custom data folder) and the user fills them in by hand.
                 [KeyNicotineUrl] = "http://127.0.0.1:38472",
                 [KeyNicotineToken] = "",
-                [KeyNicotineProcessName] = "Nicotine+",
                 [KeyNicotineExePath] = @"C:\Program Files\Nicotine+\Nicotine+.exe",
+                [KeyNicotineProcessName] = "Nicotine+",
                 [KeyForceStartNicotine] = ValueTrue,
                 [KeyWarnOnInterfaceMismatch] = ValueTrue,
                 [KeyDefaultPort] = "0"

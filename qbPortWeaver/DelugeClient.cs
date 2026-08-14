@@ -168,7 +168,8 @@ public sealed class DelugeClient : ManagedClientBase
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
         catch (Exception ex)
         {
-            LogManager.Instance.LogDebug($"DelugeClient.TestListeningPortAsync: {ex.Message}");
+            // Debug via the shared classifier - see TransmissionClient.TestListeningPortAsync.
+            LogHttpException(nameof(TestListeningPortAsync), ex, LogLevel.Debug);
             return null;
         }
     }

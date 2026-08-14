@@ -168,7 +168,7 @@ internal static class TmdbCacheManager
 
         try
         {
-            var json = File.ReadAllText(filePath);
+            var json = AppConstants.ReadAllTextShared(filePath);
             var entries = JsonSerializer.Deserialize<Dictionary<string, TmdbEntry<T>>>(json);
             if (entries is null) return;
 

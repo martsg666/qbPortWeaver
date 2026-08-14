@@ -247,7 +247,8 @@ public sealed class NicotineClient : ManagedClientBase
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
         catch (Exception ex)
         {
-            LogManager.Instance.LogDebug($"NicotineClient.TestListeningPortAsync: {ex.Message}");
+            // Debug via the shared classifier - see TransmissionClient.TestListeningPortAsync.
+            LogHttpException(nameof(TestListeningPortAsync), ex, LogLevel.Debug);
             return null;
         }
     }
@@ -313,6 +314,11 @@ public sealed class NicotineClient : ManagedClientBase
         }
         finally
         {
+            // Belt-and-braces, and deliberately kept: once assigned, the request owns the content
+            // and `using var request` disposes it on every path out of the try - so this second
+            // Dispose is a no-op (HttpContent.Dispose is idempotent). It covers only the window
+            // between constructing the content and assigning it, and it keeps the ownership
+            // explicit for a reader who does not know HttpRequestMessage disposes its Content.
             content?.Dispose();
         }
     }

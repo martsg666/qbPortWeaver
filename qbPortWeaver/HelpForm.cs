@@ -140,7 +140,7 @@ public partial class HelpForm : Form
         try
         {
             if (File.Exists(path))
-                return File.ReadAllText(path);
+                return AppConstants.ReadAllTextShared(path);
         }
         catch (Exception ex)
         {

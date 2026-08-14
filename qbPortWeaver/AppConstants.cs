@@ -96,6 +96,40 @@ public static class AppConstants
         }
     }
 
+    /// <summary>Reads a text file in a way that does not block a concurrent atomic rewrite of it.</summary>
+    /// <remarks>
+    /// <see cref="File.ReadAllText(string)"/> opens with <see cref="FileShare.Read"/>, which withholds
+    /// the DELETE access Windows requires to rename a file over one that is open - so a read in flight
+    /// makes <see cref="WriteAtomic(string, string)"/>'s final rename fail, in the <em>writer</em>.
+    /// Granting <see cref="FileShare.Delete"/> lets the two overlap. Nothing is torn by that: the
+    /// rename is atomic, so a reader still sees either the whole old file or the whole new one.
+    /// Failure modes are otherwise <see cref="File.ReadAllText(string)"/>'s, so callers keep their
+    /// own error handling.
+    /// </remarks>
+    internal static string ReadAllTextShared(string path)
+    {
+        using var stream = OpenShared(path);
+        using var reader = new StreamReader(stream, System.Text.Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
+        return reader.ReadToEnd();
+    }
+
+    /// <summary>Reads a text file's lines without blocking a concurrent atomic rewrite - see
+    /// <see cref="ReadAllTextShared"/> for why.</summary>
+    internal static string[] ReadAllLinesShared(string path)
+    {
+        using var stream = OpenShared(path);
+        using var reader = new StreamReader(stream, System.Text.Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
+        var lines = new List<string>();
+        while (reader.ReadLine() is { } line)
+            lines.Add(line);
+        return [.. lines];
+    }
+
+    // FileShare.ReadWrite so a writer appending to the file (the log) is not blocked either, and
+    // FileShare.Delete so an atomic rename over the target can complete while this handle is open.
+    private static FileStream OpenShared(string path) =>
+        new(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+
     /// <summary>Writes text to a temp file then atomically renames it over the target.
     /// If the process is killed mid-write, only the temp file is lost and the original is untouched.</summary>
     internal static void WriteAtomic(string path, string content) =>

@@ -210,7 +210,7 @@ internal static class NicotinePluginInstaller
                 sourcePath = fallbackPath;
             }
 
-            string[] lines = File.ReadAllLines(sourcePath);
+            string[] lines = AppConstants.ReadAllLinesShared(sourcePath);
 
             if (!TryRewriteEnabledPlugins(lines, out string[] updated, out string reason))
             {
@@ -266,7 +266,7 @@ internal static class NicotinePluginInstaller
                 if (!File.Exists(configPath)) return null;
             }
 
-            foreach (var (section, key, value) in ReadSettings(File.ReadAllLines(configPath)))
+            foreach (var (section, key, value) in ReadSettings(AppConstants.ReadAllLinesShared(configPath)))
             {
                 if (section != PluginsSection || key != EnabledKey) continue;
                 if (!TryParsePythonStringList(value, out var names)) return null;
@@ -541,7 +541,7 @@ internal static class NicotinePluginInstaller
         {
             string infoPath = Path.Combine(pluginFolder, PluginInfoFileName);
             if (!File.Exists(infoPath)) return null;
-            return ReadVersion(File.ReadAllText(infoPath)) ?? string.Empty;
+            return ReadVersion(AppConstants.ReadAllTextShared(infoPath)) ?? string.Empty;
         }
         catch (Exception ex)
         {

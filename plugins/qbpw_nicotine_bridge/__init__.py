@@ -15,7 +15,7 @@ import threading
 from pynicotine.events import events
 from pynicotine.pluginsystem import BasePlugin
 
-from bridge import handshake
+from bridge import errors, handshake
 from bridge.core_io import CoreIO
 from bridge.main_thread import MainThreadProxy
 from bridge.port_test import MAX_WAIT_SECONDS, STATE_DONE, PortTest
@@ -310,8 +310,15 @@ class Plugin(BasePlugin):
         if cli_port is not None:
             self.output(f"Port:        {cli_port} (fixed by --port; it cannot be changed)")
         else:
-            self.output(f"Port:        {core_io.configured_port()} configured, "
-                        f"{core_io.active_port()} in use")
+            # An ApiError here carries the sentence that names the cause and the fix, which is
+            # what errors.py writes its messages for - so echo it rather than letting it escape
+            # as a generic plugin failure. The remaining lines still print: a port this build
+            # cannot read must not cost the user the connection state and the capability list.
+            try:
+                self.output(f"Port:        {core_io.configured_port()} configured, "
+                            f"{core_io.active_port()} in use")
+            except errors.ApiError as error:
+                self.output(f"Port:        {error.message}")
 
         self.output(f"UPnP:        {core_io.upnp_enabled()}")
 
@@ -326,8 +333,13 @@ class Plugin(BasePlugin):
 
         text = (args or "").strip()
         if not text:
-            self.output(f"Port {self._core_io.configured_port()} configured, "
-                        f"{self._core_io.active_port()} in use.")
+            # Echo the ApiError message for the same reason the set_port branch below reports its
+            # failure: the sentence is the useful part, and a command must never escape.
+            try:
+                self.output(f"Port {self._core_io.configured_port()} configured, "
+                            f"{self._core_io.active_port()} in use.")
+            except errors.ApiError as error:
+                self.output(error.message)
             return
 
         try:
@@ -365,6 +377,11 @@ class Plugin(BasePlugin):
                                            or self._core_io.configured_port())
         except ValueError:
             self.output(f"'{text}' is not a port number.")
+            return
+        # Only the no-argument path can raise this - falling back to the configured port is what
+        # needs the capability. With a port given explicitly there is nothing to read.
+        except errors.ApiError as error:
+            self.output(error.message)
             return
 
         self.output(f"Checking port {port}; the result will appear here shortly.")

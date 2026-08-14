@@ -494,7 +494,7 @@ internal static partial class MediaImporter
                 return new(StringComparer.OrdinalIgnoreCase);
             }
 
-            var json = File.ReadAllText(filePath);
+            var json = AppConstants.ReadAllTextShared(filePath);
             var entries = JsonSerializer.Deserialize<Dictionary<string, CacheEntry>>(json);
             var cache = entries is not null
                 ? new Dictionary<string, CacheEntry>(entries, StringComparer.OrdinalIgnoreCase)

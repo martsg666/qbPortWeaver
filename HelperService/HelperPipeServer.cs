@@ -25,9 +25,12 @@ namespace qbPortWeaver.HelperService;
 ///
 /// Trust boundary: the helper trusts any caller that (a) has access to the named pipe ACL
 /// (AuthenticatedUserSid) and (b) can read the pipeSessionToken value from their own HKCU hive.
-/// In practice this is the user the tray app runs under, plus any local administrator (who can
-/// read any user's HKCU). Once trusted, the caller can name any Windows service for restart and
-/// any adapter name for cycle. The helper does not allowlist service names because the service
+/// In practice that is any authenticated user on the machine - neither condition narrows it
+/// further, since the ACL grants that whole group and the token is read from the caller's own
+/// hive, which any user can populate for themselves. Once trusted, the caller can name any
+/// Windows service for restart and any adapter name for cycle - so on a multi-user machine a
+/// second, non-administrator user can have SYSTEM restart an arbitrary service or cycle any
+/// adapter. The helper does not allowlist service names because the service
 /// search terms themselves are user-configurable in HKCU; an attacker with user-level write
 /// access to HKCU would simply rewrite the search term to point at any other service before
 /// sending the restart request, so an allowlist sourced from HKCU adds no protection. A baked-in

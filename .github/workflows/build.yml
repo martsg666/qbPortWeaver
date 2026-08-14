@@ -2,19 +2,23 @@ name: Build Check
 
 # Runs on every branch push and pull request to catch compile errors before release.
 #
-# 'branches: **' rather than 'tags-ignore: **': a push filter that names only tags/tags-ignore
-# scopes the trigger to tags, so ignoring every tag left the push block matching nothing and this
-# workflow ran on pull requests alone (30 of 30 runs, confirmed against the run history). Direct
-# pushes to qa/* and rc/* - which the release flow encourages - therefore had no compile gate
-# until tag time. A branches filter never matches tags, so build-release.yml keeps exclusive
-# ownership of tag pushes either way.
+# The push filter names branches rather than using 'tags-ignore': a push filter that lists only
+# tags/tags-ignore scopes the trigger to tags, so ignoring every tag left the push block matching
+# nothing and this workflow ran on pull requests alone (30 of 30 runs, confirmed against the run
+# history). A branches filter never matches tags, so build-release.yml keeps exclusive ownership
+# of tag pushes either way.
 #
-# Note this runs twice for a push to a branch with an open PR (once per event); the concurrency
-# group is keyed on github.ref, which differs between them, so neither cancels the other.
+# Only master and the bare 2.x.y release branches are listed, because they are the only ones that
+# take pushes outside a pull request (release merges, and CI fixes applied with admin bypass).
+# feature/*, fix/*, qa/* and rc/* all work through a PR, and a push to a branch with an open PR
+# already re-runs this workflow via the pull_request trigger - listing them here would only
+# duplicate that run, since the concurrency group is keyed on github.ref and the two events carry
+# different refs. A branch not listed here is still checked the moment its PR opens.
 on:
   push:
     branches:
-      - '**'
+      - 'master'
+      - '2.*'
   pull_request:
 
 concurrency:

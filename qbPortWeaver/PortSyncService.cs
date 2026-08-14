@@ -9,7 +9,8 @@ public enum SyncState
     Synced,
     /// <summary>VPN is not connected; no port is available to sync.</summary>
     VpnDisconnected,
-    /// <summary>Sync is paused because the client or VPN provider is not configured.</summary>
+    /// <summary>The VPN provider is set to Disabled, so port sync is skipped entirely. An
+    /// unrecognized provider is <see cref="Error"/>, not this.</summary>
     Disabled,
     /// <summary>An error occurred during the sync cycle (e.g. client unreachable, port update failed).</summary>
     Error,
@@ -146,7 +147,7 @@ public sealed class PortSyncService
     // Whether the running cycle was triggered by a network change (passed in by MainForm's
     // debounced NetworkChange handler). Drives the "after network change" history annotation.
     // Overwritten at the start of every cycle; serialised by MainForm._updateSemaphore.
-    private bool _networkChangeCycle;
+    private bool _networkChangeTriggered;
 
     // Fallback for when TryCreateForAdapterAsync cannot reach the configured adapter (e.g. VPN is
     // between disconnect and reconnect) - returned so IsVpnConnected() reports false and
@@ -224,7 +225,7 @@ public sealed class PortSyncService
     /// re-sync; a port change it detects is annotated accordingly in the port history.</summary>
     public async Task<int> RunAsync(bool networkChangeTriggered = false, CancellationToken cancellationToken = default)
     {
-        _networkChangeCycle = networkChangeTriggered;
+        _networkChangeTriggered = networkChangeTriggered;
         _recoveryPendingThisCycle = _recoveryDispatched;
         _waitingForVpnThisCycle = false;
         // Initialize status with default values. This is written to the status file at the end of the method (in finally)
@@ -524,18 +525,20 @@ public sealed class PortSyncService
         string clientName = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyClient);
         var activeClient = ClientRegistry.Resolve(clientName);
 
-        // Only the active client's section is read. UserNameKey is null for clients without a username
-        // (Deluge); the password is DPAPI-decrypted via GetEncryptedValue (same as the per-client
-        // GetXxxPassword helpers). DefaultPort shares one key across all clients.
+        // Only the active client's section is read; every client section uses the same key names, so
+        // the section is the only thing that varies here. HasUserName/HasRestart cover the two keys a
+        // client may not have at all (Deluge and Nicotine+ have no user name; Nicotine+ is never
+        // restarted). The password is DPAPI-decrypted via GetEncryptedValue, same as the per-client
+        // GetXxxPassword helpers.
         var clientConfig = new ClientConfig(
             Url: RegistrySettingsManager.GetValue(activeClient.Section, activeClient.UrlKey),
-            UserName: activeClient.UserNameKey is null ? string.Empty : RegistrySettingsManager.GetValue(activeClient.Section, activeClient.UserNameKey),
+            UserName: activeClient.UserNameKey is not null ? RegistrySettingsManager.GetValue(activeClient.Section, activeClient.UserNameKey) : string.Empty,
             Password: RegistrySettingsManager.GetEncryptedValue(activeClient.Section, activeClient.PasswordKey),
             ProcessName: RegistrySettingsManager.GetValue(activeClient.Section, activeClient.ProcessNameKey),
             ExePath: RegistrySettingsManager.GetValue(activeClient.Section, activeClient.ExePathKey),
-            Restart: RegistrySettingsManager.GetBool(activeClient.Section, activeClient.RestartKey),
+            Restart: activeClient.RestartKey is not null && RegistrySettingsManager.GetBool(activeClient.Section, activeClient.RestartKey),
             ForceStart: RegistrySettingsManager.GetBool(activeClient.Section, activeClient.ForceStartKey),
-            DefaultPort: RegistrySettingsManager.GetInt(activeClient.Section, RegistrySettingsManager.KeyDefaultPort));
+            DefaultPort: RegistrySettingsManager.GetInt(activeClient.Section, activeClient.DefaultPortKey));
 
         return (new AppConfig(
             VpnProvider: RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyVpnProvider),
@@ -543,10 +546,10 @@ public sealed class PortSyncService
             UpdateInterval: updateInterval,
             ClientName: clientName,
             Client: clientConfig,
-            QBittorrentWarnOnInterfaceMismatch: RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyWarnOnInterfaceMismatch),
-            QBittorrentRestartOnDisconnect: RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyRestartOnDisconnect),
-            QBittorrentFixInterfaceBinding: RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyFixInterfaceBinding),
-            NicotineWarnOnInterfaceMismatch: RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionNicotine, RegistrySettingsManager.KeyWarnOnInterfaceMismatch),
+            QBittorrentWarnOnInterfaceMismatch: RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyQBittorrentWarnOnInterfaceMismatch),
+            QBittorrentRestartOnDisconnect: RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyQBittorrentRestartOnDisconnect),
+            QBittorrentFixInterfaceBinding: RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyQBittorrentFixInterfaceBinding),
+            NicotineWarnOnInterfaceMismatch: RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionNicotine, RegistrySettingsManager.KeyNicotineWarnOnInterfaceMismatch),
             PostUpdateCommand: RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionExtra, RegistrySettingsManager.KeyPostUpdateCmd),
             VpnAutoRecoveryEnabled: RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyVpnAutoRecoveryEnabled),
             VpnAutoRecoveryTriggerCycles: vpnAutoRecoveryTriggerCycles,
@@ -584,15 +587,15 @@ public sealed class PortSyncService
             $"{ci.PasswordKey}=***, " + // NOSONAR S2068 - value is masked, not a real credential
             $"{ci.ProcessNameKey}={cfg.Client.ProcessName}, " +
             $"{ci.ExePathKey}={cfg.Client.ExePath}, " +
-            $"{ci.RestartKey}={cfg.Client.Restart}, " +
+            (ci.RestartKey is not null ? $"{ci.RestartKey}={cfg.Client.Restart}, " : string.Empty) +
             $"{ci.ForceStartKey}={cfg.Client.ForceStart}, " +
-            $"{RegistrySettingsManager.KeyDefaultPort}={cfg.Client.DefaultPort}";
+            $"{ci.DefaultPortKey}={cfg.Client.DefaultPort}";
         // qBittorrent exposes two extra RPC-backed flags; append them only for that client.
         if (activeSection == RegistrySettingsManager.SectionQBittorrent)
             clientLine +=
-                $", {RegistrySettingsManager.KeyWarnOnInterfaceMismatch}={cfg.QBittorrentWarnOnInterfaceMismatch}" +
-                $", {RegistrySettingsManager.KeyRestartOnDisconnect}={cfg.QBittorrentRestartOnDisconnect}" +
-                $", {RegistrySettingsManager.KeyFixInterfaceBinding}={cfg.QBittorrentFixInterfaceBinding}";
+                $", {RegistrySettingsManager.KeyQBittorrentWarnOnInterfaceMismatch}={cfg.QBittorrentWarnOnInterfaceMismatch}" +
+                $", {RegistrySettingsManager.KeyQBittorrentRestartOnDisconnect}={cfg.QBittorrentRestartOnDisconnect}" +
+                $", {RegistrySettingsManager.KeyQBittorrentFixInterfaceBinding}={cfg.QBittorrentFixInterfaceBinding}";
         LogManager.Instance.LogDebug(clientLine);
 
         LogManager.Instance.LogDebug(
@@ -852,7 +855,7 @@ public sealed class PortSyncService
         if (currentPort.Value == targetPort)
         {
             status[StatusKeys.ClientPort] = currentPort.Value;
-            LogManager.Instance.LogMessage($"{manager.ClientName} ports match - no update needed", LogLevel.Info);
+            LogManager.Instance.LogMessage($"{manager.ClientName} port {currentPort.Value} already matches the target port - no update needed", LogLevel.Info);
         }
         else if (!await UpdatePortAndNotifyAsync(manager, targetPort, currentPort.Value, config, status, cancellationToken).ConfigureAwait(false))
         {
@@ -885,7 +888,7 @@ public sealed class PortSyncService
         // produces a network change too, and the recovery is the root cause).
         string cause = string.Empty;
         if (_recoveryPendingThisCycle) cause = " - after recovery";
-        else if (_networkChangeCycle) cause = " - after network change";
+        else if (_networkChangeTriggered) cause = " - after network change";
         PortHistoryManager.Append(PortHistoryKind.PortChanged, targetPort,
             (config.VpnManager is null
                 ? $"Default port applied (was {previousPort})"
@@ -962,7 +965,7 @@ public sealed class PortSyncService
         if (_portConfirmedClosed)
             LogManager.Instance.LogMessage($"{clientName} port {port} is reachable from outside again", LogLevel.Info);
         else
-            LogManager.Instance.LogDebug($"PortSyncService.VerifyPortAsync: {clientName} port {port} verified open");
+            LogManager.Instance.LogDebug($"PortSyncService.HandlePortOpenResult: {clientName} port {port} verified open");
         _portCheckPendingConfirmation = false;
         _portConfirmedClosed = false;
         _confirmedClosedCount = 0;
@@ -1014,7 +1017,7 @@ public sealed class PortSyncService
     {
         if (!config.PortClosedRecoveryEnabled || !_portClosedRecoveryArmed)
             return string.Empty;
-        string checks = _confirmedClosedCount == 1 ? "closed check" : "closed checks";
+        string checks = AppConstants.PluralizeNoun(_confirmedClosedCount, "closed check");
         return $" ({_confirmedClosedCount} consecutive {checks}, recovery triggers after {config.PortClosedRecoveryTriggerChecks} consecutive closed checks)";
     }
 
@@ -1045,7 +1048,7 @@ public sealed class PortSyncService
 
         string action = vpnManager.GetRecoveryAction();
         LogManager.Instance.LogMessage(
-            $"Triggering '{action}' for '{vpnManager.ProviderName}' after {config.PortClosedRecoveryTriggerChecks} consecutive closed {(config.PortClosedRecoveryTriggerChecks == 1 ? "check" : "checks")}",
+            $"Triggering '{action}' for '{vpnManager.ProviderName}' after {config.PortClosedRecoveryTriggerChecks} consecutive closed {AppConstants.PluralizeNoun(config.PortClosedRecoveryTriggerChecks, "check")}",
             LogLevel.Info);
         await DispatchRecoveryAsync(action, target, vpnManager.ProviderName, cancellationToken).ConfigureAwait(false);
     }
@@ -1068,7 +1071,7 @@ public sealed class PortSyncService
         LogManager.Instance.LogMessage($"{manager.ClientName} is not running - attempting to force-start", LogLevel.Info);
         if (!await manager.ForceStartAsync(cancellationToken).ConfigureAwait(false))
         {
-            SetSyncResult(status, false, $"Failed to force start {manager.ClientName}");
+            SetSyncResult(status, false, $"Failed to force-start {manager.ClientName}");
             return false;
         }
         LogManager.Instance.LogMessage($"Force-started {manager.ClientName}", LogLevel.Info);
@@ -1149,7 +1152,7 @@ public sealed class PortSyncService
                 LogManager.Instance.LogMessage(
                     $"{warning}. Re-select the network interface in {client.ClientName}, or turn on \"Fix the network interface binding when it goes stale\" in Settings",
                     LogLevel.Warn);
-                    _lastBindingWarningMessage = RaiseInterfaceBalloonIfNew(
+                _lastBindingWarningMessage = RaiseInterfaceBalloonIfNew(
                     $"{client.ClientName}: network interface binding is stale - re-select it or enable the automatic fix.",
                     _lastBindingWarningMessage);
             }
@@ -1200,7 +1203,7 @@ public sealed class PortSyncService
     // The post-update command is launched later (in RunAsync's finally, after the status file write).
     private static async Task<bool> ApplyPortUpdateAsync(IManagedClient manager, int targetPort, SyncConfig config, Dictionary<string, object?> status, CancellationToken cancellationToken)
     {
-        LogManager.Instance.LogMessage($"Ports do not match - updating {manager.ClientName} port to {targetPort}", LogLevel.Info);
+        LogManager.Instance.LogMessage($"{manager.ClientName} port does not match the target port - updating to {targetPort}", LogLevel.Info);
         if (!await manager.SetListeningPortAsync(targetPort, cancellationToken).ConfigureAwait(false))
         {
             SetSyncResult(status, false, $"Failed to set {manager.ClientName} port to {targetPort}");
@@ -1297,7 +1300,7 @@ public sealed class PortSyncService
     // Builds a failure log message with cycle count and optional recovery trigger suffix
     private static string BuildCycleCountMessage(string prefix, int count, AppConfig cfg)
     {
-        string cycles = count == 1 ? "failed cycle" : "failed cycles";
+        string cycles = AppConstants.PluralizeNoun(count, "failed cycle");
         string recoverySuffix = cfg.VpnAutoRecoveryEnabled
             ? $", recovery may trigger after {cfg.VpnAutoRecoveryTriggerCycles} consecutive failed cycles"
             : string.Empty;
@@ -1326,12 +1329,12 @@ public sealed class PortSyncService
         _consecutiveFailedCycles++;
         int count = _consecutiveFailedCycles;
         LogManager.Instance.LogMessage(BuildCycleCountMessage(reason, count, cfg), logLevel);
-        await TryTriggerRecoveryAsync(recoveryAction, recoveryTarget, displayName, cfg, cancellationToken).ConfigureAwait(false);
+        await TriggerRecoveryIfDueAsync(recoveryAction, recoveryTarget, displayName, cfg, cancellationToken).ConfigureAwait(false);
     }
 
     // Resets the failure streak counter. The start timestamp is deliberately left alone: it is
     // re-stamped on the next streak's first failure (see RegisterFailureAndTryRecoveryAsync),
-    // and the time gate in TryTriggerRecoveryAsync only reads it while the counter is non-zero,
+    // and the time gate in TriggerRecoveryIfDueAsync only reads it while the counter is non-zero,
     // so a stale value can never be observed.
     private void ResetFailureStreak() => _consecutiveFailedCycles = 0;
 
@@ -1340,7 +1343,7 @@ public sealed class PortSyncService
     // the normal cycle cadence) prevents a burst of early wakes from fast-tracking recovery during
     // a transient outage. Resets the counter before the target check so the warning does not fire
     // every cycle when no recovery target is found.
-    private async Task TryTriggerRecoveryAsync(string action, string? recoveryTarget, string displayName, AppConfig cfg, CancellationToken cancellationToken)
+    private async Task TriggerRecoveryIfDueAsync(string action, string? recoveryTarget, string displayName, AppConfig cfg, CancellationToken cancellationToken)
     {
         if (!cfg.VpnAutoRecoveryEnabled)
         {
@@ -1375,13 +1378,13 @@ public sealed class PortSyncService
         ResetFailureStreak();
 
         LogManager.Instance.LogMessage(
-            $"Triggering '{action}' for '{displayName}' after {count} consecutive failed {(count == 1 ? "cycle" : "cycles")}",
+            $"Triggering '{action}' for '{displayName}' after {count} consecutive failed {AppConstants.PluralizeNoun(count, "cycle")}",
             LogLevel.Info);
         await DispatchRecoveryAsync(action, recoveryTarget, displayName, cancellationToken).ConfigureAwait(false);
     }
 
     // Dispatches a recovery action to the helper service. Shared by the failed-cycle trigger
-    // (TryTriggerRecoveryAsync), the port-closed trigger (MaybeTriggerPortClosedRecoveryAsync),
+    // (TriggerRecoveryIfDueAsync), the port-closed trigger (MaybeTriggerPortClosedRecoveryAsync),
     // and the on-demand recovery test (TestRecoveryAsync, manualTest = true). A manual test is
     // not counted in the session's auto-recovery statistic (the label says "Auto-recoveries")
     // but is recorded in the history and arms the "after recovery" annotation like a real one.

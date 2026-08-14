@@ -138,7 +138,7 @@ public sealed class PiaVpnManager : IVpnManager
             // Guard with a timeout so a stalled drain cannot block the thread-pool thread indefinitely.
             if (!stdoutTask.Wait(ProcessTimeoutMs))
             {
-                LogManager.Instance.LogDebug("PiaVpnManager.RunPiactl: stdout drain timed out after process exit");
+                LogManager.Instance.LogDebug("PiaVpnManager.RunPiactl: Stdout drain timed out after process exit");
                 return null;
             }
 

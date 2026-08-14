@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.ServiceProcess;
 
 namespace qbPortWeaver;
@@ -67,7 +67,7 @@ public static class DiagnosticsService
         int pass = results.Count(r => r.Status == DiagnosticStatus.Pass);
         int warn = results.Count(r => r.Status == DiagnosticStatus.Warn);
         int fail = results.Count(r => r.Status == DiagnosticStatus.Fail);
-        LogManager.Instance.LogMessage($"Diagnostics completed: {pass} passed, {warn} warning(s), {fail} failed", LogLevel.Info);
+        LogManager.Instance.LogMessage($"Diagnostics completed: {pass} passed, {AppConstants.Pluralize(warn, "warning")}, {fail} failed", LogLevel.Info);
         return results;
     }
 
@@ -76,12 +76,12 @@ public static class DiagnosticsService
     {
         if (disabled)
             results.Add(new(Checks.VpnProvider, DiagnosticStatus.Warn, "Port sync is disabled",
-                "Select a VPN provider in Settings > General to enable port syncing."));
+                "Select a VPN provider in Settings → General to enable port syncing."));
         else if (VpnProviderRegistry.IsRecognizedProvider(provider))
             results.Add(new(Checks.VpnProvider, DiagnosticStatus.Pass, provider));
         else
             results.Add(new(Checks.VpnProvider, DiagnosticStatus.Fail, $"'{provider}' is not a recognized provider",
-                "Reselect the VPN provider in Settings > General."));
+                "Reselect the VPN provider in Settings → General."));
 
         var client = ClientRegistry.Resolve(clientSetting);
         string url = RegistrySettingsManager.GetValue(client.Section, client.UrlKey);
@@ -97,7 +97,7 @@ public static class DiagnosticsService
     {
         try
         {
-            using var sc = new ServiceController(HelperProtocol.PipeName);
+            using var sc = new ServiceController(HelperProtocol.ServiceName);
             ServiceControllerStatus status = sc.Status; // throws InvalidOperationException when the service is not installed
             if (status == ServiceControllerStatus.Running)
                 results.Add(new(Checks.HelperService, DiagnosticStatus.Pass, "Installed and running"));
@@ -178,7 +178,7 @@ public static class DiagnosticsService
             results.Add(new(Checks.ClientRunning, DiagnosticStatus.Pass, $"{client.ClientName} is running"));
         else
             results.Add(new(Checks.ClientRunning, DiagnosticStatus.Warn, $"{client.ClientName} process not detected",
-                "Start your client, or enable Force start in Settings. Service/remote setups may still be reachable below."));
+                "Start your client, or enable Force-start in Settings. Service/remote setups may still be reachable below."));
 
         // Nicotine+ is only reachable through the bridge plugin, so its state is the first thing
         // worth knowing - "not installed", "not enabled", and "Nicotine+ never started" all look
@@ -220,15 +220,15 @@ public static class DiagnosticsService
 
             NicotinePluginState.NotInstalled => new(Checks.ClientPlugin, DiagnosticStatus.Fail,
                 "The qbPortWeaver bridge plugin is not installed",
-                "Nicotine+ has no remote control of its own. Click Install plugin in Settings, under the Nicotine+ section."),
+                "Nicotine+ has no remote control of its own. Click Install Plugin in Settings, under the Nicotine+ section."),
 
             NicotinePluginState.Outdated => new(Checks.ClientPlugin, DiagnosticStatus.Warn,
                 $"Bridge plugin {status.InstalledVersion} is installed; this build ships {NicotinePluginInstaller.BundledVersion}",
-                "Click Update plugin in Settings, then restart Nicotine+."),
+                "Click Update Plugin in Settings, then restart Nicotine+."),
 
             NicotinePluginState.NotEnabled => new(Checks.ClientPlugin, DiagnosticStatus.Fail,
                 "The bridge plugin is installed but not enabled",
-                "In Nicotine+, open Preferences, Plugins, and tick \"qbPortWeaver Bridge\"."),
+                "In Nicotine+, open Preferences → Plugins and tick \"qbPortWeaver Bridge\"."),
 
             NicotinePluginState.NotRunning => new(Checks.ClientPlugin, DiagnosticStatus.Warn,
                 "The bridge plugin is enabled but has not published its connection details",
@@ -339,10 +339,10 @@ public static class DiagnosticsService
             results.Add(new(Checks.PortReachable, DiagnosticStatus.Warn, "Listening port appears closed from the Internet", hint));
         }
         else
-            results.Add(new(Checks.PortReachable, DiagnosticStatus.Skip, "Could not determine (client, internet, or port-check service unavailable)"));
+            results.Add(new(Checks.PortReachable, DiagnosticStatus.Skip, "Could not determine (client, Internet, or port-check service unavailable)"));
     }
 
-    /// <summary>The running app's version (e.g. "2.6.0"), for the diagnostics header and report.</summary>
+    /// <summary>The running app's version (e.g. "X.Y.Z"), for the diagnostics header and report.</summary>
     internal static string AppVersion => AppConstants.AppVersion;
 
     /// <summary>
@@ -354,7 +354,7 @@ public static class DiagnosticsService
     {
         try
         {
-            string? exe = AppConstants.GetServiceExePath(HelperProtocol.PipeName);
+            string? exe = AppConstants.GetServiceExePath(HelperProtocol.ServiceName);
             if (exe is null || !File.Exists(exe)) return null;
             string? raw = FileVersionInfo.GetVersionInfo(exe).FileVersion;
             if (string.IsNullOrWhiteSpace(raw)) return null;

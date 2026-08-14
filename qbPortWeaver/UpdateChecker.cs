@@ -4,13 +4,13 @@ using System.Text.Json;
 namespace qbPortWeaver;
 
 /// <summary>Latest release metadata from GitHub, including whether it is newer than the running version.</summary>
-/// <param name="TagName">Git tag name (e.g. "v2.1.0").</param>
+/// <param name="TagName">Git tag name (e.g. "vX.Y.Z").</param>
 /// <param name="ReleaseUrl">URL of the GitHub release page.</param>
 /// <param name="IsNewer">True when the release version is greater than <see cref="AppConstants.AppVersion"/>.</param>
 /// <param name="MsiUrl">Direct download URL of the release's .msi installer asset, or <see langword="null"/> if the release has none.</param>
 public sealed record LatestReleaseInfo(string TagName, string ReleaseUrl, bool IsNewer, string? MsiUrl = null)
 {
-    /// <summary>Tag name with the leading 'v'/'V' stripped (e.g. "v2.1.0" becomes "2.1.0").</summary>
+    /// <summary>Tag name with the leading 'v'/'V' stripped (e.g. "vX.Y.Z" becomes "X.Y.Z").</summary>
     public string Version => TagName.TrimStart('v', 'V');
 }
 

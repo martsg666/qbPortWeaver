@@ -1,4 +1,5 @@
 ﻿using System.Net;
+using System.Runtime.CompilerServices;
 using System.Text.Json;
 
 namespace qbPortWeaver;
@@ -97,28 +98,37 @@ public sealed class QBittorrentClient : ManagedClientBase
     }
 
     /// <inheritdoc/>
-    public override async Task<bool> SetListeningPortAsync(int port, CancellationToken cancellationToken = default)
+    public override Task<bool> SetListeningPortAsync(int port, CancellationToken cancellationToken = default) =>
+        PostPreferencesAsync(
+            $$$"""{"listen_port":{{{port}}},"upnp":false,"natpmp":false}""",
+            $"Failed to set {ClientName} port", LogLevel.Error, cancellationToken);
+
+    // Both preference writes use the same envelope: a JSON object in a "json" form field POSTed to
+    // setPreferences, which answers HTTP 200 with an empty body on success - there is no JSON error
+    // envelope to inspect, so the status code is the whole result. What differs between the two
+    // callers is the wording and the severity (a failed port write is an Error the user must act on;
+    // a failed binding repair is a Warn the next cycle retries), so those are parameters.
+    // [CallerMemberName] keeps the transport log line attributed to the public method, as the
+    // equivalent helpers in TransmissionClient and NicotineClient do.
+    private async Task<bool> PostPreferencesAsync(string jsonBody, string failureMessage, LogLevel failureLevel,
+        CancellationToken cancellationToken, [CallerMemberName] string callerName = "")
     {
         if (!await EnsureAuthenticatedAsync(cancellationToken).ConfigureAwait(false)) return false;
 
         try
         {
-            var jsonBody = $$$"""{"listen_port":{{{port}}},"upnp":false,"natpmp":false}""";
             using var content = new FormUrlEncodedContent([new("json", jsonBody)]);
-
             using var response = await HttpClient.PostAsync($"{Url}{ApiSetPreferences}", content, cancellationToken).ConfigureAwait(false);
-            // qBittorrent returns HTTP 200 with an empty body on success - no JSON error envelope to check.
-            if (!response.IsSuccessStatusCode)
-            {
-                LogManager.Instance.LogMessage($"Failed to set {ClientName} port (HTTP {(int)response.StatusCode} {response.StatusCode})", LogLevel.Error);
-                return false;
-            }
-            return true;
+
+            if (response.IsSuccessStatusCode) return true;
+
+            LogManager.Instance.LogMessage($"{failureMessage} (HTTP {(int)response.StatusCode} {response.StatusCode})", failureLevel);
+            return false;
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
         catch (Exception ex)
         {
-            LogHttpException("SetListeningPortAsync", ex);
+            LogHttpException(callerName, ex, failureLevel);
             return false;
         }
     }
@@ -238,34 +248,22 @@ public sealed class QBittorrentClient : ManagedClientBase
         if (string.IsNullOrEmpty(expectedToken) || string.IsNullOrEmpty(interfaceName))
             return false;
 
-        if (!await EnsureAuthenticatedAsync(cancellationToken).ConfigureAwait(false)) return false;
-
-        try
+        // JsonSerializer rather than interpolation because both values are qBittorrent-supplied
+        // strings that need escaping - the same rule the other JSON bodies in these clients follow.
+        string jsonBody = JsonSerializer.Serialize(new Dictionary<string, string>
         {
-            string jsonBody = JsonSerializer.Serialize(new Dictionary<string, string>
-            {
-                ["current_network_interface"] = expectedToken,
-                ["current_interface_name"] = interfaceName,
-            });
-            using var content = new FormUrlEncodedContent([new("json", jsonBody)]);
-            using var response = await HttpClient.PostAsync($"{Url}{ApiSetPreferences}", content, cancellationToken).ConfigureAwait(false);
+            ["current_network_interface"] = expectedToken,
+            ["current_interface_name"] = interfaceName,
+        });
 
-            if (!response.IsSuccessStatusCode)
-            {
-                LogManager.Instance.LogMessage(
-                    $"Failed to re-apply the {ClientName} network interface binding (HTTP {(int)response.StatusCode} {response.StatusCode})", LogLevel.Warn);
-                return false;
-            }
-
-            _storedInterfaceToken = expectedToken;
-            return true;
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
-        catch (Exception ex)
-        {
-            LogHttpException("RepairInterfaceBindingAsync", ex, LogLevel.Warn);
+        if (!await PostPreferencesAsync(jsonBody, $"Failed to re-apply the {ClientName} network interface binding",
+                LogLevel.Warn, cancellationToken).ConfigureAwait(false))
             return false;
-        }
+
+        // Only after the write is confirmed: the stored token is what the next cycle's staleness
+        // check compares against, so recording an unwritten value would suppress a real repair.
+        _storedInterfaceToken = expectedToken;
+        return true;
     }
 
     // Live adapters as (name, token) pairs, or null when the list cannot be read - which includes
@@ -299,7 +297,11 @@ public sealed class QBittorrentClient : ManagedClientBase
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
         catch (Exception ex)
         {
-            LogManager.Instance.LogDebug($"QBittorrentClient.GetNetworkInterfacesAsync: {ex.Message}");
+            // Debug via the shared classifier: this catch sees transport failures as well as a
+            // malformed body, and the classifier covers both - timeout and connection-refused get
+            // their own wording (the same reachability question the port checks ask), and anything
+            // else falls to its generic branch, which names the method and the exception type.
+            LogHttpException(nameof(GetNetworkInterfacesAsync), ex, LogLevel.Debug);
             return null;
         }
     }

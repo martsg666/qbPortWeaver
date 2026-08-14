@@ -102,7 +102,7 @@ flowchart TD
     E -- No --> GRACE{Startup grace period?}
     GRACE -- Yes --> HOLD([HOLD: waiting for VPN, fast re-check])
     GRACE -- No --> F[Increment failed counter]
-    F --> G[TryTriggerRecoveryAsync]
+    F --> G[TriggerRecoveryIfDueAsync]
     G --> SKIP_STATUS([SKIP: Adapter not found])
 ```
 
@@ -281,7 +281,7 @@ When `verifyPortAfterSync` is enabled (General settings, default on) and the VPN
 
 **Throttle** - because three of the four mechanisms contact external check services, the test runs when the port changed this cycle, every cycle while a result awaits confirmation, and every cycle while confirmed-closed *and* port-closed recovery is still armed (so the recovery counter advances toward its trigger). Otherwise - and once recovery has fired (disarmed) or is off - it runs every 5th cycle, which still detects a reopen without hammering the external check services. The counter is initialised above the threshold so the first increment triggers immediately on the first eligible cycle after startup.
 
-**Confirmation rule** - a single closed result logs at Info and forces a re-test on the next cycle; only the second consecutive closed result is treated as confirmed. This absorbs qBittorrent's idle-firewalled false positive and transient check-service glitches. A confirmed-closed port logs at Warn every cycle (so the log alert badge tracks the persistent condition, like the interface mismatch check) and raises the `PortVerificationFailed` event once, on the transition, for a tray warning balloon. Results that cannot be determined (client unreachable, check service down) leave the verification state unchanged.
+**Confirmation rule** - a single closed result logs at Info and forces a re-test on the next cycle; only the second consecutive closed result is treated as confirmed. This absorbs qBittorrent's idle-firewalled false positive and transient check-service glitches. A confirmed-closed port logs at Warn every cycle (so the log alert badge tracks the persistent condition, like the interface mismatch check) and raises the `PortVerificationFailed` event once, on the transition, for a tray warning balloon. Results that cannot be determined (client unreachable, check service down) leave the verification state unchanged - except while a closed result is awaiting confirmation, where three consecutive undetermined checks drop the pending state, log an Info line, and resume the normal throttle. Only the pending state forces a check every cycle, so only it needs bounding: without that cap an outage of the check service would be polled at full rate, by every install at once, for as long as it lasted. A later definite closed result simply starts the confirmation sequence again.
 
 **Port-closed recovery** - when `portClosedRecoveryEnabled` is on (default on; requires port verification, but is independent of the failed-sync recovery trigger), a configurable number of confirmed closed checks (`portClosedRecoveryTriggerChecks`, default 3) dispatches the provider's normal recovery action (service restart, or adapter cycle for generic NAT-PMP gateways). The trigger is one-shot: after firing it stays disarmed until a verification reports the port open again, so a persistently false closed reading causes at most one recovery action and never a recovery loop.
 
@@ -320,7 +320,7 @@ The update balloon is informational only - Windows 11 routes `ToolTipIcon.Info` 
 
 ## Status Output
 
-Every cycle writes a JSON status file (`qbPortWeaver.status.json` in `%LocalAppData%\qbPortWeaver\`) capturing the full cycle outcome. External tools can read this file to monitor sync health, and the in-app Status panel (tray menu -> Show Status, or double-click the tray icon) renders the same data live, refreshing after each cycle. Alongside the last sync time and result, the panel shows a **Next sync** estimate - the last sync time plus `updateIntervalSeconds` - displayed as a live countdown (`~3m`, `Due now`), or "Paused" while sync is paused, "Startup grace period" during the startup grace window, and "-" before the first cycle. The panel also exposes a **Sync Now** action, a **Pause/Resume** button that toggles automatic cycles (the same in-memory pause as the tray menu item, routed through `MainForm.ToggleSyncPaused`), a **Test Port** button that runs the reachability check on demand (see Port Verification), a **Recent Port Changes** list backed by the persisted port history (see below; right-click the list to clear it), and a **Statistics** group (see Session Statistics). The **Reachable** line carries a relative age ("now" / "N ago", the same wording as Last sync); because verification is throttled (see Port Verification), the panel remembers the last definite open/closed result and its verifying cycle's timestamp and keeps showing it across the cycles where no test ran, so the age reflects the real last check rather than blanking to "Not checked".
+Every cycle writes a JSON status file (`qbPortWeaver.status.json` in `%LocalAppData%\qbPortWeaver\`) capturing the full cycle outcome. External tools can read this file to monitor sync health, and the in-app Status panel (tray menu → Show Status, or double-click the tray icon) renders the same data live, refreshing after each cycle. Alongside the last sync time and result, the panel shows a **Next sync** estimate - the last sync time plus `updateIntervalSeconds` - displayed as a live countdown (`~3m`, `Due now`), or "Paused" while sync is paused, "Startup grace period" during the startup grace window, and "-" before the first cycle. The panel also exposes a **Sync Now** action, a **Pause/Resume** button that toggles automatic cycles (the same in-memory pause as the tray menu item, routed through `MainForm.ToggleSyncPaused`), a **Test Port** button that runs the reachability check on demand (see Port Verification), a **Recent Port Changes** list backed by the persisted port history (see below; right-click the list to clear it), and a **Statistics** group (see Session Statistics). The **Reachable** line carries a relative age ("now" / "N ago", the same wording as Last sync); because verification is throttled (see Port Verification), the panel remembers the last definite open/closed result and its verifying cycle's timestamp and keeps showing it across the cycles where no test ran, so the age reflects the real last check rather than blanking to "Not checked".
 
 ```json
 {
@@ -366,7 +366,7 @@ The Status panel's **Statistics** group combines two sources. The current port c
 
 The counters are incremented on the sync loop thread with `Interlocked` and read on the UI thread with `Volatile`; the panel reads the OK count before the total so the derived failure count can never be negative. They are deliberately not persisted - "this session" is the scope that makes the numbers meaningful, and they reset naturally on restart. The counters and the today's-changes figure refresh on the same per-cycle tick as the rest of the panel; the time-derived values (the Last sync age, the Next sync countdown, the Reachable age, and the Monitoring since elapsed) advance every second while the panel is open, driven by a one-second UI timer that recomputes only those values from the cached snapshot.
 
-Right-clicking the group offers **Clear Statistics**: the session counters zero and the monitoring baseline re-stamps to the clear time, so the figures read "since the clear". The history-derived figures are unaffected - those clear through the history list's own **Clear History**. No confirmation is asked, matching the confirmation convention: the counters are in-memory and reset on every restart anyway, so nothing irreversible is lost.
+Right-clicking the group offers **Clear Statistics**: the session counters zero and the monitoring baseline re-stamps to the clear time, so the figures read "since the clear". The history-derived figures are unaffected - those clear through the history list's own **Clear History**. It asks for confirmation, matching the confirmation convention: the convention's test is whether the user can get the data back, not whether it was on disk, and a counting window that runs from app start is easily weeks long on a tray application left running. The item is disabled while every counter is still zero, so the prompt only ever appears when there is something to lose.
 
 ## Diagnostics
 
@@ -383,14 +383,14 @@ RunAsync
      │       ├─ MarkWaitingForVpn (startup grace: adapter not discoverable yet)
      │       └─ RegisterFailureAndTryRecoveryAsync
      │           ├─ BuildCycleCountMessage
-     │           └─ TryTriggerRecoveryAsync
+     │           └─ TriggerRecoveryIfDueAsync
      │               └─ DispatchRecoveryAsync
      ├─ IVpnManager.IsVpnConnected
      ├─ HandleVpnDisconnectedAsync (if disconnected)
      │   ├─ MarkWaitingForVpn (startup grace: VPN not connected)
      │   └─ RegisterFailureAndTryRecoveryAsync
      │       ├─ BuildCycleCountMessage
-     │       └─ TryTriggerRecoveryAsync
+     │       └─ TriggerRecoveryIfDueAsync
      │           └─ DispatchRecoveryAsync
      ├─ HandleVpnConnectedAsync (if connected)
      │   ├─ IVpnManager.GetVpnPortAsync
@@ -398,13 +398,16 @@ RunAsync
      │   ├─ HandlePortDetectionFailureAsync (if port null, all providers)
      │   │   └─ RegisterFailureAndTryRecoveryAsync
      │   │       ├─ BuildCycleCountMessage
-     │   │       └─ TryTriggerRecoveryAsync
+     │   │       └─ TriggerRecoveryIfDueAsync
      │   │           └─ DispatchRecoveryAsync
      │   └─ WarnIfNatPmpLeaseTooShort (NAT-PMP only)
      └─ EnsureRunningAndUpdatePortAsync
          ├─ EnsureClientRunningAsync
          ├─ IManagedClient.GetPreferencesAsync
          ├─ CheckInterfaceMatch (qBittorrent and Nicotine+)
+         ├─ CheckAndRepairInterfaceBindingAsync (qBittorrent only; runs whatever the provider)
+         │   ├─ QBittorrentClient.CheckInterfaceBindingAsync (stale token detection)
+         │   └─ QBittorrentClient.RepairInterfaceBindingAsync (if fixInterfaceBinding; once per streak)
          ├─ UpdatePortAndNotifyAsync (when ports differ)
          │   ├─ ApplyPortUpdateAsync
          │   │   ├─ IManagedClient.SetListeningPortAsync

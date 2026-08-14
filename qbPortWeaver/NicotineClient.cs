@@ -178,7 +178,11 @@ public sealed class NicotineClient : ManagedClientBase
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
         catch (Exception ex)
         {
-            LogHttpException("SetListeningPortAsync", ex);
+            // Debug, like the other three read paths: SendAsync has already returned a successful
+            // response and reported any transport failure itself, so anything landing here is a
+            // malformed body. The user-facing Error comes from ApplyPortUpdateAsync, which turns
+            // the false below into "Failed to set {client} port to {n}" - this line only records why.
+            LogManager.Instance.LogDebug($"NicotineClient.SetListeningPortAsync: {ex.Message}");
             return false;
         }
     }
@@ -230,7 +234,7 @@ public sealed class NicotineClient : ManagedClientBase
             if (state != StateDone)
             {
                 LogManager.Instance.LogDebug(
-                    $"NicotineClient.TestListeningPortAsync: the check is '{state ?? "unknown"}' - treating the result as undetermined");
+                    $"NicotineClient.TestListeningPortAsync: The check is '{state ?? "unknown"}' - treating the result as undetermined");
                 return null;
             }
 
@@ -243,7 +247,8 @@ public sealed class NicotineClient : ManagedClientBase
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
         catch (Exception ex)
         {
-            LogManager.Instance.LogDebug($"NicotineClient.TestListeningPortAsync: {ex.Message}");
+            // Debug via the shared classifier - see TransmissionClient.TestListeningPortAsync.
+            LogHttpException(nameof(TestListeningPortAsync), ex, LogLevel.Debug);
             return null;
         }
     }
@@ -309,6 +314,11 @@ public sealed class NicotineClient : ManagedClientBase
         }
         finally
         {
+            // Belt-and-braces, and deliberately kept: once assigned, the request owns the content
+            // and `using var request` disposes it on every path out of the try - so this second
+            // Dispose is a no-op (HttpContent.Dispose is idempotent). It covers only the window
+            // between constructing the content and assigning it, and it keeps the ownership
+            // explicit for a reader who does not know HttpRequestMessage disposes its Content.
             content?.Dispose();
         }
     }
@@ -440,7 +450,7 @@ public sealed class NicotineClient : ManagedClientBase
         if (failureLevel == LogLevel.Error && !NicotinePluginDiscovery.IsPluginInstalled(_exePathHint))
         {
             LogManager.Instance.LogMessage(
-                $"The qbPortWeaver bridge plugin is not installed in {ClientName} - install it from Settings, then enable it in Nicotine+ under Preferences, Plugins",
+                $"The qbPortWeaver bridge plugin is not installed in {ClientName} - install it from Settings, then enable it in Nicotine+ under Preferences → Plugins",
                 LogLevel.Error);
         }
     }

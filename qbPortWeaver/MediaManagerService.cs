@@ -47,7 +47,7 @@ public static class MediaManagerService
         if (LogManager.Instance.DebugMode)
             LogManager.Instance.LogDebug(
                 $"MediaManagerService.ImportAsync: {RegistrySettingsManager.KeyMediaEnabled}=true, " +
-                $"{RegistrySettingsManager.KeyTmdbApiKey}=***, " +
+                $"{RegistrySettingsManager.KeyMediaTmdbApiKey}=***, " +
                 $"{RegistrySettingsManager.KeyMediaSourceFolders}={string.Join(";", sourceFolders)}, " +
                 $"{RegistrySettingsManager.KeyMediaMoviesLibraryPath}={moviesLibraryPath}, " +
                 $"{RegistrySettingsManager.KeyMediaTvShowsLibraryPath}={tvShowsLibraryPath}, " +
@@ -82,7 +82,7 @@ public static class MediaManagerService
         MediaImporter.SaveSourceCache();
         MediaImporter.SaveLibraryCache();
         importSw.Stop();
-        LogManager.Instance.LogMessage($"Import completed: {total} file(s) in {importSw.ElapsedMilliseconds}ms", LogLevel.Info, Subsystem.MediaManager);
+        LogManager.Instance.LogMessage($"Import completed: {AppConstants.Pluralize(total, "file")} in {importSw.ElapsedMilliseconds}ms", LogLevel.Info, Subsystem.MediaManager);
     }
 
     /// <summary>
@@ -133,7 +133,7 @@ public static class MediaManagerService
         MediaImporter.SaveSourceCache();
         MediaImporter.SaveLibraryCache();
         scanSw.Stop();
-        LogManager.Instance.LogMessage($"Scan completed: {proposals.Count} proposal(s) in {scanSw.ElapsedMilliseconds}ms", LogLevel.Info, Subsystem.MediaManager);
+        LogManager.Instance.LogMessage($"Scan completed: {AppConstants.Pluralize(proposals.Count, "proposal")} in {scanSw.ElapsedMilliseconds}ms", LogLevel.Info, Subsystem.MediaManager);
         return proposals;
     }
 
@@ -156,19 +156,19 @@ public static class MediaManagerService
         if (!string.IsNullOrWhiteSpace(ctx.MoviesLibraryPath) && items.MovieFiles.Length > 0)
         {
             var movieProcessor = new MovieProcessor(ctx.Tmdb, ctx.DryRun, ctx.CreateFolders, ctx.MoviesLibraryPath, ctx.ImportMode);
-            proposals.AddRange(await TryRunAsync(() => movieProcessor.ScanMoviesAsync(items.MovieFiles, onItemProcessed, cancellationToken), folder).ConfigureAwait(false));
+            proposals.AddRange(await RunOrSkipFolderAsync(() => movieProcessor.ScanMoviesAsync(items.MovieFiles, onItemProcessed, cancellationToken), folder).ConfigureAwait(false));
         }
 
         if (!string.IsNullOrWhiteSpace(ctx.TvShowsLibraryPath) && (items.TvShowFiles.Length > 0 || items.FolderTvFiles.Length > 0))
         {
             var tvShowProcessor = new TvShowProcessor(ctx.Tmdb, ctx.DryRun, ctx.CreateFolders, ctx.TvShowsLibraryPath, ctx.ImportMode);
             if (items.TvShowFiles.Length > 0)
-                proposals.AddRange(await TryRunAsync(() => tvShowProcessor.ScanTvShowsAsync(items.TvShowFiles, onItemProcessed, cancellationToken), folder).ConfigureAwait(false));
+                proposals.AddRange(await RunOrSkipFolderAsync(() => tvShowProcessor.ScanTvShowsAsync(items.TvShowFiles, onItemProcessed, cancellationToken), folder).ConfigureAwait(false));
             if (items.FolderTvFiles.Length > 0)
-                proposals.AddRange(await TryRunAsync(() => tvShowProcessor.ScanFolderClassifiedAsync(items.FolderTvFiles, onItemProcessed, cancellationToken), folder).ConfigureAwait(false));
+                proposals.AddRange(await RunOrSkipFolderAsync(() => tvShowProcessor.ScanFolderClassifiedAsync(items.FolderTvFiles, onItemProcessed, cancellationToken), folder).ConfigureAwait(false));
         }
 
-        LogManager.Instance.LogMessage($"Scanned source folder '{folder}': {proposals.Count} proposal(s)", LogLevel.Info, Subsystem.MediaManager);
+        LogManager.Instance.LogMessage($"Scanned source folder '{folder}': {AppConstants.Pluralize(proposals.Count, "proposal")}", LogLevel.Info, Subsystem.MediaManager);
         return proposals;
     }
 
@@ -189,20 +189,20 @@ public static class MediaManagerService
         if (!string.IsNullOrWhiteSpace(ctx.MoviesLibraryPath) && items.MovieFiles.Length > 0)
         {
             var movieProcessor = new MovieProcessor(ctx.Tmdb, ctx.DryRun, ctx.CreateFolders, ctx.MoviesLibraryPath, ctx.ImportMode);
-            await TryRunAsync(() => movieProcessor.ProcessMoviesAsync(items.MovieFiles, cancellationToken), folder).ConfigureAwait(false);
+            await RunOrSkipFolderAsync(() => movieProcessor.ProcessMoviesAsync(items.MovieFiles, cancellationToken), folder).ConfigureAwait(false);
         }
 
         if (!string.IsNullOrWhiteSpace(ctx.TvShowsLibraryPath) && (items.TvShowFiles.Length > 0 || items.FolderTvFiles.Length > 0))
         {
             var tvShowProcessor = new TvShowProcessor(ctx.Tmdb, ctx.DryRun, ctx.CreateFolders, ctx.TvShowsLibraryPath, ctx.ImportMode);
             if (items.TvShowFiles.Length > 0)
-                await TryRunAsync(() => tvShowProcessor.ProcessTvShowsAsync(items.TvShowFiles, cancellationToken), folder).ConfigureAwait(false);
+                await RunOrSkipFolderAsync(() => tvShowProcessor.ProcessTvShowsAsync(items.TvShowFiles, cancellationToken), folder).ConfigureAwait(false);
             if (items.FolderTvFiles.Length > 0)
-                await TryRunAsync(() => tvShowProcessor.ProcessFolderClassifiedAsync(items.FolderTvFiles, cancellationToken), folder).ConfigureAwait(false);
+                await RunOrSkipFolderAsync(() => tvShowProcessor.ProcessFolderClassifiedAsync(items.FolderTvFiles, cancellationToken), folder).ConfigureAwait(false);
         }
 
         int totalFiles = items.MovieFiles.Length + items.TvShowFiles.Length + items.FolderTvFiles.Length;
-        LogManager.Instance.LogMessage($"Processed source folder '{folder}': {totalFiles} file(s)", LogLevel.Info, Subsystem.MediaManager);
+        LogManager.Instance.LogMessage($"Processed source folder '{folder}': {AppConstants.Pluralize(totalFiles, "file")}", LogLevel.Info, Subsystem.MediaManager);
     }
 
     // Runs folder cleanup for all configured source folders.
@@ -291,7 +291,7 @@ public static class MediaManagerService
             .Count(dir => TryCleanupFolder(dir, dryRun));
 
         if (deleted > 0)
-            LogManager.Instance.LogDebug($"MediaManagerService.CleanupEmptyFolders: {deleted} folder(s) {(dryRun ? "would be deleted" : "deleted")} under '{rootFolder}'", Subsystem.MediaManager);
+            LogManager.Instance.LogDebug($"MediaManagerService.CleanupEmptyFolders: {AppConstants.Pluralize(deleted, "folder")} {(dryRun ? "would be deleted" : "deleted")} under '{rootFolder}'", Subsystem.MediaManager);
     }
 
     // Checks whether a single directory is removable and deletes (or dry-run logs) it. Returns true if the folder was processed.
@@ -403,7 +403,7 @@ public static class MediaManagerService
     private static async Task<List<(string Folder, List<FileInfo> Candidates)>> EnumerateSourceFoldersAsync(
         List<string> validFolders, CancellationToken cancellationToken)
     {
-        LogManager.Instance.LogMessage($"Enumerating source files across {validFolders.Count} folder(s)", LogLevel.Info, Subsystem.MediaManager);
+        LogManager.Instance.LogMessage($"Enumerating source files across {AppConstants.Pluralize(validFolders.Count, "folder")}", LogLevel.Info, Subsystem.MediaManager);
         return (await Task.WhenAll(validFolders.Select(f =>
             Task.Run(() =>
             {
@@ -560,7 +560,7 @@ public static class MediaManagerService
     }
 
     // Runs a processor operation and swallows IO/permission errors, logging the folder that was skipped.
-    private static async Task TryRunAsync(Func<Task> process, string folder)
+    private static async Task RunOrSkipFolderAsync(Func<Task> process, string folder)
     {
         try { await process().ConfigureAwait(false); }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
@@ -568,7 +568,7 @@ public static class MediaManagerService
     }
 
     // Scan variant: returns an empty list on IO/permission errors instead of propagating.
-    private static async Task<List<T>> TryRunAsync<T>(Func<Task<List<T>>> scan, string folder)
+    private static async Task<List<T>> RunOrSkipFolderAsync<T>(Func<Task<List<T>>> scan, string folder)
     {
         try { return await scan().ConfigureAwait(false); }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)

@@ -1,4 +1,4 @@
-using System.Text;
+﻿using System.Text;
 
 namespace qbPortWeaver;
 
@@ -123,7 +123,7 @@ internal sealed class DiagnosticsForm : Form
             Margin = new Padding(0),
         };
         var btnCopy = new Button { Text = "Copy Report", Size = new Size(110, DialogLayout.ButtonHeight), Margin = new Padding(0, 0, DialogLayout.Gap, 0) };
-        btnCopy.Click += (_, _) => AppConstants.TrySetClipboardText(BuildPlainReport());
+        btnCopy.Click += (_, _) => AppConstants.SetClipboardTextSafely(BuildPlainReport());
         leftGroup.Controls.Add(btnCopy);
 
         _btnRerun = new Button { Text = "Re-run", Size = new Size(90, DialogLayout.ButtonHeight), Margin = new Padding(0) };
@@ -173,7 +173,7 @@ internal sealed class DiagnosticsForm : Form
         _report.SelectionFont = summaryFont;
         AppendColored($"{pass} passed", PassColor);
         AppendColored(", ", textColor);
-        AppendColored($"{warn} warning{(warn == 1 ? "" : "s")}", warn > 0 ? WarnColor : metaColor);
+        AppendColored(AppConstants.Pluralize(warn, "warning"), warn > 0 ? WarnColor : metaColor);
         AppendColored(", ", textColor);
         AppendColored($"{fail} failed\n", fail > 0 ? FailColor : metaColor);
 

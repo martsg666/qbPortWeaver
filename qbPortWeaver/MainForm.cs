@@ -21,7 +21,9 @@ public partial class MainForm : Form
     private const string PauseSyncingMenuText = "Pause Syncing";
     private const string ResumeSyncingMenuText = "Resume Syncing";
     private const string LogAlertBalloonMessage = "Check the log viewer for warnings or errors.";
-    private const int WsExToolWindow = 0x80; // hides the form from Alt+Tab
+    // Native spelling, per the interop exception to the PascalCase constant rule: an interop
+    // constant keeps the name it has in the Windows headers so it greps against them directly.
+    private const int WS_EX_TOOLWINDOW = 0x80; // hides the form from Alt+Tab
 
     // Unviewed warn/error counts for log alert badge (UI thread only)
     private int _unviewedWarnCount;
@@ -162,6 +164,11 @@ public partial class MainForm : Form
             // Perform initial log rotation check
             LogManager.Instance.CheckAndRotateLogFile();
 
+            // Clear temp files a previous run was killed part-way through writing. Here rather than
+            // later because nothing has written to the data folder yet this run, so nothing in it
+            // can be live.
+            AppConstants.SweepOrphanedTempFiles(AppConstants.AppDataFolder);
+
             // Start main loop immediately so port syncing is not blocked by dialogs
             // Fire-and-forget: exceptions inside the while loop are caught per-cycle.
             // A synchronous throw before the loop body (e.g. during Task.Run startup) would be
@@ -240,7 +247,7 @@ public partial class MainForm : Form
         get
         {
             CreateParams cp = base.CreateParams;
-            cp.ExStyle |= WsExToolWindow;
+            cp.ExStyle |= WS_EX_TOOLWINDOW;
             return cp;
         }
     }
@@ -668,14 +675,27 @@ public partial class MainForm : Form
     // immediately. Respects pause like the scheduled loop does (no cycle runs while paused).
     private void OnResyncDebounceElapsed(object? state)
     {
-        if (_shutdownCts.IsCancellationRequested || _syncPaused) return;
-        if (!RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyResyncOnNetworkChange))
-            return;
-        LogManager.Instance.LogMessage("Network change detected, triggering sync cycle", LogLevel.Info);
-        // Set before interrupting so the triggered cycle observes it and schedules a short re-check.
-        _quickRecheckPending = true;
-        _networkChangeSyncPending = true;
-        InterruptDelay();
+        // Catch-all because this is a System.Threading.Timer callback: it runs on a thread-pool
+        // thread with no caller to unwind into, so anything escaping here is an unhandled exception
+        // on that thread and terminates the process - AppDomain.UnhandledException can log it but
+        // cannot stop it. Every individual call below is already guarded internally, so this is a
+        // backstop rather than a known-failing path, and it matches the try/catch that
+        // OnNetworkAddressChanged and InterruptDelay already carry on this same thread-pool path.
+        try
+        {
+            if (_shutdownCts.IsCancellationRequested || _syncPaused) return;
+            if (!RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyResyncOnNetworkChange))
+                return;
+            LogManager.Instance.LogMessage("Network change detected, triggering sync cycle", LogLevel.Info);
+            // Set before interrupting so the triggered cycle observes it and schedules a short re-check.
+            _quickRecheckPending = true;
+            _networkChangeSyncPending = true;
+            InterruptDelay();
+        }
+        catch (Exception ex) // NOSONAR S2221 - see above: an escape from a timer callback is process-fatal
+        {
+            LogManager.Instance.LogMessage($"Network-change re-sync failed: {ex.Message}", LogLevel.Error);
+        }
     }
 
     // Interrupts the current inter-cycle delay so the next sync cycle starts immediately
@@ -768,7 +788,7 @@ public partial class MainForm : Form
     // on the tray, and this puts the paused status back.
     private void PublishPausedStatus()
     {
-        LogManager.Instance.LogDebug("MainForm.RunMainLoopAsync: Sync paused - skipping cycle");
+        LogManager.Instance.LogDebug("MainForm.PublishPausedStatus: Sync paused - skipping cycle");
         OnSyncCompleted(new TrayStatus(SyncState.Paused, null, "Port sync paused"));
     }
 
@@ -791,7 +811,7 @@ public partial class MainForm : Form
             _updateSemaphore.Release();
         }
 
-        TryKickOffMediaImport();
+        KickOffMediaImportIfIdle();
 
         // After a manual sync, wait only 10 seconds before next check.
         if (_manualSyncTriggered)
@@ -837,11 +857,11 @@ public partial class MainForm : Form
     // Kicks off the media import on a separate fire-and-forget task so a long library scan
     // does not delay the next port sync cycle. Skipped when a previous import is still in
     // flight - queueing them would let imports pile up indefinitely on slow storage.
-    private void TryKickOffMediaImport()
+    private void KickOffMediaImportIfIdle()
     {
         if (Interlocked.CompareExchange(ref _mediaImportRunning, 1, 0) != 0)
         {
-            LogManager.Instance.LogDebug("MainForm.TryKickOffMediaImport: Media import skipped - previous import still running");
+            LogManager.Instance.LogDebug("MainForm.KickOffMediaImportIfIdle: Media import skipped - previous import still running");
             return;
         }
 
@@ -1043,14 +1063,14 @@ public partial class MainForm : Form
             { State: SyncState.WaitingForVpn, Message: var m } when !string.IsNullOrEmpty(m) => m,
             { State: SyncState.WaitingForVpn } => "Startup grace period",
             { State: SyncState.Error, Message: var m } => $"Error | {m}",
-            _ => "Starting\u2026"
+            _ => "Starting…"
         };
 
         string countSuffix = string.Empty;
         if (_unviewedWarnCount > 0 || _unviewedErrorCount > 0)
         {
-            string wPart = _unviewedWarnCount > 0 ? Pluralize(_unviewedWarnCount, "Warning") : "";
-            string ePart = _unviewedErrorCount > 0 ? Pluralize(_unviewedErrorCount, "Error") : "";
+            string wPart = _unviewedWarnCount > 0 ? AppConstants.Pluralize(_unviewedWarnCount, "Warning") : "";
+            string ePart = _unviewedErrorCount > 0 ? AppConstants.Pluralize(_unviewedErrorCount, "Error") : "";
             string sep = (wPart.Length > 0 && ePart.Length > 0) ? ", " : "";
             countSuffix = $"\n{wPart}{sep}{ePart}";
         }
@@ -1092,7 +1112,21 @@ public partial class MainForm : Form
         // instead of ending a teardown that was already in progress.
         catch (Exception ex) when (ex is ObjectDisposedException or InvalidOperationException)
         {
-            LogManager.Instance.LogDebug($"MainForm.InvokeOnUiThread: form torn down before the action ran ({ex.GetType().Name})");
+            LogManager.Instance.LogDebug($"MainForm.InvokeOnUiThread: Form torn down before the action ran ({ex.GetType().Name})");
+        }
+        // Control.Invoke rethrows whatever the marshalled action threw on the *calling* thread, so a
+        // failure inside one of these UI updates would surface here on the sync loop or the logging
+        // event thread and terminate the process.
+        //
+        // Must stay LogDebug: LogMessage raises WarnOrErrorLogged synchronously, OnWarnOrErrorLogged
+        // marshals straight back through this method, and that handler is itself a candidate for
+        // failing here because it touches the NotifyIcon. Logging this at Warn or Error would call
+        // the failing handler again to report that it failed, without bound, ending in an
+        // uncatchable StackOverflowException - strictly worse than the crash the catch prevents.
+        // RaiseWarnOrErrorLogged drops to Debug.WriteLine for the same reason.
+        catch (Exception ex) // NOSONAR S2221 - see above: an escape here is process-fatal
+        {
+            LogManager.Instance.LogDebug($"MainForm.InvokeOnUiThread: UI update failed: {ex.GetType().Name}: {ex.Message}");
         }
     }
 
@@ -1131,8 +1165,8 @@ public partial class MainForm : Form
             return;
         }
 
-        string warnPart = _unviewedWarnCount > 0 ? Pluralize(_unviewedWarnCount, "warning") : "";
-        string errorPart = _unviewedErrorCount > 0 ? Pluralize(_unviewedErrorCount, "error") : "";
+        string warnPart = _unviewedWarnCount > 0 ? AppConstants.Pluralize(_unviewedWarnCount, "warning") : "";
+        string errorPart = _unviewedErrorCount > 0 ? AppConstants.Pluralize(_unviewedErrorCount, "error") : "";
         string badge = (warnPart.Length > 0 && errorPart.Length > 0) ? $"{warnPart}, {errorPart}" : $"{warnPart}{errorPart}";
         _showLogsMenuItem.Text = $"{ShowLogsMenuText} ({badge})";
     }
@@ -1192,8 +1226,6 @@ public partial class MainForm : Form
         frm.Show();
         onActivated?.Invoke(frm);
     }
-
-    private static string Pluralize(int count, string noun) => $"{count} {noun}{(count == 1 ? "" : "s")}";
 
     [LibraryImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]

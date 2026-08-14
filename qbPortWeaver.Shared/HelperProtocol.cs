@@ -10,6 +10,18 @@ public static class HelperProtocol
     /// <summary>Named pipe used by the tray app to send action requests to the helper service.</summary>
     public const string PipeName = "qbPortWeaverHelper";
 
+    /// <summary>
+    /// Windows service name of the helper service, also used as its EventLog source. The same
+    /// string as <see cref="PipeName"/> by construction, kept as its own constant so the call
+    /// sites that talk to the SCM read as service lookups rather than as a pipe name in the
+    /// wrong place.
+    /// <para>The value is duplicated a third time in <c>installer/qbPortWeaver.wxs</c>, which
+    /// cannot reference this constant. All of them must stay identical: the name is baked into
+    /// the SCM registration of every installed machine, so changing it here would break service
+    /// discovery and the diagnostics helper-service check against an already-installed service.</para>
+    /// </summary>
+    public const string ServiceName = PipeName;
+
     /// <summary>Restart action: target is a Windows service name; helper stops and starts it.</summary>
     public const string ActionRestart = "restart";
 

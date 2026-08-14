@@ -15,10 +15,17 @@
     <FileVersion>2.6.4.0</FileVersion>
     <AssemblyVersion>2.6.4.0</AssemblyVersion>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
-    <!-- Suppress known SonarAnalyzer false positives (each has a matching // NOSONAR comment):
+    <!-- Suppress known SonarAnalyzer false positives. Each is documented below; per-site
+         // NOSONAR comments mark the specific occurrences where the rule permits one
+         (S2486 cannot carry one - see its entry):
          S108  - empty catch body is intentional (HelperPipeServer.cs)
-         S2486 - same as S108, SonarCloud cloud rule counterpart (HelperPipeServer.cs) -->
-    <NoWarn>S108;S2486</NoWarn>
+         S2486 - same as S108, SonarCloud cloud rule counterpart (HelperPipeServer.cs)
+         CS1591 - doc *coverage* is deliberately optional; see GenerateDocumentationFile below -->
+    <NoWarn>S108;S2486;CS1591</NoWarn>
+    <!-- Enabled for XML doc *accuracy* checking (CS1574 unresolvable cref, CS0419 ambiguous cref,
+         CS1572/CS1573 param name mismatch), which Roslyn does not emit at all when this is off.
+         CS1591 (missing doc) is suppressed above so coverage stays optional. See qbPortWeaver.csproj. -->
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <!-- Required by [LibraryImport] in AutoRecovery (QueryServiceStatusEx): the interop source
          generator emits `unsafe partial` types, so the declaring class will not compile without it.
          No `unsafe` keyword appears in hand-written source, so removing this looks safe and is not. -->

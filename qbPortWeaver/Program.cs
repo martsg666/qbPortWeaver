@@ -41,7 +41,42 @@ internal static class Program
                 MessageBoxIcon.Information);
             return;
         }
-        Application.Run(new MainForm());
+        // Last line of defence. MainForm's own Load handler already reports failures it can see, but
+        // the constructor runs before the message loop exists, so Application.ThreadException cannot
+        // reach it - an escape there would otherwise be an OS crash dialog. The very first thing the
+        // constructor does is resolve the log file path, which creates %LocalAppData%\qbPortWeaver;
+        // if that fails (redirected profile on an unreachable share, permissions, disk full) it
+        // throws before LogManager exists, so without this the app would die with no log entry and
+        // no explanation. Nothing here can recover the app - it exits either way - but it exits
+        // having said why.
+        try
+        {
+            Application.Run(new MainForm());
+        }
+        catch (Exception ex) // NOSONAR S2221 - deliberate catch-all: the alternative is an unhandled crash
+        {
+            ReportFatalStartupError(ex);
+        }
+    }
+
+    // Native MessageBox rather than ThemedMessageBox, for the same reason MainForm's fatal-startup
+    // path uses one: on this path the themed dialog's own layout and theming machinery may be part
+    // of what failed, and this box only precedes exit.
+    private static void ReportFatalStartupError(Exception ex)
+    {
+        if (LogManager.IsInitialized)
+            LogManager.Instance.LogMessage($"Fatal error: {ex}", LogLevel.Error);
+
+        try
+        {
+            MessageBox.Show(
+                $"{AppIdentity.AppName} could not start.\n\n{ex.Message}",
+                AppIdentity.AppName, MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+        catch (Exception dialogEx) // NOSONAR S2221 - showing the dialog is best-effort; never mask the original failure
+        {
+            System.Diagnostics.Debug.WriteLine($"Program.ReportFatalStartupError: {dialogEx.Message}");
+        }
     }
 
     private static void OnThreadException(object? sender, ThreadExceptionEventArgs e)

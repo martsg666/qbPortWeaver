@@ -13,9 +13,9 @@ never has to be restarted**. Transfers in progress survive; only the Soulseek co
 
 ## Installing
 
-Easiest: in qbPortWeaver, go to **Settings → Client**, choose **Nicotine+**, and click
-**Install plugin**. It copies the plugin into place and, if Nicotine+ is closed, offers to
-enable it too.
+Easiest: in qbPortWeaver, set **Client** to **Nicotine+** under **Settings → General**, then open
+the **Client** tab and click **Install Plugin**. It copies the plugin into place and, if Nicotine+
+is closed, offers to enable it too.
 
 By hand: copy this folder into your Nicotine+ plugin folder, then enable **qbPortWeaver Bridge**
 in **Preferences → Plugins**.
@@ -76,7 +76,9 @@ can be identified directly rather than inferred from a failing endpoint.
 
 `POST /v1/porttest` never blocks longer than the plugin's own cap, so a slow check returns
 `state: "pending"` rather than timing out. Treat anything other than `state: "done"` as
-undetermined, not as a closed port.
+undetermined, not as a closed port. Both porttest responses carry `source`: `native` when the
+verdict came from Nicotine+'s own checker, `web` when it came from the fallback query, and `null`
+before any check has run. The two fail differently, so it is worth knowing which one answered.
 
 ## Settings
 

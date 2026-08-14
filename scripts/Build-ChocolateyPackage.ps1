@@ -23,7 +23,7 @@
       choco push <path-to.nupkg> --source https://push.chocolatey.org/ --api-key <key>
 
 .PARAMETER Version
-    The version string to stamp into the build (e.g. '2.3.0').
+    The version string to stamp into the build.
     Defaults to the version defined in qbPortWeaver.csproj.
 
 .PARAMETER OutputDirectory
@@ -35,7 +35,7 @@
 
 .EXAMPLE
     # Build and pack with an explicit version override
-    .\scripts\Build-ChocolateyPackage.ps1 -Version 2.5.0
+    .\scripts\Build-ChocolateyPackage.ps1 -Version <version>
 #>
 
 [CmdletBinding()]

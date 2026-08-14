@@ -1,4 +1,4 @@
-namespace qbPortWeaver;
+﻿namespace qbPortWeaver;
 
 /// <summary>Displays the shipped user guide (README.md, installed next to the executable) rendered
 /// with lightweight formatting, a table-of-contents tree built from the guide's headings, and
@@ -97,10 +97,13 @@ public partial class HelpForm : Form
         txtSearch.BackColor = SystemColors.Window;
         txtSearch.ForeColor = fg;
 
+        // Accent, matching the log viewer's nav buttons: it reads as a finer, calmer stroke than
+        // plain WindowText, which blooms against a dark surface and makes the owner-drawn chevron
+        // look heavier than it is.
         foreach (var btn in new[] { btnPrev, btnNext })
         {
             btn.BackColor = surface;
-            btn.ForeColor = fg;
+            btn.ForeColor = SystemColors.HotTrack;
             btn.FlatAppearance.BorderColor = SystemColors.ControlDark;
         }
 
@@ -140,7 +143,7 @@ public partial class HelpForm : Form
         try
         {
             if (File.Exists(path))
-                return File.ReadAllText(path);
+                return AppConstants.ReadAllTextShared(path);
         }
         catch (Exception ex)
         {
@@ -537,6 +540,13 @@ public partial class HelpForm : Form
         lblMatchCount.Text = $"{_searchIndex + 1} / {_searchMatches.Count}";
     }
 
+    // Paints the clear button's X via the shared drawer, for the same reason the chevrons are
+    // drawn: exact weight and centering, and no dependency on a font glyph.
+    private void ClearButton_Paint(object? sender, PaintEventArgs e)
+    {
+        if (sender is Button btn) AppConstants.DrawClearGlyph(btn, e.Graphics);
+    }
+
     // Paints the search-nav chevrons (btnPrev points up) via the shared drawer.
     private void NavButton_Paint(object? sender, PaintEventArgs e)
     {
@@ -551,10 +561,10 @@ public partial class HelpForm : Form
     private void ctxHelpCopy_Click(object? sender, EventArgs e)
     {
         if (rtbHelp.SelectionLength > 0)
-            AppConstants.TrySetClipboardText(rtbHelp.SelectedText);
+            AppConstants.SetClipboardTextSafely(rtbHelp.SelectedText);
     }
 
-    private void ctxHelpCopyAll_Click(object? sender, EventArgs e) => AppConstants.TrySetClipboardText(rtbHelp.Text);
+    private void ctxHelpCopyAll_Click(object? sender, EventArgs e) => AppConstants.SetClipboardTextSafely(rtbHelp.Text);
 
     private void ctxHelpSelectAll_Click(object? sender, EventArgs e) => rtbHelp.SelectAll();
 

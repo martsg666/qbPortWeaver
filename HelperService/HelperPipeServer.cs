@@ -25,9 +25,12 @@ namespace qbPortWeaver.HelperService;
 ///
 /// Trust boundary: the helper trusts any caller that (a) has access to the named pipe ACL
 /// (AuthenticatedUserSid) and (b) can read the pipeSessionToken value from their own HKCU hive.
-/// In practice this is the user the tray app runs under, plus any local administrator (who can
-/// read any user's HKCU). Once trusted, the caller can name any Windows service for restart and
-/// any adapter name for cycle. The helper does not allowlist service names because the service
+/// In practice that is any authenticated user on the machine - neither condition narrows it
+/// further, since the ACL grants that whole group and the token is read from the caller's own
+/// hive, which any user can populate for themselves. Once trusted, the caller can name any
+/// Windows service for restart and any adapter name for cycle - so on a multi-user machine a
+/// second, non-administrator user can have SYSTEM restart an arbitrary service or cycle any
+/// adapter. The helper does not allowlist service names because the service
 /// search terms themselves are user-configurable in HKCU; an attacker with user-level write
 /// access to HKCU would simply rewrite the search term to point at any other service before
 /// sending the restart request, so an allowlist sourced from HKCU adds no protection. A baked-in
@@ -74,7 +77,20 @@ internal sealed class HelperPipeServer(ILogger<HelperPipeServer> logger) : Backg
             catch (Exception ex)
             {
                 logger.LogError(ex, "Pipe server error - retrying");
-                await Task.Delay(PipeErrorRetryDelayMs, stoppingToken).ConfigureAwait(false);
+
+                // The backoff needs its own guard because it runs inside this handler, where the
+                // loop's cancellation handler above can no longer absorb anything: a stop signalled
+                // during the wait would sail straight out of ExecuteAsync. BackgroundService would
+                // then report the stop as a Critical host failure, which is exactly the wrong
+                // signal for an ordinary service stop that happened to land in the retry window.
+                try
+                {
+                    await Task.Delay(PipeErrorRetryDelayMs, stoppingToken).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    break;
+                }
             }
         }
         logger.LogInformation("qbPortWeaver Helper Service stopped");
@@ -123,7 +139,7 @@ internal sealed class HelperPipeServer(ILogger<HelperPipeServer> logger) : Backg
         var target = parts[1];
         var pipeSessionToken = parts[2];
 
-        if (!TryReadClientHkcu(pipe, pipeSessionToken, out var logFilePath))
+        if (!TryReadClientHkcu(pipe, pipeSessionToken, out var logFilePath, out bool debugMode))
         {
             logger.LogWarning("Rejected pipe message: session token mismatch or could not derive log file path");
             try
@@ -135,7 +151,7 @@ internal sealed class HelperPipeServer(ILogger<HelperPipeServer> logger) : Backg
             return;
         }
 
-        var helperLogger = new HelperLogger(logFilePath);
+        var helperLogger = new HelperLogger(logFilePath, debugMode);
 
         switch (action)
         {
@@ -165,14 +181,21 @@ internal sealed class HelperPipeServer(ILogger<HelperPipeServer> logger) : Backg
         }
     }
 
-    // Impersonates the pipe client to validate the session token and derive the log file path
-    // from the caller's HKCU hive. Returns false if the token is invalid, impersonation fails,
-    // or LocalAppData cannot be read. Using the caller's own registry avoids trusting any
-    // caller-supplied path.
-    private bool TryReadClientHkcu(NamedPipeServerStream pipe, string pipeSessionToken, out string logFilePath)
+    // Impersonates the pipe client to validate the session token and read what the helper needs from
+    // the caller's HKCU hive: the log file path, and whether debug logging is switched on. Returns
+    // false if the token is invalid, impersonation fails, or LocalAppData cannot be read. Using the
+    // caller's own registry avoids trusting any caller-supplied path.
+    //
+    // The debug flag is read here rather than sent over the pipe because this is the only moment the
+    // SYSTEM service can see a per-user HKCU value: the impersonation ends with this method, well
+    // before the action runs. Reading it now and handing it to the logger lets the helper honour the
+    // same switch the main app does, without widening the pipe message format.
+    private bool TryReadClientHkcu(NamedPipeServerStream pipe, string pipeSessionToken, out string logFilePath, out bool debugMode)
     {
         logFilePath = string.Empty;
+        debugMode = false;
         bool tokenValid = false;
+        bool derivedDebugMode = false;
         string derivedPath = string.Empty; // captured by lambda; out params cannot be used inside lambdas
         try
         {
@@ -204,6 +227,13 @@ internal sealed class HelperPipeServer(ILogger<HelperPipeServer> logger) : Backg
                     var localAppData = envKey?.GetValue(LocalAppDataValue) as string;
                     if (!string.IsNullOrEmpty(localAppData))
                         derivedPath = Path.Combine(localAppData, AppIdentity.AppName, AppIdentity.LogFileName);
+
+                    // Stored as "True"/"False" by the main app. Anything unreadable or unparseable
+                    // leaves debug logging off, which is the quieter and safer default.
+                    using var extraKey = Registry.CurrentUser.OpenSubKey(
+                        $@"{AppIdentity.SettingsRegistryKey}\{AppIdentity.ExtraSettingsSection}");
+                    derivedDebugMode = extraKey?.GetValue(AppIdentity.DebugModeValueName) is string flag &&
+                                       bool.TryParse(flag, out bool parsed) && parsed;
                 }
             });
         }
@@ -212,6 +242,7 @@ internal sealed class HelperPipeServer(ILogger<HelperPipeServer> logger) : Backg
             logger.LogWarning(ex, "Pipe client impersonation failed");
         }
         logFilePath = derivedPath;
+        debugMode = derivedDebugMode;
         return tokenValid && !string.IsNullOrEmpty(logFilePath);
     }
 }

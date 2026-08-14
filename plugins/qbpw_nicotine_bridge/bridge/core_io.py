@@ -211,6 +211,9 @@ class CoreIO:
             "username": getattr(users, "login_username", None) if users is not None else None,
             "public_ip": getattr(users, "public_ip_address", None) if users is not None else None,
             "active_port": self.active_port(),
+            # Guarded rather than letting configured_port() raise: /v1/preferences is *about* the
+            # port and should fail loudly when it cannot be read, but this is a broad snapshot -
+            # one unavailable field must not cost the caller username, IP and connection state.
             "configured_port": self.configured_port() if self.capabilities.get("read_port") else None,
             "port_locked_by_cli": self.cli_listen_port() is not None,
         }

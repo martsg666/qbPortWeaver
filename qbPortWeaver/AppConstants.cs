@@ -96,14 +96,95 @@ public static class AppConstants
         }
     }
 
-    /// <summary>Writes content to a temp file then atomically renames it over the target.
-    /// If the process is killed mid-write, only the .tmp file is lost and the original is untouched.</summary>
-    internal static void WriteAtomic(string path, string content)
+    /// <summary>Reads a text file in a way that does not block a concurrent atomic rewrite of it.</summary>
+    /// <remarks>
+    /// <see cref="File.ReadAllText(string)"/> opens with <see cref="FileShare.Read"/>, which withholds
+    /// the DELETE access Windows requires to rename a file over one that is open - so a read in flight
+    /// makes <see cref="WriteAtomic(string, string)"/>'s final rename fail, in the <em>writer</em>.
+    /// Granting <see cref="FileShare.Delete"/> lets the two overlap. Nothing is torn by that: the
+    /// rename is atomic, so a reader still sees either the whole old file or the whole new one.
+    /// Failure modes are otherwise <see cref="File.ReadAllText(string)"/>'s, so callers keep their
+    /// own error handling.
+    /// </remarks>
+    internal static string ReadAllTextShared(string path)
     {
-        var temp = path + ".tmp";
+        using var stream = OpenShared(path);
+        using var reader = new StreamReader(stream, System.Text.Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
+        return reader.ReadToEnd();
+    }
+
+    /// <summary>Reads a text file's lines without blocking a concurrent atomic rewrite - see
+    /// <see cref="ReadAllTextShared"/> for why.</summary>
+    internal static string[] ReadAllLinesShared(string path)
+    {
+        using var stream = OpenShared(path);
+        using var reader = new StreamReader(stream, System.Text.Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
+        var lines = new List<string>();
+        while (reader.ReadLine() is { } line)
+            lines.Add(line);
+        return [.. lines];
+    }
+
+    // FileShare.ReadWrite so a writer appending to the file (the log) is not blocked either, and
+    // FileShare.Delete so an atomic rename over the target can complete while this handle is open.
+    private static FileStream OpenShared(string path) =>
+        new(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+
+    /// <summary>Writes text to a temp file then atomically renames it over the target.
+    /// If the process is killed mid-write, only the temp file is lost and the original is untouched.</summary>
+    internal static void WriteAtomic(string path, string content) =>
+        WriteAtomicCore(path, temp => File.WriteAllText(temp, content));
+
+    /// <summary>Writes lines to a temp file then atomically renames it over the target.</summary>
+    /// <remarks>UTF-8 with no byte-order mark, matching the single-string overload
+    /// (<see cref="File.WriteAllText(string, string)"/> defaults to the same). Written explicitly
+    /// because Nicotine+ parses a BOM as part of the first key name in its config file.</remarks>
+    internal static void WriteAtomic(string path, string[] lines) =>
+        WriteAtomicCore(path, temp => File.WriteAllLines(temp, lines, Utf8NoBom));
+
+    private static readonly System.Text.UTF8Encoding Utf8NoBom = new(encoderShouldEmitUTF8Identifier: false);
+
+    // Distinctive enough that a sweep can recognise our leftovers without touching anything else in
+    // the folder - which matters because one caller writes into Nicotine+'s config folder.
+    private const string TempFilePrefix = ".qbpw-";
+    private const string TempFileSuffix = ".tmp";
+
+    /// <summary>Deletes temp files an interrupted atomic write left behind in <paramref name="folder"/>.</summary>
+    /// <remarks>
+    /// <see cref="WriteAtomicCore"/> deletes its own temp file when the write throws, but nothing can
+    /// run at a process kill or power loss between writing the temp file and renaming it. Because each
+    /// write picks a fresh name, no later write reclaims that file the way a fixed
+    /// <c>&lt;target&gt;.tmp</c> would, so without this they accumulate for the life of the install.
+    /// <para>Safe to run only where no write is in flight: callers do so at startup, before the sync
+    /// loop begins, and the single-instance mutex rules out another instance owning one.</para>
+    /// </remarks>
+    internal static void SweepOrphanedTempFiles(string folder)
+    {
         try
         {
-            File.WriteAllText(temp, content);
+            foreach (string file in Directory.EnumerateFiles(folder, $"{TempFilePrefix}*{TempFileSuffix}"))
+                DeleteFileSafely(file);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or DirectoryNotFoundException)
+        {
+            if (LogManager.IsInitialized)
+                LogManager.Instance.LogDebug($"AppConstants.SweepOrphanedTempFiles: '{folder}' - {ex.Message}");
+        }
+    }
+
+    // Shared write-then-rename core. The temp file is a uniquely named sibling of the target rather
+    // than "<target>.tmp" so two writers to the same path cannot fight over one temp file - which
+    // no current caller does, the sync cycle being serialised, but the guarantee costs nothing.
+    // The cost is that an interrupted write leaves a name nothing reuses; SweepOrphanedTempFiles
+    // clears those. Same folder is required: File.Move is only atomic within a volume.
+    private static void WriteAtomicCore(string path, Action<string> writeTo)
+    {
+        string folder = Path.GetDirectoryName(path) ?? string.Empty;
+        if (folder.Length > 0) Directory.CreateDirectory(folder);
+        string temp = Path.Combine(folder, $"{TempFilePrefix}{Guid.NewGuid():N}{TempFileSuffix}");
+        try
+        {
+            writeTo(temp);
             File.Move(temp, path, overwrite: true);
         }
         catch
@@ -154,7 +235,7 @@ public static class AppConstants
             {
                 KillProcess(proc, $"{clientName} process", killTimeoutMs);
             }
-            catch (Exception ex) { LogManager.Instance.LogDebug($"{clientName}.KillProcessesByName: Failed to kill process: {ex.Message}"); }
+            catch (Exception ex) { LogManager.Instance.LogDebug($"AppConstants.KillProcessesByName: Failed to kill a {clientName} process: {ex.Message}"); }
             finally { proc.Dispose(); }
         }
     }
@@ -163,7 +244,7 @@ public static class AppConstants
     /// Searches all installed Windows services for one whose <c>ServiceName</c> or <c>DisplayName</c>
     /// contains <paramref name="searchTerm"/> and returns the <c>ServiceName</c>, or
     /// <see langword="null"/> if no match is found. When multiple services match, the first one
-    /// returned by <see cref="ServiceController.GetServices"/> is used; that order is not guaranteed
+    /// returned by <see cref="ServiceController.GetServices()"/> is used; that order is not guaranteed
     /// to be stable across reboots, so callers should pass a precise enough search term that no more
     /// than one service can match.
     /// </summary>
@@ -255,7 +336,7 @@ public static class AppConstants
             string? serviceDir = serviceName is not null ? GetServiceExeDirectory(serviceName) : null;
             if (serviceDir is null)
             {
-                LogManager.Instance.LogDebug($"{logPrefix}: service executable directory not found");
+                LogManager.Instance.LogDebug($"{logPrefix}: Service executable directory not found");
                 return null;
             }
 
@@ -366,6 +447,29 @@ public static class AppConstants
     }
 
     /// <summary>
+    /// Owner-draws the clear (X) glyph centered in the search box's clear button, in the button's
+    /// ForeColor. Drawn rather than typed as the letter "X" for the same reason the nav chevrons
+    /// are: exact size, weight and centering, and no dependency on a glyph the UI font may not
+    /// carry. Shared by the log viewer's and help viewer's clear-button Paint handlers.
+    /// </summary>
+    public static void DrawClearGlyph(Button btn, Graphics g)
+    {
+        float scale = btn.DeviceDpi / 96f;
+        float half = 3.25f * scale; // arm half-length, matching the chevrons' visual weight
+        float cx = btn.ClientSize.Width / 2f;
+        float cy = btn.ClientSize.Height / 2f;
+
+        g.SmoothingMode = SmoothingMode.AntiAlias;
+        using var pen = new Pen(btn.ForeColor, 1.8f * scale)
+        {
+            StartCap = LineCap.Round,
+            EndCap = LineCap.Round,
+        };
+        g.DrawLine(pen, cx - half, cy - half, cx + half, cy + half);
+        g.DrawLine(pen, cx - half, cy + half, cx + half, cy - half);
+    }
+
+    /// <summary>
     /// Lays out the right-aligned search group shared by the log viewer and help viewer toolbars:
     /// the search box, match counter, and prev/next nav buttons pinned to the toolbar's right edge,
     /// with the clear (×) button floating inside the search box. Positions are computed from the
@@ -429,10 +533,29 @@ public static class AppConstants
         form.Activate();
     }
 
+    // Text helpers
+
+    /// <summary>
+    /// Returns "<paramref name="count"/> <paramref name="noun"/>", adding a plural "s" unless the
+    /// count is exactly 1 (e.g. <c>2 warnings</c>, <c>1 error</c>).
+    /// </summary>
+    /// <remarks>Shared so every user-facing count reads the same way. Use
+    /// <see cref="PluralizeNoun"/> when the sentence places the number away from the noun.</remarks>
+    public static string Pluralize(int count, string noun) => $"{count} {PluralizeNoun(count, noun)}";
+
+    /// <summary>
+    /// Returns <paramref name="noun"/> alone, pluralised for <paramref name="count"/> - for
+    /// sentences that state the number somewhere other than immediately before the noun
+    /// (e.g. "recovery triggers after 3 consecutive closed checks").
+    /// </summary>
+    /// <remarks>Only regular "add an s" plurals are needed here; nothing in the app's messages
+    /// pluralises irregularly, so keeping it this simple is deliberate rather than an oversight.</remarks>
+    public static string PluralizeNoun(int count, string noun) => count == 1 ? noun : noun + "s";
+
     /// <summary>Copies text to the clipboard, swallowing the transient <see cref="ExternalException"/> thrown
     /// when another process holds the clipboard open (clipboard managers, RDP). Empty text is replaced with a
     /// single space because <see cref="Clipboard.SetText(string)"/> rejects an empty string.</summary>
-    public static void TrySetClipboardText(string text)
+    public static void SetClipboardTextSafely(string text)
     {
         try
         {
@@ -440,7 +563,7 @@ public static class AppConstants
         }
         catch (ExternalException ex)
         {
-            LogManager.Instance.LogDebug($"AppConstants.TrySetClipboardText: Clipboard unavailable: {ex.Message}");
+            LogManager.Instance.LogDebug($"AppConstants.SetClipboardTextSafely: Clipboard unavailable: {ex.Message}");
         }
     }
 

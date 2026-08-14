@@ -81,7 +81,7 @@ public static partial class FileNameParser
     /// </summary>
     internal static string NormalizeTitleForMatch(string title)
     {
-        // NFD decomposition splits accented chars into base + combining mark (e.g. î → i + ◌̂).
+        // NFD decomposition splits accented chars into base + combining mark (e.g. î -> i + ◌̂).
         // The intra-word punctuation rule below then drops combining marks, stripping all accents.
         title = title.Normalize(NormalizationForm.FormD);
         var sb = new StringBuilder(title.Length);
@@ -319,9 +319,9 @@ public static partial class FileNameParser
 
     // Finds the first standalone 4-digit year in a pre-cleaned (dots/underscores removed) title string.
     // Handles three special cases:
-    //   1) Year-as-title with second year:  "1917 2019"       → title "1917",              year 2019
-    //   2) Leading year with no second year: "2008 The Title"  → title "The Title",         year 2008
-    //   3) Back-to-back years:               "Title 2049 2017" → title "Title 2049",        year 2017
+    //   1) Year-as-title with second year:  "1917 2019"       -> title "1917",              year 2019
+    //   2) Leading year with no second year: "2008 The Title"  -> title "The Title",         year 2008
+    //   3) Back-to-back years:               "Title 2049 2017" -> title "Title 2049",        year 2017
     // Returns the title portion; sets parsedYear to null if no year was found.
     private static string FindStandaloneYear(string cleaned, out int? parsedYear)
     {
@@ -396,7 +396,7 @@ public static partial class FileNameParser
         title = MultiSpaceRegex().Replace(title, " ");
         title = title.Trim();
 
-        // Strip trailing incomplete parenthetical group: "Title (junk stuff" → "Title"
+        // Strip trailing incomplete parenthetical group: "Title (junk stuff" -> "Title"
         var openParen = title.LastIndexOf('(');
         if (openParen >= 0 && !title[openParen..].Contains(')'))
         {
@@ -478,7 +478,7 @@ public static partial class FileNameParser
         return match.Success && int.TryParse(match.Groups[1].Value, out int n) && n > 0 ? n : null;
     }
 
-    /// <summary>Returns the episode number from a 1-3 digit prefix at the start of <paramref name="fileName"/> (e.g. "01-Title.mkv" → 1), or <see langword="null"/> if no prefix is present.</summary>
+    /// <summary>Returns the episode number from a 1-3 digit prefix at the start of <paramref name="fileName"/> (e.g. "01-Title.mkv" -> 1), or <see langword="null"/> if no prefix is present.</summary>
     public static int? ParseEpisodePrefix(string fileName)
     {
         if (string.IsNullOrWhiteSpace(fileName)) return null;

@@ -1,4 +1,4 @@
-namespace qbPortWeaver;
+﻿namespace qbPortWeaver;
 
 /// <summary>
 /// Single source of truth for everything per-client: the stored setting value (also the display
@@ -15,15 +15,24 @@ internal static class ClientRegistry
 {
     /// <summary>
     /// The per-client facts. <paramref name="Name"/> is both the stored client setting value and the
-    /// user-facing display name (the same string in this app). <paramref name="UserNameKey"/> is
-    /// <see langword="null"/> for clients that do not authenticate by username (e.g. Deluge,
-    /// Nicotine+); <paramref name="PasswordKey"/> then carries that client's single secret - a Web
-    /// UI password, or the bridge plugin token for Nicotine+.
-    /// The default-port setting shares one key (<see cref="RegistrySettingsManager.KeyDefaultPort"/>)
-    /// across all clients, so it is not stored here. <paramref name="ProcessNames"/>[0] doubles as the
-    /// default process-name field value; <paramref name="DefaultExeFolder"/>/<paramref name="DefaultExeFile"/>
-    /// are resolved under the real Program Files folders at runtime. <paramref name="Factory"/> builds
-    /// the client from the config block <see cref="PortSyncService"/> reads for the active client.
+    /// user-facing display name (the same string in this app), and <paramref name="Section"/> is the
+    /// registry section holding its settings.
+    /// <para>The key fields carry that client's own <c>Key*</c> constants from
+    /// <see cref="RegistrySettingsManager"/>. Every client section stores the same names, so these all
+    /// resolve to the same strings; they exist so that code which runs against whichever client is
+    /// active reaches its settings through the client it was handed, rather than naming one client's
+    /// constant and relying on the strings happening to match.</para>
+    /// <para><paramref name="UserNameKey"/> is <see langword="null"/> where the client does not
+    /// authenticate by user name (Deluge, Nicotine+); its single secret still lives under
+    /// <paramref name="PasswordKey"/> like everyone else's - a Web UI password for three of them, the
+    /// bridge plugin's bearer token for Nicotine+. <paramref name="RestartKey"/> is
+    /// <see langword="null"/> where the client is never restarted (Nicotine+), which is also why it
+    /// has no restart checkbox in Settings: a setting that cannot change anything should not exist in
+    /// the registry to be hand-edited.</para>
+    /// <paramref name="ProcessNames"/>[0] doubles as the default process-name field value;
+    /// <paramref name="DefaultExeFolder"/>/<paramref name="DefaultExeFile"/> are resolved under the
+    /// real Program Files folders at runtime. <paramref name="Factory"/> builds the client from the
+    /// config block <see cref="PortSyncService"/> reads for the active client.
     /// </summary>
     internal sealed record ClientInfo(
         string Name,
@@ -31,10 +40,11 @@ internal static class ClientRegistry
         string UrlKey,
         string? UserNameKey,
         string PasswordKey,
-        string ProcessNameKey,
         string ExePathKey,
-        string RestartKey,
+        string ProcessNameKey,
+        string? RestartKey,
         string ForceStartKey,
+        string DefaultPortKey,
         string[] ProcessNames,
         string DefaultExeFolder,
         string DefaultExeFile,
@@ -46,39 +56,43 @@ internal static class ClientRegistry
     [
         new(Name: RegistrySettingsManager.ClientNameQBittorrent, Section: RegistrySettingsManager.SectionQBittorrent,
             UrlKey: RegistrySettingsManager.KeyQBittorrentUrl, UserNameKey: RegistrySettingsManager.KeyQBittorrentUserName,
-            PasswordKey: RegistrySettingsManager.KeyQBittorrentPassword, ProcessNameKey: RegistrySettingsManager.KeyQBittorrentProcessName,
-            ExePathKey: RegistrySettingsManager.KeyQBittorrentExePath, RestartKey: RegistrySettingsManager.KeyRestartQBittorrent,
-            ForceStartKey: RegistrySettingsManager.KeyForceStartQBittorrent,
+            PasswordKey: RegistrySettingsManager.KeyQBittorrentPassword, ExePathKey: RegistrySettingsManager.KeyQBittorrentExePath,
+            ProcessNameKey: RegistrySettingsManager.KeyQBittorrentProcessName, RestartKey: RegistrySettingsManager.KeyQBittorrentRestart,
+            ForceStartKey: RegistrySettingsManager.KeyQBittorrentForceStart, DefaultPortKey: RegistrySettingsManager.KeyQBittorrentDefaultPort,
             ProcessNames: ["qbittorrent"], DefaultExeFolder: "qBittorrent", DefaultExeFile: "qbittorrent.exe",
             Factory: c => new QBittorrentClient(c.Url, c.UserName, c.Password, c.ProcessName, c.ExePath)),
 
         new(Name: RegistrySettingsManager.ClientNameTransmission, Section: RegistrySettingsManager.SectionTransmission,
             UrlKey: RegistrySettingsManager.KeyTransmissionUrl, UserNameKey: RegistrySettingsManager.KeyTransmissionUserName,
-            PasswordKey: RegistrySettingsManager.KeyTransmissionPassword, ProcessNameKey: RegistrySettingsManager.KeyTransmissionProcessName,
-            ExePathKey: RegistrySettingsManager.KeyTransmissionExePath, RestartKey: RegistrySettingsManager.KeyRestartTransmission,
-            ForceStartKey: RegistrySettingsManager.KeyForceStartTransmission,
+            PasswordKey: RegistrySettingsManager.KeyTransmissionPassword, ExePathKey: RegistrySettingsManager.KeyTransmissionExePath,
+            ProcessNameKey: RegistrySettingsManager.KeyTransmissionProcessName, RestartKey: RegistrySettingsManager.KeyTransmissionRestart,
+            ForceStartKey: RegistrySettingsManager.KeyTransmissionForceStart, DefaultPortKey: RegistrySettingsManager.KeyTransmissionDefaultPort,
             ProcessNames: ["transmission-qt", "transmission-daemon"], DefaultExeFolder: "Transmission", DefaultExeFile: "transmission-qt.exe",
             Factory: c => new TransmissionClient(c.Url, c.UserName, c.Password, c.ProcessName, c.ExePath)),
 
-        // Deluge has no username field (Web UI uses password only), so UserNameKey is null.
+        // Deluge's Web UI authenticates with a password alone, so it has no user name.
         new(Name: RegistrySettingsManager.ClientNameDeluge, Section: RegistrySettingsManager.SectionDeluge,
             UrlKey: RegistrySettingsManager.KeyDelugeUrl, UserNameKey: null,
-            PasswordKey: RegistrySettingsManager.KeyDelugePassword, ProcessNameKey: RegistrySettingsManager.KeyDelugeProcessName,
-            ExePathKey: RegistrySettingsManager.KeyDelugeExePath, RestartKey: RegistrySettingsManager.KeyRestartDeluge,
-            ForceStartKey: RegistrySettingsManager.KeyForceStartDeluge,
+            PasswordKey: RegistrySettingsManager.KeyDelugePassword, ExePathKey: RegistrySettingsManager.KeyDelugeExePath,
+            ProcessNameKey: RegistrySettingsManager.KeyDelugeProcessName, RestartKey: RegistrySettingsManager.KeyDelugeRestart,
+            ForceStartKey: RegistrySettingsManager.KeyDelugeForceStart, DefaultPortKey: RegistrySettingsManager.KeyDelugeDefaultPort,
             ProcessNames: ["deluge", "deluged"], DefaultExeFolder: "Deluge", DefaultExeFile: "deluge.exe",
             Factory: c => new DelugeClient(c.Url, c.Password, c.ProcessName, c.ExePath)),
 
         // Nicotine+ is a Soulseek client rather than a BitTorrent one, driven through the
-        // qbPortWeaver bridge plugin's local API. It authenticates with a token the plugin issues,
-        // so UserNameKey is null and PasswordKey carries the token. The '+' in the process name is
-        // literal: Process.GetProcessesByName compares exactly, so "Nicotine+" matches
-        // "Nicotine+.exe" and nothing else.
+        // qbPortWeaver bridge plugin's local API. It authenticates with a token the plugin issues
+        // rather than a user name and password, so the token occupies the shared password slot. The
+        // '+' in the process name is literal: Process.GetProcessesByName compares exactly, so
+        // "Nicotine+" matches "Nicotine+.exe" and nothing else.
+        // RestartKey is null because Nicotine+ is never restarted: the bridge applies the port to
+        // the running client, so a restart would fix nothing, and killing the process would discard
+        // its configuration (Nicotine+ only saves on a graceful shutdown). See
+        // NicotineClient.RestartAsync, which is a no-op for the same reason.
         new(Name: RegistrySettingsManager.ClientNameNicotine, Section: RegistrySettingsManager.SectionNicotine,
             UrlKey: RegistrySettingsManager.KeyNicotineUrl, UserNameKey: null,
-            PasswordKey: RegistrySettingsManager.KeyNicotineToken, ProcessNameKey: RegistrySettingsManager.KeyNicotineProcessName,
-            ExePathKey: RegistrySettingsManager.KeyNicotineExePath, RestartKey: RegistrySettingsManager.KeyRestartNicotine,
-            ForceStartKey: RegistrySettingsManager.KeyForceStartNicotine,
+            PasswordKey: RegistrySettingsManager.KeyNicotinePassword, ExePathKey: RegistrySettingsManager.KeyNicotineExePath,
+            ProcessNameKey: RegistrySettingsManager.KeyNicotineProcessName, RestartKey: null,
+            ForceStartKey: RegistrySettingsManager.KeyNicotineForceStart, DefaultPortKey: RegistrySettingsManager.KeyNicotineDefaultPort,
             ProcessNames: ["Nicotine+"], DefaultExeFolder: "Nicotine+", DefaultExeFile: "Nicotine+.exe",
             Factory: c => new NicotineClient(c.Url, c.Password, c.ProcessName, c.ExePath)),
     ];

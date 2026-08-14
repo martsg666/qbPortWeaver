@@ -19,7 +19,9 @@
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <SignAssembly>False</SignAssembly>
     <PackageReadmeFile>README.md</PackageReadmeFile>
-    <!-- Suppress known SonarAnalyzer false positives (each has a matching // NOSONAR comment):
+    <!-- Suppress known SonarAnalyzer false positives. Each is documented below; per-site
+         // NOSONAR comments mark the specific occurrences where the rule permits one
+         (S125 and S2486 cannot carry one - see their entries):
          S108  - empty catch bodies are intentional (ManagedClientBase.cs, TransmissionClient.cs)
          S125  - documentation comments containing qualified identifiers (e.g. Class.Member) are falsely flagged as commented-out code (suppressed project-wide; the rule targets XML doc comments, which cannot carry an inline // NOSONAR)
          S1075 - TMDB base URL is intentionally hardcoded (TmdbClient.cs)
@@ -35,8 +37,16 @@
          S4721 - post-update command is user-configured, arbitrary execution is intended (PortSyncService.cs)
          S4790 - TMDB credential sent over HTTPS only; v3 API key in query param, v4 JWT as Bearer header (TmdbClient.cs)
          S5332 - loopback IPC bridge on 127.0.0.1; TLS is meaningless for a local-only handshake (NicotinePluginDiscovery.cs)
-         S6966 - non-modal Show() on child forms is intentional (WhatsNewForm directly; others via the ShowOrActivate helper, MainForm.cs) -->
-    <NoWarn>S108;S125;S1075;S1125;S1215;S2068;S2221;S2325;S2486;S2589;S2696;S3881;S4721;S4790;S5332;S6966</NoWarn>
+         S6966 - non-modal Show() on child forms is intentional (WhatsNewForm directly; others via the ShowOrActivate helper, MainForm.cs)
+         CS1591 - doc *coverage* is deliberately optional; see GenerateDocumentationFile below -->
+    <NoWarn>S108;S125;S1075;S1125;S1215;S2068;S2221;S2325;S2486;S2589;S2696;S3881;S4721;S4790;S5332;S6966;CS1591</NoWarn>
+    <!-- Enabled for XML doc *accuracy* checking, not to require docs everywhere: without it Roslyn
+         never emits CS1574 (unresolvable cref), CS0419 (ambiguous cref), or CS1572/CS1573 (param
+         name mismatch), so those rot silently - four broken crefs survived /warnaserror, CI, and
+         three review passes before this was switched on. CS1591 (missing doc) is suppressed above so
+         coverage stays optional. Combined with /warnaserror in CI, a broken cref now fails the build.
+         The generated .xml is not shipped: the MSI names its files explicitly (installer\qbPortWeaver.wxs). -->
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <!-- Required by [LibraryImport]: the interop source generator emits `unsafe partial` types into
          obj/.../LibraryImports.g.cs, so the partial classes declaring those imports (MainForm,
          LogViewerForm, MediaImporter) will not compile without it. No `unsafe` keyword appears in

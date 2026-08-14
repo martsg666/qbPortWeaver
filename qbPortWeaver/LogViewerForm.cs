@@ -1,4 +1,4 @@
-using System.Runtime;
+﻿using System.Runtime;
 using System.Runtime.InteropServices;
 using System.Text;
 
@@ -19,7 +19,7 @@ public partial class LogViewerForm : Form
 
     private readonly string _logFilePath;
     private string _activeLogFilePath;
-    private bool _navigateToLatestIssue;
+    private bool _navigateToLatestIssuePending;
     private readonly object _readLock = new();
     // Source of truth: every parsed line of the active file, in order. The virtual list view
     // renders rows on demand from this store via _visibleRows, so no second copy of the log
@@ -102,11 +102,14 @@ public partial class LogViewerForm : Form
         public const uint LVIS_SELECTED = 0x0002;
     }
 
-    // Log column markers (format: "| LEVEL | ") used to classify lines once at parse time
-    private const string ColError = "| ERROR |";
-    private const string ColWarn = "| WARN  |";
-    private const string ColInfo = "| INFO  |";
-    private const string ColDebug = "| DEBUG |";
+    // Log column markers (format: "| LEVEL | ") used to classify lines once at parse time.
+    // Built from the shared level labels so the viewer cannot drift from the two writers that
+    // produce these entries - LogManager (main app) and HelperLogger (helper service) both take
+    // their labels from LoggingConstants, and the labels carry their own padding to a fixed width.
+    private static readonly string ColError = $"| {LoggingConstants.LevelErrorLabel} |";
+    private static readonly string ColWarn = $"| {LoggingConstants.LevelWarnLabel} |";
+    private static readonly string ColInfo = $"| {LoggingConstants.LevelInfoLabel} |";
+    private static readonly string ColDebug = $"| {LoggingConstants.LevelDebugLabel} |";
     private const long LoadingIndicatorMinBytes = 1_000_000; // show "Loading…" only for logs large enough that the read + parse is perceptible
 
     public LogViewerForm() : this(string.Empty) { } // designer support only
@@ -119,7 +122,7 @@ public partial class LogViewerForm : Form
         InitializeComponent();
         _logFilePath = logFilePath;
         _activeLogFilePath = logFilePath;
-        _navigateToLatestIssue = navigateToLatestIssue;
+        _navigateToLatestIssuePending = navigateToLatestIssue;
     }
 
     protected override void OnLoad(EventArgs e)
@@ -157,6 +160,9 @@ public partial class LogViewerForm : Form
         int navH = txtSearch.Height;
         foreach (var btn in new[] { btnPrev, btnNext, btnIssuePrev, btnIssueNext })
             btn.Paint += NavButton_Paint;
+        // Same treatment for the clear button's X - drawn, not typed, so its weight and centering
+        // match the chevrons beside it and no font glyph is relied on.
+        btnClearSearch.Paint += (_, e) => AppConstants.DrawClearGlyph(btnClearSearch, e.Graphics);
         foreach (var btn in new[] { btnIssuePrev, btnIssueNext })
         {
             btn.Height = navH;
@@ -273,17 +279,17 @@ public partial class LogViewerForm : Form
         txtSearch.BackColor = input;
         txtSearch.ForeColor = fg;
 
+        // All four nav buttons share the OS accent (severity-neutral, mode-aware). The accent reads
+        // as a finer, calmer stroke than plain WindowText, which blooms against a dark surface and
+        // makes an identically-drawn chevron look heavier. Which pair is which is already clear from
+        // position - issue-nav sits with the level filters, search-nav inside the search group - so
+        // colour does not need to carry that distinction as well.
         foreach (var btn in new[] { btnPrev, btnNext, btnIssuePrev, btnIssueNext })
         {
             btn.BackColor = surface;
-            btn.ForeColor = fg;
+            btn.ForeColor = SystemColors.HotTrack;
             btn.FlatAppearance.BorderColor = border;
         }
-
-        // Issue-nav jumps between WARN/ERROR lines; tint it with the OS accent (severity-neutral,
-        // mode-aware) so it reads as distinct from the neutral search-match arrows by the search box.
-        btnIssuePrev.ForeColor = SystemColors.HotTrack;
-        btnIssueNext.ForeColor = SystemColors.HotTrack;
 
         // Clear button sits inside the search box - blend it in rather than styling it like the nav buttons
         btnClearSearch.BackColor = txtSearch.BackColor;
@@ -951,7 +957,7 @@ public partial class LogViewerForm : Form
         var sb = new StringBuilder();
         foreach (int row in lvLog.SelectedIndices)
             sb.AppendLine(_allLines[_visibleRows[row]].Text);
-        AppConstants.TrySetClipboardText(sb.ToString());
+        AppConstants.SetClipboardTextSafely(sb.ToString());
     }
 
     private void CopyAllVisibleRows()
@@ -959,7 +965,7 @@ public partial class LogViewerForm : Form
         var sb = new StringBuilder();
         foreach (int line in _visibleRows)
             sb.AppendLine(_allLines[line].Text);
-        AppConstants.TrySetClipboardText(sb.ToString());
+        AppConstants.SetClipboardTextSafely(sb.ToString());
     }
 
     // Selects every row via one native LVM_SETITEMSTATE broadcast (item index -1 = all items).
@@ -1034,7 +1040,7 @@ public partial class LogViewerForm : Form
             UpdateColumnWidth();
             UpdateMetaForRowCount();
 
-            if (_navigateToLatestIssue) { NavigateToLatestIssue(); _navigateToLatestIssue = false; } else ScrollToBottom();
+            if (_navigateToLatestIssuePending) { NavigateToLatestIssue(); _navigateToLatestIssuePending = false; } else ScrollToBottom();
             if (!string.IsNullOrEmpty(txtSearch.Text))
                 RefreshSearch(navigateToFirst: true);
 

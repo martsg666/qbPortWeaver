@@ -232,7 +232,11 @@ public sealed class TransmissionClient : ManagedClientBase
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
         catch (Exception ex)
         {
-            LogManager.Instance.LogDebug($"TransmissionClient.TestListeningPortAsync: {ex.Message}");
+            // Debug, not Error: reachability is best-effort, so an unreachable client is
+            // "undeterminable" rather than a fault. Routed through the shared classifier so the
+            // timeout-vs-refused distinction survives - it is the evidence for why a port
+            // verification came back closed.
+            LogHttpException(nameof(TestListeningPortAsync), ex, LogLevel.Debug);
             return null;
         }
     }

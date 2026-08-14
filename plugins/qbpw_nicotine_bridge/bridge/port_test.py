@@ -22,6 +22,12 @@ STATE_PENDING = "pending"
 STATE_DONE = "done"
 STATE_UNAVAILABLE = "unavailable"
 
+# Which mechanism produced the verdict. Both ultimately consult the same Soulseek service, but they
+# fail differently - the native checker can go silent, the web path can time out or return an
+# unparseable page - so a curl diagnosis has to be able to tell them apart.
+SOURCE_NATIVE = "native"
+SOURCE_WEB = "web"
+
 # Fallback port-test service: the same one Nicotine+'s "Check Port Status" opens in a browser. Used
 # only when this Nicotine+ has no scriptable checker (the native check-port-status API, upstream #3373,
 # is not in a release yet). The service returns an HTML page containing "<port>/tcp open|closed".
@@ -54,6 +60,7 @@ class PortTest:
         self._port = None
         self._result = None
         self._started = 0.0
+        self._source = None  # set by whichever path claims a check; None until the first one runs
 
     # ------------------------------------------------- main thread (event hook)
 
@@ -111,6 +118,7 @@ class PortTest:
                 self._port = port
                 self._result = None
                 self._started = now
+                self._source = SOURCE_NATIVE
                 self._done.clear()
                 start_it = True
             else:
@@ -128,7 +136,7 @@ class PortTest:
                 with self._lock:
                     self._state = STATE_IDLE
                 return {"ok": True, "state": STATE_PENDING, "port": port,
-                        "result": None, "age_ms": 0}
+                        "result": None, "age_ms": 0, "source": SOURCE_NATIVE}
 
         self._done.wait(wait_seconds)
 
@@ -154,6 +162,7 @@ class PortTest:
         with self._lock:
             self._port = port
             self._started = time.monotonic()
+            self._source = SOURCE_WEB
             if result is None:
                 # Offline, service unreachable, or unparseable - transient, so the caller can retry.
                 # Drop any earlier verdict with it, as the native path does when it starts a check:
@@ -183,7 +192,7 @@ class PortTest:
             "port": port,
             "result": self._result if state == STATE_DONE else None,
             "age_ms": age_ms,
-            "source": "slsknet",
+            "source": self._source,
         }
 
 

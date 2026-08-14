@@ -272,7 +272,7 @@ internal static partial class MediaImporter
     /// on the previous scan and is approved without opening the file (no network round-trip).
     /// Files not in the cache fall back to <see cref="IsFileWriteComplete"/>.
     /// <para>Callers should supply a <see cref="FileInfo"/> obtained from <see cref="DirectoryInfo.EnumerateFiles(string,EnumerationOptions)"/>
-    /// so that <see cref="FileInfo.Length"/> and <see cref="FileInfo.LastWriteTimeUtc"/> are already
+    /// so that <see cref="FileInfo.Length"/> and <see cref="FileSystemInfo.LastWriteTimeUtc"/> are already
     /// populated from the directory listing and do not trigger additional I/O.</para>
     /// </summary>
     internal static bool IsFileReadyForImport(FileInfo fi)
@@ -372,7 +372,7 @@ internal static partial class MediaImporter
     }
 
     /// <summary>
-    /// Walks the library folders and builds a fingerprint index so <see cref="IsAlreadyInLibrary"/> can detect
+    /// Walks the library folders and builds a fingerprint index so <see cref="IsAlreadyInLibrary(FileInfo)"/> can detect
     /// files that were previously imported (regardless of the name they were imported under).
     /// Uses a persisted cache so only new or modified library files are fingerprinted; deleted files are pruned.
     /// If called concurrently (e.g. from both the sync loop and a UI scan), the second caller waits for the
@@ -408,7 +408,7 @@ internal static partial class MediaImporter
                 return false;
             }
 
-            LogManager.Instance.LogMessage($"Building library index across {libraryPaths.Length} folder(s)", LogLevel.Info, Subsystem.MediaManager);
+            LogManager.Instance.LogMessage($"Building library index across {AppConstants.Pluralize(libraryPaths.Length, "folder")}", LogLevel.Info, Subsystem.MediaManager);
             LoadLibraryCache();
 
             var sw = System.Diagnostics.Stopwatch.StartNew();
@@ -465,11 +465,19 @@ internal static partial class MediaImporter
     }
 
     // Loads the library cache from disk. Initialises an empty cache on first run or if the file is corrupt.
+    // The whole check-and-assign runs INSIDE the lock, matching the discipline every other access in
+    // this file follows: ClearAllCaches nulls the field and deletes the file on disk, so a load that
+    // read the field outside the lock could finish afterwards and assign the dictionary it had just
+    // read from the now-deleted file - silently undoing the user's Clear Cache. Holding the lock
+    // across the read costs one file read, and only on a cold cache (first run, or right after a clear).
     private static void LoadLibraryCache()
     {
-        if (_libraryCache is not null) return;
-        _libraryCache = LoadCacheFromDisk(LibraryCacheFileName, "Library cache");
-        _libraryCacheDirty = false;
+        lock (_libraryLock)
+        {
+            if (_libraryCache is not null) return;
+            _libraryCache = LoadCacheFromDisk(LibraryCacheFileName, "Library cache");
+            _libraryCacheDirty = false;
+        }
     }
 
     // Loads a JSON-persisted cache from disk, returning an empty cache on missing file or corruption.
@@ -486,7 +494,7 @@ internal static partial class MediaImporter
                 return new(StringComparer.OrdinalIgnoreCase);
             }
 
-            var json = File.ReadAllText(filePath);
+            var json = AppConstants.ReadAllTextShared(filePath);
             var entries = JsonSerializer.Deserialize<Dictionary<string, CacheEntry>>(json);
             var cache = entries is not null
                 ? new Dictionary<string, CacheEntry>(entries, StringComparer.OrdinalIgnoreCase)
@@ -763,7 +771,7 @@ internal static partial class MediaImporter
     /// <summary>Returns <see langword="true"/> if a file with the same fingerprint already exists somewhere in the library.</summary>
     /// <param name="fi">
     /// Prefer passing a <see cref="FileInfo"/> obtained from a directory enumeration so that
-    /// <see cref="FileInfo.Length"/> and <see cref="FileInfo.LastWriteTimeUtc"/> are already populated
+    /// <see cref="FileInfo.Length"/> and <see cref="FileSystemInfo.LastWriteTimeUtc"/> are already populated
     /// and no additional SMB stat call is required.
     /// </param>
     internal static bool IsAlreadyInLibrary(FileInfo fi)
@@ -868,9 +876,13 @@ internal static partial class MediaImporter
         Interlocked.Exchange(ref _sourceCachedCount, 0);
         Interlocked.Exchange(ref _sourceComputedCount, 0);
 
-        if (_sourceCache is not null) return;
-        _sourceCache = LoadCacheFromDisk(SourceCacheFileName, "Source cache");
-        _sourceCacheDirty = false;
+        // Check-and-assign inside the lock - see LoadLibraryCache for why.
+        lock (_sourceCacheLock)
+        {
+            if (_sourceCache is not null) return;
+            _sourceCache = LoadCacheFromDisk(SourceCacheFileName, "Source cache");
+            _sourceCacheDirty = false;
+        }
     }
 
     /// <summary>

@@ -125,7 +125,7 @@ internal static class NicotinePluginInstaller
         if (dataFolder is null)
         {
             return new NicotinePluginActionResult(false,
-                "Nicotine+'s data folder was not found.\r\n\r\n" +
+                "Nicotine+'s data folder was not found.\n\n" +
                 "Start Nicotine+ once so it creates its data folder, or set the Executable path " +
                 "above if this is a portable installation.");
         }
@@ -164,7 +164,7 @@ internal static class NicotinePluginInstaller
         catch (Exception ex)
         {
             LogManager.Instance.LogMessage($"Failed to install the Nicotine+ bridge plugin: {ex.Message}", LogLevel.Error);
-            return new NicotinePluginActionResult(false, $"Could not write to {pluginFolder}.\r\n\r\n{ex.Message}");
+            return new NicotinePluginActionResult(false, $"Could not write to {pluginFolder}.\n\n{ex.Message}");
         }
     }
 
@@ -210,14 +210,14 @@ internal static class NicotinePluginInstaller
                 sourcePath = fallbackPath;
             }
 
-            string[] lines = File.ReadAllLines(sourcePath);
+            string[] lines = AppConstants.ReadAllLinesShared(sourcePath);
 
             if (!TryRewriteEnabledPlugins(lines, out string[] updated, out string reason))
             {
                 LogManager.Instance.LogMessage(
                     $"Not enabling the Nicotine+ bridge plugin automatically: {reason}", LogLevel.Warn);
                 return new NicotinePluginActionResult(false,
-                    $"Nicotine+'s configuration could not be updated safely ({reason}).\r\n\r\n" +
+                    $"Nicotine+'s configuration could not be updated safely ({reason}).\n\n" +
                     "Nothing was changed. Enable the plugin from Preferences → Plugins inside Nicotine+ instead.");
             }
 
@@ -231,7 +231,10 @@ internal static class NicotinePluginInstaller
             string backupPath = Path.Combine(dataFolder, ConfigFolderName, ConfigBackupFileName);
             File.Copy(sourcePath, backupPath, overwrite: true);
 
-            WriteAtomically(configPath, updated);
+            // The only atomic write outside our own data folder, so the startup sweep cannot reach
+            // it. Clear leftovers here instead, while Nicotine+ is known to be closed.
+            AppConstants.SweepOrphanedTempFiles(Path.GetDirectoryName(configPath) ?? string.Empty);
+            AppConstants.WriteAtomic(configPath, updated);
 
             LogManager.Instance.LogMessage(
                 $"Enabled the Nicotine+ bridge plugin in {configPath} (previous copy saved as {ConfigBackupFileName})",
@@ -243,7 +246,7 @@ internal static class NicotinePluginInstaller
         {
             LogManager.Instance.LogMessage($"Failed to enable the Nicotine+ bridge plugin: {ex.Message}", LogLevel.Error);
             return new NicotinePluginActionResult(false,
-                $"Could not update Nicotine+'s configuration.\r\n\r\n{ex.Message}\r\n\r\n" +
+                $"Could not update Nicotine+'s configuration.\n\n{ex.Message}\n\n" +
                 "Enable the plugin from Preferences → Plugins inside Nicotine+ instead.");
         }
     }
@@ -263,7 +266,7 @@ internal static class NicotinePluginInstaller
                 if (!File.Exists(configPath)) return null;
             }
 
-            foreach (var (section, key, value) in ReadSettings(File.ReadAllLines(configPath)))
+            foreach (var (section, key, value) in ReadSettings(AppConstants.ReadAllLinesShared(configPath)))
             {
                 if (section != PluginsSection || key != EnabledKey) continue;
                 if (!TryParsePythonStringList(value, out var names)) return null;
@@ -397,26 +400,6 @@ internal static class NicotinePluginInstaller
 
         updated = [.. result];
         return true;
-    }
-
-    private static void WriteAtomically(string path, string[] lines)
-    {
-        string folder = Path.GetDirectoryName(path)!;
-        Directory.CreateDirectory(folder);
-        string tempPath = Path.Combine(folder, $".qbpw-{Guid.NewGuid():N}.tmp");
-
-        try
-        {
-            // Nicotine+ writes its config as UTF-8 with no byte-order mark; a BOM would end up
-            // parsed as part of the first key name.
-            File.WriteAllLines(tempPath, lines, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
-            File.Move(tempPath, path, overwrite: true);
-        }
-        catch
-        {
-            try { File.Delete(tempPath); } catch (IOException) { /* best effort */ }
-            throw;
-        }
     }
 
     // ------------------------------------------------------------ python values
@@ -558,7 +541,7 @@ internal static class NicotinePluginInstaller
         {
             string infoPath = Path.Combine(pluginFolder, PluginInfoFileName);
             if (!File.Exists(infoPath)) return null;
-            return ReadVersion(File.ReadAllText(infoPath)) ?? string.Empty;
+            return ReadVersion(AppConstants.ReadAllTextShared(infoPath)) ?? string.Empty;
         }
         catch (Exception ex)
         {

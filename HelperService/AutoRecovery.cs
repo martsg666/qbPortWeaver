@@ -24,7 +24,7 @@ internal static partial class AutoRecovery
     private const string NetshInterface = "interface";
 
     // P/Invoke - used by KillServiceProcess to resolve a service's host process ID
-    private const int ScStatusProcessInfo = 0; // SC_STATUS_PROCESS_INFO - only valid infoLevel for QueryServiceStatusEx
+    private const int SC_STATUS_PROCESS_INFO = 0; // the only valid infoLevel for QueryServiceStatusEx
 
     [LibraryImport("advapi32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
@@ -129,7 +129,7 @@ internal static partial class AutoRecovery
     }
 
     // Stops a service cleanly via the SCM, with escalating force if it doesn't respond.
-    // Escalation: SCM stop → wait → KillServiceProcess (3-stage: Process.Kill → taskkill /F /T → retry).
+    // Escalation: SCM stop -> wait -> KillServiceProcess (3-stage: Process.Kill -> taskkill /F /T -> retry).
     // ServiceController.WaitForStatus has no async overload - wrap in Task.Run to avoid
     // blocking the BackgroundService thread pool thread.
     //
@@ -250,7 +250,7 @@ internal static partial class AutoRecovery
                 // it for the duration of the call so the handle stays valid even if the
                 // ServiceController is finalized concurrently. Avoids DangerousGetHandle.
                 if (!QueryServiceStatusEx(sc.ServiceHandle,
-                        ScStatusProcessInfo, buf, bufSize, out _))
+                        SC_STATUS_PROCESS_INFO, buf, bufSize, out _))
                     return;
 
                 int pid = Marshal.PtrToStructure<ServiceStatusProcess>(buf).dwProcessId;

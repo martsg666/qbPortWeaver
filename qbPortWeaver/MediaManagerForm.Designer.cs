@@ -285,14 +285,14 @@ partial class MediaManagerForm
         lblLegendUncertain.Size      = new Size(130, 20);
         lblLegendUncertain.TextAlign = ContentAlignment.MiddleRight;
         lblLegendUncertain.TabIndex  = 9;
-        lblLegendUncertain.Text      = "\u25cf Uncertain TMDB";
+        lblLegendUncertain.Text      = "● Uncertain TMDB";
         lblLegendUnmatched.Anchor    = AnchorStyles.Bottom | AnchorStyles.Right;
         lblLegendUnmatched.Location  = new Point(572, 527);
         lblLegendUnmatched.Name      = "lblLegendUnmatched";
         lblLegendUnmatched.Size      = new Size(120, 20);
         lblLegendUnmatched.TextAlign = ContentAlignment.MiddleRight;
         lblLegendUnmatched.TabIndex  = 10;
-        lblLegendUnmatched.Text      = "\u25cf No TMDB match";
+        lblLegendUnmatched.Text      = "● No TMDB match";
         prgScan.Anchor   = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
         prgScan.Location = new Point(8, 310);
         prgScan.Name     = "prgScan";

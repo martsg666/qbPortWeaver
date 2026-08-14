@@ -6,9 +6,16 @@ public partial class SettingsForm : Form
     // Set to true when the user clicks Save; MainForm reads this after the dialog closes to decide whether to trigger an immediate sync.
     internal bool SettingsSaved { get; private set; }
 
-    private const string DiscoveringAdaptersPlaceholder = "Discovering adapters\u2026";
+    private const string DiscoveringAdaptersPlaceholder = "Discovering adapters…";
     private const string NoAdaptersFoundPlaceholder = "No NAT-PMP adapters found";
     private const string DefaultPortTooltip = "Port to apply when the VPN is disconnected (0 = do nothing when disconnected)";
+
+    // How often the Nicotine+ plugin status line re-checks itself while the dialog is open. What it
+    // reports is external state that moves without the user touching this form: the bridge plugin
+    // writes its connection file when Nicotine+ starts and removes it again on shutdown, so a status
+    // read once at load goes stale in both directions - including a green "Ready on ..." for a
+    // Nicotine+ that has since been closed. The check is local file I/O only, never a network call.
+    private const int NicotinePluginStatusPollMs = 2000;
 
     // Cancels in-flight async work (NAT-PMP adapter discovery, client connection tests) when the
     // form closes so probes do not run to completion in the background after the dialog is dismissed.
@@ -20,6 +27,12 @@ public partial class SettingsForm : Form
     private sealed record ClientControls(GroupBox Group, TextBox Url, TextBox ProcessName, TextBox ExePath);
 
     private readonly Dictionary<string, ClientControls> _clientControls;
+
+    private System.Windows.Forms.Timer? _nicotinePluginStatusTimer;
+
+    // What the plugin status line is currently showing, so a poll that finds no change leaves the
+    // label and the install button untouched rather than reassigning identical values every tick.
+    private (NicotinePluginState State, string Summary)? _shownNicotinePluginStatus;
 
     public SettingsForm()
     {
@@ -74,10 +87,17 @@ public partial class SettingsForm : Form
         lblRecoveryCycles.Top   = nudRecoveryCycles.Top + (nudRecoveryCycles.Height - lblRecoveryCycles.Height) / 2;
         SetupTooltips();
         LoadSettings();
+
+        _nicotinePluginStatusTimer = new System.Windows.Forms.Timer { Interval = NicotinePluginStatusPollMs };
+        _nicotinePluginStatusTimer.Tick += nicotinePluginStatusTimer_Tick;
+        _nicotinePluginStatusTimer.Start();
     }
 
     protected override void OnFormClosed(FormClosedEventArgs e)
     {
+        _nicotinePluginStatusTimer?.Stop();
+        _nicotinePluginStatusTimer?.Dispose();
+        _nicotinePluginStatusTimer = null;
         _formCloseCts.Cancel();
         _formCloseCts.Dispose();
         base.OnFormClosed(e);
@@ -93,7 +113,7 @@ public partial class SettingsForm : Form
         toolTip.SetToolTip(cboClient, "Client to control (qBittorrent, Transmission, Deluge, or Nicotine+)");
         toolTip.SetToolTip(btnDetectClient, "Detect a running or installed client and fill in its selection and process details");
         toolTip.SetToolTip(btnTestRecovery, "Run the recovery action now to verify it works - restarts the VPN service (or cycles the adapter), so the VPN connection drops briefly");
-        toolTip.SetToolTip(txtQBittorrentURL, "URL for the qBittorrent Web UI (e.g. http://127.0.0.1:8080). The Web UI must be enabled in qBittorrent under Tools > Options > Web UI.");
+        toolTip.SetToolTip(txtQBittorrentURL, "URL for the qBittorrent Web UI (e.g. http://127.0.0.1:8080). The Web UI must be enabled in qBittorrent under Tools → Options → Web UI.");
         toolTip.SetToolTip(txtQBittorrentUserName, "Username for the qBittorrent Web UI");
         toolTip.SetToolTip(txtQBittorrentPassword, "Password for the qBittorrent Web UI");
         toolTip.SetToolTip(txtQBittorrentExePath, "Path to the qBittorrent executable, used to start or restart the application");
@@ -103,13 +123,13 @@ public partial class SettingsForm : Form
         toolTip.SetToolTip(chkRestartQBittorrent, "Restart qBittorrent after updating the port - recommended for the change to take effect immediately");
         toolTip.SetToolTip(chkForceStartQBittorrent, "Automatically launch qBittorrent if it is not already running");
         toolTip.SetToolTip(nudQBittorrentDefaultPort, DefaultPortTooltip);
-        toolTip.SetToolTip(chkWarnOnInterfaceMismatch, "Show a warning when qBittorrent's network interface does not match the configured VPN provider");
-        toolTip.SetToolTip(chkRestartOnDisconnect, "Automatically restart qBittorrent when its connection status becomes disconnected");
-        toolTip.SetToolTip(chkFixInterfaceBinding,
+        toolTip.SetToolTip(chkQBittorrentWarnOnInterfaceMismatch, "Show a warning when qBittorrent's network interface does not match the configured VPN provider");
+        toolTip.SetToolTip(chkQBittorrentRestartOnDisconnect, "Automatically restart qBittorrent when its connection status becomes disconnected");
+        toolTip.SetToolTip(chkQBittorrentFixInterfaceBinding,
             "qBittorrent stores its network interface as an internal identifier that stops resolving when a VPN " +
             "recreates its adapter. It then listens on nothing while still showing the right adapter name, and a " +
             "restart cannot fix it. Re-applies the binding automatically when that happens.");
-        toolTip.SetToolTip(txtTransmissionURL, "URL for the Transmission RPC endpoint (e.g. http://127.0.0.1:9091). Remote access must be enabled in Transmission Preferences > Remote (not required when running as a service).");
+        toolTip.SetToolTip(txtTransmissionURL, "URL for the Transmission RPC endpoint (e.g. http://127.0.0.1:9091). Remote access must be enabled in Transmission Preferences → Remote (not required when running as a service).");
         toolTip.SetToolTip(txtTransmissionUserName, "Username for the Transmission RPC (leave empty if authentication is disabled)");
         toolTip.SetToolTip(txtTransmissionPassword, "Password for the Transmission RPC (leave empty if authentication is disabled)");
         toolTip.SetToolTip(txtTransmissionExePath, "Path to the Transmission executable, used to start or restart the application when running as a user-space process");
@@ -211,14 +231,14 @@ public partial class SettingsForm : Form
         txtQBittorrentExePath.Text = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyQBittorrentExePath);
         txtQBittorrentProcessName.Text = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyQBittorrentProcessName);
 
-        chkRestartQBittorrent.Checked = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyRestartQBittorrent);
-        chkForceStartQBittorrent.Checked = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyForceStartQBittorrent);
-        chkWarnOnInterfaceMismatch.Checked = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyWarnOnInterfaceMismatch);
-        chkRestartOnDisconnect.Checked = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyRestartOnDisconnect);
-        chkFixInterfaceBinding.Checked = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyFixInterfaceBinding);
+        chkRestartQBittorrent.Checked = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyQBittorrentRestart);
+        chkForceStartQBittorrent.Checked = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyQBittorrentForceStart);
+        chkQBittorrentWarnOnInterfaceMismatch.Checked = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyQBittorrentWarnOnInterfaceMismatch);
+        chkQBittorrentRestartOnDisconnect.Checked = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyQBittorrentRestartOnDisconnect);
+        chkQBittorrentFixInterfaceBinding.Checked = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyQBittorrentFixInterfaceBinding);
 
         nudQBittorrentDefaultPort.Value = Math.Clamp(
-            RegistrySettingsManager.GetInt(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyDefaultPort),
+            RegistrySettingsManager.GetInt(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyQBittorrentDefaultPort),
             (int)nudQBittorrentDefaultPort.Minimum, (int)nudQBittorrentDefaultPort.Maximum);
 
         // Transmission
@@ -227,10 +247,10 @@ public partial class SettingsForm : Form
         txtTransmissionPassword.Text = RegistrySettingsManager.GetTransmissionPassword();
         txtTransmissionExePath.Text = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionTransmission, RegistrySettingsManager.KeyTransmissionExePath);
         txtTransmissionProcessName.Text = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionTransmission, RegistrySettingsManager.KeyTransmissionProcessName);
-        chkRestartTransmission.Checked = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionTransmission, RegistrySettingsManager.KeyRestartTransmission);
-        chkForceStartTransmission.Checked = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionTransmission, RegistrySettingsManager.KeyForceStartTransmission);
+        chkRestartTransmission.Checked = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionTransmission, RegistrySettingsManager.KeyTransmissionRestart);
+        chkForceStartTransmission.Checked = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionTransmission, RegistrySettingsManager.KeyTransmissionForceStart);
         nudTransmissionDefaultPort.Value = Math.Clamp(
-            RegistrySettingsManager.GetInt(RegistrySettingsManager.SectionTransmission, RegistrySettingsManager.KeyDefaultPort),
+            RegistrySettingsManager.GetInt(RegistrySettingsManager.SectionTransmission, RegistrySettingsManager.KeyTransmissionDefaultPort),
             (int)nudTransmissionDefaultPort.Minimum, (int)nudTransmissionDefaultPort.Maximum);
 
         // Deluge
@@ -238,10 +258,10 @@ public partial class SettingsForm : Form
         txtDelugePassword.Text = RegistrySettingsManager.GetDelugePassword();
         txtDelugeExePath.Text = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionDeluge, RegistrySettingsManager.KeyDelugeExePath);
         txtDelugeProcessName.Text = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionDeluge, RegistrySettingsManager.KeyDelugeProcessName);
-        chkRestartDeluge.Checked = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionDeluge, RegistrySettingsManager.KeyRestartDeluge);
-        chkForceStartDeluge.Checked = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionDeluge, RegistrySettingsManager.KeyForceStartDeluge);
+        chkRestartDeluge.Checked = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionDeluge, RegistrySettingsManager.KeyDelugeRestart);
+        chkForceStartDeluge.Checked = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionDeluge, RegistrySettingsManager.KeyDelugeForceStart);
         nudDelugeDefaultPort.Value = Math.Clamp(
-            RegistrySettingsManager.GetInt(RegistrySettingsManager.SectionDeluge, RegistrySettingsManager.KeyDefaultPort),
+            RegistrySettingsManager.GetInt(RegistrySettingsManager.SectionDeluge, RegistrySettingsManager.KeyDelugeDefaultPort),
             (int)nudDelugeDefaultPort.Minimum, (int)nudDelugeDefaultPort.Maximum);
 
         // Nicotine+
@@ -249,10 +269,10 @@ public partial class SettingsForm : Form
         txtNicotineToken.Text = RegistrySettingsManager.GetNicotineToken();
         txtNicotineExePath.Text = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionNicotine, RegistrySettingsManager.KeyNicotineExePath);
         txtNicotineProcessName.Text = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionNicotine, RegistrySettingsManager.KeyNicotineProcessName);
-        chkForceStartNicotine.Checked = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionNicotine, RegistrySettingsManager.KeyForceStartNicotine);
-        chkNicotineWarnOnInterfaceMismatch.Checked = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionNicotine, RegistrySettingsManager.KeyWarnOnInterfaceMismatch);
+        chkForceStartNicotine.Checked = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionNicotine, RegistrySettingsManager.KeyNicotineForceStart);
+        chkNicotineWarnOnInterfaceMismatch.Checked = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionNicotine, RegistrySettingsManager.KeyNicotineWarnOnInterfaceMismatch);
         nudNicotineDefaultPort.Value = Math.Clamp(
-            RegistrySettingsManager.GetInt(RegistrySettingsManager.SectionNicotine, RegistrySettingsManager.KeyDefaultPort),
+            RegistrySettingsManager.GetInt(RegistrySettingsManager.SectionNicotine, RegistrySettingsManager.KeyNicotineDefaultPort),
             (int)nudNicotineDefaultPort.Minimum, (int)nudNicotineDefaultPort.Maximum);
 
         RefreshNicotinePluginStatus();
@@ -301,12 +321,12 @@ public partial class SettingsForm : Form
         RegistrySettingsManager.SetQBittorrentPassword(txtQBittorrentPassword.Text);
         RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyQBittorrentExePath, txtQBittorrentExePath.Text.Trim());
         RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyQBittorrentProcessName, txtQBittorrentProcessName.Text.Trim());
-        RegistrySettingsManager.SetBool(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyRestartQBittorrent, chkRestartQBittorrent.Checked);
-        RegistrySettingsManager.SetBool(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyForceStartQBittorrent, chkForceStartQBittorrent.Checked);
-        RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyDefaultPort, ((int)nudQBittorrentDefaultPort.Value).ToString());
-        RegistrySettingsManager.SetBool(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyWarnOnInterfaceMismatch, chkWarnOnInterfaceMismatch.Checked);
-        RegistrySettingsManager.SetBool(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyRestartOnDisconnect, chkRestartOnDisconnect.Checked);
-        RegistrySettingsManager.SetBool(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyFixInterfaceBinding, chkFixInterfaceBinding.Checked);
+        RegistrySettingsManager.SetBool(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyQBittorrentRestart, chkRestartQBittorrent.Checked);
+        RegistrySettingsManager.SetBool(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyQBittorrentForceStart, chkForceStartQBittorrent.Checked);
+        RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyQBittorrentDefaultPort, ((int)nudQBittorrentDefaultPort.Value).ToString());
+        RegistrySettingsManager.SetBool(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyQBittorrentWarnOnInterfaceMismatch, chkQBittorrentWarnOnInterfaceMismatch.Checked);
+        RegistrySettingsManager.SetBool(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyQBittorrentRestartOnDisconnect, chkQBittorrentRestartOnDisconnect.Checked);
+        RegistrySettingsManager.SetBool(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyQBittorrentFixInterfaceBinding, chkQBittorrentFixInterfaceBinding.Checked);
 
         // Transmission
         RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionTransmission, RegistrySettingsManager.KeyTransmissionUrl, txtTransmissionURL.Text.Trim());
@@ -314,27 +334,27 @@ public partial class SettingsForm : Form
         RegistrySettingsManager.SetTransmissionPassword(txtTransmissionPassword.Text);
         RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionTransmission, RegistrySettingsManager.KeyTransmissionExePath, txtTransmissionExePath.Text.Trim());
         RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionTransmission, RegistrySettingsManager.KeyTransmissionProcessName, txtTransmissionProcessName.Text.Trim());
-        RegistrySettingsManager.SetBool(RegistrySettingsManager.SectionTransmission, RegistrySettingsManager.KeyRestartTransmission, chkRestartTransmission.Checked);
-        RegistrySettingsManager.SetBool(RegistrySettingsManager.SectionTransmission, RegistrySettingsManager.KeyForceStartTransmission, chkForceStartTransmission.Checked);
-        RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionTransmission, RegistrySettingsManager.KeyDefaultPort, ((int)nudTransmissionDefaultPort.Value).ToString());
+        RegistrySettingsManager.SetBool(RegistrySettingsManager.SectionTransmission, RegistrySettingsManager.KeyTransmissionRestart, chkRestartTransmission.Checked);
+        RegistrySettingsManager.SetBool(RegistrySettingsManager.SectionTransmission, RegistrySettingsManager.KeyTransmissionForceStart, chkForceStartTransmission.Checked);
+        RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionTransmission, RegistrySettingsManager.KeyTransmissionDefaultPort, ((int)nudTransmissionDefaultPort.Value).ToString());
 
         // Deluge
         RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionDeluge, RegistrySettingsManager.KeyDelugeUrl, txtDelugeURL.Text.Trim());
         RegistrySettingsManager.SetDelugePassword(txtDelugePassword.Text);
         RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionDeluge, RegistrySettingsManager.KeyDelugeExePath, txtDelugeExePath.Text.Trim());
         RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionDeluge, RegistrySettingsManager.KeyDelugeProcessName, txtDelugeProcessName.Text.Trim());
-        RegistrySettingsManager.SetBool(RegistrySettingsManager.SectionDeluge, RegistrySettingsManager.KeyRestartDeluge, chkRestartDeluge.Checked);
-        RegistrySettingsManager.SetBool(RegistrySettingsManager.SectionDeluge, RegistrySettingsManager.KeyForceStartDeluge, chkForceStartDeluge.Checked);
-        RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionDeluge, RegistrySettingsManager.KeyDefaultPort, ((int)nudDelugeDefaultPort.Value).ToString());
+        RegistrySettingsManager.SetBool(RegistrySettingsManager.SectionDeluge, RegistrySettingsManager.KeyDelugeRestart, chkRestartDeluge.Checked);
+        RegistrySettingsManager.SetBool(RegistrySettingsManager.SectionDeluge, RegistrySettingsManager.KeyDelugeForceStart, chkForceStartDeluge.Checked);
+        RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionDeluge, RegistrySettingsManager.KeyDelugeDefaultPort, ((int)nudDelugeDefaultPort.Value).ToString());
 
         // Nicotine+ (the token is stored untrimmed, like the other clients' secrets)
         RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionNicotine, RegistrySettingsManager.KeyNicotineUrl, txtNicotineURL.Text.Trim());
         RegistrySettingsManager.SetNicotineToken(txtNicotineToken.Text);
         RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionNicotine, RegistrySettingsManager.KeyNicotineExePath, txtNicotineExePath.Text.Trim());
         RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionNicotine, RegistrySettingsManager.KeyNicotineProcessName, txtNicotineProcessName.Text.Trim());
-        RegistrySettingsManager.SetBool(RegistrySettingsManager.SectionNicotine, RegistrySettingsManager.KeyForceStartNicotine, chkForceStartNicotine.Checked);
-        RegistrySettingsManager.SetBool(RegistrySettingsManager.SectionNicotine, RegistrySettingsManager.KeyWarnOnInterfaceMismatch, chkNicotineWarnOnInterfaceMismatch.Checked);
-        RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionNicotine, RegistrySettingsManager.KeyDefaultPort, ((int)nudNicotineDefaultPort.Value).ToString());
+        RegistrySettingsManager.SetBool(RegistrySettingsManager.SectionNicotine, RegistrySettingsManager.KeyNicotineForceStart, chkForceStartNicotine.Checked);
+        RegistrySettingsManager.SetBool(RegistrySettingsManager.SectionNicotine, RegistrySettingsManager.KeyNicotineWarnOnInterfaceMismatch, chkNicotineWarnOnInterfaceMismatch.Checked);
+        RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionNicotine, RegistrySettingsManager.KeyNicotineDefaultPort, ((int)nudNicotineDefaultPort.Value).ToString());
 
         // Extra
         RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionExtra, RegistrySettingsManager.KeyColorTheme, cboColorTheme.SelectedItem?.ToString() ?? RegistrySettingsManager.ColorThemeSystem);
@@ -349,7 +369,7 @@ public partial class SettingsForm : Form
             cboNatPmpAdapter.SelectedItem?.ToString() == NoAdaptersFoundPlaceholder)
         {
             ThemedMessageBox.Show(
-                "No NAT-PMP capable adapters were found.\n\nEnsure the adapter is up and its gateway is responding to NAT-PMP, then click \u21bb to retry.",
+                "No NAT-PMP capable adapters were found.\n\nEnsure the adapter is up and its gateway is responding to NAT-PMP, then click ⟳ to retry.",
                 AppIdentity.AppName,
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Warning);
@@ -630,8 +650,8 @@ public partial class SettingsForm : Form
         {
             var status = NicotinePluginInstaller.GetStatus(txtNicotineExePath.Text.Trim());
             ThemedMessageBox.Show(
-                "No connection details were found.\r\n\r\n" + DescribeNextStep(status) +
-                "\r\n\r\nIf Nicotine+ runs with a custom data folder, run /qbpw-connection-file inside " +
+                "No connection details were found.\n\n" + DescribeNextStep(status) +
+                "\n\nIf Nicotine+ runs with a custom data folder, run /qbpw-connection-file inside " +
                 "Nicotine+ and enter the address and token here by hand.",
                 AppIdentity.AppName, MessageBoxButtons.OK, MessageBoxIcon.Information);
             RefreshNicotinePluginStatus();
@@ -643,7 +663,7 @@ public partial class SettingsForm : Form
         RefreshNicotinePluginStatus();
 
         ThemedMessageBox.Show(
-            $"Found the bridge plugin on {handshake.Url}.\r\n\r\nThe address and token have been filled in. " +
+            $"Found the bridge plugin on {handshake.Url}.\n\nThe address and token have been filled in. " +
             "Use Test to confirm, then save.",
             AppIdentity.AppName, MessageBoxButtons.OK, MessageBoxIcon.Information);
     }
@@ -668,26 +688,26 @@ public partial class SettingsForm : Form
             // Editing Nicotine+'s config now would be pointless: it rewrites the whole file from
             // memory when it exits, discarding anything changed underneath it.
             ThemedMessageBox.Show(
-                $"Plugin installed to:\r\n{install.Message}\r\n\r\n" +
+                $"Plugin installed to:\n{install.Message}\n\n" +
                 "Nicotine+ is running, so enable it there: open Preferences → Plugins, tick " +
-                "\"qbPortWeaver Bridge\", and apply. No restart is needed.\r\n\r\n" +
-                "Then click ⟳ here to pick up the connection details.\r\n\r\n" +
-                "Alternatively, close Nicotine+ and click Install plugin again to have it enabled automatically.",
+                "\"qbPortWeaver Bridge\", and apply. No restart is needed.\n\n" +
+                "Then click ⟳ here to pick up the connection details.\n\n" +
+                "Alternatively, close Nicotine+ and click Install Plugin again to have it enabled automatically.",
                 AppIdentity.AppName, MessageBoxButtons.OK, MessageBoxIcon.Information);
             RefreshNicotinePluginStatus();
             return;
         }
 
         var choice = ThemedMessageBox.Show(
-            $"Plugin installed to:\r\n{install.Message}\r\n\r\n" +
-            "Nicotine+ is closed, so it can be enabled for you now. Enable it?\r\n\r\n" +
+            $"Plugin installed to:\n{install.Message}\n\n" +
+            "Nicotine+ is closed, so it can be enabled for you now. Enable it?\n\n" +
             "Your current Nicotine+ configuration will be backed up first, and only the plugin list is changed.",
             AppIdentity.AppName, MessageBoxButtons.YesNo, MessageBoxIcon.Question);
 
         if (choice != DialogResult.Yes)
         {
             ThemedMessageBox.Show(
-                "Plugin installed but not enabled.\r\n\r\nEnable \"qbPortWeaver Bridge\" in Nicotine+ under " +
+                "Plugin installed but not enabled.\n\nEnable \"qbPortWeaver Bridge\" in Nicotine+ under " +
                 "Preferences → Plugins, then click ⟳ here.",
                 AppIdentity.AppName, MessageBoxButtons.OK, MessageBoxIcon.Information);
             RefreshNicotinePluginStatus();
@@ -704,17 +724,25 @@ public partial class SettingsForm : Form
         }
 
         ThemedMessageBox.Show(
-            "The plugin is installed and enabled.\r\n\r\nStart Nicotine+, then click ⟳ here to read its " +
+            "The plugin is installed and enabled.\n\nStart Nicotine+, then click ⟳ here to read its " +
             "connection details.",
             AppIdentity.AppName, MessageBoxButtons.OK, MessageBoxIcon.Information);
     }
 
     // Uses the in-form process name rather than the saved one, so a user who has just corrected it
-    // gets the right answer without saving first. Matches ManagedClientBase.IsRunning.
+    // gets the right answer without saving first.
+    //
+    // Deliberately unlike ManagedClientBase.IsRunning, which reports "not running" for an empty
+    // process name: a blank field here falls back to the registry's default rather than answering
+    // no. The answer gates whether Settings offers to enable the plugin by editing Nicotine+'s
+    // config, which is only safe while Nicotine+ is closed - a wrong "not running" would edit a
+    // config that a running Nicotine+ then rewrites from memory on exit, discarding the change.
+    // So the fallback is a safety measure, not a convenience.
     private bool IsNicotineRunning()
     {
         string processName = txtNicotineProcessName.Text.Trim();
-        if (processName.Length == 0) processName = "Nicotine+";
+        if (processName.Length == 0)
+            processName = ClientRegistry.Resolve(RegistrySettingsManager.ClientNameNicotine).ProcessNames[0];
 
         try
         {
@@ -728,11 +756,28 @@ public partial class SettingsForm : Form
         }
     }
 
+    // The status the user is most likely to be waiting on is the one this form cannot cause: they
+    // leave Settings open, enable the plugin inside Nicotine+ or start it, and expect the line to
+    // catch up. Gated on the selected client rather than on grpNicotine.Visible so the value is
+    // already current when the Client tab is brought forward, instead of correcting a tick later.
+    private void nicotinePluginStatusTimer_Tick(object? sender, EventArgs e)
+    {
+        if (IsDisposed) return;
+        if (SelectedClient.Name != RegistrySettingsManager.ClientNameNicotine) return;
+        RefreshNicotinePluginStatus();
+    }
+
     // Describes the plugin's state on the Nicotine+ group, from files alone - no network calls, so
-    // this is safe to call while loading the form and after every action that could change it.
+    // this is safe to call while loading the form, on a poll, and after every action that could
+    // change it.
     private void RefreshNicotinePluginStatus()
     {
         var status = NicotinePluginInstaller.GetStatus(txtNicotineExePath.Text.Trim());
+
+        // Most polls find nothing has moved, so leave the controls alone unless they would change.
+        if (_shownNicotinePluginStatus == (status.State, status.Summary)) return;
+        _shownNicotinePluginStatus = (status.State, status.Summary);
+
         lblNicotinePluginStatus.Text = status.Summary;
 
         // Same accents the Status panel uses for its values, and the same severity DiagnosticsService
@@ -747,10 +792,10 @@ public partial class SettingsForm : Form
 
         btnInstallNicotinePlugin.Text = status.State switch
         {
-            NicotinePluginState.NotInstalled => "Install plugin…",
-            NicotinePluginState.Outdated => "Update plugin…",
-            NicotinePluginState.NotEnabled => "Enable plugin…",
-            _ => "Reinstall plugin…"
+            NicotinePluginState.NotInstalled => "Install Plugin…",
+            NicotinePluginState.Outdated => "Update Plugin…",
+            NicotinePluginState.NotEnabled => "Enable Plugin…",
+            _ => "Reinstall Plugin…"
         };
     }
 
@@ -759,9 +804,9 @@ public partial class SettingsForm : Form
         NicotinePluginState.DataFolderMissing =>
             "Nicotine+'s data folder was not found. Start Nicotine+ once, or set the Executable path above for a portable installation.",
         NicotinePluginState.NotInstalled =>
-            "The bridge plugin is not installed. Click \"Install plugin\" first.",
+            "The bridge plugin is not installed. Click \"Install Plugin\" first.",
         NicotinePluginState.Outdated =>
-            "An older version of the bridge plugin is installed. Click \"Update plugin\".",
+            "An older version of the bridge plugin is installed. Click \"Update Plugin\".",
         NicotinePluginState.NotEnabled =>
             "The plugin is installed but not enabled. Enable \"qbPortWeaver Bridge\" in Nicotine+ under Preferences → Plugins.",
         _ => "The plugin is enabled but has not published its details yet. Start Nicotine+ and try again."
@@ -785,6 +830,12 @@ public partial class SettingsForm : Form
             return;
         }
 
+        // Bookended in the log like the manual port test and the recovery test. Without this the
+        // client's own failure entries - which the dialog tells the user to go and read - are
+        // indistinguishable from a sync-cycle failure, and the Error they raise leaves a tray alert
+        // count behind for something the user deliberately triggered.
+        LogManager.Instance.LogMessage($"{clientName} connection test requested", LogLevel.Info);
+
         // Constructed inside the try so nothing can throw past the catch to the async void caller,
         // or past the finally that restores the button and cursor. Disposed there instead of by a
         // `using`, which the try-scoping displaces.
@@ -799,6 +850,17 @@ public partial class SettingsForm : Form
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(_formCloseCts.Token);
             cts.CancelAfter(TimeSpan.FromSeconds(AppConstants.ClientTestTimeoutSeconds));
             var (listenPort, _) = await client.GetPreferencesAsync(cts.Token);
+
+            // Info on both outcomes: on failure the client has already logged the specific reason at
+            // Error just above, so repeating it at Error here would double-count the tray alert for
+            // one event. Logged before the IsDisposed check so a test whose dialog never appears
+            // (form closed as the result arrived) still leaves its outcome in the log.
+            LogManager.Instance.LogMessage(
+                listenPort is not null
+                    ? $"{clientName} connection test succeeded - listening port {listenPort}"
+                    : $"{clientName} connection test could not connect - see the entries above",
+                LogLevel.Info);
+
             if (IsDisposed) return;
             if (listenPort is not null)
                 ThemedMessageBox.Show(
@@ -811,10 +873,17 @@ public partial class SettingsForm : Form
         }
         catch (OperationCanceledException)
         {
+            // IsDisposed separates the two cancellation sources: a live form means the timeout
+            // fired and is worth reporting, a disposed one means the dialog was closed while the
+            // probe was in flight - not a fault, and nothing left to report it to.
             if (!IsDisposed)
+            {
+                LogManager.Instance.LogMessage(
+                    $"{clientName} connection test timed out after {AppConstants.ClientTestTimeoutSeconds}s", LogLevel.Warn);
                 ThemedMessageBox.Show(
                     $"The {clientName} connection test timed out after {AppConstants.ClientTestTimeoutSeconds} seconds.\n\nCheck the URL and that the client is running.",
                     AppIdentity.AppName, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
         }
         // The caller is an async void event handler, so an escape here would take the app down.
         // A failed connection test is never worth that.

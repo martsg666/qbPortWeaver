@@ -76,7 +76,7 @@ public static class StatusManager
         try
         {
             if (!File.Exists(filePath)) return null;
-            string json = File.ReadAllText(filePath);
+            string json = AppConstants.ReadAllTextShared(filePath);
             return JsonSerializer.Deserialize<StatusSnapshot>(json, _readOptions);
         }
         catch (Exception ex)

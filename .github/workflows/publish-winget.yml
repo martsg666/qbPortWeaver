@@ -112,7 +112,45 @@ jobs:
           "MSI_URL=https://github.com/$env:GITHUB_REPOSITORY/releases/download/$tag/$msi" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
       # -----------------------------------------------------------------------
-      # 4. Update the manifests with wingetcreate, writing them to disk instead of
+      # 4. Fast-forward the winget-pkgs fork to upstream. wingetcreate branches off the fork to
+      #    raise its PR and tries to sync it first, but gives up on a large gap - and the gap is
+      #    always large, because winget-pkgs takes thousands of commits between our releases
+      #    (6,513 behind at the 2.6.4 publish, which failed with "The forked repository could not
+      #    be synced with the upstream commits").
+      #
+      #    merge-upstream is a fast-forward only: it cannot discard fork-local commits, and this
+      #    fork never has any - it exists solely as wingetcreate's PR source. A conflict response
+      #    (409) therefore means someone committed to the fork directly, which is worth failing on
+      #    rather than papering over.
+      # -----------------------------------------------------------------------
+      - name: Sync winget-pkgs fork with upstream
+        if: steps.verify.outputs.ALREADY_PUBLISHED != 'True'
+        shell: pwsh
+        env:
+          WINGET_TOKEN: ${{ secrets.WINGET_TOKEN }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $fork = "$($env:GITHUB_REPOSITORY_OWNER)/winget-pkgs"
+          try {
+            $result = Invoke-RestMethod `
+              -Uri "https://api.github.com/repos/$fork/merge-upstream" `
+              -Method Post `
+              -Headers @{ 'User-Agent' = 'qbPortWeaver-CI'; 'Authorization' = "Bearer $env:WINGET_TOKEN"; 'Accept' = 'application/vnd.github+json' } `
+              -Body (@{ branch = 'master' } | ConvertTo-Json) `
+              -ContentType 'application/json'
+            Write-Host "Fork $fork synced: $($result.merge_type) - $($result.message)"
+          } catch {
+            $status = $_.Exception.Response?.StatusCode
+            # 409 = the fork has diverged and cannot fast-forward; a human needs to look.
+            # 403/422 may mean the token lacks the scope to merge upstream commits that touch
+            # .github/workflows (the `gh repo sync` CLI hits exactly that with a public_repo-only
+            # PAT). If that is the cause, either add the workflow scope to WINGET_TOKEN or press
+            # "Sync fork" on https://github.com/$fork by hand and re-run.
+            throw "Could not sync $fork with upstream (HTTP $status): $($_.Exception.Message)"
+          }
+
+      # -----------------------------------------------------------------------
+      # 5. Update the manifests with wingetcreate, writing them to disk instead of
       #    submitting straight away, so the locale metadata can be refreshed first.
       # -----------------------------------------------------------------------
       - name: Update manifests
@@ -133,7 +171,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       # -----------------------------------------------------------------------
-      # 5. Refresh the locale manifest. wingetcreate copies these fields forward
+      # 6. Refresh the locale manifest. wingetcreate copies these fields forward
       #    verbatim from the previous version, so without this they never track
       #    the app's actual feature set.
       # -----------------------------------------------------------------------
@@ -202,7 +240,7 @@ jobs:
           Write-Host "Refreshed locale metadata in $($localeFile.Name)."
 
       # -----------------------------------------------------------------------
-      # 6. Validate the edited manifests, then open the winget-pkgs PR
+      # 7. Open the winget-pkgs PR (wingetcreate validates the manifests as it submits)
       # -----------------------------------------------------------------------
       - name: Submit manifest update to winget-pkgs
         if: steps.verify.outputs.ALREADY_PUBLISHED != 'True'
@@ -215,9 +253,11 @@ jobs:
           $manifestDir = (Get-ChildItem -Path .\winget-out -Recurse -Filter '*.locale.en-US.yaml' |
                           Select-Object -First 1).Directory.FullName
 
-          .\wingetcreate.exe validate $manifestDir
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
+          # No separate validation call: 'validate' is not a wingetcreate verb (its verbs are
+          # new, update, new-locale, update-locale, submit, settings, token, cache, show, info,
+          # dsc - validation belongs to the winget client, which is not on the runner). submit
+          # validates the manifests itself and refuses to open a PR for an invalid one, so the
+          # locale rewrite above is still gated before anything reaches winget-pkgs.
           .\wingetcreate.exe submit $manifestDir --token $env:WINGET_TOKEN
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           Write-Host "winget-pkgs submission PR opened for $env:RELEASE_VERSION."

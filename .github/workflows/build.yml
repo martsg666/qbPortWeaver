@@ -33,5 +33,35 @@ jobs:
         with:
           dotnet-version: '10.x'
 
+      # Same four files build-release.yml checks against the tag, but there is no tag here, so
+      # this checks they agree with each other. That is the failure mode worth catching early:
+      # PLUGININFO is the odd one out (not a .csproj, and under plugins/), so it is the file most
+      # likely to be missed when a cycle opens with a version bump. Without this the mismatch
+      # surfaces only when the release tag is pushed - after the tag exists, which is the most
+      # expensive moment to find it.
+      - name: Verify project and plugin versions agree
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          # PLUGININFO is a key = "value" file, not XML, hence the second pattern.
+          $targets = @(
+            @{ Path = 'qbPortWeaver\qbPortWeaver.csproj';                Pattern = '<Version>([^<]+)</Version>' }
+            @{ Path = 'HelperService\qbPortWeaver.HelperService.csproj'; Pattern = '<Version>([^<]+)</Version>' }
+            @{ Path = 'qbPortWeaver.Shared\qbPortWeaver.Shared.csproj';  Pattern = '<Version>([^<]+)</Version>' }
+            @{ Path = 'plugins\qbpw_nicotine_bridge\PLUGININFO';         Pattern = 'Version\s*=\s*"([^"]+)"' }
+          )
+          $found = @{}
+          foreach ($target in $targets) {
+            $match = Select-String -Path $target.Path -Pattern $target.Pattern
+            if (-not $match) { throw "Version not found in $($target.Path)." }
+            $found[$target.Path] = $match.Matches[0].Groups[1].Value
+          }
+          $distinct = $found.Values | Sort-Object -Unique
+          if ($distinct.Count -ne 1) {
+            $detail = ($found.GetEnumerator() | Sort-Object Key | ForEach-Object { "  $($_.Key) = $($_.Value)" }) -join "`n"
+            throw "Version mismatch across the release files:`n$detail`nBump all four together."
+          }
+          Write-Host "Version check passed: all four files are $($distinct[0])."
+
       - name: Build
         run: dotnet build qbPortWeaver.slnx --configuration Release /warnaserror

@@ -19,7 +19,7 @@ public partial class LogViewerForm : Form
 
     private readonly string _logFilePath;
     private string _activeLogFilePath;
-    private bool _navigateToLatestIssue;
+    private bool _navigateToLatestIssuePending;
     private readonly object _readLock = new();
     // Source of truth: every parsed line of the active file, in order. The virtual list view
     // renders rows on demand from this store via _visibleRows, so no second copy of the log
@@ -122,7 +122,7 @@ public partial class LogViewerForm : Form
         InitializeComponent();
         _logFilePath = logFilePath;
         _activeLogFilePath = logFilePath;
-        _navigateToLatestIssue = navigateToLatestIssue;
+        _navigateToLatestIssuePending = navigateToLatestIssue;
     }
 
     protected override void OnLoad(EventArgs e)
@@ -1037,7 +1037,7 @@ public partial class LogViewerForm : Form
             UpdateColumnWidth();
             UpdateMetaForRowCount();
 
-            if (_navigateToLatestIssue) { NavigateToLatestIssue(); _navigateToLatestIssue = false; } else ScrollToBottom();
+            if (_navigateToLatestIssuePending) { NavigateToLatestIssue(); _navigateToLatestIssuePending = false; } else ScrollToBottom();
             if (!string.IsNullOrEmpty(txtSearch.Text))
                 RefreshSearch(navigateToFirst: true);
 

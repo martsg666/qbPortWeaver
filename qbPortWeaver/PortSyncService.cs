@@ -147,7 +147,7 @@ public sealed class PortSyncService
     // Whether the running cycle was triggered by a network change (passed in by MainForm's
     // debounced NetworkChange handler). Drives the "after network change" history annotation.
     // Overwritten at the start of every cycle; serialised by MainForm._updateSemaphore.
-    private bool _networkChangeCycle;
+    private bool _networkChangeTriggered;
 
     // Fallback for when TryCreateForAdapterAsync cannot reach the configured adapter (e.g. VPN is
     // between disconnect and reconnect) - returned so IsVpnConnected() reports false and
@@ -225,7 +225,7 @@ public sealed class PortSyncService
     /// re-sync; a port change it detects is annotated accordingly in the port history.</summary>
     public async Task<int> RunAsync(bool networkChangeTriggered = false, CancellationToken cancellationToken = default)
     {
-        _networkChangeCycle = networkChangeTriggered;
+        _networkChangeTriggered = networkChangeTriggered;
         _recoveryPendingThisCycle = _recoveryDispatched;
         _waitingForVpnThisCycle = false;
         // Initialize status with default values. This is written to the status file at the end of the method (in finally)
@@ -888,7 +888,7 @@ public sealed class PortSyncService
         // produces a network change too, and the recovery is the root cause).
         string cause = string.Empty;
         if (_recoveryPendingThisCycle) cause = " - after recovery";
-        else if (_networkChangeCycle) cause = " - after network change";
+        else if (_networkChangeTriggered) cause = " - after network change";
         PortHistoryManager.Append(PortHistoryKind.PortChanged, targetPort,
             (config.VpnManager is null
                 ? $"Default port applied (was {previousPort})"

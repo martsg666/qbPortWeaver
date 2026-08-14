@@ -247,8 +247,7 @@ public sealed class NicotineClient : ManagedClientBase
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
         catch (Exception ex)
         {
-            // Debug via the shared classifier - see TransmissionClient.TestListeningPortAsync.
-            LogHttpException(nameof(TestListeningPortAsync), ex, LogLevel.Debug);
+            LogManager.Instance.LogDebug($"NicotineClient.TestListeningPortAsync: {ex.Message}");
             return null;
         }
     }

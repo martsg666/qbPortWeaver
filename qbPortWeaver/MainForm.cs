@@ -1111,11 +1111,17 @@ public partial class MainForm : Form
         }
         // Control.Invoke rethrows whatever the marshalled action threw on the *calling* thread, so a
         // failure inside one of these UI updates would surface here on the sync loop or the logging
-        // event thread and terminate the process. Logged at Error rather than Debug because, unlike
-        // the teardown race above, this one means a UI update genuinely failed.
+        // event thread and terminate the process.
+        //
+        // Must stay LogDebug: LogMessage raises WarnOrErrorLogged synchronously, OnWarnOrErrorLogged
+        // marshals straight back through this method, and that handler is itself a candidate for
+        // failing here because it touches the NotifyIcon. Logging this at Warn or Error would call
+        // the failing handler again to report that it failed, without bound, ending in an
+        // uncatchable StackOverflowException - strictly worse than the crash the catch prevents.
+        // RaiseWarnOrErrorLogged drops to Debug.WriteLine for the same reason.
         catch (Exception ex) // NOSONAR S2221 - see above: an escape here is process-fatal
         {
-            LogManager.Instance.LogMessage($"MainForm.InvokeOnUiThread: UI update failed: {ex.Message}", LogLevel.Error);
+            LogManager.Instance.LogDebug($"MainForm.InvokeOnUiThread: UI update failed: {ex.GetType().Name}: {ex.Message}");
         }
     }
 

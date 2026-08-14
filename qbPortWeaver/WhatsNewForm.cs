@@ -262,7 +262,7 @@ public partial class WhatsNewForm : Form
         "Tray status indicator\n" +
         "The tray icon shows a colored dot after each sync cycle: green (ports aligned), orange (VPN not connected), red (error), or no dot (port sync disabled). Hover to see the current port and status.\n\n" +
         "Settings dialog\n" +
-        "All configuration options moved into a dedicated Settings form (tray menu -> Settings), replacing the previous Notepad shortcut. Settings are stored in the Windows Registry with passwords encrypted via Windows DPAPI.\n\n" +
+        "All configuration options moved into a dedicated Settings form (tray menu → Settings), replacing the previous Notepad shortcut. Settings are stored in the Windows Registry with passwords encrypted via Windows DPAPI.\n\n" +
         "VPN interface mismatch warning\n" +
         "Shows a tray warning if qBittorrent's network interface does not match the configured VPN, or if bound to all interfaces (potential traffic leak).\n\n" +
         "New in 1.7.0\n\n" +

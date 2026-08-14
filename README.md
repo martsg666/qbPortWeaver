@@ -284,7 +284,7 @@ Configured via tray menu → **Media Manager**.
    - If **not connected** and **Default port** is 0 (or not a usable port number): skips the cycle and waits for the next interval.
    - If **not connected** and **Default port** is set: uses the default port as the target and continues.
    - If **Auto-Recovery** is enabled, the failed cycle count reaches the configured threshold, and the failures have persisted long enough (so a brief blip raced through by early re-syncs is ignored): automatically triggers recovery (via the helper Windows service) - for ProtonVPN and PIA (direct or NAT-PMP mode), restarts the VPN service and client; for NAT-PMP with a generic gateway, cycles the network adapter.
-3. Reads the VPN-assigned port from the configured provider (skipped if using the default port fallback). If port detection fails despite the VPN being connected, the failed cycle counter increments and auto-recovery may trigger.
+3. Reads the VPN-assigned port from the configured provider (skipped if using the default port fallback). A port outside the usable range (1-65535) is logged as a warning and ignored, and the cycle continues as if no port had been reported. If port detection fails despite the VPN being connected, the failed cycle counter increments and auto-recovery may trigger.
 4. Checks if the configured client is running (optionally force-starts it if configured).
 5. Connects to the client and retrieves the current listening port.
    - For qBittorrent and Nicotine+: also reads the bound network interface for mismatch detection.

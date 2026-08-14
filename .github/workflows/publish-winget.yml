@@ -4,8 +4,10 @@ name: Publish to winget
 # published). Uses wingetcreate to update the martsg666.qbPortWeaver manifests in
 # microsoft/winget-pkgs and open the submission PR from the martsg666/winget-pkgs fork.
 #
-# Requires the WINGET_TOKEN secret: a classic PAT with the public_repo scope, used by
-# wingetcreate to push the manifest branch to the fork and open the PR.
+# Requires the WINGET_TOKEN secret: a classic PAT with the public_repo (or repo) scope AND the
+# workflow scope, used by wingetcreate to push the manifest branch to the fork and open the PR.
+# The workflow scope is not optional: syncing the fork pulls in upstream commits that touch
+# winget-pkgs' own .github/workflows, and GitHub refuses that without it.
 #
 # The package must already exist in winget-pkgs (first submission was a manual PR);
 # this workflow only submits version updates. wingetcreate downloads the MSI itself,
@@ -62,7 +64,7 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           if (-not $env:WINGET_TOKEN) {
-            throw "WINGET_TOKEN secret is not configured. Add a classic PAT with the public_repo scope in Settings → Secrets before running this workflow."
+            throw "WINGET_TOKEN secret is not configured. Add a classic PAT with the public_repo (or repo) scope AND the workflow scope in Settings → Secrets before running this workflow."
           }
           Write-Host "Required secrets validated."
 

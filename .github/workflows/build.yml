@@ -65,7 +65,9 @@ jobs:
             if (-not $match) { throw "Version not found in $($target.Path)." }
             $found[$target.Path] = $match.Matches[0].Groups[1].Value
           }
-          $distinct = $found.Values | Sort-Object -Unique
+          # @() forces an array: with one distinct value Sort-Object returns a scalar string, and
+          # $distinct[0] would then index into the string and report its first character.
+          $distinct = @($found.Values | Sort-Object -Unique)
           if ($distinct.Count -ne 1) {
             $detail = ($found.GetEnumerator() | Sort-Object Key | ForEach-Object { "  $($_.Key) = $($_.Value)" }) -join "`n"
             throw "Version mismatch across the release files:`n$detail`nBump all four together."

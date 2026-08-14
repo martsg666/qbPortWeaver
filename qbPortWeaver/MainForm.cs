@@ -569,13 +569,23 @@ public partial class MainForm : Form
     // Runs the diagnostics service with the standard shutdown-linked timeout and error handling. Builds
     // fresh managers/clients off the saved settings, so it is safe to run alongside a sync cycle.
     // Returns the results, or null when cancelled, timed out, or failed (already logged).
+    //
+    // Task.Run is required, not decorative: the checks run to their first genuine await on the calling
+    // thread, and for PIA and ProtonVPN that is past IVpnManager.IsVpnConnected(). BuildActiveVpnManagerAsync
+    // returns an already-completed task for those two (CreateStatelessVpnManager just constructs the
+    // manager), so the await there does not suspend and ConfigureAwait(false) has nothing to act on.
+    // IsVpnConnected() would then block the UI thread - for PIA on a piactl subprocess, up to the process
+    // timeout - leaving the window unable to repaint. The interface keeps IsVpnConnected() synchronous by
+    // design, so the hop belongs here, at the one caller that is on the UI thread; the sync loop already
+    // runs on a background thread. DiagnosticsService touches no controls, and awaiting brings the
+    // continuation back to the UI thread for ShowDiagnosticsResults.
     private async Task<IReadOnlyList<DiagnosticResult>?> RunDiagnosticsCoreAsync()
     {
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(_shutdownCts.Token);
         cts.CancelAfter(TimeSpan.FromSeconds(AppConstants.DiagnosticsTimeoutSeconds));
         try
         {
-            return await DiagnosticsService.RunAsync(cts.Token);
+            return await Task.Run(() => DiagnosticsService.RunAsync(cts.Token), cts.Token);
         }
         catch (OperationCanceledException)
         {

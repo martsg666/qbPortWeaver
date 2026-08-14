@@ -269,11 +269,6 @@ public sealed class TransmissionClient : ManagedClientBase
         return (null, methodUnknown);
     }
 
-    // Transmission authenticates per request via SendRpcAsync's X-Transmission-Session-Id CSRF
-    // handshake - no separate auth step is needed; the session ID is negotiated inline.
-    protected override Task<bool> AuthenticateAsync(CancellationToken cancellationToken = default) =>
-        Task.FromResult(true);
-
     /// <inheritdoc/>
     protected override void ResetAuthState()
     {

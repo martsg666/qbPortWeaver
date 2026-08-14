@@ -220,11 +220,11 @@ public static class DiagnosticsService
 
             NicotinePluginState.NotInstalled => new(Checks.ClientPlugin, DiagnosticStatus.Fail,
                 "The qbPortWeaver bridge plugin is not installed",
-                "Nicotine+ has no remote control of its own. Click Install plugin in Settings, under the Nicotine+ section."),
+                "Nicotine+ has no remote control of its own. Click Install Plugin in Settings, under the Nicotine+ section."),
 
             NicotinePluginState.Outdated => new(Checks.ClientPlugin, DiagnosticStatus.Warn,
                 $"Bridge plugin {status.InstalledVersion} is installed; this build ships {NicotinePluginInstaller.BundledVersion}",
-                "Click Update plugin in Settings, then restart Nicotine+."),
+                "Click Update Plugin in Settings, then restart Nicotine+."),
 
             NicotinePluginState.NotEnabled => new(Checks.ClientPlugin, DiagnosticStatus.Fail,
                 "The bridge plugin is installed but not enabled",

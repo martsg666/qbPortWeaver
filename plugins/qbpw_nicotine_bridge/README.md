@@ -14,7 +14,7 @@ never has to be restarted**. Transfers in progress survive; only the Soulseek co
 ## Installing
 
 Easiest: in qbPortWeaver, set **Client** to **Nicotine+** under **Settings → General**, then open
-the **Client** tab and click **Install plugin**. It copies the plugin into place and, if Nicotine+
+the **Client** tab and click **Install Plugin**. It copies the plugin into place and, if Nicotine+
 is closed, offers to enable it too.
 
 By hand: copy this folder into your Nicotine+ plugin folder, then enable **qbPortWeaver Bridge**

@@ -676,7 +676,7 @@ partial class SettingsForm
         chkNicotineWarnOnInterfaceMismatch.Name     = "chkNicotineWarnOnInterfaceMismatch";
         chkNicotineWarnOnInterfaceMismatch.Size     = new Size(300, 19);
         chkNicotineWarnOnInterfaceMismatch.TabIndex = 12;
-        chkNicotineWarnOnInterfaceMismatch.Text     = "Warn when bound to a non-VPN network interface";
+        chkNicotineWarnOnInterfaceMismatch.Text     = "Warn when network interface doesn't match the VPN";
         lblNicotineDefaultPort.Location  = new Point(12, 198);
         lblNicotineDefaultPort.Name      = "lblNicotineDefaultPort";
         lblNicotineDefaultPort.Size      = new Size(130, 23);
@@ -692,7 +692,7 @@ partial class SettingsForm
         btnInstallNicotinePlugin.Name     = "btnInstallNicotinePlugin";
         btnInstallNicotinePlugin.Size     = new Size(150, 27);
         btnInstallNicotinePlugin.TabIndex = 15;
-        btnInstallNicotinePlugin.Text     = "Install plugin…";
+        btnInstallNicotinePlugin.Text     = "Install Plugin…";
         btnInstallNicotinePlugin.Click   += btnInstallNicotinePlugin_Click;
         lblNicotinePluginStatus.AutoSize  = true;
         lblNicotinePluginStatus.ForeColor = SystemColors.GrayText; // neutral until RefreshNicotinePluginStatus resolves the real state

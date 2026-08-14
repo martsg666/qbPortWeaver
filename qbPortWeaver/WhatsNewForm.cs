@@ -13,7 +13,7 @@ public partial class WhatsNewForm : Form
         "Nicotine+ support\n" +
         "qbPortWeaver can now keep Nicotine+ (Soulseek) on your VPN's forwarded port, alongside " +
         "qBittorrent, Transmission and Deluge. Nicotine+ has no remote control of its own, so " +
-        "Settings has an Install plugin button that sets up a small bridge plugin for you - and " +
+        "Settings has an Install Plugin button that sets up a small bridge plugin for you - and " +
         "enables it too, if Nicotine+ is closed at the time. The port then changes while " +
         "Nicotine+ keeps running: no restart, no interrupted transfers.\n\n" +
         "Auto-Recovery settings on their own tab\n" +

@@ -101,7 +101,7 @@ After installing, open **Settings** from the tray icon to configure the applicat
   When a warning or error is logged, a one-shot tray balloon appears; clicking it opens the log viewer at the latest issue. The **Show Logs** item and the tray tooltip show a running warning/error count, which clears when you open the log viewer or clear the logs.
 
 - **Auto-Recovery**
-  After a configurable number of consecutive failed cycles (VPN disconnected, or connected but no port assigned), recovery runs through a lightweight helper service (`qbPortWeaverHelper`, LocalSystem, no UAC): for ProtonVPN/PIA it restarts the VPN service and client; for a generic NAT-PMP gateway it cycles the adapter via netsh. Recovery is also held until the failures have *persisted* long enough, so a brief blip raced through by network-change re-syncs does not force a restart. A second, independent trigger runs the same recovery when port verification confirms the port closed for a set number of checks (on by default; requires **Verify port after sync**); it fires once and re-arms only when the port tests open again. Use with care on qBittorrent, where an idle client can report closed indefinitely. A **Test** button next to the Auto-recovery settings runs the recovery action on demand (after a confirmation), so the whole chain can be verified before a real failure needs it.
+  After a configurable number of consecutive failed cycles (VPN disconnected, or connected but no port assigned), recovery runs through a lightweight helper service (`qbPortWeaverHelper`, LocalSystem, no UAC): for ProtonVPN/PIA it restarts the VPN service and client; for a generic NAT-PMP gateway it cycles the adapter via netsh. Recovery is also held until the failures have *persisted* long enough, so a brief blip raced through by network-change re-syncs does not force a restart. A second, independent trigger runs the same recovery when port verification confirms the port closed for a set number of checks (on by default; requires **Check that the forwarded port is open after each sync**); it fires once and re-arms only when the port tests open again. Use with care on qBittorrent, where an idle client can report closed indefinitely. A **Test** button next to the Auto-recovery settings runs the recovery action on demand (after a confirmation), so the whole chain can be verified before a real failure needs it.
 
 - **Post-Update Command**
   Optionally run a custom command after a successful port update (fire-and-forget). See SampleSendMail.ps1 for an example of sending an email notification with status details.
@@ -170,7 +170,7 @@ On first run, all settings are initialized with sensible defaults.
 | Update interval | How often to check and sync the port (seconds) | `180` |
 | Sync on network change | Also run a sync immediately when a network or VPN connection change is detected, instead of waiting for the next interval (rapid changes are coalesced; pausing still suppresses it) | `True` |
 | Wait for VPN on startup | For a short grace period after the app starts, wait quietly while the VPN is still connecting instead of reporting it as disconnected, applying the default-port fallback, or triggering auto-recovery. Syncs as soon as the VPN comes up | `True` |
-| Notify on port update | Show a tray balloon tip when the client's listening port is successfully updated | `True` |
+| Show notification when port updates | Show a tray balloon tip when the client's listening port is successfully updated | `True` |
 | Show update form on startup | When checked, opens the update form at startup if a newer version is found. When unchecked, only a tray notification is shown (the 12-hour periodic check is always non-intrusive) | `True` |
 
 #### qBittorrent
@@ -185,8 +185,8 @@ On first run, all settings are initialized with sensible defaults.
 | Restart after port change | Restart qBittorrent after updating the port (recommended) | `True` |
 | Force-start if not running | Automatically launch qBittorrent if it is not running | `True` |
 | Default port (0 = disabled) | Fallback port to apply when VPN is not connected | `0` |
-| Warn on interface mismatch | Warn if qBittorrent's network interface doesn't match the VPN | `True` |
-| Restart on disconnect | Restart qBittorrent when its connection status changes to disconnected (requires Executable and Process name) | `True` |
+| Warn when network interface doesn't match the VPN | Warn if qBittorrent's network interface doesn't match the configured VPN provider | `True` |
+| Restart qBittorrent if connection status disconnects | Restart qBittorrent when its connection status changes to disconnected (requires Executable and Process name) | `True` |
 | Fix the network interface binding when it goes stale | Re-apply qBittorrent's network interface when its stored identifier no longer matches the adapter it names | `True` |
 
 #### Transmission
@@ -228,7 +228,7 @@ so the change is live within a few seconds and a restart would only discard sett
 | Executable | Path to the Nicotine+ executable, also used to find a portable installation's data folder | `C:\Program Files\Nicotine+\Nicotine+.exe` |
 | Process name | Process name used to detect if Nicotine+ is running | `Nicotine+` |
 | Force-start if not running | Automatically launch Nicotine+ if it is not running | `True` |
-| Warn on interface mismatch | Warn if Nicotine+'s network interface doesn't match the VPN | `True` |
+| Warn when network interface doesn't match the VPN | Warn if Nicotine+'s network interface doesn't match the configured VPN provider | `True` |
 | Default port (0 = disabled) | Fallback port to apply when VPN is not connected | `0` |
 
 #### Auto-Recovery
@@ -237,8 +237,8 @@ Auto-recovery restarts your VPN service (or cycles the adapter for a generic NAT
 
 | Setting | Description | Default |
 |---|---|---|
-| Verify port after sync | After each sync, check that the listening port is reachable from the Internet (after a port change and every 5th cycle) | `True` |
-| Trigger auto-recovery when port stays closed | Independent trigger: runs auto-recovery when port verification confirms the port closed for the configured number of checks. Fires at most once until the port tests open again. Requires Verify port after sync | `True` |
+| Check that the forwarded port is open after each sync | After each sync, check that the listening port is reachable from the Internet (after a port change and every 5th cycle) | `True` |
+| Trigger auto-recovery when port stays closed | Independent trigger: runs auto-recovery when port verification confirms the port closed for the configured number of checks. Fires at most once until the port tests open again. Requires the port check above | `True` |
 | Trigger after (confirmed closed checks) | Number of confirmed closed checks before auto-recovery is triggered | `3` |
 | Trigger auto-recovery when no port assigned or disconnected | Trigger auto-recovery (a VPN service restart, or adapter cycle for generic NAT-PMP gateways) after N consecutive cycles where the VPN is disconnected or assigns no forwarded port. Client-side failures do not count | `True` |
 | Trigger after (consecutive failed cycles) | Number of consecutive cycles without an assigned port before auto-recovery is triggered. Recovery is also held until the failures have persisted for the time these cycles would normally span, so a brief network blip that races through several early re-syncs does not trigger it | `3` |
@@ -288,14 +288,14 @@ Configured via tray menu → **Media Manager**.
 4. Checks if the configured client is running (optionally force-starts it if configured).
 5. Connects to the client and retrieves the current listening port.
    - For qBittorrent and Nicotine+: also reads the bound network interface for mismatch detection.
-6. *(qBittorrent and Nicotine+)* If **Warn on interface mismatch** is enabled: checks that the client's network interface matches the configured VPN provider and shows a tray warning if not. Transmission and Deluge expose only a bind address, which the VPN rotates, so the check does not apply to them.
+6. *(qBittorrent and Nicotine+)* If **Warn when network interface doesn't match the VPN** is enabled: checks that the client's network interface matches the configured VPN provider and shows a tray warning if not. Transmission and Deluge expose only a bind address, which the VPN rotates, so the check does not apply to them.
    *(qBittorrent only)* Also checks that qBittorrent's stored interface identifier still resolves to the adapter it names, and warns - or re-applies it, if **Fix the network interface binding when it goes stale** is enabled - when it does not. This check runs whatever the VPN provider is, since the binding can go stale without the VPN being involved.
 7. If ports differ:
    - Updates the client's listening port.
-   - Shows a tray balloon tip if **Notify on port update** is enabled.
+   - Shows a tray balloon tip if **Show notification when port updates** is enabled.
    - Restarts the client if configured.
-8. *(qBittorrent only)* If **Restart on disconnect** is enabled (and qBittorrent was not already restarted in step 7): checks qBittorrent's connection status and restarts it if disconnected. After three consecutive restarts that leave it disconnected, further restarts are suspended until it reconnects.
-9. If **Verify port after sync** is enabled and the VPN is connected: checks that the port is reachable from the Internet (after a port change and every 5th cycle otherwise). A closed result is re-tested on the next cycle before a warning is raised. If **Trigger auto-recovery when port stays closed** is enabled, repeated confirmed closed checks trigger auto-recovery (a VPN service restart, or adapter cycle for NAT-PMP), at most once until the port tests open again.
+8. *(qBittorrent only)* If **Restart qBittorrent if connection status disconnects** is enabled (and qBittorrent was not already restarted in step 7): checks qBittorrent's connection status and restarts it if disconnected. After three consecutive restarts that leave it disconnected, further restarts are suspended until it reconnects.
+9. If **Check that the forwarded port is open after each sync** is enabled and the VPN is connected: checks that the port is reachable from the Internet (after a port change and every 5th cycle otherwise). A closed result is re-tested on the next cycle before a warning is raised. If **Trigger auto-recovery when port stays closed** is enabled, repeated confirmed closed checks trigger auto-recovery (a VPN service restart, or adapter cycle for NAT-PMP), at most once until the port tests open again.
 10. Writes the JSON status file (`%LocalAppData%\qbPortWeaver\qbPortWeaver.status.json`) and updates the tray icon and tooltip. If the port changed this cycle, the optional post-update command is then launched (fire-and-forget) - after the status file is written, so a script that reads it (e.g. `powershell -File "C:\path\to\SampleSendMail.ps1"`) sees this cycle's result rather than the previous one.
 11. Waits for the configured interval before repeating. If a manual sync was triggered, the wait is shortened to 10 seconds.
 12. In parallel with the wait, if **Media Manager** is enabled: scans the configured source folders, queries TMDB for each unrecognised title, and imports files into the library with Plex-compatible names. Runs as a fire-and-forget task so a slow library scan does not delay the next port sync cycle - if a previous import is still running when the next cycle starts, the new import is skipped to avoid pile-up. In **dry-run** mode no files are touched; use **Scan Now** in the Media Manager dialog to preview results first. Uncertain TMDB matches are skipped automatically and flagged for manual review in the dialog.
@@ -404,7 +404,7 @@ plugin. Everything below is a one-off; after it, port sync is fully automatic an
 without restarting Nicotine+.
 
 1. In qbPortWeaver **Settings → General**, set **Client** to **Nicotine+** (or click **Detect**).
-2. Open the **Client** tab - it now shows the Nicotine+ section - and click **Install plugin**. If
+2. Open the **Client** tab - it now shows the Nicotine+ section - and click **Install Plugin**. If
    Nicotine+ is closed, accept the offer to enable it too - your Nicotine+ configuration is backed
    up first and only the plugin list is touched. If Nicotine+ is running, enable **qbPortWeaver
    Bridge** in **Preferences → Plugins**; no restart needed.

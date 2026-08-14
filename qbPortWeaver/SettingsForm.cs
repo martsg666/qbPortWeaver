@@ -692,7 +692,7 @@ public partial class SettingsForm : Form
                 "Nicotine+ is running, so enable it there: open Preferences → Plugins, tick " +
                 "\"qbPortWeaver Bridge\", and apply. No restart is needed.\n\n" +
                 "Then click ⟳ here to pick up the connection details.\n\n" +
-                "Alternatively, close Nicotine+ and click Install plugin again to have it enabled automatically.",
+                "Alternatively, close Nicotine+ and click Install Plugin again to have it enabled automatically.",
                 AppIdentity.AppName, MessageBoxButtons.OK, MessageBoxIcon.Information);
             RefreshNicotinePluginStatus();
             return;
@@ -792,10 +792,10 @@ public partial class SettingsForm : Form
 
         btnInstallNicotinePlugin.Text = status.State switch
         {
-            NicotinePluginState.NotInstalled => "Install plugin…",
-            NicotinePluginState.Outdated => "Update plugin…",
-            NicotinePluginState.NotEnabled => "Enable plugin…",
-            _ => "Reinstall plugin…"
+            NicotinePluginState.NotInstalled => "Install Plugin…",
+            NicotinePluginState.Outdated => "Update Plugin…",
+            NicotinePluginState.NotEnabled => "Enable Plugin…",
+            _ => "Reinstall Plugin…"
         };
     }
 
@@ -804,9 +804,9 @@ public partial class SettingsForm : Form
         NicotinePluginState.DataFolderMissing =>
             "Nicotine+'s data folder was not found. Start Nicotine+ once, or set the Executable path above for a portable installation.",
         NicotinePluginState.NotInstalled =>
-            "The bridge plugin is not installed. Click \"Install plugin\" first.",
+            "The bridge plugin is not installed. Click \"Install Plugin\" first.",
         NicotinePluginState.Outdated =>
-            "An older version of the bridge plugin is installed. Click \"Update plugin\".",
+            "An older version of the bridge plugin is installed. Click \"Update Plugin\".",
         NicotinePluginState.NotEnabled =>
             "The plugin is installed but not enabled. Enable \"qbPortWeaver Bridge\" in Nicotine+ under Preferences → Plugins.",
         _ => "The plugin is enabled but has not published its details yet. Start Nicotine+ and try again."

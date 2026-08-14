@@ -435,6 +435,27 @@ public static class RegistrySettingsManager
         (SectionMedia, "mediaEnabled", KeyMediaEnabled),
     ];
 
+    /// <summary>Value names this app used to write and no longer reads, deleted on startup.</summary>
+    /// <remarks>
+    /// Removed rather than migrated: each was dropped outright rather than renamed, so there is no
+    /// current key to carry the value to. None of them ever shipped in a release, so only a machine
+    /// that ran a pre-release build can hold one - but a settings tree that still lists values the
+    /// app ignores is exactly the confusion this cleanup exists to prevent.
+    /// <para>Deliberately an explicit list rather than "delete anything not in <c>_defaults</c>":
+    /// the app-level key holds values this class never declares - the installer's shortcut flags,
+    /// the per-session pipe token, the last-seen version - and a blanket sweep would take them with
+    /// it. Naming each removal keeps that impossible.</para>
+    /// </remarks>
+    private static readonly (string Section, string Key)[] _obsoleteKeys =
+    [
+        // Superseded by portClosedRecoveryTriggerChecks during 2.5.6 development.
+        (SectionGeneral, "portClosedRecoveryCycles"),
+        // Folded into the shared warnOnInterfaceMismatch when the client keys were unified.
+        (SectionNicotine, "nicotineWarnOnInterfaceMismatch"),
+        // Nicotine+ is never restarted, so the setting had nothing to control.
+        (SectionNicotine, "restartNicotine"),
+    ];
+
     // Moves every value stored under a former key name across to its current one.
     //
     // Values are copied as raw objects and never decrypted: three of these hold DPAPI blobs, and a
@@ -474,6 +495,26 @@ public static class RegistrySettingsManager
 
         if (moved > 0)
             LogManager.Instance.LogMessage($"Migrated {AppConstants.Pluralize(moved, "setting")} to the current registry key names", LogLevel.Info);
+
+        int removed = 0;
+        foreach (var (section, key) in _obsoleteKeys)
+        {
+            try
+            {
+                using var regKey = Registry.CurrentUser.OpenSubKey($@"{BaseKeyPath}\{section}", writable: true);
+                if (regKey?.GetValue(key) is null) continue;
+                regKey.DeleteValue(key, throwOnMissingValue: false);
+                removed++;
+            }
+            catch (Exception ex)
+            {
+                LogManager.Instance.LogDebug(
+                    $"RegistrySettingsManager.MigrateLegacyKeys: [{section}] {key} - {ex.Message}");
+            }
+        }
+
+        if (removed > 0)
+            LogManager.Instance.LogMessage($"Removed {AppConstants.Pluralize(removed, "obsolete setting")} from the registry", LogLevel.Info);
     }
 
     /// <summary>Rewrites a folder list still stored with the former <c>;</c> separator onto <see cref="ListSeparator"/>, once, on startup.</summary>

@@ -215,9 +215,11 @@ jobs:
           $manifestDir = (Get-ChildItem -Path .\winget-out -Recurse -Filter '*.locale.en-US.yaml' |
                           Select-Object -First 1).Directory.FullName
 
-          .\wingetcreate.exe validate $manifestDir
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
+          # No separate validation call: 'validate' is not a wingetcreate verb (its verbs are
+          # new, update, new-locale, update-locale, submit, settings, token, cache, show, info,
+          # dsc - validation belongs to the winget client, which is not on the runner). submit
+          # validates the manifests itself and refuses to open a PR for an invalid one, so the
+          # locale rewrite above is still gated before anything reaches winget-pkgs.
           .\wingetcreate.exe submit $manifestDir --token $env:WINGET_TOKEN
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           Write-Host "winget-pkgs submission PR opened for $env:RELEASE_VERSION."

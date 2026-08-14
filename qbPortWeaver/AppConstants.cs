@@ -447,6 +447,29 @@ public static class AppConstants
     }
 
     /// <summary>
+    /// Owner-draws the clear (X) glyph centered in the search box's clear button, in the button's
+    /// ForeColor. Drawn rather than typed as the letter "X" for the same reason the nav chevrons
+    /// are: exact size, weight and centering, and no dependency on a glyph the UI font may not
+    /// carry. Shared by the log viewer's and help viewer's clear-button Paint handlers.
+    /// </summary>
+    public static void DrawClearGlyph(Button btn, Graphics g)
+    {
+        float scale = btn.DeviceDpi / 96f;
+        float half = 3.25f * scale; // arm half-length, matching the chevrons' visual weight
+        float cx = btn.ClientSize.Width / 2f;
+        float cy = btn.ClientSize.Height / 2f;
+
+        g.SmoothingMode = SmoothingMode.AntiAlias;
+        using var pen = new Pen(btn.ForeColor, 1.8f * scale)
+        {
+            StartCap = LineCap.Round,
+            EndCap = LineCap.Round,
+        };
+        g.DrawLine(pen, cx - half, cy - half, cx + half, cy + half);
+        g.DrawLine(pen, cx - half, cy + half, cx + half, cy - half);
+    }
+
+    /// <summary>
     /// Lays out the right-aligned search group shared by the log viewer and help viewer toolbars:
     /// the search box, match counter, and prev/next nav buttons pinned to the toolbar's right edge,
     /// with the clear (×) button floating inside the search box. Positions are computed from the

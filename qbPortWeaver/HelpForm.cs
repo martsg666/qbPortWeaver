@@ -97,10 +97,13 @@ public partial class HelpForm : Form
         txtSearch.BackColor = SystemColors.Window;
         txtSearch.ForeColor = fg;
 
+        // Accent, matching the log viewer's nav buttons: it reads as a finer, calmer stroke than
+        // plain WindowText, which blooms against a dark surface and makes the owner-drawn chevron
+        // look heavier than it is.
         foreach (var btn in new[] { btnPrev, btnNext })
         {
             btn.BackColor = surface;
-            btn.ForeColor = fg;
+            btn.ForeColor = SystemColors.HotTrack;
             btn.FlatAppearance.BorderColor = SystemColors.ControlDark;
         }
 
@@ -535,6 +538,13 @@ public partial class HelpForm : Form
         rtbHelp.Select(_searchMatches[index], txtSearch.Text.Length);
         rtbHelp.ScrollToCaret();
         lblMatchCount.Text = $"{_searchIndex + 1} / {_searchMatches.Count}";
+    }
+
+    // Paints the clear button's X via the shared drawer, for the same reason the chevrons are
+    // drawn: exact weight and centering, and no dependency on a font glyph.
+    private void ClearButton_Paint(object? sender, PaintEventArgs e)
+    {
+        if (sender is Button btn) AppConstants.DrawClearGlyph(btn, e.Graphics);
     }
 
     // Paints the search-nav chevrons (btnPrev points up) via the shared drawer.

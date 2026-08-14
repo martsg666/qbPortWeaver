@@ -160,6 +160,9 @@ public partial class LogViewerForm : Form
         int navH = txtSearch.Height;
         foreach (var btn in new[] { btnPrev, btnNext, btnIssuePrev, btnIssueNext })
             btn.Paint += NavButton_Paint;
+        // Same treatment for the clear button's X - drawn, not typed, so its weight and centering
+        // match the chevrons beside it and no font glyph is relied on.
+        btnClearSearch.Paint += (_, e) => AppConstants.DrawClearGlyph(btnClearSearch, e.Graphics);
         foreach (var btn in new[] { btnIssuePrev, btnIssueNext })
         {
             btn.Height = navH;
@@ -276,17 +279,17 @@ public partial class LogViewerForm : Form
         txtSearch.BackColor = input;
         txtSearch.ForeColor = fg;
 
+        // All four nav buttons share the OS accent (severity-neutral, mode-aware). The accent reads
+        // as a finer, calmer stroke than plain WindowText, which blooms against a dark surface and
+        // makes an identically-drawn chevron look heavier. Which pair is which is already clear from
+        // position - issue-nav sits with the level filters, search-nav inside the search group - so
+        // colour does not need to carry that distinction as well.
         foreach (var btn in new[] { btnPrev, btnNext, btnIssuePrev, btnIssueNext })
         {
             btn.BackColor = surface;
-            btn.ForeColor = fg;
+            btn.ForeColor = SystemColors.HotTrack;
             btn.FlatAppearance.BorderColor = border;
         }
-
-        // Issue-nav jumps between WARN/ERROR lines; tint it with the OS accent (severity-neutral,
-        // mode-aware) so it reads as distinct from the neutral search-match arrows by the search box.
-        btnIssuePrev.ForeColor = SystemColors.HotTrack;
-        btnIssueNext.ForeColor = SystemColors.HotTrack;
 
         // Clear button sits inside the search box - blend it in rather than styling it like the nav buttons
         btnClearSearch.BackColor = txtSearch.BackColor;

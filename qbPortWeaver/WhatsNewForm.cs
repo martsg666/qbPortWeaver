@@ -9,6 +9,11 @@ public partial class WhatsNewForm : Form
         "If you find qbPortWeaver useful, please star it on GitHub.";
 
     private const string ReleaseFeaturesText =
+        "New in 2.6.5\n\n" +
+        "In development\n" +
+        "This section is a placeholder. Replace it with this release's user-facing changes before " +
+        "tagging - it is shown to every user on their first run after upgrading.\n\n" +
+        "Previously released\n\n" +
         "New in 2.6.4\n\n" +
         "Nicotine+ support\n" +
         "qbPortWeaver can now keep Nicotine+ (Soulseek) on your VPN's forwarded port, alongside " +
@@ -45,7 +50,6 @@ public partial class WhatsNewForm : Form
         "and any client added later stays consistent. Your existing settings move across on their " +
         "own the first time you run this version. Only worth knowing if you read qbPortWeaver's " +
         "settings from your own scripts.\n\n" +
-        "Previously released\n\n" +
         "New in 2.6.3\n\n" +
         "Pop-up messages match your theme\n" +
         "Confirmation and alert pop-ups now follow your chosen theme, so in dark mode they no " +

@@ -1,0 +1,91 @@
+name: Check winget token
+
+# Pre-flight for publish-winget.yml, runnable at any time - it needs no tag, no release and no
+# manifest change. Run it after rotating WINGET_TOKEN or changing its scopes, and before a
+# release if the token has not been used in a while.
+#
+# It answers the two questions that can only be answered from inside Actions, because the secret
+# is not readable anywhere else:
+#   1. Which account and scopes does WINGET_TOKEN actually carry? A classic PAT's scopes come
+#      back in the x-oauth-scopes response header. The call also updates the "Last used" stamp on
+#      the token's settings page, which identifies which of several PATs is really in the secret.
+#   2. Does the fork sync work? That is the step that failed at the 2.6.4 publish, and the only
+#      one needing the workflow scope: winget-pkgs takes thousands of commits between our
+#      releases, plenty of them touching its own .github/workflows, and GitHub refuses to merge
+#      those through a token without that scope.
+#
+# The sync is a fast-forward only and carries no fork-local commits to lose, so running this
+# outside a release is harmless - it just leaves the fork closer to upstream than it was.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Inspect the token
+        shell: pwsh
+        env:
+          WINGET_TOKEN: ${{ secrets.WINGET_TOKEN }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (-not $env:WINGET_TOKEN) {
+            throw "WINGET_TOKEN secret is not configured."
+          }
+
+          $response = Invoke-WebRequest `
+            -Uri 'https://api.github.com/user' `
+            -Headers @{ 'User-Agent' = 'qbPortWeaver-CI'; 'Authorization' = "Bearer $env:WINGET_TOKEN"; 'Accept' = 'application/vnd.github+json' }
+
+          $login = ($response.Content | ConvertFrom-Json).login
+          Write-Host "Token authenticates as: $login"
+
+          $expiry = ($response.Headers['github-authentication-token-expiration'] -join '').Trim()
+          if ($expiry) { Write-Host "Token expires: $expiry" } else { Write-Host "Token expires: never" }
+
+          # Fine-grained PATs do not send this header at all - their permissions are not scopes and
+          # are not reported here. Absence is therefore not a failure; the sync step below is the
+          # authoritative test either way.
+          $scopes = ($response.Headers['x-oauth-scopes'] -join ', ').Trim()
+          if (-not $scopes) {
+            Write-Host "::warning::No x-oauth-scopes header - this is a fine-grained PAT (or scopeless). Scopes cannot be read; relying on the sync step below."
+          }
+          else {
+            Write-Host "Token scopes: $scopes"
+            $list = $scopes -split ',\s*'
+            if ($list -notcontains 'workflow') {
+              throw "WINGET_TOKEN is missing the workflow scope (has: $scopes). Syncing the winget-pkgs fork will fail. Add it at https://github.com/settings/tokens."
+            }
+            if (-not ($list | Where-Object { $_ -in @('repo', 'public_repo') })) {
+              throw "WINGET_TOKEN is missing the public_repo (or repo) scope (has: $scopes). wingetcreate cannot push the manifest branch."
+            }
+            Write-Host "Both required scopes are present."
+          }
+
+      # The same call publish-winget.yml makes, for the same reason - see the "Sync winget-pkgs
+      # fork with upstream" step there. Kept in step with it.
+      - name: Sync winget-pkgs fork with upstream
+        shell: pwsh
+        env:
+          WINGET_TOKEN: ${{ secrets.WINGET_TOKEN }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $fork = "$($env:GITHUB_REPOSITORY_OWNER)/winget-pkgs"
+          try {
+            $result = Invoke-RestMethod `
+              -Uri "https://api.github.com/repos/$fork/merge-upstream" `
+              -Method Post `
+              -Headers @{ 'User-Agent' = 'qbPortWeaver-CI'; 'Authorization' = "Bearer $env:WINGET_TOKEN"; 'Accept' = 'application/vnd.github+json' } `
+              -Body (@{ branch = 'master' } | ConvertTo-Json) `
+              -ContentType 'application/json'
+            Write-Host "Fork $fork synced: $($result.merge_type) - $($result.message)"
+            Write-Host "WINGET_TOKEN is good for the next publish."
+          } catch {
+            $status = $_.Exception.Response?.StatusCode
+            throw "Could not sync $fork with upstream (HTTP $status): $($_.Exception.Message)"
+          }

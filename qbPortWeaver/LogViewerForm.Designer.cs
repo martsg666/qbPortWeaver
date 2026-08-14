@@ -17,7 +17,6 @@ partial class LogViewerForm
             chkWarn?.Font?.Dispose();
             chkInfo?.Font?.Dispose();
             chkDebug?.Font?.Dispose();
-            btnClearSearch?.Font?.Dispose();
             lblMatchCount?.Font?.Dispose();
 
             components?.Dispose();
@@ -182,11 +181,10 @@ partial class LogViewerForm
         btnClearSearch.Anchor                    = rightAnchor;
         btnClearSearch.FlatStyle                 = FlatStyle.Flat;
         btnClearSearch.FlatAppearance.BorderSize = 0;
-        btnClearSearch.Font                      = new Font("Segoe UI", 7F, FontStyle.Bold);
         btnClearSearch.Location                  = new Point(950, 5); // fine-tuned in OnLoad
         btnClearSearch.Padding                   = new Padding(0);
         btnClearSearch.Size                      = new Size(16, 16);  // fine-tuned in OnLoad
-        btnClearSearch.Text                      = "X";
+        btnClearSearch.Text                      = ""; // clear glyph owner-drawn in ClearButton_Paint
         btnClearSearch.TextAlign                 = ContentAlignment.MiddleCenter;
         btnClearSearch.TabIndex                  = 9;
         btnClearSearch.TabStop                   = false;

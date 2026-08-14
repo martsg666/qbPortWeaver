@@ -9,6 +9,43 @@ public partial class WhatsNewForm : Form
         "If you find qbPortWeaver useful, please star it on GitHub.";
 
     private const string ReleaseFeaturesText =
+        "New in 2.6.4\n\n" +
+        "Nicotine+ support\n" +
+        "qbPortWeaver can now keep Nicotine+ (Soulseek) on your VPN's forwarded port, alongside " +
+        "qBittorrent, Transmission and Deluge. Nicotine+ has no remote control of its own, so " +
+        "Settings has an Install Plugin button that sets up a small bridge plugin for you - and " +
+        "enables it too, if Nicotine+ is closed at the time. The port then changes while " +
+        "Nicotine+ keeps running: no restart, no interrupted transfers.\n\n" +
+        "Auto-Recovery settings on their own tab\n" +
+        "The port-verification and auto-recovery options have moved to a dedicated Auto-Recovery tab " +
+        "in Settings, so the General tab is less crowded and the recovery options are easier to find.\n\n" +
+        "qBittorrent keeps listening after a VPN reconnect\n" +
+        "qBittorrent remembers its network interface as an internal identifier, and when a VPN " +
+        "recreates its adapter that identifier stops working while the adapter name still looks " +
+        "right. qBittorrent then listens on nothing, and restarting it does not help. qbPortWeaver " +
+        "now spots this and puts it right for you, restoring the adapter you selected. Diagnostics " +
+        "reports it too, instead of passing every check while nothing is listening. You can turn the " +
+        "fix off in Settings if you would rather just be warned about it.\n\n" +
+        "Fewer pointless restarts\n" +
+        "When restarting a disconnected client does not help, qbPortWeaver now stops after three " +
+        "tries and explains why, rather than restarting it every cycle and interrupting your " +
+        "transfers each time. It resumes on its own once the client reconnects.\n\n" +
+        "Steadier port forwarding\n" +
+        "Port mappings on NAT-PMP gateways now cover both TCP and UDP, so gateways that treat the two " +
+        "separately forward everything your client needs. A port your VPN reports that cannot be used " +
+        "is now ignored instead of being passed to your client, which previously could leave it on a " +
+        "random port while everything still looked healthy. Auto-recovery also always restores your " +
+        "network adapter now, even if it is interrupted part-way through cycling it.\n\n" +
+        "Clearing statistics asks first\n" +
+        "Clear Statistics on the Status window now confirms before it resets, the way Clear History " +
+        "and Clear Logs already did. The counters run from when the app started, so on a machine " +
+        "left running they can cover weeks, and there is no way to get them back.\n\n" +
+        "Tidier settings storage\n" +
+        "Every client's settings are now stored under the same names, so they are easier to compare " +
+        "and any client added later stays consistent. Your existing settings move across on their " +
+        "own the first time you run this version. Only worth knowing if you read qbPortWeaver's " +
+        "settings from your own scripts.\n\n" +
+        "Previously released\n\n" +
         "New in 2.6.3\n\n" +
         "Pop-up messages match your theme\n" +
         "Confirmation and alert pop-ups now follow your chosen theme, so in dark mode they no " +
@@ -17,7 +54,6 @@ public partial class WhatsNewForm : Form
         "If the app starts before your VPN has finished connecting, it now waits quietly for a " +
         "short time instead of reporting the VPN as disconnected, and syncs your port as soon as " +
         "the connection is up. You can turn this off in Settings.\n\n" +
-        "Previously released\n\n" +
         "New in 2.6.2\n\n" +
         "Statistics on the Status panel\n" +
         "A new Statistics section on the Status window shows your current port, how many times " +
@@ -108,7 +144,7 @@ public partial class WhatsNewForm : Form
         "qbPortWeaver can now run a sync the moment a network or VPN connection change is detected, " +
         "so your client follows a VPN reconnect within seconds instead of waiting for the next interval. " +
         "Rapid changes are grouped into a single sync, and pausing still suppresses it. " +
-        "Enabled by default - turn it off under Settings > General.\n\n" +
+        "Enabled by default - turn it off under Settings → General.\n\n" +
         "Smarter auto-recovery\n" +
         "Auto-recovery now waits until sync failures have persisted, not just counted up, before " +
         "restarting your VPN. A brief network blip - like a router reboot that triggers several quick " +
@@ -118,7 +154,7 @@ public partial class WhatsNewForm : Form
         "After each sync, qbPortWeaver can now check that your port is actually reachable from the Internet, " +
         "not just configured. If the port stays closed, a warning appears in the log and as a tray notification. " +
         "Optionally, auto-recovery can run automatically after a configurable number of closed checks " +
-        "(a VPN service restart, or adapter cycle for NAT-PMP gateways) - see Settings > General. " +
+        "(a VPN service restart, or adapter cycle for NAT-PMP gateways) - see Settings → General. " +
         "Verification is enabled by default: Transmission and Deluge use their " +
         "built-in online port checkers, while qBittorrent infers reachability from incoming connections " +
         "(an idle client may report closed).\n\n" +
@@ -168,7 +204,7 @@ public partial class WhatsNewForm : Form
         "The 12-hour background update check no longer interrupts you with a form. " +
         "When a new version is found, an Update available item appears at the top of the tray menu " +
         "and a one-shot tray notification is shown. Click the menu item to open the update form. " +
-        "A new setting under Settings > General lets you turn off the update form at startup; " +
+        "A new setting under Settings → General lets you turn off the update form at startup; " +
         "the tray indicators still appear when an update is available.\n\n" +
         "Lower log viewer memory usage\n" +
         "Opening the log viewer used to leave a noticeable memory footprint after closing it. " +
@@ -196,7 +232,7 @@ public partial class WhatsNewForm : Form
         "No configuration changes are required.\n\n" +
         "Port update notification\n" +
         "A tray balloon tip now appears whenever the client's listening port is successfully updated to a new value. " +
-        "Enabled by default - toggle it under Settings > General.\n\n" +
+        "Enabled by default - toggle it under Settings → General.\n\n" +
         "Media Manager - improved startup reliability\n" +
         "If library folders are temporarily unreachable at startup (for example, a NAS that powers on after the PC), " +
         "the library index is now retried each cycle until the folders become accessible, " +
@@ -226,7 +262,7 @@ public partial class WhatsNewForm : Form
         "Tray status indicator\n" +
         "The tray icon shows a colored dot after each sync cycle: green (ports aligned), orange (VPN not connected), red (error), or no dot (port sync disabled). Hover to see the current port and status.\n\n" +
         "Settings dialog\n" +
-        "All configuration options moved into a dedicated Settings form (tray menu -> Settings), replacing the previous Notepad shortcut. Settings are stored in the Windows Registry with passwords encrypted via Windows DPAPI.\n\n" +
+        "All configuration options moved into a dedicated Settings form (tray menu → Settings), replacing the previous Notepad shortcut. Settings are stored in the Windows Registry with passwords encrypted via Windows DPAPI.\n\n" +
         "VPN interface mismatch warning\n" +
         "Shows a tray warning if qBittorrent's network interface does not match the configured VPN, or if bound to all interfaces (potential traffic leak).\n\n" +
         "New in 1.7.0\n\n" +
@@ -243,8 +279,8 @@ public partial class WhatsNewForm : Form
         "Automatic update checker\n" +
         "Checks GitHub for new releases on startup and every 12 hours, and offers to open the download page.\n\n" +
         "New in 1.4.0\n\n" +
-        "Force start\n" +
-        "Optionally launches the BitTorrent client automatically if it is not running during a sync cycle.\n\n" +
+        "Force-start\n" +
+        "Optionally launches qBittorrent automatically if it is not running during a sync cycle.\n\n" +
         "New in 1.3.0\n\n" +
         "Post-update command\n" +
         "Optionally runs a custom script or command after a successful port update.\n\n" +

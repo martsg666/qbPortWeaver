@@ -16,15 +16,15 @@
     <docsUrl>https://github.com/martsg666/qbPortWeaver#readme</docsUrl>
     <bugTrackerUrl>https://github.com/martsg666/qbPortWeaver/issues</bugTrackerUrl>
     <requireLicenseAcceptance>false</requireLicenseAcceptance>
-    <summary>Syncs the listening port of qBittorrent, Transmission, or Deluge with the VPN-assigned port, and imports media files into Plex-compatible library folders</summary>
+    <summary>Syncs the listening port of qBittorrent, Transmission, Deluge, or Nicotine+ with the VPN-assigned port, and imports media files into Plex-compatible library folders</summary>
     <description><![CDATA[
 ## qbPortWeaver
 
-A lightweight Windows system tray application that keeps the listening port of **qBittorrent**, **Transmission**, or **Deluge** in sync with the port assigned by your VPN.
+A lightweight Windows system tray application that keeps the listening port of **qBittorrent**, **Transmission**, **Deluge**, or **Nicotine+** in sync with the port assigned by your VPN.
 
 ### VPN Support
 
-Works with **ProtonVPN** (log file or NAT-PMP), **Private Internet Access** (`piactl`), and any **NAT-PMP capable VPN or router** (RFC 6886). ProtonVPN's earlier protocols and the newer Proton Protocols (Proton WireGuard, Proton Stealth) are both detected automatically. The provider is selectable from Settings.
+Works with **ProtonVPN** (log file or NAT-PMP), **PIA** (`piactl`), and any **NAT-PMP capable VPN or router** (RFC 6886). ProtonVPN's earlier protocols and the newer Proton Protocols (Proton WireGuard, Proton Stealth) are both detected automatically. The provider is selectable from Settings.
 
 ### Port Sync
 
@@ -42,7 +42,7 @@ Imports movie and TV episode files into Plex-compatible library folders on each 
 - Built-in user guide with a browsable contents tree and search, available offline from the tray menu
 - Built-in log viewer with levels, live tail, search, filters, and rotated backup browsing; tray alerts on warnings or errors
 - Consistent light and dark theming across every window and pop-up dialog, following your chosen Windows color mode
-- Interface mismatch warning when qBittorrent is not bound to the VPN adapter
+- Interface mismatch warning when qBittorrent or Nicotine+ is not bound to the VPN adapter, plus automatic repair when qBittorrent's stored adapter binding stops resolving after a VPN reconnect
 - Auto-Recovery that restarts VPN services or cycles the adapter after failures persist
 - Sync on network change, pause/resume from the tray, connection test and client auto-detect in Settings
 - Post-update command hook, JSON status file, and optional auto-start with Windows
@@ -51,7 +51,7 @@ For full setup instructions, see https://github.com/martsg666/qbPortWeaver#readm
     ]]></description>
     <releaseNotes>https://github.com/martsg666/qbPortWeaver/releases/tag/vTEMPLATE_VERSION</releaseNotes>
     <copyright>© 2026 martsg666</copyright>
-    <tags>qbittorrent transmission deluge vpn port-forwarding protonvpn pia private-internet-access nat-pmp system-tray port-sync media-manager media-importer plex tmdb hardlink auto-recovery</tags>
+    <tags>qbittorrent transmission deluge nicotine nicotine-plus soulseek vpn port-forwarding protonvpn pia private-internet-access nat-pmp system-tray port-sync media-manager media-importer plex tmdb hardlink auto-recovery</tags>
     <licenseUrl>https://github.com/martsg666/qbPortWeaver/blob/master/LICENSE</licenseUrl>
     <iconUrl>https://cdn.jsdelivr.net/gh/martsg666/qbPortWeaver@vTEMPLATE_VERSION/qbPortWeaver.png</iconUrl>
   </metadata>

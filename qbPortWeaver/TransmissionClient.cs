@@ -8,7 +8,7 @@ using System.Text.Json;
 namespace qbPortWeaver;
 
 /// <summary>Manages Transmission via its RPC API: authentication, port configuration, and process lifecycle.</summary>
-public sealed class TransmissionClient : BitTorrentClientBase
+public sealed class TransmissionClient : ManagedClientBase
 {
     // Transmission Qt's session refresh interval is 5s by default (see the "Update interval"
     // preference in Edit -> Preferences). After SetListeningPortAsync the new port lives only
@@ -136,30 +136,28 @@ public sealed class TransmissionClient : BitTorrentClientBase
 
             // Surface RPC-level errors (e.g. "method not allowed", session conflicts) with the
             // actual server message before falling through to the generic arguments-missing path.
-            if (root.TryGetProperty(JsonPropResult, out var rpcResult) &&
-                !string.Equals(rpcResult.GetString(), RpcResultSuccess, StringComparison.OrdinalIgnoreCase))
+            if (root.TryGetProperty(JsonPropResult, out var resultElement) &&
+                !string.Equals(resultElement.AsStringOrNull(), RpcResultSuccess, StringComparison.OrdinalIgnoreCase))
             {
-                LogManager.Instance.LogMessage($"{ClientName} RPC returned non-success result for session-get: {rpcResult.GetString()}", LogLevel.Error);
+                LogManager.Instance.LogMessage($"{ClientName} RPC returned non-success result for session-get: {resultElement}", LogLevel.Error);
                 return (null, null);
             }
 
-            if (!root.TryGetProperty(JsonPropArguments, out var argsElement))
+            if (!root.TryGetProperty(JsonPropArguments, out var argumentsElement))
             {
                 LogManager.Instance.LogDebug("TransmissionClient.GetPreferencesAsync: 'arguments' key missing from RPC response");
                 return (null, null);
             }
 
             int? listenPort = null;
-            if (argsElement.TryGetProperty("peer-port", out var portElement) &&
-                portElement.TryGetInt32(out int parsed))
+            if (argumentsElement.TryGetProperty("peer-port", out var peerPortElement) &&
+                peerPortElement.TryGetInt32(out int parsed))
                 listenPort = parsed;
 
             if (listenPort is null)
                 LogManager.Instance.LogDebug("TransmissionClient.GetPreferencesAsync: peer-port not parsed in RPC response");
 
-            string? bindAddress = null;
-            if (argsElement.TryGetProperty("bind-address-ipv4", out var addrElement))
-                bindAddress = addrElement.GetString();
+            string? bindAddress = argumentsElement.GetStringOrNull("bind-address-ipv4");
 
             return (listenPort, bindAddress);
         }
@@ -190,8 +188,8 @@ public sealed class TransmissionClient : BitTorrentClientBase
 
             var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
             using var doc = JsonDocument.Parse(json);
-            if (!doc.RootElement.TryGetProperty(JsonPropResult, out var result) ||
-                !string.Equals(result.GetString(), RpcResultSuccess, StringComparison.OrdinalIgnoreCase))
+            if (!string.Equals(doc.RootElement.GetStringOrNull(JsonPropResult), RpcResultSuccess,
+                    StringComparison.OrdinalIgnoreCase))
             {
                 LogManager.Instance.LogMessage($"{ClientName} RPC returned non-success result for session-set", LogLevel.Error);
                 return false;
@@ -234,7 +232,11 @@ public sealed class TransmissionClient : BitTorrentClientBase
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
         catch (Exception ex)
         {
-            LogManager.Instance.LogDebug($"TransmissionClient.TestListeningPortAsync: {ex.Message}");
+            // Debug, not Error: reachability is best-effort, so an unreachable client is
+            // "undeterminable" rather than a fault. Routed through the shared classifier so the
+            // timeout-vs-refused distinction survives - it is the evidence for why a port
+            // verification came back closed.
+            LogHttpException(nameof(TestListeningPortAsync), ex, LogLevel.Debug);
             return null;
         }
     }
@@ -255,22 +257,17 @@ public sealed class TransmissionClient : BitTorrentClientBase
         using var doc = JsonDocument.Parse(json);
         var root = doc.RootElement;
 
-        if (root.TryGetProperty(JsonPropArguments, out var args) &&
-            args.TryGetProperty("port-is-open", out var open) &&
-            open.ValueKind is JsonValueKind.True or JsonValueKind.False)
-            return (open.GetBoolean(), false);
+        if (root.TryGetProperty(JsonPropArguments, out var argumentsElement) &&
+            argumentsElement.TryGetProperty("port-is-open", out var portIsOpenElement) &&
+            portIsOpenElement.ValueKind is JsonValueKind.True or JsonValueKind.False)
+            return (portIsOpenElement.GetBoolean(), false);
 
-        string? result = root.TryGetProperty(JsonPropResult, out var r) ? r.GetString() : null;
+        string? result = root.GetStringOrNull(JsonPropResult);
         LogManager.Instance.LogDebug($"TransmissionClient.RunPortTestAsync: no port-is-open in response (result: {result})");
         // "no method name" / "method name not recognized" => the daemon lacks this method (old version).
         bool methodUnknown = result is not null && result.Contains("method", StringComparison.OrdinalIgnoreCase);
         return (null, methodUnknown);
     }
-
-    // Transmission authenticates per request via SendRpcAsync's X-Transmission-Session-Id CSRF
-    // handshake - no separate auth step is needed; the session ID is negotiated inline.
-    protected override Task<bool> AuthenticateAsync(CancellationToken cancellationToken = default) =>
-        Task.FromResult(true);
 
     /// <inheritdoc/>
     protected override void ResetAuthState()
@@ -448,15 +445,15 @@ public sealed class TransmissionClient : BitTorrentClientBase
 
             var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
             using var doc = JsonDocument.Parse(json);
-            if (!doc.RootElement.TryGetProperty(JsonPropArguments, out var args) ||
-                !args.TryGetProperty("config-dir", out var configDirEl))
+            string? configDir = doc.RootElement.TryGetProperty(JsonPropArguments, out var argumentsElement)
+                ? argumentsElement.GetStringOrNull("config-dir")
+                : null;
+
+            if (string.IsNullOrEmpty(configDir))
             {
                 LogManager.Instance.LogDebug("TransmissionClient.TryDetectServiceModeAsync: config-dir not found in session-get response");
                 return null;
             }
-
-            string? configDir = configDirEl.GetString();
-            if (string.IsNullOrEmpty(configDir)) return null;
 
             // Parent of the current user's profile is the users root (e.g. C:\Users)
             string usersRoot = Path.GetDirectoryName(

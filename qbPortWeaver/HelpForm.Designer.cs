@@ -10,7 +10,6 @@ partial class HelpForm
         {
             // Dispose explicitly created fonts (WinForms controls do not own their Font)
             rtbHelp?.Font?.Dispose();
-            btnClearSearch?.Font?.Dispose();
             lblMatchCount?.Font?.Dispose();
             _h1Font?.Dispose();
             _h2Font?.Dispose();
@@ -67,16 +66,16 @@ partial class HelpForm
         btnClearSearch.Anchor                    = rightAnchor;
         btnClearSearch.FlatStyle                 = FlatStyle.Flat;
         btnClearSearch.FlatAppearance.BorderSize = 0;
-        btnClearSearch.Font                      = new Font("Segoe UI", 7F, FontStyle.Bold);
         btnClearSearch.Location                  = new Point(614, 11);
         btnClearSearch.Padding                   = new Padding(0);
         btnClearSearch.Size                      = new Size(16, 16);
-        btnClearSearch.Text                      = "X";
+        btnClearSearch.Text                      = ""; // clear glyph owner-drawn in ClearButton_Paint
         btnClearSearch.TextAlign                 = ContentAlignment.MiddleCenter;
         btnClearSearch.TabIndex                  = 2;
         btnClearSearch.TabStop                   = false;
         btnClearSearch.Visible                   = false;
         btnClearSearch.Click                    += btnClearSearch_Click;
+        btnClearSearch.Paint                    += ClearButton_Paint;
         toolTip.SetToolTip(btnClearSearch, "Clear search");
 
         // lblMatchCount

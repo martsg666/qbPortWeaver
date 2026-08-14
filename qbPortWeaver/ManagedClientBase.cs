@@ -3,13 +3,18 @@ using System.Net;
 
 namespace qbPortWeaver;
 
-/// <summary>Base class providing shared process-lifecycle and HTTP infrastructure for BitTorrent clients.</summary>
-public abstract class BitTorrentClientBase : IBitTorrentClient // NOSONAR S3881 - all subclasses are sealed with no additional disposable resources
+/// <summary>Base class providing shared process-lifecycle and HTTP infrastructure for the peer-to-peer clients.</summary>
+public abstract class ManagedClientBase : IManagedClient // NOSONAR S3881 - all subclasses are sealed with no additional disposable resources
 {
-    protected const int ProcessStartDelayMs = 2000;
+    // Two launch settle delays, differing only in how warm the start is. A cold start (ForceStart:
+    // the client was not running) waits longer because the executable and its dependencies are being
+    // paged in for the first time; a restart (the image is already in the file cache, and the process
+    // was alive moments ago) registers with the OS sooner. Both are only the wait before the
+    // IsRunning check - API readiness is polled separately by WaitForApiReadyAsync.
+    protected const int ProcessStartDelayMs = 2000;   // cold start, via ForceStartAsync
+    protected const int ProcessInitDelayMs = 1000;    // warm restart, via RestartAsync
     protected const int ProcessKillTimeoutMs = 5000;
     protected const int ProcessKillRetryDelayMs = 1000;
-    protected const int ProcessInitDelayMs = 1000;
     private const int ApiReadyPollIntervalMs = 500;
     private const int ApiReadyTimeoutSeconds = 30;
     private const int ApiProbeTimeoutSeconds = 2;
@@ -25,12 +30,12 @@ public abstract class BitTorrentClientBase : IBitTorrentClient // NOSONAR S3881 
     protected bool IsAuthenticated;
     private bool _disposed;
 
-    /// <summary>Initialises the shared fields used by all BitTorrent client implementations.</summary>
+    /// <summary>Initialises the shared fields used by all client implementations.</summary>
     /// <param name="url">Base URL of the client's Web UI or RPC endpoint.</param>
     /// <param name="processName">Process name used for <see cref="IsRunning"/> checks. Pass an empty string if process mode is not used.</param>
     /// <param name="exePath">Full path to the client executable, used for force-start and restart.</param>
     /// <param name="httpClient">Pre-configured <see cref="HttpClient"/> (cookie-based or header-based auth depending on the client).</param>
-    protected BitTorrentClientBase(string url, string processName, string exePath, HttpClient httpClient)
+    protected ManagedClientBase(string url, string processName, string exePath, HttpClient httpClient)
     {
         Url = (url ?? string.Empty).TrimEnd('/');
         ProcessName = processName;
@@ -120,8 +125,14 @@ public abstract class BitTorrentClientBase : IBitTorrentClient // NOSONAR S3881 
     /// <summary>Called by <see cref="RestartAsync"/> before the kill step. Override to inject pre-kill work (e.g. waiting for a config flush).</summary>
     protected virtual Task PreRestartAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 
-    // Launches the process, waits for the OS to register it, confirms it is running,
-    // then polls the API URL until it accepts connections or the timeout elapses.
+    // Launches the process, waits for the OS to register it, confirms it is running, then polls the
+    // API URL until it accepts connections or the timeout elapses.
+    //
+    // Only the process check gates the result: API readiness is best-effort and its outcome is
+    // deliberately not propagated. A client whose process is up but whose Web UI is still warming
+    // still returns true, because the alternative - reporting a start failure for a slow-but-healthy
+    // client - is the worse error, and the first real request produces a far better-targeted message
+    // than this probe could. A probe timeout is recorded at Debug and nowhere else.
     protected async Task<bool> LaunchAndWaitAsync(int initialDelayMs, CancellationToken cancellationToken)
     {
         Process.Start(CreateStartInfo())?.Dispose();
@@ -144,14 +155,15 @@ public abstract class BitTorrentClientBase : IBitTorrentClient // NOSONAR S3881 
     // A short per-probe cancellation avoids blocking on a slow response mid-startup.
     private async Task WaitForApiReadyAsync(CancellationToken cancellationToken)
     {
-        var deadline = DateTime.UtcNow.AddSeconds(ApiReadyTimeoutSeconds);
-        while (DateTime.UtcNow < deadline)
+        // Monotonic: a clock correction mid-startup must not cut the probe short or extend it.
+        var probeTimer = Stopwatch.StartNew();
+        while (probeTimer.Elapsed.TotalSeconds < ApiReadyTimeoutSeconds)
         {
             try
             {
                 using var probeCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
                 probeCts.CancelAfter(TimeSpan.FromSeconds(ApiProbeTimeoutSeconds));
-                using var response = await HttpClient.GetAsync(Url, probeCts.Token).ConfigureAwait(false);
+                using var response = await HttpClient.GetAsync(ResolveUrl(), probeCts.Token).ConfigureAwait(false);
                 return;
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
@@ -164,14 +176,25 @@ public abstract class BitTorrentClientBase : IBitTorrentClient // NOSONAR S3881 
         LogManager.Instance.LogDebug($"{GetType().Name}.WaitForApiReadyAsync: {ClientName} API did not respond within {ApiReadyTimeoutSeconds}s after start");
     }
 
+    /// <summary>
+    /// The base URL to use for requests right now. Defaults to the configured <see cref="Url"/>.
+    /// Overridden by clients whose endpoint is discovered at runtime rather than configured, so
+    /// the readiness probe follows the endpoint the client actually moved to.
+    /// </summary>
+    protected virtual string ResolveUrl() => Url;
+
     /// <summary>Resets the per-instance auth state so the next API call triggers a fresh authentication handshake.</summary>
     protected virtual void ResetAuthState() => IsAuthenticated = false;
 
     /// <summary>
     /// Performs the client-specific authentication handshake. Returns <see langword="true"/> on success.
-    /// Default implementation is a no-op for clients that authenticate per-request (e.g. Transmission's
-    /// X-Transmission-Session-Id CSRF handshake). Cookie-based clients (qBittorrent, Deluge) override
-    /// this with their login flow.
+    /// <para>The four clients fall into two groups. <b>Session-based</b> clients - qBittorrent and
+    /// Deluge - override this with their login flow and reach it through
+    /// <see cref="EnsureAuthenticatedAsync"/>, which runs it once per instance.
+    /// <b>Per-request</b> clients need no handshake and keep this default: Transmission negotiates an
+    /// X-Transmission-Session-Id CSRF token inline on each RPC call, and Nicotine+ attaches a bearer
+    /// token to every request. Both therefore never call <see cref="EnsureAuthenticatedAsync"/> at
+    /// all - that is expected, not an omission.</para>
     /// </summary>
     protected virtual Task<bool> AuthenticateAsync(CancellationToken cancellationToken = default) => Task.FromResult(true);
 

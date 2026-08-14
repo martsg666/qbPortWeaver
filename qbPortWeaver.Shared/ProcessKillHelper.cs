@@ -48,6 +48,10 @@ public static class ProcessKillHelper
     /// </list>
     /// Returns as soon as the process exits, or after all three stages have been tried. The
     /// caller is responsible for disposing <paramref name="process"/>.
+    /// <para><b>Worst-case blocking is 4 x <paramref name="timeoutMs"/></b>, not 3: stage 2 waits
+    /// for the taskkill subprocess and then again for the target. Callers that run this twice -
+    /// <c>ManagedClientBase.KillAndVerifyAsync</c> makes two passes - should budget for double
+    /// that again.</para>
     /// </summary>
     public static ProcessKillResult KillProcessTreeWithEscalation(Process process, int timeoutMs)
     {
@@ -67,7 +71,12 @@ public static class ProcessKillHelper
         if (process.WaitForExit(timeoutMs))
             return new ProcessKillResult(ProcessKillOutcome.KilledByProcessKill, null);
 
-        // Stage 2: taskkill /F /T - run as a child process and wait
+        // Stage 2: taskkill /F /T - run as a child process and wait.
+        // Known residual risk, the same one AutoRecovery.KillServiceProcess documents for its PID
+        // lookup: if the target exits between stage 1's timeout expiring and taskkill running,
+        // Windows could recycle the PID and taskkill would terminate an unrelated process tree -
+        // with SYSTEM rights when called from the helper service. The window is sub-millisecond and
+        // Windows does not reuse PIDs that quickly in practice, so the probability is negligible.
         Exception? taskkillError = null;
         try
         {

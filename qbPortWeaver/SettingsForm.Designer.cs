@@ -8,9 +8,6 @@ partial class SettingsForm
     {
         if (disposing)
         {
-            // Explicitly created font - WinForms controls do not own their Font (matches the
-            // disposal pattern in the other forms' designers).
-            lblAutoRecoveryHeader.Font?.Dispose();
             components?.Dispose();
         }
         base.Dispose(disposing);
@@ -23,11 +20,13 @@ partial class SettingsForm
         tabGeneral                = new TabPage();
         tabClient                 = new TabPage();
         tabExtra                  = new TabPage();
+        tabAutoRecovery           = new TabPage();
         grpGeneral                = new GroupBox();
+        grpAutoRecovery           = new GroupBox();
         lblVpnProvider            = new Label();
         cboVpnProvider            = new ComboBox();
-        lblBitTorrentClient       = new Label();
-        cboBitTorrentClient       = new ComboBox();
+        lblClient                 = new Label();
+        cboClient                 = new ComboBox();
         btnDetectClient           = new Button();
         lblUpdateInterval         = new Label();
         nudUpdateInterval         = new NumericUpDown();
@@ -39,7 +38,6 @@ partial class SettingsForm
         chkNotifyOnPortUpdate     = new CheckBox();
         chkShowUpdateForm         = new CheckBox();
         chkWaitForVpnOnStartup    = new CheckBox();
-        lblAutoRecoveryHeader     = new Label();
         btnTestRecovery           = new Button();
         chkVerifyPort             = new CheckBox();
         chkPortClosedRecovery     = new CheckBox();
@@ -67,8 +65,9 @@ partial class SettingsForm
         chkForceStartQBittorrent  = new CheckBox();
         lblQBittorrentDefaultPort = new Label();
         nudQBittorrentDefaultPort = new NumericUpDown();
-        chkWarnOnInterfaceMismatch = new CheckBox();
-        chkRestartOnDisconnect    = new CheckBox();
+        chkQBittorrentWarnOnInterfaceMismatch = new CheckBox();
+        chkQBittorrentRestartOnDisconnect    = new CheckBox();
+        chkQBittorrentFixInterfaceBinding    = new CheckBox();
         grpDeluge               = new GroupBox();
         lblDelugeURL            = new Label();
         txtDelugeURL            = new TextBox();
@@ -84,6 +83,24 @@ partial class SettingsForm
         chkForceStartDeluge     = new CheckBox();
         lblDelugeDefaultPort    = new Label();
         nudDelugeDefaultPort    = new NumericUpDown();
+        grpNicotine                 = new GroupBox();
+        lblNicotineURL              = new Label();
+        txtNicotineURL              = new TextBox();
+        btnTestNicotine             = new Button();
+        lblNicotineToken            = new Label();
+        txtNicotineToken            = new TextBox();
+        btnDetectNicotinePlugin     = new Button();
+        lblNicotineExePath          = new Label();
+        txtNicotineExePath          = new TextBox();
+        btnBrowseNicotineExePath    = new Button();
+        lblNicotineProcessName      = new Label();
+        txtNicotineProcessName      = new TextBox();
+        chkForceStartNicotine       = new CheckBox();
+        chkNicotineWarnOnInterfaceMismatch = new CheckBox();
+        lblNicotineDefaultPort      = new Label();
+        nudNicotineDefaultPort      = new NumericUpDown();
+        btnInstallNicotinePlugin    = new Button();
+        lblNicotinePluginStatus     = new Label();
         grpTransmission               = new GroupBox();
         lblTransmissionURL            = new Label();
         txtTransmissionURL            = new TextBox();
@@ -114,7 +131,9 @@ partial class SettingsForm
         tabGeneral.SuspendLayout();
         tabClient.SuspendLayout();
         tabExtra.SuspendLayout();
+        tabAutoRecovery.SuspendLayout();
         grpGeneral.SuspendLayout();
+        grpAutoRecovery.SuspendLayout();
         ((System.ComponentModel.ISupportInitialize)nudUpdateInterval).BeginInit();
         ((System.ComponentModel.ISupportInitialize)nudRecoveryCycles).BeginInit();
         ((System.ComponentModel.ISupportInitialize)nudPortClosedChecks).BeginInit();
@@ -122,13 +141,15 @@ partial class SettingsForm
         ((System.ComponentModel.ISupportInitialize)nudQBittorrentDefaultPort).BeginInit();
         grpDeluge.SuspendLayout();
         ((System.ComponentModel.ISupportInitialize)nudDelugeDefaultPort).BeginInit();
+        grpNicotine.SuspendLayout();
+        ((System.ComponentModel.ISupportInitialize)nudNicotineDefaultPort).BeginInit();
         grpTransmission.SuspendLayout();
         ((System.ComponentModel.ISupportInitialize)nudTransmissionDefaultPort).BeginInit();
         grpExtra.SuspendLayout();
         SuspendLayout();
         // ── grpGeneral ────────────────────────────────────────────────
-        grpGeneral.Controls.Add(lblBitTorrentClient);
-        grpGeneral.Controls.Add(cboBitTorrentClient);
+        grpGeneral.Controls.Add(lblClient);
+        grpGeneral.Controls.Add(cboClient);
         grpGeneral.Controls.Add(btnDetectClient);
         grpGeneral.Controls.Add(lblUpdateInterval);
         grpGeneral.Controls.Add(nudUpdateInterval);
@@ -142,17 +163,16 @@ partial class SettingsForm
         grpGeneral.Controls.Add(chkNotifyOnPortUpdate);
         grpGeneral.Controls.Add(chkShowUpdateForm);
         grpGeneral.Controls.Add(chkWaitForVpnOnStartup);
-        grpGeneral.Controls.Add(lblAutoRecoveryHeader);
-        grpGeneral.Controls.Add(btnTestRecovery);
-        grpGeneral.Controls.Add(chkVerifyPort);
-        grpGeneral.Controls.Add(chkPortClosedRecovery);
-        grpGeneral.Controls.Add(lblPortClosedChecks);
-        grpGeneral.Controls.Add(nudPortClosedChecks);
-        grpGeneral.Controls.Add(lblPortClosedChecksUnit);
-        grpGeneral.Controls.Add(chkAutoRecovery);
-        grpGeneral.Controls.Add(lblRecoveryCycles);
-        grpGeneral.Controls.Add(nudRecoveryCycles);
-        grpGeneral.Controls.Add(lblRecoveryCyclesUnit);
+        grpAutoRecovery.Controls.Add(btnTestRecovery);
+        grpAutoRecovery.Controls.Add(chkVerifyPort);
+        grpAutoRecovery.Controls.Add(chkPortClosedRecovery);
+        grpAutoRecovery.Controls.Add(lblPortClosedChecks);
+        grpAutoRecovery.Controls.Add(nudPortClosedChecks);
+        grpAutoRecovery.Controls.Add(lblPortClosedChecksUnit);
+        grpAutoRecovery.Controls.Add(chkAutoRecovery);
+        grpAutoRecovery.Controls.Add(lblRecoveryCycles);
+        grpAutoRecovery.Controls.Add(nudRecoveryCycles);
+        grpAutoRecovery.Controls.Add(lblRecoveryCyclesUnit);
         // All five group boxes share one size that fills the tab page with an even margin,
         // so every tab shows an identical frame regardless of how much content it holds.
         grpGeneral.Location = new Point(6, 6);
@@ -161,23 +181,29 @@ partial class SettingsForm
         grpGeneral.TabIndex = 0;
         grpGeneral.TabStop  = false;
         grpGeneral.Text     = "General";
-        lblBitTorrentClient.Location  = new Point(12, 24);
-        lblBitTorrentClient.Name      = "lblBitTorrentClient";
-        lblBitTorrentClient.Size      = new Size(130, 23);
-        lblBitTorrentClient.TabIndex  = 0;
-        lblBitTorrentClient.Text      = "Client:";
-        lblBitTorrentClient.TextAlign = ContentAlignment.MiddleLeft;
+        grpAutoRecovery.Location = new Point(6, 6);
+        grpAutoRecovery.Name     = "grpAutoRecovery";
+        grpAutoRecovery.Size     = new Size(488, 380);
+        grpAutoRecovery.TabIndex = 0;
+        grpAutoRecovery.TabStop  = false;
+        grpAutoRecovery.Text     = "Auto-Recovery";
+        lblClient.Location  = new Point(12, 24);
+        lblClient.Name      = "lblClient";
+        lblClient.Size      = new Size(130, 23);
+        lblClient.TabIndex  = 0;
+        lblClient.Text      = "Client:";
+        lblClient.TextAlign = ContentAlignment.MiddleLeft;
         // Field width and button column match the client groups' URL + Test rows (field 244 wide,
         // button at x=398), so the buttons line up across tabs.
         // FlatStyle.Flat on every combo (app-wide): the themed DropDownList face ignores dark
         // mode and renders light; the flat face is drawn with the mode-aware BackColor instead.
-        cboBitTorrentClient.DropDownStyle        = ComboBoxStyle.DropDownList;
-        cboBitTorrentClient.FlatStyle            = FlatStyle.Flat;
-        cboBitTorrentClient.Location             = new Point(148, 24);
-        cboBitTorrentClient.Name                 = "cboBitTorrentClient";
-        cboBitTorrentClient.Size                 = new Size(244, 23);
-        cboBitTorrentClient.TabIndex             = 1;
-        cboBitTorrentClient.SelectedIndexChanged += cboBitTorrentClient_SelectedIndexChanged;
+        cboClient.DropDownStyle        = ComboBoxStyle.DropDownList;
+        cboClient.FlatStyle            = FlatStyle.Flat;
+        cboClient.Location             = new Point(148, 24);
+        cboClient.Name                 = "cboClient";
+        cboClient.Size                 = new Size(244, 23);
+        cboClient.TabIndex             = 1;
+        cboClient.SelectedIndexChanged += cboClient_SelectedIndexChanged;
         btnDetectClient.Location = new Point(398, 24);
         btnDetectClient.Name     = "btnDetectClient";
         btnDetectClient.Size     = new Size(70, 23);
@@ -242,7 +268,7 @@ partial class SettingsForm
         btnRefreshAdapters.Name     = "btnRefreshAdapters";
         btnRefreshAdapters.Size     = new Size(26, 23);
         btnRefreshAdapters.TabIndex = 11;
-        btnRefreshAdapters.Text     = "↻";
+        btnRefreshAdapters.Text     = "⟳";
         btnRefreshAdapters.Click   += btnRefreshAdapters_Click;
         // Notify and show-update rows follow immediately after the NAT-PMP row at 29px spacing
         chkNotifyOnPortUpdate.AutoSize  = true;
@@ -251,38 +277,32 @@ partial class SettingsForm
         chkNotifyOnPortUpdate.TabIndex  = 12;
         chkNotifyOnPortUpdate.Text      = "Show notification when port updates";
         chkShowUpdateForm.AutoSize      = true;
-        chkShowUpdateForm.Location      = new Point(15, 169);
+        chkShowUpdateForm.Location      = new Point(15, 198);
         chkShowUpdateForm.Name          = "chkShowUpdateForm";
-        chkShowUpdateForm.TabIndex      = 13;
+        chkShowUpdateForm.TabIndex      = 14;
         chkShowUpdateForm.Text          = "Show update form on startup";
-        // Right column of the startup-behaviour row, aligned under "Sync on network change" (x=300).
+        // Sits directly under "Show notification when port updates".
         chkWaitForVpnOnStartup.AutoSize = true;
-        chkWaitForVpnOnStartup.Location = new Point(300, 169);
+        chkWaitForVpnOnStartup.Location = new Point(15, 169);
         chkWaitForVpnOnStartup.Name     = "chkWaitForVpnOnStartup";
-        chkWaitForVpnOnStartup.TabIndex = 14;
+        chkWaitForVpnOnStartup.TabIndex = 13;
         chkWaitForVpnOnStartup.Text     = "Wait for VPN on startup";
         // "Trigger after" labels use AutoSize so the NUD sits immediately after the text.
-        lblAutoRecoveryHeader.AutoSize = true;
-        lblAutoRecoveryHeader.Font     = new Font("Segoe UI", 9F, FontStyle.Bold);
-        lblAutoRecoveryHeader.Location = new Point(12, 198);
-        lblAutoRecoveryHeader.Name     = "lblAutoRecoveryHeader";
-        lblAutoRecoveryHeader.TabIndex = 15;
-        lblAutoRecoveryHeader.Text     = "Auto-recovery";
-        // Shares the header row, matching the client groups' Test button placement (x=398).
-        btnTestRecovery.Location = new Point(398, 198);
+        // Top-right action button, on the first row with the Verify-port checkbox (x=398 matches the client groups' Test button).
+        btnTestRecovery.Location = new Point(398, 24);
         btnTestRecovery.Name     = "btnTestRecovery";
         btnTestRecovery.Size     = new Size(70, 23);
-        btnTestRecovery.TabIndex = 16;
+        btnTestRecovery.TabIndex = 17;
         btnTestRecovery.Text     = "Test";
         btnTestRecovery.Click   += btnTestRecovery_Click;
         chkVerifyPort.AutoSize        = true;
-        chkVerifyPort.Location        = new Point(15, 227);
+        chkVerifyPort.Location        = new Point(15, 24);
         chkVerifyPort.Name            = "chkVerifyPort";
-        chkVerifyPort.TabIndex        = 17;
+        chkVerifyPort.TabIndex        = 16;
         chkVerifyPort.Text            = "Check that the forwarded port is open after each sync";
         chkVerifyPort.CheckedChanged += chkVerifyPort_CheckedChanged;
         chkPortClosedRecovery.AutoSize       = true;
-        chkPortClosedRecovery.Location       = new Point(15, 256);
+        chkPortClosedRecovery.Location       = new Point(15, 53);
         chkPortClosedRecovery.Name           = "chkPortClosedRecovery";
         chkPortClosedRecovery.TabIndex       = 18;
         chkPortClosedRecovery.Text           = "Trigger auto-recovery when port stays closed";
@@ -290,44 +310,44 @@ partial class SettingsForm
         // "Trigger after" sub-rows align with the parent checkbox's text at x=28 (checkbox left 12 +
         // ~16px glyph/margin). NUD and unit-label X are finalized in OnLoad via PreferredSize.Width.
         lblPortClosedChecks.AutoSize  = true;
-        lblPortClosedChecks.Location  = new Point(28, 285);
+        lblPortClosedChecks.Location  = new Point(28, 82);
         lblPortClosedChecks.Name      = "lblPortClosedChecks";
         lblPortClosedChecks.TabIndex  = 19;
         lblPortClosedChecks.Text      = "Trigger after";
         lblPortClosedChecks.TextAlign = ContentAlignment.MiddleLeft;
-        nudPortClosedChecks.Location = new Point(112, 285);
+        nudPortClosedChecks.Location = new Point(112, 82);
         nudPortClosedChecks.Maximum  = new decimal(new int[] { 10, 0, 0, 0 });
         nudPortClosedChecks.Minimum  = new decimal(new int[] { 1, 0, 0, 0 });
         nudPortClosedChecks.Name     = "nudPortClosedChecks";
         nudPortClosedChecks.Size     = new Size(50, 23);
         nudPortClosedChecks.TabIndex = 20;
         nudPortClosedChecks.Value    = new decimal(new int[] { 3, 0, 0, 0 });
-        lblPortClosedChecksUnit.Location  = new Point(168, 285);
+        lblPortClosedChecksUnit.Location  = new Point(168, 82);
         lblPortClosedChecksUnit.Name      = "lblPortClosedChecksUnit";
         lblPortClosedChecksUnit.Size      = new Size(270, 23);
         lblPortClosedChecksUnit.TabIndex  = 21;
         lblPortClosedChecksUnit.Text      = "confirmed closed checks";
         lblPortClosedChecksUnit.TextAlign = ContentAlignment.MiddleLeft;
         chkAutoRecovery.AutoSize       = true;
-        chkAutoRecovery.Location       = new Point(15, 314);
+        chkAutoRecovery.Location       = new Point(15, 111);
         chkAutoRecovery.Name           = "chkAutoRecovery";
         chkAutoRecovery.TabIndex       = 22;
         chkAutoRecovery.Text           = "Trigger auto-recovery when no port assigned or disconnected";
         chkAutoRecovery.CheckedChanged += chkAutoRecovery_CheckedChanged;
         lblRecoveryCycles.AutoSize  = true;
-        lblRecoveryCycles.Location  = new Point(28, 343);
+        lblRecoveryCycles.Location  = new Point(28, 140);
         lblRecoveryCycles.Name      = "lblRecoveryCycles";
         lblRecoveryCycles.TabIndex  = 23;
         lblRecoveryCycles.Text      = "Trigger after";
         lblRecoveryCycles.TextAlign = ContentAlignment.MiddleLeft;
-        nudRecoveryCycles.Location = new Point(112, 343);
+        nudRecoveryCycles.Location = new Point(112, 140);
         nudRecoveryCycles.Maximum  = new decimal(new int[] { 10, 0, 0, 0 });
         nudRecoveryCycles.Minimum  = new decimal(new int[] { 1, 0, 0, 0 });
         nudRecoveryCycles.Name     = "nudRecoveryCycles";
         nudRecoveryCycles.Size     = new Size(50, 23);
         nudRecoveryCycles.TabIndex = 24;
         nudRecoveryCycles.Value    = new decimal(new int[] { 3, 0, 0, 0 });
-        lblRecoveryCyclesUnit.Location  = new Point(168, 343);
+        lblRecoveryCyclesUnit.Location  = new Point(168, 140);
         lblRecoveryCyclesUnit.Name      = "lblRecoveryCyclesUnit";
         lblRecoveryCyclesUnit.Size      = new Size(270, 23);
         lblRecoveryCyclesUnit.TabIndex  = 25;
@@ -350,8 +370,9 @@ partial class SettingsForm
         grpQBittorrent.Controls.Add(chkForceStartQBittorrent);
         grpQBittorrent.Controls.Add(lblQBittorrentDefaultPort);
         grpQBittorrent.Controls.Add(nudQBittorrentDefaultPort);
-        grpQBittorrent.Controls.Add(chkWarnOnInterfaceMismatch);
-        grpQBittorrent.Controls.Add(chkRestartOnDisconnect);
+        grpQBittorrent.Controls.Add(chkQBittorrentWarnOnInterfaceMismatch);
+        grpQBittorrent.Controls.Add(chkQBittorrentRestartOnDisconnect);
+        grpQBittorrent.Controls.Add(chkQBittorrentFixInterfaceBinding);
         grpQBittorrent.Location = new Point(6, 6);
         grpQBittorrent.Name     = "grpQBittorrent";
         grpQBittorrent.Size     = new Size(488, 380);
@@ -432,7 +453,7 @@ partial class SettingsForm
         chkForceStartQBittorrent.Name     = "chkForceStartQBittorrent";
         chkForceStartQBittorrent.Size     = new Size(217, 19);
         chkForceStartQBittorrent.TabIndex = 13;
-        chkForceStartQBittorrent.Text     = "Force start qBittorrent if not running";
+        chkForceStartQBittorrent.Text     = "Force-start qBittorrent if not running";
         lblQBittorrentDefaultPort.Location  = new Point(12, 227);
         lblQBittorrentDefaultPort.Name      = "lblQBittorrentDefaultPort";
         lblQBittorrentDefaultPort.Size      = new Size(130, 23);
@@ -444,18 +465,24 @@ partial class SettingsForm
         nudQBittorrentDefaultPort.Name     = "nudQBittorrentDefaultPort";
         nudQBittorrentDefaultPort.Size     = new Size(80, 23);
         nudQBittorrentDefaultPort.TabIndex = 15;
-        chkWarnOnInterfaceMismatch.AutoSize = true;
-        chkWarnOnInterfaceMismatch.Location = new Point(15, 256);
-        chkWarnOnInterfaceMismatch.Name     = "chkWarnOnInterfaceMismatch";
-        chkWarnOnInterfaceMismatch.Size     = new Size(306, 19);
-        chkWarnOnInterfaceMismatch.TabIndex = 16;
-        chkWarnOnInterfaceMismatch.Text     = "Warn when network interface doesn't match the VPN";
-        chkRestartOnDisconnect.AutoSize = true;
-        chkRestartOnDisconnect.Location = new Point(15, 285);
-        chkRestartOnDisconnect.Name     = "chkRestartOnDisconnect";
-        chkRestartOnDisconnect.Size     = new Size(295, 19);
-        chkRestartOnDisconnect.TabIndex = 17;
-        chkRestartOnDisconnect.Text     = "Restart qBittorrent if connection status disconnects";
+        chkQBittorrentWarnOnInterfaceMismatch.AutoSize = true;
+        chkQBittorrentWarnOnInterfaceMismatch.Location = new Point(15, 256);
+        chkQBittorrentWarnOnInterfaceMismatch.Name     = "chkQBittorrentWarnOnInterfaceMismatch";
+        chkQBittorrentWarnOnInterfaceMismatch.Size     = new Size(306, 19);
+        chkQBittorrentWarnOnInterfaceMismatch.TabIndex = 16;
+        chkQBittorrentWarnOnInterfaceMismatch.Text     = "Warn when network interface doesn't match the VPN";
+        chkQBittorrentRestartOnDisconnect.AutoSize = true;
+        chkQBittorrentRestartOnDisconnect.Location = new Point(15, 285);
+        chkQBittorrentRestartOnDisconnect.Name     = "chkQBittorrentRestartOnDisconnect";
+        chkQBittorrentRestartOnDisconnect.Size     = new Size(295, 19);
+        chkQBittorrentRestartOnDisconnect.TabIndex = 17;
+        chkQBittorrentRestartOnDisconnect.Text     = "Restart qBittorrent if connection status disconnects";
+        chkQBittorrentFixInterfaceBinding.AutoSize = true;
+        chkQBittorrentFixInterfaceBinding.Location = new Point(15, 314);
+        chkQBittorrentFixInterfaceBinding.Name     = "chkQBittorrentFixInterfaceBinding";
+        chkQBittorrentFixInterfaceBinding.Size     = new Size(330, 19);
+        chkQBittorrentFixInterfaceBinding.TabIndex = 18;
+        chkQBittorrentFixInterfaceBinding.Text     = "Fix the network interface binding when it goes stale";
         // ── grpDeluge ─────────────────────────────────────────────────
         grpDeluge.Controls.Add(lblDelugeURL);
         grpDeluge.Controls.Add(txtDelugeURL);
@@ -542,7 +569,7 @@ partial class SettingsForm
         chkForceStartDeluge.Name     = "chkForceStartDeluge";
         chkForceStartDeluge.Size     = new Size(204, 19);
         chkForceStartDeluge.TabIndex = 11;
-        chkForceStartDeluge.Text     = "Force start Deluge if not running";
+        chkForceStartDeluge.Text     = "Force-start Deluge if not running";
         lblDelugeDefaultPort.Location  = new Point(12, 198);
         lblDelugeDefaultPort.Name      = "lblDelugeDefaultPort";
         lblDelugeDefaultPort.Size      = new Size(130, 23);
@@ -554,6 +581,126 @@ partial class SettingsForm
         nudDelugeDefaultPort.Name     = "nudDelugeDefaultPort";
         nudDelugeDefaultPort.Size     = new Size(80, 23);
         nudDelugeDefaultPort.TabIndex = 13;
+        // ── grpNicotine ───────────────────────────────────────────────
+        grpNicotine.Controls.Add(lblNicotineURL);
+        grpNicotine.Controls.Add(txtNicotineURL);
+        grpNicotine.Controls.Add(btnTestNicotine);
+        grpNicotine.Controls.Add(lblNicotineToken);
+        grpNicotine.Controls.Add(txtNicotineToken);
+        grpNicotine.Controls.Add(btnDetectNicotinePlugin);
+        grpNicotine.Controls.Add(lblNicotineExePath);
+        grpNicotine.Controls.Add(txtNicotineExePath);
+        grpNicotine.Controls.Add(btnBrowseNicotineExePath);
+        grpNicotine.Controls.Add(lblNicotineProcessName);
+        grpNicotine.Controls.Add(txtNicotineProcessName);
+        grpNicotine.Controls.Add(chkForceStartNicotine);
+        grpNicotine.Controls.Add(chkNicotineWarnOnInterfaceMismatch);
+        grpNicotine.Controls.Add(lblNicotineDefaultPort);
+        grpNicotine.Controls.Add(nudNicotineDefaultPort);
+        grpNicotine.Controls.Add(btnInstallNicotinePlugin);
+        grpNicotine.Controls.Add(lblNicotinePluginStatus);
+        grpNicotine.Location = new Point(6, 6);
+        grpNicotine.Name     = "grpNicotine";
+        grpNicotine.Size     = new Size(488, 380);
+        grpNicotine.TabIndex = 5;
+        grpNicotine.TabStop  = false;
+        grpNicotine.Text     = "Nicotine+";
+        grpNicotine.Visible  = false;
+        lblNicotineURL.Location  = new Point(12, 24);
+        lblNicotineURL.Name      = "lblNicotineURL";
+        lblNicotineURL.Size      = new Size(130, 23);
+        lblNicotineURL.TabIndex  = 0;
+        lblNicotineURL.Text      = "Plugin URL:";
+        lblNicotineURL.TextAlign = ContentAlignment.MiddleLeft;
+        txtNicotineURL.Location = new Point(148, 24);
+        txtNicotineURL.Name     = "txtNicotineURL";
+        txtNicotineURL.Size     = new Size(244, 23);
+        txtNicotineURL.TabIndex = 1;
+        btnTestNicotine.Location = new Point(398, 24);
+        btnTestNicotine.Name     = "btnTestNicotine";
+        btnTestNicotine.Size     = new Size(70, 23);
+        btnTestNicotine.TabIndex = 2;
+        btnTestNicotine.Text     = "Test";
+        btnTestNicotine.Click   += btnTestNicotine_Click;
+        lblNicotineToken.Location  = new Point(12, 53);
+        lblNicotineToken.Name      = "lblNicotineToken";
+        lblNicotineToken.Size      = new Size(130, 23);
+        lblNicotineToken.TabIndex  = 3;
+        lblNicotineToken.Text      = "Plugin token:";
+        lblNicotineToken.TextAlign = ContentAlignment.MiddleLeft;
+        txtNicotineToken.Location     = new Point(148, 53);
+        txtNicotineToken.Name         = "txtNicotineToken";
+        txtNicotineToken.PasswordChar = '*';
+        txtNicotineToken.Size         = new Size(276, 23);
+        txtNicotineToken.TabIndex     = 4;
+        btnDetectNicotinePlugin.Location = new Point(428, 53);
+        btnDetectNicotinePlugin.Name     = "btnDetectNicotinePlugin";
+        btnDetectNicotinePlugin.Size     = new Size(40, 23);
+        btnDetectNicotinePlugin.TabIndex = 5;
+        btnDetectNicotinePlugin.Text     = "⟳";
+        btnDetectNicotinePlugin.Click   += btnDetectNicotinePlugin_Click;
+        lblNicotineExePath.Location  = new Point(12, 82);
+        lblNicotineExePath.Name      = "lblNicotineExePath";
+        lblNicotineExePath.Size      = new Size(130, 23);
+        lblNicotineExePath.TabIndex  = 6;
+        lblNicotineExePath.Text      = "Executable:";
+        lblNicotineExePath.TextAlign = ContentAlignment.MiddleLeft;
+        txtNicotineExePath.Location = new Point(148, 82);
+        txtNicotineExePath.Name     = "txtNicotineExePath";
+        txtNicotineExePath.Size     = new Size(276, 23);
+        txtNicotineExePath.TabIndex = 7;
+        btnBrowseNicotineExePath.Location = new Point(428, 82);
+        btnBrowseNicotineExePath.Name     = "btnBrowseNicotineExePath";
+        btnBrowseNicotineExePath.Size     = new Size(40, 23);
+        btnBrowseNicotineExePath.TabIndex = 8;
+        btnBrowseNicotineExePath.Text     = "…";
+        btnBrowseNicotineExePath.Click   += btnBrowseNicotineExePath_Click;
+        lblNicotineProcessName.Location  = new Point(12, 111);
+        lblNicotineProcessName.Name      = "lblNicotineProcessName";
+        lblNicotineProcessName.Size      = new Size(130, 23);
+        lblNicotineProcessName.TabIndex  = 9;
+        lblNicotineProcessName.Text      = "Process name:";
+        lblNicotineProcessName.TextAlign = ContentAlignment.MiddleLeft;
+        txtNicotineProcessName.Location = new Point(148, 111);
+        txtNicotineProcessName.Name     = "txtNicotineProcessName";
+        txtNicotineProcessName.Size     = new Size(320, 23);
+        txtNicotineProcessName.TabIndex = 10;
+        chkForceStartNicotine.AutoSize = true;
+        chkForceStartNicotine.Location = new Point(15, 140);
+        chkForceStartNicotine.Name     = "chkForceStartNicotine";
+        chkForceStartNicotine.Size     = new Size(220, 19);
+        chkForceStartNicotine.TabIndex = 11;
+        chkForceStartNicotine.Text     = "Force-start Nicotine+ if not running";
+        chkNicotineWarnOnInterfaceMismatch.AutoSize = true;
+        chkNicotineWarnOnInterfaceMismatch.Location = new Point(15, 169);
+        chkNicotineWarnOnInterfaceMismatch.Name     = "chkNicotineWarnOnInterfaceMismatch";
+        chkNicotineWarnOnInterfaceMismatch.Size     = new Size(300, 19);
+        chkNicotineWarnOnInterfaceMismatch.TabIndex = 12;
+        chkNicotineWarnOnInterfaceMismatch.Text     = "Warn when network interface doesn't match the VPN";
+        lblNicotineDefaultPort.Location  = new Point(12, 198);
+        lblNicotineDefaultPort.Name      = "lblNicotineDefaultPort";
+        lblNicotineDefaultPort.Size      = new Size(130, 23);
+        lblNicotineDefaultPort.TabIndex  = 13;
+        lblNicotineDefaultPort.Text      = "Default port:";
+        lblNicotineDefaultPort.TextAlign = ContentAlignment.MiddleLeft;
+        nudNicotineDefaultPort.Location = new Point(148, 198);
+        nudNicotineDefaultPort.Maximum  = new decimal(new int[] { 65535, 0, 0, 0 });
+        nudNicotineDefaultPort.Name     = "nudNicotineDefaultPort";
+        nudNicotineDefaultPort.Size     = new Size(80, 23);
+        nudNicotineDefaultPort.TabIndex = 14;
+        btnInstallNicotinePlugin.Location = new Point(15, 236);
+        btnInstallNicotinePlugin.Name     = "btnInstallNicotinePlugin";
+        btnInstallNicotinePlugin.Size     = new Size(150, 27);
+        btnInstallNicotinePlugin.TabIndex = 15;
+        btnInstallNicotinePlugin.Text     = "Install Plugin…";
+        btnInstallNicotinePlugin.Click   += btnInstallNicotinePlugin_Click;
+        lblNicotinePluginStatus.AutoSize  = true;
+        lblNicotinePluginStatus.ForeColor = SystemColors.GrayText; // neutral until RefreshNicotinePluginStatus resolves the real state
+        lblNicotinePluginStatus.Location  = new Point(175, 242);
+        lblNicotinePluginStatus.Name      = "lblNicotinePluginStatus";
+        lblNicotinePluginStatus.Size      = new Size(120, 15);
+        lblNicotinePluginStatus.TabIndex  = 16;
+        lblNicotinePluginStatus.Text      = "Checking…";
         // ── grpTransmission ───────────────────────────────────────────
         grpTransmission.Controls.Add(lblTransmissionURL);
         grpTransmission.Controls.Add(txtTransmissionURL);
@@ -652,7 +799,7 @@ partial class SettingsForm
         chkForceStartTransmission.Name     = "chkForceStartTransmission";
         chkForceStartTransmission.Size     = new Size(214, 19);
         chkForceStartTransmission.TabIndex = 13;
-        chkForceStartTransmission.Text     = "Force start Transmission if not running";
+        chkForceStartTransmission.Text     = "Force-start Transmission if not running";
         lblTransmissionDefaultPort.Location  = new Point(12, 227);
         lblTransmissionDefaultPort.Name      = "lblTransmissionDefaultPort";
         lblTransmissionDefaultPort.Size      = new Size(130, 23);
@@ -710,6 +857,7 @@ partial class SettingsForm
         // other on the Client tab; their existing visibility toggling is unchanged.
         tabSettings.Controls.Add(tabGeneral);
         tabSettings.Controls.Add(tabClient);
+        tabSettings.Controls.Add(tabAutoRecovery);
         tabSettings.Controls.Add(tabExtra);
         tabSettings.Padding       = new Point(16, 5); // larger native tabs - auto-sized to text, centered and theme-correct in dark mode
         tabSettings.Location      = new Point(8, 8);
@@ -725,9 +873,13 @@ partial class SettingsForm
         tabGeneral.Text = "General";
         tabClient.Controls.Add(grpQBittorrent);
         tabClient.Controls.Add(grpDeluge);
+        tabClient.Controls.Add(grpNicotine);
         tabClient.Controls.Add(grpTransmission);
         tabClient.Name = "tabClient";
         tabClient.Text = "Client";
+        tabAutoRecovery.Controls.Add(grpAutoRecovery);
+        tabAutoRecovery.Name = "tabAutoRecovery";
+        tabAutoRecovery.Text = "Auto-Recovery";
         tabExtra.Controls.Add(grpExtra);
         tabExtra.Name = "tabExtra";
         tabExtra.Text = "Extra";
@@ -764,6 +916,8 @@ partial class SettingsForm
         Text            = "qbPortWeaver | Settings"; // overridden in constructor
         grpGeneral.ResumeLayout(false);
         grpGeneral.PerformLayout();
+        grpAutoRecovery.ResumeLayout(false);
+        grpAutoRecovery.PerformLayout();
         ((System.ComponentModel.ISupportInitialize)nudUpdateInterval).EndInit();
         ((System.ComponentModel.ISupportInitialize)nudRecoveryCycles).EndInit();
         ((System.ComponentModel.ISupportInitialize)nudPortClosedChecks).EndInit();
@@ -773,6 +927,9 @@ partial class SettingsForm
         grpDeluge.ResumeLayout(false);
         grpDeluge.PerformLayout();
         ((System.ComponentModel.ISupportInitialize)nudDelugeDefaultPort).EndInit();
+        grpNicotine.ResumeLayout(false);
+        grpNicotine.PerformLayout();
+        ((System.ComponentModel.ISupportInitialize)nudNicotineDefaultPort).EndInit();
         grpTransmission.ResumeLayout(false);
         grpTransmission.PerformLayout();
         ((System.ComponentModel.ISupportInitialize)nudTransmissionDefaultPort).EndInit();
@@ -780,6 +937,7 @@ partial class SettingsForm
         grpExtra.PerformLayout();
         tabGeneral.ResumeLayout(false);
         tabClient.ResumeLayout(false);
+        tabAutoRecovery.ResumeLayout(false);
         tabExtra.ResumeLayout(false);
         tabSettings.ResumeLayout(false);
         ResumeLayout(false);
@@ -789,10 +947,12 @@ partial class SettingsForm
     private TabPage       tabGeneral;
     private TabPage       tabClient;
     private TabPage       tabExtra;
+    private TabPage       tabAutoRecovery;
 
     private GroupBox      grpGeneral;
-    private Label         lblBitTorrentClient;
-    private ComboBox      cboBitTorrentClient;
+    private GroupBox      grpAutoRecovery;
+    private Label         lblClient;
+    private ComboBox      cboClient;
     private Button        btnDetectClient;
     private Label         lblUpdateInterval;
     private NumericUpDown nudUpdateInterval;
@@ -806,7 +966,6 @@ partial class SettingsForm
     private CheckBox      chkNotifyOnPortUpdate;
     private CheckBox      chkShowUpdateForm;
     private CheckBox      chkWaitForVpnOnStartup;
-    private Label         lblAutoRecoveryHeader;
     private Button        btnTestRecovery;
     private CheckBox      chkVerifyPort;
     private CheckBox      chkPortClosedRecovery;
@@ -835,8 +994,9 @@ partial class SettingsForm
     private CheckBox      chkForceStartQBittorrent;
     private Label         lblQBittorrentDefaultPort;
     private NumericUpDown nudQBittorrentDefaultPort;
-    private CheckBox      chkWarnOnInterfaceMismatch;
-    private CheckBox      chkRestartOnDisconnect;
+    private CheckBox      chkQBittorrentWarnOnInterfaceMismatch;
+    private CheckBox      chkQBittorrentRestartOnDisconnect;
+    private CheckBox      chkQBittorrentFixInterfaceBinding;
 
     private GroupBox      grpDeluge;
     private Label         lblDelugeURL;
@@ -853,6 +1013,25 @@ partial class SettingsForm
     private CheckBox      chkForceStartDeluge;
     private Label         lblDelugeDefaultPort;
     private NumericUpDown nudDelugeDefaultPort;
+
+    private GroupBox      grpNicotine;
+    private Label         lblNicotineURL;
+    private TextBox       txtNicotineURL;
+    private Button        btnTestNicotine;
+    private Label         lblNicotineToken;
+    private TextBox       txtNicotineToken;
+    private Button        btnDetectNicotinePlugin;
+    private Label         lblNicotineExePath;
+    private TextBox       txtNicotineExePath;
+    private Button        btnBrowseNicotineExePath;
+    private Label         lblNicotineProcessName;
+    private TextBox       txtNicotineProcessName;
+    private CheckBox      chkForceStartNicotine;
+    private CheckBox      chkNicotineWarnOnInterfaceMismatch;
+    private Label         lblNicotineDefaultPort;
+    private NumericUpDown nudNicotineDefaultPort;
+    private Button        btnInstallNicotinePlugin;
+    private Label         lblNicotinePluginStatus;
 
     private GroupBox      grpTransmission;
     private Label         lblTransmissionURL;

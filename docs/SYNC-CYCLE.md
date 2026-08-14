@@ -25,7 +25,7 @@ flowchart TD
     PORT_OK -- No --> HANDLE_FAIL[Increment counter + try auto-recovery]
     HANDLE_FAIL --> ERROR_PORT([ERROR: Failed to determine port])
 
-    DISCONNECTED --> DEFAULT{Default port > 0?}
+    DISCONNECTED --> DEFAULT{Default port usable?}
     DEFAULT -- Yes --> CLIENT
     DEFAULT -- No --> SKIP([SKIP: No default port configured])
 
@@ -44,8 +44,11 @@ flowchart TD
     DONE_CHECK{restartOnDisconnect AND\nrestart not attempted this cycle?}
     DONE_CHECK -- Yes --> CONN_STATUS[Check client connection status]
     DONE_CHECK -- No --> VERIFY
-    CONN_STATUS -- disconnected --> RESTART_CLIENT[Restart client]
-    CONN_STATUS -- connected/firewalled --> VERIFY
+    CONN_STATUS -- disconnected --> RESTART_CAP{Under the restart cap?}
+    CONN_STATUS -- connected/firewalled --> RESET_CAP[Re-arm restart attempts]
+    RESET_CAP --> VERIFY
+    RESTART_CAP -- Yes --> RESTART_CLIENT[Restart client]
+    RESTART_CAP -- No --> VERIFY
     RESTART_CLIENT --> VERIFY
 
     VERIFY{verifyPortAfterSync AND\nVPN connected?}
@@ -74,7 +77,7 @@ The sync cycle instantiates a provider-specific `IVpnManager` based on the confi
 | Disabled   | _(none)_           | Port sync is skipped entirely; cycle proceeds to Media Manager |
 | ProtonVPN  | `ProtonVpnManager` | Parses the ProtonVPN log file for the last assigned port |
 | PIA        | `PiaVpnManager`    | Runs `piactl get portforward` and parses stdout |
-| NAT-PMP    | `NatPmpManager`    | Sends a UDP port mapping request (RFC 6886) to the gateway |
+| NAT-PMP    | `NatPmpManager`    | Sends a port mapping request (RFC 6886) to the gateway, for UDP then TCP |
 
 `Disabled` is the default for new installations.
 
@@ -99,7 +102,7 @@ flowchart TD
     E -- No --> GRACE{Startup grace period?}
     GRACE -- Yes --> HOLD([HOLD: waiting for VPN, fast re-check])
     GRACE -- No --> F[Increment failed counter]
-    F --> G[TryTriggerRecoveryAsync]
+    F --> G[TriggerRecoveryIfDueAsync]
     G --> SKIP_STATUS([SKIP: Adapter not found])
 ```
 
@@ -120,7 +123,7 @@ Right after the app starts, the VPN is often still connecting (VPN clients launc
 
 When the VPN is detected as disconnected - or port detection fails despite the VPN being connected - the cycle increments a consecutive-failure counter. This counter drives two behaviors:
 
-1. **Default port fallback** - if `DefaultPort > 0`, the cycle applies it to the BitTorrent client so it remains functional (typically on a non-VPN port). If `DefaultPort == 0`, the cycle is skipped entirely.
+1. **Default port fallback** - if `DefaultPort` is a usable port, the cycle applies it to the client so it remains functional (typically on a non-VPN port). If it is `0`, or outside the usable range, the cycle is skipped entirely.
 
 2. **Auto-recovery** - if enabled, once the counter reaches the configured threshold *and* the failure streak has lasted at least `(threshold - 1) x interval` seconds, the cycle:
    - Resets the counter (to prevent repeated triggers)
@@ -129,6 +132,15 @@ When the VPN is detected as disconnected - or port detection fails despite the V
      - **NAT-PMP with a generic gateway:** action = `cycle-adapter`, target = adapter name - the helper disables and re-enables the adapter via netsh
    - Sends the recovery request to the helper service (runs as SYSTEM) via named pipe
    - If the target matches a known provider's client process, restarts it in the user session
+
+### Usable Port Rule
+
+Both ports that can reach the client go through the same check (`AppConstants.IsUsablePort`, 1-65535).
+
+- A **provider-reported** port outside the range is logged at Warn and discarded, and the cycle falls through to its no-port branch, so the grace window, the failure streak and auto-recovery behave exactly as they do when no port was reported at all. ProtonVPN's log carries a port pair while a mapping is being torn down, which is the case this was added for.
+- A **default port** outside the range is logged at Warn and treated as `0`, so the cycle is skipped rather than applying it. Only a hand-edited registry value can get there (the Settings spinner caps it, and re-saving clamps it back), so this is a floor under that rather than the primary validation.
+
+The rule exists because most clients treat `0` as "pick a random port", which would quietly undo the forwarding the app maintains while the cycle still reported success.
 
 The time floor exists because a cycle can start early - a manual sync, a settings change, or (most commonly) a burst of network-change re-syncs while connectivity flaps during a router reboot. Without it, several early cycles can drive the counter to the threshold within seconds and force-restart the VPN service during a transient blip that would have cleared on its own. `(threshold - 1) x interval` is exactly the elapsed time the streak would take under normal scheduled cycling (failure 1 at t=0, failure N at t=`(N-1) x interval`), so a genuine sustained outage still triggers at the same moment it always did - the floor only defers recovery when failures arrive faster than the schedule. The streak's start time is re-stamped on each streak's first failure, so it always describes the streak in progress.
 
@@ -168,9 +180,11 @@ All resets flow through a single `ResetFailureStreak` helper. It only zeroes the
 
 The Settings form's **Test** button (Auto-recovery header row) dispatches the same recovery action on demand via `PortSyncService.TestRecoveryAsync`, after a confirmation dialog. It uses the in-form provider selection (like the client Test buttons), bypasses every gate - counters, time floor, arming - and goes straight to `DispatchRecoveryAsync` with `manualTest = true`. A test is recorded in the port history as "Recovery test triggered" but is not counted in the session's Recoveries statistic; it arms the "after recovery" history annotation like an automatic dispatch, since its effect on the port is the same.
 
-## BitTorrent Client Interaction
+## Client Interaction
 
-All client communication goes through the `IBitTorrentClient` interface, with implementations for qBittorrent (`QBittorrentClient`), Transmission (`TransmissionClient`), and Deluge (`DelugeClient`). The active implementation is selected each cycle based on the configured client setting.
+All client communication goes through the `IManagedClient` interface, with implementations for qBittorrent (`QBittorrentClient`), Transmission (`TransmissionClient`), Deluge (`DelugeClient`), and Nicotine+ (`NicotineClient`). The active implementation is selected each cycle based on the configured client setting.
+
+> **Nicotine+** is a Soulseek client with no remote-control interface of its own. `NicotineClient` talks to the qbPortWeaver bridge plugin (`plugins/qbpw_nicotine_bridge/`), a GPL-3.0 Nicotine+ plugin that serves a token-authenticated JSON API on `127.0.0.1`. The plugin discovers itself to qbPortWeaver by writing its address and token to `%LocalAppData%\qbPortWeaver\nicotine-bridge.json`, which `NicotinePluginDiscovery` reads. It applies a port change by rewriting the setting and forcing a reconnect - the same thing the Preferences dialog does - so the port is live in roughly five seconds with no restart. Accordingly `NicotineClient.RestartAsync` is a deliberate no-op: killing Nicotine+ would discard its configuration, since it only writes it on a graceful shutdown.
 
 ### Port Update Sequence
 
@@ -179,11 +193,13 @@ All client communication goes through the `IBitTorrentClient` interface, with im
    GET /api/v2/app/preferences   → listen_port + current_interface_name  [qBittorrent]
    session-get                   → peer-port + bind-address-ipv4          [Transmission]
    core.get_config_values        → listen_ports / listen_random_port      [Deluge]
+   GET /v1/preferences           → listen_port + interface                [Nicotine+]
 
 2. Set new port (only if different):
    POST /api/v2/app/setPreferences                                        [qBittorrent]
    session-set                                                            [Transmission]
    core.set_config                                                        [Deluge]
+   POST /v1/port                                                          [Nicotine+]
 
 3. Record the change in the port history file (always on success - see Port History under
    Status Output), and (optional) show a tray balloon tip if NotifyOnPortUpdate is enabled
@@ -196,15 +212,61 @@ All client communication goes through the `IBitTorrentClient` interface, with im
    GET /api/v2/transfer/info     → connection_status connected/firewalled    [qBittorrent]
    port_test (ip_protocol=ipv4)  → port-is-open                              [Transmission]
    core.test_listen_port         → true/false                                [Deluge]
+   POST /v1/porttest             → open/closed/pending                       [Nicotine+]
 ```
 
 > The **post-update command** (if configured) is not part of this sequence: it is launched at the very end of the cycle, *after* the status JSON file is written (see Status Output) and only on a successful port change - so a script that reads the status file sees this cycle's result rather than the previous one.
 
-### Interface Mismatch Warning *(qBittorrent only)*
+### Interface Mismatch Warning *(qBittorrent and Nicotine+)*
 
-When enabled, the cycle compares qBittorrent's bound network interface (`current_interface_name` from preferences) against the configured VPN provider name. A mismatch raises the `InterfaceMismatchDetected` event, which shows a warning balloon tip from the tray icon. This helps catch cases where qBittorrent is routing traffic outside the VPN tunnel. Transmission and Deluge do not expose a named adapter via their APIs, so this check is skipped for those clients.
+When enabled, the cycle compares the client's bound network interface (`current_interface_name` from qBittorrent's preferences, `interface` from the Nicotine+ bridge - both Windows adapter friendly names) against the configured VPN provider name. A mismatch raises the `InterfaceMismatchDetected` event, which shows a warning balloon tip from the tray icon. This helps catch cases where qBittorrent is routing traffic outside the VPN tunnel. Transmission and Deluge do not expose a named adapter via their APIs, so this check is skipped for those clients.
 
 > If qBittorrent stays bound to an old adapter name after a ProtonVPN protocol change (e.g. `ProtonVPN` while the active tunnel is now `ProTUN`), this warning fires correctly - rebind qBittorrent's network interface to the active adapter to clear it.
+
+### Stale Interface Binding *(qBittorrent only)*
+
+The check above compares the adapter *name*, but qBittorrent binds by a separate value.
+`current_network_interface` holds an opaque token of the form `<type>_<index>` - `iftype53_32768`,
+`ethernet_32768`, `loopback_0` - and that is what libtorrent resolves. `current_interface_name` is
+the display name only.
+
+When a VPN destroys and recreates its adapter, Windows issues a new index while the name is reused.
+The stored token then resolves to nothing, so qBittorrent logs `The configured network interface is
+invalid` and listens on no port - while the name check above still passes, because the name is
+genuinely correct. Restarting cannot help: the token is persisted configuration and is re-read
+unchanged. If the token instead resolves to a *different* live adapter of the same type, the client
+reports itself connected while its traffic leaves outside the tunnel.
+
+Each cycle, `QBittorrentClient.CheckInterfaceBindingAsync` reads the live pairs from
+`GET /api/v2/app/networkInterfaceList` and looks up the entry whose `name` equals
+`current_interface_name`. Resolution is by name, so the differing token formats never need parsing.
+The binding is reported stale only when that entry exists and its token differs from the stored one;
+every ambiguous case - no name, bound to all interfaces, adapter absent (the VPN is simply down), or
+the endpoint missing on an older qBittorrent - is treated as "nothing to say".
+
+Detection always runs, whatever the VPN provider is, because the binding can go stale without the
+VPN being involved. What happens next depends on `fixInterfaceBinding` (qBittorrent section,
+default on):
+
+| setting | behaviour |
+|---------|-----------|
+| off | Warn plus a one-shot balloon, naming the stale binding and how to clear it |
+| on  | `POST /api/v2/app/setPreferences` re-applies the resolved token **and** the name together, as the Web UI does when an adapter is picked |
+
+The repair never writes an empty token: empty means *bind to every interface*, which would replace a
+client that cannot connect with one reachable outside the tunnel. It is also attempted once per stale
+streak - if the binding is still wrong on the next cycle something else is overwriting it, and
+repeating the write every cycle would be its own loop. The attempt re-arms as soon as the binding
+reads healthy.
+
+### Restart-on-Disconnect Cap *(qBittorrent only)*
+
+`restartOnDisconnect` restarts the client when it reports `disconnected`. That helps only when the
+cause is the client's own state; when the cause is persisted configuration - a stale interface
+binding being the known example - every restart re-reads the same value and reports disconnected
+again. Restarts are therefore capped at three consecutive attempts, after which a single Warn names
+the likely cause and further restarts are suspended. Any non-disconnected status re-arms the
+allowance, so a later unrelated disconnect gets the full three attempts.
 
 ### Port Verification
 
@@ -215,10 +277,11 @@ When `verifyPortAfterSync` is enabled (General settings, default on) and the VPN
 | qBittorrent | `connection_status` from `transfer/info`: connected = open, firewalled = closed | Inferred from incoming peer activity; an idle client may report closed indefinitely |
 | Transmission | `port_test` RPC (`ip_protocol=ipv4`) | Active probe via Transmission's online port-check service. Uses the Transmission 4.1 method name, pinned to IPv4; falls back to the legacy `port-test` method on pre-4.1 daemons |
 | Deluge | `core.test_listen_port` | Active probe via Deluge's online port-check service |
+| Nicotine+ | `POST /v1/porttest` via the bridge plugin | The plugin uses Nicotine+'s native checker when the version exposes it (the `check-port-status` API, upstream #3373, not yet in a stable release); otherwise it falls back to querying the Soulseek port-test service (`slsknet.org/porttest.php`) over HTTP and parsing the `<port>/tcp open\|closed` verdict. Either way the plugin caps the wait below qbPortWeaver's HTTP timeout, so a slow or offline check returns `pending` and is treated as undetermined rather than closed |
 
-**Throttle** - because two of the three mechanisms contact external check services, the test runs when the port changed this cycle, every cycle while a result awaits confirmation, and every cycle while confirmed-closed *and* port-closed recovery is still armed (so the recovery counter advances toward its trigger). Otherwise - and once recovery has fired (disarmed) or is off - it runs every 5th cycle, which still detects a reopen without hammering the external check services. The counter is initialised above the threshold so the first increment triggers immediately on the first eligible cycle after startup.
+**Throttle** - because three of the four mechanisms contact external check services, the test runs when the port changed this cycle, every cycle while a result awaits confirmation, and every cycle while confirmed-closed *and* port-closed recovery is still armed (so the recovery counter advances toward its trigger). Otherwise - and once recovery has fired (disarmed) or is off - it runs every 5th cycle, which still detects a reopen without hammering the external check services. The counter is initialised above the threshold so the first increment triggers immediately on the first eligible cycle after startup.
 
-**Confirmation rule** - a single closed result logs at Info and forces a re-test on the next cycle; only the second consecutive closed result is treated as confirmed. This absorbs qBittorrent's idle-firewalled false positive and transient check-service glitches. A confirmed-closed port logs at Warn every cycle (so the log alert badge tracks the persistent condition, like the interface mismatch check) and raises the `PortVerificationFailed` event once, on the transition, for a tray warning balloon. Results that cannot be determined (client unreachable, check service down) leave the verification state unchanged.
+**Confirmation rule** - a single closed result logs at Info and forces a re-test on the next cycle; only the second consecutive closed result is treated as confirmed. This absorbs qBittorrent's idle-firewalled false positive and transient check-service glitches. A confirmed-closed port logs at Warn every cycle (so the log alert badge tracks the persistent condition, like the interface mismatch check) and raises the `PortVerificationFailed` event once, on the transition, for a tray warning balloon. Results that cannot be determined (client unreachable, check service down) leave the verification state unchanged - except while a closed result is awaiting confirmation, where three consecutive undetermined checks drop the pending state, log an Info line, and resume the normal throttle. Only the pending state forces a check every cycle, so only it needs bounding: without that cap an outage of the check service would be polled at full rate, by every install at once, for as long as it lasted. A later definite closed result simply starts the confirmation sequence again.
 
 **Port-closed recovery** - when `portClosedRecoveryEnabled` is on (default on; requires port verification, but is independent of the failed-sync recovery trigger), a configurable number of confirmed closed checks (`portClosedRecoveryTriggerChecks`, default 3) dispatches the provider's normal recovery action (service restart, or adapter cycle for generic NAT-PMP gateways). The trigger is one-shot: after firing it stays disarmed until a verification reports the port open again, so a persistently false closed reading causes at most one recovery action and never a recovery loop.
 
@@ -226,7 +289,7 @@ When `verifyPortAfterSync` is enabled (General settings, default on) and the VPN
 
 ### Port Update Notification
 
-When `NotifyOnPortUpdate` is enabled (General settings, default on), a successful port change raises the `PortUpdated` event immediately after `ApplyPortUpdateAsync` returns. `MainForm` handles this with a tray balloon tip (`ToolTipIcon.Info`). The notification fires for all three clients.
+When `NotifyOnPortUpdate` is enabled (General settings, default on), a successful port change raises the `PortUpdated` event immediately after `ApplyPortUpdateAsync` returns. `MainForm` handles this with a tray balloon tip (`ToolTipIcon.Info`). The notification fires for all four clients.
 
 ### Log Alert Notifications
 
@@ -257,7 +320,7 @@ The update balloon is informational only - Windows 11 routes `ToolTipIcon.Info` 
 
 ## Status Output
 
-Every cycle writes a JSON status file (`qbPortWeaver.status.json` in `%LocalAppData%\qbPortWeaver\`) capturing the full cycle outcome. External tools can read this file to monitor sync health, and the in-app Status panel (tray menu -> Show Status, or double-click the tray icon) renders the same data live, refreshing after each cycle. Alongside the last sync time and result, the panel shows a **Next sync** estimate - the last sync time plus `updateIntervalSeconds` - displayed as a live countdown (`~3m`, `Due now`), or "Paused" while sync is paused, "Startup grace period" during the startup grace window, and "-" before the first cycle. The panel also exposes a **Sync Now** action, a **Pause/Resume** button that toggles automatic cycles (the same in-memory pause as the tray menu item, routed through `MainForm.ToggleSyncPaused`), a **Test Port** button that runs the reachability check on demand (see Port Verification), a **Recent Port Changes** list backed by the persisted port history (see below; right-click the list to clear it), and a **Statistics** group (see Session Statistics). The **Reachable** line carries a relative age ("now" / "N ago", the same wording as Last sync); because verification is throttled (see Port Verification), the panel remembers the last definite open/closed result and its verifying cycle's timestamp and keeps showing it across the cycles where no test ran, so the age reflects the real last check rather than blanking to "Not checked".
+Every cycle writes a JSON status file (`qbPortWeaver.status.json` in `%LocalAppData%\qbPortWeaver\`) capturing the full cycle outcome. External tools can read this file to monitor sync health, and the in-app Status panel (tray menu → Show Status, or double-click the tray icon) renders the same data live, refreshing after each cycle. Alongside the last sync time and result, the panel shows a **Next sync** estimate - the last sync time plus `updateIntervalSeconds` - displayed as a live countdown (`~3m`, `Due now`), or "Paused" while sync is paused, "Startup grace period" during the startup grace window, and "-" before the first cycle. The panel also exposes a **Sync Now** action, a **Pause/Resume** button that toggles automatic cycles (the same in-memory pause as the tray menu item, routed through `MainForm.ToggleSyncPaused`), a **Test Port** button that runs the reachability check on demand (see Port Verification), a **Recent Port Changes** list backed by the persisted port history (see below; right-click the list to clear it), and a **Statistics** group (see Session Statistics). The **Reachable** line carries a relative age ("now" / "N ago", the same wording as Last sync); because verification is throttled (see Port Verification), the panel remembers the last definite open/closed result and its verifying cycle's timestamp and keeps showing it across the cycles where no test ran, so the age reflects the real last check rather than blanking to "Not checked".
 
 ```json
 {
@@ -303,7 +366,7 @@ The Status panel's **Statistics** group combines two sources. The current port c
 
 The counters are incremented on the sync loop thread with `Interlocked` and read on the UI thread with `Volatile`; the panel reads the OK count before the total so the derived failure count can never be negative. They are deliberately not persisted - "this session" is the scope that makes the numbers meaningful, and they reset naturally on restart. The counters and the today's-changes figure refresh on the same per-cycle tick as the rest of the panel; the time-derived values (the Last sync age, the Next sync countdown, the Reachable age, and the Monitoring since elapsed) advance every second while the panel is open, driven by a one-second UI timer that recomputes only those values from the cached snapshot.
 
-Right-clicking the group offers **Clear Statistics**: the session counters zero and the monitoring baseline re-stamps to the clear time, so the figures read "since the clear". The history-derived figures are unaffected - those clear through the history list's own **Clear History**. No confirmation is asked, matching the confirmation convention: the counters are in-memory and reset on every restart anyway, so nothing irreversible is lost.
+Right-clicking the group offers **Clear Statistics**: the session counters zero and the monitoring baseline re-stamps to the clear time, so the figures read "since the clear". The history-derived figures are unaffected - those clear through the history list's own **Clear History**. It asks for confirmation, matching the confirmation convention: the convention's test is whether the user can get the data back, not whether it was on disk, and a counting window that runs from app start is easily weeks long on a tray application left running. The item is disabled while every counter is still zero, so the prompt only ever appears when there is something to lose.
 
 ## Diagnostics
 
@@ -320,14 +383,14 @@ RunAsync
      │       ├─ MarkWaitingForVpn (startup grace: adapter not discoverable yet)
      │       └─ RegisterFailureAndTryRecoveryAsync
      │           ├─ BuildCycleCountMessage
-     │           └─ TryTriggerRecoveryAsync
+     │           └─ TriggerRecoveryIfDueAsync
      │               └─ DispatchRecoveryAsync
      ├─ IVpnManager.IsVpnConnected
      ├─ HandleVpnDisconnectedAsync (if disconnected)
      │   ├─ MarkWaitingForVpn (startup grace: VPN not connected)
      │   └─ RegisterFailureAndTryRecoveryAsync
      │       ├─ BuildCycleCountMessage
-     │       └─ TryTriggerRecoveryAsync
+     │       └─ TriggerRecoveryIfDueAsync
      │           └─ DispatchRecoveryAsync
      ├─ HandleVpnConnectedAsync (if connected)
      │   ├─ IVpnManager.GetVpnPortAsync
@@ -335,24 +398,27 @@ RunAsync
      │   ├─ HandlePortDetectionFailureAsync (if port null, all providers)
      │   │   └─ RegisterFailureAndTryRecoveryAsync
      │   │       ├─ BuildCycleCountMessage
-     │   │       └─ TryTriggerRecoveryAsync
+     │   │       └─ TriggerRecoveryIfDueAsync
      │   │           └─ DispatchRecoveryAsync
      │   └─ WarnIfNatPmpLeaseTooShort (NAT-PMP only)
      └─ EnsureRunningAndUpdatePortAsync
          ├─ EnsureClientRunningAsync
-         ├─ IBitTorrentClient.GetPreferencesAsync
-         ├─ CheckInterfaceMatch (qBittorrent only)
+         ├─ IManagedClient.GetPreferencesAsync
+         ├─ CheckInterfaceMatch (qBittorrent and Nicotine+)
+         ├─ CheckAndRepairInterfaceBindingAsync (qBittorrent only; runs whatever the provider)
+         │   ├─ QBittorrentClient.CheckInterfaceBindingAsync (stale token detection)
+         │   └─ QBittorrentClient.RepairInterfaceBindingAsync (if fixInterfaceBinding; once per streak)
          ├─ UpdatePortAndNotifyAsync (when ports differ)
          │   ├─ ApplyPortUpdateAsync
-         │   │   ├─ IBitTorrentClient.SetListeningPortAsync
-         │   │   └─ IBitTorrentClient.RestartAsync
+         │   │   ├─ IManagedClient.SetListeningPortAsync
+         │   │   └─ IManagedClient.RestartAsync
          │   ├─ PortHistoryManager.Append (on successful change)
          │   └─ PortUpdated?.Invoke (if NotifyOnPortUpdate)
          ├─ CheckAndRestartIfDisconnectedAsync (qBittorrent only; skipped if already restarted)
-         │   └─ IBitTorrentClient.RestartAsync
+         │   └─ IManagedClient.RestartAsync
          ├─ VerifyPortAsync (if verifyPortAfterSync and VPN connected)
          │   ├─ ShouldVerifyThisCycle (throttle)
-         │   ├─ IBitTorrentClient.TestListeningPortAsync
+         │   ├─ IManagedClient.TestListeningPortAsync
          │   ├─ HandlePortOpenResult (re-arms port-closed recovery)
          │   ├─ HandlePortClosedResult (PortVerificationFailed event + history entry on confirmed transition)
          │   └─ MaybeTriggerPortClosedRecoveryAsync (one-shot)

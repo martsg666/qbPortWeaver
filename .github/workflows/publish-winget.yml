@@ -10,11 +10,17 @@ name: Publish to winget
 # The package must already exist in winget-pkgs (first submission was a manual PR);
 # this workflow only submits version updates. wingetcreate downloads the MSI itself,
 # so the new SHA256 and ProductCode are read from the installer automatically.
+#
+# wingetcreate rewrites the installer manifest but carries the locale manifest forward
+# unchanged, so the description and tags would otherwise stay frozen at whatever the
+# first submission said. The update is therefore written to disk first, the locale
+# metadata is refreshed from the values below, and only then is it submitted. Keep
+# those values in step with choco/qbPortWeaver.nuspec when the feature set changes.
 on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Release tag to publish - must include the v prefix (e.g. v1.2.3)'
+        description: 'Release tag to publish - must include the v prefix (e.g. vX.Y.Z)'
         required: true
         type: string
 
@@ -39,7 +45,7 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $tag = $env:GH_INPUT_TAG
           if (-not $tag.StartsWith('v')) {
-            throw "Tag must start with 'v' (e.g. v2.4.0). Got: $tag"
+            throw "Tag must start with 'v' (e.g. vX.Y.Z). Got: $tag"
           }
           $version = $tag.TrimStart('v')
           "TAG=$tag"         | Out-File -FilePath $env:GITHUB_OUTPUT -Append
@@ -56,7 +62,7 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           if (-not $env:WINGET_TOKEN) {
-            throw "WINGET_TOKEN secret is not configured. Add a classic PAT with the public_repo scope in Settings > Secrets before running this workflow."
+            throw "WINGET_TOKEN secret is not configured. Add a classic PAT with the public_repo scope in Settings → Secrets before running this workflow."
           }
           Write-Host "Required secrets validated."
 
@@ -106,9 +112,10 @@ jobs:
           "MSI_URL=https://github.com/$env:GITHUB_REPOSITORY/releases/download/$tag/$msi" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
       # -----------------------------------------------------------------------
-      # 4. Update the manifests with wingetcreate and open the winget-pkgs PR
+      # 4. Update the manifests with wingetcreate, writing them to disk instead of
+      #    submitting straight away, so the locale metadata can be refreshed first.
       # -----------------------------------------------------------------------
-      - name: Submit manifest update to winget-pkgs
+      - name: Update manifests
         if: steps.verify.outputs.ALREADY_PUBLISHED != 'True'
         shell: pwsh
         env:
@@ -121,7 +128,96 @@ jobs:
           .\wingetcreate.exe update martsg666.qbPortWeaver `
             --version $env:RELEASE_VERSION `
             --urls $env:MSI_URL `
-            --submit `
+            --out .\winget-out `
             --token $env:WINGET_TOKEN
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      # -----------------------------------------------------------------------
+      # 5. Refresh the locale manifest. wingetcreate copies these fields forward
+      #    verbatim from the previous version, so without this they never track
+      #    the app's actual feature set.
+      # -----------------------------------------------------------------------
+      - name: Refresh locale metadata
+        if: steps.verify.outputs.ALREADY_PUBLISHED != 'True'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          # Plain single-line scalar, matching the field's existing style in the manifest.
+          $shortDescription =
+            'Syncs the listening port of qBittorrent, Transmission, Deluge, or Nicotine+ with the ' +
+            'VPN-assigned port, and imports media files into Plex-compatible library folders'
+
+          # One entry per paragraph. Emitted under a '|-' literal block, matching the
+          # field's existing style, so each stays a separate paragraph.
+          $description = @(
+            'qbPortWeaver is a Windows system tray application that keeps the listening port of qBittorrent, Transmission, Deluge, or Nicotine+ synchronized with the port assigned by ProtonVPN, PIA, or any NAT-PMP capable VPN gateway or router.'
+            'It monitors the VPN''s forwarded port on a configurable interval, updates the client automatically when the port changes, verifies the port is reachable, and can recover the VPN connection automatically when port detection fails. Nicotine+ is driven through a small bridge plugin that qbPortWeaver installs, so its port changes while the client keeps running. A Status panel shows the live sync chain, recent port changes, and session statistics, and a built-in Media Manager can import media files into Plex-compatible library folders.'
+          )
+
+          # winget allows at most 16 tags; this list is exactly 16.
+          $tags = @(
+            'qbittorrent', 'transmission', 'deluge', 'nicotine-plus', 'soulseek', 'vpn'
+            'port-forwarding', 'protonvpn', 'pia', 'nat-pmp', 'port-sync', 'system-tray'
+            'media-manager', 'plex', 'tmdb', 'auto-recovery'
+          )
+          if ($tags.Count -gt 16) { throw "winget allows at most 16 tags, got $($tags.Count)." }
+
+          $localeFile = Get-ChildItem -Path .\winget-out -Recurse -Filter '*.locale.en-US.yaml' |
+                        Select-Object -First 1
+          if (-not $localeFile) { throw 'No en-US locale manifest was produced by wingetcreate.' }
+
+          $replacements = @{
+            'ShortDescription' = @("ShortDescription: $shortDescription")
+            'Description'      = @('Description: |-') + ($description | ForEach-Object { "  $_" })
+            'Tags'             = @('Tags:') + ($tags | ForEach-Object { "- $_" })
+          }
+
+          # Walk the file, swapping each target key's whole block (its own line plus any
+          # continuation lines) for the replacement. Everything else - including the schema
+          # comment and key order - is preserved, so the PR diff shows only these fields.
+          $result   = [System.Collections.Generic.List[string]]::new()
+          $replaced = [System.Collections.Generic.HashSet[string]]::new()
+          $skipping = $false
+          foreach ($line in Get-Content -LiteralPath $localeFile.FullName) {
+            if ($line -match '^([A-Za-z][A-Za-z0-9]*):') {
+              $key = $Matches[1]
+              $skipping = $false
+              if ($replacements.ContainsKey($key)) {
+                $replacements[$key] | ForEach-Object { $result.Add($_) }
+                [void]$replaced.Add($key)
+                $skipping = $true
+                continue
+              }
+            }
+            if ($skipping) { continue }
+            $result.Add($line)
+          }
+
+          $missing = $replacements.Keys | Where-Object { -not $replaced.Contains($_) }
+          if ($missing) { throw "Locale manifest had no $($missing -join ', ') field to replace." }
+
+          # UTF-8 without BOM, CRLF - matching what wingetcreate writes.
+          Set-Content -LiteralPath $localeFile.FullName -Value $result -Encoding utf8
+          Write-Host "Refreshed locale metadata in $($localeFile.Name)."
+
+      # -----------------------------------------------------------------------
+      # 6. Validate the edited manifests, then open the winget-pkgs PR
+      # -----------------------------------------------------------------------
+      - name: Submit manifest update to winget-pkgs
+        if: steps.verify.outputs.ALREADY_PUBLISHED != 'True'
+        shell: pwsh
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.VERSION }}
+          WINGET_TOKEN:    ${{ secrets.WINGET_TOKEN }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $manifestDir = (Get-ChildItem -Path .\winget-out -Recurse -Filter '*.locale.en-US.yaml' |
+                          Select-Object -First 1).Directory.FullName
+
+          .\wingetcreate.exe validate $manifestDir
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+          .\wingetcreate.exe submit $manifestDir --token $env:WINGET_TOKEN
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           Write-Host "winget-pkgs submission PR opened for $env:RELEASE_VERSION."

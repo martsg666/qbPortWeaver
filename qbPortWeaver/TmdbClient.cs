@@ -69,8 +69,16 @@ public sealed class TmdbClient(string apiKey)
             return new Bitmap(src); // copy to break stream dependency
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
-        catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException or ArgumentException)
+        // OutOfMemoryException is GDI+ signalling invalid image data, not memory exhaustion:
+        // Image.FromStream throws it for anything it cannot decode, which is what a captive portal
+        // or a truncated download produces on an otherwise successful response. Letting it escape
+        // kills the app, because the caller is an async void event handler that only expects
+        // OperationCanceledException. Returning null is the documented "no poster" outcome.
+        catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException
+                                         or ArgumentException or OutOfMemoryException or NotSupportedException)
         {
+            LogManager.Instance.LogDebug(
+                $"TmdbClient.FetchPosterAsync: Could not decode poster ({ex.GetType().Name})", Subsystem.MediaManager);
             return null;
         }
     }

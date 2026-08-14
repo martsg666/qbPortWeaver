@@ -14,8 +14,15 @@ public sealed class NatPmpManager : IVpnManager
 {
     private const int NatPmpPort = 5351;
     private const int InitialTimeoutMs = 1500; // VPN NAT-PMP gateways are remote; 250ms is too aggressive
-    private const int MaxAttempts = 3;    // 1500ms → 3000ms → 6000ms
+    private const int MaxAttempts = 3;    // 1500ms -> 3000ms -> 6000ms
     private const uint DefaultMappingLifetime = 3600; // 1 hour
+
+    // RFC 6886 opcodes. UDP and TCP are independent mappings and must be requested separately,
+    // even though gateways commonly forward both from a single request. A response carries the
+    // request opcode with the high bit set.
+    private const byte OpcodeMapUdp = 0x01;
+    private const byte OpcodeMapTcp = 0x02;
+    private const byte ResponseFlag = 0x80;
 
     private readonly NetworkInterface _adapter;
     private readonly IPAddress _gateway;
@@ -74,7 +81,7 @@ public sealed class NatPmpManager : IVpnManager
             // on renewal it holds the last assigned port so the gateway can keep the same mapping.
             ushort suggested = _lastExternalPort;
 
-            var result = await RequestPortMappingAsync(_gateway, _mappingLifetime, suggested, cancellationToken).ConfigureAwait(false);
+            var result = await RequestPortMappingAsync(_gateway, _mappingLifetime, OpcodeMapUdp, suggested, cancellationToken).ConfigureAwait(false);
 
             if (!result.Success)
             {
@@ -100,16 +107,23 @@ public sealed class NatPmpManager : IVpnManager
             _lastExternalPort = result.ExternalPort;
             LastGrantedLifetime = result.LifetimeGranted;
 
+            // Map TCP before reporting, so the one line the user sees states which protocols are
+            // actually forwarded. UDP and TCP are separate mappings (RFC 6886) and a gateway can
+            // grant one without the other, so naming only one of them - or neither - would leave
+            // the reader guessing about the very thing this log line exists to confirm.
+            bool tcpMapped = await RequestTcpMappingAsync(result.ExternalPort, cancellationToken).ConfigureAwait(false);
+            string protocols = tcpMapped ? "UDP and TCP" : "UDP only";
+
             // All three cases log at Info deliberately: NAT-PMP leases have finite lifetimes
             // so every renewal is a meaningful event (confirms the gateway is still reachable
             // and the mapping is still active). Renewals are not high-frequency at typical
             // sync intervals (30-60s) relative to lease lifetimes (several minutes).
             if (suggested != 0 && result.ExternalPort == suggested)
-                LogManager.Instance.LogMessage($"NAT-PMP lease renewed: port {result.ExternalPort}, lifetime {result.LifetimeGranted}s", LogLevel.Info);
+                LogManager.Instance.LogMessage($"NAT-PMP lease renewed: port {result.ExternalPort} ({protocols}), lifetime {result.LifetimeGranted}s", LogLevel.Info);
             else if (suggested != 0)
-                LogManager.Instance.LogMessage($"NAT-PMP lease granted new port {result.ExternalPort} (suggested {suggested} unavailable), lifetime {result.LifetimeGranted}s", LogLevel.Info);
+                LogManager.Instance.LogMessage($"NAT-PMP lease granted new port {result.ExternalPort} ({protocols}, suggested {suggested} unavailable), lifetime {result.LifetimeGranted}s", LogLevel.Info);
             else
-                LogManager.Instance.LogMessage($"NAT-PMP lease granted: port {result.ExternalPort}, lifetime {result.LifetimeGranted}s", LogLevel.Info);
+                LogManager.Instance.LogMessage($"NAT-PMP lease granted: port {result.ExternalPort} ({protocols}), lifetime {result.LifetimeGranted}s", LogLevel.Info);
 
             return result.ExternalPort;
         }
@@ -118,6 +132,54 @@ public sealed class NatPmpManager : IVpnManager
             LogManager.Instance.LogMessage($"NAT-PMP error on '{_adapter.Name}': {ex.Message}", LogLevel.Warn);
             return null;
         }
+    }
+
+    // Maps the same external port for TCP, which RFC 6886 treats as a mapping separate from UDP.
+    // Most VPN gateways (ProtonVPN's included) forward both protocols from a single request, in
+    // which case this just confirms the mapping that already exists - but a gateway that follows
+    // the RFC strictly would otherwise leave TCP unforwarded, and inbound Soulseek connections are
+    // TCP-only while BitTorrent needs TCP for peer connections even where uTP covers UDP.
+    //
+    // Deliberately non-fatal: the UDP mapping is already granted and usable, so a gateway that
+    // rejects opcode 2 must not cost the user a working port. Warn rather than Error for the same
+    // reason - it is a partial result, not a failed cycle.
+    /// <returns><see langword="true"/> when TCP is mapped on the same port as UDP.</returns>
+    private async Task<bool> RequestTcpMappingAsync(ushort udpPort, CancellationToken cancellationToken)
+    {
+        var tcp = await RequestPortMappingAsync(_gateway, _mappingLifetime, OpcodeMapTcp, udpPort, cancellationToken).ConfigureAwait(false);
+
+        if (!tcp.Success)
+        {
+            LogManager.Instance.LogMessage(
+                $"NAT-PMP TCP mapping for port {udpPort} was not granted on '{_adapter.Name}': {tcp.Error} - " +
+                "UDP is mapped, so this only matters if the gateway does not forward both protocols together",
+                LogLevel.Warn);
+            return false;
+        }
+
+        if (tcp.ExternalPort != udpPort)
+        {
+            LogManager.Instance.LogMessage(
+                $"NAT-PMP granted TCP port {tcp.ExternalPort} but UDP port {udpPort} on '{_adapter.Name}' - " +
+                "the client listens on one port, so inbound TCP may not reach it",
+                LogLevel.Warn);
+            return false;
+        }
+
+        // Track the shorter of the two leases. WarnIfNatPmpLeaseTooShort compares the user's sync
+        // interval against LastGrantedLifetime, which until here holds the UDP grant only - a TCP
+        // mapping that expired first would stop inbound TCP between cycles with nothing reported.
+        uint udpLifetime = LastGrantedLifetime;
+        LastGrantedLifetime = Math.Min(udpLifetime, tcp.LifetimeGranted);
+
+        // No success line: the caller's Info entry already reports "(UDP and TCP)" with the
+        // lifetime. Only a disagreement is worth logging, because it is what shortens the
+        // renewal budget the interval is checked against.
+        if (tcp.LifetimeGranted != udpLifetime)
+            LogManager.Instance.LogDebug(
+                $"NatPmpManager.RequestTcpMappingAsync: TCP lease is {tcp.LifetimeGranted}s against UDP's {udpLifetime}s - renewal follows the shorter one");
+
+        return true;
     }
 
     /// <inheritdoc />
@@ -311,17 +373,17 @@ public sealed class NatPmpManager : IVpnManager
         return new IPAddress(new byte[] { data[8], data[9], data[10], data[11] });
     }
 
-    // Sends a NAT-PMP UDP port mapping request (RFC 6886 opcode 1).
+    // Sends a NAT-PMP port mapping request for one protocol (RFC 6886 opcode 1 = UDP, 2 = TCP).
     // Pass zero as suggestedExternalPort for an initial request, or the previously assigned port to request renewal.
     // Local port is set to 0 - clients that do not bind a specific port let the gateway infer it.
     private static async Task<(bool Success, ushort ExternalPort, uint LifetimeGranted, uint EpochSeconds, string? Error)>
-        RequestPortMappingAsync(IPAddress gateway, uint lifetime, ushort suggestedExternalPort = 0, CancellationToken cancellationToken = default)
+        RequestPortMappingAsync(IPAddress gateway, uint lifetime, byte opcode, ushort suggestedExternalPort = 0, CancellationToken cancellationToken = default)
     {
-        // [0] version=0  [1] opcode=1 (UDP)  [2-3] reserved
+        // [0] version=0  [1] opcode  [2-3] reserved
         // [4-5] local port=0  [6-7] suggested external port  [8-11] lifetime
         byte[] request = new byte[12];
         request[0] = 0x00;
-        request[1] = 0x01;
+        request[1] = opcode;
         BinaryPrimitives.WriteUInt16BigEndian(request.AsSpan(6), suggestedExternalPort);
         BinaryPrimitives.WriteUInt32BigEndian(request.AsSpan(8), lifetime);
 
@@ -329,9 +391,9 @@ public sealed class NatPmpManager : IVpnManager
         if (data is null)
             return (false, 0, 0, 0, "No response from gateway");
 
-        // [0] version=0  [1] opcode=0x81  [2-3] result  [4-7] SSOE
+        // [0] version=0  [1] opcode|0x80  [2-3] result  [4-7] SSOE
         // [8-9] local port (not read)   [10-11] external port  [12-15] lifetime
-        if (data.Length < 16 || data[0] != 0x00 || data[1] != 0x81)
+        if (data.Length < 16 || data[0] != 0x00 || data[1] != (byte)(opcode | ResponseFlag))
             return (false, 0, 0, 0, "Unexpected response format");
 
         ushort resultCode = ReadUShortBE(data, 2);

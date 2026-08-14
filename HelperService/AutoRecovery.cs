@@ -24,7 +24,7 @@ internal static partial class AutoRecovery
     private const string NetshInterface = "interface";
 
     // P/Invoke - used by KillServiceProcess to resolve a service's host process ID
-    private const int ScStatusProcessInfo = 0; // SC_STATUS_PROCESS_INFO - only valid infoLevel for QueryServiceStatusEx
+    private const int SC_STATUS_PROCESS_INFO = 0; // the only valid infoLevel for QueryServiceStatusEx
 
     [LibraryImport("advapi32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
@@ -104,14 +104,23 @@ internal static partial class AutoRecovery
             }
             logger.LogMessage($"Adapter '{adapterName}' disabled", LogLevel.Info);
 
-            await Task.Delay(AdapterCycleDelayMs, cancellationToken).ConfigureAwait(false);
-
-            if (!await RunNetshAsync([NetshInterface, "set", NetshInterface, adapterName, "admin=enable"], logger, cancellationToken).ConfigureAwait(false))
+            // Past this point the adapter is administratively DOWN, and that state persists across
+            // reboots. Neither shutdown nor an unexpected error may leave it there, so the re-enable
+            // runs from a finally block and deliberately ignores the cancellation token: a few
+            // seconds of delayed service stop is a far better outcome than a machine that boots
+            // with no network on this adapter, which the user would have to fix by hand.
+            try
             {
-                logger.LogMessage($"Failed to re-enable adapter '{adapterName}'", LogLevel.Warn);
-                return;
+                await Task.Delay(AdapterCycleDelayMs, CancellationToken.None).ConfigureAwait(false);
             }
-            logger.LogMessage($"Re-enabled adapter '{adapterName}'", LogLevel.Info);
+            finally
+            {
+                if (await RunNetshAsync([NetshInterface, "set", NetshInterface, adapterName, "admin=enable"],
+                        logger, CancellationToken.None).ConfigureAwait(false))
+                    logger.LogMessage($"Re-enabled adapter '{adapterName}'", LogLevel.Info);
+                else
+                    logger.LogMessage($"Failed to re-enable adapter '{adapterName}'", LogLevel.Warn);
+            }
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -120,7 +129,7 @@ internal static partial class AutoRecovery
     }
 
     // Stops a service cleanly via the SCM, with escalating force if it doesn't respond.
-    // Escalation: SCM stop → wait → KillServiceProcess (3-stage: Process.Kill → taskkill /F /T → retry).
+    // Escalation: SCM stop -> wait -> KillServiceProcess (3-stage: Process.Kill -> taskkill /F /T -> retry).
     // ServiceController.WaitForStatus has no async overload - wrap in Task.Run to avoid
     // blocking the BackgroundService thread pool thread.
     //
@@ -223,8 +232,10 @@ internal static partial class AutoRecovery
     //
     // Intentionally synchronous: the kill escalation is sequential by design (each stage must
     // complete before the next begins), and this runs only on the exceptional "service not
-    // responding" path. Worst-case blocking is 3 x ProcessKillTimeoutMs (15s) on the caller's
-    // thread-pool thread - acceptable given how rarely this path is reached.
+    // responding" path. Worst-case blocking is 4 x ProcessKillTimeoutMs (20s) on the caller's
+    // thread-pool thread - four waits, not three, because stage 2 waits for the taskkill
+    // subprocess and then again for the target. Still well inside the pipe client's 120s response
+    // timeout, and acceptable given how rarely this path is reached.
     private static void KillServiceProcess(ServiceController sc, HelperLogger logger)
     {
         try
@@ -239,7 +250,7 @@ internal static partial class AutoRecovery
                 // it for the duration of the call so the handle stays valid even if the
                 // ServiceController is finalized concurrently. Avoids DangerousGetHandle.
                 if (!QueryServiceStatusEx(sc.ServiceHandle,
-                        ScStatusProcessInfo, buf, bufSize, out _))
+                        SC_STATUS_PROCESS_INFO, buf, bufSize, out _))
                     return;
 
                 int pid = Marshal.PtrToStructure<ServiceStatusProcess>(buf).dwProcessId;

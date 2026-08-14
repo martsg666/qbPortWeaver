@@ -10,10 +10,16 @@ name: SonarCloud
 # Verify the project key below matches your SonarCloud project (Project > Information, or the URL).
 
 on:
+  # master only. Branch analysis is a paid feature for this organisation, so a run on any other
+  # branch produces a result nobody can read: the API answers "Organization is not allowed to
+  # access data from non main branches", and the branch shows no analysis date in the UI. Those
+  # runs also duplicated the pull_request run on the same commit. Pull request analysis IS
+  # included, and posts a full quality gate, so every branch is still covered through its PR.
+  # Contrast with build.yml, which keeps its broad push trigger: its pass/fail is readable on any
+  # branch, and it is the only check qa/ and rc/ get, since those take direct commits without a PR.
   push:
     branches:
       - master
-      - '2.*'   # release branches
   pull_request:
 
 concurrency:
@@ -44,7 +50,7 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           if (-not $env:SONAR_TOKEN) {
-            throw "SONAR_TOKEN secret is not configured. Add it in Settings > Secrets before running this workflow."
+            throw "SONAR_TOKEN secret is not configured. Add it in Settings → Secrets before running this workflow."
           }
           Write-Host "Required secrets validated."
 
@@ -91,6 +97,11 @@ jobs:
             /d:sonar.host.url="https://sonarcloud.io" `
             /d:sonar.coverage.exclusions="**/*"
 
+          # Deliberately no /warnaserror here: this build only feeds the scanner. A build that
+          # fails on a warning would skip the "end" step below and upload no analysis at all -
+          # losing the report exactly when it is most useful. Warning enforcement lives in
+          # build.yml (every PR and non-tag push) and build-release.yml (every tag), so a
+          # warning still cannot reach a release.
           dotnet build qbPortWeaver.slnx --configuration Release
 
           dotnet-sonarscanner end /d:sonar.token="$env:SONAR_TOKEN"

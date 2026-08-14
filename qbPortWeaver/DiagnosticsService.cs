@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.ServiceProcess;
 
 namespace qbPortWeaver;
@@ -32,7 +32,8 @@ public static class DiagnosticsService
     private static class Checks
     {
         public const string VpnProvider = "VPN provider";
-        public const string Client = "BitTorrent client";
+        public const string Client = "Client";
+        public const string ClientPlugin = "Client plugin";
         public const string HelperService = "Helper service";
         public const string VpnConnection = "VPN connection";
         public const string ForwardedPort = "Forwarded port";
@@ -50,7 +51,7 @@ public static class DiagnosticsService
         var results = new List<DiagnosticResult>();
 
         string provider = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyVpnProvider);
-        string clientSetting = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyBitTorrentClient);
+        string clientSetting = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyClient);
         bool disabled = provider.Equals(RegistrySettingsManager.VpnProviderDisabled, StringComparison.OrdinalIgnoreCase);
 
         AddConfigurationResults(results, provider, clientSetting, disabled);
@@ -66,7 +67,7 @@ public static class DiagnosticsService
         int pass = results.Count(r => r.Status == DiagnosticStatus.Pass);
         int warn = results.Count(r => r.Status == DiagnosticStatus.Warn);
         int fail = results.Count(r => r.Status == DiagnosticStatus.Fail);
-        LogManager.Instance.LogMessage($"Diagnostics completed: {pass} passed, {warn} warning(s), {fail} failed", LogLevel.Info);
+        LogManager.Instance.LogMessage($"Diagnostics completed: {pass} passed, {AppConstants.Pluralize(warn, "warning")}, {fail} failed", LogLevel.Info);
         return results;
     }
 
@@ -75,12 +76,12 @@ public static class DiagnosticsService
     {
         if (disabled)
             results.Add(new(Checks.VpnProvider, DiagnosticStatus.Warn, "Port sync is disabled",
-                "Select a VPN provider in Settings > General to enable port syncing."));
+                "Select a VPN provider in Settings → General to enable port syncing."));
         else if (VpnProviderRegistry.IsRecognizedProvider(provider))
             results.Add(new(Checks.VpnProvider, DiagnosticStatus.Pass, provider));
         else
             results.Add(new(Checks.VpnProvider, DiagnosticStatus.Fail, $"'{provider}' is not a recognized provider",
-                "Reselect the VPN provider in Settings > General."));
+                "Reselect the VPN provider in Settings → General."));
 
         var client = ClientRegistry.Resolve(clientSetting);
         string url = RegistrySettingsManager.GetValue(client.Section, client.UrlKey);
@@ -96,7 +97,7 @@ public static class DiagnosticsService
     {
         try
         {
-            using var sc = new ServiceController(HelperProtocol.PipeName);
+            using var sc = new ServiceController(HelperProtocol.ServiceName);
             ServiceControllerStatus status = sc.Status; // throws InvalidOperationException when the service is not installed
             if (status == ServiceControllerStatus.Running)
                 results.Add(new(Checks.HelperService, DiagnosticStatus.Pass, "Installed and running"));
@@ -148,6 +149,18 @@ public static class DiagnosticsService
         results.Add(new(Checks.VpnConnection, DiagnosticStatus.Pass, $"{vpn.ProviderName} is connected"));
 
         int? port = await vpn.GetVpnPortAsync(cancellationToken).ConfigureAwait(false);
+
+        // Same usability rule the sync loop applies, so the report cannot pass a port the loop
+        // would ignore. An unusable value is discarded here too, leaving the later in-sync check
+        // to skip rather than compare the client against nonsense.
+        if (port is int reported && !AppConstants.IsUsablePort(reported))
+        {
+            results.Add(new(Checks.ForwardedPort, DiagnosticStatus.Fail,
+                $"{vpn.ProviderName} reported an unusable port ({reported})",
+                "The VPN is connected but has not assigned a usable forwarded port. Re-check that port forwarding is enabled on a P2P server."));
+            return (vpn, null);
+        }
+
         if (port is int p)
             results.Add(new(Checks.ForwardedPort, DiagnosticStatus.Pass, $"Port {p}"));
         else
@@ -159,13 +172,18 @@ public static class DiagnosticsService
     // Client running, reachable, in sync, correctly bound, and reachable from outside.
     private static async Task AddClientResultsAsync(List<DiagnosticResult> results, IVpnManager? vpn, int? vpnPort, CancellationToken cancellationToken)
     {
-        using IBitTorrentClient client = PortSyncService.BuildActiveClient();
+        using IManagedClient client = PortSyncService.BuildActiveClient();
 
         if (client.IsRunning())
             results.Add(new(Checks.ClientRunning, DiagnosticStatus.Pass, $"{client.ClientName} is running"));
         else
             results.Add(new(Checks.ClientRunning, DiagnosticStatus.Warn, $"{client.ClientName} process not detected",
-                "Start your client, or enable Force start in Settings. Service/remote setups may still be reachable below."));
+                "Start your client, or enable Force-start in Settings. Service/remote setups may still be reachable below."));
+
+        // Nicotine+ is only reachable through the bridge plugin, so its state is the first thing
+        // worth knowing - "not installed", "not enabled", and "Nicotine+ never started" all look
+        // identical from the reachability check alone but need different fixes.
+        if (client is NicotineClient) AddNicotinePluginResult(results);
 
         var (clientPort, interfaceName) = await client.GetPreferencesAsync(cancellationToken).ConfigureAwait(false);
         if (clientPort is not int cp)
@@ -182,8 +200,65 @@ public static class DiagnosticsService
 
         AddInSyncResult(results, cp, vpnPort);
         if (client.SupportsInterfaceMismatchWarning)
-            AddInterfaceResult(results, vpn, interfaceName);
+            await AddInterfaceResultAsync(results, client, vpn, interfaceName, cancellationToken).ConfigureAwait(false);
         await AddPortReachableResultAsync(results, client, vpnPort, cancellationToken).ConfigureAwait(false);
+    }
+
+    // Reports the bridge plugin's state from files alone, so it stays useful precisely when the
+    // plugin is unreachable and every other client check has nothing to say.
+    private static void AddNicotinePluginResult(List<DiagnosticResult> results)
+    {
+        string exePath = RegistrySettingsManager.GetValue(
+            RegistrySettingsManager.SectionNicotine, RegistrySettingsManager.KeyNicotineExePath);
+        var status = NicotinePluginInstaller.GetStatus(exePath);
+
+        DiagnosticResult result = status.State switch
+        {
+            NicotinePluginState.DataFolderMissing => new(Checks.ClientPlugin, DiagnosticStatus.Warn,
+                "Nicotine+'s data folder was not found",
+                "Start Nicotine+ once, or set the Executable path in Settings for a portable installation."),
+
+            NicotinePluginState.NotInstalled => new(Checks.ClientPlugin, DiagnosticStatus.Fail,
+                "The qbPortWeaver bridge plugin is not installed",
+                "Nicotine+ has no remote control of its own. Click Install Plugin in Settings, under the Nicotine+ section."),
+
+            NicotinePluginState.Outdated => new(Checks.ClientPlugin, DiagnosticStatus.Warn,
+                $"Bridge plugin {status.InstalledVersion} is installed; this build ships {NicotinePluginInstaller.BundledVersion}",
+                "Click Update Plugin in Settings, then restart Nicotine+."),
+
+            NicotinePluginState.NotEnabled => new(Checks.ClientPlugin, DiagnosticStatus.Fail,
+                "The bridge plugin is installed but not enabled",
+                "In Nicotine+, open Preferences → Plugins and tick \"qbPortWeaver Bridge\"."),
+
+            NicotinePluginState.NotRunning => new(Checks.ClientPlugin, DiagnosticStatus.Warn,
+                "The bridge plugin is enabled but has not published its connection details",
+                "Start Nicotine+. If it is already running, check its log for a qbPortWeaver Bridge error."),
+
+            _ => BuildReadyPluginResult(status)
+        };
+
+        results.Add(result);
+    }
+
+    // Ready, but the saved connection settings may still point somewhere else - which works (the
+    // client re-reads the file) yet costs a failed request every cycle, so it is worth flagging.
+    private static DiagnosticResult BuildReadyPluginResult(NicotinePluginStatus status)
+    {
+        string savedUrl = RegistrySettingsManager.GetValue(
+            RegistrySettingsManager.SectionNicotine, RegistrySettingsManager.KeyNicotineUrl);
+        string savedToken = RegistrySettingsManager.GetNicotineToken();
+
+        if (status.Handshake is { } handshake &&
+            (!string.Equals(savedUrl.TrimEnd('/'), handshake.Url.TrimEnd('/'), StringComparison.OrdinalIgnoreCase) ||
+             !string.Equals(savedToken, handshake.Token, StringComparison.Ordinal)))
+        {
+            return new(Checks.ClientPlugin, DiagnosticStatus.Warn,
+                $"The bridge plugin is on {handshake.Url}, which differs from the saved settings",
+                "Open Settings, click the refresh button next to the Plugin token, then save.");
+        }
+
+        return new(Checks.ClientPlugin, DiagnosticStatus.Pass,
+            $"Bridge plugin {status.InstalledVersion} is installed and active on {status.Handshake?.Url}");
     }
 
     private static void AddInSyncResult(List<DiagnosticResult> results, int clientPort, int? vpnPort)
@@ -200,8 +275,26 @@ public static class DiagnosticsService
                 "Use Sync Now to align them immediately; the next cycle would do it automatically."));
     }
 
-    private static void AddInterfaceResult(List<DiagnosticResult> results, IVpnManager? vpn, string? interfaceName)
+    private static async Task AddInterfaceResultAsync(List<DiagnosticResult> results, IManagedClient client,
+        IVpnManager? vpn, string? interfaceName, CancellationToken cancellationToken)
     {
+        // Checked before anything below, and independently of the VPN: a stale interface token is
+        // precisely the case where the name - which is all the other branches compare - still reads
+        // correctly while the client listens on nothing. Reporting "Bound to 'X'" as a pass here is
+        // what let this go unnoticed, so it outranks every name-based verdict.
+        if (client is QBittorrentClient qbClient)
+        {
+            var (stale, expectedToken) = await qbClient.CheckInterfaceBindingAsync(interfaceName, cancellationToken).ConfigureAwait(false);
+            if (stale && expectedToken is not null)
+            {
+                results.Add(new(Checks.InterfaceBinding, DiagnosticStatus.Fail,
+                    $"Bound to '{interfaceName}' by a stale identifier - {client.ClientName} is not listening on that adapter",
+                    $"Re-select the network interface in {client.ClientName}, or turn on \"Fix the network interface binding when it goes stale\" " +
+                    "in Settings. Restarting the client does not clear it, because the value is stored in its configuration."));
+                return;
+            }
+        }
+
         if (vpn is null)
         {
             results.Add(new(Checks.InterfaceBinding, DiagnosticStatus.Skip, "VPN unavailable"));
@@ -224,7 +317,7 @@ public static class DiagnosticsService
 
     // Only meaningful when the VPN is connected with a forwarded port - mirrors the sync loop, which
     // skips verification while disconnected (a closed result would be expected noise on the default port).
-    private static async Task AddPortReachableResultAsync(List<DiagnosticResult> results, IBitTorrentClient client, int? vpnPort, CancellationToken cancellationToken)
+    private static async Task AddPortReachableResultAsync(List<DiagnosticResult> results, IManagedClient client, int? vpnPort, CancellationToken cancellationToken)
     {
         if (vpnPort is null)
         {
@@ -237,17 +330,19 @@ public static class DiagnosticsService
         else if (open == false)
         {
             // qBittorrent deduces reachability from incoming connections (so an idle client reads
-            // closed); Transmission and Deluge actively probe via their online check services.
+            // closed); the others actively probe through their projects' online check services -
+            // Nicotine+ via the bridge plugin, which reports undetermined rather than false when
+            // the check cannot complete, so it never reaches this branch on a slow result.
             string hint = client is QBittorrentClient
                 ? "Allow a moment after a port change. qBittorrent infers this from incoming connections, so an idle client may report closed."
                 : "Allow a moment after a port change, then re-run. A persistently closed port usually means port forwarding is not active on the VPN.";
             results.Add(new(Checks.PortReachable, DiagnosticStatus.Warn, "Listening port appears closed from the Internet", hint));
         }
         else
-            results.Add(new(Checks.PortReachable, DiagnosticStatus.Skip, "Could not determine (client, internet, or port-check service unavailable)"));
+            results.Add(new(Checks.PortReachable, DiagnosticStatus.Skip, "Could not determine (client, Internet, or port-check service unavailable)"));
     }
 
-    /// <summary>The running app's version (e.g. "2.6.0"), for the diagnostics header and report.</summary>
+    /// <summary>The running app's version (e.g. "X.Y.Z"), for the diagnostics header and report.</summary>
     internal static string AppVersion => AppConstants.AppVersion;
 
     /// <summary>
@@ -259,7 +354,7 @@ public static class DiagnosticsService
     {
         try
         {
-            string? exe = AppConstants.GetServiceExePath(HelperProtocol.PipeName);
+            string? exe = AppConstants.GetServiceExePath(HelperProtocol.ServiceName);
             if (exe is null || !File.Exists(exe)) return null;
             string? raw = FileVersionInfo.GetVersionInfo(exe).FileVersion;
             if (string.IsNullOrWhiteSpace(raw)) return null;
@@ -280,7 +375,7 @@ public static class DiagnosticsService
     /// </summary>
     internal static IReadOnlyList<(string Section, IReadOnlyList<(string Key, string Value)> Values)> GetSettingsSnapshot()
     {
-        string clientSetting = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyBitTorrentClient);
+        string clientSetting = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyClient);
         string activeClientSection = ClientRegistry.Resolve(clientSetting).Section;
 
         string[] sections = [RegistrySettingsManager.SectionGeneral, activeClientSection, RegistrySettingsManager.SectionExtra];

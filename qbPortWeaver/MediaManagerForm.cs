@@ -92,7 +92,7 @@ public partial class MediaManagerForm : Form
                 "A scan or import is in progress.\n\nClosing will cancel the operation. Any files already imported will remain in the library.\n\nClose anyway?",
                 AppIdentity.AppName,
                 MessageBoxButtons.YesNo,
-                MessageBoxIcon.Warning);
+                MessageBoxIcon.Question);
 
             if (result != DialogResult.Yes)
             {
@@ -179,7 +179,7 @@ public partial class MediaManagerForm : Form
         var cancellationToken = await RenewOperationCancellationTokenAsync();
         SetBusy(true);
         BeginProgress();
-        lblScanStatus.Text = "Re-matching\u2026";
+        lblScanStatus.Text = "Re-matching…";
 
         string? completionStatus = null;
         try
@@ -258,7 +258,7 @@ public partial class MediaManagerForm : Form
                 if (showInfo is not null)
                     ApplyTvRematchResult(row, showInfo, tvShowLib, createFolders, showConfident);
                 prgScan.Value = Math.Min(++done, prgScan.Maximum);
-                lblScanStatus.Text = $"Re-matching\u2026 {done}/{total}";
+                lblScanStatus.Text = $"Re-matching… {done}/{total}";
             }
         }
         return done;
@@ -280,7 +280,7 @@ public partial class MediaManagerForm : Form
                     ApplyMovieRematchResult(row, movieInfo, moviesLib, createFolders, editedName, movieConfident);
             }
             prgScan.Value = Math.Min(++done, prgScan.Maximum);
-            lblScanStatus.Text = $"Re-matching\u2026 {done}/{total}";
+            lblScanStatus.Text = $"Re-matching… {done}/{total}";
         }
         return done;
     }
@@ -397,7 +397,7 @@ public partial class MediaManagerForm : Form
 
         SetBusy(true);
         BeginProgress();
-        lblScanStatus.Text = "Scanning\u2026";
+        lblScanStatus.Text = "Scanning…";
         // Detach the poster image before disposing cached images: Rows.Clear() fires
         // SelectionChanged which awaits CancelAsync and yields, leaving picTmdbPoster.Image
         // pointing at a freshly-disposed image until the handler resumes - a paint in that
@@ -411,7 +411,7 @@ public partial class MediaManagerForm : Form
         try
         {
             bool createFolders = chkCreateFolders.Checked;
-            var proposals = await MediaManagerService.ScanAsync(apiKey, createFolders, sourceFolders, moviesLibraryPath, tvShowsLibraryPath, CreateScanProgress("Scanning\u2026"), cancellationToken);
+            var proposals = await MediaManagerService.ScanAsync(apiKey, createFolders, sourceFolders, moviesLibraryPath, tvShowsLibraryPath, CreateScanProgress("Scanning…"), cancellationToken);
 
             PopulateGrid(proposals);
         }
@@ -451,7 +451,7 @@ public partial class MediaManagerForm : Form
         // Mode-aware confirmation: only Move removes the source, so only Move is truly irreversible.
         // Hardlink and Copy leave the source in place, so a plainer prompt avoids over-warning.
         var importMode = MediaManagerService.ParseImportMode(cboImportMode.SelectedItem?.ToString() ?? RegistrySettingsManager.ImportModeHardlink);
-        string fileCount = $"{toApply.Count} file{(toApply.Count == 1 ? "" : "s")}";
+        string fileCount = AppConstants.Pluralize(toApply.Count, "file");
         var (message, icon) = importMode == ImportMode.Move
             ? ($"{fileCount} will be moved into the library and removed from the source folder. This cannot be undone.\n\nContinue?", MessageBoxIcon.Warning)
             : ($"{fileCount} will be imported into the library.\n\nContinue?", MessageBoxIcon.Question);
@@ -468,7 +468,7 @@ public partial class MediaManagerForm : Form
 
         SetBusy(true);
         BeginProgress();
-        lblScanStatus.Text = "Importing\u2026";
+        lblScanStatus.Text = "Importing…";
         lblScanStatus.Refresh();
 
         string? completionStatus = null;
@@ -519,7 +519,7 @@ public partial class MediaManagerForm : Form
         var sourceFolders = lstSourceFolders.Items.Cast<string>().ToArray();
         if (chkDeleteEmptyFolders.Checked)
         {
-            lblScanStatus.Text = "Cleaning up empty folders\u2026";
+            lblScanStatus.Text = "Cleaning up empty folders…";
             await Task.Run(() =>
             {
                 foreach (var folder in sourceFolders)
@@ -532,16 +532,16 @@ public partial class MediaManagerForm : Form
 
         if (IsDisposed) return;
 
-        lblScanStatus.Text = "Re-scanning\u2026";
+        lblScanStatus.Text = "Re-scanning…";
         BeginProgress();
         var remaining = await MediaManagerService.ScanAsync(
             txtTmdbApiKey.Text.Trim(), chkCreateFolders.Checked, sourceFolders,
-            txtMoviesLibraryPath.Text.Trim(), txtTvShowsLibraryPath.Text.Trim(), CreateScanProgress("Re-scanning\u2026"), cancellationToken);
+            txtMoviesLibraryPath.Text.Trim(), txtTvShowsLibraryPath.Text.Trim(), CreateScanProgress("Re-scanning…"), cancellationToken);
 
         if (IsDisposed) return;
         PopulateGrid(remaining);
 
-        string remainingLabel = $"{remaining.Count} file{(remaining.Count == 1 ? "" : "s")}";
+        string remainingLabel = AppConstants.Pluralize(remaining.Count, "file");
         lblScanStatus.Text = remaining.Count == 0
             ? "Done - all files imported successfully."
             : $"Done - {remainingLabel} could not be imported.";
@@ -583,9 +583,9 @@ public partial class MediaManagerForm : Form
     // Rebuilds the destination directory from the edited filename so the show/movie folder
     // matches the new name rather than the stale TMDB result from the original scan.
     //
-    // TV show with season subfolder:  library\OldShow\Season XX\ → library\NewShow\Season XX\
-    // Movie with title subfolder:     library\OldMovie (Year)\   → library\NewTitle (Year)\
-    // Flat layout (no subfolder):     library\                   → library\ (unchanged)
+    // TV show with season subfolder:  library\OldShow\Season XX\ -> library\NewShow\Season XX\
+    // Movie with title subfolder:     library\OldMovie (Year)\   -> library\NewTitle (Year)\
+    // Flat layout (no subfolder):     library\                   -> library\ (unchanged)
     private static string RebuildProposedDir(string originalDir, string editedFileName)
     {
         string lastSegment = Path.GetFileName(originalDir);
@@ -671,6 +671,13 @@ public partial class MediaManagerForm : Form
         catch (OperationCanceledException)
         {
             // Expected when the user selects another row before the poster finishes loading.
+        }
+        // An exception escaping an async void handler kills the app, and a thumbnail is never
+        // worth that. Matches the general catch the other handlers in this form already have.
+        catch (Exception ex)
+        {
+            LogManager.Instance.LogDebug(
+                $"MediaManagerForm.dgvResults_SelectionChanged: {ex.Message}", Subsystem.MediaManager);
         }
     }
 
@@ -764,7 +771,7 @@ public partial class MediaManagerForm : Form
     private void gridContextCopy_Click(object? sender, EventArgs e)
     {
         if (dgvResults.CurrentCell?.Value is string v && v.Length > 0)
-            AppConstants.TrySetClipboardText(v);
+            AppConstants.SetClipboardTextSafely(v);
     }
 
     private void gridContextPaste_Click(object? sender, EventArgs e) => PasteToCurrentCell();
@@ -951,7 +958,16 @@ public partial class MediaManagerForm : Form
         prgScan.Visible = false;
     }
 
-    private string GetProposedName(DataGridViewRow row) => row.Cells[colProposed.Index].Value?.ToString() ?? string.Empty;
+    // The Proposed cell is a file NAME: RebuildProposedDir derives the destination folder from it and
+    // Path.Combine appends it to the library path. An absolute path would make Path.Combine discard
+    // the library directory entirely and import the file somewhere else silently, and a relative one
+    // could climb out of the library - so keep only the file name. SanitizeFileName then puts a
+    // hand-edited name through the same normalisation every scan-generated name already gets.
+    private string GetProposedName(DataGridViewRow row)
+    {
+        string raw = row.Cells[colProposed.Index].Value?.ToString() ?? string.Empty;
+        return raw.Length == 0 ? raw : FileNameParser.SanitizeFileName(Path.GetFileName(raw));
+    }
 
     private void SetBusy(bool busy)
     {
@@ -977,8 +993,8 @@ public partial class MediaManagerForm : Form
                 included++;
         }
 
-        string includeStr = $"{included} file{(included == 1 ? "" : "s")}";
-        string unmatchedStr = $"{unmatched} file{(unmatched == 1 ? "" : "s")}";
+        string includeStr = AppConstants.Pluralize(included, "file");
+        string unmatchedStr = AppConstants.Pluralize(unmatched, "file");
 
         lblScanStatus.Text = (included, unmatched) switch
         {
@@ -1063,13 +1079,13 @@ public partial class MediaManagerForm : Form
     {
         listBox.Items.Clear();
         var value = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionMedia, key);
-        foreach (var folder in value.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        foreach (var folder in value.Split(RegistrySettingsManager.ListSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
             listBox.Items.Add(folder);
     }
 
     private static void SaveFolderList(ListBox listBox, string key)
     {
         var folders = listBox.Items.Cast<string>();
-        RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionMedia, key, string.Join(';', folders));
+        RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionMedia, key, string.Join(RegistrySettingsManager.ListSeparator, folders));
     }
 }

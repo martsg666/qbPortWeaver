@@ -83,7 +83,7 @@ internal sealed class ClientChooserForm : Form
         root.Controls.Add(content, 0, 0);
 
         var btnOk = DialogLayout.DialogButton("OK", DialogResult.OK);
-        btnOk.Click += CaptureSelection;
+        btnOk.Click += btnOk_Click;
         var btnCancel = DialogLayout.DialogButton("Cancel", DialogResult.Cancel);
         root.Controls.Add(DialogLayout.ButtonRow(btnOk, btnCancel), 0, 1);
         AcceptButton = btnOk;
@@ -92,7 +92,8 @@ internal sealed class ClientChooserForm : Form
         Controls.Add(root);
     }
 
-    private void CaptureSelection(object? sender, EventArgs e)
+    // Records which radio button was selected before the dialog closes with DialogResult.OK.
+    private void btnOk_Click(object? sender, EventArgs e)
     {
         for (int i = 0; i < _options.Length; i++)
         {

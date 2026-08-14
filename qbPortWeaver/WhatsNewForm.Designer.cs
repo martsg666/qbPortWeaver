@@ -95,7 +95,7 @@ partial class WhatsNewForm
         ShowIcon        = false;
         ShowInTaskbar   = false;
         StartPosition   = FormStartPosition.CenterScreen;
-        Text            = "What's New"; // overridden in constructor
+        Text            = "qbPortWeaver | What's New"; // overridden in constructor
 
         grpCommunity.ResumeLayout(false);
         grpFeatures.ResumeLayout(false);

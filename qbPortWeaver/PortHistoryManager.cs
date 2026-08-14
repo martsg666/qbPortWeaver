@@ -100,6 +100,6 @@ public static class PortHistoryManager
         string path = AppConstants.GetDataFilePath(HistoryFileName);
         if (!File.Exists(path))
             return [];
-        return JsonSerializer.Deserialize<List<PortHistoryEntry>>(File.ReadAllText(path), _readOptions) ?? [];
+        return JsonSerializer.Deserialize<List<PortHistoryEntry>>(AppConstants.ReadAllTextShared(path), _readOptions) ?? [];
     }
 }

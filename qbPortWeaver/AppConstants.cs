@@ -110,15 +110,44 @@ public static class AppConstants
 
     private static readonly System.Text.UTF8Encoding Utf8NoBom = new(encoderShouldEmitUTF8Identifier: false);
 
+    // Distinctive enough that a sweep can recognise our leftovers without touching anything else in
+    // the folder - which matters because one caller writes into Nicotine+'s config folder.
+    private const string TempFilePrefix = ".qbpw-";
+    private const string TempFileSuffix = ".tmp";
+
+    /// <summary>Deletes temp files an interrupted atomic write left behind in <paramref name="folder"/>.</summary>
+    /// <remarks>
+    /// <see cref="WriteAtomicCore"/> deletes its own temp file when the write throws, but nothing can
+    /// run at a process kill or power loss between writing the temp file and renaming it. Because each
+    /// write picks a fresh name, no later write reclaims that file the way a fixed
+    /// <c>&lt;target&gt;.tmp</c> would, so without this they accumulate for the life of the install.
+    /// <para>Safe to run only where no write is in flight: callers do so at startup, before the sync
+    /// loop begins, and the single-instance mutex rules out another instance owning one.</para>
+    /// </remarks>
+    internal static void SweepOrphanedTempFiles(string folder)
+    {
+        try
+        {
+            foreach (string file in Directory.EnumerateFiles(folder, $"{TempFilePrefix}*{TempFileSuffix}"))
+                DeleteFileSafely(file);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or DirectoryNotFoundException)
+        {
+            if (LogManager.IsInitialized)
+                LogManager.Instance.LogDebug($"AppConstants.SweepOrphanedTempFiles: '{folder}' - {ex.Message}");
+        }
+    }
+
     // Shared write-then-rename core. The temp file is a uniquely named sibling of the target rather
     // than "<target>.tmp" so two writers to the same path cannot fight over one temp file - which
     // no current caller does, the sync cycle being serialised, but the guarantee costs nothing.
-    // Same folder is required: File.Move is only atomic within a volume.
+    // The cost is that an interrupted write leaves a name nothing reuses; SweepOrphanedTempFiles
+    // clears those. Same folder is required: File.Move is only atomic within a volume.
     private static void WriteAtomicCore(string path, Action<string> writeTo)
     {
         string folder = Path.GetDirectoryName(path) ?? string.Empty;
         if (folder.Length > 0) Directory.CreateDirectory(folder);
-        string temp = Path.Combine(folder, $".qbpw-{Guid.NewGuid():N}.tmp");
+        string temp = Path.Combine(folder, $"{TempFilePrefix}{Guid.NewGuid():N}{TempFileSuffix}");
         try
         {
             writeTo(temp);

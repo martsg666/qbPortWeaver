@@ -231,6 +231,9 @@ internal static class NicotinePluginInstaller
             string backupPath = Path.Combine(dataFolder, ConfigFolderName, ConfigBackupFileName);
             File.Copy(sourcePath, backupPath, overwrite: true);
 
+            // The only atomic write outside our own data folder, so the startup sweep cannot reach
+            // it. Clear leftovers here instead, while Nicotine+ is known to be closed.
+            AppConstants.SweepOrphanedTempFiles(Path.GetDirectoryName(configPath) ?? string.Empty);
             AppConstants.WriteAtomic(configPath, updated);
 
             LogManager.Instance.LogMessage(

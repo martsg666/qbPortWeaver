@@ -164,6 +164,11 @@ public partial class MainForm : Form
             // Perform initial log rotation check
             LogManager.Instance.CheckAndRotateLogFile();
 
+            // Clear temp files a previous run was killed part-way through writing. Here rather than
+            // later because nothing has written to the data folder yet this run, so nothing in it
+            // can be live.
+            AppConstants.SweepOrphanedTempFiles(AppConstants.AppDataFolder);
+
             // Start main loop immediately so port syncing is not blocked by dialogs
             // Fire-and-forget: exceptions inside the while loop are caught per-cycle.
             // A synchronous throw before the loop body (e.g. during Task.Run startup) would be

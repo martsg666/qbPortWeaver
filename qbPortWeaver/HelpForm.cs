@@ -1,4 +1,4 @@
-namespace qbPortWeaver;
+﻿namespace qbPortWeaver;
 
 /// <summary>Displays the shipped user guide (README.md, installed next to the executable) rendered
 /// with lightweight formatting, a table-of-contents tree built from the guide's headings, and
@@ -551,10 +551,10 @@ public partial class HelpForm : Form
     private void ctxHelpCopy_Click(object? sender, EventArgs e)
     {
         if (rtbHelp.SelectionLength > 0)
-            AppConstants.TrySetClipboardText(rtbHelp.SelectedText);
+            AppConstants.SetClipboardTextSafely(rtbHelp.SelectedText);
     }
 
-    private void ctxHelpCopyAll_Click(object? sender, EventArgs e) => AppConstants.TrySetClipboardText(rtbHelp.Text);
+    private void ctxHelpCopyAll_Click(object? sender, EventArgs e) => AppConstants.SetClipboardTextSafely(rtbHelp.Text);
 
     private void ctxHelpSelectAll_Click(object? sender, EventArgs e) => rtbHelp.SelectAll();
 

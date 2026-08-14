@@ -811,7 +811,7 @@ public partial class MainForm : Form
             _updateSemaphore.Release();
         }
 
-        TryKickOffMediaImport();
+        KickOffMediaImportIfIdle();
 
         // After a manual sync, wait only 10 seconds before next check.
         if (_manualSyncTriggered)
@@ -857,11 +857,11 @@ public partial class MainForm : Form
     // Kicks off the media import on a separate fire-and-forget task so a long library scan
     // does not delay the next port sync cycle. Skipped when a previous import is still in
     // flight - queueing them would let imports pile up indefinitely on slow storage.
-    private void TryKickOffMediaImport()
+    private void KickOffMediaImportIfIdle()
     {
         if (Interlocked.CompareExchange(ref _mediaImportRunning, 1, 0) != 0)
         {
-            LogManager.Instance.LogDebug("MainForm.TryKickOffMediaImport: Media import skipped - previous import still running");
+            LogManager.Instance.LogDebug("MainForm.KickOffMediaImportIfIdle: Media import skipped - previous import still running");
             return;
         }
 

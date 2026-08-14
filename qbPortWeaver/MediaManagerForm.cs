@@ -771,7 +771,7 @@ public partial class MediaManagerForm : Form
     private void gridContextCopy_Click(object? sender, EventArgs e)
     {
         if (dgvResults.CurrentCell?.Value is string v && v.Length > 0)
-            AppConstants.TrySetClipboardText(v);
+            AppConstants.SetClipboardTextSafely(v);
     }
 
     private void gridContextPaste_Click(object? sender, EventArgs e) => PasteToCurrentCell();

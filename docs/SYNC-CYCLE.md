@@ -102,7 +102,7 @@ flowchart TD
     E -- No --> GRACE{Startup grace period?}
     GRACE -- Yes --> HOLD([HOLD: waiting for VPN, fast re-check])
     GRACE -- No --> F[Increment failed counter]
-    F --> G[TryTriggerRecoveryAsync]
+    F --> G[TriggerRecoveryIfDueAsync]
     G --> SKIP_STATUS([SKIP: Adapter not found])
 ```
 
@@ -383,14 +383,14 @@ RunAsync
      │       ├─ MarkWaitingForVpn (startup grace: adapter not discoverable yet)
      │       └─ RegisterFailureAndTryRecoveryAsync
      │           ├─ BuildCycleCountMessage
-     │           └─ TryTriggerRecoveryAsync
+     │           └─ TriggerRecoveryIfDueAsync
      │               └─ DispatchRecoveryAsync
      ├─ IVpnManager.IsVpnConnected
      ├─ HandleVpnDisconnectedAsync (if disconnected)
      │   ├─ MarkWaitingForVpn (startup grace: VPN not connected)
      │   └─ RegisterFailureAndTryRecoveryAsync
      │       ├─ BuildCycleCountMessage
-     │       └─ TryTriggerRecoveryAsync
+     │       └─ TriggerRecoveryIfDueAsync
      │           └─ DispatchRecoveryAsync
      ├─ HandleVpnConnectedAsync (if connected)
      │   ├─ IVpnManager.GetVpnPortAsync
@@ -398,7 +398,7 @@ RunAsync
      │   ├─ HandlePortDetectionFailureAsync (if port null, all providers)
      │   │   └─ RegisterFailureAndTryRecoveryAsync
      │   │       ├─ BuildCycleCountMessage
-     │   │       └─ TryTriggerRecoveryAsync
+     │   │       └─ TriggerRecoveryIfDueAsync
      │   │           └─ DispatchRecoveryAsync
      │   └─ WarnIfNatPmpLeaseTooShort (NAT-PMP only)
      └─ EnsureRunningAndUpdatePortAsync

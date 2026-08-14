@@ -1329,12 +1329,12 @@ public sealed class PortSyncService
         _consecutiveFailedCycles++;
         int count = _consecutiveFailedCycles;
         LogManager.Instance.LogMessage(BuildCycleCountMessage(reason, count, cfg), logLevel);
-        await TryTriggerRecoveryAsync(recoveryAction, recoveryTarget, displayName, cfg, cancellationToken).ConfigureAwait(false);
+        await TriggerRecoveryIfDueAsync(recoveryAction, recoveryTarget, displayName, cfg, cancellationToken).ConfigureAwait(false);
     }
 
     // Resets the failure streak counter. The start timestamp is deliberately left alone: it is
     // re-stamped on the next streak's first failure (see RegisterFailureAndTryRecoveryAsync),
-    // and the time gate in TryTriggerRecoveryAsync only reads it while the counter is non-zero,
+    // and the time gate in TriggerRecoveryIfDueAsync only reads it while the counter is non-zero,
     // so a stale value can never be observed.
     private void ResetFailureStreak() => _consecutiveFailedCycles = 0;
 
@@ -1343,7 +1343,7 @@ public sealed class PortSyncService
     // the normal cycle cadence) prevents a burst of early wakes from fast-tracking recovery during
     // a transient outage. Resets the counter before the target check so the warning does not fire
     // every cycle when no recovery target is found.
-    private async Task TryTriggerRecoveryAsync(string action, string? recoveryTarget, string displayName, AppConfig cfg, CancellationToken cancellationToken)
+    private async Task TriggerRecoveryIfDueAsync(string action, string? recoveryTarget, string displayName, AppConfig cfg, CancellationToken cancellationToken)
     {
         if (!cfg.VpnAutoRecoveryEnabled)
         {
@@ -1384,7 +1384,7 @@ public sealed class PortSyncService
     }
 
     // Dispatches a recovery action to the helper service. Shared by the failed-cycle trigger
-    // (TryTriggerRecoveryAsync), the port-closed trigger (MaybeTriggerPortClosedRecoveryAsync),
+    // (TriggerRecoveryIfDueAsync), the port-closed trigger (MaybeTriggerPortClosedRecoveryAsync),
     // and the on-demand recovery test (TestRecoveryAsync, manualTest = true). A manual test is
     // not counted in the session's auto-recovery statistic (the label says "Auto-recoveries")
     // but is recorded in the history and arms the "after recovery" annotation like a real one.

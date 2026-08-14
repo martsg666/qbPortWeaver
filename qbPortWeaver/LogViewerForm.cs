@@ -1,4 +1,4 @@
-using System.Runtime;
+﻿using System.Runtime;
 using System.Runtime.InteropServices;
 using System.Text;
 
@@ -954,7 +954,7 @@ public partial class LogViewerForm : Form
         var sb = new StringBuilder();
         foreach (int row in lvLog.SelectedIndices)
             sb.AppendLine(_allLines[_visibleRows[row]].Text);
-        AppConstants.TrySetClipboardText(sb.ToString());
+        AppConstants.SetClipboardTextSafely(sb.ToString());
     }
 
     private void CopyAllVisibleRows()
@@ -962,7 +962,7 @@ public partial class LogViewerForm : Form
         var sb = new StringBuilder();
         foreach (int line in _visibleRows)
             sb.AppendLine(_allLines[line].Text);
-        AppConstants.TrySetClipboardText(sb.ToString());
+        AppConstants.SetClipboardTextSafely(sb.ToString());
     }
 
     // Selects every row via one native LVM_SETITEMSTATE broadcast (item index -1 = all items).

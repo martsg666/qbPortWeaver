@@ -1,11 +1,20 @@
 name: Build Check
 
 # Runs on every branch push and pull request to catch compile errors before release.
-# Tag pushes are handled exclusively by build-release.yml.
+#
+# 'branches: **' rather than 'tags-ignore: **': a push filter that names only tags/tags-ignore
+# scopes the trigger to tags, so ignoring every tag left the push block matching nothing and this
+# workflow ran on pull requests alone (30 of 30 runs, confirmed against the run history). Direct
+# pushes to qa/* and rc/* - which the release flow encourages - therefore had no compile gate
+# until tag time. A branches filter never matches tags, so build-release.yml keeps exclusive
+# ownership of tag pushes either way.
+#
+# Note this runs twice for a push to a branch with an open PR (once per event); the concurrency
+# group is keyed on github.ref, which differs between them, so neither cancels the other.
 on:
   push:
-    tags-ignore:
-      - '**'  # tag pushes are handled exclusively by build-release.yml
+    branches:
+      - '**'
   pull_request:
 
 concurrency:

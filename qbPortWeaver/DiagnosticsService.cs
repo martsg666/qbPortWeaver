@@ -45,6 +45,11 @@ public static class DiagnosticsService
         public const string PortReachable = "Port reachable";
     }
 
+    // Shared skip reason for every check downstream of the client being reachable. Named for the same
+    // reason the check labels above are: one wording for one condition, so the report cannot end up
+    // explaining the same skip four different ways (and Sonar S1192 counts the repetition).
+    private const string ClientUnreachableSkip = "Client unreachable";
+
     /// <summary>Runs all diagnostic checks in sync-chain order. Throws <see cref="OperationCanceledException"/> only if <paramref name="cancellationToken"/> fires.</summary>
     public static async Task<IReadOnlyList<DiagnosticResult>> RunAsync(CancellationToken cancellationToken = default)
     {
@@ -191,11 +196,11 @@ public static class DiagnosticsService
         {
             results.Add(new(Checks.ClientReachable, DiagnosticStatus.Fail, $"Could not reach {client.ClientName}",
                 "Check the URL and credentials in Settings and that the Web UI/RPC is enabled. See the log for details."));
-            results.Add(new(Checks.PortsInSync, DiagnosticStatus.Skip, "Client unreachable"));
+            results.Add(new(Checks.PortsInSync, DiagnosticStatus.Skip, ClientUnreachableSkip));
             if (client.SupportsInterfaceMismatchWarning)
-                results.Add(new(Checks.InterfaceBinding, DiagnosticStatus.Skip, "Client unreachable"));
-            results.Add(new(Checks.ClientSettings, DiagnosticStatus.Skip, "Client unreachable"));
-            results.Add(new(Checks.PortReachable, DiagnosticStatus.Skip, "Client unreachable"));
+                results.Add(new(Checks.InterfaceBinding, DiagnosticStatus.Skip, ClientUnreachableSkip));
+            results.Add(new(Checks.ClientSettings, DiagnosticStatus.Skip, ClientUnreachableSkip));
+            results.Add(new(Checks.PortReachable, DiagnosticStatus.Skip, ClientUnreachableSkip));
             return;
         }
         results.Add(new(Checks.ClientReachable, DiagnosticStatus.Pass, $"{client.ClientName} reachable; listening port is {cp}"));

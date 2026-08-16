@@ -473,7 +473,7 @@ public partial class SettingsForm : Form
     // reads the status of each match, which is fast on a home machine and slow on a domain-joined one
     // (or one with a service stuck pending). The button is disabled for the duration so the click
     // cannot be repeated into a queue of enumerations. Same shape as RunConnectionTestAsync below.
-    private async void btnDetectVpn_Click(object? sender, EventArgs e) // NOSONAR S3168 - WinForms event handlers are async void by contract; every path is inside the try/finally
+    private async void btnDetectVpn_Click(object? sender, EventArgs e) // async void is correct here (WinForms event handler)
     {
         // Left null by both failure paths, which is what the guard after the finally tests: keeping the
         // early exits out of the catch blocks means the button and cursor are always restored first.

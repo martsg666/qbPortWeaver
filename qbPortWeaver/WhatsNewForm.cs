@@ -16,6 +16,11 @@ public partial class WhatsNewForm : Form
         "whenever it sets the port, and now warns you if one has been switched back on, naming it as " +
         "your client labels it. Diagnostics reports it too. This matters most for Transmission and " +
         "Nicotine+, where such a setting shows no symptom at all until the client is next restarted.\n\n" +
+        "Tells you when your VPN does not come back\n" +
+        "When qbPortWeaver restarts your VPN service to recover the connection, it now checks that the " +
+        "service really did start again, instead of assuming it worked. If it did not, you get a clear " +
+        "message rather than a quiet note saying it was restarted. Worth having if you use a killswitch: " +
+        "a VPN service that fails to come back can leave you with no connection at all.\n\n" +
         "Calmer behaviour when your internet goes down\n" +
         "If the connection itself drops, restarting your VPN cannot bring it back, so qbPortWeaver no " +
         "longer keeps trying at full speed. It checks whether anything is reachable, then spaces its " +

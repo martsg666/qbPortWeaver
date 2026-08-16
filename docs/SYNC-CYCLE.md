@@ -131,7 +131,7 @@ When the VPN is detected as disconnected - or port detection fails despite the V
      - **ProtonVPN / PIA (direct or NAT-PMP mode):** action = `restart`, target = the resolved Windows service name - the main app auto-discovers the service name and sends it to the helper, which restarts it directly
      - **NAT-PMP with a generic gateway:** action = `cycle-adapter`, target = adapter name - the helper disables and re-enables the adapter via netsh
    - Passes through the connectivity rate limiter (below)
-   - Sends the recovery request to the helper service (runs as SYSTEM) via named pipe
+   - Sends the recovery request to the helper service (runs as SYSTEM) via named pipe. After a service restart the helper **verifies** the service actually reached Running (`AutoRecovery.VerifyServiceRunningAsync`) rather than reporting success on the strength of having issued the start: `StartServiceAsync` deliberately swallows a start timeout, so without the check a service that never came back would still be logged as "Restarted". A service left not-Running is logged at **Error**, which travels back over the pipe in the helper's ERROR count and raises the tray alert. That matters most with a VPN killswitch enabled, where a service that fails to restart leaves the machine with no network at all.
    - If the target matches a known provider's client process, restarts it in the user session
 
 ### Connectivity Rate Limiter

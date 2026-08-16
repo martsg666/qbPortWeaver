@@ -103,6 +103,8 @@ After installing, open **Settings** from the tray icon to configure the applicat
 - **Auto-Recovery**
   After a configurable number of consecutive failed cycles (VPN disconnected, or connected but no port assigned), recovery runs through a lightweight helper service (`qbPortWeaverHelper`, LocalSystem, no UAC): for ProtonVPN/PIA it restarts the VPN service and client; for a generic NAT-PMP gateway it cycles the adapter via netsh. Recovery is also held until the failures have *persisted* long enough, so a brief blip raced through by network-change re-syncs does not force a restart. A second, independent trigger runs the same recovery when port verification confirms the port closed for a set number of checks (on by default; requires **Check that the forwarded port is open after each sync**); it fires once and re-arms only when the port tests open again. Use with care on qBittorrent, where an idle client can report closed indefinitely. A **Test** button next to the Auto-recovery settings runs the recovery action on demand (after a confirmation), so the whole chain can be verified before a real failure needs it.
 
+  Recovery is rate-limited while the machine has no internet connection at all, since restarting a VPN cannot restore a connection that is down upstream. Reachability is checked by pinging public DNS resolvers; when nothing answers, the first recovery of a streak still runs and later attempts are spaced out to 5, 10 and then 15 minutes until connectivity returns. It is deliberately a rate limit rather than a block: a VPN killswitch also blocks those pings while the tunnel is down, so refusing to recover outright would leave exactly the users who need a restart unable to get one.
+
 - **Post-Update Command**
   Optionally run a custom command after a successful port update (fire-and-forget). See SampleSendMail.ps1 for an example of sending an email notification with status details.
 
@@ -124,7 +126,7 @@ After installing, open **Settings** from the tray icon to configure the applicat
   A **Run Diagnostics** action (Status panel and tray menu) runs a read-only health check across the whole sync chain and shows a pass/warning/fail checklist with a fix hint for each step: configuration, helper service, VPN connection and forwarded port, client running and reachable, ports in sync, interface binding, and outside reachability. **Re-run** refreshes it and **Copy Report** puts the results on the clipboard for a support request. It never changes the port or restarts anything.
 
 - **Settings Dialog**
-  All configuration options are editable through a dedicated Settings form (tray menu → Settings), organised into **General**, **Client**, **Auto-Recovery**, and **Extra** tabs, with inline descriptions and tooltips for each option. A **Detect** button on the General tab finds a running or installed client (qBittorrent, Transmission, Deluge, or Nicotine+) and fills in its selection and process details, asking you to choose when more than one is found.
+  All configuration options are editable through a dedicated Settings form (tray menu → Settings), organised into **General**, **Client**, **Auto-Recovery**, and **Extra** tabs, with inline descriptions and tooltips for each option. A **Detect** button on the General tab finds a running or installed client (qBittorrent, Transmission, Deluge, or Nicotine+) and fills in its selection and process details, asking you to choose when more than one is found. A second **Detect** button does the same for the VPN provider, selecting ProtonVPN or PIA when its service is present on the machine. NAT-PMP gateways are not machine-local and so cannot be detected; select **NAT-PMP** yourself if that is what you use.
 
 - **Connection Test**
   Each client section in Settings has a **Test** button next to the URL. It checks the connection to the selected client using the values currently entered (no need to save first), then reports success along with the current listening port, or points you to the log if it cannot connect.
@@ -430,7 +432,7 @@ Notes:
 ### 7. qbPortWeaver
 
 - Enable **Start Automatically with Windows** from the tray menu.
-- On first run, open **Settings** from the tray menu, select your client (or click **Detect** to find it automatically), and enter the connection credentials and preferences.
+- On first run, open **Settings** from the tray menu, select your client and your VPN provider (or click **Detect** on either row to find them automatically), and enter the connection credentials and preferences.
 - Use the **Test** button next to the client URL to confirm the connection works before saving.
 
 ---

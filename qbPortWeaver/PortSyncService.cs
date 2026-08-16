@@ -139,6 +139,28 @@ public sealed class PortSyncService
     // sync service, and volatile covers the manual test setting it from the UI thread.
     private static volatile bool _recoveryDispatched;
 
+    // How long recovery waits between attempts while the machine has no internet connection. The first
+    // attempt of a streak is not delayed at all; these are the waits before the second, third, and
+    // every later attempt. Capped at the last entry, so recovery keeps retrying at a steady 15 minutes
+    // for as long as the condition lasts rather than stopping - see TryTakeRecoverySlotAsync for why
+    // never stopping is the point.
+    private static readonly TimeSpan[] OfflineRetryBackoff =
+    [
+        TimeSpan.FromMinutes(5),
+        TimeSpan.FromMinutes(10),
+        TimeSpan.FromMinutes(15),
+    ];
+
+    // Rate-limiter state for recovery attempted while offline: how many attempts this streak has made
+    // (0 = none, so the next one runs immediately) and the Environment.TickCount64 reading of the last
+    // one. Reset when the connectivity probe next succeeds. Static for the same reason as
+    // _recoveryDispatched: they are read and written inside the shared static dispatch path.
+    private static int _offlineRecoveryAttempts;  // NOSONAR S2696 - the app runs a single sync service; the field is static only because the dispatch path is static
+    private static long _lastOfflineRecoveryMs;   // NOSONAR S2696 - as above
+    // Latches while a wait window is being served, so the "holding recovery" explanation is logged once
+    // per window instead of once per re-evaluated cycle.
+    private static bool _recoveryHoldLogged;      // NOSONAR S2696 - as above
+
     // Snapshot of _recoveryDispatched taken at cycle start, so a recovery dispatched mid-cycle
     // (port-closed trigger fires after the port update step) is never consumed by the same
     // cycle that dispatched it. Serialised by MainForm._updateSemaphore.
@@ -496,6 +518,7 @@ public sealed class PortSyncService
         }
 
         ResetFailureStreak(); // Reset only after a successful port fetch
+        ResetOfflineRecoveryBackoff(); // A working cycle ends any offline streak, so the next one starts fresh
         _graceHoldActive = false; // VPN is up within the grace window - clear the hold without a marker
         status[StatusKeys.VpnPort] = vpnPort.Value;
         LogManager.Instance.LogMessage($"{vpnManager.ProviderName} port found: {vpnPort.Value}", LogLevel.Info);
@@ -1383,6 +1406,73 @@ public sealed class PortSyncService
         await DispatchRecoveryAsync(action, recoveryTarget, displayName, cancellationToken).ConfigureAwait(false);
     }
 
+    // Clears the offline rate-limiter so the next offline streak starts with an immediate attempt.
+    // Called from both ends: the probe succeeding here, and a successful port fetch in the sync cycle.
+    // Both are needed - once the VPN is healthy again recovery is never dispatched, so the probe branch
+    // alone would leave a stale count behind and needlessly delay the first attempt of a later outage.
+    private static void ResetOfflineRecoveryBackoff()
+    {
+        _offlineRecoveryAttempts = 0;
+        _lastOfflineRecoveryMs = 0;
+        _recoveryHoldLogged = false;
+    }
+
+    // Decides whether an automatic recovery may run now, given whether the machine can reach the
+    // internet. The probe rate-limits recovery, it never vetoes it outright, and that distinction is
+    // load-bearing: a VPN killswitch blocks the probe itself while the tunnel is down, so a hard veto
+    // would suppress recovery exactly when a restart is the fix, leaving the killswitch up, the probe
+    // failing, and the machine deadlocked with no way out. Backing off instead bounds the damage of a
+    // real outage while guaranteeing a stuck VPN still gets retried.
+    //
+    // Online: recover immediately, and reset the backoff.
+    // Offline: the first recovery of a streak still runs (it is the one most likely to help), then
+    // successive attempts wait OfflineRetryBackoff - 5, 10, then 15 minutes for every attempt after.
+    private static async Task<bool> TryTakeRecoverySlotAsync(string displayName, CancellationToken cancellationToken)
+    {
+        if (await InternetConnectivityProbe.IsInternetReachableAsync(cancellationToken).ConfigureAwait(false))
+        {
+            if (_offlineRecoveryAttempts > 0)
+                LogManager.Instance.LogMessage("Internet connection is back - recovery resumed at the normal rate", LogLevel.Info);
+            ResetOfflineRecoveryBackoff();
+            return true;
+        }
+
+        // Monotonic and static, unlike the instance _uptime stopwatch this static method cannot reach.
+        // Immune to wall-clock changes, which matters here: a machine coming back from an outage often
+        // corrects its clock by NTP, and a backward jump must not unblock every held attempt at once.
+        long nowMs = Environment.TickCount64;
+
+        if (_offlineRecoveryAttempts > 0)
+        {
+            TimeSpan required = OfflineRetryBackoff[Math.Min(_offlineRecoveryAttempts - 1, OfflineRetryBackoff.Length - 1)];
+            TimeSpan waited = TimeSpan.FromMilliseconds(nowMs - _lastOfflineRecoveryMs);
+            if (waited < required)
+            {
+                // Logged once per wait window rather than per attempt: recovery is re-evaluated every
+                // few cycles, so logging each held attempt would repeat the same line for the length of
+                // the outage. Cleared when an attempt is allowed, so each new window reports its wait.
+                if (!_recoveryHoldLogged)
+                {
+                    _recoveryHoldLogged = true;
+                    LogManager.Instance.LogMessage(
+                        $"No internet connection - holding recovery for '{displayName}' for {required.TotalMinutes:F0} minutes " +
+                        "(restarting the VPN cannot restore a connection that is down upstream)",
+                        LogLevel.Warn);
+                }
+                return false;
+            }
+        }
+
+        _lastOfflineRecoveryMs = nowMs;
+        _offlineRecoveryAttempts++;
+        _recoveryHoldLogged = false;
+        LogManager.Instance.LogMessage(
+            $"No internet connection - trying recovery for '{displayName}' anyway (attempt {_offlineRecoveryAttempts}), " +
+            "in case the connection is being blocked locally rather than being down upstream",
+            LogLevel.Warn);
+        return true;
+    }
+
     // Dispatches a recovery action to the helper service. Shared by the failed-cycle trigger
     // (TriggerRecoveryIfDueAsync), the port-closed trigger (MaybeTriggerPortClosedRecoveryAsync),
     // and the on-demand recovery test (TestRecoveryAsync, manualTest = true). A manual test is
@@ -1390,6 +1480,13 @@ public sealed class PortSyncService
     // but is recorded in the history and arms the "after recovery" annotation like a real one.
     private static async Task DispatchRecoveryAsync(string action, string recoveryTarget, string displayName, CancellationToken cancellationToken, bool manualTest = false)
     {
+        // An automatic recovery is mostly pointless while the machine has no internet connection: the
+        // VPN has nothing to reconnect to, so every cycle fails and recovery fires again for as long as
+        // the outage lasts, restarting a VPN service that was never at fault. A manual test is exempt -
+        // the user asked for the action explicitly and is entitled to see it run.
+        if (!manualTest && !await TryTakeRecoverySlotAsync(displayName, cancellationToken).ConfigureAwait(false))
+            return;
+
         string trigger = manualTest ? "Recovery test" : "Auto-recovery";
         if (action == HelperProtocol.ActionRestart)
         {

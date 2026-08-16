@@ -130,8 +130,20 @@ When the VPN is detected as disconnected - or port detection fails despite the V
    - Determines the recovery action and target based on the provider type:
      - **ProtonVPN / PIA (direct or NAT-PMP mode):** action = `restart`, target = the resolved Windows service name - the main app auto-discovers the service name and sends it to the helper, which restarts it directly
      - **NAT-PMP with a generic gateway:** action = `cycle-adapter`, target = adapter name - the helper disables and re-enables the adapter via netsh
+   - Passes through the connectivity rate limiter (below)
    - Sends the recovery request to the helper service (runs as SYSTEM) via named pipe
    - If the target matches a known provider's client process, restarts it in the user session
+
+### Connectivity Rate Limiter
+
+Both automatic triggers (failed-cycle and port-closed) share `DispatchRecoveryAsync`, so both pass through `TryTakeRecoverySlotAsync`, which asks `InternetConnectivityProbe` whether the machine can reach the internet at all. The probe pings `1.1.1.1` and `8.8.8.8` concurrently with a 2s timeout and reports reachable if either replies. Public resolvers are addressed by IP on purpose: name resolution is one of the things an outage breaks, so a DNS-dependent probe would report "no internet" for a DNS fault that recovery might legitimately fix.
+
+- **Reachable:** recovery runs immediately and the backoff resets.
+- **Not reachable:** the first recovery of a streak still runs; later attempts wait 5, then 10, then 15 minutes, holding at 15 for as long as the condition lasts.
+
+The distinction between rate-limiting and blocking is load-bearing, not a nicety. A VPN killswitch blocks the probe itself while the tunnel is down, so a machine whose VPN is genuinely stuck looks identical to one whose upstream is down. Refusing to recover outright would leave the killswitch up, the probe failing, and the machine deadlocked with no way out - so recovery is slowed but never stopped. The elapsed-time comparison uses `Environment.TickCount64`, which is monotonic: a machine returning from an outage often corrects its clock by NTP, and a backward jump must not release every held attempt at once.
+
+The attempt counter is cleared from two places, and both are needed: the probe succeeding, and a successful port fetch in the sync cycle. Once the VPN is healthy recovery is never dispatched, so the probe branch alone would leave a stale count behind and delay the first attempt of a later, unrelated outage.
 
 ### Usable Port Rule
 
@@ -178,7 +190,7 @@ All resets flow through a single `ResetFailureStreak` helper. It only zeroes the
 
 ### Manual Recovery Test
 
-The Settings form's **Test** button (Auto-recovery header row) dispatches the same recovery action on demand via `PortSyncService.TestRecoveryAsync`, after a confirmation dialog. It uses the in-form provider selection (like the client Test buttons), bypasses every gate - counters, time floor, arming - and goes straight to `DispatchRecoveryAsync` with `manualTest = true`. A test is recorded in the port history as "Recovery test triggered" but is not counted in the session's Recoveries statistic; it arms the "after recovery" history annotation like an automatic dispatch, since its effect on the port is the same.
+The Settings form's **Test** button (Auto-recovery header row) dispatches the same recovery action on demand via `PortSyncService.TestRecoveryAsync`, after a confirmation dialog. It uses the in-form provider selection (like the client Test buttons), bypasses every gate - counters, time floor, arming, and the connectivity rate limiter - and goes straight to `DispatchRecoveryAsync` with `manualTest = true`. The rate limiter is skipped deliberately: the user asked for the action explicitly, and a test that silently declined to run would be worse than useless for verifying the chain. A test is recorded in the port history as "Recovery test triggered" but is not counted in the session's Recoveries statistic; it arms the "after recovery" history annotation like an automatic dispatch, since its effect on the port is the same.
 
 ## Client Interaction
 

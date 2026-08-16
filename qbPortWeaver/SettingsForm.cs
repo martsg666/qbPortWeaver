@@ -107,6 +107,7 @@ public partial class SettingsForm : Form
     private void SetupTooltips()
     {
         toolTip.SetToolTip(cboVpnProvider, "VPN provider used for port detection (Disabled, ProtonVPN, PIA, or NAT-PMP)");
+        toolTip.SetToolTip(btnDetectVpn, "Detect an installed VPN provider and select it (NAT-PMP gateways cannot be detected - select NAT-PMP manually)");
         toolTip.SetToolTip(cboNatPmpAdapter, "Network adapter to use for NAT-PMP port mapping (only applies when NAT-PMP is selected)");
         toolTip.SetToolTip(btnRefreshAdapters, "Refresh the adapter list");
         toolTip.SetToolTip(nudUpdateInterval, "How often to run the sync cycle, in seconds - controls both port sync and Media Manager frequency");
@@ -462,6 +463,46 @@ public partial class SettingsForm : Form
                 $"Detected {chosen.ClientName} ({how}).\n\nThe client selection and its process details have been filled in. Review the connection settings, then use Test before saving.",
                 AppIdentity.AppName, MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
+    }
+
+    // Detects which VPN provider is installed on this machine and pre-fills the provider selection, so
+    // the user does not have to know which of the supported providers qbPortWeaver drives. Only the
+    // selection is applied, not saved - the user reviews it and Saves. NAT-PMP is never detected (no
+    // machine-local service to find), so it remains the manual choice for other gateways.
+    private void btnDetectVpn_Click(object? sender, EventArgs e)
+    {
+        var detected = VpnDetector.DetectAll();
+        if (detected.Count == 0)
+        {
+            ThemedMessageBox.Show(
+                $"No supported VPN provider was found installed on this machine.\n\nSelect your provider manually, or choose {RegistrySettingsManager.VpnProviderNatPmp} if your gateway supports it.",
+                AppIdentity.AppName, MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
+
+        // A running service is the strongest signal, so prefer running providers; fall back to the
+        // installed-only matches when neither is running.
+        var running = detected.Where(d => d.Kind == VpnDetector.DetectionKind.Running).ToList();
+        var candidates = running.Count > 0 ? running : detected;
+
+        // Both providers installed (and neither, or both, running) is the one case we cannot resolve.
+        // Rather than choose silently or add a second chooser dialog for a two-item list, name what was
+        // found and leave the selection alone - the dropdown is right next to the button.
+        if (candidates.Count > 1)
+        {
+            ThemedMessageBox.Show(
+                $"More than one supported VPN provider was found: {string.Join(", ", candidates.Select(c => c.ProviderKeyword))}.\n\nSelect the one you use from the list.",
+                AppIdentity.AppName, MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
+
+        var chosen = candidates[0];
+        cboVpnProvider.SelectedItem = chosen.ProviderKeyword; // triggers cboVpnProvider_SelectedIndexChanged
+
+        string how = chosen.Kind == VpnDetector.DetectionKind.Running ? "running now" : "installed";
+        ThemedMessageBox.Show(
+            $"Detected {chosen.ProviderKeyword} ({how}, service \"{chosen.ServiceName}\").\n\nThe VPN provider has been selected. Review the remaining settings before saving.",
+            AppIdentity.AppName, MessageBoxButtons.OK, MessageBoxIcon.Information);
     }
 
     // Fills the matched client's process-name field (always) and executable field (only when a default

@@ -218,11 +218,18 @@ public static class DiagnosticsService
     private static async Task AddClientSettingsResultAsync(List<DiagnosticResult> results, IManagedClient client, CancellationToken cancellationToken)
     {
         var conflicts = await client.GetConflictingSettingsAsync(cancellationToken).ConfigureAwait(false);
+        if (conflicts is null)
+        {
+            // Null is "could not read", which is not the same as "nothing wrong". Reporting Pass here
+            // would show a green tick for a check that never ran - and this check exists for exactly
+            // the clients where nothing else can see the problem, so a false green is worse than none.
+            results.Add(new(Checks.ClientSettings, DiagnosticStatus.Skip, $"Could not read {client.ClientName}'s settings",
+                "The client answered the first request but not this one. See the log for details."));
+            return;
+        }
+
         if (conflicts.Count == 0)
         {
-            // Deliberately not "all settings are correct": the contract returns an empty list both for
-            // a clean configuration and for settings that could not be read, and this check must not
-            // claim to have verified something it may not have seen.
             results.Add(new(Checks.ClientSettings, DiagnosticStatus.Pass, $"No {client.ClientName} setting is working against the forwarded port"));
             return;
         }

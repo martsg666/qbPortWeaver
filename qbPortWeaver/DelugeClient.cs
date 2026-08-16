@@ -35,10 +35,9 @@ public sealed class DelugeClient : ManagedClientBase
     }
 
     /// <inheritdoc/>
-    /// <inheritdoc/>
-    public override async Task<IReadOnlyList<ClientSettingConflict>> GetConflictingSettingsAsync(CancellationToken cancellationToken = default)
+    public override async Task<IReadOnlyList<ClientSettingConflict>?> GetConflictingSettingsAsync(CancellationToken cancellationToken = default)
     {
-        if (!await EnsureAuthenticatedAsync(cancellationToken).ConfigureAwait(false)) return [];
+        if (!await EnsureAuthenticatedAsync(cancellationToken).ConfigureAwait(false)) return null;
 
         try
         {
@@ -49,13 +48,13 @@ public sealed class DelugeClient : ManagedClientBase
             var body = $$$"""{"method":"core.get_config_values","params":[["random_port","upnp","natpmp"]],"id":{{{_rpcId++}}}}""";
             using var content = new StringContent(body, Encoding.UTF8, JsonContentType);
             using var response = await HttpClient.PostAsync($"{Url}{RpcPath}", content, cancellationToken).ConfigureAwait(false);
-            if (!response.IsSuccessStatusCode) return [];
+            if (!response.IsSuccessStatusCode) return null;
 
             var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
             using var doc = JsonDocument.Parse(json);
             var root = doc.RootElement;
-            if (root.TryGetProperty(JsonPropError, out var errorElement) && errorElement.ValueKind != JsonValueKind.Null) return [];
-            if (!root.TryGetProperty(JsonPropResult, out var result) || result.ValueKind == JsonValueKind.Null) return [];
+            if (root.TryGetProperty(JsonPropError, out var errorElement) && errorElement.ValueKind != JsonValueKind.Null) return null;
+            if (!root.TryGetProperty(JsonPropResult, out var result) || result.ValueKind == JsonValueKind.Null) return null;
 
             var conflicts = new List<ClientSettingConflict>();
             if (result.GetBoolOrNull("random_port") is true)
@@ -70,7 +69,7 @@ public sealed class DelugeClient : ManagedClientBase
         catch (Exception ex)
         {
             LogHttpException("GetConflictingSettingsAsync", ex);
-            return [];
+            return null;
         }
     }
 

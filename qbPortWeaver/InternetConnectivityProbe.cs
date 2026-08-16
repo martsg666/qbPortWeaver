@@ -32,8 +32,11 @@ internal static class InternetConnectivityProbe
     /// <summary>
     /// Returns <see langword="true"/> if any probe address replies to ICMP, meaning recovery has
     /// something to reconnect to. Both addresses are probed concurrently, so the whole call is
-    /// bounded by <see cref="ProbeTimeout"/> rather than the sum. A machine that is genuinely offline
-    /// returns <see langword="false"/>; so does one whose network blocks outbound ICMP entirely.
+    /// bounded by <see cref="ProbeTimeout"/> rather than the sum.
+    /// <para><see langword="false"/> means "could not confirm connectivity", <b>not</b> "offline":
+    /// a machine or network that drops outbound ICMP answers false with perfect connectivity, and
+    /// nothing here can tell the two apart. Callers must phrase their logging accordingly and must
+    /// not treat false as grounds for refusing to act.</para>
     /// Never throws except <see cref="OperationCanceledException"/> when <paramref name="cancellationToken"/> fires.
     /// </summary>
     internal static async Task<bool> IsInternetReachableAsync(CancellationToken cancellationToken)

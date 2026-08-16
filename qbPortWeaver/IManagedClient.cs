@@ -87,11 +87,13 @@ public interface IManagedClient : IDisposable
     /// window in between: a user can enable one in the client's UI at any time, and nothing corrects
     /// it until the VPN's port next changes, which may be days. That interval is the "every check
     /// passes and the port is still wrong" case, and no other check can see it.</para>
-    /// <para>Read-only and best-effort. An empty list means nothing conflicting was found <b>or</b>
-    /// the settings could not be read - callers must not treat empty as proof of a clean
-    /// configuration. Settings a client does not expose are omitted rather than guessed at.</para>
+    /// <para>Read-only and best-effort. An empty list means the settings were read and none of them
+    /// conflict; <see langword="null"/> means they could not be read at all, which is a different
+    /// thing and must stay distinguishable - a caller that collapsed the two would report a clean
+    /// configuration for a check that never ran. Settings a client does not expose are omitted rather
+    /// than guessed at.</para>
     /// </summary>
-    Task<IReadOnlyList<ClientSettingConflict>> GetConflictingSettingsAsync(CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<ClientSettingConflict>?> GetConflictingSettingsAsync(CancellationToken cancellationToken = default);
 }
 
 /// <summary>

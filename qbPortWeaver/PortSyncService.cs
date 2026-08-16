@@ -1440,7 +1440,7 @@ public sealed class PortSyncService
         if (await InternetConnectivityProbe.IsInternetReachableAsync(cancellationToken).ConfigureAwait(false))
         {
             if (_offlineRecoveryAttempts > 0)
-                LogManager.Instance.LogMessage("Internet connection is back - recovery resumed at the normal rate", LogLevel.Info);
+                LogManager.Instance.LogMessage("Internet connection confirmed - recovery resumed at the normal rate", LogLevel.Info);
             ResetOfflineRecoveryBackoff();
             return true;
         }
@@ -1463,7 +1463,7 @@ public sealed class PortSyncService
                 {
                     _recoveryHoldLogged = true;
                     LogManager.Instance.LogMessage(
-                        $"No internet connection - holding recovery for '{displayName}' for {required.TotalMinutes:F0} minutes " +
+                        $"Could not confirm an internet connection - holding recovery for '{displayName}' for {required.TotalMinutes:F0} minutes " +
                         "(restarting the VPN cannot restore a connection that is down upstream)",
                         LogLevel.Warn);
                 }
@@ -1475,8 +1475,8 @@ public sealed class PortSyncService
         _offlineRecoveryAttempts++;
         _recoveryHoldLogged = false;
         LogManager.Instance.LogMessage(
-            $"No internet connection - trying recovery for '{displayName}' anyway (attempt {_offlineRecoveryAttempts}), " +
-            "in case the connection is being blocked locally rather than being down upstream",
+            $"Could not confirm an internet connection - trying recovery for '{displayName}' anyway (attempt {_offlineRecoveryAttempts}), " +
+            "in case it is being blocked locally rather than being down upstream",
             LogLevel.Warn);
         return true;
     }

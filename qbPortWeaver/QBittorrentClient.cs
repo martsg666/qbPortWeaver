@@ -111,9 +111,9 @@ public sealed class QBittorrentClient : ManagedClientBase
     /// <inheritdoc/>
     // Re-reads preferences rather than reusing the sync cycle's values: this runs from Diagnostics,
     // on demand and long after that read, and the whole point is to see the setting as it is now.
-    public override async Task<IReadOnlyList<ClientSettingConflict>> GetConflictingSettingsAsync(CancellationToken cancellationToken = default)
+    public override async Task<IReadOnlyList<ClientSettingConflict>?> GetConflictingSettingsAsync(CancellationToken cancellationToken = default)
     {
-        if (!await EnsureAuthenticatedAsync(cancellationToken).ConfigureAwait(false)) return [];
+        if (!await EnsureAuthenticatedAsync(cancellationToken).ConfigureAwait(false)) return null;
 
         try
         {
@@ -121,7 +121,7 @@ public sealed class QBittorrentClient : ManagedClientBase
             if (!response.IsSuccessStatusCode)
             {
                 LogManager.Instance.LogDebug($"QBittorrentClient.GetConflictingSettingsAsync: HTTP {(int)response.StatusCode}");
-                return [];
+                return null;
             }
 
             var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
@@ -139,7 +139,7 @@ public sealed class QBittorrentClient : ManagedClientBase
         catch (Exception ex)
         {
             LogHttpException("GetConflictingSettingsAsync", ex);
-            return [];
+            return null;
         }
     }
 

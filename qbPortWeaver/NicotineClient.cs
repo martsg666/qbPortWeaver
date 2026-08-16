@@ -113,13 +113,12 @@ public sealed class NicotineClient : ManagedClientBase
     }
 
     /// <inheritdoc/>
-    /// <inheritdoc/>
-    public override async Task<IReadOnlyList<ClientSettingConflict>> GetConflictingSettingsAsync(CancellationToken cancellationToken = default)
+    public override async Task<IReadOnlyList<ClientSettingConflict>?> GetConflictingSettingsAsync(CancellationToken cancellationToken = default)
     {
         // Debug, not Error: this runs from Diagnostics, which reports an unreachable client itself.
         using var response = await SendAsync(HttpMethod.Get, PathPreferences, null,
             LogLevel.Debug, cancellationToken).ConfigureAwait(false);
-        if (response is null) return [];
+        if (response is null) return null;
 
         try
         {
@@ -134,7 +133,7 @@ public sealed class NicotineClient : ManagedClientBase
         catch (Exception ex)
         {
             LogManager.Instance.LogDebug($"NicotineClient.GetConflictingSettingsAsync: {ex.Message}");
-            return [];
+            return null;
         }
     }
 

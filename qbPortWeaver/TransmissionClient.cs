@@ -116,17 +116,17 @@ public sealed class TransmissionClient : ManagedClientBase
     }
 
     /// <inheritdoc/>
-    public override async Task<IReadOnlyList<ClientSettingConflict>> GetConflictingSettingsAsync(CancellationToken cancellationToken = default)
+    public override async Task<IReadOnlyList<ClientSettingConflict>?> GetConflictingSettingsAsync(CancellationToken cancellationToken = default)
     {
         try
         {
             const string body = """{"method":"session-get","arguments":{"fields":["peer-port-random-on-start","port-forwarding-enabled"]}}""";
             using var response = await SendRpcAsync(body, cancellationToken: cancellationToken).ConfigureAwait(false);
-            if (response is null || !response.IsSuccessStatusCode) return [];
+            if (response is null || !response.IsSuccessStatusCode) return null;
 
             var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
             using var doc = JsonDocument.Parse(json);
-            if (!doc.RootElement.TryGetProperty(JsonPropArguments, out var arguments)) return [];
+            if (!doc.RootElement.TryGetProperty(JsonPropArguments, out var arguments)) return null;
 
             var conflicts = new List<ClientSettingConflict>();
             if (arguments.GetBoolOrNull("peer-port-random-on-start") is true)
@@ -140,7 +140,7 @@ public sealed class TransmissionClient : ManagedClientBase
         catch (Exception ex)
         {
             LogHttpException("GetConflictingSettingsAsync", ex);
-            return [];
+            return null;
         }
     }
 

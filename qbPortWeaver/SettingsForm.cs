@@ -469,9 +469,42 @@ public partial class SettingsForm : Form
     // the user does not have to know which of the supported providers qbPortWeaver drives. Only the
     // selection is applied, not saved - the user reviews it and Saves. NAT-PMP is never detected (no
     // machine-local service to find), so it remains the manual choice for other gateways.
-    private void btnDetectVpn_Click(object? sender, EventArgs e)
+    // Detection runs off the UI thread: DetectAll enumerates every Windows service through the SCM and
+    // reads the status of each match, which is fast on a home machine and slow on a domain-joined one
+    // (or one with a service stuck pending). The button is disabled for the duration so the click
+    // cannot be repeated into a queue of enumerations. Same shape as RunConnectionTestAsync below.
+    private async void btnDetectVpn_Click(object? sender, EventArgs e) // NOSONAR S3168 - WinForms event handlers are async void by contract; every path is inside the try/finally
     {
-        var detected = VpnDetector.DetectAll();
+        // Left null by both failure paths, which is what the guard after the finally tests: keeping the
+        // early exits out of the catch blocks means the button and cursor are always restored first.
+        IReadOnlyList<VpnDetector.DetectedVpn>? detected = null;
+        btnDetectVpn.Enabled = false;
+        UseWaitCursor = true;
+        try
+        {
+            detected = await Task.Run(VpnDetector.DetectAll, _formCloseCts.Token);
+        }
+        catch (OperationCanceledException) { } // NOSONAR S108 - the dialog closed mid-enumeration; there is nobody left to tell
+        catch (Exception ex)
+        {
+            LogManager.Instance.LogDebug($"SettingsForm.btnDetectVpn_Click: {ex.Message}");
+            if (!IsDisposed)
+                ThemedMessageBox.Show(
+                    $"VPN provider detection could not run.\n\n{ex.Message}",
+                    AppIdentity.AppName, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        }
+        finally
+        {
+            if (!IsDisposed)
+            {
+                UseWaitCursor = false;
+                btnDetectVpn.Enabled = true;
+            }
+        }
+
+        // Everything below touches the form, so it stays on the UI thread.
+        if (detected is null || IsDisposed) return;
+
         if (detected.Count == 0)
         {
             ThemedMessageBox.Show(

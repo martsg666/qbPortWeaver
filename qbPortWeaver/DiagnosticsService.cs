@@ -235,10 +235,11 @@ public static class DiagnosticsService
         }
 
         string names = string.Join(", ", conflicts.Select(c => $"\"{c.SettingName}\""));
-        string hint = $"Turn {(conflicts.Count == 1 ? "it" : "them")} off in {client.ClientName}'s settings. " +
-                      $"{AppIdentity.AppName} switches {(conflicts.Count == 1 ? "it" : "them")} off each time it sets the port, so this will also clear itself at the next port change.";
+        string pronoun = conflicts.Count == 1 ? "it" : "them";
+        string hint = $"Turn {pronoun} off in {client.ClientName}'s settings. " +
+                      $"{AppIdentity.AppName} switches {pronoun} off each time it sets the port, so this will also clear itself at the next port change.";
         results.Add(new(Checks.ClientSettings, DiagnosticStatus.Warn,
-            $"{client.ClientName} has {conflicts.Count} setting{(conflicts.Count == 1 ? "" : "s")} working against the forwarded port: {names}", hint));
+            $"{client.ClientName} has {AppConstants.Pluralize(conflicts.Count, "setting")} working against the forwarded port: {names}", hint));
     }
 
     // Reports the bridge plugin's state from files alone, so it stays useful precisely when the

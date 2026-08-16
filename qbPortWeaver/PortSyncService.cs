@@ -81,6 +81,10 @@ public sealed class PortSyncService
     // Port verification throttle: full reachability tests run at most every N cycles because
     // Transmission's and Deluge's tests contact their projects' online check services.
     private const int VerifyEveryNCycles = 5;
+    // Conflicting-client-setting throttle. One extra local call, so cost is not the reason to throttle:
+    // a setting the user just toggled needs catching before their client next restarts, not within one
+    // cycle, and checking every cycle would only add noise to the debug log.
+    private const int ConflictCheckEveryNCycles = 5;
     // How many consecutive undetermined results are tolerated while a closed result awaits
     // confirmation before the pending state is dropped and the normal throttle resumes. Three keeps
     // a genuine confirmation reachable across a couple of transient glitches without polling an
@@ -117,6 +121,14 @@ public sealed class PortSyncService
     // verification on the first eligible cycle after startup. A stale mapping is most likely
     // right after a restart, and "ports match" alone cannot see it.
     private int _cyclesSinceVerify = VerifyEveryNCycles;
+
+    // Conflicting-client-setting check state. Serialised by MainForm._updateSemaphore like the rest.
+    // Initialised at the threshold so the first eligible cycle checks immediately, as _cyclesSinceVerify
+    // does - a conflict that was already present when the app started should not wait five cycles.
+    private int _cyclesSinceConflictCheck = ConflictCheckEveryNCycles;
+    // Latches while a conflict is being reported, so the warning fires on the transition rather than on
+    // every check. The condition persists until the user acts on it, which could be days.
+    private bool _clientSettingsConflictActive;
     private bool _portCheckPendingConfirmation; // one unconfirmed closed result seen
     private bool _portConfirmedClosed;          // closed confirmed by two consecutive checks
     // Consecutive undetermined results while awaiting confirmation. An undetermined result cannot
@@ -875,6 +887,8 @@ public sealed class PortSyncService
         if (manager is QBittorrentClient qbClient)
             await CheckAndRepairInterfaceBindingAsync(qbClient, currentInterfaceName, config, cancellationToken).ConfigureAwait(false);
 
+        await CheckClientSettingsConflictsAsync(manager, cancellationToken).ConfigureAwait(false);
+
         if (currentPort.Value == targetPort)
         {
             status[StatusKeys.ClientPort] = currentPort.Value;
@@ -1316,6 +1330,49 @@ public sealed class PortSyncService
                 $"Restarting has not cleared {manager.ClientName}'s disconnected status after {MaxDisconnectRestarts} attempts - " +
                 $"no further restarts until it reconnects. If it is bound to a VPN adapter, re-select the network interface in {manager.ClientName}'s settings",
                 LogLevel.Warn);
+    }
+
+    // Warns when the client's own settings are working against the synchronized port - a randomised
+    // listening port, or the client's built-in UPnP/NAT-PMP mapping.
+    //
+    // Runs on the sync loop and not only from Diagnostics because on Transmission and Nicotine+ these
+    // settings produce no symptom at all: the client keeps reporting the correct port, so nothing
+    // mismatches, no port write is triggered, and the user has no reason to open Diagnostics before
+    // their next client restart moves the port off the forwarded one. (On qBittorrent and Deluge the
+    // condition does surface as a port mismatch and the next write corrects it, so there the warning is
+    // just earlier notice.) Throttled to every ConflictCheckEveryNCycles cycles and logged on the
+    // transition, because the condition persists until the user acts - warning on every check would
+    // repeat the same line for as long as the setting stays on.
+    private async Task CheckClientSettingsConflictsAsync(IManagedClient manager, CancellationToken cancellationToken)
+    {
+        if (++_cyclesSinceConflictCheck < ConflictCheckEveryNCycles) return;
+        _cyclesSinceConflictCheck = 0;
+
+        var conflicts = await manager.GetConflictingSettingsAsync(cancellationToken).ConfigureAwait(false);
+        // Null is "could not read", which is neither a conflict nor proof of its absence. Leave the
+        // latch untouched so an unreadable check cannot silently clear a warning the user has not fixed.
+        if (conflicts is null) return;
+
+        if (conflicts.Count == 0)
+        {
+            if (_clientSettingsConflictActive)
+            {
+                _clientSettingsConflictActive = false;
+                LogManager.Instance.LogMessage(
+                    $"{manager.ClientName} settings no longer work against the forwarded port", LogLevel.Info);
+            }
+            return;
+        }
+
+        if (_clientSettingsConflictActive) return;
+        _clientSettingsConflictActive = true;
+
+        string names = string.Join(", ", conflicts.Select(c => $"\"{c.SettingName}\""));
+        string pronoun = conflicts.Count == 1 ? "it" : "them";
+        LogManager.Instance.LogMessage(
+            $"{manager.ClientName} has {AppConstants.Pluralize(conflicts.Count, "setting")} working against the forwarded port: " +
+            $"{names} - turn {pronoun} off in {manager.ClientName}'s settings",
+            LogLevel.Warn);
     }
 
     // Builds a failure log message with cycle count and optional recovery trigger suffix

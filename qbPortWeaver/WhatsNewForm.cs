@@ -13,9 +13,9 @@ public partial class WhatsNewForm : Form
         "Spots client settings that undo your forwarded port\n" +
         "Some options in your client work against the port you are forwarding: a randomised listening " +
         "port, or the client doing its own router forwarding. qbPortWeaver already turns these off " +
-        "whenever it sets the port, and Diagnostics now reports any that have been switched back on, " +
-        "naming each one as your client labels it. This matters most for Transmission and Nicotine+, " +
-        "where such a setting shows no symptom at all until the client is next restarted.\n\n" +
+        "whenever it sets the port, and now warns you if one has been switched back on, naming it as " +
+        "your client labels it. Diagnostics reports it too. This matters most for Transmission and " +
+        "Nicotine+, where such a setting shows no symptom at all until the client is next restarted.\n\n" +
         "Calmer behaviour when your internet goes down\n" +
         "If the connection itself drops, restarting your VPN cannot bring it back, so qbPortWeaver no " +
         "longer keeps trying at full speed. It checks whether anything is reachable, then spaces its " +

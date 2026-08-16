@@ -1,6 +1,5 @@
 using System.Net;
 using System.Net.NetworkInformation;
-using System.Net.Sockets;
 
 namespace qbPortWeaver;
 
@@ -59,8 +58,14 @@ internal static class InternetConnectivityProbe
             PingReply reply = await ping.SendPingAsync(address, ProbeTimeout, cancellationToken: cancellationToken).ConfigureAwait(false);
             return reply.Status == IPStatus.Success;
         }
-        catch (Exception ex) when (ex is PingException or SocketException or InvalidOperationException)
+        catch (Exception ex) when (ex is not OperationCanceledException) // NOSONAR S2221 - see below
         {
+            // Catches broadly on purpose. Ping surfaces a wide and poorly documented range from the
+            // ICMP layer (PingException, SocketException, PlatformNotSupportedException on restricted
+            // hosts, NetworkInformationException/Win32Exception), and every one of them means the same
+            // thing to the caller: no reply. Listing types would leave the rest to escape into the sync
+            // cycle and abort it, which is far worse than a probe reporting unreachable. Cancellation
+            // is deliberately excluded so shutdown is not swallowed as a failed probe.
             LogManager.Instance.LogDebug($"InternetConnectivityProbe.ProbeAddressAsync: {address} - {ex.Message}");
             return false;
         }

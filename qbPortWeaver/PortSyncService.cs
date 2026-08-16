@@ -1070,10 +1070,8 @@ public sealed class PortSyncService
         }
 
         string action = vpnManager.GetRecoveryAction();
-        LogManager.Instance.LogMessage(
-            $"Triggering '{action}' for '{vpnManager.ProviderName}' after {config.PortClosedRecoveryTriggerChecks} consecutive closed {AppConstants.PluralizeNoun(config.PortClosedRecoveryTriggerChecks, "check")}",
-            LogLevel.Info);
-        await DispatchRecoveryAsync(action, target, vpnManager.ProviderName, cancellationToken).ConfigureAwait(false);
+        await DispatchRecoveryAsync(action, target, vpnManager.ProviderName, cancellationToken,
+            triggerLogMessage: $"Triggering '{action}' for '{vpnManager.ProviderName}' after {config.PortClosedRecoveryTriggerChecks} consecutive closed {AppConstants.PluralizeNoun(config.PortClosedRecoveryTriggerChecks, "check")}").ConfigureAwait(false);
     }
 
     // Returns true if the client is running (or was successfully force-started), false otherwise
@@ -1398,12 +1396,22 @@ public sealed class PortSyncService
             return;
         }
 
+        // Rate-limits recovery while the machine cannot reach the internet. Deliberately gates this
+        // trigger only: the port-closed trigger runs after a successful port fetch, so that path has
+        // already proven it has connectivity and the probe there could only ever be wrong (a machine
+        // that filters ICMP would be told its internet is down moments after a clean sync).
+        //
+        // Placed above ResetFailureStreak so a held attempt leaves the streak hot. The next attempt is
+        // then governed purely by the backoff, rather than also having to rebuild the streak and clear
+        // the sustained-failure floor again - which would make the real spacing longer than the 5, 10
+        // and 15 minutes documented, by an amount that depends on the configured interval.
+        if (!await TryTakeRecoverySlotAsync(displayName, cancellationToken).ConfigureAwait(false))
+            return;
+
         ResetFailureStreak();
 
-        LogManager.Instance.LogMessage(
-            $"Triggering '{action}' for '{displayName}' after {count} consecutive failed {AppConstants.PluralizeNoun(count, "cycle")}",
-            LogLevel.Info);
-        await DispatchRecoveryAsync(action, recoveryTarget, displayName, cancellationToken).ConfigureAwait(false);
+        await DispatchRecoveryAsync(action, recoveryTarget, displayName, cancellationToken,
+            triggerLogMessage: $"Triggering '{action}' for '{displayName}' after {count} consecutive failed {AppConstants.PluralizeNoun(count, "cycle")}").ConfigureAwait(false);
     }
 
     // Clears the offline rate-limiter so the next offline streak starts with an immediate attempt.
@@ -1478,14 +1486,14 @@ public sealed class PortSyncService
     // and the on-demand recovery test (TestRecoveryAsync, manualTest = true). A manual test is
     // not counted in the session's auto-recovery statistic (the label says "Auto-recoveries")
     // but is recorded in the history and arms the "after recovery" annotation like a real one.
-    private static async Task DispatchRecoveryAsync(string action, string recoveryTarget, string displayName, CancellationToken cancellationToken, bool manualTest = false)
+    private static async Task DispatchRecoveryAsync(string action, string recoveryTarget, string displayName, CancellationToken cancellationToken, bool manualTest = false, string? triggerLogMessage = null)
     {
-        // An automatic recovery is mostly pointless while the machine has no internet connection: the
-        // VPN has nothing to reconnect to, so every cycle fails and recovery fires again for as long as
-        // the outage lasts, restarting a VPN service that was never at fault. A manual test is exempt -
-        // the user asked for the action explicitly and is entitled to see it run.
-        if (!manualTest && !await TryTakeRecoverySlotAsync(displayName, cancellationToken).ConfigureAwait(false))
-            return;
+        // Announced here rather than at the trigger sites, because only this side knows whether the
+        // action survived the gate above. Logging "Triggering ..." before the call would assert a
+        // recovery that was then held, with no history entry or statistic to contradict it - the log
+        // is the only account of what happened during an outage, so it has to stay literally true.
+        if (triggerLogMessage is not null)
+            LogManager.Instance.LogMessage(triggerLogMessage, LogLevel.Info);
 
         string trigger = manualTest ? "Recovery test" : "Auto-recovery";
         if (action == HelperProtocol.ActionRestart)

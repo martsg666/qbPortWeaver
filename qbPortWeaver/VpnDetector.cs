@@ -44,7 +44,7 @@ internal static class VpnDetector
                 string searchTerm = provider.Config.GetServiceSearchTerm();
                 if (string.IsNullOrEmpty(searchTerm)) continue;
 
-                var match = Array.Find(services, s => AppConstants.ServiceMatches(s, searchTerm));
+                var match = Array.Find(services, s => SafeServiceMatches(s, searchTerm));
                 if (match is null) continue;
 
                 results.Add(new DetectedVpn(provider.Keyword, match.ServiceName, ReadKind(match)));
@@ -60,6 +60,23 @@ internal static class VpnDetector
         {
             if (services is not null)
                 foreach (var s in services) s.Dispose();
+        }
+    }
+
+    // Reading ServiceName/DisplayName can throw if the service was removed between the enumeration and
+    // this read - the same race ReadKind tolerates below. Contained per-service on purpose: this runs
+    // inside a Find over every service on the machine, so letting it escape would abandon the whole
+    // detection and report "no provider found" because one unrelated service happened to disappear.
+    private static bool SafeServiceMatches(ServiceController service, string searchTerm)
+    {
+        try
+        {
+            return AppConstants.ServiceMatches(service, searchTerm);
+        }
+        catch (InvalidOperationException ex)
+        {
+            LogManager.Instance.LogDebug($"VpnDetector.SafeServiceMatches: {ex.Message}");
+            return false;
         }
     }
 

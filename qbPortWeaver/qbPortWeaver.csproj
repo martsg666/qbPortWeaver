@@ -29,7 +29,7 @@
          S1215 - intentional GC after explicit large release on log viewer close (LogViewerForm.cs)
          S1313 - public DNS resolver addresses are hardcoded on purpose: the connectivity probe must not depend on name resolution, which an outage breaks (InternetConnectivityProbe.cs)
          S2068 - registry key name contains "Password", value is masked (PortSyncService.cs)
-         S2221 - bare catch before LogManager is initialized; any failure must fall back safely (Program.cs)
+         S2221 - bare catch before LogManager is initialized, any failure must fall back safely (Program.cs); connectivity probe treats every ICMP-layer failure as "no reply" rather than letting it abort the sync cycle (InternetConnectivityProbe.cs)
          S2325 - handlers/helpers that access instance members (Close, Invoke, ShowBalloonTip, UseWaitCursor/IsDisposed, or a called instance method) cannot be static (AboutForm.cs, DiagnosticsForm.cs, HelpForm.cs, MainForm.cs, MediaManagerForm.cs, PortSyncService.cs, SettingsForm.cs, StatusForm.cs, TransmissionClient.cs, WhatsNewForm.cs)
          S2486 - same as S108, SonarCloud cloud rule counterpart (ManagedClientBase.cs, TransmissionClient.cs)
          S2589 - defensive runtime fallback after a Debug.Assert that only fires in dev builds (WhatsNewForm.cs)

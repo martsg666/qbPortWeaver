@@ -136,7 +136,7 @@ When the VPN is detected as disconnected - or port detection fails despite the V
 
 ### Connectivity Rate Limiter
 
-Both automatic triggers (failed-cycle and port-closed) share `DispatchRecoveryAsync`, so both pass through `TryTakeRecoverySlotAsync`, which asks `InternetConnectivityProbe` whether the machine can reach the internet at all. The probe pings `1.1.1.1` and `8.8.8.8` concurrently with a 2s timeout and reports reachable if either replies. Public resolvers are addressed by IP on purpose: name resolution is one of the things an outage breaks, so a DNS-dependent probe would report "no internet" for a DNS fault that recovery might legitimately fix.
+The **failed-cycle trigger only** passes through `TryTakeRecoverySlotAsync`, which asks `InternetConnectivityProbe` whether the machine can reach the internet at all. The port-closed trigger is deliberately exempt: it only runs after a successful VPN port fetch, so that path has already proven it has connectivity, and a machine that filters ICMP would otherwise be warned its internet is down moments after a clean sync. It is also one-shot, so it cannot loop the way the failed-cycle trigger could. The probe pings `1.1.1.1` and `8.8.8.8` concurrently with a 2s timeout and reports reachable if either replies. Public resolvers are addressed by IP on purpose: name resolution is one of the things an outage breaks, so a DNS-dependent probe would report "no internet" for a DNS fault that recovery might legitimately fix.
 
 - **Reachable:** recovery runs immediately and the backoff resets.
 - **Not reachable:** the first recovery of a streak still runs; later attempts wait 5, then 10, then 15 minutes, holding at 15 for as long as the condition lasts.
@@ -144,6 +144,8 @@ Both automatic triggers (failed-cycle and port-closed) share `DispatchRecoveryAs
 The distinction between rate-limiting and blocking is load-bearing, not a nicety. A VPN killswitch blocks the probe itself while the tunnel is down, so a machine whose VPN is genuinely stuck looks identical to one whose upstream is down. Refusing to recover outright would leave the killswitch up, the probe failing, and the machine deadlocked with no way out - so recovery is slowed but never stopped. The elapsed-time comparison uses `Environment.TickCount64`, which is monotonic: a machine returning from an outage often corrects its clock by NTP, and a backward jump must not release every held attempt at once.
 
 The attempt counter is cleared from two places, and both are needed: the probe succeeding, and a successful port fetch in the sync cycle. Once the VPN is healthy recovery is never dispatched, so the probe branch alone would leave a stale count behind and delay the first attempt of a later, unrelated outage.
+
+The gate sits **above** `ResetFailureStreak()`, so a held attempt leaves the failure streak intact. This matters for the cadence: were the streak reset on a hold, the next attempt would have to rebuild it and clear the sustained-failure floor again before the backoff even applied, making the real spacing longer than 5/10/15 by an amount depending on the configured interval. Leaving it hot means the streak stays above the trigger threshold, the probe runs once per cycle while offline (one ping, negligible), and the timing is governed by the backoff alone.
 
 ### Usable Port Rule
 

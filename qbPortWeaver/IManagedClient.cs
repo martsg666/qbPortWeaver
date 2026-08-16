@@ -79,4 +79,25 @@ public interface IManagedClient : IDisposable
     /// closed even when the port is open - callers should confirm before alerting.
     /// </summary>
     Task<bool?> TestListeningPortAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Returns the client's own settings that are currently working against the synchronized port -
+    /// randomised ports, and the client's built-in UPnP/NAT-PMP port mapping.
+    /// <para>These are written to a safe value whenever the port is set, so this exists to catch the
+    /// window in between: a user can enable one in the client's UI at any time, and nothing corrects
+    /// it until the VPN's port next changes, which may be days. That interval is the "every check
+    /// passes and the port is still wrong" case, and no other check can see it.</para>
+    /// <para>Read-only and best-effort. An empty list means nothing conflicting was found <b>or</b>
+    /// the settings could not be read - callers must not treat empty as proof of a clean
+    /// configuration. Settings a client does not expose are omitted rather than guessed at.</para>
+    /// </summary>
+    Task<IReadOnlyList<ClientSettingConflict>> GetConflictingSettingsAsync(CancellationToken cancellationToken = default);
 }
+
+/// <summary>
+/// One client setting found working against the synchronized port.
+/// </summary>
+/// <param name="SettingName">The setting as the user sees it in the client's own UI, so the report
+/// names something they can actually go and find, not the underlying protocol key.</param>
+/// <param name="Effect">What it does to the forwarded port, in one sentence.</param>
+public sealed record ClientSettingConflict(string SettingName, string Effect);

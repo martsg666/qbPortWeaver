@@ -116,6 +116,35 @@ public sealed class TransmissionClient : ManagedClientBase
     }
 
     /// <inheritdoc/>
+    public override async Task<IReadOnlyList<ClientSettingConflict>> GetConflictingSettingsAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            const string body = """{"method":"session-get","arguments":{"fields":["peer-port-random-on-start","port-forwarding-enabled"]}}""";
+            using var response = await SendRpcAsync(body, cancellationToken: cancellationToken).ConfigureAwait(false);
+            if (response is null || !response.IsSuccessStatusCode) return [];
+
+            var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+            using var doc = JsonDocument.Parse(json);
+            if (!doc.RootElement.TryGetProperty(JsonPropArguments, out var arguments)) return [];
+
+            var conflicts = new List<ClientSettingConflict>();
+            if (arguments.GetBoolOrNull("peer-port-random-on-start") is true)
+                conflicts.Add(new("Randomize port on launch", "Transmission picks its own port the next time it starts, abandoning the forwarded one"));
+            // Transmission's single switch for both UPnP and NAT-PMP.
+            if (arguments.GetBoolOrNull("port-forwarding-enabled") is true)
+                conflicts.Add(new("Use port forwarding from my router", "Transmission maps its own port, which can replace the one the VPN forwards"));
+            return conflicts;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+        catch (Exception ex)
+        {
+            LogHttpException("GetConflictingSettingsAsync", ex);
+            return [];
+        }
+    }
+
+    /// <inheritdoc/>
     public override async Task<(int? ListenPort, string? CurrentInterfaceName)> GetPreferencesAsync(CancellationToken cancellationToken = default)
     {
         try

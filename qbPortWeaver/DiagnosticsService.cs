@@ -41,6 +41,7 @@ public static class DiagnosticsService
         public const string ClientReachable = "Client reachable";
         public const string PortsInSync = "Ports in sync";
         public const string InterfaceBinding = "Interface binding";
+        public const string ClientSettings = "Client settings";
         public const string PortReachable = "Port reachable";
     }
 
@@ -193,6 +194,7 @@ public static class DiagnosticsService
             results.Add(new(Checks.PortsInSync, DiagnosticStatus.Skip, "Client unreachable"));
             if (client.SupportsInterfaceMismatchWarning)
                 results.Add(new(Checks.InterfaceBinding, DiagnosticStatus.Skip, "Client unreachable"));
+            results.Add(new(Checks.ClientSettings, DiagnosticStatus.Skip, "Client unreachable"));
             results.Add(new(Checks.PortReachable, DiagnosticStatus.Skip, "Client unreachable"));
             return;
         }
@@ -201,7 +203,30 @@ public static class DiagnosticsService
         AddInSyncResult(results, cp, vpnPort);
         if (client.SupportsInterfaceMismatchWarning)
             await AddInterfaceResultAsync(results, client, vpn, interfaceName, cancellationToken).ConfigureAwait(false);
+        await AddClientSettingsResultAsync(results, client, cancellationToken).ConfigureAwait(false);
         await AddPortReachableResultAsync(results, client, vpnPort, cancellationToken).ConfigureAwait(false);
+    }
+
+    // Reports the client's own settings that undo the synchronized port. qbPortWeaver writes these to
+    // a safe value every time it sets the port, so a conflict here means the user changed it since -
+    // the one failure mode where every other check passes and the port is still wrong.
+    private static async Task AddClientSettingsResultAsync(List<DiagnosticResult> results, IManagedClient client, CancellationToken cancellationToken)
+    {
+        var conflicts = await client.GetConflictingSettingsAsync(cancellationToken).ConfigureAwait(false);
+        if (conflicts.Count == 0)
+        {
+            // Deliberately not "all settings are correct": the contract returns an empty list both for
+            // a clean configuration and for settings that could not be read, and this check must not
+            // claim to have verified something it may not have seen.
+            results.Add(new(Checks.ClientSettings, DiagnosticStatus.Pass, $"No {client.ClientName} setting is working against the forwarded port"));
+            return;
+        }
+
+        string names = string.Join(", ", conflicts.Select(c => $"\"{c.SettingName}\""));
+        string hint = $"Turn {(conflicts.Count == 1 ? "it" : "them")} off in {client.ClientName}'s settings. " +
+                      $"{AppIdentity.AppName} switches {(conflicts.Count == 1 ? "it" : "them")} off each time it sets the port, so this will also clear itself at the next port change.";
+        results.Add(new(Checks.ClientSettings, DiagnosticStatus.Warn,
+            $"{client.ClientName} has {conflicts.Count} setting{(conflicts.Count == 1 ? "" : "s")} working against the forwarded port: {names}", hint));
     }
 
     // Reports the bridge plugin's state from files alone, so it stays useful precisely when the

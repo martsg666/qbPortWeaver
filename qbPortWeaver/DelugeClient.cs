@@ -35,6 +35,46 @@ public sealed class DelugeClient : ManagedClientBase
     }
 
     /// <inheritdoc/>
+    /// <inheritdoc/>
+    public override async Task<IReadOnlyList<ClientSettingConflict>> GetConflictingSettingsAsync(CancellationToken cancellationToken = default)
+    {
+        if (!await EnsureAuthenticatedAsync(cancellationToken).ConfigureAwait(false)) return [];
+
+        try
+        {
+            // random_port is the only random-port flag. Its companion listen_random_port is not a
+            // second switch but the port Deluge picked and remembers (see ParseListenPort), and it
+            // keeps that number after the flag is turned off - so reading it as a boolean would
+            // report a conflict on a client that is correctly configured.
+            var body = $$$"""{"method":"core.get_config_values","params":[["random_port","upnp","natpmp"]],"id":{{{_rpcId++}}}}""";
+            using var content = new StringContent(body, Encoding.UTF8, JsonContentType);
+            using var response = await HttpClient.PostAsync($"{Url}{RpcPath}", content, cancellationToken).ConfigureAwait(false);
+            if (!response.IsSuccessStatusCode) return [];
+
+            var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+            using var doc = JsonDocument.Parse(json);
+            var root = doc.RootElement;
+            if (root.TryGetProperty(JsonPropError, out var errorElement) && errorElement.ValueKind != JsonValueKind.Null) return [];
+            if (!root.TryGetProperty(JsonPropResult, out var result) || result.ValueKind == JsonValueKind.Null) return [];
+
+            var conflicts = new List<ClientSettingConflict>();
+            if (result.GetBoolOrNull("random_port") is true)
+                conflicts.Add(new("Use random ports", "Deluge picks its own port, abandoning the forwarded one"));
+            if (result.GetBoolOrNull("upnp") is true)
+                conflicts.Add(new("UPnP", "Deluge maps its own port, which can replace the one the VPN forwards"));
+            if (result.GetBoolOrNull("natpmp") is true)
+                conflicts.Add(new("NAT-PMP", "Deluge maps its own port, which can replace the one the VPN forwards"));
+            return conflicts;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+        catch (Exception ex)
+        {
+            LogHttpException("GetConflictingSettingsAsync", ex);
+            return [];
+        }
+    }
+
+    /// <inheritdoc/>
     public override async Task<(int? ListenPort, string? CurrentInterfaceName)> GetPreferencesAsync(CancellationToken cancellationToken = default)
     {
         if (!await EnsureAuthenticatedAsync(cancellationToken).ConfigureAwait(false)) return (null, null);

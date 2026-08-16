@@ -122,6 +122,12 @@ public abstract class ManagedClientBase : IManagedClient // NOSONAR S3881 - all 
     /// <inheritdoc/>
     public abstract Task<bool?> TestListeningPortAsync(CancellationToken cancellationToken = default);
 
+    /// <inheritdoc/>
+    // Abstract rather than a virtual returning nothing: every client has settings that can undo the
+    // port, so a client that silently inherited "no conflicts" would report a clean configuration it
+    // had never actually looked at. Making it abstract forces each one to answer for itself.
+    public abstract Task<IReadOnlyList<ClientSettingConflict>> GetConflictingSettingsAsync(CancellationToken cancellationToken = default);
+
     /// <summary>Called by <see cref="RestartAsync"/> before the kill step. Override to inject pre-kill work (e.g. waiting for a config flush).</summary>
     protected virtual Task PreRestartAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 

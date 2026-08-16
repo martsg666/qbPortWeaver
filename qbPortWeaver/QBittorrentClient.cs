@@ -98,10 +98,50 @@ public sealed class QBittorrentClient : ManagedClientBase
     }
 
     /// <inheritdoc/>
+    // random_port is written alongside upnp/natpmp for the same reason they are: each would undo the
+    // port we just set. "Use a different port on each startup" makes qBittorrent pick its own on the
+    // next launch, silently stranding the VPN's forwarded port while every other check still passes.
+    // Written unconditionally and without a setting, matching upnp/natpmp - a toggle for one of the
+    // three and not the others would be a convention nobody could predict.
     public override Task<bool> SetListeningPortAsync(int port, CancellationToken cancellationToken = default) =>
         PostPreferencesAsync(
-            $$$"""{"listen_port":{{{port}}},"upnp":false,"natpmp":false}""",
+            $$$"""{"listen_port":{{{port}}},"random_port":false,"upnp":false,"natpmp":false}""",
             $"Failed to set {ClientName} port", LogLevel.Error, cancellationToken);
+
+    /// <inheritdoc/>
+    // Re-reads preferences rather than reusing the sync cycle's values: this runs from Diagnostics,
+    // on demand and long after that read, and the whole point is to see the setting as it is now.
+    public override async Task<IReadOnlyList<ClientSettingConflict>> GetConflictingSettingsAsync(CancellationToken cancellationToken = default)
+    {
+        if (!await EnsureAuthenticatedAsync(cancellationToken).ConfigureAwait(false)) return [];
+
+        try
+        {
+            using var response = await HttpClient.GetAsync($"{Url}{ApiAppPreferences}", cancellationToken).ConfigureAwait(false);
+            if (!response.IsSuccessStatusCode)
+            {
+                LogManager.Instance.LogDebug($"QBittorrentClient.GetConflictingSettingsAsync: HTTP {(int)response.StatusCode}");
+                return [];
+            }
+
+            var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+            using var doc = JsonDocument.Parse(json);
+            var root = doc.RootElement;
+
+            var conflicts = new List<ClientSettingConflict>();
+            if (root.GetBoolOrNull("random_port") is true)
+                conflicts.Add(new("Use a different port on each startup", "qBittorrent picks its own port on the next launch, abandoning the forwarded one"));
+            if (root.GetBoolOrNull("upnp") is true)
+                conflicts.Add(new("Use UPnP / NAT-PMP port forwarding from my router", "qBittorrent maps its own port, which can replace the one the VPN forwards"));
+            return conflicts;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+        catch (Exception ex)
+        {
+            LogHttpException("GetConflictingSettingsAsync", ex);
+            return [];
+        }
+    }
 
     // Both preference writes use the same envelope: a JSON object in a "json" form field POSTed to
     // setPreferences, which answers HTTP 200 with an empty body on success - there is no JSON error

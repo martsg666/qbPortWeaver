@@ -603,6 +603,13 @@ internal static partial class MediaImporter
     {
         if (!isUnc) return Directory.Exists(folder);
 
+        // Reviewed and kept, so it does not get re-flagged as a blocking-async smell. Task.Run followed
+        // by a blocking Wait is normally backwards, but Directory.Exists blocks inside the OS on an
+        // unreachable UNC path, takes no CancellationToken, and has no async overload - running it
+        // somewhere abandonable is the only way to bound it. The Wait returning true means the task is
+        // already complete, so .Result cannot block. Callers reach this from a thread-pool thread
+        // (PrepareClassifiedSourcesAsync awaits Task.Run with ConfigureAwait(false) before any of them),
+        // so the bounded block never lands on the UI thread.
         var task = Task.Run(() => Directory.Exists(folder));
         if (task.Wait(UncExistsTimeoutMs)) return task.Result;
 

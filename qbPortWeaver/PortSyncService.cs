@@ -168,13 +168,15 @@ public sealed class PortSyncService
 
     // Rate-limiter state for recovery attempted while offline: how many attempts this streak has made
     // (0 = none, so the next one runs immediately) and the Environment.TickCount64 reading of the last
-    // one. Reset when the connectivity probe next succeeds. Static for the same reason as
-    // _recoveryDispatched: they are read and written inside the shared static dispatch path.
-    private static int _offlineRecoveryAttempts;  // NOSONAR S2696 - the app runs a single sync service; the field is static only because the dispatch path is static
-    private static long _lastOfflineRecoveryMs;   // NOSONAR S2696 - as above
+    // one. Reset when the connectivity probe next succeeds, or when a cycle fetches a port. Instance
+    // fields, serialised by MainForm._updateSemaphore like the rest of the cycle's state - unlike
+    // _recoveryDispatched above, which is static and volatile because the manual test really does set
+    // it from the UI thread. The gate these belong to runs only from TriggerRecoveryIfDueAsync.
+    private int _offlineRecoveryAttempts;
+    private long _lastOfflineRecoveryMs;
     // Latches while a wait window is being served, so the "holding recovery" explanation is logged once
     // per window instead of once per re-evaluated cycle.
-    private static bool _recoveryHoldLogged;      // NOSONAR S2696 - as above
+    private bool _recoveryHoldLogged;
 
     // Snapshot of _recoveryDispatched taken at cycle start, so a recovery dispatched mid-cycle
     // (port-closed trigger fires after the port update step) is never consumed by the same
@@ -1493,7 +1495,7 @@ public sealed class PortSyncService
     // Called from both ends: the probe succeeding here, and a successful port fetch in the sync cycle.
     // Both are needed - once the VPN is healthy again recovery is never dispatched, so the probe branch
     // alone would leave a stale count behind and needlessly delay the first attempt of a later outage.
-    private static void ResetOfflineRecoveryBackoff()
+    private void ResetOfflineRecoveryBackoff()
     {
         _offlineRecoveryAttempts = 0;
         _lastOfflineRecoveryMs = 0;
@@ -1510,7 +1512,7 @@ public sealed class PortSyncService
     // Online: recover immediately, and reset the backoff.
     // Offline: the first recovery of a streak still runs (it is the one most likely to help), then
     // successive attempts wait OfflineRetryBackoff - 5, 10, then 15 minutes for every attempt after.
-    private static async Task<bool> TryTakeRecoverySlotAsync(string displayName, CancellationToken cancellationToken)
+    private async Task<bool> TryTakeRecoverySlotAsync(string displayName, CancellationToken cancellationToken)
     {
         if (await InternetConnectivityProbe.IsInternetReachableAsync(cancellationToken).ConfigureAwait(false))
         {

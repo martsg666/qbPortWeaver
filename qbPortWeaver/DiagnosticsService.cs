@@ -41,8 +41,14 @@ public static class DiagnosticsService
         public const string ClientReachable = "Client reachable";
         public const string PortsInSync = "Ports in sync";
         public const string InterfaceBinding = "Interface binding";
+        public const string ClientSettings = "Client settings";
         public const string PortReachable = "Port reachable";
     }
+
+    // Shared skip reason for every check downstream of the client being reachable. Named for the same
+    // reason the check labels above are: one wording for one condition, so the report cannot end up
+    // explaining the same skip four different ways (and Sonar S1192 counts the repetition).
+    private const string ClientUnreachableSkip = "Client unreachable";
 
     /// <summary>Runs all diagnostic checks in sync-chain order. Throws <see cref="OperationCanceledException"/> only if <paramref name="cancellationToken"/> fires.</summary>
     public static async Task<IReadOnlyList<DiagnosticResult>> RunAsync(CancellationToken cancellationToken = default)
@@ -190,18 +196,59 @@ public static class DiagnosticsService
         {
             results.Add(new(Checks.ClientReachable, DiagnosticStatus.Fail, $"Could not reach {client.ClientName}",
                 "Check the URL and credentials in Settings and that the Web UI/RPC is enabled. See the log for details."));
-            results.Add(new(Checks.PortsInSync, DiagnosticStatus.Skip, "Client unreachable"));
+            results.Add(new(Checks.PortsInSync, DiagnosticStatus.Skip, ClientUnreachableSkip));
             if (client.SupportsInterfaceMismatchWarning)
-                results.Add(new(Checks.InterfaceBinding, DiagnosticStatus.Skip, "Client unreachable"));
-            results.Add(new(Checks.PortReachable, DiagnosticStatus.Skip, "Client unreachable"));
+                results.Add(new(Checks.InterfaceBinding, DiagnosticStatus.Skip, ClientUnreachableSkip));
+            results.Add(new(Checks.ClientSettings, DiagnosticStatus.Skip, ClientUnreachableSkip));
+            results.Add(new(Checks.PortReachable, DiagnosticStatus.Skip, ClientUnreachableSkip));
             return;
         }
-        results.Add(new(Checks.ClientReachable, DiagnosticStatus.Pass, $"{client.ClientName} reachable; listening port is {cp}"));
+        // A client that reports port 0 is reachable but not listening anywhere useful, and "listening
+        // port is 0" reads like a fault in qbPortWeaver rather than a setting in the client. qBittorrent
+        // reports exactly this while "use a different port on each startup" is on (verified against a
+        // live client), which the Client settings check below then names - so point the reader at it
+        // instead of leaving them with a bare zero.
+        results.Add(cp == 0
+            ? new(Checks.ClientReachable, DiagnosticStatus.Warn,
+                $"{client.ClientName} is reachable but reports no listening port",
+                "The client is not listening on a port it can report. See the Client settings check below - a randomised listening port causes this.")
+            : new DiagnosticResult(Checks.ClientReachable, DiagnosticStatus.Pass, $"{client.ClientName} reachable; listening port is {cp}"));
 
         AddInSyncResult(results, cp, vpnPort);
         if (client.SupportsInterfaceMismatchWarning)
             await AddInterfaceResultAsync(results, client, vpn, interfaceName, cancellationToken).ConfigureAwait(false);
+        await AddClientSettingsResultAsync(results, client, cancellationToken).ConfigureAwait(false);
         await AddPortReachableResultAsync(results, client, vpnPort, cancellationToken).ConfigureAwait(false);
+    }
+
+    // Reports the client's own settings that undo the synchronized port. qbPortWeaver writes these to
+    // a safe value every time it sets the port, so a conflict here means the user changed it since -
+    // the one failure mode where every other check passes and the port is still wrong.
+    private static async Task AddClientSettingsResultAsync(List<DiagnosticResult> results, IManagedClient client, CancellationToken cancellationToken)
+    {
+        var conflicts = await client.GetConflictingSettingsAsync(cancellationToken).ConfigureAwait(false);
+        if (conflicts is null)
+        {
+            // Null is "could not read", which is not the same as "nothing wrong". Reporting Pass here
+            // would show a green tick for a check that never ran - and this check exists for exactly
+            // the clients where nothing else can see the problem, so a false green is worse than none.
+            results.Add(new(Checks.ClientSettings, DiagnosticStatus.Skip, $"Could not read {client.ClientName}'s settings",
+                "The client answered the first request but not this one. See the log for details."));
+            return;
+        }
+
+        if (conflicts.Count == 0)
+        {
+            results.Add(new(Checks.ClientSettings, DiagnosticStatus.Pass, $"No {client.ClientName} setting is working against the forwarded port"));
+            return;
+        }
+
+        string names = string.Join(", ", conflicts.Select(c => $"\"{c.SettingName}\""));
+        string pronoun = conflicts.Count == 1 ? "it" : "them";
+        string hint = $"Turn {pronoun} off in {client.ClientName}'s settings. " +
+                      $"{AppIdentity.AppName} switches {pronoun} off each time it sets the port, so this will also clear itself at the next port change.";
+        results.Add(new(Checks.ClientSettings, DiagnosticStatus.Warn,
+            $"{client.ClientName} has {AppConstants.Pluralize(conflicts.Count, "setting")} working against the forwarded port: {names}", hint));
     }
 
     // Reports the bridge plugin's state from files alone, so it stays useful precisely when the

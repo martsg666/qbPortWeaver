@@ -241,6 +241,16 @@ public static class AppConstants
     }
 
     /// <summary>
+    /// The service-matching rule used by <see cref="FindServiceName"/>: a service matches when its
+    /// <c>ServiceName</c> or <c>DisplayName</c> contains <paramref name="searchTerm"/>, ignoring case.
+    /// Shared with <see cref="VpnDetector"/>, which enumerates services itself to read their status,
+    /// so the two cannot disagree about what counts as a match.
+    /// </summary>
+    internal static bool ServiceMatches(ServiceController service, string searchTerm) =>
+        service.ServiceName.Contains(searchTerm, StringComparison.OrdinalIgnoreCase) ||
+        service.DisplayName.Contains(searchTerm, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
     /// Searches all installed Windows services for one whose <c>ServiceName</c> or <c>DisplayName</c>
     /// contains <paramref name="searchTerm"/> and returns the <c>ServiceName</c>, or
     /// <see langword="null"/> if no match is found. When multiple services match, the first one
@@ -254,11 +264,7 @@ public static class AppConstants
         try
         {
             services = ServiceController.GetServices();
-            return services
-                .FirstOrDefault(s =>
-                    s.ServiceName.Contains(searchTerm, StringComparison.OrdinalIgnoreCase) ||
-                    s.DisplayName.Contains(searchTerm, StringComparison.OrdinalIgnoreCase))
-                ?.ServiceName;
+            return services.FirstOrDefault(s => ServiceMatches(s, searchTerm))?.ServiceName;
         }
         catch (Exception ex)
         {

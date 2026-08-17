@@ -24,4 +24,23 @@ internal static class JsonElementExtensions
     /// the element for something else as well.</remarks>
     internal static string? AsStringOrNull(this JsonElement element) =>
         element.ValueKind == JsonValueKind.String ? element.GetString() : null;
+
+    /// <summary>Reads <paramref name="propertyName"/> as a boolean, or <see langword="null"/> when it
+    /// is absent, JSON null, or not interpretable as one.</summary>
+    /// <remarks>Accepts the three shapes these clients actually use for a flag: a JSON boolean, the
+    /// numbers 1 and 0, and the strings "true"/"false". Null carries a real meaning for the callers
+    /// here - the Nicotine+ bridge returns null for a setting the running version does not expose -
+    /// so "unknown" must stay distinguishable from "off" rather than collapsing to false.</remarks>
+    internal static bool? GetBoolOrNull(this JsonElement parent, string propertyName)
+    {
+        if (!parent.TryGetProperty(propertyName, out var element)) return null;
+        return element.ValueKind switch
+        {
+            JsonValueKind.True => true,
+            JsonValueKind.False => false,
+            JsonValueKind.Number => element.TryGetInt32(out int number) ? number != 0 : null,
+            JsonValueKind.String => bool.TryParse(element.GetString(), out bool parsed) ? parsed : null,
+            _ => null,
+        };
+    }
 }

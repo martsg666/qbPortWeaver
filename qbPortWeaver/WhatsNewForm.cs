@@ -10,9 +10,28 @@ public partial class WhatsNewForm : Form
 
     private const string ReleaseFeaturesText =
         "New in 2.6.5\n\n" +
-        "In development\n" +
-        "This section is a placeholder. Replace it with this release's user-facing changes before " +
-        "tagging - it is shown to every user on their first run after upgrading.\n\n" +
+        "Spots client settings that undo your forwarded port\n" +
+        "Some options in your client work against the port you are forwarding: a randomised listening " +
+        "port, or the client doing its own router forwarding. qbPortWeaver already turns these off " +
+        "whenever it sets the port, and now tells you if one has been switched back on, naming it as " +
+        "your client labels it. Diagnostics reports it too. This matters most for Transmission and " +
+        "Nicotine+, where such a setting shows no symptom at all until the client is next restarted - " +
+        "so you are told about it rather than left to find it.\n\n" +
+        "Tells you when your VPN does not come back\n" +
+        "When qbPortWeaver restarts your VPN service to recover the connection, it now checks that the " +
+        "service really did start again, instead of assuming it worked. If it did not, you get a clear " +
+        "message rather than a quiet note saying it was restarted. Worth having if you use a killswitch: " +
+        "a VPN service that fails to come back can leave you with no connection at all.\n\n" +
+        "Calmer behaviour when your internet goes down\n" +
+        "If the connection itself drops, restarting your VPN cannot bring it back, so qbPortWeaver no " +
+        "longer keeps trying at full speed. It checks whether anything is reachable, then spaces its " +
+        "attempts out to 5, 10 and then 15 minutes for as long as the outage lasts, and returns to " +
+        "normal on its own once the connection is back. It never stops retrying entirely, so a VPN " +
+        "that is genuinely stuck still gets restarted.\n\n" +
+        "Finds your VPN provider for you\n" +
+        "Settings can now detect which VPN provider is installed on your machine and select it, the " +
+        "same way the Client row already fills itself in. Gateways that use NAT-PMP have nothing to " +
+        "detect, so pick NAT-PMP yourself if that is what you use.\n\n" +
         "Previously released\n\n" +
         "New in 2.6.4\n\n" +
         "Nicotine+ support\n" +

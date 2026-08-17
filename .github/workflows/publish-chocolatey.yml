@@ -98,6 +98,7 @@ jobs:
           try {
             Invoke-WebRequest `
               -Uri "https://community.chocolatey.org/api/v2/Packages(Id='qbportweaver',Version='$version')" `
+              -Headers @{ 'User-Agent' = 'qbPortWeaver-CI' } `
               -Method Head | Out-Null
             $alreadyPublished = $true
           } catch {

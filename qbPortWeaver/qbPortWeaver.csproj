@@ -27,8 +27,9 @@
          S1075 - TMDB base URL is intentionally hardcoded (TmdbClient.cs)
          S1125 - C# pattern matching 'is true' / 'is not true' requires the boolean literal (MediaManagerForm.cs)
          S1215 - intentional GC after explicit large release on log viewer close (LogViewerForm.cs)
+         S1313 - public DNS resolver addresses are hardcoded on purpose: the connectivity probe must not depend on name resolution, which an outage breaks (InternetConnectivityProbe.cs)
          S2068 - registry key name contains "Password", value is masked (PortSyncService.cs)
-         S2221 - bare catch before LogManager is initialized; any failure must fall back safely (Program.cs)
+         S2221 - bare catch before LogManager is initialized, any failure must fall back safely (Program.cs); connectivity probe treats every ICMP-layer failure as "no reply" rather than letting it abort the sync cycle (InternetConnectivityProbe.cs)
          S2325 - handlers/helpers that access instance members (Close, Invoke, ShowBalloonTip, UseWaitCursor/IsDisposed, or a called instance method) cannot be static (AboutForm.cs, DiagnosticsForm.cs, HelpForm.cs, MainForm.cs, MediaManagerForm.cs, PortSyncService.cs, SettingsForm.cs, StatusForm.cs, TransmissionClient.cs, WhatsNewForm.cs)
          S2486 - same as S108, SonarCloud cloud rule counterpart (ManagedClientBase.cs, TransmissionClient.cs)
          S2589 - defensive runtime fallback after a Debug.Assert that only fires in dev builds (WhatsNewForm.cs)
@@ -39,7 +40,7 @@
          S5332 - loopback IPC bridge on 127.0.0.1; TLS is meaningless for a local-only handshake (NicotinePluginDiscovery.cs)
          S6966 - non-modal Show() on child forms is intentional (WhatsNewForm directly; others via the ShowOrActivate helper, MainForm.cs)
          CS1591 - doc *coverage* is deliberately optional; see GenerateDocumentationFile below -->
-    <NoWarn>S108;S125;S1075;S1125;S1215;S2068;S2221;S2325;S2486;S2589;S2696;S3881;S4721;S4790;S5332;S6966;CS1591</NoWarn>
+    <NoWarn>S108;S125;S1075;S1125;S1215;S1313;S2068;S2221;S2325;S2486;S2589;S2696;S3881;S4721;S4790;S5332;S6966;CS1591</NoWarn>
     <!-- Enabled for XML doc *accuracy* checking, not to require docs everywhere: without it Roslyn
          never emits CS1574 (unresolvable cref), CS0419 (ambiguous cref), or CS1572/CS1573 (param
          name mismatch), so those rot silently - four broken crefs survived /warnaserror, CI, and

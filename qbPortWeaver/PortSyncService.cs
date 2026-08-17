@@ -41,6 +41,9 @@ public sealed class PortSyncService
     /// <summary>Raised once when the forwarded port is confirmed unreachable from outside (two consecutive failed checks). Transition-only - it re-fires only after the port has tested open again.</summary>
     public event Action<string>? PortVerificationFailed;
 
+    /// <summary>Raised when the client's own settings are found working against the synchronized port. Transition-only - it re-fires only after the settings have tested clean again.</summary>
+    public event Action<string>? ClientSettingsConflictDetected;
+
     // Consecutive sync cycles in which the VPN was disconnected or port detection failed.
     // Serialised by MainForm._updateSemaphore (same guarantee as _lastKnownNatPmpManager).
     private int _consecutiveFailedCycles;
@@ -81,6 +84,10 @@ public sealed class PortSyncService
     // Port verification throttle: full reachability tests run at most every N cycles because
     // Transmission's and Deluge's tests contact their projects' online check services.
     private const int VerifyEveryNCycles = 5;
+    // Conflicting-client-setting throttle. One extra local call, so cost is not the reason to throttle:
+    // a setting the user just toggled needs catching before their client next restarts, not within one
+    // cycle, and checking every cycle would only add noise to the debug log.
+    private const int ConflictCheckEveryNCycles = 5;
     // How many consecutive undetermined results are tolerated while a closed result awaits
     // confirmation before the pending state is dropped and the normal throttle resumes. Three keeps
     // a genuine confirmation reachable across a couple of transient glitches without polling an
@@ -117,6 +124,14 @@ public sealed class PortSyncService
     // verification on the first eligible cycle after startup. A stale mapping is most likely
     // right after a restart, and "ports match" alone cannot see it.
     private int _cyclesSinceVerify = VerifyEveryNCycles;
+
+    // Conflicting-client-setting check state. Serialised by MainForm._updateSemaphore like the rest.
+    // Initialised at the threshold so the first eligible cycle checks immediately, as _cyclesSinceVerify
+    // does - a conflict that was already present when the app started should not wait five cycles.
+    private int _cyclesSinceConflictCheck = ConflictCheckEveryNCycles;
+    // Latches while a conflict is being reported, so the warning fires on the transition rather than on
+    // every check. The condition persists until the user acts on it, which could be days.
+    private bool _clientSettingsConflictActive;
     private bool _portCheckPendingConfirmation; // one unconfirmed closed result seen
     private bool _portConfirmedClosed;          // closed confirmed by two consecutive checks
     // Consecutive undetermined results while awaiting confirmation. An undetermined result cannot
@@ -138,6 +153,30 @@ public sealed class PortSyncService
     // paths and the static manual-test entry point (TestRecoveryAsync); the app runs a single
     // sync service, and volatile covers the manual test setting it from the UI thread.
     private static volatile bool _recoveryDispatched;
+
+    // How long recovery waits between attempts while the machine has no internet connection. The first
+    // attempt of a streak is not delayed at all; these are the waits before the second, third, and
+    // every later attempt. Capped at the last entry, so recovery keeps retrying at a steady 15 minutes
+    // for as long as the condition lasts rather than stopping - see TryTakeRecoverySlotAsync for why
+    // never stopping is the point.
+    private static readonly TimeSpan[] OfflineRetryBackoff =
+    [
+        TimeSpan.FromMinutes(5),
+        TimeSpan.FromMinutes(10),
+        TimeSpan.FromMinutes(15),
+    ];
+
+    // Rate-limiter state for recovery attempted while offline: how many attempts this streak has made
+    // (0 = none, so the next one runs immediately) and the Environment.TickCount64 reading of the last
+    // one. Reset when the connectivity probe next succeeds, or when a cycle fetches a port. Instance
+    // fields, serialised by MainForm._updateSemaphore like the rest of the cycle's state - unlike
+    // _recoveryDispatched above, which is static and volatile because the manual test really does set
+    // it from the UI thread. The gate these belong to runs only from TriggerRecoveryIfDueAsync.
+    private int _offlineRecoveryAttempts;
+    private long _lastOfflineRecoveryMs;
+    // Latches while a wait window is being served, so the "holding recovery" explanation is logged once
+    // per window instead of once per re-evaluated cycle.
+    private bool _recoveryHoldLogged;
 
     // Snapshot of _recoveryDispatched taken at cycle start, so a recovery dispatched mid-cycle
     // (port-closed trigger fires after the port update step) is never consumed by the same
@@ -496,6 +535,7 @@ public sealed class PortSyncService
         }
 
         ResetFailureStreak(); // Reset only after a successful port fetch
+        ResetOfflineRecoveryBackoff(); // A working cycle ends any offline streak, so the next one starts fresh
         _graceHoldActive = false; // VPN is up within the grace window - clear the hold without a marker
         status[StatusKeys.VpnPort] = vpnPort.Value;
         LogManager.Instance.LogMessage($"{vpnManager.ProviderName} port found: {vpnPort.Value}", LogLevel.Info);
@@ -852,6 +892,8 @@ public sealed class PortSyncService
         if (manager is QBittorrentClient qbClient)
             await CheckAndRepairInterfaceBindingAsync(qbClient, currentInterfaceName, config, cancellationToken).ConfigureAwait(false);
 
+        await CheckClientSettingsConflictsAsync(manager, cancellationToken).ConfigureAwait(false);
+
         if (currentPort.Value == targetPort)
         {
             status[StatusKeys.ClientPort] = currentPort.Value;
@@ -1047,10 +1089,8 @@ public sealed class PortSyncService
         }
 
         string action = vpnManager.GetRecoveryAction();
-        LogManager.Instance.LogMessage(
-            $"Triggering '{action}' for '{vpnManager.ProviderName}' after {config.PortClosedRecoveryTriggerChecks} consecutive closed {AppConstants.PluralizeNoun(config.PortClosedRecoveryTriggerChecks, "check")}",
-            LogLevel.Info);
-        await DispatchRecoveryAsync(action, target, vpnManager.ProviderName, cancellationToken).ConfigureAwait(false);
+        await DispatchRecoveryAsync(action, target, vpnManager.ProviderName, cancellationToken,
+            triggerLogMessage: $"Triggering '{action}' for '{vpnManager.ProviderName}' after {config.PortClosedRecoveryTriggerChecks} consecutive closed {AppConstants.PluralizeNoun(config.PortClosedRecoveryTriggerChecks, "check")}").ConfigureAwait(false);
     }
 
     // Returns true if the client is running (or was successfully force-started), false otherwise
@@ -1297,6 +1337,64 @@ public sealed class PortSyncService
                 LogLevel.Warn);
     }
 
+    // Warns when the client's own settings are working against the synchronized port - a randomised
+    // listening port, or the client's built-in UPnP/NAT-PMP mapping.
+    //
+    // Runs on the sync loop and not only from Diagnostics because on Transmission and Nicotine+ these
+    // settings produce no symptom at all: the client keeps reporting the correct port, so nothing
+    // mismatches, no port write is triggered, and the user has no reason to open Diagnostics before
+    // their next client restart moves the port off the forwarded one. (On qBittorrent and Deluge the
+    // condition does surface as a port mismatch and the next write corrects it, so there the warning is
+    // just earlier notice.) Throttled to every ConflictCheckEveryNCycles cycles and logged on the
+    // transition, because the condition persists until the user acts - warning on every check would
+    // repeat the same line for as long as the setting stays on.
+    private async Task CheckClientSettingsConflictsAsync(IManagedClient manager, CancellationToken cancellationToken)
+    {
+        if (++_cyclesSinceConflictCheck < ConflictCheckEveryNCycles) return;
+        _cyclesSinceConflictCheck = 0;
+
+        var conflicts = await manager.GetConflictingSettingsAsync(cancellationToken).ConfigureAwait(false);
+        // Null is "could not read", which is neither a conflict nor proof of its absence. Leave the
+        // latch untouched so an unreadable check cannot silently clear a warning the user has not fixed.
+        if (conflicts is null) return;
+
+        if (conflicts.Count == 0)
+        {
+            if (_clientSettingsConflictActive)
+            {
+                _clientSettingsConflictActive = false;
+                LogManager.Instance.LogMessage(
+                    $"{manager.ClientName} settings no longer work against the forwarded port", LogLevel.Info);
+            }
+            return;
+        }
+
+        if (_clientSettingsConflictActive) return;
+        _clientSettingsConflictActive = true;
+
+        string names = string.Join(", ", conflicts.Select(c => $"\"{c.SettingName}\""));
+        string pronoun = conflicts.Count == 1 ? "it" : "them";
+        LogManager.Instance.LogMessage(
+            $"{manager.ClientName} has {AppConstants.Pluralize(conflicts.Count, "setting")} working against the forwarded port: " +
+            $"{names} - turn {pronoun} off in {manager.ClientName}'s settings",
+            LogLevel.Warn);
+
+        // A balloon as well as the log line, matching the interface-mismatch warning this most
+        // resembles. It is not redundant with the generic "warnings were logged" balloon: on
+        // Transmission and Nicotine+ this condition has no symptom, so a user with no reason to
+        // suspect anything has no reason to open the log viewer either. Guarded like the other
+        // raisers - a handler that throws must not take down the sync cycle.
+        try
+        {
+            ClientSettingsConflictDetected?.Invoke(
+                $"{manager.ClientName} has {AppConstants.Pluralize(conflicts.Count, "setting")} working against the forwarded port. See the log for details.");
+        }
+        catch (Exception ex)
+        {
+            LogManager.Instance.LogMessage($"ClientSettingsConflictDetected handler failed: {ex.Message}", LogLevel.Warn);
+        }
+    }
+
     // Builds a failure log message with cycle count and optional recovery trigger suffix
     private static string BuildCycleCountMessage(string prefix, int count, AppConfig cfg)
     {
@@ -1375,12 +1473,95 @@ public sealed class PortSyncService
             return;
         }
 
+        // Rate-limits recovery while the machine cannot reach the internet. Deliberately gates this
+        // trigger only: the port-closed trigger runs after a successful port fetch, so that path has
+        // already proven it has connectivity and the probe there could only ever be wrong (a machine
+        // that filters ICMP would be told its internet is down moments after a clean sync).
+        //
+        // Placed above ResetFailureStreak so a held attempt leaves the streak hot. The next attempt is
+        // then governed purely by the backoff, rather than also having to rebuild the streak and clear
+        // the sustained-failure floor again - which would make the real spacing longer than the 5, 10
+        // and 15 minutes documented, by an amount that depends on the configured interval.
+        if (!await TryTakeRecoverySlotAsync(displayName, cancellationToken).ConfigureAwait(false))
+            return;
+
         ResetFailureStreak();
 
+        await DispatchRecoveryAsync(action, recoveryTarget, displayName, cancellationToken,
+            triggerLogMessage: $"Triggering '{action}' for '{displayName}' after {count} consecutive failed {AppConstants.PluralizeNoun(count, "cycle")}").ConfigureAwait(false);
+    }
+
+    // Clears the offline rate-limiter so the next offline streak starts with an immediate attempt.
+    // Called from both ends: the probe succeeding here, and a successful port fetch in the sync cycle.
+    // Both are needed - once the VPN is healthy again recovery is never dispatched, so the probe branch
+    // alone would leave a stale count behind and needlessly delay the first attempt of a later outage.
+    private void ResetOfflineRecoveryBackoff()
+    {
+        _offlineRecoveryAttempts = 0;
+        _lastOfflineRecoveryMs = 0;
+        _recoveryHoldLogged = false;
+    }
+
+    // Decides whether an automatic recovery may run now, given whether the machine can reach the
+    // internet. The probe rate-limits recovery, it never vetoes it outright, and that distinction is
+    // load-bearing: a VPN killswitch blocks the probe itself while the tunnel is down, so a hard veto
+    // would suppress recovery exactly when a restart is the fix, leaving the killswitch up, the probe
+    // failing, and the machine deadlocked with no way out. Backing off instead bounds the damage of a
+    // real outage while guaranteeing a stuck VPN still gets retried.
+    //
+    // Online: recover immediately, and reset the backoff.
+    // Offline: the first recovery of a streak still runs (it is the one most likely to help), then
+    // successive attempts wait OfflineRetryBackoff - 5, 10, then 15 minutes for every attempt after.
+    private async Task<bool> TryTakeRecoverySlotAsync(string displayName, CancellationToken cancellationToken)
+    {
+        if (await InternetConnectivityProbe.IsInternetReachableAsync(cancellationToken).ConfigureAwait(false))
+        {
+            if (_offlineRecoveryAttempts > 0)
+                LogManager.Instance.LogMessage("Internet connection confirmed - recovery resumed at the normal rate", LogLevel.Info);
+            ResetOfflineRecoveryBackoff();
+            return true;
+        }
+
+        // Monotonic and static, unlike the instance _uptime stopwatch this static method cannot reach.
+        // Immune to wall-clock changes, which matters here: a machine coming back from an outage often
+        // corrects its clock by NTP, and a backward jump must not unblock every held attempt at once.
+        long nowMs = Environment.TickCount64;
+
+        if (_offlineRecoveryAttempts > 0)
+        {
+            TimeSpan required = OfflineRetryBackoff[Math.Min(_offlineRecoveryAttempts - 1, OfflineRetryBackoff.Length - 1)];
+            TimeSpan waited = TimeSpan.FromMilliseconds(nowMs - _lastOfflineRecoveryMs);
+            if (waited < required)
+            {
+                // Logged once per wait window rather than per attempt: recovery is re-evaluated every
+                // few cycles, so logging each held attempt would repeat the same line for the length of
+                // the outage. Cleared when an attempt is allowed, so each new window reports its wait.
+                if (!_recoveryHoldLogged)
+                {
+                    _recoveryHoldLogged = true;
+                    LogManager.Instance.LogMessage(
+                        $"Could not confirm an internet connection - holding recovery for '{displayName}' for {required.TotalMinutes:F0} minutes " +
+                        "(restarting the VPN cannot restore a connection that is down upstream)",
+                        LogLevel.Warn);
+                }
+                return false;
+            }
+        }
+
+        _lastOfflineRecoveryMs = nowMs;
+        _offlineRecoveryAttempts++;
+        _recoveryHoldLogged = false;
         LogManager.Instance.LogMessage(
-            $"Triggering '{action}' for '{displayName}' after {count} consecutive failed {AppConstants.PluralizeNoun(count, "cycle")}",
+            $"Could not confirm an internet connection - trying recovery for '{displayName}' anyway (attempt {_offlineRecoveryAttempts}), " +
+            "in case it is being blocked locally rather than being down upstream",
+            // Info, unlike the hold above, and the asymmetry is deliberate: holding means recovery is
+            // *not* happening and the VPN stays broken for the whole window, which is worth surfacing;
+            // this line announces that recovery *is* proceeding, and its outcome reports itself (the
+            // helper logs Error if the service does not come back). Warn here badged the tray on every
+            // recovery for anyone whose network filters ICMP, for an app doing exactly its job. A real
+            // outage is still surfaced independently by the per-cycle port-detection warning.
             LogLevel.Info);
-        await DispatchRecoveryAsync(action, recoveryTarget, displayName, cancellationToken).ConfigureAwait(false);
+        return true;
     }
 
     // Dispatches a recovery action to the helper service. Shared by the failed-cycle trigger
@@ -1388,8 +1569,15 @@ public sealed class PortSyncService
     // and the on-demand recovery test (TestRecoveryAsync, manualTest = true). A manual test is
     // not counted in the session's auto-recovery statistic (the label says "Auto-recoveries")
     // but is recorded in the history and arms the "after recovery" annotation like a real one.
-    private static async Task DispatchRecoveryAsync(string action, string recoveryTarget, string displayName, CancellationToken cancellationToken, bool manualTest = false)
+    private static async Task DispatchRecoveryAsync(string action, string recoveryTarget, string displayName, CancellationToken cancellationToken, bool manualTest = false, string? triggerLogMessage = null)
     {
+        // Announced here rather than at the trigger sites, because only this side knows whether the
+        // action survived the gate above. Logging "Triggering ..." before the call would assert a
+        // recovery that was then held, with no history entry or statistic to contradict it - the log
+        // is the only account of what happened during an outage, so it has to stay literally true.
+        if (triggerLogMessage is not null)
+            LogManager.Instance.LogMessage(triggerLogMessage, LogLevel.Info);
+
         string trigger = manualTest ? "Recovery test" : "Auto-recovery";
         if (action == HelperProtocol.ActionRestart)
         {

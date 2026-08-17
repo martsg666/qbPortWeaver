@@ -597,10 +597,14 @@ public static class RegistrySettingsManager
     }
 
     /// <summary>Reads an int value from the registry. Returns the registered default if the key is missing or not parseable.</summary>
+    /// <remarks>Parsed invariantly to match <see cref="SetInt"/>. Values written by earlier versions used
+    /// the current culture, which for the small separator-free integers stored here produces identical
+    /// text, so existing settings continue to read correctly.</remarks>
     public static int GetInt(string section, string key)
     {
-        if (int.TryParse(GetValue(section, key), out int result)) return result;
-        return int.TryParse(GetDefault(section, key), out int fallback) ? fallback : 0;
+        var invariant = System.Globalization.CultureInfo.InvariantCulture;
+        if (int.TryParse(GetValue(section, key), System.Globalization.NumberStyles.Integer, invariant, out int result)) return result;
+        return int.TryParse(GetDefault(section, key), System.Globalization.NumberStyles.Integer, invariant, out int fallback) ? fallback : 0;
     }
 
     /// <summary>Reads the qBittorrent password from the registry and decrypts it with DPAPI (CurrentUser scope). Returns an empty string if missing or decryption fails.</summary>
@@ -688,6 +692,15 @@ public static class RegistrySettingsManager
     /// <summary>Writes a bool value to the registry as <c>"True"</c> or <c>"False"</c>.</summary>
     public static void SetBool(string section, string key, bool value) =>
         SetValue(section, key, value ? ValueTrue : ValueFalse);
+
+    /// <summary>Writes an int value to the registry. Counterpart to <see cref="GetInt"/>.</summary>
+    /// <remarks>Exists so the stored representation is decided here rather than at each call site, the
+    /// same reason <see cref="SetBool"/> owns the True/False spelling. Formatted invariantly so a value
+    /// written under one locale always reads back under another - the settings these hold are small
+    /// integers where no locale currently differs, but the read side is symmetric by construction
+    /// rather than by luck.</remarks>
+    public static void SetInt(string section, string key, int value) =>
+        SetValue(section, key, value.ToString(System.Globalization.CultureInfo.InvariantCulture));
 
     /// <summary>Encrypts <paramref name="plaintext"/> with DPAPI (CurrentUser scope) and writes the result to the registry.</summary>
     public static void SetQBittorrentPassword(string plaintext) =>

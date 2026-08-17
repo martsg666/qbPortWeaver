@@ -107,6 +107,7 @@ public partial class SettingsForm : Form
     private void SetupTooltips()
     {
         toolTip.SetToolTip(cboVpnProvider, "VPN provider used for port detection (Disabled, ProtonVPN, PIA, or NAT-PMP)");
+        toolTip.SetToolTip(btnDetectVpn, "Detect an installed VPN provider and select it (NAT-PMP gateways cannot be detected - select NAT-PMP manually)");
         toolTip.SetToolTip(cboNatPmpAdapter, "Network adapter to use for NAT-PMP port mapping (only applies when NAT-PMP is selected)");
         toolTip.SetToolTip(btnRefreshAdapters, "Refresh the adapter list");
         toolTip.SetToolTip(nudUpdateInterval, "How often to run the sync cycle, in seconds - controls both port sync and Media Manager frequency");
@@ -298,7 +299,7 @@ public partial class SettingsForm : Form
         // General
         RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyVpnProvider, cboVpnProvider.SelectedItem?.ToString() ?? RegistrySettingsManager.VpnProviderDisabled);
         RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyClient, cboClient.SelectedItem?.ToString() ?? RegistrySettingsManager.ClientNameQBittorrent);
-        RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyUpdateIntervalSeconds, ((int)nudUpdateInterval.Value).ToString());
+        RegistrySettingsManager.SetInt(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyUpdateIntervalSeconds, (int)nudUpdateInterval.Value);
         // If discovery is still pending (combo disabled), preserve the existing value to avoid
         // saving the "Discovering adapters…" placeholder text as the adapter name
         string adapterName = cboNatPmpAdapter.Enabled
@@ -306,9 +307,9 @@ public partial class SettingsForm : Form
             : RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyNatPmpAdapterName);
         RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyNatPmpAdapterName, adapterName);
         RegistrySettingsManager.SetBool(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyVpnAutoRecoveryEnabled, chkAutoRecovery.Checked);
-        RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyVpnAutoRecoveryTriggerCycles, ((int)nudRecoveryCycles.Value).ToString());
+        RegistrySettingsManager.SetInt(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyVpnAutoRecoveryTriggerCycles, (int)nudRecoveryCycles.Value);
         RegistrySettingsManager.SetBool(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyPortClosedRecoveryEnabled, chkPortClosedRecovery.Checked);
-        RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyPortClosedRecoveryTriggerChecks, ((int)nudPortClosedChecks.Value).ToString());
+        RegistrySettingsManager.SetInt(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyPortClosedRecoveryTriggerChecks, (int)nudPortClosedChecks.Value);
         RegistrySettingsManager.SetBool(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyNotifyOnPortUpdate, chkNotifyOnPortUpdate.Checked);
         RegistrySettingsManager.SetBool(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyShowUpdateFormOnStartup, chkShowUpdateForm.Checked);
         RegistrySettingsManager.SetBool(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyResyncOnNetworkChange, chkResyncOnNetworkChange.Checked);
@@ -323,7 +324,7 @@ public partial class SettingsForm : Form
         RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyQBittorrentProcessName, txtQBittorrentProcessName.Text.Trim());
         RegistrySettingsManager.SetBool(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyQBittorrentRestart, chkRestartQBittorrent.Checked);
         RegistrySettingsManager.SetBool(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyQBittorrentForceStart, chkForceStartQBittorrent.Checked);
-        RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyQBittorrentDefaultPort, ((int)nudQBittorrentDefaultPort.Value).ToString());
+        RegistrySettingsManager.SetInt(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyQBittorrentDefaultPort, (int)nudQBittorrentDefaultPort.Value);
         RegistrySettingsManager.SetBool(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyQBittorrentWarnOnInterfaceMismatch, chkQBittorrentWarnOnInterfaceMismatch.Checked);
         RegistrySettingsManager.SetBool(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyQBittorrentRestartOnDisconnect, chkQBittorrentRestartOnDisconnect.Checked);
         RegistrySettingsManager.SetBool(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyQBittorrentFixInterfaceBinding, chkQBittorrentFixInterfaceBinding.Checked);
@@ -336,7 +337,7 @@ public partial class SettingsForm : Form
         RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionTransmission, RegistrySettingsManager.KeyTransmissionProcessName, txtTransmissionProcessName.Text.Trim());
         RegistrySettingsManager.SetBool(RegistrySettingsManager.SectionTransmission, RegistrySettingsManager.KeyTransmissionRestart, chkRestartTransmission.Checked);
         RegistrySettingsManager.SetBool(RegistrySettingsManager.SectionTransmission, RegistrySettingsManager.KeyTransmissionForceStart, chkForceStartTransmission.Checked);
-        RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionTransmission, RegistrySettingsManager.KeyTransmissionDefaultPort, ((int)nudTransmissionDefaultPort.Value).ToString());
+        RegistrySettingsManager.SetInt(RegistrySettingsManager.SectionTransmission, RegistrySettingsManager.KeyTransmissionDefaultPort, (int)nudTransmissionDefaultPort.Value);
 
         // Deluge
         RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionDeluge, RegistrySettingsManager.KeyDelugeUrl, txtDelugeURL.Text.Trim());
@@ -345,7 +346,7 @@ public partial class SettingsForm : Form
         RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionDeluge, RegistrySettingsManager.KeyDelugeProcessName, txtDelugeProcessName.Text.Trim());
         RegistrySettingsManager.SetBool(RegistrySettingsManager.SectionDeluge, RegistrySettingsManager.KeyDelugeRestart, chkRestartDeluge.Checked);
         RegistrySettingsManager.SetBool(RegistrySettingsManager.SectionDeluge, RegistrySettingsManager.KeyDelugeForceStart, chkForceStartDeluge.Checked);
-        RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionDeluge, RegistrySettingsManager.KeyDelugeDefaultPort, ((int)nudDelugeDefaultPort.Value).ToString());
+        RegistrySettingsManager.SetInt(RegistrySettingsManager.SectionDeluge, RegistrySettingsManager.KeyDelugeDefaultPort, (int)nudDelugeDefaultPort.Value);
 
         // Nicotine+ (the token is stored untrimmed, like the other clients' secrets)
         RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionNicotine, RegistrySettingsManager.KeyNicotineUrl, txtNicotineURL.Text.Trim());
@@ -354,7 +355,7 @@ public partial class SettingsForm : Form
         RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionNicotine, RegistrySettingsManager.KeyNicotineProcessName, txtNicotineProcessName.Text.Trim());
         RegistrySettingsManager.SetBool(RegistrySettingsManager.SectionNicotine, RegistrySettingsManager.KeyNicotineForceStart, chkForceStartNicotine.Checked);
         RegistrySettingsManager.SetBool(RegistrySettingsManager.SectionNicotine, RegistrySettingsManager.KeyNicotineWarnOnInterfaceMismatch, chkNicotineWarnOnInterfaceMismatch.Checked);
-        RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionNicotine, RegistrySettingsManager.KeyNicotineDefaultPort, ((int)nudNicotineDefaultPort.Value).ToString());
+        RegistrySettingsManager.SetInt(RegistrySettingsManager.SectionNicotine, RegistrySettingsManager.KeyNicotineDefaultPort, (int)nudNicotineDefaultPort.Value);
 
         // Extra
         RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionExtra, RegistrySettingsManager.KeyColorTheme, cboColorTheme.SelectedItem?.ToString() ?? RegistrySettingsManager.ColorThemeSystem);
@@ -462,6 +463,79 @@ public partial class SettingsForm : Form
                 $"Detected {chosen.ClientName} ({how}).\n\nThe client selection and its process details have been filled in. Review the connection settings, then use Test before saving.",
                 AppIdentity.AppName, MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
+    }
+
+    // Detects which VPN provider is installed on this machine and pre-fills the provider selection, so
+    // the user does not have to know which of the supported providers qbPortWeaver drives. Only the
+    // selection is applied, not saved - the user reviews it and Saves. NAT-PMP is never detected (no
+    // machine-local service to find), so it remains the manual choice for other gateways.
+    // Detection runs off the UI thread: DetectAll enumerates every Windows service through the SCM and
+    // reads the status of each match, which is fast on a home machine and slow on a domain-joined one
+    // (or one with a service stuck pending). The button is disabled for the duration so the click
+    // cannot be repeated into a queue of enumerations. Same shape as RunConnectionTestAsync below.
+    private async void btnDetectVpn_Click(object? sender, EventArgs e) // async void is correct here (WinForms event handler)
+    {
+        // Left null by both failure paths, which is what the guard after the finally tests: keeping the
+        // early exits out of the catch blocks means the button and cursor are always restored first.
+        IReadOnlyList<VpnDetector.DetectedVpn>? detected = null;
+        btnDetectVpn.Enabled = false;
+        UseWaitCursor = true;
+        try
+        {
+            detected = await Task.Run(VpnDetector.DetectAll, _formCloseCts.Token);
+        }
+        catch (OperationCanceledException) { } // NOSONAR S108 - the dialog closed mid-enumeration; there is nobody left to tell
+        catch (Exception ex)
+        {
+            LogManager.Instance.LogDebug($"SettingsForm.btnDetectVpn_Click: {ex.Message}");
+            if (!IsDisposed)
+                ThemedMessageBox.Show(
+                    $"VPN provider detection could not run.\n\n{ex.Message}",
+                    AppIdentity.AppName, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        }
+        finally
+        {
+            if (!IsDisposed)
+            {
+                UseWaitCursor = false;
+                btnDetectVpn.Enabled = true;
+            }
+        }
+
+        // Everything below touches the form, so it stays on the UI thread.
+        if (detected is null || IsDisposed) return;
+
+        if (detected.Count == 0)
+        {
+            ThemedMessageBox.Show(
+                $"No supported VPN provider was found installed on this machine.\n\nSelect your provider manually, or choose {RegistrySettingsManager.VpnProviderNatPmp} if your gateway supports it.",
+                AppIdentity.AppName, MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
+
+        // A running service is the strongest signal, so prefer running providers; fall back to the
+        // installed-only matches when neither is running.
+        var running = detected.Where(d => d.Kind == VpnDetector.DetectionKind.Running).ToList();
+        var candidates = running.Count > 0 ? running : detected;
+
+        // Both providers installed (and neither, or both, running) is the one case we cannot resolve.
+        // Rather than choose silently or add a second chooser dialog for a two-item list, name what was
+        // found and leave the selection alone - the dropdown is right next to the button.
+        if (candidates.Count > 1)
+        {
+            ThemedMessageBox.Show(
+                $"More than one supported VPN provider was found: {string.Join(", ", candidates.Select(c => c.ProviderKeyword))}.\n\nSelect the one you use from the list.",
+                AppIdentity.AppName, MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
+
+        var chosen = candidates[0];
+        cboVpnProvider.SelectedItem = chosen.ProviderKeyword; // triggers cboVpnProvider_SelectedIndexChanged
+
+        string how = chosen.Kind == VpnDetector.DetectionKind.Running ? "running now" : "installed";
+        ThemedMessageBox.Show(
+            $"Detected {chosen.ProviderKeyword} ({how}, service \"{chosen.ServiceName}\").\n\nThe VPN provider has been selected. Review the remaining settings before saving.",
+            AppIdentity.AppName, MessageBoxButtons.OK, MessageBoxIcon.Information);
     }
 
     // Fills the matched client's process-name field (always) and executable field (only when a default

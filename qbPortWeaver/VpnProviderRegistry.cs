@@ -6,12 +6,12 @@ internal sealed record VpnProvider(string Keyword, VpnRegistryConfig Config);
 /// <summary>
 /// Single source of truth for the VPN providers qbPortWeaver knows how to drive in auto-recovery.
 /// <para><b>Adding a provider.</b> Add one entry to <see cref="KnownProviders"/>; everything in this
-/// class derives from it, as do <see cref="NatPmpManager.FindProviderToken"/> and
-/// <see cref="AutoRecoveryManager"/>. That is not the whole job, though - you must also add the
-/// keyword constant in <see cref="RegistrySettingsManager"/>, the dispatch in
-/// <c>PortSyncService.CreateVpnManagerAsync</c> that decides which manager to construct, and the
-/// entry in the Settings provider dropdown. Only the recovery behaviour is derived; provider
-/// selection and construction are not.</para>
+/// class derives from it, as do <see cref="NatPmpManager.FindProviderToken"/>,
+/// <see cref="AutoRecoveryManager"/> and <see cref="VpnDetector"/>. That is not the whole job,
+/// though - you must also add the keyword constant in <see cref="RegistrySettingsManager"/>, the
+/// dispatch in <c>PortSyncService.CreateVpnManagerAsync</c> that decides which manager to construct,
+/// and the entry in the Settings provider dropdown. Recovery behaviour and Settings detection are
+/// derived; provider selection and construction are not.</para>
 /// </summary>
 internal static class VpnProviderRegistry
 {

@@ -144,6 +144,10 @@ internal sealed class HelperPipeServer(ILogger<HelperPipeServer> logger) : Backg
             logger.LogWarning("Rejected pipe message: session token mismatch or could not derive log file path");
             try
             {
+                // No ConfigureAwait on the disposal, unlike every other await here: applying it to the
+                // resource yields a ConfiguredAsyncDisposable, which no longer exposes WriteLineAsync.
+                // Keeping both would need a separate variable and a block-form await using, for no
+                // effect - a worker service host has no SynchronizationContext to capture.
                 await using var w = new StreamWriter(pipe, leaveOpen: true) { AutoFlush = true };
                 await w.WriteLineAsync(HelperProtocol.ResultRejectedSentinel).ConfigureAwait(false);
             }
@@ -172,6 +176,7 @@ internal sealed class HelperPipeServer(ILogger<HelperPipeServer> logger) : Backg
         // event for entries the helper wrote directly to the shared log file.
         try
         {
+            // No ConfigureAwait on the disposal - see the equivalent write in ServeOneConnectionAsync above.
             await using var writer = new StreamWriter(pipe, leaveOpen: true) { AutoFlush = true };
             await writer.WriteLineAsync($"{HelperProtocol.ResultWarnKey}={helperLogger.WarnCount}|{HelperProtocol.ResultErrorKey}={helperLogger.ErrorCount}").ConfigureAwait(false);
         }

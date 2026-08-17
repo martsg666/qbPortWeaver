@@ -469,6 +469,13 @@ internal static class NicotinePluginInstaller
             char current = inner[index];
             if (current == '\\' && index + 1 < inner.Length)
             {
+                // Takes the escaped character literally rather than decoding the sequence, so Python's
+                // '\n' would read as "n". Deliberate, and lossless for this list: the entries are
+                // plugin folder names, and a Windows folder name cannot contain a newline, a tab, or a
+                // backslash. Every value that can actually appear - including an apostrophe - round-trips
+                // exactly through RenderPythonStringList. A real decoder would add cases that could
+                // decode wrongly, in a method whose safety property is that anything it cannot read
+                // cleanly makes the caller change nothing at all.
                 builder.Append(inner[index + 1]);
                 index += 2;
                 continue;

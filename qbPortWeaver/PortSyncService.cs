@@ -41,6 +41,9 @@ public sealed class PortSyncService
     /// <summary>Raised once when the forwarded port is confirmed unreachable from outside (two consecutive failed checks). Transition-only - it re-fires only after the port has tested open again.</summary>
     public event Action<string>? PortVerificationFailed;
 
+    /// <summary>Raised when the client's own settings are found working against the synchronized port. Transition-only - it re-fires only after the settings have tested clean again.</summary>
+    public event Action<string>? ClientSettingsConflictDetected;
+
     // Consecutive sync cycles in which the VPN was disconnected or port detection failed.
     // Serialised by MainForm._updateSemaphore (same guarantee as _lastKnownNatPmpManager).
     private int _consecutiveFailedCycles;
@@ -1373,6 +1376,21 @@ public sealed class PortSyncService
             $"{manager.ClientName} has {AppConstants.Pluralize(conflicts.Count, "setting")} working against the forwarded port: " +
             $"{names} - turn {pronoun} off in {manager.ClientName}'s settings",
             LogLevel.Warn);
+
+        // A balloon as well as the log line, matching the interface-mismatch warning this most
+        // resembles. It is not redundant with the generic "warnings were logged" balloon: on
+        // Transmission and Nicotine+ this condition has no symptom, so a user with no reason to
+        // suspect anything has no reason to open the log viewer either. Guarded like the other
+        // raisers - a handler that throws must not take down the sync cycle.
+        try
+        {
+            ClientSettingsConflictDetected?.Invoke(
+                $"{manager.ClientName} has {AppConstants.Pluralize(conflicts.Count, "setting")} working against the forwarded port. See the log for details.");
+        }
+        catch (Exception ex)
+        {
+            LogManager.Instance.LogMessage($"ClientSettingsConflictDetected handler failed: {ex.Message}", LogLevel.Warn);
+        }
     }
 
     // Builds a failure log message with cycle count and optional recovery trigger suffix

@@ -141,6 +141,7 @@ public partial class MainForm : Form
         _portSyncService.SyncCompleted += OnSyncCompleted;
         _portSyncService.InterfaceMismatchDetected += ShowWarningBalloon;
         _portSyncService.PortVerificationFailed += ShowWarningBalloon;
+        _portSyncService.ClientSettingsConflictDetected += ShowWarningBalloon;
         _portSyncService.PortUpdated += OnPortUpdated;
 
         InitializeStatusIcons();

@@ -299,7 +299,7 @@ public partial class SettingsForm : Form
         // General
         RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyVpnProvider, cboVpnProvider.SelectedItem?.ToString() ?? RegistrySettingsManager.VpnProviderDisabled);
         RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyClient, cboClient.SelectedItem?.ToString() ?? RegistrySettingsManager.ClientNameQBittorrent);
-        RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyUpdateIntervalSeconds, ((int)nudUpdateInterval.Value).ToString());
+        RegistrySettingsManager.SetInt(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyUpdateIntervalSeconds, (int)nudUpdateInterval.Value);
         // If discovery is still pending (combo disabled), preserve the existing value to avoid
         // saving the "Discovering adapters…" placeholder text as the adapter name
         string adapterName = cboNatPmpAdapter.Enabled
@@ -307,9 +307,9 @@ public partial class SettingsForm : Form
             : RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyNatPmpAdapterName);
         RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyNatPmpAdapterName, adapterName);
         RegistrySettingsManager.SetBool(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyVpnAutoRecoveryEnabled, chkAutoRecovery.Checked);
-        RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyVpnAutoRecoveryTriggerCycles, ((int)nudRecoveryCycles.Value).ToString());
+        RegistrySettingsManager.SetInt(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyVpnAutoRecoveryTriggerCycles, (int)nudRecoveryCycles.Value);
         RegistrySettingsManager.SetBool(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyPortClosedRecoveryEnabled, chkPortClosedRecovery.Checked);
-        RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyPortClosedRecoveryTriggerChecks, ((int)nudPortClosedChecks.Value).ToString());
+        RegistrySettingsManager.SetInt(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyPortClosedRecoveryTriggerChecks, (int)nudPortClosedChecks.Value);
         RegistrySettingsManager.SetBool(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyNotifyOnPortUpdate, chkNotifyOnPortUpdate.Checked);
         RegistrySettingsManager.SetBool(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyShowUpdateFormOnStartup, chkShowUpdateForm.Checked);
         RegistrySettingsManager.SetBool(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyResyncOnNetworkChange, chkResyncOnNetworkChange.Checked);
@@ -324,7 +324,7 @@ public partial class SettingsForm : Form
         RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyQBittorrentProcessName, txtQBittorrentProcessName.Text.Trim());
         RegistrySettingsManager.SetBool(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyQBittorrentRestart, chkRestartQBittorrent.Checked);
         RegistrySettingsManager.SetBool(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyQBittorrentForceStart, chkForceStartQBittorrent.Checked);
-        RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyQBittorrentDefaultPort, ((int)nudQBittorrentDefaultPort.Value).ToString());
+        RegistrySettingsManager.SetInt(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyQBittorrentDefaultPort, (int)nudQBittorrentDefaultPort.Value);
         RegistrySettingsManager.SetBool(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyQBittorrentWarnOnInterfaceMismatch, chkQBittorrentWarnOnInterfaceMismatch.Checked);
         RegistrySettingsManager.SetBool(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyQBittorrentRestartOnDisconnect, chkQBittorrentRestartOnDisconnect.Checked);
         RegistrySettingsManager.SetBool(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyQBittorrentFixInterfaceBinding, chkQBittorrentFixInterfaceBinding.Checked);
@@ -337,7 +337,7 @@ public partial class SettingsForm : Form
         RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionTransmission, RegistrySettingsManager.KeyTransmissionProcessName, txtTransmissionProcessName.Text.Trim());
         RegistrySettingsManager.SetBool(RegistrySettingsManager.SectionTransmission, RegistrySettingsManager.KeyTransmissionRestart, chkRestartTransmission.Checked);
         RegistrySettingsManager.SetBool(RegistrySettingsManager.SectionTransmission, RegistrySettingsManager.KeyTransmissionForceStart, chkForceStartTransmission.Checked);
-        RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionTransmission, RegistrySettingsManager.KeyTransmissionDefaultPort, ((int)nudTransmissionDefaultPort.Value).ToString());
+        RegistrySettingsManager.SetInt(RegistrySettingsManager.SectionTransmission, RegistrySettingsManager.KeyTransmissionDefaultPort, (int)nudTransmissionDefaultPort.Value);
 
         // Deluge
         RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionDeluge, RegistrySettingsManager.KeyDelugeUrl, txtDelugeURL.Text.Trim());
@@ -346,7 +346,7 @@ public partial class SettingsForm : Form
         RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionDeluge, RegistrySettingsManager.KeyDelugeProcessName, txtDelugeProcessName.Text.Trim());
         RegistrySettingsManager.SetBool(RegistrySettingsManager.SectionDeluge, RegistrySettingsManager.KeyDelugeRestart, chkRestartDeluge.Checked);
         RegistrySettingsManager.SetBool(RegistrySettingsManager.SectionDeluge, RegistrySettingsManager.KeyDelugeForceStart, chkForceStartDeluge.Checked);
-        RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionDeluge, RegistrySettingsManager.KeyDelugeDefaultPort, ((int)nudDelugeDefaultPort.Value).ToString());
+        RegistrySettingsManager.SetInt(RegistrySettingsManager.SectionDeluge, RegistrySettingsManager.KeyDelugeDefaultPort, (int)nudDelugeDefaultPort.Value);
 
         // Nicotine+ (the token is stored untrimmed, like the other clients' secrets)
         RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionNicotine, RegistrySettingsManager.KeyNicotineUrl, txtNicotineURL.Text.Trim());
@@ -355,7 +355,7 @@ public partial class SettingsForm : Form
         RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionNicotine, RegistrySettingsManager.KeyNicotineProcessName, txtNicotineProcessName.Text.Trim());
         RegistrySettingsManager.SetBool(RegistrySettingsManager.SectionNicotine, RegistrySettingsManager.KeyNicotineForceStart, chkForceStartNicotine.Checked);
         RegistrySettingsManager.SetBool(RegistrySettingsManager.SectionNicotine, RegistrySettingsManager.KeyNicotineWarnOnInterfaceMismatch, chkNicotineWarnOnInterfaceMismatch.Checked);
-        RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionNicotine, RegistrySettingsManager.KeyNicotineDefaultPort, ((int)nudNicotineDefaultPort.Value).ToString());
+        RegistrySettingsManager.SetInt(RegistrySettingsManager.SectionNicotine, RegistrySettingsManager.KeyNicotineDefaultPort, (int)nudNicotineDefaultPort.Value);
 
         // Extra
         RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionExtra, RegistrySettingsManager.KeyColorTheme, cboColorTheme.SelectedItem?.ToString() ?? RegistrySettingsManager.ColorThemeSystem);

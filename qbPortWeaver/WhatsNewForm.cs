@@ -10,9 +10,10 @@ public partial class WhatsNewForm : Form
 
     private const string ReleaseFeaturesText =
         "New in 2.6.6\n\n" +
-        "In development\n" +
-        "This section is a placeholder. Replace it with this release's user-facing changes before " +
-        "tagging - it is shown to every user on their first run after upgrading.\n\n" +
+        "An icon on every window\n" +
+        "Settings, About, Status and the other dialogs now carry the qbPortWeaver icon, so they are " +
+        "easy to pick out when you switch windows with Alt+Tab. Until now they appeared there with " +
+        "no icon at all.\n\n" +
         "Previously released\n\n" +
         "New in 2.6.5\n\n" +
         "Spots client settings that undo your forwarded port\n" +

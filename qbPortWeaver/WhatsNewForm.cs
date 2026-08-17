@@ -9,6 +9,11 @@ public partial class WhatsNewForm : Form
         "If you find qbPortWeaver useful, please star it on GitHub.";
 
     private const string ReleaseFeaturesText =
+        "New in 2.6.6\n\n" +
+        "In development\n" +
+        "This section is a placeholder. Replace it with this release's user-facing changes before " +
+        "tagging - it is shown to every user on their first run after upgrading.\n\n" +
+        "Previously released\n\n" +
         "New in 2.6.5\n\n" +
         "Spots client settings that undo your forwarded port\n" +
         "Some options in your client work against the port you are forwarding: a randomised listening " +
@@ -32,7 +37,6 @@ public partial class WhatsNewForm : Form
         "Settings can now detect which VPN provider is installed on your machine and select it, the " +
         "same way the Client row already fills itself in. Gateways that use NAT-PMP have nothing to " +
         "detect, so pick NAT-PMP yourself if that is what you use.\n\n" +
-        "Previously released\n\n" +
         "New in 2.6.4\n\n" +
         "Nicotine+ support\n" +
         "qbPortWeaver can now keep Nicotine+ (Soulseek) on your VPN's forwarded port, alongside " +

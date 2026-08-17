@@ -252,6 +252,31 @@ public sealed class NicotineClient : ManagedClientBase
         }
     }
 
+    /// <inheritdoc/>
+    public override async Task<IReadOnlyList<ClientSettingConflict>?> GetConflictingSettingsAsync(CancellationToken cancellationToken = default)
+    {
+        // Debug, not Error: this runs from Diagnostics, which reports an unreachable client itself.
+        using var response = await SendAsync(HttpMethod.Get, PathPreferences, null,
+            LogLevel.Debug, cancellationToken).ConfigureAwait(false);
+        if (response is null) return null;
+
+        try
+        {
+            using var doc = await ReadJsonAsync(response, cancellationToken).ConfigureAwait(false);
+            // The bridge reports null for a setting the running Nicotine+ version does not expose, so
+            // only an explicit true is a conflict - "unknown" must never be reported as "on".
+            return doc.RootElement.GetBoolOrNull("upnp") is true
+                ? [new ClientSettingConflict("Use UPnP to forward the listening port", "Nicotine+ maps its own port, which can replace the one the VPN forwards")]
+                : [];
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+        catch (Exception ex)
+        {
+            LogManager.Instance.LogDebug($"NicotineClient.GetConflictingSettingsAsync: {ex.Message}");
+            return null;
+        }
+    }
+
     // ------------------------------------------------------------------ transport
 
     // One request, with a single retry after re-reading the connection file. The plugin keeps its

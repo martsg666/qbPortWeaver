@@ -241,6 +241,46 @@ public sealed class TransmissionClient : ManagedClientBase
         }
     }
 
+    /// <inheritdoc/>
+    public override async Task<IReadOnlyList<ClientSettingConflict>?> GetConflictingSettingsAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            const string body = """{"method":"session-get","arguments":{"fields":["peer-port-random-on-start","port-forwarding-enabled"]}}""";
+            using var response = await SendRpcAsync(body, cancellationToken: cancellationToken).ConfigureAwait(false);
+            if (response is null || !response.IsSuccessStatusCode)
+            {
+                // Every null exit is logged: Diagnostics reports an unread check as Skip and tells the
+                // user to consult the log, so a silent return would send them somewhere empty.
+                LogManager.Instance.LogDebug(
+                    $"TransmissionClient.GetConflictingSettingsAsync: {(response is null ? "no RPC response" : $"HTTP {(int)response.StatusCode}")}");
+                return null;
+            }
+
+            var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+            using var doc = JsonDocument.Parse(json);
+            if (!doc.RootElement.TryGetProperty(JsonPropArguments, out var arguments))
+            {
+                LogManager.Instance.LogDebug("TransmissionClient.GetConflictingSettingsAsync: 'arguments' key missing from RPC response");
+                return null;
+            }
+
+            var conflicts = new List<ClientSettingConflict>();
+            if (arguments.GetBoolOrNull("peer-port-random-on-start") is true)
+                conflicts.Add(new("Randomize port on launch", "Transmission picks its own port the next time it starts, abandoning the forwarded one"));
+            // Transmission's single switch for both UPnP and NAT-PMP.
+            if (arguments.GetBoolOrNull("port-forwarding-enabled") is true)
+                conflicts.Add(new("Use port forwarding from my router", "Transmission maps its own port, which can replace the one the VPN forwards"));
+            return conflicts;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+        catch (Exception ex)
+        {
+            LogHttpException("GetConflictingSettingsAsync", ex);
+            return null;
+        }
+    }
+
     // Runs one port-test RPC. Returns the port-is-open result (null when undeterminable) and whether
     // the daemon rejected the method name (so the caller can fall back to the legacy method).
     private async Task<(bool? Open, bool MethodUnknown)> RunPortTestAsync(string body, CancellationToken cancellationToken) // NOSONAR S2325 - calls the instance method SendRpcAsync, so it cannot be static

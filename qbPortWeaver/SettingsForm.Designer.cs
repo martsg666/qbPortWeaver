@@ -25,6 +25,7 @@ partial class SettingsForm
         grpAutoRecovery           = new GroupBox();
         lblVpnProvider            = new Label();
         cboVpnProvider            = new ComboBox();
+        btnDetectVpn              = new Button();
         lblClient                 = new Label();
         cboClient                 = new ComboBox();
         btnDetectClient           = new Button();
@@ -157,6 +158,7 @@ partial class SettingsForm
         grpGeneral.Controls.Add(chkResyncOnNetworkChange);
         grpGeneral.Controls.Add(lblVpnProvider);
         grpGeneral.Controls.Add(cboVpnProvider);
+        grpGeneral.Controls.Add(btnDetectVpn);
         grpGeneral.Controls.Add(lblNatPmpAdapter);
         grpGeneral.Controls.Add(cboNatPmpAdapter);
         grpGeneral.Controls.Add(btnRefreshAdapters);
@@ -243,18 +245,24 @@ partial class SettingsForm
         lblVpnProvider.TabIndex  = 7;
         lblVpnProvider.Text      = "VPN provider:";
         lblVpnProvider.TextAlign = ContentAlignment.MiddleLeft;
-        // Fills the row to the button column's right edge (x=468), like the adapter row below.
+        // Stops short of the button column so Detect sits at x=398, matching the Client row above.
         cboVpnProvider.DropDownStyle        = ComboBoxStyle.DropDownList;
         cboVpnProvider.FlatStyle            = FlatStyle.Flat;
         cboVpnProvider.Location             = new Point(148, 82);
         cboVpnProvider.Name                 = "cboVpnProvider";
-        cboVpnProvider.Size                 = new Size(320, 23);
+        cboVpnProvider.Size                 = new Size(244, 23);
         cboVpnProvider.TabIndex             = 8;
         cboVpnProvider.SelectedIndexChanged += cboVpnProvider_SelectedIndexChanged;
+        btnDetectVpn.Location = new Point(398, 82);
+        btnDetectVpn.Name     = "btnDetectVpn";
+        btnDetectVpn.Size     = new Size(70, 23);
+        btnDetectVpn.TabIndex = 9;
+        btnDetectVpn.Text     = "Detect";
+        btnDetectVpn.Click   += btnDetectVpn_Click;
         lblNatPmpAdapter.Location  = new Point(12, 111);
         lblNatPmpAdapter.Name      = "lblNatPmpAdapter";
         lblNatPmpAdapter.Size      = new Size(130, 23);
-        lblNatPmpAdapter.TabIndex  = 9;
+        lblNatPmpAdapter.TabIndex  = 10;
         lblNatPmpAdapter.Text      = "NAT-PMP adapter:";
         lblNatPmpAdapter.TextAlign = ContentAlignment.MiddleLeft;
         cboNatPmpAdapter.DropDownStyle = ComboBoxStyle.DropDownList;
@@ -262,30 +270,30 @@ partial class SettingsForm
         cboNatPmpAdapter.Location      = new Point(148, 111);
         cboNatPmpAdapter.Name          = "cboNatPmpAdapter";
         cboNatPmpAdapter.Size          = new Size(290, 23);
-        cboNatPmpAdapter.TabIndex      = 10;
+        cboNatPmpAdapter.TabIndex      = 11;
         btnRefreshAdapters.Enabled  = false;
         btnRefreshAdapters.Location = new Point(442, 111);
         btnRefreshAdapters.Name     = "btnRefreshAdapters";
         btnRefreshAdapters.Size     = new Size(26, 23);
-        btnRefreshAdapters.TabIndex = 11;
+        btnRefreshAdapters.TabIndex = 12;
         btnRefreshAdapters.Text     = "⟳";
         btnRefreshAdapters.Click   += btnRefreshAdapters_Click;
         // Notify and show-update rows follow immediately after the NAT-PMP row at 29px spacing
         chkNotifyOnPortUpdate.AutoSize  = true;
         chkNotifyOnPortUpdate.Location  = new Point(15, 140);
         chkNotifyOnPortUpdate.Name      = "chkNotifyOnPortUpdate";
-        chkNotifyOnPortUpdate.TabIndex  = 12;
+        chkNotifyOnPortUpdate.TabIndex  = 13;
         chkNotifyOnPortUpdate.Text      = "Show notification when port updates";
         chkShowUpdateForm.AutoSize      = true;
         chkShowUpdateForm.Location      = new Point(15, 198);
         chkShowUpdateForm.Name          = "chkShowUpdateForm";
-        chkShowUpdateForm.TabIndex      = 14;
+        chkShowUpdateForm.TabIndex      = 15;
         chkShowUpdateForm.Text          = "Show update form on startup";
         // Sits directly under "Show notification when port updates".
         chkWaitForVpnOnStartup.AutoSize = true;
         chkWaitForVpnOnStartup.Location = new Point(15, 169);
         chkWaitForVpnOnStartup.Name     = "chkWaitForVpnOnStartup";
-        chkWaitForVpnOnStartup.TabIndex = 13;
+        chkWaitForVpnOnStartup.TabIndex = 14;
         chkWaitForVpnOnStartup.Text     = "Wait for VPN on startup";
         // "Trigger after" labels use AutoSize so the NUD sits immediately after the text.
         // Top-right action button, on the first row with the Verify-port checkbox (x=398 matches the client groups' Test button).
@@ -960,6 +968,7 @@ partial class SettingsForm
     private CheckBox      chkResyncOnNetworkChange;
     private Label         lblVpnProvider;
     private ComboBox      cboVpnProvider;
+    private Button        btnDetectVpn;
     private Label         lblNatPmpAdapter;
     private ComboBox      cboNatPmpAdapter;
     private Button        btnRefreshAdapters;

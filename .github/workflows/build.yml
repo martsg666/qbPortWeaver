@@ -78,5 +78,27 @@ jobs:
           }
           Write-Host "Version check passed: all four files are $($distinct[0])."
 
+      # The Chocolatey Community Repository caps the package description at 4000 characters, and
+      # choco pack only discovers the overrun during the post-tag release build - after the tag
+      # exists, the same expensive moment the version gate above exists to avoid. The description
+      # carries the feature list, so it grows every cycle and drifts toward the limit on its own.
+      - name: Verify Chocolatey description length
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $limit  = 4000
+          $nuspec = [xml](Get-Content 'choco\qbPortWeaver.nuspec' -Raw)
+          # The XML adapter yields a string for a plain text element and an XmlElement when the
+          # element carries anything else, so handle both rather than assuming one.
+          $node        = $nuspec.package.metadata.description
+          $description = if ($node -is [string]) { $node } else { $node.InnerText }
+          if ([string]::IsNullOrWhiteSpace($description)) {
+            throw 'No description found in choco\qbPortWeaver.nuspec.'
+          }
+          if ($description.Length -gt $limit) {
+            throw "Chocolatey description is $($description.Length) characters, over the $limit limit. Shorten it before tagging - choco pack would otherwise fail the release build."
+          }
+          Write-Host "Chocolatey description length: $($description.Length) / $limit ($($limit - $description.Length) to spare)."
+
       - name: Build
         run: dotnet build qbPortWeaver.slnx --configuration Release /warnaserror

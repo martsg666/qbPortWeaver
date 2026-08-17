@@ -175,6 +175,63 @@ public sealed class DelugeClient : ManagedClientBase
     }
 
     /// <inheritdoc/>
+    public override async Task<IReadOnlyList<ClientSettingConflict>?> GetConflictingSettingsAsync(CancellationToken cancellationToken = default)
+    {
+        // Every null exit below is logged: Diagnostics reports an unread check as Skip and tells the
+        // user to consult the log, so a silent return would send them somewhere empty.
+        if (!await EnsureAuthenticatedAsync(cancellationToken).ConfigureAwait(false))
+        {
+            LogManager.Instance.LogDebug("DelugeClient.GetConflictingSettingsAsync: not authenticated");
+            return null;
+        }
+
+        try
+        {
+            // random_port is the only random-port flag. Its companion listen_random_port is not a
+            // second switch but the port Deluge picked and remembers (see ParseListenPort), and it
+            // keeps that number after the flag is turned off - so reading it as a boolean would
+            // report a conflict on a client that is correctly configured.
+            var body = $$$"""{"method":"core.get_config_values","params":[["random_port","upnp","natpmp"]],"id":{{{_rpcId++}}}}""";
+            using var content = new StringContent(body, Encoding.UTF8, JsonContentType);
+            using var response = await HttpClient.PostAsync($"{Url}{RpcPath}", content, cancellationToken).ConfigureAwait(false);
+            if (!response.IsSuccessStatusCode)
+            {
+                LogManager.Instance.LogDebug($"DelugeClient.GetConflictingSettingsAsync: HTTP {(int)response.StatusCode}");
+                return null;
+            }
+
+            var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+            using var doc = JsonDocument.Parse(json);
+            var root = doc.RootElement;
+            if (root.TryGetProperty(JsonPropError, out var errorElement) && errorElement.ValueKind != JsonValueKind.Null)
+            {
+                LogManager.Instance.LogDebug($"DelugeClient.GetConflictingSettingsAsync: RPC returned an error: {errorElement}");
+                return null;
+            }
+            if (!root.TryGetProperty(JsonPropResult, out var result) || result.ValueKind == JsonValueKind.Null)
+            {
+                LogManager.Instance.LogDebug("DelugeClient.GetConflictingSettingsAsync: 'result' key missing or null in RPC response");
+                return null;
+            }
+
+            var conflicts = new List<ClientSettingConflict>();
+            if (result.GetBoolOrNull("random_port") is true)
+                conflicts.Add(new("Use random ports", "Deluge picks its own port, abandoning the forwarded one"));
+            if (result.GetBoolOrNull("upnp") is true)
+                conflicts.Add(new("UPnP", "Deluge maps its own port, which can replace the one the VPN forwards"));
+            if (result.GetBoolOrNull("natpmp") is true)
+                conflicts.Add(new("NAT-PMP", "Deluge maps its own port, which can replace the one the VPN forwards"));
+            return conflicts;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+        catch (Exception ex)
+        {
+            LogHttpException("GetConflictingSettingsAsync", ex);
+            return null;
+        }
+    }
+
+    /// <inheritdoc/>
     /// <remarks>Waits for Deluge's ~5 s config-flush debounce before the kill step so the new port survives the restart.</remarks>
     protected override Task PreRestartAsync(CancellationToken cancellationToken) =>
         Task.Delay(ConfigFlushWaitMs, cancellationToken);

@@ -142,6 +142,12 @@ public sealed class PiaVpnManager : IVpnManager
                 return null;
             }
 
+            // Reviewed and kept, so it does not get re-flagged as a blocking-async smell: this method is
+            // synchronous by design, both waits above are bounded, and the Wait returning true means the
+            // task is already complete - so this cannot block. GetAwaiter().GetResult() rather than
+            // .Result on purpose: .Result would wrap a fault in AggregateException, and the catch below
+            // logs ex.Message, which would then read "One or more errors occurred" instead of the cause.
+            // Callers that must not block the UI thread dispatch this via Task.Run (see the DIAG-1 fix).
             string output = stdoutTask.GetAwaiter().GetResult().Trim();
 
             LogManager.Instance.LogDebug($"PiaVpnManager.RunPiactl: '{arguments}' returned: {output}");

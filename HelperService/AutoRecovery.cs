@@ -70,8 +70,64 @@ internal static partial class AutoRecovery
             return;
         }
 
-        logger.LogMessage($"Restarted service '{serviceName}'", LogLevel.Info);
+        // Verified, not assumed. StartServiceAsync deliberately swallows a start timeout - the service
+        // may genuinely still be coming up - so reaching this point does not mean it is running, and
+        // "Restarted service 'X'" would then be a false reassurance about the one thing that matters.
+        // It matters more than a wrong log line usually would: this method has just stopped a VPN
+        // service, and with a killswitch enabled a service that never comes back leaves the machine
+        // with no network at all.
+        await VerifyServiceRunningAsync(serviceName, logger, cancellationToken).ConfigureAwait(false);
     }
+
+    // Reports the service's real state after a restart attempt, replacing the unconditional success
+    // line. Logged at Error when it is not running: the helper's WARN/ERROR counts travel back to the
+    // tray app over the pipe and raise its alert, and a VPN service that failed to come back is exactly
+    // what the user needs told - staying silent leaves them to discover it as "the internet is broken".
+    private static async Task VerifyServiceRunningAsync(string serviceName, HelperLogger logger, CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var sc = new ServiceController(serviceName);
+            sc.Refresh();
+
+            // Still coming up is not yet a failure. Give it one more bounded wait rather than reporting
+            // an error for a service that starts a second later - that false alarm would be its own bug.
+            if (sc.Status == ServiceControllerStatus.StartPending)
+            {
+                try { await WaitForStatusAsync(sc, ServiceControllerStatus.Running, cancellationToken).ConfigureAwait(false); }
+                catch (System.ServiceProcess.TimeoutException) { } // NOSONAR S108 - the refreshed status below is the report
+                sc.Refresh();
+            }
+
+            if (sc.Status == ServiceControllerStatus.Running)
+            {
+                logger.LogMessage($"Restarted service '{serviceName}'", LogLevel.Info);
+                return;
+            }
+
+            logger.LogMessage(
+                $"Service '{serviceName}' is {sc.Status} after the restart attempt, not Running - the VPN cannot reconnect until it starts. " +
+                "If a VPN killswitch is enabled, this machine may have no network access until then.",
+                LogLevel.Error);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // Could not read the state at all. Reported rather than swallowed, but only as a Warn: an
+            // unverifiable restart is not evidence the restart failed.
+            logger.LogMessage($"Could not verify service '{serviceName}' after the restart attempt: {ex.Message}", LogLevel.Warn);
+        }
+    }
+
+    // Log levels around the kill escalation, so the four "timed out - force-killing" lines do not drift
+    // back to Warn: an *announcement* that we are escalating to a force-kill is Info, because escalating
+    // is the designed fallback and its outcome is logged separately. Only the *outcome* carries severity -
+    // Info when a stage succeeds ("force-killed via ..."), Warn when one fails ("Failed to ...", "could
+    // not be killed", "still running"). The distinction matters beyond tidiness: the helper's Warn count
+    // travels back over the pipe and raises the tray warning badge, so a Warn on the success path made
+    // every routine recovery look like a fault. ProtonVPN's service never accepts an SCM stop while its
+    // tunnel is up, so for that provider the force-kill path is not the exception - it is every time.
+    // The main app follows the same rule: AppConstants logs only kill outcomes, AutoRecoveryManager
+    // logs a successful kill at Info.
 
     // Cycles a network adapter by disabling and re-enabling it via netsh.
     // Used for generic NAT-PMP gateways where no known VPN service is involved.
@@ -159,7 +215,7 @@ internal static partial class AutoRecovery
             }
             catch (System.ServiceProcess.TimeoutException)
             {
-                logger.LogMessage($"Service '{serviceName}' StopPending timed out - force-killing process", LogLevel.Warn);
+                logger.LogMessage($"Service '{serviceName}' StopPending timed out - force-killing process", LogLevel.Info);
                 KillServiceProcess(sc, logger);
                 await WaitForStoppedOrWarnAsync(sc, serviceName, logger, cancellationToken).ConfigureAwait(false);
                 return;
@@ -178,7 +234,7 @@ internal static partial class AutoRecovery
             }
             catch (System.ServiceProcess.TimeoutException)
             {
-                logger.LogMessage($"Service '{serviceName}' StartPending timed out - force-killing process", LogLevel.Warn);
+                logger.LogMessage($"Service '{serviceName}' StartPending timed out - force-killing process", LogLevel.Info);
                 KillServiceProcess(sc, logger);
                 await WaitForStoppedOrWarnAsync(sc, serviceName, logger, cancellationToken).ConfigureAwait(false);
                 return;
@@ -190,7 +246,7 @@ internal static partial class AutoRecovery
         {
             // sc.Stop() can throw if the service doesn't accept stop controls or is in
             // a transient state. Fall through to force-kill.
-            logger.LogMessage($"Failed to stop service '{serviceName}' via SCM: {ex.Message} - force-killing process", LogLevel.Warn);
+            logger.LogMessage($"Failed to stop service '{serviceName}' via SCM: {ex.Message} - force-killing process", LogLevel.Info);
             KillServiceProcess(sc, logger);
             await WaitForStoppedOrWarnAsync(sc, serviceName, logger, cancellationToken).ConfigureAwait(false);
             return;
@@ -203,7 +259,7 @@ internal static partial class AutoRecovery
         }
         catch (System.ServiceProcess.TimeoutException)
         {
-            logger.LogMessage($"Service '{serviceName}' stop timed out - force-killing process", LogLevel.Warn);
+            logger.LogMessage($"Service '{serviceName}' stop timed out - force-killing process", LogLevel.Info);
             KillServiceProcess(sc, logger);
             await WaitForStoppedOrWarnAsync(sc, serviceName, logger, cancellationToken).ConfigureAwait(false);
         }

@@ -77,11 +77,15 @@ jobs:
           dotnet-version: '10.x'
 
       # -----------------------------------------------------------------------
-      # 4. Verify that the version in all three .csproj files and in the Nicotine+ plugin's
-      #    PLUGININFO matches the tag version. Catches cases where one was not updated before
-      #    tagging. The plugin tracks the app version so this gate can cover it: the installer
-      #    compares PLUGININFO against the bundled copy to decide whether to offer an update,
-      #    so a stale number silently reports an outdated plugin as up to date.
+      # 4. Pre-flight gates against the tag. Both run before the build so a release that cannot be
+      #    corrected without a new version fails in seconds rather than after a 30-minute job.
+      #
+      #    4a. Verify that the version in all three .csproj files and in the Nicotine+ plugin's
+      #        PLUGININFO matches the tag version. Catches cases where one was not updated before
+      #        tagging. The plugin tracks the app version so this gate can cover it: the installer
+      #        compares PLUGININFO against the bundled copy to decide whether to offer an update,
+      #        so a stale number silently reports an outdated plugin as up to date.
+      #    4b. Verify the What's New dialog no longer carries the cycle-opening placeholder.
       # -----------------------------------------------------------------------
       - name: Verify project and plugin versions match tag
         shell: pwsh
@@ -108,6 +112,20 @@ jobs:
             }
             Write-Host "Version check passed: $($target.Path) ($version)"
           }
+
+      - name: Verify What's New content was written
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          # Each cycle opens by bumping the version and leaving a placeholder in this dialog. It is
+          # shown to every user on their first run after upgrading, so shipping the placeholder cannot
+          # be corrected without another release - which makes it worth failing the tag build over.
+          $path    = 'qbPortWeaver\WhatsNewForm.cs'
+          $marker  = 'This section is a placeholder'
+          if (Select-String -Path $path -Pattern $marker -SimpleMatch -Quiet) {
+            throw "$path still contains the cycle-opening placeholder. Replace it with this release's user-facing changes before tagging - it is shown to every user on their first run after upgrading."
+          }
+          Write-Host "What's New content check passed."
 
       # -----------------------------------------------------------------------
       # 5. Publish both projects (self-contained single-file, version stamped from the tag)

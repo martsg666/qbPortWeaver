@@ -118,6 +118,17 @@ internal static partial class AutoRecovery
         }
     }
 
+    // Log levels around the kill escalation, so the four "timed out - force-killing" lines do not drift
+    // back to Warn: an *announcement* that we are escalating to a force-kill is Info, because escalating
+    // is the designed fallback and its outcome is logged separately. Only the *outcome* carries severity -
+    // Info when a stage succeeds ("force-killed via ..."), Warn when one fails ("Failed to ...", "could
+    // not be killed", "still running"). The distinction matters beyond tidiness: the helper's Warn count
+    // travels back over the pipe and raises the tray warning badge, so a Warn on the success path made
+    // every routine recovery look like a fault. ProtonVPN's service never accepts an SCM stop while its
+    // tunnel is up, so for that provider the force-kill path is not the exception - it is every time.
+    // The main app follows the same rule: AppConstants logs only kill outcomes, AutoRecoveryManager
+    // logs a successful kill at Info.
+
     // Cycles a network adapter by disabling and re-enabling it via netsh.
     // Used for generic NAT-PMP gateways where no known VPN service is involved.
     // For known providers (ProtonVPN, PIA), the main app sends "restart" instead.
@@ -204,7 +215,7 @@ internal static partial class AutoRecovery
             }
             catch (System.ServiceProcess.TimeoutException)
             {
-                logger.LogMessage($"Service '{serviceName}' StopPending timed out - force-killing process", LogLevel.Warn);
+                logger.LogMessage($"Service '{serviceName}' StopPending timed out - force-killing process", LogLevel.Info);
                 KillServiceProcess(sc, logger);
                 await WaitForStoppedOrWarnAsync(sc, serviceName, logger, cancellationToken).ConfigureAwait(false);
                 return;
@@ -223,7 +234,7 @@ internal static partial class AutoRecovery
             }
             catch (System.ServiceProcess.TimeoutException)
             {
-                logger.LogMessage($"Service '{serviceName}' StartPending timed out - force-killing process", LogLevel.Warn);
+                logger.LogMessage($"Service '{serviceName}' StartPending timed out - force-killing process", LogLevel.Info);
                 KillServiceProcess(sc, logger);
                 await WaitForStoppedOrWarnAsync(sc, serviceName, logger, cancellationToken).ConfigureAwait(false);
                 return;
@@ -235,7 +246,7 @@ internal static partial class AutoRecovery
         {
             // sc.Stop() can throw if the service doesn't accept stop controls or is in
             // a transient state. Fall through to force-kill.
-            logger.LogMessage($"Failed to stop service '{serviceName}' via SCM: {ex.Message} - force-killing process", LogLevel.Warn);
+            logger.LogMessage($"Failed to stop service '{serviceName}' via SCM: {ex.Message} - force-killing process", LogLevel.Info);
             KillServiceProcess(sc, logger);
             await WaitForStoppedOrWarnAsync(sc, serviceName, logger, cancellationToken).ConfigureAwait(false);
             return;
@@ -248,7 +259,7 @@ internal static partial class AutoRecovery
         }
         catch (System.ServiceProcess.TimeoutException)
         {
-            logger.LogMessage($"Service '{serviceName}' stop timed out - force-killing process", LogLevel.Warn);
+            logger.LogMessage($"Service '{serviceName}' stop timed out - force-killing process", LogLevel.Info);
             KillServiceProcess(sc, logger);
             await WaitForStoppedOrWarnAsync(sc, serviceName, logger, cancellationToken).ConfigureAwait(false);
         }

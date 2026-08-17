@@ -1554,7 +1554,13 @@ public sealed class PortSyncService
         LogManager.Instance.LogMessage(
             $"Could not confirm an internet connection - trying recovery for '{displayName}' anyway (attempt {_offlineRecoveryAttempts}), " +
             "in case it is being blocked locally rather than being down upstream",
-            LogLevel.Warn);
+            // Info, unlike the hold above, and the asymmetry is deliberate: holding means recovery is
+            // *not* happening and the VPN stays broken for the whole window, which is worth surfacing;
+            // this line announces that recovery *is* proceeding, and its outcome reports itself (the
+            // helper logs Error if the service does not come back). Warn here badged the tray on every
+            // recovery for anyone whose network filters ICMP, for an app doing exactly its job. A real
+            // outage is still surfaced independently by the per-cycle port-detection warning.
+            LogLevel.Info);
         return true;
     }
 

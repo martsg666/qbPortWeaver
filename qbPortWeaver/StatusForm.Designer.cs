@@ -374,7 +374,8 @@ partial class StatusForm
         MaximizeBox = false;
         MinimizeBox = false;
         Name = "StatusForm";
-        ShowIcon = false;
+        Icon     = Properties.Resources.qbPortWeaver;
+        ShowIcon = true;
         ShowInTaskbar = false;
         StartPosition = FormStartPosition.CenterScreen;
         Text = "qbPortWeaver | Status"; // overridden in constructor

@@ -50,7 +50,8 @@ internal static class ThemedMessageBox
             MinimizeBox = false;
             MaximizeBox = false;
             ShowInTaskbar = false;
-            ShowIcon = false;
+            Icon     = Properties.Resources.qbPortWeaver;
+            ShowIcon = true;
             // The layout containers size the form; AutoScaleMode.Font (designer baseline) scales fonts.
             AutoScaleDimensions = new SizeF(7F, 15F);
             AutoScaleMode = AutoScaleMode.Font;

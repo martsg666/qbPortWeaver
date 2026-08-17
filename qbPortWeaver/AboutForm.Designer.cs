@@ -182,7 +182,8 @@ partial class AboutForm
         MaximizeBox = false;
         MinimizeBox = false;
         Name = "AboutForm";
-        ShowIcon = false;
+        Icon     = Properties.Resources.qbPortWeaver;
+        ShowIcon = true;
         ShowInTaskbar = false;
         StartPosition = FormStartPosition.CenterScreen;
         Text = "qbPortWeaver | About"; // overridden in constructor

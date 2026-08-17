@@ -35,7 +35,8 @@ internal sealed class DiagnosticsForm : Form
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
         MinimizeBox = false;
-        ShowIcon = false;
+        Icon     = Properties.Resources.qbPortWeaver;
+        ShowIcon = true;
         ShowInTaskbar = false;
         StartPosition = FormStartPosition.CenterScreen;
         // Match the designer forms' 96-DPI autoscale baseline so the manually-placed controls scale.

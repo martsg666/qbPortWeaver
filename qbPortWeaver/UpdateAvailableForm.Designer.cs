@@ -105,7 +105,8 @@ partial class UpdateAvailableForm
         MaximizeBox     = false;
         MinimizeBox     = false;
         Name            = "UpdateAvailableForm";
-        ShowIcon        = false;
+        Icon            = Properties.Resources.qbPortWeaver;
+        ShowIcon        = true;
         ShowInTaskbar   = false;
         StartPosition   = FormStartPosition.CenterScreen;
         Text            = "qbPortWeaver | Update Available"; // overridden in constructor

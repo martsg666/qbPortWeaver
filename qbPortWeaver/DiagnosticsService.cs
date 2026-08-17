@@ -203,7 +203,16 @@ public static class DiagnosticsService
             results.Add(new(Checks.PortReachable, DiagnosticStatus.Skip, ClientUnreachableSkip));
             return;
         }
-        results.Add(new(Checks.ClientReachable, DiagnosticStatus.Pass, $"{client.ClientName} reachable; listening port is {cp}"));
+        // A client that reports port 0 is reachable but not listening anywhere useful, and "listening
+        // port is 0" reads like a fault in qbPortWeaver rather than a setting in the client. qBittorrent
+        // reports exactly this while "use a different port on each startup" is on (verified against a
+        // live client), which the Client settings check below then names - so point the reader at it
+        // instead of leaving them with a bare zero.
+        results.Add(cp == 0
+            ? new(Checks.ClientReachable, DiagnosticStatus.Warn,
+                $"{client.ClientName} is reachable but reports no listening port",
+                "The client is not listening on a port it can report. See the Client settings check below - a randomised listening port causes this.")
+            : new DiagnosticResult(Checks.ClientReachable, DiagnosticStatus.Pass, $"{client.ClientName} reachable; listening port is {cp}"));
 
         AddInSyncResult(results, cp, vpnPort);
         if (client.SupportsInterfaceMismatchWarning)

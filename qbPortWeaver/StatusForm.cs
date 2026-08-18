@@ -320,14 +320,14 @@ public partial class StatusForm : Form
     }
 
     // " (recovery holding, next attempt in ~N min)" while the offline rate limiter is waiting, or an
-    // empty string otherwise. Counted down from the snapshot the same way Next sync is, so the panel's
-    // one-second repaint keeps it honest between cycles. Rounded up to the minute above 60s: the exact
+    // empty string otherwise. Counted down from the absolute deadline the cycle wrote, so it stays
+    // correct however long that cycle took; the panel's one-second repaint keeps it moving. Rounded up to the minute above 60s: the exact
     // second is noise for a wait measured in minutes, and "in ~1 min" reads better than "in 61s".
     private static string DescribeRecoveryHold(StatusSnapshot s)
     {
-        if (s.RecoveryHoldSeconds is not int held || s.Timestamp is not DateTimeOffset ts) return string.Empty;
+        if (s.RecoveryHoldUntil is not DateTimeOffset until) return string.Empty;
 
-        TimeSpan remaining = ts.AddSeconds(held) - DateTimeOffset.Now;
+        TimeSpan remaining = until - DateTimeOffset.Now;
         if (remaining <= TimeSpan.Zero) return " (recovery due)";
 
         string when = remaining.TotalSeconds < 60

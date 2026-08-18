@@ -148,6 +148,7 @@ public partial class LogViewerForm : Form
         // from the font, so the actual height is only known after layout.
         int searchTop = (pnlToolbar.Height - txtSearch.Height) / 2;
         cboSubsystem.Top = (pnlToolbar.Height - cboSubsystem.Height) / 2;
+        cboTimeRange.Top = (pnlToolbar.Height - cboTimeRange.Height) / 2;
         cboLogFile.Top = (pnlToolbar.Height - cboLogFile.Height) / 2;
 
         // Lay out the right-aligned search group (search box, match counter, prev/next, clear button)
@@ -278,6 +279,9 @@ public partial class LogViewerForm : Form
 
         cboSubsystem.BackColor = input;
         cboSubsystem.ForeColor = fg;
+
+        cboTimeRange.BackColor = input;
+        cboTimeRange.ForeColor = fg;
 
         cboLogFile.BackColor = input;
         cboLogFile.ForeColor = fg;

@@ -35,6 +35,7 @@ partial class LogViewerForm
         chkInfo        = new CheckBox();
         chkDebug       = new CheckBox();
         cboSubsystem   = new ComboBox();
+        cboTimeRange   = new ComboBox();
         cboLogFile     = new ComboBox();
         btnIssuePrev   = new Button();
         btnIssueNext   = new Button();
@@ -151,6 +152,18 @@ partial class LogViewerForm
         cboSubsystem.SelectedIndexChanged += cboSubsystem_SelectedIndexChanged;
         toolTip.SetToolTip(cboSubsystem, "Filter entries by subsystem");
 
+        // Time range - narrows the view to a window ending now, or to a custom span. Sits between the
+        // subsystem and log-file pickers because all three answer "which entries", unlike search.
+        cboTimeRange.Anchor        = AnchorStyles.Left | AnchorStyles.Top;
+        cboTimeRange.DropDownStyle = ComboBoxStyle.DropDownList;
+        cboTimeRange.FlatStyle     = FlatStyle.Flat;
+        cboTimeRange.Location      = new Point(630, 6);
+        cboTimeRange.Size          = new Size(118, 23);
+        cboTimeRange.TabIndex      = 8;
+        // Items and SelectedIndex are set in OnLoad, with the event wired after, so populating the
+        // list cannot trigger a rebuild before the log has been read.
+        toolTip.SetToolTip(cboTimeRange, "Show only entries from a time range");
+
         // Log file picker - populated in OnLoad; event wired there after population to avoid premature load
         cboLogFile.Anchor        = AnchorStyles.Left | AnchorStyles.Top;
         cboLogFile.DropDownStyle = ComboBoxStyle.DropDownList;
@@ -224,7 +237,7 @@ partial class LogViewerForm
         // otherwise the default panel width (~200px) produces a negative right-margin and
         // causes right-anchored controls to fly off-screen when the panel expands to form width.
         pnlToolbar.Controls.AddRange(new Control[] {
-            chkError, chkWarn, chkInfo, chkDebug, cboSubsystem, cboLogFile, btnIssuePrev, btnIssueNext,
+            chkError, chkWarn, chkInfo, chkDebug, cboSubsystem, cboTimeRange, cboLogFile, btnIssuePrev, btnIssueNext,
             txtSearch, btnClearSearch, btnPrev, btnNext, lblMatchCount });
         pnlToolbar.Dock     = DockStyle.Top;
         pnlToolbar.Size     = new Size(1100, 36);
@@ -301,6 +314,7 @@ partial class LogViewerForm
     private CheckBox           chkInfo;
     private CheckBox           chkDebug;
     private ComboBox           cboSubsystem;
+    private ComboBox           cboTimeRange;
     private ComboBox           cboLogFile;
     private Button             btnIssuePrev;
     private Button             btnIssueNext;

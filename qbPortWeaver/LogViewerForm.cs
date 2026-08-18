@@ -181,6 +181,12 @@ public partial class LogViewerForm : Form
         // time the user opens it (rotation and Clear Logs change them while the viewer is open).
         cboLogFile.SelectedIndexChanged += cboLogFile_SelectedIndexChanged;
         cboLogFile.DropDown += cboLogFile_DropDown;
+
+        // Same ordering rule as the pickers above: populate and select first, wire the event after,
+        // so building the list cannot rebuild the display before the log has been read.
+        foreach ((string label, double? _) in TimeRanges) cboTimeRange.Items.Add(label);
+        cboTimeRange.SelectedIndex = 0; // "All time" - the viewer opens showing everything, as before
+        cboTimeRange.SelectedIndexChanged += cboTimeRange_SelectedIndexChanged;
     }
 
     protected override void OnShown(EventArgs e)
@@ -329,6 +335,34 @@ public partial class LogViewerForm : Form
 
     // Called when the subsystem filter ComboBox changes - rebuilds the visible rows
     private void cboSubsystem_SelectedIndexChanged(object? sender, EventArgs e) => RebuildDisplay();
+
+    // Time-range options, in the order they appear in the combo. Each is a window ending now; the
+    // hours are what a user reaches for when reading back over an incident ("what happened last
+    // night" is inside 24 hours, "what just happened" inside one). Stored as hours so the cutoff is
+    // a subtraction rather than a switch.
+    private static readonly (string Label, double? Hours)[] TimeRanges =
+    [
+        ("All time",      null),
+        ("Last 15 min",   0.25),
+        ("Last hour",     1),
+        ("Last 6 hours",  6),
+        ("Last 24 hours", 24),
+        ("Last 7 days",   168),
+    ];
+
+    private void cboTimeRange_SelectedIndexChanged(object? sender, EventArgs e) => RebuildDisplay();
+
+    // The earliest timestamp the current selection admits, or null for "All time". Computed per
+    // rebuild rather than cached: the window slides with the wall clock, so a cached cutoff would
+    // quietly go stale while the viewer sits open on a live tail.
+    private DateTime? GetTimeRangeCutoff()
+    {
+        int index = cboTimeRange.SelectedIndex;
+        if (index < 0 || index >= TimeRanges.Length) return null;
+        return TimeRanges[index].Hours is double hours ? DateTime.Now.AddHours(-hours) : null;
+    }
+
+
 
     // Returns the padded subsystem column token to match (e.g. "| MainApp       |"),
     // or null when "All" is selected (no filter). Built here, once per rebuild, so the
@@ -780,6 +814,7 @@ public partial class LogViewerForm : Form
     {
         bool[] filters = [chkError.Checked, chkWarn.Checked, chkInfo.Checked, chkDebug.Checked];
         string? subsystemFilter = GetSubsystemFilter();
+        DateTime? notBefore = GetTimeRangeCutoff();
 
         for (int i = fromLine; i < _allLines.Count; i++)
         {
@@ -788,7 +823,7 @@ public partial class LogViewerForm : Form
             {
                 if (_visibleRows.Count == 0 || _allLines[_visibleRows[^1]].Level == LevelMeta) continue;
             }
-            else if (!IsLineVisible(line, filters, subsystemFilter))
+            else if (!IsLineVisible(line, filters, subsystemFilter, notBefore))
             {
                 continue;
             }
@@ -831,15 +866,31 @@ public partial class LogViewerForm : Form
             SetMetaMessage("(No log entries yet)", MetaColor);
     }
 
-    // Level/subsystem visibility for classified lines. Meta rows (blank separators) never reach
-    // this method - AppendVisibleRows handles them with its own dedup rule so cycle separators
-    // stay visible in filtered views without ever stacking up.
-    private static bool IsLineVisible(LogLine line, bool[] filters, string? subsystemToken)
+    // Level, subsystem and time-range visibility for classified lines. Meta rows (blank separators)
+    // never reach this method - AppendVisibleRows handles them with its own dedup rule so cycle
+    // separators stay visible in filtered views without ever stacking up.
+    private static bool IsLineVisible(LogLine line, bool[] filters, string? subsystemToken, DateTime? notBefore)
     {
         if (!filters[line.Level]) return false;                     // level filtered out
         if (subsystemToken is not null && !line.Text.Contains(subsystemToken, StringComparison.Ordinal)) return false;
+        if (notBefore is DateTime cutoff && TryReadTimestamp(line.Text) is DateTime stamp && stamp < cutoff) return false;
         return true;
     }
+
+    // Parses the fixed-width timestamp every entry starts with, or null for a line that has none
+    // (continuation lines wrapped from a multi-line message, and the blank cycle separators).
+    // A line without a timestamp is never excluded by the time filter: it belongs to whichever entry
+    // precedes it, and dropping it would tear a message in half.
+    //
+    // Parsed on demand rather than stored on LogLine: the store is the process's dominant allocation
+    // on a large log, and adding 8 bytes per line to save a parse that only runs on a filter rebuild
+    // is the wrong trade.
+    private static DateTime? TryReadTimestamp(string text) =>
+        text.Length >= LoggingConstants.DateFormat.Length &&
+        DateTime.TryParseExact(text.AsSpan(0, LoggingConstants.DateFormat.Length), LoggingConstants.DateFormat,
+            System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out DateTime parsed)
+            ? parsed
+            : null;
 
     // Convenience colour for meta/status messages (not log entries)
     private static Color MetaColor => SystemColors.GrayText; // mode-aware under SetColorMode

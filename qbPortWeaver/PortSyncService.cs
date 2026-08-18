@@ -255,6 +255,9 @@ public sealed class PortSyncService
         public const string Status = "status";
         public const string Message = "message";
         public const string WaitingForVpn = "waitingForVpn";
+        // Seconds until auto-recovery may next attempt, while it is being held back because
+        // connectivity could not be confirmed. Null whenever nothing is being held.
+        public const string RecoveryHoldSeconds = "recoveryHoldSeconds";
 
         // Values for the Status key live in the public SyncStatusValues (shared with the Status panel).
     }
@@ -285,7 +288,8 @@ public sealed class PortSyncService
             [StatusKeys.PortVerified] = null,
             [StatusKeys.UpdateIntervalSeconds] = AppConstants.DefaultUpdateIntervalSeconds,
             [StatusKeys.Status] = SyncStatusValues.Error,
-            [StatusKeys.Message] = null
+            [StatusKeys.Message] = null,
+            [StatusKeys.RecoveryHoldSeconds] = null
         };
 
         try
@@ -304,6 +308,7 @@ public sealed class PortSyncService
             // and leave a misleading error JSON file on every exit.
             if (!cancellationToken.IsCancellationRequested)
             {
+                status[StatusKeys.RecoveryHoldSeconds] = GetRecoveryHoldSecondsRemaining();
                 StatusManager.Write(status);
                 string? outcome = status[StatusKeys.Status] as string;
                 LogCycleOutcome(outcome);
@@ -1489,6 +1494,22 @@ public sealed class PortSyncService
 
         await DispatchRecoveryAsync(action, recoveryTarget, displayName, cancellationToken,
             triggerLogMessage: $"Triggering '{action}' for '{displayName}' after {count} consecutive failed {AppConstants.PluralizeNoun(count, "cycle")}").ConfigureAwait(false);
+    }
+
+    // Seconds until the offline rate limiter will allow the next recovery attempt, or null when
+    // nothing is being held back. Read once per cycle for the status file so the Status panel can say
+    // "holding, next attempt in ~N min" - without it the user sees a disconnected VPN and no sign that
+    // the app is deliberately waiting rather than idle, which is the whole point of the limiter.
+    // Computed rather than stored: the deadline is the last attempt plus its backoff step, and both
+    // are already tracked. Returns null once the wait has elapsed - at that point the next due cycle
+    // will attempt recovery, so there is nothing left to count down.
+    private int? GetRecoveryHoldSecondsRemaining()
+    {
+        if (_offlineRecoveryAttempts <= 0) return null;
+        TimeSpan required = OfflineRetryBackoff[Math.Min(_offlineRecoveryAttempts - 1, OfflineRetryBackoff.Length - 1)];
+        TimeSpan waited = TimeSpan.FromMilliseconds(Environment.TickCount64 - _lastOfflineRecoveryMs);
+        TimeSpan remaining = required - waited;
+        return remaining > TimeSpan.Zero ? (int)Math.Ceiling(remaining.TotalSeconds) : null;
     }
 
     // Clears the offline rate-limiter so the next offline streak starts with an immediate attempt.

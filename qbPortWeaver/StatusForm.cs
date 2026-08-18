@@ -101,6 +101,10 @@ public partial class StatusForm : Form
         if (_lastSnapshot is null) return;
         PopulateLastSync(_lastSnapshot);
         PopulateNextSync(_lastSnapshot);
+        // VPN status is otherwise cycle-driven, but it now carries the recovery-hold countdown, which
+        // drifts with the wall clock like the values above. Without this the countdown would sit frozen
+        // for a whole cycle - visibly wrong once it is counting in seconds rather than minutes.
+        PopulateVpnStatus(_lastSnapshot, IsPortSyncDisabled(_lastSnapshot));
         // Advance the Reachable age, but never while a manual Test Port is in flight (button
         // disabled) - SetReachableResult owns the label until the result arrives.
         if (btnTestPort.Enabled)
@@ -254,8 +258,7 @@ public partial class StatusForm : Form
 
     private void Populate(StatusSnapshot s)
     {
-        bool disabled = string.IsNullOrEmpty(s.VpnProvider) ||
-                        string.Equals(s.VpnProvider, RegistrySettingsManager.VpnProviderDisabled, StringComparison.OrdinalIgnoreCase);
+        bool disabled = IsPortSyncDisabled(s);
 
         PopulateVpnProvider(s, disabled);
         PopulateVpnStatus(s, disabled);
@@ -297,6 +300,11 @@ public partial class StatusForm : Form
             SetDefault(lblVpnProviderValue, s.VpnProvider!);
     }
 
+    // Shared by the full repaint and the one-second tick so both agree on what "disabled" means.
+    private static bool IsPortSyncDisabled(StatusSnapshot s) =>
+        string.IsNullOrEmpty(s.VpnProvider) ||
+        string.Equals(s.VpnProvider, RegistrySettingsManager.VpnProviderDisabled, StringComparison.OrdinalIgnoreCase);
+
     private void PopulateVpnStatus(StatusSnapshot s, bool disabled)
     {
         if (disabled)
@@ -304,7 +312,28 @@ public partial class StatusForm : Form
         else if (s.VpnConnected)
             SetColor(lblVpnStatusValue, "Connected", OkColor);
         else
-            SetColor(lblVpnStatusValue, "Not connected", WarnColor);
+            // The hold is appended here rather than given a row of its own because this is the line a
+            // worried user is already reading: "Not connected" alone looks like the app is doing
+            // nothing, when auto-recovery is in fact deliberately waiting before its next attempt.
+            // Only shown while a hold is actually in force, so the common case reads exactly as before.
+            SetColor(lblVpnStatusValue, "Not connected" + DescribeRecoveryHold(s), WarnColor);
+    }
+
+    // " (recovery holding, next attempt in ~N min)" while the offline rate limiter is waiting, or an
+    // empty string otherwise. Counted down from the snapshot the same way Next sync is, so the panel's
+    // one-second repaint keeps it honest between cycles. Rounded up to the minute above 60s: the exact
+    // second is noise for a wait measured in minutes, and "in ~1 min" reads better than "in 61s".
+    private static string DescribeRecoveryHold(StatusSnapshot s)
+    {
+        if (s.RecoveryHoldSeconds is not int held || s.Timestamp is not DateTimeOffset ts) return string.Empty;
+
+        TimeSpan remaining = ts.AddSeconds(held) - DateTimeOffset.Now;
+        if (remaining <= TimeSpan.Zero) return " (recovery due)";
+
+        string when = remaining.TotalSeconds < 60
+            ? $"{(int)Math.Ceiling(remaining.TotalSeconds)}s"
+            : $"~{(int)Math.Ceiling(remaining.TotalMinutes)} min";
+        return $" (recovery holding, next attempt in {when})";
     }
 
     private void PopulateForwardedPort(StatusSnapshot s)

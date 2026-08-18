@@ -10,6 +10,15 @@ public partial class WhatsNewForm : Form
 
     private const string ReleaseFeaturesText =
         "New in 2.6.6\n\n" +
+        "See when recovery is waiting\n" +
+        "If your VPN drops and the connection itself is down, qbPortWeaver spaces out its recovery " +
+        "attempts instead of retrying constantly. The Status window now says so: alongside \"Not " +
+        "connected\" it shows when the next attempt is due, so a pause reads as a deliberate " +
+        "wait rather than the app having given up.\n\n" +
+        "Narrow the log to a time range\n" +
+        "The Log Viewer has a new time filter beside the subsystem and file pickers: show everything, " +
+        "or just the last 15 minutes, hour, 6 hours, 24 hours or week. Useful when you know roughly " +
+        "when something went wrong and do not want to scroll through everything around it.\n\n" +
         "An icon on every window\n" +
         "Settings, About, Status and the other dialogs now carry the qbPortWeaver icon, so they are " +
         "easy to pick out when you switch windows with Alt+Tab. Until now they appeared there with " +

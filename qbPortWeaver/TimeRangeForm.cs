@@ -35,6 +35,9 @@ internal sealed class TimeRangeForm : Form
         _from = CreatePicker(from);
         _to = CreatePicker(to);
 
+        // Deliberately unpadded: the dialog's inner margin belongs on the root panel below, so the
+        // field rows and the button row share one set of edges. Padding the fields alone leaves the
+        // buttons hanging off the bottom-right corner with no margin of their own.
         var grid = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
@@ -42,11 +45,11 @@ internal sealed class TimeRangeForm : Form
             AutoSizeMode = AutoSizeMode.GrowAndShrink,
             ColumnCount = 2,
             RowCount = 2,
-            Padding = new Padding(DialogLayout.EdgeMargin, DialogLayout.EdgeMargin, DialogLayout.EdgeMargin, DialogLayout.BottomMargin),
+            Margin = new Padding(0),
         };
-        grid.Controls.Add(new Label { Text = "From:", AutoSize = true, Anchor = AnchorStyles.Left, Margin = new Padding(0, 6, 8, 6) }, 0, 0);
+        grid.Controls.Add(CreateLabel("From:"), 0, 0);
         grid.Controls.Add(_from, 1, 0);
-        grid.Controls.Add(new Label { Text = "To:", AutoSize = true, Anchor = AnchorStyles.Left, Margin = new Padding(0, 6, 8, 6) }, 0, 1);
+        grid.Controls.Add(CreateLabel("To:"), 0, 1);
         grid.Controls.Add(_to, 1, 1);
 
         var ok = DialogLayout.DialogButton("OK", DialogResult.OK);
@@ -61,11 +64,25 @@ internal sealed class TimeRangeForm : Form
             AutoSizeMode = AutoSizeMode.GrowAndShrink,
             ColumnCount = 1,
             RowCount = 2,
+            Padding = new Padding(DialogLayout.EdgeMargin, DialogLayout.EdgeMargin, DialogLayout.EdgeMargin, DialogLayout.BottomMargin),
         };
         root.Controls.Add(grid, 0, 0);
         root.Controls.Add(DialogLayout.ButtonRow(ok, cancel), 0, 1);
         Controls.Add(root);
     }
+
+    // Vertical margin on each field; doubled between the two rows, so this is half the row gap.
+    private const int RowSpacing = 4;
+
+    // Right-anchored so the two colons line up down the column. Anchoring without Top or Bottom
+    // centres the label against the taller picker beside it instead of pinning it to the cell top.
+    private static Label CreateLabel(string text) => new()
+    {
+        Text = text,
+        AutoSize = true,
+        Anchor = AnchorStyles.Right,
+        Margin = new Padding(0, 0, DialogLayout.Gap, 0),
+    };
 
     // Custom format with a visible seconds field: log entries are timestamped to the second, and a
     // window chosen only to the minute cannot isolate a burst inside one.
@@ -77,7 +94,7 @@ internal sealed class TimeRangeForm : Form
         Value = value,
         Width = 170,
         Anchor = AnchorStyles.Left,
-        Margin = new Padding(0, 3, 0, 3),
+        Margin = new Padding(0, RowSpacing, 0, RowSpacing),
     };
 
     /// <summary>Ensures the returned window is ordered, so a user who fills the fields in the other

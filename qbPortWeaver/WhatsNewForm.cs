@@ -17,7 +17,7 @@ public partial class WhatsNewForm : Form
         "wait rather than the app having given up.\n\n" +
         "Narrow the log to a time range\n" +
         "The Log Viewer has a new time filter beside the subsystem and file pickers: show everything, " +
-        "or just the last 15 minutes, hour, 6 hours, 24 hours or week, or a start and end time you pick " +
+        "or just the last 15 minutes, hour or 24 hours, or a start and end time you pick " +
         "yourself. Useful when you know roughly " +
         "when something went wrong and do not want to scroll through everything around it.\n\n" +
         "An icon on every window\n" +

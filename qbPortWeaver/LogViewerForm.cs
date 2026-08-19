@@ -342,18 +342,19 @@ public partial class LogViewerForm : Form
     // Called when the subsystem filter ComboBox changes - rebuilds the visible rows
     private void cboSubsystem_SelectedIndexChanged(object? sender, EventArgs e) => RebuildDisplay();
 
-    // Time-range options, in the order they appear in the combo. Each is a window ending now; the
-    // hours are what a user reaches for when reading back over an incident ("what happened last
-    // night" is inside 24 hours, "what just happened" inside one). Stored as hours so the cutoff is
-    // a subtraction rather than a switch.
+    // Time-range options, in the order they appear in the combo. Each is a window ending now, so a
+    // preset can only ever answer "how far back from this moment"; anything already past needs the
+    // custom range appended after these. Kept to one preset per distinct case - watching a problem
+    // reproduce (15 min), reading back over something just seen (1 hour), and an overnight incident
+    // (24 hours). Intermediate steps were dropped: they sit between those cases without adding one,
+    // and a week is indistinguishable from "All time" on a log that rarely spans that long. Stored
+    // as hours so the cutoff is a subtraction rather than a switch.
     private static readonly (string Label, double? Hours)[] TimeRanges =
     [
         ("All time",      null),
         ("Last 15 min",   0.25),
         ("Last hour",     1),
-        ("Last 6 hours",  6),
         ("Last 24 hours", 24),
-        ("Last 7 days",   168),
     ];
 
     // Index of the "Custom range…" entry, which is appended after the presets.

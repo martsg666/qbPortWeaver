@@ -186,7 +186,9 @@ public partial class LogViewerForm : Form
         // Same ordering rule as the pickers above: populate and select first, wire the event after,
         // so building the list cannot rebuild the display before the log has been read.
         foreach ((string label, double? _) in TimeRanges) cboTimeRange.Items.Add(label);
+        cboTimeRange.Items.Add("Custom range…");   // must stay last: CustomRangeIndex is TimeRanges.Length
         cboTimeRange.SelectedIndex = 0; // "All time" - the viewer opens showing everything, as before
+        _lastTimeRangeIndex = 0;
         cboTimeRange.SelectedIndexChanged += cboTimeRange_SelectedIndexChanged;
     }
 
@@ -354,16 +356,57 @@ public partial class LogViewerForm : Form
         ("Last 7 days",   168),
     ];
 
-    private void cboTimeRange_SelectedIndexChanged(object? sender, EventArgs e) => RebuildDisplay();
+    // Index of the "Custom range…" entry, which is appended after the presets.
+    private int CustomRangeIndex => TimeRanges.Length;
 
-    // The earliest timestamp the current selection admits, or null for "All time". Computed per
-    // rebuild rather than cached: the window slides with the wall clock, so a cached cutoff would
-    // quietly go stale while the viewer sits open on a live tail.
-    private DateTime? GetTimeRangeCutoff()
+    // The chosen custom window, null until one is set. Kept so reselecting "Custom range…" reopens the
+    // dialog on the last values, and so the window survives switching to a preset and back.
+    private (DateTime From, DateTime To)? _customRange;
+
+    // Remembers the last accepted selection so cancelling the custom dialog can put the combo back
+    // rather than leaving it on an entry the user declined to configure.
+    private int _lastTimeRangeIndex;
+
+    private void cboTimeRange_SelectedIndexChanged(object? sender, EventArgs e)
+    {
+        if (cboTimeRange.SelectedIndex == CustomRangeIndex && !PromptForCustomRange())
+        {
+            // Declined: restore the previous entry. Assigning SelectedIndex re-enters this handler,
+            // which is harmless - the restored index is never the custom one, so it falls straight
+            // through to the rebuild below.
+            cboTimeRange.SelectedIndex = _lastTimeRangeIndex;
+            return;
+        }
+        _lastTimeRangeIndex = cboTimeRange.SelectedIndex;
+        RebuildDisplay();
+    }
+
+    // Opens the range dialog pre-filled with the previous choice, or with the last hour on first use.
+    // Returns false when the user cancels.
+    private bool PromptForCustomRange()
+    {
+        (DateTime from, DateTime to) = _customRange ?? (DateTime.Now.AddHours(-1), DateTime.Now);
+        using var dialog = new TimeRangeForm(from, to);
+        if (dialog.ShowDialog(this) != DialogResult.OK) return false;
+
+        _customRange = dialog.OrderedRange();
+        // The combo is too narrow to show the range, so the tooltip carries it - otherwise the only
+        // way to see what "Custom range…" currently means is to reopen the dialog.
+        toolTip.SetToolTip(cboTimeRange,
+            $"Showing {_customRange.Value.From:yyyy-MM-dd HH:mm:ss} to {_customRange.Value.To:yyyy-MM-dd HH:mm:ss}");
+        return true;
+    }
+
+    // The window the current selection admits: a preset ending now, an explicit custom span, or no
+    // bounds at all for "All time". Computed per rebuild rather than cached, because a preset window
+    // slides with the wall clock and a cached cutoff would quietly go stale on a live tail.
+    private (DateTime? From, DateTime? To) GetTimeWindow()
     {
         int index = cboTimeRange.SelectedIndex;
-        if (index < 0 || index >= TimeRanges.Length) return null;
-        return TimeRanges[index].Hours is double hours ? DateTime.Now.AddHours(-hours) : null;
+        if (index == CustomRangeIndex)
+            return _customRange is { } range ? (range.From, range.To) : (null, null);
+        if (index < 0 || index >= TimeRanges.Length) return (null, null);
+        return TimeRanges[index].Hours is double hours ? (DateTime.Now.AddHours(-hours), null) : (null, null);
     }
 
 
@@ -818,7 +861,7 @@ public partial class LogViewerForm : Form
     {
         bool[] filters = [chkError.Checked, chkWarn.Checked, chkInfo.Checked, chkDebug.Checked];
         string? subsystemFilter = GetSubsystemFilter();
-        DateTime? notBefore = GetTimeRangeCutoff();
+        (DateTime? From, DateTime? To) window = GetTimeWindow();
 
         for (int i = fromLine; i < _allLines.Count; i++)
         {
@@ -827,7 +870,7 @@ public partial class LogViewerForm : Form
             {
                 if (_visibleRows.Count == 0 || _allLines[_visibleRows[^1]].Level == LevelMeta) continue;
             }
-            else if (!IsLineVisible(line, filters, subsystemFilter, notBefore))
+            else if (!IsLineVisible(line, filters, subsystemFilter, window))
             {
                 continue;
             }
@@ -873,11 +916,18 @@ public partial class LogViewerForm : Form
     // Level, subsystem and time-range visibility for classified lines. Meta rows (blank separators)
     // never reach this method - AppendVisibleRows handles them with its own dedup rule so cycle
     // separators stay visible in filtered views without ever stacking up.
-    private static bool IsLineVisible(LogLine line, bool[] filters, string? subsystemToken, DateTime? notBefore)
+    private static bool IsLineVisible(LogLine line, bool[] filters, string? subsystemToken, (DateTime? From, DateTime? To) window)
     {
         if (!filters[line.Level]) return false;                     // level filtered out
         if (subsystemToken is not null && !line.Text.Contains(subsystemToken, StringComparison.Ordinal)) return false;
-        if (notBefore is DateTime cutoff && TryReadTimestamp(line.Text) is DateTime stamp && stamp < cutoff) return false;
+        // The window test is guarded so an unfiltered view never pays for the timestamp parse, and
+        // short-circuits before it. A line with no timestamp of its own is never excluded: it is a
+        // continuation of the entry above it, and dropping it would tear a message in half.
+        if ((window.From is not null || window.To is not null) && TryReadTimestamp(line.Text) is DateTime stamp)
+        {
+            if (window.From is DateTime from && stamp < from) return false;
+            if (window.To is DateTime to && stamp > to) return false;
+        }
         return true;
     }
 

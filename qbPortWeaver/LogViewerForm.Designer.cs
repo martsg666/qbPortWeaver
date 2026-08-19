@@ -157,7 +157,7 @@ partial class LogViewerForm
         cboTimeRange.Anchor        = AnchorStyles.Left | AnchorStyles.Top;
         cboTimeRange.DropDownStyle = ComboBoxStyle.DropDownList;
         cboTimeRange.FlatStyle     = FlatStyle.Flat;
-        cboTimeRange.Location      = new Point(630, 6);
+        cboTimeRange.Location      = new Point(628, 6);
         cboTimeRange.Size          = new Size(118, 23);
         cboTimeRange.TabIndex      = 8;
         // Items and SelectedIndex are set in OnLoad, with the event wired after, so populating the

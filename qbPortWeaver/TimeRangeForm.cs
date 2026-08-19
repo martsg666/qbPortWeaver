@@ -8,14 +8,19 @@ namespace qbPortWeaver;
 /// </summary>
 internal sealed class TimeRangeForm : Form
 {
-    private readonly DateTimePicker _from;
-    private readonly DateTimePicker _to;
+    private readonly MaskedTextBox _from;
+    private readonly MaskedTextBox _to;
 
-    /// <summary>Start of the chosen window (inclusive).</summary>
-    internal DateTime FromValue => _from.Value;
+    // Set only once both fields have parsed, which OnFormClosing requires before it will let the
+    // dialog close with OK. Reading them after any other result is meaningless.
+    private DateTime _fromValue;
+    private DateTime _toValue;
 
-    /// <summary>End of the chosen window (inclusive to the second).</summary>
-    internal DateTime ToValue => _to.Value;
+    /// <summary>Start of the chosen window (inclusive). Valid only after the dialog returned OK.</summary>
+    internal DateTime FromValue => _fromValue;
+
+    /// <summary>End of the chosen window (inclusive to the second). Valid only after the dialog returned OK.</summary>
+    internal DateTime ToValue => _toValue;
 
     internal TimeRangeForm(DateTime from, DateTime to)
     {
@@ -32,8 +37,10 @@ internal sealed class TimeRangeForm : Form
         AutoSize = true;
         AutoSizeMode = AutoSizeMode.GrowAndShrink;
 
-        _from = CreatePicker(from);
-        _to = CreatePicker(to);
+        _fromValue = from;
+        _toValue = to;
+        _from = CreateField(from);
+        _to = CreateField(to);
 
         // Deliberately unpadded: the dialog's inner margin belongs on the root panel below, so the
         // field rows and the button row share one set of edges. Padding the fields alone leaves the
@@ -111,7 +118,7 @@ internal sealed class TimeRangeForm : Form
     }
 
     // Right-anchored so the two colons line up down the column. Anchoring without Top or Bottom
-    // centres the label against the taller picker beside it instead of pinning it to the cell top.
+    // centres the label against the taller field beside it instead of pinning it to the cell top.
     private static Label CreateLabel(string text) => new()
     {
         Text = text,
@@ -120,23 +127,59 @@ internal sealed class TimeRangeForm : Form
         Margin = new Padding(0, 0, DialogLayout.Gap, 0),
     };
 
-    // Custom format with a visible seconds field: log entries are timestamped to the second, and a
-    // window chosen only to the minute cannot isolate a burst inside one.
-    private static DateTimePicker CreatePicker(DateTime value) => new()
+    // Digit-and-separator mask matching LoggingConstants.DateFormat position for position, so the
+    // field can only ever hold something shaped like a log timestamp. It constrains shape only, not
+    // range - month 19 still has to be caught by the parse in TryReadValues.
+    private const string TimestampMask = "0000-00-00 00:00:00";
+
+    /// <summary>
+    /// A masked entry field pre-filled with the given instant. Seconds are part of the mask because
+    /// log entries are timestamped to the second, and a window chosen only to the minute cannot
+    /// isolate a burst inside one.
+    /// <para>A MaskedTextBox rather than a DateTimePicker: a DateTimePicker cannot be given the app's
+    /// input surface, because assigning BackColor drops it out of the native dark theme and forces a
+    /// white face. Being a TextBox, this honours the color like every other field in the app - at the
+    /// cost of the picker's spin arrows, which the mask partly makes up for by rejecting stray
+    /// characters as they are typed.</para>
+    /// </summary>
+    private static MaskedTextBox CreateField(DateTime value) => new()
     {
-        Format = DateTimePickerFormat.Custom,
-        CustomFormat = LoggingConstants.DateFormat,
-        ShowUpDown = true,          // no drop-down calendar: the field is edited in place, keeping the dialog small
-        Value = value,
-        // Colors are deliberately left unset. A DateTimePicker honours Application.SetColorMode on
-        // its own, but assigning BackColor drops it out of the native theme and forces a white face,
-        // so the usual "editable fields take SystemColors.Window" rule cannot be applied here - doing
-        // so is what breaks it. The native dark face sits on the chrome surface rather than the input
-        // surface, so it reads slightly lighter than a text box; that is the cost of keeping it.
+        Mask = TimestampMask,
+        Text = value.ToString(LoggingConstants.DateFormat, System.Globalization.CultureInfo.InvariantCulture),
+        BackColor = SystemColors.Window,        // input surface, like every text box and combo in the app
+        ForeColor = SystemColors.WindowText,
         Width = 170,                // floor only: the anchor below stretches the field past this
         Anchor = AnchorStyles.Left | AnchorStyles.Right,
         Margin = new Padding(0, RowSpacing, 0, RowSpacing),
     };
+
+    /// <summary>
+    /// Blocks an OK that carries an unparseable timestamp, so the caller never receives a window the
+    /// user did not mean. Cancel and the close button are left alone - a user backing out should not
+    /// have to repair a field first.
+    /// </summary>
+    protected override void OnFormClosing(FormClosingEventArgs e)
+    {
+        if (DialogResult == DialogResult.OK && !TryReadValues())
+        {
+            e.Cancel = true;
+            ThemedMessageBox.Show(
+                $"Enter both times as {LoggingConstants.DateFormat}, for example " +
+                $"{DateTime.Now.ToString(LoggingConstants.DateFormat, System.Globalization.CultureInfo.InvariantCulture)}.",
+                $"{AppIdentity.AppName} | Custom Time Range",
+                MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        }
+        base.OnFormClosing(e);
+    }
+
+    private bool TryReadValues() => TryReadField(_from, out _fromValue) && TryReadField(_to, out _toValue);
+
+    // Exact-format, invariant parse: the fields mirror the log's own timestamp format, so a
+    // culture-sensitive parse could read the same digits as a different date on some machines.
+    private static bool TryReadField(MaskedTextBox field, out DateTime value) =>
+        DateTime.TryParseExact(field.Text, LoggingConstants.DateFormat,
+            System.Globalization.CultureInfo.InvariantCulture,
+            System.Globalization.DateTimeStyles.None, out value);
 
     /// <summary>Ensures the returned window is ordered, so a user who fills the fields in the other
     /// order still gets the range they meant rather than one that matches nothing.</summary>

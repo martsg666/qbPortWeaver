@@ -47,6 +47,11 @@ internal sealed class TimeRangeForm : Form
             RowCount = 2,
             Margin = new Padding(0),
         };
+        // Labels take exactly their text width; the fields absorb everything left over, so their
+        // right edge lands on the same content edge as the right-aligned button row below. This is
+        // what keeps them aligned when the dialog is widened to fit its caption.
+        grid.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
         grid.Controls.Add(CreateLabel("From:"), 0, 0);
         grid.Controls.Add(_from, 1, 0);
         grid.Controls.Add(CreateLabel("To:"), 0, 1);
@@ -66,6 +71,10 @@ internal sealed class TimeRangeForm : Form
             RowCount = 2,
             Padding = new Padding(DialogLayout.EdgeMargin, DialogLayout.EdgeMargin, DialogLayout.EdgeMargin, DialogLayout.BottomMargin),
         };
+        // Fill rather than auto-size: when the caption widens the dialog past its contents, an
+        // auto-sized column would keep the content block at its natural width and leave the surplus
+        // as dead space on the right, pulling the fields and buttons away from the true right edge.
+        root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
         root.Controls.Add(grid, 0, 0);
         root.Controls.Add(DialogLayout.ButtonRow(ok, cancel), 0, 1);
         Controls.Add(root);
@@ -119,8 +128,8 @@ internal sealed class TimeRangeForm : Form
         CustomFormat = LoggingConstants.DateFormat,
         ShowUpDown = true,          // no drop-down calendar: the field is edited in place, keeping the dialog small
         Value = value,
-        Width = 170,
-        Anchor = AnchorStyles.Left,
+        Width = 170,                // floor only: the anchor below stretches the field past this
+        Anchor = AnchorStyles.Left | AnchorStyles.Right,
         Margin = new Padding(0, RowSpacing, 0, RowSpacing),
     };
 

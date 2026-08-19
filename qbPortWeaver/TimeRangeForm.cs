@@ -127,10 +127,13 @@ internal sealed class TimeRangeForm : Form
         Margin = new Padding(0, 0, DialogLayout.Gap, 0),
     };
 
-    // Digit-and-separator mask matching LoggingConstants.DateFormat position for position, so the
-    // field can only ever hold something shaped like a log timestamp. It constrains shape only, not
-    // range - month 19 still has to be caught by the parse in TryReadValues.
-    private const string TimestampMask = "0000-00-00 00:00:00";
+    // Derived from the log's own timestamp format rather than written out, so the two cannot drift:
+    // every format letter becomes a required digit and separators carry through unchanged. Writing
+    // the mask by hand would let a change to DateFormat leave a mask that accepts a shape the parse
+    // in TryReadValues then rejects, failing every entry with no way to satisfy it.
+    // The mask constrains shape only, not range - month 19 is still the parse's job to catch.
+    private static readonly string TimestampMask =
+        new(LoggingConstants.DateFormat.Select(c => char.IsLetter(c) ? '0' : c).ToArray());
 
     /// <summary>
     /// A masked entry field pre-filled with the given instant. Seconds are part of the mask because

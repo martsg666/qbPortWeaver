@@ -74,6 +74,33 @@ internal sealed class TimeRangeForm : Form
     // Vertical margin on each field; doubled between the two rows, so this is half the row gap.
     private const int RowSpacing = 4;
 
+    // Gap kept between the end of the caption text and the close button.
+    private const int CaptionPadding = 24;
+
+    /// <summary>
+    /// Widens the dialog when its caption is longer than its contents, which are only two short
+    /// fields. The title bar takes no part in layout, so an auto-sized form is free to end up
+    /// narrower than its own title and render it truncated.
+    /// <para>Measured rather than hard-coded, because the caption is drawn in the system caption
+    /// font rather than the form font, so it does not follow the form's own font scaling. Applied
+    /// here rather than in the constructor so it lands after <see cref="AutoScaleMode.Font"/>
+    /// scaling has run, which would otherwise scale an already-correct pixel width a second
+    /// time.</para>
+    /// </summary>
+    protected override void OnLoad(EventArgs e)
+    {
+        base.OnLoad(e);
+
+        int caption = TextRenderer.MeasureText(Text, SystemFonts.CaptionFont ?? Font).Width;
+        int chrome = SystemInformation.SmallIconSize.Width              // window icon
+                   + SystemInformation.CaptionButtonSize.Width          // close button
+                   + (SystemInformation.FixedFrameBorderSize.Width * 2)
+                   + CaptionPadding;
+
+        MinimumSize = new Size(caption + chrome, 0);
+        CenterToParent();   // re-centre: the width above is applied after the initial placement
+    }
+
     // Right-anchored so the two colons line up down the column. Anchoring without Top or Bottom
     // centres the label against the taller picker beside it instead of pinning it to the cell top.
     private static Label CreateLabel(string text) => new()

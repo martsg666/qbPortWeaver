@@ -358,7 +358,7 @@ public partial class LogViewerForm : Form
     ];
 
     // Index of the "Custom range…" entry, which is appended after the presets.
-    private int CustomRangeIndex => TimeRanges.Length;
+    private static int CustomRangeIndex => TimeRanges.Length;
 
     // The chosen custom window, null until one is set. Kept so reselecting "Custom range…" reopens the
     // dialog on the last values, and so the window survives switching to a preset and back.

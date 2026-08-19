@@ -128,6 +128,12 @@ internal sealed class TimeRangeForm : Form
         CustomFormat = LoggingConstants.DateFormat,
         ShowUpDown = true,          // no drop-down calendar: the field is edited in place, keeping the dialog small
         Value = value,
+        // These are editable fields, so they take the input surface (Window) like every text box and
+        // combo in the app. Left alone they honour Application.SetColorMode but land on the chrome
+        // surface (Control), because Windows paints a DateTimePicker as chrome rather than as input -
+        // which reads as a lighter grey box next to the near-black fields on every other form.
+        BackColor = SystemColors.Window,
+        ForeColor = SystemColors.WindowText,
         Width = 170,                // floor only: the anchor below stretches the field past this
         Anchor = AnchorStyles.Left | AnchorStyles.Right,
         Margin = new Padding(0, RowSpacing, 0, RowSpacing),

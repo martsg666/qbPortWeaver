@@ -328,7 +328,7 @@ partial class StatusForm
         ctxStats.Opening += ctxStats_Opening;
         grpStats.ContextMenuStrip = ctxStats;
         // ── Diagnostics hint (shown only when a cycle looks wrong; color set in StatusForm) ──
-        lblDiagnosticsHint.Location = new Point(8, 567);
+        lblDiagnosticsHint.Location = new Point(8, 596);
         lblDiagnosticsHint.Name = "lblDiagnosticsHint";
         lblDiagnosticsHint.Size = new Size(544, 20);
         lblDiagnosticsHint.TabIndex = 3;
@@ -336,28 +336,28 @@ partial class StatusForm
         lblDiagnosticsHint.TextAlign = ContentAlignment.MiddleLeft;
         lblDiagnosticsHint.Visible = false;
         // ── Buttons ───────────────────────────────────────────────────
-        btnSyncNow.Location = new Point(8, 593);
+        btnSyncNow.Location = new Point(8, 622);
         btnSyncNow.Name = "btnSyncNow";
         btnSyncNow.Size = new Size(96, 28);
         btnSyncNow.TabIndex = 4;
         btnSyncNow.Text = "Sync Now";
         btnSyncNow.Click += btnSyncNow_Click;
         toolTip.SetToolTip(btnSyncNow, "Run a sync cycle immediately instead of waiting for the next interval (works while paused, for one cycle)");
-        btnPauseResume.Location = new Point(112, 593);
+        btnPauseResume.Location = new Point(112, 622);
         btnPauseResume.Name = "btnPauseResume";
         btnPauseResume.Size = new Size(96, 28);
         btnPauseResume.TabIndex = 5;
         btnPauseResume.Text = "Pause";
         btnPauseResume.Click += btnPauseResume_Click;
         toolTip.SetToolTip(btnPauseResume, "Pause or resume automatic sync cycles (same as the tray menu; always resumes on restart)");
-        btnTestPort.Location = new Point(216, 593);
+        btnTestPort.Location = new Point(216, 622);
         btnTestPort.Name = "btnTestPort";
         btnTestPort.Size = new Size(96, 28);
         btnTestPort.TabIndex = 6;
         btnTestPort.Text = "Test Port";
         btnTestPort.Click += btnTestPort_Click;
         toolTip.SetToolTip(btnTestPort, "Check now whether the listening port is reachable from the Internet (may take up to 20 seconds)");
-        btnRunDiagnostics.Location = new Point(320, 593);
+        btnRunDiagnostics.Location = new Point(320, 622);
         btnRunDiagnostics.Name = "btnRunDiagnostics";
         btnRunDiagnostics.Size = new Size(118, 28);
         btnRunDiagnostics.TabIndex = 7;
@@ -365,7 +365,7 @@ partial class StatusForm
         btnRunDiagnostics.Click += btnRunDiagnostics_Click;
         toolTip.SetToolTip(btnRunDiagnostics, "Run a read-only health check of the whole sync chain - never changes the port or restarts anything");
         btnClose.DialogResult = DialogResult.Cancel;
-        btnClose.Location = new Point(470, 593);
+        btnClose.Location = new Point(470, 622);
         btnClose.Name = "btnClose";
         btnClose.Size = new Size(82, 28);
         btnClose.TabIndex = 8;

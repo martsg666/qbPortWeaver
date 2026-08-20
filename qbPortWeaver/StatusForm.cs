@@ -496,7 +496,11 @@ public partial class StatusForm : Form
             return;
         }
 
-        string time = ts.LocalDateTime.ToString("yyyy-MM-dd HH:mm:ss");
+        // Same shape as a log timestamp, so the format comes from the one constant that defines it -
+        // but deliberately NOT LoggingConstants.DateCulture: this is a displayed local time, which
+        // should follow the user's locale. Only the log file itself is culture-pinned, because it is
+        // a machine-readable contract two processes write to.
+        string time = ts.LocalDateTime.ToString(LoggingConstants.DateFormat);
         // Capitalize the displayed result so it matches the panel's other values (Connected, Open,
         // etc.). The raw lowercase status value stays in the JSON file - that is the contract
         // external scripts read; only the panel display is title-cased.

@@ -14,7 +14,11 @@ public static class LoggingConstants
     /// <summary>Width of the subsystem column in log entries. Pads every label to this width.</summary>
     public const int SubsystemMaxLength = 13; // "HelperService".Length
 
-    /// <summary>Timestamp format used in every log entry. Sortable, fixed-width, no timezone marker.</summary>
+    /// <summary>Timestamp format used in every log entry. Sortable, fixed-width, no timezone marker.
+    /// <para>Always render and parse this with <see cref="System.Globalization.CultureInfo.InvariantCulture"/>.
+    /// The <c>:</c> in a custom format string is the culture's time separator placeholder, not a literal,
+    /// so a machine whose locale separates time with <c>.</c> would otherwise write <c>12.34.56</c> - a
+    /// log format that differs per machine, and one the Log Viewer's time filter cannot parse.</para></summary>
     public const string DateFormat = "yyyy-MM-dd HH:mm:ss";
 
     // Pre-padded level labels for log entry alignment. Every label is exactly 5 chars wide
@@ -32,5 +36,5 @@ public static class LoggingConstants
     /// (helper service) so the on-disk format cannot drift.
     /// </summary>
     public static string FormatLogEntry(System.DateTime timestamp, string levelLabel, string subsystem, string message) =>
-        $"{timestamp.ToString(DateFormat)} | {levelLabel} | {subsystem.PadRight(SubsystemMaxLength)} | {message}{System.Environment.NewLine}";
+        $"{timestamp.ToString(DateFormat, System.Globalization.CultureInfo.InvariantCulture)} | {levelLabel} | {subsystem.PadRight(SubsystemMaxLength)} | {message}{System.Environment.NewLine}";
 }

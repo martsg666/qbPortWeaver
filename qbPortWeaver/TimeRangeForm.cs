@@ -153,9 +153,16 @@ internal sealed class TimeRangeForm : Form
     /// </summary>
     private static MaskedTextBox CreateField(DateTime value) => new()
     {
-        // Mask must be assigned before Text: an incoming Text is filtered against whatever mask is
-        // set at the time, so the reverse order would filter the timestamp against no mask at all.
-        // Keep these two in this order if properties are ever added or reordered here.
+        // These three are order-dependent - Culture, then Mask, then Text - and must stay that way if
+        // properties are ever added or reordered here. The mask is interpreted under whatever Culture
+        // is set at the time, and an incoming Text is filtered through whatever Mask is set at the time,
+        // so any other order silently produces a field that is empty or wrongly separated.
+        //
+        // Culture is pinned because MaskedTextBox treats ':' as a *localized* mask character, rendered
+        // through FormatProvider, which defaults to the current culture. Left alone, a locale that
+        // separates time with '.' would show and return "12.34.56", which TryReadField's invariant parse
+        // rejects - the dialog would refuse its own prefilled value with a message no input could satisfy.
+        Culture = System.Globalization.CultureInfo.InvariantCulture,
         Mask = TimestampMask,
         Text = value.ToString(LoggingConstants.DateFormat, System.Globalization.CultureInfo.InvariantCulture),
         BackColor = SystemColors.Window,        // input surface, like every text box and combo in the app

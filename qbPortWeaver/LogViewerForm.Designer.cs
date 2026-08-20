@@ -292,9 +292,17 @@ partial class LogViewerForm
         MinimizeBox         = true;
         // Static designer minimum (DPI-scaled by AutoScaleMode.Font), the pattern shared by all
         // sizable forms. Width is the point where the right-anchored search block would meet the left
-        // filter/combo block: cboLogFile.Right (624) + gap (8) + search-block width (344) = 976 client
-        // + ~16 window border. Height keeps the toolbar plus a usable log area.
-        MinimumSize         = new Size(992, 300);
+        // filter/combo block. LayoutSearchToolbar places txtSearch.Left at clientWidth minus its own
+        // fixed span: margin 4 + next 26 + prev 26 + gap 4 + count 64 + gap 4 + search 220 = 348. The
+        // rightmost left-hand control is now cboTimeRange, ending at 746, so the narrowest client that
+        // still clears it is 746 + gap 4 + 348 = 1098, plus ~16 window border.
+        //
+        // This leaves little room to narrow the window, which is deliberate: the toolbar is at
+        // capacity, and the alternatives were shrinking the search field or the time-range combo for
+        // every user to serve a rare window size. A log viewer is a wide-content window anyway.
+        // Anything added to the toolbar from here needs this recomputed - nothing enforces it, and the
+        // failure mode is silent: the search box simply covers whatever it lands on.
+        MinimumSize         = new Size(1114, 300);
         Name                = "LogViewerForm";
         Icon                = Properties.Resources.qbPortWeaver;
         ShowIcon            = true;

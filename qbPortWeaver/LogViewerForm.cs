@@ -379,6 +379,7 @@ public partial class LogViewerForm : Form
             return;
         }
         _lastTimeRangeIndex = cboTimeRange.SelectedIndex;
+        UpdateTimeRangeTooltip();
         RebuildDisplay();
     }
 
@@ -391,17 +392,29 @@ public partial class LogViewerForm : Form
         if (dialog.ShowDialog(this) != DialogResult.OK) return false;
 
         _customRange = dialog.OrderedRange();
-        // The combo is too narrow to show the range, so the tooltip carries it - otherwise the only
-        // way to see what "Custom range…" currently means is to reopen the dialog.
-        // Formatted from LoggingConstants.DateFormat rather than a literal, so the tooltip is
-        // guaranteed to echo the range in the same shape the dialog's fields accept.
-        string fromText = _customRange.Value.From.ToString(
-            LoggingConstants.DateFormat, System.Globalization.CultureInfo.InvariantCulture);
-        string toText = _customRange.Value.To.ToString(
-            LoggingConstants.DateFormat, System.Globalization.CultureInfo.InvariantCulture);
-        toolTip.SetToolTip(cboTimeRange, $"Showing {fromText} to {toText}");
         return true;
     }
+
+    // The combo is too narrow to show a custom range, so the tooltip carries it - otherwise the only
+    // way to see what "Custom range…" currently means is to reopen the dialog. Every other selection
+    // restores the static description: the custom range is the only one the combo cannot show in its
+    // own width, and leaving the old range behind would have it describing the preset that replaced it.
+    private void UpdateTimeRangeTooltip()
+    {
+        toolTip.SetToolTip(cboTimeRange,
+            cboTimeRange.SelectedIndex == CustomRangeIndex && _customRange is { } range
+                ? $"Showing {FormatTimestamp(range.From)} to {FormatTimestamp(range.To)}"
+                : TimeRangeTooltip);
+    }
+
+    // Matches the initial value the designer sets on the combo, so switching off a custom range
+    // returns the tooltip to exactly what it said before one was ever chosen.
+    private const string TimeRangeTooltip = "Show only entries from a time range";
+
+    // Formatted from LoggingConstants.DateFormat rather than a literal, so the tooltip is guaranteed
+    // to echo the range in the same shape the dialog's fields accept.
+    private static string FormatTimestamp(DateTime value) =>
+        value.ToString(LoggingConstants.DateFormat, System.Globalization.CultureInfo.InvariantCulture);
 
     // The window the current selection admits: a preset ending now, an explicit custom span, or no
     // bounds at all for "All time". Computed per rebuild rather than cached, because a preset window

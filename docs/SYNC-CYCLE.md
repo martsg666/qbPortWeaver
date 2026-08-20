@@ -357,7 +357,11 @@ The hold was originally appended to the **VPN status** line instead. That hid it
   "portVerified": true,
   "updateIntervalSeconds": 180,
   "status": "success",
-  "message": "Sync cycle completed"
+  "message": "Sync cycle completed",
+  "recoveryEnabled": true,
+  "recoveryFailedCycles": 0,
+  "recoveryTriggerCycles": 5,
+  "recoveryHoldUntil": null
 }
 ```
 

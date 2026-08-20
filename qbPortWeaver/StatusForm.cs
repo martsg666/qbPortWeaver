@@ -348,10 +348,12 @@ public partial class StatusForm : Form
         SetNeutral(lblAutoRecoveryValue, "Idle");
     }
 
-    // " (recovery holding, next attempt in ~N min)" while the offline rate limiter is waiting, or an
-    // empty string otherwise. Counted down from the absolute deadline the cycle wrote, so it stays
-    // correct however long that cycle took; the panel's one-second repaint keeps it moving. Rounded up to the minute above 60s: the exact
-    // second is noise for a wait measured in minutes, and "in ~1 min" reads better than "in 61s".
+    // "Holding - no internet connection, next attempt in ~N min" while the offline rate limiter is
+    // waiting, or an empty string otherwise, which is what tells PopulateAutoRecovery to fall through
+    // to the failure streak. Counted down from the absolute deadline the cycle wrote, so it stays
+    // correct however long that cycle took; the panel's one-second repaint keeps it moving. Rounded
+    // up to the minute above 60s: the exact second is noise for a wait measured in minutes, and
+    // "in ~1 min" reads better than "in 61s".
     private static string DescribeRecoveryHold(StatusSnapshot s)
     {
         if (s.RecoveryHoldUntil is not DateTimeOffset until) return string.Empty;

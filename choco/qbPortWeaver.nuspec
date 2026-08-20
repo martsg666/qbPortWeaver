@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <!--
   Version, URL, and checksum placeholders are stamped by the CI/CD pipeline.
   To package manually, run: scripts/Build-ChocolateyPackage.ps1
@@ -36,7 +36,7 @@ Imports movie and TV episode files into Plex-compatible library folders on each 
 
 ### Other Features
 
-- Status panel and color-coded tray icon showing the live sync state, with a persisted history of recent port changes, session statistics, an on-demand port reachability test, and a countdown when auto-recovery is waiting before its next attempt
+- Status panel and color-coded tray icon showing the live sync state, with a persisted history of recent port changes, session statistics, an on-demand port reachability test, and an auto-recovery line showing failures building toward a recovery attempt or the wait until the next one
 - One-click diagnostics that health-check the whole sync chain and suggest fixes
 - In-app update that downloads and installs new versions, plus an automatic update checker
 - Built-in user guide with a browsable contents tree and search, available offline from the tray menu

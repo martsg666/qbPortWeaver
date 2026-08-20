@@ -1,4 +1,4 @@
-﻿namespace qbPortWeaver;
+namespace qbPortWeaver;
 
 /// <summary>
 /// Read-only panel showing the live state of the port-sync chain (VPN, forwarded port, client,

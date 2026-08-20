@@ -393,8 +393,13 @@ public partial class LogViewerForm : Form
         _customRange = dialog.OrderedRange();
         // The combo is too narrow to show the range, so the tooltip carries it - otherwise the only
         // way to see what "Custom range…" currently means is to reopen the dialog.
-        toolTip.SetToolTip(cboTimeRange,
-            $"Showing {_customRange.Value.From:yyyy-MM-dd HH:mm:ss} to {_customRange.Value.To:yyyy-MM-dd HH:mm:ss}");
+        // Formatted from LoggingConstants.DateFormat rather than a literal, so the tooltip is
+        // guaranteed to echo the range in the same shape the dialog's fields accept.
+        string fromText = _customRange.Value.From.ToString(
+            LoggingConstants.DateFormat, System.Globalization.CultureInfo.InvariantCulture);
+        string toText = _customRange.Value.To.ToString(
+            LoggingConstants.DateFormat, System.Globalization.CultureInfo.InvariantCulture);
+        toolTip.SetToolTip(cboTimeRange, $"Showing {fromText} to {toText}");
         return true;
     }
 

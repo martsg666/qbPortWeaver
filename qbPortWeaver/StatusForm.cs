@@ -340,6 +340,9 @@ public partial class StatusForm : Form
             return;
         }
 
+        // Both holds are reported, each naming its own cause. The offline one is checked first only
+        // because it is the more serious: nothing can be recovered until the connection returns,
+        // whereas the sustained floor clears on its own within a couple of cycles.
         string hold = DescribeRecoveryHold(s);
         if (hold.Length > 0)
         {
@@ -347,8 +350,23 @@ public partial class StatusForm : Form
             return;
         }
 
-        // The threshold needs no check of its own here - the guard at the top of this method has
-        // already returned for the only case that can produce a zero.
+        if (DescribeSustainedHold(s) is string sustained)
+        {
+            SetColor(lblAutoRecoveryValue, sustained, WarnColor);
+            return;
+        }
+
+        // Past the threshold with neither hold in force, recovery runs on the next failed cycle.
+        // Reported as due rather than as a count: "6 of 3 failed cycles" reads as a counter still
+        // climbing toward a target it passed three cycles ago, which looks like a defect even when
+        // nothing is wrong. The threshold itself needs no zero check - the guard at the top of this
+        // method has already returned for the only case that can produce one.
+        if (s.RecoveryFailedCycles >= s.RecoveryTriggerCycles)
+        {
+            SetColor(lblAutoRecoveryValue, "Recovery due", WarnColor);
+            return;
+        }
+
         if (s.RecoveryFailedCycles > 0)
         {
             SetColor(lblAutoRecoveryValue,
@@ -362,21 +380,38 @@ public partial class StatusForm : Form
 
     // "Holding - no internet connection, next attempt in ~N min" while the offline rate limiter is
     // waiting, or an empty string otherwise, which is what tells PopulateAutoRecovery to fall through
-    // to the failure streak. Counted down from the absolute deadline the cycle wrote, so it stays
-    // correct however long that cycle took; the panel's one-second repaint keeps it moving. Rounded
-    // up to the minute above 60s: the exact second is noise for a wait measured in minutes, and
-    // "in ~1 min" reads better than "in 61s".
+    // to the other hold and then the failure streak.
     private static string DescribeRecoveryHold(StatusSnapshot s)
     {
         if (s.RecoveryHoldUntil is not DateTimeOffset until) return string.Empty;
+        return DescribeCountdown(until) is string when
+            ? $"Holding - no internet connection, next attempt in {when}"
+            : "Attempt due";
+    }
 
+    // "Holding - waiting for failures to persist, next attempt in ~48s" while the sustained-failure
+    // floor is waiting, or null when it is not. Its own line rather than a shared "holding" message,
+    // because the two holds mean different things to a user: this one clears by itself in a cycle or
+    // two, while the connectivity hold lasts as long as the outage does.
+    private static string? DescribeSustainedHold(StatusSnapshot s)
+    {
+        if (s.RecoverySustainedUntil is not DateTimeOffset until) return null;
+        return DescribeCountdown(until) is string when
+            ? $"Holding - waiting for failures to persist, next attempt in {when}"
+            : "Recovery due";
+    }
+
+    // Time left until an absolute deadline, or null once it has passed. Counted down from the instant
+    // the cycle wrote, so it stays correct however long that cycle took; the panel's one-second
+    // repaint keeps it moving. Rounded up to the minute above 60s: the exact second is noise for a
+    // wait measured in minutes, and "in ~1 min" reads better than "in 61s".
+    private static string? DescribeCountdown(DateTimeOffset until)
+    {
         TimeSpan remaining = until - DateTimeOffset.Now;
-        if (remaining <= TimeSpan.Zero) return "Attempt due";
-
-        string when = remaining.TotalSeconds < 60
+        if (remaining <= TimeSpan.Zero) return null;
+        return remaining.TotalSeconds < 60
             ? $"{(int)Math.Ceiling(remaining.TotalSeconds)}s"
             : $"~{(int)Math.Ceiling(remaining.TotalMinutes)} min";
-        return $"Holding - no internet connection, next attempt in {when}";
     }
 
     private void PopulateForwardedPort(StatusSnapshot s)

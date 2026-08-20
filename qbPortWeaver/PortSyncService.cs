@@ -178,6 +178,14 @@ public sealed class PortSyncService
     // per window instead of once per re-evaluated cycle.
     private bool _recoveryHoldLogged;
 
+    // When the sustained-failure floor will clear, or null when it is holding nothing back. Published
+    // for the Status panel: this is the second of the two independent holds, and the one that fires
+    // during ordinary fast-cycling failure - the offline limiter needs a real outage as well. Set
+    // where the gate is evaluated, because that is the only place _failureStreakStarted and the
+    // configured cadence are both in scope. Absolute rather than remaining, for the same reason as
+    // RecoveryHoldUntil: it is read a cycle later than it is computed.
+    private DateTimeOffset? _recoverySustainedUntil;
+
     // Snapshot of _recoveryDispatched taken at cycle start, so a recovery dispatched mid-cycle
     // (port-closed trigger fires after the port update step) is never consumed by the same
     // cycle that dispatched it. Serialised by MainForm._updateSemaphore.
@@ -267,6 +275,11 @@ public sealed class PortSyncService
         public const string RecoveryEnabled = "recoveryEnabled";
         public const string RecoveryFailedCycles = "recoveryFailedCycles";
         public const string RecoveryTriggerCycles = "recoveryTriggerCycles";
+        // When the sustained-failure floor clears, while it is holding recovery back; null otherwise.
+        // A separate key from RecoveryHoldUntil because the two holds have different causes and the
+        // panel names the cause - collapsing them would make the row say "no internet connection"
+        // during an ordinary blip.
+        public const string RecoverySustainedUntil = "recoverySustainedUntil";
 
         // Values for the Status key live in the public SyncStatusValues (shared with the Status panel).
     }
@@ -301,7 +314,8 @@ public sealed class PortSyncService
             [StatusKeys.RecoveryHoldUntil] = null,
             [StatusKeys.RecoveryEnabled] = false,
             [StatusKeys.RecoveryFailedCycles] = 0,
-            [StatusKeys.RecoveryTriggerCycles] = 0
+            [StatusKeys.RecoveryTriggerCycles] = 0,
+            [StatusKeys.RecoverySustainedUntil] = null
         };
 
         try
@@ -324,6 +338,7 @@ public sealed class PortSyncService
                 // Read here rather than mid-cycle: the streak is incremented by the failure paths
                 // inside RunCoreAsync, so only the finally sees this cycle's final count.
                 status[StatusKeys.RecoveryFailedCycles] = _consecutiveFailedCycles;
+                status[StatusKeys.RecoverySustainedUntil] = _recoverySustainedUntil;
                 StatusManager.Write(status);
                 string? outcome = status[StatusKeys.Status] as string;
                 LogCycleOutcome(outcome);
@@ -1456,7 +1471,11 @@ public sealed class PortSyncService
     // re-stamped on the next streak's first failure (see RegisterFailureAndTryRecoveryAsync),
     // and the time gate in TriggerRecoveryIfDueAsync only reads it while the counter is non-zero,
     // so a stale value can never be observed.
-    private void ResetFailureStreak() => _consecutiveFailedCycles = 0;
+    private void ResetFailureStreak()
+    {
+        _consecutiveFailedCycles = 0;
+        _recoverySustainedUntil = null;   // the floor is measured from a streak that no longer exists
+    }
 
     // Triggers auto-recovery if enabled and both gates are cleared: the failure cycle threshold
     // AND enough monotonic time has elapsed since the streak began. The time gate (derived from
@@ -1479,6 +1498,7 @@ public sealed class PortSyncService
         TimeSpan elapsed = _uptime.Elapsed - _failureStreakStarted;
         if (elapsed < minSustainedFailure)
         {
+            _recoverySustainedUntil = DateTimeOffset.Now.Add(minSustainedFailure - elapsed);
             LogManager.Instance.LogMessage(
                 $"Holding recovery - failures started only {elapsed.TotalSeconds:F0}s ago " +
                 $"(recovery waits until {minSustainedFailure.TotalSeconds:F0}s to ignore brief network blips)",
@@ -1486,6 +1506,7 @@ public sealed class PortSyncService
             return;
         }
 
+        _recoverySustainedUntil = null;   // floor cleared: it is no longer holding anything back
         int count = _consecutiveFailedCycles;
 
         if (recoveryTarget is null)

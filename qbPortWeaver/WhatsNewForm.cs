@@ -12,9 +12,10 @@ public partial class WhatsNewForm : Form
         "New in 2.6.6\n\n" +
         "See what auto-recovery is doing\n" +
         "The Status window has a new Auto-recovery line. It counts the failed cycles building up " +
-        "toward a recovery attempt, and if your connection itself is down it shows when the next " +
-        "attempt is due - qbPortWeaver spaces those out instead of retrying constantly, so the " +
-        "wait reads as deliberate rather than the app having given up.\n\n" +
+        "toward a recovery attempt, and when something is holding that attempt back it says what " +
+        "and for how long - whether it is waiting for the failures to persist, so a brief blip does " +
+        "not force a restart, or waiting because your connection itself is down. A pause now reads " +
+        "as deliberate rather than the app having given up.\n\n" +
         "Narrow the log to a time range\n" +
         "The Log Viewer has a new time filter beside the subsystem and file pickers: show everything, " +
         "or just the last 15 minutes, hour or 24 hours, or a start and end time you pick " +

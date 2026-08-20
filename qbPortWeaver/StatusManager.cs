@@ -45,6 +45,10 @@ public sealed record StatusSnapshot
     [JsonPropertyName("recoveryFailedCycles")] public int RecoveryFailedCycles { get; init; }
     /// <summary>Consecutive failed cycles required before auto-recovery triggers.</summary>
     [JsonPropertyName("recoveryTriggerCycles")] public int RecoveryTriggerCycles { get; init; }
+    /// <summary>When the sustained-failure floor clears, while it is holding recovery back; null
+    /// otherwise. Distinct from <see cref="RecoveryHoldUntil"/>: that one waits on connectivity,
+    /// this one waits for the failures to have persisted long enough to rule out a brief blip.</summary>
+    [JsonPropertyName("recoverySustainedUntil")] public DateTimeOffset? RecoverySustainedUntil { get; init; }
 }
 
 /// <summary>

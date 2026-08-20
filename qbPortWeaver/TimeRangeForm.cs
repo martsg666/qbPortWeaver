@@ -147,6 +147,9 @@ internal sealed class TimeRangeForm : Form
     /// </summary>
     private static MaskedTextBox CreateField(DateTime value) => new()
     {
+        // Mask must be assigned before Text: an incoming Text is filtered against whatever mask is
+        // set at the time, so the reverse order would filter the timestamp against no mask at all.
+        // Keep these two in this order if properties are ever added or reordered here.
         Mask = TimestampMask,
         Text = value.ToString(LoggingConstants.DateFormat, System.Globalization.CultureInfo.InvariantCulture),
         BackColor = SystemColors.Window,        // input surface, like every text box and combo in the app

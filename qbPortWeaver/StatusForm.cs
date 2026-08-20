@@ -402,16 +402,14 @@ public partial class StatusForm : Form
     }
 
     // Time left until an absolute deadline, or null once it has passed. Counted down from the instant
-    // the cycle wrote, so it stays correct however long that cycle took; the panel's one-second
-    // repaint keeps it moving. Rounded up to the minute above 60s: the exact second is noise for a
-    // wait measured in minutes, and "in ~1 min" reads better than "in 61s".
+    // the cycle wrote, so it stays correct however long that cycle took; the panel's one-second repaint
+    // keeps it moving. Formatted through FormatDuration and prefixed "~" exactly like the Next sync
+    // countdown, so the two read alike - a second formatter here rounded 90s up to "~2 min", which both
+    // overstated the wait and disagreed with every other duration on the panel.
     private static string? DescribeCountdown(DateTimeOffset until)
     {
         TimeSpan remaining = until - DateTimeOffset.Now;
-        if (remaining <= TimeSpan.Zero) return null;
-        return remaining.TotalSeconds < 60
-            ? $"{(int)Math.Ceiling(remaining.TotalSeconds)}s"
-            : $"~{(int)Math.Ceiling(remaining.TotalMinutes)} min";
+        return remaining > TimeSpan.Zero ? $"~{FormatDuration(remaining)}" : null;
     }
 
     private void PopulateForwardedPort(StatusSnapshot s)

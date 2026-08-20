@@ -323,6 +323,17 @@ public partial class StatusForm : Form
     // the ordinary failure - a streak building toward the threshold - which the VPN line cannot show.
     private void PopulateAutoRecovery(StatusSnapshot s, bool disabled)
     {
+        // A threshold of 0 is not a configurable value (ReadConfig clamps it to at least 1), so it can
+        // only mean no cycle has published one yet - a status file written by a version before these
+        // keys existed, or a cycle that failed before reading config. Reporting "Disabled" on that
+        // would be a confident claim about a setting that was never read, and "Disabled" is exactly
+        // what a user opens this row to rule out.
+        if (s.RecoveryTriggerCycles == 0)
+        {
+            SetNeutral(lblAutoRecoveryValue, "-");
+            return;
+        }
+
         if (disabled || !s.RecoveryEnabled)
         {
             SetNeutral(lblAutoRecoveryValue, "Disabled");
@@ -336,8 +347,9 @@ public partial class StatusForm : Form
             return;
         }
 
-        // Threshold can be 0 only before the first cycle has published a config-derived snapshot.
-        if (s.RecoveryFailedCycles > 0 && s.RecoveryTriggerCycles > 0)
+        // The threshold needs no check of its own here - the guard at the top of this method has
+        // already returned for the only case that can produce a zero.
+        if (s.RecoveryFailedCycles > 0)
         {
             SetColor(lblAutoRecoveryValue,
                 $"{s.RecoveryFailedCycles} of {s.RecoveryTriggerCycles} failed " +

@@ -414,7 +414,7 @@ public partial class LogViewerForm : Form
     // Formatted from LoggingConstants.DateFormat rather than a literal, so the tooltip is guaranteed
     // to echo the range in the same shape the dialog's fields accept.
     private static string FormatTimestamp(DateTime value) =>
-        value.ToString(LoggingConstants.DateFormat, System.Globalization.CultureInfo.InvariantCulture);
+        value.ToString(LoggingConstants.DateFormat, LoggingConstants.DateCulture);
 
     // The window the current selection admits: a preset ending now, an explicit custom span, or no
     // bounds at all for "All time". Computed per rebuild rather than cached, because a preset window
@@ -961,7 +961,7 @@ public partial class LogViewerForm : Form
     private static DateTime? TryReadTimestamp(string text) =>
         text.Length >= LoggingConstants.DateFormat.Length &&
         DateTime.TryParseExact(text.AsSpan(0, LoggingConstants.DateFormat.Length), LoggingConstants.DateFormat,
-            System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out DateTime parsed)
+            LoggingConstants.DateCulture, System.Globalization.DateTimeStyles.None, out DateTime parsed)
             ? parsed
             : null;
 

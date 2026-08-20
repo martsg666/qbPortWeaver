@@ -162,9 +162,9 @@ internal sealed class TimeRangeForm : Form
         // through FormatProvider, which defaults to the current culture. Left alone, a locale that
         // separates time with '.' would show and return "12.34.56", which TryReadField's invariant parse
         // rejects - the dialog would refuse its own prefilled value with a message no input could satisfy.
-        Culture = System.Globalization.CultureInfo.InvariantCulture,
+        Culture = LoggingConstants.DateCulture,
         Mask = TimestampMask,
-        Text = value.ToString(LoggingConstants.DateFormat, System.Globalization.CultureInfo.InvariantCulture),
+        Text = value.ToString(LoggingConstants.DateFormat, LoggingConstants.DateCulture),
         BackColor = SystemColors.Window,        // input surface, like every text box and combo in the app
         ForeColor = SystemColors.WindowText,
         Width = 170,                // floor only: the anchor below stretches the field past this
@@ -184,7 +184,7 @@ internal sealed class TimeRangeForm : Form
             e.Cancel = true;
             ThemedMessageBox.Show(
                 $"Enter both times as {LoggingConstants.DateFormat}, for example " +
-                $"{DateTime.Now.ToString(LoggingConstants.DateFormat, System.Globalization.CultureInfo.InvariantCulture)}.",
+                $"{DateTime.Now.ToString(LoggingConstants.DateFormat, LoggingConstants.DateCulture)}.",
                 $"{AppIdentity.AppName} | Custom Time Range",
                 MessageBoxButtons.OK, MessageBoxIcon.Warning);
         }
@@ -197,8 +197,7 @@ internal sealed class TimeRangeForm : Form
     // culture-sensitive parse could read the same digits as a different date on some machines.
     private static bool TryReadField(MaskedTextBox field, out DateTime value) =>
         DateTime.TryParseExact(field.Text, LoggingConstants.DateFormat,
-            System.Globalization.CultureInfo.InvariantCulture,
-            System.Globalization.DateTimeStyles.None, out value);
+            LoggingConstants.DateCulture, System.Globalization.DateTimeStyles.None, out value);
 
     /// <summary>Ensures the returned window is ordered, so a user who fills the fields in the other
     /// order still gets the range they meant rather than one that matches nothing.</summary>

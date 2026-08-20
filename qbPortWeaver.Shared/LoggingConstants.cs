@@ -21,6 +21,11 @@ public static class LoggingConstants
     /// log format that differs per machine, and one the Log Viewer's time filter cannot parse.</para></summary>
     public const string DateFormat = "yyyy-MM-dd HH:mm:ss";
 
+    /// <summary>The culture <see cref="DateFormat"/> must always be rendered and parsed with. Paired
+    /// with the format here so the two cannot be used apart: every writer and reader picking both up
+    /// from the same place is what stops one side drifting to the current culture.</summary>
+    public static System.Globalization.CultureInfo DateCulture => System.Globalization.CultureInfo.InvariantCulture;
+
     // Pre-padded level labels for log entry alignment. Every label is exactly 5 chars wide
     // so the level column has a fixed width; INFO and WARN have a trailing space, ERROR and
     // DEBUG fill the width naturally.
@@ -36,5 +41,5 @@ public static class LoggingConstants
     /// (helper service) so the on-disk format cannot drift.
     /// </summary>
     public static string FormatLogEntry(System.DateTime timestamp, string levelLabel, string subsystem, string message) =>
-        $"{timestamp.ToString(DateFormat, System.Globalization.CultureInfo.InvariantCulture)} | {levelLabel} | {subsystem.PadRight(SubsystemMaxLength)} | {message}{System.Environment.NewLine}";
+        $"{timestamp.ToString(DateFormat, DateCulture)} | {levelLabel} | {subsystem.PadRight(SubsystemMaxLength)} | {message}{System.Environment.NewLine}";
 }

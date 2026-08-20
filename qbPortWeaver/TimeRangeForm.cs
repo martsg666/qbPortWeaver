@@ -89,14 +89,15 @@ internal sealed class TimeRangeForm : Form
         Controls.Add(root);
     }
 
-    // Vertical margin on each field; doubled between the two rows, so this is half the row gap.
-    private const int RowSpacing = 4;
+    // Vertical margin on each field; applied to both neighbours, so this is half the row gap. Set to
+    // give a 6px gap between the two 23px rows, matching the 29px row pitch the designer-built forms
+    // use for stacked labelled rows (StatusForm's Connection Status group, and Settings).
+    private const int RowSpacing = 3;
 
-    // Clear space kept between the end of the caption text and the close button. Generous on purpose:
-    // SystemInformation reports the metrics of the classic caption, which understates what Windows 11
-    // actually reserves, so a tight value leaves the title crowding the close button even though the
-    // arithmetic says it fits.
-    private const int CaptionPadding = 48;
+    // Clear space kept between the end of the caption text and the close button. Kept modest: this is
+    // added to a MinimumSize that the fields then stretch to fill, so every pixel here widens the whole
+    // dialog past what its contents need and reads as oversized margins next to the other dialogs.
+    private const int CaptionPadding = 24;
 
     /// <summary>
     /// Widens the dialog when its caption is longer than its contents, which are only two short

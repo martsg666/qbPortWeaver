@@ -82,6 +82,8 @@ internal sealed class TimeRangeForm : Form
         // auto-sized column would keep the content block at its natural width and leave the surplus
         // as dead space on the right, pulling the fields and buttons away from the true right edge.
         root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));    // fields
+        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));    // buttons
         root.Controls.Add(grid, 0, 0);
         root.Controls.Add(DialogLayout.ButtonRow(ok, cancel), 0, 1);
         Controls.Add(root);
@@ -90,8 +92,11 @@ internal sealed class TimeRangeForm : Form
     // Vertical margin on each field; doubled between the two rows, so this is half the row gap.
     private const int RowSpacing = 4;
 
-    // Gap kept between the end of the caption text and the close button.
-    private const int CaptionPadding = 24;
+    // Clear space kept between the end of the caption text and the close button. Generous on purpose:
+    // SystemInformation reports the metrics of the classic caption, which understates what Windows 11
+    // actually reserves, so a tight value leaves the title crowding the close button even though the
+    // arithmetic says it fits.
+    private const int CaptionPadding = 48;
 
     /// <summary>
     /// Widens the dialog when its caption is longer than its contents, which are only two short

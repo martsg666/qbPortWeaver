@@ -1,4 +1,4 @@
-namespace qbPortWeaver;
+﻿namespace qbPortWeaver;
 
 /// <summary>
 /// Read-only panel showing the live state of the port-sync chain (VPN, forwarded port, client,
@@ -101,10 +101,10 @@ public partial class StatusForm : Form
         if (_lastSnapshot is null) return;
         PopulateLastSync(_lastSnapshot);
         PopulateNextSync(_lastSnapshot);
-        // VPN status is otherwise cycle-driven, but it now carries the recovery-hold countdown, which
+        // Auto-recovery is otherwise cycle-driven, but it carries the recovery-hold countdown, which
         // drifts with the wall clock like the values above. Without this the countdown would sit frozen
         // for a whole cycle - visibly wrong once it is counting in seconds rather than minutes.
-        PopulateVpnStatus(_lastSnapshot, IsPortSyncDisabled(_lastSnapshot));
+        PopulateAutoRecovery(_lastSnapshot, IsPortSyncDisabled(_lastSnapshot));
         // Advance the Reachable age, but never while a manual Test Port is in flight (button
         // disabled) - SetReachableResult owns the label until the result arrives.
         if (btnTestPort.Enabled)
@@ -262,6 +262,7 @@ public partial class StatusForm : Form
 
         PopulateVpnProvider(s, disabled);
         PopulateVpnStatus(s, disabled);
+        PopulateAutoRecovery(s, disabled);
         PopulateForwardedPort(s);
         PopulateClient(s);
         PopulateListeningPort(s);
@@ -312,11 +313,39 @@ public partial class StatusForm : Form
         else if (s.VpnConnected)
             SetColor(lblVpnStatusValue, "Connected", OkColor);
         else
-            // The hold is appended here rather than given a row of its own because this is the line a
-            // worried user is already reading: "Not connected" alone looks like the app is doing
-            // nothing, when auto-recovery is in fact deliberately waiting before its next attempt.
-            // Only shown while a hold is actually in force, so the common case reads exactly as before.
-            SetColor(lblVpnStatusValue, "Not connected" + DescribeRecoveryHold(s), WarnColor);
+            SetColor(lblVpnStatusValue, "Not connected", WarnColor);
+    }
+
+    // Recovery state lives on its own row rather than riding the VPN status line. The hold was
+    // originally appended to "Not connected", which hid it in the case it most needed to explain:
+    // VpnConnected is set before the port fetch, so an upstream outage with the tunnel still up reads
+    // as a green "Connected" and suppressed the hold entirely. A labelled row is also reachable during
+    // the ordinary failure - a streak building toward the threshold - which the VPN line cannot show.
+    private void PopulateAutoRecovery(StatusSnapshot s, bool disabled)
+    {
+        if (disabled || !s.RecoveryEnabled)
+        {
+            SetNeutral(lblAutoRecoveryValue, "Disabled");
+            return;
+        }
+
+        string hold = DescribeRecoveryHold(s);
+        if (hold.Length > 0)
+        {
+            SetColor(lblAutoRecoveryValue, hold, WarnColor);
+            return;
+        }
+
+        // Threshold can be 0 only before the first cycle has published a config-derived snapshot.
+        if (s.RecoveryFailedCycles > 0 && s.RecoveryTriggerCycles > 0)
+        {
+            SetColor(lblAutoRecoveryValue,
+                $"{s.RecoveryFailedCycles} of {s.RecoveryTriggerCycles} failed " +
+                $"{AppConstants.PluralizeNoun(s.RecoveryTriggerCycles, "cycle")}", WarnColor);
+            return;
+        }
+
+        SetNeutral(lblAutoRecoveryValue, "Idle");
     }
 
     // " (recovery holding, next attempt in ~N min)" while the offline rate limiter is waiting, or an
@@ -328,12 +357,12 @@ public partial class StatusForm : Form
         if (s.RecoveryHoldUntil is not DateTimeOffset until) return string.Empty;
 
         TimeSpan remaining = until - DateTimeOffset.Now;
-        if (remaining <= TimeSpan.Zero) return " (recovery due)";
+        if (remaining <= TimeSpan.Zero) return "Attempt due";
 
         string when = remaining.TotalSeconds < 60
             ? $"{(int)Math.Ceiling(remaining.TotalSeconds)}s"
             : $"~{(int)Math.Ceiling(remaining.TotalMinutes)} min";
-        return $" (recovery holding, next attempt in {when})";
+        return $"Holding - no internet connection, next attempt in {when}";
     }
 
     private void PopulateForwardedPort(StatusSnapshot s)

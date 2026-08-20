@@ -39,6 +39,12 @@ public sealed record StatusSnapshot
     /// could not be confirmed. Null whenever nothing is being held. Absolute rather than a duration so
     /// it does not have to be read against the cycle timestamp, which is stamped at a different moment.</summary>
     [JsonPropertyName("recoveryHoldUntil")] public DateTimeOffset? RecoveryHoldUntil { get; init; }
+    /// <summary>Whether auto-recovery is switched on.</summary>
+    [JsonPropertyName("recoveryEnabled")] public bool RecoveryEnabled { get; init; }
+    /// <summary>Consecutive failed cycles accumulated so far, 0 when the last cycle succeeded.</summary>
+    [JsonPropertyName("recoveryFailedCycles")] public int RecoveryFailedCycles { get; init; }
+    /// <summary>Consecutive failed cycles required before auto-recovery triggers.</summary>
+    [JsonPropertyName("recoveryTriggerCycles")] public int RecoveryTriggerCycles { get; init; }
 }
 
 /// <summary>

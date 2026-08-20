@@ -10,11 +10,11 @@ public partial class WhatsNewForm : Form
 
     private const string ReleaseFeaturesText =
         "New in 2.6.6\n\n" +
-        "See when recovery is waiting\n" +
-        "If your VPN drops and the connection itself is down, qbPortWeaver spaces out its recovery " +
-        "attempts instead of retrying constantly. The Status window now says so: alongside \"Not " +
-        "connected\" it shows when the next attempt is due, so a pause reads as a deliberate " +
-        "wait rather than the app having given up.\n\n" +
+        "See what auto-recovery is doing\n" +
+        "The Status window has a new Auto-recovery line. It counts the failed cycles building up " +
+        "toward a recovery attempt, and if your connection itself is down it shows when the next " +
+        "attempt is due - qbPortWeaver spaces those out instead of retrying constantly, so the " +
+        "wait reads as deliberate rather than the app having given up.\n\n" +
         "Narrow the log to a time range\n" +
         "The Log Viewer has a new time filter beside the subsystem and file pickers: show everything, " +
         "or just the last 15 minutes, hour or 24 hours, or a start and end time you pick " +

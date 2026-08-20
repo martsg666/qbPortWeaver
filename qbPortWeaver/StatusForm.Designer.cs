@@ -1,4 +1,4 @@
-namespace qbPortWeaver;
+﻿namespace qbPortWeaver;
 
 partial class StatusForm
 {
@@ -17,6 +17,8 @@ partial class StatusForm
     {
         components = new System.ComponentModel.Container();
         grpStatus = new GroupBox();
+        lblAutoRecoveryLabel = new Label();
+        lblAutoRecoveryValue = new Label();
         lblVpnProviderLabel = new Label();
         lblVpnProviderValue = new Label();
         lblVpnStatusLabel = new Label();
@@ -65,6 +67,8 @@ partial class StatusForm
         grpStats.SuspendLayout();
         SuspendLayout();
         // ── grpStatus ─────────────────────────────────────────────────
+        grpStatus.Controls.Add(lblAutoRecoveryLabel);
+        grpStatus.Controls.Add(lblAutoRecoveryValue);
         grpStatus.Controls.Add(lblVpnProviderLabel);
         grpStatus.Controls.Add(lblVpnProviderValue);
         grpStatus.Controls.Add(lblVpnStatusLabel);
@@ -83,7 +87,7 @@ partial class StatusForm
         grpStatus.Controls.Add(lblNextSyncValue);
         grpStatus.Location = new Point(8, 8);
         grpStatus.Name = "grpStatus";
-        grpStatus.Size = new Size(544, 265);
+        grpStatus.Size = new Size(544, 294);
         grpStatus.TabIndex = 0;
         grpStatus.TabStop = false;
         grpStatus.Text = "Connection Status";
@@ -186,9 +190,21 @@ partial class StatusForm
         lblNextSyncValue.TabIndex = 15;
         lblNextSyncValue.Text = "-";
         lblNextSyncValue.TextAlign = ContentAlignment.MiddleLeft;
+        lblAutoRecoveryLabel.Location = new Point(12, 256);
+        lblAutoRecoveryLabel.Name = "lblAutoRecoveryLabel";
+        lblAutoRecoveryLabel.Size = new Size(130, 23);
+        lblAutoRecoveryLabel.TabIndex = 16;
+        lblAutoRecoveryLabel.Text = "Auto-recovery:";
+        lblAutoRecoveryLabel.TextAlign = ContentAlignment.MiddleLeft;
+        lblAutoRecoveryValue.Location = new Point(148, 256);
+        lblAutoRecoveryValue.Name = "lblAutoRecoveryValue";
+        lblAutoRecoveryValue.Size = new Size(384, 23);
+        lblAutoRecoveryValue.TabIndex = 17;
+        lblAutoRecoveryValue.Text = "-";
+        lblAutoRecoveryValue.TextAlign = ContentAlignment.MiddleLeft;
         // ── grpHistory (recent port changes and recovery events; populated in PopulateHistory) ──
         grpHistory.Controls.Add(lvHistory);
-        grpHistory.Location = new Point(8, 279);
+        grpHistory.Location = new Point(8, 308);
         grpHistory.Name = "grpHistory";
         grpHistory.Size = new Size(544, 156);
         grpHistory.TabIndex = 1;
@@ -232,7 +248,7 @@ partial class StatusForm
         grpStats.Controls.Add(lblRecoveriesValue);
         grpStats.Controls.Add(lblMonitoringSinceLabel);
         grpStats.Controls.Add(lblMonitoringSinceValue);
-        grpStats.Location = new Point(8, 441);
+        grpStats.Location = new Point(8, 470);
         grpStats.Name = "grpStats";
         grpStats.Size = new Size(544, 120);
         grpStats.TabIndex = 2;
@@ -360,7 +376,7 @@ partial class StatusForm
         AutoScaleDimensions = new SizeF(7F, 15F);
         AutoScaleMode = AutoScaleMode.Font;
         CancelButton = btnClose;
-        ClientSize = new Size(560, 629);
+        ClientSize = new Size(560, 658);
         Controls.Add(grpStatus);
         Controls.Add(grpHistory);
         Controls.Add(grpStats);
@@ -422,6 +438,8 @@ partial class StatusForm
     private Label    lblLastSyncValue;
     private Label    lblNextSyncLabel;
     private Label    lblNextSyncValue;
+    private Label    lblAutoRecoveryLabel;
+    private Label    lblAutoRecoveryValue;
     private Button   btnSyncNow;
     private Button   btnPauseResume;
     private Button   btnTestPort;

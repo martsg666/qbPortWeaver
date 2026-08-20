@@ -260,6 +260,13 @@ public sealed class PortSyncService
         // duration: it is computed at the end of the cycle while Timestamp is stamped at the start, so
         // a duration would be read against the wrong origin and run out early by the cycle's length.
         public const string RecoveryHoldUntil = "recoveryHoldUntil";
+        // Whether auto-recovery is switched on, how many consecutive failed cycles have accumulated,
+        // and how many are needed to trigger. Together these let the Status panel show recovery
+        // approaching, not just recovery already held back - the failure streak is the state a user
+        // sees during ordinary VPN trouble, whereas a hold needs an outage as well.
+        public const string RecoveryEnabled = "recoveryEnabled";
+        public const string RecoveryFailedCycles = "recoveryFailedCycles";
+        public const string RecoveryTriggerCycles = "recoveryTriggerCycles";
 
         // Values for the Status key live in the public SyncStatusValues (shared with the Status panel).
     }
@@ -291,7 +298,10 @@ public sealed class PortSyncService
             [StatusKeys.UpdateIntervalSeconds] = AppConstants.DefaultUpdateIntervalSeconds,
             [StatusKeys.Status] = SyncStatusValues.Error,
             [StatusKeys.Message] = null,
-            [StatusKeys.RecoveryHoldUntil] = null
+            [StatusKeys.RecoveryHoldUntil] = null,
+            [StatusKeys.RecoveryEnabled] = false,
+            [StatusKeys.RecoveryFailedCycles] = 0,
+            [StatusKeys.RecoveryTriggerCycles] = 0
         };
 
         try
@@ -311,6 +321,9 @@ public sealed class PortSyncService
             if (!cancellationToken.IsCancellationRequested)
             {
                 status[StatusKeys.RecoveryHoldUntil] = GetRecoveryHoldUntil();
+                // Read here rather than mid-cycle: the streak is incremented by the failure paths
+                // inside RunCoreAsync, so only the finally sees this cycle's final count.
+                status[StatusKeys.RecoveryFailedCycles] = _consecutiveFailedCycles;
                 StatusManager.Write(status);
                 string? outcome = status[StatusKeys.Status] as string;
                 LogCycleOutcome(outcome);
@@ -405,6 +418,8 @@ public sealed class PortSyncService
         LogConfigDebug(cfg, activeSection);
         status[StatusKeys.VpnProvider] = cfg.VpnProvider;
         status[StatusKeys.UpdateIntervalSeconds] = cfg.UpdateInterval;
+        status[StatusKeys.RecoveryEnabled] = cfg.VpnAutoRecoveryEnabled;
+        status[StatusKeys.RecoveryTriggerCycles] = cfg.VpnAutoRecoveryTriggerCycles;
 
         // If we were holding for the VPN during startup and the grace window has now elapsed (or the
         // setting was turned off), note the transition once so the log explains why quiet "waiting"

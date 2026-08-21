@@ -417,8 +417,16 @@ public partial class LogViewerForm : Form
         value.ToString(LoggingConstants.DateFormat, LoggingConstants.DateCulture);
 
     // The window the current selection admits: a preset ending now, an explicit custom span, or no
-    // bounds at all for "All time". Computed per rebuild rather than cached, because a preset window
-    // slides with the wall clock and a cached cutoff would quietly go stale on a live tail.
+    // bounds at all for "All time". Computed per call rather than cached, so the cutoff a preset
+    // applies to newly arriving lines follows the wall clock.
+    //
+    // A preset does NOT retroactively expire rows already on screen: AppendNewLines only ever tests
+    // the lines it just read, so "Last 15 min" means "everything from 15 minutes before you chose it,
+    // onward" rather than a window that slides out from under what is displayed. That is deliberate.
+    // Expiring rows would mean deleting lines while the user is reading them, and the preset's job is
+    // to get you to the recent entries - which it does. The live tail everyone watches is always
+    // inside the window anyway. The custom range is unaffected either way: its bounds are fixed, so a
+    // row that qualified still qualifies.
     private (DateTime? From, DateTime? To) GetTimeWindow()
     {
         int index = cboTimeRange.SelectedIndex;

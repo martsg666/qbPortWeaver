@@ -202,6 +202,11 @@ partial class StatusForm
         lblAutoRecoveryValue.TabIndex = 17;
         lblAutoRecoveryValue.Text = "-";
         lblAutoRecoveryValue.TextAlign = ContentAlignment.MiddleLeft;
+        // AutoEllipsis: the longest value this row produces ("Holding - waiting for failures to
+        // persist, next attempt in ~48s") outgrows 384px, and it is the message the row exists for.
+        // PopulateAutoRecovery also sets a tooltip carrying the untruncated text, because the part
+        // that gets cut is the countdown at the end.
+        lblAutoRecoveryValue.AutoEllipsis = true;
         // ── grpHistory (recent port changes and recovery events; populated in PopulateHistory) ──
         grpHistory.Controls.Add(lvHistory);
         grpHistory.Location = new Point(8, 308);

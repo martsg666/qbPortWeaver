@@ -323,59 +323,52 @@ public partial class StatusForm : Form
     // the ordinary failure - a streak building toward the threshold - which the VPN line cannot show.
     private void PopulateAutoRecovery(StatusSnapshot s, bool disabled)
     {
+        (string text, bool warn) = DescribeAutoRecovery(s, disabled);
+        if (warn) SetColor(lblAutoRecoveryValue, text, WarnColor);
+        else SetNeutral(lblAutoRecoveryValue, text);
+
+        // The label ellipsises rather than clipping (see the designer), so the tooltip carries the
+        // untruncated text. The part that gets cut is the countdown at the end of the longest value,
+        // which is the half a user is reading the row for.
+        toolTip.SetToolTip(lblAutoRecoveryValue, text);
+    }
+
+    // What the Auto-recovery row says, and whether it warrants the warning accent. Split from the
+    // display above so every outcome routes through one place that also sets the tooltip - with the
+    // branches setting the label directly, a new state could easily be added without one.
+    private static (string Text, bool Warn) DescribeAutoRecovery(StatusSnapshot s, bool disabled)
+    {
         // A threshold of 0 is not a configurable value (ReadConfig clamps it to at least 1), so it can
         // only mean no cycle has published one yet - a status file written by a version before these
         // keys existed, or a cycle that failed before reading config. Reporting "Disabled" on that
         // would be a confident claim about a setting that was never read, and "Disabled" is exactly
         // what a user opens this row to rule out.
-        if (s.RecoveryTriggerCycles == 0)
-        {
-            SetNeutral(lblAutoRecoveryValue, "-");
-            return;
-        }
+        if (s.RecoveryTriggerCycles == 0) return ("-", false);
 
-        if (disabled || !s.RecoveryEnabled)
-        {
-            SetNeutral(lblAutoRecoveryValue, "Disabled");
-            return;
-        }
+        if (disabled || !s.RecoveryEnabled) return ("Disabled", false);
 
         // Both holds are reported, each naming its own cause. The offline one is checked first only
         // because it is the more serious: nothing can be recovered until the connection returns,
         // whereas the sustained floor clears on its own within a couple of cycles.
         string hold = DescribeRecoveryHold(s);
-        if (hold.Length > 0)
-        {
-            SetColor(lblAutoRecoveryValue, hold, WarnColor);
-            return;
-        }
+        if (hold.Length > 0) return (hold, true);
 
-        if (DescribeSustainedHold(s) is string sustained)
-        {
-            SetColor(lblAutoRecoveryValue, sustained, WarnColor);
-            return;
-        }
+        if (DescribeSustainedHold(s) is string sustained) return (sustained, true);
 
         // Past the threshold with neither hold in force, recovery runs on the next failed cycle.
         // Reported as due rather than as a count: "6 of 3 failed cycles" reads as a counter still
         // climbing toward a target it passed three cycles ago, which looks like a defect even when
         // nothing is wrong. The threshold itself needs no zero check - the guard at the top of this
         // method has already returned for the only case that can produce one.
-        if (s.RecoveryFailedCycles >= s.RecoveryTriggerCycles)
-        {
-            SetColor(lblAutoRecoveryValue, "Recovery due", WarnColor);
-            return;
-        }
+        if (s.RecoveryFailedCycles >= s.RecoveryTriggerCycles) return ("Recovery due", true);
 
         if (s.RecoveryFailedCycles > 0)
         {
-            SetColor(lblAutoRecoveryValue,
-                $"{s.RecoveryFailedCycles} of {s.RecoveryTriggerCycles} failed " +
-                $"{AppConstants.PluralizeNoun(s.RecoveryTriggerCycles, "cycle")}", WarnColor);
-            return;
+            return ($"{s.RecoveryFailedCycles} of {s.RecoveryTriggerCycles} failed " +
+                    $"{AppConstants.PluralizeNoun(s.RecoveryTriggerCycles, "cycle")}", true);
         }
 
-        SetNeutral(lblAutoRecoveryValue, "Idle");
+        return ("Idle", false);
     }
 
     // "Holding - no internet connection, next attempt in ~N min" while the offline rate limiter is

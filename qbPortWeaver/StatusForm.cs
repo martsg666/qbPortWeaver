@@ -336,9 +336,11 @@ public partial class StatusForm : Form
     // One phrase for "nothing is holding recovery back any more", reached from three places: either
     // hold expiring, or the streak passing the threshold. A shared constant because those three sites
     // previously spelled it two different ways ("Attempt due" and "Recovery due"), which is the drift
-    // three separate literals invite. Says what happens next rather than labelling a state: recovery
-    // runs on the next *failed* cycle, so a cycle that succeeds ends the streak and nothing restarts.
-    private const string RecoveryNextCycleText = "Recovery on the next failed cycle";
+    // three separate literals invite. Phrased as an action rather than a state ("due" read as overdue,
+    // as though a restart had been missed) and it names the trigger explicitly, because the previous
+    // wording left a reader unsure whether anything was actually going to happen. "Failed" is
+    // load-bearing: a cycle that succeeds ends the streak, and nothing restarts.
+    private const string RecoveryNextCycleText = "Will trigger on the next failed cycle";
 
     // What the Auto-recovery row says, and whether it warrants the warning accent. Split from the
     // display above so every outcome routes through one place that also sets the tooltip - with the
@@ -378,18 +380,18 @@ public partial class StatusForm : Form
         return ("Idle", false);
     }
 
-    // "Holding - no internet connection, next attempt in ~N min" while the offline rate limiter is
+    // "Holding - no internet connection, retry in ~15m" while the offline rate limiter is
     // waiting, or an empty string otherwise, which is what tells PopulateAutoRecovery to fall through
     // to the other hold and then the failure streak.
     private static string DescribeRecoveryHold(StatusSnapshot s)
     {
         if (s.RecoveryHoldUntil is not DateTimeOffset until) return string.Empty;
         return DescribeCountdown(until) is string when
-            ? $"Holding - no internet connection, next attempt in {when}"
+            ? $"Holding - no internet connection, retry in {when}"
             : RecoveryNextCycleText;
     }
 
-    // "Holding - waiting for failures to persist, next attempt in ~48s" while the sustained-failure
+    // "Holding - failures too recent, retry in ~48s" while the sustained-failure
     // floor is waiting, or null when it is not. Its own line rather than a shared "holding" message,
     // because the two holds mean different things to a user: this one clears by itself in a cycle or
     // two, while the connectivity hold lasts as long as the outage does.
@@ -397,7 +399,7 @@ public partial class StatusForm : Form
     {
         if (s.RecoverySustainedUntil is not DateTimeOffset until) return null;
         return DescribeCountdown(until) is string when
-            ? $"Holding - waiting for failures to persist, next attempt in {when}"
+            ? $"Holding - failures too recent, retry in {when}"
             : RecoveryNextCycleText;
     }
 

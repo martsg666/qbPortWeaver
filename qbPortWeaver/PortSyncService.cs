@@ -1536,7 +1536,7 @@ public sealed class PortSyncService
 
     // When the offline rate limiter will allow the next recovery attempt, or null when
     // nothing is being held back. Read once per cycle for the status file so the Status panel can say
-    // "holding, next attempt in ~N min" - without it the user sees a disconnected VPN and no sign that
+    // "Holding - no internet connection, retry in ~15m" - without it the user sees a disconnected VPN and no sign that
     // the app is deliberately waiting rather than idle, which is the whole point of the limiter.
     // Computed rather than stored: the deadline is the last attempt plus its backoff step, and both
     // are already tracked. Returns null once the wait has elapsed - at that point the next due cycle

@@ -9,6 +9,11 @@ public static class MediaManagerService
 {
     internal const int MaxSubfolderDepth = 10; // passed as EnumerationOptions.MaxRecursionDepth
 
+    // State keys for LogManager.LogStateChange - see there for why these conditions are not logged
+    // per cycle. The two configuration gates share one key so switching between them still reports.
+    private const string ImportConfigStateKey = "media.import.config";
+    private const string SourceFolderStateKeyPrefix = "media.sourcefolder:";
+
     /// <summary>
     /// Runs one media import cycle, moving or linking files into the configured library.
     /// Returns immediately if the feature is disabled, the TMDB API key is not configured,
@@ -23,7 +28,8 @@ public static class MediaManagerService
         var apiKey = RegistrySettingsManager.GetTmdbApiKey();
         if (string.IsNullOrWhiteSpace(apiKey))
         {
-            LogManager.Instance.LogMessage("TMDB API key not configured - skipping import", LogLevel.Warn, Subsystem.MediaManager);
+            LogManager.Instance.LogStateChange(ImportConfigStateKey,
+                "TMDB API key not configured - skipping import", LogLevel.Warn, Subsystem.MediaManager);
             return;
         }
 
@@ -32,7 +38,8 @@ public static class MediaManagerService
 
         if (string.IsNullOrWhiteSpace(moviesLibraryPath) && string.IsNullOrWhiteSpace(tvShowsLibraryPath))
         {
-            LogManager.Instance.LogMessage("No library paths configured - skipping import", LogLevel.Warn, Subsystem.MediaManager);
+            LogManager.Instance.LogStateChange(ImportConfigStateKey,
+                "No library paths configured - skipping import", LogLevel.Warn, Subsystem.MediaManager);
             return;
         }
 
@@ -40,6 +47,9 @@ public static class MediaManagerService
         bool createFolders = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionMedia, RegistrySettingsManager.KeyMediaCreateFolders);
         bool deleteEmptyFolders = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionMedia, RegistrySettingsManager.KeyMediaDeleteEmptyFolders);
         var importMode = ParseImportMode(RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionMedia, RegistrySettingsManager.KeyMediaImportMode));
+
+        // Past both gates, so the configuration is valid: re-arm the warning for a later break.
+        LogManager.Instance.ClearLogState(ImportConfigStateKey);
 
         var sourceFolders = GetFolders(RegistrySettingsManager.KeyMediaSourceFolders);
         var importSw = Stopwatch.StartNew();
@@ -379,9 +389,13 @@ public static class MediaManagerService
         {
             if (!MediaImporter.DirectoryExistsWithSmbRetry(f))
             {
-                LogManager.Instance.LogMessage($"Source folder not accessible: '{f}'", LogLevel.Warn, Subsystem.MediaManager);
+                // Keyed per folder: an offline share stays offline for hours, and one warning per
+                // folder per import cycle would bury everything else and pin the tray badge.
+                LogManager.Instance.LogStateChange($"{SourceFolderStateKeyPrefix}{f}",
+                    $"Source folder not accessible: '{f}'", LogLevel.Warn, Subsystem.MediaManager);
                 continue;
             }
+            LogManager.Instance.ClearLogState($"{SourceFolderStateKeyPrefix}{f}");
             validFolders.Add(f);
         }
 

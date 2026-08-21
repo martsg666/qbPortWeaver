@@ -9,6 +9,10 @@ namespace qbPortWeaver;
 internal static partial class MediaImporter
 {
     // Library index: fingerprints (size + partial SHA-256) of every file in the library folders.
+    // State key for LogManager.LogStateChange - an inaccessible library path persists for as long as
+    // the share is down, and this is re-evaluated every import cycle.
+    private const string LibraryIndexStateKey = "media.libraryindex";
+
     private const int FullRebuildIntervalCycles = 10; // force a full library index rebuild every N cycles to catch external changes (e.g. deletions in Plex)
     // Maximum concurrent fingerprint reads for both source and library fingerprinting.
     // I/O-bound: storage throughput is the constraint, not CPU count.
@@ -403,11 +407,15 @@ internal static partial class MediaImporter
             // absent and risk duplicate imports. Force a rebuild next cycle.
             if (configuredCount > 0 && libraryPaths.Length < configuredCount)
             {
-                LogManager.Instance.LogMessage("Library index build skipped: one or more configured paths not accessible - will retry next cycle", LogLevel.Warn, Subsystem.MediaManager);
+                LogManager.Instance.LogStateChange(LibraryIndexStateKey,
+                    "Library index build skipped: one or more configured paths not accessible - will retry next cycle",
+                    LogLevel.Warn, Subsystem.MediaManager);
                 _libraryBuildCycleCount = FullRebuildIntervalCycles;
                 return false;
             }
 
+            // Reached the build, so every configured path resolved: re-arm the warning above.
+            LogManager.Instance.ClearLogState(LibraryIndexStateKey);
             LogManager.Instance.LogMessage($"Building library index across {AppConstants.Pluralize(libraryPaths.Length, "folder")}", LogLevel.Info, Subsystem.MediaManager);
             LoadLibraryCache();
 

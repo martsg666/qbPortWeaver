@@ -156,6 +156,32 @@ public sealed class LogManager
         LogMessage(message, LogLevel.Debug, subsystem);
     }
 
+    // Last message written under each state key. Concurrent because the sync loop, the media import
+    // task and the UI thread can all report state.
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, string> _lastStateMessage = new();
+
+    /// <summary>
+    /// Writes <paramref name="message"/> only when it differs from the last message logged under
+    /// <paramref name="key"/>. Thread-safe.
+    /// <para>For conditions re-evaluated every cycle that stay true until the user fixes them - an
+    /// unconfigured setting, an offline network share. Logging those per cycle buries the entries that
+    /// matter and, at <see cref="LogLevel.Warn"/> or above, drives the tray warning badge up
+    /// indefinitely. Comparing the message rather than just the key means a condition that changes
+    /// (a different folder goes offline) still gets announced.</para>
+    /// <para>Call <see cref="ClearLogState"/> once the condition clears, so a later recurrence is
+    /// reported instead of being swallowed as a duplicate.</para>
+    /// </summary>
+    public void LogStateChange(string key, string message, LogLevel level, string subsystem = Subsystem.MainApp)
+    {
+        if (_lastStateMessage.TryGetValue(key, out string? previous) && previous == message) return;
+        _lastStateMessage[key] = message;
+        LogMessage(message, level, subsystem);
+    }
+
+    /// <summary>Forgets the last message logged under <paramref name="key"/> so the next
+    /// <see cref="LogStateChange"/> for it writes again. Call when the condition clears.</summary>
+    public void ClearLogState(string key) => _lastStateMessage.TryRemove(key, out _);
+
     /// <summary>Deletes all log files and starts a fresh log. Thread-safe.</summary>
     public void ClearLogs()
     {

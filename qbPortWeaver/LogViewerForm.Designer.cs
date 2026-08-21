@@ -184,7 +184,7 @@ partial class LogViewerForm
         txtSearch.Location        = new Point(752, 8);
         txtSearch.PlaceholderText = "Search…";
         txtSearch.Width           = 220; // height is auto-sized by font; vertically centered in OnLoad
-        txtSearch.TabIndex        = 8;
+        txtSearch.TabIndex        = 9;
         txtSearch.TextChanged    += txtSearch_TextChanged;
         txtSearch.KeyDown        += txtSearch_KeyDown;
         toolTip.SetToolTip(txtSearch, "Search the log (Ctrl+F)");
@@ -199,7 +199,7 @@ partial class LogViewerForm
         btnClearSearch.Size                      = new Size(16, 16);  // fine-tuned in OnLoad
         btnClearSearch.Text                      = ""; // clear glyph owner-drawn in ClearButton_Paint
         btnClearSearch.TextAlign                 = ContentAlignment.MiddleCenter;
-        btnClearSearch.TabIndex                  = 9;
+        btnClearSearch.TabIndex                  = 10;
         btnClearSearch.TabStop                   = false;
         btnClearSearch.Visible                   = false;
         btnClearSearch.Click                    += btnClearSearch_Click;
@@ -210,7 +210,7 @@ partial class LogViewerForm
         btnPrev.FlatStyle = FlatStyle.Flat;
         btnPrev.Location  = new Point(1044, 5);
         btnPrev.Size      = new Size(26, 26);
-        btnPrev.TabIndex  = 10;
+        btnPrev.TabIndex  = 11;
         btnPrev.Text      = ""; // up chevron owner-drawn in NavButton_Paint
         btnPrev.Click    += btnPrev_Click;
         toolTip.SetToolTip(btnPrev, "Previous match");
@@ -220,7 +220,7 @@ partial class LogViewerForm
         btnNext.FlatStyle = FlatStyle.Flat;
         btnNext.Location  = new Point(1070, 5);
         btnNext.Size      = new Size(26, 26);
-        btnNext.TabIndex  = 11;
+        btnNext.TabIndex  = 12;
         btnNext.Text      = ""; // down chevron owner-drawn in NavButton_Paint
         btnNext.Click    += btnNext_Click;
         toolTip.SetToolTip(btnNext, "Next match");

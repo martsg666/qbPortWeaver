@@ -1626,8 +1626,10 @@ public sealed class PortSyncService
     // Dispatches a recovery action to the helper service. Shared by the failed-cycle trigger
     // (TriggerRecoveryIfDueAsync), the port-closed trigger (MaybeTriggerPortClosedRecoveryAsync),
     // and the on-demand recovery test (TestRecoveryAsync, manualTest = true). A manual test is
-    // not counted in the session's auto-recovery statistic (the label says "Auto-recoveries")
-    // but is recorded in the history and arms the "after recovery" annotation like a real one.
+    // not counted in the session statistic, whose label reads "Auto-recoveries (session)" precisely
+    // so that exclusion is correct by construction - a test the user ran by hand is not the app
+    // recovering itself, and counting it would inflate a health figure. It is still recorded in the
+    // history and arms the "after recovery" annotation like a real one.
     private static async Task DispatchRecoveryAsync(string action, string recoveryTarget, string displayName, CancellationToken cancellationToken, bool manualTest = false, string? triggerLogMessage = null)
     {
         // Announced here rather than at the trigger sites, because only this side knows whether the

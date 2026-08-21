@@ -333,6 +333,13 @@ public partial class StatusForm : Form
         toolTip.SetToolTip(lblAutoRecoveryValue, text);
     }
 
+    // One phrase for "nothing is holding recovery back any more", reached from three places: either
+    // hold expiring, or the streak passing the threshold. A shared constant because those three sites
+    // previously spelled it two different ways ("Attempt due" and "Recovery due"), which is the drift
+    // three separate literals invite. Says what happens next rather than labelling a state: recovery
+    // runs on the next *failed* cycle, so a cycle that succeeds ends the streak and nothing restarts.
+    private const string RecoveryNextCycleText = "Recovery on the next failed cycle";
+
     // What the Auto-recovery row says, and whether it warrants the warning accent. Split from the
     // display above so every outcome routes through one place that also sets the tooltip - with the
     // branches setting the label directly, a new state could easily be added without one.
@@ -360,7 +367,7 @@ public partial class StatusForm : Form
         // climbing toward a target it passed three cycles ago, which looks like a defect even when
         // nothing is wrong. The threshold itself needs no zero check - the guard at the top of this
         // method has already returned for the only case that can produce one.
-        if (s.RecoveryFailedCycles >= s.RecoveryTriggerCycles) return ("Recovery due", true);
+        if (s.RecoveryFailedCycles >= s.RecoveryTriggerCycles) return (RecoveryNextCycleText, true);
 
         if (s.RecoveryFailedCycles > 0)
         {
@@ -379,7 +386,7 @@ public partial class StatusForm : Form
         if (s.RecoveryHoldUntil is not DateTimeOffset until) return string.Empty;
         return DescribeCountdown(until) is string when
             ? $"Holding - no internet connection, next attempt in {when}"
-            : "Attempt due";
+            : RecoveryNextCycleText;
     }
 
     // "Holding - waiting for failures to persist, next attempt in ~48s" while the sustained-failure
@@ -391,7 +398,7 @@ public partial class StatusForm : Form
         if (s.RecoverySustainedUntil is not DateTimeOffset until) return null;
         return DescribeCountdown(until) is string when
             ? $"Holding - waiting for failures to persist, next attempt in {when}"
-            : "Recovery due";
+            : RecoveryNextCycleText;
     }
 
     // Time left until an absolute deadline, or null once it has passed. Counted down from the instant

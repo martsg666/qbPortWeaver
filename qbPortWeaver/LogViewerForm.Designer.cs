@@ -285,7 +285,10 @@ partial class LogViewerForm
         // LogViewerForm
         AutoScaleDimensions = new SizeF(7F, 15F);
         AutoScaleMode       = AutoScaleMode.Font;
-        ClientSize          = new Size(1100, 680);
+        // Width matches MinimumSize exactly (1098 client + ~16 border = 1114), so the viewer opens at
+        // its narrowest usable width instead of a couple of pixels above it. The toolbar dictates the
+        // floor - see MinimumSize below - so any extra here is dead space the user cannot reclaim.
+        ClientSize          = new Size(1098, 680);
         Controls.Add(lvLog);
         Controls.Add(pnlToolbar);
         MaximizeBox         = true;

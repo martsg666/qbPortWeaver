@@ -6,7 +6,7 @@ partial class UpdateAvailableForm
     {
         if (disposing)
         {
-            lblTitle.Font?.Dispose();
+            lblTitle?.Font?.Dispose();
         }
         base.Dispose(disposing);
     }

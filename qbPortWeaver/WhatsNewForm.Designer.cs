@@ -6,7 +6,7 @@ partial class WhatsNewForm
     {
         if (disposing)
         {
-            lblTitle.Font?.Dispose();
+            lblTitle?.Font?.Dispose();
         }
         base.Dispose(disposing);
     }

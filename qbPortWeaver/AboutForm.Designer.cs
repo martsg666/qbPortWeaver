@@ -9,7 +9,7 @@ partial class AboutForm
         if (disposing)
         {
             picIcon.Image?.Dispose();
-            lblAppName.Font?.Dispose();
+            lblAppName?.Font?.Dispose();
             components?.Dispose();
         }
         base.Dispose(disposing);

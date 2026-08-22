@@ -918,7 +918,8 @@ partial class SettingsForm
         MaximizeBox     = false;
         MinimizeBox     = false;
         Name            = "SettingsForm";
-        ShowIcon        = false;
+        Icon            = Properties.Resources.qbPortWeaver;
+        ShowIcon        = true;
         ShowInTaskbar   = false;
         StartPosition   = FormStartPosition.CenterScreen;
         Text            = "qbPortWeaver | Settings"; // overridden in constructor

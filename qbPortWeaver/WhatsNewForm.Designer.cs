@@ -6,7 +6,7 @@ partial class WhatsNewForm
     {
         if (disposing)
         {
-            lblTitle.Font?.Dispose();
+            lblTitle?.Font?.Dispose();
         }
         base.Dispose(disposing);
     }
@@ -92,7 +92,8 @@ partial class WhatsNewForm
         MaximizeBox     = false;
         MinimizeBox     = false;
         Name            = "WhatsNewForm";
-        ShowIcon        = false;
+        Icon            = Properties.Resources.qbPortWeaver;
+        ShowIcon        = true;
         ShowInTaskbar   = false;
         StartPosition   = FormStartPosition.CenterScreen;
         Text            = "qbPortWeaver | What's New"; // overridden in constructor

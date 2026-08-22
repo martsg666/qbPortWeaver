@@ -9,6 +9,23 @@ public partial class WhatsNewForm : Form
         "If you find qbPortWeaver useful, please star it on GitHub.";
 
     private const string ReleaseFeaturesText =
+        "New in 2.6.6\n\n" +
+        "See what auto-recovery is doing\n" +
+        "The Status window has a new Auto-recovery line. It counts the failed cycles building up " +
+        "toward a recovery attempt, and when something is holding that attempt back it says what " +
+        "and for how long - whether it is waiting for the failures to persist, so a brief blip does " +
+        "not force a restart, or waiting because your connection itself is down. A pause now reads " +
+        "as deliberate rather than the app having given up.\n\n" +
+        "Narrow the log to a time range\n" +
+        "The Log Viewer has a new time filter beside the subsystem and file pickers: show everything, " +
+        "or just the last 15 minutes, hour or 24 hours, or a start and end time you pick " +
+        "yourself. Useful when you know roughly " +
+        "when something went wrong and do not want to scroll through everything around it.\n\n" +
+        "An icon on every window\n" +
+        "Settings, About, Status and the other dialogs now carry the qbPortWeaver icon, so they are " +
+        "easy to pick out when you switch windows with Alt+Tab. Until now they appeared there with " +
+        "no icon at all.\n\n" +
+        "Previously released\n\n" +
         "New in 2.6.5\n\n" +
         "Spots client settings that undo your forwarded port\n" +
         "Some options in your client work against the port you are forwarding: a randomised listening " +
@@ -32,7 +49,6 @@ public partial class WhatsNewForm : Form
         "Settings can now detect which VPN provider is installed on your machine and select it, the " +
         "same way the Client row already fills itself in. Gateways that use NAT-PMP have nothing to " +
         "detect, so pick NAT-PMP yourself if that is what you use.\n\n" +
-        "Previously released\n\n" +
         "New in 2.6.4\n\n" +
         "Nicotine+ support\n" +
         "qbPortWeaver can now keep Nicotine+ (Soulseek) on your VPN's forwarded port, alongside " +

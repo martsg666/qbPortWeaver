@@ -2,16 +2,23 @@ namespace qbPortWeaver;
 
 /// <summary>
 /// Shared layout primitives for the app's code-built dialogs (ThemedMessageBox, ClientChooserForm,
-/// DiagnosticsForm). These dialogs have dynamic content, so they are built in code rather than the
-/// designer; routing their chrome through here keeps button sizing, spacing, and the right-aligned
-/// button row identical across all three. Layout uses the automatic layout containers
+/// TimeRangeForm, DiagnosticsForm). These dialogs have dynamic content, so they are built in code
+/// rather than the designer; routing their chrome through here keeps button sizing, spacing, and the
+/// right-aligned button row identical across all four. Layout uses the automatic layout containers
 /// (TableLayoutPanel / FlowLayoutPanel), which size and position at the current DPI, so the dialogs
 /// scale correctly without hand-computed pixel coordinates.
+/// <para><b>Not every member applies to every caller.</b> The button metrics are used by all four, but
+/// <see cref="EdgeMargin"/> and <see cref="BottomMargin"/> are for the dialogs that auto-size to their
+/// content (ThemedMessageBox, ClientChooserForm, TimeRangeForm), which need breathing room around a
+/// handful of controls. DiagnosticsForm has a fixed 560x690 ClientSize and uses a uniform 8px inset
+/// instead, matching the designer-built windows (StatusForm, LogViewerForm, SettingsForm) - the same
+/// margin in a dense report view would only waste space. Do not "fix" that to 16 for consistency: the
+/// split tracks whether the form sizes itself, not how it was built.</para>
 /// </summary>
 internal static class DialogLayout
 {
-    internal const int EdgeMargin = 16;    // dialog inner padding (left/top/right)
-    internal const int BottomMargin = 12;  // dialog inner padding (bottom)
+    internal const int EdgeMargin = 16;    // auto-sized dialog inner padding (left/top/right); see the note above
+    internal const int BottomMargin = 12;  // auto-sized dialog inner padding (bottom)
     internal const int Gap = 8;            // gap between adjacent buttons
 
     internal const int ButtonWidth = 82;

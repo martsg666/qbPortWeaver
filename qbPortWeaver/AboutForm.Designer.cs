@@ -9,7 +9,7 @@ partial class AboutForm
         if (disposing)
         {
             picIcon.Image?.Dispose();
-            lblAppName.Font?.Dispose();
+            lblAppName?.Font?.Dispose();
             components?.Dispose();
         }
         base.Dispose(disposing);
@@ -182,7 +182,8 @@ partial class AboutForm
         MaximizeBox = false;
         MinimizeBox = false;
         Name = "AboutForm";
-        ShowIcon = false;
+        Icon     = Properties.Resources.qbPortWeaver;
+        ShowIcon = true;
         ShowInTaskbar = false;
         StartPosition = FormStartPosition.CenterScreen;
         Text = "qbPortWeaver | About"; // overridden in constructor

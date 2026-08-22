@@ -1,4 +1,4 @@
-namespace qbPortWeaver;
+﻿namespace qbPortWeaver;
 
 partial class StatusForm
 {
@@ -17,6 +17,8 @@ partial class StatusForm
     {
         components = new System.ComponentModel.Container();
         grpStatus = new GroupBox();
+        lblAutoRecoveryLabel = new Label();
+        lblAutoRecoveryValue = new Label();
         lblVpnProviderLabel = new Label();
         lblVpnProviderValue = new Label();
         lblVpnStatusLabel = new Label();
@@ -65,6 +67,8 @@ partial class StatusForm
         grpStats.SuspendLayout();
         SuspendLayout();
         // ── grpStatus ─────────────────────────────────────────────────
+        grpStatus.Controls.Add(lblAutoRecoveryLabel);
+        grpStatus.Controls.Add(lblAutoRecoveryValue);
         grpStatus.Controls.Add(lblVpnProviderLabel);
         grpStatus.Controls.Add(lblVpnProviderValue);
         grpStatus.Controls.Add(lblVpnStatusLabel);
@@ -83,7 +87,7 @@ partial class StatusForm
         grpStatus.Controls.Add(lblNextSyncValue);
         grpStatus.Location = new Point(8, 8);
         grpStatus.Name = "grpStatus";
-        grpStatus.Size = new Size(544, 265);
+        grpStatus.Size = new Size(544, 294);
         grpStatus.TabIndex = 0;
         grpStatus.TabStop = false;
         grpStatus.Text = "Connection Status";
@@ -186,9 +190,26 @@ partial class StatusForm
         lblNextSyncValue.TabIndex = 15;
         lblNextSyncValue.Text = "-";
         lblNextSyncValue.TextAlign = ContentAlignment.MiddleLeft;
+        lblAutoRecoveryLabel.Location = new Point(12, 256);
+        lblAutoRecoveryLabel.Name = "lblAutoRecoveryLabel";
+        lblAutoRecoveryLabel.Size = new Size(130, 23);
+        lblAutoRecoveryLabel.TabIndex = 16;
+        lblAutoRecoveryLabel.Text = "Auto-recovery:";
+        lblAutoRecoveryLabel.TextAlign = ContentAlignment.MiddleLeft;
+        lblAutoRecoveryValue.Location = new Point(148, 256);
+        lblAutoRecoveryValue.Name = "lblAutoRecoveryValue";
+        lblAutoRecoveryValue.Size = new Size(384, 23);
+        lblAutoRecoveryValue.TabIndex = 17;
+        lblAutoRecoveryValue.Text = "-";
+        lblAutoRecoveryValue.TextAlign = ContentAlignment.MiddleLeft;
+        // AutoEllipsis + the tooltip PopulateAutoRecovery sets are belt and braces. Every value this
+        // row produces fits 384px today (the longest, "Holding - no internet connection, retry in
+        // ~15m", is ~310px), but the countdown that would be cut first sits at the end, and a longer
+        // duration or a larger system font could still reach the edge.
+        lblAutoRecoveryValue.AutoEllipsis = true;
         // ── grpHistory (recent port changes and recovery events; populated in PopulateHistory) ──
         grpHistory.Controls.Add(lvHistory);
-        grpHistory.Location = new Point(8, 279);
+        grpHistory.Location = new Point(8, 308);
         grpHistory.Name = "grpHistory";
         grpHistory.Size = new Size(544, 156);
         grpHistory.TabIndex = 1;
@@ -232,7 +253,7 @@ partial class StatusForm
         grpStats.Controls.Add(lblRecoveriesValue);
         grpStats.Controls.Add(lblMonitoringSinceLabel);
         grpStats.Controls.Add(lblMonitoringSinceValue);
-        grpStats.Location = new Point(8, 441);
+        grpStats.Location = new Point(8, 470);
         grpStats.Name = "grpStats";
         grpStats.Size = new Size(544, 120);
         grpStats.TabIndex = 2;
@@ -252,11 +273,11 @@ partial class StatusForm
         lblCurrentPortValue.TextAlign = ContentAlignment.MiddleLeft;
         lblChangesTodayLabel.Location = new Point(300, 24);
         lblChangesTodayLabel.Name = "lblChangesTodayLabel";
-        lblChangesTodayLabel.Size = new Size(150, 23);
+        lblChangesTodayLabel.Size = new Size(175, 23);
         lblChangesTodayLabel.TabIndex = 2;
         lblChangesTodayLabel.Text = "Port changes today:";
         lblChangesTodayLabel.TextAlign = ContentAlignment.MiddleLeft;
-        lblChangesTodayValue.Location = new Point(452, 24);
+        lblChangesTodayValue.Location = new Point(477, 24);
         lblChangesTodayValue.Name = "lblChangesTodayValue";
         lblChangesTodayValue.Size = new Size(60, 23);
         lblChangesTodayValue.TabIndex = 3;
@@ -279,11 +300,11 @@ partial class StatusForm
         lblSyncsValue.TextAlign = ContentAlignment.MiddleLeft;
         lblRecoveriesLabel.Location = new Point(300, 53);
         lblRecoveriesLabel.Name = "lblRecoveriesLabel";
-        lblRecoveriesLabel.Size = new Size(150, 23);
+        lblRecoveriesLabel.Size = new Size(175, 23);
         lblRecoveriesLabel.TabIndex = 6;
-        lblRecoveriesLabel.Text = "Recoveries (session):";
+        lblRecoveriesLabel.Text = "Auto-recoveries (session):";
         lblRecoveriesLabel.TextAlign = ContentAlignment.MiddleLeft;
-        lblRecoveriesValue.Location = new Point(452, 53);
+        lblRecoveriesValue.Location = new Point(477, 53);
         lblRecoveriesValue.Name = "lblRecoveriesValue";
         lblRecoveriesValue.Size = new Size(60, 23);
         lblRecoveriesValue.TabIndex = 7;
@@ -312,7 +333,7 @@ partial class StatusForm
         ctxStats.Opening += ctxStats_Opening;
         grpStats.ContextMenuStrip = ctxStats;
         // ── Diagnostics hint (shown only when a cycle looks wrong; color set in StatusForm) ──
-        lblDiagnosticsHint.Location = new Point(8, 567);
+        lblDiagnosticsHint.Location = new Point(8, 596);
         lblDiagnosticsHint.Name = "lblDiagnosticsHint";
         lblDiagnosticsHint.Size = new Size(544, 20);
         lblDiagnosticsHint.TabIndex = 3;
@@ -320,28 +341,28 @@ partial class StatusForm
         lblDiagnosticsHint.TextAlign = ContentAlignment.MiddleLeft;
         lblDiagnosticsHint.Visible = false;
         // ── Buttons ───────────────────────────────────────────────────
-        btnSyncNow.Location = new Point(8, 593);
+        btnSyncNow.Location = new Point(8, 622);
         btnSyncNow.Name = "btnSyncNow";
         btnSyncNow.Size = new Size(96, 28);
         btnSyncNow.TabIndex = 4;
         btnSyncNow.Text = "Sync Now";
         btnSyncNow.Click += btnSyncNow_Click;
         toolTip.SetToolTip(btnSyncNow, "Run a sync cycle immediately instead of waiting for the next interval (works while paused, for one cycle)");
-        btnPauseResume.Location = new Point(112, 593);
+        btnPauseResume.Location = new Point(112, 622);
         btnPauseResume.Name = "btnPauseResume";
         btnPauseResume.Size = new Size(96, 28);
         btnPauseResume.TabIndex = 5;
         btnPauseResume.Text = "Pause";
         btnPauseResume.Click += btnPauseResume_Click;
         toolTip.SetToolTip(btnPauseResume, "Pause or resume automatic sync cycles (same as the tray menu; always resumes on restart)");
-        btnTestPort.Location = new Point(216, 593);
+        btnTestPort.Location = new Point(216, 622);
         btnTestPort.Name = "btnTestPort";
         btnTestPort.Size = new Size(96, 28);
         btnTestPort.TabIndex = 6;
         btnTestPort.Text = "Test Port";
         btnTestPort.Click += btnTestPort_Click;
         toolTip.SetToolTip(btnTestPort, "Check now whether the listening port is reachable from the Internet (may take up to 20 seconds)");
-        btnRunDiagnostics.Location = new Point(320, 593);
+        btnRunDiagnostics.Location = new Point(320, 622);
         btnRunDiagnostics.Name = "btnRunDiagnostics";
         btnRunDiagnostics.Size = new Size(118, 28);
         btnRunDiagnostics.TabIndex = 7;
@@ -349,7 +370,7 @@ partial class StatusForm
         btnRunDiagnostics.Click += btnRunDiagnostics_Click;
         toolTip.SetToolTip(btnRunDiagnostics, "Run a read-only health check of the whole sync chain - never changes the port or restarts anything");
         btnClose.DialogResult = DialogResult.Cancel;
-        btnClose.Location = new Point(470, 593);
+        btnClose.Location = new Point(470, 622);
         btnClose.Name = "btnClose";
         btnClose.Size = new Size(82, 28);
         btnClose.TabIndex = 8;
@@ -360,7 +381,7 @@ partial class StatusForm
         AutoScaleDimensions = new SizeF(7F, 15F);
         AutoScaleMode = AutoScaleMode.Font;
         CancelButton = btnClose;
-        ClientSize = new Size(560, 629);
+        ClientSize = new Size(560, 658);
         Controls.Add(grpStatus);
         Controls.Add(grpHistory);
         Controls.Add(grpStats);
@@ -374,7 +395,8 @@ partial class StatusForm
         MaximizeBox = false;
         MinimizeBox = false;
         Name = "StatusForm";
-        ShowIcon = false;
+        Icon     = Properties.Resources.qbPortWeaver;
+        ShowIcon = true;
         ShowInTaskbar = false;
         StartPosition = FormStartPosition.CenterScreen;
         Text = "qbPortWeaver | Status"; // overridden in constructor
@@ -421,6 +443,8 @@ partial class StatusForm
     private Label    lblLastSyncValue;
     private Label    lblNextSyncLabel;
     private Label    lblNextSyncValue;
+    private Label    lblAutoRecoveryLabel;
+    private Label    lblAutoRecoveryValue;
     private Button   btnSyncNow;
     private Button   btnPauseResume;
     private Button   btnTestPort;

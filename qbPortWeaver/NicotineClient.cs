@@ -81,11 +81,6 @@ public sealed class NicotineClient : ManagedClientBase
     }
 
     /// <inheritdoc/>
-    /// <remarks>The endpoint is discovered rather than configured, so the readiness probe after a
-    /// launch must use the current value rather than the one saved in Settings.</remarks>
-    protected override string ResolveUrl() => _endpoint;
-
-    /// <inheritdoc/>
     /// <remarks>A cold start makes the plugin publish a fresh connection file; re-read it so the
     /// rest of this cycle talks to the endpoint it actually bound.</remarks>
     public override async Task<bool> ForceStartAsync(CancellationToken cancellationToken = default)
@@ -276,6 +271,11 @@ public sealed class NicotineClient : ManagedClientBase
             return null;
         }
     }
+
+    /// <inheritdoc/>
+    /// <remarks>The endpoint is discovered rather than configured, so the readiness probe after a
+    /// launch must use the current value rather than the one saved in Settings.</remarks>
+    protected override string ResolveUrl() => _endpoint;
 
     // ------------------------------------------------------------------ transport
 

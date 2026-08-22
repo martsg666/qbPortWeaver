@@ -35,6 +35,7 @@ partial class LogViewerForm
         chkInfo        = new CheckBox();
         chkDebug       = new CheckBox();
         cboSubsystem   = new ComboBox();
+        cboTimeRange   = new ComboBox();
         cboLogFile     = new ComboBox();
         btnIssuePrev   = new Button();
         btnIssueNext   = new Button();
@@ -151,6 +152,18 @@ partial class LogViewerForm
         cboSubsystem.SelectedIndexChanged += cboSubsystem_SelectedIndexChanged;
         toolTip.SetToolTip(cboSubsystem, "Filter entries by subsystem");
 
+        // Time range - narrows the view to a window ending now, or to a custom span. Sits between the
+        // subsystem and log-file pickers because all three answer "which entries", unlike search.
+        cboTimeRange.Anchor        = AnchorStyles.Left | AnchorStyles.Top;
+        cboTimeRange.DropDownStyle = ComboBoxStyle.DropDownList;
+        cboTimeRange.FlatStyle     = FlatStyle.Flat;
+        cboTimeRange.Location      = new Point(628, 6);
+        cboTimeRange.Size          = new Size(118, 23);
+        cboTimeRange.TabIndex      = 8;
+        // Items and SelectedIndex are set in OnLoad, with the event wired after, so populating the
+        // list cannot trigger a rebuild before the log has been read.
+        toolTip.SetToolTip(cboTimeRange, "Show only entries from a time range");
+
         // Log file picker - populated in OnLoad; event wired there after population to avoid premature load
         cboLogFile.Anchor        = AnchorStyles.Left | AnchorStyles.Top;
         cboLogFile.DropDownStyle = ComboBoxStyle.DropDownList;
@@ -171,7 +184,7 @@ partial class LogViewerForm
         txtSearch.Location        = new Point(752, 8);
         txtSearch.PlaceholderText = "Search…";
         txtSearch.Width           = 220; // height is auto-sized by font; vertically centered in OnLoad
-        txtSearch.TabIndex        = 8;
+        txtSearch.TabIndex        = 9;
         txtSearch.TextChanged    += txtSearch_TextChanged;
         txtSearch.KeyDown        += txtSearch_KeyDown;
         toolTip.SetToolTip(txtSearch, "Search the log (Ctrl+F)");
@@ -186,7 +199,7 @@ partial class LogViewerForm
         btnClearSearch.Size                      = new Size(16, 16);  // fine-tuned in OnLoad
         btnClearSearch.Text                      = ""; // clear glyph owner-drawn in ClearButton_Paint
         btnClearSearch.TextAlign                 = ContentAlignment.MiddleCenter;
-        btnClearSearch.TabIndex                  = 9;
+        btnClearSearch.TabIndex                  = 10;
         btnClearSearch.TabStop                   = false;
         btnClearSearch.Visible                   = false;
         btnClearSearch.Click                    += btnClearSearch_Click;
@@ -197,7 +210,7 @@ partial class LogViewerForm
         btnPrev.FlatStyle = FlatStyle.Flat;
         btnPrev.Location  = new Point(1044, 5);
         btnPrev.Size      = new Size(26, 26);
-        btnPrev.TabIndex  = 10;
+        btnPrev.TabIndex  = 11;
         btnPrev.Text      = ""; // up chevron owner-drawn in NavButton_Paint
         btnPrev.Click    += btnPrev_Click;
         toolTip.SetToolTip(btnPrev, "Previous match");
@@ -207,7 +220,7 @@ partial class LogViewerForm
         btnNext.FlatStyle = FlatStyle.Flat;
         btnNext.Location  = new Point(1070, 5);
         btnNext.Size      = new Size(26, 26);
-        btnNext.TabIndex  = 11;
+        btnNext.TabIndex  = 12;
         btnNext.Text      = ""; // down chevron owner-drawn in NavButton_Paint
         btnNext.Click    += btnNext_Click;
         toolTip.SetToolTip(btnNext, "Next match");
@@ -224,7 +237,7 @@ partial class LogViewerForm
         // otherwise the default panel width (~200px) produces a negative right-margin and
         // causes right-anchored controls to fly off-screen when the panel expands to form width.
         pnlToolbar.Controls.AddRange(new Control[] {
-            chkError, chkWarn, chkInfo, chkDebug, cboSubsystem, cboLogFile, btnIssuePrev, btnIssueNext,
+            chkError, chkWarn, chkInfo, chkDebug, cboSubsystem, cboTimeRange, cboLogFile, btnIssuePrev, btnIssueNext,
             txtSearch, btnClearSearch, btnPrev, btnNext, lblMatchCount });
         pnlToolbar.Dock     = DockStyle.Top;
         pnlToolbar.Size     = new Size(1100, 36);
@@ -279,9 +292,17 @@ partial class LogViewerForm
         MinimizeBox         = true;
         // Static designer minimum (DPI-scaled by AutoScaleMode.Font), the pattern shared by all
         // sizable forms. Width is the point where the right-anchored search block would meet the left
-        // filter/combo block: cboLogFile.Right (624) + gap (8) + search-block width (344) = 976 client
-        // + ~16 window border. Height keeps the toolbar plus a usable log area.
-        MinimumSize         = new Size(992, 300);
+        // filter/combo block. LayoutSearchToolbar places txtSearch.Left at clientWidth minus its own
+        // fixed span: margin 4 + next 26 + prev 26 + gap 4 + count 64 + gap 4 + search 220 = 348. The
+        // rightmost left-hand control is now cboTimeRange, ending at 746, so the narrowest client that
+        // still clears it is 746 + gap 4 + 348 = 1098, plus ~16 window border.
+        //
+        // This leaves little room to narrow the window, which is deliberate: the toolbar is at
+        // capacity, and the alternatives were shrinking the search field or the time-range combo for
+        // every user to serve a rare window size. A log viewer is a wide-content window anyway.
+        // Anything added to the toolbar from here needs this recomputed - nothing enforces it, and the
+        // failure mode is silent: the search box simply covers whatever it lands on.
+        MinimumSize         = new Size(1114, 300);
         Name                = "LogViewerForm";
         Icon                = Properties.Resources.qbPortWeaver;
         ShowIcon            = true;
@@ -301,6 +322,7 @@ partial class LogViewerForm
     private CheckBox           chkInfo;
     private CheckBox           chkDebug;
     private ComboBox           cboSubsystem;
+    private ComboBox           cboTimeRange;
     private ComboBox           cboLogFile;
     private Button             btnIssuePrev;
     private Button             btnIssueNext;

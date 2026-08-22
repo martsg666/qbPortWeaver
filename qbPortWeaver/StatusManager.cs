@@ -35,6 +35,20 @@ public sealed record StatusSnapshot
     [JsonPropertyName("status")] public string? Status { get; init; }
     [JsonPropertyName("message")] public string? Message { get; init; }
     [JsonPropertyName("waitingForVpn")] public bool WaitingForVpn { get; init; }
+    /// <summary>When auto-recovery may next attempt, while it is being held back because connectivity
+    /// could not be confirmed. Null whenever nothing is being held. Absolute rather than a duration so
+    /// it does not have to be read against the cycle timestamp, which is stamped at a different moment.</summary>
+    [JsonPropertyName("recoveryHoldUntil")] public DateTimeOffset? RecoveryHoldUntil { get; init; }
+    /// <summary>Whether auto-recovery is switched on.</summary>
+    [JsonPropertyName("recoveryEnabled")] public bool RecoveryEnabled { get; init; }
+    /// <summary>Consecutive failed cycles accumulated so far, 0 when the last cycle succeeded.</summary>
+    [JsonPropertyName("recoveryFailedCycles")] public int RecoveryFailedCycles { get; init; }
+    /// <summary>Consecutive failed cycles required before auto-recovery triggers.</summary>
+    [JsonPropertyName("recoveryTriggerCycles")] public int RecoveryTriggerCycles { get; init; }
+    /// <summary>When the sustained-failure floor clears, while it is holding recovery back; null
+    /// otherwise. Distinct from <see cref="RecoveryHoldUntil"/>: that one waits on connectivity,
+    /// this one waits for the failures to have persisted long enough to rule out a brief blip.</summary>
+    [JsonPropertyName("recoverySustainedUntil")] public DateTimeOffset? RecoverySustainedUntil { get; init; }
 }
 
 /// <summary>

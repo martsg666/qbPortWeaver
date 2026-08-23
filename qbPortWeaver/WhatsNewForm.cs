@@ -9,6 +9,13 @@ public partial class WhatsNewForm : Form
         "If you find qbPortWeaver useful, please star it on GitHub.";
 
     private const string ReleaseFeaturesText =
+        "New in 2.6.7\n\n" +
+        "PLACEHOLDER - replace before release\n" +
+        "Summarise this version's user-facing changes here, in the same voice as the sections below: " +
+        "a short title line, then a plain-language paragraph saying what it does for the user. The " +
+        "Debug.Assert in the constructor only checks that a 'New in <version>' section exists, not " +
+        "that it has been written, so this text will ship if it is not replaced.\n\n" +
+        "Previously released\n\n" +
         "New in 2.6.6\n\n" +
         "See what auto-recovery is doing\n" +
         "The Status window has a new Auto-recovery line. It counts the failed cycles building up " +
@@ -30,7 +37,6 @@ public partial class WhatsNewForm : Form
         "offline - used to be logged again on every sync cycle, pushing the tray warning count up " +
         "and burying everything else. It is now reported once when it appears, again only if it " +
         "changes, and once more if it comes back after clearing.\n\n" +
-        "Previously released\n\n" +
         "New in 2.6.5\n\n" +
         "Spots client settings that undo your forwarded port\n" +
         "Some options in your client work against the port you are forwarding: a randomised listening " +

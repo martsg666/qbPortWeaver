@@ -27,6 +27,9 @@ charset = utf-8-bom
 [*.nuspec]
 charset = utf-8-bom
 
+[*.wxs]
+indent_size = 4
+
 # Visual Studio generates these and re-strips the final newline and trailing whitespace on every
 # save, so the rules are relaxed rather than fought. Must stay after the sections above so it wins
 # for Designer.cs, which also matches [*.cs].

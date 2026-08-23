@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Uninstalls the locally installed qbPortWeaver Chocolatey package.
 

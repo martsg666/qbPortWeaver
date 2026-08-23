@@ -334,9 +334,34 @@ When opened, `UpdateAvailableForm` offers an in-app **Download & Install**: it d
 
 The update balloon is informational only - Windows 11 routes `ToolTipIcon.Info` balloons through Action Center and does not reliably fire `BalloonTipClicked`, so the tray menu item is the only clickable entry point. The same applies to the port update and "Logs cleared" balloons (also `ToolTipIcon.Info`); they are visual hints with no associated action.
 
+### Log File Format
+
+Both processes write to the same file (`%LocalAppData%\qbPortWeaver\qbPortWeaver.log`) through
+`LoggingConstants.FormatLogEntry`, so the layout cannot drift between them:
+
+```
+yyyy-MM-dd HH:mm:ss | LEVEL | Subsystem     | message
+```
+
+The level is padded to 5 characters and the subsystem to 13 (`SubsystemMaxLength`, sized for
+`HelperService`). The timestamp is written **and parsed** with `LoggingConstants.DateCulture`
+(invariant), never the current culture, so the separators are the same on every machine.
+
+That matters because `:` in a .NET custom format string is the culture's *time separator placeholder*,
+not a literal. Formatted under a locale that separates time with `.` (fi-FI, da-DK), the file would
+read `12.34.56`: the Log Viewer's time filter could not parse a single line, and because an
+unparseable line is never excluded from the view (they are continuation lines) the filter would
+silently show everything. Keep the two paired - `DateCulture` sits beside `DateFormat` for that reason.
+
 ## Status Output
 
-Every cycle writes a JSON status file (`qbPortWeaver.status.json` in `%LocalAppData%\qbPortWeaver\`) capturing the full cycle outcome. External tools can read this file to monitor sync health, and the in-app Status panel (tray menu → Show Status, or double-click the tray icon) renders the same data live, refreshing after each cycle. Alongside the last sync time and result, the panel shows a **Next sync** estimate - the last sync time plus `updateIntervalSeconds` - displayed as a live countdown (`~3m`, `Due now`), or "Paused" while sync is paused, "Startup grace period" during the startup grace window, and "-" before the first cycle. The panel also exposes a **Sync Now** action, a **Pause/Resume** button that toggles automatic cycles (the same in-memory pause as the tray menu item, routed through `MainForm.ToggleSyncPaused`), a **Test Port** button that runs the reachability check on demand (see Port Verification), a **Recent Port Changes** list backed by the persisted port history (see below; right-click the list to clear it), and a **Statistics** group (see Session Statistics). The **Reachable** line carries a relative age ("now" / "N ago", the same wording as Last sync); because verification is throttled (see Port Verification), the panel remembers the last definite open/closed result and its verifying cycle's timestamp and keeps showing it across the cycles where no test ran, so the age reflects the real last check rather than blanking to "Not checked".
+Every cycle writes a JSON status file (`qbPortWeaver.status.json` in `%LocalAppData%\qbPortWeaver\`) capturing the full cycle outcome. External tools can read this file to monitor sync health, and the in-app Status panel (tray menu → Show Status, or double-click the tray icon) renders the same data live, refreshing after each cycle. Alongside the last sync time and result, the panel shows a **Next sync** estimate - the last sync time plus `updateIntervalSeconds` - displayed as a live countdown (`~3m`, `Due now`), or "Paused" while sync is paused, "Startup grace period" during the startup grace window, and "-" before the first cycle. The panel also exposes a **Sync Now** action, a **Pause/Resume** button that toggles automatic cycles (the same in-memory pause as the tray menu item, routed through `MainForm.ToggleSyncPaused`), a **Test Port** button that runs the reachability check on demand (see Port Verification), a **Recent Port Changes** list backed by the persisted port history (see below; right-click the list to clear it), and a **Statistics** group (see Session Statistics). The **Reachable** line carries a relative age ("now" / "N ago", the same wording as Last sync); because verification is throttled (see Port Verification), the panel remembers the last definite open/closed result and its verifying cycle's timestamp and keeps showing it across the cycles where no test ran, so the age reflects the real last check rather than blanking to "Not checked". An **Auto-recovery** line reports what auto-recovery is doing, from five keys the cycle writes: `recoveryEnabled`, `recoveryFailedCycles`, `recoveryTriggerCycles`, `recoveryHoldUntil` and `recoverySustainedUntil`. It reads "Disabled" when the feature is off, `-` when no cycle has published a threshold yet (a status file from a version before these keys, or a cycle that failed before reading config), `3 of 5 failed cycles` while a streak is building toward the trigger, `Will trigger on the next failed cycle` once it has passed with nothing holding it (one phrase shared by all three sites that can report it - either hold expiring, or the streak passing the threshold), and "Idle" otherwise.
+
+Both of the gates in `TriggerRecoveryIfDueAsync` report themselves, each naming its own cause, because they mean different things to a user: `Holding - no internet connection, retry in ~12m` (the offline rate limiter, which lasts as long as the outage) and `Holding - failures too recent, retry in ~48s` (the sustained-failure floor, which clears by itself within a cycle or two). Both countdowns are formatted through the panel's shared `FormatDuration` and carry the same `~` prefix as the Next sync countdown, so every relative time on the panel reads alike. Without the second one the panel showed `6 of 3 failed cycles` and no explanation while the log alone carried the reason.
+
+`recoveryHoldUntil` and `recoverySustainedUntil` are absolute instants, not remaining durations, because it is computed at the end of the cycle while `timestamp` is stamped at the start - reading a duration against the wrong origin would make the countdown run out early by however long the cycle took. `recoveryFailedCycles` is likewise read in the cycle's `finally`, since the failure paths inside `RunCoreAsync` are what increment it. The one-second repaint refreshes this line for the same reason it refreshes Next sync: the countdown drifts with the wall clock, and would otherwise sit frozen for a whole cycle.
+
+The hold was originally appended to the **VPN status** line instead. That hid it in the case it most needed to explain: `vpnConnected` is set before the port fetch, so an upstream outage with the tunnel still up renders a green "Connected" and suppressed the hold entirely. A labelled row is also reachable during the ordinary failure - a streak building toward the threshold - which the VPN status line has no way to show.
 
 ```json
 {
@@ -353,7 +378,12 @@ Every cycle writes a JSON status file (`qbPortWeaver.status.json` in `%LocalAppD
   "portVerified": true,
   "updateIntervalSeconds": 180,
   "status": "success",
-  "message": "Sync cycle completed"
+  "message": "Sync cycle completed",
+  "recoveryEnabled": true,
+  "recoveryFailedCycles": 0,
+  "recoveryTriggerCycles": 5,
+  "recoveryHoldUntil": null,
+  "recoverySustainedUntil": null
 }
 ```
 
@@ -378,7 +408,7 @@ Appends run on the sync loop thread, serialized by a lock with an atomic file re
 
 ### Session Statistics
 
-The Status panel's **Statistics** group combines two sources. The current port comes from the live status snapshot (the client's confirmed listening port, "-" when the client reports none), and one figure is derived from the persisted port history on each panel refresh: how many port changes were recorded today. The rest come from `SessionStats`, in-memory session counters: completed sync cycles and how many failed (displayed as "N (M failed)" / "N (all OK)" - failures are the number worth acting on), auto-recovery dispatches (manual recovery tests are excluded - the label says "Recoveries (session)"), and the monitoring start time (taken from the process start time). `PortSyncService` records a sync outcome in `RunAsync`'s `finally` block - skipped cycles are excluded, since they are no-op cycles rather than attempts - and records a recovery at dispatch, next to the history append in `DispatchRecoveryAsync`.
+The Status panel's **Statistics** group combines two sources. The current port comes from the live status snapshot (the client's confirmed listening port, "-" when the client reports none), and one figure is derived from the persisted port history on each panel refresh: how many port changes were recorded today. The rest come from `SessionStats`, in-memory session counters: completed sync cycles and how many failed (displayed as "N (M failed)" / "N (all OK)" - failures are the number worth acting on), auto-recovery dispatches (manual recovery tests are excluded - the label reads "Auto-recoveries (session)", so the exclusion is correct by construction), and the monitoring start time (taken from the process start time). `PortSyncService` records a sync outcome in `RunAsync`'s `finally` block - skipped cycles are excluded, since they are no-op cycles rather than attempts - and records a recovery at dispatch, next to the history append in `DispatchRecoveryAsync`.
 
 The counters are incremented on the sync loop thread with `Interlocked` and read on the UI thread with `Volatile`; the panel reads the OK count before the total so the derived failure count can never be negative. They are deliberately not persisted - "this session" is the scope that makes the numbers meaningful, and they reset naturally on restart. The counters and the today's-changes figure refresh on the same per-cycle tick as the rest of the panel; the time-derived values (the Last sync age, the Next sync countdown, the Reachable age, and the Monitoring since elapsed) advance every second while the panel is open, driven by a one-second UI timer that recomputes only those values from the cached snapshot.
 

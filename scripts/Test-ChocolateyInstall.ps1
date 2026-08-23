@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Installs the locally built qbPortWeaver Chocolatey package for testing.
 

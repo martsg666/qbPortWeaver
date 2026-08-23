@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
@@ -79,11 +79,6 @@ public sealed class NicotineClient : ManagedClientBase
         // common case needs no failed request to correct itself.
         ApplyHandshake(NicotinePluginDiscovery.TryRead(_exePathHint), logChange: false);
     }
-
-    /// <inheritdoc/>
-    /// <remarks>The endpoint is discovered rather than configured, so the readiness probe after a
-    /// launch must use the current value rather than the one saved in Settings.</remarks>
-    protected override string ResolveUrl() => _endpoint;
 
     /// <inheritdoc/>
     /// <remarks>A cold start makes the plugin publish a fresh connection file; re-read it so the
@@ -276,6 +271,11 @@ public sealed class NicotineClient : ManagedClientBase
             return null;
         }
     }
+
+    /// <inheritdoc/>
+    /// <remarks>The endpoint is discovered rather than configured, so the readiness probe after a
+    /// launch must use the current value rather than the one saved in Settings.</remarks>
+    protected override string ResolveUrl() => _endpoint;
 
     // ------------------------------------------------------------------ transport
 

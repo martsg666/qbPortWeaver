@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Builds a local qbPortWeaver MSI installer for testing purposes.
 

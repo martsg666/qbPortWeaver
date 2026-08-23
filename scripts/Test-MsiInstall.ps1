@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Installs the locally built MSI installer directly for testing.
 

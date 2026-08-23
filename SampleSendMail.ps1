@@ -1,4 +1,4 @@
-# Read status file
+﻿# Read status file
 $status = Get-Content "$env:LOCALAPPDATA\qbPortWeaver\qbPortWeaver.status.json" | ConvertFrom-Json
 
 # Email configuration

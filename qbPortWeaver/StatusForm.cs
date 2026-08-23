@@ -1,4 +1,4 @@
-namespace qbPortWeaver;
+﻿namespace qbPortWeaver;
 
 /// <summary>
 /// Read-only panel showing the live state of the port-sync chain (VPN, forwarded port, client,
@@ -101,6 +101,10 @@ public partial class StatusForm : Form
         if (_lastSnapshot is null) return;
         PopulateLastSync(_lastSnapshot);
         PopulateNextSync(_lastSnapshot);
+        // Auto-recovery is otherwise cycle-driven, but it carries the recovery-hold countdown, which
+        // drifts with the wall clock like the values above. Without this the countdown would sit frozen
+        // for a whole cycle - visibly wrong once it is counting in seconds rather than minutes.
+        PopulateAutoRecovery(_lastSnapshot, IsPortSyncDisabled(_lastSnapshot));
         // Advance the Reachable age, but never while a manual Test Port is in flight (button
         // disabled) - SetReachableResult owns the label until the result arrives.
         if (btnTestPort.Enabled)
@@ -254,11 +258,11 @@ public partial class StatusForm : Form
 
     private void Populate(StatusSnapshot s)
     {
-        bool disabled = string.IsNullOrEmpty(s.VpnProvider) ||
-                        string.Equals(s.VpnProvider, RegistrySettingsManager.VpnProviderDisabled, StringComparison.OrdinalIgnoreCase);
+        bool disabled = IsPortSyncDisabled(s);
 
         PopulateVpnProvider(s, disabled);
         PopulateVpnStatus(s, disabled);
+        PopulateAutoRecovery(s, disabled);
         PopulateForwardedPort(s);
         PopulateClient(s);
         PopulateListeningPort(s);
@@ -297,6 +301,11 @@ public partial class StatusForm : Form
             SetDefault(lblVpnProviderValue, s.VpnProvider!);
     }
 
+    // Shared by the full repaint and the one-second tick so both agree on what "disabled" means.
+    private static bool IsPortSyncDisabled(StatusSnapshot s) =>
+        string.IsNullOrEmpty(s.VpnProvider) ||
+        string.Equals(s.VpnProvider, RegistrySettingsManager.VpnProviderDisabled, StringComparison.OrdinalIgnoreCase);
+
     private void PopulateVpnStatus(StatusSnapshot s, bool disabled)
     {
         if (disabled)
@@ -305,6 +314,104 @@ public partial class StatusForm : Form
             SetColor(lblVpnStatusValue, "Connected", OkColor);
         else
             SetColor(lblVpnStatusValue, "Not connected", WarnColor);
+    }
+
+    // Recovery state lives on its own row rather than riding the VPN status line. The hold was
+    // originally appended to "Not connected", which hid it in the case it most needed to explain:
+    // VpnConnected is set before the port fetch, so an upstream outage with the tunnel still up reads
+    // as a green "Connected" and suppressed the hold entirely. A labelled row is also reachable during
+    // the ordinary failure - a streak building toward the threshold - which the VPN line cannot show.
+    private void PopulateAutoRecovery(StatusSnapshot s, bool disabled)
+    {
+        (string text, bool warn) = DescribeAutoRecovery(s, disabled);
+        if (warn) SetColor(lblAutoRecoveryValue, text, WarnColor);
+        else SetNeutral(lblAutoRecoveryValue, text);
+
+        // The label ellipsises rather than clipping (see the designer), so the tooltip carries the
+        // untruncated text. The part that gets cut is the countdown at the end of the longest value,
+        // which is the half a user is reading the row for.
+        toolTip.SetToolTip(lblAutoRecoveryValue, text);
+    }
+
+    // One phrase for "nothing is holding recovery back any more", reached from three places: either
+    // hold expiring, or the streak passing the threshold. A shared constant because those three sites
+    // previously spelled it two different ways ("Attempt due" and "Recovery due"), which is the drift
+    // three separate literals invite. Phrased as an action rather than a state ("due" read as overdue,
+    // as though a restart had been missed) and it names the trigger explicitly, because the previous
+    // wording left a reader unsure whether anything was actually going to happen. "Failed" is
+    // load-bearing: a cycle that succeeds ends the streak, and nothing restarts.
+    private const string RecoveryNextCycleText = "Will trigger on the next failed cycle";
+
+    // What the Auto-recovery row says, and whether it warrants the warning accent. Split from the
+    // display above so every outcome routes through one place that also sets the tooltip - with the
+    // branches setting the label directly, a new state could easily be added without one.
+    private static (string Text, bool Warn) DescribeAutoRecovery(StatusSnapshot s, bool disabled)
+    {
+        // A threshold of 0 is not a configurable value (ReadConfig clamps it to at least 1), so it can
+        // only mean no cycle has published one yet - a status file written by a version before these
+        // keys existed, or a cycle that failed before reading config. Reporting "Disabled" on that
+        // would be a confident claim about a setting that was never read, and "Disabled" is exactly
+        // what a user opens this row to rule out.
+        if (s.RecoveryTriggerCycles == 0) return ("-", false);
+
+        if (disabled || !s.RecoveryEnabled) return ("Disabled", false);
+
+        // Both holds are reported, each naming its own cause. The offline one is checked first only
+        // because it is the more serious: nothing can be recovered until the connection returns,
+        // whereas the sustained floor clears on its own within a couple of cycles.
+        string hold = DescribeRecoveryHold(s);
+        if (hold.Length > 0) return (hold, true);
+
+        if (DescribeSustainedHold(s) is string sustained) return (sustained, true);
+
+        // Past the threshold with neither hold in force, recovery runs on the next failed cycle.
+        // Reported as due rather than as a count: "6 of 3 failed cycles" reads as a counter still
+        // climbing toward a target it passed three cycles ago, which looks like a defect even when
+        // nothing is wrong. The threshold itself needs no zero check - the guard at the top of this
+        // method has already returned for the only case that can produce one.
+        if (s.RecoveryFailedCycles >= s.RecoveryTriggerCycles) return (RecoveryNextCycleText, true);
+
+        if (s.RecoveryFailedCycles > 0)
+        {
+            return ($"{s.RecoveryFailedCycles} of {s.RecoveryTriggerCycles} failed " +
+                    $"{AppConstants.PluralizeNoun(s.RecoveryTriggerCycles, "cycle")}", true);
+        }
+
+        return ("Idle", false);
+    }
+
+    // "Holding - no internet connection, retry in ~15m" while the offline rate limiter is
+    // waiting, or an empty string otherwise, which is what tells PopulateAutoRecovery to fall through
+    // to the other hold and then the failure streak.
+    private static string DescribeRecoveryHold(StatusSnapshot s)
+    {
+        if (s.RecoveryHoldUntil is not DateTimeOffset until) return string.Empty;
+        return DescribeCountdown(until) is string when
+            ? $"Holding - no internet connection, retry in {when}"
+            : RecoveryNextCycleText;
+    }
+
+    // "Holding - failures too recent, retry in ~48s" while the sustained-failure
+    // floor is waiting, or null when it is not. Its own line rather than a shared "holding" message,
+    // because the two holds mean different things to a user: this one clears by itself in a cycle or
+    // two, while the connectivity hold lasts as long as the outage does.
+    private static string? DescribeSustainedHold(StatusSnapshot s)
+    {
+        if (s.RecoverySustainedUntil is not DateTimeOffset until) return null;
+        return DescribeCountdown(until) is string when
+            ? $"Holding - failures too recent, retry in {when}"
+            : RecoveryNextCycleText;
+    }
+
+    // Time left until an absolute deadline, or null once it has passed. Counted down from the instant
+    // the cycle wrote, so it stays correct however long that cycle took; the panel's one-second repaint
+    // keeps it moving. Formatted through FormatDuration and prefixed "~" exactly like the Next sync
+    // countdown, so the two read alike - a second formatter here rounded 90s up to "~2 min", which both
+    // overstated the wait and disagreed with every other duration on the panel.
+    private static string? DescribeCountdown(DateTimeOffset until)
+    {
+        TimeSpan remaining = until - DateTimeOffset.Now;
+        return remaining > TimeSpan.Zero ? $"~{FormatDuration(remaining)}" : null;
     }
 
     private void PopulateForwardedPort(StatusSnapshot s)
@@ -391,7 +498,11 @@ public partial class StatusForm : Form
             return;
         }
 
-        string time = ts.LocalDateTime.ToString("yyyy-MM-dd HH:mm:ss");
+        // Same shape as a log timestamp, so the format comes from the one constant that defines it -
+        // but deliberately NOT LoggingConstants.DateCulture: this is a displayed local time, which
+        // should follow the user's locale. Only the log file itself is culture-pinned, because it is
+        // a machine-readable contract two processes write to.
+        string time = ts.LocalDateTime.ToString(LoggingConstants.DateFormat);
         // Capitalize the displayed result so it matches the panel's other values (Connected, Open,
         // etc.). The raw lowercase status value stays in the JSON file - that is the contract
         // external scripts read; only the panel display is title-cased.

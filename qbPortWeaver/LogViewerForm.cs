@@ -148,6 +148,7 @@ public partial class LogViewerForm : Form
         // from the font, so the actual height is only known after layout.
         int searchTop = (pnlToolbar.Height - txtSearch.Height) / 2;
         cboSubsystem.Top = (pnlToolbar.Height - cboSubsystem.Height) / 2;
+        cboTimeRange.Top = (pnlToolbar.Height - cboTimeRange.Height) / 2;
         cboLogFile.Top = (pnlToolbar.Height - cboLogFile.Height) / 2;
 
         // Lay out the right-aligned search group (search box, match counter, prev/next, clear button)
@@ -181,6 +182,14 @@ public partial class LogViewerForm : Form
         // time the user opens it (rotation and Clear Logs change them while the viewer is open).
         cboLogFile.SelectedIndexChanged += cboLogFile_SelectedIndexChanged;
         cboLogFile.DropDown += cboLogFile_DropDown;
+
+        // Same ordering rule as the pickers above: populate and select first, wire the event after,
+        // so building the list cannot rebuild the display before the log has been read.
+        foreach ((string label, double? _) in TimeRanges) cboTimeRange.Items.Add(label);
+        cboTimeRange.Items.Add("Custom range…");   // must stay last: CustomRangeIndex is TimeRanges.Length
+        cboTimeRange.SelectedIndex = 0; // "All time" - the viewer opens showing everything, as before
+        _lastTimeRangeIndex = 0;
+        cboTimeRange.SelectedIndexChanged += cboTimeRange_SelectedIndexChanged;
     }
 
     protected override void OnShown(EventArgs e)
@@ -273,6 +282,9 @@ public partial class LogViewerForm : Form
         cboSubsystem.BackColor = input;
         cboSubsystem.ForeColor = fg;
 
+        cboTimeRange.BackColor = input;
+        cboTimeRange.ForeColor = fg;
+
         cboLogFile.BackColor = input;
         cboLogFile.ForeColor = fg;
 
@@ -329,6 +341,102 @@ public partial class LogViewerForm : Form
 
     // Called when the subsystem filter ComboBox changes - rebuilds the visible rows
     private void cboSubsystem_SelectedIndexChanged(object? sender, EventArgs e) => RebuildDisplay();
+
+    // Time-range options, in the order they appear in the combo. Each is a window ending now, so a
+    // preset can only ever answer "how far back from this moment"; anything already past needs the
+    // custom range appended after these. Kept to one preset per distinct case - watching a problem
+    // reproduce (15 min), reading back over something just seen (1 hour), and an overnight incident
+    // (24 hours). Intermediate steps were dropped: they sit between those cases without adding one,
+    // and a week is indistinguishable from "All time" on a log that rarely spans that long. Stored
+    // as hours so the cutoff is a subtraction rather than a switch.
+    private static readonly (string Label, double? Hours)[] TimeRanges =
+    [
+        ("All time",      null),
+        ("Last 15 min",   0.25),
+        ("Last hour",     1),
+        ("Last 24 hours", 24),
+    ];
+
+    // Index of the "Custom range…" entry, which is appended after the presets.
+    private static int CustomRangeIndex => TimeRanges.Length;
+
+    // The chosen custom window, null until one is set. Kept so reselecting "Custom range…" reopens the
+    // dialog on the last values, and so the window survives switching to a preset and back.
+    private (DateTime From, DateTime To)? _customRange;
+
+    // Remembers the last accepted selection so cancelling the custom dialog can put the combo back
+    // rather than leaving it on an entry the user declined to configure.
+    private int _lastTimeRangeIndex;
+
+    private void cboTimeRange_SelectedIndexChanged(object? sender, EventArgs e)
+    {
+        if (cboTimeRange.SelectedIndex == CustomRangeIndex && !PromptForCustomRange())
+        {
+            // Declined: restore the previous entry. Assigning SelectedIndex re-enters this handler,
+            // which is harmless - the restored index is never the custom one, so it falls straight
+            // through to the rebuild below.
+            cboTimeRange.SelectedIndex = _lastTimeRangeIndex;
+            return;
+        }
+        _lastTimeRangeIndex = cboTimeRange.SelectedIndex;
+        UpdateTimeRangeTooltip();
+        RebuildDisplay();
+    }
+
+    // Opens the range dialog pre-filled with the previous choice, or with the last hour on first use.
+    // Returns false when the user cancels.
+    private bool PromptForCustomRange()
+    {
+        (DateTime from, DateTime to) = _customRange ?? (DateTime.Now.AddHours(-1), DateTime.Now);
+        using var dialog = new TimeRangeForm(from, to);
+        if (dialog.ShowDialog(this) != DialogResult.OK) return false;
+
+        _customRange = dialog.OrderedRange();
+        return true;
+    }
+
+    // The combo is too narrow to show a custom range, so the tooltip carries it - otherwise the only
+    // way to see what "Custom range…" currently means is to reopen the dialog. Every other selection
+    // restores the static description: the custom range is the only one the combo cannot show in its
+    // own width, and leaving the old range behind would have it describing the preset that replaced it.
+    private void UpdateTimeRangeTooltip()
+    {
+        toolTip.SetToolTip(cboTimeRange,
+            cboTimeRange.SelectedIndex == CustomRangeIndex && _customRange is { } range
+                ? $"Showing {FormatTimestamp(range.From)} to {FormatTimestamp(range.To)}"
+                : TimeRangeTooltip);
+    }
+
+    // Matches the initial value the designer sets on the combo, so switching off a custom range
+    // returns the tooltip to exactly what it said before one was ever chosen.
+    private const string TimeRangeTooltip = "Show only entries from a time range";
+
+    // Formatted from LoggingConstants.DateFormat rather than a literal, so the tooltip is guaranteed
+    // to echo the range in the same shape the dialog's fields accept.
+    private static string FormatTimestamp(DateTime value) =>
+        value.ToString(LoggingConstants.DateFormat, LoggingConstants.DateCulture);
+
+    // The window the current selection admits: a preset ending now, an explicit custom span, or no
+    // bounds at all for "All time". Computed per call rather than cached, so the cutoff a preset
+    // applies to newly arriving lines follows the wall clock.
+    //
+    // A preset does NOT retroactively expire rows already on screen: AppendNewLines only ever tests
+    // the lines it just read, so "Last 15 min" means "everything from 15 minutes before you chose it,
+    // onward" rather than a window that slides out from under what is displayed. That is deliberate.
+    // Expiring rows would mean deleting lines while the user is reading them, and the preset's job is
+    // to get you to the recent entries - which it does. The live tail everyone watches is always
+    // inside the window anyway. The custom range is unaffected either way: its bounds are fixed, so a
+    // row that qualified still qualifies.
+    private (DateTime? From, DateTime? To) GetTimeWindow()
+    {
+        int index = cboTimeRange.SelectedIndex;
+        if (index == CustomRangeIndex)
+            return _customRange is { } range ? (range.From, range.To) : (null, null);
+        if (index < 0 || index >= TimeRanges.Length) return (null, null);
+        return TimeRanges[index].Hours is double hours ? (DateTime.Now.AddHours(-hours), null) : (null, null);
+    }
+
+
 
     // Returns the padded subsystem column token to match (e.g. "| MainApp       |"),
     // or null when "All" is selected (no filter). Built here, once per rebuild, so the
@@ -780,6 +888,7 @@ public partial class LogViewerForm : Form
     {
         bool[] filters = [chkError.Checked, chkWarn.Checked, chkInfo.Checked, chkDebug.Checked];
         string? subsystemFilter = GetSubsystemFilter();
+        (DateTime? From, DateTime? To) window = GetTimeWindow();
 
         for (int i = fromLine; i < _allLines.Count; i++)
         {
@@ -788,7 +897,7 @@ public partial class LogViewerForm : Form
             {
                 if (_visibleRows.Count == 0 || _allLines[_visibleRows[^1]].Level == LevelMeta) continue;
             }
-            else if (!IsLineVisible(line, filters, subsystemFilter))
+            else if (!IsLineVisible(line, filters, subsystemFilter, window))
             {
                 continue;
             }
@@ -831,15 +940,47 @@ public partial class LogViewerForm : Form
             SetMetaMessage("(No log entries yet)", MetaColor);
     }
 
-    // Level/subsystem visibility for classified lines. Meta rows (blank separators) never reach
-    // this method - AppendVisibleRows handles them with its own dedup rule so cycle separators
-    // stay visible in filtered views without ever stacking up.
-    private static bool IsLineVisible(LogLine line, bool[] filters, string? subsystemToken)
+    // Level, subsystem and time-range visibility for classified lines. Meta rows never reach this
+    // method - AppendVisibleRows diverts them to its own dedup rule so cycle separators stay visible
+    // in filtered views without ever stacking up.
+    //
+    // LevelMeta covers more than the blank separators: ClassifyLine assigns it to any line with no
+    // "| LEVEL |" column, which includes a continuation line wrapped from a multi-line message. Those
+    // therefore bypass all three filters below, the time window included. That is currently
+    // unreachable in practice - every logging call passes ex.Message rather than ex.ToString(), so
+    // nothing writes a multi-line entry - and it is left alone deliberately rather than threading
+    // parent-visibility state through the append loop that builds the virtual list.
+    private static bool IsLineVisible(LogLine line, bool[] filters, string? subsystemToken, (DateTime? From, DateTime? To) window)
     {
         if (!filters[line.Level]) return false;                     // level filtered out
         if (subsystemToken is not null && !line.Text.Contains(subsystemToken, StringComparison.Ordinal)) return false;
+        // The window test is guarded so an unfiltered view never pays for the timestamp parse, and
+        // short-circuits before it. The null branch of TryReadTimestamp is a safety net rather than a
+        // live path: every line that gets this far carries a level column, and only a timestamped
+        // entry has one. See the note above for the untimestamped lines, which never arrive here.
+        if ((window.From is not null || window.To is not null) && TryReadTimestamp(line.Text) is DateTime stamp)
+        {
+            if (window.From is DateTime from && stamp < from) return false;
+            if (window.To is DateTime to && stamp > to) return false;
+        }
         return true;
     }
+
+    // Parses the fixed-width timestamp every entry starts with, or null for a line that has none
+    // (continuation lines wrapped from a multi-line message, and the blank cycle separators).
+    // Both of those classify as LevelMeta and are diverted before IsLineVisible runs, so the time
+    // filter never actually asks about them; the null result only matters if an entry ever carries a
+    // level column without a parseable stamp.
+    //
+    // Parsed on demand rather than stored on LogLine: the store is the process's dominant allocation
+    // on a large log, and adding 8 bytes per line to save a parse that only runs on a filter rebuild
+    // is the wrong trade.
+    private static DateTime? TryReadTimestamp(string text) =>
+        text.Length >= LoggingConstants.DateFormat.Length &&
+        DateTime.TryParseExact(text.AsSpan(0, LoggingConstants.DateFormat.Length), LoggingConstants.DateFormat,
+            LoggingConstants.DateCulture, System.Globalization.DateTimeStyles.None, out DateTime parsed)
+            ? parsed
+            : null;
 
     // Convenience colour for meta/status messages (not log entries)
     private static Color MetaColor => SystemColors.GrayText; // mode-aware under SetColorMode

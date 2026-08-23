@@ -1,4 +1,4 @@
-namespace qbPortWeaver;
+﻿namespace qbPortWeaver;
 
 partial class UpdateAvailableForm
 {
@@ -6,7 +6,7 @@ partial class UpdateAvailableForm
     {
         if (disposing)
         {
-            lblTitle.Font?.Dispose();
+            lblTitle?.Font?.Dispose();
         }
         base.Dispose(disposing);
     }
@@ -105,7 +105,8 @@ partial class UpdateAvailableForm
         MaximizeBox     = false;
         MinimizeBox     = false;
         Name            = "UpdateAvailableForm";
-        ShowIcon        = false;
+        Icon            = Properties.Resources.qbPortWeaver;
+        ShowIcon        = true;
         ShowInTaskbar   = false;
         StartPosition   = FormStartPosition.CenterScreen;
         Text            = "qbPortWeaver | Update Available"; // overridden in constructor

@@ -1,4 +1,4 @@
-namespace qbPortWeaver;
+﻿namespace qbPortWeaver;
 
 /// <summary>
 /// Small modal prompt shown when client detection is ambiguous - more than one client is running, or
@@ -27,7 +27,12 @@ internal sealed class ClientChooserForm : Form
         MinimizeBox = false;
         MaximizeBox = false;
         ShowInTaskbar = false;
-        ShowIcon = false; // match the other modal dialogs (no title-bar icon)
+        // The window icon is what Alt+Tab draws. Leaving it unset gave every dialog a blank entry
+        // there, so it is set here as on every other form; the title bar stays iconless because a
+        // FixedDialog frame does not draw one, which is what the "no title-bar icon" convention
+        // actually relies on - ShowIcon = false was suppressing the Alt+Tab icon as a side effect.
+        Icon = Properties.Resources.qbPortWeaver;
+        ShowIcon = true;
         // The layout containers size the form; AutoScaleMode.Font (designer baseline) scales fonts.
         AutoScaleDimensions = new SizeF(7F, 15F);
         AutoScaleMode = AutoScaleMode.Font;

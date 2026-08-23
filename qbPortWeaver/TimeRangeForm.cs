@@ -1,4 +1,4 @@
-namespace qbPortWeaver;
+﻿namespace qbPortWeaver;
 
 /// <summary>
 /// Small modal asking for a start and end instant, used by the Log Viewer's "Custom range…" option.

@@ -1,4 +1,4 @@
-namespace qbPortWeaver;
+﻿namespace qbPortWeaver;
 
 partial class UpdateAvailableForm
 {

@@ -940,16 +940,24 @@ public partial class LogViewerForm : Form
             SetMetaMessage("(No log entries yet)", MetaColor);
     }
 
-    // Level, subsystem and time-range visibility for classified lines. Meta rows (blank separators)
-    // never reach this method - AppendVisibleRows handles them with its own dedup rule so cycle
-    // separators stay visible in filtered views without ever stacking up.
+    // Level, subsystem and time-range visibility for classified lines. Meta rows never reach this
+    // method - AppendVisibleRows diverts them to its own dedup rule so cycle separators stay visible
+    // in filtered views without ever stacking up.
+    //
+    // LevelMeta covers more than the blank separators: ClassifyLine assigns it to any line with no
+    // "| LEVEL |" column, which includes a continuation line wrapped from a multi-line message. Those
+    // therefore bypass all three filters below, the time window included. That is currently
+    // unreachable in practice - every logging call passes ex.Message rather than ex.ToString(), so
+    // nothing writes a multi-line entry - and it is left alone deliberately rather than threading
+    // parent-visibility state through the append loop that builds the virtual list.
     private static bool IsLineVisible(LogLine line, bool[] filters, string? subsystemToken, (DateTime? From, DateTime? To) window)
     {
         if (!filters[line.Level]) return false;                     // level filtered out
         if (subsystemToken is not null && !line.Text.Contains(subsystemToken, StringComparison.Ordinal)) return false;
         // The window test is guarded so an unfiltered view never pays for the timestamp parse, and
-        // short-circuits before it. A line with no timestamp of its own is never excluded: it is a
-        // continuation of the entry above it, and dropping it would tear a message in half.
+        // short-circuits before it. The null branch of TryReadTimestamp is a safety net rather than a
+        // live path: every line that gets this far carries a level column, and only a timestamped
+        // entry has one. See the note above for the untimestamped lines, which never arrive here.
         if ((window.From is not null || window.To is not null) && TryReadTimestamp(line.Text) is DateTime stamp)
         {
             if (window.From is DateTime from && stamp < from) return false;
@@ -960,8 +968,9 @@ public partial class LogViewerForm : Form
 
     // Parses the fixed-width timestamp every entry starts with, or null for a line that has none
     // (continuation lines wrapped from a multi-line message, and the blank cycle separators).
-    // A line without a timestamp is never excluded by the time filter: it belongs to whichever entry
-    // precedes it, and dropping it would tear a message in half.
+    // Both of those classify as LevelMeta and are diverted before IsLineVisible runs, so the time
+    // filter never actually asks about them; the null result only matters if an entry ever carries a
+    // level column without a parseable stamp.
     //
     // Parsed on demand rather than stored on LogLine: the store is the process's dominant allocation
     // on a large log, and adding 8 bytes per line to save a parse that only runs on a filter rebuild

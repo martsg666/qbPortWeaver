@@ -3,188 +3,188 @@
      xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui"
      xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
 
-	<Package
-	  Name="qbPortWeaver"
-	  Manufacturer="martsg666"
-	  Version="$(var.ProductVersion)"
-	  UpgradeCode="{6E2B5A1C-4D89-4F3A-B2C7-9A1E8D5F0C3B}"
-	  InstallerVersion="500"
-	  Scope="perMachine">
+    <Package
+      Name="qbPortWeaver"
+      Manufacturer="martsg666"
+      Version="$(var.ProductVersion)"
+      UpgradeCode="{6E2B5A1C-4D89-4F3A-B2C7-9A1E8D5F0C3B}"
+      InstallerVersion="500"
+      Scope="perMachine">
 
-		<!-- Major upgrade handling -->
-		<MajorUpgrade
-		  DowngradeErrorMessage="A newer version of qbPortWeaver is already installed."
-		  AllowSameVersionUpgrades="yes"
-		  Schedule="afterInstallInitialize" />
+        <!-- Major upgrade handling -->
+        <MajorUpgrade
+          DowngradeErrorMessage="A newer version of qbPortWeaver is already installed."
+          AllowSameVersionUpgrades="yes"
+          Schedule="afterInstallInitialize" />
 
-		<MediaTemplate EmbedCab="yes" />
+        <MediaTemplate EmbedCab="yes" />
 
-		<!-- ARP metadata -->
-		<Icon Id="AppIcon.ico" SourceFile="..\qbPortWeaver\qbPortWeaver.ico" />
-		<Property Id="ARPPRODUCTICON" Value="AppIcon.ico" />
-		<Property Id="ARPHELPLINK" Value="https://github.com/martsg666/qbPortWeaver" />
-		<Property Id="ARPNOREPAIR" Value="1" />
+        <!-- ARP metadata -->
+        <Icon Id="AppIcon.ico" SourceFile="..\qbPortWeaver\qbPortWeaver.ico" />
+        <Property Id="ARPPRODUCTICON" Value="AppIcon.ico" />
+        <Property Id="ARPHELPLINK" Value="https://github.com/martsg666/qbPortWeaver" />
+        <Property Id="ARPNOREPAIR" Value="1" />
 
-		<!-- Detect legacy NSIS install (64-bit) -->
-		<Property Id="NSIS_UNINST_EXE_X64">
-			<DirectorySearch Id="SearchPF64" Path="[ProgramFiles64Folder]">
-				<DirectorySearch Id="SearchQbpw64" Path="qbPortWeaver" Depth="0">
-					<FileSearch Name="uninst.exe" />
-				</DirectorySearch>
-			</DirectorySearch>
-		</Property>
+        <!-- Detect legacy NSIS install (64-bit) -->
+        <Property Id="NSIS_UNINST_EXE_X64">
+            <DirectorySearch Id="SearchPF64" Path="[ProgramFiles64Folder]">
+                <DirectorySearch Id="SearchQbpw64" Path="qbPortWeaver" Depth="0">
+                    <FileSearch Name="uninst.exe" />
+                </DirectorySearch>
+            </DirectorySearch>
+        </Property>
 
-		<!-- Detect legacy NSIS install (32-bit) -->
-		<Property Id="NSIS_UNINST_EXE_X86">
-			<DirectorySearch Id="SearchPF32" Path="[ProgramFilesFolder]">
-				<DirectorySearch Id="SearchQbpw32" Path="qbPortWeaver" Depth="0">
-					<FileSearch Name="uninst.exe" />
-				</DirectorySearch>
-			</DirectorySearch>
-		</Property>
+        <!-- Detect legacy NSIS install (32-bit) -->
+        <Property Id="NSIS_UNINST_EXE_X86">
+            <DirectorySearch Id="SearchPF32" Path="[ProgramFilesFolder]">
+                <DirectorySearch Id="SearchQbpw32" Path="qbPortWeaver" Depth="0">
+                    <FileSearch Name="uninst.exe" />
+                </DirectorySearch>
+            </DirectorySearch>
+        </Property>
 
-		<!-- The Restart Manager (enabled by default) stops and restarts the running tray app and
-		     helper service - both windowless - during an upgrade, without needing a window. Do NOT
-		     disable it: the legacy FilesInUse fallback stalls ~20s per InstallValidate hunting for a
-		     window these windowless processes do not have, and a major upgrade runs InstallValidate
-		     twice (~40s total). RM closes and relaunches them cleanly, so no util:CloseApplication is
-		     needed either. The tray app's single-instance mutex guards against any double-launch. -->
+        <!-- The Restart Manager (enabled by default) stops and restarts the running tray app and
+             helper service - both windowless - during an upgrade, without needing a window. Do NOT
+             disable it: the legacy FilesInUse fallback stalls ~20s per InstallValidate hunting for a
+             window these windowless processes do not have, and a major upgrade runs InstallValidate
+             twice (~40s total). RM closes and relaunches them cleanly, so no util:CloseApplication is
+             needed either. The tray app's single-instance mutex guards against any double-launch. -->
 
-		<!-- Block install if legacy NSIS version is present (fires in both UI and silent installs) -->
-		<Launch Condition="NOT NSIS_UNINST_EXE_X64 AND NOT NSIS_UNINST_EXE_X86"
-				Message="A legacy version of qbPortWeaver is already installed. Please uninstall it before continuing." />
+        <!-- Block install if legacy NSIS version is present (fires in both UI and silent installs) -->
+        <Launch Condition="NOT NSIS_UNINST_EXE_X64 AND NOT NSIS_UNINST_EXE_X86"
+                Message="A legacy version of qbPortWeaver is already installed. Please uninstall it before continuing." />
 
-		<!-- Minimal UI -->
-		<ui:WixUI Id="WixUI_Minimal" />
-		<WixVariable Id="WixUILicenseRtf" Value="License.rtf" />
+        <!-- Minimal UI -->
+        <ui:WixUI Id="WixUI_Minimal" />
+        <WixVariable Id="WixUILicenseRtf" Value="License.rtf" />
 
-		<!-- Launch checkbox -->
-		<Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOXTEXT"
-				  Value="Launch qbPortWeaver" />
-		<Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOX" Value="1" />
+        <!-- Launch checkbox -->
+        <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOXTEXT"
+                  Value="Launch qbPortWeaver" />
+        <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOX" Value="1" />
 
-		<SetProperty Id="WixShellExecTarget"
-					 Value="[INSTALLFOLDER]qbPortWeaver.exe"
-					 Sequence="ui"
-					 Before="ExecuteAction" />
+        <SetProperty Id="WixShellExecTarget"
+                     Value="[INSTALLFOLDER]qbPortWeaver.exe"
+                     Sequence="ui"
+                     Before="ExecuteAction" />
 
-		<CustomAction Id="CA_LaunchApp"
-					  BinaryRef="Wix4UtilCA_X64"
-					  DllEntry="WixShellExec"
-					  Execute="immediate"
-					  Return="ignore"
-					  Impersonate="yes" />
+        <CustomAction Id="CA_LaunchApp"
+                      BinaryRef="Wix4UtilCA_X64"
+                      DllEntry="WixShellExec"
+                      Execute="immediate"
+                      Return="ignore"
+                      Impersonate="yes" />
 
-		<UI>
-			<Publish Dialog="ExitDialog"
-					 Control="Finish"
-					 Event="DoAction"
-					 Value="CA_LaunchApp"
-					 Condition="WIXUI_EXITDIALOGOPTIONALCHECKBOX = 1 AND NOT Installed" />
-		</UI>
+        <UI>
+            <Publish Dialog="ExitDialog"
+                     Control="Finish"
+                     Event="DoAction"
+                     Value="CA_LaunchApp"
+                     Condition="WIXUI_EXITDIALOGOPTIONALCHECKBOX = 1 AND NOT Installed" />
+        </UI>
 
-		<Feature Id="MainFeature" Level="1">
-			<ComponentGroupRef Id="AppComponents" />
-			<ComponentGroupRef Id="ShortcutComponents" />
-		</Feature>
+        <Feature Id="MainFeature" Level="1">
+            <ComponentGroupRef Id="AppComponents" />
+            <ComponentGroupRef Id="ShortcutComponents" />
+        </Feature>
 
-	</Package>
+    </Package>
 
-	<!-- Directory structure -->
-	<Fragment>
-		<StandardDirectory Id="ProgramFiles64Folder">
-			<Directory Id="INSTALLFOLDER" Name="qbPortWeaver" />
-		</StandardDirectory>
+    <!-- Directory structure -->
+    <Fragment>
+        <StandardDirectory Id="ProgramFiles64Folder">
+            <Directory Id="INSTALLFOLDER" Name="qbPortWeaver" />
+        </StandardDirectory>
 
-		<StandardDirectory Id="ProgramMenuFolder">
-			<Directory Id="StartMenuShortcutFolder" Name="qbPortWeaver" />
-		</StandardDirectory>
+        <StandardDirectory Id="ProgramMenuFolder">
+            <Directory Id="StartMenuShortcutFolder" Name="qbPortWeaver" />
+        </StandardDirectory>
 
-		<StandardDirectory Id="DesktopFolder" />
-	</Fragment>
+        <StandardDirectory Id="DesktopFolder" />
+    </Fragment>
 
-	<!-- Application files -->
-	<Fragment>
+    <!-- Application files -->
+    <Fragment>
 
-		<ComponentGroup Id="AppComponents" Directory="INSTALLFOLDER">
+        <ComponentGroup Id="AppComponents" Directory="INSTALLFOLDER">
 
-			<Component Id="AppExecutable">
-				<File Source="..\qbPortWeaver\bin\Release\$(var.TFM)\win-x64\publish\qbPortWeaver.exe"
-					  KeyPath="yes" />
-			</Component>
+            <Component Id="AppExecutable">
+                <File Source="..\qbPortWeaver\bin\Release\$(var.TFM)\win-x64\publish\qbPortWeaver.exe"
+                      KeyPath="yes" />
+            </Component>
 
-			<Component Id="AppReadme">
-				<File Source="..\README.md" />
-			</Component>
+            <Component Id="AppReadme">
+                <File Source="..\README.md" />
+            </Component>
 
-			<!-- Helper service - provides a session 0 endpoint for privileged actions
-			     (e.g. restarting VPN services) requested by the user-session tray app via named pipe.
-			     ServiceControl stops the service before files are replaced on upgrade (Stop="both")
-			     and removes it cleanly on uninstall. -->
-			<Component Id="HelperServiceExe">
-				<File Source="..\HelperService\bin\Release\$(var.TFM)\win-x64\publish\qbPortWeaver.HelperService.exe"
-					  KeyPath="yes" />
-				<ServiceInstall
-					Id="HelperServiceInstall"
-					Name="qbPortWeaverHelper"
-					DisplayName="qbPortWeaver Helper Service"
-					Description="Helper for qbPortWeaver - executes privileged session 0 actions on behalf of the user-session tray app"
-					Type="ownProcess"
-					Start="auto"
-					ErrorControl="normal"
-					Account="LocalSystem" />
-				<util:ServiceConfig
-					ServiceName="qbPortWeaverHelper"
-					FirstFailureActionType="restart"
-					SecondFailureActionType="restart"
-					ThirdFailureActionType="restart"
-					RestartServiceDelayInSeconds="5"
-					ResetPeriodInDays="1" />
-				<ServiceControl
-					Id="HelperServiceControl"
-					Name="qbPortWeaverHelper"
-					Start="install"
-					Stop="both"
-					Remove="uninstall"
-					Wait="yes" />
-			</Component>
+            <!-- Helper service - provides a session 0 endpoint for privileged actions
+                 (e.g. restarting VPN services) requested by the user-session tray app via named pipe.
+                 ServiceControl stops the service before files are replaced on upgrade (Stop="both")
+                 and removes it cleanly on uninstall. -->
+            <Component Id="HelperServiceExe">
+                <File Source="..\HelperService\bin\Release\$(var.TFM)\win-x64\publish\qbPortWeaver.HelperService.exe"
+                      KeyPath="yes" />
+                <ServiceInstall
+                    Id="HelperServiceInstall"
+                    Name="qbPortWeaverHelper"
+                    DisplayName="qbPortWeaver Helper Service"
+                    Description="Helper for qbPortWeaver - executes privileged session 0 actions on behalf of the user-session tray app"
+                    Type="ownProcess"
+                    Start="auto"
+                    ErrorControl="normal"
+                    Account="LocalSystem" />
+                <util:ServiceConfig
+                    ServiceName="qbPortWeaverHelper"
+                    FirstFailureActionType="restart"
+                    SecondFailureActionType="restart"
+                    ThirdFailureActionType="restart"
+                    RestartServiceDelayInSeconds="5"
+                    ResetPeriodInDays="1" />
+                <ServiceControl
+                    Id="HelperServiceControl"
+                    Name="qbPortWeaverHelper"
+                    Start="install"
+                    Stop="both"
+                    Remove="uninstall"
+                    Wait="yes" />
+            </Component>
 
-		</ComponentGroup>
+        </ComponentGroup>
 
-		<!-- Shortcuts -->
-		<ComponentGroup Id="ShortcutComponents">
+        <!-- Shortcuts -->
+        <ComponentGroup Id="ShortcutComponents">
 
-			<Component Id="DesktopShortcutComp" Directory="DesktopFolder">
-				<Shortcut Id="DesktopShortcut"
-						  Name="qbPortWeaver"
-						  Target="[INSTALLFOLDER]qbPortWeaver.exe"
-						  WorkingDirectory="INSTALLFOLDER" />
-				<RegistryValue Root="HKCU"
-							   Key="Software\qbPortWeaver"
-							   Name="DesktopShortcut"
-							   Type="integer"
-							   Value="1"
-							   KeyPath="yes" />
-			</Component>
+            <Component Id="DesktopShortcutComp" Directory="DesktopFolder">
+                <Shortcut Id="DesktopShortcut"
+                          Name="qbPortWeaver"
+                          Target="[INSTALLFOLDER]qbPortWeaver.exe"
+                          WorkingDirectory="INSTALLFOLDER" />
+                <RegistryValue Root="HKCU"
+                               Key="Software\qbPortWeaver"
+                               Name="DesktopShortcut"
+                               Type="integer"
+                               Value="1"
+                               KeyPath="yes" />
+            </Component>
 
-			<Component Id="StartMenuShortcutComp" Directory="StartMenuShortcutFolder">
-				<Shortcut Id="StartMenuShortcut"
-						  Name="qbPortWeaver"
-						  Target="[INSTALLFOLDER]qbPortWeaver.exe"
-						  WorkingDirectory="INSTALLFOLDER" />
-				<RemoveFolder Id="RemoveStartMenuFolder"
-							  Directory="StartMenuShortcutFolder"
-							  On="uninstall" />
-				<RegistryValue Root="HKCU"
-							   Key="Software\qbPortWeaver"
-							   Name="StartMenuShortcut"
-							   Type="integer"
-							   Value="1"
-							   KeyPath="yes" />
-			</Component>
+            <Component Id="StartMenuShortcutComp" Directory="StartMenuShortcutFolder">
+                <Shortcut Id="StartMenuShortcut"
+                          Name="qbPortWeaver"
+                          Target="[INSTALLFOLDER]qbPortWeaver.exe"
+                          WorkingDirectory="INSTALLFOLDER" />
+                <RemoveFolder Id="RemoveStartMenuFolder"
+                              Directory="StartMenuShortcutFolder"
+                              On="uninstall" />
+                <RegistryValue Root="HKCU"
+                               Key="Software\qbPortWeaver"
+                               Name="StartMenuShortcut"
+                               Type="integer"
+                               Value="1"
+                               KeyPath="yes" />
+            </Component>
 
-		</ComponentGroup>
+        </ComponentGroup>
 
-	</Fragment>
+    </Fragment>
 
 </Wix>

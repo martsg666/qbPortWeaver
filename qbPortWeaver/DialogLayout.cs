@@ -1,4 +1,4 @@
-namespace qbPortWeaver;
+﻿namespace qbPortWeaver;
 
 /// <summary>
 /// Shared layout primitives for the app's code-built dialogs (ThemedMessageBox, ClientChooserForm,

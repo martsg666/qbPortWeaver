@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Builds qbPortWeaver from source and produces a Chocolatey .nupkg ready for publishing.
 

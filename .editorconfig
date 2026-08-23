@@ -3,13 +3,36 @@ root = true
 [*]
 indent_style = space
 end_of_line = crlf
-charset = utf-8-bom
+charset = utf-8
 insert_final_newline = true
 trim_trailing_whitespace = true
 
+# A BOM is declared only for the families Visual Studio writes with one, so VS re-saving a file
+# is not a change. Everything else must stay BOM-less: a BOM breaks the Actions YAML parser, the
+# Nicotine+ plugin loader reading PLUGININFO, and git's own pattern files (.gitignore, .mailmap).
 [*.cs]
 indent_size = 4
+charset = utf-8-bom
 
 # File-scoped namespace declarations (C# 10+). Matches the style used by the HelperService project;
 # converting the main app and shared library here brings the whole solution onto one convention.
 csharp_style_namespace_declarations = file_scoped:warning
+
+[*.resx]
+charset = utf-8-bom
+
+[*.ps1]
+charset = utf-8-bom
+
+[*.nuspec]
+charset = utf-8-bom
+
+[*.wxs]
+indent_size = 4
+
+# Visual Studio generates these and re-strips the final newline and trailing whitespace on every
+# save, so the rules are relaxed rather than fought. Must stay after the sections above so it wins
+# for Designer.cs, which also matches [*.cs].
+[*.{resx,Designer.cs}]
+insert_final_newline = false
+trim_trailing_whitespace = false

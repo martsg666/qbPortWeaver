@@ -1,4 +1,4 @@
-namespace qbPortWeaver;
+﻿namespace qbPortWeaver;
 
 /// <summary>
 /// Small modal prompt shown when client detection is ambiguous - more than one client is running, or

@@ -25,6 +25,11 @@ public partial class WhatsNewForm : Form
         "Settings, About, Status and the other dialogs now carry the qbPortWeaver icon, so they are " +
         "easy to pick out when you switch windows with Alt+Tab. Until now they appeared there with " +
         "no icon at all.\n\n" +
+        "Stops repeating the same warning\n" +
+        "A problem that stays until you fix it - a setting left blank, a library folder that is " +
+        "offline - used to be logged again on every sync cycle, pushing the tray warning count up " +
+        "and burying everything else. It is now reported once when it appears, again only if it " +
+        "changes, and once more if it comes back after clearing.\n\n" +
         "Previously released\n\n" +
         "New in 2.6.5\n\n" +
         "Spots client settings that undo your forwarded port\n" +

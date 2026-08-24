@@ -28,6 +28,10 @@ public partial class WhatsNewForm : Form
         "unless the app version happened to move as well. It now compares the installed files with " +
         "the ones this build carries, so an update is offered whenever there is genuinely something " +
         "new to install.\n\n" +
+        "Multi-line log entries stay together\n" +
+        "A log entry can run to more than one line. The Log Viewer now keeps those lines with the " +
+        "entry they belong to, so filtering by level, subsystem or time range never shows part of an " +
+        "entry on its own, or leaves a stray line sitting under an unrelated one.\n\n" +
         "Previously released\n\n" +
         "New in 2.6.6\n\n" +
         "See what auto-recovery is doing\n" +

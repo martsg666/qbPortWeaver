@@ -14,6 +14,25 @@ function Section($title) { "<tr><td colspan='2' style='padding:10px 0 2px;font-w
 # independent settings - consecutive failed cycles, and a port confirmed closed from outside - and
 # either one can restart the VPN with the other switched off, so "Disabled" needs both to be off.
 # The failed-cycle states are reported first and fall through to the port-closed ones.
+# What the failed-cycle trigger is doing, or $null when it is idle. Its own function so the caller
+# can fall through to the port-closed trigger, mirroring how the app itself splits the two.
+function FailedCycleState($s) {
+    # Both holds are absolute instants, not remaining durations.
+    if ($null -ne $s.recoveryHoldUntil) { return "Holding - no internet connection, retry at $($s.recoveryHoldUntil)" }
+    if ($null -ne $s.recoverySustainedUntil) { return "Holding - failures too recent, retry at $($s.recoverySustainedUntil)" }
+    if ($s.recoveryFailedCycles -ge $s.recoveryTriggerCycles) { return 'Will trigger on the next failed cycle' }
+    if ($s.recoveryFailedCycles -gt 0) { return "$($s.recoveryFailedCycles) of $($s.recoveryTriggerCycles) failed cycles" }
+    return $null
+}
+
+# What the port-closed trigger is doing, or $null when it is idle.
+function PortClosedState($s) {
+    # One-shot: once it fires it stays disarmed until a verification reports the port open again.
+    if (-not $s.portClosedRecoveryArmed) { return 'Triggered - waiting for the port to verify open again' }
+    if ($s.portClosedRecoveryChecks -gt 0) { return "$($s.portClosedRecoveryChecks) of $($s.portClosedRecoveryTriggerChecks) closed checks" }
+    return $null
+}
+
 function RecoveryState($s) {
     # A threshold of 0 (or a missing key) means no cycle has published one: a status file written by
     # an app version from before these keys existed, or a cycle that failed before reading config.
@@ -21,17 +40,13 @@ function RecoveryState($s) {
     if (-not $s.recoveryEnabled -and -not $s.portClosedRecoveryEnabled) { return 'Disabled' }
 
     if ($s.recoveryEnabled) {
-        # Both holds are absolute instants, not remaining durations.
-        if ($null -ne $s.recoveryHoldUntil) { return "Holding - no internet connection, retry at $($s.recoveryHoldUntil)" }
-        if ($null -ne $s.recoverySustainedUntil) { return "Holding - failures too recent, retry at $($s.recoverySustainedUntil)" }
-        if ($s.recoveryFailedCycles -ge $s.recoveryTriggerCycles) { return 'Will trigger on the next failed cycle' }
-        if ($s.recoveryFailedCycles -gt 0) { return "$($s.recoveryFailedCycles) of $($s.recoveryTriggerCycles) failed cycles" }
+        $failedCycle = FailedCycleState $s
+        if ($null -ne $failedCycle) { return $failedCycle }
     }
 
     if ($s.portClosedRecoveryEnabled) {
-        # One-shot: once it fires it stays disarmed until a verification reports the port open again.
-        if (-not $s.portClosedRecoveryArmed) { return 'Triggered - waiting for the port to verify open again' }
-        if ($s.portClosedRecoveryChecks -gt 0) { return "$($s.portClosedRecoveryChecks) of $($s.portClosedRecoveryTriggerChecks) closed checks" }
+        $portClosed = PortClosedState $s
+        if ($null -ne $portClosed) { return $portClosed }
     }
 
     return 'Idle'

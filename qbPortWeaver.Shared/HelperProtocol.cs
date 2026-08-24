@@ -59,11 +59,10 @@ public static class HelperProtocol
     /// <see cref="ResultVersionKey"/>; a response without that key came from a helper built before
     /// versioning existed, which is how an out-of-date peer is told apart from a broken one.
     /// <para><b>Version 1</b> is the original three-field request with a version-carrying response.
-    /// Bump this only when the wire format actually changes, and say what changed here.</para>
+    /// Bump this only when the message format actually changes, and say what changed here.</para>
     /// </summary>
     public const int Version = 1;
 
     /// <summary>Result key: the protocol version the helper speaks. Absent on pre-versioning helpers.</summary>
     public const string ResultVersionKey = "v";
-
 }

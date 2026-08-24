@@ -49,6 +49,16 @@ public sealed record StatusSnapshot
     /// otherwise. Distinct from <see cref="RecoveryHoldUntil"/>: that one waits on connectivity,
     /// this one waits for the failures to have persisted long enough to rule out a brief blip.</summary>
     [JsonPropertyName("recoverySustainedUntil")] public DateTimeOffset? RecoverySustainedUntil { get; init; }
+    /// <summary>Whether the port-closed recovery trigger is switched on. Its own setting, separate
+    /// from <see cref="RecoveryEnabled"/>: either trigger can restart the VPN with the other off.</summary>
+    [JsonPropertyName("portClosedRecoveryEnabled")] public bool PortClosedRecoveryEnabled { get; init; }
+    /// <summary>Consecutive confirmed-closed checks accumulated so far, 0 when the port last verified open.</summary>
+    [JsonPropertyName("portClosedRecoveryChecks")] public int PortClosedRecoveryChecks { get; init; }
+    /// <summary>Consecutive confirmed-closed checks required before port-closed recovery triggers.</summary>
+    [JsonPropertyName("portClosedRecoveryTriggerChecks")] public int PortClosedRecoveryTriggerChecks { get; init; }
+    /// <summary>False once the one-shot port-closed trigger has fired, until a verification reports the
+    /// port open again. While false that trigger cannot fire however long the port stays closed.</summary>
+    [JsonPropertyName("portClosedRecoveryArmed")] public bool PortClosedRecoveryArmed { get; init; }
 }
 
 /// <summary>

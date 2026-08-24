@@ -280,6 +280,17 @@ public sealed class PortSyncService
         // panel names the cause - collapsing them would make the row say "no internet connection"
         // during an ordinary blip.
         public const string RecoverySustainedUntil = "recoverySustainedUntil";
+        // The port-closed recovery trigger, which is independent of the failed-cycle one above: its
+        // own setting, its own threshold, counted in confirmed-closed checks rather than in cycles.
+        // Published for the same reason the failed-cycle counters are - without them the Status panel
+        // can only describe one of the two triggers, so a user whose port is closed sees a row that
+        // says nothing about the recovery actually approaching (or, once Armed goes false, about the
+        // recovery that has already run and will not run again until the port reopens).
+        public const string PortClosedRecoveryEnabled = "portClosedRecoveryEnabled";
+        public const string PortClosedRecoveryChecks = "portClosedRecoveryChecks";
+        public const string PortClosedRecoveryTriggerChecks = "portClosedRecoveryTriggerChecks";
+        // False once the one-shot trigger has fired, until a verification reports the port open again.
+        public const string PortClosedRecoveryArmed = "portClosedRecoveryArmed";
 
         // Values for the Status key live in the public SyncStatusValues (shared with the Status panel).
     }
@@ -315,7 +326,13 @@ public sealed class PortSyncService
             [StatusKeys.RecoveryEnabled] = false,
             [StatusKeys.RecoveryFailedCycles] = 0,
             [StatusKeys.RecoveryTriggerCycles] = 0,
-            [StatusKeys.RecoverySustainedUntil] = null
+            [StatusKeys.RecoverySustainedUntil] = null,
+            [StatusKeys.PortClosedRecoveryEnabled] = false,
+            [StatusKeys.PortClosedRecoveryChecks] = 0,
+            [StatusKeys.PortClosedRecoveryTriggerChecks] = 0,
+            // Seeded to match the field initialiser rather than to false: armed is the resting state,
+            // and the finally overwrites it with the real value on every cycle that gets that far.
+            [StatusKeys.PortClosedRecoveryArmed] = true
         };
 
         try
@@ -339,6 +356,10 @@ public sealed class PortSyncService
                 // inside RunCoreAsync, so only the finally sees this cycle's final count.
                 status[StatusKeys.RecoveryFailedCycles] = _consecutiveFailedCycles;
                 status[StatusKeys.RecoverySustainedUntil] = _recoverySustainedUntil;
+                // Read here for the same reason as the failure streak above: both are mutated by the
+                // verification path inside RunCoreAsync, so only the finally sees this cycle's values.
+                status[StatusKeys.PortClosedRecoveryChecks] = _confirmedClosedCount;
+                status[StatusKeys.PortClosedRecoveryArmed] = _portClosedRecoveryArmed;
                 StatusManager.Write(status);
                 string? outcome = status[StatusKeys.Status] as string;
                 LogCycleOutcome(outcome);
@@ -435,6 +456,8 @@ public sealed class PortSyncService
         status[StatusKeys.UpdateIntervalSeconds] = cfg.UpdateInterval;
         status[StatusKeys.RecoveryEnabled] = cfg.VpnAutoRecoveryEnabled;
         status[StatusKeys.RecoveryTriggerCycles] = cfg.VpnAutoRecoveryTriggerCycles;
+        status[StatusKeys.PortClosedRecoveryEnabled] = cfg.PortClosedRecoveryEnabled;
+        status[StatusKeys.PortClosedRecoveryTriggerChecks] = cfg.PortClosedRecoveryTriggerChecks;
 
         // If we were holding for the VPN during startup and the grace window has now elapsed (or the
         // setting was turned off), note the transition once so the log explains why quiet "waiting"
@@ -1051,7 +1074,11 @@ public sealed class PortSyncService
         if (!_portClosedRecoveryArmed)
         {
             _portClosedRecoveryArmed = true;
-            LogManager.Instance.LogDebug("PortSyncService.HandlePortOpenResult: Port-closed recovery re-armed");
+            // Info, not Debug: the disarmed state it clears is reported to the user in the port-closed
+            // Warn and on the Status panel, so the point at which recovery becomes available again has
+            // to be visible at the same level. Reached only after a recovery actually fired, so it
+            // cannot become routine noise.
+            LogManager.Instance.LogMessage("Port-closed recovery re-armed - it can trigger again if the port closes", LogLevel.Info);
         }
     }
 
@@ -1089,13 +1116,18 @@ public sealed class PortSyncService
     // Builds the recovery-progress suffix for the port-closed Warn messages, mirroring
     // BuildCycleCountMessage's structure (counted in checks, not cycles) so it reads consistently
     // with the failed-cycle recovery logs.
-    // Shown only while recovery is enabled AND still armed - it tracks progress toward the
-    // threshold. With recovery off the count is zeroed each cycle; once recovery has fired
-    // (disarmed) the count no longer drives a trigger, so a climbing count would mislead.
+    // With recovery off there is nothing to report and the count is zeroed each cycle, so the suffix
+    // is empty. Once recovery has fired (disarmed) the count no longer drives a trigger, so reporting
+    // it would mislead - but reporting nothing misleads more: this Warn repeats every cycle for as
+    // long as the port stays closed, and dropping the suffix at exactly the moment the trigger stops
+    // firing leaves the user watching a warning repeat with no sign that the app has already acted
+    // and is now waiting. So the disarmed state names itself instead of going quiet.
     private string BuildPortClosedRecoverySuffix(SyncConfig config)
     {
-        if (!config.PortClosedRecoveryEnabled || !_portClosedRecoveryArmed)
+        if (!config.PortClosedRecoveryEnabled)
             return string.Empty;
+        if (!_portClosedRecoveryArmed)
+            return " (recovery has already run for this outage - it will not run again until the port is verified open)";
         string checks = AppConstants.PluralizeNoun(_confirmedClosedCount, "closed check");
         return $" ({_confirmedClosedCount} consecutive {checks}, recovery triggers after {config.PortClosedRecoveryTriggerChecks} consecutive closed checks)";
     }
@@ -1502,6 +1534,11 @@ public sealed class PortSyncService
             LogManager.Instance.LogMessage(
                 $"Holding recovery - failures started only {elapsed.TotalSeconds:F0}s ago " +
                 $"(recovery waits until {minSustainedFailure.TotalSeconds:F0}s to ignore brief network blips)",
+                // Info, while the offline limiter logs its hold at Warn, and the asymmetry is
+                // deliberate rather than an oversight: both lines mean "recovery is not running right
+                // now", but this floor clears by itself within a cycle or two and is reached during
+                // any ordinary blip, whereas an offline hold lasts 5 to 15 minutes and means something
+                // is actually wrong. Warn here would badge the tray on every transient failure.
                 LogLevel.Info);
             return;
         }

@@ -879,8 +879,12 @@ public partial class SettingsForm : Form
             "Nicotine+'s data folder was not found. Start Nicotine+ once, or set the Executable path above for a portable installation.",
         NicotinePluginState.NotInstalled =>
             "The bridge plugin is not installed. Click \"Install Plugin\" first.",
+        // "Differs" rather than "older": staleness is decided by comparing the installed files with
+        // the bundled ones, so the versions can match while the files do not. This line sits directly
+        // under the status label, which shows that detail - claiming age there contradicted a label
+        // reading "updated files available" in the one place both are on screen together.
         NicotinePluginState.Outdated =>
-            "An older version of the bridge plugin is installed. Click \"Update Plugin\".",
+            "The installed bridge plugin differs from the one this build ships. Click \"Update Plugin\".",
         NicotinePluginState.NotEnabled =>
             "The plugin is installed but not enabled. Enable \"qbPortWeaver Bridge\" in Nicotine+ under Preferences → Plugins.",
         _ => "The plugin is enabled but has not published its details yet. Start Nicotine+ and try again."

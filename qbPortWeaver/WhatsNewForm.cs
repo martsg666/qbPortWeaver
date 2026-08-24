@@ -22,6 +22,12 @@ public partial class WhatsNewForm : Form
         "it can run a second time. The warning that repeats while the port stays closed used to stop " +
         "mentioning recovery at exactly that point, which read as though nothing had been done about " +
         "it. It now says the recovery has already run, and what it is waiting for.\n\n" +
+        "Nicotine+ plugin updates are offered when the plugin changes\n" +
+        "Settings used to decide whether a plugin update was available by comparing version numbers, " +
+        "and the plugin's version follows the app's - so a fix to the plugin alone was never offered " +
+        "unless the app version happened to move as well. It now compares the installed files with " +
+        "the ones this build carries, so an update is offered whenever there is genuinely something " +
+        "new to install.\n\n" +
         "Previously released\n\n" +
         "New in 2.6.6\n\n" +
         "See what auto-recovery is doing\n" +

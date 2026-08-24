@@ -931,6 +931,16 @@ public partial class LogViewerForm : Form
     }
 
     // A meta line with text is a continuation of the entry above it; a blank one is a cycle separator.
+    //
+    // Known limitation, deliberately not guessed at: a blank line *inside* a multi-line entry is
+    // indistinguishable from a cycle separator, because both are whitespace-only lines with no level
+    // column. Such a line therefore takes the separator branch in ShouldAppend and does not inherit
+    // its parent's visibility, so a filtered-out entry containing one can still leave that blank row
+    // behind. Nothing in the app writes a multi-line entry today (every call passes ex.Message, not
+    // ex.ToString()), so this is unreachable in practice, and telling the two apart would mean
+    // inferring structure the log format does not record - a guess that could just as easily swallow
+    // a real cycle separator. If entries ever do span lines, the fix belongs in the writer: have
+    // LogManager mark continuations explicitly rather than have the reader infer them.
     private static bool IsSeparatorLine(LogLine line) =>
         line.Level == LevelMeta && string.IsNullOrWhiteSpace(line.Text);
 

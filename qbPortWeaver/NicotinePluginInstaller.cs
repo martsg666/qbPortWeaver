@@ -564,21 +564,23 @@ internal static class NicotinePluginInstaller
             List<string> relativePaths = [.. GetPluginFiles().Select(entry => entry.RelativePath)];
             if (relativePaths.Count == 0) return false; // nothing bundled: no grounds to call it stale
 
-            // Cheap gate first. GetStatus is polled every two seconds on the UI thread while the
-            // Settings dialog is open (SettingsForm.NicotinePluginStatusPollMs), so reading every
-            // plugin file on each poll would be wasteful. Lengths and write times cost metadata only,
-            // and both the installer (FileMode.Create) and any hand edit move the write time, so a
-            // change cannot slip past this and leave the cached verdict standing.
+            // Cheap gate first. GetStatus is polled every two seconds while the Settings dialog is
+            // open (SettingsForm.NicotinePluginStatusPollMs), so reading every plugin file on each
+            // poll would be wasteful. Lengths and write times cost metadata only, and both the
+            // installer (FileMode.Create) and any hand edit move the write time, so a change cannot
+            // slip past this and leave the cached verdict standing.
             string signature = BuildInstalledSignature(pluginFolder, relativePaths);
-            if (_staleCacheFolder == pluginFolder && _staleCacheSignature == signature)
-                return _staleCacheResult;
+
+            // Read the cache through a local: the field can be replaced by another thread between
+            // the test and the return, and a local pins the instance being examined.
+            StaleCache? cached = _staleCache;
+            if (cached is not null && cached.Folder == pluginFolder && cached.Signature == signature)
+                return cached.Stale;
 
             string? installed = ComputeInstalledFingerprint(pluginFolder, relativePaths);
             bool stale = installed is null || !string.Equals(installed, _bundledFingerprint.Value, StringComparison.Ordinal);
 
-            _staleCacheFolder = pluginFolder;
-            _staleCacheSignature = signature;
-            _staleCacheResult = stale;
+            _staleCache = new StaleCache(pluginFolder, signature, stale);
             return stale;
         }
         catch (Exception ex)
@@ -591,11 +593,22 @@ internal static class NicotinePluginInstaller
         }
     }
 
-    // Cache for the gate above: the folder it was computed for, the metadata signature it was
-    // computed from, and the verdict. Single-threaded by use - GetStatus runs on the UI thread.
-    private static string? _staleCacheFolder;
-    private static string? _staleCacheSignature;
-    private static bool _staleCacheResult;
+    // Cache for the gate above: the folder a verdict was computed for, the metadata signature it was
+    // computed from, and the verdict itself.
+    //
+    // One immutable object rather than three fields, because this is NOT single-threaded. Settings
+    // polls GetStatus on the UI thread every two seconds, while DiagnosticsService reaches the same
+    // method from AddNicotinePluginResult, which runs on a thread-pool continuation (RunAsync awaits
+    // with ConfigureAwait(false) before it). Three separate writes could interleave and leave one
+    // call's signature standing beside another call's verdict - reporting the plugin up to date after
+    // it changed, or Outdated after an update. Publishing a single reference makes the three values
+    // inseparable: a reader sees either the whole previous verdict or the whole new one.
+    //
+    // Volatile for the publication order, so a reader cannot observe the reference before the fields
+    // it points at. Two threads racing may still both compute, which costs a duplicated hash and
+    // nothing else - the verdict is a pure function of the files.
+    private sealed record StaleCache(string Folder, string Signature, bool Stale);
+    private static volatile StaleCache? _staleCache;
 
     /// <summary>SHA-256 over every bundled plugin file. Computed once: the resources cannot change
     /// while the process runs.</summary>

@@ -10,11 +10,18 @@ public partial class WhatsNewForm : Form
 
     private const string ReleaseFeaturesText =
         "New in 2.6.7\n\n" +
-        "PLACEHOLDER - replace before release\n" +
-        "Summarise this version's user-facing changes here, in the same voice as the sections below: " +
-        "a short title line, then a plain-language paragraph saying what it does for the user. The " +
-        "Debug.Assert in the constructor only checks that a 'New in <version>' section exists, not " +
-        "that it has been written, so this text will ship if it is not replaced.\n\n" +
+        "Auto-recovery reports both of its triggers\n" +
+        "Auto-recovery has two triggers that work independently: repeated failed cycles, and a " +
+        "forwarded port that stays closed. Until now the Status window's Auto-recovery line only " +
+        "described the first of them, so a closed port could be counting toward a recovery with " +
+        "nothing on screen to show for it. The line now covers both. It also reads Disabled only " +
+        "when you have switched both triggers off - with one of them still on it used to say " +
+        "Disabled while the app could still restart your VPN.\n\n" +
+        "Says when recovery has already run\n" +
+        "The port-closed trigger runs once, then waits for the port to test open again before it can " +
+        "run a second time. The warning that repeats while the port stays closed used to stop " +
+        "mentioning recovery at exactly that point, which read as though nothing had been done about " +
+        "it. It now says the recovery has already run, and what it is waiting for.\n\n" +
         "Previously released\n\n" +
         "New in 2.6.6\n\n" +
         "See what auto-recovery is doing\n" +

@@ -330,7 +330,7 @@ public sealed class PortSyncService
             [StatusKeys.PortClosedRecoveryEnabled] = false,
             [StatusKeys.PortClosedRecoveryChecks] = 0,
             [StatusKeys.PortClosedRecoveryTriggerChecks] = 0,
-            // Seeded to match the field initialiser rather than to false: armed is the resting state,
+            // Initialised to match the field rather than to false: armed is the resting state,
             // and the finally overwrites it with the real value on every cycle that gets that far.
             [StatusKeys.PortClosedRecoveryArmed] = true
         };

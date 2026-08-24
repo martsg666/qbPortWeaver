@@ -561,7 +561,7 @@ internal static class NicotinePluginInstaller
     {
         try
         {
-            List<string> relativePaths = [.. GetPluginFiles().Select(entry => entry.RelativePath)];
+            List<string> relativePaths = [.. PluginFiles.Select(entry => entry.RelativePath)];
             if (relativePaths.Count == 0) return false; // nothing bundled: no grounds to call it stale
 
             // Cheap gate first. GetStatus is polled every two seconds while the Settings dialog is
@@ -612,6 +612,12 @@ internal static class NicotinePluginInstaller
 
     /// <summary>SHA-256 over every bundled plugin file. Computed once: the resources cannot change
     /// while the process runs.</summary>
+    /// <remarks>Note for this and the other Lazy fields here: Lazy caches a thrown exception
+    /// permanently, so a failure in the factory would leave the plugin reported "not stale" for the
+    /// life of the process, logged at Debug only. Accepted rather than worked around - the factories
+    /// touch nothing but already-loaded assembly resources, and the wrong answer in that direction
+    /// shows no nag, where reporting Outdated on a transient error would nag on every two-second
+    /// poll with a reinstall that fixes nothing.</remarks>
     private static readonly Lazy<string> _bundledFingerprint = new(ComputeBundledFingerprint);
 
     // Each bundled resource paired with the relative path it installs to, sorted by that path so
@@ -619,18 +625,27 @@ internal static class NicotinePluginInstaller
     // resource name is carried rather than reconstructed: mapping a path back to a resource name
     // means re-flattening separators into dots, which is a second encoding to keep in step with
     // ResourceNameToRelativePath for no gain.
-    private static List<(string RelativePath, string ResourceName)> GetPluginFiles() =>
-        [.. GetPluginResourceNames()
+    //
+    // Resolved once, for the same reason _bundledFingerprint is: the resources cannot change while
+    // the process runs, and IsInstalledPluginStale sits on the two-second Settings poll. Rebuilding
+    // it per check meant enumerating every manifest resource in the assembly - not just this
+    // plugin's - and re-sorting, in front of the metadata gate that exists to keep the check cheap.
+    private static List<(string RelativePath, string ResourceName)> PluginFiles => _pluginFiles.Value;
+
+    private static readonly Lazy<List<(string RelativePath, string ResourceName)>> _pluginFiles =
+        new(() => [.. GetPluginResourceNames()
             .Select(name => (RelativePath: ResourceNameToRelativePath(name[ResourcePrefix.Length..]), ResourceName: name))
-            .OrderBy(entry => entry.RelativePath, StringComparer.Ordinal)];
+            .OrderBy(entry => entry.RelativePath, StringComparer.Ordinal)]);
 
     private static string ComputeBundledFingerprint()
     {
         using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
-        foreach ((string relativePath, string resourceName) in GetPluginFiles())
+        foreach ((string relativePath, string resourceName) in PluginFiles)
         {
-            AppendPath(hash, relativePath);
             using Stream? source = Assembly.GetExecutingAssembly().GetManifestResourceStream(resourceName);
+            // Length before the bytes; an embedded resource stream reports it without reading, and
+            // reading it does not disturb the position AppendStream consumes from.
+            AppendPath(hash, relativePath, source?.Length ?? 0);
             if (source is not null) AppendStream(hash, source);
         }
         return Convert.ToHexString(hash.GetHashAndReset());
@@ -646,19 +661,24 @@ internal static class NicotinePluginInstaller
             string target = Path.Combine(pluginFolder, relativePath);
             if (!File.Exists(target)) return null;
 
-            AppendPath(hash, relativePath);
             // FileShare.ReadWrite so a running Nicotine+ holding a file open cannot fail the read.
             using var source = new FileStream(target, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+            AppendPath(hash, relativePath, source.Length);
             AppendStream(hash, source);
         }
         return Convert.ToHexString(hash.GetHashAndReset());
     }
 
-    // Path and length, so that neither a rename nor a truncation can collide with another layout.
-    private static void AppendPath(IncrementalHash hash, string relativePath)
+    // Path, then the content length, so that neither a rename nor a shift of bytes across a file
+    // boundary can collide with another layout. The length is load-bearing: the digest is a flat
+    // stream of path/content pairs, and without it the only thing separating one file's bytes from
+    // the next file's path is a NUL that content could itself contain - so a single file holding
+    // "Y b Z" would hash identically to a file "Y" plus a file "b" holding "Z".
+    private static void AppendPath(IncrementalHash hash, string relativePath, long contentLength)
     {
         hash.AppendData(Encoding.UTF8.GetBytes(relativePath));
         hash.AppendData([0]);
+        hash.AppendData(BitConverter.GetBytes(contentLength));
     }
 
     private static void AppendStream(IncrementalHash hash, Stream source)
@@ -717,13 +737,15 @@ internal static class NicotinePluginInstaller
         return null;
     }
 
-    // Only offer to replace an installed plugin when the bundled version is demonstrably newer.
-    // Treat an unparseable non-empty installed version as unknown rather than outdated: overwriting
-    // it could silently downgrade a prerelease or a future version format this build does not know.
     // The staleness verdict comes from the file contents, so the version is only ever wording here.
     // Both halves are reachable: the versions differ on any release that moved the app version, and
     // they match when a plugin-only change ships on an unchanged one - the case a version gate missed
     // entirely, and the reason this reads "updated files" rather than naming a number that has not moved.
+    //
+    // This replaced a version gate that refused to report Outdated for an unparseable installed
+    // version, so as not to offer an overwrite over a prerelease or a future version format. Content
+    // comparison drops that guard deliberately: any difference is a difference, and Outdated only
+    // surfaces a button the user chooses to press - it never overwrites anything on its own.
     private static string BuildOutdatedDetail(string installedVersion)
     {
         string installed = string.IsNullOrWhiteSpace(installedVersion) ? "Unknown version" : installedVersion;

@@ -363,6 +363,14 @@ public partial class StatusForm : Form
 
         // The failed-cycle trigger's own states, reported only while that trigger is on - with it off
         // its counters keep whatever value they last held, and none of them can lead to a recovery.
+        //
+        // Failed-cycle states take precedence, and the reason is a judgement call rather than an
+        // impossibility - do not reorder these on the assumption that the two cannot coexist. They
+        // can: PortSyncService resets _confirmedClosedCount only when the port verifies open, when
+        // the trigger fires, or when it is switched off, never when a cycle fails. So a closed-check
+        // count survives into a failure streak and sits hidden behind it. That is the right outcome,
+        // because a port cannot be verified at all while the VPN is down: the streak is the live
+        // signal and the closed count is stale history.
         if (s.RecoveryEnabled && DescribeFailedCycleRecovery(s) is string failedCycle) return (failedCycle, true);
 
         // Falls through to the port-closed trigger, which is why the block above returns only for its

@@ -18,8 +18,8 @@ public partial class WhatsNewForm : Form
         "when you have switched both triggers off - with one of them still on it used to say " +
         "Disabled while the app could still restart your VPN.\n\n" +
         "Says when recovery has already run\n" +
-        "The port-closed trigger runs once, then waits for the port to test open again before it can " +
-        "run a second time. The warning that repeats while the port stays closed used to stop " +
+        "The port-closed trigger runs once, then waits for a scheduled check to report the port open before " +
+        "it can run a second time. The warning that repeats while the port stays closed used to stop " +
         "mentioning recovery at exactly that point, which read as though nothing had been done about " +
         "it. It now says the recovery has already run, and what it is waiting for.\n\n" +
         "Previously released\n\n" +

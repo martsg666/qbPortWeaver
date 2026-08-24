@@ -456,7 +456,11 @@ public sealed class PortSyncService
         status[StatusKeys.UpdateIntervalSeconds] = cfg.UpdateInterval;
         status[StatusKeys.RecoveryEnabled] = cfg.VpnAutoRecoveryEnabled;
         status[StatusKeys.RecoveryTriggerCycles] = cfg.VpnAutoRecoveryTriggerCycles;
-        status[StatusKeys.PortClosedRecoveryEnabled] = cfg.PortClosedRecoveryEnabled;
+        // The effective value, not the stored one. The port-closed trigger runs inside port
+        // verification, so with verification off it is inert however its own checkbox was left - and
+        // Settings only greys that checkbox out, it never clears it. Publishing the raw setting made
+        // the panel report Idle for a trigger that could never fire.
+        status[StatusKeys.PortClosedRecoveryEnabled] = cfg.PortClosedRecoveryEnabled && cfg.VerifyPortAfterSync;
         status[StatusKeys.PortClosedRecoveryTriggerChecks] = cfg.PortClosedRecoveryTriggerChecks;
 
         // If we were holding for the VPN during startup and the grace window has now elapsed (or the
@@ -1127,7 +1131,7 @@ public sealed class PortSyncService
         if (!config.PortClosedRecoveryEnabled)
             return string.Empty;
         if (!_portClosedRecoveryArmed)
-            return " (recovery has already run for this outage - it will not run again until the port is verified open)";
+            return " (recovery has already run for this outage - it will not run again until a scheduled check reports the port open)";
         string checks = AppConstants.PluralizeNoun(_confirmedClosedCount, "closed check");
         return $" ({_confirmedClosedCount} consecutive {checks}, recovery triggers after {config.PortClosedRecoveryTriggerChecks} consecutive closed checks)";
     }

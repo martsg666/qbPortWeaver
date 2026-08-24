@@ -413,7 +413,11 @@ public partial class StatusForm : Form
         // open. Worth its own state precisely because nothing else on the panel shows it: the port
         // stays closed, the Reachable row keeps saying so, and without this the row would read "Idle"
         // while the trigger for that exact condition is spent.
-        if (!s.PortClosedRecoveryArmed) return "Triggered - waiting for the port to verify open again";
+        // "the next scheduled check" rather than "the port to verify open": only the sync cycle's own
+        // verification re-arms the trigger. The panel's Test Port button runs a throwaway read-only
+        // check that touches no sync state, so wording this as something the user can go and do left
+        // them clicking Test Port, being told the port is open, and seeing this line unchanged.
+        if (!s.PortClosedRecoveryArmed) return "Triggered - waiting for the next scheduled check";
 
         if (s.PortClosedRecoveryChecks > 0)
         {

@@ -32,9 +32,15 @@ public static class StartupManager
     /// </summary>
     public static void RefreshStartupPathIfMoved()
     {
+        // Declared outside the try so the failure paths can name the path that is being left behind.
+        // Failing here is not cosmetic: the Run key keeps pointing at a binary that has moved, so at
+        // the next logon the app either does not start or starts an older copy - a functional failure
+        // with a confusing symptom. Both failure paths therefore log at Warn, where the success does
+        // at Info; logging the failure lower than the success left the case that matters invisible
+        // with debug mode off. This runs once at startup, so Warn here cannot become a repeating badge.
+        string? storedValue = null;
         try
         {
-            string? storedValue;
             using (var readKey = Registry.CurrentUser.OpenSubKey(RunRegistryKey))
                 storedValue = readKey?.GetValue(AppIdentity.AppName) as string;
 
@@ -48,7 +54,11 @@ public static class StartupManager
             using var writeKey = Registry.CurrentUser.OpenSubKey(RunRegistryKey, writable: true);
             if (writeKey is null)
             {
-                LogManager.Instance.LogDebug("StartupManager.RefreshStartupPathIfMoved: Cannot open Run key for write - skipping refresh");
+                LogManager.Instance.LogMessage(
+                    $"Could not update the Windows startup entry - it still points at '{storedValue}'. " +
+                    $"{AppIdentity.AppName} may not start at logon, or may start an older copy. " +
+                    "Write access to the Run key is often restricted by group policy on managed machines.",
+                    LogLevel.Warn);
                 return;
             }
             writeKey.SetValue(AppIdentity.AppName, expectedValue);
@@ -58,7 +68,14 @@ public static class StartupManager
         }
         catch (Exception ex)
         {
-            LogManager.Instance.LogDebug($"StartupManager.RefreshStartupPathIfMoved: {ex.Message}");
+            // storedValue is still null when the read itself threw, so the entry was never inspected
+            // and naming a stale path would be wrong.
+            string detail = storedValue is null
+                ? "the current entry could not be read"
+                : $"it still points at '{storedValue}'";
+            LogManager.Instance.LogMessage(
+                $"Could not update the Windows startup entry - {detail}: {ex.Message}",
+                LogLevel.Warn);
         }
     }
 

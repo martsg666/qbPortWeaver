@@ -578,7 +578,7 @@ internal static class NicotinePluginInstaller
                 return cached.Stale;
 
             string? installed = ComputeInstalledFingerprint(pluginFolder, relativePaths);
-            bool stale = installed is null || !string.Equals(installed, _bundledFingerprint.Value, StringComparison.Ordinal);
+            bool stale = installed is null || !string.Equals(installed, BundledFingerprint, StringComparison.Ordinal);
 
             _staleCache = new StaleCache(pluginFolder, signature, stale);
             return stale;
@@ -618,6 +618,8 @@ internal static class NicotinePluginInstaller
     /// touch nothing but already-loaded assembly resources, and the wrong answer in that direction
     /// shows no nag, where reporting Outdated on a transient error would nag on every two-second
     /// poll with a reinstall that fixes nothing.</remarks>
+    private static string BundledFingerprint => _bundledFingerprint.Value;
+
     private static readonly Lazy<string> _bundledFingerprint = new(ComputeBundledFingerprint);
 
     // Each bundled resource paired with the relative path it installs to, sorted by that path so

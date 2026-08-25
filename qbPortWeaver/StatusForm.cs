@@ -388,8 +388,7 @@ public partial class StatusForm : Form
         // Both holds are reported, each naming its own cause. The offline one is checked first only
         // because it is the more serious: nothing can be recovered until the connection returns,
         // whereas the sustained floor clears on its own within a couple of cycles.
-        string hold = DescribeRecoveryHold(s);
-        if (hold.Length > 0) return hold;
+        if (DescribeRecoveryHold(s) is string hold) return hold;
 
         if (DescribeSustainedHold(s) is string sustained) return sustained;
 
@@ -437,11 +436,12 @@ public partial class StatusForm : Form
     }
 
     // "Holding - no internet connection, retry in ~15m" while the offline rate limiter is
-    // waiting, or an empty string otherwise, which is what tells PopulateAutoRecovery to fall through
-    // to the other hold and then the failure streak.
-    private static string DescribeRecoveryHold(StatusSnapshot s)
+    // waiting, or null when it is not - the same "nothing to report" signal every other describer
+    // here uses, which is what tells the caller to fall through to the other hold and then the
+    // failure streak.
+    private static string? DescribeRecoveryHold(StatusSnapshot s)
     {
-        if (s.RecoveryHoldUntil is not DateTimeOffset until) return string.Empty;
+        if (s.RecoveryHoldUntil is not DateTimeOffset until) return null;
         return DescribeCountdown(until) is string when
             ? $"Holding - no internet connection, retry in {when}"
             : RecoveryNextCycleText;

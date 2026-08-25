@@ -276,7 +276,7 @@ public static class DiagnosticsService
             // is installed; this build ships 2.6.7"). One source for the phrasing also means a later
             // change to it cannot leave this copy behind, which is how that drift happened.
             NicotinePluginState.Outdated => new(Checks.ClientPlugin, DiagnosticStatus.Warn,
-                $"Bridge plugin: {status.Summary}",
+                $"The installed bridge plugin differs from the one this build ships ({status.Summary})",
                 "Click Update Plugin in Settings, then restart Nicotine+."),
 
             NicotinePluginState.NotEnabled => new(Checks.ClientPlugin, DiagnosticStatus.Fail,

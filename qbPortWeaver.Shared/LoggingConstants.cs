@@ -11,8 +11,9 @@ public static class LoggingConstants
     /// <summary>Subsystem label used by the helper service when writing log entries.</summary>
     public const string HelperServiceSubsystem = "HelperService";
 
-    /// <summary>Width of the subsystem column in log entries. Pads every label to this width.</summary>
-    public const int SubsystemMaxLength = 13; // "HelperService".Length
+    /// <summary>Width of the subsystem column in log entries. Labels are padded to this width and
+    /// truncated at it, so a longer label cannot shift the columns the Log Viewer's parser depends on.</summary>
+    public const int SubsystemMaxLength = 13; // "HelperService".Length - the longest label in use
 
     /// <summary>Timestamp format used in every log entry. Sortable, fixed-width, no timezone marker.
     /// <para>Always render and parse this with <see cref="System.Globalization.CultureInfo.InvariantCulture"/>.
@@ -40,6 +41,14 @@ public static class LoggingConstants
     /// <c>LogManager.FormatEntry</c> (main app) and <c>HelperLogger.WriteLog</c>
     /// (helper service) so the on-disk format cannot drift.
     /// </summary>
-    public static string FormatLogEntry(System.DateTime timestamp, string levelLabel, string subsystem, string message) =>
-        $"{timestamp.ToString(DateFormat, DateCulture)} | {levelLabel} | {subsystem.PadRight(SubsystemMaxLength)} | {message}{System.Environment.NewLine}";
+    public static string FormatLogEntry(System.DateTime timestamp, string levelLabel, string subsystem, string message)
+    {
+        // Truncate as well as pad. PadRight alone makes SubsystemMaxLength a minimum rather than the
+        // maximum its name promises, and an over-long label would shift every column after it on that
+        // entry only - so the Log Viewer would parse some lines and not others, which is a far more
+        // confusing failure than a visibly clipped label. Both processes write through this method,
+        // so the guard has to live here rather than at either call site.
+        string column = subsystem.Length > SubsystemMaxLength ? subsystem[..SubsystemMaxLength] : subsystem;
+        return $"{timestamp.ToString(DateFormat, DateCulture)} | {levelLabel} | {column.PadRight(SubsystemMaxLength)} | {message}{System.Environment.NewLine}";
+    }
 }

@@ -11,6 +11,16 @@ public partial class LogViewerForm : Form
     // (indexes match _themeColors; LevelMeta = unclassified, e.g. lines without a level column).
     private readonly record struct LogLine(string Text, byte Level);
 
+    // Palette indices into _themeColors, deliberately NOT the Shared.LogLevel enum values: that enum
+    // is Info=0, Warn=1, Error=2, Debug=3, so Error and Info are swapped relative to these. Nothing
+    // converts between the two - ClassifyLine derives the level from the line's text, never from a
+    // LogLevel - so the disagreement is harmless today, and both orderings are load-bearing in their
+    // own file (LogManager._levelLabels indexes by the enum and says so).
+    //
+    // Do not index _themeColors with a cast LogLevel: it would paint Info entries in the Error colour
+    // and vice versa, in the one tool used to diagnose problems, without anything failing loudly. And
+    // do not renumber these to match the enum without moving _themeColors and the four filter
+    // checkboxes in step - LevelMeta has no enum counterpart, so the two can never fully align.
     private const byte LevelError = 0;
     private const byte LevelWarn = 1;
     private const byte LevelInfo = 2;

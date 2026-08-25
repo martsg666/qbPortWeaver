@@ -673,7 +673,7 @@ internal static class NicotinePluginInstaller
     // boundary can collide with another layout. The length is load-bearing: the digest is a flat
     // stream of path/content pairs, and without it the only thing separating one file's bytes from
     // the next file's path is a NUL that content could itself contain - so a single file holding
-    // "Y b Z" would hash identically to a file "Y" plus a file "b" holding "Z".
+    // "Y<NUL>b<NUL>Z" would hash identically to a file "Y" plus a file "b" holding "Z".
     private static void AppendPath(IncrementalHash hash, string relativePath, long contentLength)
     {
         hash.AppendData(Encoding.UTF8.GetBytes(relativePath));

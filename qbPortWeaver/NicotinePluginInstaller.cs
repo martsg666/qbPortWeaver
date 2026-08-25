@@ -750,10 +750,16 @@ internal static class NicotinePluginInstaller
     // surfaces a button the user chooses to press - it never overwrites anything on its own.
     private static string BuildOutdatedDetail(string installedVersion)
     {
-        string installed = string.IsNullOrWhiteSpace(installedVersion) ? "Unknown version" : installedVersion;
+        // The unknown-version branch omits "installed" deliberately. "Unknown version" is ten
+        // characters longer than a version number, and with it the string reached 42 characters -
+        // past the ~40 the Settings label needs (see NicotinePluginStatus.Summary, which is AutoSize
+        // with no MaximumSize). Dropping the word costs nothing and keeps every branch inside budget.
+        if (string.IsNullOrWhiteSpace(installedVersion))
+            return $"Unknown version, {BundledVersion} available";
+
         return string.Equals(installedVersion, BundledVersion, StringComparison.Ordinal)
-            ? $"{installed} installed, updated files available"
-            : $"{installed} installed, {BundledVersion} available";
+            ? $"{installedVersion} installed, updated files available"
+            : $"{installedVersion} installed, {BundledVersion} available";
     }
 
     private static string? ReadResourceText(string resourceName)

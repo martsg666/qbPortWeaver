@@ -158,7 +158,18 @@ internal static class NicotinePluginDiscovery
 
             string host = root.GetStringOrNull("host") ?? "127.0.0.1";
 
-            return new NicotinePluginHandshake($"http://{host}:{port}", token, path); // NOSONAR S5332 - loopback IPC bridge on 127.0.0.1; TLS is meaningless for a local-only handshake
+            // The plugin only ever binds loopback, and the S5332 suppression below depends on that:
+            // plain HTTP is acceptable precisely because the traffic cannot leave this machine. A
+            // stale or hand-edited file naming another host would send the bearer token off-box in
+            // cleartext and quietly invalidate that reasoning - the same class of stale-file problem
+            // the pid check above guards against, so it gets the same treatment.
+            if (host is not ("127.0.0.1" or "localhost" or "::1"))
+            {
+                LogManager.Instance.LogDebug($"NicotinePluginDiscovery.TryReadFile: {path} names non-loopback host '{host}' - ignoring");
+                return null;
+            }
+
+            return new NicotinePluginHandshake($"http://{host}:{port}", token, path); // NOSONAR S5332 - loopback IPC bridge on 127.0.0.1 (enforced above); TLS is meaningless for a local-only handshake
         }
         catch (Exception ex)
         {

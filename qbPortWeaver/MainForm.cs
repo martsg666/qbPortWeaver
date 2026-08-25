@@ -149,6 +149,7 @@ public partial class MainForm : Form
         UpdateTrayTooltip();
 
         LogManager.Instance.WarnOrErrorLogged += OnWarnOrErrorLogged;
+        LogManager.Instance.LogWriteFailed += OnLogWriteFailed;
     }
 
     private void MainForm_Load(object? sender, EventArgs e) => InitializeAfterLoad();
@@ -261,6 +262,7 @@ public partial class MainForm : Form
 
         // Unsubscribe before teardown so background threads cannot marshal onto a disposed form
         LogManager.Instance.WarnOrErrorLogged -= OnWarnOrErrorLogged;
+        LogManager.Instance.LogWriteFailed -= OnLogWriteFailed;
 
         // Stop the update check timer before closing child forms to prevent it firing during teardown
         _updateCheckTimer?.Stop();
@@ -1139,6 +1141,15 @@ public partial class MainForm : Form
         {
             LogManager.Instance.LogDebug($"MainForm.InvokeOnUiThread: UI update failed: {ex.GetType().Name}: {ex.Message}");
         }
+    }
+
+    // Called from background threads via LogManager.LogWriteFailed when the log file cannot be
+    // written. Deliberately shows a balloon and nothing else: the failure cannot be logged (that is
+    // what failed), and logging it at Warn or Error would re-enter the failing write path and raise
+    // the event again. LogManager latches the event, so this fires once per failure episode.
+    private void OnLogWriteFailed()
+    {
+        ShowWarningBalloon("Cannot write to the log file. Check free disk space and the permissions on the qbPortWeaver folder.");
     }
 
     // Called from background threads via LogManager.WarnOrErrorLogged; marshals to UI thread

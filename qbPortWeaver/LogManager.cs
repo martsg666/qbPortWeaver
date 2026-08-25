@@ -34,6 +34,19 @@ public sealed class LogManager
     /// <summary>Raised after a Warn or Error entry is written, outside the write lock. Fired from background threads.</summary>
     public event Action<LogLevel>? WarnOrErrorLogged;
 
+    /// <summary>
+    /// Raised when writing to the log file fails, so the tray can surface a failure that by
+    /// definition cannot be reported through the log. Fired outside the write lock, from background
+    /// threads.
+    /// <para>Latched: it fires once per failure episode and re-arms only after a later write
+    /// succeeds. A failing log file usually keeps failing, so an unlatched event would fire on every
+    /// entry the app tries to write - unbounded, and from the one path that cannot log about it.</para>
+    /// <para><b>Subscribers must not log at Warn or Error.</b> Doing so re-enters this path and, if
+    /// the write is still failing, raises the event again. Show it to the user instead, as MainForm
+    /// does with a tray balloon.</para>
+    /// </summary>
+    public event Action? LogWriteFailed;
+
     /// <summary>Returns <see langword="true"/> after <see cref="Initialize"/> has been called.</summary>
     public static bool IsInitialized => _instance is not null;
 
@@ -46,6 +59,9 @@ public sealed class LogManager
     public string LogFilePath { get; }
     private readonly object _lock = new object();
     private int _writeCount;
+    // Whether the current write-failure episode has already been announced. Guarded by _lock,
+    // cleared by the next successful write. See LogWriteFailed for why this is latched.
+    private bool _writeFailureReported;
 
     private volatile bool _debugMode;
 
@@ -81,6 +97,7 @@ public sealed class LogManager
     public void LogMessage(string message, LogLevel level, string subsystem = Subsystem.MainApp)
     {
         bool shouldNotify = false;
+        bool writeFailed = false;
         lock (_lock)
         {
             try
@@ -95,15 +112,29 @@ public sealed class LogManager
 
                 WriteRaw(FormatEntry(message, level, subsystem));
                 shouldNotify = level is LogLevel.Warn or LogLevel.Error;
+                // A successful write re-arms the failure report, so a later episode is announced
+                // rather than swallowed as a duplicate of one the user has already dealt with.
+                _writeFailureReported = false;
             }
             catch (Exception ex)
             {
+                // Debug.WriteLine rather than any logging call: this IS the logging path, and it has
+                // just failed. Everything below exists because that makes the failure invisible -
+                // nothing reaches the file, and shouldNotify stays false, so the tray badge and
+                // balloon that normally mark a problem never fire either.
                 Debug.WriteLine($"LogManager.LogMessage: {ex.Message}");
+                if (!_writeFailureReported)
+                {
+                    _writeFailureReported = true;
+                    writeFailed = true;
+                }
             }
         }
 
         if (shouldNotify)
             RaiseWarnOrErrorLogged(level);
+        if (writeFailed)
+            RaiseLogWriteFailed();
     }
 
     /// <summary>
@@ -130,6 +161,21 @@ public sealed class LogManager
         catch (Exception ex)
         {
             Debug.WriteLine($"LogManager.RaiseWarnOrErrorLogged: subscriber threw {ex.GetType().Name}: {ex.Message}");
+        }
+    }
+
+    // Mirrors RaiseWarnOrErrorLogged: a throwing subscriber must not propagate back into the caller
+    // of LogMessage, and the failure is reported through Debug.WriteLine rather than the log, which
+    // has just proven it cannot be written to.
+    private void RaiseLogWriteFailed()
+    {
+        try
+        {
+            LogWriteFailed?.Invoke();
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"LogManager.RaiseLogWriteFailed: subscriber threw {ex.GetType().Name}: {ex.Message}");
         }
     }
 

@@ -122,6 +122,13 @@ internal static class AutoRecoveryManager
             return;
         }
 
+        // Not atomic across cancellation: a shutdown during this delay leaves the client killed and
+        // never restarted, so the user finds their VPN client closed with the log ending at "Killed
+        // client process" - and with a killswitch enabled that means no network until they notice.
+        // Accepted rather than fixed: restarting during teardown risks orphaning a process on the way
+        // out, passing CancellationToken.None here would make every shutdown wait on a launch that may
+        // fail anyway, and the kill cannot be deferred because it is what frees the executable. The
+        // exposure is the two seconds below.
         await Task.Delay(ClientRestartDelayMs, cancellationToken).ConfigureAwait(false);
         try
         {

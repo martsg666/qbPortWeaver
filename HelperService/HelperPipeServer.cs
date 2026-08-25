@@ -178,7 +178,15 @@ internal sealed class HelperPipeServer(ILogger<HelperPipeServer> logger) : Backg
         {
             // No ConfigureAwait on the disposal - see the equivalent write in ServeOneConnectionAsync above.
             await using var writer = new StreamWriter(pipe, leaveOpen: true) { AutoFlush = true };
-            await writer.WriteLineAsync($"{HelperProtocol.ResultWarnKey}={helperLogger.WarnCount}|{HelperProtocol.ResultErrorKey}={helperLogger.ErrorCount}").ConfigureAwait(false);
+            // The version rides along on every response rather than being negotiated up front: the
+            // request format cannot carry it without breaking already-installed helpers (see
+            // HelperProtocol), and a client that reads no version here knows it is talking to a
+            // helper built before versioning existed. Appended last so older clients, which skip
+            // unrecognised keys, are unaffected.
+            await writer.WriteLineAsync(
+                $"{HelperProtocol.ResultWarnKey}={helperLogger.WarnCount}|" +
+                $"{HelperProtocol.ResultErrorKey}={helperLogger.ErrorCount}|" +
+                $"{HelperProtocol.ResultVersionKey}={HelperProtocol.Version}").ConfigureAwait(false);
         }
         catch (IOException ex)
         {

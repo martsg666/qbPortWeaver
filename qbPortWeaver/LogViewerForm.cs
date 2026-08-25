@@ -880,30 +880,88 @@ public partial class LogViewerForm : Form
     // updating the widest-line measurement. Single filtering pass shared by the full rebuild
     // (fromLine 0 after a clear) and the live-tail append (fromLine = first new line), so both
     // paths always apply the identical visibility and width rules.
-    // Meta rows (the blank cycle separators LogManager writes) are shown in filtered views too,
-    // but deduplicated: never as the first visible row and never two in a row, so a view whose
-    // filter drops entire cycles (e.g. ERROR only) shows one separator between groups instead of
-    // a wall of blank lines.
+    // Meta rows are shown in filtered views too, but the two kinds are handled differently: see
+    // ShouldAppend.
     private void AppendVisibleRows(int fromLine)
     {
         bool[] filters = [chkError.Checked, chkWarn.Checked, chkInfo.Checked, chkDebug.Checked];
         string? subsystemFilter = GetSubsystemFilter();
         (DateTime? From, DateTime? To) window = GetTimeWindow();
+        bool lastEntryVisible = WasLastEntryVisible(fromLine, filters, subsystemFilter, window);
 
         for (int i = fromLine; i < _allLines.Count; i++)
         {
             LogLine line = _allLines[i];
-            if (line.Level == LevelMeta)
-            {
-                if (_visibleRows.Count == 0 || _allLines[_visibleRows[^1]].Level == LevelMeta) continue;
-            }
-            else if (!IsLineVisible(line, filters, subsystemFilter, window))
-            {
-                continue;
-            }
+            if (!ShouldAppend(line, filters, subsystemFilter, window, ref lastEntryVisible)) continue;
             _visibleRows.Add(i);
             if (line.Text.Length > _maxLineLength) _maxLineLength = line.Text.Length;
         }
+    }
+
+    // Whether one line belongs in the filtered view. Split out of the append loop so the three cases
+    // read as three cases, and so neither method carries the whole decision's complexity.
+    //
+    // LevelMeta covers two unrelated things, and conflating them was the bug this separates:
+    // ClassifyLine assigns it to any line with no "| LEVEL |" column, which is both the blank cycle
+    // separators LogManager writes and a continuation line wrapped from a multi-line message.
+    //   - A classified line decides for itself, and its verdict becomes the parent verdict that any
+    //     continuation lines following it inherit.
+    //   - A blank separator is shown between groups, but never as the first visible row and never
+    //     twice running, so a view whose filter drops entire cycles (e.g. ERROR only) shows one
+    //     separator between groups rather than a wall of blank lines.
+    //   - A continuation follows its parent. Without this it bypassed every filter, so hiding an
+    //     entry left its continuation lines behind as orphans under an unrelated entry.
+    private bool ShouldAppend(LogLine line, bool[] filters, string? subsystemToken,
+        (DateTime? From, DateTime? To) window, ref bool lastEntryVisible)
+    {
+        if (line.Level != LevelMeta)
+        {
+            lastEntryVisible = IsLineVisible(line, filters, subsystemToken, window);
+            return lastEntryVisible;
+        }
+
+        // The dedup test asks whether the previous visible row is a separator, not whether it is
+        // LevelMeta. Those were the same thing until continuations were separated out; testing the
+        // level would now drop the second of two consecutive continuation lines, and swallow a
+        // separator that happens to follow one.
+        if (IsSeparatorLine(line))
+            return _visibleRows.Count > 0 && !IsSeparatorLine(_allLines[_visibleRows[^1]]);
+
+        return lastEntryVisible;
+    }
+
+    // A meta line with text is a continuation of the entry above it; a blank one is a cycle separator.
+    //
+    // Known limitation, deliberately not guessed at: a blank line *inside* a multi-line entry is
+    // indistinguishable from a cycle separator, because both are whitespace-only lines with no level
+    // column. Such a line therefore takes the separator branch in ShouldAppend and does not inherit
+    // its parent's visibility, so a filtered-out entry containing one can still leave that blank row
+    // behind. Nothing in the app writes a multi-line entry today (every call passes ex.Message, not
+    // ex.ToString()), so this is unreachable in practice, and telling the two apart would mean
+    // inferring structure the log format does not record - a guess that could just as easily swallow
+    // a real cycle separator. If entries ever do span lines, the fix belongs in the writer: have
+    // LogManager mark continuations explicitly rather than have the reader infer them.
+    private static bool IsSeparatorLine(LogLine line) =>
+        line.Level == LevelMeta && string.IsNullOrWhiteSpace(line.Text);
+
+    // Visibility of the entry preceding fromLine, which any continuation lines at the start of an
+    // incremental append belong to. Recomputed by walking back rather than carried in a field: the
+    // append runs from three call sites and two of them clear _visibleRows, so a field would need
+    // resetting in each and would silently go stale if a fourth were ever added. Continuation lines
+    // are rare, so this normally stops on the first line it looks at.
+    //
+    // True when no earlier classified line exists - a buffer that begins mid-entry (the log rotated
+    // partway through one) should show those lines rather than hide content that has no parent to
+    // inherit from.
+    private bool WasLastEntryVisible(int fromLine, bool[] filters, string? subsystemToken,
+        (DateTime? From, DateTime? To) window)
+    {
+        for (int i = fromLine - 1; i >= 0; i--)
+        {
+            if (_allLines[i].Level == LevelMeta) continue;
+            return IsLineVisible(_allLines[i], filters, subsystemToken, window);
+        }
+        return true;
     }
 
     // First visible row whose source line is at or after the given line index (binary search -
@@ -940,16 +998,14 @@ public partial class LogViewerForm : Form
             SetMetaMessage("(No log entries yet)", MetaColor);
     }
 
-    // Level, subsystem and time-range visibility for classified lines. Meta rows never reach this
-    // method - AppendVisibleRows diverts them to its own dedup rule so cycle separators stay visible
-    // in filtered views without ever stacking up.
+    // Level, subsystem and time-range visibility for one classified line. Meta rows never reach this
+    // method: ShouldAppend decides those, a blank separator by the dedup rule and a continuation line
+    // by inheriting its parent entry's verdict from here.
     //
-    // LevelMeta covers more than the blank separators: ClassifyLine assigns it to any line with no
-    // "| LEVEL |" column, which includes a continuation line wrapped from a multi-line message. Those
-    // therefore bypass all three filters below, the time window included. That is currently
-    // unreachable in practice - every logging call passes ex.Message rather than ex.ToString(), so
-    // nothing writes a multi-line entry - and it is left alone deliberately rather than threading
-    // parent-visibility state through the append loop that builds the virtual list.
+    // Nothing writes a multi-line entry today - every logging call passes ex.Message rather than
+    // ex.ToString() - so the continuation path is not currently exercised. It is handled anyway
+    // because that is a convention nobody enforces: the first ex.ToString() to land would otherwise
+    // split an entry across a filter boundary, silently and in the one tool used to diagnose it.
     private static bool IsLineVisible(LogLine line, bool[] filters, string? subsystemToken, (DateTime? From, DateTime? To) window)
     {
         if (!filters[line.Level]) return false;                     // level filtered out

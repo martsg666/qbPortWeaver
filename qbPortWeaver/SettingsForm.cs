@@ -168,7 +168,7 @@ public partial class SettingsForm : Form
         toolTip.SetToolTip(chkVerifyPort, "After each sync, check that the port is reachable from the Internet. Transmission and Deluge use their built-in online port checkers; qBittorrent infers it from incoming peer activity (an idle client may report closed). Runs after a port change and periodically.");
         toolTip.SetToolTip(chkAutoRecovery, "Triggers auto-recovery (VPN service restart, or adapter cycle for NAT-PMP gateways) after the configured number of consecutive cycles where the VPN is disconnected or assigns no forwarded port. Client-side problems do not count - auto-recovery cannot fix those.");
         toolTip.SetToolTip(nudRecoveryCycles, "Number of consecutive cycles without an assigned port or VPN connection before auto-recovery is triggered");
-        toolTip.SetToolTip(chkPortClosedRecovery, "Triggers auto-recovery (same action as the no-port trigger) when port verification has confirmed the assigned port closed for the configured number of checks. Fires at most once, then re-arms only after the port tests open again. Caution with qBittorrent: an idle client (no active transfers) can report closed indefinitely.");
+        toolTip.SetToolTip(chkPortClosedRecovery, "Triggers auto-recovery (same action as the no-port trigger) when port verification has confirmed the assigned port closed for the configured number of checks. Fires at most once, then re-arms only after a scheduled check reports the port open again. Caution with qBittorrent: an idle client (no active transfers) can report closed indefinitely.");
         toolTip.SetToolTip(nudPortClosedChecks, "Number of confirmed closed checks before auto-recovery is triggered");
         toolTip.SetToolTip(chkNotifyOnPortUpdate, "Show a tray notification when the port is successfully updated");
         toolTip.SetToolTip(chkShowUpdateForm, "When checked, opens the update form at startup if a newer version is found. When unchecked, only a tray notification is shown (12-hour periodic check runs either way).");
@@ -879,8 +879,12 @@ public partial class SettingsForm : Form
             "Nicotine+'s data folder was not found. Start Nicotine+ once, or set the Executable path above for a portable installation.",
         NicotinePluginState.NotInstalled =>
             "The bridge plugin is not installed. Click \"Install Plugin\" first.",
+        // "Differs" rather than "older": staleness is decided by comparing the installed files with
+        // the bundled ones, so the versions can match while the files do not. This line sits directly
+        // under the status label, which shows that detail - claiming age there contradicted a label
+        // reading "updated files available" in the one place both are on screen together.
         NicotinePluginState.Outdated =>
-            "An older version of the bridge plugin is installed. Click \"Update Plugin\".",
+            "The installed bridge plugin differs from the one this build ships. Click \"Update Plugin\".",
         NicotinePluginState.NotEnabled =>
             "The plugin is installed but not enabled. Enable \"qbPortWeaver Bridge\" in Nicotine+ under Preferences → Plugins.",
         _ => "The plugin is enabled but has not published its details yet. Start Nicotine+ and try again."

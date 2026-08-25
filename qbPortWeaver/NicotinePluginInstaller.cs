@@ -1,4 +1,5 @@
 ﻿using System.Reflection;
+using System.Security.Cryptography;
 using System.Text;
 
 namespace qbPortWeaver;
@@ -10,7 +11,9 @@ internal enum NicotinePluginState
     DataFolderMissing,
     /// <summary>The plugin is not present.</summary>
     NotInstalled,
-    /// <summary>An older build of the plugin is present.</summary>
+    /// <summary>The installed plugin's files differ from the ones this build carries. Difference
+    /// rather than age: the plugin's version is pinned to the app version, so comparing versions
+    /// could only ever notice an update when the app version moved.</summary>
     Outdated,
     /// <summary>The plugin is present but Nicotine+ has not been told to load it.</summary>
     NotEnabled,
@@ -81,10 +84,10 @@ internal static class NicotinePluginInstaller
                 "Not installed", pluginFolder, null, null);
         }
 
-        if (IsBundledVersionNewer(installedVersion, BundledVersion))
+        if (IsInstalledPluginStale(pluginFolder))
         {
             return new NicotinePluginStatus(NicotinePluginState.Outdated,
-                $"{installedVersion} installed, {BundledVersion} available",
+                BuildOutdatedDetail(installedVersion),
                 pluginFolder, installedVersion, null);
         }
 
@@ -542,6 +545,167 @@ internal static class NicotinePluginInstaller
         return Path.Combine(stem.Split('.')) + extension;
     }
 
+    // ------------------------------------------------------- staleness by content
+
+    // Whether the installed plugin differs from the one this build carries.
+    //
+    // Content, not version, and that distinction is the whole point. PLUGININFO's version is pinned
+    // to the app version, so a version comparison only ever offers an update when the *app* version
+    // moves: a plugin-only fix shipped on an unchanged app version would never be offered, and an
+    // upgrade between two builds carrying the same plugin version could never be told apart from one
+    // carrying a real change. Comparing the files answers the question actually being asked.
+    //
+    // Extra files in the plugin folder are ignored on purpose - Python writes __pycache__ there, and
+    // treating anything unexpected as a difference would report the plugin outdated forever.
+    private static bool IsInstalledPluginStale(string pluginFolder)
+    {
+        try
+        {
+            List<string> relativePaths = [.. PluginFiles.Select(entry => entry.RelativePath)];
+            if (relativePaths.Count == 0) return false; // nothing bundled: no grounds to call it stale
+
+            // Cheap gate first. GetStatus is polled every two seconds while the Settings dialog is
+            // open (SettingsForm.NicotinePluginStatusPollMs), so reading every plugin file on each
+            // poll would be wasteful. Lengths and write times cost metadata only, and both the
+            // installer (FileMode.Create) and any hand edit move the write time, so a change cannot
+            // slip past this and leave the cached verdict standing.
+            string signature = BuildInstalledSignature(pluginFolder, relativePaths);
+
+            // Read the cache through a local: the field can be replaced by another thread between
+            // the test and the return, and a local pins the instance being examined.
+            StaleCache? cached = _staleCache;
+            if (cached is not null && cached.Folder == pluginFolder && cached.Signature == signature)
+                return cached.Stale;
+
+            string? installed = ComputeInstalledFingerprint(pluginFolder, relativePaths);
+            bool stale = installed is null || !string.Equals(installed, BundledFingerprint, StringComparison.Ordinal);
+
+            _staleCache = new StaleCache(pluginFolder, signature, stale);
+            return stale;
+        }
+        catch (Exception ex)
+        {
+            // Treated as not stale rather than stale: an unreadable file is far more likely to be a
+            // transient lock than a real difference, and reporting Outdated on it would nag on every
+            // poll with a reinstall that fixes nothing.
+            LogManager.Instance.LogDebug($"NicotinePluginInstaller.IsInstalledPluginStale: {ex.Message}");
+            return false;
+        }
+    }
+
+    // Cache for the gate above: the folder a verdict was computed for, the metadata signature it was
+    // computed from, and the verdict itself.
+    //
+    // One immutable object rather than three fields, because this is NOT single-threaded. Settings
+    // polls GetStatus on the UI thread every two seconds, while DiagnosticsService reaches the same
+    // method from AddNicotinePluginResult, which runs on a thread-pool continuation (RunAsync awaits
+    // with ConfigureAwait(false) before it). Three separate writes could interleave and leave one
+    // call's signature standing beside another call's verdict - reporting the plugin up to date after
+    // it changed, or Outdated after an update. Publishing a single reference makes the three values
+    // inseparable: a reader sees either the whole previous verdict or the whole new one.
+    //
+    // Volatile for the publication order, so a reader cannot observe the reference before the fields
+    // it points at. Two threads racing may still both compute, which costs a duplicated hash and
+    // nothing else - the verdict is a pure function of the files.
+    private sealed record StaleCache(string Folder, string Signature, bool Stale);
+    private static volatile StaleCache? _staleCache;
+
+    /// <summary>SHA-256 over every bundled plugin file. Computed once: the resources cannot change
+    /// while the process runs.</summary>
+    /// <remarks>Note for this and the other Lazy fields here: Lazy caches a thrown exception
+    /// permanently, so a failure in the factory would leave the plugin reported "not stale" for the
+    /// life of the process, logged at Debug only. Accepted rather than worked around - the factories
+    /// touch nothing but already-loaded assembly resources, and the wrong answer in that direction
+    /// shows no nag, where reporting Outdated on a transient error would nag on every two-second
+    /// poll with a reinstall that fixes nothing.</remarks>
+    private static string BundledFingerprint => _bundledFingerprint.Value;
+
+    private static readonly Lazy<string> _bundledFingerprint = new(ComputeBundledFingerprint);
+
+    // Each bundled resource paired with the relative path it installs to, sorted by that path so
+    // neither the manifest enumeration order nor the file system's can affect a fingerprint. The
+    // resource name is carried rather than reconstructed: mapping a path back to a resource name
+    // means re-flattening separators into dots, which is a second encoding to keep in step with
+    // ResourceNameToRelativePath for no gain.
+    //
+    // Resolved once, for the same reason _bundledFingerprint is: the resources cannot change while
+    // the process runs, and IsInstalledPluginStale sits on the two-second Settings poll. Rebuilding
+    // it per check meant enumerating every manifest resource in the assembly - not just this
+    // plugin's - and re-sorting, in front of the metadata gate that exists to keep the check cheap.
+    private static List<(string RelativePath, string ResourceName)> PluginFiles => _pluginFiles.Value;
+
+    private static readonly Lazy<List<(string RelativePath, string ResourceName)>> _pluginFiles =
+        new(() => [.. GetPluginResourceNames()
+            .Select(name => (RelativePath: ResourceNameToRelativePath(name[ResourcePrefix.Length..]), ResourceName: name))
+            .OrderBy(entry => entry.RelativePath, StringComparer.Ordinal)]);
+
+    private static string ComputeBundledFingerprint()
+    {
+        using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        foreach ((string relativePath, string resourceName) in PluginFiles)
+        {
+            using Stream? source = Assembly.GetExecutingAssembly().GetManifestResourceStream(resourceName);
+            // Length before the bytes; an embedded resource stream reports it without reading, and
+            // reading it does not disturb the position AppendStream consumes from.
+            AppendPath(hash, relativePath, source?.Length ?? 0);
+            if (source is not null) AppendStream(hash, source);
+        }
+        return Convert.ToHexString(hash.GetHashAndReset());
+    }
+
+    // Null when a bundled file is missing from the installation, which is a difference by itself and
+    // needs no hash to establish.
+    private static string? ComputeInstalledFingerprint(string pluginFolder, List<string> relativePaths)
+    {
+        using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        foreach (string relativePath in relativePaths)
+        {
+            string target = Path.Combine(pluginFolder, relativePath);
+            if (!File.Exists(target)) return null;
+
+            // FileShare.ReadWrite so a running Nicotine+ holding a file open cannot fail the read.
+            using var source = new FileStream(target, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+            AppendPath(hash, relativePath, source.Length);
+            AppendStream(hash, source);
+        }
+        return Convert.ToHexString(hash.GetHashAndReset());
+    }
+
+    // Path, then the content length, so that neither a rename nor a shift of bytes across a file
+    // boundary can collide with another layout. The length is load-bearing: the digest is a flat
+    // stream of path/content pairs, and without it the only thing separating one file's bytes from
+    // the next file's path is a NUL that content could itself contain - so a single file holding
+    // "Y<NUL>b<NUL>Z" would hash identically to a file "Y" plus a file "b" holding "Z".
+    private static void AppendPath(IncrementalHash hash, string relativePath, long contentLength)
+    {
+        hash.AppendData(Encoding.UTF8.GetBytes(relativePath));
+        hash.AppendData([0]);
+        hash.AppendData(BitConverter.GetBytes(contentLength));
+    }
+
+    private static void AppendStream(IncrementalHash hash, Stream source)
+    {
+        byte[] buffer = new byte[8192];
+        int read;
+        while ((read = source.Read(buffer, 0, buffer.Length)) > 0)
+            hash.AppendData(buffer, 0, read);
+    }
+
+    // Metadata-only signature: length and write time per file, or a marker for one that is absent.
+    private static string BuildInstalledSignature(string pluginFolder, List<string> relativePaths)
+    {
+        var builder = new StringBuilder();
+        foreach (string relativePath in relativePaths)
+        {
+            var info = new FileInfo(Path.Combine(pluginFolder, relativePath));
+            builder.Append(relativePath).Append('|');
+            if (info.Exists) builder.Append(info.Length).Append('|').Append(info.LastWriteTimeUtc.Ticks);
+            else builder.Append("missing");
+            builder.Append('\n');
+        }
+        return builder.ToString();
+    }
+
     private static string? ReadInstalledVersion(string pluginFolder)
     {
         try
@@ -575,17 +739,27 @@ internal static class NicotinePluginInstaller
         return null;
     }
 
-    // Only offer to replace an installed plugin when the bundled version is demonstrably newer.
-    // Treat an unparseable non-empty installed version as unknown rather than outdated: overwriting
-    // it could silently downgrade a prerelease or a future version format this build does not know.
-    private static bool IsBundledVersionNewer(string installedVersion, string bundledVersion)
+    // The staleness verdict comes from the file contents, so the version is only ever wording here.
+    // Both halves are reachable: the versions differ on any release that moved the app version, and
+    // they match when a plugin-only change ships on an unchanged one - the case a version gate missed
+    // entirely, and the reason this reads "updated files" rather than naming a number that has not moved.
+    //
+    // This replaced a version gate that refused to report Outdated for an unparseable installed
+    // version, so as not to offer an overwrite over a prerelease or a future version format. Content
+    // comparison drops that guard deliberately: any difference is a difference, and Outdated only
+    // surfaces a button the user chooses to press - it never overwrites anything on its own.
+    private static string BuildOutdatedDetail(string installedVersion)
     {
-        if (string.IsNullOrWhiteSpace(bundledVersion)) return false;
-        if (string.IsNullOrWhiteSpace(installedVersion)) return true;
+        // The unknown-version branch omits "installed" deliberately. "Unknown version" is ten
+        // characters longer than a version number, and with it the string reached 42 characters -
+        // past the ~40 the Settings label needs (see NicotinePluginStatus.Summary, which is AutoSize
+        // with no MaximumSize). Dropping the word costs nothing and keeps every branch inside budget.
+        if (string.IsNullOrWhiteSpace(installedVersion))
+            return $"Unknown version, {BundledVersion} available";
 
-        return Version.TryParse(installedVersion, out var installed) &&
-               Version.TryParse(bundledVersion, out var bundled) &&
-               bundled > installed;
+        return string.Equals(installedVersion, BundledVersion, StringComparison.Ordinal)
+            ? $"{installedVersion} installed, updated files available"
+            : $"{installedVersion} installed, {BundledVersion} available";
     }
 
     private static string? ReadResourceText(string resourceName)

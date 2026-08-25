@@ -269,8 +269,14 @@ public static class DiagnosticsService
                 "The qbPortWeaver bridge plugin is not installed",
                 "Nicotine+ has no remote control of its own. Click Install Plugin in Settings, under the Nicotine+ section."),
 
+            // Reuses the summary GetStatus already built rather than rebuilding the sentence from
+            // version numbers. Staleness is decided by comparing the installed files against the
+            // bundled ones, so the two versions can be identical - which is the whole point of that
+            // check, and which made the version-based wording contradict itself ("Bridge plugin 2.6.7
+            // is installed; this build ships 2.6.7"). One source for the phrasing also means a later
+            // change to it cannot leave this copy behind, which is how that drift happened.
             NicotinePluginState.Outdated => new(Checks.ClientPlugin, DiagnosticStatus.Warn,
-                $"Bridge plugin {status.InstalledVersion} is installed; this build ships {NicotinePluginInstaller.BundledVersion}",
+                $"The installed bridge plugin differs from the one this build ships ({status.Summary})",
                 "Click Update Plugin in Settings, then restart Nicotine+."),
 
             NicotinePluginState.NotEnabled => new(Checks.ClientPlugin, DiagnosticStatus.Fail,

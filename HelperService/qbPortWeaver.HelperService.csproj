@@ -11,9 +11,9 @@
     <Product>qbPortWeaver</Product>
     <Authors>martsg666</Authors>
     <Copyright>© 2026 martsg666</Copyright>
-    <Version>2.6.6</Version>
-    <FileVersion>2.6.6.0</FileVersion>
-    <AssemblyVersion>2.6.6.0</AssemblyVersion>
+    <Version>2.6.7</Version>
+    <FileVersion>2.6.7.0</FileVersion>
+    <AssemblyVersion>2.6.7.0</AssemblyVersion>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <!-- Suppress known SonarAnalyzer false positives. Each is documented below; per-site
          // NOSONAR comments mark the specific occurrences where the rule permits one

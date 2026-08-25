@@ -9,6 +9,30 @@ public partial class WhatsNewForm : Form
         "If you find qbPortWeaver useful, please star it on GitHub.";
 
     private const string ReleaseFeaturesText =
+        "New in 2.6.7\n\n" +
+        "Auto-recovery reports both of its triggers\n" +
+        "Auto-recovery has two triggers that work independently: repeated failed cycles, and a " +
+        "forwarded port that stays closed. Until now the Status window's Auto-recovery line only " +
+        "described the first of them, so a closed port could be counting toward a recovery with " +
+        "nothing on screen to show for it. The line now covers both. It also reads Disabled only " +
+        "when you have switched both triggers off - with one of them still on it used to say " +
+        "Disabled while the app could still restart your VPN.\n\n" +
+        "Says when recovery has already run\n" +
+        "The port-closed trigger runs once, then waits for a scheduled check to report the port open before " +
+        "it can run a second time. The warning that repeats while the port stays closed used to stop " +
+        "mentioning recovery at exactly that point, which read as though nothing had been done about " +
+        "it. It now says the recovery has already run, and what it is waiting for.\n\n" +
+        "Nicotine+ plugin updates are offered when the plugin changes\n" +
+        "Settings used to decide whether a plugin update was available by comparing version numbers, " +
+        "and the plugin's version follows the app's - so a fix to the plugin alone was never offered " +
+        "unless the app version happened to move as well. It now compares the installed files with " +
+        "the ones this build carries, so an update is offered whenever there is genuinely something " +
+        "new to install.\n\n" +
+        "Multi-line log entries stay together\n" +
+        "A log entry can run to more than one line. The Log Viewer now keeps those lines with the " +
+        "entry they belong to, so filtering by level, subsystem or time range never shows part of an " +
+        "entry on its own, or leaves a stray line sitting under an unrelated one.\n\n" +
+        "Previously released\n\n" +
         "New in 2.6.6\n\n" +
         "See what auto-recovery is doing\n" +
         "The Status window has a new Auto-recovery line. It counts the failed cycles building up " +
@@ -30,7 +54,6 @@ public partial class WhatsNewForm : Form
         "offline - used to be logged again on every sync cycle, pushing the tray warning count up " +
         "and burying everything else. It is now reported once when it appears, again only if it " +
         "changes, and once more if it comes back after clearing.\n\n" +
-        "Previously released\n\n" +
         "New in 2.6.5\n\n" +
         "Spots client settings that undo your forwarded port\n" +
         "Some options in your client work against the port you are forwarding: a randomised listening " +

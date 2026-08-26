@@ -39,6 +39,7 @@ public sealed class PortSyncService
     private const string BindingStaleStateKey = "client.bindingStale";
     private const string VpnProviderStateKey = "vpn.providerUnrecognized";
     private const string DefaultPortStateKey = "client.defaultPortUnusable";
+    private const string NatPmpAdapterStateKey = "vpn.natpmpAdapterUnconfigured";
 
     /// <summary>Raised when a sync cycle completes (success or failure) with the resulting tray status.</summary>
     public event Action<TrayStatus>? SyncCompleted;
@@ -809,9 +810,14 @@ public sealed class PortSyncService
     {
         if (string.IsNullOrWhiteSpace(cfg.NatPmpAdapterName))
         {
-            SetSyncResult(status, false, "No NAT-PMP adapter configured - open Settings and select an adapter");
+            // Transition-only: an unset adapter stays unset until the user opens Settings, so the
+            // identical line every cycle says nothing new. The status above still reports the error
+            // on every cycle, which is the part that should persist. See SetSyncResult's stateKey.
+            SetSyncResult(status, false, "No NAT-PMP adapter configured - open Settings and select an adapter",
+                stateKey: NatPmpAdapterStateKey);
             return null;
         }
+        LogManager.Instance.ClearLogState(NatPmpAdapterStateKey);
 
         // Discard the fallback if the adapter name changed in settings
         if (_lastKnownNatPmpManager is not null &&
@@ -1791,7 +1797,26 @@ public sealed class PortSyncService
     // Sets the cycle status and message in the status dict, logs the message, and adds a closing bookend on failure.
     // Pass an explicit level to override the default (Info on success, Error on failure).
     // The bookend uses the same effective level so a Warn-level soft failure does not escalate to Error.
-    private static void SetSyncResult(Dictionary<string, object?> status, bool success, string message, LogLevel? level = null)
+    /// <summary>Records this cycle's outcome in the status dictionary and, on failure, logs the reason.</summary>
+    /// <param name="status">The cycle's status dictionary, written to the status file in RunAsync's finally.</param>
+    /// <param name="success">Whether the cycle succeeded; false writes the error status and logs the reason.</param>
+    /// <param name="message">The reason, used both as the status message and as the logged line.</param>
+    /// <param name="level">Severity for the logged reason. Defaults to <see cref="LogLevel.Error"/>.</param>
+    /// <param name="stateKey">
+    /// When set, the reason is logged through <see cref="LogManager.LogStateChange"/> under this key
+    /// instead of on every failing cycle.
+    /// <para>The test for which to use: <b>can the user do anything differently if we say it again?</b>
+    /// A misconfiguration only they can fix - no NAT-PMP adapter selected, an unrecognised provider -
+    /// produces the identical line forever, so it is reported on the transition and the status field
+    /// below still carries it every cycle. Observed runtime state is the opposite: "{client} is not
+    /// running" changes on its own, so each cycle is a fresh observation rather than a repeat and
+    /// belongs in the default path. Repeating a fixed configuration error also climbs the tray's
+    /// unviewed-warning count indefinitely, which the status field does not.</para>
+    /// <para>Pair every key with a <see cref="LogManager.ClearLogState"/> on the path where the
+    /// condition clears, or it is reported once per process rather than once per occurrence.</para>
+    /// </param>
+    private static void SetSyncResult(Dictionary<string, object?> status, bool success, string message,
+        LogLevel? level = null, string? stateKey = null)
     {
         status[StatusKeys.Status] = success ? SyncStatusValues.Success : SyncStatusValues.Error;
         status[StatusKeys.Message] = message;
@@ -1799,7 +1824,12 @@ public sealed class PortSyncService
         // emitted once per cycle by LogCycleOutcome. A successful cycle needs no reason line - its
         // terminal marker says it all.
         if (!success)
-            LogManager.Instance.LogMessage(message, level ?? LogLevel.Error);
+        {
+            if (stateKey is not null)
+                LogManager.Instance.LogStateChange(stateKey, message, level ?? LogLevel.Error);
+            else
+                LogManager.Instance.LogMessage(message, level ?? LogLevel.Error);
+        }
     }
 
     // Emits exactly one terminal line per cycle so every cycle closes with a clear outcome - completed,

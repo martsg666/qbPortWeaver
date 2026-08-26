@@ -1694,9 +1694,11 @@ public sealed class PortSyncService
             return true;
         }
 
-        // Monotonic and static, unlike the instance _uptime stopwatch this static method cannot reach.
-        // Immune to wall-clock changes, which matters here: a machine coming back from an outage often
-        // corrects its clock by NTP, and a backward jump must not unblock every held attempt at once.
+        // Monotonic, which is what matters here: a machine coming back from an outage often corrects
+        // its clock by NTP, and a backward jump must not unblock every held attempt at once. The
+        // instance _uptime stopwatch is equally monotonic and equally reachable from here, so either
+        // would serve - this path uses TickCount64 because the limiter already stores its state as a
+        // raw tick count in _lastOfflineRecoveryMs, and GetRecoveryHoldUntil reads it back the same way.
         long nowMs = Environment.TickCount64;
 
         if (_offlineRecoveryAttempts > 0)

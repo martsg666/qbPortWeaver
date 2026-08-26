@@ -260,6 +260,13 @@ public sealed class PortSyncService
         public const string PortChanged = "portChanged";
         public const string PortVerified = "portVerified";
         public const string UpdateIntervalSeconds = "updateIntervalSeconds";
+        // When the next cycle is due. An absolute instant for the same reason RecoveryHoldUntil is
+        // one: the wait starts when the cycle ends, while Timestamp is stamped at the start, so
+        // deriving it as Timestamp + UpdateIntervalSeconds reads the duration against the wrong
+        // origin and runs out early by the cycle's length - up to the 30s a client restart takes,
+        // or the 120s an auto-recovery round trip can. Consumers that predate this key can still
+        // derive the old estimate; nothing here replaces UpdateIntervalSeconds.
+        public const string NextSyncAt = "nextSyncAt";
         public const string Status = "status";
         public const string Message = "message";
         public const string WaitingForVpn = "waitingForVpn";
@@ -320,6 +327,7 @@ public sealed class PortSyncService
             [StatusKeys.PortChanged] = false,
             [StatusKeys.PortVerified] = null,
             [StatusKeys.UpdateIntervalSeconds] = AppConstants.DefaultUpdateIntervalSeconds,
+            [StatusKeys.NextSyncAt] = null,
             [StatusKeys.Status] = SyncStatusValues.Error,
             [StatusKeys.Message] = null,
             [StatusKeys.RecoveryHoldUntil] = null,
@@ -335,14 +343,20 @@ public sealed class PortSyncService
             [StatusKeys.PortClosedRecoveryArmed] = true
         };
 
+        // Captured so the finally can publish NextSyncAt against the wait this cycle actually
+        // returned - including the shortened startup-grace poll - rather than re-reading the
+        // configured interval. Stays at the default when RunCoreAsync throws, which is what the
+        // catch returns anyway.
+        int nextWaitSeconds = AppConstants.DefaultUpdateIntervalSeconds;
         try
         {
-            return await RunCoreAsync(status, cancellationToken).ConfigureAwait(false);
+            nextWaitSeconds = await RunCoreAsync(status, cancellationToken).ConfigureAwait(false);
+            return nextWaitSeconds;
         }
         catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
         {
             SetSyncResult(status, false, $"An unexpected error occurred: {ex.Message}");
-            return AppConstants.DefaultUpdateIntervalSeconds;
+            return nextWaitSeconds;
         }
         finally
         {
@@ -351,6 +365,11 @@ public sealed class PortSyncService
             // and leave a misleading error JSON file on every exit.
             if (!cancellationToken.IsCancellationRequested)
             {
+                // Stamped here rather than at cycle start because the wait begins when the cycle
+                // ends. MainForm shortens this to ManualSyncWaitSeconds after a manual sync or a
+                // network-change re-check, which happens after this write, so those two cases still
+                // publish the full interval.
+                status[StatusKeys.NextSyncAt] = DateTimeOffset.Now.AddSeconds(nextWaitSeconds);
                 status[StatusKeys.RecoveryHoldUntil] = GetRecoveryHoldUntil();
                 // Read here rather than mid-cycle: the streak is incremented by the failure paths
                 // inside RunCoreAsync, so only the finally sees this cycle's final count.

@@ -601,18 +601,31 @@ public partial class StatusForm : Form
             SetNeutral(lblNextSyncValue, "Startup grace period");
             return;
         }
-        if (s.Timestamp is not DateTimeOffset ts)
+        // Prefer the instant the cycle published. Deriving it from Timestamp is the fallback for a
+        // status file written before nextSyncAt existed, and is deliberately not the primary path:
+        // Timestamp is stamped at the cycle's start while the wait begins at its end, so the derived
+        // value runs out early by however long the cycle took - up to two minutes when the cycle
+        // included an auto-recovery round trip.
+        DateTimeOffset dueAt;
+        if (s.NextSyncAt is DateTimeOffset published)
+        {
+            dueAt = published;
+        }
+        else if (s.Timestamp is DateTimeOffset ts)
+        {
+            int interval = RegistrySettingsManager.GetInt(
+                RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyUpdateIntervalSeconds);
+            if (interval < AppConstants.MinUpdateIntervalSeconds)
+                interval = AppConstants.DefaultUpdateIntervalSeconds;
+            dueAt = ts.AddSeconds(interval);
+        }
+        else
         {
             SetNeutral(lblNextSyncValue, "-");
             return;
         }
 
-        int interval = RegistrySettingsManager.GetInt(
-            RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyUpdateIntervalSeconds);
-        if (interval < AppConstants.MinUpdateIntervalSeconds)
-            interval = AppConstants.DefaultUpdateIntervalSeconds;
-
-        TimeSpan remaining = ts.AddSeconds(interval) - DateTimeOffset.Now;
+        TimeSpan remaining = dueAt - DateTimeOffset.Now;
         if (remaining <= TimeSpan.Zero)
             SetDefault(lblNextSyncValue, "Due now");
         else

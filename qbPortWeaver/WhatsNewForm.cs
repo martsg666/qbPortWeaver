@@ -32,6 +32,11 @@ public partial class WhatsNewForm : Form
         "A log entry can run to more than one line. The Log Viewer now keeps those lines with the " +
         "entry they belong to, so filtering by level, subsystem or time range never shows part of an " +
         "entry on its own, or leaves a stray line sitting under an unrelated one.\n\n" +
+        "The next-sync countdown is accurate after a slow cycle\n" +
+        "The Status window counts down to the next sync. It used to start that countdown from the " +
+        "moment a cycle began rather than the moment it finished, so after a slow cycle - one that " +
+        "restarted your client, or ran a recovery - it could sit on Due now for a minute or two " +
+        "before anything actually happened. It now counts down to the real time.\n\n" +
         "Previously released\n\n" +
         "New in 2.6.6\n\n" +
         "See what auto-recovery is doing\n" +

@@ -153,29 +153,46 @@ internal static partial class AutoRecovery
 
             logger.LogMessage($"Cycling adapter '{adapterName}'", LogLevel.Info);
 
-            if (!await RunNetshAsync([NetshInterface, "set", NetshInterface, adapterName, "admin=disable"], logger, cancellationToken).ConfigureAwait(false))
-            {
-                logger.LogMessage($"Failed to disable adapter '{adapterName}'", LogLevel.Warn);
-                return;
-            }
-            logger.LogMessage($"Adapter '{adapterName}' disabled", LogLevel.Info);
-
-            // Past this point the adapter is administratively DOWN, and that state persists across
+            // From here the adapter may be administratively DOWN, and that state persists across
             // reboots. Neither shutdown nor an unexpected error may leave it there, so the re-enable
             // runs from a finally block and deliberately ignores the cancellation token: a few
             // seconds of delayed service stop is a far better outcome than a machine that boots
             // with no network on this adapter, which the user would have to fix by hand.
+            //
+            // The try opens *before* the disable, not after it. RunNetshAsync lets
+            // OperationCanceledException propagate by design (so a shutdown is not misreported as a
+            // netsh failure), and it can only throw once netsh has already been started - at which
+            // point the adapter may be down. Opening the try after the disable left that window
+            // uncovered: a stop signalled there escaped past the catch below, which also excludes
+            // OCE, and the adapter stayed disabled.
+            //
+            // adapterMayBeDown starts true and is cleared only when netsh *explicitly reports*
+            // failure, because that is the one outcome proving the adapter is still up. A throw
+            // leaves it unknown, so the flag stays set and the re-enable runs anyway: re-enabling an
+            // adapter that was never disabled is a no-op, failing to re-enable one that was is not.
+            bool adapterMayBeDown = true;
             try
             {
+                if (!await RunNetshAsync([NetshInterface, "set", NetshInterface, adapterName, "admin=disable"], logger, cancellationToken).ConfigureAwait(false))
+                {
+                    adapterMayBeDown = false;
+                    logger.LogMessage($"Failed to disable adapter '{adapterName}'", LogLevel.Warn);
+                    return;
+                }
+                logger.LogMessage($"Adapter '{adapterName}' disabled", LogLevel.Info);
+
                 await Task.Delay(AdapterCycleDelayMs, CancellationToken.None).ConfigureAwait(false);
             }
             finally
             {
-                if (await RunNetshAsync([NetshInterface, "set", NetshInterface, adapterName, "admin=enable"],
-                        logger, CancellationToken.None).ConfigureAwait(false))
-                    logger.LogMessage($"Re-enabled adapter '{adapterName}'", LogLevel.Info);
-                else
-                    logger.LogMessage($"Failed to re-enable adapter '{adapterName}'", LogLevel.Warn);
+                if (adapterMayBeDown)
+                {
+                    if (await RunNetshAsync([NetshInterface, "set", NetshInterface, adapterName, "admin=enable"],
+                            logger, CancellationToken.None).ConfigureAwait(false))
+                        logger.LogMessage($"Re-enabled adapter '{adapterName}'", LogLevel.Info);
+                    else
+                        logger.LogMessage($"Failed to re-enable adapter '{adapterName}'", LogLevel.Warn);
+                }
             }
         }
         catch (Exception ex) when (ex is not OperationCanceledException)

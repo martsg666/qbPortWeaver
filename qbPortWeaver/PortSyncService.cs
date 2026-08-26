@@ -29,6 +29,15 @@ public sealed class PortSyncService
     // Connection status value returned by clients that support GetConnectionStatusAsync
     private const string ClientDisconnectedStatus = "disconnected";
 
+    // LogManager.LogStateChange keys for the three conditions in this cycle that persist until the
+    // user acts, so each is logged on the transition rather than on every cycle. The two restart and
+    // settings-conflict warnings nearby already do this with their own fields; these use the shared
+    // mechanism because they have no other reason to carry state. Every Warn also bumps the tray's
+    // unviewed-warning count, so repeating one costs more than a duplicated log line.
+    private const string NatPmpLeaseStateKey = "vpn.natpmpLeaseTooShort";
+    private const string InterfaceMatchStateKey = "client.interfaceMatch";
+    private const string BindingStaleStateKey = "client.bindingStale";
+
     /// <summary>Raised when a sync cycle completes (success or failure) with the resulting tray status.</summary>
     public event Action<TrayStatus>? SyncCompleted;
 
@@ -629,12 +638,17 @@ public sealed class PortSyncService
     // Warns if a NAT-PMP lease will expire before the next sync cycle renews it.
     private static void WarnIfNatPmpLeaseTooShort(IVpnManager vpnManager, AppConfig cfg)
     {
-        if (vpnManager is NatPmpManager natPmp &&
-            natPmp.LastGrantedLifetime > 0 &&
-            cfg.UpdateInterval > natPmp.LastGrantedLifetime)
-            LogManager.Instance.LogMessage(
+        if (vpnManager is not NatPmpManager natPmp || natPmp.LastGrantedLifetime == 0) return;
+
+        // Transition-only. Both sides are stable - the interval is a setting and the lifetime is what
+        // this gateway grants - so the line is identical on every cycle and says nothing new after the
+        // first. The else re-arms it, so widening the interval and narrowing it again warns afresh.
+        if (cfg.UpdateInterval > natPmp.LastGrantedLifetime)
+            LogManager.Instance.LogStateChange(NatPmpLeaseStateKey,
                 $"NAT-PMP sync interval ({cfg.UpdateInterval}s) exceeds lease lifetime ({natPmp.LastGrantedLifetime}s) - port mapping will expire before the next sync cycle",
                 LogLevel.Warn);
+        else
+            LogManager.Instance.ClearLogState(NatPmpLeaseStateKey);
     }
 
     // Reads all configuration values from the registry into a single AppConfig record
@@ -1224,14 +1238,20 @@ public sealed class PortSyncService
 
         string? balloonMessage = null;
 
+        // Both warnings are transition-only, matching the balloon beside them: the binding persists
+        // until the user re-selects an interface, so the same line every cycle adds nothing and keeps
+        // bumping the tray's unviewed-warning count. The message carries the interface name, so
+        // drifting from one wrong adapter to another still reports, which is a real change.
         if (interfaceName.Length == 0)
         {
-            LogManager.Instance.LogMessage($"{clientName} is bound to all network interfaces - traffic may leak outside the VPN", LogLevel.Warn);
+            LogManager.Instance.LogStateChange(InterfaceMatchStateKey,
+                $"{clientName} is bound to all network interfaces - traffic may leak outside the VPN", LogLevel.Warn);
             balloonMessage = $"{clientName}: no VPN interface bound - traffic may leak.";
         }
         else if (!vpnManager.IsAdapterMatch(interfaceName))
         {
-            LogManager.Instance.LogMessage($"{clientName} network interface '{interfaceName}' does not match '{vpnManager.ProviderName}'", LogLevel.Warn);
+            LogManager.Instance.LogStateChange(InterfaceMatchStateKey,
+                $"{clientName} network interface '{interfaceName}' does not match '{vpnManager.ProviderName}'", LogLevel.Warn);
             balloonMessage = $"{clientName} interface mismatch - '{interfaceName}' is not a {vpnManager.ProviderName} adapter.";
         }
         else
@@ -1241,6 +1261,8 @@ public sealed class PortSyncService
 
         if (balloonMessage is null)
         {
+            // Healthy: re-arm both latches so a later mismatch warns and notifies again.
+            LogManager.Instance.ClearLogState(InterfaceMatchStateKey);
             _lastInterfaceMismatchMessage = null;
             return;
         }
@@ -1261,9 +1283,10 @@ public sealed class PortSyncService
         if (!stale || expectedToken is null || interfaceName is null)
         {
             // Healthy, or nothing to say. Re-arm so a later drift gets a fresh repair attempt, and
-            // clear this condition's own balloon latch so a future stale binding notifies again.
+            // clear this condition's own balloon and log latches so a future stale binding reports again.
             _interfaceBindingRepairAttempted = false;
             _lastBindingWarningMessage = null;
+            LogManager.Instance.ClearLogState(BindingStaleStateKey);
             return;
         }
 
@@ -1281,7 +1304,10 @@ public sealed class PortSyncService
             // stricter of the two, which is backwards.
             if (config.WarnOnInterfaceMismatch)
             {
-                LogManager.Instance.LogMessage(
+                // Transition-only, like the balloon below it and the repair branch further down, which
+                // gates on _interfaceBindingRepairAttempted for the same reason: a stale binding lives
+                // in the client's own configuration and persists until the user acts.
+                LogManager.Instance.LogStateChange(BindingStaleStateKey,
                     $"{warning}. Re-select the network interface in {client.ClientName}, or turn on \"Fix the network interface binding when it goes stale\" in Settings",
                     LogLevel.Warn);
                 _lastBindingWarningMessage = RaiseInterfaceBalloonIfNew(

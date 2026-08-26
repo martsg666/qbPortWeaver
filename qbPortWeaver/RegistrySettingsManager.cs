@@ -164,9 +164,14 @@ public static class RegistrySettingsManager
     public const string KeyMediaTvShowsLibraryPath = "tvShowsLibraryPath";
     public const string KeyMediaImportMode = "importMode";
 
+    /// <summary>Default value for <see cref="KeyMediaImportMode"/>, and the fallback the Media Manager
+    /// selects when the stored value is not one the combo box offers.</summary>
+    /// <remarks>Only the default needs naming here. The other two modes have no constant on purpose:
+    /// the one place that would use them - the import-mode combo box - lives in a designer file, where
+    /// a constant reference would be imperative code the VS designer cannot round-trip, so it lists the
+    /// strings literally. Constants nothing can consume would imply a protection they do not provide.
+    /// The vocabulary itself is owned by <see cref="ImportMode"/>; see its remarks.</remarks>
     public const string ImportModeHardlink = "Hardlink";
-    public const string ImportModeCopy = "Copy";
-    public const string ImportModeMove = "Move";
 
     // Registry key names - app level (not in a section)
     public const string KeyLastSeenVersion = "lastSeenVersion";

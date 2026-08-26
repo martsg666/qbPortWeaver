@@ -706,18 +706,42 @@ internal static class NicotinePluginInstaller
         return builder.ToString();
     }
 
+    // Null means the plugin is not installed; an empty string means it is installed but its version
+    // could not be established. GetStatus maps null to "Not installed", so the two must not be
+    // conflated: NicotinePluginDiscovery.IsPluginInstalled answers the same question from this same
+    // marker file's existence alone, and its remarks promise the two cannot disagree about whether
+    // the plugin exists. A read that fails on a file that is plainly there would break that promise.
     private static string? ReadInstalledVersion(string pluginFolder)
     {
+        string infoPath;
         try
         {
-            string infoPath = Path.Combine(pluginFolder, PluginInfoFileName);
-            if (!File.Exists(infoPath)) return null;
+            infoPath = Path.Combine(pluginFolder, PluginInfoFileName);
+        }
+        catch (ArgumentException ex)
+        {
+            // A path that cannot even be composed cannot name an installed plugin, so absent is the
+            // correct answer here rather than the unknown-version one below.
+            LogManager.Instance.LogDebug($"NicotinePluginInstaller.ReadInstalledVersion: {ex.Message}");
+            return null;
+        }
+
+        // Outside the try on purpose: File.Exists reports failure by returning false rather than
+        // throwing, so it cannot land in the catch and be mistaken for a failed read.
+        if (!File.Exists(infoPath)) return null;
+
+        try
+        {
             return ReadVersion(AppConstants.ReadAllTextShared(infoPath)) ?? string.Empty;
         }
         catch (Exception ex)
         {
             LogManager.Instance.LogDebug($"NicotinePluginInstaller.ReadInstalledVersion: {ex.Message}");
-            return null;
+            // The marker is there and only the read failed - installed, version unknown. Re-checked
+            // rather than assumed, because the file can be deleted between the check above and the
+            // open, and that case really is absent. Matches how IsInstalledPluginStale treats an
+            // unreadable file: far more likely a transient lock than a real change.
+            return File.Exists(infoPath) ? string.Empty : null;
         }
     }
 

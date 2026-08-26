@@ -753,18 +753,20 @@ public static class RegistrySettingsManager
         KeyMediaTmdbApiKey
     };
 
-    // Keys whose values must never be written to logs in plaintext. Superset of _encryptedKeys
-    // plus app-level secrets stored plaintext but protected by the HKCU ACL (e.g. the pipe
-    // session token used to authenticate messages to the SYSTEM helper service).
-    private static readonly HashSet<string> _logMaskedKeys = new(StringComparer.OrdinalIgnoreCase)
-    {
-        KeyQBittorrentPassword,
-        KeyTransmissionPassword,
-        KeyDelugePassword,
-        KeyNicotinePassword,
-        KeyMediaTmdbApiKey,
-        AppIdentity.PipeSessionTokenKey
-    };
+    // Keys whose values must never be written to logs in plaintext: every encrypted key, plus the
+    // app-level secrets stored plaintext but protected by the HKCU ACL (the pipe session token used
+    // to authenticate messages to the SYSTEM helper service).
+    //
+    // Built *from* _encryptedKeys rather than re-listing it, so the superset relationship is
+    // maintained by the compiler instead of by hand. Re-listing meant a future encrypted key could be
+    // added to one set and missed in the other, and the only symptom would be a credential appearing
+    // in a user's log file - the one place nobody thinks to look for one. Declaration order matters
+    // here: field initialisers run top to bottom, so _encryptedKeys above must stay above.
+    private static readonly HashSet<string> _logMaskedKeys =
+        new(_encryptedKeys, StringComparer.OrdinalIgnoreCase)
+        {
+            AppIdentity.PipeSessionTokenKey
+        };
 
     // Writes any missing keys for one registry section; returns true if anything was written
     private static bool WriteDefaultsForSection(RegistryKey regKey,

@@ -145,15 +145,30 @@ internal static class NicotinePluginDiscovery
 
             // Checked before any other field is read: past this point every read assumes schema 1's
             // meaning, and a newer plugin could have changed what a field holds rather than only
-            // adding to it. Absent means a plugin from before the field existed, which wrote exactly
-            // this layout, so it is accepted.
-            if (root.TryGetProperty("schema", out var schemaElement) &&
-                schemaElement.TryGetInt32(out int schema) && schema > MaxSupportedSchema)
+            // adding to it.
+            //
+            // Three cases, deliberately kept apart. Absent is a plugin from before the field existed,
+            // which wrote exactly this layout, so it is accepted. A value that will not read as an
+            // integer is rejected rather than treated as absent: whatever wrote it knew about the
+            // field, so we cannot claim it predates one, and a gate that exists to refuse what it
+            // cannot interpret must not be bypassed by input it cannot parse. Higher than we support
+            // is rejected on its own terms. The port check below draws the same line.
+            if (root.TryGetProperty("schema", out var schemaElement))
             {
-                LogManager.Instance.LogDebug(
-                    $"NicotinePluginDiscovery.TryReadFile: {path} uses connection-file schema {schema}, " +
-                    $"newer than the {MaxSupportedSchema} this build understands - ignoring it. Update qbPortWeaver.");
-                return null;
+                if (!schemaElement.TryGetInt32(out int schema))
+                {
+                    LogManager.Instance.LogDebug(
+                        $"NicotinePluginDiscovery.TryReadFile: {path} has an unreadable connection-file schema - ignoring it");
+                    return null;
+                }
+
+                if (schema > MaxSupportedSchema)
+                {
+                    LogManager.Instance.LogDebug(
+                        $"NicotinePluginDiscovery.TryReadFile: {path} uses connection-file schema {schema}, " +
+                        $"newer than the {MaxSupportedSchema} this build understands - ignoring it. Update qbPortWeaver.");
+                    return null;
+                }
             }
 
             if (!root.TryGetProperty("port", out var portElement) ||

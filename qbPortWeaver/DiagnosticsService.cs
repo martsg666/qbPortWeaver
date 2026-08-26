@@ -118,7 +118,11 @@ public static class DiagnosticsService
         }
         catch (Exception ex)
         {
-            results.Add(new(Checks.HelperService, DiagnosticStatus.Warn, $"Could not query the helper service: {ex.Message}"));
+            // Carries a hint like every other non-passing row: this branch is the unexpected one, so
+            // the reader is the least likely to know what the helper service is for or what to try.
+            results.Add(new(Checks.HelperService, DiagnosticStatus.Warn,
+                $"Could not query the helper service: {ex.Message}",
+                "Auto-recovery (VPN service restart or adapter cycle) needs the helper service. If this persists, reinstall qbPortWeaver."));
         }
     }
 

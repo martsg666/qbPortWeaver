@@ -9,8 +9,14 @@ public static class ProcessControl
     /// <summary>
     /// Kills a process (including its entire process tree) and waits up to <paramref name="timeoutMs"/> for exit.
     /// Escalation lives in <see cref="ProcessKillHelper.KillProcessTreeWithEscalation"/> so the helper
-    /// service can use the same logic. This wrapper logs the per-stage outcome at Warn using
-    /// <paramref name="contextLabel"/> as the prefix so the user sees what kind of process failed.
+    /// service can use the same logic.
+    /// <para>This wrapper logs only the two failure outcomes - access denied and still running - at
+    /// Warn, using <paramref name="contextLabel"/> as the prefix so the user sees what kind of process
+    /// failed. A successful kill is silent, whichever stage achieved it. The helper service's
+    /// <c>AutoRecovery.LogKillOutcome</c> reports all six stages instead, because a VPN service that
+    /// never accepts a clean SCM stop makes force-kill its normal path rather than an exception, and
+    /// there the stage that worked is worth recording. Named in prose rather than linked: it lives in
+    /// the HelperService project, which this one does not reference.</para>
     /// Returns <see langword="true"/> if the process exited (or had already exited), <see langword="false"/> if it could not be killed.
     /// The caller is responsible for disposing <paramref name="process"/>.
     /// </summary>

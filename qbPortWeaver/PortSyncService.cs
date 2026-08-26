@@ -37,6 +37,8 @@ public sealed class PortSyncService
     private const string NatPmpLeaseStateKey = "vpn.natpmpLeaseTooShort";
     private const string InterfaceMatchStateKey = "client.interfaceMatch";
     private const string BindingStaleStateKey = "client.bindingStale";
+    private const string VpnProviderStateKey = "vpn.providerUnrecognized";
+    private const string DefaultPortStateKey = "client.defaultPortUnusable";
 
     /// <summary>Raised when a sync cycle completes (success or failure) with the resulting tray status.</summary>
     public event Action<TrayStatus>? SyncCompleted;
@@ -572,9 +574,16 @@ public sealed class PortSyncService
         // falls through to the branch below, which already skips the update and reports it.
         if (defaultPort != 0 && !AppConstants.IsUsablePort(defaultPort))
         {
-            LogManager.Instance.LogMessage(
+            // Transition-only: the value comes from the registry and stays unusable until the user
+            // edits it, and this path runs on every cycle for as long as the VPN is down. The message
+            // carries the port, so correcting it to another unusable value still reports.
+            LogManager.Instance.LogStateChange(DefaultPortStateKey,
                 $"Configured default port ({defaultPort}) is not usable - ignoring it", LogLevel.Warn);
             defaultPort = 0;
+        }
+        else
+        {
+            LogManager.Instance.ClearLogState(DefaultPortStateKey);
         }
 
         if (defaultPort == 0)
@@ -770,13 +779,25 @@ public sealed class PortSyncService
             return null;
         }
 
+        // Re-arms the warning below whenever the provider is one we know, so correcting Settings and
+        // then mistyping it again reports afresh. Gated on the registry rather than on the two
+        // branches beneath it so there is one definition of "recognized", and placed before them so
+        // the unknown-provider fallthrough keeps its order: a keyword added to the registry without a
+        // matching factory arm still reaches the warning rather than being routed to NAT-PMP.
+        if (VpnProviderRegistry.IsRecognizedProvider(cfg.VpnProvider))
+            LogManager.Instance.ClearLogState(VpnProviderStateKey);
+
         if (CreateStatelessVpnManager(cfg.VpnProvider) is { } manager)
             return manager;
 
         if (cfg.VpnProvider.Equals(RegistrySettingsManager.VpnProviderNatPmp, StringComparison.OrdinalIgnoreCase))
             return await CreateNatPmpVpnManagerAsync(cfg, status, cancellationToken).ConfigureAwait(false);
 
-        LogManager.Instance.LogMessage($"VPN provider '{cfg.VpnProvider}' is not recognized - check Settings", LogLevel.Warn);
+        // Transition-only: the provider name comes from the registry and stays wrong until Settings is
+        // corrected, so the same line every cycle adds nothing. The status below still reports Error on
+        // every cycle, which is the signal that should persist.
+        LogManager.Instance.LogStateChange(VpnProviderStateKey,
+            $"VPN provider '{cfg.VpnProvider}' is not recognized - check Settings", LogLevel.Warn);
         status[StatusKeys.Status] = SyncStatusValues.Error;
         status[StatusKeys.Message] = $"VPN provider '{cfg.VpnProvider}' is not recognized";
         return null;

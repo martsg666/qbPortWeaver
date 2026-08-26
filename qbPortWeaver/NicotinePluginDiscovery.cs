@@ -25,6 +25,19 @@ internal static class NicotinePluginDiscovery
     /// <summary>Identifier the plugin reports, used to confirm a connection file is really ours.</summary>
     internal const string PluginAppId = "qbpw-nicotine-bridge";
 
+    /// <summary>
+    /// Highest connection-file schema this build understands, matching <c>handshake.SCHEMA</c> in the
+    /// plugin. Read for the same reason <see cref="qbPortWeaver.Shared.HelperProtocol.Version"/> is read
+    /// off every helper response: the two halves upgrade independently, so a file this build cannot
+    /// interpret has to be refused rather than misread field by field.
+    /// <para>Bump this only when the file's meaning changes, and say what changed here. A plugin
+    /// writing a <b>higher</b> schema is newer than this app - its file is rejected, and the Settings
+    /// plugin line reports the bridge as not connected rather than silently acting on fields that may
+    /// have moved. A file with <b>no</b> schema predates the field entirely; those are accepted,
+    /// because the format it describes is exactly schema 1.</para>
+    /// </summary>
+    internal const int MaxSupportedSchema = 1;
+
     /// <summary>File whose presence marks the plugin as installed. Nicotine+ requires it, and it
     /// carries the version, so it is the marker both the installer and this class key on.</summary>
     internal const string PluginMarkerFileName = "PLUGININFO";
@@ -127,6 +140,19 @@ internal static class NicotinePluginDiscovery
             if (root.GetStringOrNull("app") != PluginAppId)
             {
                 LogManager.Instance.LogDebug($"NicotinePluginDiscovery.TryReadFile: {path} is not a qbPortWeaver bridge file");
+                return null;
+            }
+
+            // Checked before any other field is read: past this point every read assumes schema 1's
+            // meaning, and a newer plugin could have changed what a field holds rather than only
+            // adding to it. Absent means a plugin from before the field existed, which wrote exactly
+            // this layout, so it is accepted.
+            if (root.TryGetProperty("schema", out var schemaElement) &&
+                schemaElement.TryGetInt32(out int schema) && schema > MaxSupportedSchema)
+            {
+                LogManager.Instance.LogDebug(
+                    $"NicotinePluginDiscovery.TryReadFile: {path} uses connection-file schema {schema}, " +
+                    $"newer than the {MaxSupportedSchema} this build understands - ignoring it. Update qbPortWeaver.");
                 return null;
             }
 

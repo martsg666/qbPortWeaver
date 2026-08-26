@@ -118,6 +118,42 @@ internal static class NicotinePluginDiscovery
         if (dataFolder is not null) yield return SafeCombine(dataFolder, SecondaryFileName);
     }
 
+    // Whether this file's layout is one this build can interpret. Checked before any other field is
+    // read: past that point every read assumes schema 1's meaning, and a newer plugin could have
+    // changed what a field holds rather than only adding to it.
+    //
+    // Three cases, deliberately kept apart. Absent is a plugin from before the field existed, which
+    // wrote exactly this layout, so it is accepted. A value that will not read as an integer is
+    // rejected rather than treated as absent: whatever wrote it knew about the field, so we cannot
+    // claim it predates one, and a gate that exists to refuse what it cannot interpret must not be
+    // bypassed by input it cannot parse. Higher than we support is rejected on its own terms. The
+    // port check in TryReadFile draws the same line.
+    //
+    // Split out of TryReadFile rather than inlined: the nested parse-then-compare pushed that method
+    // past the cognitive-complexity gate, and this is the one part of it that answers a question of
+    // its own rather than extracting a field.
+    private static bool HasSupportedSchema(JsonElement root, string path)
+    {
+        if (!root.TryGetProperty("schema", out var schemaElement)) return true;
+
+        if (!schemaElement.TryGetInt32(out int schema))
+        {
+            LogManager.Instance.LogDebug(
+                $"NicotinePluginDiscovery.HasSupportedSchema: {path} has an unreadable connection-file schema - ignoring it");
+            return false;
+        }
+
+        if (schema > MaxSupportedSchema)
+        {
+            LogManager.Instance.LogDebug(
+                $"NicotinePluginDiscovery.HasSupportedSchema: {path} uses connection-file schema {schema}, " +
+                $"newer than the {MaxSupportedSchema} this build understands - ignoring it. Update qbPortWeaver.");
+            return false;
+        }
+
+        return true;
+    }
+
     private static NicotinePluginHandshake? TryReadFile(string path)
     {
         try
@@ -143,33 +179,7 @@ internal static class NicotinePluginDiscovery
                 return null;
             }
 
-            // Checked before any other field is read: past this point every read assumes schema 1's
-            // meaning, and a newer plugin could have changed what a field holds rather than only
-            // adding to it.
-            //
-            // Three cases, deliberately kept apart. Absent is a plugin from before the field existed,
-            // which wrote exactly this layout, so it is accepted. A value that will not read as an
-            // integer is rejected rather than treated as absent: whatever wrote it knew about the
-            // field, so we cannot claim it predates one, and a gate that exists to refuse what it
-            // cannot interpret must not be bypassed by input it cannot parse. Higher than we support
-            // is rejected on its own terms. The port check below draws the same line.
-            if (root.TryGetProperty("schema", out var schemaElement))
-            {
-                if (!schemaElement.TryGetInt32(out int schema))
-                {
-                    LogManager.Instance.LogDebug(
-                        $"NicotinePluginDiscovery.TryReadFile: {path} has an unreadable connection-file schema - ignoring it");
-                    return null;
-                }
-
-                if (schema > MaxSupportedSchema)
-                {
-                    LogManager.Instance.LogDebug(
-                        $"NicotinePluginDiscovery.TryReadFile: {path} uses connection-file schema {schema}, " +
-                        $"newer than the {MaxSupportedSchema} this build understands - ignoring it. Update qbPortWeaver.");
-                    return null;
-                }
-            }
+            if (!HasSupportedSchema(root, path)) return null;
 
             if (!root.TryGetProperty("port", out var portElement) ||
                 !portElement.TryGetInt32(out int port) ||

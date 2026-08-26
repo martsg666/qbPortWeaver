@@ -99,7 +99,7 @@ internal static class NicotinePluginDiscovery
     {
         // qbPortWeaver's own data folder is a fixed path regardless of how Nicotine+ was
         // installed, so it is checked before the copy in the Nicotine+ data folder.
-        yield return SafeCombine(AppConstants.AppDataFolder, PrimaryFileName);
+        yield return SafeCombine(AppFiles.AppDataFolder, PrimaryFileName);
 
         string? dataFolder = ResolveDataFolder(exePathHint);
         if (dataFolder is not null) yield return SafeCombine(dataFolder, SecondaryFileName);

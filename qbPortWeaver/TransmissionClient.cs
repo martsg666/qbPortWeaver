@@ -322,7 +322,7 @@ public sealed class TransmissionClient : ManagedClientBase
     private static string? GetEffectiveServiceName()
     {
         if (_resolvedServiceName is { Length: > 0 }) return _resolvedServiceName;
-        var found = AppConstants.FindServiceName(RegistrySettingsManager.GetAppValue(RegistrySettingsManager.KeyTransmissionServiceSearchTerm));
+        var found = ServiceLookup.FindServiceName(RegistrySettingsManager.GetAppValue(RegistrySettingsManager.KeyTransmissionServiceSearchTerm));
         if (found is not null) _resolvedServiceName = found;
         return found;
     }

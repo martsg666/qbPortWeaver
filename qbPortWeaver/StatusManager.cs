@@ -82,12 +82,12 @@ public static class StatusManager
     /// <summary>Serializes <paramref name="status"/> to the JSON status file using an atomic temp-file write.</summary>
     public static void Write(IReadOnlyDictionary<string, object?> status)
     {
-        string filePath = AppConstants.GetStatusFilePath();
+        string filePath = AppFiles.GetStatusFilePath();
 
         try
         {
             string json = JsonSerializer.Serialize(status, _jsonOptions);
-            AppConstants.WriteAtomic(filePath, json);
+            AppFiles.WriteAtomic(filePath, json);
         }
         catch (Exception ex)
         {
@@ -103,12 +103,12 @@ public static class StatusManager
     /// </summary>
     public static StatusSnapshot? TryRead()
     {
-        string filePath = AppConstants.GetStatusFilePath();
+        string filePath = AppFiles.GetStatusFilePath();
 
         try
         {
             if (!File.Exists(filePath)) return null;
-            string json = AppConstants.ReadAllTextShared(filePath);
+            string json = AppFiles.ReadAllTextShared(filePath);
             return JsonSerializer.Deserialize<StatusSnapshot>(json, _readOptions);
         }
         catch (Exception ex)

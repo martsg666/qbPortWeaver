@@ -124,7 +124,7 @@ internal sealed class DiagnosticsForm : Form
             Margin = new Padding(0),
         };
         var btnCopy = new Button { Text = "Copy Report", Size = new Size(110, DialogLayout.ButtonHeight), Margin = new Padding(0, 0, DialogLayout.Gap, 0) };
-        btnCopy.Click += (_, _) => AppConstants.SetClipboardTextSafely(BuildPlainReport());
+        btnCopy.Click += (_, _) => UiHelpers.SetClipboardTextSafely(BuildPlainReport());
         leftGroup.Controls.Add(btnCopy);
 
         _btnRerun = new Button { Text = "Re-run", Size = new Size(90, DialogLayout.ButtonHeight), Margin = new Padding(0) };
@@ -174,7 +174,7 @@ internal sealed class DiagnosticsForm : Form
         _report.SelectionFont = summaryFont;
         AppendColored($"{pass} passed", PassColor);
         AppendColored(", ", textColor);
-        AppendColored(AppConstants.Pluralize(warn, "warning"), warn > 0 ? WarnColor : metaColor);
+        AppendColored(TextFormat.Pluralize(warn, "warning"), warn > 0 ? WarnColor : metaColor);
         AppendColored(", ", textColor);
         AppendColored($"{fail} failed\n", fail > 0 ? FailColor : metaColor);
 
@@ -240,9 +240,9 @@ internal sealed class DiagnosticsForm : Form
         _ => ("–", SystemColors.GrayText),
     };
 
-    private static Color PassColor => AppConstants.StatusOk;
-    private static Color WarnColor => AppConstants.StatusWarning;
-    private static Color FailColor => AppConstants.StatusError;
+    private static Color PassColor => ThemeColors.StatusOk;
+    private static Color WarnColor => ThemeColors.StatusWarning;
+    private static Color FailColor => ThemeColors.StatusError;
 
     // Appends a colored run at the current caret, keeping the active SelectionFont.
     private void AppendColored(string text, Color color)

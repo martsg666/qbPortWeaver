@@ -35,8 +35,8 @@ internal sealed partial class UpdateAvailableForm : Form
     protected override void OnLoad(EventArgs e)
     {
         base.OnLoad(e);
-        if (AppConstants.IsDarkModeEnabled())
-            lnkReleaseNotes.LinkColor = AppConstants.LinkDark;
+        if (ThemeColors.IsDarkModeEnabled())
+            lnkReleaseNotes.LinkColor = ThemeColors.LinkDark;
     }
 
     protected override void OnShown(EventArgs e)
@@ -44,7 +44,7 @@ internal sealed partial class UpdateAvailableForm : Form
         base.OnShown(e);
         // The intrusive startup update check shows this non-modally while the tray-only app has no
         // foreground window, so it can open behind the window that launched us. Force it to the front.
-        AppConstants.BringFormToFront(this);
+        UiHelpers.BringFormToFront(this);
     }
 
     // Update button: in-app download+install when the release has an MSI asset, otherwise the release page.
@@ -95,7 +95,7 @@ internal sealed partial class UpdateAvailableForm : Form
             // transfer failure and fall back to the release page so the user still has a way forward.
             lblStatus.Text = "Download timed out - opening the release page instead.";
             LogManager.Instance.LogMessage("Update download timed out - falling back to the release page", LogLevel.Warn);
-            AppConstants.OpenUrl(_releaseUrl);
+            UiHelpers.OpenUrl(_releaseUrl);
             return;
         }
         catch (Exception ex)
@@ -104,7 +104,7 @@ internal sealed partial class UpdateAvailableForm : Form
             SetDownloadingUi(false);
             lblStatus.Text = "Download failed - opening the release page instead.";
             LogManager.Instance.LogMessage($"Update download failed: {ex.Message} - falling back to the release page", LogLevel.Warn);
-            AppConstants.OpenUrl(_releaseUrl);
+            UiHelpers.OpenUrl(_releaseUrl);
             return;
         }
         finally
@@ -130,7 +130,7 @@ internal sealed partial class UpdateAvailableForm : Form
             SetDownloadingUi(false);
             lblStatus.Text = "Could not launch the installer - opening the release page instead.";
             LogManager.Instance.LogMessage($"Failed to launch installer '{msiPath}': {ex.Message} - falling back to the release page", LogLevel.Error);
-            AppConstants.OpenUrl(_releaseUrl);
+            UiHelpers.OpenUrl(_releaseUrl);
             return;
         }
 
@@ -153,12 +153,12 @@ internal sealed partial class UpdateAvailableForm : Form
     }
 
     private void lnkReleaseNotes_LinkClicked(object? sender, LinkLabelLinkClickedEventArgs e) =>
-        AppConstants.OpenUrl(_releaseUrl);
+        UiHelpers.OpenUrl(_releaseUrl);
 
     private void OpenReleasePageAndClose()
     {
         LogManager.Instance.LogMessage($"Update dialog: opening release page for {_version}", LogLevel.Info);
-        AppConstants.OpenUrl(_releaseUrl);
+        UiHelpers.OpenUrl(_releaseUrl);
         Close();
     }
 

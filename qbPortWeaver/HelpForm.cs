@@ -51,7 +51,7 @@ public partial class HelpForm : Form
         // window edge, so no extra inset is baked into the layout. Computing from the toolbar's real
         // width is required here because the form Padding shrinks the docked panel below its design
         // width, which would leave designer-anchored positions off the right edge.
-        AppConstants.LayoutSearchToolbar(pnlToolbar, txtSearch, lblMatchCount, btnPrev, btnNext, btnClearSearch, rightMargin: 0);
+        UiHelpers.LayoutSearchToolbar(pnlToolbar, txtSearch, lblMatchCount, btnPrev, btnNext, btnClearSearch, rightMargin: 0);
 
         Font baseFont = rtbHelp.Font;
         _h1Font = new Font(baseFont.FontFamily, baseFont.Size + 6f, FontStyle.Bold);
@@ -63,7 +63,7 @@ public partial class HelpForm : Form
         _monoFont = new Font("Consolas", baseFont.Size);
         // HotTrack is the OS accent (mode-aware); dark mode uses the shared dark link color
         // because HotTrack can render too dim on dark surfaces.
-        _linkColor = AppConstants.IsDarkModeEnabled() ? AppConstants.LinkDark : SystemColors.HotTrack;
+        _linkColor = ThemeColors.IsDarkModeEnabled() ? ThemeColors.LinkDark : SystemColors.HotTrack;
 
         RenderMarkdown(LoadGuideText());
         _documentText = rtbHelp.Text;
@@ -143,7 +143,7 @@ public partial class HelpForm : Form
         try
         {
             if (File.Exists(path))
-                return AppConstants.ReadAllTextShared(path);
+                return AppFiles.ReadAllTextShared(path);
         }
         catch (Exception ex)
         {
@@ -544,14 +544,14 @@ public partial class HelpForm : Form
     // drawn: exact weight and centering, and no dependency on a font glyph.
     private void ClearButton_Paint(object? sender, PaintEventArgs e)
     {
-        if (sender is Button btn) AppConstants.DrawClearGlyph(btn, e.Graphics);
+        if (sender is Button btn) UiHelpers.DrawClearGlyph(btn, e.Graphics);
     }
 
     // Paints the search-nav chevrons (btnPrev points up) via the shared drawer.
     private void NavButton_Paint(object? sender, PaintEventArgs e)
     {
         if (sender is not Button btn) return;
-        AppConstants.DrawNavChevron(btn, e.Graphics, up: btn == btnPrev);
+        UiHelpers.DrawNavChevron(btn, e.Graphics, up: btn == btnPrev);
     }
 
     // Enable "Copy" only when there is a selection; "Copy All" and "Select All" always apply.
@@ -561,10 +561,10 @@ public partial class HelpForm : Form
     private void ctxHelpCopy_Click(object? sender, EventArgs e)
     {
         if (rtbHelp.SelectionLength > 0)
-            AppConstants.SetClipboardTextSafely(rtbHelp.SelectedText);
+            UiHelpers.SetClipboardTextSafely(rtbHelp.SelectedText);
     }
 
-    private void ctxHelpCopyAll_Click(object? sender, EventArgs e) => AppConstants.SetClipboardTextSafely(rtbHelp.Text);
+    private void ctxHelpCopyAll_Click(object? sender, EventArgs e) => UiHelpers.SetClipboardTextSafely(rtbHelp.Text);
 
     private void ctxHelpSelectAll_Click(object? sender, EventArgs e) => rtbHelp.SelectAll();
 
@@ -573,7 +573,7 @@ public partial class HelpForm : Form
         if (e.Button != MouseButtons.Left) return;
         string? url = LinkUrlAtPoint(e.Location);
         if (url is not null)
-            AppConstants.OpenUrl(url);
+            UiHelpers.OpenUrl(url);
     }
 
     private void rtbHelp_MouseMove(object? sender, MouseEventArgs e) =>

@@ -494,7 +494,7 @@ public static class RegistrySettingsManager
         }
 
         if (moved > 0)
-            LogManager.Instance.LogMessage($"Migrated {AppConstants.Pluralize(moved, "setting")} to the current registry key names", LogLevel.Info);
+            LogManager.Instance.LogMessage($"Migrated {TextFormat.Pluralize(moved, "setting")} to the current registry key names", LogLevel.Info);
 
         int removed = 0;
         foreach (var (section, key) in _obsoleteKeys)
@@ -514,7 +514,7 @@ public static class RegistrySettingsManager
         }
 
         if (removed > 0)
-            LogManager.Instance.LogMessage($"Removed {AppConstants.Pluralize(removed, "obsolete setting")} from the registry", LogLevel.Info);
+            LogManager.Instance.LogMessage($"Removed {TextFormat.Pluralize(removed, "obsolete setting")} from the registry", LogLevel.Info);
     }
 
     /// <summary>Rewrites a folder list still stored with the former <c>;</c> separator onto <see cref="ListSeparator"/>, once, on startup.</summary>

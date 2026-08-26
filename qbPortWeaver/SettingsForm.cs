@@ -859,9 +859,9 @@ public partial class SettingsForm : Form
         // status panel never disagree about how bad a given plugin state is.
         lblNicotinePluginStatus.ForeColor = status.State switch
         {
-            NicotinePluginState.Ready => AppConstants.StatusOk,
-            NicotinePluginState.NotInstalled or NicotinePluginState.NotEnabled => AppConstants.StatusError,
-            _ => AppConstants.StatusWarning,
+            NicotinePluginState.Ready => ThemeColors.StatusOk,
+            NicotinePluginState.NotInstalled or NicotinePluginState.NotEnabled => ThemeColors.StatusError,
+            _ => ThemeColors.StatusWarning,
         };
 
         btnInstallNicotinePlugin.Text = status.State switch

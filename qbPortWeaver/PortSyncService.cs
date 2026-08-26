@@ -759,7 +759,7 @@ public sealed class PortSyncService
         if (provider.Equals(RegistrySettingsManager.VpnProviderPia, StringComparison.OrdinalIgnoreCase))
             return new PiaVpnManager();
         if (provider.Equals(RegistrySettingsManager.VpnProviderProtonVpn, StringComparison.OrdinalIgnoreCase))
-            return new ProtonVpnManager(AppConstants.GetProtonVpnLogFilePath());
+            return new ProtonVpnManager(AppFiles.GetProtonVpnLogFilePath());
         return null;
     }
 
@@ -1186,7 +1186,7 @@ public sealed class PortSyncService
             return string.Empty;
         if (!_portClosedRecoveryArmed)
             return " (recovery has already run for this outage - it will not run again until a scheduled check reports the port open)";
-        string checks = AppConstants.PluralizeNoun(_confirmedClosedCount, "closed check");
+        string checks = TextFormat.PluralizeNoun(_confirmedClosedCount, "closed check");
         return $" ({_confirmedClosedCount} consecutive {checks}, recovery triggers after {config.PortClosedRecoveryTriggerChecks} consecutive closed checks)";
     }
 
@@ -1217,7 +1217,7 @@ public sealed class PortSyncService
 
         string action = vpnManager.GetRecoveryAction();
         await DispatchRecoveryAsync(action, target, vpnManager.ProviderName, cancellationToken,
-            triggerLogMessage: $"Triggering '{action}' for '{vpnManager.ProviderName}' after {config.PortClosedRecoveryTriggerChecks} consecutive closed {AppConstants.PluralizeNoun(config.PortClosedRecoveryTriggerChecks, "check")}").ConfigureAwait(false);
+            triggerLogMessage: $"Triggering '{action}' for '{vpnManager.ProviderName}' after {config.PortClosedRecoveryTriggerChecks} consecutive closed {TextFormat.PluralizeNoun(config.PortClosedRecoveryTriggerChecks, "check")}").ConfigureAwait(false);
     }
 
     // Returns true if the client is running (or was successfully force-started), false otherwise
@@ -1514,7 +1514,7 @@ public sealed class PortSyncService
         string names = string.Join(", ", conflicts.Select(c => $"\"{c.SettingName}\""));
         string pronoun = conflicts.Count == 1 ? "it" : "them";
         LogManager.Instance.LogMessage(
-            $"{manager.ClientName} has {AppConstants.Pluralize(conflicts.Count, "setting")} working against the forwarded port: " +
+            $"{manager.ClientName} has {TextFormat.Pluralize(conflicts.Count, "setting")} working against the forwarded port: " +
             $"{names} - turn {pronoun} off in {manager.ClientName}'s settings",
             LogLevel.Warn);
 
@@ -1526,7 +1526,7 @@ public sealed class PortSyncService
         try
         {
             ClientSettingsConflictDetected?.Invoke(
-                $"{manager.ClientName} has {AppConstants.Pluralize(conflicts.Count, "setting")} working against the forwarded port. See the log for details.");
+                $"{manager.ClientName} has {TextFormat.Pluralize(conflicts.Count, "setting")} working against the forwarded port. See the log for details.");
         }
         catch (Exception ex)
         {
@@ -1537,7 +1537,7 @@ public sealed class PortSyncService
     // Builds a failure log message with cycle count and optional recovery trigger suffix
     private static string BuildCycleCountMessage(string prefix, int count, AppConfig cfg)
     {
-        string cycles = AppConstants.PluralizeNoun(count, "failed cycle");
+        string cycles = TextFormat.PluralizeNoun(count, "failed cycle");
         string recoverySuffix = cfg.VpnAutoRecoveryEnabled
             ? $", recovery may trigger after {cfg.VpnAutoRecoveryTriggerCycles} consecutive failed cycles"
             : string.Empty;
@@ -1638,7 +1638,7 @@ public sealed class PortSyncService
         ResetFailureStreak();
 
         await DispatchRecoveryAsync(action, recoveryTarget, displayName, cancellationToken,
-            triggerLogMessage: $"Triggering '{action}' for '{displayName}' after {count} consecutive failed {AppConstants.PluralizeNoun(count, "cycle")}").ConfigureAwait(false);
+            triggerLogMessage: $"Triggering '{action}' for '{displayName}' after {count} consecutive failed {TextFormat.PluralizeNoun(count, "cycle")}").ConfigureAwait(false);
     }
 
     // When the offline rate limiter will allow the next recovery attempt, or null when

@@ -389,8 +389,8 @@ public partial class WhatsNewForm : Form
         base.OnLoad(e);
         rtbFeatures.Font = Font;
         rtbFeatures.ForeColor = SystemColors.ControlText; // match the group box (mode-aware, blends in)
-        if (AppConstants.IsDarkModeEnabled())
-            lnkCommunity.LinkColor = AppConstants.LinkDark;
+        if (ThemeColors.IsDarkModeEnabled())
+            lnkCommunity.LinkColor = ThemeColors.LinkDark;
         RenderFeatures();
     }
 
@@ -400,7 +400,7 @@ public partial class WhatsNewForm : Form
         // Shown non-modally on first run by the tray-only app (no foreground window), so it can open
         // behind whatever launched us (e.g. the installer). If the user never sees it they never
         // dismiss it, and the "last seen version" is never recorded - so it keeps reappearing.
-        AppConstants.BringFormToFront(this);
+        UiHelpers.BringFormToFront(this);
     }
 
     // Renders ReleaseFeaturesText into the RichTextBox with a visual hierarchy instead of flat text:
@@ -454,5 +454,5 @@ public partial class WhatsNewForm : Form
     private void btnClose_Click(object? sender, EventArgs e) => Close(); // NOSONAR S2325 - Close() is an instance method, handler cannot be static
 
     private static void lnkCommunity_LinkClicked(object? sender, LinkLabelLinkClickedEventArgs e) =>
-        AppConstants.OpenUrl(AppConstants.GitHubRepoUrl);
+        UiHelpers.OpenUrl(AppConstants.GitHubRepoUrl);
 }

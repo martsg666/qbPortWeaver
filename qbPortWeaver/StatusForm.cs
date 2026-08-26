@@ -402,7 +402,7 @@ public partial class StatusForm : Form
         if (s.RecoveryFailedCycles > 0)
         {
             return $"{s.RecoveryFailedCycles} of {s.RecoveryTriggerCycles} failed " +
-                   $"{AppConstants.PluralizeNoun(s.RecoveryTriggerCycles, "cycle")}";
+                   $"{TextFormat.PluralizeNoun(s.RecoveryTriggerCycles, "cycle")}";
         }
 
         return null;
@@ -429,7 +429,7 @@ public partial class StatusForm : Form
         if (s.PortClosedRecoveryChecks > 0)
         {
             return $"{s.PortClosedRecoveryChecks} of {s.PortClosedRecoveryTriggerChecks} closed " +
-                   $"{AppConstants.PluralizeNoun(s.PortClosedRecoveryTriggerChecks, "check")}";
+                   $"{TextFormat.PluralizeNoun(s.PortClosedRecoveryTriggerChecks, "check")}";
         }
 
         return null;
@@ -633,9 +633,9 @@ public partial class StatusForm : Form
     }
 
     // Accent colors follow AboutForm: brighter variants in dark mode, deeper ones in light mode.
-    private static Color OkColor => AppConstants.StatusOk;
-    private static Color WarnColor => AppConstants.StatusWarning;
-    private static Color ErrorColor => AppConstants.StatusError;
+    private static Color OkColor => ThemeColors.StatusOk;
+    private static Color WarnColor => ThemeColors.StatusWarning;
+    private static Color ErrorColor => ThemeColors.StatusError;
     private static Color NeutralColor => SystemColors.GrayText;
 
     private static void SetColor(Label label, string text, Color color)

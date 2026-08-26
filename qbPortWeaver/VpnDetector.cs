@@ -31,9 +31,9 @@ internal static class VpnDetector
         ServiceController[]? services = null;
         try
         {
-            // One SCM enumeration covers every provider. AppConstants.FindServiceName would enumerate
+            // One SCM enumeration covers every provider. ServiceLookup.FindServiceName would enumerate
             // once per provider and discard the status we need, so the matching rule is shared with it
-            // (AppConstants.ServiceMatches) rather than the whole lookup.
+            // (ServiceLookup.ServiceMatches) rather than the whole lookup.
             services = ServiceController.GetServices();
 
             var results = new List<DetectedVpn>();
@@ -71,7 +71,7 @@ internal static class VpnDetector
     {
         try
         {
-            return AppConstants.ServiceMatches(service, searchTerm);
+            return ServiceLookup.ServiceMatches(service, searchTerm);
         }
         catch (InvalidOperationException ex)
         {

@@ -438,7 +438,7 @@ internal static partial class MediaImporter
 
             // Reached the build, so every configured path resolved: re-arm the warning above.
             LogManager.Instance.ClearLogState(LibraryIndexStateKey);
-            LogManager.Instance.LogMessage($"Building library index across {AppConstants.Pluralize(libraryPaths.Length, "folder")}", LogLevel.Info, Subsystem.MediaManager);
+            LogManager.Instance.LogMessage($"Building library index across {TextFormat.Pluralize(libraryPaths.Length, "folder")}", LogLevel.Info, Subsystem.MediaManager);
             LoadLibraryCache();
 
             var sw = System.Diagnostics.Stopwatch.StartNew();
@@ -524,7 +524,7 @@ internal static partial class MediaImporter
                 return new(StringComparer.OrdinalIgnoreCase);
             }
 
-            var json = AppConstants.ReadAllTextShared(filePath);
+            var json = AppFiles.ReadAllTextShared(filePath);
             var entries = JsonSerializer.Deserialize<Dictionary<string, CacheEntry>>(json);
             var cache = entries is not null
                 ? new Dictionary<string, CacheEntry>(entries, StringComparer.OrdinalIgnoreCase)
@@ -1002,7 +1002,7 @@ internal static partial class MediaImporter
     {
         var json = JsonSerializer.Serialize(entries, _jsonWriteOptions);
         lock (_cacheFileLock)
-            AppConstants.WriteAtomic(GetCacheFilePath(fileName), json);
+            AppFiles.WriteAtomic(GetCacheFilePath(fileName), json);
         LogManager.Instance.LogDebug($"MediaImporter.{debugLabel}: Saved {entries.Count} entries", Subsystem.MediaManager);
     }
 
@@ -1029,14 +1029,14 @@ internal static partial class MediaImporter
             _lastTvShowsLibraryPath = string.Empty;
         }
 
-        AppConstants.DeleteFileSafely(GetCacheFilePath(SourceCacheFileName));
-        AppConstants.DeleteFileSafely(GetCacheFilePath(LibraryCacheFileName));
+        AppFiles.DeleteFileSafely(GetCacheFilePath(SourceCacheFileName));
+        AppFiles.DeleteFileSafely(GetCacheFilePath(LibraryCacheFileName));
 
         LogManager.Instance.LogMessage("Fingerprint caches cleared", LogLevel.Info, Subsystem.MediaManager);
     }
 
     internal static string GetCacheFilePath(string fileName) =>
-        AppConstants.GetDataFilePath(fileName);
+        AppFiles.GetDataFilePath(fileName);
 
     // CreateHardLink: lpFileName is the NEW link (destination), lpExistingFileName is the existing file (source).
     [LibraryImport("kernel32.dll", EntryPoint = "CreateHardLinkW", SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]

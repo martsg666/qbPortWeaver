@@ -219,10 +219,10 @@ public abstract class ManagedClientBase : IManagedClient // NOSONAR S3881 - all 
     // Returns false (and logs an error) if processes remain after both passes.
     protected async Task<bool> KillAndVerifyAsync(CancellationToken cancellationToken)
     {
-        AppConstants.KillProcessesByName(ProcessName, ProcessKillTimeoutMs, ClientName);
+        ProcessControl.KillProcessesByName(ProcessName, ProcessKillTimeoutMs, ClientName);
         if (!IsRunning()) return true;
         await Task.Delay(ProcessKillRetryDelayMs, cancellationToken).ConfigureAwait(false);
-        AppConstants.KillProcessesByName(ProcessName, ProcessKillTimeoutMs, ClientName);
+        ProcessControl.KillProcessesByName(ProcessName, ProcessKillTimeoutMs, ClientName);
         if (!IsRunning()) return true;
         LogManager.Instance.LogMessage($"Failed to kill all {ClientName} processes - aborting restart", LogLevel.Error);
         return false;

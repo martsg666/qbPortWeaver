@@ -47,8 +47,8 @@ public partial class MediaManagerForm : Form
     protected override void OnLoad(EventArgs e)
     {
         base.OnLoad(e);
-        _colorUncertain = AppConstants.LogWarning;
-        _colorUnmatched = AppConstants.LogError;
+        _colorUncertain = ThemeColors.LogWarning;
+        _colorUnmatched = ThemeColors.LogError;
         lblLegendUncertain.ForeColor = _colorUncertain;
         lblLegendUnmatched.ForeColor = _colorUnmatched;
         rtbTmdbOverview.Font = Font;
@@ -451,7 +451,7 @@ public partial class MediaManagerForm : Form
         // Mode-aware confirmation: only Move removes the source, so only Move is truly irreversible.
         // Hardlink and Copy leave the source in place, so a plainer prompt avoids over-warning.
         var importMode = MediaManagerService.ParseImportMode(cboImportMode.SelectedItem?.ToString() ?? RegistrySettingsManager.ImportModeHardlink);
-        string fileCount = AppConstants.Pluralize(toApply.Count, "file");
+        string fileCount = TextFormat.Pluralize(toApply.Count, "file");
         var (message, icon) = importMode == ImportMode.Move
             ? ($"{fileCount} will be moved into the library and removed from the source folder. This cannot be undone.\n\nContinue?", MessageBoxIcon.Warning)
             : ($"{fileCount} will be imported into the library.\n\nContinue?", MessageBoxIcon.Question);
@@ -541,7 +541,7 @@ public partial class MediaManagerForm : Form
         if (IsDisposed) return;
         PopulateGrid(remaining);
 
-        string remainingLabel = AppConstants.Pluralize(remaining.Count, "file");
+        string remainingLabel = TextFormat.Pluralize(remaining.Count, "file");
         lblScanStatus.Text = remaining.Count == 0
             ? "Done - all files imported successfully."
             : $"Done - {remainingLabel} could not be imported.";
@@ -771,7 +771,7 @@ public partial class MediaManagerForm : Form
     private void gridContextCopy_Click(object? sender, EventArgs e)
     {
         if (dgvResults.CurrentCell?.Value is string v && v.Length > 0)
-            AppConstants.SetClipboardTextSafely(v);
+            UiHelpers.SetClipboardTextSafely(v);
     }
 
     private void gridContextPaste_Click(object? sender, EventArgs e) => PasteToCurrentCell();
@@ -791,7 +791,7 @@ public partial class MediaManagerForm : Form
     {
         bool canPaste = dgvResults.CurrentCell?.ColumnIndex == colProposed.Index
                         && !dgvResults.CurrentCell.ReadOnly
-                        && AppConstants.ClipboardHasText();
+                        && UiHelpers.ClipboardHasText();
         _mnuPaste!.Enabled = canPaste;
     }
 
@@ -799,7 +799,7 @@ public partial class MediaManagerForm : Form
     {
         if (dgvResults.CurrentCell?.ColumnIndex == colProposed.Index
             && !dgvResults.CurrentCell.ReadOnly
-            && AppConstants.TryGetClipboardText() is { } text)
+            && UiHelpers.TryGetClipboardText() is { } text)
             dgvResults.CurrentCell.Value = text.Trim();
     }
 
@@ -993,8 +993,8 @@ public partial class MediaManagerForm : Form
                 included++;
         }
 
-        string includeStr = AppConstants.Pluralize(included, "file");
-        string unmatchedStr = AppConstants.Pluralize(unmatched, "file");
+        string includeStr = TextFormat.Pluralize(included, "file");
+        string unmatchedStr = TextFormat.Pluralize(unmatched, "file");
 
         lblScanStatus.Text = (included, unmatched) switch
         {

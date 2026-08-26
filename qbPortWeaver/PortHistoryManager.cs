@@ -65,8 +65,8 @@ public static class PortHistoryManager
                 });
                 if (entries.Count > MaxEntries)
                     entries.RemoveRange(0, entries.Count - MaxEntries);
-                AppConstants.WriteAtomic(
-                    AppConstants.GetDataFilePath(HistoryFileName),
+                AppFiles.WriteAtomic(
+                    AppFiles.GetDataFilePath(HistoryFileName),
                     JsonSerializer.Serialize(entries, _jsonOptions));
                 // Clears the failure report so a later episode is announced rather than swallowed.
                 LogManager.Instance.ClearLogState(HistoryWriteStateKey);
@@ -106,15 +106,15 @@ public static class PortHistoryManager
     {
         lock (_lock)
         {
-            AppConstants.DeleteFileSafely(AppConstants.GetDataFilePath(HistoryFileName));
+            AppFiles.DeleteFileSafely(AppFiles.GetDataFilePath(HistoryFileName));
         }
     }
 
     private static List<PortHistoryEntry> ReadCore()
     {
-        string path = AppConstants.GetDataFilePath(HistoryFileName);
+        string path = AppFiles.GetDataFilePath(HistoryFileName);
         if (!File.Exists(path))
             return [];
-        return JsonSerializer.Deserialize<List<PortHistoryEntry>>(AppConstants.ReadAllTextShared(path), _readOptions) ?? [];
+        return JsonSerializer.Deserialize<List<PortHistoryEntry>>(AppFiles.ReadAllTextShared(path), _readOptions) ?? [];
     }
 }

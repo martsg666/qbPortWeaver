@@ -213,7 +213,7 @@ internal static class NicotinePluginInstaller
                 sourcePath = fallbackPath;
             }
 
-            string[] lines = AppConstants.ReadAllLinesShared(sourcePath);
+            string[] lines = AppFiles.ReadAllLinesShared(sourcePath);
 
             if (!TryRewriteEnabledPlugins(lines, out string[] updated, out string reason))
             {
@@ -236,8 +236,8 @@ internal static class NicotinePluginInstaller
 
             // The only atomic write outside our own data folder, so the startup sweep cannot reach
             // it. Clear leftovers here instead, while Nicotine+ is known to be closed.
-            AppConstants.SweepOrphanedTempFiles(Path.GetDirectoryName(configPath) ?? string.Empty);
-            AppConstants.WriteAtomic(configPath, updated);
+            AppFiles.SweepOrphanedTempFiles(Path.GetDirectoryName(configPath) ?? string.Empty);
+            AppFiles.WriteAtomic(configPath, updated);
 
             LogManager.Instance.LogMessage(
                 $"Enabled the Nicotine+ bridge plugin in {configPath} (previous copy saved as {ConfigBackupFileName})",
@@ -269,7 +269,7 @@ internal static class NicotinePluginInstaller
                 if (!File.Exists(configPath)) return null;
             }
 
-            foreach (var (section, key, value) in ReadSettings(AppConstants.ReadAllLinesShared(configPath)))
+            foreach (var (section, key, value) in ReadSettings(AppFiles.ReadAllLinesShared(configPath)))
             {
                 if (section != PluginsSection || key != EnabledKey) continue;
                 if (!TryParsePythonStringList(value, out var names)) return null;
@@ -732,7 +732,7 @@ internal static class NicotinePluginInstaller
 
         try
         {
-            return ReadVersion(AppConstants.ReadAllTextShared(infoPath)) ?? string.Empty;
+            return ReadVersion(AppFiles.ReadAllTextShared(infoPath)) ?? string.Empty;
         }
         catch (Exception ex)
         {

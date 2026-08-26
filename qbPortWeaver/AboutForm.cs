@@ -27,10 +27,10 @@ public partial class AboutForm : Form
     protected override void OnLoad(EventArgs e)
     {
         base.OnLoad(e);
-        if (AppConstants.IsDarkModeEnabled())
+        if (ThemeColors.IsDarkModeEnabled())
         {
-            lnkAuthor.LinkColor = AppConstants.LinkDark;
-            lnkGitHub.LinkColor = AppConstants.LinkDark;
+            lnkAuthor.LinkColor = ThemeColors.LinkDark;
+            lnkGitHub.LinkColor = ThemeColors.LinkDark;
         }
         _ = LoadGitHubDataAsync(); // fire-and-forget; exceptions are handled inside LoadGitHubDataAsync
     }
@@ -68,12 +68,12 @@ public partial class AboutForm : Form
     private static void lnkAuthor_LinkClicked(object? sender, LinkLabelLinkClickedEventArgs e)
     {
         if (e.Link?.LinkData is string url && !string.IsNullOrEmpty(url))
-            AppConstants.OpenUrl(url);
+            UiHelpers.OpenUrl(url);
     }
 
     private static void lnkGitHub_LinkClicked(object? sender, LinkLabelLinkClickedEventArgs e)
     {
-        AppConstants.OpenUrl(AppConstants.GitHubRepoUrl);
+        UiHelpers.OpenUrl(AppConstants.GitHubRepoUrl);
     }
 
     // Fetches the latest release info and contributor list in parallel, then populates all UI fields
@@ -136,14 +136,14 @@ public partial class AboutForm : Form
         if (info.IsNewer)
         {
             lblStatusValue.Text = "Update available";
-            lblStatusValue.ForeColor = AppConstants.StatusWarning;
+            lblStatusValue.ForeColor = ThemeColors.StatusWarning;
             btnCheckForUpdates.Text = "Update";
             _availableUpdate = info;
         }
         else
         {
             lblStatusValue.Text = "Up to date";
-            lblStatusValue.ForeColor = AppConstants.StatusOk;
+            lblStatusValue.ForeColor = ThemeColors.StatusOk;
             btnCheckForUpdates.Text = "Check for Updates";
         }
     }

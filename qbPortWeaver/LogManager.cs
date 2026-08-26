@@ -248,6 +248,14 @@ public sealed class LogManager
 
                 _writeCount = 0;
 
+                // Re-arm every LogStateChange latch. Those entries are written once per condition
+                // and then suppressed while the message stays the same, so without this a standing
+                // condition - an interface mismatch, an unreachable share, a stale plugin binding -
+                // is simply absent from the new log: still true, still suppressed as a duplicate of
+                // an entry that no longer exists. The user clears the log to capture a clean
+                // reproduction, and those are precisely the lines that explain it.
+                _lastStateMessage.Clear();
+
                 // Write the sentinel while still holding the lock so no concurrent LogMessage
                 // can interleave between the delete and this entry.
                 WriteRaw(FormatEntry("Logs cleared by user", LogLevel.Info, Subsystem.MainApp));

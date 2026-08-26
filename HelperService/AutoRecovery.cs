@@ -45,6 +45,22 @@ internal static partial class AutoRecovery
         public int dwServiceFlags;
     }
 
+    /// <remarks>
+    /// Cancellation between the stop and the start deliberately leaves the service stopped, unlike
+    /// <see cref="CycleAdapterAsync"/>, which re-enables its adapter from a <c>finally</c>. The
+    /// asymmetry is a decision, not an oversight:
+    /// <para>A stopped service does not persist the way an administratively disabled adapter does.
+    /// VPN services are <c>Start=auto</c>, so a reboot restores one, and short of a reboot the sync
+    /// loop sees the VPN down, accumulates failures and dispatches another recovery that starts it.
+    /// Both routes self-correct; a disabled adapter has neither.</para>
+    /// <para>A <c>finally</c>-start would also have to run during the helper's own shutdown, on
+    /// <see cref="CancellationToken.None"/> to be of any use, and starting a service can take
+    /// seconds - <see cref="StartServiceAsync"/> waits up to <see cref="ServiceOperationTimeoutMs"/>.
+    /// That delay lands inside the SCM's stop timeout, which kills the service if it overruns, and an
+    /// MSI upgrade (<c>ServiceControl Stop="both"</c>) is exactly when that would happen. Trading a
+    /// self-correcting outage for a killed service during upgrades is the worse bargain.
+    /// <c>netsh admin=enable</c> takes about a second, which is why the adapter path can afford it.</para>
+    /// </remarks>
     internal static async Task RestartServiceAsync(string serviceName, HelperLogger logger, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(serviceName))

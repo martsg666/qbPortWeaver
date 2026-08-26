@@ -309,6 +309,14 @@ public static class AppConstants
             }
             else if (!File.Exists(imagePath))
             {
+                // Unquoted ImagePath with trailing arguments: truncate at the first space. This is
+                // wrong for an unquoted path that itself contains spaces - the classic "unquoted
+                // service path" misconfiguration - but it fails safe: the truncated path will not
+                // exist, so FindExeInServiceDirectory returns null with its cache untouched, the next
+                // cycle retries, and the registry-configured exe path is used instead. Walking
+                // successive space positions would handle it, at the cost of a loop of filesystem
+                // probes for a configuration Windows itself flags and that neither supported VPN
+                // client produces.
                 int space = imagePath.IndexOf(' ');
                 if (space > 0) imagePath = imagePath[..space];
             }

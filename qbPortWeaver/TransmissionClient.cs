@@ -459,7 +459,11 @@ public sealed class TransmissionClient : ManagedClientBase
     // Returns true (after logging the actionable credentials message and disposing the response)
     // when the response is HTTP 401, so SendRpcAsync can translate it into its null failure contract.
     // NOTE: Disposes the response internally so the 409-retry path in SendRpcAsync stays clean.
-    // Call sites must NOT wrap the response in a using block - it is already disposed when this returns true.
+    // Callers of THIS method must not wrap the response they hand in inside a using block - it is
+    // already disposed once this returns true. SendRpcAsync's own callers are the opposite case and
+    // must use one: a non-null return from it is a live response they take ownership of, and `using`
+    // on the null failure return is a no-op. Spelled out because the two rules are adjacent and
+    // opposite, and following the wrong one leaks a response on every successful RPC.
     private bool IsUnauthorized(HttpResponseMessage response, LogLevel failureLevel = LogLevel.Error)
     {
         if (response.StatusCode != HttpStatusCode.Unauthorized) return false;

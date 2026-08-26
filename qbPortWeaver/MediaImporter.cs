@@ -353,25 +353,47 @@ internal static partial class MediaImporter
     // when the cached index is valid and the cycle counter has been bumped (caller skips the
     // rebuild). Returns false when a full rebuild is required, in which case the path tracking
     // fields and cycle counter are reset so the rebuild starts from a clean state.
-    // Caller holds _libraryBuildSemaphore.
+    // Caller holds _libraryBuildSemaphore, which serialises this against another rebuild but NOT
+    // against ClearAllCaches - that runs from the Media Manager's Clear cache button and takes only
+    // _libraryLock. So the decision and the state it rests on are read under _libraryLock like every
+    // other access to these fields: without it, seeing a non-null index immediately before the clear
+    // nulls it would skip the rebuild and leave every IsAlreadyInLibrary call answering false, which
+    // is the false-missing case BuildLibraryIndexAsync's summary warns creates duplicates.
+    // Logging stays outside the lock so a debug write never runs while it is held.
     private static bool TryReuseCachedIndex(string moviesLibraryPath, string tvShowsLibraryPath, bool allowReuse)
     {
-        bool pathsChanged = !string.Equals(moviesLibraryPath, _lastMoviesLibraryPath, StringComparison.OrdinalIgnoreCase)
-                         || !string.Equals(tvShowsLibraryPath, _lastTvShowsLibraryPath, StringComparison.OrdinalIgnoreCase);
-        bool forceRebuild = pathsChanged || _libraryBuildCycleCount >= FullRebuildIntervalCycles;
-        if (!forceRebuild && allowReuse && _libraryFingerprints is not null)
+        bool pathsChanged, haveIndex, reuse;
+        int cycleCount;
+        lock (_libraryLock)
         {
-            LogManager.Instance.LogDebug($"MediaImporter.TryReuseCachedIndex: Reusing index (cycle {_libraryBuildCycleCount}/{FullRebuildIntervalCycles})", Subsystem.MediaManager);
-            _libraryBuildCycleCount++;
+            pathsChanged = !string.Equals(moviesLibraryPath, _lastMoviesLibraryPath, StringComparison.OrdinalIgnoreCase)
+                        || !string.Equals(tvShowsLibraryPath, _lastTvShowsLibraryPath, StringComparison.OrdinalIgnoreCase);
+            haveIndex = _libraryFingerprints is not null;
+            cycleCount = _libraryBuildCycleCount;
+            bool forceRebuild = pathsChanged || cycleCount >= FullRebuildIntervalCycles;
+            reuse = !forceRebuild && allowReuse && haveIndex;
+
+            if (reuse)
+            {
+                _libraryBuildCycleCount++;
+            }
+            else
+            {
+                _libraryBuildCycleCount = 1; // Reset to 1, not 0 - this rebuild counts as the first cycle
+                _lastMoviesLibraryPath = moviesLibraryPath;
+                _lastTvShowsLibraryPath = tvShowsLibraryPath;
+            }
+        }
+
+        if (reuse)
+        {
+            LogManager.Instance.LogDebug($"MediaImporter.TryReuseCachedIndex: Reusing index (cycle {cycleCount}/{FullRebuildIntervalCycles})", Subsystem.MediaManager);
             return true;
         }
-        if (pathsChanged && _libraryFingerprints is not null)
+        if (pathsChanged && haveIndex)
             LogManager.Instance.LogDebug("MediaImporter.TryReuseCachedIndex: Library paths changed, forcing full rebuild", Subsystem.MediaManager);
-        else if (_libraryBuildCycleCount >= FullRebuildIntervalCycles)
+        else if (cycleCount >= FullRebuildIntervalCycles)
             LogManager.Instance.LogDebug($"MediaImporter.TryReuseCachedIndex: Forcing periodic rebuild (every {FullRebuildIntervalCycles} cycles)", Subsystem.MediaManager);
-        _libraryBuildCycleCount = 1; // Reset to 1, not 0 - this rebuild counts as the first cycle
-        _lastMoviesLibraryPath = moviesLibraryPath;
-        _lastTvShowsLibraryPath = tvShowsLibraryPath;
         return false;
     }
 

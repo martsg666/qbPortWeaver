@@ -432,7 +432,10 @@ internal static partial class MediaImporter
                 LogManager.Instance.LogStateChange(LibraryIndexStateKey,
                     "Library index build skipped: one or more configured paths not accessible - will retry next cycle",
                     LogLevel.Warn, Subsystem.MediaManager);
-                _libraryBuildCycleCount = FullRebuildIntervalCycles;
+                // Under _libraryLock like every other access to this field. The semaphore this method
+                // holds serialises rebuilds against each other, but ClearAllCaches writes the same
+                // counter and takes only the lock, so the semaphore alone leaves the two unordered.
+                lock (_libraryLock) _libraryBuildCycleCount = FullRebuildIntervalCycles;
                 return false;
             }
 
@@ -475,7 +478,7 @@ internal static partial class MediaImporter
                 LogManager.Instance.LogMessage(
                     "Library index build incomplete - one or more configured folders failed to enumerate; will retry next cycle",
                     LogLevel.Warn, Subsystem.MediaManager);
-                _libraryBuildCycleCount = FullRebuildIntervalCycles;
+                lock (_libraryLock) _libraryBuildCycleCount = FullRebuildIntervalCycles; // see the equivalent write above
                 return false;
             }
 

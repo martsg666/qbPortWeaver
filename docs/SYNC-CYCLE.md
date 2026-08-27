@@ -418,6 +418,19 @@ The `status` field is one of:
 - **`error`** - something failed (VPN port unreadable, client unreachable, etc.)
 - **`skipped`** - a no-op cycle: VPN disconnected with no default port configured, port sync disabled, or holding for the VPN during the startup grace period (`waitingForVpn: true`)
 
+### Standing Conditions in the Log
+
+Some conditions are re-evaluated every cycle but stay true until the user acts on them: a client bound to the wrong network interface, a stale qBittorrent interface token, a NAT-PMP lease shorter than the sync interval, an unrecognised VPN provider, an unusable default port, and an unset NAT-PMP adapter. Logging those once per cycle buries the entries that matter, and at `Warn` or above it also drives the tray's unviewed-warning count up indefinitely - a badge the user cannot clear by fixing anything.
+
+These are written through `LogManager.LogStateChange`, which records the last message logged under a key and writes again only when that message *changes*. Each site pairs it with a `ClearLogState` on the path where the condition clears, so a later recurrence is reported rather than swallowed as a duplicate. Because the comparison is on the message and not just the key, a condition that changes - a different adapter goes wrong, a different port becomes unusable - still announces itself.
+
+Two consequences worth knowing when reading a log:
+
+- **One entry does not mean one occurrence.** A single interface-mismatch line can represent hours of cycles. The `status` field in the JSON still reports the failure every cycle; only the log line is deduplicated.
+- **Clearing the log re-arms every latch.** `ClearLogs` empties the tracking table along with the files, so the next cycle re-reports every standing condition into the fresh log. Without that, clearing the log to capture a clean reproduction would produce one with the diagnosis missing - the conditions would still be true, and still suppressed as duplicates of entries that no longer exist.
+
+Two nearby warnings deliberately stay per-cycle, because each cycle is a fresh observation rather than a repeat: `{client} is not running` (the client's run state changes on its own) and the confirmed-closed port warning (its text carries a count that advances). The test is whether the user could do anything differently on hearing it again.
+
 ### Port History
 
 Alongside the per-cycle status file, `PortHistoryManager` keeps a persisted history of port-affecting events in `qbPortWeaver.history.json` (same folder), capped at the 50 most recent entries. Three points record into it:

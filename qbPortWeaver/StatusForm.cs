@@ -582,10 +582,19 @@ public partial class StatusForm : Form
         return $"{FormatDuration(elapsed)} ago";
     }
 
-    // Best-effort estimate of when the next scheduled cycle runs: the last sync time plus the
-    // configured interval. Approximate by nature (a manual sync, a network-change re-sync, or an
-    // error backoff can move it), hence the "~". Shows "Paused" while sync is paused - the countdown
-    // would otherwise imply a cycle that will not fire - and "-" before the first cycle.
+    // When the next scheduled cycle is due, counted down to the instant the cycle published in
+    // nextSyncAt. Still approximate, hence the "~": a manual sync, a network-change re-check or an
+    // error backoff can move it after the status file was written.
+    //
+    // Deriving it from the last sync time plus the configured interval is the fallback, used only for
+    // a status file written before nextSyncAt existed - not the primary path. That derivation reads
+    // the duration against the wrong origin: timestamp is stamped when the cycle starts while the wait
+    // begins when it ends, so the countdown runs out early by the cycle's length, up to two minutes
+    // after one carrying an auto-recovery round trip. See the nextSyncAt notes in docs/SYNC-CYCLE.md.
+    //
+    // Four outcomes: the countdown, "Paused" while sync is paused (a countdown would imply a cycle
+    // that will not fire), "Startup grace period" during the grace window (which re-checks on a short
+    // poll, so a full-interval countdown would mislead), and "-" before the first cycle.
     private void PopulateNextSync(StatusSnapshot s)
     {
         if (SyncPaused)

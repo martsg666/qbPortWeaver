@@ -38,6 +38,11 @@ public static class PortHistoryManager
     private const string HistoryFileName = "qbPortWeaver.history.json";
     private const int MaxEntries = 50;
 
+    // State key for LogStateChange. A write failure here persists until the user fixes it (disk full,
+    // permissions, an antivirus lock), and Append runs on every port event, so this reports the
+    // condition once rather than once per event.
+    private const string HistoryWriteStateKey = "portHistory.write";
+
     private static readonly object _lock = new();
     private static readonly JsonSerializerOptions _jsonOptions = new() { WriteIndented = true };
     private static readonly JsonSerializerOptions _readOptions = new() { PropertyNameCaseInsensitive = true };
@@ -60,13 +65,23 @@ public static class PortHistoryManager
                 });
                 if (entries.Count > MaxEntries)
                     entries.RemoveRange(0, entries.Count - MaxEntries);
-                AppConstants.WriteAtomic(
-                    AppConstants.GetDataFilePath(HistoryFileName),
+                AppFiles.WriteAtomic(
+                    AppFiles.GetDataFilePath(HistoryFileName),
                     JsonSerializer.Serialize(entries, _jsonOptions));
+                // Clears the failure report so a later episode is announced rather than swallowed.
+                LogManager.Instance.ClearLogState(HistoryWriteStateKey);
             }
             catch (Exception ex)
             {
-                LogManager.Instance.LogDebug($"PortHistoryManager.Append: {ex.Message}");
+                // A transient failure genuinely costs only one history entry, which is why this used
+                // to be Debug. A persistent one is different: every append fails, the Status panel's
+                // Recent Port Changes freezes at its last good state, and a stale list reads as "the
+                // port has not changed" during exactly the problem the user is investigating.
+                // LogStateChange reports it once and again only if the message changes, so a
+                // permanent failure cannot drive the tray badge up.
+                LogManager.Instance.LogStateChange(HistoryWriteStateKey,
+                    $"Could not write the port history file - Recent Port Changes will stop updating: {ex.Message}",
+                    LogLevel.Warn);
             }
         }
     }
@@ -91,15 +106,15 @@ public static class PortHistoryManager
     {
         lock (_lock)
         {
-            AppConstants.DeleteFileSafely(AppConstants.GetDataFilePath(HistoryFileName));
+            AppFiles.DeleteFileSafely(AppFiles.GetDataFilePath(HistoryFileName));
         }
     }
 
     private static List<PortHistoryEntry> ReadCore()
     {
-        string path = AppConstants.GetDataFilePath(HistoryFileName);
+        string path = AppFiles.GetDataFilePath(HistoryFileName);
         if (!File.Exists(path))
             return [];
-        return JsonSerializer.Deserialize<List<PortHistoryEntry>>(AppConstants.ReadAllTextShared(path), _readOptions) ?? [];
+        return JsonSerializer.Deserialize<List<PortHistoryEntry>>(AppFiles.ReadAllTextShared(path), _readOptions) ?? [];
     }
 }

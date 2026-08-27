@@ -144,7 +144,7 @@ internal static class ThemedMessageBox
             if (keyData == (Keys.Control | Keys.C))
             {
                 const string sep = "---------------------------";
-                AppConstants.SetClipboardTextSafely(string.Join(Environment.NewLine,
+                UiHelpers.SetClipboardTextSafely(string.Join(Environment.NewLine,
                     sep, Text, sep, _messageText, sep, string.Join("   ", _buttonLabels), sep));
                 return true;
             }

@@ -28,6 +28,12 @@ public interface IVpnManager
     /// mappings - UDP then TCP - since the protocols are independent and a gateway may grant one
     /// without the other. The returned port is the UDP grant; a TCP mapping that is refused or
     /// lands on a different port is reported but does not change the result.
+    /// <para>Cancellation is best-effort and differs by provider. NAT-PMP genuinely aborts an
+    /// in-flight request, while ProtonVPN and PIA wrap synchronous work in <c>Task.Run</c>, where the
+    /// token can only prevent the work starting - once running it completes regardless. Both are
+    /// bounded anyway (PIA by piactl's process timeout, ProtonVPN by the size of the log scan), and
+    /// shutdown does not await the sync loop, so uncancelled work dies with the process rather than
+    /// delaying exit. Do not rely on the token to shorten an in-flight port read.</para>
     /// </summary>
     Task<int?> GetVpnPortAsync(CancellationToken cancellationToken = default);
 

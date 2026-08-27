@@ -29,6 +29,18 @@ public sealed class PortSyncService
     // Connection status value returned by clients that support GetConnectionStatusAsync
     private const string ClientDisconnectedStatus = "disconnected";
 
+    // LogManager.LogStateChange keys for the three conditions in this cycle that persist until the
+    // user acts, so each is logged on the transition rather than on every cycle. The two restart and
+    // settings-conflict warnings nearby already do this with their own fields; these use the shared
+    // mechanism because they have no other reason to carry state. Every Warn also bumps the tray's
+    // unviewed-warning count, so repeating one costs more than a duplicated log line.
+    private const string NatPmpLeaseStateKey = "vpn.natpmpLeaseTooShort";
+    private const string InterfaceMatchStateKey = "client.interfaceMatch";
+    private const string BindingStaleStateKey = "client.bindingStale";
+    private const string VpnProviderStateKey = "vpn.providerUnrecognized";
+    private const string DefaultPortStateKey = "client.defaultPortUnusable";
+    private const string NatPmpAdapterStateKey = "vpn.natpmpAdapterUnconfigured";
+
     /// <summary>Raised when a sync cycle completes (success or failure) with the resulting tray status.</summary>
     public event Action<TrayStatus>? SyncCompleted;
 
@@ -260,6 +272,13 @@ public sealed class PortSyncService
         public const string PortChanged = "portChanged";
         public const string PortVerified = "portVerified";
         public const string UpdateIntervalSeconds = "updateIntervalSeconds";
+        // When the next cycle is due. An absolute instant for the same reason RecoveryHoldUntil is
+        // one: the wait starts when the cycle ends, while Timestamp is stamped at the start, so
+        // deriving it as Timestamp + UpdateIntervalSeconds reads the duration against the wrong
+        // origin and runs out early by the cycle's length - up to the 30s a client restart takes,
+        // or the 120s an auto-recovery round trip can. Consumers that predate this key can still
+        // derive the old estimate; nothing here replaces UpdateIntervalSeconds.
+        public const string NextSyncAt = "nextSyncAt";
         public const string Status = "status";
         public const string Message = "message";
         public const string WaitingForVpn = "waitingForVpn";
@@ -320,6 +339,7 @@ public sealed class PortSyncService
             [StatusKeys.PortChanged] = false,
             [StatusKeys.PortVerified] = null,
             [StatusKeys.UpdateIntervalSeconds] = AppConstants.DefaultUpdateIntervalSeconds,
+            [StatusKeys.NextSyncAt] = null,
             [StatusKeys.Status] = SyncStatusValues.Error,
             [StatusKeys.Message] = null,
             [StatusKeys.RecoveryHoldUntil] = null,
@@ -335,14 +355,20 @@ public sealed class PortSyncService
             [StatusKeys.PortClosedRecoveryArmed] = true
         };
 
+        // Captured so the finally can publish NextSyncAt against the wait this cycle actually
+        // returned - including the shortened startup-grace poll - rather than re-reading the
+        // configured interval. Stays at the default when RunCoreAsync throws, which is what the
+        // catch returns anyway.
+        int nextWaitSeconds = AppConstants.DefaultUpdateIntervalSeconds;
         try
         {
-            return await RunCoreAsync(status, cancellationToken).ConfigureAwait(false);
+            nextWaitSeconds = await RunCoreAsync(status, cancellationToken).ConfigureAwait(false);
+            return nextWaitSeconds;
         }
         catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
         {
             SetSyncResult(status, false, $"An unexpected error occurred: {ex.Message}");
-            return AppConstants.DefaultUpdateIntervalSeconds;
+            return nextWaitSeconds;
         }
         finally
         {
@@ -351,6 +377,11 @@ public sealed class PortSyncService
             // and leave a misleading error JSON file on every exit.
             if (!cancellationToken.IsCancellationRequested)
             {
+                // Stamped here rather than at cycle start because the wait begins when the cycle
+                // ends. MainForm shortens this to ManualSyncWaitSeconds after a manual sync or a
+                // network-change re-check, which happens after this write, so those two cases still
+                // publish the full interval.
+                status[StatusKeys.NextSyncAt] = DateTimeOffset.Now.AddSeconds(nextWaitSeconds);
                 status[StatusKeys.RecoveryHoldUntil] = GetRecoveryHoldUntil();
                 // Read here rather than mid-cycle: the streak is incremented by the failure paths
                 // inside RunCoreAsync, so only the finally sees this cycle's final count.
@@ -544,9 +575,16 @@ public sealed class PortSyncService
         // falls through to the branch below, which already skips the update and reports it.
         if (defaultPort != 0 && !AppConstants.IsUsablePort(defaultPort))
         {
-            LogManager.Instance.LogMessage(
+            // Transition-only: the value comes from the registry and stays unusable until the user
+            // edits it, and this path runs on every cycle for as long as the VPN is down. The message
+            // carries the port, so correcting it to another unusable value still reports.
+            LogManager.Instance.LogStateChange(DefaultPortStateKey,
                 $"Configured default port ({defaultPort}) is not usable - ignoring it", LogLevel.Warn);
             defaultPort = 0;
+        }
+        else
+        {
+            LogManager.Instance.ClearLogState(DefaultPortStateKey);
         }
 
         if (defaultPort == 0)
@@ -610,12 +648,17 @@ public sealed class PortSyncService
     // Warns if a NAT-PMP lease will expire before the next sync cycle renews it.
     private static void WarnIfNatPmpLeaseTooShort(IVpnManager vpnManager, AppConfig cfg)
     {
-        if (vpnManager is NatPmpManager natPmp &&
-            natPmp.LastGrantedLifetime > 0 &&
-            cfg.UpdateInterval > natPmp.LastGrantedLifetime)
-            LogManager.Instance.LogMessage(
+        if (vpnManager is not NatPmpManager natPmp || natPmp.LastGrantedLifetime == 0) return;
+
+        // Transition-only. Both sides are stable - the interval is a setting and the lifetime is what
+        // this gateway grants - so the line is identical on every cycle and says nothing new after the
+        // first. The else re-arms it, so widening the interval and narrowing it again warns afresh.
+        if (cfg.UpdateInterval > natPmp.LastGrantedLifetime)
+            LogManager.Instance.LogStateChange(NatPmpLeaseStateKey,
                 $"NAT-PMP sync interval ({cfg.UpdateInterval}s) exceeds lease lifetime ({natPmp.LastGrantedLifetime}s) - port mapping will expire before the next sync cycle",
                 LogLevel.Warn);
+        else
+            LogManager.Instance.ClearLogState(NatPmpLeaseStateKey);
     }
 
     // Reads all configuration values from the registry into a single AppConfig record
@@ -717,7 +760,7 @@ public sealed class PortSyncService
         if (provider.Equals(RegistrySettingsManager.VpnProviderPia, StringComparison.OrdinalIgnoreCase))
             return new PiaVpnManager();
         if (provider.Equals(RegistrySettingsManager.VpnProviderProtonVpn, StringComparison.OrdinalIgnoreCase))
-            return new ProtonVpnManager(AppConstants.GetProtonVpnLogFilePath());
+            return new ProtonVpnManager(AppFiles.GetProtonVpnLogFilePath());
         return null;
     }
 
@@ -737,13 +780,25 @@ public sealed class PortSyncService
             return null;
         }
 
+        // Re-arms the warning below whenever the provider is one we know, so correcting Settings and
+        // then mistyping it again reports afresh. Gated on the registry rather than on the two
+        // branches beneath it so there is one definition of "recognized", and placed before them so
+        // the unknown-provider fallthrough keeps its order: a keyword added to the registry without a
+        // matching factory arm still reaches the warning rather than being routed to NAT-PMP.
+        if (VpnProviderRegistry.IsRecognizedProvider(cfg.VpnProvider))
+            LogManager.Instance.ClearLogState(VpnProviderStateKey);
+
         if (CreateStatelessVpnManager(cfg.VpnProvider) is { } manager)
             return manager;
 
         if (cfg.VpnProvider.Equals(RegistrySettingsManager.VpnProviderNatPmp, StringComparison.OrdinalIgnoreCase))
             return await CreateNatPmpVpnManagerAsync(cfg, status, cancellationToken).ConfigureAwait(false);
 
-        LogManager.Instance.LogMessage($"VPN provider '{cfg.VpnProvider}' is not recognized - check Settings", LogLevel.Warn);
+        // Transition-only: the provider name comes from the registry and stays wrong until Settings is
+        // corrected, so the same line every cycle adds nothing. The status below still reports Error on
+        // every cycle, which is the signal that should persist.
+        LogManager.Instance.LogStateChange(VpnProviderStateKey,
+            $"VPN provider '{cfg.VpnProvider}' is not recognized - check Settings", LogLevel.Warn);
         status[StatusKeys.Status] = SyncStatusValues.Error;
         status[StatusKeys.Message] = $"VPN provider '{cfg.VpnProvider}' is not recognized";
         return null;
@@ -755,9 +810,14 @@ public sealed class PortSyncService
     {
         if (string.IsNullOrWhiteSpace(cfg.NatPmpAdapterName))
         {
-            SetSyncResult(status, false, "No NAT-PMP adapter configured - open Settings and select an adapter");
+            // Transition-only: an unset adapter stays unset until the user opens Settings, so the
+            // identical line every cycle says nothing new. The status above still reports the error
+            // on every cycle, which is the part that should persist. See SetSyncResult's stateKey.
+            SetSyncResult(status, false, "No NAT-PMP adapter configured - open Settings and select an adapter",
+                stateKey: NatPmpAdapterStateKey);
             return null;
         }
+        LogManager.Instance.ClearLogState(NatPmpAdapterStateKey);
 
         // Discard the fallback if the adapter name changed in settings
         if (_lastKnownNatPmpManager is not null &&
@@ -1057,7 +1117,7 @@ public sealed class PortSyncService
 
         if (open.Value)
         {
-            HandlePortOpenResult(manager.ClientName, port);
+            HandlePortOpenResult(manager.ClientName, port, config);
         }
         else
         {
@@ -1066,7 +1126,7 @@ public sealed class PortSyncService
         }
     }
 
-    private void HandlePortOpenResult(string clientName, int port)
+    private void HandlePortOpenResult(string clientName, int port, SyncConfig config)
     {
         if (_portConfirmedClosed)
             LogManager.Instance.LogMessage($"{clientName} port {port} is reachable from outside again", LogLevel.Info);
@@ -1077,18 +1137,31 @@ public sealed class PortSyncService
         _confirmedClosedCount = 0;
         if (!_portClosedRecoveryArmed)
         {
+            // Re-armed unconditionally, and announced only when the trigger could actually use it.
+            // The field is internal arming state; whether the trigger can fire also depends on the
+            // setting, and the two were conflated here - so a user who switched the trigger off after
+            // it fired was told it "can trigger again", which every other site reporting this state
+            // (BuildPortClosedRecoverySuffix, MaybeTriggerPortClosedRecoveryAsync,
+            // StatusForm.DescribePortClosedRecovery) already gates on. The re-arm itself must stay
+            // unconditional: gating it too would leave the trigger permanently disarmed for anyone who
+            // switched the setting off and later back on.
             _portClosedRecoveryArmed = true;
+
             // Info, not Debug: the disarmed state it clears is reported to the user in the port-closed
             // Warn and on the Status panel, so the point at which recovery becomes available again has
             // to be visible at the same level. Reached only after a recovery actually fired, so it
             // cannot become routine noise.
-            LogManager.Instance.LogMessage("Port-closed recovery re-armed - it can trigger again if the port closes", LogLevel.Info);
+            if (config.PortClosedRecoveryEnabled)
+                LogManager.Instance.LogMessage("Port-closed recovery re-armed - it can trigger again if the port closes", LogLevel.Info);
         }
     }
 
-    // Confirmed-closed logs at Warn every cycle so the alert badge tracks the persistent
-    // condition (same pattern as the interface mismatch check); the PortVerificationFailed
-    // balloon fires only on the transition into the confirmed state.
+    // Confirmed-closed logs at Warn on every confirming cycle, deliberately, and is the counterpart to
+    // the standing conditions that report only on their transition: this line's text carries a count
+    // that advances toward the trigger, so each repetition tells the user something the last one did
+    // not. The test is whether hearing it again could change what they do. (The interface-mismatch
+    // check used to be cited here as the same pattern; it is now transition-only, being fixed text.)
+    // The PortVerificationFailed balloon still fires only on the transition into the confirmed state.
     private void HandlePortClosedResult(string clientName, int port, SyncConfig config)
     {
         if (_portConfirmedClosed)
@@ -1132,7 +1205,7 @@ public sealed class PortSyncService
             return string.Empty;
         if (!_portClosedRecoveryArmed)
             return " (recovery has already run for this outage - it will not run again until a scheduled check reports the port open)";
-        string checks = AppConstants.PluralizeNoun(_confirmedClosedCount, "closed check");
+        string checks = TextFormat.PluralizeNoun(_confirmedClosedCount, "closed check");
         return $" ({_confirmedClosedCount} consecutive {checks}, recovery triggers after {config.PortClosedRecoveryTriggerChecks} consecutive closed checks)";
     }
 
@@ -1163,7 +1236,7 @@ public sealed class PortSyncService
 
         string action = vpnManager.GetRecoveryAction();
         await DispatchRecoveryAsync(action, target, vpnManager.ProviderName, cancellationToken,
-            triggerLogMessage: $"Triggering '{action}' for '{vpnManager.ProviderName}' after {config.PortClosedRecoveryTriggerChecks} consecutive closed {AppConstants.PluralizeNoun(config.PortClosedRecoveryTriggerChecks, "check")}").ConfigureAwait(false);
+            triggerLogMessage: $"Triggering '{action}' for '{vpnManager.ProviderName}' after {config.PortClosedRecoveryTriggerChecks} consecutive closed {TextFormat.PluralizeNoun(config.PortClosedRecoveryTriggerChecks, "check")}").ConfigureAwait(false);
     }
 
     // Returns true if the client is running (or was successfully force-started), false otherwise
@@ -1192,9 +1265,12 @@ public sealed class PortSyncService
     }
 
     // Checks if the client's network interface matches the expected VPN provider and logs a warning if not.
-    // The warn log fires every cycle so the log alert badge tracks the persistent condition.
-    // The InterfaceMismatchDetected balloon fires only on transition (new or changed mismatch) to avoid
-    // spamming the user each cycle; it re-fires if the mismatch clears and then returns.
+    // Both the warn log and the InterfaceMismatchDetected balloon report only on the transition, by
+    // separate mechanisms: the log through LogStateChange (keyed on InterfaceMatchStateKey), the balloon
+    // through the _lastInterfaceMismatchMessage latch. A binding stays wrong until the user re-selects
+    // an interface, so repeating either one adds nothing and the Warn would keep pushing the tray's
+    // unviewed count up for a condition the user cannot clear by acting on it. Both carry the interface
+    // name, so drifting from one wrong adapter to another still reports; both re-arm when it matches.
     private void CheckInterfaceMatch(string clientName, string? interfaceName, IVpnManager vpnManager)
     {
         if (interfaceName is null)
@@ -1205,14 +1281,20 @@ public sealed class PortSyncService
 
         string? balloonMessage = null;
 
+        // Both warnings are transition-only, matching the balloon beside them: the binding persists
+        // until the user re-selects an interface, so the same line every cycle adds nothing and keeps
+        // bumping the tray's unviewed-warning count. The message carries the interface name, so
+        // drifting from one wrong adapter to another still reports, which is a real change.
         if (interfaceName.Length == 0)
         {
-            LogManager.Instance.LogMessage($"{clientName} is bound to all network interfaces - traffic may leak outside the VPN", LogLevel.Warn);
+            LogManager.Instance.LogStateChange(InterfaceMatchStateKey,
+                $"{clientName} is bound to all network interfaces - traffic may leak outside the VPN", LogLevel.Warn);
             balloonMessage = $"{clientName}: no VPN interface bound - traffic may leak.";
         }
         else if (!vpnManager.IsAdapterMatch(interfaceName))
         {
-            LogManager.Instance.LogMessage($"{clientName} network interface '{interfaceName}' does not match '{vpnManager.ProviderName}'", LogLevel.Warn);
+            LogManager.Instance.LogStateChange(InterfaceMatchStateKey,
+                $"{clientName} network interface '{interfaceName}' does not match '{vpnManager.ProviderName}'", LogLevel.Warn);
             balloonMessage = $"{clientName} interface mismatch - '{interfaceName}' is not a {vpnManager.ProviderName} adapter.";
         }
         else
@@ -1222,6 +1304,8 @@ public sealed class PortSyncService
 
         if (balloonMessage is null)
         {
+            // Healthy: re-arm both latches so a later mismatch warns and notifies again.
+            LogManager.Instance.ClearLogState(InterfaceMatchStateKey);
             _lastInterfaceMismatchMessage = null;
             return;
         }
@@ -1242,9 +1326,10 @@ public sealed class PortSyncService
         if (!stale || expectedToken is null || interfaceName is null)
         {
             // Healthy, or nothing to say. Re-arm so a later drift gets a fresh repair attempt, and
-            // clear this condition's own balloon latch so a future stale binding notifies again.
+            // clear this condition's own balloon and log latches so a future stale binding reports again.
             _interfaceBindingRepairAttempted = false;
             _lastBindingWarningMessage = null;
+            LogManager.Instance.ClearLogState(BindingStaleStateKey);
             return;
         }
 
@@ -1262,7 +1347,10 @@ public sealed class PortSyncService
             // stricter of the two, which is backwards.
             if (config.WarnOnInterfaceMismatch)
             {
-                LogManager.Instance.LogMessage(
+                // Transition-only, like the balloon below it and the repair branch further down, which
+                // gates on _interfaceBindingRepairAttempted for the same reason: a stale binding lives
+                // in the client's own configuration and persists until the user acts.
+                LogManager.Instance.LogStateChange(BindingStaleStateKey,
                     $"{warning}. Re-select the network interface in {client.ClientName}, or turn on \"Fix the network interface binding when it goes stale\" in Settings",
                     LogLevel.Warn);
                 _lastBindingWarningMessage = RaiseInterfaceBalloonIfNew(
@@ -1448,7 +1536,7 @@ public sealed class PortSyncService
         string names = string.Join(", ", conflicts.Select(c => $"\"{c.SettingName}\""));
         string pronoun = conflicts.Count == 1 ? "it" : "them";
         LogManager.Instance.LogMessage(
-            $"{manager.ClientName} has {AppConstants.Pluralize(conflicts.Count, "setting")} working against the forwarded port: " +
+            $"{manager.ClientName} has {TextFormat.Pluralize(conflicts.Count, "setting")} working against the forwarded port: " +
             $"{names} - turn {pronoun} off in {manager.ClientName}'s settings",
             LogLevel.Warn);
 
@@ -1460,7 +1548,7 @@ public sealed class PortSyncService
         try
         {
             ClientSettingsConflictDetected?.Invoke(
-                $"{manager.ClientName} has {AppConstants.Pluralize(conflicts.Count, "setting")} working against the forwarded port. See the log for details.");
+                $"{manager.ClientName} has {TextFormat.Pluralize(conflicts.Count, "setting")} working against the forwarded port. See the log for details.");
         }
         catch (Exception ex)
         {
@@ -1471,7 +1559,7 @@ public sealed class PortSyncService
     // Builds a failure log message with cycle count and optional recovery trigger suffix
     private static string BuildCycleCountMessage(string prefix, int count, AppConfig cfg)
     {
-        string cycles = AppConstants.PluralizeNoun(count, "failed cycle");
+        string cycles = TextFormat.PluralizeNoun(count, "failed cycle");
         string recoverySuffix = cfg.VpnAutoRecoveryEnabled
             ? $", recovery may trigger after {cfg.VpnAutoRecoveryTriggerCycles} consecutive failed cycles"
             : string.Empty;
@@ -1572,7 +1660,7 @@ public sealed class PortSyncService
         ResetFailureStreak();
 
         await DispatchRecoveryAsync(action, recoveryTarget, displayName, cancellationToken,
-            triggerLogMessage: $"Triggering '{action}' for '{displayName}' after {count} consecutive failed {AppConstants.PluralizeNoun(count, "cycle")}").ConfigureAwait(false);
+            triggerLogMessage: $"Triggering '{action}' for '{displayName}' after {count} consecutive failed {TextFormat.PluralizeNoun(count, "cycle")}").ConfigureAwait(false);
     }
 
     // When the offline rate limiter will allow the next recovery attempt, or null when
@@ -1622,9 +1710,11 @@ public sealed class PortSyncService
             return true;
         }
 
-        // Monotonic and static, unlike the instance _uptime stopwatch this static method cannot reach.
-        // Immune to wall-clock changes, which matters here: a machine coming back from an outage often
-        // corrects its clock by NTP, and a backward jump must not unblock every held attempt at once.
+        // Monotonic, which is what matters here: a machine coming back from an outage often corrects
+        // its clock by NTP, and a backward jump must not unblock every held attempt at once. The
+        // instance _uptime stopwatch is equally monotonic and equally reachable from here, so either
+        // would serve - this path uses TickCount64 because the limiter already stores its state as a
+        // raw tick count in _lastOfflineRecoveryMs, and GetRecoveryHoldUntil reads it back the same way.
         long nowMs = Environment.TickCount64;
 
         if (_offlineRecoveryAttempts > 0)
@@ -1725,7 +1815,26 @@ public sealed class PortSyncService
     // Sets the cycle status and message in the status dict, logs the message, and adds a closing bookend on failure.
     // Pass an explicit level to override the default (Info on success, Error on failure).
     // The bookend uses the same effective level so a Warn-level soft failure does not escalate to Error.
-    private static void SetSyncResult(Dictionary<string, object?> status, bool success, string message, LogLevel? level = null)
+    /// <summary>Records this cycle's outcome in the status dictionary and, on failure, logs the reason.</summary>
+    /// <param name="status">The cycle's status dictionary, written to the status file in RunAsync's finally.</param>
+    /// <param name="success">Whether the cycle succeeded; false writes the error status and logs the reason.</param>
+    /// <param name="message">The reason, used both as the status message and as the logged line.</param>
+    /// <param name="level">Severity for the logged reason. Defaults to <see cref="LogLevel.Error"/>.</param>
+    /// <param name="stateKey">
+    /// When set, the reason is logged through <see cref="LogManager.LogStateChange"/> under this key
+    /// instead of on every failing cycle.
+    /// <para>The test for which to use: <b>can the user do anything differently if we say it again?</b>
+    /// A misconfiguration only they can fix - no NAT-PMP adapter selected, an unrecognised provider -
+    /// produces the identical line forever, so it is reported on the transition and the status field
+    /// below still carries it every cycle. Observed runtime state is the opposite: "{client} is not
+    /// running" changes on its own, so each cycle is a fresh observation rather than a repeat and
+    /// belongs in the default path. Repeating a fixed configuration error also climbs the tray's
+    /// unviewed-warning count indefinitely, which the status field does not.</para>
+    /// <para>Pair every key with a <see cref="LogManager.ClearLogState"/> on the path where the
+    /// condition clears, or it is reported once per process rather than once per occurrence.</para>
+    /// </param>
+    private static void SetSyncResult(Dictionary<string, object?> status, bool success, string message,
+        LogLevel? level = null, string? stateKey = null)
     {
         status[StatusKeys.Status] = success ? SyncStatusValues.Success : SyncStatusValues.Error;
         status[StatusKeys.Message] = message;
@@ -1733,7 +1842,12 @@ public sealed class PortSyncService
         // emitted once per cycle by LogCycleOutcome. A successful cycle needs no reason line - its
         // terminal marker says it all.
         if (!success)
-            LogManager.Instance.LogMessage(message, level ?? LogLevel.Error);
+        {
+            if (stateKey is not null)
+                LogManager.Instance.LogStateChange(stateKey, message, level ?? LogLevel.Error);
+            else
+                LogManager.Instance.LogMessage(message, level ?? LogLevel.Error);
+        }
     }
 
     // Emits exactly one terminal line per cycle so every cycle closes with a clear outcome - completed,

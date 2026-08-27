@@ -164,9 +164,14 @@ public static class RegistrySettingsManager
     public const string KeyMediaTvShowsLibraryPath = "tvShowsLibraryPath";
     public const string KeyMediaImportMode = "importMode";
 
+    /// <summary>Default value for <see cref="KeyMediaImportMode"/>, and the fallback the Media Manager
+    /// selects when the stored value is not one the combo box offers.</summary>
+    /// <remarks>Only the default needs naming here. The other two modes have no constant on purpose:
+    /// the one place that would use them - the import-mode combo box - lives in a designer file, where
+    /// a constant reference would be imperative code the VS designer cannot round-trip, so it lists the
+    /// strings literally. Constants nothing can consume would imply a protection they do not provide.
+    /// The vocabulary itself is owned by <see cref="ImportMode"/>; see its remarks.</remarks>
     public const string ImportModeHardlink = "Hardlink";
-    public const string ImportModeCopy = "Copy";
-    public const string ImportModeMove = "Move";
 
     // Registry key names - app level (not in a section)
     public const string KeyLastSeenVersion = "lastSeenVersion";
@@ -494,7 +499,7 @@ public static class RegistrySettingsManager
         }
 
         if (moved > 0)
-            LogManager.Instance.LogMessage($"Migrated {AppConstants.Pluralize(moved, "setting")} to the current registry key names", LogLevel.Info);
+            LogManager.Instance.LogMessage($"Migrated {TextFormat.Pluralize(moved, "setting")} to the current registry key names", LogLevel.Info);
 
         int removed = 0;
         foreach (var (section, key) in _obsoleteKeys)
@@ -514,7 +519,7 @@ public static class RegistrySettingsManager
         }
 
         if (removed > 0)
-            LogManager.Instance.LogMessage($"Removed {AppConstants.Pluralize(removed, "obsolete setting")} from the registry", LogLevel.Info);
+            LogManager.Instance.LogMessage($"Removed {TextFormat.Pluralize(removed, "obsolete setting")} from the registry", LogLevel.Info);
     }
 
     /// <summary>Rewrites a folder list still stored with the former <c>;</c> separator onto <see cref="ListSeparator"/>, once, on startup.</summary>
@@ -753,18 +758,20 @@ public static class RegistrySettingsManager
         KeyMediaTmdbApiKey
     };
 
-    // Keys whose values must never be written to logs in plaintext. Superset of _encryptedKeys
-    // plus app-level secrets stored plaintext but protected by the HKCU ACL (e.g. the pipe
-    // session token used to authenticate messages to the SYSTEM helper service).
-    private static readonly HashSet<string> _logMaskedKeys = new(StringComparer.OrdinalIgnoreCase)
-    {
-        KeyQBittorrentPassword,
-        KeyTransmissionPassword,
-        KeyDelugePassword,
-        KeyNicotinePassword,
-        KeyMediaTmdbApiKey,
-        AppIdentity.PipeSessionTokenKey
-    };
+    // Keys whose values must never be written to logs in plaintext: every encrypted key, plus the
+    // app-level secrets stored plaintext but protected by the HKCU ACL (the pipe session token used
+    // to authenticate messages to the SYSTEM helper service).
+    //
+    // Built *from* _encryptedKeys rather than re-listing it, so the superset relationship is
+    // maintained by the compiler instead of by hand. Re-listing meant a future encrypted key could be
+    // added to one set and missed in the other, and the only symptom would be a credential appearing
+    // in a user's log file - the one place nobody thinks to look for one. Declaration order matters
+    // here: field initialisers run top to bottom, so _encryptedKeys above must stay above.
+    private static readonly HashSet<string> _logMaskedKeys =
+        new(_encryptedKeys, StringComparer.OrdinalIgnoreCase)
+        {
+            AppIdentity.PipeSessionTokenKey
+        };
 
     // Writes any missing keys for one registry section; returns true if anything was written
     private static bool WriteDefaultsForSection(RegistryKey regKey,

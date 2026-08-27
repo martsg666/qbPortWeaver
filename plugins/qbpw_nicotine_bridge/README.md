@@ -37,6 +37,12 @@ Nicotine+ with a custom data folder (`-c` or `--user-data`), qbPortWeaver cannot
 to look - run `/qbpw-connection-file` in Nicotine+ and enter the address and token into
 qbPortWeaver's settings by hand. Both are stable across restarts.
 
+The file carries a `schema` number describing its layout. qbPortWeaver checks it before reading
+anything else and ignores a file whose schema is newer than the version it understands, rather
+than guessing at fields that may have changed meaning - so a plugin newer than the app reports as
+not connected instead of misbehaving quietly. Update qbPortWeaver if you see that. A file with no
+`schema` at all comes from a plugin predating the field and is read as the original layout.
+
 ## Commands
 
 Type these in any Nicotine+ chat window:

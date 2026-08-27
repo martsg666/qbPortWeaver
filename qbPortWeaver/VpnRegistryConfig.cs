@@ -70,13 +70,13 @@ internal sealed class VpnRegistryConfig
     }
 
     // Live SCM enumeration; call site caches the result where repeated lookups matter.
-    internal string? FindServiceName() => AppConstants.FindServiceName(GetServiceSearchTerm());
+    internal string? FindServiceName() => ServiceLookup.FindServiceName(GetServiceSearchTerm());
     // Resolved once from the service's ImagePath registry entry; cached via _clientExePathCache sentinel.
     internal string? GetClientExePath()
     {
         // Read/write the volatile field via a local so the ref pass does not strip volatile semantics (CS0420).
         string? cache = _clientExePathCache;
-        var result = AppConstants.FindExeInServiceDirectory(ref cache, GetClientProcessName() + ".exe", FindServiceName, _logPrefix);
+        var result = ServiceLookup.FindExeInServiceDirectory(ref cache, GetClientProcessName() + ".exe", FindServiceName, _logPrefix);
         // Write back only a resolution. FindExeInServiceDirectory leaves the value untouched on a miss,
         // so an unconditional write lets a caller that failed overwrite another thread's resolved path
         // with the not-yet-resolved sentinel. This instance is shared (Config is static on the

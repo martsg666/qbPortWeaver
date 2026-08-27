@@ -32,6 +32,17 @@ public partial class WhatsNewForm : Form
         "A log entry can run to more than one line. The Log Viewer now keeps those lines with the " +
         "entry they belong to, so filtering by level, subsystem or time range never shows part of an " +
         "entry on its own, or leaves a stray line sitting under an unrelated one.\n\n" +
+        "The next-sync countdown is accurate after a slow cycle\n" +
+        "The Status window counts down to the next sync. It used to start that countdown from the " +
+        "moment a cycle began rather than the moment it finished, so after a slow cycle - one that " +
+        "restarted your client, or ran a recovery - it could sit on Due now for a minute or two " +
+        "before anything actually happened. It now counts down to the real time.\n\n" +
+        "Your network adapter is always switched back on\n" +
+        "One kind of auto-recovery switches your network adapter off and straight back on again. If " +
+        "Windows shut down or the app was stopped in the moment between the two, the adapter could be " +
+        "left switched off, and it stayed that way after a restart. It is now always switched back on, " +
+        "whatever interrupts the recovery. This affected NAT-PMP setups using a router or gateway "  +
+        "rather than ProtonVPN or PIA.\n\n" +
         "Previously released\n\n" +
         "New in 2.6.6\n\n" +
         "See what auto-recovery is doing\n" +
@@ -384,8 +395,8 @@ public partial class WhatsNewForm : Form
         base.OnLoad(e);
         rtbFeatures.Font = Font;
         rtbFeatures.ForeColor = SystemColors.ControlText; // match the group box (mode-aware, blends in)
-        if (AppConstants.IsDarkModeEnabled())
-            lnkCommunity.LinkColor = AppConstants.LinkDark;
+        if (ThemeColors.IsDarkModeEnabled())
+            lnkCommunity.LinkColor = ThemeColors.LinkDark;
         RenderFeatures();
     }
 
@@ -395,7 +406,7 @@ public partial class WhatsNewForm : Form
         // Shown non-modally on first run by the tray-only app (no foreground window), so it can open
         // behind whatever launched us (e.g. the installer). If the user never sees it they never
         // dismiss it, and the "last seen version" is never recorded - so it keeps reappearing.
-        AppConstants.BringFormToFront(this);
+        UiHelpers.BringFormToFront(this);
     }
 
     // Renders ReleaseFeaturesText into the RichTextBox with a visual hierarchy instead of flat text:
@@ -449,5 +460,5 @@ public partial class WhatsNewForm : Form
     private void btnClose_Click(object? sender, EventArgs e) => Close(); // NOSONAR S2325 - Close() is an instance method, handler cannot be static
 
     private static void lnkCommunity_LinkClicked(object? sender, LinkLabelLinkClickedEventArgs e) =>
-        AppConstants.OpenUrl(AppConstants.GitHubRepoUrl);
+        UiHelpers.OpenUrl(AppConstants.GitHubRepoUrl);
 }

@@ -11,6 +11,16 @@ public partial class LogViewerForm : Form
     // (indexes match _themeColors; LevelMeta = unclassified, e.g. lines without a level column).
     private readonly record struct LogLine(string Text, byte Level);
 
+    // Palette indices into _themeColors, deliberately NOT the Shared.LogLevel enum values: that enum
+    // is Info=0, Warn=1, Error=2, Debug=3, so Error and Info are swapped relative to these. Nothing
+    // converts between the two - ClassifyLine derives the level from the line's text, never from a
+    // LogLevel - so the disagreement is harmless today, and both orderings are load-bearing in their
+    // own file (LogManager._levelLabels indexes by the enum and says so).
+    //
+    // Do not index _themeColors with a cast LogLevel: it would paint Info entries in the Error colour
+    // and vice versa, in the one tool used to diagnose problems, without anything failing loudly. And
+    // do not renumber these to match the enum without moving _themeColors and the four filter
+    // checkboxes in step - LevelMeta has no enum counterpart, so the two can never fully align.
     private const byte LevelError = 0;
     private const byte LevelWarn = 1;
     private const byte LevelInfo = 2;
@@ -128,7 +138,7 @@ public partial class LogViewerForm : Form
     protected override void OnLoad(EventArgs e)
     {
         base.OnLoad(e);
-        _themeColors = [AppConstants.LogError, AppConstants.LogWarning, AppConstants.LogInfo, AppConstants.LogDebug, SystemColors.WindowText];
+        _themeColors = [ThemeColors.LogError, ThemeColors.LogWarning, ThemeColors.LogInfo, ThemeColors.LogDebug, SystemColors.WindowText];
         Text = $"{AppIdentity.AppName} | Log Viewer";
         KeyPreview = true; // form sees keys before the focused control - see OnKeyDown (Escape to close, Ctrl+F)
         ApplyTheme();
@@ -154,7 +164,7 @@ public partial class LogViewerForm : Form
         // Lay out the right-aligned search group (search box, match counter, prev/next, clear button)
         // - shared with the help viewer. rightMargin 4: no form padding here, so the edge gap is baked
         // into the layout (the help viewer passes 0 and lets its form padding supply the gap).
-        AppConstants.LayoutSearchToolbar(pnlToolbar, txtSearch, lblMatchCount, btnPrev, btnNext, btnClearSearch, rightMargin: 4);
+        UiHelpers.LayoutSearchToolbar(pnlToolbar, txtSearch, lblMatchCount, btnPrev, btnNext, btnClearSearch, rightMargin: 4);
 
         // Owner-draw the chevrons on all four nav buttons; size/center the issue-nav buttons and the
         // level-filter checkboxes (LayoutSearchToolbar already sized and centered btnPrev/btnNext).
@@ -163,7 +173,7 @@ public partial class LogViewerForm : Form
             btn.Paint += NavButton_Paint;
         // Same treatment for the clear button's X - drawn, not typed, so its weight and centering
         // match the chevrons beside it and no font glyph is relied on.
-        btnClearSearch.Paint += (_, e) => AppConstants.DrawClearGlyph(btnClearSearch, e.Graphics);
+        btnClearSearch.Paint += (_, e) => UiHelpers.DrawClearGlyph(btnClearSearch, e.Graphics);
         foreach (var btn in new[] { btnIssuePrev, btnIssueNext })
         {
             btn.Height = navH;
@@ -328,7 +338,7 @@ public partial class LogViewerForm : Form
     private void NavButton_Paint(object? sender, PaintEventArgs e)
     {
         if (sender is not Button btn) return;
-        AppConstants.DrawNavChevron(btn, e.Graphics, up: btn == btnPrev || btn == btnIssuePrev);
+        UiHelpers.DrawNavChevron(btn, e.Graphics, up: btn == btnPrev || btn == btnIssuePrev);
     }
 
     // Called when any filter CheckBox changes - updates its style and rebuilds the visible rows
@@ -1087,8 +1097,8 @@ public partial class LogViewerForm : Form
             (int Row, int Offset) current = _searchIndex >= 0 && _searchIndex < _searchMatches.Count
                 ? _searchMatches[_searchIndex]
                 : (-1, -1);
-            using var currentHighlight = new SolidBrush(AppConstants.SearchHighlight);
-            using var otherHighlight = new SolidBrush(Color.FromArgb(110, AppConstants.SearchHighlight));
+            using var currentHighlight = new SolidBrush(ThemeColors.SearchHighlight);
+            using var otherHighlight = new SolidBrush(Color.FromArgb(110, ThemeColors.SearchHighlight));
             foreach (int offset in MatchOffsetsForRow(e.ItemIndex))
             {
                 bool isCurrent = current.Row == e.ItemIndex && current.Offset == offset;
@@ -1154,7 +1164,7 @@ public partial class LogViewerForm : Form
         var sb = new StringBuilder();
         foreach (int row in lvLog.SelectedIndices)
             sb.AppendLine(_allLines[_visibleRows[row]].Text);
-        AppConstants.SetClipboardTextSafely(sb.ToString());
+        UiHelpers.SetClipboardTextSafely(sb.ToString());
     }
 
     private void CopyAllVisibleRows()
@@ -1162,7 +1172,7 @@ public partial class LogViewerForm : Form
         var sb = new StringBuilder();
         foreach (int line in _visibleRows)
             sb.AppendLine(_allLines[line].Text);
-        AppConstants.SetClipboardTextSafely(sb.ToString());
+        UiHelpers.SetClipboardTextSafely(sb.ToString());
     }
 
     // Selects every row via one native LVM_SETITEMSTATE broadcast (item index -1 = all items).

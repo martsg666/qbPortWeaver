@@ -25,6 +25,48 @@ internal static class NicotinePluginDiscovery
     /// <summary>Identifier the plugin reports, used to confirm a connection file is really ours.</summary>
     internal const string PluginAppId = "qbpw-nicotine-bridge";
 
+    /// <summary>
+    /// Highest connection-file schema this build understands, matching <c>handshake.SCHEMA</c> in the
+    /// plugin. Read for the same reason <see cref="qbPortWeaver.Shared.HelperProtocol.Version"/> is read
+    /// off every helper response: the two halves upgrade independently, so a file this build cannot
+    /// interpret has to be refused rather than misread field by field.
+    /// <para>Bump this only when the file's meaning changes, and say what changed here. A plugin
+    /// writing a <b>higher</b> schema is newer than this app - its file is rejected, and the Settings
+    /// plugin line reports the bridge as not connected rather than silently acting on fields that may
+    /// have moved. A file with <b>no</b> schema predates the field entirely; those are accepted,
+    /// because the format it describes is exactly schema 1.</para>
+    /// </summary>
+    internal const int MaxSupportedSchema = 1;
+
+    // State key for LogStateChange: a bind_host pointing off this machine persists until the user
+    // changes the plugin setting, and the connection file is re-read on every failed request and on
+    // every Settings poll, so this reports on the transition rather than once per read.
+    private const string NonLoopbackHostStateKey = "nicotine.nonLoopbackHost";
+
+    /// <summary>Whether <paramref name="host"/> names this machine, so the plain-HTTP handshake stays local.</summary>
+    /// <remarks>Deliberately mirrors the plugin's own <c>_is_loopback_host</c> (<c>bridge/server.py</c>),
+    /// which strips brackets and lower-cases before comparing. Matching exactly instead meant the two
+    /// halves of one contract disagreed: <c>LOCALHOST</c>, and the correctly-bracketed IPv6 form
+    /// <c>[::1]</c>, are loopback to the plugin but read as remote here - which now produces a warning
+    /// telling the user their token crosses the network when it never leaves the machine.</remarks>
+    private static bool IsLoopbackHost(string host)
+    {
+        string bare = host.Trim('[', ']');
+        return bare.Equals("127.0.0.1", StringComparison.OrdinalIgnoreCase)
+            || bare.Equals("localhost", StringComparison.OrdinalIgnoreCase)
+            || bare.Equals("::1", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>Renders <paramref name="host"/> for use in a URL, bracketing an IPv6 literal.</summary>
+    /// <remarks>A host containing a colon can only be an IPv6 address - neither a host name nor an
+    /// IPv4 address may contain one - and RFC 3986 requires those to be bracketed in an authority.
+    /// Without this, the accepted <c>::1</c> composes <c>http://::1:38472</c>, which does not parse,
+    /// so a form the code deliberately allows could never actually be reached.</remarks>
+    private static string FormatHostForUrl(string host) =>
+        host.Contains(':', StringComparison.Ordinal) && !host.StartsWith('[')
+            ? $"[{host}]"
+            : host;
+
     /// <summary>File whose presence marks the plugin as installed. Nicotine+ requires it, and it
     /// carries the version, so it is the marker both the installer and this class key on.</summary>
     internal const string PluginMarkerFileName = "PLUGININFO";
@@ -99,10 +141,46 @@ internal static class NicotinePluginDiscovery
     {
         // qbPortWeaver's own data folder is a fixed path regardless of how Nicotine+ was
         // installed, so it is checked before the copy in the Nicotine+ data folder.
-        yield return SafeCombine(AppConstants.AppDataFolder, PrimaryFileName);
+        yield return SafeCombine(AppFiles.AppDataFolder, PrimaryFileName);
 
         string? dataFolder = ResolveDataFolder(exePathHint);
         if (dataFolder is not null) yield return SafeCombine(dataFolder, SecondaryFileName);
+    }
+
+    // Whether this file's layout is one this build can interpret. Checked before any other field is
+    // read: past that point every read assumes schema 1's meaning, and a newer plugin could have
+    // changed what a field holds rather than only adding to it.
+    //
+    // Three cases, deliberately kept apart. Absent is a plugin from before the field existed, which
+    // wrote exactly this layout, so it is accepted. A value that will not read as an integer is
+    // rejected rather than treated as absent: whatever wrote it knew about the field, so we cannot
+    // claim it predates one, and a gate that exists to refuse what it cannot interpret must not be
+    // bypassed by input it cannot parse. Higher than we support is rejected on its own terms. The
+    // port check in TryReadFile draws the same line.
+    //
+    // Split out of TryReadFile rather than inlined: the nested parse-then-compare pushed that method
+    // past the cognitive-complexity gate, and this is the one part of it that answers a question of
+    // its own rather than extracting a field.
+    private static bool HasSupportedSchema(JsonElement root, string path)
+    {
+        if (!root.TryGetProperty("schema", out var schemaElement)) return true;
+
+        if (!schemaElement.TryGetInt32(out int schema))
+        {
+            LogManager.Instance.LogDebug(
+                $"NicotinePluginDiscovery.HasSupportedSchema: {path} has an unreadable connection-file schema - ignoring it");
+            return false;
+        }
+
+        if (schema > MaxSupportedSchema)
+        {
+            LogManager.Instance.LogDebug(
+                $"NicotinePluginDiscovery.HasSupportedSchema: {path} uses connection-file schema {schema}, " +
+                $"newer than the {MaxSupportedSchema} this build understands - ignoring it. Update qbPortWeaver.");
+            return false;
+        }
+
+        return true;
     }
 
     private static NicotinePluginHandshake? TryReadFile(string path)
@@ -129,6 +207,8 @@ internal static class NicotinePluginDiscovery
                 LogManager.Instance.LogDebug($"NicotinePluginDiscovery.TryReadFile: {path} is not a qbPortWeaver bridge file");
                 return null;
             }
+
+            if (!HasSupportedSchema(root, path)) return null;
 
             if (!root.TryGetProperty("port", out var portElement) ||
                 !portElement.TryGetInt32(out int port) ||
@@ -158,7 +238,30 @@ internal static class NicotinePluginDiscovery
 
             string host = root.GetStringOrNull("host") ?? "127.0.0.1";
 
-            return new NicotinePluginHandshake($"http://{host}:{port}", token, path); // NOSONAR S5332 - loopback IPC bridge on 127.0.0.1; TLS is meaningless for a local-only handshake
+            // Loopback is the plugin's default, and what the S5332 suppression below rests on: plain
+            // HTTP is acceptable because the traffic cannot leave this machine. It is a default, not
+            // an invariant - the plugin exposes a bind_host setting documented for "qbPortWeaver runs
+            // on another machine", so a non-loopback file is a configuration the user was invited to
+            // create, not evidence of tampering.
+            //
+            // It is therefore reported rather than refused. Refusing bought no safety: the same remote
+            // address can be typed into Settings by hand, reaching an identical setup, so discarding
+            // the file only blocked the convenient path to a configuration the app still permits - and
+            // said so at Debug, where nobody would see it. A Warn names the real cost instead.
+            if (!IsLoopbackHost(host))
+            {
+                LogManager.Instance.LogStateChange(NonLoopbackHostStateKey,
+                    $"The Nicotine+ bridge is published on '{host}', which is not this machine. The access " +
+                    "token and every request to it cross the network unencrypted - use this only on a " +
+                    "network you trust, or set the plugin's Address back to 127.0.0.1.",
+                    LogLevel.Warn);
+            }
+            else
+            {
+                LogManager.Instance.ClearLogState(NonLoopbackHostStateKey);
+            }
+
+            return new NicotinePluginHandshake($"http://{FormatHostForUrl(host)}:{port}", token, path); // NOSONAR S5332 - loopback by default (warned above when not); TLS is meaningless for a local-only handshake
         }
         catch (Exception ex)
         {

@@ -221,8 +221,12 @@ internal sealed class HelperPipeServer(ILogger<HelperPipeServer> logger) : Backg
                 using var appKey = Registry.CurrentUser.OpenSubKey(AppIdentity.AppRegistryKey);
                 var expectedToken = appKey?.GetValue(AppIdentity.PipeSessionTokenKey) as string;
                 // Use constant-time comparison to prevent timing side-channel attacks.
-                // string.Equals returns early on the first mismatch, leaking token length/prefix
+                // string.Equals returns early on the first mismatch, leaking token prefix
                 // information to a local attacker who can measure pipe response times.
+                // (FixedTimeEquals is constant-time across equal-length inputs only - it returns
+                // false immediately on a length mismatch - so length is not hidden. That is fine
+                // here: the token lives in the caller's own hive, so its length is not a secret
+                // from them anyway.)
                 // Constant-time comparison is hygiene for comparing a secret on a SYSTEM-level
                 // dispatch path, not a boundary in itself: the hive read here belongs to the caller,
                 // so a caller can always present a matching value. See the class summary - the real

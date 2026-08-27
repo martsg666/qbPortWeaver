@@ -402,7 +402,7 @@ public partial class StatusForm : Form
         if (s.RecoveryFailedCycles > 0)
         {
             return $"{s.RecoveryFailedCycles} of {s.RecoveryTriggerCycles} failed " +
-                   $"{AppConstants.PluralizeNoun(s.RecoveryTriggerCycles, "cycle")}";
+                   $"{TextFormat.PluralizeNoun(s.RecoveryTriggerCycles, "cycle")}";
         }
 
         return null;
@@ -429,7 +429,7 @@ public partial class StatusForm : Form
         if (s.PortClosedRecoveryChecks > 0)
         {
             return $"{s.PortClosedRecoveryChecks} of {s.PortClosedRecoveryTriggerChecks} closed " +
-                   $"{AppConstants.PluralizeNoun(s.PortClosedRecoveryTriggerChecks, "check")}";
+                   $"{TextFormat.PluralizeNoun(s.PortClosedRecoveryTriggerChecks, "check")}";
         }
 
         return null;
@@ -582,10 +582,19 @@ public partial class StatusForm : Form
         return $"{FormatDuration(elapsed)} ago";
     }
 
-    // Best-effort estimate of when the next scheduled cycle runs: the last sync time plus the
-    // configured interval. Approximate by nature (a manual sync, a network-change re-sync, or an
-    // error backoff can move it), hence the "~". Shows "Paused" while sync is paused - the countdown
-    // would otherwise imply a cycle that will not fire - and "-" before the first cycle.
+    // When the next scheduled cycle is due, counted down to the instant the cycle published in
+    // nextSyncAt. Still approximate, hence the "~": a manual sync, a network-change re-check or an
+    // error backoff can move it after the status file was written.
+    //
+    // Deriving it from the last sync time plus the configured interval is the fallback, used only for
+    // a status file written before nextSyncAt existed - not the primary path. That derivation reads
+    // the duration against the wrong origin: timestamp is stamped when the cycle starts while the wait
+    // begins when it ends, so the countdown runs out early by the cycle's length, up to two minutes
+    // after one carrying an auto-recovery round trip. See the nextSyncAt notes in docs/SYNC-CYCLE.md.
+    //
+    // Four outcomes: the countdown, "Paused" while sync is paused (a countdown would imply a cycle
+    // that will not fire), "Startup grace period" during the grace window (which re-checks on a short
+    // poll, so a full-interval countdown would mislead), and "-" before the first cycle.
     private void PopulateNextSync(StatusSnapshot s)
     {
         if (SyncPaused)
@@ -601,18 +610,31 @@ public partial class StatusForm : Form
             SetNeutral(lblNextSyncValue, "Startup grace period");
             return;
         }
-        if (s.Timestamp is not DateTimeOffset ts)
+        // Prefer the instant the cycle published. Deriving it from Timestamp is the fallback for a
+        // status file written before nextSyncAt existed, and is deliberately not the primary path:
+        // Timestamp is stamped at the cycle's start while the wait begins at its end, so the derived
+        // value runs out early by however long the cycle took - up to two minutes when the cycle
+        // included an auto-recovery round trip.
+        DateTimeOffset dueAt;
+        if (s.NextSyncAt is DateTimeOffset published)
+        {
+            dueAt = published;
+        }
+        else if (s.Timestamp is DateTimeOffset ts)
+        {
+            int interval = RegistrySettingsManager.GetInt(
+                RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyUpdateIntervalSeconds);
+            if (interval < AppConstants.MinUpdateIntervalSeconds)
+                interval = AppConstants.DefaultUpdateIntervalSeconds;
+            dueAt = ts.AddSeconds(interval);
+        }
+        else
         {
             SetNeutral(lblNextSyncValue, "-");
             return;
         }
 
-        int interval = RegistrySettingsManager.GetInt(
-            RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyUpdateIntervalSeconds);
-        if (interval < AppConstants.MinUpdateIntervalSeconds)
-            interval = AppConstants.DefaultUpdateIntervalSeconds;
-
-        TimeSpan remaining = ts.AddSeconds(interval) - DateTimeOffset.Now;
+        TimeSpan remaining = dueAt - DateTimeOffset.Now;
         if (remaining <= TimeSpan.Zero)
             SetDefault(lblNextSyncValue, "Due now");
         else
@@ -620,9 +642,9 @@ public partial class StatusForm : Form
     }
 
     // Accent colors follow AboutForm: brighter variants in dark mode, deeper ones in light mode.
-    private static Color OkColor => AppConstants.StatusOk;
-    private static Color WarnColor => AppConstants.StatusWarning;
-    private static Color ErrorColor => AppConstants.StatusError;
+    private static Color OkColor => ThemeColors.StatusOk;
+    private static Color WarnColor => ThemeColors.StatusWarning;
+    private static Color ErrorColor => ThemeColors.StatusError;
     private static Color NeutralColor => SystemColors.GrayText;
 
     private static void SetColor(Label label, string text, Color color)

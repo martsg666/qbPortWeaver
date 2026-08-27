@@ -128,7 +128,7 @@ public partial class MainForm : Form
         // (log file creation, registry writes, live tray icon) must not fire at design time.
         if (LicenseManager.UsageMode == LicenseUsageMode.Designtime) return;
 
-        LogManager.Initialize(AppConstants.GetLogFilePath());
+        LogManager.Initialize(AppFiles.GetLogFilePath());
 
         // Ensure all registry keys exist, writing defaults for any missing ones
         RegistrySettingsManager.EnsureDefaults();
@@ -149,6 +149,7 @@ public partial class MainForm : Form
         UpdateTrayTooltip();
 
         LogManager.Instance.WarnOrErrorLogged += OnWarnOrErrorLogged;
+        LogManager.Instance.LogWriteFailed += OnLogWriteFailed;
     }
 
     private void MainForm_Load(object? sender, EventArgs e) => InitializeAfterLoad();
@@ -168,7 +169,7 @@ public partial class MainForm : Form
             // Clear temp files a previous run was killed part-way through writing. Here rather than
             // later because nothing has written to the data folder yet this run, so nothing in it
             // can be live.
-            AppConstants.SweepOrphanedTempFiles(AppConstants.AppDataFolder);
+            AppFiles.SweepOrphanedTempFiles(AppFiles.AppDataFolder);
 
             // Start main loop immediately so port syncing is not blocked by dialogs
             // Fire-and-forget: exceptions inside the while loop are caught per-cycle.
@@ -261,6 +262,7 @@ public partial class MainForm : Form
 
         // Unsubscribe before teardown so background threads cannot marshal onto a disposed form
         LogManager.Instance.WarnOrErrorLogged -= OnWarnOrErrorLogged;
+        LogManager.Instance.LogWriteFailed -= OnLogWriteFailed;
 
         // Stop the update check timer before closing child forms to prevent it firing during teardown
         _updateCheckTimer?.Stop();
@@ -291,10 +293,10 @@ public partial class MainForm : Form
     private void InitializeStatusIcons()
     {
         _iconBase = Properties.Resources.qbPortWeaver;
-        _iconOk = CreateStatusIcon(_iconBase, AppConstants.TrayDotOk);
-        _iconWarning = CreateStatusIcon(_iconBase, AppConstants.TrayDotWarning);
-        _iconError = CreateStatusIcon(_iconBase, AppConstants.TrayDotError);
-        _iconPaused = CreateStatusIcon(_iconBase, AppConstants.TrayDotPaused);
+        _iconOk = CreateStatusIcon(_iconBase, ThemeColors.TrayDotOk);
+        _iconWarning = CreateStatusIcon(_iconBase, ThemeColors.TrayDotWarning);
+        _iconError = CreateStatusIcon(_iconBase, ThemeColors.TrayDotError);
+        _iconPaused = CreateStatusIcon(_iconBase, ThemeColors.TrayDotPaused);
     }
 
     // Draws a small filled circle onto a 16x16 copy of the base icon and returns it as an Icon
@@ -302,7 +304,7 @@ public partial class MainForm : Form
     {
         using var bmp = new Bitmap(16, 16, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
         using var g = Graphics.FromImage(bmp);
-        using var borderBrush = new SolidBrush(AppConstants.TrayIconDotBorder);
+        using var borderBrush = new SolidBrush(ThemeColors.TrayIconDotBorder);
         using var dotBrush = new SolidBrush(dotColor);
 
         g.Clear(Color.Transparent);
@@ -1080,8 +1082,8 @@ public partial class MainForm : Form
         string countSuffix = string.Empty;
         if (_unviewedWarnCount > 0 || _unviewedErrorCount > 0)
         {
-            string wPart = _unviewedWarnCount > 0 ? AppConstants.Pluralize(_unviewedWarnCount, "Warning") : "";
-            string ePart = _unviewedErrorCount > 0 ? AppConstants.Pluralize(_unviewedErrorCount, "Error") : "";
+            string wPart = _unviewedWarnCount > 0 ? TextFormat.Pluralize(_unviewedWarnCount, "Warning") : "";
+            string ePart = _unviewedErrorCount > 0 ? TextFormat.Pluralize(_unviewedErrorCount, "Error") : "";
             string sep = (wPart.Length > 0 && ePart.Length > 0) ? ", " : "";
             countSuffix = $"\n{wPart}{sep}{ePart}";
         }
@@ -1141,6 +1143,15 @@ public partial class MainForm : Form
         }
     }
 
+    // Called from background threads via LogManager.LogWriteFailed when the log file cannot be
+    // written. Deliberately shows a balloon and nothing else: the failure cannot be logged (that is
+    // what failed), and logging it at Warn or Error would re-enter the failing write path and raise
+    // the event again. LogManager latches the event, so this fires once per failure episode.
+    private void OnLogWriteFailed()
+    {
+        ShowWarningBalloon("Cannot write to the log file. Check free disk space and the permissions on the qbPortWeaver folder.");
+    }
+
     // Called from background threads via LogManager.WarnOrErrorLogged; marshals to UI thread
     private void OnWarnOrErrorLogged(LogLevel level)
     {
@@ -1176,8 +1187,8 @@ public partial class MainForm : Form
             return;
         }
 
-        string warnPart = _unviewedWarnCount > 0 ? AppConstants.Pluralize(_unviewedWarnCount, "warning") : "";
-        string errorPart = _unviewedErrorCount > 0 ? AppConstants.Pluralize(_unviewedErrorCount, "error") : "";
+        string warnPart = _unviewedWarnCount > 0 ? TextFormat.Pluralize(_unviewedWarnCount, "warning") : "";
+        string errorPart = _unviewedErrorCount > 0 ? TextFormat.Pluralize(_unviewedErrorCount, "error") : "";
         string badge = (warnPart.Length > 0 && errorPart.Length > 0) ? $"{warnPart}, {errorPart}" : $"{warnPart}{errorPart}";
         _showLogsMenuItem.Text = $"{ShowLogsMenuText} ({badge})";
     }

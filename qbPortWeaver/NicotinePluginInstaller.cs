@@ -213,7 +213,7 @@ internal static class NicotinePluginInstaller
                 sourcePath = fallbackPath;
             }
 
-            string[] lines = AppConstants.ReadAllLinesShared(sourcePath);
+            string[] lines = AppFiles.ReadAllLinesShared(sourcePath);
 
             if (!TryRewriteEnabledPlugins(lines, out string[] updated, out string reason))
             {
@@ -236,8 +236,8 @@ internal static class NicotinePluginInstaller
 
             // The only atomic write outside our own data folder, so the startup sweep cannot reach
             // it. Clear leftovers here instead, while Nicotine+ is known to be closed.
-            AppConstants.SweepOrphanedTempFiles(Path.GetDirectoryName(configPath) ?? string.Empty);
-            AppConstants.WriteAtomic(configPath, updated);
+            AppFiles.SweepOrphanedTempFiles(Path.GetDirectoryName(configPath) ?? string.Empty);
+            AppFiles.WriteAtomic(configPath, updated);
 
             LogManager.Instance.LogMessage(
                 $"Enabled the Nicotine+ bridge plugin in {configPath} (previous copy saved as {ConfigBackupFileName})",
@@ -269,7 +269,7 @@ internal static class NicotinePluginInstaller
                 if (!File.Exists(configPath)) return null;
             }
 
-            foreach (var (section, key, value) in ReadSettings(AppConstants.ReadAllLinesShared(configPath)))
+            foreach (var (section, key, value) in ReadSettings(AppFiles.ReadAllLinesShared(configPath)))
             {
                 if (section != PluginsSection || key != EnabledKey) continue;
                 if (!TryParsePythonStringList(value, out var names)) return null;
@@ -706,18 +706,42 @@ internal static class NicotinePluginInstaller
         return builder.ToString();
     }
 
+    // Null means the plugin is not installed; an empty string means it is installed but its version
+    // could not be established. GetStatus maps null to "Not installed", so the two must not be
+    // conflated: NicotinePluginDiscovery.IsPluginInstalled answers the same question from this same
+    // marker file's existence alone, and its remarks promise the two cannot disagree about whether
+    // the plugin exists. A read that fails on a file that is plainly there would break that promise.
     private static string? ReadInstalledVersion(string pluginFolder)
     {
+        string infoPath;
         try
         {
-            string infoPath = Path.Combine(pluginFolder, PluginInfoFileName);
-            if (!File.Exists(infoPath)) return null;
-            return ReadVersion(AppConstants.ReadAllTextShared(infoPath)) ?? string.Empty;
+            infoPath = Path.Combine(pluginFolder, PluginInfoFileName);
+        }
+        catch (ArgumentException ex)
+        {
+            // A path that cannot even be composed cannot name an installed plugin, so absent is the
+            // correct answer here rather than the unknown-version one below.
+            LogManager.Instance.LogDebug($"NicotinePluginInstaller.ReadInstalledVersion: {ex.Message}");
+            return null;
+        }
+
+        // Outside the try on purpose: File.Exists reports failure by returning false rather than
+        // throwing, so it cannot land in the catch and be mistaken for a failed read.
+        if (!File.Exists(infoPath)) return null;
+
+        try
+        {
+            return ReadVersion(AppFiles.ReadAllTextShared(infoPath)) ?? string.Empty;
         }
         catch (Exception ex)
         {
             LogManager.Instance.LogDebug($"NicotinePluginInstaller.ReadInstalledVersion: {ex.Message}");
-            return null;
+            // The marker is there and only the read failed - installed, version unknown. Re-checked
+            // rather than assumed, because the file can be deleted between the check above and the
+            // open, and that case really is absent. Matches how IsInstalledPluginStale treats an
+            // unreadable file: far more likely a transient lock than a real change.
+            return File.Exists(infoPath) ? string.Empty : null;
         }
     }
 
@@ -757,9 +781,23 @@ internal static class NicotinePluginInstaller
         if (string.IsNullOrWhiteSpace(installedVersion))
             return $"Unknown version, {BundledVersion} available";
 
-        return string.Equals(installedVersion, BundledVersion, StringComparison.Ordinal)
-            ? $"{installedVersion} installed, updated files available"
-            : $"{installedVersion} installed, {BundledVersion} available";
+        if (string.Equals(installedVersion, BundledVersion, StringComparison.Ordinal))
+            return $"{installedVersion} installed, updated files available";
+
+        // "X available" reads as an upgrade, which is wrong when the installed plugin is the higher
+        // number - after rolling the app back, or hand-installing a plugin from the repo. The remedy
+        // is unchanged and still correct, so only the wording needs to differ: the plugin is pinned to
+        // the app version and the two are a matched pair, which is why the connection-file schema gate
+        // refuses a plugin newer than this build. Replacing it with the bundled copy is alignment, not
+        // a downgrade to be avoided. Fits the ~40-character label budget noted above at 39.
+        if (Version.TryParse(installedVersion, out var installed) &&
+            Version.TryParse(BundledVersion, out var bundled) &&
+            installed > bundled)
+        {
+            return $"{installedVersion} installed, this build ships {BundledVersion}";
+        }
+
+        return $"{installedVersion} installed, {BundledVersion} available";
     }
 
     private static string? ReadResourceText(string resourceName)

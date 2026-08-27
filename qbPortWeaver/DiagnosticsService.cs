@@ -73,7 +73,7 @@ public static class DiagnosticsService
         int pass = results.Count(r => r.Status == DiagnosticStatus.Pass);
         int warn = results.Count(r => r.Status == DiagnosticStatus.Warn);
         int fail = results.Count(r => r.Status == DiagnosticStatus.Fail);
-        LogManager.Instance.LogMessage($"Diagnostics completed: {pass} passed, {AppConstants.Pluralize(warn, "warning")}, {fail} failed", LogLevel.Info);
+        LogManager.Instance.LogMessage($"Diagnostics completed: {pass} passed, {TextFormat.Pluralize(warn, "warning")}, {fail} failed", LogLevel.Info);
         return results;
     }
 
@@ -118,7 +118,11 @@ public static class DiagnosticsService
         }
         catch (Exception ex)
         {
-            results.Add(new(Checks.HelperService, DiagnosticStatus.Warn, $"Could not query the helper service: {ex.Message}"));
+            // Carries a hint like every other non-passing row: this branch is the unexpected one, so
+            // the reader is the least likely to know what the helper service is for or what to try.
+            results.Add(new(Checks.HelperService, DiagnosticStatus.Warn,
+                $"Could not query the helper service: {ex.Message}",
+                "Auto-recovery (VPN service restart or adapter cycle) needs the helper service. If this persists, reinstall qbPortWeaver."));
         }
     }
 
@@ -248,7 +252,7 @@ public static class DiagnosticsService
         string hint = $"Turn {pronoun} off in {client.ClientName}'s settings. " +
                       $"{AppIdentity.AppName} switches {pronoun} off each time it sets the port, so this will also clear itself at the next port change.";
         results.Add(new(Checks.ClientSettings, DiagnosticStatus.Warn,
-            $"{client.ClientName} has {AppConstants.Pluralize(conflicts.Count, "setting")} working against the forwarded port: {names}", hint));
+            $"{client.ClientName} has {TextFormat.Pluralize(conflicts.Count, "setting")} working against the forwarded port: {names}", hint));
     }
 
     // Reports the bridge plugin's state from files alone, so it stays useful precisely when the
@@ -407,7 +411,7 @@ public static class DiagnosticsService
     {
         try
         {
-            string? exe = AppConstants.GetServiceExePath(HelperProtocol.ServiceName);
+            string? exe = ServiceLookup.GetServiceExePath(HelperProtocol.ServiceName);
             if (exe is null || !File.Exists(exe)) return null;
             string? raw = FileVersionInfo.GetVersionInfo(exe).FileVersion;
             if (string.IsNullOrWhiteSpace(raw)) return null;

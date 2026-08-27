@@ -781,9 +781,23 @@ internal static class NicotinePluginInstaller
         if (string.IsNullOrWhiteSpace(installedVersion))
             return $"Unknown version, {BundledVersion} available";
 
-        return string.Equals(installedVersion, BundledVersion, StringComparison.Ordinal)
-            ? $"{installedVersion} installed, updated files available"
-            : $"{installedVersion} installed, {BundledVersion} available";
+        if (string.Equals(installedVersion, BundledVersion, StringComparison.Ordinal))
+            return $"{installedVersion} installed, updated files available";
+
+        // "X available" reads as an upgrade, which is wrong when the installed plugin is the higher
+        // number - after rolling the app back, or hand-installing a plugin from the repo. The remedy
+        // is unchanged and still correct, so only the wording needs to differ: the plugin is pinned to
+        // the app version and the two are a matched pair, which is why the connection-file schema gate
+        // refuses a plugin newer than this build. Replacing it with the bundled copy is alignment, not
+        // a downgrade to be avoided. Fits the ~40-character label budget noted above at 39.
+        if (Version.TryParse(installedVersion, out var installed) &&
+            Version.TryParse(BundledVersion, out var bundled) &&
+            installed > bundled)
+        {
+            return $"{installedVersion} installed, this build ships {BundledVersion}";
+        }
+
+        return $"{installedVersion} installed, {BundledVersion} available";
     }
 
     private static string? ReadResourceText(string resourceName)

@@ -94,10 +94,19 @@ public sealed class LogManager
     }
 
     /// <summary>Writes a log entry at the given level. Thread-safe.</summary>
-    public void LogMessage(string message, LogLevel level, string subsystem = Subsystem.MainApp)
+    /// <returns><see langword="true"/> when the entry reached the file.</returns>
+    /// <remarks>Almost every caller ignores this - a log write is best-effort and nothing should
+    /// change course because one failed. <see cref="LogStateChange"/> is the exception: it must not
+    /// record having reported a condition that was never written.
+    /// <para>Deliberately not derived from the <c>writeFailed</c> flag below, which is only raised on
+    /// the <i>first</i> failure of an episode and stays false for the rest - so it answers "should the
+    /// user be told" rather than "did this reach the file", and inverting it would report the second
+    /// and later failed writes as successes.</para></remarks>
+    public bool LogMessage(string message, LogLevel level, string subsystem = Subsystem.MainApp)
     {
         bool shouldNotify = false;
         bool writeFailed = false;
+        bool wrote = false;
         lock (_lock)
         {
             try
@@ -111,6 +120,7 @@ public sealed class LogManager
                 }
 
                 WriteRaw(FormatEntry(message, level, subsystem));
+                wrote = true;
                 shouldNotify = level is LogLevel.Warn or LogLevel.Error;
                 // A successful write re-arms the failure report, so a later episode is announced
                 // rather than swallowed as a duplicate of one the user has already dealt with.
@@ -135,6 +145,7 @@ public sealed class LogManager
             RaiseWarnOrErrorLogged(level);
         if (writeFailed)
             RaiseLogWriteFailed();
+        return wrote;
     }
 
     /// <summary>
@@ -220,8 +231,13 @@ public sealed class LogManager
     public void LogStateChange(string key, string message, LogLevel level, string subsystem = Subsystem.MainApp)
     {
         if (_lastStateMessage.TryGetValue(key, out string? previous) && previous == message) return;
-        _lastStateMessage[key] = message;
-        LogMessage(message, level, subsystem);
+
+        // Latched only once the entry is on disk. Recording it first meant a failed write left the
+        // condition marked as reported and suppressed from then on, even after the log recovered -
+        // losing exactly the standing conditions (an unreachable share, a stale binding) that a
+        // disk-full or permissions fault makes most worth having.
+        if (LogMessage(message, level, subsystem))
+            _lastStateMessage[key] = message;
     }
 
     /// <summary>Forgets the last message logged under <paramref name="key"/> so the next

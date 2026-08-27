@@ -1117,7 +1117,7 @@ public sealed class PortSyncService
 
         if (open.Value)
         {
-            HandlePortOpenResult(manager.ClientName, port);
+            HandlePortOpenResult(manager.ClientName, port, config);
         }
         else
         {
@@ -1126,7 +1126,7 @@ public sealed class PortSyncService
         }
     }
 
-    private void HandlePortOpenResult(string clientName, int port)
+    private void HandlePortOpenResult(string clientName, int port, SyncConfig config)
     {
         if (_portConfirmedClosed)
             LogManager.Instance.LogMessage($"{clientName} port {port} is reachable from outside again", LogLevel.Info);
@@ -1137,12 +1137,22 @@ public sealed class PortSyncService
         _confirmedClosedCount = 0;
         if (!_portClosedRecoveryArmed)
         {
+            // Re-armed unconditionally, and announced only when the trigger could actually use it.
+            // The field is internal arming state; whether the trigger can fire also depends on the
+            // setting, and the two were conflated here - so a user who switched the trigger off after
+            // it fired was told it "can trigger again", which every other site reporting this state
+            // (BuildPortClosedRecoverySuffix, MaybeTriggerPortClosedRecoveryAsync,
+            // StatusForm.DescribePortClosedRecovery) already gates on. The re-arm itself must stay
+            // unconditional: gating it too would leave the trigger permanently disarmed for anyone who
+            // switched the setting off and later back on.
             _portClosedRecoveryArmed = true;
+
             // Info, not Debug: the disarmed state it clears is reported to the user in the port-closed
             // Warn and on the Status panel, so the point at which recovery becomes available again has
             // to be visible at the same level. Reached only after a recovery actually fired, so it
             // cannot become routine noise.
-            LogManager.Instance.LogMessage("Port-closed recovery re-armed - it can trigger again if the port closes", LogLevel.Info);
+            if (config.PortClosedRecoveryEnabled)
+                LogManager.Instance.LogMessage("Port-closed recovery re-armed - it can trigger again if the port closes", LogLevel.Info);
         }
     }
 

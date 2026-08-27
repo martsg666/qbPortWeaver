@@ -1146,9 +1146,12 @@ public sealed class PortSyncService
         }
     }
 
-    // Confirmed-closed logs at Warn every cycle so the alert badge tracks the persistent
-    // condition (same pattern as the interface mismatch check); the PortVerificationFailed
-    // balloon fires only on the transition into the confirmed state.
+    // Confirmed-closed logs at Warn on every confirming cycle, deliberately, and is the counterpart to
+    // the standing conditions that report only on their transition: this line's text carries a count
+    // that advances toward the trigger, so each repetition tells the user something the last one did
+    // not. The test is whether hearing it again could change what they do. (The interface-mismatch
+    // check used to be cited here as the same pattern; it is now transition-only, being fixed text.)
+    // The PortVerificationFailed balloon still fires only on the transition into the confirmed state.
     private void HandlePortClosedResult(string clientName, int port, SyncConfig config)
     {
         if (_portConfirmedClosed)
@@ -1252,9 +1255,12 @@ public sealed class PortSyncService
     }
 
     // Checks if the client's network interface matches the expected VPN provider and logs a warning if not.
-    // The warn log fires every cycle so the log alert badge tracks the persistent condition.
-    // The InterfaceMismatchDetected balloon fires only on transition (new or changed mismatch) to avoid
-    // spamming the user each cycle; it re-fires if the mismatch clears and then returns.
+    // Both the warn log and the InterfaceMismatchDetected balloon report only on the transition, by
+    // separate mechanisms: the log through LogStateChange (keyed on InterfaceMatchStateKey), the balloon
+    // through the _lastInterfaceMismatchMessage latch. A binding stays wrong until the user re-selects
+    // an interface, so repeating either one adds nothing and the Warn would keep pushing the tray's
+    // unviewed count up for a condition the user cannot clear by acting on it. Both carry the interface
+    // name, so drifting from one wrong adapter to another still reports; both re-arm when it matches.
     private void CheckInterfaceMatch(string clientName, string? interfaceName, IVpnManager vpnManager)
     {
         if (interfaceName is null)

@@ -37,6 +37,12 @@ public partial class WhatsNewForm : Form
         "moment a cycle began rather than the moment it finished, so after a slow cycle - one that " +
         "restarted your client, or ran a recovery - it could sit on Due now for a minute or two " +
         "before anything actually happened. It now counts down to the real time.\n\n" +
+        "Your network adapter is always switched back on\n" +
+        "One kind of auto-recovery switches your network adapter off and straight back on again. If " +
+        "Windows shut down or the app was stopped in the moment between the two, the adapter could be " +
+        "left switched off, and it stayed that way after a restart. It is now always switched back on, " +
+        "whatever interrupts the recovery. This affected NAT-PMP setups using a router or gateway "  +
+        "rather than ProtonVPN or PIA.\n\n" +
         "Previously released\n\n" +
         "New in 2.6.6\n\n" +
         "See what auto-recovery is doing\n" +

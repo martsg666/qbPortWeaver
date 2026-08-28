@@ -382,9 +382,13 @@ public sealed class QBittorrentClient : ManagedClientBase
     /// ever removed. The intermediate pin is *stricter* than "all addresses" - it is one address on the
     /// same adapter - so unlike clearing the interface token it opens no window for traffic outside the
     /// tunnel.</para>
-    /// <para>If the process dies between the two writes the client is left pinned to what was then a
-    /// valid address. That is benign until the adapter's address next moves, at which point the pinned-
-    /// address check reports it and repairs it like any other stale pin.</para>
+    /// <para>Two ways the release can be missed, and they are not equally benign. If the <b>process
+    /// dies</b> between the writes, the client is left pinned to what was then a valid address, which
+    /// keeps working until the adapter's address next moves - at which point the pinned-address check
+    /// reports and repairs it like any other stale pin. If the <b>release write fails</b>, nothing later
+    /// notices: the next cycle reads a non-empty address that is present on the adapter and concludes
+    /// the binding is healthy. That one is therefore retried once and, if it still fails, reported at
+    /// Error naming the address, because only the user can put it back.</para>
     /// </remarks>
     internal async Task<bool> ForceInterfaceRebindAsync(string pinAddress, string finalAddress, CancellationToken cancellationToken = default)
     {
@@ -397,9 +401,28 @@ public sealed class QBittorrentClient : ManagedClientBase
         // there is nothing to release and a second write would be the no-op this method exists to avoid.
         if (string.Equals(pinAddress, finalAddress, StringComparison.OrdinalIgnoreCase)) return true;
 
-        if (!await WriteInterfaceAddressAsync(finalAddress, cancellationToken).ConfigureAwait(false)) return false;
-        _storedInterfaceAddress = finalAddress;
-        return true;
+        // Retried once, because this is the write whose failure cannot be recovered from later. The pin
+        // has already landed, so at that moment the endpoint was reachable and the session valid, which
+        // makes a single immediate retry a good match for the realistic cause - a transient error, or
+        // qBittorrent restarting between the two posts. Not a loop: this runs after three confirmed
+        // closed checks on a cycle the user is waiting on, and stacking timeouts here buys little.
+        if (await WriteInterfaceAddressAsync(finalAddress, cancellationToken).ConfigureAwait(false) ||
+            await WriteInterfaceAddressAsync(finalAddress, cancellationToken).ConfigureAwait(false))
+        {
+            _storedInterfaceAddress = finalAddress;
+            return true;
+        }
+
+        // Error, and it names the address, because this is the one outcome the app cannot put right by
+        // itself: the client is left pinned, the next cycle reads a non-empty address that is present on
+        // the adapter, concludes the binding is healthy, and treats it as the user's own setting. Only
+        // the user can restore what they had, so the log has to say exactly what was left behind rather
+        // than the caller's generic "could not rebind".
+        LogManager.Instance.LogMessage(
+            $"{ClientName} was left bound to address {pinAddress} - the setting could not be returned to " +
+            $"'{(finalAddress.Length == 0 ? "all addresses" : finalAddress)}'. Restore it in {ClientName} if that is not what you want",
+            LogLevel.Error);
+        return false;
     }
 
     // One setPreferences write of current_interface_address. Empty is a legitimate value here - it means

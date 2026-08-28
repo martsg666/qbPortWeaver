@@ -1537,17 +1537,17 @@ public sealed class PortSyncService
         // real observation rather than against a gap, so a change spanning the gap is still reported.
         if (live is null) return;
 
-        if (!string.IsNullOrEmpty(pinned) && !live.Contains(pinned, StringComparer.OrdinalIgnoreCase))
+        if (!IsWildcardBindAddress(pinned) && !live.Contains(pinned, StringComparer.OrdinalIgnoreCase))
         {
             // Provably broken rather than suspected: the client is bound to an address the adapter does
             // not have, so it cannot be listening. Repaired on detection like the stale token beside it,
             // not deferred to the port-closed escalation, which is for the case that is only a suspicion.
             await RepairPinnedAddressAsync(client, interfaceName, pinned, live, config, cancellationToken).ConfigureAwait(false);
         }
-        else if (string.IsNullOrEmpty(pinned) &&
+        else if (IsWildcardBindAddress(pinned) &&
                  _lastKnownInterfaceAddresses is { } previous && !previous.SequenceEqual(live, StringComparer.OrdinalIgnoreCase))
         {
-            // The empty-pin test is load-bearing, not a tidy-up. The first branch is false in *two*
+            // The wildcard test is load-bearing, not a tidy-up. The first branch is false in *two*
             // cases - no pin, and a pin that is present and correct - and only the first belongs here.
             // Without this test a user pinned to one address whose adapter merely gained or lost
             // another address was armed, and the rebind then released to "all addresses", silently
@@ -1626,6 +1626,20 @@ public sealed class PortSyncService
         else
             LogManager.Instance.LogMessage($"Could not set the {client.ClientName} network interface address - correct it in {client.ClientName}", LogLevel.Error);
     }
+
+    // qBittorrent's bind-address field holds either a concrete address or one of three wildcards, and
+    // the dropdown offers all three: "" (all addresses), 0.0.0.0 (all IPv4) and :: (all IPv6). None of
+    // them ever appears in the adapter's address list, so none can be judged stale against it - the
+    // check that only knew about "" reported "All IPv4 addresses" as broken and, with the repair on,
+    // rewrote a wildcard the user chose into one concrete address, which then genuinely went stale on
+    // every reconnect. Verified live for 0.0.0.0; :: is included on the strength of the dropdown
+    // offering it, and costs nothing if it never occurs.
+    //
+    // One predicate, used by both branches of the check, because they are the two halves of a
+    // partition: a value either can be judged stale or is a wildcard that arms the escalation instead.
+    // Two inline tests could drift apart and leave a value in neither branch or in both.
+    private static bool IsWildcardBindAddress(string? address) =>
+        string.IsNullOrEmpty(address) || address == "0.0.0.0" || address == "::";
 
     // The address to bind to, out of everything the adapter reports. IPv4 first because that is what a
     // forwarded port is granted for by every provider this app supports; link-local is never usable for

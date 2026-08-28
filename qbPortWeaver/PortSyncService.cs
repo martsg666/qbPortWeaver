@@ -1915,21 +1915,6 @@ public sealed class PortSyncService
         }
         if (_consecutiveFailedCycles < cfg.VpnAutoRecoveryTriggerCycles) return;
 
-        // Backstop: stop dispatching once MaxConsecutiveRecoveries have run without a single successful
-        // port read between them. The failure streak is deliberately left running rather than reset - the
-        // failures really are continuing, and the count is what the log line and the Status panel report.
-        // Every later cycle re-enters here and returns on this same check; LogStateChange keeps that to
-        // one line. Cleared by ResetRecoveryCap on the next successful port read.
-        if (_consecutiveRecoveries >= MaxConsecutiveRecoveries)
-        {
-            LogManager.Instance.LogStateChange(RecoveryCapStateKey,
-                $"Suspending auto-recovery for '{displayName}' - {MaxConsecutiveRecoveries} consecutive recoveries " +
-                "did not restore a forwarded port, so repeating it would only keep interrupting the connection. " +
-                "Recovery resumes automatically once a port is read successfully.",
-                LogLevel.Warn);
-            return;
-        }
-
         // Sustained-failure floor: the elapsed time recovery would have taken under normal
         // scheduled cycling ((TriggerCycles - 1) intervals between the first and last failure).
         // A streak driven faster than this by early wakes is held until the time also clears.
@@ -1971,6 +1956,34 @@ public sealed class PortSyncService
         // and 15 minutes documented, by an amount that depends on the configured interval.
         var slot = await TryTakeRecoverySlotAsync(displayName, cancellationToken).ConfigureAwait(false);
         if (!slot.Allowed) return;
+
+        // Backstop: stop dispatching once MaxConsecutiveRecoveries have run without a single successful
+        // port read between them. Cleared by ResetRecoveryCap on the next successful port read.
+        //
+        // Evaluated *below* the connectivity slot, and gated on slot.Online, because the cap is a hard
+        // stop and the limiter above exists precisely to keep hard stops away from an offline machine:
+        // a killswitch blocks the probe itself, so a stuck VPN and a dead upstream are indistinguishable,
+        // and refusing to retry strands the machine with the killswitch up and no way out. The cap's
+        // premise is "three attempts proved this is not the fix", which only holds where the attempts
+        // could have worked - so the block and the increment must be governed by the same test, taken at
+        // the same point. Placing this check above the probe (as it first was) exempted the increment
+        // while leaving the block, which reinstated exactly that deadlock after three online failures.
+        //
+        // Not cleared when offline either: a machine flapping in and out of connectivity would reset its
+        // way past the cap forever, which is the unbounded restart loop this was added to stop.
+        //
+        // The streak is deliberately left running rather than reset - the failures really are
+        // continuing, and the count is what the log line and the Status panel report. LogStateChange
+        // keeps the message to one line however many cycles return here.
+        if (slot.Online && _consecutiveRecoveries >= MaxConsecutiveRecoveries)
+        {
+            LogManager.Instance.LogStateChange(RecoveryCapStateKey,
+                $"Suspending auto-recovery for '{displayName}' - {MaxConsecutiveRecoveries} consecutive recoveries " +
+                "did not restore a forwarded port, so repeating it would only keep interrupting the connection. " +
+                "Recovery resumes automatically once a port is read successfully.",
+                LogLevel.Warn);
+            return;
+        }
 
         ResetFailureStreak();
         // Counted here, past every gate, so it records recoveries that are actually dispatched. Counting

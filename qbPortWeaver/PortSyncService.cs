@@ -98,7 +98,13 @@ public sealed class PortSyncService
     // per cycle (see the `using var manager` in RunCoreAsync), so it cannot remember anything, and the
     // question this answers is precisely "did this change since last time".
     // Serialised by MainForm._updateSemaphore (same guarantee as _consecutiveFailedCycles).
-    private IReadOnlyList<string>? _lastKnownInterfaceAddresses;
+    // Keyed by the interface the addresses were read from. Without the key, a cycle that follows a
+    // change of bound adapter - the user re-selecting one, or RepairInterfaceBindingAsync re-pointing
+    // the token - compares one adapter's addresses against another's. That differs by construction, so
+    // it reported a change that never happened and armed a rebind on the strength of it.
+    // Name rather than token: the name is what the log line quotes, and the token can change while the
+    // adapter stays the same, which is the stale-token case the neighbouring check already owns.
+    private (string Interface, IReadOnlyList<string> Addresses)? _lastKnownInterfaceAddresses;
     // Set when the bound adapter's addresses move while the client is bound to *all* addresses on it -
     // the case where a listener can survive on the previous address with nothing else in the cycle able
     // to see it. Consumed by the port-closed escalation, which is the point at which the symptom has
@@ -1308,8 +1314,8 @@ public sealed class PortSyncService
     {
         if (!_interfaceAddressChangedSinceRebind || !config.FixInterfaceBinding) return false;
         if (manager is not QBittorrentClient client) return false;
-        if (_lastKnownInterfaceAddresses is not { Count: > 0 } live) return false;
-        if (SelectBindAddress(live) is not string pinAddress) return false;
+        if (_lastKnownInterfaceAddresses is not { Addresses.Count: > 0 } baseline) return false;
+        if (SelectBindAddress(baseline.Addresses) is not string pinAddress) return false;
 
         _interfaceAddressChangedSinceRebind = false;
 
@@ -1545,7 +1551,9 @@ public sealed class PortSyncService
             await RepairPinnedAddressAsync(client, interfaceName, pinned, live, config, cancellationToken).ConfigureAwait(false);
         }
         else if (IsWildcardBindAddress(pinned) &&
-                 _lastKnownInterfaceAddresses is { } previous && !previous.SequenceEqual(live, StringComparer.OrdinalIgnoreCase))
+                 _lastKnownInterfaceAddresses is { } baseline &&
+                 string.Equals(baseline.Interface, interfaceName, StringComparison.Ordinal) &&
+                 !baseline.Addresses.SequenceEqual(live, StringComparer.OrdinalIgnoreCase))
         {
             // The wildcard test is load-bearing, not a tidy-up. The first branch is false in *two*
             // cases - no pin, and a pin that is present and correct - and only the first belongs here.
@@ -1571,7 +1579,7 @@ public sealed class PortSyncService
             // conclusion the app now acts on by itself.
             string? connectionStatus = await client.GetConnectionStatusAsync(cancellationToken).ConfigureAwait(false);
             LogManager.Instance.LogMessage(
-                $"The address on '{interfaceName}' changed from {FormatAddressList(previous)} to {FormatAddressList(live)} " +
+                $"The address on '{interfaceName}' changed from {FormatAddressList(baseline.Addresses)} to {FormatAddressList(live)} " +
                 $"while {client.ClientName} is bound to all addresses on it ({client.ClientName} reports " +
                 $"'{connectionStatus ?? "no status"}'). If the forwarded port stops answering, {client.ClientName} will be " +
                 "rebound before the VPN is restarted",
@@ -1583,7 +1591,8 @@ public sealed class PortSyncService
             _interfaceAddressRepairAttempted = false;   // healthy: re-arm for a later drift
         }
 
-        _lastKnownInterfaceAddresses = live;
+        // Keyed to the interface it was read from, so the next cycle only compares like with like.
+        _lastKnownInterfaceAddresses = (interfaceName ?? string.Empty, live);
     }
 
     // Corrects a pin that names an address the adapter no longer has. Writing the live address is a real

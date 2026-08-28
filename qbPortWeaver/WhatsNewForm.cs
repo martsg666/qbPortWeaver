@@ -10,6 +10,18 @@ public partial class WhatsNewForm : Form
 
     private const string ReleaseFeaturesText =
         "New in 2.6.7\n\n" +
+        "Port forwarding that is switched off no longer restarts your VPN\n" +
+        "When your VPN reports that port forwarding is switched off in its own settings, or that the " +
+        "server region you are connected to does not offer it, qbPortWeaver now says so in the log and " +
+        "waits for you to change it. It used to treat that the same as a VPN fault and restart your VPN " +
+        "to try to fix it, again and again on a timer - which could never work, and briefly dropped your " +
+        "connection every single time. This mainly affected PIA, which is the provider that reports the " +
+        "reason clearly enough to tell the two apart.\n\n" +
+        "Auto-recovery stops repeating itself\n" +
+        "Auto-recovery restarts your VPN when it stops providing a working forwarded port. If three " +
+        "restarts in a row do not produce one, it now stops and says so in the log, rather than carrying " +
+        "on indefinitely. It starts again by itself the moment a port comes through. A recovery you run " +
+        "yourself with the Test button is never held back.\n\n" +
         "Auto-recovery reports both of its triggers\n" +
         "Auto-recovery has two triggers that work independently: repeated failed cycles, and a " +
         "forwarded port that stays closed. Until now the Status window's Auto-recovery line only " +

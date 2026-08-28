@@ -38,6 +38,20 @@ public interface IVpnManager
     Task<int?> GetVpnPortAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Whether the most recent <see cref="GetVpnPortAsync"/> call established that no forwarded port will
+    /// be assigned until the user changes something - port forwarding switched off in the provider's own
+    /// settings, or a connected region that does not offer it. This is a durable configuration state, not
+    /// a fault, and must never drive auto-recovery: restarting the VPN cannot create a forward the account
+    /// or region does not offer, so retrying on a timer only tears the tunnel down repeatedly for nothing.
+    /// <para>Distinct from a transient failure to read the port (still establishing, provider busy,
+    /// unreadable output), which stays a failed cycle and does contribute to the recovery threshold.</para>
+    /// <para>Defaults to <see langword="false"/>. Only PIA reports its port-forward state distinctly
+    /// enough to separate durable from transient: ProtonVPN's log carries a port or it does not, and a
+    /// NAT-PMP gateway that refuses a mapping may well grant the next one.</para>
+    /// </summary>
+    bool PortForwardingUnavailable => false;
+
+    /// <summary>
     /// Returns the recovery target passed to <c>AutoRecoveryManager.TriggerRestartAsync</c> or
     /// <c>TriggerCycleAdapterAsync</c>, or <see langword="null"/> if recovery is not supported.
     /// For ProtonVPN and PIA this is the provider token (e.g. "ProtonVPN", "PIA").

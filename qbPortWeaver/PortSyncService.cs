@@ -40,6 +40,8 @@ public sealed class PortSyncService
     private const string VpnProviderStateKey = "vpn.providerUnrecognized";
     private const string DefaultPortStateKey = "client.defaultPortUnusable";
     private const string NatPmpAdapterStateKey = "vpn.natpmpAdapterUnconfigured";
+    private const string PortForwardingUnavailableStateKey = "vpn.portForwardingUnavailable";
+    private const string RecoveryCapStateKey = "vpn.recoveryCapReached";
 
     /// <summary>Raised when a sync cycle completes (success or failure) with the resulting tray status.</summary>
     public event Action<TrayStatus>? SyncCompleted;
@@ -77,6 +79,14 @@ public sealed class PortSyncService
     // trigger rechecks, so the loop costs the user more than doing nothing would.
     // Serialised by MainForm._updateSemaphore (same guarantee as _consecutiveFailedCycles).
     private int _consecutiveDisconnectRestarts;
+    // Auto-recoveries dispatched on the failed-cycle path since the last successful port read. Capped at
+    // MaxConsecutiveRecoveries for the same reason _consecutiveDisconnectRestarts is capped: a remedy that
+    // has not worked three times running is not addressing the cause, and repeating it on a timer costs
+    // the user a torn-down tunnel and interrupted transfers each time. The existing gates do not cover
+    // this - the cycle count and sustained-failure floor both reset with the streak, and the offline
+    // limiter only engages when the machine cannot reach the internet at all.
+    // Serialised by MainForm._updateSemaphore (same guarantee as _consecutiveFailedCycles).
+    private int _consecutiveRecoveries;
     // True once a stale interface binding has been re-applied for the current stale streak. Cleared as
     // soon as the binding reads healthy, so a later drift is repaired again - but a write that does not
     // stick is not retried every cycle, which would be the same unbounded-remedy loop as the restarts.
@@ -116,6 +126,14 @@ public sealed class PortSyncService
     // auto-recovery trigger default: enough for a genuinely transient client fault to clear, few enough
     // that an unfixable cause stops costing the user interrupted transfers.
     private const int MaxDisconnectRestarts = 3;
+    // How many auto-recoveries may run back to back on the failed-cycle path without a single successful
+    // port read in between. A backstop, not a tuning knob: if three service restarts have not produced a
+    // port, the cause is not something a fourth will fix, and each one costs the user a torn-down tunnel.
+    // Cleared by any successful port fetch, so a genuinely intermittent VPN is never permanently
+    // suspended - only an unbroken run of futile recoveries is. Applies to the failed-cycle trigger
+    // alone: the port-closed trigger runs after a successful fetch (which has already cleared the
+    // count), and a recovery the user asked for by hand is never withheld.
+    private const int MaxConsecutiveRecoveries = 3;
     // Started once at construction (the sync service is created once at app startup). Monotonic, so a
     // wall-clock/NTP correction during the grace window - likely just after boot/login - cannot shift it.
     private readonly System.Diagnostics.Stopwatch _uptime = System.Diagnostics.Stopwatch.StartNew();
@@ -631,6 +649,21 @@ public sealed class PortSyncService
                 MarkWaitingForVpn(status, $"Waiting for {vpnManager.ProviderName} to assign a port");
                 return new TargetPortResult(GraceStartupInterval(cfg.UpdateInterval), 0, null);
             }
+            // The provider has told us there is no forwarded port to be had until the user changes
+            // something. That is a configuration state, not a fault, so it is reported and re-checked
+            // on the normal cadence but never counted toward auto-recovery: a service restart cannot
+            // create a forward the region or the account settings do not offer, and dispatching one
+            // every few cycles tears the tunnel down repeatedly for no possible benefit.
+            if (vpnManager.PortForwardingUnavailable)
+            {
+                ResetFailureStreak();
+                SetSyncResult(status, false,
+                    $"{vpnManager.ProviderName} reports port forwarding is unavailable - check that port forwarding " +
+                    "is enabled in the VPN client and that the connected region supports it (auto-recovery does not run for this)",
+                    LogLevel.Warn, PortForwardingUnavailableStateKey);
+                return new TargetPortResult(cfg.UpdateInterval, 0, null);
+            }
+
             await HandlePortDetectionFailureAsync(vpnManager, cfg, cancellationToken).ConfigureAwait(false);
             SetSyncResult(status, false, $"Failed to determine {vpnManager.ProviderName} port", LogLevel.Warn);
             return new TargetPortResult(cfg.UpdateInterval, 0, null);
@@ -638,6 +671,8 @@ public sealed class PortSyncService
 
         ResetFailureStreak(); // Reset only after a successful port fetch
         ResetOfflineRecoveryBackoff(); // A working cycle ends any offline streak, so the next one starts fresh
+        ResetRecoveryCap();            // and ends any run of consecutive recoveries
+        LogManager.Instance.ClearLogState(PortForwardingUnavailableStateKey);
         _graceHoldActive = false; // VPN is up within the grace window - clear the hold without a marker
         status[StatusKeys.VpnPort] = vpnPort.Value;
         LogManager.Instance.LogMessage($"{vpnManager.ProviderName} port found: {vpnPort.Value}", LogLevel.Info);
@@ -1601,6 +1636,16 @@ public sealed class PortSyncService
         _recoverySustainedUntil = null;   // the floor is measured from a streak that no longer exists
     }
 
+    // Ends a run of consecutive recoveries. Called from the successful-port path and when auto-recovery
+    // is switched off, and deliberately not from ResetFailureStreak: the run has to be broken by recovery
+    // actually working, not merely by the failure counter being reset - the dispatch path resets that
+    // streak every time it fires, so clearing the count there would mean the cap was never reached.
+    private void ResetRecoveryCap()
+    {
+        _consecutiveRecoveries = 0;
+        LogManager.Instance.ClearLogState(RecoveryCapStateKey);
+    }
+
     // Triggers auto-recovery if enabled and both gates are cleared: the failure cycle threshold
     // AND enough monotonic time has elapsed since the streak began. The time gate (derived from
     // the normal cycle cadence) prevents a burst of early wakes from fast-tracking recovery during
@@ -1611,9 +1656,27 @@ public sealed class PortSyncService
         if (!cfg.VpnAutoRecoveryEnabled)
         {
             ResetFailureStreak();
+            // Switched off, so nothing can be accumulating: clear the cap too, matching the existing
+            // rule that a disabled feature leaves no stale counters to surprise the user on re-enable.
+            ResetRecoveryCap();
             return;
         }
         if (_consecutiveFailedCycles < cfg.VpnAutoRecoveryTriggerCycles) return;
+
+        // Backstop: stop dispatching once MaxConsecutiveRecoveries have run without a single successful
+        // port read between them. The failure streak is deliberately left running rather than reset - the
+        // failures really are continuing, and the count is what the log line and the Status panel report.
+        // Every later cycle re-enters here and returns on this same check; LogStateChange keeps that to
+        // one line. Cleared by ResetRecoveryCap on the next successful port read.
+        if (_consecutiveRecoveries >= MaxConsecutiveRecoveries)
+        {
+            LogManager.Instance.LogStateChange(RecoveryCapStateKey,
+                $"Suspending auto-recovery for '{displayName}' - {MaxConsecutiveRecoveries} consecutive recoveries " +
+                "did not restore a forwarded port, so repeating it would only keep interrupting the connection. " +
+                "Recovery resumes automatically once a port is read successfully.",
+                LogLevel.Warn);
+            return;
+        }
 
         // Sustained-failure floor: the elapsed time recovery would have taken under normal
         // scheduled cycling ((TriggerCycles - 1) intervals between the first and last failure).
@@ -1658,6 +1721,9 @@ public sealed class PortSyncService
             return;
 
         ResetFailureStreak();
+        // Counted here, past every gate, so it records recoveries that are actually dispatched. Counting
+        // at the trigger sites instead would let held attempts consume the cap without a restart running.
+        _consecutiveRecoveries++;
 
         await DispatchRecoveryAsync(action, recoveryTarget, displayName, cancellationToken,
             triggerLogMessage: $"Triggering '{action}' for '{displayName}' after {count} consecutive failed {TextFormat.PluralizeNoun(count, "cycle")}").ConfigureAwait(false);

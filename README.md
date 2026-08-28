@@ -237,6 +237,11 @@ so the change is live within a few seconds and a restart would only discard sett
 
 Auto-recovery restarts your VPN service (or cycles the adapter for a generic NAT-PMP gateway) when the VPN stops providing a working forwarded port. The **Test** button runs the recovery action on demand.
 
+Two limits keep it from acting where it cannot help, since every recovery briefly takes the tunnel down and interrupts transfers:
+
+- **Conditions a restart cannot fix are excluded.** If the provider reports that port forwarding is switched off in its own settings, or that the connected server region does not offer it, that is logged as a warning and no recovery is triggered, however long the condition lasts.
+- **Consecutive attempts are capped.** After 3 recoveries in a row that fail to produce a forwarded port, auto-recovery is suspended and logged as suspended. It resumes automatically as soon as a port is read successfully. A remedy that has not worked three times running is not addressing the cause, so repeating it on a timer would only keep interrupting the connection. The **Test** button is never affected by the cap.
+
 | Setting | Description | Default |
 |---|---|---|
 | Check that the forwarded port is open after each sync | After each sync, check that the listening port is reachable from the Internet (after a port change and every 5th cycle) | `True` |
@@ -285,8 +290,9 @@ Configured via tray menu → **Media Manager**.
    - During the first 90 seconds after the app starts, if **Wait for VPN on startup** is enabled and the VPN is not yet connected (or has not assigned a port yet), the cycle waits quietly instead: the tray stays neutral, nothing is logged as a failure, the default-port fallback and auto-recovery are held, and the check repeats every 15 seconds (or your update interval, if that is shorter) so the port syncs promptly once the VPN comes up.
    - If **not connected** and **Default port** is 0 (or not a usable port number): skips the cycle and waits for the next interval.
    - If **not connected** and **Default port** is set: uses the default port as the target and continues.
-   - If **Auto-Recovery** is enabled, the failed cycle count reaches the configured threshold, and the failures have persisted long enough (so a brief blip raced through by early re-syncs is ignored): automatically triggers recovery (via the helper Windows service) - for ProtonVPN and PIA (direct or NAT-PMP mode), restarts the VPN service and client; for NAT-PMP with a generic gateway, cycles the network adapter.
+   - If **Auto-Recovery** is enabled, the failed cycle count reaches the configured threshold, and the failures have persisted long enough (so a brief blip raced through by early re-syncs is ignored): automatically triggers recovery (via the helper Windows service) - for ProtonVPN and PIA (direct or NAT-PMP mode), restarts the VPN service and client; for NAT-PMP with a generic gateway, cycles the network adapter. Auto-recovery stops after 3 consecutive attempts that do not produce a forwarded port, and resumes automatically once one is read successfully.
 3. Reads the VPN-assigned port from the configured provider (skipped if using the default port fallback). A port outside the usable range (1-65535) is logged as a warning and ignored, and the cycle continues as if no port had been reported. If port detection fails despite the VPN being connected, the failed cycle counter increments and auto-recovery may trigger.
+   - If the provider instead reports that port forwarding is *unavailable* rather than simply failing to return a port, no port update is made, the reason is logged once as a warning, and the failed cycle counter is **not** incremented, so auto-recovery never runs for it. Restarting a VPN cannot create a forwarded port that is switched off in the provider's own settings or is not offered by the connected server region. The check repeats on the normal interval, so the port syncs as soon as the condition is corrected. Currently only PIA distinguishes these states (`Inactive` and `Unavailable`); a provider that simply reports no port is treated as an ordinary failure.
 4. Checks if the configured client is running (optionally force-starts it if configured).
 5. Connects to the client and retrieves the current listening port.
    - For qBittorrent and Nicotine+: also reads the bound network interface for mismatch detection.
@@ -350,6 +356,8 @@ Configured via tray menu → **Media Manager**.
 - Use **OpenVPN (UDP)** as the protocol to avoid DNS resolution issues that can occur with WireGuard.
 - Set PIA to **start with Windows**.
 - Set `VPN Provider` to `PIA` in qbPortWeaver Settings.
+
+> **Note:** PIA only assigns a forwarded port on server regions that support it, and only when **Port Forwarding** is enabled in its settings. If neither is the case, qbPortWeaver logs a warning and waits rather than trying to recover, since no restart can produce a port that is not on offer. Enable debug logging to see the exact state PIA reports (`Attempting`, `Inactive`, `Unavailable`, `Failed`, or a port number).
 
 ### 5. NAT-PMP Configuration
 
@@ -453,7 +461,8 @@ The application is designed to always recover. A failing cycle never crashes the
 
 - If the VPN provider is not connected and no default port is configured, the cycle is skipped and the issue is logged.
 - If the VPN provider is not connected and a default port is configured, the default port is applied instead.
-- If the VPN port cannot be determined, the issue is logged and the update is skipped. If Auto-Recovery is enabled, repeated failures trigger automatic recovery.
+- If the VPN port cannot be determined, the issue is logged and the update is skipped. If Auto-Recovery is enabled, repeated failures trigger automatic recovery, up to the consecutive-attempt cap described under Auto-Recovery.
+- If the VPN provider reports that port forwarding is unavailable (switched off in its settings, or not offered by the connected region), the reason is logged once and the update is skipped. This is a configuration condition rather than a fault, so it never triggers automatic recovery.
 - If the client is not running and cannot be force-started or updated, errors are logged and the loop continues after the next interval.
 
 ### Media Manager

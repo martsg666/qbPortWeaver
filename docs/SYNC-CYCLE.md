@@ -22,7 +22,9 @@ flowchart TD
 
     PORT --> PORT_OK{Port found?}
     PORT_OK -- Yes --> CLIENT[Ensure client is running]
-    PORT_OK -- No --> HANDLE_FAIL[Increment counter + try auto-recovery]
+    PORT_OK -- No --> PF_STATE{Provider reports\nforwarding unavailable?}
+    PF_STATE -- Yes --> ERROR_PF([ERROR: Port forwarding unavailable\ncounter not advanced, no recovery])
+    PF_STATE -- No --> HANDLE_FAIL[Increment counter + try auto-recovery]
     HANDLE_FAIL --> ERROR_PORT([ERROR: Failed to determine port])
 
     DISCONNECTED --> DEFAULT{Default port usable?}
@@ -57,6 +59,7 @@ flowchart TD
     VERIFY_TEST --> SUCCESS([SUCCESS])
 
     ERROR_PORT --> FINALLY
+    ERROR_PF --> FINALLY
     ERROR_CLIENT --> FINALLY
     SKIP --> FINALLY
     SUCCESS --> FINALLY
@@ -76,10 +79,12 @@ The sync cycle instantiates a provider-specific `IVpnManager` based on the confi
 |------------|--------------------|-------------------------------------------------|
 | Disabled   | _(none)_           | Port sync is skipped entirely; cycle proceeds to Media Manager |
 | ProtonVPN  | `ProtonVpnManager` | Parses the ProtonVPN log file for the last assigned port |
-| PIA        | `PiaVpnManager`    | Runs `piactl get portforward` and parses stdout |
+| PIA        | `PiaVpnManager`    | Runs `piactl get portforward` and parses stdout, classifying the four non-numeric states (see below) |
 | NAT-PMP    | `NatPmpManager`    | Sends a port mapping request (RFC 6886) to the gateway, for UDP then TCP |
 
 `Disabled` is the default for new installations.
+
+> **PIA port-forward states:** `piactl get portforward` returns either a port number or one of four words, and the difference between them decides whether auto-recovery may run. `Inactive` (PIA disconnected, or port forwarding switched off in its settings) and `Unavailable` (the connected region does not offer it) describe conditions no restart can change, so `PiaVpnManager` reports them through `IVpnManager.PortForwardingUnavailable` and the cycle takes the no-recovery path described under VPN Disconnection Handling. `Attempting` (still connecting and assigning) and `Failed` (PIA tried to assign a port and did not succeed) stay ordinary failed cycles and still count toward the recovery threshold, since reconnecting is a plausible remedy for both. Output that parses as none of these is not classified either way and is likewise treated as an ordinary failure. The flag is rewritten on every port read, including the exception path, so it can never outlive the evidence for it. `PortForwardingUnavailable` is a default interface member returning `false`: ProtonVPN's log carries a port or it does not, and a NAT-PMP gateway that refuses one mapping may grant the next, so neither can make this distinction.
 
 > **ProtonVPN adapter names:** ProtonVPN's tunnel adapter is named `ProtonVPN` (standard WireGuard) or `ProtonVPN TUN` (OpenVPN) on the earlier protocols, and `ProTUN` on the newer Proton Protocols (Proton WireGuard, Proton Stealth). The earlier names are matched via the registry-driven `protonVpnAdapterName` value (bidirectional substring) and `ProTUN` via `protonVpnNativeAdapterName`, so detection and interface matching work across protocols without reconfiguration.
 
@@ -121,7 +126,9 @@ Right after the app starts, the VPN is often still connecting (VPN clients launc
 
 ## VPN Disconnection Handling
 
-When the VPN is detected as disconnected - or port detection fails despite the VPN being connected - the cycle increments a consecutive-failure counter. This counter drives two behaviors:
+When the VPN is detected as disconnected - or port detection fails despite the VPN being connected - the cycle increments a consecutive-failure counter. One case is excluded before the counter is touched at all: if the provider reported that port forwarding is *unavailable* rather than merely failing to produce a port (see **Port Forwarding Reported Unavailable** below), the cycle reports the condition and returns without registering a failure.
+
+This counter drives two behaviors:
 
 1. **Default port fallback** - if `DefaultPort` is a usable port, the cycle applies it to the client so it remains functional (typically on a non-VPN port). If it is `0`, or outside the usable range, the cycle is skipped entirely.
 
@@ -136,6 +143,28 @@ When the VPN is detected as disconnected - or port detection fails despite the V
      **Log levels around the force-kill escalation.** The helper's WARN count travels back over the same pipe as the ERROR count and also raises the tray warning badge, so what the helper logs at Warn is a user-visible signal, not just text in a file. Levels are therefore assigned by outcome, not by drama: *announcing* an escalation to a force-kill is **Info** (it is the designed fallback), a stage that *succeeds* is **Info** ("force-killed via ..."), and only a stage that *fails* is **Warn** ("Failed to ...", "could not be killed", "still running"). This is not a rare path - ProtonVPN's service does not accept an SCM stop while its tunnel is up, so a normal recovery times out after `ServiceOperationTimeoutMs` and force-kills **every time**; its own restart-on-failure policy then usually brings it back before the helper issues the start, which is why the log often reads "is already running". Logging that sequence at Warn made every successful recovery badge the tray as though something had gone wrong. The main app follows the same rule: `ProcessControl` logs only kill outcomes, and `AutoRecoveryManager` logs a successful kill at Info.
      **Protocol version.** The helper reports which protocol version it speaks on every response (`v=1`), and a response without that key came from a helper built before versioning existed. That is what lets the app tell an *out-of-date* helper from an *unreachable* one and say "reinstall qbPortWeaver to update it" rather than leaving both looking like a generic failure. The version travels on the response rather than the request because the two halves upgrade independently and the request format is frozen at three fields: an already-installed helper parses requests with `Split('|', 3)`, so a fourth field either shifts the action out of position (the old helper then falls through to its unknown-action branch but **still writes a normal success response**, reporting a recovery that never ran) or lands inside the session token (rejected as a token mismatch). Responses are `key=value` pairs and the client skips keys it does not recognise, so response fields are append-only and safe to extend; anything the helper must be *told* needs a new action name instead, which an old helper rejects loudly rather than silently.
    - If the target matches a known provider's client process, restarts it in the user session
+
+### Port Forwarding Reported Unavailable
+
+`IVpnManager.PortForwardingUnavailable` separates *the provider could not tell us a port* from *the provider told us there is no port to be had*. Only the first is a fault. The second is a configuration state - port forwarding switched off in the provider's own settings, or a connected region that does not offer it - and no service restart can change either. `HandleVpnConnectedAsync` checks the flag ahead of `HandlePortDetectionFailureAsync`, so this path:
+
+- Resets the failure streak rather than advancing it, which means the recovery threshold is never reached and no recovery is ever dispatched for this condition, however long it lasts.
+- Reports the reason through `SetSyncResult` with a state key, so the explanation is logged once (at `Warn`) rather than on every cycle, and cleared on the next successful port read.
+- Returns the normal update interval, so the port syncs on the next cycle once the user corrects the setting or moves to a region that supports forwarding.
+
+The cycle is still recorded as an error rather than skipped, deliberately: the app cannot do the job it was installed for, and a neutral tray state would hide a condition the user has to act on. What changes is the *response*, not the visibility.
+
+This exists because the alternative is actively harmful, not merely wasteful. Recovery for ProtonVPN and PIA is a VPN service restart, so dispatching it against a durable condition tears the tunnel down, drops every peer connection, and rebuilds them - on a fixed cadence, forever, with no possible benefit. The observable symptom is a transfer that never reaches full speed because it never gets long enough between reconnects to do so.
+
+### Consecutive Recovery Cap
+
+`MaxConsecutiveRecoveries` (3) bounds how many auto-recoveries the **failed-cycle trigger** may dispatch without a single successful port read between them. `_consecutiveRecoveries` is incremented in `TriggerRecoveryIfDueAsync` past every other gate, at the point a recovery is actually dispatched, so attempts held by the connectivity rate limiter do not consume it. It is cleared by a successful port fetch and when auto-recovery is switched off, and deliberately **not** by `ResetFailureStreak` - the dispatch path resets that streak every time it fires, so clearing the count there would mean the cap was never reached.
+
+Once the cap is hit, the check returns before the sustained-failure floor and the rate limiter, logging through `LogStateChange` so the suspension is stated once rather than every cycle. The failure streak is left running rather than reset: the failures genuinely are continuing, and the count is what the per-cycle log line and the Status panel's Auto-recovery line report.
+
+The reasoning mirrors `MaxDisconnectRestarts` (see Restart-on-Disconnect Cap): a remedy that has failed three times running is not addressing the cause, and each repetition costs the user a torn-down tunnel and interrupted transfers. None of the pre-existing gates covered this. The cycle count and the sustained-failure floor both reset with the streak, so they bound how *fast* recoveries arrive but not how *many*; and the connectivity rate limiter only engages when the machine cannot reach the internet at all, which is precisely not the case when the VPN is up and merely portless. Recovery resumes on its own the moment a port reads successfully, so an intermittently failing VPN is never permanently suspended - only an unbroken run of futile recoveries is.
+
+The cap applies to the failed-cycle trigger alone. The port-closed trigger runs only after a successful port fetch, which has already cleared the count, and is one-shot in its own right; the Settings **Test** button bypasses every gate by design, and a recovery the user asked for by hand is never withheld.
 
 ### Connectivity Rate Limiter
 
@@ -187,9 +216,12 @@ Cycle 4: VPN connected, port failed  → counter=3 → TRIGGER RECOVERY → coun
 
 ### Counter Reset Rules
 
-The counter resets in two cases (the streak start time is simply re-stamped when the next streak begins):
+The counter resets in three cases (the streak start time is simply re-stamped when the next streak begins):
 - **Successful port detection**: `GetVpnPortAsync` returns a valid port. Applies uniformly to all providers; both VPN disconnection and port detection failure accumulate toward the threshold.
 - **Auto-recovery disabled**: if the feature is turned off, the counter resets each cycle so it does not carry over stale state when the feature is re-enabled.
+- **Port forwarding reported unavailable**: the provider stated there is no port to be had, so the cycle resets rather than advances the counter and recovery is never reached (see Port Forwarding Reported Unavailable).
+
+The separate consecutive-recovery count (see Consecutive Recovery Cap) follows different rules: it is cleared only by a successful port detection or by auto-recovery being switched off, never by a streak reset, since every dispatch resets the streak by design.
 
 All resets flow through a single `ResetFailureStreak` helper. It only zeroes the counter; the time floor never reads a stale start time because the timestamp is re-stamped on the next streak's first failure and is only consulted while the counter is non-zero.
 
@@ -420,7 +452,7 @@ The `status` field is one of:
 
 ### Standing Conditions in the Log
 
-Some conditions are re-evaluated every cycle but stay true until the user acts on them: a client bound to the wrong network interface, a stale qBittorrent interface token, a NAT-PMP lease shorter than the sync interval, an unrecognised VPN provider, an unusable default port, and an unset NAT-PMP adapter. Logging those once per cycle buries the entries that matter, and at `Warn` or above it also drives the tray's unviewed-warning count up indefinitely - a badge the user cannot clear by fixing anything.
+Some conditions are re-evaluated every cycle but stay true until the user acts on them: a client bound to the wrong network interface, a stale qBittorrent interface token, a NAT-PMP lease shorter than the sync interval, an unrecognised VPN provider, an unusable default port, an unset NAT-PMP adapter, a provider reporting port forwarding unavailable, and auto-recovery suspended at its consecutive-attempt cap. Logging those once per cycle buries the entries that matter, and at `Warn` or above it also drives the tray's unviewed-warning count up indefinitely - a badge the user cannot clear by fixing anything.
 
 These are written through `LogManager.LogStateChange`, which records the last message logged under a key and writes again only when that message *changes*. Each site pairs it with a `ClearLogState` on the path where the condition clears, so a later recurrence is reported rather than swallowed as a duplicate. Because the comparison is on the message and not just the key, a condition that changes - a different adapter goes wrong, a different port becomes unusable - still announces itself.
 
@@ -491,11 +523,14 @@ RunAsync
      ├─ HandleVpnConnectedAsync (if connected)
      │   ├─ IVpnManager.GetVpnPortAsync
      │   ├─ MarkWaitingForVpn (startup grace: no port assigned yet)
+     │   ├─ SetSyncResult (if IVpnManager.PortForwardingUnavailable - reports and returns,
+     │   │                 no failure registered, recovery never reached)
      │   ├─ HandlePortDetectionFailureAsync (if port null, all providers)
      │   │   └─ RegisterFailureAndTryRecoveryAsync
      │   │       ├─ BuildCycleCountMessage
      │   │       └─ TriggerRecoveryIfDueAsync
-     │   │           └─ DispatchRecoveryAsync
+     │   │           └─ DispatchRecoveryAsync (held once _consecutiveRecoveries hits the cap)
+     │   ├─ ResetRecoveryCap (on a successful port read)
      │   └─ WarnIfNatPmpLeaseTooShort (NAT-PMP only)
      └─ EnsureRunningAndUpdatePortAsync
          ├─ EnsureClientRunningAsync

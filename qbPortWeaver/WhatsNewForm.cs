@@ -23,8 +23,8 @@ public partial class WhatsNewForm : Form
         "outside while no one can actually connect to you. If the forwarded port stops answering after " +
         "an address change, qbPortWeaver now nudges qBittorrent into listening again before trying " +
         "anything heavier like restarting your VPN, and your qBittorrent settings are left exactly as " +
-        "you had them. With \"Fix the network interface binding when it goes stale\" enabled, it also " +
-        "corrects an address that no longer exists as soon as it sees it.\n\n" +
+        "you had them. It also corrects an address that no longer exists as soon as it sees one. Both " +
+        "need the port check and the binding fix switched on, which they are by default.\n\n" +
         "Auto-recovery stops repeating itself\n" +
         "Auto-recovery restarts your VPN when it stops providing a working forwarded port. If three " +
         "restarts in a row do not produce one, it now stops and says so in the log, rather than carrying " +

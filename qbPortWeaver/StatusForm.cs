@@ -341,6 +341,9 @@ public partial class StatusForm : Form
     // wording left a reader unsure whether anything was actually going to happen. "Failed" is
     // load-bearing: a cycle that succeeds ends the streak, and nothing restarts.
     private const string RecoveryNextCycleText = "Will trigger on the next failed cycle";
+    // No countdown, unlike the two holds: this state ends on a successful port read rather than at a
+    // deadline. Says what stopped it and what starts it again, so the row is not simply a dead end.
+    private const string RecoverySuspendedText = "Suspended - restarts did not restore the port, resumes when one is found";
 
     // What the Auto-recovery row says, and whether it warrants the warning accent. Split from the
     // display above so every outcome routes through one place that also sets the tooltip - with the
@@ -385,6 +388,11 @@ public partial class StatusForm : Form
     // through to the port-closed trigger, and so neither description drives this method's complexity.
     private static string? DescribeFailedCycleRecovery(StatusSnapshot s)
     {
+        // Checked ahead of both holds because it outranks them: they defer the next recovery, this one
+        // says no further recovery will be attempted at all until a port reads successfully. Reporting a
+        // countdown above it would promise a retry that is not coming.
+        if (s.RecoverySuspended) return RecoverySuspendedText;
+
         // Both holds are reported, each naming its own cause. The offline one is checked first only
         // because it is the more serious: nothing can be recovered until the connection returns,
         // whereas the sustained floor clears on its own within a couple of cycles.

@@ -317,6 +317,13 @@ public sealed class PortSyncService
         // panel names the cause - collapsing them would make the row say "no internet connection"
         // during an ordinary blip.
         public const string RecoverySustainedUntil = "recoverySustainedUntil";
+        // True while the consecutive-recovery cap is suspending the failed-cycle trigger. Published for
+        // the same reason the two holds above are: this is a third gate that stops recovery firing, and
+        // without it the panel would show the failure streak climbing past the trigger threshold with
+        // nothing to say why nothing happens - the exact gap the sustained-failure key was added to close.
+        // A flag rather than an instant, because this hold has no deadline: it ends on a successful port
+        // read, which no countdown can predict.
+        public const string RecoverySuspended = "recoverySuspended";
         // The port-closed recovery trigger, which is independent of the failed-cycle one above: its
         // own setting, its own threshold, counted in confirmed-closed checks rather than in cycles.
         // Published for the same reason the failed-cycle counters are - without them the Status panel
@@ -365,6 +372,7 @@ public sealed class PortSyncService
             [StatusKeys.RecoveryFailedCycles] = 0,
             [StatusKeys.RecoveryTriggerCycles] = 0,
             [StatusKeys.RecoverySustainedUntil] = null,
+            [StatusKeys.RecoverySuspended] = false,
             [StatusKeys.PortClosedRecoveryEnabled] = false,
             [StatusKeys.PortClosedRecoveryChecks] = 0,
             [StatusKeys.PortClosedRecoveryTriggerChecks] = 0,
@@ -405,6 +413,9 @@ public sealed class PortSyncService
                 // inside RunCoreAsync, so only the finally sees this cycle's final count.
                 status[StatusKeys.RecoveryFailedCycles] = _consecutiveFailedCycles;
                 status[StatusKeys.RecoverySustainedUntil] = _recoverySustainedUntil;
+                // Read here with the streak, for the same reason: the dispatch path inside RunCoreAsync
+                // is what advances the count, so only the finally sees this cycle's value.
+                status[StatusKeys.RecoverySuspended] = _consecutiveRecoveries >= MaxConsecutiveRecoveries;
                 // Read here for the same reason as the failure streak above: both are mutated by the
                 // verification path inside RunCoreAsync, so only the finally sees this cycle's values.
                 status[StatusKeys.PortClosedRecoveryChecks] = _confirmedClosedCount;

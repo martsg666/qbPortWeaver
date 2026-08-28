@@ -695,7 +695,15 @@ public sealed class PortSyncService
             // every few cycles tears the tunnel down repeatedly for no possible benefit.
             if (vpnManager.PortForwardingUnavailable)
             {
-                ResetFailureStreak();
+                // The streak is neither advanced nor cleared here, and the difference matters. Not
+                // advancing is what keeps this condition from driving recovery, which was the whole
+                // requirement. Clearing it - which this did at first - is a stronger claim than the
+                // reasoning supports, and PIA gives a reason to care: it reports `Inactive` both for
+                // "port forwarding is off" and for "PIA is disconnected", and the connected check and
+                // the port read are two separate piactl invocations. A tunnel dropping between them
+                // lands here while genuinely broken, and clearing the streak on that reading would
+                // discard evidence gathered from real failures, so a flapping tunnel could keep
+                // resetting its way below the threshold and never be recovered.
                 SetSyncResult(status, false,
                     $"{vpnManager.ProviderName} reports port forwarding is unavailable - check that port forwarding " +
                     "is enabled in the VPN client and that the connected region supports it (auto-recovery does not run for this)",

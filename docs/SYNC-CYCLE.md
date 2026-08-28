@@ -148,7 +148,13 @@ This counter drives two behaviors:
 
 `IVpnManager.PortForwardingUnavailable` separates *the provider could not tell us a port* from *the provider told us there is no port to be had*. Only the first is a fault. The second is a configuration state - port forwarding switched off in the provider's own settings, or a connected region that does not offer it - and no service restart can change either. `HandleVpnConnectedAsync` checks the flag ahead of `HandlePortDetectionFailureAsync`, so this path:
 
-- Resets the failure streak rather than advancing it, which means the recovery threshold is never reached and no recovery is ever dispatched for this condition, however long it lasts.
+- Leaves the failure streak untouched: it is not advanced, so the recovery threshold is never reached
+  and no recovery is ever dispatched for this condition however long it lasts, and it is not cleared
+  either. Clearing it was the original behaviour and claimed more than the reasoning supports. PIA
+  reports `Inactive` both for "port forwarding is off" and for "PIA is disconnected", and the
+  connected check and the port read are separate `piactl` invocations, so a tunnel that drops between
+  them arrives here while genuinely broken - and clearing on that reading would discard evidence from
+  real failures, letting a flapping tunnel reset its way below the threshold indefinitely.
 - Reports the reason through `SetSyncResult` with a state key, so the explanation is logged once (at `Warn`) rather than on every cycle, and cleared on the next successful port read.
 - Returns the normal update interval, so the port syncs on the next cycle once the user corrects the setting or moves to a region that supports forwarding.
 
@@ -226,10 +232,9 @@ Cycle 4: VPN connected, port failed  → counter=3 → TRIGGER RECOVERY → coun
 
 ### Counter Reset Rules
 
-The counter resets in three cases (the streak start time is simply re-stamped when the next streak begins):
+The counter resets in two cases (the streak start time is simply re-stamped when the next streak begins):
 - **Successful port detection**: `GetVpnPortAsync` returns a valid port. Applies uniformly to all providers; both VPN disconnection and port detection failure accumulate toward the threshold.
 - **Auto-recovery disabled**: if the feature is turned off, the counter resets each cycle so it does not carry over stale state when the feature is re-enabled.
-- **Port forwarding reported unavailable**: the provider stated there is no port to be had, so the cycle resets rather than advances the counter and recovery is never reached (see Port Forwarding Reported Unavailable).
 
 The separate consecutive-recovery count (see Consecutive Recovery Cap) follows different rules: it is cleared only by a successful port detection or by auto-recovery being switched off, never by a streak reset, since every dispatch resets the streak by design.
 

@@ -17,6 +17,14 @@ public partial class WhatsNewForm : Form
         "to try to fix it, again and again on a timer - which could never work, and briefly dropped your " +
         "connection every single time. This mainly affected PIA, which is the provider that reports the " +
         "reason clearly enough to tell the two apart.\n\n" +
+        "qBittorrent is nudged back into listening after a VPN reconnect\n" +
+        "When a VPN reconnects, the adapter usually keeps its name but is given a new address. " +
+        "qBittorrent can be left listening on the previous one, which looks perfectly healthy from the " +
+        "outside - the adapter is there, the settings are right - while no one can connect to you. " +
+        "qbPortWeaver now watches for this. If qBittorrent is set to a specific address that no longer " +
+        "exists it corrects it right away, and if the forwarded port stops answering after the address " +
+        "changed it nudges qBittorrent into listening again before it tries anything heavier, like " +
+        "restarting your VPN. Your qBittorrent settings are left exactly as you had them.\n\n" +
         "Auto-recovery stops repeating itself\n" +
         "Auto-recovery restarts your VPN when it stops providing a working forwarded port. If three " +
         "restarts in a row do not produce one, it now stops and says so in the log, rather than carrying " +

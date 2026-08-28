@@ -329,10 +329,10 @@ the interesting comparison is against the *previous* cycle and the client is con
 once per cycle. `_lastKnownInterfaceAddresses` therefore lives on the service. Two conditions are
 distinguished, because they need different remedies:
 
-| condition | reported as |
+| condition | response |
 |---|---|
-| A pinned address the adapter no longer carries | `Warn`, state-keyed - definite, and definitely broken |
-| The adapter's addresses moved while the binding is "all addresses" | `Info` - a normal VPN reconnect, logged because it is the moment a stale listener would be created |
+| A pinned address the adapter no longer carries | Provably broken - the client cannot be listening. Repaired on detection, like a stale token: the pin is re-pointed at a live address. `Warn`, state-keyed, and warn-only when `fixInterfaceBinding` is off. |
+| The adapter's addresses moved while the binding is "all addresses" | What an ordinary reconnect produces, and nothing observable here says whether the client coped. Logged at `Info` and **arms** the port-closed escalation below; nothing is written yet. |
 
 The second line also carries qBittorrent's connection status, read only on that transition rather
 than every cycle. That answers a question the source cannot: whether the client reports itself
@@ -343,13 +343,40 @@ An unreadable list (older qBittorrent, unreachable API, nothing bound) is treate
 healthy, and leaves the remembered addresses alone - so the next readable cycle compares against the
 last real observation and a change spanning the gap is still reported.
 
-**This check writes nothing, deliberately.** Both available remedies carry permanent consequences the
-evidence does not yet choose between. Pinning the current address forces the rebind and is stricter
-than "all addresses", but converts a default setting into one this app must maintain on every
-reconnect, and which goes stale and breaks the client if this app is ever removed. Restarting
-qBittorrent leaves no residue but is the heaviest action available. Beyond that, whether writing the
-address makes libtorrent rebuild its listen socket at all is runtime behaviour that cannot be
-established by reading source - which is exactly what this reporting exists to settle.
+#### Forcing the rebind
+
+qBittorrent acts on a preference only when its value actually **changes**, so re-writing the binding
+unchanged is a no-op and cannot move a socket off a previous address. A change is therefore required,
+and `ForceInterfaceRebindAsync` makes one by pinning an address:
+
+- **Stale pin:** write the live address. One write. The client stays pinned because that was the
+  user's own setting - only its value was wrong.
+- **Bound to all addresses:** write a live address, then write the field back to empty. Both writes
+  are real changes, so both force a rebuild, and the stored configuration ends byte-identical to how
+  it started. No maintenance burden, and nothing left behind if this app is removed.
+
+The intermediate pin is *stricter* than "all addresses" - one address on the same adapter - so unlike
+clearing the interface token it opens no window for traffic outside the tunnel. If the process dies
+between the two writes the client is left pinned to what was then a valid address, which is benign
+until that address next moves, at which point the stale-pin row above reports and repairs it.
+
+The address is chosen by `SelectBindAddress`: IPv4 first, since that is what a forwarded port is
+granted for by every provider here, and link-local (`169.254.`, `fe80:`) excluded outright rather
+than used as a last resort. No usable address means the adapter is mid-negotiation, and the right
+move is to wait for the next cycle rather than write something about to be wrong again.
+
+**The escalation.** For the ambiguous case, `TryRebindClientAddressAsync` runs inside
+`MaybeTriggerPortClosedRecoveryAsync`, ahead of the VPN restart dispatch, and only when the port is
+confirmed closed *and* the adapter changed address. That ordering is the point: restarting the VPN
+cannot move a listener stranded on the old address, and costs the user the tunnel to discover it. The
+rebind is tried first, the trigger deliberately stays **armed**, and the confirmed-closed count resets
+so the next escalation needs fresh evidence - if the rebind did not help, that round restarts the VPN
+exactly as before. One attempt per address change, whether or not the write succeeded, so a rebind
+that does not work escalates rather than repeating.
+
+What still cannot be established by reading source is whether `setPreferences` on the address makes
+libtorrent rebuild the socket at all. The design does not depend on knowing: the port check on the
+following cycles reports whether it worked, and the VPN restart remains the fallback either way.
 
 ### Restart-on-Disconnect Cap *(qBittorrent only)*
 
@@ -584,8 +611,10 @@ RunAsync
          ├─ CheckAndRepairInterfaceBindingAsync (qBittorrent only; runs whatever the provider)
          │   ├─ QBittorrentClient.CheckInterfaceBindingAsync (stale token detection)
          │   └─ QBittorrentClient.RepairInterfaceBindingAsync (if fixInterfaceBinding; once per streak)
-         ├─ CheckInterfaceAddressAsync (qBittorrent only; reports, never writes)
+         ├─ CheckInterfaceAddressAsync (qBittorrent only)
          │   ├─ QBittorrentClient.GetInterfaceAddressStateAsync (pinned address + live addresses)
+         │   ├─ RepairPinnedAddressAsync (stale pin; if fixInterfaceBinding, once per streak)
+         │   │   └─ QBittorrentClient.ForceInterfaceRebindAsync
          │   └─ IManagedClient.GetConnectionStatusAsync (only on an address change)
          ├─ UpdatePortAndNotifyAsync (when ports differ)
          │   ├─ ApplyPortUpdateAsync
@@ -601,6 +630,8 @@ RunAsync
          │   ├─ HandlePortOpenResult (re-arms port-closed recovery)
          │   ├─ HandlePortClosedResult (PortVerificationFailed event + history entry on confirmed transition)
          │   └─ MaybeTriggerPortClosedRecoveryAsync (one-shot)
+         │       ├─ TryRebindClientAddressAsync (qBittorrent; if the adapter changed address)
+         │       │   └─ QBittorrentClient.ForceInterfaceRebindAsync (holds the restart one round)
          │       └─ DispatchRecoveryAsync
          └─ SetSyncResult
 ```

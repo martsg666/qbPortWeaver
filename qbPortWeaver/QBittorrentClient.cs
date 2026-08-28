@@ -363,6 +363,56 @@ public sealed class QBittorrentClient : ManagedClientBase
     }
 
     /// <summary>
+    /// Forces libtorrent to rebuild its listen sockets by changing <c>current_interface_address</c>, then
+    /// leaving it at <paramref name="finalAddress"/>. Returns <see langword="true"/> when every write
+    /// succeeded.
+    /// </summary>
+    /// <remarks>
+    /// <para>qBittorrent acts on a preference only when its value actually <em>changes</em>, so writing the
+    /// binding back unchanged is a no-op and cannot fix a socket left on a previous address. A change is
+    /// therefore required, which is why this pins an address rather than re-writing the interface.</para>
+    /// <para>When <paramref name="finalAddress"/> differs from <paramref name="pinAddress"/> the pin is
+    /// released again in a second write, so the stored configuration ends exactly as it started. That
+    /// matters: pinning permanently would convert qBittorrent's default "all addresses" into a value this
+    /// app has to maintain on every reconnect, and which goes stale and breaks the client if this app is
+    /// ever removed. The intermediate pin is *stricter* than "all addresses" - it is one address on the
+    /// same adapter - so unlike clearing the interface token it opens no window for traffic outside the
+    /// tunnel.</para>
+    /// <para>If the process dies between the two writes the client is left pinned to what was then a
+    /// valid address. That is benign until the adapter's address next moves, at which point the pinned-
+    /// address check reports it and repairs it like any other stale pin.</para>
+    /// </remarks>
+    internal async Task<bool> ForceInterfaceRebindAsync(string pinAddress, string finalAddress, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrEmpty(pinAddress)) return false;
+
+        if (!await WriteInterfaceAddressAsync(pinAddress, cancellationToken).ConfigureAwait(false)) return false;
+        _storedInterfaceAddress = pinAddress;
+
+        // Equal means the pin *is* the intended end state (a stale pin corrected to a live address), so
+        // there is nothing to release and a second write would be the no-op this method exists to avoid.
+        if (string.Equals(pinAddress, finalAddress, StringComparison.OrdinalIgnoreCase)) return true;
+
+        if (!await WriteInterfaceAddressAsync(finalAddress, cancellationToken).ConfigureAwait(false)) return false;
+        _storedInterfaceAddress = finalAddress;
+        return true;
+    }
+
+    // One setPreferences write of current_interface_address. Empty is a legitimate value here - it means
+    // "all addresses on the bound adapter" - and is the opposite of an empty interface *token*, which
+    // would mean every adapter on the machine and is refused in RepairInterfaceBindingAsync.
+    private Task<bool> WriteInterfaceAddressAsync(string address, CancellationToken cancellationToken)
+    {
+        string jsonBody = JsonSerializer.Serialize(new Dictionary<string, string>
+        {
+            ["current_interface_address"] = address,
+        });
+
+        return PostPreferencesAsync(jsonBody, $"Failed to set the {ClientName} network interface address",
+            LogLevel.Warn, cancellationToken);
+    }
+
+    /// <summary>
     /// Re-points the network-interface binding at <paramref name="expectedToken"/>, the live token for the
     /// adapter qBittorrent already names. Returns <see langword="true"/> when the write succeeded.
     /// </summary>

@@ -99,6 +99,16 @@ public sealed class PortSyncService
     // question this answers is precisely "did this change since last time".
     // Serialised by MainForm._updateSemaphore (same guarantee as _consecutiveFailedCycles).
     private IReadOnlyList<string>? _lastKnownInterfaceAddresses;
+    // Set when the bound adapter's addresses move while the client is bound to *all* addresses on it -
+    // the case where a listener can survive on the previous address with nothing else in the cycle able
+    // to see it. Consumed by the port-closed escalation, which is the point at which the symptom has
+    // actually been confirmed; cleared after one rebind attempt so a failed attempt escalates to the VPN
+    // restart rather than repeating itself. Not a fault on its own: an ordinary reconnect sets it too.
+    // Serialised by MainForm._updateSemaphore (same guarantee as _consecutiveFailedCycles).
+    private bool _interfaceAddressChangedSinceRebind;
+    // One repair per stale-pin streak, mirroring _interfaceBindingRepairAttempted: if the write lands and
+    // the pin is still wrong next cycle, something else is writing it and repeating would be its own loop.
+    private bool _interfaceAddressRepairAttempted;
     // One latch per condition, each owned by exactly one method. They must not be shared:
     // CheckInterfaceMatch clears its latch on every healthy cycle, which would defeat the dedupe for
     // any other condition writing to the same field - a persistent binding warning would then balloon
@@ -1070,8 +1080,8 @@ public sealed class PortSyncService
         {
             await CheckAndRepairInterfaceBindingAsync(qbClient, currentInterfaceName, config, cancellationToken).ConfigureAwait(false);
             // And the half neither check above can see: the address under a binding whose name and
-            // token are both still correct. Reports only - see CheckInterfaceAddressAsync.
-            await CheckInterfaceAddressAsync(qbClient, currentInterfaceName, cancellationToken).ConfigureAwait(false);
+            // token are both still correct - see CheckInterfaceAddressAsync.
+            await CheckInterfaceAddressAsync(qbClient, currentInterfaceName, config, cancellationToken).ConfigureAwait(false);
         }
 
         await CheckClientSettingsConflictsAsync(manager, cancellationToken).ConfigureAwait(false);
@@ -1180,7 +1190,7 @@ public sealed class PortSyncService
         else
         {
             HandlePortClosedResult(manager.ClientName, port, config);
-            await MaybeTriggerPortClosedRecoveryAsync(config, cancellationToken).ConfigureAwait(false);
+            await MaybeTriggerPortClosedRecoveryAsync(manager, config, cancellationToken).ConfigureAwait(false);
         }
     }
 
@@ -1272,7 +1282,46 @@ public sealed class PortSyncService
     // trigger - the two share the action, not the gate. One-shot arming: after firing, recovery
     // stays disarmed until a verification reports the port open again (see HandlePortOpenResult),
     // so a persistently false "closed" can never cause a recovery loop.
-    private async Task MaybeTriggerPortClosedRecoveryAsync(SyncConfig config, CancellationToken cancellationToken)
+    // Forces the client to rebuild its listen sockets when a confirmed-closed port coincides with the
+    // bound adapter having changed address. Returns true when a rebind was actually attempted, which is
+    // what tells the caller to hold the VPN restart back for one more round of confirmation.
+    // One attempt per address change: the flag is cleared whether or not the write succeeded, so a rebind
+    // that does not help escalates to the VPN restart instead of repeating.
+    private async Task<bool> TryRebindClientAddressAsync(IManagedClient manager, SyncConfig config, CancellationToken cancellationToken)
+    {
+        if (!_interfaceAddressChangedSinceRebind || !config.FixInterfaceBinding) return false;
+        if (manager is not QBittorrentClient client) return false;
+        if (_lastKnownInterfaceAddresses is not { Count: > 0 } live) return false;
+        if (SelectBindAddress(live) is not string pinAddress) return false;
+
+        _interfaceAddressChangedSinceRebind = false;
+
+        LogManager.Instance.LogMessage(
+            $"The forwarded port is closed and the bound adapter changed address, so {client.ClientName} may still be " +
+            $"listening on the previous one. Rebinding it via {pinAddress} before restarting the VPN",
+            LogLevel.Warn);
+
+        // Pin the live address, then release back to "all addresses" - the value it had, since this path
+        // only arms when the client was bound to all of them. Both writes are real changes, which is what
+        // makes the client rebuild its sockets; the end state is what the user configured.
+        if (await client.ForceInterfaceRebindAsync(pinAddress, string.Empty, cancellationToken).ConfigureAwait(false))
+        {
+            LogManager.Instance.LogMessage(
+                $"Rebound {client.ClientName} to all addresses on its adapter - the next port check will show whether it is listening again",
+                LogLevel.Info);
+        }
+        else
+        {
+            LogManager.Instance.LogMessage(
+                $"Could not rebind {client.ClientName} - the next confirmed closed check will restart the VPN instead",
+                LogLevel.Warn);
+        }
+
+        // True either way: the attempt happened, so the caller holds the restart back for one round.
+        return true;
+    }
+
+    private async Task MaybeTriggerPortClosedRecoveryAsync(IManagedClient manager, SyncConfig config, CancellationToken cancellationToken)
     {
         if (!config.PortClosedRecoveryEnabled)
         {
@@ -1280,6 +1329,17 @@ public sealed class PortSyncService
             return;
         }
         if (!_portClosedRecoveryArmed || _confirmedClosedCount < config.PortClosedRecoveryTriggerChecks) return;
+
+        // A cheaper and more likely remedy first, when the evidence points at it: the port is confirmed
+        // closed *and* the bound adapter's address moved since the client last bound. Restarting the VPN
+        // cannot fix a listener stranded on the old address, and costs the user the tunnel to find out.
+        // Deliberately leaves the trigger armed - if this does not help, the next confirmed-closed round
+        // escalates to the restart as it always did.
+        if (await TryRebindClientAddressAsync(manager, config, cancellationToken).ConfigureAwait(false))
+        {
+            _confirmedClosedCount = 0;   // the next escalation needs fresh confirmation, not this one
+            return;
+        }
 
         _portClosedRecoveryArmed = false;
         _confirmedClosedCount = 0;
@@ -1441,19 +1501,17 @@ public sealed class PortSyncService
             LogManager.Instance.LogMessage($"Could not re-apply the {client.ClientName} network interface binding - re-select it in {client.ClientName}", LogLevel.Error);
     }
 
-    // Reports the address side of the binding. Deliberately reports only, and writes nothing: the two
-    // available remedies have permanent consequences that the evidence does not yet choose between.
-    // Pinning the current address forces the rebind, but converts the user's "all addresses" setting
-    // into one this app must then maintain on every reconnect, and which goes stale and breaks their
-    // client if this app is ever removed. Restarting the client leaves no residue but is the heaviest
-    // action available. Neither should be picked from the armchair, and whether writing the address
-    // makes libtorrent rebuild its listen socket at all cannot be established by reading source.
-    //
-    // Two conditions are distinguished because they need different remedies:
-    //  - a pinned address the adapter no longer carries: definite, and definitely broken
-    //  - the adapter's addresses moving while the binding is "all addresses": the case a VPN reconnect
-    //    produces, where the client can keep a listener on the old address with nothing else to show it
-    private async Task CheckInterfaceAddressAsync(QBittorrentClient client, string? interfaceName, CancellationToken cancellationToken)
+    // Checks the address side of the binding, which is the half the name and token checks cannot see.
+    // Two conditions, distinguished because the evidence for them differs and so does the response:
+    //  - a pinned address the adapter no longer carries: provably broken, so it is repaired here and now,
+    //    exactly as a stale token is
+    //  - the adapter's addresses moving while the binding is "all addresses": what an ordinary VPN
+    //    reconnect produces. The client may have coped, or may have left a listener on the old address,
+    //    and nothing observable here tells the two apart. So this only *arms* the port-closed escalation
+    //    (TryRebindClientAddressAsync), which acts once the port is confirmed closed as well. Rebinding
+    //    on every reconnect would write to the user's client configuration for a problem that may not
+    //    exist; waiting for the symptom costs a few cycles and spends nothing on a healthy client.
+    private async Task CheckInterfaceAddressAsync(QBittorrentClient client, string? interfaceName, SyncConfig config, CancellationToken cancellationToken)
     {
         var (live, pinned) = await client.GetInterfaceAddressStateAsync(interfaceName, cancellationToken).ConfigureAwait(false);
 
@@ -1464,14 +1522,17 @@ public sealed class PortSyncService
 
         if (!string.IsNullOrEmpty(pinned) && !live.Contains(pinned, StringComparer.OrdinalIgnoreCase))
         {
-            LogManager.Instance.LogStateChange(BindingAddressStateKey,
-                $"{client.ClientName} is bound to address {pinned} on '{interfaceName}', which that adapter no longer has " +
-                $"(it now has {FormatAddressList(live)}) - it cannot accept incoming connections until the address is " +
-                $"corrected in {client.ClientName}",
-                LogLevel.Warn);
+            // Provably broken rather than suspected: the client is bound to an address the adapter does
+            // not have, so it cannot be listening. Repaired on detection like the stale token beside it,
+            // not deferred to the port-closed escalation, which is for the case that is only a suspicion.
+            await RepairPinnedAddressAsync(client, interfaceName, pinned, live, config, cancellationToken).ConfigureAwait(false);
         }
         else if (_lastKnownInterfaceAddresses is { } previous && !previous.SequenceEqual(live, StringComparer.OrdinalIgnoreCase))
         {
+            // Arms the port-closed escalation. Not acted on here: on its own an address change is a
+            // normal reconnect, and forcing a rebind on every one would write to the user's client
+            // configuration for a problem that may not exist.
+            _interfaceAddressChangedSinceRebind = true;
             // Info, not Warn: on its own this is a normal VPN reconnect, not a fault. It is logged
             // because it is the moment a stale listener would be created, so a later report of "no
             // incoming connections" can be lined up against it. The connection status is read here
@@ -1487,10 +1548,65 @@ public sealed class PortSyncService
         else
         {
             LogManager.Instance.ClearLogState(BindingAddressStateKey);
+            _interfaceAddressRepairAttempted = false;   // healthy: re-arm for a later drift
         }
 
         _lastKnownInterfaceAddresses = live;
     }
+
+    // Corrects a pin that names an address the adapter no longer has. Writing the live address is a real
+    // change, so it also forces the rebind; the pin stays because it was the user's own setting and only
+    // its value was wrong. Warn-only when the fix is switched off, matching the stale-token repair.
+    private async Task RepairPinnedAddressAsync(
+        QBittorrentClient client, string? interfaceName, string pinned, IReadOnlyList<string> live,
+        SyncConfig config, CancellationToken cancellationToken)
+    {
+        string detail =
+            $"{client.ClientName} is bound to address {pinned} on '{interfaceName}', which that adapter no longer " +
+            $"has (it now has {FormatAddressList(live)}), so it cannot accept incoming connections";
+
+        string? replacement = SelectBindAddress(live);
+        if (replacement is null || !config.FixInterfaceBinding)
+        {
+            // No usable address covers an adapter mid-negotiation, where the right move is to wait for
+            // the next cycle rather than write something that is about to be wrong again.
+            string remedy = replacement is null
+                ? "waiting for the adapter to report a usable address"
+                : $"correct it in {client.ClientName}, or turn on \"Fix the network interface binding when it goes stale\" in Settings";
+            LogManager.Instance.LogStateChange(BindingAddressStateKey, $"{detail} - {remedy}", LogLevel.Warn);
+            return;
+        }
+
+        if (_interfaceAddressRepairAttempted)
+        {
+            LogManager.Instance.LogDebug(
+                $"PortSyncService.RepairPinnedAddressAsync: {client.ClientName} address pin still stale after a repair - not retrying until it is healthy");
+            return;
+        }
+
+        _interfaceAddressRepairAttempted = true;
+        LogManager.Instance.LogMessage($"{detail}. Re-pointing it at {replacement}", LogLevel.Warn);
+
+        // finalAddress equals pinAddress: the client was pinned by choice and stays pinned, only to an
+        // address that exists. One write, and no release step.
+        if (await client.ForceInterfaceRebindAsync(replacement, replacement, cancellationToken).ConfigureAwait(false))
+            LogManager.Instance.LogMessage($"Re-pointed the {client.ClientName} network interface address at {replacement}", LogLevel.Info);
+        else
+            LogManager.Instance.LogMessage($"Could not set the {client.ClientName} network interface address - correct it in {client.ClientName}", LogLevel.Error);
+    }
+
+    // The address to bind to, out of everything the adapter reports. IPv4 first because that is what a
+    // forwarded port is granted for by every provider this app supports; link-local is never usable for
+    // incoming connections, so it is excluded rather than picked as a last resort.
+    private static string? SelectBindAddress(IReadOnlyList<string> addresses)
+    {
+        var usable = addresses.Where(a => !IsLinkLocal(a)).ToList();
+        return usable.FirstOrDefault(a => !a.Contains(':')) ?? usable.FirstOrDefault();
+    }
+
+    private static bool IsLinkLocal(string address) =>
+        address.StartsWith("169.254.", StringComparison.Ordinal) ||
+        address.StartsWith("fe80:", StringComparison.OrdinalIgnoreCase);
 
     // Addresses as a readable list for one log line. qBittorrent reports IPv4 and IPv6 together and
     // the whole set is the evidence, so none is filtered out - a v6-only change is still a change.

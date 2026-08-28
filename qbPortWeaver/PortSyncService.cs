@@ -2088,8 +2088,10 @@ public sealed class PortSyncService
         // RestartOnDisconnect is qBittorrent-only: it is the only client where restarting is both
         // possible and the right response to a dropped connection. Nicotine+ reconnects itself,
         // and restarting it would discard its configuration.
-        // WarnOnInterfaceMismatch needs a named adapter, which qBittorrent and Nicotine+ both
-        // report; Transmission and Deluge expose only a bind address, which the VPN rotates.
+        // WarnOnInterfaceMismatch needs a named adapter, which qBittorrent and Nicotine+ both report;
+        // Transmission and Deluge report a bind address instead, so there is no name to compare. That
+        // is about the name check alone - see IManagedClient.SupportsInterfaceMismatchWarning for what
+        // each of them actually binds, which is not the same question and does not have the same answer.
         bool isQBittorrent = activeSection == RegistrySettingsManager.SectionQBittorrent;
         bool isNicotine = activeSection == RegistrySettingsManager.SectionNicotine;
         return (

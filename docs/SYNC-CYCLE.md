@@ -393,6 +393,18 @@ throughout.
 
 The `?iface=` endpoint was confirmed in the same run, returning a plain array of address strings.
 
+**A port write rebinds too, and that narrows the problem.** The same method showed that writing
+`listen_port` tears down every socket on the old port and creates fresh ones on the new port, bound to
+the full current address set. So the ordinary reconnect - new tunnel address *and* a new forwarded
+port, which the cycle then writes - already rebinds the client, and no stale listener survives it. The
+failure only persists when the address moves while the forwarded port comes back **unchanged**, or
+when no port is written at all because none was assigned. The latter is the case in the report this
+was built for, where port forwarding returned `Failed` for hours.
+
+That is why `UpdatePortAndNotifyAsync` clears the arm on a successful port write. Without it the
+common, self-healing reconnect would stay armed after the port write had already repaired it, and
+spend that arm on some later closed port it had nothing to do with.
+
 ### Restart-on-Disconnect Cap *(qBittorrent only)*
 
 `restartOnDisconnect` restarts the client when it reports `disconnected`. That helps only when the

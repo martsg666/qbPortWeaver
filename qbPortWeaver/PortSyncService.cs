@@ -1118,6 +1118,13 @@ public sealed class PortSyncService
     {
         if (!await ApplyPortUpdateAsync(manager, targetPort, config, status, cancellationToken).ConfigureAwait(false))
             return false;
+        // A port write rebuilds the client's listen sockets from a fresh enumeration of the adapter,
+        // exactly as an address write does - measured, not assumed. So it has already done what the
+        // rebind would do, and any listener stranded on a previous address is gone. Clearing the arm
+        // here keeps it honest: without this, an ordinary reconnect (new address *and* a new forwarded
+        // port, which is the common case) would stay armed after the port write had already fixed it,
+        // and spend that arm later on a closed port it could not possibly explain.
+        _interfaceAddressChangedSinceRebind = false;
         // Cause annotation: recovery takes precedence over network change (a recovery usually
         // produces a network change too, and the recovery is the root cause).
         string cause = string.Empty;

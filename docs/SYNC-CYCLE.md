@@ -382,9 +382,16 @@ earlier, it did not strand the listener. Without clearing it there, a change rec
 entirely healthy reconnect would sit armed indefinitely and spend itself on the next unrelated closed
 port, rebinding for a reason that had stopped applying long before.
 
-What still cannot be established by reading source is whether `setPreferences` on the address makes
-libtorrent rebuild the socket at all. The design does not depend on knowing: the port check on the
-following cycles reports whether it worked, and the VPN restart remains the fallback either way.
+**Measured, not assumed.** Whether `setPreferences` on the address actually rebuilds the socket cannot
+be established by reading source, so it was tested against a live qBittorrent 5.x bound to a ProtonVPN
+TUN adapter with `current_interface_address` empty. The client was listening on all three of the
+adapter's addresses individually - IPv4, ULA and link-local - rather than on a wildcard, which is what
+makes a moved address strand the listener in the first place. Pinning the IPv4 address left exactly
+one socket and tore the other two down; restoring the empty value brought all three back. Both writes
+rebuilt the sockets, which is what the pin-and-release relies on, and the listen port was unchanged
+throughout.
+
+The `?iface=` endpoint was confirmed in the same run, returning a plain array of address strings.
 
 ### Restart-on-Disconnect Cap *(qBittorrent only)*
 

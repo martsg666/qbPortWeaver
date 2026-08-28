@@ -371,6 +371,10 @@ public sealed class QBittorrentClient : ManagedClientBase
     /// <para>qBittorrent acts on a preference only when its value actually <em>changes</em>, so writing the
     /// binding back unchanged is a no-op and cannot fix a socket left on a previous address. A change is
     /// therefore required, which is why this pins an address rather than re-writing the interface.</para>
+    /// <para>Verified against a live client rather than assumed: qBittorrent listens on each of the
+    /// adapter's addresses individually, and writing this field tears those sockets down and rebuilds
+    /// them - pinning one address left only that socket, and restoring the empty value brought them all
+    /// back, with the listen port unchanged. Both writes rebuild, which is what the release step needs.</para>
     /// <para>When <paramref name="finalAddress"/> differs from <paramref name="pinAddress"/> the pin is
     /// released again in a second write, so the stored configuration ends exactly as it started. That
     /// matters: pinning permanently would convert qBittorrent's default "all addresses" into a value this

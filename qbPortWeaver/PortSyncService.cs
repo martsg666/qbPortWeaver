@@ -1794,12 +1794,20 @@ public sealed class PortSyncService
     }
 
     // Builds a failure log message with cycle count and optional recovery trigger suffix
-    private static string BuildCycleCountMessage(string prefix, int count, AppConfig cfg)
+    // The suffix has to track the cap as well as the setting. While the cap is suspending recovery the
+    // streak keeps climbing (deliberately - the failures are real), so a suffix that only knew about the
+    // setting promised "recovery may trigger after N cycles" on every one of those cycles, for a recovery
+    // that could not run. The log then contradicted both the suspension warning and the Status panel.
+    private string BuildCycleCountMessage(string prefix, int count, AppConfig cfg)
     {
         string cycles = TextFormat.PluralizeNoun(count, "failed cycle");
-        string recoverySuffix = cfg.VpnAutoRecoveryEnabled
-            ? $", recovery may trigger after {cfg.VpnAutoRecoveryTriggerCycles} consecutive failed cycles"
-            : string.Empty;
+        string recoverySuffix;
+        if (!cfg.VpnAutoRecoveryEnabled)
+            recoverySuffix = string.Empty;
+        else if (_consecutiveRecoveries >= MaxConsecutiveRecoveries)
+            recoverySuffix = $", auto-recovery is suspended after {MaxConsecutiveRecoveries} attempts that did not restore a port";
+        else
+            recoverySuffix = $", recovery may trigger after {cfg.VpnAutoRecoveryTriggerCycles} consecutive failed cycles";
         return $"{prefix} ({count} consecutive {cycles}{recoverySuffix})";
     }
 

@@ -106,6 +106,11 @@ public sealed class PortSyncService
     // restart rather than repeating itself. Not a fault on its own: an ordinary reconnect sets it too.
     // Serialised by MainForm._updateSemaphore (same guarantee as _consecutiveFailedCycles).
     private bool _interfaceAddressChangedSinceRebind;
+    // What the client's bind address was when the change above was recorded, and therefore what the
+    // rebind must leave behind. Data rather than a constant: the arm is set in one cycle and spent in
+    // a later one, so the value has to travel with it.
+    // Serialised by MainForm._updateSemaphore (same guarantee as _consecutiveFailedCycles).
+    private string _rebindReleaseAddress = string.Empty;
     // One repair per stale-pin streak, mirroring _interfaceBindingRepairAttempted: if the write lands and
     // the pin is still wrong next cycle, something else is writing it and repeating would be its own loop.
     private bool _interfaceAddressRepairAttempted;
@@ -1313,10 +1318,10 @@ public sealed class PortSyncService
             $"listening on the previous one. Rebinding it via {pinAddress} before restarting the VPN",
             LogLevel.Warn);
 
-        // Pin the live address, then release back to "all addresses" - the value it had, since this path
-        // only arms when the client was bound to all of them. Both writes are real changes, which is what
-        // makes the client rebuild its sockets; the end state is what the user configured.
-        if (await client.ForceInterfaceRebindAsync(pinAddress, string.Empty, cancellationToken).ConfigureAwait(false))
+        // Pin a live address, then release back to whatever was configured when the change was seen.
+        // Both writes are real changes, which is what makes the client rebuild its sockets; the end
+        // state is the user's own value, read from the client rather than assumed here.
+        if (await client.ForceInterfaceRebindAsync(pinAddress, _rebindReleaseAddress, cancellationToken).ConfigureAwait(false))
         {
             LogManager.Instance.LogMessage(
                 $"Rebound {client.ClientName} to all addresses on its adapter - the next port check will show whether it is listening again",
@@ -1539,12 +1544,25 @@ public sealed class PortSyncService
             // not deferred to the port-closed escalation, which is for the case that is only a suspicion.
             await RepairPinnedAddressAsync(client, interfaceName, pinned, live, config, cancellationToken).ConfigureAwait(false);
         }
-        else if (_lastKnownInterfaceAddresses is { } previous && !previous.SequenceEqual(live, StringComparer.OrdinalIgnoreCase))
+        else if (string.IsNullOrEmpty(pinned) &&
+                 _lastKnownInterfaceAddresses is { } previous && !previous.SequenceEqual(live, StringComparer.OrdinalIgnoreCase))
         {
+            // The empty-pin test is load-bearing, not a tidy-up. The first branch is false in *two*
+            // cases - no pin, and a pin that is present and correct - and only the first belongs here.
+            // Without this test a user pinned to one address whose adapter merely gained or lost
+            // another address was armed, and the rebind then released to "all addresses", silently
+            // widening a binding they chose. A valid pin means the listener is on an address that
+            // still exists, which is healthy, so it correctly falls through to the else below.
+            //
             // Arms the port-closed escalation. Not acted on here: on its own an address change is a
             // normal reconnect, and forcing a rebind on every one would write to the user's client
             // configuration for a problem that may not exist.
             _interfaceAddressChangedSinceRebind = true;
+            // Captured rather than assumed. The rebind releases back to whatever was configured when
+            // the change was seen, so the end state is the user's own value even if this branch is
+            // ever widened to admit a non-empty one. The previous code hardcoded string.Empty here,
+            // which was only correct because of the very condition that was missing above.
+            _rebindReleaseAddress = pinned ?? string.Empty;
             // Info, not Warn: on its own this is a normal VPN reconnect, not a fault. The connection
             // status is read here rather than every cycle - this branch is a transition, so the extra
             // call is rare - and it answers whether the existing restart-on-disconnect path could ever

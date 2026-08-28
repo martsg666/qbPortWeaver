@@ -406,8 +406,11 @@ public sealed class QBittorrentClient : ManagedClientBase
         // makes a single immediate retry a good match for the realistic cause - a transient error, or
         // qBittorrent restarting between the two posts. Not a loop: this runs after three confirmed
         // closed checks on a cycle the user is waiting on, and stacking timeouts here buys little.
-        if (await WriteInterfaceAddressAsync(finalAddress, cancellationToken).ConfigureAwait(false) ||
-            await WriteInterfaceAddressAsync(finalAddress, cancellationToken).ConfigureAwait(false))
+        bool released = await WriteInterfaceAddressAsync(finalAddress, cancellationToken).ConfigureAwait(false);
+        if (!released)
+            released = await WriteInterfaceAddressAsync(finalAddress, cancellationToken).ConfigureAwait(false);
+
+        if (released)
         {
             _storedInterfaceAddress = finalAddress;
             return true;

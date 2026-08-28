@@ -41,6 +41,7 @@ public sealed class PortSyncService
     private const string DefaultPortStateKey = "client.defaultPortUnusable";
     private const string NatPmpAdapterStateKey = "vpn.natpmpAdapterUnconfigured";
     private const string PortForwardingUnavailableStateKey = "vpn.portForwardingUnavailable";
+    private const string BindingAddressStateKey = "client.bindingAddressStale";
     private const string RecoveryCapStateKey = "vpn.recoveryCapReached";
 
     /// <summary>Raised when a sync cycle completes (success or failure) with the resulting tray status.</summary>
@@ -92,6 +93,12 @@ public sealed class PortSyncService
     // stick is not retried every cycle, which would be the same unbounded-remedy loop as the restarts.
     // Serialised by MainForm._updateSemaphore (same guarantee as _consecutiveFailedCycles).
     private bool _interfaceBindingRepairAttempted;
+    // Addresses the bound adapter carried on the previous cycle, or null before the first successful
+    // read. Lives here rather than on the client because the client is constructed and disposed once
+    // per cycle (see the `using var manager` in RunCoreAsync), so it cannot remember anything, and the
+    // question this answers is precisely "did this change since last time".
+    // Serialised by MainForm._updateSemaphore (same guarantee as _consecutiveFailedCycles).
+    private IReadOnlyList<string>? _lastKnownInterfaceAddresses;
     // One latch per condition, each owned by exactly one method. They must not be shared:
     // CheckInterfaceMatch clears its latch on every healthy cycle, which would defeat the dedupe for
     // any other condition writing to the same field - a persistent binding warning would then balloon
@@ -1060,7 +1067,12 @@ public sealed class PortSyncService
         // WarnOnInterfaceMismatch is a preference rather than a capability, so it is applied inside,
         // to the warning only - the repair runs either way.
         if (manager is QBittorrentClient qbClient)
+        {
             await CheckAndRepairInterfaceBindingAsync(qbClient, currentInterfaceName, config, cancellationToken).ConfigureAwait(false);
+            // And the half neither check above can see: the address under a binding whose name and
+            // token are both still correct. Reports only - see CheckInterfaceAddressAsync.
+            await CheckInterfaceAddressAsync(qbClient, currentInterfaceName, cancellationToken).ConfigureAwait(false);
+        }
 
         await CheckClientSettingsConflictsAsync(manager, cancellationToken).ConfigureAwait(false);
 
@@ -1428,6 +1440,62 @@ public sealed class PortSyncService
         else
             LogManager.Instance.LogMessage($"Could not re-apply the {client.ClientName} network interface binding - re-select it in {client.ClientName}", LogLevel.Error);
     }
+
+    // Reports the address side of the binding. Deliberately reports only, and writes nothing: the two
+    // available remedies have permanent consequences that the evidence does not yet choose between.
+    // Pinning the current address forces the rebind, but converts the user's "all addresses" setting
+    // into one this app must then maintain on every reconnect, and which goes stale and breaks their
+    // client if this app is ever removed. Restarting the client leaves no residue but is the heaviest
+    // action available. Neither should be picked from the armchair, and whether writing the address
+    // makes libtorrent rebuild its listen socket at all cannot be established by reading source.
+    //
+    // Two conditions are distinguished because they need different remedies:
+    //  - a pinned address the adapter no longer carries: definite, and definitely broken
+    //  - the adapter's addresses moving while the binding is "all addresses": the case a VPN reconnect
+    //    produces, where the client can keep a listener on the old address with nothing else to show it
+    private async Task CheckInterfaceAddressAsync(QBittorrentClient client, string? interfaceName, CancellationToken cancellationToken)
+    {
+        var (live, pinned) = await client.GetInterfaceAddressStateAsync(interfaceName, cancellationToken).ConfigureAwait(false);
+
+        // Unknown rather than healthy: an older qBittorrent, an unreachable API, or no bound interface.
+        // Leaving the remembered addresses alone means the next readable cycle compares against the last
+        // real observation rather than against a gap, so a change spanning the gap is still reported.
+        if (live is null) return;
+
+        if (!string.IsNullOrEmpty(pinned) && !live.Contains(pinned, StringComparer.OrdinalIgnoreCase))
+        {
+            LogManager.Instance.LogStateChange(BindingAddressStateKey,
+                $"{client.ClientName} is bound to address {pinned} on '{interfaceName}', which that adapter no longer has " +
+                $"(it now has {FormatAddressList(live)}) - it cannot accept incoming connections until the address is " +
+                $"corrected in {client.ClientName}",
+                LogLevel.Warn);
+        }
+        else if (_lastKnownInterfaceAddresses is { } previous && !previous.SequenceEqual(live, StringComparer.OrdinalIgnoreCase))
+        {
+            // Info, not Warn: on its own this is a normal VPN reconnect, not a fault. It is logged
+            // because it is the moment a stale listener would be created, so a later report of "no
+            // incoming connections" can be lined up against it. The connection status is read here
+            // rather than every cycle - this branch is a transition, so the extra call is rare - and
+            // it answers whether the existing restart-on-disconnect path could ever see this state.
+            string? connectionStatus = await client.GetConnectionStatusAsync(cancellationToken).ConfigureAwait(false);
+            LogManager.Instance.LogMessage(
+                $"The address on '{interfaceName}' changed from {FormatAddressList(previous)} to {FormatAddressList(live)} " +
+                $"while {client.ClientName} is bound to all addresses on it ({client.ClientName} reports " +
+                $"'{connectionStatus ?? "no status"}'). If incoming connections stop after this, the listener is on the old address",
+                LogLevel.Info);
+        }
+        else
+        {
+            LogManager.Instance.ClearLogState(BindingAddressStateKey);
+        }
+
+        _lastKnownInterfaceAddresses = live;
+    }
+
+    // Addresses as a readable list for one log line. qBittorrent reports IPv4 and IPv6 together and
+    // the whole set is the evidence, so none is filtered out - a v6-only change is still a change.
+    private static string FormatAddressList(IReadOnlyList<string> addresses) =>
+        addresses.Count == 0 ? "no addresses" : string.Join(", ", addresses);
 
     // Balloon dispatch for interface problems, deduplicated so a persistent condition notifies once
     // rather than every cycle. Returns the latch value the caller should store, so each condition owns

@@ -308,6 +308,49 @@ streak - if the binding is still wrong on the next cycle something else is overw
 repeating the write every cycle would be its own loop. The attempt re-arms as soon as the binding
 reads healthy.
 
+### Interface Address Reporting *(qBittorrent only)*
+
+Both checks above compare values that a VPN reconnect leaves **unchanged**. The name stays `wgpia0`;
+the token stays valid when the adapter is reused rather than recreated. What moves is the address on
+the adapter, and a client left listening on the previous one accepts no incoming connections while
+every other check in the cycle reports it healthy. The observable state is an adapter present, a
+valid token, and no peers, indefinitely.
+
+qBittorrent holds a third preference, `current_interface_address`: a specific address to bind to, or
+empty for *all addresses on that interface*, which is its default. `GetInterfaceAddressStateAsync`
+reads it alongside the token in `GetPreferencesAsync` and fetches the adapter's live addresses from
+`GET /api/v2/app/networkInterfaceAddressList?iface=<token>`. Addresses come from qBittorrent's own
+endpoint rather than from `NetworkInterface`, for the same reason the token check uses qBittorrent's
+own adapter list: it is the view the client binds against, and it avoids the enumeration quirks of
+tunnel adapters mid-negotiation that `NatPmpManager` already documents.
+
+The client returns facts and `PortSyncService.CheckInterfaceAddressAsync` interprets them, because
+the interesting comparison is against the *previous* cycle and the client is constructed and disposed
+once per cycle. `_lastKnownInterfaceAddresses` therefore lives on the service. Two conditions are
+distinguished, because they need different remedies:
+
+| condition | reported as |
+|---|---|
+| A pinned address the adapter no longer carries | `Warn`, state-keyed - definite, and definitely broken |
+| The adapter's addresses moved while the binding is "all addresses" | `Info` - a normal VPN reconnect, logged because it is the moment a stale listener would be created |
+
+The second line also carries qBittorrent's connection status, read only on that transition rather
+than every cycle. That answers a question the source cannot: whether the client reports itself
+*disconnected* in this state, and therefore whether the restart-on-disconnect cap below could ever
+have caught it.
+
+An unreadable list (older qBittorrent, unreachable API, nothing bound) is treated as *unknown*, not
+healthy, and leaves the remembered addresses alone - so the next readable cycle compares against the
+last real observation and a change spanning the gap is still reported.
+
+**This check writes nothing, deliberately.** Both available remedies carry permanent consequences the
+evidence does not yet choose between. Pinning the current address forces the rebind and is stricter
+than "all addresses", but converts a default setting into one this app must maintain on every
+reconnect, and which goes stale and breaks the client if this app is ever removed. Restarting
+qBittorrent leaves no residue but is the heaviest action available. Beyond that, whether writing the
+address makes libtorrent rebuild its listen socket at all is runtime behaviour that cannot be
+established by reading source - which is exactly what this reporting exists to settle.
+
 ### Restart-on-Disconnect Cap *(qBittorrent only)*
 
 `restartOnDisconnect` restarts the client when it reports `disconnected`. That helps only when the
@@ -454,7 +497,7 @@ The `status` field is one of:
 
 ### Standing Conditions in the Log
 
-Some conditions are re-evaluated every cycle but stay true until the user acts on them: a client bound to the wrong network interface, a stale qBittorrent interface token, a NAT-PMP lease shorter than the sync interval, an unrecognised VPN provider, an unusable default port, an unset NAT-PMP adapter, a provider reporting port forwarding unavailable, and auto-recovery suspended at its consecutive-attempt cap. Logging those once per cycle buries the entries that matter, and at `Warn` or above it also drives the tray's unviewed-warning count up indefinitely - a badge the user cannot clear by fixing anything.
+Some conditions are re-evaluated every cycle but stay true until the user acts on them: a client bound to the wrong network interface, a stale qBittorrent interface token, a NAT-PMP lease shorter than the sync interval, an unrecognised VPN provider, an unusable default port, an unset NAT-PMP adapter, a provider reporting port forwarding unavailable, auto-recovery suspended at its consecutive-attempt cap, and a client pinned to an address its adapter no longer carries. Logging those once per cycle buries the entries that matter, and at `Warn` or above it also drives the tray's unviewed-warning count up indefinitely - a badge the user cannot clear by fixing anything.
 
 These are written through `LogManager.LogStateChange`, which records the last message logged under a key and writes again only when that message *changes*. Each site pairs it with a `ClearLogState` on the path where the condition clears, so a later recurrence is reported rather than swallowed as a duplicate. Because the comparison is on the message and not just the key, a condition that changes - a different adapter goes wrong, a different port becomes unusable - still announces itself.
 
@@ -541,6 +584,9 @@ RunAsync
          ├─ CheckAndRepairInterfaceBindingAsync (qBittorrent only; runs whatever the provider)
          │   ├─ QBittorrentClient.CheckInterfaceBindingAsync (stale token detection)
          │   └─ QBittorrentClient.RepairInterfaceBindingAsync (if fixInterfaceBinding; once per streak)
+         ├─ CheckInterfaceAddressAsync (qBittorrent only; reports, never writes)
+         │   ├─ QBittorrentClient.GetInterfaceAddressStateAsync (pinned address + live addresses)
+         │   └─ IManagedClient.GetConnectionStatusAsync (only on an address change)
          ├─ UpdatePortAndNotifyAsync (when ports differ)
          │   ├─ ApplyPortUpdateAsync
          │   │   ├─ IManagedClient.SetListeningPortAsync

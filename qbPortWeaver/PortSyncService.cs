@@ -1203,6 +1203,11 @@ public sealed class PortSyncService
         _portCheckPendingConfirmation = false;
         _portConfirmedClosed = false;
         _confirmedClosedCount = 0;
+        // A port verified reachable proves the client is listening, so whatever the adapter's address
+        // did earlier, it did not strand the listener. Spending the arm here matters: without it a
+        // change recorded during a healthy reconnect would sit armed indefinitely and spend itself on
+        // the next unrelated closed port, rebinding for a reason that stopped applying long before.
+        _interfaceAddressChangedSinceRebind = false;
         if (!_portClosedRecoveryArmed)
         {
             // Re-armed unconditionally, and announced only when the trigger could actually use it.
@@ -1533,16 +1538,18 @@ public sealed class PortSyncService
             // normal reconnect, and forcing a rebind on every one would write to the user's client
             // configuration for a problem that may not exist.
             _interfaceAddressChangedSinceRebind = true;
-            // Info, not Warn: on its own this is a normal VPN reconnect, not a fault. It is logged
-            // because it is the moment a stale listener would be created, so a later report of "no
-            // incoming connections" can be lined up against it. The connection status is read here
-            // rather than every cycle - this branch is a transition, so the extra call is rare - and
-            // it answers whether the existing restart-on-disconnect path could ever see this state.
+            // Info, not Warn: on its own this is a normal VPN reconnect, not a fault. The connection
+            // status is read here rather than every cycle - this branch is a transition, so the extra
+            // call is rare - and it answers whether the existing restart-on-disconnect path could ever
+            // see this state. The line states what happens next, because something does: leaving it at
+            // "if connections stop, the listener is on the old address" would ask the user to draw a
+            // conclusion the app now acts on by itself.
             string? connectionStatus = await client.GetConnectionStatusAsync(cancellationToken).ConfigureAwait(false);
             LogManager.Instance.LogMessage(
                 $"The address on '{interfaceName}' changed from {FormatAddressList(previous)} to {FormatAddressList(live)} " +
                 $"while {client.ClientName} is bound to all addresses on it ({client.ClientName} reports " +
-                $"'{connectionStatus ?? "no status"}'). If incoming connections stop after this, the listener is on the old address",
+                $"'{connectionStatus ?? "no status"}'). If the forwarded port stops answering, {client.ClientName} will be " +
+                "rebound before the VPN is restarted",
                 LogLevel.Info);
         }
         else

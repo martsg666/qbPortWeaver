@@ -308,7 +308,7 @@ streak - if the binding is still wrong on the next cycle something else is overw
 repeating the write every cycle would be its own loop. The attempt re-arms as soon as the binding
 reads healthy.
 
-### Interface Address Reporting *(qBittorrent only)*
+### Stale Interface Address *(qBittorrent only)*
 
 Both checks above compare values that a VPN reconnect leaves **unchanged**. The name stays `wgpia0`;
 the token stays valid when the adapter is reused rather than recreated. What moves is the address on
@@ -373,6 +373,12 @@ rebind is tried first, the trigger deliberately stays **armed**, and the confirm
 so the next escalation needs fresh evidence - if the rebind did not help, that round restarts the VPN
 exactly as before. One attempt per address change, whether or not the write succeeded, so a rebind
 that does not work escalates rather than repeating.
+
+The arm is also spent by a port that verifies **open** (`HandlePortOpenResult`), and that half matters
+as much as the trigger: a reachable port proves the client is listening, so whatever the address did
+earlier, it did not strand the listener. Without clearing it there, a change recorded during an
+entirely healthy reconnect would sit armed indefinitely and spend itself on the next unrelated closed
+port, rebinding for a reason that had stopped applying long before.
 
 What still cannot be established by reading source is whether `setPreferences` on the address makes
 libtorrent rebuild the socket at all. The design does not depend on knowing: the port check on the

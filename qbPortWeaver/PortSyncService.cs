@@ -1314,8 +1314,20 @@ public sealed class PortSyncService
     {
         if (!_interfaceAddressChangedSinceRebind || !config.FixInterfaceBinding) return false;
         if (manager is not QBittorrentClient client) return false;
-        if (_lastKnownInterfaceAddresses is not { Addresses.Count: > 0 } baseline) return false;
-        if (SelectBindAddress(baseline.Addresses) is not string pinAddress) return false;
+        if (_lastKnownInterfaceAddresses is not { } baseline) return false;
+
+        // Read fresh rather than pinning from the baseline. The baseline answers "did this change since
+        // last time", a question about history; the pin needs "what is on the adapter right now". Using
+        // one for the other is why a cycle whose address read failed could pin an address the adapter no
+        // longer carries - self-correcting, since the release restores the configured value either way,
+        // but it wrote a nonexistent address and logged it as live. Reading here is correct by
+        // construction and bounds nothing on how old the baseline is. The cost is one request, on a path
+        // that only runs after three confirmed closed checks.
+        var (live, _) = await client.GetInterfaceAddressStateAsync(baseline.Interface, cancellationToken).ConfigureAwait(false);
+        // Arm deliberately left set: the change really was observed, and failing to read the adapter now
+        // is not evidence that it stopped mattering. No attempt was made, so "one attempt per address
+        // change" is still honest, and the next eligible cycle tries again.
+        if (live is null || SelectBindAddress(live) is not string pinAddress) return false;
 
         _interfaceAddressChangedSinceRebind = false;
 
@@ -1329,8 +1341,12 @@ public sealed class PortSyncService
         // state is the user's own value, read from the client rather than assumed here.
         if (await client.ForceInterfaceRebindAsync(pinAddress, _rebindReleaseAddress, cancellationToken).ConfigureAwait(false))
         {
+            // Names the value actually restored rather than saying "all addresses": since the wildcard
+            // fix the release can be 0.0.0.0 or ::, and a line that describes the wrong end state is the
+            // one thing someone diagnosing this has to go on.
             LogManager.Instance.LogMessage(
-                $"Rebound {client.ClientName} to all addresses on its adapter - the next port check will show whether it is listening again",
+                $"Rebound {client.ClientName} to '{(_rebindReleaseAddress.Length == 0 ? "all addresses" : _rebindReleaseAddress)}' " +
+                "on its adapter - the next port check will show whether it is listening again",
                 LogLevel.Info);
         }
         else

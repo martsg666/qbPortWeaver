@@ -13,6 +13,10 @@ function Section($title) { "<tr><td colspan='2' style='padding:10px 0 2px;font-w
 # What the failed-cycle trigger is doing, or $null when it is idle. Its own function so the caller
 # can fall through to the port-closed trigger, mirroring how the app itself splits the two.
 function FailedCycleState($s) {
+    # Checked ahead of the holds, as the app does: they defer the next attempt, this one means none is
+    # coming until a port reads successfully. A missing key is an older app version, where the cap did
+    # not exist, so absent is correctly falsy here.
+    if ($s.recoverySuspended) { return 'Suspended - restarts did not restore the port, resumes when one is found' }
     # Both holds are absolute instants, not remaining durations.
     if ($null -ne $s.recoveryHoldUntil) { return "Holding - no internet connection, retry at $($s.recoveryHoldUntil)" }
     if ($null -ne $s.recoverySustainedUntil) { return "Holding - failures too recent, retry at $($s.recoverySustainedUntil)" }

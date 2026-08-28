@@ -1927,13 +1927,20 @@ public sealed class PortSyncService
         // then governed purely by the backoff, rather than also having to rebuild the streak and clear
         // the sustained-failure floor again - which would make the real spacing longer than the 5, 10
         // and 15 minutes documented, by an amount that depends on the configured interval.
-        if (!await TryTakeRecoverySlotAsync(displayName, cancellationToken).ConfigureAwait(false))
-            return;
+        var slot = await TryTakeRecoverySlotAsync(displayName, cancellationToken).ConfigureAwait(false);
+        if (!slot.Allowed) return;
 
         ResetFailureStreak();
         // Counted here, past every gate, so it records recoveries that are actually dispatched. Counting
         // at the trigger sites instead would let held attempts consume the cap without a restart running.
-        _consecutiveRecoveries++;
+        //
+        // Online attempts only, and that exemption is load-bearing rather than a nicety. The cap is a
+        // hard stop, and the connectivity limiter exists precisely because a hard stop is wrong while the
+        // machine cannot reach the internet: a killswitch blocks the probe itself, so a stuck VPN and a
+        // dead upstream are indistinguishable, and refusing to retry leaves the killswitch up with no way
+        // out. Counting offline attempts would put that deadlock back after three tries. Offline
+        // recoveries are already bounded, by the 5/10/15 minute backoff, so they need no second bound.
+        if (slot.Online) _consecutiveRecoveries++;
 
         await DispatchRecoveryAsync(action, recoveryTarget, displayName, cancellationToken,
             triggerLogMessage: $"Triggering '{action}' for '{displayName}' after {count} consecutive failed {TextFormat.PluralizeNoun(count, "cycle")}").ConfigureAwait(false);
@@ -1976,14 +1983,14 @@ public sealed class PortSyncService
     // Online: recover immediately, and reset the backoff.
     // Offline: the first recovery of a streak still runs (it is the one most likely to help), then
     // successive attempts wait OfflineRetryBackoff - 5, 10, then 15 minutes for every attempt after.
-    private async Task<bool> TryTakeRecoverySlotAsync(string displayName, CancellationToken cancellationToken)
+    private async Task<(bool Allowed, bool Online)> TryTakeRecoverySlotAsync(string displayName, CancellationToken cancellationToken)
     {
         if (await InternetConnectivityProbe.IsInternetReachableAsync(cancellationToken).ConfigureAwait(false))
         {
             if (_offlineRecoveryAttempts > 0)
                 LogManager.Instance.LogMessage("Internet connection confirmed - recovery resumed at the normal rate", LogLevel.Info);
             ResetOfflineRecoveryBackoff();
-            return true;
+            return (true, Online: true);
         }
 
         // Monotonic, which is what matters here: a machine coming back from an outage often corrects
@@ -2010,7 +2017,7 @@ public sealed class PortSyncService
                         "(restarting the VPN cannot restore a connection that is down upstream)",
                         LogLevel.Warn);
                 }
-                return false;
+                return (false, Online: false);
             }
         }
 
@@ -2027,7 +2034,7 @@ public sealed class PortSyncService
             // recovery for anyone whose network filters ICMP, for an app doing exactly its job. A real
             // outage is still surfaced independently by the per-cycle port-detection warning.
             LogLevel.Info);
-        return true;
+        return (true, Online: false);
     }
 
     // Dispatches a recovery action to the helper service. Shared by the failed-cycle trigger

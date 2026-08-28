@@ -1638,7 +1638,10 @@ public sealed class PortSyncService
     // One predicate, used by both branches of the check, because they are the two halves of a
     // partition: a value either can be judged stale or is a wildcard that arms the escalation instead.
     // Two inline tests could drift apart and leave a value in neither branch or in both.
-    private static bool IsWildcardBindAddress(string? address) =>
+    // NotNullWhen(false) so the stale branch keeps its non-null guarantee for `pinned`: a plain bool
+    // return hides that from flow analysis, and the alternative is a null-forgiving operator at the
+    // call site, which asserts the same thing without letting the compiler check it.
+    private static bool IsWildcardBindAddress([System.Diagnostics.CodeAnalysis.NotNullWhen(false)] string? address) =>
         string.IsNullOrEmpty(address) || address == "0.0.0.0" || address == "::";
 
     // The address to bind to, out of everything the adapter reports. IPv4 first because that is what a

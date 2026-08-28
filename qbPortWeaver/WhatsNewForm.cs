@@ -42,6 +42,12 @@ public partial class WhatsNewForm : Form
         "it can run a second time. The warning that repeats while the port stays closed used to stop " +
         "mentioning recovery at exactly that point, which read as though nothing had been done about " +
         "it. It now says the recovery has already run, and what it is waiting for.\n\n" +
+        "Problems that used to fail quietly now say so\n" +
+        "A few things could go wrong with nothing on screen to show for it: the log file being " +
+        "impossible to write to, the Windows startup entry not being updated after the app moved, the " +
+        "recent port changes list failing to save, or an older helper service being left behind by an " +
+        "upgrade. Each of these now reports itself. The log one arrives as a tray message, since by " +
+        "definition it cannot be written to the log.\n\n" +
         "Nicotine+ plugin updates are offered when the plugin changes\n" +
         "Settings used to decide whether a plugin update was available by comparing version numbers, " +
         "and the plugin's version follows the app's - so a fix to the plugin alone was never offered " +

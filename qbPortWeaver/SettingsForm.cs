@@ -126,10 +126,19 @@ public partial class SettingsForm : Form
         toolTip.SetToolTip(nudQBittorrentDefaultPort, DefaultPortTooltip);
         toolTip.SetToolTip(chkQBittorrentWarnOnInterfaceMismatch, "Show a warning when qBittorrent's network interface does not match the configured VPN provider");
         toolTip.SetToolTip(chkQBittorrentRestartOnDisconnect, "Automatically restart qBittorrent when its connection status becomes disconnected");
+        // Covers all three behaviours this one checkbox gates, not just the identifier case it was
+        // written for: the address repair and the port-closed rebind were both added behind it in 2.6.7.
+        // They share one cause - a VPN reconnect moving the binding out from under qBittorrent - and one
+        // remedy, so they belong in one tooltip rather than in separate controls, which the settings-UX
+        // rule against artificial option dependencies would rule out anyway. The closing sentence is
+        // load-bearing: this is the only setting that makes the app write to another application's
+        // configuration, so a user deciding whether to enable it should know the end state is unchanged.
         toolTip.SetToolTip(chkQBittorrentFixInterfaceBinding,
             "qBittorrent stores its network interface as an internal identifier that stops resolving when a VPN " +
             "recreates its adapter. It then listens on nothing while still showing the right adapter name, and a " +
-            "restart cannot fix it. Re-applies the binding automatically when that happens.");
+            "restart cannot fix it. Re-applies the binding automatically when that happens. Also corrects a bind " +
+            "address the adapter no longer has, and - if the forwarded port stops answering after the adapter " +
+            "changed address - nudges qBittorrent into listening on the new one. Your settings are left as you had them.");
         toolTip.SetToolTip(txtTransmissionURL, "URL for the Transmission RPC endpoint (e.g. http://127.0.0.1:9091). Remote access must be enabled in Transmission Preferences → Remote (not required when running as a service).");
         toolTip.SetToolTip(txtTransmissionUserName, "Username for the Transmission RPC (leave empty if authentication is disabled)");
         toolTip.SetToolTip(txtTransmissionPassword, "Password for the Transmission RPC (leave empty if authentication is disabled)");
@@ -166,7 +175,11 @@ public partial class SettingsForm : Form
         toolTip.SetToolTip(chkResyncOnNetworkChange, "When a network or VPN connection change is detected, run a sync right away instead of waiting for the next interval - so the client follows a VPN reconnect within seconds. Pausing still suppresses the cycle.");
         toolTip.SetToolTip(chkWaitForVpnOnStartup, "For the first minute and a half after the app starts, wait quietly while the VPN is still connecting instead of reporting it as disconnected or applying the default port. The port syncs as soon as the VPN comes up.");
         toolTip.SetToolTip(chkVerifyPort, "After each sync, check that the port is reachable from the Internet. Transmission and Deluge use their built-in online port checkers; qBittorrent infers it from incoming peer activity (an idle client may report closed). Runs after a port change and periodically.");
-        toolTip.SetToolTip(chkAutoRecovery, "Triggers auto-recovery (VPN service restart, or adapter cycle for NAT-PMP gateways) after the configured number of consecutive cycles where the VPN is disconnected or assigns no forwarded port. Client-side problems do not count - auto-recovery cannot fix those.");
+        // The "stops after 3" clause sits where the port-closed tooltip below puts its own bound, so the
+        // two triggers read alike: fires when X, stops at Y. Without it this checkbox was the only one
+        // of the pair that appeared unlimited - the exact belief the cap exists to make false. Wording
+        // matches the Status panel row and the log line so a user recognises one rule, not two.
+        toolTip.SetToolTip(chkAutoRecovery, "Triggers auto-recovery (VPN service restart, or adapter cycle for NAT-PMP gateways) after the configured number of consecutive cycles where the VPN is disconnected or assigns no forwarded port. Stops after 3 attempts that do not restore a forwarded port, and resumes once one is found. Client-side problems do not count - auto-recovery cannot fix those.");
         toolTip.SetToolTip(nudRecoveryCycles, "Number of consecutive cycles without an assigned port or VPN connection before auto-recovery is triggered");
         toolTip.SetToolTip(chkPortClosedRecovery, "Triggers auto-recovery (same action as the no-port trigger) when port verification has confirmed the assigned port closed for the configured number of checks. Fires at most once, then re-arms only after a scheduled check reports the port open again. Caution with qBittorrent: an idle client (no active transfers) can report closed indefinitely.");
         toolTip.SetToolTip(nudPortClosedChecks, "Number of confirmed closed checks before auto-recovery is triggered");

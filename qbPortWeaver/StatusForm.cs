@@ -632,11 +632,7 @@ public partial class StatusForm : Form
         }
         else if (s.Timestamp is DateTimeOffset ts)
         {
-            int interval = RegistrySettingsManager.GetInt(
-                RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyUpdateIntervalSeconds);
-            if (interval < AppConstants.MinUpdateIntervalSeconds)
-                interval = AppConstants.DefaultUpdateIntervalSeconds;
-            dueAt = ts.AddSeconds(interval);
+            dueAt = ts.AddSeconds(RegistrySettingsManager.GetClampedUpdateIntervalSeconds());
         }
         else
         {

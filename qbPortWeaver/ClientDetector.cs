@@ -25,25 +25,40 @@ internal static class ClientDetector
     /// </summary>
     internal static IReadOnlyList<DetectedClient> DetectAll()
     {
-        var results = new List<DetectedClient>();
-        foreach (var c in ClientRegistry.All)
+        // Guarded to the same shape as VpnDetector.DetectAll, which makes the identical "never throws"
+        // promise. The inner helpers already catch their own failures, but the enumeration itself does
+        // not: Process.GetProcessesByName can throw when the process list cannot be read, and
+        // Environment.GetFolderPath / Path.Combine can throw on a malformed folder name. The two
+        // detectors are read as a pair, so an unenforced contract here reads as an enforced one.
+        try
         {
-            string? defaultExe = ResolveDefaultExe(c);
+            var results = new List<DetectedClient>();
+            foreach (var c in ClientRegistry.All)
+            {
+                string? defaultExe = ResolveDefaultExe(c);
 
-            if (TryFindRunningProcess(c.ProcessNames, out string? matched, out string? runningExe))
-            {
-                // A running client knows its own install location, so prefer the live process's real
-                // executable path. Fall back to the default install path only when the real path could
-                // not be read (access denied / bitness mismatch) but a default install exists.
-                string? exe = runningExe ?? defaultExe;
-                results.Add(new DetectedClient(c.Name, matched ?? c.ProcessNames[0], exe, DetectionKind.Running));
+                if (TryFindRunningProcess(c.ProcessNames, out string? matched, out string? runningExe))
+                {
+                    // A running client knows its own install location, so prefer the live process's real
+                    // executable path. Fall back to the default install path only when the real path could
+                    // not be read (access denied / bitness mismatch) but a default install exists.
+                    string? exe = runningExe ?? defaultExe;
+                    results.Add(new DetectedClient(c.Name, matched ?? c.ProcessNames[0], exe, DetectionKind.Running));
+                }
+                else if (defaultExe is not null)
+                {
+                    results.Add(new DetectedClient(c.Name, c.ProcessNames[0], defaultExe, DetectionKind.Installed));
+                }
             }
-            else if (defaultExe is not null)
-            {
-                results.Add(new DetectedClient(c.Name, c.ProcessNames[0], defaultExe, DetectionKind.Installed));
-            }
+            return results;
         }
-        return results;
+        catch (Exception ex)
+        {
+            // Debug, matching VpnDetector: failing to pre-fill is not a fault, and the user is standing
+            // at the dialog able to enter it themselves.
+            LogManager.Instance.LogDebug($"ClientDetector.DetectAll: {ex.Message}");
+            return [];
+        }
     }
 
     // Returns the candidate's default install path, checking both the 64-bit and 32-bit Program Files

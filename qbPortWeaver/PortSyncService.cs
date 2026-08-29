@@ -746,8 +746,11 @@ public sealed class PortSyncService
     // Reads all configuration values from the registry into a single AppConfig record
     private static (AppConfig Config, string ActiveSection) ReadConfig()
     {
-        int updateInterval = RegistrySettingsManager.GetInt(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyUpdateIntervalSeconds);
-        if (updateInterval < AppConstants.MinUpdateIntervalSeconds) updateInterval = AppConstants.DefaultUpdateIntervalSeconds;
+        // Shared with the Status panel's fallback due-time derivation - see
+        // GetClampedUpdateIntervalSeconds for why the clamp lives in one place. The upper bound is
+        // load-bearing here: MainForm's two delay paths multiply this by MillisecondsPerSecond, which
+        // overflows int above ~24.8 days and produces a negative delay that kills the main loop.
+        int updateInterval = RegistrySettingsManager.GetClampedUpdateIntervalSeconds();
 
         int vpnAutoRecoveryTriggerCycles = Math.Max(1, RegistrySettingsManager.GetInt(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyVpnAutoRecoveryTriggerCycles));
 

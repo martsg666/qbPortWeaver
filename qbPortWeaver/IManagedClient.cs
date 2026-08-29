@@ -21,8 +21,11 @@ public interface IManagedClient : IDisposable
     /// address. Measured on a live pair: Transmission binds a wildcard socket (<c>0.0.0.0</c>, its
     /// default) and so cannot be stranded by a rotating tunnel address, while Deluge binds every local
     /// address individually even with <c>listen_interface</c> empty, which is the same shape that
-    /// strands qBittorrent. Deluge therefore has the gap the qBittorrent address check closes, and does
-    /// not yet have an equivalent.</para>
+    /// strands qBittorrent. Deluge is therefore exposed to what the qBittorrent address check closes,
+    /// and deliberately has no equivalent: qBittorrent is by a wide margin the most used of the four,
+    /// so that check earns its complexity there and not in a second copy carrying its own client quirks
+    /// to verify and keep in step. The residual exposure is the same narrow window, and a port write
+    /// repairs Deluge just as it repairs qBittorrent. A settled decision, not an oversight.</para>
     /// </summary>
     bool SupportsInterfaceMismatchWarning { get; }
 

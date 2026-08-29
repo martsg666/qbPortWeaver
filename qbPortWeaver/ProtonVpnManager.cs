@@ -141,7 +141,15 @@ public sealed partial class ProtonVpnManager : IVpnManager
     // "Port pair N->N" is pure ASCII and ProtonVPN logs use ASCII-only content.
     private int? ReadLastPortFromLog()
     {
-        using var fs = new FileStream(_logFilePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+        // FileShare.Delete as well as ReadWrite. Windows requires DELETE access on an open handle before
+        // another process can rename over it, so without it a log rotation by ProtonVPN *during* this
+        // read fails - in ProtonVPN, where we would never see it. Same rule AppFiles.OpenShared applies
+        // to our own files, and it matters more here: a sharing violation in a third party's file is one
+        // we cannot observe and did not have to cause. Nothing is torn by allowing it - the scan either
+        // completes on the handle it opened or fails cleanly, and the enclosing catch turns that into
+        // "no port found" for one cycle, which the next cycle retries.
+        using var fs = new FileStream(_logFilePath, FileMode.Open, FileAccess.Read,
+            FileShare.ReadWrite | FileShare.Delete);
 
         long bytesRemaining = fs.Length;
         string lineFragment = string.Empty;

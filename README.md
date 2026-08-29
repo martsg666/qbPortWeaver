@@ -491,6 +491,13 @@ Some problems sit outside the sync loop and used to pass unnoticed. Each of thes
 
 ---
 
+## Documentation
+
+- **[Sync cycle](docs/SYNC-CYCLE.md)** - how a cycle actually runs: VPN detection, the two auto-recovery triggers and every gate that holds them back, client interaction and the interface checks, the JSON status file consumed by external scripts, diagnostics, and a full method call map. Read this before changing `PortSyncService`.
+- **[Nicotine+ bridge plugin](plugins/qbpw_nicotine_bridge/README.md)** - what the plugin installs, how qbPortWeaver discovers it, its chat commands and HTTP API, what happens when Nicotine+ was started with `--port`, and its security model.
+
+---
+
 ## Contributing
 
 ### Branch and Release Strategy

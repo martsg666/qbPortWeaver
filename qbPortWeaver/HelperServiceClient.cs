@@ -96,8 +96,26 @@ internal static class HelperServiceClient
     // HelperPipeServer.RequestReadTimeoutMs, which bounds the opposite direction.)
     private const int ResponseTimeoutMs = 120_000;
 
-    // Resolved once per session; the helper validates it against HKCU to reject unauthorized pipe connections.
-    private static readonly Lazy<string> _sessionToken = new(() => RegistrySettingsManager.GetOrCreatePipeSessionToken());
+    // Resolved once per session; the helper validates it against HKCU to reject unauthorized pipe
+    // connections. Cached only on success, and that distinction is the whole point: this was a
+    // Lazy<string>, and GetOrCreatePipeSessionToken reports a registry failure by *returning an empty
+    // string* rather than throwing. Lazy treats that as a successful result and caches it forever, so a
+    // single transient read - a hive still loading at logon, a moment of policy contention - disabled
+    // auto-recovery for the entire process lifetime, with every later attempt failing on the empty-token
+    // guard below and nothing ever looking again. Note LazyThreadSafetyMode.PublicationOnly would not
+    // have helped: it retries after a thrown exception, and nothing is thrown here.
+    // Same rule as VpnRegistryConfig's exe-path cache - write back only a real resolution.
+    // volatile: written at most once from empty to a token, read from the sync loop and diagnostics.
+    // A race costs one extra registry read; the read is idempotent (CreateSubKey then GetValue).
+    private static volatile string? _sessionToken;
+
+    private static string GetSessionToken()
+    {
+        if (_sessionToken is { Length: > 0 } cached) return cached;
+        string token = RegistrySettingsManager.GetOrCreatePipeSessionToken();
+        if (token.Length > 0) _sessionToken = token;
+        return token;
+    }
 
     /// <summary>Asks the helper service to stop and restart the Windows service with the given <paramref name="serviceName"/>.</summary>
     internal static Task<HelperResult> SendRestartAsync(string serviceName, CancellationToken cancellationToken = default) =>
@@ -118,7 +136,10 @@ internal static class HelperServiceClient
             return HelperResult.Failed;
         }
 
-        if (string.IsNullOrEmpty(_sessionToken.Value))
+        // Resolved per attempt rather than once: a failed read is not cached, so a later attempt
+        // retries instead of inheriting the first failure for the life of the process.
+        string sessionToken = GetSessionToken();
+        if (string.IsNullOrEmpty(sessionToken))
         {
             LogManager.Instance.LogMessage($"Cannot send '{action}' request: session token unavailable (registry error)", LogLevel.Warn);
             return HelperResult.Failed;
@@ -131,7 +152,7 @@ internal static class HelperServiceClient
             await using var writer = new StreamWriter(pipe, leaveOpen: true) { AutoFlush = true };
             using var reader = new StreamReader(pipe, leaveOpen: true); // StreamReader lacks IAsyncDisposable; synchronous Dispose is safe here (flushes no writes)
 
-            await writer.WriteLineAsync($"{action}|{target}|{_sessionToken.Value}".AsMemory(), cancellationToken).ConfigureAwait(false);
+            await writer.WriteLineAsync($"{action}|{target}|{sessionToken}".AsMemory(), cancellationToken).ConfigureAwait(false);
             LogManager.Instance.LogMessage($"Sent '{action}' request for '{target}'", LogLevel.Info);
 
             return ParseResult(await ReadResponseAsync(reader, action, cancellationToken).ConfigureAwait(false));

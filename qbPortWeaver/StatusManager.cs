@@ -55,6 +55,11 @@ public sealed record StatusSnapshot
     /// otherwise. Distinct from <see cref="RecoveryHoldUntil"/>: that one waits on connectivity,
     /// this one waits for the failures to have persisted long enough to rule out a brief blip.</summary>
     [JsonPropertyName("recoverySustainedUntil")] public DateTimeOffset? RecoverySustainedUntil { get; init; }
+    /// <summary>Whether the failed-cycle trigger is suspended because the consecutive-recovery cap was
+    /// reached: recoveries ran but none restored a forwarded port. Unlike the two holds above this one
+    /// carries no deadline - it ends on the next successful port read, which nothing can predict - so it
+    /// is a flag rather than an instant.</summary>
+    [JsonPropertyName("recoverySuspended")] public bool RecoverySuspended { get; init; }
     /// <summary>Whether the port-closed recovery trigger can actually fire. Independent of
     /// <see cref="RecoveryEnabled"/>: either trigger can restart the VPN with the other off. This is
     /// the effective value, not the raw setting - the trigger runs inside port verification, so it is

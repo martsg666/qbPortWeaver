@@ -28,7 +28,13 @@ public static class AppConstants
 
     /// <summary>Returns <see langword="true"/> when <paramref name="port"/> is a usable listening port.</summary>
     /// <remarks>Shared by every consumer of a provider-reported port - the sync loop and the
-    /// diagnostics report - so the two can never disagree about what counts as usable.</remarks>
+    /// diagnostics report - so the two can never disagree about what counts as usable.
+    /// <para><b>A deliberate exception to this file's constants-only rule</b>, and the only one. That
+    /// rule exists to stop <i>behaviour with dependencies</i> accumulating here - file I/O, service
+    /// lookup, process control, theming - which is what the 2.6.7 split moved out. This is a pure
+    /// predicate over the two constants declared directly above it, with no dependencies at all, and
+    /// separating the range from its single interpretation is how two consumers come to disagree about
+    /// it. Do not move it out to satisfy the letter of the rule.</para></remarks>
     public static bool IsUsablePort(int port) => port is >= MinPortNumber and <= MaxPortNumber;
 
     // UI

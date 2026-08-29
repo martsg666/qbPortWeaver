@@ -347,7 +347,12 @@ public static class RegistrySettingsManager
         }
         catch (Exception ex)
         {
-            LogManager.Instance.LogDebug($"RegistrySettingsManager.GetOrCreatePipeSessionToken: {ex.Message}");
+            // Warn, not Debug: the caller already reports "session token unavailable" at Warn, and this
+            // is the only line that says why. Logging the cause a level below the symptom left it
+            // invisible at default settings, on the path that disables auto-recovery.
+            LogManager.Instance.LogMessage(
+                $"Could not read or create the helper session token - auto-recovery cannot run until this succeeds: {ex.Message}",
+                LogLevel.Warn);
             return string.Empty;
         }
     }

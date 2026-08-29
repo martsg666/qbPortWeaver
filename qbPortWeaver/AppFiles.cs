@@ -7,9 +7,21 @@ public static class AppFiles
 {
     private const string StatusFileName = "qbPortWeaver.status.json";
 
+    // PublicationOnly, not the default ExecutionAndPublication. The default caches a thrown exception
+    // permanently, so one transient failure here - a redirected %LocalAppData% on a share that is
+    // briefly unreachable, a profile hive still mounting at logon - would leave the log file, status
+    // file, port history and TMDB cache dead for the whole process lifetime, and dead in a way that
+    // cannot be reported, since the log is one of the things it takes down. PublicationOnly re-runs the
+    // factory on the next access instead.
+    //
+    // Safe here only because the factory is idempotent: CreateDirectory on an existing directory is a
+    // no-op returning the same path, so two threads racing costs one redundant syscall and both publish
+    // the same string. Note the three Lazy fields in NicotinePluginInstaller deliberately keep the
+    // default and document why - their factories read already-loaded assembly resources and cannot fail
+    // transiently. That reasoning does not transfer to a factory that touches the file system.
     private static readonly Lazy<string> _appDataFolder = new(() => Directory.CreateDirectory(
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), AppIdentity.AppName)
-    ).FullName);
+    ).FullName, LazyThreadSafetyMode.PublicationOnly);
 
     /// <summary>The application's own data folder under <c>%LocalAppData%</c>, created on first access.</summary>
     /// <remarks>Also where the Nicotine+ bridge plugin publishes its connection details, since it is
@@ -141,8 +153,18 @@ public static class AppFiles
         }
     }
 
-    /// <summary>Returns the full path to the ProtonVPN log file, resolved from the registry setting.</summary>
-    public static string GetProtonVpnLogFilePath() => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        RegistrySettingsManager.GetAppValue(RegistrySettingsManager.KeyProtonVpnLogFilePath));
+    /// <summary>Returns the full path to the ProtonVPN log file, resolved from the registry setting,
+    /// or an empty string when that setting is blank.</summary>
+    /// <remarks>Empty rather than the bare folder, because <see cref="Path.Combine(string, string)"/>
+    /// returns the first argument when the second is empty. Handing the caller
+    /// <c>%LocalAppData%</c> made <c>ProtonVpnManager</c>'s own empty-path guard unreachable - a blank
+    /// setting fell through to the next check and was reported as "log file does not exist:
+    /// %LocalAppData%", which sends the user looking for a missing file instead of at the setting.</remarks>
+    public static string GetProtonVpnLogFilePath()
+    {
+        string configured = RegistrySettingsManager.GetAppValue(RegistrySettingsManager.KeyProtonVpnLogFilePath);
+        return configured.Length == 0
+            ? string.Empty
+            : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), configured);
+    }
 }

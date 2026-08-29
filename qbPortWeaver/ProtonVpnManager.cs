@@ -94,7 +94,17 @@ public sealed partial class ProtonVpnManager : IVpnManager
         {
             if (string.IsNullOrWhiteSpace(_logFilePath))
             {
-                LogManager.Instance.LogDebug("ProtonVpnManager.GetVpnPortCore: Log file path is null or empty");
+                // Reachable only since AppFiles.GetProtonVpnLogFilePath started returning empty for a
+                // blank value - Path.Combine used to mask it as the LocalAppData folder.
+                //
+                // Only a hand-edit reaches this: there is no Settings field for the path, and
+                // GetAppValue falls back to the default when the value is absent or unreadable. An
+                // empty string is still a string, so it is the one input that survives to here. The
+                // message therefore names the registry value and the recovery, because nothing in the
+                // UI can fix it - deleting the value restores the default.
+                LogManager.Instance.LogDebug(
+                    @"ProtonVpnManager.GetVpnPortCore: The 'protonVpnLogFilePath' value under HKCU\Software\qbPortWeaver is empty - " +
+                    "delete the value to restore the default path, or set it to the ProtonVPN log file");
                 return null;
             }
 

@@ -186,18 +186,43 @@ public static class UpdateChecker
         long? total = response.Content.Headers.ContentLength;
 
         await using var source = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
-        await using var dest = new FileStream(destPath, FileMode.Create, FileAccess.Write, FileShare.None);
+        var dest = new FileStream(destPath, FileMode.Create, FileAccess.Write, FileShare.None);
 
-        var buffer = new byte[81920];
-        long received = 0;
-        int read;
-        while ((read = await source.ReadAsync(buffer, cancellationToken).ConfigureAwait(false)) > 0)
+        try
         {
-            await dest.WriteAsync(buffer.AsMemory(0, read), cancellationToken).ConfigureAwait(false);
-            received += read;
-            if (total is > 0)
-                progress?.Report((double)received / total.Value);
+            var buffer = new byte[81920];
+            long received = 0;
+            int read;
+            while ((read = await source.ReadAsync(buffer, cancellationToken).ConfigureAwait(false)) > 0)
+            {
+                await dest.WriteAsync(buffer.AsMemory(0, read), cancellationToken).ConfigureAwait(false);
+                received += read;
+                if (total is > 0)
+                    progress?.Report((double)received / total.Value);
+            }
         }
+        catch
+        {
+            // A cancelled or failed transfer must not leave a truncated installer behind under a name
+            // that looks like a finished one. The caller never runs it - every failure path falls back
+            // to the release page and returns before launching - but the file would sit in %TEMP% as
+            // "qbPortWeaver_<version>_Setup.msi", where someone sent to the release page could find and
+            // run it by hand. Same rule as AppFiles.WriteAtomicCore: a write that did not complete
+            // leaves nothing behind.
+            //
+            // Disposed explicitly first: `await using` has not run at this point and FileShare.None
+            // holds the handle, so the delete would fail with the file still open.
+            await dest.DisposeAsync().ConfigureAwait(false);
+            try { File.Delete(destPath); }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                // Best effort. The next attempt opens with FileMode.Create and truncates it anyway.
+                LogManager.Instance.LogDebug($"UpdateChecker.DownloadFileAsync: could not remove the partial download '{destPath}': {ex.Message}");
+            }
+            throw;
+        }
+
+        await dest.DisposeAsync().ConfigureAwait(false);
     }
 
     private static bool IsBot(string login, string type) =>

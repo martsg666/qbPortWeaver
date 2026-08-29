@@ -94,7 +94,11 @@ public sealed partial class ProtonVpnManager : IVpnManager
         {
             if (string.IsNullOrWhiteSpace(_logFilePath))
             {
-                LogManager.Instance.LogDebug("ProtonVpnManager.GetVpnPortCore: Log file path is null or empty");
+                // Reachable only since AppFiles.GetProtonVpnLogFilePath started returning empty for a
+                // blank setting - Path.Combine used to mask it as the LocalAppData folder. Says what to
+                // do rather than naming an internal value, since this is now the case a user can act on.
+                LogManager.Instance.LogDebug(
+                    "ProtonVpnManager.GetVpnPortCore: No ProtonVPN log file path is configured - set it in Settings, or switch the provider to NAT-PMP");
                 return null;
             }
 

@@ -153,8 +153,18 @@ public static class AppFiles
         }
     }
 
-    /// <summary>Returns the full path to the ProtonVPN log file, resolved from the registry setting.</summary>
-    public static string GetProtonVpnLogFilePath() => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        RegistrySettingsManager.GetAppValue(RegistrySettingsManager.KeyProtonVpnLogFilePath));
+    /// <summary>Returns the full path to the ProtonVPN log file, resolved from the registry setting,
+    /// or an empty string when that setting is blank.</summary>
+    /// <remarks>Empty rather than the bare folder, because <see cref="Path.Combine(string, string)"/>
+    /// returns the first argument when the second is empty. Handing the caller
+    /// <c>%LocalAppData%</c> made <c>ProtonVpnManager</c>'s own empty-path guard unreachable - a blank
+    /// setting fell through to the next check and was reported as "log file does not exist:
+    /// %LocalAppData%", which sends the user looking for a missing file instead of at the setting.</remarks>
+    public static string GetProtonVpnLogFilePath()
+    {
+        string configured = RegistrySettingsManager.GetAppValue(RegistrySettingsManager.KeyProtonVpnLogFilePath);
+        return configured.Length == 0
+            ? string.Empty
+            : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), configured);
+    }
 }

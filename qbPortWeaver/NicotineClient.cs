@@ -147,6 +147,14 @@ public sealed class NicotineClient : ManagedClientBase
     {
         // Turning off Nicotine+'s own port forwarding alongside the change, as the other clients
         // do, so its port mapper cannot fight the externally managed port.
+        //
+        // No random-port field here, and that is not an omission. The other three each disable a
+        // random-port setting alongside the write - qBittorrent and Deluge `random_port:false`,
+        // Transmission `peer-port-random-on-start:false` - because those clients offer a toggle that
+        // would otherwise re-pick a port behind us. Nicotine+ has no such toggle: it picks within a
+        // configured *range*, and the plugin's set_port collapses that range to a single port
+        // (`portrange = (port, port)`), which removes the choice by construction. Same protection,
+        // expressed the way this client's config allows. See bridge/core_io.py.
         var body = $$"""{"port":{{port}},"disable_upnp":true}""";
 
         using var response = await SendAsync(HttpMethod.Post, PathPort, body,

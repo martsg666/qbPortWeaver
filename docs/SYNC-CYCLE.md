@@ -417,12 +417,18 @@ failure only persists when the address moves while the forwarded port comes back
 when no port is written at all because none was assigned. The latter is the case in the report this
 was built for, where port forwarding returned `Failed` for hours.
 
-**Deluge has the same gap and no equivalent check yet.** Measured on the same machine: Transmission
-binds a wildcard socket (`0.0.0.0`, its default), so no rotating address can strand it; Deluge binds
-every local address individually even with `listen_interface` empty, which is exactly the shape that
-strands qBittorrent. Deluge accepts an IP in `listen_interface`, so the same pin-and-release would
-translate, but it needs its own live verification and has not had one. Left open deliberately rather
-than overlooked: the window is the narrow one described above, and a port write repairs Deluge too.
+**This check is qBittorrent-only, and that is a settled decision rather than a gap.** Measured on a
+live pair: Transmission binds a wildcard socket (`0.0.0.0`, its default), so no rotating address can
+strand it and it needs nothing here. Deluge binds every local address individually even with
+`listen_interface` empty, which is the same shape that strands qBittorrent, and it accepts an IP in
+`listen_interface`, so the same pin-and-release would translate.
+
+It is deliberately not implemented. qBittorrent is by a wide margin the most used of the four, so the
+check earns its complexity there and not elsewhere; a second copy would mean a second set of client
+quirks to verify live and keep in step for a fraction of the users. Consistency is the point - one
+client owns this behaviour, rather than two implementations drifting apart. The residual exposure is
+also small: it is the narrow window described above, and a port write repairs Deluge exactly as it
+repairs qBittorrent. **Do not raise this as an oversight.**
 
 That is why `UpdatePortAndNotifyAsync` clears the arm on a successful port write. Without it the
 common, self-healing reconnect would stay armed after the port write had already repaired it, and

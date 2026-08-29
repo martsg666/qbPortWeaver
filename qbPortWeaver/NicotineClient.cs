@@ -137,7 +137,7 @@ public sealed class NicotineClient : ManagedClientBase
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
         catch (Exception ex)
         {
-            LogManager.Instance.LogDebug($"NicotineClient.GetPreferencesAsync: {ex.Message}");
+            LogHttpException("GetPreferencesAsync", ex);
             return (null, null);
         }
     }
@@ -177,7 +177,7 @@ public sealed class NicotineClient : ManagedClientBase
             // response and reported any transport failure itself, so anything landing here is a
             // malformed body. The user-facing Error comes from ApplyPortUpdateAsync, which turns
             // the false below into "Failed to set {client} port to {n}" - this line only records why.
-            LogManager.Instance.LogDebug($"NicotineClient.SetListeningPortAsync: {ex.Message}");
+            LogHttpException("SetListeningPortAsync", ex);
             return false;
         }
     }
@@ -201,7 +201,7 @@ public sealed class NicotineClient : ManagedClientBase
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
         catch (Exception ex)
         {
-            LogManager.Instance.LogDebug($"NicotineClient.GetConnectionStatusAsync: {ex.Message}");
+            LogHttpException("GetConnectionStatusAsync", ex);
             return null;
         }
     }
@@ -242,7 +242,9 @@ public sealed class NicotineClient : ManagedClientBase
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
         catch (Exception ex)
         {
-            LogManager.Instance.LogDebug($"NicotineClient.TestListeningPortAsync: {ex.Message}");
+            // Debug like the other clients' test methods: an unreachable client makes the result
+            // undeterminable rather than faulty, so this must not badge the tray on every reconnect.
+            LogHttpException("TestListeningPortAsync", ex, LogLevel.Debug);
             return null;
         }
     }
@@ -267,7 +269,7 @@ public sealed class NicotineClient : ManagedClientBase
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
         catch (Exception ex)
         {
-            LogManager.Instance.LogDebug($"NicotineClient.GetConflictingSettingsAsync: {ex.Message}");
+            LogHttpException("GetConflictingSettingsAsync", ex);
             return null;
         }
     }

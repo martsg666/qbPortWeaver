@@ -811,20 +811,26 @@ public partial class MainForm : Form
             }
         }
 
+        LogLoopExit(graceful);
+    }
+
+    // Terminal line for the main loop, extracted so the branch does not count against
+    // RunMainLoopAsync's cognitive complexity - Sonar gates that at 15 and the loop sits just under it.
+    private static void LogLoopExit(bool graceful)
+    {
         if (graceful)
         {
             LogManager.Instance.LogMessage("Main loop exited gracefully", LogLevel.Info);
+            return;
         }
-        else
-        {
-            // Error, not Warn: the app is alive but permanently unable to do its job and cannot recover
-            // on its own, so this must raise the tray badge - otherwise the only symptom is a tray icon
-            // that quietly stops updating. Names the consequence and the remedy, because "main loop
-            // stopped" alone leaves the user with nothing to act on.
-            LogManager.Instance.LogMessage(
-                $"Main loop stopped after an unrecoverable error - {AppIdentity.AppName} will not sync again until it is restarted",
-                LogLevel.Error);
-        }
+
+        // Error, not Warn: the app is alive but permanently unable to do its job and cannot recover on
+        // its own, so this must raise the tray badge - otherwise the only symptom is a tray icon that
+        // quietly stops updating. Names the consequence and the remedy, because "main loop stopped"
+        // alone leaves the user with nothing to act on.
+        LogManager.Instance.LogMessage(
+            $"Main loop stopped after an unrecoverable error - {AppIdentity.AppName} will not sync again until it is restarted",
+            LogLevel.Error);
     }
 
     // Publishes the Paused tray status while cycles are being skipped. Re-published on every

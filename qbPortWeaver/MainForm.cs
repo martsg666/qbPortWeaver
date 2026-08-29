@@ -260,7 +260,12 @@ public partial class MainForm : Form
         // Signal the main loop to stop
         _shutdownCts.Cancel();
 
-        // Unsubscribe before teardown so background threads cannot marshal onto a disposed form
+        // Unsubscribe before teardown so background threads cannot marshal onto a disposed form. Only
+        // the LogManager events need this: it is a process-lifetime singleton, so a stale handler would
+        // outlive the form. _portSyncService is owned by this form and dies with it, and its five
+        // handlers are already guarded the same way - each returns on _shutdownCts, and InvokeOnUiThread
+        // catches the disposal race - so unsubscribing them would add nothing but five lines to keep in
+        // step every time an event is added to PortSyncService.
         LogManager.Instance.WarnOrErrorLogged -= OnWarnOrErrorLogged;
         LogManager.Instance.LogWriteFailed -= OnLogWriteFailed;
 

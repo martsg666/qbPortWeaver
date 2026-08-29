@@ -507,52 +507,11 @@ release strategy, branch naming, and the release workflow.
 
 ## Changelog
 
-### v2.2.0 and later - see [GitHub Releases](https://github.com/martsg666/qbPortWeaver/releases)
+Release notes for every version are on the [GitHub Releases](https://github.com/martsg666/qbPortWeaver/releases) page.
 
-### v2.0.0
-- **Tray status indicator**: the tray icon now shows a colored dot (green / orange / red) reflecting the last sync result, and the tooltip shows the current port and status without opening the log file
-- Settings are now stored in the **Windows Registry** (`HKCU\Software\qbPortWeaver\settings`). Existing settings are automatically migrated from the INI file on first run
-- The qBittorrent **password is now encrypted** in the registry using Windows DPAPI. Existing plaintext passwords (from INI migration or older installs) are transparently re-encrypted on first read
-- New **Settings** dialog (tray menu → Settings): all options are now editable in a dedicated form with inline descriptions and tooltips, replacing the previous Notepad shortcut
-- Tray balloon tip and log warning when qBittorrent's network interface doesn't match the configured VPN provider, or when bound to all interfaces (potential traffic leak). Configurable via **Warn on interface mismatch** in Settings
-
-### v1.7.0
-- **Last-run status file** (`qbPortWeaver.status.json`) written after each sync cycle to `%LocalAppData%\qbPortWeaver\`. Useful for external scripts or monitoring - exposes VPN port, client port, port change flag, timestamp, and status message
-- **Clear Logs** option in the tray menu
-- Improved error messages for qBittorrent Web API failures, including wrong credentials, unreachable Web UI, and HTTP errors
-- Fixed a PIA issue where `piactl.exe` could hang indefinitely if it failed to return a port
-
-### v1.6.1
-- New **Default port** option: set a fallback listening port when the VPN is not connected (0 = disabled). Useful if you have a port forwarded on your router for direct connections
-- Fixed PIA VPN detection failing in certain installation configurations
-
-### v1.6.0
-- Added **Private Internet Access (PIA)** VPN support via `piactl` CLI alongside ProtonVPN
-- New `vpnProvider` setting to switch between ProtonVPN and PIA. Changing the provider takes effect on the next sync cycle without restarting
-- New `debugMode` setting for verbose debug logging
-- **Breaking change:** settings `ForceStartqBittorrent` and `PostUpdateCmd` renamed to `forceStartqBittorrent` and `postUpdateCmd`
-
-### v1.5.0
-- **Automatic update checker**: notifies on startup when a new release is available on GitHub
-
-### v1.4.0
-- New **Force-start** option: automatically launches qBittorrent if it is not running during a sync cycle
-
-### v1.3.0
-- New **Post-update command** option: run a custom script or command after a successful port update (runs in the background, never blocks the sync loop)
-
-### v1.2.1
-- Fixed a crash on Windows shutdown, restart, or logoff
-
-### v1.2.0
-- Log rotation: keeps up to 3 log files (5 MB each) instead of overwriting
-- Various stability improvements
-
-### v1.1.0
-- Added **Sync Port Now** tray menu option for on-demand port sync
-
-### v1.0.0
-- Initial release
+Versions before 2.2.0 predate the current architecture - four clients, NAT-PMP, the helper
+service and the Media Manager all arrived later - and are recorded in the git history rather
+than here.
 
 ---
 

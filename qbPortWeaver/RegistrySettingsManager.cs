@@ -617,6 +617,23 @@ public static class RegistrySettingsManager
         return int.TryParse(GetDefault(section, key), System.Globalization.NumberStyles.Integer, invariant, out int fallback) ? fallback : 0;
     }
 
+    /// <summary>The configured sync interval in seconds, clamped to the usable range.</summary>
+    /// <remarks>One place, because this rule has two consumers - the sync loop's own read in
+    /// <c>PortSyncService.ReadConfig</c>, and the Status panel's fallback due-time derivation for a
+    /// status file written before <c>nextSyncAt</c> existed - and the two drifted the same day the
+    /// upper bound was added, with only the first updated. The upper bound is load-bearing in the
+    /// first caller (see <see cref="AppConstants.MaxUpdateIntervalSeconds"/>, where exceeding it
+    /// overflows the delay computation and kills the sync loop) and merely cosmetic in the second,
+    /// but sharing it costs nothing and removes the drift. Out of range resets to the default rather
+    /// than clamping to the bound: a value that far out is a mistake, not a preference.</remarks>
+    public static int GetClampedUpdateIntervalSeconds()
+    {
+        int interval = GetInt(SectionGeneral, KeyUpdateIntervalSeconds);
+        return interval < AppConstants.MinUpdateIntervalSeconds || interval > AppConstants.MaxUpdateIntervalSeconds
+            ? AppConstants.DefaultUpdateIntervalSeconds
+            : interval;
+    }
+
     /// <summary>Reads the qBittorrent password from the registry and decrypts it with DPAPI (CurrentUser scope). Returns an empty string if missing or decryption fails.</summary>
     public static string GetQBittorrentPassword() =>
         GetEncryptedValue(SectionQBittorrent, KeyQBittorrentPassword);

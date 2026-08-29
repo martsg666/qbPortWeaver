@@ -7,9 +7,21 @@ public static class AppFiles
 {
     private const string StatusFileName = "qbPortWeaver.status.json";
 
+    // PublicationOnly, not the default ExecutionAndPublication. The default caches a thrown exception
+    // permanently, so one transient failure here - a redirected %LocalAppData% on a share that is
+    // briefly unreachable, a profile hive still mounting at logon - would leave the log file, status
+    // file, port history and TMDB cache dead for the whole process lifetime, and dead in a way that
+    // cannot be reported, since the log is one of the things it takes down. PublicationOnly re-runs the
+    // factory on the next access instead.
+    //
+    // Safe here only because the factory is idempotent: CreateDirectory on an existing directory is a
+    // no-op returning the same path, so two threads racing costs one redundant syscall and both publish
+    // the same string. Note the three Lazy fields in NicotinePluginInstaller deliberately keep the
+    // default and document why - their factories read already-loaded assembly resources and cannot fail
+    // transiently. That reasoning does not transfer to a factory that touches the file system.
     private static readonly Lazy<string> _appDataFolder = new(() => Directory.CreateDirectory(
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), AppIdentity.AppName)
-    ).FullName);
+    ).FullName, LazyThreadSafetyMode.PublicationOnly);
 
     /// <summary>The application's own data folder under <c>%LocalAppData%</c>, created on first access.</summary>
     /// <remarks>Also where the Nicotine+ bridge plugin publishes its connection details, since it is

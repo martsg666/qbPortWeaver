@@ -227,6 +227,13 @@ public sealed class LogManager
     /// (a different folder goes offline) still gets announced.</para>
     /// <para>Call <see cref="ClearLogState"/> once the condition clears, so a later recurrence is
     /// reported instead of being swallowed as a duplicate.</para>
+    /// <para><b>The check-then-set is deliberately not atomic.</b> The dictionary is concurrent, so each
+    /// step is safe on its own, but two threads could pass the guard for the same key and message and
+    /// both write. The cost of that is exactly one duplicate entry before they converge - no state is
+    /// lost and the next call suppresses correctly - and every key in use has a single writing site, so
+    /// it is not reachable today. Closing it would mean either holding a lock across the file write, in
+    /// the one path where contention is least acceptable, or latching before the write - and the latch
+    /// must stay after it, for the reason given at the assignment below.</para>
     /// </summary>
     public void LogStateChange(string key, string message, LogLevel level, string subsystem = Subsystem.MainApp)
     {

@@ -763,8 +763,14 @@ public partial class MainForm : Form
 
     // Runs the port-sync loop until shutdown is requested.
     // Exceptions are caught per-cycle so one bad cycle never kills the app.
+    // Every exit converges on the terminal log line below, and the line says which exit happened.
+    // Both halves of that were wrong before: the shutdown-during-delay path used `return`, so the most
+    // common graceful exit never logged a terminal line at all, while an unrecoverable delay failure
+    // broke out and was reported as having "exited gracefully" - an Info line asserting a clean
+    // shutdown directly beneath the Error that had just killed the loop.
     private async Task RunMainLoopAsync()
     {
+        bool graceful = true;
         while (!_shutdownCts.IsCancellationRequested)
         {
             int updateInterval = AppConstants.DefaultUpdateIntervalSeconds;
@@ -778,8 +784,9 @@ public partial class MainForm : Form
                 else
                     updateInterval = await RunSyncCycleAsync();
 
+                // break, not return, so this exit reaches the terminal line like every other one.
                 if (await ShutdownRequestedDuringDelayAsync(updateInterval))
-                    return;
+                    break;
             }
             catch (OperationCanceledException) when (_shutdownCts.IsCancellationRequested)
             {
@@ -789,11 +796,30 @@ public partial class MainForm : Form
             {
                 LogManager.Instance.LogMessage($"Sync cycle failed, retrying in {updateInterval}s: {ex.Message}", LogLevel.Error);
                 if (!await TryDelayAfterErrorAsync(updateInterval))
+                {
+                    // Only reached when the delay primitive itself failed, which TryDelayAfterErrorAsync
+                    // describes as unrecoverable. Not retried: the delay is what broke, so looping would
+                    // spin. Recorded so the terminal line below reports the truth.
+                    graceful = false;
                     break;
+                }
             }
         }
 
-        LogManager.Instance.LogMessage("Main loop exited gracefully", LogLevel.Info);
+        if (graceful)
+        {
+            LogManager.Instance.LogMessage("Main loop exited gracefully", LogLevel.Info);
+        }
+        else
+        {
+            // Error, not Warn: the app is alive but permanently unable to do its job and cannot recover
+            // on its own, so this must raise the tray badge - otherwise the only symptom is a tray icon
+            // that quietly stops updating. Names the consequence and the remedy, because "main loop
+            // stopped" alone leaves the user with nothing to act on.
+            LogManager.Instance.LogMessage(
+                $"Main loop stopped after an unrecoverable error - {AppIdentity.AppName} will not sync again until it is restarted",
+                LogLevel.Error);
+        }
     }
 
     // Publishes the Paused tray status while cycles are being skipped. Re-published on every

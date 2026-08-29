@@ -126,10 +126,19 @@ public partial class SettingsForm : Form
         toolTip.SetToolTip(nudQBittorrentDefaultPort, DefaultPortTooltip);
         toolTip.SetToolTip(chkQBittorrentWarnOnInterfaceMismatch, "Show a warning when qBittorrent's network interface does not match the configured VPN provider");
         toolTip.SetToolTip(chkQBittorrentRestartOnDisconnect, "Automatically restart qBittorrent when its connection status becomes disconnected");
+        // Covers all three behaviours this one checkbox gates, not just the identifier case it was
+        // written for: the address repair and the port-closed rebind were both added behind it in 2.6.7.
+        // They share one cause - a VPN reconnect moving the binding out from under qBittorrent - and one
+        // remedy, so they belong in one tooltip rather than in separate controls, which the settings-UX
+        // rule against artificial option dependencies would rule out anyway. The closing sentence is
+        // load-bearing: this is the only setting that makes the app write to another application's
+        // configuration, so a user deciding whether to enable it should know the end state is unchanged.
         toolTip.SetToolTip(chkQBittorrentFixInterfaceBinding,
             "qBittorrent stores its network interface as an internal identifier that stops resolving when a VPN " +
             "recreates its adapter. It then listens on nothing while still showing the right adapter name, and a " +
-            "restart cannot fix it. Re-applies the binding automatically when that happens.");
+            "restart cannot fix it. Re-applies the binding automatically when that happens. Also corrects a bind " +
+            "address the adapter no longer has, and - if the forwarded port stops answering after the adapter " +
+            "changed address - nudges qBittorrent into listening on the new one. Your settings are left as you had them.");
         toolTip.SetToolTip(txtTransmissionURL, "URL for the Transmission RPC endpoint (e.g. http://127.0.0.1:9091). Remote access must be enabled in Transmission Preferences → Remote (not required when running as a service).");
         toolTip.SetToolTip(txtTransmissionUserName, "Username for the Transmission RPC (leave empty if authentication is disabled)");
         toolTip.SetToolTip(txtTransmissionPassword, "Password for the Transmission RPC (leave empty if authentication is disabled)");

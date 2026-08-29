@@ -12,6 +12,14 @@ public static class AppConstants
     // Timing
     public const int DefaultUpdateIntervalSeconds = 180;
     public const int MinUpdateIntervalSeconds = 10;
+    // 24 hours. An upper bound is required, not cosmetic: both delay paths in MainForm compute
+    // updateInterval * MillisecondsPerSecond, which overflows int above ~24.8 days and yields a
+    // negative delay. Task.Delay then throws, the error path repeats the same arithmetic and throws
+    // again, and the main loop breaks permanently - the app sits in the tray syncing nothing.
+    // Must match nudUpdateInterval.Maximum in SettingsForm.Designer.cs, which cannot reference this
+    // constant: designer-generated code serialises literals only, and every form must stay openable
+    // in the VS designer. The duplication is unavoidable, so it is signposted from this side.
+    public const int MaxUpdateIntervalSeconds = 86400;
     public const int ManualSyncWaitSeconds = 10;
     public const int MillisecondsPerSecond = 1000;
     public const int AutoUpdateCheckIntervalMs = 12 * 60 * 60 * MillisecondsPerSecond;

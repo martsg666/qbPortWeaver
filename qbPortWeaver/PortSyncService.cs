@@ -747,7 +747,14 @@ public sealed class PortSyncService
     private static (AppConfig Config, string ActiveSection) ReadConfig()
     {
         int updateInterval = RegistrySettingsManager.GetInt(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyUpdateIntervalSeconds);
-        if (updateInterval < AppConstants.MinUpdateIntervalSeconds) updateInterval = AppConstants.DefaultUpdateIntervalSeconds;
+        // Both ends, and the upper one is load-bearing: MainForm's two delay paths multiply this by
+        // MillisecondsPerSecond, which overflows int above ~24.8 days and produces a negative delay that
+        // kills the main loop for good (see MaxUpdateIntervalSeconds). Out-of-range resets to the
+        // default rather than clamping to the bound - a value that far out is a mistake or a corrupted
+        // write, not a preference, and silently running it at the cap would hide that.
+        if (updateInterval < AppConstants.MinUpdateIntervalSeconds ||
+            updateInterval > AppConstants.MaxUpdateIntervalSeconds)
+            updateInterval = AppConstants.DefaultUpdateIntervalSeconds;
 
         int vpnAutoRecoveryTriggerCycles = Math.Max(1, RegistrySettingsManager.GetInt(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyVpnAutoRecoveryTriggerCycles));
 

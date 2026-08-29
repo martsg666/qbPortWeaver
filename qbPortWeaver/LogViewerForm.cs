@@ -1231,7 +1231,11 @@ public partial class LogViewerForm : Form
             {
                 lock (_readLock)
                 {
-                    using var fs = new FileStream(loadPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+                    // FileShare.Delete for the same reason AppFiles.OpenShared grants it: LogManager rotates by
+                    // renaming this file, and a read in flight without DELETE access makes that rename
+                    // fail in the writer. Rotation retries on its next check so a lost race only defers
+                    // it, but there is no reason to lose the race.
+                    using var fs = new FileStream(loadPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
                     using var reader = new StreamReader(fs, Encoding.UTF8);
                     return (ParseLogLines(reader.ReadToEnd()), fs.Position);
                 }
@@ -1328,7 +1332,8 @@ public partial class LogViewerForm : Form
                 if (!File.Exists(_activeLogFilePath))
                     return;
 
-                using var fs = new FileStream(_activeLogFilePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+                // FileShare.Delete: see the load path above - this tail read races LogManager's rotation rename.
+                using var fs = new FileStream(_activeLogFilePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
 
                 // File shorter than expected - it was rotated; read from the start
                 if (fs.Length < _lastReadPosition)

@@ -116,8 +116,18 @@ jobs:
 
       - name: Verify What's New content was written
         shell: pwsh
+        env:
+          # Needed by the "New in <version>" check below. Declared here rather than reusing the
+          # $tagVersion local from the previous step: each `run:` is its own shell, so that variable
+          # is out of scope, and an undefined one would expand to nothing - leaving the pattern as
+          # "New in ", which matches any release notes at all and makes the gate silently useless.
+          BUILD_VERSION: ${{ steps.version.outputs.VERSION }}
         run: |
           $ErrorActionPreference = 'Stop'
+          $tagVersion = $env:BUILD_VERSION
+          if ([string]::IsNullOrWhiteSpace($tagVersion)) {
+            throw "BUILD_VERSION is empty - the What's New version check cannot run."
+          }
           # Each cycle opens by bumping the version and leaving a placeholder in this dialog. It is
           # shown to every user on their first run after upgrading, so shipping the placeholder cannot
           # be corrected without another release - which makes it worth failing the tag build over.
@@ -134,6 +144,16 @@ jobs:
           )
           if ($markers | Where-Object { Select-String -Path $path -Pattern $_ -SimpleMatch -CaseSensitive:($_ -ceq 'PLACEHOLDER') -Quiet }) {
             throw "$path still contains the cycle-opening placeholder. Replace it with this release's user-facing changes before tagging - it is shown to every user on their first run after upgrading."
+          }
+          # The check above catches a cycle opened and never written. This catches the opposite miss,
+          # and the likelier one: the previous release's notes left in place while the four version
+          # files were bumped. Nothing else covers it - the form's title is derived from the assembly
+          # version while ReleaseFeaturesText is a hardcoded constant, and WhatsNewForm's Debug.Assert
+          # on exactly this condition is compiled out of the Release builds CI produces. The symptom
+          # would ship: a dialog reading "What's New in <new version>" above "New in <previous>",
+          # shown once on first run after upgrading and uncorrectable without another release.
+          if (-not (Select-String -Path $path -Pattern "New in $tagVersion" -SimpleMatch -Quiet)) {
+            throw "$path has no 'New in $tagVersion' section - it still carries the previous release's notes. Add this release's user-facing changes before tagging."
           }
           Write-Host "What's New content check passed."
 

@@ -467,6 +467,13 @@ public sealed class NatPmpManager : IVpnManager
                     return result.Buffer;
                 }
             }
+            // Real cancellation propagates. Without this arm it falls through the timeout filter below
+            // into the generic catch, which returns null - and null means "no response from gateway" to
+            // every caller, so shutting down mid-request logged a port detection failure, advanced the
+            // auto-recovery streak, and could dispatch a VPN restart on the way out. Listed first so the
+            // two filters are exhaustive over OperationCanceledException and none can reach the generic
+            // catch. Same arm the clients, PiaVpnManager and ProtonVpnManager already use.
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
             catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
             {
                 LogTimeoutDebug(attempt, maxAttempts, timeoutMs);

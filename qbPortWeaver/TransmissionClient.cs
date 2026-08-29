@@ -351,6 +351,13 @@ public sealed class TransmissionClient : ManagedClientBase
 
             return true;
         }
+        // Excludes every OperationCanceledException, not just a token-cancelled one. That is safe here
+        // and would not be on an HTTP path: HttpClient's timeout surfaces as TaskCanceledException with
+        // the token *not* cancelled, so this filter would let a timeout escape unlogged. Nothing in this
+        // method makes an HTTP request - it drives the helper pipe and the SCM - so the only cancellation
+        // it can produce is a real shutdown, which should propagate rather than be logged as a restart
+        // failure. The HTTP methods in this file use the other idiom instead: rethrow on token
+        // cancellation, then catch broadly so LogHttpException can classify the timeout.
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             LogManager.Instance.LogMessage($"Failed to restart {ClientName} service: {ex.Message}", LogLevel.Error);
@@ -384,6 +391,10 @@ public sealed class TransmissionClient : ManagedClientBase
             ResetAuthState();
             return await LaunchAndWaitAsync(ProcessInitDelayMs, cancellationToken).ConfigureAwait(false);
         }
+        // Same idiom and the same reasoning as RestartServiceModeAsync above: no HTTP request is made
+        // here - Task.Delay, CloseMainWindow and the process kill - so every OperationCanceledException
+        // is a real shutdown and belongs propagated, not logged as a restart failure. Do not copy this
+        // filter onto a method that calls HttpClient; a timeout would escape it unlogged.
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             LogManager.Instance.LogMessage($"Failed to restart {ClientName}: {ex.Message} - check the Executable path in Settings ({ExePath})", LogLevel.Error);

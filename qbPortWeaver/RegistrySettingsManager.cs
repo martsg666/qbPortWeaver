@@ -495,7 +495,15 @@ public static class RegistrySettingsManager
             try
             {
                 using var regKey = Registry.CurrentUser.OpenSubKey($@"{BaseKeyPath}\{section}", writable: true);
-                if (regKey?.GetValue(legacyKey) is not object legacyValue) continue;
+                // DoNotExpandEnvironmentNames: GetValue's default expands a REG_EXPAND_SZ value, and
+                // the SetValue below writes it back under the kind GetValueKind reports - so an
+                // expanded string would be stored as ExpandString and the indirection lost for good.
+                // Measured, not assumed: reading "%ProgramFiles%\..." without this returns the
+                // expanded path and the copy bakes it in. A no-op for REG_SZ and binary values, which
+                // is everything this app writes (every SetValue here passes RegistryValueKind.String),
+                // so it changes no real migration - it only preserves a hand-edited %VAR% path, and
+                // keeps the "copied as raw objects" promise above literally true.
+                if (regKey?.GetValue(legacyKey, null, RegistryValueOptions.DoNotExpandEnvironmentNames) is not object legacyValue) continue;
 
                 if (regKey.GetValue(newKey) is null)
                 {
@@ -503,6 +511,17 @@ public static class RegistrySettingsManager
                     // Read back before discarding the only other copy.
                     if (regKey.GetValue(newKey) is null) continue;
                     moved++;
+                }
+                else
+                {
+                    // Both names hold a value: the new one wins and the stale duplicate is dropped.
+                    // Logged because this is the one path here that deletes a value without carrying
+                    // it anywhere, and it is not counted in the "Migrated N settings" line below - so
+                    // without this a run that only dropped duplicates would report nothing at all.
+                    // Normally reached only after a run interrupted between the copy and the delete,
+                    // where the value was already preserved under the new name.
+                    LogManager.Instance.LogDebug(
+                        $"RegistrySettingsManager.MigrateLegacyKeys: [{section}] {legacyKey} dropped - {newKey} already set");
                 }
                 regKey.DeleteValue(legacyKey, throwOnMissingValue: false);
             }

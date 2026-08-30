@@ -112,11 +112,6 @@ public sealed class PortSyncService
     // restart rather than repeating itself. Not a fault on its own: an ordinary reconnect sets it too.
     // Serialised by MainForm._updateSemaphore (same guarantee as _consecutiveFailedCycles).
     private bool _interfaceAddressChangedSinceRebind;
-    // What the client's bind address was when the change above was recorded, and therefore what the
-    // rebind must leave behind. Data rather than a constant: the arm is set in one cycle and spent in
-    // a later one, so the value has to travel with it.
-    // Serialised by MainForm._updateSemaphore (same guarantee as _consecutiveFailedCycles).
-    private string _rebindReleaseAddress = string.Empty;
     // One repair per stale-pin streak, mirroring _interfaceBindingRepairAttempted: if the write lands and
     // the pin is still wrong next cycle, something else is writing it and repeating would be its own loop.
     private bool _interfaceAddressRepairAttempted;
@@ -1334,11 +1329,24 @@ public sealed class PortSyncService
         // but it wrote a nonexistent address and logged it as live. Reading here is correct by
         // construction and bounds nothing on how old the baseline is. The cost is one request, on a path
         // that only runs after three confirmed closed checks.
-        var (live, _) = await client.GetInterfaceAddressStateAsync(baseline.Interface, cancellationToken).ConfigureAwait(false);
+        var (live, pinned) = await client.GetInterfaceAddressStateAsync(baseline.Interface, cancellationToken).ConfigureAwait(false);
+
+        // The pin is re-checked at the point of use, never trusted from when the arm was set. The user
+        // can change the bind address between those two moments and the arm survives that, so a stored
+        // release value could widen a pin they made deliberately in the meantime - the exact harm this
+        // whole feature exists to avoid. A non-wildcard pin also means the ambiguous "bound to all
+        // addresses" case no longer applies, so the premise for rebinding is gone: spend the arm and
+        // let the caller escalate rather than leaving it set to re-enter here every closed round.
+        if (live is null || !IsWildcardBindAddress(pinned))
+        {
+            _interfaceAddressChangedSinceRebind = false;
+            return false;
+        }
+        string releaseAddress = pinned ?? string.Empty;
         // Arm deliberately left set: the change really was observed, and failing to read the adapter now
         // is not evidence that it stopped mattering. No attempt was made, so "one attempt per address
         // change" is still honest, and the next eligible cycle tries again.
-        if (live is null || SelectBindAddress(live) is not string pinAddress) return false;
+        if (SelectBindAddress(live) is not string pinAddress) return false;
 
         _interfaceAddressChangedSinceRebind = false;
 
@@ -1350,13 +1358,13 @@ public sealed class PortSyncService
         // Pin a live address, then release back to whatever was configured when the change was seen.
         // Both writes are real changes, which is what makes the client rebuild its sockets; the end
         // state is the user's own value, read from the client rather than assumed here.
-        if (await client.ForceInterfaceRebindAsync(pinAddress, _rebindReleaseAddress, cancellationToken).ConfigureAwait(false))
+        if (await client.ForceInterfaceRebindAsync(pinAddress, releaseAddress, cancellationToken).ConfigureAwait(false))
         {
             // Names the value actually restored rather than saying "all addresses": since the wildcard
             // fix the release can be 0.0.0.0 or ::, and a line that describes the wrong end state is the
             // one thing someone diagnosing this has to go on.
             LogManager.Instance.LogMessage(
-                $"Rebound {client.ClientName} to '{(_rebindReleaseAddress.Length == 0 ? "all addresses" : _rebindReleaseAddress)}' " +
+                $"Rebound {client.ClientName} to '{(releaseAddress.Length == 0 ? "all addresses" : releaseAddress)}' " +
                 "on its adapter - the next port check will show whether it is listening again",
                 LogLevel.Info);
         }
@@ -1593,11 +1601,6 @@ public sealed class PortSyncService
             // normal reconnect, and forcing a rebind on every one would write to the user's client
             // configuration for a problem that may not exist.
             _interfaceAddressChangedSinceRebind = true;
-            // Captured rather than assumed. The rebind releases back to whatever was configured when
-            // the change was seen, so the end state is the user's own value even if this branch is
-            // ever widened to admit a non-empty one. The previous code hardcoded string.Empty here,
-            // which was only correct because of the very condition that was missing above.
-            _rebindReleaseAddress = pinned ?? string.Empty;
             // Info, not Warn: on its own this is a normal VPN reconnect, not a fault. The connection
             // status is read here rather than every cycle - this branch is a transition, so the extra
             // call is rare - and it answers whether the existing restart-on-disconnect path could ever

@@ -9,6 +9,13 @@ public partial class WhatsNewForm : Form
         "If you find qbPortWeaver useful, please star it on GitHub.";
 
     private const string ReleaseFeaturesText =
+        "New in 2.6.8\n\n" +
+        "PLACEHOLDER - replace before release\n" +
+        "Summarise this version's user-facing changes here, in the same voice as the sections below: " +
+        "a short title line, then a plain-language paragraph saying what it does for the user. The " +
+        "Debug.Assert in the constructor only checks that a 'New in <version>' section exists, not " +
+        "that it has been written, so this text will ship if it is not replaced.\n\n" +
+        "Previously released\n\n" +
         "New in 2.6.7\n\n" +
         "Port forwarding that is switched off no longer restarts your VPN\n" +
         "When your VPN reports that port forwarding is switched off in its own settings, or that the " +
@@ -74,7 +81,6 @@ public partial class WhatsNewForm : Form
         "left switched off, and it stayed that way after a restart. It is now always switched back on, " +
         "whatever interrupts the recovery. This affected NAT-PMP setups using a router or gateway "  +
         "rather than ProtonVPN or PIA.\n\n" +
-        "Previously released\n\n" +
         "New in 2.6.6\n\n" +
         "See what auto-recovery is doing\n" +
         "The Status window has a new Auto-recovery line. It counts the failed cycles building up " +

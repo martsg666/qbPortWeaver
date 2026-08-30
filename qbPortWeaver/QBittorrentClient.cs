@@ -312,12 +312,19 @@ public sealed class QBittorrentClient : ManagedClientBase
     /// the same reason the token check uses qBittorrent's own adapter list: it is the view the client
     /// binds against, and it sidesteps the enumeration quirks of tunnel adapters mid-negotiation.</para>
     /// </summary>
-    internal async Task<InterfaceAddressInfo> GetInterfaceAddressStateAsync(
-        string? interfaceName, CancellationToken cancellationToken = default)
+    internal async Task<InterfaceAddressInfo> GetInterfaceAddressStateAsync(CancellationToken cancellationToken = default)
     {
-        // An empty name is "bound to all interfaces". There is no adapter to compare against, and this
-        // check must never be the thing that talks anyone into binding to one.
-        if (string.IsNullOrEmpty(interfaceName) || string.IsNullOrEmpty(_storedInterfaceToken))
+        // Takes no interface name by design. Everything here resolves from _storedInterfaceToken and
+        // _storedInterfaceAddress, both refreshed by GetPreferencesAsync earlier in the same cycle, so a
+        // caller-supplied name could only ever be staler than what this already holds. It previously took
+        // one and used it purely as a non-empty guard, which let TryRebindClientAddressAsync pass a name
+        // recorded cycles earlier - harmless only because the parameter did less than its name implied,
+        // and exactly the observation-time-state-reaching-an-action shape that produced four separate
+        // defects in this feature. Removing the parameter makes that shape unavailable here.
+        //
+        // An empty token is "bound to all interfaces": no adapter to compare against, and this check must
+        // never be the thing that talks anyone into binding to one.
+        if (string.IsNullOrEmpty(_storedInterfaceToken))
             return new InterfaceAddressInfo(null, _storedInterfaceAddress);
 
         var live = await GetInterfaceAddressesAsync(_storedInterfaceToken, cancellationToken).ConfigureAwait(false);

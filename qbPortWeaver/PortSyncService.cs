@@ -1320,7 +1320,9 @@ public sealed class PortSyncService
     {
         if (!_interfaceAddressChangedSinceRebind || !config.FixInterfaceBinding) return false;
         if (manager is not QBittorrentClient client) return false;
-        if (_lastKnownInterfaceAddresses is not { } baseline) return false;
+        // No baseline guard here any more: it meant "addresses were never read", which the live read
+        // below covers, and holding the baseline was what let observation-time state reach this action.
+        // _lastKnownInterfaceAddresses is now used solely to answer "did this change since last time".
 
         // Read fresh rather than pinning from the baseline. The baseline answers "did this change since
         // last time", a question about history; the pin needs "what is on the adapter right now". Using
@@ -1329,7 +1331,7 @@ public sealed class PortSyncService
         // but it wrote a nonexistent address and logged it as live. Reading here is correct by
         // construction and bounds nothing on how old the baseline is. The cost is one request, on a path
         // that only runs after three confirmed closed checks.
-        var (live, pinned) = await client.GetInterfaceAddressStateAsync(baseline.Interface, cancellationToken).ConfigureAwait(false);
+        var (live, pinned) = await client.GetInterfaceAddressStateAsync(cancellationToken).ConfigureAwait(false);
 
         // The pin is re-checked at the point of use, never trusted from when the arm was set. The user
         // can change the bind address between those two moments and the arm survives that, so a stored
@@ -1571,7 +1573,7 @@ public sealed class PortSyncService
     //    exist; waiting for the symptom costs a few cycles and spends nothing on a healthy client.
     private async Task CheckInterfaceAddressAsync(QBittorrentClient client, string? interfaceName, SyncConfig config, CancellationToken cancellationToken)
     {
-        var (live, pinned) = await client.GetInterfaceAddressStateAsync(interfaceName, cancellationToken).ConfigureAwait(false);
+        var (live, pinned) = await client.GetInterfaceAddressStateAsync(cancellationToken).ConfigureAwait(false);
 
         // Unknown rather than healthy: an older qBittorrent, an unreachable API, or no bound interface.
         // Leaving the remembered addresses alone means the next readable cycle compares against the last

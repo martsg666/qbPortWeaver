@@ -201,9 +201,17 @@ public static class UpdateChecker
 
     /// <summary>
     /// Downloads <paramref name="url"/> to <paramref name="destPath"/> (overwriting it), reporting
-    /// fractional progress (0.0-1.0) when the response length is known. Throws
-    /// <see cref="OperationCanceledException"/> on cancellation and <see cref="HttpRequestException"/>
-    /// or <see cref="IOException"/> on a transfer failure. The caller's token bounds the transfer time.
+    /// fractional progress (0.0-1.0) when the response length is known. The caller's token bounds the
+    /// transfer time.
+    /// <para>Throws <see cref="OperationCanceledException"/> on cancellation,
+    /// <see cref="HttpRequestException"/> or <see cref="IOException"/> on a transfer failure, and
+    /// <see cref="InvalidDataException"/> when <paramref name="expectedSha256"/> is supplied and does
+    /// not match. That last one is <b>not</b> an <see cref="IOException"/> - it derives from
+    /// <see cref="SystemException"/> - so a caller that filters on the two transfer types alone would
+    /// let a checksum failure escape. Catch it explicitly, as
+    /// <c>UpdateAvailableForm.DownloadAndInstallAsync</c> does.</para>
+    /// <para>The destination file is removed on every one of those paths, so a failure never leaves a
+    /// partial or unverified installer behind under a name that looks finished.</para>
     /// </summary>
     /// <param name="url">Direct download URL of the asset.</param>
     /// <param name="destPath">File to write, created or truncated. Deleted again if the transfer fails or the checksum does not match.</param>

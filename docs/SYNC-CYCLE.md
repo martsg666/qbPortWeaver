@@ -349,6 +349,18 @@ the interesting comparison is against the *previous* cycle and the client is con
 once per cycle. `_lastKnownInterfaceAddresses` therefore lives on the service. Two conditions are
 distinguished, because they need different remedies:
 
+**This check runs only when the token check above reports the binding trustworthy** - healthy, or
+repaired in this same cycle. `CheckAndRepairInterfaceBindingAsync` returns that as a `bool` and the
+call site is an `&&`, because a correct token is a *precondition* of reading the address rather than
+a description of the usual case. Measured, on qBittorrent 5.2.3:
+`GET /api/v2/app/networkInterfaceAddressList?iface=<stale token>` answers **HTTP 200 with an empty
+array**, not an error - so `live` comes back as `[]` rather than `null`, the "unknown rather than
+healthy" guard below never fires, and the adapter reads as having lost every address it has. Ungated,
+that produced a `Warn` or an `Info` stating something false, armed the port-closed escalation on
+nothing, and left `_lastKnownInterfaceAddresses` empty so the next readable cycle reported a second
+phantom change back. `DiagnosticsService.AddInterfaceResultAsync` returns after a stale token for the
+same reason; the sync loop had claimed the precondition in a comment without enforcing it.
+
 | condition | response |
 |---|---|
 | A pinned address the adapter no longer carries | Provably broken - the client cannot be listening. Repaired on detection, like a stale token: the pin is re-pointed at a live address. `Warn`, state-keyed, and warn-only when `fixInterfaceBinding` is off. |
@@ -357,7 +369,11 @@ distinguished, because they need different remedies:
 The second line also carries qBittorrent's connection status, read only on that transition rather
 than every cycle. That answers a question the source cannot: whether the client reports itself
 *disconnected* in this state, and therefore whether the restart-on-disconnect cap below could ever
-have caught it.
+have caught it. It is read through `QBittorrentClient.TryGetConnectionStatusAsync`, **not** the
+`IManagedClient.GetConnectionStatusAsync` the restart-on-disconnect check uses: that one logs a
+transport failure at `Error`, which would raise the tray error badge inside a branch this very table
+calls an ordinary reconnect. Here the status only decorates the line, the `"no status"` fallback
+already treats an unreadable one as expected, and a failure logs at `Debug`.
 
 An unreadable list (older qBittorrent, unreachable API, nothing bound) is treated as *unknown*, not
 healthy, and leaves the remembered addresses alone - so the next readable cycle compares against the
@@ -420,6 +436,18 @@ rebind firing, and a non-wildcard pin means the ambiguous "bound to all addresse
 applies, so the premise is gone. Releasing to a remembered value there would have widened a pin the
 user had just set deliberately - the exact harm this feature exists to prevent - which is why the
 release value is read at the point of use and no longer stored at all.
+
+What does **not** spend it is a failed address read. When `GetInterfaceAddressStateAsync` cannot
+answer - the Web API refused, timed out, or the binding moved to "all interfaces" so there is no
+adapter to inspect - the rebind returns without acting and leaves the arm set, on the same reasoning
+the no-usable-address case beside it already used: the change really was observed, and failing to
+read the adapter *now* is not evidence that it stopped mattering. No attempt was made, so "one
+attempt per address change" is still honest and the next eligible cycle tries again. This is
+deliberately a separate statement from the pin test above rather than sharing its `||`: that test
+spends the arm, and none of its reasoning is about a read that failed. Folding the two back together
+would let one transient request failure - arriving, by construction, at the exact moment three
+confirmed-closed checks have just fired - discard the observation for good and escalate straight to
+the VPN restart the rebind exists to precede.
 
 The arm is also spent by a port that verifies **open** (`HandlePortOpenResult`), and that half matters
 as much as the trigger: a reachable port proves the client is listening, so whatever the address did
@@ -702,11 +730,12 @@ RunAsync
          ├─ CheckAndRepairInterfaceBindingAsync (qBittorrent only; runs whatever the provider)
          │   ├─ QBittorrentClient.CheckInterfaceBindingAsync (stale token detection)
          │   └─ QBittorrentClient.RepairInterfaceBindingAsync (if fixInterfaceBinding; once per streak)
-         ├─ CheckInterfaceAddressAsync (qBittorrent only)
+         │       -> returns whether the token can be trusted to read an address under
+         ├─ CheckInterfaceAddressAsync (qBittorrent only; ONLY if the line above returned true)
          │   ├─ QBittorrentClient.GetInterfaceAddressStateAsync (pinned address + live addresses)
          │   ├─ RepairPinnedAddressAsync (stale pin; if fixInterfaceBinding, once per streak)
          │   │   └─ QBittorrentClient.ForceInterfaceRebindAsync
-         │   └─ IManagedClient.GetConnectionStatusAsync (only on an address change)
+         │   └─ QBittorrentClient.TryGetConnectionStatusAsync (only on an address change; Debug on failure)
          ├─ UpdatePortAndNotifyAsync (when ports differ)
          │   ├─ ApplyPortUpdateAsync
          │   │   ├─ IManagedClient.SetListeningPortAsync

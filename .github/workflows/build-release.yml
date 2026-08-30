@@ -44,8 +44,11 @@ jobs:
             if (-not $tag.StartsWith('v')) {
               throw "Tag must start with 'v' (e.g. vX.Y.Z). Got: $tag"
             }
-            git ls-remote --exit-code --tags origin $tag | Out-Null
-            if ($LASTEXITCODE -ne 0) { throw "Tag '$tag' does not exist in the remote repository." }
+            # No tag-existence check here. This step runs before the checkout below, so there is no
+            # repository yet and no 'origin' remote: git exits 128, and the guard that used to sit
+            # here fired on every manual run, reporting a tag as missing when it was present. The
+            # checkout resolves `ref: inputs.tag` and fails accurately when the tag does not exist,
+            # one step later and in the step that actually needs it.
           } else {
             $tag = $env:GH_REF_NAME
           }

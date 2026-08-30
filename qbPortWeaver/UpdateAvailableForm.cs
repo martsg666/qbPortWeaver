@@ -9,6 +9,10 @@ namespace qbPortWeaver;
 /// </summary>
 internal sealed partial class UpdateAvailableForm : Form
 {
+    // The whole release record rather than the two or three fields the form happens to use today:
+    // the MSI checksum was the fourth value this had to carry, and threading each new one through
+    // MainForm's pending-update tuple and this constructor was already the awkward part.
+    private readonly LatestReleaseInfo _release;
     private readonly string _version;
     private readonly string _releaseUrl;
     private readonly string? _msiUrl;
@@ -16,12 +20,15 @@ internal sealed partial class UpdateAvailableForm : Form
     private bool _downloading;
     private bool _userCancelled; // distinguishes a user Cancel from the safety-net timeout (both surface as OCE)
 
-    public UpdateAvailableForm() : this(string.Empty, string.Empty, null) { } // designer support only
+    public UpdateAvailableForm() : this(new LatestReleaseInfo(string.Empty, string.Empty, IsNewer: false)) { } // designer support only
 
-    internal UpdateAvailableForm(string version, string releaseUrl, string? msiUrl)
+    internal UpdateAvailableForm(LatestReleaseInfo release)
     {
+        _release = release;
+        string version = release.Version;
+        string? msiUrl = release.MsiUrl;
         _version = version;
-        _releaseUrl = releaseUrl;
+        _releaseUrl = release.ReleaseUrl;
         _msiUrl = msiUrl;
         InitializeComponent();
         Text = $"{AppIdentity.AppName} | Update Available";
@@ -79,7 +86,7 @@ internal sealed partial class UpdateAvailableForm : Form
         try
         {
             LogManager.Instance.LogMessage($"Downloading update {_version}", LogLevel.Info);
-            await UpdateChecker.DownloadFileAsync(msiUrl, destPath, progress, _downloadCts.Token);
+            await UpdateChecker.DownloadFileAsync(msiUrl, destPath, progress, _release.MsiSha256, _downloadCts.Token);
         }
         catch (OperationCanceledException)
         {
@@ -95,6 +102,22 @@ internal sealed partial class UpdateAvailableForm : Form
             // transfer failure and fall back to the release page so the user still has a way forward.
             lblStatus.Text = "Download timed out - opening the release page instead.";
             LogManager.Instance.LogMessage("Update download timed out - falling back to the release page", LogLevel.Warn);
+            UiHelpers.OpenUrl(_releaseUrl);
+            return;
+        }
+        // Separated from the generic failure below, and logged at Error rather than Warn: the transfer
+        // succeeded and the bytes are wrong, which is a different and stronger signal than a stalled
+        // connection - a corrupted mirror, a truncated asset, or something interfering with the
+        // download. The partial file has already been deleted by DownloadFileAsync, so the release
+        // page is the only way forward and the user is told why rather than just "download failed".
+        catch (InvalidDataException ex)
+        {
+            if (IsDisposed) return;
+            SetDownloadingUi(false);
+            lblStatus.Text = "The download failed its integrity check - opening the release page instead.";
+            LogManager.Instance.LogMessage(
+                $"Update download rejected: {ex.Message}. The file was deleted; falling back to the release page",
+                LogLevel.Error);
             UiHelpers.OpenUrl(_releaseUrl);
             return;
         }

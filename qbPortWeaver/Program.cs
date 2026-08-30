@@ -100,6 +100,20 @@ internal static class Program
 
     // Reads the color theme setting directly from the registry before LogManager is initialized.
     // Must not use RegistrySettingsManager to avoid a dependency on LogManager at this early stage.
+    //
+    // This runs BEFORE any migration. EnsureDefaults - and with it MigrateLegacyKeys - is reached in
+    // MainForm's constructor, which is several statements below the SetColorMode call this feeds, so
+    // a value read here is the raw pre-migration registry. Renaming a key that is read this early
+    // therefore costs one launch: on the first start after upgrading, the new name does not exist
+    // yet, this falls through to its default, and only the launch after that reads the migrated
+    // value. That is live today for colorMode -> colorTheme (renamed at 2.6.4): a user upgrading
+    // from 2.6.3 or earlier sees the System theme once instead of their Dark/Light choice. Cosmetic
+    // and self-correcting, and the setting itself is never at risk - MigrateLegacyKeys carries it
+    // across before the defaults are written - so it is accepted rather than worked around.
+    //
+    // The point to carry forward: anything read before MainForm's constructor bypasses migration.
+    // A future rename of a key read here needs either a fallback to the old name in this method, or
+    // the same accepted one-launch cost. The theme is currently the only such setting.
     private static SystemColorMode ReadColorTheme()
     {
         try

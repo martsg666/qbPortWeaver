@@ -58,7 +58,10 @@ public static class MediaManagerService
             LogManager.Instance.LogDebug(
                 $"MediaManagerService.ImportAsync: {RegistrySettingsManager.KeyMediaEnabled}=true, " +
                 $"{RegistrySettingsManager.KeyMediaTmdbApiKey}=***, " +
-                $"{RegistrySettingsManager.KeyMediaSourceFolders}={string.Join(";", sourceFolders)}, " +
+                // Joined with ListSeparator, not a literal: this line is a registry dump, and ';' is
+                // legal in a Windows path - which is why the stored separator became '|' in the first
+                // place. Rendering the list the old way could show two folders as three.
+                $"{RegistrySettingsManager.KeyMediaSourceFolders}={string.Join(RegistrySettingsManager.ListSeparator, sourceFolders)}, " +
                 $"{RegistrySettingsManager.KeyMediaMoviesLibraryPath}={moviesLibraryPath}, " +
                 $"{RegistrySettingsManager.KeyMediaTvShowsLibraryPath}={tvShowsLibraryPath}, " +
                 $"{RegistrySettingsManager.KeyMediaDryRun}={dryRun}, " +

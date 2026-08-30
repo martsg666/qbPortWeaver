@@ -48,6 +48,11 @@ public partial class WhatsNewForm : Form
         "recent port changes list failing to save, or an older helper service being left behind by an " +
         "upgrade. Each of these now reports itself. The log one arrives as a tray message, since by " +
         "definition it cannot be written to the log.\n\n" +
+        "Updates are checked before they are installed\n" +
+        "When you install an update from inside the app, the downloaded installer is now checked " +
+        "against the checksum published with the release before it is run. If it does not match, the " +
+        "file is deleted and the release page opens instead, so a download that arrived damaged or " +
+        "incomplete is never launched. You will not notice this unless something is wrong.\n\n" +
         "Nicotine+ plugin updates are offered when the plugin changes\n" +
         "Settings used to decide whether a plugin update was available by comparing version numbers, " +
         "and the plugin's version follows the app's - so a fix to the plugin alone was never offered " +

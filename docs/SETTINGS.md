@@ -36,7 +36,7 @@ On first run, all settings are initialized with sensible defaults.
 | Default port (0 = disabled) | Fallback port to apply when VPN is not connected | `0` |
 | Warn when network interface doesn't match the VPN | Warn if qBittorrent's network interface doesn't match the configured VPN provider | `True` |
 | Restart qBittorrent if connection status disconnects | Restart qBittorrent when its connection status changes to disconnected (requires Executable and Process name) | `True` |
-| Fix the network interface binding when it goes stale | Re-apply qBittorrent's network interface when its stored identifier no longer matches the adapter it names | `True` |
+| Fix the network interface binding when it goes stale | Re-apply qBittorrent's network interface when its stored identifier no longer matches the adapter it names. Also corrects a bind address the adapter no longer has, and - if the forwarded port stops answering after the adapter changed address - nudges qBittorrent into listening on the new one. Your qBittorrent settings are left as you had them | `True` |
 
 ### Transmission
 

@@ -335,10 +335,11 @@ public static class DiagnosticsService
     private static async Task AddInterfaceResultAsync(List<DiagnosticResult> results, IManagedClient client,
         IVpnManager? vpn, string? interfaceName, CancellationToken cancellationToken)
     {
-        // Checked before anything below, and independently of the VPN: a stale interface token is
-        // precisely the case where the name - which is all the other branches compare - still reads
-        // correctly while the client listens on nothing. Reporting "Bound to 'X'" as a pass here is
-        // what let this go unnoticed, so it outranks every name-based verdict.
+        // Checked before anything below, and independently of the VPN: a stale interface token or a
+        // dead pinned address is precisely the case where the name - which is all the other branches
+        // compare - still reads correctly while the client listens on nothing. Reporting "Bound to 'X'"
+        // as a pass here is what let the token case go unnoticed, so both outrank every name-based
+        // verdict. Same order as the sync loop, which repairs the token before it reads the address.
         if (client is QBittorrentClient qbClient)
         {
             var (stale, expectedToken) = await qbClient.CheckInterfaceBindingAsync(interfaceName, cancellationToken).ConfigureAwait(false);
@@ -348,6 +349,12 @@ public static class DiagnosticsService
                     $"Bound to '{interfaceName}' by a stale identifier - {client.ClientName} is not listening on that adapter",
                     $"Re-select the network interface in {client.ClientName}, or turn on \"Fix the network interface binding when it goes stale\" " +
                     "in Settings. Restarting the client does not clear it, because the value is stored in its configuration."));
+                return;
+            }
+
+            if (await BuildPinnedAddressResultAsync(qbClient, interfaceName, cancellationToken).ConfigureAwait(false) is { } pinnedAddressFailure)
+            {
+                results.Add(pinnedAddressFailure);
                 return;
             }
         }
@@ -370,6 +377,55 @@ public static class DiagnosticsService
         else
             results.Add(new(Checks.InterfaceBinding, DiagnosticStatus.Warn, $"Bound to '{interfaceName}', which is not a {vpn.ProviderName} adapter",
                 "Rebind the client's network interface to your active VPN adapter."));
+    }
+
+    /// <summary>
+    /// The third thing that can be wrong with a qBittorrent binding, beside the token and the name: the
+    /// address under it. Returns the row to report when the client is pinned to an address its adapter no
+    /// longer carries, or <see langword="null"/> when there is nothing to report.
+    /// </summary>
+    /// <remarks>
+    /// <para>Mirrors the first branch of <c>PortSyncService.CheckInterfaceAddressAsync</c> and shares its
+    /// predicates (<see cref="QBittorrentClient.IsWildcardBindAddress"/>,
+    /// <see cref="QBittorrentClient.FormatAddressList"/>) so the report and the sync log cannot disagree
+    /// about the same field. The state it reads was populated by the <c>GetPreferencesAsync</c> call
+    /// earlier in this run, so this costs one request on a user-initiated action.</para>
+    /// <para><b>Only that branch is portable, and the other one deliberately is not.</b> The sync loop's
+    /// second condition - the adapter's addresses moving while the binding is "all addresses" - is a
+    /// comparison against the <em>previous cycle</em>, and diagnostics builds a fresh client with no
+    /// history. There is nothing to compare against here, and inventing a baseline would report an
+    /// ordinary reconnect as a fault. Do not add it.</para>
+    /// </remarks>
+    private static async Task<DiagnosticResult?> BuildPinnedAddressResultAsync(
+        QBittorrentClient client, string? interfaceName, CancellationToken cancellationToken)
+    {
+        var (live, pinned) = await client.GetInterfaceAddressStateAsync(cancellationToken).ConfigureAwait(false);
+
+        // Unknown rather than healthy, exactly as the sync loop treats it: an older qBittorrent, an
+        // unreachable endpoint, or nothing bound. A wildcard pin cannot be judged stale against an
+        // address list at all, so it is not a finding either.
+        if (live is null || QBittorrentClient.IsWildcardBindAddress(pinned)) return null;
+        if (live.Contains(pinned, StringComparer.OrdinalIgnoreCase)) return null;
+
+        string detail = $"Bound to address {pinned} on '{interfaceName}', which that adapter no longer has " +
+                        $"(it now has {QBittorrentClient.FormatAddressList(live)})";
+
+        // The same split RepairPinnedAddressAsync makes, and it matters here more than there: no usable
+        // replacement means the adapter has nothing to offer - it is mid-negotiation, or its tunnel is
+        // down, which is exactly the state a disconnected VPN leaves behind. Reporting that as Fail with
+        // "correct the bind address" would send the user editing a setting that is about to be correct
+        // again, for a cause the VPN rows above have already named.
+        if (QBittorrentClient.SelectBindAddress(live) is null)
+        {
+            return new(Checks.InterfaceBinding, DiagnosticStatus.Warn,
+                $"{detail} - waiting for the adapter to report a usable address",
+                "This normally clears itself once the VPN adapter finishes connecting. Re-run once it is up.");
+        }
+
+        return new(Checks.InterfaceBinding, DiagnosticStatus.Fail,
+            $"{detail} - {client.ClientName} cannot accept incoming connections",
+            $"Correct the bind address in {client.ClientName}, or turn on \"Fix the network interface binding when it goes stale\" " +
+            "in Settings, which re-points it at a live address automatically.");
     }
 
     // Only meaningful when the VPN is connected with a forwarded port - mirrors the sync loop, which

@@ -1,4 +1,5 @@
 ﻿using System.Net.Http.Headers;
+using System.Security.Cryptography;
 using System.Text.Json;
 
 namespace qbPortWeaver;
@@ -8,7 +9,15 @@ namespace qbPortWeaver;
 /// <param name="ReleaseUrl">URL of the GitHub release page.</param>
 /// <param name="IsNewer">True when the release version is greater than <see cref="AppConstants.AppVersion"/>.</param>
 /// <param name="MsiUrl">Direct download URL of the release's .msi installer asset, or <see langword="null"/> if the release has none.</param>
-public sealed record LatestReleaseInfo(string TagName, string ReleaseUrl, bool IsNewer, string? MsiUrl = null)
+/// <param name="MsiSha256">
+/// SHA-256 the GitHub API reports for that asset, lower-case hex with the <c>sha256:</c> prefix
+/// stripped, or <see langword="null"/> when the API did not report one.
+/// <para>Verified before the installer is launched - see <see cref="UpdateChecker.DownloadFileAsync"/>.
+/// Null is treated as "cannot verify, proceed", the same way a helper response with no <c>v=</c> key
+/// means an older peer rather than a failure: the field is a relatively recent GitHub addition, and
+/// refusing to update without it would break the path it exists to protect.</para>
+/// </param>
+public sealed record LatestReleaseInfo(string TagName, string ReleaseUrl, bool IsNewer, string? MsiUrl = null, string? MsiSha256 = null)
 {
     /// <summary>Tag name with the leading 'v'/'V' stripped (e.g. "vX.Y.Z" becomes "X.Y.Z").</summary>
     public string Version => TagName.TrimStart('v', 'V');
@@ -27,6 +36,8 @@ public static class UpdateChecker
     private const string JsonPropAssets = "assets";
     private const string JsonPropAssetName = "name";
     private const string JsonPropAssetDownloadUrl = "browser_download_url";
+    private const string JsonPropAssetDigest = "digest";
+    private const string DigestSha256Prefix = "sha256:";
 
     private static readonly string _gitHubBaseApiUrl = $"https://api.github.com/repos/{AppConstants.GitHubRepoOwner}/{AppIdentity.AppName}";
     private static readonly string _gitHubApiUrl = _gitHubBaseApiUrl + "/releases/latest";
@@ -58,7 +69,8 @@ public static class UpdateChecker
                            Version.TryParse(AppConstants.AppVersion, out var current) &&
                            latest > current;
 
-            return new LatestReleaseInfo(tagName, releaseUrl, isNewer, TryGetMsiAssetUrl(root));
+            var (msiUrl, msiSha256) = TryGetMsiAsset(root);
+            return new LatestReleaseInfo(tagName, releaseUrl, isNewer, msiUrl, msiSha256);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -156,30 +168,70 @@ public static class UpdateChecker
         return client;
     }
 
-    // Returns the download URL of the release's first .msi asset, or null when the release has none
-    // (e.g. assets not yet uploaded). Callers fall back to opening the release page.
-    private static string? TryGetMsiAssetUrl(JsonElement root)
+    // Returns the download URL of the release's first .msi asset and the SHA-256 the API reports for
+    // it, or (null, null) when the release has no .msi (e.g. assets not yet uploaded). Callers fall
+    // back to opening the release page.
+    //
+    // The digest is read from the same asset object as the URL, so the hash and the bytes it applies
+    // to cannot come from different responses. GitHub reports it as "sha256:<64 hex>"; anything not
+    // in that shape is discarded rather than guessed at, which degrades to the unverified path.
+    private static (string? Url, string? Sha256) TryGetMsiAsset(JsonElement root)
     {
         if (!root.TryGetProperty(JsonPropAssets, out var assetsElement) || assetsElement.ValueKind != JsonValueKind.Array)
-            return null;
+            return (null, null);
 
         foreach (var asset in assetsElement.EnumerateArray())
         {
             string name = asset.GetStringOrNull(JsonPropAssetName) ?? string.Empty;
             if (name.EndsWith(".msi", StringComparison.OrdinalIgnoreCase) &&
                 asset.GetStringOrNull(JsonPropAssetDownloadUrl) is { Length: > 0 } url)
-                return url;
+                return (url, ParseSha256Digest(asset.GetStringOrNull(JsonPropAssetDigest)));
         }
-        return null;
+        return (null, null);
+    }
+
+    // "sha256:<64 hex>" -> the hex alone; null for absent, a different algorithm, or a malformed value.
+    private static string? ParseSha256Digest(string? digest)
+    {
+        if (digest is null || !digest.StartsWith(DigestSha256Prefix, StringComparison.OrdinalIgnoreCase))
+            return null;
+        string hex = digest[DigestSha256Prefix.Length..];
+        return hex.Length == 64 && hex.All(Uri.IsHexDigit) ? hex : null;
     }
 
     /// <summary>
     /// Downloads <paramref name="url"/> to <paramref name="destPath"/> (overwriting it), reporting
-    /// fractional progress (0.0-1.0) when the response length is known. Throws
-    /// <see cref="OperationCanceledException"/> on cancellation and <see cref="HttpRequestException"/>
-    /// or <see cref="IOException"/> on a transfer failure. The caller's token bounds the transfer time.
+    /// fractional progress (0.0-1.0) when the response length is known. The caller's token bounds the
+    /// transfer time.
+    /// <para>Throws <see cref="OperationCanceledException"/> on cancellation,
+    /// <see cref="HttpRequestException"/> or <see cref="IOException"/> on a transfer failure, and
+    /// <see cref="InvalidDataException"/> when <paramref name="expectedSha256"/> is supplied and does
+    /// not match. That last one is <b>not</b> an <see cref="IOException"/> - it derives from
+    /// <see cref="SystemException"/> - so a caller that filters on the two transfer types alone would
+    /// let a checksum failure escape. Catch it explicitly, as
+    /// <c>UpdateAvailableForm.DownloadAndInstallAsync</c> does.</para>
+    /// <para>The destination file is removed on every one of those paths, so a failure never leaves a
+    /// partial or unverified installer behind under a name that looks finished.</para>
     /// </summary>
-    public static async Task DownloadFileAsync(string url, string destPath, IProgress<double>? progress, CancellationToken cancellationToken = default)
+    /// <param name="url">Direct download URL of the asset.</param>
+    /// <param name="destPath">File to write, created or truncated. Deleted again if the transfer fails or the checksum does not match.</param>
+    /// <param name="progress">Optional sink for fractional progress (0.0-1.0); reported only when the response carries a Content-Length.</param>
+    /// <param name="expectedSha256">
+    /// Hex SHA-256 the downloaded bytes must hash to, or <see langword="null"/> to skip verification.
+    /// <para>This is the only integrity check on the path that launches an installer elevated: TLS
+    /// authenticates github.com in transit, but nothing else establishes that the file on disk is the
+    /// one the release published. The hash is computed <b>as the bytes stream past</b>, so a 69 MB
+    /// installer costs no second pass. A mismatch throws <see cref="InvalidDataException"/>, which the
+    /// catch below turns into the same delete-the-partial-file cleanup as a failed transfer, so nothing
+    /// unverified is ever left under a name that looks finished.</para>
+    /// <para>Null means "could not verify", not "verified": the caller supplies whatever the GitHub API
+    /// reported, and that can legitimately be absent. Verification is therefore a check on the download,
+    /// not a guarantee to the user - the MSI is unsigned, so the UAC prompt still shows an unknown
+    /// publisher either way.</para>
+    /// </param>
+    /// <param name="cancellationToken">Cancels the transfer; the partial file is removed on the way out.</param>
+    public static async Task DownloadFileAsync(string url, string destPath, IProgress<double>? progress,
+        string? expectedSha256 = null, CancellationToken cancellationToken = default)
     {
         using var response = await _downloadClient.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
         response.EnsureSuccessStatusCode();
@@ -187,6 +239,9 @@ public static class UpdateChecker
 
         await using var source = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
         var dest = new FileStream(destPath, FileMode.Create, FileAccess.Write, FileShare.None);
+        // Same incremental idiom as NicotinePluginInstaller.ComputeBundledFingerprint. Left null when
+        // there is nothing to compare against, so the unverified path allocates nothing.
+        using var hash = expectedSha256 is null ? null : IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
 
         try
         {
@@ -196,9 +251,23 @@ public static class UpdateChecker
             while ((read = await source.ReadAsync(buffer, cancellationToken).ConfigureAwait(false)) > 0)
             {
                 await dest.WriteAsync(buffer.AsMemory(0, read), cancellationToken).ConfigureAwait(false);
+                hash?.AppendData(buffer, 0, read);
                 received += read;
                 if (total is > 0)
                     progress?.Report((double)received / total.Value);
+            }
+
+            // Inside the try on purpose: the catch below owns the cleanup, so a mismatch deletes the
+            // file by the same path a truncated transfer does rather than needing its own copy.
+            if (hash is not null)
+            {
+                string actual = Convert.ToHexString(hash.GetHashAndReset());
+                if (!string.Equals(actual, expectedSha256, StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new InvalidDataException(
+                        $"the downloaded installer does not match the checksum GitHub published for it " +
+                        $"(expected {expectedSha256!.ToLowerInvariant()}, got {actual.ToLowerInvariant()})");
+                }
             }
         }
         catch

@@ -1536,11 +1536,21 @@ public partial class LogViewerForm : Form
             ScrollToBottom();
     }
 
-    // Splits raw log content on newlines, strips trailing \r so CRLF and LF files produce
-    // identical lines, and classifies each line's level once (the level drives filtering and
-    // row colouring for the rest of the line's lifetime). Blank lines are kept as meta rows:
-    // LogManager writes one before each "Sync cycle started" as a deliberate visual separator
-    // between cycles (AppendVisibleRows dedups them in filtered views so they never stack up).
+    // Splits raw log content on newlines and classifies each line's level once (the level drives
+    // filtering and row colouring for the rest of the line's lifetime). LogManager writes a blank
+    // line before each "Sync cycle started" as a deliberate visual separator between cycles, and
+    // those are kept as meta rows (AppendVisibleRows dedups them in filtered views so they never
+    // stack up).
+    //
+    // RemoveEmptyEntries and "blank lines are kept" only coexist because the separator is CRLF:
+    // LogBlankLine writes Environment.NewLine, so on disk it is "\r\n\r\n", and splitting on '\n'
+    // leaves a segment holding exactly "\r" - not empty, so it survives the split - which the
+    // TrimEnd below flattens to "". A bare-LF separator would be dropped silently and every cycle
+    // boundary in the viewer would disappear. Measured on a 12.8 MB live log: 3,536 separators, all
+    // CRLF, all rendered. So do NOT normalise "\r\n" to "\n" up front (as HelpForm.RenderMarkdown
+    // does) and do NOT drop RemoveEmptyEntries as redundant - either one alone deletes every
+    // separator, with nothing failing to say so. Windows-only app, so the dependency is safe; it is
+    // the "simplification" that is not.
     private static LogLine[] ParseLogLines(string raw)
     {
         string[] parts = raw.Split('\n', StringSplitOptions.RemoveEmptyEntries);

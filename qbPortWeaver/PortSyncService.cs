@@ -1339,7 +1339,7 @@ public sealed class PortSyncService
         // whole feature exists to avoid. A non-wildcard pin also means the ambiguous "bound to all
         // addresses" case no longer applies, so the premise for rebinding is gone: spend the arm and
         // let the caller escalate rather than leaving it set to re-enter here every closed round.
-        if (live is null || !IsWildcardBindAddress(pinned))
+        if (live is null || !QBittorrentClient.IsWildcardBindAddress(pinned))
         {
             _interfaceAddressChangedSinceRebind = false;
             return false;
@@ -1348,7 +1348,7 @@ public sealed class PortSyncService
         // Arm deliberately left set: the change really was observed, and failing to read the adapter now
         // is not evidence that it stopped mattering. No attempt was made, so "one attempt per address
         // change" is still honest, and the next eligible cycle tries again.
-        if (SelectBindAddress(live) is not string pinAddress) return false;
+        if (QBittorrentClient.SelectBindAddress(live) is not string pinAddress) return false;
 
         _interfaceAddressChangedSinceRebind = false;
 
@@ -1580,14 +1580,14 @@ public sealed class PortSyncService
         // real observation rather than against a gap, so a change spanning the gap is still reported.
         if (live is null) return;
 
-        if (!IsWildcardBindAddress(pinned) && !live.Contains(pinned, StringComparer.OrdinalIgnoreCase))
+        if (!QBittorrentClient.IsWildcardBindAddress(pinned) && !live.Contains(pinned, StringComparer.OrdinalIgnoreCase))
         {
             // Provably broken rather than suspected: the client is bound to an address the adapter does
             // not have, so it cannot be listening. Repaired on detection like the stale token beside it,
             // not deferred to the port-closed escalation, which is for the case that is only a suspicion.
             await RepairPinnedAddressAsync(client, interfaceName, pinned, live, config, cancellationToken).ConfigureAwait(false);
         }
-        else if (IsWildcardBindAddress(pinned) &&
+        else if (QBittorrentClient.IsWildcardBindAddress(pinned) &&
                  _lastKnownInterfaceAddresses is { } baseline &&
                  string.Equals(baseline.Interface, interfaceName, StringComparison.Ordinal) &&
                  !baseline.Addresses.SequenceEqual(live, StringComparer.OrdinalIgnoreCase))
@@ -1611,7 +1611,7 @@ public sealed class PortSyncService
             // conclusion the app now acts on by itself.
             string? connectionStatus = await client.GetConnectionStatusAsync(cancellationToken).ConfigureAwait(false);
             LogManager.Instance.LogMessage(
-                $"The address on '{interfaceName}' changed from {FormatAddressList(baseline.Addresses)} to {FormatAddressList(live)} " +
+                $"The address on '{interfaceName}' changed from {QBittorrentClient.FormatAddressList(baseline.Addresses)} to {QBittorrentClient.FormatAddressList(live)} " +
                 $"while {client.ClientName} is bound to all addresses on it ({client.ClientName} reports " +
                 $"'{connectionStatus ?? "no status"}'). If the forwarded port stops answering, {client.ClientName} will be " +
                 "rebound before the VPN is restarted",
@@ -1636,9 +1636,9 @@ public sealed class PortSyncService
     {
         string detail =
             $"{client.ClientName} is bound to address {pinned} on '{interfaceName}', which that adapter no longer " +
-            $"has (it now has {FormatAddressList(live)}), so it cannot accept incoming connections";
+            $"has (it now has {QBittorrentClient.FormatAddressList(live)}), so it cannot accept incoming connections";
 
-        string? replacement = SelectBindAddress(live);
+        string? replacement = QBittorrentClient.SelectBindAddress(live);
         if (replacement is null || !config.FixInterfaceBinding)
         {
             // No usable address covers an adapter mid-negotiation, where the right move is to wait for
@@ -1668,40 +1668,9 @@ public sealed class PortSyncService
             LogManager.Instance.LogMessage($"Could not set the {client.ClientName} network interface address - correct it in {client.ClientName}", LogLevel.Error);
     }
 
-    // qBittorrent's bind-address field holds either a concrete address or one of three wildcards, and
-    // the dropdown offers all three: "" (all addresses), 0.0.0.0 (all IPv4) and :: (all IPv6). None of
-    // them ever appears in the adapter's address list, so none can be judged stale against it - the
-    // check that only knew about "" reported "All IPv4 addresses" as broken and, with the repair on,
-    // rewrote a wildcard the user chose into one concrete address, which then genuinely went stale on
-    // every reconnect. Verified live for 0.0.0.0; :: is included on the strength of the dropdown
-    // offering it, and costs nothing if it never occurs.
-    //
-    // One predicate, used by both branches of the check, because they are the two halves of a
-    // partition: a value either can be judged stale or is a wildcard that arms the escalation instead.
-    // Two inline tests could drift apart and leave a value in neither branch or in both.
-    // NotNullWhen(false) so the stale branch keeps its non-null guarantee for `pinned`: a plain bool
-    // return hides that from flow analysis, and the alternative is a null-forgiving operator at the
-    // call site, which asserts the same thing without letting the compiler check it.
-    private static bool IsWildcardBindAddress([System.Diagnostics.CodeAnalysis.NotNullWhen(false)] string? address) =>
-        string.IsNullOrEmpty(address) || address == "0.0.0.0" || address == "::";
-
-    // The address to bind to, out of everything the adapter reports. IPv4 first because that is what a
-    // forwarded port is granted for by every provider this app supports; link-local is never usable for
-    // incoming connections, so it is excluded rather than picked as a last resort.
-    private static string? SelectBindAddress(IReadOnlyList<string> addresses)
-    {
-        var usable = addresses.Where(a => !IsLinkLocal(a)).ToList();
-        return usable.FirstOrDefault(a => !a.Contains(':')) ?? usable.FirstOrDefault();
-    }
-
-    private static bool IsLinkLocal(string address) =>
-        address.StartsWith("169.254.", StringComparison.Ordinal) ||
-        address.StartsWith("fe80:", StringComparison.OrdinalIgnoreCase);
-
-    // Addresses as a readable list for one log line. qBittorrent reports IPv4 and IPv6 together and
-    // the whole set is the evidence, so none is filtered out - a v6-only change is still a change.
-    private static string FormatAddressList(IReadOnlyList<string> addresses) =>
-        addresses.Count == 0 ? "no addresses" : string.Join(", ", addresses);
+    // The bind-address predicates and the address-list wording live on QBittorrentClient, beside the
+    // GetInterfaceAddressStateAsync that produces the values they interpret, because DiagnosticsService
+    // has to reach the same verdict about the same field. See the remarks there.
 
     // Balloon dispatch for interface problems, deduplicated so a persistent condition notifies once
     // rather than every cycle. Returns the latch value the caller should store, so each condition owns

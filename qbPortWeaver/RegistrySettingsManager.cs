@@ -437,6 +437,20 @@ public static class RegistrySettingsManager
         (SectionNicotine, "nicotineExePath",     KeyNicotineExePath),
         (SectionNicotine, "nicotineProcessName", KeyNicotineProcessName),
         (SectionNicotine, "forceStartNicotine",  KeyNicotineForceStart),
+        // Renamed, not dropped: folded into the shared warnOnInterfaceMismatch when the client keys
+        // were unified, and that key is live. It sat in _obsoleteKeys through 2.6.4, 2.6.5 and 2.6.6,
+        // all of which therefore deleted the value rather than carrying it, and it moved here at
+        // 2.6.7 so all six Nicotine renames are handled identically.
+        //
+        // The carry-over will almost certainly never fire, and that is not the point of the row. Any
+        // machine that ran one of those three releases already had the value swept, and 2.6.4 was the
+        // first release to ship Nicotine+ at all - so the only box it can help is one that ran a
+        // 2.6.4 pre-release and then jumped straight to 2.6.7. The row is here because _obsoleteKeys
+        // states that every name in it was "dropped outright rather than renamed, so there is no
+        // current key to carry the value to", and this one had a live destination the whole time -
+        // a table recording which names were dropped is worth nothing if one of its rows contradicts
+        // its own criterion.
+        (SectionNicotine, "nicotineWarnOnInterfaceMismatch", KeyNicotineWarnOnInterfaceMismatch),
 
         // Two names that disagreed with what they hold: "colorMode" predated the "theme" wording
         // used by its constant and the UI, and "mediaEnabled" repeated its own section name where
@@ -460,8 +474,6 @@ public static class RegistrySettingsManager
     [
         // Superseded by portClosedRecoveryTriggerChecks during 2.5.6 development.
         (SectionGeneral, "portClosedRecoveryCycles"),
-        // Folded into the shared warnOnInterfaceMismatch when the client keys were unified.
-        (SectionNicotine, "nicotineWarnOnInterfaceMismatch"),
         // Nicotine+ is never restarted, so the setting had nothing to control.
         (SectionNicotine, "restartNicotine"),
     ];

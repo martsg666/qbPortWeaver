@@ -207,10 +207,12 @@ Both ports that can reach the client go through the same check (`AppConstants.Is
 
 The rule exists because most clients treat `0` as "pick a random port", which would quietly undo the forwarding the app maintains while the cycle still reported success.
 
-The time floor exists because a cycle can start early - a manual sync, a settings change, or (most commonly) a burst of network-change re-syncs while connectivity flaps during a router reboot. Without it, several early cycles can drive the counter to the threshold within seconds and force-restart the VPN service during a transient blip that would have cleared on its own. `(threshold - 1) x interval` is exactly the elapsed time the streak would take under normal scheduled cycling (failure 1 at t=0, failure N at t=`(N-1) x interval`), so a genuine sustained outage still triggers at the same moment it always did - the floor only defers recovery when failures arrive faster than the schedule. The streak's start time is re-stamped on each streak's first failure, so it always describes the streak in progress.
+### Sustained-Failure Floor
+
+The sustained-failure floor exists because a cycle can start early - a manual sync, a settings change, or (most commonly) a burst of network-change re-syncs while connectivity flaps during a router reboot. Without it, several early cycles can drive the counter to the threshold within seconds and force-restart the VPN service during a transient blip that would have cleared on its own. `(threshold - 1) x interval` is exactly the elapsed time the streak would take under normal scheduled cycling (failure 1 at t=0, failure N at t=`(N-1) x interval`), so a genuine sustained outage still triggers at the same moment it always did - the floor only defers recovery when failures arrive faster than the schedule. The streak's start time is re-stamped on each streak's first failure, so it always describes the streak in progress.
 
 ```
-interval=45s, threshold=3 → time floor = (3-1) x 45 = 90s
+interval=45s, threshold=3 → sustained-failure floor = (3-1) x 45 = 90s
 
 Sustained outage (normal cadence):
 Cycle 1 (t=0s):   VPN disconnected   → counter=1 (no action)
@@ -241,11 +243,11 @@ The counter resets in two cases (the streak start time is simply re-stamped when
 
 The separate consecutive-recovery count (see Consecutive Recovery Cap) follows different rules: it is cleared only by a successful port detection or by auto-recovery being switched off, never by a streak reset, since every dispatch resets the streak by design.
 
-All resets flow through a single `ResetFailureStreak` helper. It only zeroes the counter; the time floor never reads a stale start time because the timestamp is re-stamped on the next streak's first failure and is only consulted while the counter is non-zero.
+All resets flow through a single `ResetFailureStreak` helper. It only zeroes the counter; the sustained-failure floor never reads a stale start time because the timestamp is re-stamped on the next streak's first failure and is only consulted while the counter is non-zero.
 
 ### Manual Recovery Test
 
-The Settings form's **Test** button (Auto-recovery header row) dispatches the same recovery action on demand via `PortSyncService.TestRecoveryAsync`, after a confirmation dialog. It uses the in-form provider selection (like the client Test buttons), bypasses every gate - counters, time floor, arming, and the connectivity rate limiter - and goes straight to `DispatchRecoveryAsync` with `manualTest = true`. The rate limiter is skipped deliberately: the user asked for the action explicitly, and a test that silently declined to run would be worse than useless for verifying the chain. A test is recorded in the port history as "Recovery test triggered" but is not counted in the session's Recoveries statistic; it arms the "after recovery" history annotation like an automatic dispatch, since its effect on the port is the same.
+The Settings form's **Test** button (Auto-recovery header row) dispatches the same recovery action on demand via `PortSyncService.TestRecoveryAsync`, after a confirmation dialog. It uses the in-form provider selection (like the client Test buttons), bypasses every gate - counters, sustained-failure floor, arming, and the connectivity rate limiter - and goes straight to `DispatchRecoveryAsync` with `manualTest = true`. The rate limiter is skipped deliberately: the user asked for the action explicitly, and a test that silently declined to run would be worse than useless for verifying the chain. A test is recorded in the port history as "Recovery test triggered" but is not counted in the session's Recoveries statistic; it arms the "after recovery" history annotation like an automatic dispatch, since its effect on the port is the same.
 
 ## Client Interaction
 
@@ -360,6 +362,24 @@ have caught it.
 An unreadable list (older qBittorrent, unreachable API, nothing bound) is treated as *unknown*, not
 healthy, and leaves the remembered addresses alone - so the next readable cycle compares against the
 last real observation and a change spanning the gap is still reported.
+
+**The first row is also a diagnostics check.** `DiagnosticsService.BuildPinnedAddressResultAsync`
+reports a dead pin on the **Interface binding** row, beside the stale-token case and ahead of every
+name-based verdict, and shares all three of this section's helpers
+(`QBittorrentClient.IsWildcardBindAddress`, `SelectBindAddress`, `FormatAddressList`) so the report
+and the log cannot disagree about the same field. It makes the same split
+`RepairPinnedAddressAsync` does: `Fail` when a live address is available to move to, and `Warn`
+("waiting for the adapter to report a usable address") when `SelectBindAddress` finds none - which
+is the state a disconnected VPN leaves behind, where the VPN rows above have already named the
+cause and telling the user to edit a bind address would be actively wrong. Without it the report read `Bound to 'ProtonVPN'` as a pass for a
+client that provably could not be listening - and it is the report a user copies into a bug
+report. The gap only ever opened where the condition *persists* (`fixInterfaceBinding` off, a
+repair that did not stick, or an adapter with no usable address), which is exactly when someone
+opens Diagnostics.
+
+**The second row is deliberately not a diagnostics check.** It is a comparison against the previous
+cycle, and diagnostics builds a fresh client with no history to compare against. Inventing a
+baseline there would report an ordinary reconnect as a fault.
 
 #### Forcing the rebind
 
@@ -621,6 +641,8 @@ Right-clicking the group offers **Clear Statistics**: the session counters zero 
 ## Diagnostics
 
 **Run Diagnostics** (Status panel button and tray menu) runs `DiagnosticsService.RunAsync`, a read-only health check that walks the whole sync chain once and reports pass/warn/fail per step with a fix hint: configuration, helper service, VPN connection, forwarded port, client running, client reachable, ports in sync, interface binding, client settings, and outside reachability.
+
+The **interface binding** check covers all three things that can be wrong with a qBittorrent binding, in the order the sync cycle repairs them: the stale *token* (`CheckInterfaceBindingAsync`), the dead pinned *address* (`BuildPinnedAddressResultAsync`, see Stale Interface Address), and finally the adapter *name* against the VPN provider. The first two run whatever the provider is and outrank the name-based verdicts, because the name reads correctly in both cases while the client listens on nothing.
 
 The **client settings** check (`AddClientSettingsResultAsync` → `IManagedClient.GetConflictingSettingsAsync`) reports the client's own options that undo the synchronized port: a randomised listening port, and the client's built-in UPnP/NAT-PMP mapping. All four clients already write these to a safe value on every `SetListeningPortAsync`, so this check exists for the window in between - a user can re-enable one at any time and nothing corrects it until the VPN's port next changes, which may be days. It runs from **both** Diagnostics and the sync cycle (`CheckClientSettingsConflictsAsync`, every `ConflictCheckEveryNCycles` = 5 cycles). The sync-loop half is not redundant: on Transmission and Nicotine+ these settings produce no symptom, so nothing prompts the user to open Diagnostics before their next client restart moves the port. The cycle warning is transition-logged - once when a conflict appears, once when it clears - because the condition persists until the user acts, which may be days. It also raises `ClientSettingsConflictDetected`, which `MainForm` renders as a tray balloon through the same `ShowWarningBalloon` handler as `InterfaceMismatchDetected` and `PortVerificationFailed`. The balloon is not redundant with the generic "warnings were logged" one: on the two clients where this condition has no symptom, a user with no reason to suspect a problem has no reason to open the log viewer either. A `null` (unreadable) result leaves the latch untouched, so a failed read can never silently clear a warning the user has not fixed. The contract distinguishes the two outcomes that matter: an empty list means the settings were read and none conflict (Pass), while `null` means they could not be read at all (Skip). Collapsing those would show a green tick for a check that never ran - and this check exists precisely for the clients where nothing else can see the problem, so a false green is worse than no row. A client's failure paths therefore all return `null`; only a completed read returns a list.
 

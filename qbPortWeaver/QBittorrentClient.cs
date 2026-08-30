@@ -106,11 +106,19 @@ public sealed class QBittorrentClient : ManagedClientBase
     }
 
     /// <inheritdoc/>
-    // random_port is written alongside upnp/natpmp for the same reason they are: each would undo the
-    // port we just set. "Use a different port on each startup" makes qBittorrent pick its own on the
-    // next launch, silently stranding the VPN's forwarded port while every other check still passes.
-    // Written unconditionally and without a setting, matching upnp/natpmp - a toggle for one of the
-    // three and not the others would be a convention nobody could predict.
+    // random_port is written alongside upnp for the same reason it is: either would undo the port we
+    // just set. "Use a different port on each startup" makes qBittorrent pick its own on the next
+    // launch, silently stranding the VPN's forwarded port while every other check still passes.
+    // Written unconditionally and without a setting, matching upnp - a toggle for one and not the
+    // other would be a convention nobody could predict.
+    //
+    // natpmp is in the payload and does nothing. qBittorrent's Web API has no such preference, only
+    // the single upnp switch covering UPnP and NAT-PMP together: measured against a live qBittorrent
+    // 5.x, whose app/preferences returns 223 keys including upnp and no natpmp. setPreferences
+    // ignores keys it does not know, which is why every port write has always succeeded regardless.
+    // Kept rather than removed - it costs nothing and would start working if qBittorrent ever split
+    // the two, as Deluge already does. It is also why GetConflictingSettingsAsync reads upnp alone:
+    // that asymmetry against this payload is correct, not a coverage gap.
     public override Task<bool> SetListeningPortAsync(int port, CancellationToken cancellationToken = default) =>
         PostPreferencesAsync(
             $$$"""{"listen_port":{{{port}}},"random_port":false,"upnp":false,"natpmp":false}""",
@@ -330,6 +338,55 @@ public sealed class QBittorrentClient : ManagedClientBase
         var live = await GetInterfaceAddressesAsync(_storedInterfaceToken, cancellationToken).ConfigureAwait(false);
         return new InterfaceAddressInfo(live, _storedInterfaceAddress);
     }
+
+    // The three rules for reading current_interface_address, kept here rather than at either consumer
+    // because both the sync loop (PortSyncService.CheckInterfaceAddressAsync, RepairPinnedAddressAsync,
+    // TryRebindClientAddressAsync) and the diagnostics report (DiagnosticsService) have to reach the same
+    // verdict about the same field. They live beside GetInterfaceAddressStateAsync, which is what produces
+    // the values they interpret, so the field's semantics have one home.
+
+    /// <summary>Whether <paramref name="address"/> is one of the wildcards qBittorrent accepts in
+    /// <c>current_interface_address</c>, rather than a concrete address that can be judged stale.</summary>
+    /// <remarks>
+    /// qBittorrent's bind-address field holds either a concrete address or one of three wildcards, and
+    /// the dropdown offers all three: <c>""</c> (all addresses), <c>0.0.0.0</c> (all IPv4) and <c>::</c>
+    /// (all IPv6). None of them ever appears in the adapter's address list, so none can be judged stale
+    /// against it - the check that only knew about <c>""</c> reported "All IPv4 addresses" as broken and,
+    /// with the repair on, rewrote a wildcard the user chose into one concrete address, which then
+    /// genuinely went stale on every reconnect. Verified live for <c>0.0.0.0</c>; <c>::</c> is included on
+    /// the strength of the dropdown offering it, and costs nothing if it never occurs.
+    /// <para>One predicate for every consumer, because they partition the same value space: an address
+    /// either can be judged stale or is a wildcard that means something else entirely. Separate inline
+    /// tests could drift apart and leave a value in neither branch or in both.</para>
+    /// <para><c>NotNullWhen(false)</c> so the stale branch keeps its non-null guarantee for the address: a
+    /// plain bool return hides that from flow analysis, and the alternative is a null-forgiving operator
+    /// at the call site, which asserts the same thing without letting the compiler check it.</para>
+    /// </remarks>
+    internal static bool IsWildcardBindAddress([System.Diagnostics.CodeAnalysis.NotNullWhen(false)] string? address) =>
+        string.IsNullOrEmpty(address) || address == "0.0.0.0" || address == "::";
+
+    /// <summary>The address to bind to, out of everything the adapter reports, or <see langword="null"/>
+    /// when none is usable.</summary>
+    /// <remarks>IPv4 first because that is what a forwarded port is granted for by every provider this app
+    /// supports; link-local is never usable for incoming connections, so it is excluded rather than picked
+    /// as a last resort. No usable address means the adapter is mid-negotiation, and the right move is to
+    /// wait for the next cycle rather than write something that is about to be wrong again.</remarks>
+    internal static string? SelectBindAddress(IReadOnlyList<string> addresses)
+    {
+        var usable = addresses.Where(a => !IsLinkLocal(a)).ToList();
+        return usable.FirstOrDefault(a => !a.Contains(':')) ?? usable.FirstOrDefault();
+    }
+
+    private static bool IsLinkLocal(string address) =>
+        address.StartsWith("169.254.", StringComparison.Ordinal) ||
+        address.StartsWith("fe80:", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Renders an adapter's addresses as a readable list for one log line or report row.</summary>
+    /// <remarks>qBittorrent reports IPv4 and IPv6 together and the whole set is the evidence, so none is
+    /// filtered out - a v6-only change is still a change. Shared so the sync log and the diagnostics
+    /// report describe the same adapter the same way.</remarks>
+    internal static string FormatAddressList(IReadOnlyList<string> addresses) =>
+        addresses.Count == 0 ? "no addresses" : string.Join(", ", addresses);
 
     // Addresses qBittorrent reports for one interface token, or null when the list cannot be read -
     // which includes qBittorrent versions predating the endpoint, so callers degrade to doing nothing.

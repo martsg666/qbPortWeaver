@@ -118,7 +118,7 @@ public partial class MainForm : Form
     // update is pending. The update balloon is informational only - Windows 11 routes
     // ToolTipIcon.Info balloons through Action Center and does not reliably fire
     // BalloonTipClicked, so the tray menu item is the only clickable entry point.
-    private (string Version, string Url, string? MsiUrl)? _pendingUpdate;
+    private LatestReleaseInfo? _pendingUpdate;
 
     public MainForm()
     {
@@ -470,7 +470,7 @@ public partial class MainForm : Form
     private AboutForm CreateAboutForm()
     {
         var form = new AboutForm();
-        form.UpdateRequested += info => ShowUpdateAvailableForm(info.Version, info.ReleaseUrl, info.MsiUrl);
+        form.UpdateRequested += ShowUpdateAvailableForm;
         return form;
     }
 
@@ -1031,7 +1031,7 @@ public partial class MainForm : Form
         }
 
         _lastNotifiedVersion = info.Version;
-        _pendingUpdate = (info.Version, info.ReleaseUrl, info.MsiUrl);
+        _pendingUpdate = info;
         LogManager.Instance.LogMessage($"New application version available: {info.Version}", LogLevel.Info);
 
         _updateAvailableMenuItem.Text = $"Update available ({info.Version})";
@@ -1041,7 +1041,7 @@ public partial class MainForm : Form
 
         if (intrusive)
         {
-            ShowUpdateAvailableForm(info.Version, info.ReleaseUrl, info.MsiUrl);
+            ShowUpdateAvailableForm(info);
         }
         else
         {
@@ -1073,17 +1073,17 @@ public partial class MainForm : Form
     private void updateAvailable_Click(object? sender, EventArgs e)
     {
         if (_pendingUpdate is not { } update) return;
-        ShowUpdateAvailableForm(update.Version, update.Url, update.MsiUrl);
+        ShowUpdateAvailableForm(update);
     }
 
     // Opens or activates the singleton UpdateAvailableForm. Wrapping in ShowOrActivate
     // prevents repeated clicks (menu or startup intrusive path) from stacking multiple
     // windows on top of each other.
-    private void ShowUpdateAvailableForm(string version, string url, string? msiUrl) =>
+    private void ShowUpdateAvailableForm(LatestReleaseInfo release) =>
         ShowOrActivate(
             () => _updateAvailableForm,
             f => _updateAvailableForm = f,
-            () => new UpdateAvailableForm(version, url, msiUrl));
+            () => new UpdateAvailableForm(release));
 
     // Swaps the tray icon to reflect the current sync state
     private void UpdateTrayIcon(SyncState state)

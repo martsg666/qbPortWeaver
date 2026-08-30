@@ -176,7 +176,7 @@ internal sealed class HelperPipeServer(ILogger<HelperPipeServer> logger) : Backg
         // event for entries the helper wrote directly to the shared log file.
         try
         {
-            // No ConfigureAwait on the disposal - see the equivalent write in ServeOneConnectionAsync above.
+            // No ConfigureAwait on the disposal - see the rejection write earlier in this method for why.
             await using var writer = new StreamWriter(pipe, leaveOpen: true) { AutoFlush = true };
             // The version rides along on every response rather than being negotiated up front: the
             // request format cannot carry it without breaking already-installed helpers (see

@@ -174,8 +174,9 @@ public sealed class TransmissionClient : ManagedClientBase
     {
         try
         {
-            // port-forwarding-enabled=false is Transmission's combined UPnP/NAT-PMP off switch,
-            // equivalent to qBittorrent's and Deluge's separate upnp=false + natpmp=false fields.
+            // port-forwarding-enabled=false is Transmission's combined UPnP/NAT-PMP off switch, as
+            // qBittorrent's upnp is. Only Deluge splits the two into separate upnp and natpmp
+            // preferences (see DelugeClient.SetListeningPortAsync).
             var body = $$$"""{"method":"session-set","arguments":{"peer-port":{{{port}}},"peer-port-random-on-start":false,"port-forwarding-enabled":false}}""";
             using var response = await SendRpcAsync(body, cancellationToken: cancellationToken).ConfigureAwait(false);
             if (response is null) return false;

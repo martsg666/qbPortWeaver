@@ -214,9 +214,7 @@ public sealed class NatPmpManager : IVpnManager
 
         foreach (NetworkInterface nic in GetActiveNetworkInterfaces())
         {
-            IPInterfaceProperties props = nic.GetIPProperties();
-
-            IPAddress? gateway = ResolveGateway(props);
+            IPAddress? gateway = ResolveGateway(nic);
             if (gateway is null)
                 continue;
 
@@ -259,7 +257,7 @@ public sealed class NatPmpManager : IVpnManager
             return null;
         }
 
-        IPAddress? gateway = ResolveGateway(nic.GetIPProperties());
+        IPAddress? gateway = ResolveGateway(nic);
         if (gateway is null)
         {
             LogManager.Instance.LogDebug($"NatPmpManager.TryCreateForAdapterAsync: '{adapterName}' no resolvable gateway");
@@ -293,19 +291,58 @@ public sealed class NatPmpManager : IVpnManager
     // NetworkInterfaceType.Tunnel covers Windows IF_TYPE_TUNNEL (Teredo, ISATAP, 6to4) -
     // not VPN adapters. WireGuard/wintun (ProtonVPN) and TAP/OpenVPN adapters report as
     // Unknown or Ethernet and are not excluded by this filter.
+    //
+    // Guarded the same way both IsVpnConnected implementations guard this call (here and in
+    // ProtonVpnManager): GetAllNetworkInterfaces throws NetworkInformationException when the network
+    // subsystem is briefly unavailable, which on a machine riding VPN adapter churn is an ordinary
+    // transient rather than a fault. An empty sequence hands the callers the answer they already
+    // handle - TryCreateForAdapterAsync returns null ("not found or not up") and DiscoverAdaptersAsync
+    // an empty list - instead of a throw that RunAsync would report as "An unexpected error occurred"
+    // at Error, for what is really just a disconnected adapter. Without this the two static factories
+    // were the only unguarded users of an API the two instance methods already treat as fallible.
+    //
+    // ToList inside the try is load-bearing: a deferred Where would run GetAllNetworkInterfaces at the
+    // caller's foreach or FirstOrDefault, outside this catch, and the guard would never fire.
     private static IEnumerable<NetworkInterface> GetActiveNetworkInterfaces()
-        => NetworkInterface.GetAllNetworkInterfaces()
-            .Where(nic => nic.OperationalStatus == OperationalStatus.Up
-                       && nic.NetworkInterfaceType is not NetworkInterfaceType.Loopback
-                                                  and not NetworkInterfaceType.Tunnel);
+    {
+        try
+        {
+            return NetworkInterface.GetAllNetworkInterfaces()
+                .Where(nic => nic.OperationalStatus == OperationalStatus.Up
+                           && nic.NetworkInterfaceType is not NetworkInterfaceType.Loopback
+                                                      and not NetworkInterfaceType.Tunnel)
+                .ToList();
+        }
+        catch (NetworkInformationException ex)
+        {
+            LogManager.Instance.LogDebug($"NatPmpManager.GetActiveNetworkInterfaces: {ex.Message}");
+            return [];
+        }
+    }
 
     // Resolves the usable gateway for an adapter.
     // For standard adapters: uses the declared IPv4 gateway.
     // Otherwise (0.0.0.0, empty GatewayAddresses, or all-IPv6 gateways): infers x.x.x.1
     // from the unicast address. This fallback is primarily for VPN/TUN adapters (e.g. ProtonVPN)
     // which Windows does not populate GatewayAddresses for.
-    private static IPAddress? ResolveGateway(IPInterfaceProperties props)
+    //
+    // Takes the adapter rather than its properties so the GetIPProperties call is inside this guard.
+    // It is the second thing here that throws NetworkInformationException on a briefly unavailable
+    // network subsystem, and it throws per adapter - one disappearing mid-enumeration must not cost
+    // the whole scan. Null is "no usable gateway", which both callers already skip.
+    private static IPAddress? ResolveGateway(NetworkInterface nic)
     {
+        IPInterfaceProperties props;
+        try
+        {
+            props = nic.GetIPProperties();
+        }
+        catch (NetworkInformationException ex)
+        {
+            LogManager.Instance.LogDebug($"NatPmpManager.ResolveGateway: '{nic.Name}' - {ex.Message}");
+            return null;
+        }
+
         IPAddress? gateway = props.GatewayAddresses
             .Select(gw => gw.Address)
             .FirstOrDefault(a => a.AddressFamily == AddressFamily.InterNetwork && !a.Equals(IPAddress.Any));
@@ -467,6 +504,13 @@ public sealed class NatPmpManager : IVpnManager
                     return result.Buffer;
                 }
             }
+            // Real cancellation propagates. Without this arm it falls through the timeout filter below
+            // into the generic catch, which returns null - and null means "no response from gateway" to
+            // every caller, so shutting down mid-request logged a port detection failure, advanced the
+            // auto-recovery streak, and could dispatch a VPN restart on the way out. Listed first so the
+            // two filters are exhaustive over OperationCanceledException and none can reach the generic
+            // catch. Same arm the clients, PiaVpnManager and ProtonVpnManager already use.
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
             catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
             {
                 LogTimeoutDebug(attempt, maxAttempts, timeoutMs);

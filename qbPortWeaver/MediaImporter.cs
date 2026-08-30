@@ -353,25 +353,47 @@ internal static partial class MediaImporter
     // when the cached index is valid and the cycle counter has been bumped (caller skips the
     // rebuild). Returns false when a full rebuild is required, in which case the path tracking
     // fields and cycle counter are reset so the rebuild starts from a clean state.
-    // Caller holds _libraryBuildSemaphore.
+    // Caller holds _libraryBuildSemaphore, which serialises this against another rebuild but NOT
+    // against ClearAllCaches - that runs from the Media Manager's Clear cache button and takes only
+    // _libraryLock. So the decision and the state it rests on are read under _libraryLock like every
+    // other access to these fields: without it, seeing a non-null index immediately before the clear
+    // nulls it would skip the rebuild and leave every IsAlreadyInLibrary call answering false, which
+    // is the false-missing case BuildLibraryIndexAsync's summary warns creates duplicates.
+    // Logging stays outside the lock so a debug write never runs while it is held.
     private static bool TryReuseCachedIndex(string moviesLibraryPath, string tvShowsLibraryPath, bool allowReuse)
     {
-        bool pathsChanged = !string.Equals(moviesLibraryPath, _lastMoviesLibraryPath, StringComparison.OrdinalIgnoreCase)
-                         || !string.Equals(tvShowsLibraryPath, _lastTvShowsLibraryPath, StringComparison.OrdinalIgnoreCase);
-        bool forceRebuild = pathsChanged || _libraryBuildCycleCount >= FullRebuildIntervalCycles;
-        if (!forceRebuild && allowReuse && _libraryFingerprints is not null)
+        bool pathsChanged, haveIndex, reuse;
+        int cycleCount;
+        lock (_libraryLock)
         {
-            LogManager.Instance.LogDebug($"MediaImporter.TryReuseCachedIndex: Reusing index (cycle {_libraryBuildCycleCount}/{FullRebuildIntervalCycles})", Subsystem.MediaManager);
-            _libraryBuildCycleCount++;
+            pathsChanged = !string.Equals(moviesLibraryPath, _lastMoviesLibraryPath, StringComparison.OrdinalIgnoreCase)
+                        || !string.Equals(tvShowsLibraryPath, _lastTvShowsLibraryPath, StringComparison.OrdinalIgnoreCase);
+            haveIndex = _libraryFingerprints is not null;
+            cycleCount = _libraryBuildCycleCount;
+            bool forceRebuild = pathsChanged || cycleCount >= FullRebuildIntervalCycles;
+            reuse = !forceRebuild && allowReuse && haveIndex;
+
+            if (reuse)
+            {
+                _libraryBuildCycleCount++;
+            }
+            else
+            {
+                _libraryBuildCycleCount = 1; // Reset to 1, not 0 - this rebuild counts as the first cycle
+                _lastMoviesLibraryPath = moviesLibraryPath;
+                _lastTvShowsLibraryPath = tvShowsLibraryPath;
+            }
+        }
+
+        if (reuse)
+        {
+            LogManager.Instance.LogDebug($"MediaImporter.TryReuseCachedIndex: Reusing index (cycle {cycleCount}/{FullRebuildIntervalCycles})", Subsystem.MediaManager);
             return true;
         }
-        if (pathsChanged && _libraryFingerprints is not null)
+        if (pathsChanged && haveIndex)
             LogManager.Instance.LogDebug("MediaImporter.TryReuseCachedIndex: Library paths changed, forcing full rebuild", Subsystem.MediaManager);
-        else if (_libraryBuildCycleCount >= FullRebuildIntervalCycles)
+        else if (cycleCount >= FullRebuildIntervalCycles)
             LogManager.Instance.LogDebug($"MediaImporter.TryReuseCachedIndex: Forcing periodic rebuild (every {FullRebuildIntervalCycles} cycles)", Subsystem.MediaManager);
-        _libraryBuildCycleCount = 1; // Reset to 1, not 0 - this rebuild counts as the first cycle
-        _lastMoviesLibraryPath = moviesLibraryPath;
-        _lastTvShowsLibraryPath = tvShowsLibraryPath;
         return false;
     }
 
@@ -410,13 +432,16 @@ internal static partial class MediaImporter
                 LogManager.Instance.LogStateChange(LibraryIndexStateKey,
                     "Library index build skipped: one or more configured paths not accessible - will retry next cycle",
                     LogLevel.Warn, Subsystem.MediaManager);
-                _libraryBuildCycleCount = FullRebuildIntervalCycles;
+                // Under _libraryLock like every other access to this field. The semaphore this method
+                // holds serialises rebuilds against each other, but ClearAllCaches writes the same
+                // counter and takes only the lock, so the semaphore alone leaves the two unordered.
+                lock (_libraryLock) _libraryBuildCycleCount = FullRebuildIntervalCycles;
                 return false;
             }
 
             // Reached the build, so every configured path resolved: re-arm the warning above.
             LogManager.Instance.ClearLogState(LibraryIndexStateKey);
-            LogManager.Instance.LogMessage($"Building library index across {AppConstants.Pluralize(libraryPaths.Length, "folder")}", LogLevel.Info, Subsystem.MediaManager);
+            LogManager.Instance.LogMessage($"Building library index across {TextFormat.Pluralize(libraryPaths.Length, "folder")}", LogLevel.Info, Subsystem.MediaManager);
             LoadLibraryCache();
 
             var sw = System.Diagnostics.Stopwatch.StartNew();
@@ -453,7 +478,7 @@ internal static partial class MediaImporter
                 LogManager.Instance.LogMessage(
                     "Library index build incomplete - one or more configured folders failed to enumerate; will retry next cycle",
                     LogLevel.Warn, Subsystem.MediaManager);
-                _libraryBuildCycleCount = FullRebuildIntervalCycles;
+                lock (_libraryLock) _libraryBuildCycleCount = FullRebuildIntervalCycles; // see the equivalent write above
                 return false;
             }
 
@@ -502,7 +527,7 @@ internal static partial class MediaImporter
                 return new(StringComparer.OrdinalIgnoreCase);
             }
 
-            var json = AppConstants.ReadAllTextShared(filePath);
+            var json = AppFiles.ReadAllTextShared(filePath);
             var entries = JsonSerializer.Deserialize<Dictionary<string, CacheEntry>>(json);
             var cache = entries is not null
                 ? new Dictionary<string, CacheEntry>(entries, StringComparer.OrdinalIgnoreCase)
@@ -980,7 +1005,7 @@ internal static partial class MediaImporter
     {
         var json = JsonSerializer.Serialize(entries, _jsonWriteOptions);
         lock (_cacheFileLock)
-            AppConstants.WriteAtomic(GetCacheFilePath(fileName), json);
+            AppFiles.WriteAtomic(GetCacheFilePath(fileName), json);
         LogManager.Instance.LogDebug($"MediaImporter.{debugLabel}: Saved {entries.Count} entries", Subsystem.MediaManager);
     }
 
@@ -1007,14 +1032,14 @@ internal static partial class MediaImporter
             _lastTvShowsLibraryPath = string.Empty;
         }
 
-        AppConstants.DeleteFileSafely(GetCacheFilePath(SourceCacheFileName));
-        AppConstants.DeleteFileSafely(GetCacheFilePath(LibraryCacheFileName));
+        AppFiles.DeleteFileSafely(GetCacheFilePath(SourceCacheFileName));
+        AppFiles.DeleteFileSafely(GetCacheFilePath(LibraryCacheFileName));
 
         LogManager.Instance.LogMessage("Fingerprint caches cleared", LogLevel.Info, Subsystem.MediaManager);
     }
 
     internal static string GetCacheFilePath(string fileName) =>
-        AppConstants.GetDataFilePath(fileName);
+        AppFiles.GetDataFilePath(fileName);
 
     // CreateHardLink: lpFileName is the NEW link (destination), lpExistingFileName is the existing file (source).
     [LibraryImport("kernel32.dll", EntryPoint = "CreateHardLinkW", SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]

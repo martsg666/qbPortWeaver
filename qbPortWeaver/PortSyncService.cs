@@ -29,6 +29,21 @@ public sealed class PortSyncService
     // Connection status value returned by clients that support GetConnectionStatusAsync
     private const string ClientDisconnectedStatus = "disconnected";
 
+    // LogManager.LogStateChange keys for the three conditions in this cycle that persist until the
+    // user acts, so each is logged on the transition rather than on every cycle. The two restart and
+    // settings-conflict warnings nearby already do this with their own fields; these use the shared
+    // mechanism because they have no other reason to carry state. Every Warn also bumps the tray's
+    // unviewed-warning count, so repeating one costs more than a duplicated log line.
+    private const string NatPmpLeaseStateKey = "vpn.natpmpLeaseTooShort";
+    private const string InterfaceMatchStateKey = "client.interfaceMatch";
+    private const string BindingStaleStateKey = "client.bindingStale";
+    private const string VpnProviderStateKey = "vpn.providerUnrecognized";
+    private const string DefaultPortStateKey = "client.defaultPortUnusable";
+    private const string NatPmpAdapterStateKey = "vpn.natpmpAdapterUnconfigured";
+    private const string PortForwardingUnavailableStateKey = "vpn.portForwardingUnavailable";
+    private const string BindingAddressStateKey = "client.bindingAddressStale";
+    private const string RecoveryCapStateKey = "vpn.recoveryCapReached";
+
     /// <summary>Raised when a sync cycle completes (success or failure) with the resulting tray status.</summary>
     public event Action<TrayStatus>? SyncCompleted;
 
@@ -65,11 +80,41 @@ public sealed class PortSyncService
     // trigger rechecks, so the loop costs the user more than doing nothing would.
     // Serialised by MainForm._updateSemaphore (same guarantee as _consecutiveFailedCycles).
     private int _consecutiveDisconnectRestarts;
+    // Auto-recoveries dispatched on the failed-cycle path since the last successful port read. Capped at
+    // MaxConsecutiveRecoveries for the same reason _consecutiveDisconnectRestarts is capped: a remedy that
+    // has not worked three times running is not addressing the cause, and repeating it on a timer costs
+    // the user a torn-down tunnel and interrupted transfers each time. The existing gates do not cover
+    // this - the cycle count and sustained-failure floor both reset with the streak, and the offline
+    // limiter only engages when the machine cannot reach the internet at all.
+    // Serialised by MainForm._updateSemaphore (same guarantee as _consecutiveFailedCycles).
+    private int _consecutiveRecoveries;
     // True once a stale interface binding has been re-applied for the current stale streak. Cleared as
     // soon as the binding reads healthy, so a later drift is repaired again - but a write that does not
     // stick is not retried every cycle, which would be the same unbounded-remedy loop as the restarts.
     // Serialised by MainForm._updateSemaphore (same guarantee as _consecutiveFailedCycles).
     private bool _interfaceBindingRepairAttempted;
+    // Addresses the bound adapter carried on the previous cycle, or null before the first successful
+    // read. Lives here rather than on the client because the client is constructed and disposed once
+    // per cycle (see the `using var manager` in RunCoreAsync), so it cannot remember anything, and the
+    // question this answers is precisely "did this change since last time".
+    // Serialised by MainForm._updateSemaphore (same guarantee as _consecutiveFailedCycles).
+    // Keyed by the interface the addresses were read from. Without the key, a cycle that follows a
+    // change of bound adapter - the user re-selecting one, or RepairInterfaceBindingAsync re-pointing
+    // the token - compares one adapter's addresses against another's. That differs by construction, so
+    // it reported a change that never happened and armed a rebind on the strength of it.
+    // Name rather than token: the name is what the log line quotes, and the token can change while the
+    // adapter stays the same, which is the stale-token case the neighbouring check already owns.
+    private (string Interface, IReadOnlyList<string> Addresses)? _lastKnownInterfaceAddresses;
+    // Set when the bound adapter's addresses move while the client is bound to *all* addresses on it -
+    // the case where a listener can survive on the previous address with nothing else in the cycle able
+    // to see it. Consumed by the port-closed escalation, which is the point at which the symptom has
+    // actually been confirmed; cleared after one rebind attempt so a failed attempt escalates to the VPN
+    // restart rather than repeating itself. Not a fault on its own: an ordinary reconnect sets it too.
+    // Serialised by MainForm._updateSemaphore (same guarantee as _consecutiveFailedCycles).
+    private bool _interfaceAddressChangedSinceRebind;
+    // One repair per stale-pin streak, mirroring _interfaceBindingRepairAttempted: if the write lands and
+    // the pin is still wrong next cycle, something else is writing it and repeating would be its own loop.
+    private bool _interfaceAddressRepairAttempted;
     // One latch per condition, each owned by exactly one method. They must not be shared:
     // CheckInterfaceMatch clears its latch on every healthy cycle, which would defeat the dedupe for
     // any other condition writing to the same field - a persistent binding warning would then balloon
@@ -104,6 +149,14 @@ public sealed class PortSyncService
     // auto-recovery trigger default: enough for a genuinely transient client fault to clear, few enough
     // that an unfixable cause stops costing the user interrupted transfers.
     private const int MaxDisconnectRestarts = 3;
+    // How many auto-recoveries may run back to back on the failed-cycle path without a single successful
+    // port read in between. A backstop, not a tuning knob: if three service restarts have not produced a
+    // port, the cause is not something a fourth will fix, and each one costs the user a torn-down tunnel.
+    // Cleared by any successful port fetch, so a genuinely intermittent VPN is never permanently
+    // suspended - only an unbroken run of futile recoveries is. Applies to the failed-cycle trigger
+    // alone: the port-closed trigger runs after a successful fetch (which has already cleared the
+    // count), and a recovery the user asked for by hand is never withheld.
+    private const int MaxConsecutiveRecoveries = 3;
     // Started once at construction (the sync service is created once at app startup). Monotonic, so a
     // wall-clock/NTP correction during the grace window - likely just after boot/login - cannot shift it.
     private readonly System.Diagnostics.Stopwatch _uptime = System.Diagnostics.Stopwatch.StartNew();
@@ -260,6 +313,13 @@ public sealed class PortSyncService
         public const string PortChanged = "portChanged";
         public const string PortVerified = "portVerified";
         public const string UpdateIntervalSeconds = "updateIntervalSeconds";
+        // When the next cycle is due. An absolute instant for the same reason RecoveryHoldUntil is
+        // one: the wait starts when the cycle ends, while Timestamp is stamped at the start, so
+        // deriving it as Timestamp + UpdateIntervalSeconds reads the duration against the wrong
+        // origin and runs out early by the cycle's length - up to the 30s a client restart takes,
+        // or the 120s an auto-recovery round trip can. Consumers that predate this key can still
+        // derive the old estimate; nothing here replaces UpdateIntervalSeconds.
+        public const string NextSyncAt = "nextSyncAt";
         public const string Status = "status";
         public const string Message = "message";
         public const string WaitingForVpn = "waitingForVpn";
@@ -280,6 +340,24 @@ public sealed class PortSyncService
         // panel names the cause - collapsing them would make the row say "no internet connection"
         // during an ordinary blip.
         public const string RecoverySustainedUntil = "recoverySustainedUntil";
+        // True while the consecutive-recovery cap is suspending the failed-cycle trigger. Published for
+        // the same reason the two holds above are: this is a third gate that stops recovery firing, and
+        // without it the panel would show the failure streak climbing past the trigger threshold with
+        // nothing to say why nothing happens - the exact gap the sustained-failure key was added to close.
+        // A flag rather than an instant, because this hold has no deadline: it ends on a successful port
+        // read, which no countdown can predict.
+        public const string RecoverySuspended = "recoverySuspended";
+        // The port-closed recovery trigger, which is independent of the failed-cycle one above: its
+        // own setting, its own threshold, counted in confirmed-closed checks rather than in cycles.
+        // Published for the same reason the failed-cycle counters are - without them the Status panel
+        // can only describe one of the two triggers, so a user whose port is closed sees a row that
+        // says nothing about the recovery actually approaching (or, once Armed goes false, about the
+        // recovery that has already run and will not run again until the port reopens).
+        public const string PortClosedRecoveryEnabled = "portClosedRecoveryEnabled";
+        public const string PortClosedRecoveryChecks = "portClosedRecoveryChecks";
+        public const string PortClosedRecoveryTriggerChecks = "portClosedRecoveryTriggerChecks";
+        // False once the one-shot trigger has fired, until a verification reports the port open again.
+        public const string PortClosedRecoveryArmed = "portClosedRecoveryArmed";
 
         // Values for the Status key live in the public SyncStatusValues (shared with the Status panel).
     }
@@ -309,23 +387,37 @@ public sealed class PortSyncService
             [StatusKeys.PortChanged] = false,
             [StatusKeys.PortVerified] = null,
             [StatusKeys.UpdateIntervalSeconds] = AppConstants.DefaultUpdateIntervalSeconds,
+            [StatusKeys.NextSyncAt] = null,
             [StatusKeys.Status] = SyncStatusValues.Error,
             [StatusKeys.Message] = null,
             [StatusKeys.RecoveryHoldUntil] = null,
             [StatusKeys.RecoveryEnabled] = false,
             [StatusKeys.RecoveryFailedCycles] = 0,
             [StatusKeys.RecoveryTriggerCycles] = 0,
-            [StatusKeys.RecoverySustainedUntil] = null
+            [StatusKeys.RecoverySustainedUntil] = null,
+            [StatusKeys.RecoverySuspended] = false,
+            [StatusKeys.PortClosedRecoveryEnabled] = false,
+            [StatusKeys.PortClosedRecoveryChecks] = 0,
+            [StatusKeys.PortClosedRecoveryTriggerChecks] = 0,
+            // Initialised to match the field rather than to false: armed is the resting state,
+            // and the finally overwrites it with the real value on every cycle that gets that far.
+            [StatusKeys.PortClosedRecoveryArmed] = true
         };
 
+        // Captured so the finally can publish NextSyncAt against the wait this cycle actually
+        // returned - including the shortened startup-grace poll - rather than re-reading the
+        // configured interval. Stays at the default when RunCoreAsync throws, which is what the
+        // catch returns anyway.
+        int nextWaitSeconds = AppConstants.DefaultUpdateIntervalSeconds;
         try
         {
-            return await RunCoreAsync(status, cancellationToken).ConfigureAwait(false);
+            nextWaitSeconds = await RunCoreAsync(status, cancellationToken).ConfigureAwait(false);
+            return nextWaitSeconds;
         }
         catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
         {
             SetSyncResult(status, false, $"An unexpected error occurred: {ex.Message}");
-            return AppConstants.DefaultUpdateIntervalSeconds;
+            return nextWaitSeconds;
         }
         finally
         {
@@ -334,11 +426,23 @@ public sealed class PortSyncService
             // and leave a misleading error JSON file on every exit.
             if (!cancellationToken.IsCancellationRequested)
             {
+                // Stamped here rather than at cycle start because the wait begins when the cycle
+                // ends. MainForm shortens this to ManualSyncWaitSeconds after a manual sync or a
+                // network-change re-check, which happens after this write, so those two cases still
+                // publish the full interval.
+                status[StatusKeys.NextSyncAt] = DateTimeOffset.Now.AddSeconds(nextWaitSeconds);
                 status[StatusKeys.RecoveryHoldUntil] = GetRecoveryHoldUntil();
                 // Read here rather than mid-cycle: the streak is incremented by the failure paths
                 // inside RunCoreAsync, so only the finally sees this cycle's final count.
                 status[StatusKeys.RecoveryFailedCycles] = _consecutiveFailedCycles;
                 status[StatusKeys.RecoverySustainedUntil] = _recoverySustainedUntil;
+                // Read here with the streak, for the same reason: the dispatch path inside RunCoreAsync
+                // is what advances the count, so only the finally sees this cycle's value.
+                status[StatusKeys.RecoverySuspended] = _consecutiveRecoveries >= MaxConsecutiveRecoveries;
+                // Read here for the same reason as the failure streak above: both are mutated by the
+                // verification path inside RunCoreAsync, so only the finally sees this cycle's values.
+                status[StatusKeys.PortClosedRecoveryChecks] = _confirmedClosedCount;
+                status[StatusKeys.PortClosedRecoveryArmed] = _portClosedRecoveryArmed;
                 StatusManager.Write(status);
                 string? outcome = status[StatusKeys.Status] as string;
                 LogCycleOutcome(outcome);
@@ -435,6 +539,12 @@ public sealed class PortSyncService
         status[StatusKeys.UpdateIntervalSeconds] = cfg.UpdateInterval;
         status[StatusKeys.RecoveryEnabled] = cfg.VpnAutoRecoveryEnabled;
         status[StatusKeys.RecoveryTriggerCycles] = cfg.VpnAutoRecoveryTriggerCycles;
+        // The effective value, not the stored one. The port-closed trigger runs inside port
+        // verification, so with verification off it is inert however its own checkbox was left - and
+        // Settings only greys that checkbox out, it never clears it. Publishing the raw setting made
+        // the panel report Idle for a trigger that could never fire.
+        status[StatusKeys.PortClosedRecoveryEnabled] = cfg.PortClosedRecoveryEnabled && cfg.VerifyPortAfterSync;
+        status[StatusKeys.PortClosedRecoveryTriggerChecks] = cfg.PortClosedRecoveryTriggerChecks;
 
         // If we were holding for the VPN during startup and the grace window has now elapsed (or the
         // setting was turned off), note the transition once so the log explains why quiet "waiting"
@@ -517,9 +627,16 @@ public sealed class PortSyncService
         // falls through to the branch below, which already skips the update and reports it.
         if (defaultPort != 0 && !AppConstants.IsUsablePort(defaultPort))
         {
-            LogManager.Instance.LogMessage(
+            // Transition-only: the value comes from the registry and stays unusable until the user
+            // edits it, and this path runs on every cycle for as long as the VPN is down. The message
+            // carries the port, so correcting it to another unusable value still reports.
+            LogManager.Instance.LogStateChange(DefaultPortStateKey,
                 $"Configured default port ({defaultPort}) is not usable - ignoring it", LogLevel.Warn);
             defaultPort = 0;
+        }
+        else
+        {
+            LogManager.Instance.ClearLogState(DefaultPortStateKey);
         }
 
         if (defaultPort == 0)
@@ -566,6 +683,29 @@ public sealed class PortSyncService
                 MarkWaitingForVpn(status, $"Waiting for {vpnManager.ProviderName} to assign a port");
                 return new TargetPortResult(GraceStartupInterval(cfg.UpdateInterval), 0, null);
             }
+            // The provider has told us there is no forwarded port to be had until the user changes
+            // something. That is a configuration state, not a fault, so it is reported and re-checked
+            // on the normal cadence but never counted toward auto-recovery: a service restart cannot
+            // create a forward the region or the account settings do not offer, and dispatching one
+            // every few cycles tears the tunnel down repeatedly for no possible benefit.
+            if (vpnManager.PortForwardingUnavailable)
+            {
+                // The streak is neither advanced nor cleared here, and the difference matters. Not
+                // advancing is what keeps this condition from driving recovery, which was the whole
+                // requirement. Clearing it - which this did at first - is a stronger claim than the
+                // reasoning supports, and PIA gives a reason to care: it reports `Inactive` both for
+                // "port forwarding is off" and for "PIA is disconnected", and the connected check and
+                // the port read are two separate piactl invocations. A tunnel dropping between them
+                // lands here while genuinely broken, and clearing the streak on that reading would
+                // discard evidence gathered from real failures, so a flapping tunnel could keep
+                // resetting its way below the threshold and never be recovered.
+                SetSyncResult(status, false,
+                    $"{vpnManager.ProviderName} reports port forwarding is unavailable - check that port forwarding " +
+                    "is enabled in the VPN client and that the connected region supports it (auto-recovery does not run for this)",
+                    LogLevel.Warn, PortForwardingUnavailableStateKey);
+                return new TargetPortResult(cfg.UpdateInterval, 0, null);
+            }
+
             await HandlePortDetectionFailureAsync(vpnManager, cfg, cancellationToken).ConfigureAwait(false);
             SetSyncResult(status, false, $"Failed to determine {vpnManager.ProviderName} port", LogLevel.Warn);
             return new TargetPortResult(cfg.UpdateInterval, 0, null);
@@ -573,6 +713,8 @@ public sealed class PortSyncService
 
         ResetFailureStreak(); // Reset only after a successful port fetch
         ResetOfflineRecoveryBackoff(); // A working cycle ends any offline streak, so the next one starts fresh
+        ResetRecoveryCap();            // and ends any run of consecutive recoveries
+        LogManager.Instance.ClearLogState(PortForwardingUnavailableStateKey);
         _graceHoldActive = false; // VPN is up within the grace window - clear the hold without a marker
         status[StatusKeys.VpnPort] = vpnPort.Value;
         LogManager.Instance.LogMessage($"{vpnManager.ProviderName} port found: {vpnPort.Value}", LogLevel.Info);
@@ -583,19 +725,27 @@ public sealed class PortSyncService
     // Warns if a NAT-PMP lease will expire before the next sync cycle renews it.
     private static void WarnIfNatPmpLeaseTooShort(IVpnManager vpnManager, AppConfig cfg)
     {
-        if (vpnManager is NatPmpManager natPmp &&
-            natPmp.LastGrantedLifetime > 0 &&
-            cfg.UpdateInterval > natPmp.LastGrantedLifetime)
-            LogManager.Instance.LogMessage(
+        if (vpnManager is not NatPmpManager natPmp || natPmp.LastGrantedLifetime == 0) return;
+
+        // Transition-only. Both sides are stable - the interval is a setting and the lifetime is what
+        // this gateway grants - so the line is identical on every cycle and says nothing new after the
+        // first. The else re-arms it, so widening the interval and narrowing it again warns afresh.
+        if (cfg.UpdateInterval > natPmp.LastGrantedLifetime)
+            LogManager.Instance.LogStateChange(NatPmpLeaseStateKey,
                 $"NAT-PMP sync interval ({cfg.UpdateInterval}s) exceeds lease lifetime ({natPmp.LastGrantedLifetime}s) - port mapping will expire before the next sync cycle",
                 LogLevel.Warn);
+        else
+            LogManager.Instance.ClearLogState(NatPmpLeaseStateKey);
     }
 
     // Reads all configuration values from the registry into a single AppConfig record
     private static (AppConfig Config, string ActiveSection) ReadConfig()
     {
-        int updateInterval = RegistrySettingsManager.GetInt(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyUpdateIntervalSeconds);
-        if (updateInterval < AppConstants.MinUpdateIntervalSeconds) updateInterval = AppConstants.DefaultUpdateIntervalSeconds;
+        // Shared with the Status panel's fallback due-time derivation - see
+        // GetClampedUpdateIntervalSeconds for why the clamp lives in one place. The upper bound is
+        // load-bearing here: MainForm's two delay paths multiply this by MillisecondsPerSecond, which
+        // overflows int above ~24.8 days and produces a negative delay that kills the main loop.
+        int updateInterval = RegistrySettingsManager.GetClampedUpdateIntervalSeconds();
 
         int vpnAutoRecoveryTriggerCycles = Math.Max(1, RegistrySettingsManager.GetInt(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyVpnAutoRecoveryTriggerCycles));
 
@@ -690,7 +840,7 @@ public sealed class PortSyncService
         if (provider.Equals(RegistrySettingsManager.VpnProviderPia, StringComparison.OrdinalIgnoreCase))
             return new PiaVpnManager();
         if (provider.Equals(RegistrySettingsManager.VpnProviderProtonVpn, StringComparison.OrdinalIgnoreCase))
-            return new ProtonVpnManager(AppConstants.GetProtonVpnLogFilePath());
+            return new ProtonVpnManager(AppFiles.GetProtonVpnLogFilePath());
         return null;
     }
 
@@ -710,13 +860,25 @@ public sealed class PortSyncService
             return null;
         }
 
+        // Re-arms the warning below whenever the provider is one we know, so correcting Settings and
+        // then mistyping it again reports afresh. Gated on the registry rather than on the two
+        // branches beneath it so there is one definition of "recognized", and placed before them so
+        // the unknown-provider fallthrough keeps its order: a keyword added to the registry without a
+        // matching factory arm still reaches the warning rather than being routed to NAT-PMP.
+        if (VpnProviderRegistry.IsRecognizedProvider(cfg.VpnProvider))
+            LogManager.Instance.ClearLogState(VpnProviderStateKey);
+
         if (CreateStatelessVpnManager(cfg.VpnProvider) is { } manager)
             return manager;
 
         if (cfg.VpnProvider.Equals(RegistrySettingsManager.VpnProviderNatPmp, StringComparison.OrdinalIgnoreCase))
             return await CreateNatPmpVpnManagerAsync(cfg, status, cancellationToken).ConfigureAwait(false);
 
-        LogManager.Instance.LogMessage($"VPN provider '{cfg.VpnProvider}' is not recognized - check Settings", LogLevel.Warn);
+        // Transition-only: the provider name comes from the registry and stays wrong until Settings is
+        // corrected, so the same line every cycle adds nothing. The status below still reports Error on
+        // every cycle, which is the signal that should persist.
+        LogManager.Instance.LogStateChange(VpnProviderStateKey,
+            $"VPN provider '{cfg.VpnProvider}' is not recognized - check Settings", LogLevel.Warn);
         status[StatusKeys.Status] = SyncStatusValues.Error;
         status[StatusKeys.Message] = $"VPN provider '{cfg.VpnProvider}' is not recognized";
         return null;
@@ -728,9 +890,14 @@ public sealed class PortSyncService
     {
         if (string.IsNullOrWhiteSpace(cfg.NatPmpAdapterName))
         {
-            SetSyncResult(status, false, "No NAT-PMP adapter configured - open Settings and select an adapter");
+            // Transition-only: an unset adapter stays unset until the user opens Settings, so the
+            // identical line every cycle says nothing new. The status above still reports the error
+            // on every cycle, which is the part that should persist. See SetSyncResult's stateKey.
+            SetSyncResult(status, false, "No NAT-PMP adapter configured - open Settings and select an adapter",
+                stateKey: NatPmpAdapterStateKey);
             return null;
         }
+        LogManager.Instance.ClearLogState(NatPmpAdapterStateKey);
 
         // Discard the fallback if the adapter name changed in settings
         if (_lastKnownNatPmpManager is not null &&
@@ -926,8 +1093,18 @@ public sealed class PortSyncService
         // no VPN configured at all, and the client test is narrower than SupportsInterfaceMismatchWarning.
         // WarnOnInterfaceMismatch is a preference rather than a capability, so it is applied inside,
         // to the warning only - the repair runs either way.
-        if (manager is QBittorrentClient qbClient)
-            await CheckAndRepairInterfaceBindingAsync(qbClient, currentInterfaceName, config, cancellationToken).ConfigureAwait(false);
+        //
+        // The address check that follows is the half neither check above can see: the address under a
+        // binding whose name and token are both still correct - see CheckInterfaceAddressAsync. It is
+        // an && rather than a second statement because "the token is correct" is a precondition of
+        // reading the address, not a description of the usual case: under a stale token qBittorrent
+        // reports the adapter as having no addresses at all, which the address check would read as a
+        // real loss. The gate is what the comment on that method has always claimed and never enforced.
+        if (manager is QBittorrentClient qbClient
+            && await CheckAndRepairInterfaceBindingAsync(qbClient, currentInterfaceName, config, cancellationToken).ConfigureAwait(false))
+        {
+            await CheckInterfaceAddressAsync(qbClient, currentInterfaceName, config, cancellationToken).ConfigureAwait(false);
+        }
 
         await CheckClientSettingsConflictsAsync(manager, cancellationToken).ConfigureAwait(false);
 
@@ -963,6 +1140,13 @@ public sealed class PortSyncService
     {
         if (!await ApplyPortUpdateAsync(manager, targetPort, config, status, cancellationToken).ConfigureAwait(false))
             return false;
+        // A port write rebuilds the client's listen sockets from a fresh enumeration of the adapter,
+        // exactly as an address write does - measured, not assumed. So it has already done what the
+        // rebind would do, and any listener stranded on a previous address is gone. Clearing the arm
+        // here keeps it honest: without this, an ordinary reconnect (new address *and* a new forwarded
+        // port, which is the common case) would stay armed after the port write had already fixed it,
+        // and spend that arm later on a closed port it could not possibly explain.
+        _interfaceAddressChangedSinceRebind = false;
         // Cause annotation: recovery takes precedence over network change (a recovery usually
         // produces a network change too, and the recovery is the root cause).
         string cause = string.Empty;
@@ -1030,16 +1214,16 @@ public sealed class PortSyncService
 
         if (open.Value)
         {
-            HandlePortOpenResult(manager.ClientName, port);
+            HandlePortOpenResult(manager.ClientName, port, config);
         }
         else
         {
             HandlePortClosedResult(manager.ClientName, port, config);
-            await MaybeTriggerPortClosedRecoveryAsync(config, cancellationToken).ConfigureAwait(false);
+            await MaybeTriggerPortClosedRecoveryAsync(manager, config, cancellationToken).ConfigureAwait(false);
         }
     }
 
-    private void HandlePortOpenResult(string clientName, int port)
+    private void HandlePortOpenResult(string clientName, int port, SyncConfig config)
     {
         if (_portConfirmedClosed)
             LogManager.Instance.LogMessage($"{clientName} port {port} is reachable from outside again", LogLevel.Info);
@@ -1048,16 +1232,38 @@ public sealed class PortSyncService
         _portCheckPendingConfirmation = false;
         _portConfirmedClosed = false;
         _confirmedClosedCount = 0;
+        // A port verified reachable proves the client is listening, so whatever the adapter's address
+        // did earlier, it did not strand the listener. Spending the arm here matters: without it a
+        // change recorded during a healthy reconnect would sit armed indefinitely and spend itself on
+        // the next unrelated closed port, rebinding for a reason that stopped applying long before.
+        _interfaceAddressChangedSinceRebind = false;
         if (!_portClosedRecoveryArmed)
         {
+            // Re-armed unconditionally, and announced only when the trigger could actually use it.
+            // The field is internal arming state; whether the trigger can fire also depends on the
+            // setting, and the two were conflated here - so a user who switched the trigger off after
+            // it fired was told it "can trigger again", which every other site reporting this state
+            // (BuildPortClosedRecoverySuffix, MaybeTriggerPortClosedRecoveryAsync,
+            // StatusForm.DescribePortClosedRecovery) already gates on. The re-arm itself must stay
+            // unconditional: gating it too would leave the trigger permanently disarmed for anyone who
+            // switched the setting off and later back on.
             _portClosedRecoveryArmed = true;
-            LogManager.Instance.LogDebug("PortSyncService.HandlePortOpenResult: Port-closed recovery re-armed");
+
+            // Info, not Debug: the disarmed state it clears is reported to the user in the port-closed
+            // Warn and on the Status panel, so the point at which recovery becomes available again has
+            // to be visible at the same level. Reached only after a recovery actually fired, so it
+            // cannot become routine noise.
+            if (config.PortClosedRecoveryEnabled)
+                LogManager.Instance.LogMessage("Port-closed recovery re-armed - it can trigger again if the port closes", LogLevel.Info);
         }
     }
 
-    // Confirmed-closed logs at Warn every cycle so the alert badge tracks the persistent
-    // condition (same pattern as the interface mismatch check); the PortVerificationFailed
-    // balloon fires only on the transition into the confirmed state.
+    // Confirmed-closed logs at Warn on every confirming cycle, deliberately, and is the counterpart to
+    // the standing conditions that report only on their transition: this line's text carries a count
+    // that advances toward the trigger, so each repetition tells the user something the last one did
+    // not. The test is whether hearing it again could change what they do. (The interface-mismatch
+    // check used to be cited here as the same pattern; it is now transition-only, being fixed text.)
+    // The PortVerificationFailed balloon still fires only on the transition into the confirmed state.
     private void HandlePortClosedResult(string clientName, int port, SyncConfig config)
     {
         if (_portConfirmedClosed)
@@ -1089,14 +1295,19 @@ public sealed class PortSyncService
     // Builds the recovery-progress suffix for the port-closed Warn messages, mirroring
     // BuildCycleCountMessage's structure (counted in checks, not cycles) so it reads consistently
     // with the failed-cycle recovery logs.
-    // Shown only while recovery is enabled AND still armed - it tracks progress toward the
-    // threshold. With recovery off the count is zeroed each cycle; once recovery has fired
-    // (disarmed) the count no longer drives a trigger, so a climbing count would mislead.
+    // With recovery off there is nothing to report and the count is zeroed each cycle, so the suffix
+    // is empty. Once recovery has fired (disarmed) the count no longer drives a trigger, so reporting
+    // it would mislead - but reporting nothing misleads more: this Warn repeats every cycle for as
+    // long as the port stays closed, and dropping the suffix at exactly the moment the trigger stops
+    // firing leaves the user watching a warning repeat with no sign that the app has already acted
+    // and is now waiting. So the disarmed state names itself instead of going quiet.
     private string BuildPortClosedRecoverySuffix(SyncConfig config)
     {
-        if (!config.PortClosedRecoveryEnabled || !_portClosedRecoveryArmed)
+        if (!config.PortClosedRecoveryEnabled)
             return string.Empty;
-        string checks = AppConstants.PluralizeNoun(_confirmedClosedCount, "closed check");
+        if (!_portClosedRecoveryArmed)
+            return " (recovery has already run for this outage - it will not run again until a scheduled check reports the port open)";
+        string checks = TextFormat.PluralizeNoun(_confirmedClosedCount, "closed check");
         return $" ({_confirmedClosedCount} consecutive {checks}, recovery triggers after {config.PortClosedRecoveryTriggerChecks} consecutive closed checks)";
     }
 
@@ -1105,7 +1316,86 @@ public sealed class PortSyncService
     // trigger - the two share the action, not the gate. One-shot arming: after firing, recovery
     // stays disarmed until a verification reports the port open again (see HandlePortOpenResult),
     // so a persistently false "closed" can never cause a recovery loop.
-    private async Task MaybeTriggerPortClosedRecoveryAsync(SyncConfig config, CancellationToken cancellationToken)
+    // Forces the client to rebuild its listen sockets when a confirmed-closed port coincides with the
+    // bound adapter having changed address. Returns true when a rebind was actually attempted, which is
+    // what tells the caller to hold the VPN restart back for one more round of confirmation.
+    // One attempt per address change: the flag is cleared whether or not the write succeeded, so a rebind
+    // that does not help escalates to the VPN restart instead of repeating.
+    private async Task<bool> TryRebindClientAddressAsync(IManagedClient manager, SyncConfig config, CancellationToken cancellationToken)
+    {
+        if (!_interfaceAddressChangedSinceRebind || !config.FixInterfaceBinding) return false;
+        if (manager is not QBittorrentClient client) return false;
+        // No baseline guard here any more: it meant "addresses were never read", which the live read
+        // below covers, and holding the baseline was what let observation-time state reach this action.
+        // _lastKnownInterfaceAddresses is now used solely to answer "did this change since last time".
+
+        // Read fresh rather than pinning from the baseline. The baseline answers "did this change since
+        // last time", a question about history; the pin needs "what is on the adapter right now". Using
+        // one for the other is why a cycle whose address read failed could pin an address the adapter no
+        // longer carries - self-correcting, since the release restores the configured value either way,
+        // but it wrote a nonexistent address and logged it as live. Reading here is correct by
+        // construction and bounds nothing on how old the baseline is. The cost is one request, on a path
+        // that only runs after three confirmed closed checks.
+        var (live, pinned) = await client.GetInterfaceAddressStateAsync(cancellationToken).ConfigureAwait(false);
+
+        // Arm deliberately left set, for the same reason the SelectBindAddress case below leaves it: the
+        // change really was observed, and failing to read the adapter now is not evidence that it stopped
+        // mattering. Kept separate from the pin test below rather than sharing its ||, because that test
+        // spends the arm and none of its reasoning is about a failed read. This also covers an empty
+        // token (bound to all interfaces, so there is no adapter to inspect), where a surviving arm costs
+        // nothing: CheckInterfaceAddressAsync returns early on that same condition, so the arm just sits
+        // until a readable cycle either uses or clears it.
+        if (live is null) return false;
+
+        // The pin is re-checked at the point of use, never trusted from when the arm was set. The user
+        // can change the bind address between those two moments and the arm survives that, so a stored
+        // release value could widen a pin they made deliberately in the meantime - the exact harm this
+        // whole feature exists to avoid. A non-wildcard pin also means the ambiguous "bound to all
+        // addresses" case no longer applies, so the premise for rebinding is gone: spend the arm and
+        // let the caller escalate rather than leaving it set to re-enter here every closed round.
+        if (!QBittorrentClient.IsWildcardBindAddress(pinned))
+        {
+            _interfaceAddressChangedSinceRebind = false;
+            return false;
+        }
+        string releaseAddress = pinned ?? string.Empty;
+        // Arm deliberately left set: the change really was observed, and failing to read the adapter now
+        // is not evidence that it stopped mattering. No attempt was made, so "one attempt per address
+        // change" is still honest, and the next eligible cycle tries again.
+        if (QBittorrentClient.SelectBindAddress(live) is not string pinAddress) return false;
+
+        _interfaceAddressChangedSinceRebind = false;
+
+        LogManager.Instance.LogMessage(
+            $"The forwarded port is closed and the bound adapter changed address, so {client.ClientName} may still be " +
+            $"listening on the previous one. Rebinding it via {pinAddress} before restarting the VPN",
+            LogLevel.Warn);
+
+        // Pin a live address, then release back to whatever was configured when the change was seen.
+        // Both writes are real changes, which is what makes the client rebuild its sockets; the end
+        // state is the user's own value, read from the client rather than assumed here.
+        if (await client.ForceInterfaceRebindAsync(pinAddress, releaseAddress, cancellationToken).ConfigureAwait(false))
+        {
+            // Names the value actually restored rather than saying "all addresses": since the wildcard
+            // fix the release can be 0.0.0.0 or ::, and a line that describes the wrong end state is the
+            // one thing someone diagnosing this has to go on.
+            LogManager.Instance.LogMessage(
+                $"Rebound {client.ClientName} to '{(releaseAddress.Length == 0 ? "all addresses" : releaseAddress)}' " +
+                "on its adapter - the next port check will show whether it is listening again",
+                LogLevel.Info);
+        }
+        else
+        {
+            LogManager.Instance.LogMessage(
+                $"Could not rebind {client.ClientName} - the next confirmed closed check will restart the VPN instead",
+                LogLevel.Warn);
+        }
+
+        // True either way: the attempt happened, so the caller holds the restart back for one round.
+        return true;
+    }
+
+    private async Task MaybeTriggerPortClosedRecoveryAsync(IManagedClient manager, SyncConfig config, CancellationToken cancellationToken)
     {
         if (!config.PortClosedRecoveryEnabled)
         {
@@ -1113,6 +1403,17 @@ public sealed class PortSyncService
             return;
         }
         if (!_portClosedRecoveryArmed || _confirmedClosedCount < config.PortClosedRecoveryTriggerChecks) return;
+
+        // A cheaper and more likely remedy first, when the evidence points at it: the port is confirmed
+        // closed *and* the bound adapter's address moved since the client last bound. Restarting the VPN
+        // cannot fix a listener stranded on the old address, and costs the user the tunnel to find out.
+        // Deliberately leaves the trigger armed - if this does not help, the next confirmed-closed round
+        // escalates to the restart as it always did.
+        if (await TryRebindClientAddressAsync(manager, config, cancellationToken).ConfigureAwait(false))
+        {
+            _confirmedClosedCount = 0;   // the next escalation needs fresh confirmation, not this one
+            return;
+        }
 
         _portClosedRecoveryArmed = false;
         _confirmedClosedCount = 0;
@@ -1127,7 +1428,7 @@ public sealed class PortSyncService
 
         string action = vpnManager.GetRecoveryAction();
         await DispatchRecoveryAsync(action, target, vpnManager.ProviderName, cancellationToken,
-            triggerLogMessage: $"Triggering '{action}' for '{vpnManager.ProviderName}' after {config.PortClosedRecoveryTriggerChecks} consecutive closed {AppConstants.PluralizeNoun(config.PortClosedRecoveryTriggerChecks, "check")}").ConfigureAwait(false);
+            triggerLogMessage: $"Triggering '{action}' for '{vpnManager.ProviderName}' after {config.PortClosedRecoveryTriggerChecks} consecutive closed {TextFormat.PluralizeNoun(config.PortClosedRecoveryTriggerChecks, "check")}").ConfigureAwait(false);
     }
 
     // Returns true if the client is running (or was successfully force-started), false otherwise
@@ -1156,9 +1457,12 @@ public sealed class PortSyncService
     }
 
     // Checks if the client's network interface matches the expected VPN provider and logs a warning if not.
-    // The warn log fires every cycle so the log alert badge tracks the persistent condition.
-    // The InterfaceMismatchDetected balloon fires only on transition (new or changed mismatch) to avoid
-    // spamming the user each cycle; it re-fires if the mismatch clears and then returns.
+    // Both the warn log and the InterfaceMismatchDetected balloon report only on the transition, by
+    // separate mechanisms: the log through LogStateChange (keyed on InterfaceMatchStateKey), the balloon
+    // through the _lastInterfaceMismatchMessage latch. A binding stays wrong until the user re-selects
+    // an interface, so repeating either one adds nothing and the Warn would keep pushing the tray's
+    // unviewed count up for a condition the user cannot clear by acting on it. Both carry the interface
+    // name, so drifting from one wrong adapter to another still reports; both re-arm when it matches.
     private void CheckInterfaceMatch(string clientName, string? interfaceName, IVpnManager vpnManager)
     {
         if (interfaceName is null)
@@ -1169,14 +1473,20 @@ public sealed class PortSyncService
 
         string? balloonMessage = null;
 
+        // Both warnings are transition-only, matching the balloon beside them: the binding persists
+        // until the user re-selects an interface, so the same line every cycle adds nothing and keeps
+        // bumping the tray's unviewed-warning count. The message carries the interface name, so
+        // drifting from one wrong adapter to another still reports, which is a real change.
         if (interfaceName.Length == 0)
         {
-            LogManager.Instance.LogMessage($"{clientName} is bound to all network interfaces - traffic may leak outside the VPN", LogLevel.Warn);
+            LogManager.Instance.LogStateChange(InterfaceMatchStateKey,
+                $"{clientName} is bound to all network interfaces - traffic may leak outside the VPN", LogLevel.Warn);
             balloonMessage = $"{clientName}: no VPN interface bound - traffic may leak.";
         }
         else if (!vpnManager.IsAdapterMatch(interfaceName))
         {
-            LogManager.Instance.LogMessage($"{clientName} network interface '{interfaceName}' does not match '{vpnManager.ProviderName}'", LogLevel.Warn);
+            LogManager.Instance.LogStateChange(InterfaceMatchStateKey,
+                $"{clientName} network interface '{interfaceName}' does not match '{vpnManager.ProviderName}'", LogLevel.Warn);
             balloonMessage = $"{clientName} interface mismatch - '{interfaceName}' is not a {vpnManager.ProviderName} adapter.";
         }
         else
@@ -1186,6 +1496,8 @@ public sealed class PortSyncService
 
         if (balloonMessage is null)
         {
+            // Healthy: re-arm both latches so a later mismatch warns and notifies again.
+            LogManager.Instance.ClearLogState(InterfaceMatchStateKey);
             _lastInterfaceMismatchMessage = null;
             return;
         }
@@ -1199,17 +1511,28 @@ public sealed class PortSyncService
     // notice and which is the case that can carry traffic outside the tunnel.
     // Two independent settings govern what follows - fixInterfaceBinding decides whether the binding
     // is repaired, warnOnInterfaceMismatch decides whether an unrepaired one is reported.
-    private async Task CheckAndRepairInterfaceBindingAsync(QBittorrentClient client, string? interfaceName, SyncConfig config, CancellationToken cancellationToken)
+    //
+    // Returns whether the token can be trusted to read an address under - healthy, or repaired just
+    // now. False means the client is still bound by a token that names no live adapter, and the
+    // caller must not run the address check: qBittorrent answers
+    // networkInterfaceAddressList?iface=<stale token> with HTTP 200 and an empty array rather than an
+    // error (measured), so the address check's "live is null means unknown, not healthy" guard never
+    // fires and it reads the adapter as having lost every address. That produces a Warn or an Info
+    // stating something false, arms the port-closed rebind on nothing, and poisons
+    // _lastKnownInterfaceAddresses so the next healthy cycle reports a second phantom change back.
+    // DiagnosticsService.AddInterfaceResultAsync returns after a stale token for this same reason.
+    private async Task<bool> CheckAndRepairInterfaceBindingAsync(QBittorrentClient client, string? interfaceName, SyncConfig config, CancellationToken cancellationToken)
     {
         var (stale, expectedToken) = await client.CheckInterfaceBindingAsync(interfaceName, cancellationToken).ConfigureAwait(false);
 
         if (!stale || expectedToken is null || interfaceName is null)
         {
             // Healthy, or nothing to say. Re-arm so a later drift gets a fresh repair attempt, and
-            // clear this condition's own balloon latch so a future stale binding notifies again.
+            // clear this condition's own balloon and log latches so a future stale binding reports again.
             _interfaceBindingRepairAttempted = false;
             _lastBindingWarningMessage = null;
-            return;
+            LogManager.Instance.ClearLogState(BindingStaleStateKey);
+            return true;
         }
 
         string warning =
@@ -1226,7 +1549,10 @@ public sealed class PortSyncService
             // stricter of the two, which is backwards.
             if (config.WarnOnInterfaceMismatch)
             {
-                LogManager.Instance.LogMessage(
+                // Transition-only, like the balloon below it and the repair branch further down, which
+                // gates on _interfaceBindingRepairAttempted for the same reason: a stale binding lives
+                // in the client's own configuration and persists until the user acts.
+                LogManager.Instance.LogStateChange(BindingStaleStateKey,
                     $"{warning}. Re-select the network interface in {client.ClientName}, or turn on \"Fix the network interface binding when it goes stale\" in Settings",
                     LogLevel.Warn);
                 _lastBindingWarningMessage = RaiseInterfaceBalloonIfNew(
@@ -1238,7 +1564,7 @@ public sealed class PortSyncService
                 LogManager.Instance.LogDebug(
                     $"PortSyncService.CheckAndRepairInterfaceBindingAsync: {client.ClientName} binding is stale, but both the fix and the interface warning are off");
             }
-            return;
+            return false;
         }
 
         // One attempt per stale streak: if the write lands but the binding is still wrong next cycle,
@@ -1247,17 +1573,139 @@ public sealed class PortSyncService
         {
             LogManager.Instance.LogDebug(
                 $"PortSyncService.CheckAndRepairInterfaceBindingAsync: {client.ClientName} binding still stale after a repair - not retrying until it is healthy");
-            return;
+            return false;
         }
 
         _interfaceBindingRepairAttempted = true;
         LogManager.Instance.LogMessage($"{warning}. Re-applying it", LogLevel.Warn);
 
+        // The result is the return value, not just a log branch: a successful repair updates the
+        // client's stored token (QBittorrentClient.RepairInterfaceBindingAsync), so the address check
+        // that follows reads the right adapter. A failed one leaves the stale token in place.
         if (await client.RepairInterfaceBindingAsync(interfaceName, expectedToken, cancellationToken).ConfigureAwait(false))
+        {
             LogManager.Instance.LogMessage($"Re-applied the {client.ClientName} network interface binding to '{interfaceName}'", LogLevel.Info);
-        else
-            LogManager.Instance.LogMessage($"Could not re-apply the {client.ClientName} network interface binding - re-select it in {client.ClientName}", LogLevel.Error);
+            return true;
+        }
+
+        LogManager.Instance.LogMessage($"Could not re-apply the {client.ClientName} network interface binding - re-select it in {client.ClientName}", LogLevel.Error);
+        return false;
     }
+
+    // Checks the address side of the binding, which is the half the name and token checks cannot see.
+    // Two conditions, distinguished because the evidence for them differs and so does the response:
+    //  - a pinned address the adapter no longer carries: provably broken, so it is repaired here and now,
+    //    exactly as a stale token is
+    //  - the adapter's addresses moving while the binding is "all addresses": what an ordinary VPN
+    //    reconnect produces. The client may have coped, or may have left a listener on the old address,
+    //    and nothing observable here tells the two apart. So this only *arms* the port-closed escalation
+    //    (TryRebindClientAddressAsync), which acts once the port is confirmed closed as well. Rebinding
+    //    on every reconnect would write to the user's client configuration for a problem that may not
+    //    exist; waiting for the symptom costs a few cycles and spends nothing on a healthy client.
+    private async Task CheckInterfaceAddressAsync(QBittorrentClient client, string? interfaceName, SyncConfig config, CancellationToken cancellationToken)
+    {
+        var (live, pinned) = await client.GetInterfaceAddressStateAsync(cancellationToken).ConfigureAwait(false);
+
+        // Unknown rather than healthy: an older qBittorrent, an unreachable API, or no bound interface.
+        // Leaving the remembered addresses alone means the next readable cycle compares against the last
+        // real observation rather than against a gap, so a change spanning the gap is still reported.
+        if (live is null) return;
+
+        if (!QBittorrentClient.IsWildcardBindAddress(pinned) && !live.Contains(pinned, StringComparer.OrdinalIgnoreCase))
+        {
+            // Provably broken rather than suspected: the client is bound to an address the adapter does
+            // not have, so it cannot be listening. Repaired on detection like the stale token beside it,
+            // not deferred to the port-closed escalation, which is for the case that is only a suspicion.
+            await RepairPinnedAddressAsync(client, interfaceName, pinned, live, config, cancellationToken).ConfigureAwait(false);
+        }
+        else if (QBittorrentClient.IsWildcardBindAddress(pinned) &&
+                 _lastKnownInterfaceAddresses is { } baseline &&
+                 string.Equals(baseline.Interface, interfaceName, StringComparison.Ordinal) &&
+                 !baseline.Addresses.SequenceEqual(live, StringComparer.OrdinalIgnoreCase))
+        {
+            // The wildcard test is load-bearing, not a tidy-up. The first branch is false in *two*
+            // cases - no pin, and a pin that is present and correct - and only the first belongs here.
+            // Without this test a user pinned to one address whose adapter merely gained or lost
+            // another address was armed, and the rebind then released to "all addresses", silently
+            // widening a binding they chose. A valid pin means the listener is on an address that
+            // still exists, which is healthy, so it correctly falls through to the else below.
+            //
+            // Arms the port-closed escalation. Not acted on here: on its own an address change is a
+            // normal reconnect, and forcing a rebind on every one would write to the user's client
+            // configuration for a problem that may not exist.
+            _interfaceAddressChangedSinceRebind = true;
+            // Info, not Warn: on its own this is a normal VPN reconnect, not a fault. The connection
+            // status is read here rather than every cycle - this branch is a transition, so the extra
+            // call is rare - and it answers whether the existing restart-on-disconnect path could ever
+            // see this state. The line states what happens next, because something does: leaving it at
+            // "if connections stop, the listener is on the old address" would ask the user to draw a
+            // conclusion the app now acts on by itself.
+            // Try* rather than GetConnectionStatusAsync: that one logs a transport failure at Error for
+            // the restart-on-disconnect check, which would raise a red tray badge here, inside a branch
+            // this very comment calls a normal reconnect. The status only decorates the line below, and
+            // the "no status" fallback already treats an unreadable one as expected.
+            string? connectionStatus = await client.TryGetConnectionStatusAsync(cancellationToken).ConfigureAwait(false);
+            LogManager.Instance.LogMessage(
+                $"The address on '{interfaceName}' changed from {QBittorrentClient.FormatAddressList(baseline.Addresses)} to {QBittorrentClient.FormatAddressList(live)} " +
+                $"while {client.ClientName} is bound to all addresses on it ({client.ClientName} reports " +
+                $"'{connectionStatus ?? "no status"}'). If the forwarded port stops answering, {client.ClientName} will be " +
+                "rebound before the VPN is restarted",
+                LogLevel.Info);
+        }
+        else
+        {
+            LogManager.Instance.ClearLogState(BindingAddressStateKey);
+            _interfaceAddressRepairAttempted = false;   // healthy: re-arm for a later drift
+        }
+
+        // Keyed to the interface it was read from, so the next cycle only compares like with like.
+        _lastKnownInterfaceAddresses = (interfaceName ?? string.Empty, live);
+    }
+
+    // Corrects a pin that names an address the adapter no longer has. Writing the live address is a real
+    // change, so it also forces the rebind; the pin stays because it was the user's own setting and only
+    // its value was wrong. Warn-only when the fix is switched off, matching the stale-token repair.
+    private async Task RepairPinnedAddressAsync(
+        QBittorrentClient client, string? interfaceName, string pinned, IReadOnlyList<string> live,
+        SyncConfig config, CancellationToken cancellationToken)
+    {
+        string detail =
+            $"{client.ClientName} is bound to address {pinned} on '{interfaceName}', which that adapter no longer " +
+            $"has (it now has {QBittorrentClient.FormatAddressList(live)}), so it cannot accept incoming connections";
+
+        string? replacement = QBittorrentClient.SelectBindAddress(live);
+        if (replacement is null || !config.FixInterfaceBinding)
+        {
+            // No usable address covers an adapter mid-negotiation, where the right move is to wait for
+            // the next cycle rather than write something that is about to be wrong again.
+            string remedy = replacement is null
+                ? "waiting for the adapter to report a usable address"
+                : $"correct it in {client.ClientName}, or turn on \"Fix the network interface binding when it goes stale\" in Settings";
+            LogManager.Instance.LogStateChange(BindingAddressStateKey, $"{detail} - {remedy}", LogLevel.Warn);
+            return;
+        }
+
+        if (_interfaceAddressRepairAttempted)
+        {
+            LogManager.Instance.LogDebug(
+                $"PortSyncService.RepairPinnedAddressAsync: {client.ClientName} address pin still stale after a repair - not retrying until it is healthy");
+            return;
+        }
+
+        _interfaceAddressRepairAttempted = true;
+        LogManager.Instance.LogMessage($"{detail}. Re-pointing it at {replacement}", LogLevel.Warn);
+
+        // finalAddress equals pinAddress: the client was pinned by choice and stays pinned, only to an
+        // address that exists. One write, and no release step.
+        if (await client.ForceInterfaceRebindAsync(replacement, replacement, cancellationToken).ConfigureAwait(false))
+            LogManager.Instance.LogMessage($"Re-pointed the {client.ClientName} network interface address at {replacement}", LogLevel.Info);
+        else
+            LogManager.Instance.LogMessage($"Could not set the {client.ClientName} network interface address - correct it in {client.ClientName}", LogLevel.Error);
+    }
+
+    // The bind-address predicates and the address-list wording live on QBittorrentClient, beside the
+    // GetInterfaceAddressStateAsync that produces the values they interpret, because DiagnosticsService
+    // has to reach the same verdict about the same field. See the remarks there.
 
     // Balloon dispatch for interface problems, deduplicated so a persistent condition notifies once
     // rather than every cycle. Returns the latch value the caller should store, so each condition owns
@@ -1412,7 +1860,7 @@ public sealed class PortSyncService
         string names = string.Join(", ", conflicts.Select(c => $"\"{c.SettingName}\""));
         string pronoun = conflicts.Count == 1 ? "it" : "them";
         LogManager.Instance.LogMessage(
-            $"{manager.ClientName} has {AppConstants.Pluralize(conflicts.Count, "setting")} working against the forwarded port: " +
+            $"{manager.ClientName} has {TextFormat.Pluralize(conflicts.Count, "setting")} working against the forwarded port: " +
             $"{names} - turn {pronoun} off in {manager.ClientName}'s settings",
             LogLevel.Warn);
 
@@ -1424,7 +1872,7 @@ public sealed class PortSyncService
         try
         {
             ClientSettingsConflictDetected?.Invoke(
-                $"{manager.ClientName} has {AppConstants.Pluralize(conflicts.Count, "setting")} working against the forwarded port. See the log for details.");
+                $"{manager.ClientName} has {TextFormat.Pluralize(conflicts.Count, "setting")} working against the forwarded port. See the log for details.");
         }
         catch (Exception ex)
         {
@@ -1433,12 +1881,20 @@ public sealed class PortSyncService
     }
 
     // Builds a failure log message with cycle count and optional recovery trigger suffix
-    private static string BuildCycleCountMessage(string prefix, int count, AppConfig cfg)
+    // The suffix has to track the cap as well as the setting. While the cap is suspending recovery the
+    // streak keeps climbing (deliberately - the failures are real), so a suffix that only knew about the
+    // setting promised "recovery may trigger after N cycles" on every one of those cycles, for a recovery
+    // that could not run. The log then contradicted both the suspension warning and the Status panel.
+    private string BuildCycleCountMessage(string prefix, int count, AppConfig cfg)
     {
-        string cycles = AppConstants.PluralizeNoun(count, "failed cycle");
-        string recoverySuffix = cfg.VpnAutoRecoveryEnabled
-            ? $", recovery may trigger after {cfg.VpnAutoRecoveryTriggerCycles} consecutive failed cycles"
-            : string.Empty;
+        string cycles = TextFormat.PluralizeNoun(count, "failed cycle");
+        string recoverySuffix;
+        if (!cfg.VpnAutoRecoveryEnabled)
+            recoverySuffix = string.Empty;
+        else if (_consecutiveRecoveries >= MaxConsecutiveRecoveries)
+            recoverySuffix = $", auto-recovery is suspended after {MaxConsecutiveRecoveries} attempts that did not restore a port";
+        else
+            recoverySuffix = $", recovery may trigger after {cfg.VpnAutoRecoveryTriggerCycles} consecutive failed cycles";
         return $"{prefix} ({count} consecutive {cycles}{recoverySuffix})";
     }
 
@@ -1477,6 +1933,16 @@ public sealed class PortSyncService
         _recoverySustainedUntil = null;   // the floor is measured from a streak that no longer exists
     }
 
+    // Ends a run of consecutive recoveries. Called from the successful-port path and when auto-recovery
+    // is switched off, and deliberately not from ResetFailureStreak: the run has to be broken by recovery
+    // actually working, not merely by the failure counter being reset - the dispatch path resets that
+    // streak every time it fires, so clearing the count there would mean the cap was never reached.
+    private void ResetRecoveryCap()
+    {
+        _consecutiveRecoveries = 0;
+        LogManager.Instance.ClearLogState(RecoveryCapStateKey);
+    }
+
     // Triggers auto-recovery if enabled and both gates are cleared: the failure cycle threshold
     // AND enough monotonic time has elapsed since the streak began. The time gate (derived from
     // the normal cycle cadence) prevents a burst of early wakes from fast-tracking recovery during
@@ -1487,6 +1953,9 @@ public sealed class PortSyncService
         if (!cfg.VpnAutoRecoveryEnabled)
         {
             ResetFailureStreak();
+            // Switched off, so nothing can be accumulating: clear the cap too, matching the existing
+            // rule that a disabled feature leaves no stale counters to surprise the user on re-enable.
+            ResetRecoveryCap();
             return;
         }
         if (_consecutiveFailedCycles < cfg.VpnAutoRecoveryTriggerCycles) return;
@@ -1502,6 +1971,11 @@ public sealed class PortSyncService
             LogManager.Instance.LogMessage(
                 $"Holding recovery - failures started only {elapsed.TotalSeconds:F0}s ago " +
                 $"(recovery waits until {minSustainedFailure.TotalSeconds:F0}s to ignore brief network blips)",
+                // Info, while the offline limiter logs its hold at Warn, and the asymmetry is
+                // deliberate rather than an oversight: both lines mean "recovery is not running right
+                // now", but this floor clears by itself within a cycle or two and is reached during
+                // any ordinary blip, whereas an offline hold lasts 5 to 15 minutes and means something
+                // is actually wrong. Warn here would badge the tray on every transient failure.
                 LogLevel.Info);
             return;
         }
@@ -1525,13 +1999,51 @@ public sealed class PortSyncService
         // then governed purely by the backoff, rather than also having to rebuild the streak and clear
         // the sustained-failure floor again - which would make the real spacing longer than the 5, 10
         // and 15 minutes documented, by an amount that depends on the configured interval.
-        if (!await TryTakeRecoverySlotAsync(displayName, cancellationToken).ConfigureAwait(false))
+        var slot = await TryTakeRecoverySlotAsync(displayName, cancellationToken).ConfigureAwait(false);
+        if (!slot.Allowed) return;
+
+        // Backstop: stop dispatching once MaxConsecutiveRecoveries have run without a single successful
+        // port read between them. Cleared by ResetRecoveryCap on the next successful port read.
+        //
+        // Evaluated *below* the connectivity slot, and gated on slot.Online, because the cap is a hard
+        // stop and the limiter above exists precisely to keep hard stops away from an offline machine:
+        // a killswitch blocks the probe itself, so a stuck VPN and a dead upstream are indistinguishable,
+        // and refusing to retry strands the machine with the killswitch up and no way out. The cap's
+        // premise is "three attempts proved this is not the fix", which only holds where the attempts
+        // could have worked - so the block and the increment must be governed by the same test, taken at
+        // the same point. Placing this check above the probe (as it first was) exempted the increment
+        // while leaving the block, which reinstated exactly that deadlock after three online failures.
+        //
+        // Not cleared when offline either: a machine flapping in and out of connectivity would reset its
+        // way past the cap forever, which is the unbounded restart loop this was added to stop.
+        //
+        // The streak is deliberately left running rather than reset - the failures really are
+        // continuing, and the count is what the log line and the Status panel report. LogStateChange
+        // keeps the message to one line however many cycles return here.
+        if (slot.Online && _consecutiveRecoveries >= MaxConsecutiveRecoveries)
+        {
+            LogManager.Instance.LogStateChange(RecoveryCapStateKey,
+                $"Suspending auto-recovery for '{displayName}' - {MaxConsecutiveRecoveries} consecutive recoveries " +
+                "did not restore a forwarded port, so repeating it would only keep interrupting the connection. " +
+                "Recovery resumes automatically once a port is read successfully.",
+                LogLevel.Warn);
             return;
+        }
 
         ResetFailureStreak();
+        // Counted here, past every gate, so it records recoveries that are actually dispatched. Counting
+        // at the trigger sites instead would let held attempts consume the cap without a restart running.
+        //
+        // Online attempts only, and that exemption is load-bearing rather than a nicety. The cap is a
+        // hard stop, and the connectivity limiter exists precisely because a hard stop is wrong while the
+        // machine cannot reach the internet: a killswitch blocks the probe itself, so a stuck VPN and a
+        // dead upstream are indistinguishable, and refusing to retry leaves the killswitch up with no way
+        // out. Counting offline attempts would put that deadlock back after three tries. Offline
+        // recoveries are already bounded, by the 5/10/15 minute backoff, so they need no second bound.
+        if (slot.Online) _consecutiveRecoveries++;
 
         await DispatchRecoveryAsync(action, recoveryTarget, displayName, cancellationToken,
-            triggerLogMessage: $"Triggering '{action}' for '{displayName}' after {count} consecutive failed {AppConstants.PluralizeNoun(count, "cycle")}").ConfigureAwait(false);
+            triggerLogMessage: $"Triggering '{action}' for '{displayName}' after {count} consecutive failed {TextFormat.PluralizeNoun(count, "cycle")}").ConfigureAwait(false);
     }
 
     // When the offline rate limiter will allow the next recovery attempt, or null when
@@ -1571,19 +2083,21 @@ public sealed class PortSyncService
     // Online: recover immediately, and reset the backoff.
     // Offline: the first recovery of a streak still runs (it is the one most likely to help), then
     // successive attempts wait OfflineRetryBackoff - 5, 10, then 15 minutes for every attempt after.
-    private async Task<bool> TryTakeRecoverySlotAsync(string displayName, CancellationToken cancellationToken)
+    private async Task<(bool Allowed, bool Online)> TryTakeRecoverySlotAsync(string displayName, CancellationToken cancellationToken)
     {
         if (await InternetConnectivityProbe.IsInternetReachableAsync(cancellationToken).ConfigureAwait(false))
         {
             if (_offlineRecoveryAttempts > 0)
                 LogManager.Instance.LogMessage("Internet connection confirmed - recovery resumed at the normal rate", LogLevel.Info);
             ResetOfflineRecoveryBackoff();
-            return true;
+            return (true, Online: true);
         }
 
-        // Monotonic and static, unlike the instance _uptime stopwatch this static method cannot reach.
-        // Immune to wall-clock changes, which matters here: a machine coming back from an outage often
-        // corrects its clock by NTP, and a backward jump must not unblock every held attempt at once.
+        // Monotonic, which is what matters here: a machine coming back from an outage often corrects
+        // its clock by NTP, and a backward jump must not unblock every held attempt at once. The
+        // instance _uptime stopwatch is equally monotonic and equally reachable from here, so either
+        // would serve - this path uses TickCount64 because the limiter already stores its state as a
+        // raw tick count in _lastOfflineRecoveryMs, and GetRecoveryHoldUntil reads it back the same way.
         long nowMs = Environment.TickCount64;
 
         if (_offlineRecoveryAttempts > 0)
@@ -1603,7 +2117,7 @@ public sealed class PortSyncService
                         "(restarting the VPN cannot restore a connection that is down upstream)",
                         LogLevel.Warn);
                 }
-                return false;
+                return (false, Online: false);
             }
         }
 
@@ -1620,7 +2134,7 @@ public sealed class PortSyncService
             // recovery for anyone whose network filters ICMP, for an app doing exactly its job. A real
             // outage is still surfaced independently by the per-cycle port-detection warning.
             LogLevel.Info);
-        return true;
+        return (true, Online: false);
     }
 
     // Dispatches a recovery action to the helper service. Shared by the failed-cycle trigger
@@ -1667,8 +2181,10 @@ public sealed class PortSyncService
         // RestartOnDisconnect is qBittorrent-only: it is the only client where restarting is both
         // possible and the right response to a dropped connection. Nicotine+ reconnects itself,
         // and restarting it would discard its configuration.
-        // WarnOnInterfaceMismatch needs a named adapter, which qBittorrent and Nicotine+ both
-        // report; Transmission and Deluge expose only a bind address, which the VPN rotates.
+        // WarnOnInterfaceMismatch needs a named adapter, which qBittorrent and Nicotine+ both report;
+        // Transmission and Deluge report a bind address instead, so there is no name to compare. That
+        // is about the name check alone - see IManagedClient.SupportsInterfaceMismatchWarning for what
+        // each of them actually binds, which is not the same question and does not have the same answer.
         bool isQBittorrent = activeSection == RegistrySettingsManager.SectionQBittorrent;
         bool isNicotine = activeSection == RegistrySettingsManager.SectionNicotine;
         return (
@@ -1684,7 +2200,26 @@ public sealed class PortSyncService
     // Sets the cycle status and message in the status dict, logs the message, and adds a closing bookend on failure.
     // Pass an explicit level to override the default (Info on success, Error on failure).
     // The bookend uses the same effective level so a Warn-level soft failure does not escalate to Error.
-    private static void SetSyncResult(Dictionary<string, object?> status, bool success, string message, LogLevel? level = null)
+    /// <summary>Records this cycle's outcome in the status dictionary and, on failure, logs the reason.</summary>
+    /// <param name="status">The cycle's status dictionary, written to the status file in RunAsync's finally.</param>
+    /// <param name="success">Whether the cycle succeeded; false writes the error status and logs the reason.</param>
+    /// <param name="message">The reason, used both as the status message and as the logged line.</param>
+    /// <param name="level">Severity for the logged reason. Defaults to <see cref="LogLevel.Error"/>.</param>
+    /// <param name="stateKey">
+    /// When set, the reason is logged through <see cref="LogManager.LogStateChange"/> under this key
+    /// instead of on every failing cycle.
+    /// <para>The test for which to use: <b>can the user do anything differently if we say it again?</b>
+    /// A misconfiguration only they can fix - no NAT-PMP adapter selected, an unrecognised provider -
+    /// produces the identical line forever, so it is reported on the transition and the status field
+    /// below still carries it every cycle. Observed runtime state is the opposite: "{client} is not
+    /// running" changes on its own, so each cycle is a fresh observation rather than a repeat and
+    /// belongs in the default path. Repeating a fixed configuration error also climbs the tray's
+    /// unviewed-warning count indefinitely, which the status field does not.</para>
+    /// <para>Pair every key with a <see cref="LogManager.ClearLogState"/> on the path where the
+    /// condition clears, or it is reported once per process rather than once per occurrence.</para>
+    /// </param>
+    private static void SetSyncResult(Dictionary<string, object?> status, bool success, string message,
+        LogLevel? level = null, string? stateKey = null)
     {
         status[StatusKeys.Status] = success ? SyncStatusValues.Success : SyncStatusValues.Error;
         status[StatusKeys.Message] = message;
@@ -1692,7 +2227,12 @@ public sealed class PortSyncService
         // emitted once per cycle by LogCycleOutcome. A successful cycle needs no reason line - its
         // terminal marker says it all.
         if (!success)
-            LogManager.Instance.LogMessage(message, level ?? LogLevel.Error);
+        {
+            if (stateKey is not null)
+                LogManager.Instance.LogStateChange(stateKey, message, level ?? LogLevel.Error);
+            else
+                LogManager.Instance.LogMessage(message, level ?? LogLevel.Error);
+        }
     }
 
     // Emits exactly one terminal line per cycle so every cycle closes with a clear outcome - completed,

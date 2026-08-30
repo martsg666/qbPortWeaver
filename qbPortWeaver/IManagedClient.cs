@@ -15,8 +15,17 @@ public interface IManagedClient : IDisposable
 
     /// <summary>
     /// Returns <see langword="true"/> if this client supports network interface mismatch warnings.
-    /// qBittorrent and Nicotine+ expose a named adapter, enabling the check. Transmission and
-    /// Deluge expose only a bind address, which the VPN rotates, so the check is skipped for them.
+    /// qBittorrent and Nicotine+ expose a named adapter, enabling the check. Transmission and Deluge
+    /// report a bind address instead, so there is no name to compare and the check is skipped for them.
+    /// <para>That is a statement about the *name* check only, and not about their exposure to a moved
+    /// address. Measured on a live pair: Transmission binds a wildcard socket (<c>0.0.0.0</c>, its
+    /// default) and so cannot be stranded by a rotating tunnel address, while Deluge binds every local
+    /// address individually even with <c>listen_interface</c> empty, which is the same shape that
+    /// strands qBittorrent. Deluge is therefore exposed to what the qBittorrent address check closes,
+    /// and deliberately has no equivalent: qBittorrent is by a wide margin the most used of the four,
+    /// so that check earns its complexity there and not in a second copy carrying its own client quirks
+    /// to verify and keep in step. The residual exposure is the same narrow window, and a port write
+    /// repairs Deluge just as it repairs qBittorrent. A settled decision, not an oversight.</para>
     /// </summary>
     bool SupportsInterfaceMismatchWarning { get; }
 

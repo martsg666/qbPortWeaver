@@ -176,9 +176,17 @@ internal sealed class HelperPipeServer(ILogger<HelperPipeServer> logger) : Backg
         // event for entries the helper wrote directly to the shared log file.
         try
         {
-            // No ConfigureAwait on the disposal - see the equivalent write in ServeOneConnectionAsync above.
+            // No ConfigureAwait on the disposal - see the rejection write earlier in this method for why.
             await using var writer = new StreamWriter(pipe, leaveOpen: true) { AutoFlush = true };
-            await writer.WriteLineAsync($"{HelperProtocol.ResultWarnKey}={helperLogger.WarnCount}|{HelperProtocol.ResultErrorKey}={helperLogger.ErrorCount}").ConfigureAwait(false);
+            // The version rides along on every response rather than being negotiated up front: the
+            // request format cannot carry it without breaking already-installed helpers (see
+            // HelperProtocol), and a client that reads no version here knows it is talking to a
+            // helper built before versioning existed. Appended last so older clients, which skip
+            // unrecognised keys, are unaffected.
+            await writer.WriteLineAsync(
+                $"{HelperProtocol.ResultWarnKey}={helperLogger.WarnCount}|" +
+                $"{HelperProtocol.ResultErrorKey}={helperLogger.ErrorCount}|" +
+                $"{HelperProtocol.ResultVersionKey}={HelperProtocol.Version}").ConfigureAwait(false);
         }
         catch (IOException ex)
         {
@@ -213,8 +221,12 @@ internal sealed class HelperPipeServer(ILogger<HelperPipeServer> logger) : Backg
                 using var appKey = Registry.CurrentUser.OpenSubKey(AppIdentity.AppRegistryKey);
                 var expectedToken = appKey?.GetValue(AppIdentity.PipeSessionTokenKey) as string;
                 // Use constant-time comparison to prevent timing side-channel attacks.
-                // string.Equals returns early on the first mismatch, leaking token length/prefix
+                // string.Equals returns early on the first mismatch, leaking token prefix
                 // information to a local attacker who can measure pipe response times.
+                // (FixedTimeEquals is constant-time across equal-length inputs only - it returns
+                // false immediately on a length mismatch - so length is not hidden. That is fine
+                // here: the token lives in the caller's own hive, so its length is not a secret
+                // from them anyway.)
                 // Constant-time comparison is hygiene for comparing a secret on a SYSTEM-level
                 // dispatch path, not a boundary in itself: the hive read here belongs to the caller,
                 // so a caller can always present a matching value. See the class summary - the real

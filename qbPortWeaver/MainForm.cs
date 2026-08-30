@@ -118,7 +118,7 @@ public partial class MainForm : Form
     // update is pending. The update balloon is informational only - Windows 11 routes
     // ToolTipIcon.Info balloons through Action Center and does not reliably fire
     // BalloonTipClicked, so the tray menu item is the only clickable entry point.
-    private (string Version, string Url, string? MsiUrl)? _pendingUpdate;
+    private LatestReleaseInfo? _pendingUpdate;
 
     public MainForm()
     {
@@ -128,7 +128,7 @@ public partial class MainForm : Form
         // (log file creation, registry writes, live tray icon) must not fire at design time.
         if (LicenseManager.UsageMode == LicenseUsageMode.Designtime) return;
 
-        LogManager.Initialize(AppConstants.GetLogFilePath());
+        LogManager.Initialize(AppFiles.GetLogFilePath());
 
         // Ensure all registry keys exist, writing defaults for any missing ones
         RegistrySettingsManager.EnsureDefaults();
@@ -149,6 +149,7 @@ public partial class MainForm : Form
         UpdateTrayTooltip();
 
         LogManager.Instance.WarnOrErrorLogged += OnWarnOrErrorLogged;
+        LogManager.Instance.LogWriteFailed += OnLogWriteFailed;
     }
 
     private void MainForm_Load(object? sender, EventArgs e) => InitializeAfterLoad();
@@ -168,7 +169,7 @@ public partial class MainForm : Form
             // Clear temp files a previous run was killed part-way through writing. Here rather than
             // later because nothing has written to the data folder yet this run, so nothing in it
             // can be live.
-            AppConstants.SweepOrphanedTempFiles(AppConstants.AppDataFolder);
+            AppFiles.SweepOrphanedTempFiles(AppFiles.AppDataFolder);
 
             // Start main loop immediately so port syncing is not blocked by dialogs
             // Fire-and-forget: exceptions inside the while loop are caught per-cycle.
@@ -259,8 +260,14 @@ public partial class MainForm : Form
         // Signal the main loop to stop
         _shutdownCts.Cancel();
 
-        // Unsubscribe before teardown so background threads cannot marshal onto a disposed form
+        // Unsubscribe before teardown so background threads cannot marshal onto a disposed form. Only
+        // the LogManager events need this: it is a process-lifetime singleton, so a stale handler would
+        // outlive the form. _portSyncService is owned by this form and dies with it, and its five
+        // handlers are already guarded the same way - each returns on _shutdownCts, and InvokeOnUiThread
+        // catches the disposal race - so unsubscribing them would add nothing but five lines to keep in
+        // step every time an event is added to PortSyncService.
         LogManager.Instance.WarnOrErrorLogged -= OnWarnOrErrorLogged;
+        LogManager.Instance.LogWriteFailed -= OnLogWriteFailed;
 
         // Stop the update check timer before closing child forms to prevent it firing during teardown
         _updateCheckTimer?.Stop();
@@ -291,10 +298,10 @@ public partial class MainForm : Form
     private void InitializeStatusIcons()
     {
         _iconBase = Properties.Resources.qbPortWeaver;
-        _iconOk = CreateStatusIcon(_iconBase, AppConstants.TrayDotOk);
-        _iconWarning = CreateStatusIcon(_iconBase, AppConstants.TrayDotWarning);
-        _iconError = CreateStatusIcon(_iconBase, AppConstants.TrayDotError);
-        _iconPaused = CreateStatusIcon(_iconBase, AppConstants.TrayDotPaused);
+        _iconOk = CreateStatusIcon(_iconBase, ThemeColors.TrayDotOk);
+        _iconWarning = CreateStatusIcon(_iconBase, ThemeColors.TrayDotWarning);
+        _iconError = CreateStatusIcon(_iconBase, ThemeColors.TrayDotError);
+        _iconPaused = CreateStatusIcon(_iconBase, ThemeColors.TrayDotPaused);
     }
 
     // Draws a small filled circle onto a 16x16 copy of the base icon and returns it as an Icon
@@ -302,7 +309,7 @@ public partial class MainForm : Form
     {
         using var bmp = new Bitmap(16, 16, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
         using var g = Graphics.FromImage(bmp);
-        using var borderBrush = new SolidBrush(AppConstants.TrayIconDotBorder);
+        using var borderBrush = new SolidBrush(ThemeColors.TrayIconDotBorder);
         using var dotBrush = new SolidBrush(dotColor);
 
         g.Clear(Color.Transparent);
@@ -463,7 +470,7 @@ public partial class MainForm : Form
     private AboutForm CreateAboutForm()
     {
         var form = new AboutForm();
-        form.UpdateRequested += info => ShowUpdateAvailableForm(info.Version, info.ReleaseUrl, info.MsiUrl);
+        form.UpdateRequested += ShowUpdateAvailableForm;
         return form;
     }
 
@@ -761,8 +768,14 @@ public partial class MainForm : Form
 
     // Runs the port-sync loop until shutdown is requested.
     // Exceptions are caught per-cycle so one bad cycle never kills the app.
+    // Every exit converges on the terminal log line below, and the line says which exit happened.
+    // Both halves of that were wrong before: the shutdown-during-delay path used `return`, so the most
+    // common graceful exit never logged a terminal line at all, while an unrecoverable delay failure
+    // broke out and was reported as having "exited gracefully" - an Info line asserting a clean
+    // shutdown directly beneath the Error that had just killed the loop.
     private async Task RunMainLoopAsync()
     {
+        bool graceful = true;
         while (!_shutdownCts.IsCancellationRequested)
         {
             int updateInterval = AppConstants.DefaultUpdateIntervalSeconds;
@@ -776,8 +789,9 @@ public partial class MainForm : Form
                 else
                     updateInterval = await RunSyncCycleAsync();
 
+                // break, not return, so this exit reaches the terminal line like every other one.
                 if (await ShutdownRequestedDuringDelayAsync(updateInterval))
-                    return;
+                    break;
             }
             catch (OperationCanceledException) when (_shutdownCts.IsCancellationRequested)
             {
@@ -787,11 +801,36 @@ public partial class MainForm : Form
             {
                 LogManager.Instance.LogMessage($"Sync cycle failed, retrying in {updateInterval}s: {ex.Message}", LogLevel.Error);
                 if (!await TryDelayAfterErrorAsync(updateInterval))
+                {
+                    // Only reached when the delay primitive itself failed, which TryDelayAfterErrorAsync
+                    // describes as unrecoverable. Not retried: the delay is what broke, so looping would
+                    // spin. Recorded so the terminal line below reports the truth.
+                    graceful = false;
                     break;
+                }
             }
         }
 
-        LogManager.Instance.LogMessage("Main loop exited gracefully", LogLevel.Info);
+        LogLoopExit(graceful);
+    }
+
+    // Terminal line for the main loop, extracted so the branch does not count against
+    // RunMainLoopAsync's cognitive complexity - Sonar gates that at 15 and the loop sits just under it.
+    private static void LogLoopExit(bool graceful)
+    {
+        if (graceful)
+        {
+            LogManager.Instance.LogMessage("Main loop exited gracefully", LogLevel.Info);
+            return;
+        }
+
+        // Error, not Warn: the app is alive but permanently unable to do its job and cannot recover on
+        // its own, so this must raise the tray badge - otherwise the only symptom is a tray icon that
+        // quietly stops updating. Names the consequence and the remedy, because "main loop stopped"
+        // alone leaves the user with nothing to act on.
+        LogManager.Instance.LogMessage(
+            $"Main loop stopped after an unrecoverable error - {AppIdentity.AppName} will not sync again until it is restarted",
+            LogLevel.Error);
     }
 
     // Publishes the Paused tray status while cycles are being skipped. Re-published on every
@@ -992,7 +1031,7 @@ public partial class MainForm : Form
         }
 
         _lastNotifiedVersion = info.Version;
-        _pendingUpdate = (info.Version, info.ReleaseUrl, info.MsiUrl);
+        _pendingUpdate = info;
         LogManager.Instance.LogMessage($"New application version available: {info.Version}", LogLevel.Info);
 
         _updateAvailableMenuItem.Text = $"Update available ({info.Version})";
@@ -1002,7 +1041,7 @@ public partial class MainForm : Form
 
         if (intrusive)
         {
-            ShowUpdateAvailableForm(info.Version, info.ReleaseUrl, info.MsiUrl);
+            ShowUpdateAvailableForm(info);
         }
         else
         {
@@ -1034,17 +1073,17 @@ public partial class MainForm : Form
     private void updateAvailable_Click(object? sender, EventArgs e)
     {
         if (_pendingUpdate is not { } update) return;
-        ShowUpdateAvailableForm(update.Version, update.Url, update.MsiUrl);
+        ShowUpdateAvailableForm(update);
     }
 
     // Opens or activates the singleton UpdateAvailableForm. Wrapping in ShowOrActivate
     // prevents repeated clicks (menu or startup intrusive path) from stacking multiple
     // windows on top of each other.
-    private void ShowUpdateAvailableForm(string version, string url, string? msiUrl) =>
+    private void ShowUpdateAvailableForm(LatestReleaseInfo release) =>
         ShowOrActivate(
             () => _updateAvailableForm,
             f => _updateAvailableForm = f,
-            () => new UpdateAvailableForm(version, url, msiUrl));
+            () => new UpdateAvailableForm(release));
 
     // Swaps the tray icon to reflect the current sync state
     private void UpdateTrayIcon(SyncState state)
@@ -1080,8 +1119,8 @@ public partial class MainForm : Form
         string countSuffix = string.Empty;
         if (_unviewedWarnCount > 0 || _unviewedErrorCount > 0)
         {
-            string wPart = _unviewedWarnCount > 0 ? AppConstants.Pluralize(_unviewedWarnCount, "Warning") : "";
-            string ePart = _unviewedErrorCount > 0 ? AppConstants.Pluralize(_unviewedErrorCount, "Error") : "";
+            string wPart = _unviewedWarnCount > 0 ? TextFormat.Pluralize(_unviewedWarnCount, "Warning") : "";
+            string ePart = _unviewedErrorCount > 0 ? TextFormat.Pluralize(_unviewedErrorCount, "Error") : "";
             string sep = (wPart.Length > 0 && ePart.Length > 0) ? ", " : "";
             countSuffix = $"\n{wPart}{sep}{ePart}";
         }
@@ -1141,6 +1180,15 @@ public partial class MainForm : Form
         }
     }
 
+    // Called from background threads via LogManager.LogWriteFailed when the log file cannot be
+    // written. Deliberately shows a balloon and nothing else: the failure cannot be logged (that is
+    // what failed), and logging it at Warn or Error would re-enter the failing write path and raise
+    // the event again. LogManager latches the event, so this fires once per failure episode.
+    private void OnLogWriteFailed()
+    {
+        ShowWarningBalloon("Cannot write to the log file. Check free disk space and the permissions on the qbPortWeaver folder.");
+    }
+
     // Called from background threads via LogManager.WarnOrErrorLogged; marshals to UI thread
     private void OnWarnOrErrorLogged(LogLevel level)
     {
@@ -1176,8 +1224,8 @@ public partial class MainForm : Form
             return;
         }
 
-        string warnPart = _unviewedWarnCount > 0 ? AppConstants.Pluralize(_unviewedWarnCount, "warning") : "";
-        string errorPart = _unviewedErrorCount > 0 ? AppConstants.Pluralize(_unviewedErrorCount, "error") : "";
+        string warnPart = _unviewedWarnCount > 0 ? TextFormat.Pluralize(_unviewedWarnCount, "warning") : "";
+        string errorPart = _unviewedErrorCount > 0 ? TextFormat.Pluralize(_unviewedErrorCount, "error") : "";
         string badge = (warnPart.Length > 0 && errorPart.Length > 0) ? $"{warnPart}, {errorPart}" : $"{warnPart}{errorPart}";
         _showLogsMenuItem.Text = $"{ShowLogsMenuText} ({badge})";
     }

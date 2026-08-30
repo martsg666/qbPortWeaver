@@ -35,6 +35,12 @@ public sealed record StatusSnapshot
     [JsonPropertyName("status")] public string? Status { get; init; }
     [JsonPropertyName("message")] public string? Message { get; init; }
     [JsonPropertyName("waitingForVpn")] public bool WaitingForVpn { get; init; }
+    /// <summary>When the next cycle is due. Absolute rather than a duration for the same reason as
+    /// <see cref="RecoveryHoldUntil"/>: the wait starts when the cycle ends, while
+    /// <see cref="Timestamp"/> is stamped at the start, so deriving it from the two would run the
+    /// countdown out early by the cycle's length. Null on a status file written before this key
+    /// existed, where callers fall back to the old derivation.</summary>
+    [JsonPropertyName("nextSyncAt")] public DateTimeOffset? NextSyncAt { get; init; }
     /// <summary>When auto-recovery may next attempt, while it is being held back because connectivity
     /// could not be confirmed. Null whenever nothing is being held. Absolute rather than a duration so
     /// it does not have to be read against the cycle timestamp, which is stamped at a different moment.</summary>
@@ -49,6 +55,23 @@ public sealed record StatusSnapshot
     /// otherwise. Distinct from <see cref="RecoveryHoldUntil"/>: that one waits on connectivity,
     /// this one waits for the failures to have persisted long enough to rule out a brief blip.</summary>
     [JsonPropertyName("recoverySustainedUntil")] public DateTimeOffset? RecoverySustainedUntil { get; init; }
+    /// <summary>Whether the failed-cycle trigger is suspended because the consecutive-recovery cap was
+    /// reached: recoveries ran but none restored a forwarded port. Unlike the two holds above this one
+    /// carries no deadline - it ends on the next successful port read, which nothing can predict - so it
+    /// is a flag rather than an instant.</summary>
+    [JsonPropertyName("recoverySuspended")] public bool RecoverySuspended { get; init; }
+    /// <summary>Whether the port-closed recovery trigger can actually fire. Independent of
+    /// <see cref="RecoveryEnabled"/>: either trigger can restart the VPN with the other off. This is
+    /// the effective value, not the raw setting - the trigger runs inside port verification, so it is
+    /// false whenever verification is off, however its own checkbox was left.</summary>
+    [JsonPropertyName("portClosedRecoveryEnabled")] public bool PortClosedRecoveryEnabled { get; init; }
+    /// <summary>Consecutive confirmed-closed checks accumulated so far, 0 when the port last verified open.</summary>
+    [JsonPropertyName("portClosedRecoveryChecks")] public int PortClosedRecoveryChecks { get; init; }
+    /// <summary>Consecutive confirmed-closed checks required before port-closed recovery triggers.</summary>
+    [JsonPropertyName("portClosedRecoveryTriggerChecks")] public int PortClosedRecoveryTriggerChecks { get; init; }
+    /// <summary>False once the one-shot port-closed trigger has fired, until a verification reports the
+    /// port open again. While false that trigger cannot fire however long the port stays closed.</summary>
+    [JsonPropertyName("portClosedRecoveryArmed")] public bool PortClosedRecoveryArmed { get; init; }
 }
 
 /// <summary>
@@ -64,12 +87,12 @@ public static class StatusManager
     /// <summary>Serializes <paramref name="status"/> to the JSON status file using an atomic temp-file write.</summary>
     public static void Write(IReadOnlyDictionary<string, object?> status)
     {
-        string filePath = AppConstants.GetStatusFilePath();
+        string filePath = AppFiles.GetStatusFilePath();
 
         try
         {
             string json = JsonSerializer.Serialize(status, _jsonOptions);
-            AppConstants.WriteAtomic(filePath, json);
+            AppFiles.WriteAtomic(filePath, json);
         }
         catch (Exception ex)
         {
@@ -85,12 +108,12 @@ public static class StatusManager
     /// </summary>
     public static StatusSnapshot? TryRead()
     {
-        string filePath = AppConstants.GetStatusFilePath();
+        string filePath = AppFiles.GetStatusFilePath();
 
         try
         {
             if (!File.Exists(filePath)) return null;
-            string json = AppConstants.ReadAllTextShared(filePath);
+            string json = AppFiles.ReadAllTextShared(filePath);
             return JsonSerializer.Deserialize<StatusSnapshot>(json, _readOptions);
         }
         catch (Exception ex)

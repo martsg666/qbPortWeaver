@@ -148,8 +148,8 @@ internal static class TmdbCacheManager
         _tvShowCacheDirty = false;
         _movieCacheDirty = false;
         Interlocked.Exchange(ref _loaded, 0);
-        AppConstants.DeleteFileSafely(AppConstants.GetDataFilePath(TvShowCacheFileName));
-        AppConstants.DeleteFileSafely(AppConstants.GetDataFilePath(MovieCacheFileName));
+        AppFiles.DeleteFileSafely(AppFiles.GetDataFilePath(TvShowCacheFileName));
+        AppFiles.DeleteFileSafely(AppFiles.GetDataFilePath(MovieCacheFileName));
         LogManager.Instance.LogMessage("TMDB caches cleared", LogLevel.Info, Subsystem.MediaManager);
     }
 
@@ -163,12 +163,12 @@ internal static class TmdbCacheManager
     private static void LoadFromDisk<T>(
         ConcurrentDictionary<string, (T? Info, bool IsConfident, DateTime CachedAt)> cache, string fileName, string label) where T : class
     {
-        var filePath = AppConstants.GetDataFilePath(fileName);
+        var filePath = AppFiles.GetDataFilePath(fileName);
         if (!File.Exists(filePath)) return;
 
         try
         {
-            var json = AppConstants.ReadAllTextShared(filePath);
+            var json = AppFiles.ReadAllTextShared(filePath);
             var entries = JsonSerializer.Deserialize<Dictionary<string, TmdbEntry<T>>>(json);
             if (entries is null) return;
 
@@ -208,7 +208,7 @@ internal static class TmdbCacheManager
                     StringComparer.OrdinalIgnoreCase);
 
             var json = JsonSerializer.Serialize(toSave, _jsonWriteOptions);
-            AppConstants.WriteAtomic(AppConstants.GetDataFilePath(fileName), json);
+            AppFiles.WriteAtomic(AppFiles.GetDataFilePath(fileName), json);
 
             LogManager.Instance.LogDebug(
                 $"TmdbCacheManager.SaveToDisk: Saved {toSave.Count} {label} entries",

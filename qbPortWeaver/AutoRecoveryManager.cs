@@ -53,7 +53,7 @@ internal static class AutoRecoveryManager
             else if (!restartResult.Completed)
                 reason = "helper service was unreachable (see prior log entry)";
             else
-                reason = $"helper service reported {AppConstants.Pluralize(restartResult.ErrorCount, "error")} during the service restart (see helper log entries)";
+                reason = $"helper service reported {TextFormat.Pluralize(restartResult.ErrorCount, "error")} during the service restart (see helper log entries)";
             LogManager.Instance.LogMessage($"Skipping VPN client app restart for '{providerKeyword}' - {reason}", LogLevel.Warn);
             return;
         }
@@ -83,7 +83,7 @@ internal static class AutoRecoveryManager
         else if (cycleResult.ErrorCount == 0)
             LogManager.Instance.LogMessage($"Adapter cycle completed for '{adapterName}'", LogLevel.Info);
         else
-            LogManager.Instance.LogMessage($"Adapter cycle for '{adapterName}' completed with {AppConstants.Pluralize(cycleResult.ErrorCount, "error")} - see helper log entries", LogLevel.Warn);
+            LogManager.Instance.LogMessage($"Adapter cycle for '{adapterName}' completed with {TextFormat.Pluralize(cycleResult.ErrorCount, "error")} - see helper log entries", LogLevel.Warn);
     }
 
     // Kills all instances of the named client process (capturing the exe path first),
@@ -122,6 +122,13 @@ internal static class AutoRecoveryManager
             return;
         }
 
+        // Not atomic across cancellation: a shutdown during this delay leaves the client killed and
+        // never restarted, so the user finds their VPN client closed with the log ending at "Killed
+        // client process" - and with a killswitch enabled that means no network until they notice.
+        // Accepted rather than fixed: restarting during teardown risks orphaning a process on the way
+        // out, passing CancellationToken.None here would make every shutdown wait on a launch that may
+        // fail anyway, and the kill cannot be deferred because it is what frees the executable. The
+        // exposure is the two seconds below.
         await Task.Delay(ClientRestartDelayMs, cancellationToken).ConfigureAwait(false);
         try
         {
@@ -157,7 +164,7 @@ internal static class AutoRecoveryManager
             {
                 try
                 {
-                    AppConstants.KillProcess(p, $"Client process '{processName}'");
+                    ProcessControl.KillProcess(p, $"Client process '{processName}'");
                 }
                 catch (Exception ex) { LogManager.Instance.LogDebug($"AutoRecoveryManager.KillClientProcesses: Kill '{processName}': {ex.Message}"); }
             }

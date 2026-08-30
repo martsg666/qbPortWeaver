@@ -24,8 +24,26 @@ public sealed class PiaVpnManager : IVpnManager
     // thread on a different core could observe a stale Empty and trigger one redundant re-resolve.
     private static volatile string? _piactlPathCache = string.Empty;
 
+    // piactl reports one of four states in place of a port number. Two of them describe a condition no
+    // reconnect can change, and those are the ones auto-recovery must not act on:
+    //   Inactive    - PIA is disconnected, or port forwarding is switched off in its settings
+    //   Unavailable - the connected server region does not offer port forwarding
+    // The other two stay ordinary failed cycles, and so still count toward the recovery threshold:
+    //   Attempting  - still connecting and assigning; the state a normal cycle waits through
+    //   Failed      - PIA tried to assign a port and did not succeed, which reconnecting may yet clear
+    // Unparseable output is not classified at all and is likewise treated as an ordinary failure.
+    private static readonly HashSet<string> DurableUnavailableStates =
+        new(StringComparer.OrdinalIgnoreCase) { "Inactive", "Unavailable" };
+
+    // Set by every GetVpnPortCore call, so it always describes the port read that just happened.
+    // volatile: written on a thread-pool thread (Task.Run) and read by the sync loop.
+    private volatile bool _portForwardingUnavailable;
+
     /// <inheritdoc />
     public string ProviderName => RegistrySettingsManager.VpnProviderPia;
+
+    /// <inheritdoc />
+    public bool PortForwardingUnavailable => _portForwardingUnavailable;
 
     /// <inheritdoc />
     public bool IsVpnConnected()
@@ -67,28 +85,37 @@ public sealed class PiaVpnManager : IVpnManager
     /// <inheritdoc />
     public bool IsAdapterMatch(string interfaceName) => Config.MatchesAdapterName(interfaceName);
 
-    private static int? GetVpnPortCore()
+    private int? GetVpnPortCore()
     {
         try
         {
             string? output = RunPiactl("get portforward");
             if (output is null)
             {
+                // Not classifiable: piactl told us nothing, which is a transient read failure rather
+                // than a statement about port forwarding. Clearing the flag keeps the durable state
+                // from outliving the evidence for it.
+                _portForwardingUnavailable = false;
                 LogManager.Instance.LogDebug("PiaVpnManager.GetVpnPortCore: piactl returned no output");
                 return null;
             }
 
             if (int.TryParse(output, out int port) && port > 0)
             {
+                _portForwardingUnavailable = false;
                 LogManager.Instance.LogDebug($"PiaVpnManager.GetVpnPortCore: Found port {port}");
                 return port;
             }
 
-            LogManager.Instance.LogDebug($"PiaVpnManager.GetVpnPortCore: Failed to parse port from piactl output: {output}");
+            _portForwardingUnavailable = DurableUnavailableStates.Contains(output);
+            LogManager.Instance.LogDebug(
+                $"PiaVpnManager.GetVpnPortCore: No port from piactl (state: {output}, " +
+                $"port forwarding unavailable: {_portForwardingUnavailable})");
             return null;
         }
         catch (Exception ex)
         {
+            _portForwardingUnavailable = false;
             LogManager.Instance.LogDebug($"PiaVpnManager.GetVpnPortCore: {ex.Message}");
             return null;
         }
@@ -166,7 +193,7 @@ public sealed class PiaVpnManager : IVpnManager
     {
         // Read/write the volatile field via a local so the ref pass does not strip volatile semantics (CS0420).
         string? cache = _piactlPathCache;
-        var result = AppConstants.FindExeInServiceDirectory(ref cache, GetPiactlProcessName() + ".exe", Config.FindServiceName, "PiaVpnManager.GetPiactlPath");
+        var result = ServiceLookup.FindExeInServiceDirectory(ref cache, GetPiactlProcessName() + ".exe", Config.FindServiceName, "PiaVpnManager.GetPiactlPath");
         // Write back only a resolution - see VpnRegistryConfig.GetClientExePath for the reasoning.
         // The cache is static, so a caller that failed must not overwrite another thread's result.
         if (cache is { Length: > 0 }) _piactlPathCache = cache;

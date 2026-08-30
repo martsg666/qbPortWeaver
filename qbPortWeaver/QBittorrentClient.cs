@@ -14,6 +14,7 @@ public sealed class QBittorrentClient : ManagedClientBase
     private const string ApiAppPreferences = "/api/v2/app/preferences";
     private const string ApiSetPreferences = "/api/v2/app/setPreferences";
     private const string ApiNetworkInterfaceList = "/api/v2/app/networkInterfaceList";
+    private const string ApiNetworkInterfaceAddressList = "/api/v2/app/networkInterfaceAddressList";
     private const string ApiTransferInfo = "/api/v2/transfer/info";
 
     private readonly string _userName;
@@ -21,6 +22,11 @@ public sealed class QBittorrentClient : ManagedClientBase
     // The interface token qBittorrent last reported (current_network_interface), captured by
     // GetPreferencesAsync. Null until the first successful read, or when the key is absent.
     private string? _storedInterfaceToken;
+    // The address qBittorrent is configured to bind to (current_interface_address), captured by
+    // GetPreferencesAsync alongside the token. Empty means "all addresses on that interface", which
+    // is qBittorrent's default and a materially different case from a specific address - see
+    // GetInterfaceAddressStateAsync. Null until the first successful read, or when the key is absent.
+    private string? _storedInterfaceAddress;
 
     /// <inheritdoc/>
     public override string ClientName => "qBittorrent";
@@ -86,6 +92,8 @@ public sealed class QBittorrentClient : ManagedClientBase
             // Captured here rather than re-fetched: the binding check needs the token, and this is
             // the same response that carries the name, so it costs nothing.
             _storedInterfaceToken = root.GetStringOrNull("current_network_interface");
+            // Same reasoning: the address check needs it, and this response already carries it.
+            _storedInterfaceAddress = root.GetStringOrNull("current_interface_address");
 
             return (listenPort, currentInterfaceName);
         }
@@ -98,11 +106,19 @@ public sealed class QBittorrentClient : ManagedClientBase
     }
 
     /// <inheritdoc/>
-    // random_port is written alongside upnp/natpmp for the same reason they are: each would undo the
-    // port we just set. "Use a different port on each startup" makes qBittorrent pick its own on the
-    // next launch, silently stranding the VPN's forwarded port while every other check still passes.
-    // Written unconditionally and without a setting, matching upnp/natpmp - a toggle for one of the
-    // three and not the others would be a convention nobody could predict.
+    // random_port is written alongside upnp for the same reason it is: either would undo the port we
+    // just set. "Use a different port on each startup" makes qBittorrent pick its own on the next
+    // launch, silently stranding the VPN's forwarded port while every other check still passes.
+    // Written unconditionally and without a setting, matching upnp - a toggle for one and not the
+    // other would be a convention nobody could predict.
+    //
+    // natpmp is in the payload and does nothing. qBittorrent's Web API has no such preference, only
+    // the single upnp switch covering UPnP and NAT-PMP together: measured against a live qBittorrent
+    // 5.x, whose app/preferences returns 223 keys including upnp and no natpmp. setPreferences
+    // ignores keys it does not know, which is why every port write has always succeeded regardless.
+    // Kept rather than removed - it costs nothing and would start working if qBittorrent ever split
+    // the two, as Deluge already does. It is also why GetConflictingSettingsAsync reads upnp alone:
+    // that asymmetry against this payload is correct, not a coverage gap.
     public override Task<bool> SetListeningPortAsync(int port, CancellationToken cancellationToken = default) =>
         PostPreferencesAsync(
             $$$"""{"listen_port":{{{port}}},"random_port":false,"upnp":false,"natpmp":false}""",
@@ -140,13 +156,25 @@ public sealed class QBittorrentClient : ManagedClientBase
 
     /// <inheritdoc/>
     /// <remarks>Returns one of <c>"connected"</c>, <c>"firewalled"</c>, or <c>"disconnected"</c>.
-    /// Used by the restart-on-disconnect check, so transport failures log at Error (an unreachable
-    /// client is actionable here).</remarks>
+    /// Used by the restart-on-disconnect check, where an unreachable client is itself actionable, so
+    /// transport failures log at Error. A caller that only decorates a message with the status must
+    /// use <see cref="TryGetConnectionStatusAsync"/> instead: raising a red tray badge because an
+    /// aside could not be filled in would report a fault the caller has already decided is not one.
+    /// </remarks>
     public override Task<string?> GetConnectionStatusAsync(CancellationToken cancellationToken = default) =>
         GetConnectionStatusCoreAsync(LogLevel.Error, nameof(GetConnectionStatusAsync), cancellationToken);
 
-    // Core implementation shared by GetConnectionStatusAsync (restart-on-disconnect, failureLevel
-    // = Error) and TestListeningPortAsync (best-effort port verification, failureLevel = Debug).
+    /// <summary>The same read as <see cref="GetConnectionStatusAsync"/>, for callers that only enrich a
+    /// log line with the status rather than acting on it.</summary>
+    /// <remarks>Failing to read it is not a fault on those paths, so a transport failure logs at Debug
+    /// and returns <see langword="null"/> for the caller to render as it likes.</remarks>
+    /// <param name="cancellationToken">Cancels the request.</param>
+    internal Task<string?> TryGetConnectionStatusAsync(CancellationToken cancellationToken = default) =>
+        GetConnectionStatusCoreAsync(LogLevel.Debug, nameof(TryGetConnectionStatusAsync), cancellationToken);
+
+    // Core implementation shared by three callers, which differ only in whether a failed read is
+    // itself worth reporting: GetConnectionStatusAsync (restart-on-disconnect, failureLevel = Error),
+    // TestListeningPortAsync and TryGetConnectionStatusAsync (best-effort, failureLevel = Debug).
     // The failure level keeps the verification path's logging symmetric with Transmission/Deluge,
     // which log their best-effort port-test failures at Debug. callerName labels the Debug-level
     // lines with the public method that initiated the call, so a verify failure reads
@@ -279,6 +307,215 @@ public sealed class QBittorrentClient : ManagedClientBase
         }
 
         return (!string.Equals(_storedInterfaceToken, expected, StringComparison.Ordinal), expected);
+    }
+
+    /// <summary>
+    /// What qBittorrent is bound to by address, and what addresses its chosen adapter actually has.
+    /// Facts only - the caller decides what they mean, because the interesting comparison is against the
+    /// previous cycle and this client is constructed fresh each cycle.
+    /// </summary>
+    /// <param name="LiveAddresses">Addresses qBittorrent currently sees on the bound adapter, or
+    /// <see langword="null"/> when they could not be read at all (a qBittorrent predating the endpoint,
+    /// an unreachable Web API, or no interface bound). Null means "do not draw any conclusion".</param>
+    /// <param name="PinnedAddress">The configured <c>current_interface_address</c>. Empty or null means
+    /// qBittorrent binds to every address on the adapter, which is its default.</param>
+    internal readonly record struct InterfaceAddressInfo(
+        IReadOnlyList<string>? LiveAddresses,
+        string? PinnedAddress);
+
+    /// <summary>
+    /// Reads the address side of the network-interface binding, the half <see cref="CheckInterfaceBindingAsync"/>
+    /// cannot see. The token check compares an identifier that survives a VPN reconnect unchanged; the
+    /// address underneath it does not, and a client left listening on an address the adapter no longer
+    /// carries accepts no connections while every other check in the cycle reports it healthy.
+    /// <para>Addresses come from qBittorrent's own endpoint rather than from <c>NetworkInterface</c>, for
+    /// the same reason the token check uses qBittorrent's own adapter list: it is the view the client
+    /// binds against, and it sidesteps the enumeration quirks of tunnel adapters mid-negotiation.</para>
+    /// </summary>
+    internal async Task<InterfaceAddressInfo> GetInterfaceAddressStateAsync(CancellationToken cancellationToken = default)
+    {
+        // Takes no interface name by design. Everything here resolves from _storedInterfaceToken and
+        // _storedInterfaceAddress, both refreshed by GetPreferencesAsync earlier in the same cycle, so a
+        // caller-supplied name could only ever be staler than what this already holds. It previously took
+        // one and used it purely as a non-empty guard, which let TryRebindClientAddressAsync pass a name
+        // recorded cycles earlier - harmless only because the parameter did less than its name implied,
+        // and exactly the observation-time-state-reaching-an-action shape that produced four separate
+        // defects in this feature. Removing the parameter makes that shape unavailable here.
+        //
+        // An empty token is "bound to all interfaces": no adapter to compare against, and this check must
+        // never be the thing that talks anyone into binding to one.
+        if (string.IsNullOrEmpty(_storedInterfaceToken))
+            return new InterfaceAddressInfo(null, _storedInterfaceAddress);
+
+        var live = await GetInterfaceAddressesAsync(_storedInterfaceToken, cancellationToken).ConfigureAwait(false);
+        return new InterfaceAddressInfo(live, _storedInterfaceAddress);
+    }
+
+    // The three rules for reading current_interface_address, kept here rather than at either consumer
+    // because both the sync loop (PortSyncService.CheckInterfaceAddressAsync, RepairPinnedAddressAsync,
+    // TryRebindClientAddressAsync) and the diagnostics report (DiagnosticsService) have to reach the same
+    // verdict about the same field. They live beside GetInterfaceAddressStateAsync, which is what produces
+    // the values they interpret, so the field's semantics have one home.
+
+    /// <summary>Whether <paramref name="address"/> is one of the wildcards qBittorrent accepts in
+    /// <c>current_interface_address</c>, rather than a concrete address that can be judged stale.</summary>
+    /// <remarks>
+    /// qBittorrent's bind-address field holds either a concrete address or one of three wildcards, and
+    /// the dropdown offers all three: <c>""</c> (all addresses), <c>0.0.0.0</c> (all IPv4) and <c>::</c>
+    /// (all IPv6). None of them ever appears in the adapter's address list, so none can be judged stale
+    /// against it - the check that only knew about <c>""</c> reported "All IPv4 addresses" as broken and,
+    /// with the repair on, rewrote a wildcard the user chose into one concrete address, which then
+    /// genuinely went stale on every reconnect. Verified live for <c>0.0.0.0</c>; <c>::</c> is included on
+    /// the strength of the dropdown offering it, and costs nothing if it never occurs.
+    /// <para>One predicate for every consumer, because they partition the same value space: an address
+    /// either can be judged stale or is a wildcard that means something else entirely. Separate inline
+    /// tests could drift apart and leave a value in neither branch or in both.</para>
+    /// <para><c>NotNullWhen(false)</c> so the stale branch keeps its non-null guarantee for the address: a
+    /// plain bool return hides that from flow analysis, and the alternative is a null-forgiving operator
+    /// at the call site, which asserts the same thing without letting the compiler check it.</para>
+    /// </remarks>
+    internal static bool IsWildcardBindAddress([System.Diagnostics.CodeAnalysis.NotNullWhen(false)] string? address) =>
+        string.IsNullOrEmpty(address) || address == "0.0.0.0" || address == "::";
+
+    /// <summary>The address to bind to, out of everything the adapter reports, or <see langword="null"/>
+    /// when none is usable.</summary>
+    /// <remarks>IPv4 first because that is what a forwarded port is granted for by every provider this app
+    /// supports; link-local is never usable for incoming connections, so it is excluded rather than picked
+    /// as a last resort. No usable address means the adapter is mid-negotiation, and the right move is to
+    /// wait for the next cycle rather than write something that is about to be wrong again.</remarks>
+    internal static string? SelectBindAddress(IReadOnlyList<string> addresses)
+    {
+        var usable = addresses.Where(a => !IsLinkLocal(a)).ToList();
+        return usable.FirstOrDefault(a => !a.Contains(':')) ?? usable.FirstOrDefault();
+    }
+
+    private static bool IsLinkLocal(string address) =>
+        address.StartsWith("169.254.", StringComparison.Ordinal) ||
+        address.StartsWith("fe80:", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Renders an adapter's addresses as a readable list for one log line or report row.</summary>
+    /// <remarks>qBittorrent reports IPv4 and IPv6 together and the whole set is the evidence, so none is
+    /// filtered out - a v6-only change is still a change. Shared so the sync log and the diagnostics
+    /// report describe the same adapter the same way.</remarks>
+    internal static string FormatAddressList(IReadOnlyList<string> addresses) =>
+        addresses.Count == 0 ? "no addresses" : string.Join(", ", addresses);
+
+    // Addresses qBittorrent reports for one interface token, or null when the list cannot be read -
+    // which includes qBittorrent versions predating the endpoint, so callers degrade to doing nothing.
+    // Mirrors GetNetworkInterfacesAsync exactly, including its logging levels.
+    private async Task<List<string>?> GetInterfaceAddressesAsync(string interfaceToken, CancellationToken cancellationToken)
+    {
+        if (!await EnsureAuthenticatedAsync(cancellationToken).ConfigureAwait(false)) return null;
+
+        try
+        {
+            string url = $"{Url}{ApiNetworkInterfaceAddressList}?iface={Uri.EscapeDataString(interfaceToken)}";
+            using var response = await HttpClient.GetAsync(url, cancellationToken).ConfigureAwait(false);
+            if (!response.IsSuccessStatusCode)
+            {
+                LogManager.Instance.LogDebug(
+                    $"QBittorrentClient.GetInterfaceAddressesAsync: HTTP {(int)response.StatusCode} {response.StatusCode} - interface address not checked");
+                return null;
+            }
+
+            var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+            using var doc = JsonDocument.Parse(json);
+            if (doc.RootElement.ValueKind != JsonValueKind.Array) return null;
+
+            var result = new List<string>();
+            foreach (var entry in doc.RootElement.EnumerateArray())
+            {
+                if (entry.ValueKind == JsonValueKind.String && entry.GetString() is { Length: > 0 } address)
+                    result.Add(address);
+            }
+            return result;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+        catch (Exception ex)
+        {
+            LogHttpException(nameof(GetInterfaceAddressesAsync), ex, LogLevel.Debug);
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Forces libtorrent to rebuild its listen sockets by changing <c>current_interface_address</c>, then
+    /// leaving it at <paramref name="finalAddress"/>. Returns <see langword="true"/> when every write
+    /// succeeded.
+    /// </summary>
+    /// <remarks>
+    /// <para>qBittorrent acts on a preference only when its value actually <em>changes</em>, so writing the
+    /// binding back unchanged is a no-op and cannot fix a socket left on a previous address. A change is
+    /// therefore required, which is why this pins an address rather than re-writing the interface.</para>
+    /// <para>Verified against a live client rather than assumed: qBittorrent listens on each of the
+    /// adapter's addresses individually, and writing this field tears those sockets down and rebuilds
+    /// them - pinning one address left only that socket, and restoring the empty value brought them all
+    /// back, with the listen port unchanged. Both writes rebuild, which is what the release step needs.</para>
+    /// <para>When <paramref name="finalAddress"/> differs from <paramref name="pinAddress"/> the pin is
+    /// released again in a second write, so the stored configuration ends exactly as it started. That
+    /// matters: pinning permanently would convert qBittorrent's default "all addresses" into a value this
+    /// app has to maintain on every reconnect, and which goes stale and breaks the client if this app is
+    /// ever removed. The intermediate pin is *stricter* than "all addresses" - it is one address on the
+    /// same adapter - so unlike clearing the interface token it opens no window for traffic outside the
+    /// tunnel.</para>
+    /// <para>Two ways the release can be missed, and they are not equally benign. If the <b>process
+    /// dies</b> between the writes, the client is left pinned to what was then a valid address, which
+    /// keeps working until the adapter's address next moves - at which point the pinned-address check
+    /// reports and repairs it like any other stale pin. If the <b>release write fails</b>, nothing later
+    /// notices: the next cycle reads a non-empty address that is present on the adapter and concludes
+    /// the binding is healthy. That one is therefore retried once and, if it still fails, reported at
+    /// Error naming the address, because only the user can put it back.</para>
+    /// </remarks>
+    internal async Task<bool> ForceInterfaceRebindAsync(string pinAddress, string finalAddress, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrEmpty(pinAddress)) return false;
+
+        if (!await WriteInterfaceAddressAsync(pinAddress, cancellationToken).ConfigureAwait(false)) return false;
+        _storedInterfaceAddress = pinAddress;
+
+        // Equal means the pin *is* the intended end state (a stale pin corrected to a live address), so
+        // there is nothing to release and a second write would be the no-op this method exists to avoid.
+        if (string.Equals(pinAddress, finalAddress, StringComparison.OrdinalIgnoreCase)) return true;
+
+        // Retried once, because this is the write whose failure cannot be recovered from later. The pin
+        // has already landed, so at that moment the endpoint was reachable and the session valid, which
+        // makes a single immediate retry a good match for the realistic cause - a transient error, or
+        // qBittorrent restarting between the two posts. Not a loop: this runs after three confirmed
+        // closed checks on a cycle the user is waiting on, and stacking timeouts here buys little.
+        bool released = await WriteInterfaceAddressAsync(finalAddress, cancellationToken).ConfigureAwait(false);
+        if (!released)
+            released = await WriteInterfaceAddressAsync(finalAddress, cancellationToken).ConfigureAwait(false);
+
+        if (released)
+        {
+            _storedInterfaceAddress = finalAddress;
+            return true;
+        }
+
+        // Error, and it names the address, because this is the one outcome the app cannot put right by
+        // itself: the client is left pinned, the next cycle reads a non-empty address that is present on
+        // the adapter, concludes the binding is healthy, and treats it as the user's own setting. Only
+        // the user can restore what they had, so the log has to say exactly what was left behind rather
+        // than the caller's generic "could not rebind".
+        LogManager.Instance.LogMessage(
+            $"{ClientName} was left bound to address {pinAddress} - the setting could not be returned to " +
+            $"'{(finalAddress.Length == 0 ? "all addresses" : finalAddress)}'. Restore it in {ClientName} if that is not what you want",
+            LogLevel.Error);
+        return false;
+    }
+
+    // One setPreferences write of current_interface_address. Empty is a legitimate value here - it means
+    // "all addresses on the bound adapter" - and is the opposite of an empty interface *token*, which
+    // would mean every adapter on the machine and is refused in RepairInterfaceBindingAsync.
+    private Task<bool> WriteInterfaceAddressAsync(string address, CancellationToken cancellationToken)
+    {
+        string jsonBody = JsonSerializer.Serialize(new Dictionary<string, string>
+        {
+            ["current_interface_address"] = address,
+        });
+
+        return PostPreferencesAsync(jsonBody, $"Failed to set the {ClientName} network interface address",
+            LogLevel.Warn, cancellationToken);
     }
 
     /// <summary>

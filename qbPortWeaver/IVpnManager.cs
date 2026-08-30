@@ -28,8 +28,28 @@ public interface IVpnManager
     /// mappings - UDP then TCP - since the protocols are independent and a gateway may grant one
     /// without the other. The returned port is the UDP grant; a TCP mapping that is refused or
     /// lands on a different port is reported but does not change the result.
+    /// <para>Cancellation is best-effort and differs by provider. NAT-PMP genuinely aborts an
+    /// in-flight request, while ProtonVPN and PIA wrap synchronous work in <c>Task.Run</c>, where the
+    /// token can only prevent the work starting - once running it completes regardless. Both are
+    /// bounded anyway (PIA by piactl's process timeout, ProtonVPN by the size of the log scan), and
+    /// shutdown does not await the sync loop, so uncancelled work dies with the process rather than
+    /// delaying exit. Do not rely on the token to shorten an in-flight port read.</para>
     /// </summary>
     Task<int?> GetVpnPortAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Whether the most recent <see cref="GetVpnPortAsync"/> call established that no forwarded port will
+    /// be assigned until the user changes something - port forwarding switched off in the provider's own
+    /// settings, or a connected region that does not offer it. This is a durable configuration state, not
+    /// a fault, and must never drive auto-recovery: restarting the VPN cannot create a forward the account
+    /// or region does not offer, so retrying on a timer only tears the tunnel down repeatedly for nothing.
+    /// <para>Distinct from a transient failure to read the port (still establishing, provider busy,
+    /// unreadable output), which stays a failed cycle and does contribute to the recovery threshold.</para>
+    /// <para>Defaults to <see langword="false"/>. Only PIA reports its port-forward state distinctly
+    /// enough to separate durable from transient: ProtonVPN's log carries a port or it does not, and a
+    /// NAT-PMP gateway that refuses a mapping may well grant the next one.</para>
+    /// </summary>
+    bool PortForwardingUnavailable => false;
 
     /// <summary>
     /// Returns the recovery target passed to <c>AutoRecoveryManager.TriggerRestartAsync</c> or

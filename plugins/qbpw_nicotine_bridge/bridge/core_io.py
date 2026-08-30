@@ -35,6 +35,14 @@ PORT_MAX = 65535
 # window qbPortWeaver would see our own rebind as the client having dropped offline.
 RECONNECT_GRACE_SECONDS = 30.0
 
+# Capabilities that are reported in the capability map but never warned about when absent,
+# because neither absence degrades anything. port_test_native has a web fallback, so testing
+# still works. cli_lock_detectable only says whether this Nicotine+ has a --port option at all:
+# when it does not there is no lock to miss, so "not locked" is the true answer rather than an
+# undetectable one. Neither is gated by _require, so no endpoint reports them as unsupported
+# either - which is what the warning below promises about everything it names.
+INFORMATIONAL_CAPABILITIES = ("port_test_native", "cli_lock_detectable")
+
 
 class CoreIO:
     """Capability-probed access to the Nicotine+ config and core singletons."""
@@ -80,9 +88,9 @@ class CoreIO:
             "port_test_native": self._probe_port_test(),
         }
 
-        # port_test_native has a web fallback, so its absence is not a degraded capability to warn about.
+        # See INFORMATIONAL_CAPABILITIES: those are reported in the map but never warned about.
         missing = sorted(name for name, present in caps.items()
-                         if not present and name != "port_test_native")
+                         if not present and name not in INFORMATIONAL_CAPABILITIES)
         if missing:
             self._log("Some Nicotine+ features are unavailable in this version: %s. "
                       "The matching API endpoints will report them as unsupported.",

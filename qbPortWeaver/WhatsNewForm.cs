@@ -9,6 +9,72 @@ public partial class WhatsNewForm : Form
         "If you find qbPortWeaver useful, please star it on GitHub.";
 
     private const string ReleaseFeaturesText =
+        "New in 2.6.7\n\n" +
+        "Port forwarding that is switched off no longer restarts your VPN\n" +
+        "When your VPN reports that port forwarding is switched off in its own settings, or that the " +
+        "server region you are connected to does not offer it, qbPortWeaver now says so in the log and " +
+        "waits for you to change it. It used to treat that the same as a VPN fault and restart your VPN " +
+        "to try to fix it, again and again on a timer - which could never work, and briefly dropped your " +
+        "connection every single time. This mainly affected PIA, which is the provider that reports the " +
+        "reason clearly enough to tell the two apart.\n\n" +
+        "qBittorrent is nudged back into listening after a VPN reconnect\n" +
+        "When a VPN reconnects, the adapter usually keeps its name but is given a new address, and " +
+        "qBittorrent can be left listening on the previous one. Everything looks healthy from the " +
+        "outside while no one can actually connect to you. If the forwarded port stops answering after " +
+        "an address change, qbPortWeaver now nudges qBittorrent into listening again before trying " +
+        "anything heavier like restarting your VPN, and your qBittorrent settings are left exactly as " +
+        "you had them. It also corrects an address that no longer exists as soon as it sees one. Both " +
+        "need the port check and the binding fix switched on, which they are by default.\n\n" +
+        "Auto-recovery stops repeating itself\n" +
+        "Auto-recovery restarts your VPN when it stops providing a working forwarded port. If three " +
+        "restarts in a row do not produce one, it now stops and says so in the log, rather than carrying " +
+        "on indefinitely. It starts again by itself the moment a port comes through. A recovery you run " +
+        "yourself with the Test button is never held back.\n\n" +
+        "Auto-recovery reports both of its triggers\n" +
+        "Auto-recovery has two triggers that work independently: repeated failed cycles, and a " +
+        "forwarded port that stays closed. Until now the Status window's Auto-recovery line only " +
+        "described the first of them, so a closed port could be counting toward a recovery with " +
+        "nothing on screen to show for it. The line now covers both. It also reads Disabled only " +
+        "when you have switched both triggers off - with one of them still on it used to say " +
+        "Disabled while the app could still restart your VPN.\n\n" +
+        "Says when recovery has already run\n" +
+        "The port-closed trigger runs once, then waits for a scheduled check to report the port open before " +
+        "it can run a second time. The warning that repeats while the port stays closed used to stop " +
+        "mentioning recovery at exactly that point, which read as though nothing had been done about " +
+        "it. It now says the recovery has already run, and what it is waiting for.\n\n" +
+        "Problems that used to fail quietly now say so\n" +
+        "A few things could go wrong with nothing on screen to show for it: the log file being " +
+        "impossible to write to, the Windows startup entry not being updated after the app moved, the " +
+        "recent port changes list failing to save, or an older helper service being left behind by an " +
+        "upgrade. Each of these now reports itself. The log one arrives as a tray message, since by " +
+        "definition it cannot be written to the log.\n\n" +
+        "Updates are checked before they are installed\n" +
+        "When you install an update from inside the app, the downloaded installer is now checked " +
+        "against the checksum published with the release before it is run. If it does not match, the " +
+        "file is deleted and the release page opens instead, so a download that arrived damaged or " +
+        "incomplete is never launched. You will not notice this unless something is wrong.\n\n" +
+        "Nicotine+ plugin updates are offered when the plugin changes\n" +
+        "Settings used to decide whether a plugin update was available by comparing version numbers, " +
+        "and the plugin's version follows the app's - so a fix to the plugin alone was never offered " +
+        "unless the app version happened to move as well. It now compares the installed files with " +
+        "the ones this build carries, so an update is offered whenever there is genuinely something " +
+        "new to install.\n\n" +
+        "Multi-line log entries stay together\n" +
+        "A log entry can run to more than one line. The Log Viewer now keeps those lines with the " +
+        "entry they belong to, so filtering by level, subsystem or time range never shows part of an " +
+        "entry on its own, or leaves a stray line sitting under an unrelated one.\n\n" +
+        "The next-sync countdown is accurate after a slow cycle\n" +
+        "The Status window counts down to the next sync. It used to start that countdown from the " +
+        "moment a cycle began rather than the moment it finished, so after a slow cycle - one that " +
+        "restarted your client, or ran a recovery - it could sit on Due now for a minute or two " +
+        "before anything actually happened. It now counts down to the real time.\n\n" +
+        "Your network adapter is always switched back on\n" +
+        "One kind of auto-recovery switches your network adapter off and straight back on again. If " +
+        "Windows shut down or the app was stopped in the moment between the two, the adapter could be " +
+        "left switched off, and it stayed that way after a restart. It is now always switched back on, " +
+        "whatever interrupts the recovery. This affected NAT-PMP setups using a router or gateway "  +
+        "rather than ProtonVPN or PIA.\n\n" +
+        "Previously released\n\n" +
         "New in 2.6.6\n\n" +
         "See what auto-recovery is doing\n" +
         "The Status window has a new Auto-recovery line. It counts the failed cycles building up " +
@@ -30,7 +96,6 @@ public partial class WhatsNewForm : Form
         "offline - used to be logged again on every sync cycle, pushing the tray warning count up " +
         "and burying everything else. It is now reported once when it appears, again only if it " +
         "changes, and once more if it comes back after clearing.\n\n" +
-        "Previously released\n\n" +
         "New in 2.6.5\n\n" +
         "Spots client settings that undo your forwarded port\n" +
         "Some options in your client work against the port you are forwarding: a randomised listening " +
@@ -361,8 +426,8 @@ public partial class WhatsNewForm : Form
         base.OnLoad(e);
         rtbFeatures.Font = Font;
         rtbFeatures.ForeColor = SystemColors.ControlText; // match the group box (mode-aware, blends in)
-        if (AppConstants.IsDarkModeEnabled())
-            lnkCommunity.LinkColor = AppConstants.LinkDark;
+        if (ThemeColors.IsDarkModeEnabled())
+            lnkCommunity.LinkColor = ThemeColors.LinkDark;
         RenderFeatures();
     }
 
@@ -372,7 +437,7 @@ public partial class WhatsNewForm : Form
         // Shown non-modally on first run by the tray-only app (no foreground window), so it can open
         // behind whatever launched us (e.g. the installer). If the user never sees it they never
         // dismiss it, and the "last seen version" is never recorded - so it keeps reappearing.
-        AppConstants.BringFormToFront(this);
+        UiHelpers.BringFormToFront(this);
     }
 
     // Renders ReleaseFeaturesText into the RichTextBox with a visual hierarchy instead of flat text:
@@ -426,5 +491,5 @@ public partial class WhatsNewForm : Form
     private void btnClose_Click(object? sender, EventArgs e) => Close(); // NOSONAR S2325 - Close() is an instance method, handler cannot be static
 
     private static void lnkCommunity_LinkClicked(object? sender, LinkLabelLinkClickedEventArgs e) =>
-        AppConstants.OpenUrl(AppConstants.GitHubRepoUrl);
+        UiHelpers.OpenUrl(AppConstants.GitHubRepoUrl);
 }

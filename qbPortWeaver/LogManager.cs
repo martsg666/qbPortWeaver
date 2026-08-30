@@ -34,6 +34,19 @@ public sealed class LogManager
     /// <summary>Raised after a Warn or Error entry is written, outside the write lock. Fired from background threads.</summary>
     public event Action<LogLevel>? WarnOrErrorLogged;
 
+    /// <summary>
+    /// Raised when writing to the log file fails, so the tray can surface a failure that by
+    /// definition cannot be reported through the log. Fired outside the write lock, from background
+    /// threads.
+    /// <para>Latched: it fires once per failure episode and re-arms only after a later write
+    /// succeeds. A failing log file usually keeps failing, so an unlatched event would fire on every
+    /// entry the app tries to write - unbounded, and from the one path that cannot log about it.</para>
+    /// <para><b>Subscribers must not log at Warn or Error.</b> Doing so re-enters this path and, if
+    /// the write is still failing, raises the event again. Show it to the user instead, as MainForm
+    /// does with a tray balloon.</para>
+    /// </summary>
+    public event Action? LogWriteFailed;
+
     /// <summary>Returns <see langword="true"/> after <see cref="Initialize"/> has been called.</summary>
     public static bool IsInitialized => _instance is not null;
 
@@ -46,6 +59,9 @@ public sealed class LogManager
     public string LogFilePath { get; }
     private readonly object _lock = new object();
     private int _writeCount;
+    // Whether the current write-failure episode has already been announced. Guarded by _lock,
+    // cleared by the next successful write. See LogWriteFailed for why this is latched.
+    private bool _writeFailureReported;
 
     private volatile bool _debugMode;
 
@@ -78,9 +94,19 @@ public sealed class LogManager
     }
 
     /// <summary>Writes a log entry at the given level. Thread-safe.</summary>
-    public void LogMessage(string message, LogLevel level, string subsystem = Subsystem.MainApp)
+    /// <returns><see langword="true"/> when the entry reached the file.</returns>
+    /// <remarks>Almost every caller ignores this - a log write is best-effort and nothing should
+    /// change course because one failed. <see cref="LogStateChange"/> is the exception: it must not
+    /// record having reported a condition that was never written.
+    /// <para>Deliberately not derived from the <c>writeFailed</c> flag below, which is only raised on
+    /// the <i>first</i> failure of an episode and stays false for the rest - so it answers "should the
+    /// user be told" rather than "did this reach the file", and inverting it would report the second
+    /// and later failed writes as successes.</para></remarks>
+    public bool LogMessage(string message, LogLevel level, string subsystem = Subsystem.MainApp)
     {
         bool shouldNotify = false;
+        bool writeFailed = false;
+        bool wrote = false;
         lock (_lock)
         {
             try
@@ -94,16 +120,32 @@ public sealed class LogManager
                 }
 
                 WriteRaw(FormatEntry(message, level, subsystem));
+                wrote = true;
                 shouldNotify = level is LogLevel.Warn or LogLevel.Error;
+                // A successful write re-arms the failure report, so a later episode is announced
+                // rather than swallowed as a duplicate of one the user has already dealt with.
+                _writeFailureReported = false;
             }
             catch (Exception ex)
             {
+                // Debug.WriteLine rather than any logging call: this IS the logging path, and it has
+                // just failed. Everything below exists because that makes the failure invisible -
+                // nothing reaches the file, and shouldNotify stays false, so the tray badge and
+                // balloon that normally mark a problem never fire either.
                 Debug.WriteLine($"LogManager.LogMessage: {ex.Message}");
+                if (!_writeFailureReported)
+                {
+                    _writeFailureReported = true;
+                    writeFailed = true;
+                }
             }
         }
 
         if (shouldNotify)
             RaiseWarnOrErrorLogged(level);
+        if (writeFailed)
+            RaiseLogWriteFailed();
+        return wrote;
     }
 
     /// <summary>
@@ -130,6 +172,21 @@ public sealed class LogManager
         catch (Exception ex)
         {
             Debug.WriteLine($"LogManager.RaiseWarnOrErrorLogged: subscriber threw {ex.GetType().Name}: {ex.Message}");
+        }
+    }
+
+    // Mirrors RaiseWarnOrErrorLogged: a throwing subscriber must not propagate back into the caller
+    // of LogMessage, and the failure is reported through Debug.WriteLine rather than the log, which
+    // has just proven it cannot be written to.
+    private void RaiseLogWriteFailed()
+    {
+        try
+        {
+            LogWriteFailed?.Invoke();
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"LogManager.RaiseLogWriteFailed: subscriber threw {ex.GetType().Name}: {ex.Message}");
         }
     }
 
@@ -170,12 +227,24 @@ public sealed class LogManager
     /// (a different folder goes offline) still gets announced.</para>
     /// <para>Call <see cref="ClearLogState"/> once the condition clears, so a later recurrence is
     /// reported instead of being swallowed as a duplicate.</para>
+    /// <para><b>The check-then-set is deliberately not atomic.</b> The dictionary is concurrent, so each
+    /// step is safe on its own, but two threads could pass the guard for the same key and message and
+    /// both write. The cost of that is exactly one duplicate entry before they converge - no state is
+    /// lost and the next call suppresses correctly - and every key in use has a single writing site, so
+    /// it is not reachable today. Closing it would mean either holding a lock across the file write, in
+    /// the one path where contention is least acceptable, or latching before the write - and the latch
+    /// must stay after it, for the reason given at the assignment below.</para>
     /// </summary>
     public void LogStateChange(string key, string message, LogLevel level, string subsystem = Subsystem.MainApp)
     {
         if (_lastStateMessage.TryGetValue(key, out string? previous) && previous == message) return;
-        _lastStateMessage[key] = message;
-        LogMessage(message, level, subsystem);
+
+        // Latched only once the entry is on disk. Recording it first meant a failed write left the
+        // condition marked as reported and suppressed from then on, even after the log recovered -
+        // losing exactly the standing conditions (an unreachable share, a stale binding) that a
+        // disk-full or permissions fault makes most worth having.
+        if (LogMessage(message, level, subsystem))
+            _lastStateMessage[key] = message;
     }
 
     /// <summary>Forgets the last message logged under <paramref name="key"/> so the next
@@ -201,6 +270,14 @@ public sealed class LogManager
                     File.Delete(LogFilePath);
 
                 _writeCount = 0;
+
+                // Re-arm every LogStateChange latch. Those entries are written once per condition
+                // and then suppressed while the message stays the same, so without this a standing
+                // condition - an interface mismatch, an unreachable share, a stale plugin binding -
+                // is simply absent from the new log: still true, still suppressed as a duplicate of
+                // an entry that no longer exists. The user clears the log to capture a clean
+                // reproduction, and those are precisely the lines that explain it.
+                _lastStateMessage.Clear();
 
                 // Write the sentinel while still holding the lock so no concurrent LogMessage
                 // can interleave between the delete and this entry.

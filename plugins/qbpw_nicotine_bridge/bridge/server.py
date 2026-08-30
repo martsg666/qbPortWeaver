@@ -285,7 +285,20 @@ class Bridge:
     # ---------------------------------------------------------------- endpoints
 
     def describe(self):
-        """Unauthenticated liveness. Carries nothing a local process could not already learn."""
+        """Unauthenticated liveness. Carries nothing a local process could not already learn.
+
+        Deliberately does NOT go through MainThreadProxy, unlike every other route here. The proxy
+        raises ApiError when the main thread fails to drain its queue in time, so marshalling this
+        would make ``GET /`` fail in exactly the situation it exists to diagnose - a wedged main
+        thread. A liveness endpoint that depends on the liveness of the thing it reports on is
+        useless.
+
+        The two ``core_io`` reads below are safe off-thread despite main_thread.py's rule that
+        handler threads must not touch core objects: ``capabilities`` is a plain dict fixed by
+        ``probe()`` at startup, and ``cli_listen_port`` is a single ``getattr`` of a value that
+        cannot change after launch. Both are atomic under the GIL. Do not "fix" this by
+        marshalling it.
+        """
         return {
             "app": APP_ID,
             "api": API_VERSION,

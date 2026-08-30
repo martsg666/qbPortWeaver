@@ -174,8 +174,9 @@ public sealed class TransmissionClient : ManagedClientBase
     {
         try
         {
-            // port-forwarding-enabled=false is Transmission's combined UPnP/NAT-PMP off switch,
-            // equivalent to qBittorrent's and Deluge's separate upnp=false + natpmp=false fields.
+            // port-forwarding-enabled=false is Transmission's combined UPnP/NAT-PMP off switch, as
+            // qBittorrent's upnp is. Only Deluge splits the two into separate upnp and natpmp
+            // preferences (see DelugeClient.SetListeningPortAsync).
             var body = $$$"""{"method":"session-set","arguments":{"peer-port":{{{port}}},"peer-port-random-on-start":false,"port-forwarding-enabled":false}}""";
             using var response = await SendRpcAsync(body, cancellationToken: cancellationToken).ConfigureAwait(false);
             if (response is null) return false;
@@ -322,7 +323,7 @@ public sealed class TransmissionClient : ManagedClientBase
     private static string? GetEffectiveServiceName()
     {
         if (_resolvedServiceName is { Length: > 0 }) return _resolvedServiceName;
-        var found = AppConstants.FindServiceName(RegistrySettingsManager.GetAppValue(RegistrySettingsManager.KeyTransmissionServiceSearchTerm));
+        var found = ServiceLookup.FindServiceName(RegistrySettingsManager.GetAppValue(RegistrySettingsManager.KeyTransmissionServiceSearchTerm));
         if (found is not null) _resolvedServiceName = found;
         return found;
     }
@@ -351,6 +352,13 @@ public sealed class TransmissionClient : ManagedClientBase
 
             return true;
         }
+        // Excludes every OperationCanceledException, not just a token-cancelled one. That is safe here
+        // and would not be on an HTTP path: HttpClient's timeout surfaces as TaskCanceledException with
+        // the token *not* cancelled, so this filter would let a timeout escape unlogged. Nothing in this
+        // method makes an HTTP request - it drives the helper pipe and the SCM - so the only cancellation
+        // it can produce is a real shutdown, which should propagate rather than be logged as a restart
+        // failure. The HTTP methods in this file use the other idiom instead: rethrow on token
+        // cancellation, then catch broadly so LogHttpException can classify the timeout.
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             LogManager.Instance.LogMessage($"Failed to restart {ClientName} service: {ex.Message}", LogLevel.Error);
@@ -384,6 +392,10 @@ public sealed class TransmissionClient : ManagedClientBase
             ResetAuthState();
             return await LaunchAndWaitAsync(ProcessInitDelayMs, cancellationToken).ConfigureAwait(false);
         }
+        // Same idiom and the same reasoning as RestartServiceModeAsync above: no HTTP request is made
+        // here - Task.Delay, CloseMainWindow and the process kill - so every OperationCanceledException
+        // is a real shutdown and belongs propagated, not logged as a restart failure. Do not copy this
+        // filter onto a method that calls HttpClient; a timeout would escape it unlogged.
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             LogManager.Instance.LogMessage($"Failed to restart {ClientName}: {ex.Message} - check the Executable path in Settings ({ExePath})", LogLevel.Error);
@@ -459,7 +471,11 @@ public sealed class TransmissionClient : ManagedClientBase
     // Returns true (after logging the actionable credentials message and disposing the response)
     // when the response is HTTP 401, so SendRpcAsync can translate it into its null failure contract.
     // NOTE: Disposes the response internally so the 409-retry path in SendRpcAsync stays clean.
-    // Call sites must NOT wrap the response in a using block - it is already disposed when this returns true.
+    // Callers of THIS method must not wrap the response they hand in inside a using block - it is
+    // already disposed once this returns true. SendRpcAsync's own callers are the opposite case and
+    // must use one: a non-null return from it is a live response they take ownership of, and `using`
+    // on the null failure return is a no-op. Spelled out because the two rules are adjacent and
+    // opposite, and following the wrong one leaks a response on every successful RPC.
     private bool IsUnauthorized(HttpResponseMessage response, LogLevel failureLevel = LogLevel.Error)
     {
         if (response.StatusCode != HttpStatusCode.Unauthorized) return false;

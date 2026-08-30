@@ -24,8 +24,30 @@ public static class SessionStats
 
     static SessionStats()
     {
-        using var process = Process.GetCurrentProcess();
-        StartedAt = process.StartTime;
+        // Guarded because this is a static constructor: any throw here becomes a
+        // TypeInitializationException and the CLR marks the type permanently unusable, so every later
+        // touch throws - including RecordSync in PortSyncService.RunAsync's finally, which is written
+        // to always run. Process.StartTime on one's own process is reliable in practice, so this is a
+        // latent hazard rather than an observed one; it is guarded because the failure would be total
+        // and permanent while the guard costs nothing.
+        //
+        // Now() rather than leaving default: default is 0001-01-01, which the Status panel would render
+        // as two thousand years of uptime. Now() is wrong by however long the app has already been up -
+        // a small, self-correcting error that reads as plausible.
+        //
+        // Debug.WriteLine rather than LogManager: a static constructor can run on any thread at any
+        // point, plausibly before LogManager.Initialize, and the fallback is not something the user can
+        // act on anyway.
+        try
+        {
+            using var process = Process.GetCurrentProcess();
+            StartedAt = process.StartTime;
+        }
+        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException or NotSupportedException)
+        {
+            StartedAt = DateTimeOffset.Now;
+            Debug.WriteLine($"SessionStats: could not read process start time ({ex.GetType().Name}); using now instead");
+        }
     }
 
     private static int _syncCount;

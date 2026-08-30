@@ -8,14 +8,22 @@ namespace qbPortWeaver;
 /// reached the helper or was rejected by it. <see cref="IsRejected"/> distinguishes the
 /// session-token rejection case from a generic helper-unreachable failure.
 /// </summary>
-internal readonly record struct HelperResult(bool Completed, int WarnCount, int ErrorCount, bool IsRejected)
+internal readonly record struct HelperResult(bool Completed, int WarnCount, int ErrorCount, bool IsRejected, int ProtocolVersion = 0)
 {
     // Helper unreachable, target invalid, session token unavailable, or response unparseable.
     public static HelperResult Failed => default; // Completed=false, IsRejected=false
     // Helper actively rejected the command (session token mismatch).
     public static HelperResult Rejected => new(Completed: false, WarnCount: 0, ErrorCount: 0, IsRejected: true);
-    // Helper processed the command and returned its WARN/ERROR counts.
-    public static HelperResult Ok(int warn, int error) => new(Completed: true, WarnCount: warn, ErrorCount: error, IsRejected: false);
+    // Helper processed the command and returned its WARN/ERROR counts. ProtocolVersion is 0 when the
+    // response carried no version key, which means a helper built before versioning existed - the
+    // one case that distinguishes an out-of-date peer from an unreachable or broken one.
+    public static HelperResult Ok(int warn, int error, int protocolVersion) =>
+        new(Completed: true, WarnCount: warn, ErrorCount: error, IsRejected: false, ProtocolVersion: protocolVersion);
+
+    /// <summary>True when the helper answered but speaks an older protocol than this build, so it
+    /// predates the running app and should be reinstalled. False for an unreachable helper, which is
+    /// a different problem with a different fix.</summary>
+    public bool IsHelperOutOfDate => Completed && ProtocolVersion < HelperProtocol.Version;
 
     // Upper bound on how many alerts a single helper response may replay. The counts come from the
     // helper's own per-request log counters and are realistically single digits, but ParseResult
@@ -33,9 +41,48 @@ internal readonly record struct HelperResult(bool Completed, int WarnCount, int 
             LogManager.Instance.LogMessage("Helper service rejected the command - session token mismatch", LogLevel.Warn);
             return;
         }
+        ReportProtocolVersion();
+
         // Negative counts need no guard - the loop simply does not execute.
         for (int i = 0; i < Math.Min(WarnCount, MaxAlertReplay); i++) LogManager.Instance.NotifyExternalWarnOrError(LogLevel.Warn);
         for (int i = 0; i < Math.Min(ErrorCount, MaxAlertReplay); i++) LogManager.Instance.NotifyExternalWarnOrError(LogLevel.Error);
+    }
+
+    // State key for LogStateChange. The condition persists until the user reinstalls, and recovery
+    // can run repeatedly in the meantime, so this reports on the transition rather than once per
+    // recovery - the same treatment every other standing condition gets.
+    private const string ProtocolStateKey = "helper.protocolVersion";
+
+    // Says which peer is out of step, when the helper answered at all. Only a completed response
+    // carries this information: an unreachable helper is a different problem with a different fix,
+    // and RaiseLogAlerts has already reported a rejection before reaching here.
+    private void ReportProtocolVersion()
+    {
+        if (!Completed) return;
+
+        if (IsHelperOutOfDate)
+        {
+            // Covers both a helper predating versioning (no key, so 0) and a genuinely older one.
+            LogManager.Instance.LogStateChange(ProtocolStateKey,
+                "The helper service is older than this version of qbPortWeaver - reinstall qbPortWeaver to update it. " +
+                "Recovery still ran, but newer behaviour may be missing",
+                LogLevel.Warn);
+        }
+        else if (ProtocolVersion > HelperProtocol.Version)
+        {
+            // The app is the older half, which happens after a downgrade: the MSI leaves the newer
+            // helper installed. Worth saying plainly, because the obvious reading of the line above
+            // would send the user to reinstall the thing that is already current.
+            LogManager.Instance.LogStateChange(ProtocolStateKey,
+                $"The helper service speaks a newer protocol (v{ProtocolVersion}) than this version of qbPortWeaver (v{HelperProtocol.Version}) - " +
+                "this build is older than the installed helper",
+                LogLevel.Warn);
+        }
+        else
+        {
+            // Clears the latch so a later mismatch is reported again rather than swallowed.
+            LogManager.Instance.ClearLogState(ProtocolStateKey);
+        }
     }
 }
 
@@ -49,8 +96,26 @@ internal static class HelperServiceClient
     // HelperPipeServer.RequestReadTimeoutMs, which bounds the opposite direction.)
     private const int ResponseTimeoutMs = 120_000;
 
-    // Resolved once per session; the helper validates it against HKCU to reject unauthorized pipe connections.
-    private static readonly Lazy<string> _sessionToken = new(() => RegistrySettingsManager.GetOrCreatePipeSessionToken());
+    // Resolved once per session; the helper validates it against HKCU to reject unauthorized pipe
+    // connections. Cached only on success, and that distinction is the whole point: this was a
+    // Lazy<string>, and GetOrCreatePipeSessionToken reports a registry failure by *returning an empty
+    // string* rather than throwing. Lazy treats that as a successful result and caches it forever, so a
+    // single transient read - a hive still loading at logon, a moment of policy contention - disabled
+    // auto-recovery for the entire process lifetime, with every later attempt failing on the empty-token
+    // guard below and nothing ever looking again. Note LazyThreadSafetyMode.PublicationOnly would not
+    // have helped: it retries after a thrown exception, and nothing is thrown here.
+    // Same rule as VpnRegistryConfig's exe-path cache - write back only a real resolution.
+    // volatile: written at most once from empty to a token, read from the sync loop and diagnostics.
+    // A race costs one extra registry read; the read is idempotent (CreateSubKey then GetValue).
+    private static volatile string? _sessionToken;
+
+    private static string GetSessionToken()
+    {
+        if (_sessionToken is { Length: > 0 } cached) return cached;
+        string token = RegistrySettingsManager.GetOrCreatePipeSessionToken();
+        if (token.Length > 0) _sessionToken = token;
+        return token;
+    }
 
     /// <summary>Asks the helper service to stop and restart the Windows service with the given <paramref name="serviceName"/>.</summary>
     internal static Task<HelperResult> SendRestartAsync(string serviceName, CancellationToken cancellationToken = default) =>
@@ -71,7 +136,10 @@ internal static class HelperServiceClient
             return HelperResult.Failed;
         }
 
-        if (string.IsNullOrEmpty(_sessionToken.Value))
+        // Resolved per attempt rather than once: a failed read is not cached, so a later attempt
+        // retries instead of inheriting the first failure for the life of the process.
+        string sessionToken = GetSessionToken();
+        if (string.IsNullOrEmpty(sessionToken))
         {
             LogManager.Instance.LogMessage($"Cannot send '{action}' request: session token unavailable (registry error)", LogLevel.Warn);
             return HelperResult.Failed;
@@ -84,7 +152,7 @@ internal static class HelperServiceClient
             await using var writer = new StreamWriter(pipe, leaveOpen: true) { AutoFlush = true };
             using var reader = new StreamReader(pipe, leaveOpen: true); // StreamReader lacks IAsyncDisposable; synchronous Dispose is safe here (flushes no writes)
 
-            await writer.WriteLineAsync($"{action}|{target}|{_sessionToken.Value}".AsMemory(), cancellationToken).ConfigureAwait(false);
+            await writer.WriteLineAsync($"{action}|{target}|{sessionToken}".AsMemory(), cancellationToken).ConfigureAwait(false);
             LogManager.Instance.LogMessage($"Sent '{action}' request for '{target}'", LogLevel.Info);
 
             return ParseResult(await ReadResponseAsync(reader, action, cancellationToken).ConfigureAwait(false));
@@ -143,7 +211,7 @@ internal static class HelperServiceClient
         if (string.IsNullOrWhiteSpace(response)) return HelperResult.Failed;
         if (response == HelperProtocol.ResultRejectedSentinel) return HelperResult.Rejected;
 
-        int warn = 0, error = 0;
+        int warn = 0, error = 0, protocolVersion = 0;
         bool anyKeyParsed = false;
         foreach (var part in response.Split('|'))
         {
@@ -151,7 +219,10 @@ internal static class HelperServiceClient
             if (kv.Length != 2 || !int.TryParse(kv[1], out int value)) continue;
             if (kv[0] == HelperProtocol.ResultWarnKey) { warn = value; anyKeyParsed = true; }
             else if (kv[0] == HelperProtocol.ResultErrorKey) { error = value; anyKeyParsed = true; }
+            // Deliberately does not set anyKeyParsed: a response carrying only a version is not a
+            // result, and treating it as one would report a completed action that never ran.
+            else if (kv[0] == HelperProtocol.ResultVersionKey) protocolVersion = value;
         }
-        return anyKeyParsed ? HelperResult.Ok(warn, error) : HelperResult.Failed;
+        return anyKeyParsed ? HelperResult.Ok(warn, error, protocolVersion) : HelperResult.Failed;
     }
 }

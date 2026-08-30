@@ -341,6 +341,9 @@ public partial class StatusForm : Form
     // wording left a reader unsure whether anything was actually going to happen. "Failed" is
     // load-bearing: a cycle that succeeds ends the streak, and nothing restarts.
     private const string RecoveryNextCycleText = "Will trigger on the next failed cycle";
+    // No countdown, unlike the two holds: this state ends on a successful port read rather than at a
+    // deadline. Says what stopped it and what starts it again, so the row is not simply a dead end.
+    private const string RecoverySuspendedText = "Suspended - restarts did not restore the port, resumes when one is found";
 
     // What the Auto-recovery row says, and whether it warrants the warning accent. Split from the
     // display above so every outcome routes through one place that also sets the tooltip - with the
@@ -354,38 +357,101 @@ public partial class StatusForm : Form
         // what a user opens this row to rule out.
         if (s.RecoveryTriggerCycles == 0) return ("-", false);
 
-        if (disabled || !s.RecoveryEnabled) return ("Disabled", false);
+        // "Disabled" has to account for both triggers. Auto-recovery is two independent triggers with
+        // two independent settings - failed cycles and a confirmed-closed port - and either one can
+        // restart the VPN with the other switched off. Testing only RecoveryEnabled here told a user
+        // who had turned that one off that recovery was disabled, while the port-closed trigger was
+        // still live and able to restart their VPN service.
+        if (disabled || (!s.RecoveryEnabled && !s.PortClosedRecoveryEnabled)) return ("Disabled", false);
 
-        // Both holds are reported, each naming its own cause. The offline one is checked first only
-        // because it is the more serious: nothing can be recovered until the connection returns,
-        // whereas the sustained floor clears on its own within a couple of cycles.
-        string hold = DescribeRecoveryHold(s);
-        if (hold.Length > 0) return (hold, true);
+        // The failed-cycle trigger's own states, reported only while that trigger is on - with it off
+        // its counters keep whatever value they last held, and none of them can lead to a recovery.
+        //
+        // Failed-cycle states take precedence, and the reason is a judgement call rather than an
+        // impossibility - do not reorder these on the assumption that the two cannot coexist. They
+        // can: PortSyncService resets _confirmedClosedCount only when the port verifies open, when
+        // the trigger fires, or when it is switched off, never when a cycle fails. So a closed-check
+        // count survives into a failure streak and sits hidden behind it. That is the right outcome,
+        // because a port cannot be verified at all while the VPN is down: the streak is the live
+        // signal and the closed count is stale history.
+        if (s.RecoveryEnabled && DescribeFailedCycleRecovery(s) is string failedCycle) return (failedCycle, true);
 
-        if (DescribeSustainedHold(s) is string sustained) return (sustained, true);
-
-        // Past the threshold with neither hold in force, recovery runs on the next failed cycle.
-        // Reported as due rather than as a count: "6 of 3 failed cycles" reads as a counter still
-        // climbing toward a target it passed three cycles ago, which looks like a defect even when
-        // nothing is wrong. The threshold itself needs no zero check - the guard at the top of this
-        // method has already returned for the only case that can produce one.
-        if (s.RecoveryFailedCycles >= s.RecoveryTriggerCycles) return (RecoveryNextCycleText, true);
-
-        if (s.RecoveryFailedCycles > 0)
-        {
-            return ($"{s.RecoveryFailedCycles} of {s.RecoveryTriggerCycles} failed " +
-                    $"{AppConstants.PluralizeNoun(s.RecoveryTriggerCycles, "cycle")}", true);
-        }
+        // Falls through to the port-closed trigger, which is why the block above returns only for its
+        // active states: with no failure streak running, the port-closed trigger may still have
+        // something to say, and before this it could never say it.
+        if (DescribePortClosedRecovery(s) is string portClosed) return (portClosed, true);
 
         return ("Idle", false);
     }
 
-    // "Holding - no internet connection, retry in ~15m" while the offline rate limiter is
-    // waiting, or an empty string otherwise, which is what tells PopulateAutoRecovery to fall through
-    // to the other hold and then the failure streak.
-    private static string DescribeRecoveryHold(StatusSnapshot s)
+    // What the failed-cycle trigger is doing, or null when it is idle. Split out so the row can fall
+    // through to the port-closed trigger, and so neither description drives this method's complexity.
+    private static string? DescribeFailedCycleRecovery(StatusSnapshot s)
     {
-        if (s.RecoveryHoldUntil is not DateTimeOffset until) return string.Empty;
+        // The offline hold outranks the cap, because the cap does not apply while the machine is
+        // offline: it is gated on the connectivity slot being taken online, so an offline machine is
+        // governed by the 5/10/15 backoff and will keep retrying. Reporting "Suspended" there would
+        // say recovery has stopped when it has not. `recoverySuspended` is published from the counter
+        // alone, which cannot know the connectivity answer at the time the status file is written.
+        if (DescribeRecoveryHold(s) is string hold) return hold;
+
+        // Above the sustained floor, because it outranks it: that floor defers the next recovery, this
+        // says none will be attempted at all until a port reads successfully. A countdown above it
+        // would promise a retry that is not coming.
+        if (s.RecoverySuspended) return RecoverySuspendedText;
+
+        if (DescribeSustainedHold(s) is string sustained) return sustained;
+
+        // Past the threshold with neither hold in force, recovery runs on the next failed cycle.
+        // Reported as due rather than as a count: "6 of 3 failed cycles" reads as a counter still
+        // climbing toward a target it passed three cycles ago, which looks like a defect even when
+        // nothing is wrong. The threshold itself needs no zero check - the guard at the top of
+        // DescribeAutoRecovery has already returned for the only case that can produce one.
+        if (s.RecoveryFailedCycles >= s.RecoveryTriggerCycles) return RecoveryNextCycleText;
+
+        if (s.RecoveryFailedCycles > 0)
+        {
+            return $"{s.RecoveryFailedCycles} of {s.RecoveryTriggerCycles} failed " +
+                   $"{TextFormat.PluralizeNoun(s.RecoveryTriggerCycles, "cycle")}";
+        }
+
+        return null;
+    }
+
+    // What the port-closed trigger is doing, or null when it is off or idle. Counted in confirmed
+    // closed checks rather than cycles, matching how the log reports the same progress.
+    private static string? DescribePortClosedRecovery(StatusSnapshot s)
+    {
+        // The threshold is clamped to at least 1 when read, so 0 means no cycle has published one -
+        // the same version-guard case the top of DescribeAutoRecovery handles for the other trigger.
+        if (!s.PortClosedRecoveryEnabled || s.PortClosedRecoveryTriggerChecks == 0) return null;
+
+        // The one-shot trigger has fired and cannot fire again until a verification reports the port
+        // open. Worth its own state precisely because nothing else on the panel shows it: the port
+        // stays closed, the Reachable row keeps saying so, and without this the row would read "Idle"
+        // while the trigger for that exact condition is spent.
+        // "the next scheduled check" rather than "the port to verify open": only the sync cycle's own
+        // verification re-arms the trigger. The panel's Test Port button runs a throwaway read-only
+        // check that touches no sync state, so wording this as something the user can go and do left
+        // them clicking Test Port, being told the port is open, and seeing this line unchanged.
+        if (!s.PortClosedRecoveryArmed) return "Triggered - waiting for the next scheduled check";
+
+        if (s.PortClosedRecoveryChecks > 0)
+        {
+            return $"{s.PortClosedRecoveryChecks} of {s.PortClosedRecoveryTriggerChecks} closed " +
+                   $"{TextFormat.PluralizeNoun(s.PortClosedRecoveryTriggerChecks, "check")}";
+        }
+
+        return null;
+    }
+
+    // "Holding - no internet connection, retry in ~15m" while the offline rate limiter is
+    // waiting, or null when it is not - the same "nothing to report" signal every other describer
+    // here uses, which is what tells the caller to fall through to the other hold and then the
+    // failure streak.
+    private static string? DescribeRecoveryHold(StatusSnapshot s)
+    {
+        if (s.RecoveryHoldUntil is not DateTimeOffset until) return null;
         return DescribeCountdown(until) is string when
             ? $"Holding - no internet connection, retry in {when}"
             : RecoveryNextCycleText;
@@ -526,10 +592,19 @@ public partial class StatusForm : Form
         return $"{FormatDuration(elapsed)} ago";
     }
 
-    // Best-effort estimate of when the next scheduled cycle runs: the last sync time plus the
-    // configured interval. Approximate by nature (a manual sync, a network-change re-sync, or an
-    // error backoff can move it), hence the "~". Shows "Paused" while sync is paused - the countdown
-    // would otherwise imply a cycle that will not fire - and "-" before the first cycle.
+    // When the next scheduled cycle is due, counted down to the instant the cycle published in
+    // nextSyncAt. Still approximate, hence the "~": a manual sync, a network-change re-check or an
+    // error backoff can move it after the status file was written.
+    //
+    // Deriving it from the last sync time plus the configured interval is the fallback, used only for
+    // a status file written before nextSyncAt existed - not the primary path. That derivation reads
+    // the duration against the wrong origin: timestamp is stamped when the cycle starts while the wait
+    // begins when it ends, so the countdown runs out early by the cycle's length, up to two minutes
+    // after one carrying an auto-recovery round trip. See the nextSyncAt notes in docs/SYNC-CYCLE.md.
+    //
+    // Four outcomes: the countdown, "Paused" while sync is paused (a countdown would imply a cycle
+    // that will not fire), "Startup grace period" during the grace window (which re-checks on a short
+    // poll, so a full-interval countdown would mislead), and "-" before the first cycle.
     private void PopulateNextSync(StatusSnapshot s)
     {
         if (SyncPaused)
@@ -545,18 +620,27 @@ public partial class StatusForm : Form
             SetNeutral(lblNextSyncValue, "Startup grace period");
             return;
         }
-        if (s.Timestamp is not DateTimeOffset ts)
+        // Prefer the instant the cycle published. Deriving it from Timestamp is the fallback for a
+        // status file written before nextSyncAt existed, and is deliberately not the primary path:
+        // Timestamp is stamped at the cycle's start while the wait begins at its end, so the derived
+        // value runs out early by however long the cycle took - up to two minutes when the cycle
+        // included an auto-recovery round trip.
+        DateTimeOffset dueAt;
+        if (s.NextSyncAt is DateTimeOffset published)
+        {
+            dueAt = published;
+        }
+        else if (s.Timestamp is DateTimeOffset ts)
+        {
+            dueAt = ts.AddSeconds(RegistrySettingsManager.GetClampedUpdateIntervalSeconds());
+        }
+        else
         {
             SetNeutral(lblNextSyncValue, "-");
             return;
         }
 
-        int interval = RegistrySettingsManager.GetInt(
-            RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyUpdateIntervalSeconds);
-        if (interval < AppConstants.MinUpdateIntervalSeconds)
-            interval = AppConstants.DefaultUpdateIntervalSeconds;
-
-        TimeSpan remaining = ts.AddSeconds(interval) - DateTimeOffset.Now;
+        TimeSpan remaining = dueAt - DateTimeOffset.Now;
         if (remaining <= TimeSpan.Zero)
             SetDefault(lblNextSyncValue, "Due now");
         else
@@ -564,9 +648,9 @@ public partial class StatusForm : Form
     }
 
     // Accent colors follow AboutForm: brighter variants in dark mode, deeper ones in light mode.
-    private static Color OkColor => AppConstants.StatusOk;
-    private static Color WarnColor => AppConstants.StatusWarning;
-    private static Color ErrorColor => AppConstants.StatusError;
+    private static Color OkColor => ThemeColors.StatusOk;
+    private static Color WarnColor => ThemeColors.StatusWarning;
+    private static Color ErrorColor => ThemeColors.StatusError;
     private static Color NeutralColor => SystemColors.GrayText;
 
     private static void SetColor(Label label, string text, Color color)

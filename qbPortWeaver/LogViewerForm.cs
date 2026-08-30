@@ -11,6 +11,16 @@ public partial class LogViewerForm : Form
     // (indexes match _themeColors; LevelMeta = unclassified, e.g. lines without a level column).
     private readonly record struct LogLine(string Text, byte Level);
 
+    // Palette indices into _themeColors, deliberately NOT the Shared.LogLevel enum values: that enum
+    // is Info=0, Warn=1, Error=2, Debug=3, so Error and Info are swapped relative to these. Nothing
+    // converts between the two - ClassifyLine derives the level from the line's text, never from a
+    // LogLevel - so the disagreement is harmless today, and both orderings are load-bearing in their
+    // own file (LogManager._levelLabels indexes by the enum and says so).
+    //
+    // Do not index _themeColors with a cast LogLevel: it would paint Info entries in the Error colour
+    // and vice versa, in the one tool used to diagnose problems, without anything failing loudly. And
+    // do not renumber these to match the enum without moving _themeColors and the four filter
+    // checkboxes in step - LevelMeta has no enum counterpart, so the two can never fully align.
     private const byte LevelError = 0;
     private const byte LevelWarn = 1;
     private const byte LevelInfo = 2;
@@ -128,7 +138,7 @@ public partial class LogViewerForm : Form
     protected override void OnLoad(EventArgs e)
     {
         base.OnLoad(e);
-        _themeColors = [AppConstants.LogError, AppConstants.LogWarning, AppConstants.LogInfo, AppConstants.LogDebug, SystemColors.WindowText];
+        _themeColors = [ThemeColors.LogError, ThemeColors.LogWarning, ThemeColors.LogInfo, ThemeColors.LogDebug, SystemColors.WindowText];
         Text = $"{AppIdentity.AppName} | Log Viewer";
         KeyPreview = true; // form sees keys before the focused control - see OnKeyDown (Escape to close, Ctrl+F)
         ApplyTheme();
@@ -154,7 +164,7 @@ public partial class LogViewerForm : Form
         // Lay out the right-aligned search group (search box, match counter, prev/next, clear button)
         // - shared with the help viewer. rightMargin 4: no form padding here, so the edge gap is baked
         // into the layout (the help viewer passes 0 and lets its form padding supply the gap).
-        AppConstants.LayoutSearchToolbar(pnlToolbar, txtSearch, lblMatchCount, btnPrev, btnNext, btnClearSearch, rightMargin: 4);
+        UiHelpers.LayoutSearchToolbar(pnlToolbar, txtSearch, lblMatchCount, btnPrev, btnNext, btnClearSearch, rightMargin: 4);
 
         // Owner-draw the chevrons on all four nav buttons; size/center the issue-nav buttons and the
         // level-filter checkboxes (LayoutSearchToolbar already sized and centered btnPrev/btnNext).
@@ -163,7 +173,7 @@ public partial class LogViewerForm : Form
             btn.Paint += NavButton_Paint;
         // Same treatment for the clear button's X - drawn, not typed, so its weight and centering
         // match the chevrons beside it and no font glyph is relied on.
-        btnClearSearch.Paint += (_, e) => AppConstants.DrawClearGlyph(btnClearSearch, e.Graphics);
+        btnClearSearch.Paint += (_, e) => UiHelpers.DrawClearGlyph(btnClearSearch, e.Graphics);
         foreach (var btn in new[] { btnIssuePrev, btnIssueNext })
         {
             btn.Height = navH;
@@ -328,7 +338,7 @@ public partial class LogViewerForm : Form
     private void NavButton_Paint(object? sender, PaintEventArgs e)
     {
         if (sender is not Button btn) return;
-        AppConstants.DrawNavChevron(btn, e.Graphics, up: btn == btnPrev || btn == btnIssuePrev);
+        UiHelpers.DrawNavChevron(btn, e.Graphics, up: btn == btnPrev || btn == btnIssuePrev);
     }
 
     // Called when any filter CheckBox changes - updates its style and rebuilds the visible rows
@@ -880,30 +890,88 @@ public partial class LogViewerForm : Form
     // updating the widest-line measurement. Single filtering pass shared by the full rebuild
     // (fromLine 0 after a clear) and the live-tail append (fromLine = first new line), so both
     // paths always apply the identical visibility and width rules.
-    // Meta rows (the blank cycle separators LogManager writes) are shown in filtered views too,
-    // but deduplicated: never as the first visible row and never two in a row, so a view whose
-    // filter drops entire cycles (e.g. ERROR only) shows one separator between groups instead of
-    // a wall of blank lines.
+    // Meta rows are shown in filtered views too, but the two kinds are handled differently: see
+    // ShouldAppend.
     private void AppendVisibleRows(int fromLine)
     {
         bool[] filters = [chkError.Checked, chkWarn.Checked, chkInfo.Checked, chkDebug.Checked];
         string? subsystemFilter = GetSubsystemFilter();
         (DateTime? From, DateTime? To) window = GetTimeWindow();
+        bool lastEntryVisible = WasLastEntryVisible(fromLine, filters, subsystemFilter, window);
 
         for (int i = fromLine; i < _allLines.Count; i++)
         {
             LogLine line = _allLines[i];
-            if (line.Level == LevelMeta)
-            {
-                if (_visibleRows.Count == 0 || _allLines[_visibleRows[^1]].Level == LevelMeta) continue;
-            }
-            else if (!IsLineVisible(line, filters, subsystemFilter, window))
-            {
-                continue;
-            }
+            if (!ShouldAppend(line, filters, subsystemFilter, window, ref lastEntryVisible)) continue;
             _visibleRows.Add(i);
             if (line.Text.Length > _maxLineLength) _maxLineLength = line.Text.Length;
         }
+    }
+
+    // Whether one line belongs in the filtered view. Split out of the append loop so the three cases
+    // read as three cases, and so neither method carries the whole decision's complexity.
+    //
+    // LevelMeta covers two unrelated things, and conflating them was the bug this separates:
+    // ClassifyLine assigns it to any line with no "| LEVEL |" column, which is both the blank cycle
+    // separators LogManager writes and a continuation line wrapped from a multi-line message.
+    //   - A classified line decides for itself, and its verdict becomes the parent verdict that any
+    //     continuation lines following it inherit.
+    //   - A blank separator is shown between groups, but never as the first visible row and never
+    //     twice running, so a view whose filter drops entire cycles (e.g. ERROR only) shows one
+    //     separator between groups rather than a wall of blank lines.
+    //   - A continuation follows its parent. Without this it bypassed every filter, so hiding an
+    //     entry left its continuation lines behind as orphans under an unrelated entry.
+    private bool ShouldAppend(LogLine line, bool[] filters, string? subsystemToken,
+        (DateTime? From, DateTime? To) window, ref bool lastEntryVisible)
+    {
+        if (line.Level != LevelMeta)
+        {
+            lastEntryVisible = IsLineVisible(line, filters, subsystemToken, window);
+            return lastEntryVisible;
+        }
+
+        // The dedup test asks whether the previous visible row is a separator, not whether it is
+        // LevelMeta. Those were the same thing until continuations were separated out; testing the
+        // level would now drop the second of two consecutive continuation lines, and swallow a
+        // separator that happens to follow one.
+        if (IsSeparatorLine(line))
+            return _visibleRows.Count > 0 && !IsSeparatorLine(_allLines[_visibleRows[^1]]);
+
+        return lastEntryVisible;
+    }
+
+    // A meta line with text is a continuation of the entry above it; a blank one is a cycle separator.
+    //
+    // Known limitation, deliberately not guessed at: a blank line *inside* a multi-line entry is
+    // indistinguishable from a cycle separator, because both are whitespace-only lines with no level
+    // column. Such a line therefore takes the separator branch in ShouldAppend and does not inherit
+    // its parent's visibility, so a filtered-out entry containing one can still leave that blank row
+    // behind. Nothing in the app writes a multi-line entry today (every call passes ex.Message, not
+    // ex.ToString()), so this is unreachable in practice, and telling the two apart would mean
+    // inferring structure the log format does not record - a guess that could just as easily swallow
+    // a real cycle separator. If entries ever do span lines, the fix belongs in the writer: have
+    // LogManager mark continuations explicitly rather than have the reader infer them.
+    private static bool IsSeparatorLine(LogLine line) =>
+        line.Level == LevelMeta && string.IsNullOrWhiteSpace(line.Text);
+
+    // Visibility of the entry preceding fromLine, which any continuation lines at the start of an
+    // incremental append belong to. Recomputed by walking back rather than carried in a field: the
+    // append runs from three call sites and two of them clear _visibleRows, so a field would need
+    // resetting in each and would silently go stale if a fourth were ever added. Continuation lines
+    // are rare, so this normally stops on the first line it looks at.
+    //
+    // True when no earlier classified line exists - a buffer that begins mid-entry (the log rotated
+    // partway through one) should show those lines rather than hide content that has no parent to
+    // inherit from.
+    private bool WasLastEntryVisible(int fromLine, bool[] filters, string? subsystemToken,
+        (DateTime? From, DateTime? To) window)
+    {
+        for (int i = fromLine - 1; i >= 0; i--)
+        {
+            if (_allLines[i].Level == LevelMeta) continue;
+            return IsLineVisible(_allLines[i], filters, subsystemToken, window);
+        }
+        return true;
     }
 
     // First visible row whose source line is at or after the given line index (binary search -
@@ -940,16 +1008,14 @@ public partial class LogViewerForm : Form
             SetMetaMessage("(No log entries yet)", MetaColor);
     }
 
-    // Level, subsystem and time-range visibility for classified lines. Meta rows never reach this
-    // method - AppendVisibleRows diverts them to its own dedup rule so cycle separators stay visible
-    // in filtered views without ever stacking up.
+    // Level, subsystem and time-range visibility for one classified line. Meta rows never reach this
+    // method: ShouldAppend decides those, a blank separator by the dedup rule and a continuation line
+    // by inheriting its parent entry's verdict from here.
     //
-    // LevelMeta covers more than the blank separators: ClassifyLine assigns it to any line with no
-    // "| LEVEL |" column, which includes a continuation line wrapped from a multi-line message. Those
-    // therefore bypass all three filters below, the time window included. That is currently
-    // unreachable in practice - every logging call passes ex.Message rather than ex.ToString(), so
-    // nothing writes a multi-line entry - and it is left alone deliberately rather than threading
-    // parent-visibility state through the append loop that builds the virtual list.
+    // Nothing writes a multi-line entry today - every logging call passes ex.Message rather than
+    // ex.ToString() - so the continuation path is not currently exercised. It is handled anyway
+    // because that is a convention nobody enforces: the first ex.ToString() to land would otherwise
+    // split an entry across a filter boundary, silently and in the one tool used to diagnose it.
     private static bool IsLineVisible(LogLine line, bool[] filters, string? subsystemToken, (DateTime? From, DateTime? To) window)
     {
         if (!filters[line.Level]) return false;                     // level filtered out
@@ -1031,8 +1097,8 @@ public partial class LogViewerForm : Form
             (int Row, int Offset) current = _searchIndex >= 0 && _searchIndex < _searchMatches.Count
                 ? _searchMatches[_searchIndex]
                 : (-1, -1);
-            using var currentHighlight = new SolidBrush(AppConstants.SearchHighlight);
-            using var otherHighlight = new SolidBrush(Color.FromArgb(110, AppConstants.SearchHighlight));
+            using var currentHighlight = new SolidBrush(ThemeColors.SearchHighlight);
+            using var otherHighlight = new SolidBrush(Color.FromArgb(110, ThemeColors.SearchHighlight));
             foreach (int offset in MatchOffsetsForRow(e.ItemIndex))
             {
                 bool isCurrent = current.Row == e.ItemIndex && current.Offset == offset;
@@ -1098,7 +1164,7 @@ public partial class LogViewerForm : Form
         var sb = new StringBuilder();
         foreach (int row in lvLog.SelectedIndices)
             sb.AppendLine(_allLines[_visibleRows[row]].Text);
-        AppConstants.SetClipboardTextSafely(sb.ToString());
+        UiHelpers.SetClipboardTextSafely(sb.ToString());
     }
 
     private void CopyAllVisibleRows()
@@ -1106,7 +1172,7 @@ public partial class LogViewerForm : Form
         var sb = new StringBuilder();
         foreach (int line in _visibleRows)
             sb.AppendLine(_allLines[line].Text);
-        AppConstants.SetClipboardTextSafely(sb.ToString());
+        UiHelpers.SetClipboardTextSafely(sb.ToString());
     }
 
     // Selects every row via one native LVM_SETITEMSTATE broadcast (item index -1 = all items).
@@ -1165,7 +1231,11 @@ public partial class LogViewerForm : Form
             {
                 lock (_readLock)
                 {
-                    using var fs = new FileStream(loadPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+                    // FileShare.Delete for the same reason AppFiles.OpenShared grants it: LogManager rotates by
+                    // renaming this file, and a read in flight without DELETE access makes that rename
+                    // fail in the writer. Rotation retries on its next check so a lost race only defers
+                    // it, but there is no reason to lose the race.
+                    using var fs = new FileStream(loadPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
                     using var reader = new StreamReader(fs, Encoding.UTF8);
                     return (ParseLogLines(reader.ReadToEnd()), fs.Position);
                 }
@@ -1262,7 +1332,8 @@ public partial class LogViewerForm : Form
                 if (!File.Exists(_activeLogFilePath))
                     return;
 
-                using var fs = new FileStream(_activeLogFilePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+                // FileShare.Delete: see the load path above - this tail read races LogManager's rotation rename.
+                using var fs = new FileStream(_activeLogFilePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
 
                 // File shorter than expected - it was rotated; read from the start
                 if (fs.Length < _lastReadPosition)
@@ -1465,11 +1536,21 @@ public partial class LogViewerForm : Form
             ScrollToBottom();
     }
 
-    // Splits raw log content on newlines, strips trailing \r so CRLF and LF files produce
-    // identical lines, and classifies each line's level once (the level drives filtering and
-    // row colouring for the rest of the line's lifetime). Blank lines are kept as meta rows:
-    // LogManager writes one before each "Sync cycle started" as a deliberate visual separator
-    // between cycles (AppendVisibleRows dedups them in filtered views so they never stack up).
+    // Splits raw log content on newlines and classifies each line's level once (the level drives
+    // filtering and row colouring for the rest of the line's lifetime). LogManager writes a blank
+    // line before each "Sync cycle started" as a deliberate visual separator between cycles, and
+    // those are kept as meta rows (AppendVisibleRows dedups them in filtered views so they never
+    // stack up).
+    //
+    // RemoveEmptyEntries and "blank lines are kept" only coexist because the separator is CRLF:
+    // LogBlankLine writes Environment.NewLine, so on disk it is "\r\n\r\n", and splitting on '\n'
+    // leaves a segment holding exactly "\r" - not empty, so it survives the split - which the
+    // TrimEnd below flattens to "". A bare-LF separator would be dropped silently and every cycle
+    // boundary in the viewer would disappear. Measured on a 12.8 MB live log: 3,536 separators, all
+    // CRLF, all rendered. So do NOT normalise "\r\n" to "\n" up front (as HelpForm.RenderMarkdown
+    // does) and do NOT drop RemoveEmptyEntries as redundant - either one alone deletes every
+    // separator, with nothing failing to say so. Windows-only app, so the dependency is safe; it is
+    // the "simplification" that is not.
     private static LogLine[] ParseLogLines(string raw)
     {
         string[] parts = raw.Split('\n', StringSplitOptions.RemoveEmptyEntries);

@@ -27,7 +27,7 @@ public enum ProcessKillOutcome
 public sealed record ProcessKillResult(ProcessKillOutcome Outcome, Exception? TaskkillError);
 
 /// <summary>
-/// Three-stage process-tree kill escalation shared by <c>AppConstants.KillProcess</c> (main app)
+/// Three-stage process-tree kill escalation shared by <c>ProcessControl.KillProcess</c> (main app)
 /// and <c>AutoRecovery.KillServiceProcess</c> (helper service). Centralising the escalation
 /// prevents the two implementations from drifting; each consumer logs the outcome according to
 /// its own context (PID-aware for the helper, simpler for the main app).

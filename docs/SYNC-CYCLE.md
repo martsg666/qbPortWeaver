@@ -369,9 +369,11 @@ and `ForceInterfaceRebindAsync` makes one by pinning an address:
 
 - **Stale pin:** write the live address. One write. The client stays pinned because that was the
   user's own setting - only its value was wrong.
-- **Bound to all addresses:** write a live address, then write the field back to empty. Both writes
-  are real changes, so both force a rebuild, and the stored configuration ends byte-identical to how
-  it started. No maintenance burden, and nothing left behind if this app is removed.
+- **Bound to a wildcard:** write a live address, then write the field back to the wildcard it held -
+  `""`, `0.0.0.0` or `::`, whichever it actually was, **read from the client at the moment of the
+  rebind rather than remembered from when the change was seen**. Both writes are real changes, so both
+  force a rebuild, and the stored configuration ends byte-identical to how it started. No maintenance
+  burden, and nothing left behind if this app is removed.
 
 The intermediate pin is *stricter* than "all addresses" - one address on the same adapter - so unlike
 clearing the interface token it opens no window for traffic outside the tunnel. If the process dies
@@ -391,6 +393,13 @@ rebind is tried first, the trigger deliberately stays **armed**, and the confirm
 so the next escalation needs fresh evidence - if the rebind did not help, that round restarts the VPN
 exactly as before. One attempt per address change, whether or not the write succeeded, so a rebind
 that does not work escalates rather than repeating.
+
+The arm is spent by two further things, and both matter as much as the trigger. **A pin that is no
+longer a wildcard** ends it: the user can change the bind address between the arm being set and the
+rebind firing, and a non-wildcard pin means the ambiguous "bound to all addresses" case no longer
+applies, so the premise is gone. Releasing to a remembered value there would have widened a pin the
+user had just set deliberately - the exact harm this feature exists to prevent - which is why the
+release value is read at the point of use and no longer stored at all.
 
 The arm is also spent by a port that verifies **open** (`HandlePortOpenResult`), and that half matters
 as much as the trigger: a reachable port proves the client is listening, so whatever the address did

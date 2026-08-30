@@ -156,13 +156,25 @@ public sealed class QBittorrentClient : ManagedClientBase
 
     /// <inheritdoc/>
     /// <remarks>Returns one of <c>"connected"</c>, <c>"firewalled"</c>, or <c>"disconnected"</c>.
-    /// Used by the restart-on-disconnect check, so transport failures log at Error (an unreachable
-    /// client is actionable here).</remarks>
+    /// Used by the restart-on-disconnect check, where an unreachable client is itself actionable, so
+    /// transport failures log at Error. A caller that only decorates a message with the status must
+    /// use <see cref="TryGetConnectionStatusAsync"/> instead: raising a red tray badge because an
+    /// aside could not be filled in would report a fault the caller has already decided is not one.
+    /// </remarks>
     public override Task<string?> GetConnectionStatusAsync(CancellationToken cancellationToken = default) =>
         GetConnectionStatusCoreAsync(LogLevel.Error, nameof(GetConnectionStatusAsync), cancellationToken);
 
-    // Core implementation shared by GetConnectionStatusAsync (restart-on-disconnect, failureLevel
-    // = Error) and TestListeningPortAsync (best-effort port verification, failureLevel = Debug).
+    /// <summary>The same read as <see cref="GetConnectionStatusAsync"/>, for callers that only enrich a
+    /// log line with the status rather than acting on it.</summary>
+    /// <remarks>Failing to read it is not a fault on those paths, so a transport failure logs at Debug
+    /// and returns <see langword="null"/> for the caller to render as it likes.</remarks>
+    /// <param name="cancellationToken">Cancels the request.</param>
+    internal Task<string?> TryGetConnectionStatusAsync(CancellationToken cancellationToken = default) =>
+        GetConnectionStatusCoreAsync(LogLevel.Debug, nameof(TryGetConnectionStatusAsync), cancellationToken);
+
+    // Core implementation shared by three callers, which differ only in whether a failed read is
+    // itself worth reporting: GetConnectionStatusAsync (restart-on-disconnect, failureLevel = Error),
+    // TestListeningPortAsync and TryGetConnectionStatusAsync (best-effort, failureLevel = Debug).
     // The failure level keeps the verification path's logging symmetric with Transmission/Deluge,
     // which log their best-effort port-test failures at Debug. callerName labels the Debug-level
     // lines with the public method that initiated the call, so a verify failure reads

@@ -302,8 +302,11 @@ public sealed class NatPmpManager : IVpnManager
     // were the only unguarded users of an API the two instance methods already treat as fallible.
     //
     // ToList inside the try is load-bearing: a deferred Where would run GetAllNetworkInterfaces at the
-    // caller's foreach or FirstOrDefault, outside this catch, and the guard would never fire.
-    private static IEnumerable<NetworkInterface> GetActiveNetworkInterfaces()
+    // caller's foreach or FirstOrDefault, outside this catch, and the guard would never fire. The
+    // return type is List rather than IEnumerable so the compiler enforces that rather than this
+    // comment: returning the lazy Where directly no longer builds. It also lets the foreach in
+    // DiscoverAdaptersAsync use List's struct enumerator instead of dispatching through the interface.
+    private static List<NetworkInterface> GetActiveNetworkInterfaces()
     {
         try
         {

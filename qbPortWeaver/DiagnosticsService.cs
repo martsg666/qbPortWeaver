@@ -153,9 +153,15 @@ public static class DiagnosticsService
         // Both causes are named because the reader cannot be sent to fix the wrong one, and the probe
         // genuinely cannot tell them apart. Same opening words as the hold line TryTakeRecoverySlotAsync
         // writes to the log, so a support reader matching the two sees one condition, not two.
+        // "when enabled" and "repeat attempts" are both load-bearing. The limiter lives in
+        // TriggerRecoveryIfDueAsync, which returns early unless vpnAutoRecoveryEnabled is set, and it
+        // gates only that trigger - the port-closed trigger reaches DispatchRecoveryAsync directly,
+        // having already proven connectivity by fetching a port. Even where it does apply, the first
+        // attempt of a streak always runs; only later ones wait. Stating it flatly told a user with
+        // auto-recovery switched off that attempts were being delayed, which never happens for them.
         results.Add(new(Checks.InternetConnectivity, DiagnosticStatus.Warn,
             "Could not confirm an internet connection",
-            "Auto-recovery attempts are spaced out (5, 10, then 15 minutes) while this cannot be confirmed. " +
+            "Auto-recovery, when enabled, spaces out repeat attempts (5, 10, then 15 minutes) while this cannot be confirmed. " +
             "Expected if your network filters ping, or if your VPN killswitch is blocking traffic while the tunnel is down."));
     }
 

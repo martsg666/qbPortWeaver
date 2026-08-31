@@ -867,8 +867,14 @@ public partial class SettingsForm : Form
         // settings name a different address, which DiagnosticsService reports as a Warn. Compared
         // against the values currently in the form rather than the saved ones, so the refresh button
         // beside the token clears this the moment it fills them in, without waiting for a save.
+        // The token is passed UNTRIMMED on purpose. SaveSettings stores it untrimmed ("like the other
+        // clients' secrets"), NicotineClient sends exactly those bytes, and DiagnosticsService compares
+        // the stored value with StringComparison.Ordinal. Trimming here would forgive a pasted trailing
+        // space that the client will still send and the report will still flag - green in Settings,
+        // Warn in Diagnostics, which is the divergence this shared helper exists to prevent. The URL is
+        // trimmed because SaveSettings trims it too; each side matches how the value is actually stored.
         bool settingsDiffer = NicotinePluginInstaller.ConnectionSettingsDiffer(
-            status, txtNicotineURL.Text.Trim(), txtNicotineToken.Text.Trim());
+            status, txtNicotineURL.Text.Trim(), txtNicotineToken.Text);
 
         // Most polls find nothing has moved, so leave the controls alone unless they would change.
         // settingsDiffer is part of the key: it turns over while State and Summary both stand still
@@ -877,7 +883,13 @@ public partial class SettingsForm : Form
         if (_shownNicotinePluginStatus == (status.State, status.Summary, settingsDiffer)) return;
         _shownNicotinePluginStatus = (status.State, status.Summary, settingsDiffer);
 
-        lblNicotinePluginStatus.Text = status.Summary;
+        // Colour alone cannot carry this: it is lost to a colour-blind reader and to the monochrome
+        // screenshot that arrives with a support request, and this is the screen the diagnostics fix
+        // hint sends people to. Replaces the summary rather than appending to it - Summary's own remark
+        // caps the label at about 40 characters (AutoSize, no MaximumSize), and "Ready on <url>" plus
+        // an explanation is well past that. "these settings" rather than "saved settings" because the
+        // comparison runs against the values in the form, which may not have been saved yet.
+        lblNicotinePluginStatus.Text = settingsDiffer ? "Ready, but these settings differ" : status.Summary;
 
         // Same accents the Status panel uses for its values, and the same severity DiagnosticsService
         // assigns to each of these states - so the Settings label, the diagnostics report and the

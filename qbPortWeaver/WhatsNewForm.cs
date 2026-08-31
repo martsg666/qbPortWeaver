@@ -10,11 +10,13 @@ public partial class WhatsNewForm : Form
 
     private const string ReleaseFeaturesText =
         "New in 2.6.8\n\n" +
-        "PLACEHOLDER - replace before release\n" +
-        "Summarise this version's user-facing changes here, in the same voice as the sections below: " +
-        "a short title line, then a plain-language paragraph saying what it does for the user. The " +
-        "Debug.Assert in the constructor only checks that a 'New in <version>' section exists, not " +
-        "that it has been written, so this text will ship if it is not replaced.\n\n" +
+        "Diagnostics now checks your internet connection\n" +
+        "Run Diagnostics reports whether this machine gets a reply when it pings the internet. That is " +
+        "the same check qbPortWeaver uses to decide whether to retry a VPN restart straight away or " +
+        "space its attempts further apart, so it is the one place that tells you your recovery " +
+        "attempts are being delayed. A warning here does not always mean something is broken: a " +
+        "network that blocks ping, or a VPN killswitch while the tunnel is down, both cause it with " +
+        "everything else working normally.\n\n" +
         "Previously released\n\n" +
         "New in 2.6.7\n\n" +
         "Port forwarding that is switched off no longer restarts your VPN\n" +

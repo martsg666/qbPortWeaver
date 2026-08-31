@@ -2120,9 +2120,14 @@ public sealed class PortSyncService
                 if (!_recoveryHoldLogged)
                 {
                     _recoveryHoldLogged = true;
+                    // Points at Diagnostics because this line cannot tell the user which of the two
+                    // causes they have, and the Internet connectivity row there is where that is
+                    // explained. A network that filters ping reaches this message with perfect
+                    // connectivity, and nothing else would ever tell them so.
                     LogManager.Instance.LogMessage(
                         $"Could not confirm an internet connection - holding recovery for '{displayName}' for {required.TotalMinutes:F0} minutes " +
-                        "(restarting the VPN cannot restore a connection that is down upstream)",
+                        "(restarting the VPN cannot restore a connection that is down upstream). " +
+                        "Run Diagnostics to check whether this network answers ping at all",
                         LogLevel.Warn);
                 }
                 return (false, Online: false);

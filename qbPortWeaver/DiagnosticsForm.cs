@@ -215,7 +215,7 @@ internal sealed class DiagnosticsForm : Form
     }
 
     // Sizes this fixed dialog to fit the rendered report plus the button row, so a short report
-    // (e.g. Transmission's 9 checks) leaves no dead space and qBittorrent's fuller 10-check report
+    // (e.g. Transmission's 11 checks) leaves no dead space and Nicotine+'s fuller 13-check report
     // still fits without scrolling. Capped so a report with many fix hints scrolls rather than
     // growing off-screen. Runs once at construction; a Re-run keeps the size and scrolls if taller.
     private void SizeToContent()

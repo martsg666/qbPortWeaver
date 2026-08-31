@@ -18,7 +18,7 @@ function FailedCycleState($s) {
     # not exist, so absent is correctly falsy here.
     # Both holds are absolute instants, not remaining durations. The offline hold is checked first
     # because the cap does not apply while the machine is offline - it keeps retrying on a backoff.
-    if ($null -ne $s.recoveryHoldUntil) { return "Holding - no internet connection, retry at $($s.recoveryHoldUntil)" }
+    if ($null -ne $s.recoveryHoldUntil) { return "Holding - cannot confirm internet, retry at $($s.recoveryHoldUntil)" }
     if ($s.recoverySuspended) { return 'Suspended - restarts did not restore the port, resumes when one is found' }
     if ($null -ne $s.recoverySustainedUntil) { return "Holding - failures too recent, retry at $($s.recoverySustainedUntil)" }
     if ($s.recoveryFailedCycles -ge $s.recoveryTriggerCycles) { return 'Will trigger on the next failed cycle' }

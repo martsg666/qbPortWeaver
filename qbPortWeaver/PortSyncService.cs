@@ -207,7 +207,7 @@ public sealed class PortSyncService
     // sync service, and volatile covers the manual test setting it from the UI thread.
     private static volatile bool _recoveryDispatched;
 
-    // How long recovery waits between attempts while the machine has no internet connection. The first
+    // How long recovery waits between attempts while connectivity cannot be confirmed. The first
     // attempt of a streak is not delayed at all; these are the waits before the second, third, and
     // every later attempt. Capped at the last entry, so recovery keeps retrying at a steady 15 minutes
     // for as long as the condition lasts rather than stopping - see TryTakeRecoverySlotAsync for why
@@ -337,7 +337,7 @@ public sealed class PortSyncService
         public const string RecoveryTriggerCycles = "recoveryTriggerCycles";
         // When the sustained-failure floor clears, while it is holding recovery back; null otherwise.
         // A separate key from RecoveryHoldUntil because the two holds have different causes and the
-        // panel names the cause - collapsing them would make the row say "no internet connection"
+        // panel names the cause - collapsing them would make the row say "cannot confirm internet"
         // during an ordinary blip.
         public const string RecoverySustainedUntil = "recoverySustainedUntil";
         // True while the consecutive-recovery cap is suspending the failed-cycle trigger. Published for
@@ -2056,7 +2056,7 @@ public sealed class PortSyncService
 
     // When the offline rate limiter will allow the next recovery attempt, or null when
     // nothing is being held back. Read once per cycle for the status file so the Status panel can say
-    // "Holding - no internet connection, retry in ~15m" - without it the user sees a disconnected VPN and no sign that
+    // "Holding - cannot confirm internet, retry in ~15m" - without it the user sees a disconnected VPN and no sign that
     // the app is deliberately waiting rather than idle, which is the whole point of the limiter.
     // Computed rather than stored: the deadline is the last attempt plus its backoff step, and both
     // are already tracked. Returns null once the wait has elapsed - at that point the next due cycle

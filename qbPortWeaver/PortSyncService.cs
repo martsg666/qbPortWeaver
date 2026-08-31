@@ -817,12 +817,20 @@ public sealed class PortSyncService
             (ci.RestartKey is not null ? $"{ci.RestartKey}={cfg.Client.Restart}, " : string.Empty) +
             $"{ci.ForceStartKey}={cfg.Client.ForceStart}, " +
             $"{ci.DefaultPortKey}={cfg.Client.DefaultPort}";
-        // qBittorrent exposes two extra RPC-backed flags; append them only for that client.
+        // Flags that only some clients have, so they fall outside the shared ClientRegistry key set
+        // the line above is built from. qBittorrent has three; Nicotine+ shares only the
+        // interface-mismatch warning, which GetClientBehaviorConfig honours for it the same way.
+        // Appended per client so the dump always names the settings actually in effect for the
+        // active one - omitting Nicotine+'s left a support log unable to say whether the one
+        // warning that client has a setting for was even enabled.
         if (activeSection == RegistrySettingsManager.SectionQBittorrent)
             clientLine +=
                 $", {RegistrySettingsManager.KeyQBittorrentWarnOnInterfaceMismatch}={cfg.QBittorrentWarnOnInterfaceMismatch}" +
                 $", {RegistrySettingsManager.KeyQBittorrentRestartOnDisconnect}={cfg.QBittorrentRestartOnDisconnect}" +
                 $", {RegistrySettingsManager.KeyQBittorrentFixInterfaceBinding}={cfg.QBittorrentFixInterfaceBinding}";
+        else if (activeSection == RegistrySettingsManager.SectionNicotine)
+            clientLine +=
+                $", {RegistrySettingsManager.KeyNicotineWarnOnInterfaceMismatch}={cfg.NicotineWarnOnInterfaceMismatch}";
         LogManager.Instance.LogDebug(clientLine);
 
         LogManager.Instance.LogDebug(

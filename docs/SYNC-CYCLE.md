@@ -736,6 +736,8 @@ RunAsync
          │   ├─ RepairPinnedAddressAsync (stale pin; if fixInterfaceBinding, once per streak)
          │   │   └─ QBittorrentClient.ForceInterfaceRebindAsync
          │   └─ QBittorrentClient.TryGetConnectionStatusAsync (only on an address change; Debug on failure)
+         ├─ CheckClientSettingsConflictsAsync (every ConflictCheckEveryNCycles = 5; transition-logged)
+         │   └─ IManagedClient.GetConflictingSettingsAsync
          ├─ UpdatePortAndNotifyAsync (when ports differ)
          │   ├─ ApplyPortUpdateAsync
          │   │   ├─ IManagedClient.SetListeningPortAsync

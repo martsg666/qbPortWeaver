@@ -299,18 +299,19 @@ public static class DiagnosticsService
 
     // Ready, but the saved connection settings may still point somewhere else - which works (the
     // client re-reads the file) yet costs a failed request every cycle, so it is worth flagging.
+    // The mismatch rule itself is NicotinePluginInstaller.ConnectionSettingsDiffer, shared with the
+    // Settings label so the report and that label cannot disagree about this condition. Here it is
+    // applied to the saved registry values, which is what the sync loop will actually use.
     private static DiagnosticResult BuildReadyPluginResult(NicotinePluginStatus status)
     {
         string savedUrl = RegistrySettingsManager.GetValue(
             RegistrySettingsManager.SectionNicotine, RegistrySettingsManager.KeyNicotineUrl);
         string savedToken = RegistrySettingsManager.GetNicotineToken();
 
-        if (status.Handshake is { } handshake &&
-            (!string.Equals(savedUrl.TrimEnd('/'), handshake.Url.TrimEnd('/'), StringComparison.OrdinalIgnoreCase) ||
-             !string.Equals(savedToken, handshake.Token, StringComparison.Ordinal)))
+        if (NicotinePluginInstaller.ConnectionSettingsDiffer(status, savedUrl, savedToken))
         {
             return new(Checks.ClientPlugin, DiagnosticStatus.Warn,
-                $"The bridge plugin is on {handshake.Url}, which differs from the saved settings",
+                $"The bridge plugin is on {status.Handshake?.Url}, which differs from the saved settings",
                 "Open Settings, click the refresh button next to the Plugin token, then save.");
         }
 

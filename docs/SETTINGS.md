@@ -2,6 +2,17 @@
 
 > Companion to the [README](../README.md). Every option in the Settings dialog, with its
 > meaning and default.
+>
+> The **Setting** column reproduces the on-screen label exactly, so a row can be found by what the
+> dialog shows. Three deliberate departures, and no others:
+>
+> - The trailing colon is dropped, as is any trailing parenthetical the Description column already
+>   explains (`Dry run`, `Delete empty source folders after importing`).
+> - Settings every client has (`Restart after port change`, `Force-start if not running`,
+>   `Default port`) are written generically: the dialog prefixes those with the client's own name,
+>   and keeping them generic lets the four client tables below line up row for row.
+> - The two auto-recovery spinners both read `Trigger after` on screen, distinguished only by the
+>   unit printed after the box, so that unit is appended here in parentheses to keep them apart.
 
 Settings are stored in the **Windows Registry** under `HKCU\Software\qbPortWeaver\settings` and are editable through the built-in Settings dialog (right-click the tray icon → **Settings**).
 
@@ -14,8 +25,8 @@ On first run, all settings are initialized with sensible defaults.
 | Setting | Description | Default |
 |---|---|---|
 | Client | Client to control: `qBittorrent`, `Transmission`, `Deluge`, or `Nicotine+` | `qBittorrent` |
-| VPN Provider | `Disabled`, `ProtonVPN`, `PIA`, or `NAT-PMP` | `Disabled` |
-| NAT-PMP Adapter | Network adapter to use for NAT-PMP port mapping (only enabled when NAT-PMP is selected) | - |
+| VPN provider | `Disabled`, `ProtonVPN`, `PIA`, or `NAT-PMP` | `Disabled` |
+| NAT-PMP adapter | Network adapter to use for NAT-PMP port mapping (only enabled when NAT-PMP is selected) | - |
 | Update interval | How often to check and sync the port (seconds) | `180` |
 | Sync on network change | Also run a sync immediately when a network or VPN connection change is detected, instead of waiting for the next interval (rapid changes are coalesced; pausing still suppresses it) | `True` |
 | Wait for VPN on startup | For a short grace period after the app starts, wait quietly while the VPN is still connecting instead of reporting it as disconnected, applying the default-port fallback, or triggering auto-recovery. Syncs as soon as the VPN comes up | `True` |
@@ -33,7 +44,7 @@ On first run, all settings are initialized with sensible defaults.
 | Process name | Process name used to detect if qBittorrent is running | `qbittorrent` |
 | Restart after port change | Restart qBittorrent after updating the port (recommended) | `True` |
 | Force-start if not running | Automatically launch qBittorrent if it is not running | `True` |
-| Default port (0 = disabled) | Fallback port to apply when VPN is not connected | `0` |
+| Default port | Fallback port to apply when the VPN is not connected. `0` disables the fallback, so a disconnected VPN leaves the client's port alone | `0` |
 | Warn when network interface doesn't match the VPN | Warn if qBittorrent's network interface doesn't match the configured VPN provider | `True` |
 | Restart qBittorrent if connection status disconnects | Restart qBittorrent when its connection status changes to disconnected (requires Executable and Process name) | `True` |
 | Fix the network interface binding when it goes stale | Re-apply qBittorrent's network interface when its stored identifier no longer matches the adapter it names. Also corrects a bind address the adapter no longer has, and - if the forwarded port stops answering after the adapter changed address - nudges qBittorrent into listening on the new one. Your qBittorrent settings are left as you had them | `True` |
@@ -49,7 +60,7 @@ On first run, all settings are initialized with sensible defaults.
 | Executable | Path to Transmission executable (user-space mode) | `C:\Program Files\Transmission\transmission-qt.exe` |
 | Restart after port change | Restart Transmission after updating the port (recommended) | `True` |
 | Force-start if not running | Automatically launch Transmission if it is not running | `True` |
-| Default port (0 = disabled) | Fallback port to apply when VPN is not connected | `0` |
+| Default port | Fallback port to apply when the VPN is not connected. `0` disables the fallback, so a disconnected VPN leaves the client's port alone | `0` |
 
 ### Deluge
 
@@ -61,7 +72,7 @@ On first run, all settings are initialized with sensible defaults.
 | Process name | Process name used to detect if Deluge is running | `deluge` |
 | Restart after port change | Restart Deluge after updating the port (recommended) | `True` |
 | Force-start if not running | Automatically launch Deluge if it is not running | `True` |
-| Default port (0 = disabled) | Fallback port to apply when VPN is not connected | `0` |
+| Default port | Fallback port to apply when the VPN is not connected. `0` disables the fallback, so a disconnected VPN leaves the client's port alone | `0` |
 
 ### Nicotine+
 
@@ -78,7 +89,7 @@ so the change is live within a few seconds and a restart would only discard sett
 | Process name | Process name used to detect if Nicotine+ is running | `Nicotine+` |
 | Force-start if not running | Automatically launch Nicotine+ if it is not running | `True` |
 | Warn when network interface doesn't match the VPN | Warn if Nicotine+'s network interface doesn't match the configured VPN provider | `True` |
-| Default port (0 = disabled) | Fallback port to apply when VPN is not connected | `0` |
+| Default port | Fallback port to apply when the VPN is not connected. `0` disables the fallback, so a disconnected VPN leaves the client's port alone | `0` |
 
 ### Auto-Recovery
 
@@ -104,8 +115,8 @@ There is also a cheaper remedy it tries first. If the port stays closed and the 
 | Setting | Description | Default |
 |---|---|---|
 | Color theme | Application color theme: `System` (follows Windows), `Dark`, or `Light`. Requires a restart to take effect | `System` |
-| Post-update command | Command to run after a successful port update (leave empty to disable) | - |
-| Debug logging | Enable verbose debug logging to the log file | `False` |
+| Post-update | Command to run after a successful port update (leave empty to disable) | - |
+| Enable debug logging | Enable verbose debug logging to the log file | `False` |
 
 ## Media Manager Settings
 
@@ -115,11 +126,11 @@ Configured via tray menu → **Media Manager**.
 |---|---|---|
 | Enable Media Manager | Run the media importer on each sync cycle | `False` |
 | TMDB API Key | API key for The Movie Database lookups (free at themoviedb.org/settings/api) | - |
-| Dry Run | Preview imports without touching any files | `True` |
-| Import Mode | How files are transferred to the library: `Hardlink` (default, falls back to copy for cross-volume), `Copy`, or `Move` | `Hardlink` |
-| Create Folders | Organise each title into its own Plex subfolder (`Title (Year)/` for movies, `Show (Year)/Season XX/` for TV) | `True` |
-| Delete Empty Folders | After importing, delete source subfolders that are empty or contain only `.nfo` files | `False` |
+| Dry run | Preview imports without touching any files | `True` |
+| Import mode | How files are transferred to the library: `Hardlink` (default, falls back to copy for cross-volume), `Copy`, or `Move` | `Hardlink` |
+| Create Plex folder structure when importing | Organise each title into its own Plex subfolder (`Title (Year)/` for movies, `Show (Year)/Season XX/` for TV) | `True` |
+| Delete empty source folders after importing | After importing, delete source subfolders that are empty or contain only `.nfo` files | `False` |
 | Source Folders | Folders scanned for movie and TV episode files on each cycle | - |
-| Movies Library | Target library folder for imported movies (leave empty to skip movie processing) | - |
-| TV Shows Library | Target library folder for imported TV shows (leave empty to skip TV show processing) | - |
+| Movies library | Target library folder for imported movies (leave empty to skip movie processing) | - |
+| TV shows library | Target library folder for imported TV shows (leave empty to skip TV show processing) | - |
 

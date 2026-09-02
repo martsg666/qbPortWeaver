@@ -13,8 +13,8 @@ public partial class WhatsNewForm : Form
         "Diagnostics now checks your internet connection\n" +
         "Run Diagnostics reports whether this machine gets a reply when it pings the internet. That is " +
         "the same check qbPortWeaver uses to decide whether to retry a VPN restart straight away or " +
-        "space its attempts further apart, so it is the one place that tells you your recovery " +
-        "attempts are being delayed. A warning here does not always mean something is broken: a " +
+        "space its attempts further apart, and this is the only place you can see the answer without " +
+        "waiting for a problem to happen. A warning here does not always mean something is broken: a " +
         "network that blocks ping, or a VPN killswitch while the tunnel is down, both cause it with " +
         "everything else working normally.\n\n" +
         "Previously released\n\n" +

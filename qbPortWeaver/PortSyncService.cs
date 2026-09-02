@@ -1666,18 +1666,31 @@ public sealed class PortSyncService
             // this very comment calls a normal reconnect. The status only decorates the line below, and
             // the "no status" fallback already treats an unreadable one as expected.
             string? connectionStatus = await client.TryGetConnectionStatusAsync(cancellationToken).ConfigureAwait(false);
-            // Says "unless the port also changes" rather than promising the rebind outright. The arm set
-            // just above is spent by a port write later in THIS SAME cycle (see UpdatePortAndNotifyAsync,
-            // which clears it because the write rebuilds the listen sockets anyway), and an address change
-            // accompanied by a new forwarded port is the common reconnect - so the unconditional promise
-            // this line used to make was routinely untrue within seconds of being logged, with nothing
-            // logged when it was cancelled. Observed live on 2026-09-02: this line, then a port write, then
-            // a VPN restart three cycles later with no rebind and no explanation.
+            // This line used to promise the rebind outright, and there are TWO independent ways that
+            // promise is false - both were live, and the second was missed when the first was fixed.
+            //
+            // 1. The arm set just above is spent by a port write later in THIS SAME cycle (see
+            //    UpdatePortAndNotifyAsync, which clears it because the write rebuilds the listen sockets
+            //    anyway), and an address change accompanied by a new forwarded port is the common
+            //    reconnect. Observed live on 2026-09-02: this line, a port write, then a VPN restart
+            //    three cycles later with no rebind and no explanation.
+            // 2. TryRebindClientAddressAsync refuses outright when fixInterfaceBinding is off, but
+            //    nothing on this path consults that setting - CheckAndRepairInterfaceBindingAsync
+            //    returns true on a healthy token before it ever reaches its own toggle check, so this
+            //    branch runs and logged the promise to users who had switched the repair off entirely.
+            //    For them it was not "unless the port changes", it was never.
+            //
+            // Hence a conditional clause rather than more hedging: the off-branch states the refusal as
+            // a fact and names the setting exactly as the Settings dialog labels it.
+            string rebindClause = config.FixInterfaceBinding
+                ? $"Unless the forwarded port also changes this cycle, {client.ClientName} will be rebound " +
+                  "if that port stops answering, before the VPN is restarted"
+                : "\"Fix the network interface binding when it goes stale\" is off, so " +
+                  $"{client.ClientName} will not be rebound if that port stops answering";
             LogManager.Instance.LogMessage(
                 $"The address on '{interfaceName}' changed from {QBittorrentClient.FormatAddressList(baseline.Addresses)} to {QBittorrentClient.FormatAddressList(live)} " +
                 $"while {client.ClientName} is bound to all addresses on it ({client.ClientName} reports " +
-                $"'{connectionStatus ?? "no status"}'). Unless the forwarded port also changes this cycle, " +
-                $"{client.ClientName} will be rebound if that port stops answering, before the VPN is restarted",
+                $"'{connectionStatus ?? "no status"}'). {rebindClause}",
                 LogLevel.Info);
         }
         else

@@ -1383,7 +1383,7 @@ public sealed class PortSyncService
         {
             LogManager.Instance.LogMessage(
                 $"Could not read the addresses on {client.ClientName}'s adapter, so it cannot be rebound " +
-                "- escalating to a VPN restart",
+                "- escalating to recovery",
                 LogLevel.Warn);
             return false;
         }
@@ -1406,7 +1406,7 @@ public sealed class PortSyncService
             // false falls straight through to DispatchRecoveryAsync in this very cycle.
             LogManager.Instance.LogMessage(
                 $"{client.ClientName} is now bound to '{pinned}' rather than all addresses, so there is " +
-                "nothing to rebind - escalating to a VPN restart",
+                "nothing to rebind - escalating to recovery",
                 LogLevel.Info);
             return false;
         }
@@ -1422,7 +1422,7 @@ public sealed class PortSyncService
         {
             LogManager.Instance.LogMessage(
                 $"{client.ClientName}'s adapter has no routable address to rebind to ({QBittorrentClient.FormatAddressList(live)}) " +
-                "- escalating to a VPN restart",
+                "- escalating to recovery",
                 LogLevel.Warn);
             return false;
         }
@@ -1431,7 +1431,7 @@ public sealed class PortSyncService
 
         LogManager.Instance.LogMessage(
             $"The forwarded port is closed and the bound adapter changed address, so {client.ClientName} may still be " +
-            $"listening on the previous one. Rebinding it via {pinAddress} before restarting the VPN",
+            $"listening on the previous one. Rebinding it via {pinAddress} before recovery runs",
             LogLevel.Warn);
 
         // Pin a live address, then release back to whatever was configured when the change was seen.
@@ -1450,7 +1450,7 @@ public sealed class PortSyncService
         else
         {
             LogManager.Instance.LogMessage(
-                $"Could not rebind {client.ClientName} - the next confirmed closed check will restart the VPN instead",
+                $"Could not rebind {client.ClientName} - the next confirmed closed check will escalate to recovery instead",
                 LogLevel.Warn);
         }
 
@@ -1726,7 +1726,7 @@ public sealed class PortSyncService
             // a fact and names the setting exactly as the Settings dialog labels it.
             string rebindClause = config.FixInterfaceBinding
                 ? $"Unless the forwarded port also changes first, {client.ClientName} will be rebound " +
-                  "if that port stops answering, before the VPN is restarted"
+                  "if that port stops answering, before recovery runs"
                 : "\"Fix the network interface binding when it goes stale\" is off, so " +
                   $"{client.ClientName} will not be rebound if that port stops answering";
             LogManager.Instance.LogMessage(

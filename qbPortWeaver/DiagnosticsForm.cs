@@ -222,6 +222,12 @@ internal sealed class DiagnosticsForm : Form
     {
         int lineHeight = _report.Font.Height;
         int lines = 4; // summary line, blank, version subline, blank
+        // A hint counts as one line however long it is. Long hints wrap - the internet-connectivity
+        // one runs to three lines at this width - so a report carrying several of them is
+        // under-counted and the dialog can scroll a little sooner than the cap implies. Deliberate:
+        // counting wrapped lines properly needs TextRenderer against the control width plus
+        // SelectionIndent, which is far more machinery than a discrepancy of about one line in a
+        // dialog that is designed to scroll anyway. Do not read the arithmetic below as exact.
         foreach (var r in _results)
             lines += string.IsNullOrEmpty(r.Hint) ? 3 : 4; // name + detail (+ hint) + trailing blank
 

@@ -1160,7 +1160,16 @@ public sealed class PortSyncService
         // being set and then a VPN restart with no rebind and no reason - which reads as the feature
         // failing, not as it correctly standing down. Only logged when an arm was really spent, so a
         // routine port change on a client whose address never moved stays quiet.
-        if (_interfaceAddressChangedSinceRebind)
+        //
+        // Gated on the same two facts the rebind itself is gated on, not on the arm alone.
+        // CheckInterfaceAddressAsync sets the arm whatever fixInterfaceBinding says, so on a machine
+        // with the repair switched off this cycle would log "will not be rebound" and then, seconds
+        // later, "the pending rebind is no longer needed" - announcing the cancellation of something
+        // that was never pending. The client test matters for a narrower reason: only the qBittorrent
+        // path sets the arm and nothing clears it when the active client changes, so a switch to
+        // another client between the address change and the next port write would name that client
+        // in a message about a rebind that was never pending for it.
+        if (_interfaceAddressChangedSinceRebind && config.FixInterfaceBinding && manager is QBittorrentClient)
         {
             LogManager.Instance.LogMessage(
                 $"The port write rebuilt {manager.ClientName}'s listen sockets, so the pending rebind for the " +
@@ -1374,7 +1383,7 @@ public sealed class PortSyncService
         {
             LogManager.Instance.LogMessage(
                 $"Could not read the addresses on {client.ClientName}'s adapter, so it cannot be rebound " +
-                "- the VPN is restarted instead",
+                "- escalating to a VPN restart",
                 LogLevel.Warn);
             return false;
         }
@@ -1397,7 +1406,7 @@ public sealed class PortSyncService
             // false falls straight through to DispatchRecoveryAsync in this very cycle.
             LogManager.Instance.LogMessage(
                 $"{client.ClientName} is now bound to '{pinned}' rather than all addresses, so there is " +
-                "nothing to rebind - the VPN is restarted instead",
+                "nothing to rebind - escalating to a VPN restart",
                 LogLevel.Info);
             return false;
         }
@@ -1413,7 +1422,7 @@ public sealed class PortSyncService
         {
             LogManager.Instance.LogMessage(
                 $"{client.ClientName}'s adapter has no routable address to rebind to ({QBittorrentClient.FormatAddressList(live)}) " +
-                "- the VPN is restarted instead",
+                "- escalating to a VPN restart",
                 LogLevel.Warn);
             return false;
         }
@@ -1716,7 +1725,7 @@ public sealed class PortSyncService
             // Hence a conditional clause rather than more hedging: the off-branch states the refusal as
             // a fact and names the setting exactly as the Settings dialog labels it.
             string rebindClause = config.FixInterfaceBinding
-                ? $"Unless the forwarded port also changes this cycle, {client.ClientName} will be rebound " +
+                ? $"Unless the forwarded port also changes first, {client.ClientName} will be rebound " +
                   "if that port stops answering, before the VPN is restarted"
                 : "\"Fix the network interface binding when it goes stale\" is off, so " +
                   $"{client.ClientName} will not be rebound if that port stops answering";

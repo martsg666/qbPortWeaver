@@ -8,9 +8,9 @@
 >
 > - The trailing colon is dropped, as is any trailing parenthetical the Description column already
 >   explains (`Dry run`, `Delete empty source folders after importing`).
-> - Settings every client has (`Restart after port change`, `Force-start if not running`,
->   `Default port`) are written generically: the dialog prefixes those with the client's own name,
->   and keeping them generic lets the four client tables below line up row for row.
+> - Settings whose label carries the client's own name (`Restart after a port change`,
+>   `Force-start if not running`) are written generically here, so the four client tables below line
+>   up row for row. `Default port` is not one of them: the dialog labels it plainly for every client.
 > - The two auto-recovery spinners both read `Trigger after` on screen, distinguished only by the
 >   unit printed after the box, so that unit is appended here in parentheses to keep them apart.
 
@@ -42,7 +42,7 @@ On first run, all settings are initialized with sensible defaults.
 | Password | qBittorrent Web UI password | - |
 | Executable | Path to qBittorrent executable | `C:\Program Files\qBittorrent\qbittorrent.exe` |
 | Process name | Process name used to detect if qBittorrent is running | `qbittorrent` |
-| Restart after port change | Restart qBittorrent after updating the port (recommended) | `True` |
+| Restart after a port change | Restart qBittorrent after updating the port (recommended) | `True` |
 | Force-start if not running | Automatically launch qBittorrent if it is not running | `True` |
 | Default port | Fallback port to apply when the VPN is not connected. `0` disables the fallback, so a disconnected VPN leaves the client's port alone | `0` |
 | Warn when network interface doesn't match the VPN | Warn if qBittorrent's network interface doesn't match the configured VPN provider | `True` |
@@ -58,7 +58,7 @@ On first run, all settings are initialized with sensible defaults.
 | Password | RPC password (leave empty if authentication is disabled) | - |
 | Process name | Process name for user-space detection (e.g. `transmission-qt`) | `transmission-qt` |
 | Executable | Path to Transmission executable (user-space mode) | `C:\Program Files\Transmission\transmission-qt.exe` |
-| Restart after port change | Restart Transmission after updating the port (recommended) | `True` |
+| Restart after a port change | Restart Transmission after updating the port (recommended) | `True` |
 | Force-start if not running | Automatically launch Transmission if it is not running | `True` |
 | Default port | Fallback port to apply when the VPN is not connected. `0` disables the fallback, so a disconnected VPN leaves the client's port alone | `0` |
 
@@ -70,7 +70,7 @@ On first run, all settings are initialized with sensible defaults.
 | Password | Web UI password | - |
 | Executable | Path to Deluge executable | `C:\Program Files\Deluge\deluge.exe` |
 | Process name | Process name used to detect if Deluge is running | `deluge` |
-| Restart after port change | Restart Deluge after updating the port (recommended) | `True` |
+| Restart after a port change | Restart Deluge after updating the port (recommended) | `True` |
 | Force-start if not running | Automatically launch Deluge if it is not running | `True` |
 | Default port | Fallback port to apply when the VPN is not connected. `0` disables the fallback, so a disconnected VPN leaves the client's port alone | `0` |
 

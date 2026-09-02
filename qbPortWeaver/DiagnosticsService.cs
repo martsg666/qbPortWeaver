@@ -146,7 +146,10 @@ public static class DiagnosticsService
     {
         if (await InternetConnectivityProbe.IsInternetReachableAsync(cancellationToken).ConfigureAwait(false))
         {
-            results.Add(new(Checks.InternetConnectivity, DiagnosticStatus.Pass, "Public DNS resolvers answered"));
+            // Singular: IsInternetReachableAsync passes on Array.Exists, so one reply is enough and the
+            // other resolver may well have been blocked. Claiming both answered would overstate exactly
+            // the kind of thing this row exists to report precisely.
+            results.Add(new(Checks.InternetConnectivity, DiagnosticStatus.Pass, "A public DNS resolver answered"));
             return;
         }
 

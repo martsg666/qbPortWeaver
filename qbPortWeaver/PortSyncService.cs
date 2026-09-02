@@ -298,17 +298,22 @@ public sealed class PortSyncService
     )
     {
         /// <summary>
-        /// Whether a rebind can happen at all with these settings, and therefore whether it is honest to
+        /// Whether a rebind can happen from this cycle at all, and therefore whether it is honest to
         /// mention one. <c>fixInterfaceBinding</c> alone is not enough: the only route to
-        /// <see cref="TryRebindClientAddressAsync"/> is VerifyPortAsync (gated on <see cref="VerifyPort"/>)
-        /// then MaybeTriggerPortClosedRecoveryAsync (gated on <see cref="PortClosedRecoveryEnabled"/>), so
-        /// with either of those off the port is never tested, the rebind is unreachable, and any line
-        /// promising or cancelling one is false. Kept as one predicate because both message sites need the
-        /// identical set and drifted apart when they each spelled it out - the promise was fixed twice
-        /// before this third condition was noticed. <c>docs/SETTINGS.md</c> documents the same
-        /// three-setting dependency for users.
+        /// <see cref="TryRebindClientAddressAsync"/> is VerifyPortAsync then
+        /// MaybeTriggerPortClosedRecoveryAsync, and that route is closed by any of four things - the
+        /// repair being off, <see cref="VerifyPort"/> being off, <see cref="PortClosedRecoveryEnabled"/>
+        /// being off, or <see cref="VpnManager"/> being <see langword="null"/>, which is the default-port
+        /// fallback where verification is skipped because a disconnected tunnel would read closed as a
+        /// matter of course. With any of them true the port is never tested, the rebind is unreachable,
+        /// and a line promising or cancelling one is false.
+        /// <para>Deliberately one predicate rather than a condition repeated at each message site. The
+        /// two sites each spelled it out separately and drifted: the promise was corrected twice before
+        /// the third condition was noticed, and the fourth only after that. A guard duplicated at two
+        /// call sites will drift; a named one cannot.</para>
         /// </summary>
-        public bool RebindReachable => FixInterfaceBinding && VerifyPort && PortClosedRecoveryEnabled;
+        public bool RebindReachable =>
+            VpnManager is not null && FixInterfaceBinding && VerifyPort && PortClosedRecoveryEnabled;
     }
 
     // Compile-time-safe keys and values for the status dictionary written to the JSON status file.
@@ -1756,8 +1761,8 @@ public sealed class PortSyncService
                 ? $"Unless the forwarded port also changes first, {client.ClientName} will be rebound " +
                   "if that port stops answering, before recovery runs"
                 : $"{client.ClientName} will not be rebound if that port stops answering - that needs the " +
-                  "port check, port-closed recovery and \"Fix the network interface binding when it goes " +
-                  "stale\" all switched on";
+                  "VPN connected, and the port check, port-closed recovery and \"Fix the network " +
+                  "interface binding when it goes stale\" all switched on";
             LogManager.Instance.LogMessage(
                 $"The address on '{interfaceName}' changed from {QBittorrentClient.FormatAddressList(baseline.Addresses)} to {QBittorrentClient.FormatAddressList(live)} " +
                 $"while {client.ClientName} is bound to all addresses on it ({client.ClientName} reports " +

@@ -1348,9 +1348,13 @@ public sealed class PortSyncService
     // so a persistently false "closed" can never cause a recovery loop.
     // Forces the client to rebuild its listen sockets when a confirmed-closed port coincides with the
     // bound adapter having changed address. Returns true when a rebind was actually attempted, which is
-    // what tells the caller to hold the VPN restart back for one more round of confirmation.
+    // what tells the caller to hold recovery back for one more round of confirmation.
     // One attempt per address change: the flag is cleared whether or not the write succeeded, so a rebind
-    // that does not help escalates to the VPN restart instead of repeating.
+    // that does not help escalates to recovery instead of repeating.
+    //
+    // "recovery" rather than "the VPN restart" throughout, matching the messages below: the action is a
+    // service restart for ProtonVPN and PIA, but NatPmpManager.GetRecoveryAction returns cycle-adapter
+    // for a generic gateway, where no VPN is restarted at all.
     private async Task<bool> TryRebindClientAddressAsync(IManagedClient manager, SyncConfig config, CancellationToken cancellationToken)
     {
         if (!_interfaceAddressChangedSinceRebind || !config.FixInterfaceBinding) return false;
@@ -1378,7 +1382,7 @@ public sealed class PortSyncService
         //
         // Logged, not silent: the address-change line has already told the user a rebind is coming if
         // the port stops answering, and the port has now stopped answering. Returning here without a
-        // word leaves them watching a VPN restart that the promise said would be preceded by a rebind.
+        // word leaves them watching recovery run when the promise said a rebind would come first.
         if (live is null)
         {
             LogManager.Instance.LogMessage(

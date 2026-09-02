@@ -243,6 +243,11 @@ internal sealed class DiagnosticsForm : Form
         DiagnosticStatus.Pass => ("✓", PassColor),
         DiagnosticStatus.Warn => ("⚠", WarnColor),
         DiagnosticStatus.Fail => ("✗", FailColor),
+        // En dash, deliberate: the neutral "not applicable" mark for a skipped row, weighted to sit with
+        // the glyphs above rather than the hyphen a dash sweep would substitute. Not prose, so the
+        // project-wide no-em-dash rule does not reach it - the same exemption the separator class in
+        // FileNameParser.SitePrefixRegex documents at length. Those two are the repository's only
+        // non-prose dashes; a scan reporting both is reporting the expected set.
         _ => ("–", SystemColors.GrayText),
     };
 

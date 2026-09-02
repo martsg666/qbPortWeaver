@@ -295,7 +295,21 @@ public sealed class PortSyncService
         bool VerifyPort,
         bool PortClosedRecoveryEnabled,
         int PortClosedRecoveryTriggerChecks
-    );
+    )
+    {
+        /// <summary>
+        /// Whether a rebind can happen at all with these settings, and therefore whether it is honest to
+        /// mention one. <c>fixInterfaceBinding</c> alone is not enough: the only route to
+        /// <see cref="TryRebindClientAddressAsync"/> is VerifyPortAsync (gated on <see cref="VerifyPort"/>)
+        /// then MaybeTriggerPortClosedRecoveryAsync (gated on <see cref="PortClosedRecoveryEnabled"/>), so
+        /// with either of those off the port is never tested, the rebind is unreachable, and any line
+        /// promising or cancelling one is false. Kept as one predicate because both message sites need the
+        /// identical set and drifted apart when they each spelled it out - the promise was fixed twice
+        /// before this third condition was noticed. <c>docs/SETTINGS.md</c> documents the same
+        /// three-setting dependency for users.
+        /// </summary>
+        public bool RebindReachable => FixInterfaceBinding && VerifyPort && PortClosedRecoveryEnabled;
+    }
 
     // Compile-time-safe keys and values for the status dictionary written to the JSON status file.
     private static class StatusKeys
@@ -1169,7 +1183,7 @@ public sealed class PortSyncService
         // path sets the arm and nothing clears it when the active client changes, so a switch to
         // another client between the address change and the next port write would name that client
         // in a message about a rebind that was never pending for it.
-        if (_interfaceAddressChangedSinceRebind && config.FixInterfaceBinding && manager is QBittorrentClient)
+        if (_interfaceAddressChangedSinceRebind && config.RebindReachable && manager is QBittorrentClient)
         {
             LogManager.Instance.LogMessage(
                 $"The port write rebuilt {manager.ClientName}'s listen sockets, so the pending rebind for the " +
@@ -1383,12 +1397,18 @@ public sealed class PortSyncService
         // Logged, not silent: the address-change line has already told the user a rebind is coming if
         // the port stops answering, and the port has now stopped answering. Returning here without a
         // word leaves them watching recovery run when the promise said a rebind would come first.
+        // Worded for both causes and logged at Info, not Warn. A null list is not only a failed read:
+        // GetInterfaceAddressStateAsync returns null outright for an empty interface token, which means
+        // "bound to all interfaces" - nothing was attempted and nothing failed, exactly as the comment
+        // above says. Asserting a read failure there was wrong, and Warn badged the tray for a benign
+        // state that recurs on every later closed streak because the arm is deliberately left set.
+        // A genuine read failure is not lost: GetInterfaceAddressesAsync logs it at Debug itself.
         if (live is null)
         {
             LogManager.Instance.LogMessage(
-                $"Could not read the addresses on {client.ClientName}'s adapter, so it cannot be rebound " +
-                "- escalating to recovery",
-                LogLevel.Warn);
+                $"No adapter address list to rebind {client.ClientName} against - it is bound to all " +
+                "interfaces, or the list could not be read - escalating to recovery",
+                LogLevel.Info);
             return false;
         }
 
@@ -1726,13 +1746,18 @@ public sealed class PortSyncService
             //    branch runs and logged the promise to users who had switched the repair off entirely.
             //    For them it was not "unless the port changes", it was never.
             //
-            // Hence a conditional clause rather than more hedging: the off-branch states the refusal as
-            // a fact and names the setting exactly as the Settings dialog labels it.
-            string rebindClause = config.FixInterfaceBinding
+            // 3. The rebind is reachable only through the port-closed path, so the port check and
+            //    port-closed recovery have to be on as well - see SyncConfig.RebindReachable. Naming only
+            //    the binding setting here was wrong whenever it was one of the other two that was off.
+            //
+            // Hence a conditional clause rather than more hedging, and an off-branch that states the
+            // requirement rather than guessing which of the three is missing.
+            string rebindClause = config.RebindReachable
                 ? $"Unless the forwarded port also changes first, {client.ClientName} will be rebound " +
                   "if that port stops answering, before recovery runs"
-                : "\"Fix the network interface binding when it goes stale\" is off, so " +
-                  $"{client.ClientName} will not be rebound if that port stops answering";
+                : $"{client.ClientName} will not be rebound if that port stops answering - that needs the " +
+                  "port check, port-closed recovery and \"Fix the network interface binding when it goes " +
+                  "stale\" all switched on";
             LogManager.Instance.LogMessage(
                 $"The address on '{interfaceName}' changed from {QBittorrentClient.FormatAddressList(baseline.Addresses)} to {QBittorrentClient.FormatAddressList(live)} " +
                 $"while {client.ClientName} is bound to all addresses on it ({client.ClientName} reports " +

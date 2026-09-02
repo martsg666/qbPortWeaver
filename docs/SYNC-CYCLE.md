@@ -497,7 +497,7 @@ follows it moments later - in the same cycle, on the common reconnect where addr
 move - silently cancelled it. A live incident on 2026-09-02 produced exactly that log: the address
 change with its promise, a port write, then a VPN restart three cycles later with no rebind and no
 reason given, which reads as the feature failing rather than correctly standing down. The observation
-line is now conditional ("unless the forwarded port also changes this cycle") and the cancellation is
+line is now conditional ("Unless the forwarded port also changes first") and the cancellation is
 announced, but only when an arm was genuinely spent - a routine port change on a client whose address
 never moved stays quiet.
 

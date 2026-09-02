@@ -1154,6 +1154,19 @@ public sealed class PortSyncService
         // here keeps it honest: without this, an ordinary reconnect (new address *and* a new forwarded
         // port, which is the common case) would stay armed after the port write had already fixed it,
         // and spend that arm later on a closed port it could not possibly explain.
+        //
+        // Announced when it actually cancels something, because the address-change line logged earlier
+        // this cycle told the user a rebind was coming. Without this the log showed that expectation
+        // being set and then a VPN restart with no rebind and no reason - which reads as the feature
+        // failing, not as it correctly standing down. Only logged when an arm was really spent, so a
+        // routine port change on a client whose address never moved stays quiet.
+        if (_interfaceAddressChangedSinceRebind)
+        {
+            LogManager.Instance.LogMessage(
+                $"The port write rebuilt {manager.ClientName}'s listen sockets, so the pending rebind for the " +
+                "adapter's address change is no longer needed",
+                LogLevel.Info);
+        }
         _interfaceAddressChangedSinceRebind = false;
         // Cause annotation: recovery takes precedence over network change (a recovery usually
         // produces a network change too, and the recovery is the root cause).
@@ -1653,11 +1666,18 @@ public sealed class PortSyncService
             // this very comment calls a normal reconnect. The status only decorates the line below, and
             // the "no status" fallback already treats an unreadable one as expected.
             string? connectionStatus = await client.TryGetConnectionStatusAsync(cancellationToken).ConfigureAwait(false);
+            // Says "unless the port also changes" rather than promising the rebind outright. The arm set
+            // just above is spent by a port write later in THIS SAME cycle (see UpdatePortAndNotifyAsync,
+            // which clears it because the write rebuilds the listen sockets anyway), and an address change
+            // accompanied by a new forwarded port is the common reconnect - so the unconditional promise
+            // this line used to make was routinely untrue within seconds of being logged, with nothing
+            // logged when it was cancelled. Observed live on 2026-09-02: this line, then a port write, then
+            // a VPN restart three cycles later with no rebind and no explanation.
             LogManager.Instance.LogMessage(
                 $"The address on '{interfaceName}' changed from {QBittorrentClient.FormatAddressList(baseline.Addresses)} to {QBittorrentClient.FormatAddressList(live)} " +
                 $"while {client.ClientName} is bound to all addresses on it ({client.ClientName} reports " +
-                $"'{connectionStatus ?? "no status"}'). If the forwarded port stops answering, {client.ClientName} will be " +
-                "rebound before the VPN is restarted",
+                $"'{connectionStatus ?? "no status"}'). Unless the forwarded port also changes this cycle, " +
+                $"{client.ClientName} will be rebound if that port stops answering, before the VPN is restarted",
                 LogLevel.Info);
         }
         else

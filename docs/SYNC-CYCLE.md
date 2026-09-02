@@ -491,6 +491,16 @@ That is why `UpdatePortAndNotifyAsync` clears the arm on a successful port write
 common, self-healing reconnect would stay armed after the port write had already repaired it, and
 spend that arm on some later closed port it had nothing to do with.
 
+**It says so when it does this**, and that line exists because of a real diagnosis. The address-change
+line logged earlier in the same cycle used to promise the rebind outright, and the port write that
+follows it moments later - in the same cycle, on the common reconnect where address *and* port both
+move - silently cancelled it. A live incident on 2026-09-02 produced exactly that log: the address
+change with its promise, a port write, then a VPN restart three cycles later with no rebind and no
+reason given, which reads as the feature failing rather than correctly standing down. The observation
+line is now conditional ("unless the forwarded port also changes this cycle") and the cancellation is
+announced, but only when an arm was genuinely spent - a routine port change on a client whose address
+never moved stays quiet.
+
 ### Restart-on-Disconnect Cap *(qBittorrent only)*
 
 `restartOnDisconnect` restarts the client when it reports `disconnected`. That helps only when the

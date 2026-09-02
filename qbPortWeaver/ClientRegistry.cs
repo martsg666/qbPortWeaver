@@ -7,9 +7,20 @@
 /// the <see cref="IManagedClient"/> from a <see cref="ClientConfig"/>. Defining them once here
 /// keeps construction, config reading, and detection from drifting apart.
 /// <para>Adding a client: add one entry here (its key names and construction factory) plus its
-/// Settings UI. <see cref="PortSyncService"/> reads the active client's config, constructs it, and
-/// logs it entirely from this table, so no per-client branch is needed there; detection and
-/// resolution pick up the new entry automatically.</para>
+/// Settings UI. <see cref="PortSyncService"/> reads the active client's config and constructs it
+/// entirely from this table, and detection and resolution pick up the new entry automatically.</para>
+/// <para><b>The three exclusive settings are the exception, and they are not covered by this
+/// table.</b> <c>warnOnInterfaceMismatch</c> (qBittorrent and Nicotine+), <c>restartOnDisconnect</c>
+/// and <c>fixInterfaceBinding</c> (qBittorrent only) live as flat fields on <c>AppConfig</c> and are
+/// resolved by comparing the active section against hardcoded client identities in <b>two</b> places:
+/// <c>PortSyncService.LogConfigDebug</c> and <c>PortSyncService.GetClientBehaviorConfig</c>. A new
+/// client with any of them needs an arm in both, and nothing fails if you forget - the setting is
+/// simply honoured while going unreported, which is exactly how Nicotine+'s
+/// <c>warnOnInterfaceMismatch</c> stayed missing from the debug dump until 2.6.8.</para>
+/// <para>The way out, if that list grows again: give <see cref="ClientInfo"/> nullable keys for them
+/// the way <c>UserNameKey</c> and <c>RestartKey</c> already work, and move
+/// the values off <c>AppConfig</c>'s flat fields so the lookup can be table-driven too. Deliberately
+/// not done yet - keys alone would relocate the per-client branch rather than remove it.</para>
 /// </summary>
 internal static class ClientRegistry
 {

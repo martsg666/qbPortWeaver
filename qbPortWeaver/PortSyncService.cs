@@ -1373,8 +1373,8 @@ public sealed class PortSyncService
         if (live is null)
         {
             LogManager.Instance.LogMessage(
-                $"Could not read the addresses on {client.ClientName}'s adapter, so it cannot be rebound this round " +
-                "- restarting the VPN instead",
+                $"Could not read the addresses on {client.ClientName}'s adapter, so it cannot be rebound " +
+                "- the VPN is restarted instead",
                 LogLevel.Warn);
             return false;
         }
@@ -1388,6 +1388,17 @@ public sealed class PortSyncService
         if (!QBittorrentClient.IsWildcardBindAddress(pinned))
         {
             _interfaceAddressChangedSinceRebind = false;
+            // Info, not Warn, and that difference is meaning rather than drift: the two refusals above
+            // are "we meant to rebind and could not", which is an anomaly; this one is "there is
+            // correctly nothing to rebind", because the user pinned a specific address themselves.
+            // Logged all the same - the address-change line promised a rebind, and this path both
+            // declines it and spends the arm, so the next confirmed-closed round escalates with
+            // nothing else said. Same closing clause as its two siblings: all three return false, and
+            // false falls straight through to DispatchRecoveryAsync in this very cycle.
+            LogManager.Instance.LogMessage(
+                $"{client.ClientName} is now bound to '{pinned}' rather than all addresses, so there is " +
+                "nothing to rebind - the VPN is restarted instead",
+                LogLevel.Info);
             return false;
         }
         string releaseAddress = pinned ?? string.Empty;
@@ -1401,8 +1412,8 @@ public sealed class PortSyncService
         if (QBittorrentClient.SelectBindAddress(live) is not string pinAddress)
         {
             LogManager.Instance.LogMessage(
-                $"{client.ClientName}'s adapter has no routable address to rebind to ({QBittorrentClient.FormatAddressList(live)}), " +
-                "so the VPN is restarted instead",
+                $"{client.ClientName}'s adapter has no routable address to rebind to ({QBittorrentClient.FormatAddressList(live)}) " +
+                "- the VPN is restarted instead",
                 LogLevel.Warn);
             return false;
         }

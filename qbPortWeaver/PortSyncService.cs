@@ -207,7 +207,7 @@ public sealed class PortSyncService
     // sync service, and volatile covers the manual test setting it from the UI thread.
     private static volatile bool _recoveryDispatched;
 
-    // How long recovery waits between attempts while the machine has no internet connection. The first
+    // How long recovery waits between attempts while connectivity cannot be confirmed. The first
     // attempt of a streak is not delayed at all; these are the waits before the second, third, and
     // every later attempt. Capped at the last entry, so recovery keeps retrying at a steady 15 minutes
     // for as long as the condition lasts rather than stopping - see TryTakeRecoverySlotAsync for why
@@ -295,7 +295,26 @@ public sealed class PortSyncService
         bool VerifyPort,
         bool PortClosedRecoveryEnabled,
         int PortClosedRecoveryTriggerChecks
-    );
+    )
+    {
+        /// <summary>
+        /// Whether a rebind can happen from this cycle at all, and therefore whether it is honest to
+        /// mention one. <c>fixInterfaceBinding</c> alone is not enough: the only route to
+        /// <see cref="TryRebindClientAddressAsync"/> is VerifyPortAsync then
+        /// MaybeTriggerPortClosedRecoveryAsync, and that route is closed by any of four things - the
+        /// repair being off, <see cref="VerifyPort"/> being off, <see cref="PortClosedRecoveryEnabled"/>
+        /// being off, or <see cref="VpnManager"/> being <see langword="null"/>, which is the default-port
+        /// fallback where verification is skipped because a disconnected tunnel would read closed as a
+        /// matter of course. With any of them true the port is never tested, the rebind is unreachable,
+        /// and a line promising or cancelling one is false.
+        /// <para>Deliberately one predicate rather than a condition repeated at each message site. The
+        /// two sites each spelled it out separately and drifted: the promise was corrected twice before
+        /// the third condition was noticed, and the fourth only after that. A guard duplicated at two
+        /// call sites will drift; a named one cannot.</para>
+        /// </summary>
+        public bool RebindReachable =>
+            VpnManager is not null && FixInterfaceBinding && VerifyPort && PortClosedRecoveryEnabled;
+    }
 
     // Compile-time-safe keys and values for the status dictionary written to the JSON status file.
     private static class StatusKeys
@@ -337,7 +356,7 @@ public sealed class PortSyncService
         public const string RecoveryTriggerCycles = "recoveryTriggerCycles";
         // When the sustained-failure floor clears, while it is holding recovery back; null otherwise.
         // A separate key from RecoveryHoldUntil because the two holds have different causes and the
-        // panel names the cause - collapsing them would make the row say "no internet connection"
+        // panel names the cause - collapsing them would make the row say "cannot confirm internet"
         // during an ordinary blip.
         public const string RecoverySustainedUntil = "recoverySustainedUntil";
         // True while the consecutive-recovery cap is suspending the failed-cycle trigger. Published for
@@ -817,12 +836,20 @@ public sealed class PortSyncService
             (ci.RestartKey is not null ? $"{ci.RestartKey}={cfg.Client.Restart}, " : string.Empty) +
             $"{ci.ForceStartKey}={cfg.Client.ForceStart}, " +
             $"{ci.DefaultPortKey}={cfg.Client.DefaultPort}";
-        // qBittorrent exposes two extra RPC-backed flags; append them only for that client.
+        // Flags that only some clients have, so they fall outside the shared ClientRegistry key set
+        // the line above is built from. qBittorrent has three; Nicotine+ shares only the
+        // interface-mismatch warning, which GetClientBehaviorConfig honours for it the same way.
+        // Appended per client so the dump always names the settings actually in effect for the
+        // active one - omitting Nicotine+'s left a support log unable to say whether the one
+        // warning that client has a setting for was even enabled.
         if (activeSection == RegistrySettingsManager.SectionQBittorrent)
             clientLine +=
                 $", {RegistrySettingsManager.KeyQBittorrentWarnOnInterfaceMismatch}={cfg.QBittorrentWarnOnInterfaceMismatch}" +
                 $", {RegistrySettingsManager.KeyQBittorrentRestartOnDisconnect}={cfg.QBittorrentRestartOnDisconnect}" +
                 $", {RegistrySettingsManager.KeyQBittorrentFixInterfaceBinding}={cfg.QBittorrentFixInterfaceBinding}";
+        else if (activeSection == RegistrySettingsManager.SectionNicotine)
+            clientLine +=
+                $", {RegistrySettingsManager.KeyNicotineWarnOnInterfaceMismatch}={cfg.NicotineWarnOnInterfaceMismatch}";
         LogManager.Instance.LogDebug(clientLine);
 
         LogManager.Instance.LogDebug(
@@ -1146,6 +1173,28 @@ public sealed class PortSyncService
         // here keeps it honest: without this, an ordinary reconnect (new address *and* a new forwarded
         // port, which is the common case) would stay armed after the port write had already fixed it,
         // and spend that arm later on a closed port it could not possibly explain.
+        //
+        // Announced when it actually cancels something, because the address-change line logged earlier
+        // this cycle told the user a rebind was coming. Without this the log showed that expectation
+        // being set and then a VPN restart with no rebind and no reason - which reads as the feature
+        // failing, not as it correctly standing down. Only logged when an arm was really spent, so a
+        // routine port change on a client whose address never moved stays quiet.
+        //
+        // Gated on the same two facts the rebind itself is gated on, not on the arm alone.
+        // CheckInterfaceAddressAsync sets the arm whatever fixInterfaceBinding says, so on a machine
+        // with the repair switched off this cycle would log "will not be rebound" and then, seconds
+        // later, "the pending rebind is no longer needed" - announcing the cancellation of something
+        // that was never pending. The client test matters for a narrower reason: only the qBittorrent
+        // path sets the arm and nothing clears it when the active client changes, so a switch to
+        // another client between the address change and the next port write would name that client
+        // in a message about a rebind that was never pending for it.
+        if (_interfaceAddressChangedSinceRebind && config.RebindReachable && manager is QBittorrentClient)
+        {
+            LogManager.Instance.LogMessage(
+                $"The port write rebuilt {manager.ClientName}'s listen sockets, so the pending rebind for the " +
+                "adapter's address change is no longer needed",
+                LogLevel.Info);
+        }
         _interfaceAddressChangedSinceRebind = false;
         // Cause annotation: recovery takes precedence over network change (a recovery usually
         // produces a network change too, and the recovery is the root cause).
@@ -1318,9 +1367,13 @@ public sealed class PortSyncService
     // so a persistently false "closed" can never cause a recovery loop.
     // Forces the client to rebuild its listen sockets when a confirmed-closed port coincides with the
     // bound adapter having changed address. Returns true when a rebind was actually attempted, which is
-    // what tells the caller to hold the VPN restart back for one more round of confirmation.
+    // what tells the caller to hold recovery back for one more round of confirmation.
     // One attempt per address change: the flag is cleared whether or not the write succeeded, so a rebind
-    // that does not help escalates to the VPN restart instead of repeating.
+    // that does not help escalates to recovery instead of repeating.
+    //
+    // "recovery" rather than "the VPN restart" throughout, matching the messages below: the action is a
+    // service restart for ProtonVPN and PIA, but NatPmpManager.GetRecoveryAction returns cycle-adapter
+    // for a generic gateway, where no VPN is restarted at all.
     private async Task<bool> TryRebindClientAddressAsync(IManagedClient manager, SyncConfig config, CancellationToken cancellationToken)
     {
         if (!_interfaceAddressChangedSinceRebind || !config.FixInterfaceBinding) return false;
@@ -1345,7 +1398,24 @@ public sealed class PortSyncService
         // token (bound to all interfaces, so there is no adapter to inspect), where a surviving arm costs
         // nothing: CheckInterfaceAddressAsync returns early on that same condition, so the arm just sits
         // until a readable cycle either uses or clears it.
-        if (live is null) return false;
+        //
+        // Logged, not silent: the address-change line has already told the user a rebind is coming if
+        // the port stops answering, and the port has now stopped answering. Returning here without a
+        // word leaves them watching recovery run when the promise said a rebind would come first.
+        // Worded for both causes and logged at Info, not Warn. A null list is not only a failed read:
+        // GetInterfaceAddressStateAsync returns null outright for an empty interface token, which means
+        // "bound to all interfaces" - nothing was attempted and nothing failed, exactly as the comment
+        // above says. Asserting a read failure there was wrong, and Warn badged the tray for a benign
+        // state that recurs on every later closed streak because the arm is deliberately left set.
+        // A genuine read failure is not lost: GetInterfaceAddressesAsync logs it at Debug itself.
+        if (live is null)
+        {
+            LogManager.Instance.LogMessage(
+                $"No adapter address list to rebind {client.ClientName} against - it is bound to all " +
+                "interfaces, or the list could not be read - escalating to recovery",
+                LogLevel.Info);
+            return false;
+        }
 
         // The pin is re-checked at the point of use, never trusted from when the arm was set. The user
         // can change the bind address between those two moments and the arm survives that, so a stored
@@ -1356,19 +1426,41 @@ public sealed class PortSyncService
         if (!QBittorrentClient.IsWildcardBindAddress(pinned))
         {
             _interfaceAddressChangedSinceRebind = false;
+            // Info, not Warn, and that difference is meaning rather than drift: the two refusals above
+            // are "we meant to rebind and could not", which is an anomaly; this one is "there is
+            // correctly nothing to rebind", because the user pinned a specific address themselves.
+            // Logged all the same - the address-change line promised a rebind, and this path both
+            // declines it and spends the arm, so the next confirmed-closed round escalates with
+            // nothing else said. Same closing clause as its two siblings: all three return false, and
+            // false falls straight through to DispatchRecoveryAsync in this very cycle.
+            LogManager.Instance.LogMessage(
+                $"{client.ClientName} is now bound to '{pinned}' rather than all addresses, so there is " +
+                "nothing to rebind - escalating to recovery",
+                LogLevel.Info);
             return false;
         }
         string releaseAddress = pinned ?? string.Empty;
         // Arm deliberately left set: the change really was observed, and failing to read the adapter now
         // is not evidence that it stopped mattering. No attempt was made, so "one attempt per address
         // change" is still honest, and the next eligible cycle tries again.
-        if (QBittorrentClient.SelectBindAddress(live) is not string pinAddress) return false;
+        //
+        // Logged for the same reason as the failed read above, and this one is the likelier of the two:
+        // every address being link-local is exactly what a reconnecting or disconnected VPN leaves
+        // behind, which is the same state DiagnosticsService treats as a Warn rather than a Fail.
+        if (QBittorrentClient.SelectBindAddress(live) is not string pinAddress)
+        {
+            LogManager.Instance.LogMessage(
+                $"{client.ClientName}'s adapter has no routable address to rebind to ({QBittorrentClient.FormatAddressList(live)}) " +
+                "- escalating to recovery",
+                LogLevel.Warn);
+            return false;
+        }
 
         _interfaceAddressChangedSinceRebind = false;
 
         LogManager.Instance.LogMessage(
             $"The forwarded port is closed and the bound adapter changed address, so {client.ClientName} may still be " +
-            $"listening on the previous one. Rebinding it via {pinAddress} before restarting the VPN",
+            $"listening on the previous one. Rebinding it via {pinAddress} before recovery runs",
             LogLevel.Warn);
 
         // Pin a live address, then release back to whatever was configured when the change was seen.
@@ -1387,7 +1479,7 @@ public sealed class PortSyncService
         else
         {
             LogManager.Instance.LogMessage(
-                $"Could not rebind {client.ClientName} - the next confirmed closed check will restart the VPN instead",
+                $"Could not rebind {client.ClientName} - the next confirmed closed check will escalate to recovery instead",
                 LogLevel.Warn);
         }
 
@@ -1645,11 +1737,36 @@ public sealed class PortSyncService
             // this very comment calls a normal reconnect. The status only decorates the line below, and
             // the "no status" fallback already treats an unreadable one as expected.
             string? connectionStatus = await client.TryGetConnectionStatusAsync(cancellationToken).ConfigureAwait(false);
+            // This line used to promise the rebind outright, and there are TWO independent ways that
+            // promise is false - both were live, and the second was missed when the first was fixed.
+            //
+            // 1. The arm set just above is spent by a port write later in THIS SAME cycle (see
+            //    UpdatePortAndNotifyAsync, which clears it because the write rebuilds the listen sockets
+            //    anyway), and an address change accompanied by a new forwarded port is the common
+            //    reconnect. Observed live on 2026-09-02: this line, a port write, then a VPN restart
+            //    three cycles later with no rebind and no explanation.
+            // 2. TryRebindClientAddressAsync refuses outright when fixInterfaceBinding is off, but
+            //    nothing on this path consults that setting - CheckAndRepairInterfaceBindingAsync
+            //    returns true on a healthy token before it ever reaches its own toggle check, so this
+            //    branch runs and logged the promise to users who had switched the repair off entirely.
+            //    For them it was not "unless the port changes", it was never.
+            //
+            // 3. The rebind is reachable only through the port-closed path, so the port check and
+            //    port-closed recovery have to be on as well - see SyncConfig.RebindReachable. Naming only
+            //    the binding setting here was wrong whenever it was one of the other two that was off.
+            //
+            // Hence a conditional clause rather than more hedging, and an off-branch that states the
+            // requirement rather than guessing which of the three is missing.
+            string rebindClause = config.RebindReachable
+                ? $"Unless the forwarded port also changes first, {client.ClientName} will be rebound " +
+                  "if that port stops answering, before recovery runs"
+                : $"{client.ClientName} will not be rebound if that port stops answering - that needs the " +
+                  "VPN connected, and the port check, port-closed recovery and \"Fix the network " +
+                  "interface binding when it goes stale\" all switched on";
             LogManager.Instance.LogMessage(
                 $"The address on '{interfaceName}' changed from {QBittorrentClient.FormatAddressList(baseline.Addresses)} to {QBittorrentClient.FormatAddressList(live)} " +
                 $"while {client.ClientName} is bound to all addresses on it ({client.ClientName} reports " +
-                $"'{connectionStatus ?? "no status"}'). If the forwarded port stops answering, {client.ClientName} will be " +
-                "rebound before the VPN is restarted",
+                $"'{connectionStatus ?? "no status"}'). {rebindClause}",
                 LogLevel.Info);
         }
         else
@@ -2048,7 +2165,7 @@ public sealed class PortSyncService
 
     // When the offline rate limiter will allow the next recovery attempt, or null when
     // nothing is being held back. Read once per cycle for the status file so the Status panel can say
-    // "Holding - no internet connection, retry in ~15m" - without it the user sees a disconnected VPN and no sign that
+    // "Holding - cannot confirm internet, retry in ~15m" - without it the user sees a disconnected VPN and no sign that
     // the app is deliberately waiting rather than idle, which is the whole point of the limiter.
     // Computed rather than stored: the deadline is the last attempt plus its backoff step, and both
     // are already tracked. Returns null once the wait has elapsed - at that point the next due cycle
@@ -2112,9 +2229,14 @@ public sealed class PortSyncService
                 if (!_recoveryHoldLogged)
                 {
                     _recoveryHoldLogged = true;
+                    // Points at Diagnostics because this line cannot tell the user which of the two
+                    // causes they have, and the Internet connectivity row there is where that is
+                    // explained. A network that filters ping reaches this message with perfect
+                    // connectivity, and nothing else would ever tell them so.
                     LogManager.Instance.LogMessage(
                         $"Could not confirm an internet connection - holding recovery for '{displayName}' for {required.TotalMinutes:F0} minutes " +
-                        "(restarting the VPN cannot restore a connection that is down upstream)",
+                        "(restarting the VPN cannot restore a connection that is down upstream). " +
+                        "Run Diagnostics to check whether this network answers ping at all",
                         LogLevel.Warn);
                 }
                 return (false, Online: false);

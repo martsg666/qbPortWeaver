@@ -445,15 +445,21 @@ public partial class StatusForm : Form
         return null;
     }
 
-    // "Holding - no internet connection, retry in ~15m" while the offline rate limiter is
+    // "Holding - cannot confirm internet, retry in ~15m" while the offline rate limiter is
     // waiting, or null when it is not - the same "nothing to report" signal every other describer
     // here uses, which is what tells the caller to fall through to the other hold and then the
     // failure streak.
+    //
+    // "cannot confirm" rather than "no internet connection": InternetConnectivityProbe only ever
+    // establishes that nothing answered its pings, and a network filtering ICMP answers that way
+    // with perfect connectivity. Stating it as fact told such a user their internet was down while
+    // they were browsing, and disagreed with the log line and the Diagnostics row reporting the very
+    // same condition, both of which say "could not confirm". Three surfaces, one claim.
     private static string? DescribeRecoveryHold(StatusSnapshot s)
     {
         if (s.RecoveryHoldUntil is not DateTimeOffset until) return null;
         return DescribeCountdown(until) is string when
-            ? $"Holding - no internet connection, retry in {when}"
+            ? $"Holding - cannot confirm internet, retry in {when}"
             : RecoveryNextCycleText;
     }
 

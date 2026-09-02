@@ -215,13 +215,19 @@ internal sealed class DiagnosticsForm : Form
     }
 
     // Sizes this fixed dialog to fit the rendered report plus the button row, so a short report
-    // (e.g. Transmission's 9 checks) leaves no dead space and qBittorrent's fuller 10-check report
+    // (e.g. Transmission's 11 checks) leaves no dead space and Nicotine+'s fuller 13-check report
     // still fits without scrolling. Capped so a report with many fix hints scrolls rather than
     // growing off-screen. Runs once at construction; a Re-run keeps the size and scrolls if taller.
     private void SizeToContent()
     {
         int lineHeight = _report.Font.Height;
         int lines = 4; // summary line, blank, version subline, blank
+        // A hint counts as one line however long it is. Long hints wrap - the internet-connectivity
+        // one runs to three lines at this width - so a report carrying several of them is
+        // under-counted and the dialog can scroll a little sooner than the cap implies. Deliberate:
+        // counting wrapped lines properly needs TextRenderer against the control width plus
+        // SelectionIndent, which is far more machinery than a discrepancy of about one line in a
+        // dialog that is designed to scroll anyway. Do not read the arithmetic below as exact.
         foreach (var r in _results)
             lines += string.IsNullOrEmpty(r.Hint) ? 3 : 4; // name + detail (+ hint) + trailing blank
 
@@ -237,6 +243,11 @@ internal sealed class DiagnosticsForm : Form
         DiagnosticStatus.Pass => ("✓", PassColor),
         DiagnosticStatus.Warn => ("⚠", WarnColor),
         DiagnosticStatus.Fail => ("✗", FailColor),
+        // En dash, deliberate: the neutral "not applicable" mark for a skipped row, weighted to sit with
+        // the glyphs above rather than the hyphen a dash sweep would substitute. Not prose, so the
+        // project-wide no-em-dash rule does not reach it - the same exemption the separator class in
+        // FileNameParser.SitePrefixRegex documents at length. Those two are the repository's only
+        // non-prose dashes; a scan reporting both is reporting the expected set.
         _ => ("–", SystemColors.GrayText),
     };
 

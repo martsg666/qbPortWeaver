@@ -203,8 +203,8 @@ partial class StatusForm
         lblAutoRecoveryValue.Text = "-";
         lblAutoRecoveryValue.TextAlign = ContentAlignment.MiddleLeft;
         // AutoEllipsis + the tooltip PopulateAutoRecovery sets are belt and braces. Every value this
-        // row produces fits 384px today (the longest, "Holding - no internet connection, retry in
-        // ~15m", is ~310px), but the countdown that would be cut first sits at the end, and a longer
+        // row produces fits 384px today (the longest, "Holding - cannot confirm internet, retry in
+        // ~15m", is ~315px), but the countdown that would be cut first sits at the end, and a longer
         // duration or a larger system font could still reach the edge.
         lblAutoRecoveryValue.AutoEllipsis = true;
         // ── grpHistory (recent port changes and recovery events; populated in PopulateHistory) ──

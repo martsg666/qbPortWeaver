@@ -32,7 +32,9 @@ public partial class SettingsForm : Form
 
     // What the plugin status line is currently showing, so a poll that finds no change leaves the
     // label and the install button untouched rather than reassigning identical values every tick.
-    private (NicotinePluginState State, string Summary)? _shownNicotinePluginStatus;
+    // SettingsDiffer is carried alongside the state because it decides the colour independently of
+    // both other fields - see RefreshNicotinePluginStatus.
+    private (NicotinePluginState State, string Summary, bool SettingsDiffer)? _shownNicotinePluginStatus;
 
     public SettingsForm()
     {
@@ -861,18 +863,42 @@ public partial class SettingsForm : Form
     {
         var status = NicotinePluginInstaller.GetStatus(txtNicotineExePath.Text.Trim());
 
-        // Most polls find nothing has moved, so leave the controls alone unless they would change.
-        if (_shownNicotinePluginStatus == (status.State, status.Summary)) return;
-        _shownNicotinePluginStatus = (status.State, status.Summary);
+        // Ready alone is not a verdict: the plugin can be running perfectly while the connection
+        // settings name a different address, which DiagnosticsService reports as a Warn. Compared
+        // against the values currently in the form rather than the saved ones, so the refresh button
+        // beside the token clears this the moment it fills them in, without waiting for a save.
+        // The token is passed UNTRIMMED on purpose. SaveSettings stores it untrimmed ("like the other
+        // clients' secrets"), NicotineClient sends exactly those bytes, and DiagnosticsService compares
+        // the stored value with StringComparison.Ordinal. Trimming here would forgive a pasted trailing
+        // space that the client will still send and the report will still flag - green in Settings,
+        // Warn in Diagnostics, which is the divergence this shared helper exists to prevent. The URL is
+        // trimmed because SaveSettings trims it too; each side matches how the value is actually stored.
+        bool settingsDiffer = NicotinePluginInstaller.ConnectionSettingsDiffer(
+            status, txtNicotineURL.Text.Trim(), txtNicotineToken.Text);
 
-        lblNicotinePluginStatus.Text = status.Summary;
+        // Most polls find nothing has moved, so leave the controls alone unless they would change.
+        // settingsDiffer is part of the key: it turns over while State and Summary both stand still
+        // (the user edits the URL box, or the refresh button rewrites both fields), and leaving it
+        // out would freeze the colour on whatever the first poll happened to see.
+        if (_shownNicotinePluginStatus == (status.State, status.Summary, settingsDiffer)) return;
+        _shownNicotinePluginStatus = (status.State, status.Summary, settingsDiffer);
+
+        // Colour alone cannot carry this: it is lost to a colour-blind reader and to the monochrome
+        // screenshot that arrives with a support request, and this is the screen the diagnostics fix
+        // hint sends people to. Replaces the summary rather than appending to it - Summary's own remark
+        // caps the label at about 40 characters (AutoSize, no MaximumSize), and "Ready on <url>" plus
+        // an explanation is well past that. "these settings" rather than "saved settings" because the
+        // comparison runs against the values in the form, which may not have been saved yet.
+        lblNicotinePluginStatus.Text = settingsDiffer ? "Ready, but these settings differ" : status.Summary;
 
         // Same accents the Status panel uses for its values, and the same severity DiagnosticsService
         // assigns to each of these states - so the Settings label, the diagnostics report and the
-        // status panel never disagree about how bad a given plugin state is.
+        // status panel never disagree about how bad a given plugin state is. That includes the
+        // mismatch above: green here while the report warns would be worst of all on this screen,
+        // since its fix hint sends the user to exactly this dialog.
         lblNicotinePluginStatus.ForeColor = status.State switch
         {
-            NicotinePluginState.Ready => ThemeColors.StatusOk,
+            NicotinePluginState.Ready => settingsDiffer ? ThemeColors.StatusWarning : ThemeColors.StatusOk,
             NicotinePluginState.NotInstalled or NicotinePluginState.NotEnabled => ThemeColors.StatusError,
             _ => ThemeColors.StatusWarning,
         };

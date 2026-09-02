@@ -35,6 +35,7 @@ public static class DiagnosticsService
         public const string Client = "Client";
         public const string ClientPlugin = "Client plugin";
         public const string HelperService = "Helper service";
+        public const string InternetConnectivity = "Internet connectivity";
         public const string VpnConnection = "VPN connection";
         public const string ForwardedPort = "Forwarded port";
         public const string ClientRunning = "Client running";
@@ -62,6 +63,7 @@ public static class DiagnosticsService
 
         AddConfigurationResults(results, provider, clientSetting, disabled);
         AddHelperServiceResult(results);
+        await AddInternetConnectivityResultAsync(results, cancellationToken).ConfigureAwait(false);
         var (vpn, vpnPort) = await AddVpnResultsAsync(results, disabled, provider, cancellationToken).ConfigureAwait(false);
         await AddClientResultsAsync(results, vpn, vpnPort, cancellationToken).ConfigureAwait(false);
 
@@ -124,6 +126,46 @@ public static class DiagnosticsService
                 $"Could not query the helper service: {ex.Message}",
                 "Auto-recovery (VPN service restart or adapter cycle) needs the helper service. If this persists, reinstall qbPortWeaver."));
         }
+    }
+
+    // Upstream connectivity, as auto-recovery's rate limiter sees it. Sits beside the helper-service
+    // row because the two answer the same question - can recovery work here - and runs unconditionally
+    // for the same reason that one does.
+    //
+    // This is the inbound/outbound opposite of the "Port reachable" check further down: that one asks
+    // whether the outside world can reach this machine's forwarded port, this one whether this machine
+    // can reach anything at all. The detail lines are worded to keep them apart.
+    //
+    // Warn, never Fail. InternetConnectivityProbe cannot distinguish "offline" from "this network
+    // drops outbound ICMP", says so in its own contract, and tells callers not to treat false as
+    // grounds for refusing to act - so a red row here would assert something the probe cannot know.
+    // That ambiguity is the whole reason this row exists: without it, a machine on an ICMP-filtered
+    // network has no way to discover that its recovery attempts are being spaced out to 5, 10 and
+    // then 15 minutes, and every symptom points at qbPortWeaver instead.
+    private static async Task AddInternetConnectivityResultAsync(List<DiagnosticResult> results, CancellationToken cancellationToken)
+    {
+        if (await InternetConnectivityProbe.IsInternetReachableAsync(cancellationToken).ConfigureAwait(false))
+        {
+            // Singular: IsInternetReachableAsync passes on Array.Exists, so one reply is enough and the
+            // other resolver may well have been blocked. Claiming both answered would overstate exactly
+            // the kind of thing this row exists to report precisely.
+            results.Add(new(Checks.InternetConnectivity, DiagnosticStatus.Pass, "A public DNS resolver answered"));
+            return;
+        }
+
+        // Both causes are named because the reader cannot be sent to fix the wrong one, and the probe
+        // genuinely cannot tell them apart. Same opening words as the hold line TryTakeRecoverySlotAsync
+        // writes to the log, so a support reader matching the two sees one condition, not two.
+        // "when enabled" and "repeat attempts" are both load-bearing. The limiter lives in
+        // TriggerRecoveryIfDueAsync, which returns early unless vpnAutoRecoveryEnabled is set, and it
+        // gates only that trigger - the port-closed trigger reaches DispatchRecoveryAsync directly,
+        // having already proven connectivity by fetching a port. Even where it does apply, the first
+        // attempt of a streak always runs; only later ones wait. Stating it flatly told a user with
+        // auto-recovery switched off that attempts were being delayed, which never happens for them.
+        results.Add(new(Checks.InternetConnectivity, DiagnosticStatus.Warn,
+            "Could not confirm an internet connection",
+            "Auto-recovery, when enabled, spaces out repeat attempts (5, 10, then 15 minutes) while this cannot be confirmed. " +
+            "Expected if your network filters ping, or if your VPN killswitch is blocking traffic while the tunnel is down."));
     }
 
     // VPN connection + forwarded port. Returns the manager (for the later interface check) and the port (for the in-sync check).
@@ -299,18 +341,19 @@ public static class DiagnosticsService
 
     // Ready, but the saved connection settings may still point somewhere else - which works (the
     // client re-reads the file) yet costs a failed request every cycle, so it is worth flagging.
+    // The mismatch rule itself is NicotinePluginInstaller.ConnectionSettingsDiffer, shared with the
+    // Settings label so the report and that label cannot disagree about this condition. Here it is
+    // applied to the saved registry values, which is what the sync loop will actually use.
     private static DiagnosticResult BuildReadyPluginResult(NicotinePluginStatus status)
     {
         string savedUrl = RegistrySettingsManager.GetValue(
             RegistrySettingsManager.SectionNicotine, RegistrySettingsManager.KeyNicotineUrl);
         string savedToken = RegistrySettingsManager.GetNicotineToken();
 
-        if (status.Handshake is { } handshake &&
-            (!string.Equals(savedUrl.TrimEnd('/'), handshake.Url.TrimEnd('/'), StringComparison.OrdinalIgnoreCase) ||
-             !string.Equals(savedToken, handshake.Token, StringComparison.Ordinal)))
+        if (NicotinePluginInstaller.ConnectionSettingsDiffer(status, savedUrl, savedToken))
         {
             return new(Checks.ClientPlugin, DiagnosticStatus.Warn,
-                $"The bridge plugin is on {handshake.Url}, which differs from the saved settings",
+                $"The bridge plugin is on {status.Handshake?.Url}, which differs from the saved settings",
                 "Open Settings, click the refresh button next to the Plugin token, then save.");
         }
 

@@ -17,6 +17,19 @@ public partial class WhatsNewForm : Form
         "waiting for a problem to happen. A warning here does not always mean something is broken: a " +
         "network that blocks ping, or a VPN killswitch while the tunnel is down, both cause it with " +
         "everything else working normally.\n\n" +
+        "The log no longer promises things it then does not do\n" +
+        "When your VPN reconnects and its address changes, qbPortWeaver used to say it would move " +
+        "qBittorrent onto the new address if the forwarded port stopped answering. Often it then did " +
+        "not, because updating the port had already fixed the same thing, or because you had that " +
+        "repair switched off - and nothing said so. The log read as though a feature had failed when " +
+        "it had actually done the right thing. It now says what it will do, says when it no longer " +
+        "needs to, and explains the two cases where it wanted to move qBittorrent and could not.\n\n" +
+        "Nicotine+ tells you when its saved connection details have drifted\n" +
+        "The bridge plugin picks a different port for itself if its usual one is busy, which leaves " +
+        "the address saved in Settings pointing at the wrong place. Everything still works, because " +
+        "qbPortWeaver finds the plugin again on its own, but it wastes a failed attempt on every " +
+        "cycle. Settings now shows this in amber instead of green and says the details differ, on the " +
+        "same screen that has the button to correct them.\n\n" +
         "Previously released\n\n" +
         "New in 2.6.7\n\n" +
         "Port forwarding that is switched off no longer restarts your VPN\n" +

@@ -24,7 +24,9 @@ internal static class VpnDetector
     /// Returns every known VPN provider whose service is installed on this machine, in canonical
     /// order (ProtonVPN, PIA), each marked <see cref="DetectionKind.Running"/> when its service is
     /// running and <see cref="DetectionKind.Installed"/> otherwise. An empty list means none were
-    /// found. Never throws.
+    /// found. The caller decides how to resolve multiple matches (e.g. prefer running, or report the
+    /// ambiguity) - the preference stated on this class is a property of the Detect button as a whole,
+    /// applied in <c>SettingsForm</c>, not something this method does. Never throws.
     /// </summary>
     internal static IReadOnlyList<DetectedVpn> DetectAll()
     {

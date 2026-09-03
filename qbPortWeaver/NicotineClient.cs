@@ -181,10 +181,15 @@ public sealed class NicotineClient : ManagedClientBase
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
         catch (Exception ex)
         {
-            // Debug, like the other three read paths: SendAsync has already returned a successful
-            // response and reported any transport failure itself, so anything landing here is a
-            // malformed body. The user-facing Error comes from ApplyPortUpdateAsync, which turns
-            // the false below into "Failed to set {client} port to {n}" - this line only records why.
+            // Error (LogHttpException's default), matching the set-port catch in all three other
+            // clients - QBittorrentClient passes it explicitly into PostPreferencesAsync, and
+            // Transmission and Deluge call LogHttpException bare as this does. SendAsync has already
+            // returned a successful response and reported any transport failure itself, so anything
+            // landing here is a malformed body; this line records that cause, while the user-facing
+            // "Failed to set {client} port to {n}" comes from ApplyPortUpdateAsync turning the false
+            // below into a cycle failure. Deliberately not Debug: a port write that failed is
+            // actionable, and dropping the level here alone would leave this one client quieter than
+            // the other three about the same event.
             LogHttpException("SetListeningPortAsync", ex);
             return false;
         }

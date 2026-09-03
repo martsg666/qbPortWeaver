@@ -211,7 +211,10 @@ public static class UpdateChecker
     /// let a checksum failure escape. Catch it explicitly, as
     /// <c>UpdateAvailableForm.DownloadAndInstallAsync</c> does.</para>
     /// <para>The destination file is removed on every one of those paths, so a failure never leaves a
-    /// partial or unverified installer behind under a name that looks finished.</para>
+    /// partial or unverified installer behind under a name that looks finished. That includes the
+    /// stream's final flush, which is where a disk-full <see cref="IOException"/> actually surfaces -
+    /// <see cref="FileStream"/> buffers, so the tail of the transfer is written at dispose rather than
+    /// by the last write. The dispose is therefore inside the same <c>try</c> as the transfer.</para>
     /// </summary>
     /// <param name="url">Direct download URL of the asset.</param>
     /// <param name="destPath">File to write, created or truncated. Deleted again if the transfer fails or the checksum does not match.</param>
@@ -269,6 +272,14 @@ public static class UpdateChecker
                         $"(expected {expectedSha256!.ToLowerInvariant()}, got {actual.ToLowerInvariant()})");
                 }
             }
+
+            // Inside the try for the same reason, and it is not merely tidy: FileStream buffers, so
+            // the tail of the transfer is written here rather than by the last WriteAsync. A disk-full
+            // or IO fault at this flush throws IOException, and with this outside the try it escaped
+            // past the cleanup - leaving a truncated installer in %TEMP% under the finished name, the
+            // one outcome the catch below exists to prevent. DisposeAsync is idempotent, so the
+            // catch's own dispose stays a harmless no-op on every path that reaches it.
+            await dest.DisposeAsync().ConfigureAwait(false);
         }
         catch
         {
@@ -290,8 +301,6 @@ public static class UpdateChecker
             }
             throw;
         }
-
-        await dest.DisposeAsync().ConfigureAwait(false);
     }
 
     private static bool IsBot(string login, string type) =>

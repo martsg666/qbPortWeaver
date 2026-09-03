@@ -13,6 +13,14 @@ internal static partial class MediaImporter
     // the share is down, and this is re-evaluated every import cycle.
     private const string LibraryIndexStateKey = "media.libraryindex";
 
+    // State-key prefixes for the two conditions below, keyed per target so one file's problem cannot
+    // suppress another's. Both persist until the user acts and are re-evaluated on every import cycle,
+    // which runs on the port-sync interval - so an unkeyed Warn would repeat a few hundred times a day
+    // and pin the tray's unviewed-warning count. Same treatment, and the same reason, as
+    // MediaManagerService's per-source-folder key.
+    private const string DestinationConflictStateKeyPrefix = "media.destconflict:";
+    private const string LibraryDuplicateStateKeyPrefix = "media.librarydup:";
+
     private const int FullRebuildIntervalCycles = 10; // force a full library index rebuild every N cycles to catch external changes (e.g. deletions in Plex)
     // Maximum concurrent fingerprint reads for both source and library fingerprinting.
     // I/O-bound: storage throughput is the constraint, not CPU count.
@@ -166,6 +174,8 @@ internal static partial class MediaImporter
 
         if (DestinationMatchesSource(sourcePath, destinationPath))
         {
+            // The target now holds this exact content, so any earlier conflict on it is resolved.
+            ClearDestinationConflictState(destinationPath);
             LogManager.Instance.LogDebug($"MediaImporter.AddFileToLibrary: Skipped '{Path.GetFileName(destinationPath)}' - target already exists with same fingerprint", Subsystem.MediaManager);
             return;
         }
@@ -209,6 +219,9 @@ internal static partial class MediaImporter
             return;
         }
 
+        // Reached only on a completed transfer, so the target is now this file: re-arm the conflict
+        // warning for it, in case a later scan resolves a different source onto the same name.
+        ClearDestinationConflictState(destinationPath);
         AddToLibraryIndex(destinationPath);
     }
 
@@ -231,11 +244,24 @@ internal static partial class MediaImporter
     /// overwrite" warning. Shared by the dry-run-aware import front door (<see cref="MediaManagerService.ImportFile"/>)
     /// and the direct library-add path (<see cref="AddFileToLibrary"/>), which each keep their own
     /// <see cref="File.Exists(string)"/> guard but emit one identical message.</summary>
+    /// <remarks>Reported on the transition, not on every import cycle. Nothing here ever overwrites, so
+    /// the source file, the destination file and therefore this message are all unchanged next cycle -
+    /// the user has to intervene by hand, and repeating the Warn until they do only buries the log and
+    /// pins the tray badge. The message carries both file sizes, so a <em>different</em> conflict on the
+    /// same target still reports: <see cref="LogManager.LogStateChange"/> compares the message, not just
+    /// the key. Paired with <see cref="ClearDestinationConflictState"/> on the resolved path.</remarks>
     internal static void LogDestinationConflict(string sourcePath, string destinationPath) =>
-        LogManager.Instance.LogMessage(
+        LogManager.Instance.LogStateChange(
+            DestinationConflictStateKeyPrefix + destinationPath,
             $"Destination conflict: '{Path.GetFileName(destinationPath)}' already exists with different content " +
             $"(source: {DescribeFileSize(sourcePath)}, dest: {DescribeFileSize(destinationPath)}). Skipping to avoid overwriting",
             LogLevel.Warn, Subsystem.MediaManager);
+
+    /// <summary>Re-arms the destination-conflict warning for <paramref name="destinationPath"/>, so a
+    /// conflict that reappears after being resolved is reported again rather than swallowed as a
+    /// duplicate of one the user has already dealt with.</summary>
+    internal static void ClearDestinationConflictState(string destinationPath) =>
+        LogManager.Instance.ClearLogState(DestinationConflictStateKeyPrefix + destinationPath);
 
     /// <summary>Returns <see langword="true"/> if the destination file already exists and its fingerprint matches the source - i.e. the source was already imported.</summary>
     internal static bool DestinationMatchesSource(string sourcePath, string destinationPath)
@@ -714,10 +740,17 @@ internal static partial class MediaImporter
         int cached = 0, computed = 0;
         foreach (var (fullName, fp, wasCached) in results)
         {
+            // Transition-only, keyed on the duplicate's own path: two identical files in the library
+            // stay identical until the user deletes one, and this runs on every index rebuild.
+            // The message names the file it duplicates, so a duplicate that later shadows a
+            // different original still reports.
             if (!fpToPath.TryAdd(fp, fullName))
-                LogManager.Instance.LogMessage(
+                LogManager.Instance.LogStateChange(
+                    LibraryDuplicateStateKeyPrefix + fullName,
                     $"Library duplicate: '{fullName}' has same content as '{fpToPath[fp]}'",
                     LogLevel.Warn, Subsystem.MediaManager);
+            else
+                LogManager.Instance.ClearLogState(LibraryDuplicateStateKeyPrefix + fullName);
             fingerprints.Add(fp);
             if (wasCached) cached++; else computed++;
         }

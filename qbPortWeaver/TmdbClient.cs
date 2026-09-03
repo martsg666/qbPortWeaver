@@ -10,6 +10,10 @@ public sealed class TmdbClient(string apiKey)
     private const string TmdbBaseUrl = "https://api.themoviedb.org/3/"; // NOSONAR S1075 - fixed TMDB API endpoint, not a configurable path
     private const int RateLimitDelayMs = 260; // ~3.8 req/s, comfortably under TMDB's ~4 req/s limit
 
+    // State-key prefix for the "no TMDB match" warning, keyed on media kind + title so one
+    // unmatchable title cannot suppress another's. See the call site in LookupAsync.
+    private const string NoMatchStateKeyPrefix = "media.nomatch:";
+
     // Static shared instance: HttpClient is thread-safe and reusing it avoids per-cycle socket exhaustion.
     private static readonly HttpClient _httpClient = new()
     {
@@ -163,7 +167,15 @@ public sealed class TmdbClient(string apiKey)
 
             if (info is null)
             {
-                LogManager.Instance.LogMessage($"No TMDB match found for {mediaKind} '{query.Title}'", LogLevel.Warn, Subsystem.MediaManager);
+                // Transition-only, keyed on kind + title. A title TMDB cannot match stays unmatched
+                // until the user renames the file or re-matches it by hand, and the import cycle
+                // re-looks-it-up every time: PrepareClassifiedSourcesAsync evicts cached nulls at the
+                // top of each cycle so a transient API failure is retried, which means a genuinely
+                // unmatchable title reached this Warn on every cycle. Not cleared, for the same reason
+                // the uncertain-match skip is not - see MediaManagerService.UncertainMatchStateKeyPrefix.
+                LogManager.Instance.LogStateChange(
+                    $"{NoMatchStateKeyPrefix}{mediaKind}:{query.Title}",
+                    $"No TMDB match found for {mediaKind} '{query.Title}'", LogLevel.Warn, Subsystem.MediaManager);
                 return (null, false);
             }
 

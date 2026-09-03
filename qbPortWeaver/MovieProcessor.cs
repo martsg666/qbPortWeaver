@@ -119,7 +119,7 @@ public sealed class MovieProcessor(TmdbClient tmdb, bool dryRun, bool createFold
     private async Task ProcessMovieFileAsync(string filePath, string title, int? year, CancellationToken cancellationToken)
     {
         var (info, isConfident) = await GetOrLookupMovieAsync(title, year, cancellationToken).ConfigureAwait(false);
-        if (!ShouldImportMatch(info, isConfident, $"'{Path.GetFileName(filePath)}'")) return;
+        if (!ShouldImportMatch(info, isConfident, $"'{Path.GetFileName(filePath)}'", filePath)) return;
 
         var targetPath = BuildStandaloneMoviePath(filePath, info, libraryPath, createFolders);
         MediaManagerService.ImportFile(filePath, targetPath, dryRun, importMode);
@@ -134,7 +134,7 @@ public sealed class MovieProcessor(TmdbClient tmdb, bool dryRun, bool createFold
         var resolved = await ResolveFolderMovieAsync(dirPath, folderDependent, cancellationToken).ConfigureAwait(false);
         if (resolved is null) return;
         var (info, isConfident) = resolved.Value;
-        if (!ShouldImportMatch(info, isConfident, $"folder '{Path.GetFileName(dirPath)}'")) return;
+        if (!ShouldImportMatch(info, isConfident, $"folder '{Path.GetFileName(dirPath)}'", dirPath)) return;
 
         foreach (var file in folderDependent)
             MediaManagerService.ImportFile(file, BuildFolderMoviePath(file, info), dryRun, importMode);
@@ -168,12 +168,20 @@ public sealed class MovieProcessor(TmdbClient tmdb, bool dryRun, bool createFold
     // Returns true when the TMDB match is confident enough to proceed with import. Logs a Warn
     // with the supplied skip label when the match is uncertain. [NotNullWhen(true)] on info
     // lets callers use info without a null check after a true return.
-    private static bool ShouldImportMatch([NotNullWhen(true)] MovieInfo? info, bool isConfident, string skipLabel)
+    //
+    // Transition-only, keyed on statePath (the full source path, not the display label - two files
+    // with the same name in different source folders must not share a key). An uncertain match is
+    // never imported, so the file stays a candidate and this ran on every import cycle; see
+    // MediaManagerService.UncertainMatchStateKeyPrefix for why it is never cleared.
+    private static bool ShouldImportMatch([NotNullWhen(true)] MovieInfo? info, bool isConfident, string skipLabel, string statePath)
     {
         if (info is null) return false;
         if (!isConfident)
         {
-            LogManager.Instance.LogMessage($"Skipped {skipLabel} - uncertain TMDB match, review in Media Manager", LogLevel.Warn, Subsystem.MediaManager);
+            LogManager.Instance.LogStateChange(
+                MediaManagerService.UncertainMatchStateKeyPrefix + statePath,
+                $"Skipped {skipLabel} - uncertain TMDB match, review in Media Manager",
+                LogLevel.Warn, Subsystem.MediaManager);
             return false;
         }
         return true;

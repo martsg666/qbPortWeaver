@@ -19,8 +19,9 @@
 /// <c>PortSyncService.GetClientBehaviorConfig</c> and <c>PortSyncService.LogConfigDebug</c>. Because
 /// the two sites were independent, they could drift: Nicotine+'s <c>warnOnInterfaceMismatch</c> was
 /// honoured by the first while missing from the second until 2.6.8, leaving a support log unable to
-/// say whether the one warning that client has a setting for was even enabled. Declaring the key
-/// here is now the single act that turns a setting on, so behaviour and reporting cannot disagree.</para>
+/// say whether the one warning that client has a setting for was even enabled. Both now read the key
+/// from this row, so behaviour and reporting cannot disagree. The Settings UI is still separate, as
+/// it is for every other key here - see the note on the fields themselves.</para>
 /// </summary>
 internal static class ClientRegistry
 {
@@ -60,7 +61,10 @@ internal static class ClientRegistry
         // same reason UserNameKey and RestartKey are: absence is a property of the client, and a null
         // key is what both the config read and the debug dump branch on, so neither can claim a
         // setting the client does not have. Declaring the key here is the single act that turns a
-        // setting on for a client - there is no second place to remember.
+        // setting on *in the sync loop*, so behaviour and the debug dump can no longer disagree - but
+        // it is not the only place: the Settings UI still declares its own checkbox per client, as it
+        // does for every other key here. A key declared with no checkbox behind it reads false
+        // forever, and the dump would report a setting the user has no way to enable.
         string? WarnOnInterfaceMismatchKey,
         string? RestartOnDisconnectKey,
         string? FixInterfaceBindingKey,

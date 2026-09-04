@@ -268,10 +268,6 @@ public sealed class PortSyncService
         int UpdateInterval,
         string ClientName,
         ClientConfig Client,
-        bool QBittorrentWarnOnInterfaceMismatch,
-        bool QBittorrentRestartOnDisconnect,
-        bool QBittorrentFixInterfaceBinding,
-        bool NicotineWarnOnInterfaceMismatch,
         string PostUpdateCommand,
         bool VpnAutoRecoveryEnabled,
         int VpnAutoRecoveryTriggerCycles,
@@ -551,9 +547,9 @@ public sealed class PortSyncService
         // Set debug mode as early as possible (reads fresh from registry each loop)
         LogManager.Instance.DebugMode = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionExtra, RegistrySettingsManager.KeyDebugMode);
 
-        var (cfg, activeSection) = ReadConfig();
+        var cfg = ReadConfig();
         int defaultPort = GetDefaultPort(cfg);
-        LogConfigDebug(cfg, activeSection);
+        LogConfigDebug(cfg);
         status[StatusKeys.VpnProvider] = cfg.VpnProvider;
         status[StatusKeys.UpdateIntervalSeconds] = cfg.UpdateInterval;
         status[StatusKeys.RecoveryEnabled] = cfg.VpnAutoRecoveryEnabled;
@@ -580,7 +576,7 @@ public sealed class PortSyncService
             // A null from a startup wait (e.g. NAT-PMP adapter not up yet) re-checks on the fast grace poll.
             return _waitingForVpnThisCycle ? GraceStartupInterval(cfg.UpdateInterval) : cfg.UpdateInterval;
 
-        var (forceStart, restart, restartOnDisconnect, warnOnInterfaceMismatch) = GetClientBehaviorConfig(cfg, activeSection);
+        var (forceStart, restart, restartOnDisconnect, warnOnInterfaceMismatch) = GetClientBehaviorConfig(cfg);
 
         // Resolve which port to sync (or whether to stop this cycle) from the VPN state. Split into
         // per-state helpers so this method's control flow stays flat.
@@ -604,7 +600,7 @@ public sealed class PortSyncService
                 VpnManager: syncVpnManager,
                 WarnOnInterfaceMismatch: warnOnInterfaceMismatch,
                 RestartOnDisconnect: restartOnDisconnect,
-                FixInterfaceBinding: cfg.QBittorrentFixInterfaceBinding,
+                FixInterfaceBinding: cfg.Client.FixInterfaceBinding,
                 NotifyOnPortUpdate: cfg.NotifyOnPortUpdate,
                 VerifyPort: cfg.VerifyPortAfterSync,
                 PortClosedRecoveryEnabled: cfg.PortClosedRecoveryEnabled,
@@ -757,8 +753,10 @@ public sealed class PortSyncService
             LogManager.Instance.ClearLogState(NatPmpLeaseStateKey);
     }
 
-    // Reads all configuration values from the registry into a single AppConfig record
-    private static (AppConfig Config, string ActiveSection) ReadConfig()
+    // Reads all configuration values from the registry into a single AppConfig record.
+    // The active client's section is no longer returned: nothing outside this method needs it now
+    // that the three exclusive settings are read here through the ClientRegistry row like the rest.
+    private static AppConfig ReadConfig()
     {
         // Shared with the Status panel's fallback due-time derivation - see
         // GetClampedUpdateIntervalSeconds for why the clamp lives in one place. The upper bound is
@@ -784,18 +782,22 @@ public sealed class PortSyncService
             ExePath: RegistrySettingsManager.GetValue(activeClient.Section, activeClient.ExePathKey),
             Restart: activeClient.RestartKey is not null && RegistrySettingsManager.GetBool(activeClient.Section, activeClient.RestartKey),
             ForceStart: RegistrySettingsManager.GetBool(activeClient.Section, activeClient.ForceStartKey),
-            DefaultPort: RegistrySettingsManager.GetInt(activeClient.Section, activeClient.DefaultPortKey));
+            DefaultPort: RegistrySettingsManager.GetInt(activeClient.Section, activeClient.DefaultPortKey),
+            // Same null-key idiom as Restart above: a client without the key does not have the setting,
+            // so it reads false rather than borrowing another client's value from a hardcoded section.
+            WarnOnInterfaceMismatch: activeClient.WarnOnInterfaceMismatchKey is { } warnKey
+                && RegistrySettingsManager.GetBool(activeClient.Section, warnKey),
+            RestartOnDisconnect: activeClient.RestartOnDisconnectKey is { } restartOnDisconnectKey
+                && RegistrySettingsManager.GetBool(activeClient.Section, restartOnDisconnectKey),
+            FixInterfaceBinding: activeClient.FixInterfaceBindingKey is { } bindingKey
+                && RegistrySettingsManager.GetBool(activeClient.Section, bindingKey));
 
-        return (new AppConfig(
+        return new AppConfig(
             VpnProvider: RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyVpnProvider),
             NatPmpAdapterName: RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyNatPmpAdapterName),
             UpdateInterval: updateInterval,
             ClientName: clientName,
             Client: clientConfig,
-            QBittorrentWarnOnInterfaceMismatch: RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyQBittorrentWarnOnInterfaceMismatch),
-            QBittorrentRestartOnDisconnect: RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyQBittorrentRestartOnDisconnect),
-            QBittorrentFixInterfaceBinding: RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionQBittorrent, RegistrySettingsManager.KeyQBittorrentFixInterfaceBinding),
-            NicotineWarnOnInterfaceMismatch: RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionNicotine, RegistrySettingsManager.KeyNicotineWarnOnInterfaceMismatch),
             PostUpdateCommand: RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionExtra, RegistrySettingsManager.KeyPostUpdateCmd),
             VpnAutoRecoveryEnabled: RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyVpnAutoRecoveryEnabled),
             VpnAutoRecoveryTriggerCycles: vpnAutoRecoveryTriggerCycles,
@@ -804,14 +806,14 @@ public sealed class PortSyncService
             PortClosedRecoveryEnabled: RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyPortClosedRecoveryEnabled),
             PortClosedRecoveryTriggerChecks: Math.Max(1, RegistrySettingsManager.GetInt(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyPortClosedRecoveryTriggerChecks)),
             WaitForVpnOnStartup: RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyWaitForVpnOnStartup)
-        ), activeClient.Section);
+        );
     }
 
     // Dumps the active AppConfig to the log file when debug mode is enabled.
     // Three lines (general / active client / extra) keep each section independently greppable.
     // The client line is built from the active client's ClientRegistry key names, so it stays in
     // step with whatever ReadConfig read - no per-client branch.
-    private static void LogConfigDebug(AppConfig cfg, string activeSection)
+    private static void LogConfigDebug(AppConfig cfg)
     {
         if (!LogManager.Instance.DebugMode) return;
 
@@ -835,21 +837,19 @@ public sealed class PortSyncService
             $"{ci.ExePathKey}={cfg.Client.ExePath}, " +
             (ci.RestartKey is not null ? $"{ci.RestartKey}={cfg.Client.Restart}, " : string.Empty) +
             $"{ci.ForceStartKey}={cfg.Client.ForceStart}, " +
-            $"{ci.DefaultPortKey}={cfg.Client.DefaultPort}";
-        // Flags that only some clients have, so they fall outside the shared ClientRegistry key set
-        // the line above is built from. qBittorrent has three; Nicotine+ shares only the
-        // interface-mismatch warning, which GetClientBehaviorConfig honours for it the same way.
-        // Appended per client so the dump always names the settings actually in effect for the
-        // active one - omitting Nicotine+'s left a support log unable to say whether the one
-        // warning that client has a setting for was even enabled.
-        if (activeSection == RegistrySettingsManager.SectionQBittorrent)
-            clientLine +=
-                $", {RegistrySettingsManager.KeyQBittorrentWarnOnInterfaceMismatch}={cfg.QBittorrentWarnOnInterfaceMismatch}" +
-                $", {RegistrySettingsManager.KeyQBittorrentRestartOnDisconnect}={cfg.QBittorrentRestartOnDisconnect}" +
-                $", {RegistrySettingsManager.KeyQBittorrentFixInterfaceBinding}={cfg.QBittorrentFixInterfaceBinding}";
-        else if (activeSection == RegistrySettingsManager.SectionNicotine)
-            clientLine +=
-                $", {RegistrySettingsManager.KeyNicotineWarnOnInterfaceMismatch}={cfg.NicotineWarnOnInterfaceMismatch}";
+            $"{ci.DefaultPortKey}={cfg.Client.DefaultPort}" +
+            // The three exclusive settings, in the same null-key idiom as UserNameKey and RestartKey
+            // above rather than a per-client branch. The branch that used to sit here named the
+            // clients twice - once to read the value and once to print it - and the two could drift:
+            // Nicotine+'s warning was honoured but never printed until 2.6.8. Now a client prints
+            // exactly the settings its ClientRegistry row declares, so the dump cannot disagree with
+            // what GetClientBehaviorConfig acted on.
+            (ci.WarnOnInterfaceMismatchKey is not null
+                ? $", {ci.WarnOnInterfaceMismatchKey}={cfg.Client.WarnOnInterfaceMismatch}" : string.Empty) +
+            (ci.RestartOnDisconnectKey is not null
+                ? $", {ci.RestartOnDisconnectKey}={cfg.Client.RestartOnDisconnect}" : string.Empty) +
+            (ci.FixInterfaceBindingKey is not null
+                ? $", {ci.FixInterfaceBindingKey}={cfg.Client.FixInterfaceBinding}" : string.Empty);
         LogManager.Instance.LogDebug(clientLine);
 
         LogManager.Instance.LogDebug(
@@ -1025,7 +1025,7 @@ public sealed class PortSyncService
     /// </summary>
     internal static IManagedClient BuildActiveClient()
     {
-        var (cfg, _) = ReadConfig();
+        var cfg = ReadConfig();
         return CreateManagedClient(cfg);
     }
 
@@ -2298,24 +2298,16 @@ public sealed class PortSyncService
         }
     }
 
-    private static (bool ForceStart, bool Restart, bool RestartOnDisconnect, bool WarnOnInterfaceMismatch) GetClientBehaviorConfig(AppConfig cfg, string activeSection)
-    {
-        // RestartOnDisconnect is qBittorrent-only: it is the only client where restarting is both
-        // possible and the right response to a dropped connection. Nicotine+ reconnects itself,
-        // and restarting it would discard its configuration.
-        // WarnOnInterfaceMismatch needs a named adapter, which qBittorrent and Nicotine+ both report;
-        // Transmission and Deluge report a bind address instead, so there is no name to compare. That
-        // is about the name check alone - see IManagedClient.SupportsInterfaceMismatchWarning for what
-        // each of them actually binds, which is not the same question and does not have the same answer.
-        bool isQBittorrent = activeSection == RegistrySettingsManager.SectionQBittorrent;
-        bool isNicotine = activeSection == RegistrySettingsManager.SectionNicotine;
-        return (
-            cfg.Client.ForceStart,
-            cfg.Client.Restart,
-            isQBittorrent && cfg.QBittorrentRestartOnDisconnect,
-            (isQBittorrent && cfg.QBittorrentWarnOnInterfaceMismatch) ||
-            (isNicotine && cfg.NicotineWarnOnInterfaceMismatch));
-    }
+    // Which client has which of the three exclusive settings is now decided once, by whether its
+    // ClientRegistry row declares the key - a client without one reads false in ReadConfig, so there
+    // is nothing to gate here any more. The reasoning behind each row's declaration lives with the
+    // row: RestartOnDisconnect is qBittorrent-only because it is the only client where restarting is
+    // both possible and the right response to a dropped connection, and WarnOnInterfaceMismatch needs
+    // a named adapter, which only qBittorrent and Nicotine+ report. That last point is about the name
+    // check alone - see IManagedClient.SupportsInterfaceMismatchWarning for what each client actually
+    // binds, which is not the same question and does not have the same answer.
+    private static (bool ForceStart, bool Restart, bool RestartOnDisconnect, bool WarnOnInterfaceMismatch) GetClientBehaviorConfig(AppConfig cfg) =>
+        (cfg.Client.ForceStart, cfg.Client.Restart, cfg.Client.RestartOnDisconnect, cfg.Client.WarnOnInterfaceMismatch);
 
     private static int GetDefaultPort(AppConfig cfg) => cfg.Client.DefaultPort;
 

@@ -22,23 +22,23 @@
     <!-- Suppress known SonarAnalyzer false positives. Each is documented below; per-site
          // NOSONAR comments mark the specific occurrences where the rule permits one
          (S125 and S2486 cannot carry one - see their entries):
-         S108  - empty catch bodies are intentional (ManagedClientBase.cs, TransmissionClient.cs)
+         S108  - empty catch bodies are intentional (ManagedClientBase.cs, SettingsForm.cs, TransmissionClient.cs, UpdateChecker.cs)
          S125  - documentation comments containing qualified identifiers (e.g. Class.Member) are falsely flagged as commented-out code (suppressed project-wide; the rule targets XML doc comments, which cannot carry an inline // NOSONAR)
          S1075 - TMDB base URL is intentionally hardcoded (TmdbClient.cs)
          S1125 - C# pattern matching 'is true' / 'is not true' requires the boolean literal (MediaManagerForm.cs)
          S1215 - intentional GC after explicit large release on log viewer close (LogViewerForm.cs)
          S1313 - public DNS resolver addresses are hardcoded on purpose: the connectivity probe must not depend on name resolution, which an outage breaks (InternetConnectivityProbe.cs)
          S2068 - registry key name contains "Password", value is masked (PortSyncService.cs)
-         S2221 - bare catch before LogManager is initialized, any failure must fall back safely (Program.cs); connectivity probe treats every ICMP-layer failure as "no reply" rather than letting it abort the sync cycle (InternetConnectivityProbe.cs)
+         S2221 - bare catch before LogManager is initialized, any failure must fall back safely (Program.cs); connectivity probe treats every ICMP-layer failure as "no reply" rather than letting it abort the sync cycle (InternetConnectivityProbe.cs); an escape from a timer callback or from a UI marshal is process-fatal (MainForm.cs)
          S2325 - handlers/helpers that access instance members (Close, Invoke, ShowBalloonTip, UseWaitCursor/IsDisposed, or a called instance method) cannot be static (AboutForm.cs, DiagnosticsForm.cs, HelpForm.cs, MainForm.cs, MediaManagerForm.cs, PortSyncService.cs, SettingsForm.cs, StatusForm.cs, TransmissionClient.cs, WhatsNewForm.cs)
-         S2486 - same as S108, SonarCloud cloud rule counterpart (ManagedClientBase.cs, TransmissionClient.cs)
+         S2486 - same as S108, SonarCloud cloud rule counterpart (ManagedClientBase.cs, SettingsForm.cs, TransmissionClient.cs, UpdateChecker.cs)
          S2589 - defensive runtime fallback after a Debug.Assert that only fires in dev builds (WhatsNewForm.cs)
          S2696 - static field written from a single-instance context: the sync-service flag shared with the static manual-test dispatch (PortSyncService.cs) and the process-wide warning dedupe (NicotineClient.cs)
          S3881 - abstract base class; all sealed subclasses have no additional disposable resources (ManagedClientBase.cs)
          S4721 - post-update command is user-configured, arbitrary execution is intended (PortSyncService.cs)
          S4790 - TMDB credential sent over HTTPS only; v3 API key in query param, v4 JWT as Bearer header (TmdbClient.cs)
          S5332 - loopback IPC bridge on 127.0.0.1; TLS is meaningless for a local-only handshake (NicotinePluginDiscovery.cs)
-         S6966 - non-modal Show() on child forms is intentional (WhatsNewForm directly; others via the ShowOrActivate helper, MainForm.cs)
+         S6966 - non-modal Show() on child forms is intentional; all call sites are in MainForm.cs - most child forms go through the ShowOrActivate helper, while WhatsNewForm and DiagnosticsForm are shown directly (DiagnosticsForm refreshes an already-open window in place via SetResults, which ShowOrActivate cannot express) (MainForm.cs)
          CS1591 - doc *coverage* is deliberately optional; see GenerateDocumentationFile below -->
     <NoWarn>S108;S125;S1075;S1125;S1215;S1313;S2068;S2221;S2325;S2486;S2589;S2696;S3881;S4721;S4790;S5332;S6966;CS1591</NoWarn>
     <!-- Enabled for XML doc *accuracy* checking, not to require docs everywhere: without it Roslyn

@@ -18,8 +18,8 @@
     <!-- Suppress known SonarAnalyzer false positives. Each is documented below; per-site
          // NOSONAR comments mark the specific occurrences where the rule permits one
          (S2486 cannot carry one - see its entry):
-         S108  - empty catch body is intentional (HelperPipeServer.cs)
-         S2486 - same as S108, SonarCloud cloud rule counterpart (HelperPipeServer.cs)
+         S108  - empty catch bodies are intentional (AutoRecovery.cs, HelperPipeServer.cs)
+         S2486 - same as S108, SonarCloud cloud rule counterpart (AutoRecovery.cs, HelperPipeServer.cs)
          CS1591 - doc *coverage* is deliberately optional; see GenerateDocumentationFile below -->
     <NoWarn>S108;S2486;CS1591</NoWarn>
     <!-- Enabled for XML doc *accuracy* checking (CS1574 unresolvable cref, CS0419 ambiguous cref,

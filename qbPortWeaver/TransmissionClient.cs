@@ -11,7 +11,7 @@ namespace qbPortWeaver;
 public sealed class TransmissionClient : ManagedClientBase
 {
     // Transmission Qt's session refresh interval is 5s by default (see the "Update interval"
-    // preference in Edit -> Preferences). After SetListeningPortAsync the new port lives only
+    // preference in Edit → Preferences). After SetListeningPortAsync the new port lives only
     // in the daemon's in-memory session until the Qt client polls; closing the window before
     // that point overwrites the change with the stale Qt-side value. 5s matches the default
     // refresh - if a future Qt build changes the default this delay needs updating.

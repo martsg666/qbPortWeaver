@@ -623,7 +623,7 @@ public partial class MainForm : Form
         _diagnosticsForm = frm;
         frm.RefreshRequested += async (_, _) => await RerunDiagnosticsAsync(frm); // async void event handler (WinForms)
         frm.FormClosed += (_, _) => { if (ReferenceEquals(_diagnosticsForm, frm)) _diagnosticsForm = null; };
-        frm.Show();
+        frm.Show(); // NOSONAR S6966 - non-modal is intentional; ShowOrActivate cannot express the in-place SetResults refresh above
     }
 
     private void autoStart_Click(object? sender, EventArgs e) => StartupManager.SetStartup(_autoStartMenuItem.Checked);

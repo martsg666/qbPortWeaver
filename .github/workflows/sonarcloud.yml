@@ -15,8 +15,17 @@ on:
   # access data from non main branches", and the branch shows no analysis date in the UI. Those
   # runs also duplicated the pull_request run on the same commit. Pull request analysis IS
   # included, and posts a full quality gate, so every branch is still covered through its PR.
-  # Contrast with build.yml, which keeps its broad push trigger: its pass/fail is readable on any
-  # branch, and it is the only check qa/ and rc/ get, since those take direct commits without a PR.
+  #
+  # That last point covers qa/ and rc/ too, and it is worth being exact because the wording here
+  # previously said the opposite. Those branches take direct commits in the sense that no PR is
+  # needed per change, but one is always opened for the batch (every rc/ branch back to 2.6.0 had
+  # one), and a push to a branch with an open PR re-runs both this workflow and build.yml through
+  # their pull_request triggers. The run history bears that out: every SonarCloud and Build Check
+  # run on an rc/ branch carries event=pull_request, and there are dozens of them per cycle. What
+  # an rc/ branch genuinely has is no coverage in the window before its PR is opened.
+  #
+  # build.yml's push filter is master plus 2.*, not a broad one: those are the only branches that
+  # take pushes outside a pull request.
   push:
     branches:
       - master

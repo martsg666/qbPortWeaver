@@ -16,7 +16,7 @@ from pynicotine.events import events
 from pynicotine.pluginsystem import BasePlugin
 
 from bridge import errors, handshake
-from bridge.core_io import CoreIO
+from bridge.core_io import INFORMATIONAL_CAPABILITIES, CoreIO
 from bridge.main_thread import MainThreadProxy
 from bridge.port_test import MAX_WAIT_SECONDS, STATE_DONE, PortTest
 from bridge.server import API_VERSION, APP_ID, Bridge
@@ -322,7 +322,16 @@ class Plugin(BasePlugin):
 
         self.output(f"UPnP:        {core_io.upnp_enabled()}")
 
-        missing = sorted(name for name, ok in core_io.capabilities.items() if not ok)
+        # Same filter probe() applies to its startup warning, and for the same reason: the two
+        # informational capabilities degrade nothing when absent, so naming them here reports a
+        # healthy bridge as impaired. port_test_native in particular is absent on every released
+        # Nicotine+ - the native check-port-status API is not in a stable build yet and PortTest
+        # falls back to the web check - so without this filter the line fired for essentially
+        # everyone, on the command they run to reassure themselves the bridge is fine.
+        # GET / still reports the raw map: that is the diagnosis endpoint, where the question is
+        # "which capabilities resolved", not "is anything wrong".
+        missing = sorted(name for name, ok in core_io.capabilities.items()
+                         if not ok and name not in INFORMATIONAL_CAPABILITIES)
         if missing:
             self.output(f"Unavailable: {', '.join(missing)}")
 

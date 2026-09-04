@@ -277,8 +277,8 @@ public static class UpdateChecker
             // the tail of the transfer is written here rather than by the last WriteAsync. A disk-full
             // or IO fault at this flush throws IOException, and with this outside the try it escaped
             // past the cleanup - leaving a truncated installer in %TEMP% under the finished name, the
-            // one outcome the catch below exists to prevent. DisposeAsync is idempotent, so the
-            // catch's own dispose stays a harmless no-op on every path that reaches it.
+            // one outcome the catch below exists to prevent. DisposeAsync is idempotent, so if this
+            // one throws, the catch's own dispose is a no-op on that path.
             await dest.DisposeAsync().ConfigureAwait(false);
         }
         catch
@@ -291,8 +291,14 @@ public static class UpdateChecker
             // leaves nothing behind.
             //
             // Disposed explicitly first: `await using` has not run at this point and FileShare.None
-            // holds the handle, so the delete would fail with the file still open.
-            await dest.DisposeAsync().ConfigureAwait(false);
+            // holds the handle, so the delete would fail with the file still open. Guarded because on
+            // every path but one - anything that throws before the dispose above, whether a failed
+            // transfer, a cancellation or a checksum mismatch - that dispose never ran, so the buffer
+            // is still dirty and this call is the one doing the flush. On a full volume that flush
+            // throws, and unguarded the IOException would escape past the delete below, stranding the
+            // partial file this block exists to remove.
+            try { await dest.DisposeAsync().ConfigureAwait(false); }
+            catch (Exception ex) when (ex is IOException or ObjectDisposedException) { } // NOSONAR S108 - the delete below is the cleanup that matters; a failed flush must not pre-empt it
             try { File.Delete(destPath); }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {

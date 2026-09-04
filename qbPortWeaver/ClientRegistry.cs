@@ -144,9 +144,15 @@ internal static class ClientRegistry
 
 /// <summary>
 /// Per-client connection and behaviour settings for one sync cycle, built by
-/// <see cref="PortSyncService"/> for the active client only and consumed by that client's
-/// <see cref="ClientRegistry.ClientInfo.Factory"/>. <see cref="UserName"/> is empty for clients that
-/// do not authenticate by username (e.g. Deluge).
+/// <see cref="PortSyncService"/> for the active client only.
+/// <para>Two groups with different consumers. The connection details and process controls
+/// (<see cref="Url"/> through <see cref="DefaultPort"/>) are what that client's
+/// <see cref="ClientRegistry.ClientInfo.Factory"/> constructs it from. The three behaviour flags
+/// below them are read by the sync loop instead - <c>PortSyncService.GetClientBehaviorConfig</c> and
+/// <c>LogConfigDebug</c> - and never reach the factory.</para>
+/// <para><see cref="UserName"/> is empty for clients that do not authenticate by username (e.g.
+/// Deluge), and a behaviour flag is false for any client whose <see cref="ClientRegistry.ClientInfo"/>
+/// row does not declare its key.</para>
 /// </summary>
 internal sealed record ClientConfig(
     string Url,

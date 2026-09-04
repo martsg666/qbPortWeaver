@@ -145,14 +145,16 @@ internal static class ClientRegistry
 /// <summary>
 /// Per-client connection and behaviour settings for one sync cycle, built by
 /// <see cref="PortSyncService"/> for the active client only.
-/// <para>Two groups with different consumers. The connection details and process controls
-/// (<see cref="Url"/> through <see cref="DefaultPort"/>) are what that client's
-/// <see cref="ClientRegistry.ClientInfo.Factory"/> constructs it from. The three behaviour flags
-/// below them are read by the sync loop instead - <c>PortSyncService.GetClientBehaviorConfig</c> and
-/// <c>LogConfigDebug</c> - and never reach the factory.</para>
-/// <para><see cref="UserName"/> is empty for clients that do not authenticate by username (e.g.
-/// Deluge), and a behaviour flag is false for any client whose <see cref="ClientRegistry.ClientInfo"/>
-/// row does not declare its key.</para>
+/// <para>Two groups with different consumers. <see cref="Url"/>, <see cref="UserName"/>,
+/// <see cref="Password"/>, <see cref="ProcessName"/> and <see cref="ExePath"/> are the connection
+/// details that client's <see cref="ClientRegistry.ClientInfo.Factory"/> constructs it from - and
+/// only those; <see cref="UserName"/> reaches the factory for qBittorrent and Transmission alone,
+/// since Deluge and Nicotine+ do not authenticate by username and leave it empty. Everything from
+/// <see cref="Restart"/> onwards is a behaviour setting the sync loop reads directly
+/// (<c>PortSyncService.GetClientBehaviorConfig</c>, <c>GetDefaultPort</c>, <c>LogConfigDebug</c>) and
+/// no factory sees.</para>
+/// <para>A behaviour flag is false for any client whose <see cref="ClientRegistry.ClientInfo"/> row
+/// does not declare its key.</para>
 /// </summary>
 internal sealed record ClientConfig(
     string Url,

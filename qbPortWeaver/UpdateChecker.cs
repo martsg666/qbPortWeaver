@@ -241,10 +241,12 @@ public static class UpdateChecker
         long? total = response.Content.Headers.ContentLength;
 
         await using var source = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
-        var dest = new FileStream(destPath, FileMode.Create, FileAccess.Write, FileShare.None);
         // Same incremental idiom as NicotinePluginInstaller.ComputeBundledFingerprint. Left null when
-        // there is nothing to compare against, so the unverified path allocates nothing.
+        // there is nothing to compare against, so the unverified path allocates nothing. Declared
+        // before the FileStream deliberately: FileMode.Create truncates on construction, so nothing
+        // that can throw may sit between that and the try below, or the catch never runs to remove it.
         using var hash = expectedSha256 is null ? null : IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        var dest = new FileStream(destPath, FileMode.Create, FileAccess.Write, FileShare.None);
 
         try
         {
@@ -290,13 +292,15 @@ public static class UpdateChecker
             // run it by hand. Same rule as AppFiles.WriteAtomicCore: a write that did not complete
             // leaves nothing behind.
             //
-            // Disposed explicitly first: `await using` has not run at this point and FileShare.None
-            // holds the handle, so the delete would fail with the file still open. Guarded because on
-            // every path but one - anything that throws before the dispose above, whether a failed
-            // transfer, a cancellation or a checksum mismatch - that dispose never ran, so the buffer
-            // is still dirty and this call is the one doing the flush. On a full volume that flush
-            // throws, and unguarded the IOException would escape past the delete below, stranding the
-            // partial file this block exists to remove.
+            // Disposed explicitly because `dest` is deliberately not declared with `await using` - that
+            // would put the buffered flush outside this try, which is the ordering the success path
+            // above exists to avoid. FileShare.None holds the handle, so without this dispose the
+            // delete would fail with the file still open. Guarded because on every path but one -
+            // anything that throws before the dispose above, whether a failed transfer, a cancellation
+            // or a checksum mismatch - that dispose never ran, so the buffer is still dirty and this
+            // call is the one doing the flush. On a full volume that flush throws, and unguarded the
+            // IOException would escape past the delete below, stranding the partial file this block
+            // exists to remove.
             try { await dest.DisposeAsync().ConfigureAwait(false); }
             catch (Exception ex) when (ex is IOException or ObjectDisposedException) { } // NOSONAR S108 - the delete below is the cleanup that matters; a failed flush must not pre-empt it
             try { File.Delete(destPath); }

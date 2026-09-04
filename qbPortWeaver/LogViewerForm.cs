@@ -956,9 +956,11 @@ public partial class LogViewerForm : Form
 
     // Visibility of the entry preceding fromLine, which any continuation lines at the start of an
     // incremental append belong to. Recomputed by walking back rather than carried in a field: the
-    // append runs from three call sites and two of them clear _visibleRows, so a field would need
-    // resetting in each and would silently go stale if a fourth were ever added. Continuation lines
-    // are rare, so this normally stops on the first line it looks at.
+    // append has several call sites and the places that clear _visibleRows are a different set again
+    // (only RebuildVisibleRows does both), so a cached field would need resetting at each and would
+    // silently go stale the next time either set grew. Deliberately not stated as a count - the
+    // previous wording named one and both numbers had drifted. Continuation lines are rare, so this
+    // normally stops on the first line it looks at.
     //
     // True when no earlier classified line exists - a buffer that begins mid-entry (the log rotated
     // partway through one) should show those lines rather than hide content that has no parent to

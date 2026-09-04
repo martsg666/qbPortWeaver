@@ -404,5 +404,7 @@ than here.
 
 Free of use and distribution. No warranty provided.
 
+This applies to qbPortWeaver itself. The Nicotine+ bridge plugin under `plugins/` is a separate work licensed GPL-3.0-or-later and carries its own `LICENSE` file, which travels with it when the plugin is installed.
+
 ## Author
 Developed by martsg666

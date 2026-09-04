@@ -140,12 +140,7 @@ public sealed class TvShowProcessor(TmdbClient tmdb, bool dryRun, bool createFol
         if (info is null) return;
         if (!isConfident)
         {
-            // Transition-only, keyed on the full path - see MovieProcessor.ShouldImportMatch, which
-            // emits this same sentence, and MediaManagerService.UncertainMatchStateKeyPrefix.
-            LogManager.Instance.LogStateChange(
-                MediaManagerService.UncertainMatchStateKeyPrefix + filePath,
-                $"Skipped '{Path.GetFileName(filePath)}' - uncertain TMDB match, review in Media Manager",
-                LogLevel.Warn, Subsystem.MediaManager);
+            LogManager.Instance.LogMessage($"Skipped '{Path.GetFileName(filePath)}' - uncertain TMDB match, review in Media Manager", LogLevel.Warn, Subsystem.MediaManager);
             return;
         }
 

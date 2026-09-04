@@ -13,25 +13,6 @@ public static class MediaManagerService
     // per cycle. The two configuration gates share one key so switching between them still reports.
     private const string ImportConfigStateKey = "media.import.config";
     private const string SourceFolderStateKeyPrefix = "media.sourcefolder:";
-    // Keyed per source file for the same reason the folder key above is keyed per folder: two copies
-    // of one file stay duplicates until the user removes one, and under the default dry run nothing
-    // is ever imported to resolve it - so an unkeyed Warn repeats on every cycle indefinitely.
-    private const string SourceDuplicateStateKeyPrefix = "media.sourcedup:";
-
-    /// <summary>State-key prefix for the "uncertain TMDB match" skip, keyed on the full source path.</summary>
-    /// <remarks>
-    /// Shared by <see cref="MovieProcessor"/> and <see cref="TvShowProcessor"/>, which emit the same
-    /// sentence, so the two cannot key it differently. Lives here rather than on either processor
-    /// because it belongs to neither in particular - and because the skip itself is a candidate for
-    /// extraction into one helper, which would move here too.
-    /// <para><b>Deliberately never cleared.</b> Unlike the conditions above, this one has no resolution
-    /// point in the import loop: an uncertain match becomes certain only when the user re-matches it in
-    /// the Media Manager dialog, which does not run through here. Reporting once per file per process
-    /// is the whole benefit - it removes the per-cycle repeat that pinned the tray badge - and a restart
-    /// re-arms it. The cost is one dictionary entry per unmatched file for the process lifetime, bounded
-    /// by exactly the set of files the user has been told about.</para>
-    /// </remarks>
-    internal const string UncertainMatchStateKeyPrefix = "media.uncertain:";
 
     /// <summary>
     /// Runs one media import cycle, moving or linking files into the configured library.
@@ -540,23 +521,16 @@ public static class MediaManagerService
                     return;
                 }
 
-                if (MediaImporter.IsAlreadyInLibrary(fp))
-                {
-                    // In the library now, so it is no longer a pending source duplicate: re-arm.
-                    LogManager.Instance.ClearLogState(SourceDuplicateStateKeyPrefix + fi.FullName);
-                    return;
-                }
+                if (MediaImporter.IsAlreadyInLibrary(fp)) return;
 
                 if (!fpToPath.TryAdd(fp, fi.FullName))
                 {
                     fpToPath.TryGetValue(fp, out var firstPath);
-                    LogManager.Instance.LogStateChange(
-                        SourceDuplicateStateKeyPrefix + fi.FullName,
+                    LogManager.Instance.LogMessage(
                         $"Source duplicate: '{fi.FullName}' has same content as '{firstPath}'",
                         LogLevel.Warn, Subsystem.MediaManager);
                     return;
                 }
-                LogManager.Instance.ClearLogState(SourceDuplicateStateKeyPrefix + fi.FullName);
 
                 if (FileNameParser.IsTvShow(fi.Name))
                 {

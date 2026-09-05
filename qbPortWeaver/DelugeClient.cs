@@ -42,8 +42,7 @@ public sealed class DelugeClient : ManagedClientBase
         try
         {
             var body = $$$"""{"method":"core.get_config_values","params":[["listen_ports","random_port","listen_random_port","listen_interface"]],"id":{{{_rpcId++}}}}""";
-            using var content = new StringContent(body, Encoding.UTF8, JsonContentType);
-            using var response = await HttpClient.PostAsync($"{Url}{RpcPath}", content, cancellationToken).ConfigureAwait(false);
+            using var response = await SendRpcAsync(body, cancellationToken).ConfigureAwait(false);
 
             using var doc = await ReadPreferencesJsonAsync(response, cancellationToken).ConfigureAwait(false);
             if (doc is null) return (null, null);
@@ -90,8 +89,7 @@ public sealed class DelugeClient : ManagedClientBase
             // Disable UPnP and NAT-PMP alongside the port change to prevent Deluge's
             // built-in port mapping from overwriting the externally managed port.
             var body = $$$"""{"method":"core.set_config","params":[{"listen_ports":[{{{port}}},{{{port}}}],"random_port":false,"upnp":false,"natpmp":false}],"id":{{{_rpcId++}}}}""";
-            using var content = new StringContent(body, Encoding.UTF8, JsonContentType);
-            using var response = await HttpClient.PostAsync($"{Url}{RpcPath}", content, cancellationToken).ConfigureAwait(false);
+            using var response = await SendRpcAsync(body, cancellationToken).ConfigureAwait(false);
 
             if (!response.IsSuccessStatusCode)
             {
@@ -135,8 +133,7 @@ public sealed class DelugeClient : ManagedClientBase
         try
         {
             var body = $$$"""{"method":"core.test_listen_port","params":[],"id":{{{_rpcId++}}}}""";
-            using var content = new StringContent(body, Encoding.UTF8, JsonContentType);
-            using var response = await HttpClient.PostAsync($"{Url}{RpcPath}", content, cancellationToken).ConfigureAwait(false);
+            using var response = await SendRpcAsync(body, cancellationToken).ConfigureAwait(false);
             using var doc = await TryReadJsonAsync(response, cancellationToken).ConfigureAwait(false);
             if (doc is null) return null;
             var root = doc.RootElement;
@@ -180,8 +177,7 @@ public sealed class DelugeClient : ManagedClientBase
             // keeps that number after the flag is turned off - so reading it as a boolean would
             // report a conflict on a client that is correctly configured.
             var body = $$$"""{"method":"core.get_config_values","params":[["random_port","upnp","natpmp"]],"id":{{{_rpcId++}}}}""";
-            using var content = new StringContent(body, Encoding.UTF8, JsonContentType);
-            using var response = await HttpClient.PostAsync($"{Url}{RpcPath}", content, cancellationToken).ConfigureAwait(false);
+            using var response = await SendRpcAsync(body, cancellationToken).ConfigureAwait(false);
             using var doc = await TryReadJsonAsync(response, cancellationToken).ConfigureAwait(false);
             if (doc is null) return null;
             var root = doc.RootElement;
@@ -226,8 +222,7 @@ public sealed class DelugeClient : ManagedClientBase
             // Use JsonSerializer to safely embed the password as a JSON string literal
             string encodedPassword = JsonSerializer.Serialize(_password);
             var body = $$$"""{"method":"auth.login","params":[{{{encodedPassword}}}],"id":{{{_rpcId++}}}}""";
-            using var content = new StringContent(body, Encoding.UTF8, JsonContentType);
-            using var response = await HttpClient.PostAsync($"{Url}{RpcPath}", content, cancellationToken).ConfigureAwait(false);
+            using var response = await SendRpcAsync(body, cancellationToken).ConfigureAwait(false);
 
             if (!response.IsSuccessStatusCode)
             {
@@ -260,6 +255,23 @@ public sealed class DelugeClient : ManagedClientBase
             LogHttpException("AuthenticateAsync", ex);
             return false;
         }
+    }
+
+    /// <summary>
+    /// POSTs a JSON-RPC body to Deluge's Web UI endpoint. <b>The caller owns the returned response</b>
+    /// and must <c>using</c> it.
+    /// </summary>
+    /// <remarks>Every RPC in this class sent the same two lines with only the body differing, which
+    /// SonarCloud measured as the file's duplication. Named to match
+    /// <c>TransmissionClient.SendRpcAsync</c>, the same concept in the sibling client - that one also
+    /// carries CSRF session handling and 401/409 retries, which Deluge's cookie-authenticated endpoint
+    /// does not need, so this stays a plain post and returns non-nullable.
+    /// <para>The <see cref="StringContent"/> is disposed as this returns: the request has already been
+    /// written by then, and the response owns its own stream.</para></remarks>
+    private async Task<HttpResponseMessage> SendRpcAsync(string jsonBody, CancellationToken cancellationToken)
+    {
+        using var content = new StringContent(jsonBody, Encoding.UTF8, JsonContentType);
+        return await HttpClient.PostAsync($"{Url}{RpcPath}", content, cancellationToken).ConfigureAwait(false);
     }
 
     private static int? ParseListenPort(JsonElement resultElement)

@@ -300,7 +300,7 @@ internal static partial class AutoRecovery
     // timing out - each having run the identical three steps and differed only in the reason. That
     // last one is the common case and was the one missed when this was first extracted, which is the
     // drift in miniature. Keeping them as one sequence is what stops a later change (a
-    // different wait, an extra log line) reaching two of the three.
+    // different wait, an extra log line) reaching some routes and not the rest.
     //
     // The caller still returns after this: the escalation is terminal for the stop attempt, and making
     // that explicit at each site reads better than a bool nobody branches on.

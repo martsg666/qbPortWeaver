@@ -14,8 +14,8 @@ internal static class ThemedMessageBox
 {
     /// <summary>An informational dialog with an OK button.</summary>
     /// <remarks>The shorthands below exist because every dialog in the app passes the same caption -
-    /// <see cref="AppIdentity.AppName"/> - with a fixed button/icon pair. Spelling that triple out at
-    /// each call site repeated it 25 times and left the caption convention resting on each author
+    /// <see cref="AppIdentity.AppName"/> - with a fixed button/icon pair. Spelling that triple out
+    /// repeated it at every call site and left the caption convention resting on each author
     /// remembering it; here the convention is the signature. Deliberately only the pairs that have a
     /// caller: an unused shorthand is dead code no compiler warns about. Reach for
     /// <see cref="Show"/> directly for anything they do not cover - today that is the media import's

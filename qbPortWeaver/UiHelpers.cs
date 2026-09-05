@@ -96,9 +96,22 @@ public static class UiHelpers
         clear.BringToFront(); // must sit above the native TextBox HWND or it is hidden behind it
     }
 
-    /// <summary>Opens a URL in the default browser using ShellExecute.</summary>
+    /// <summary>Opens an http or https URL in the default browser using ShellExecute.</summary>
+    /// <remarks>Anything that is not absolute http/https is refused rather than passed on.
+    /// <c>UseShellExecute</c> resolves far more than a browser address - <c>file://</c>, a UNC path
+    /// and registered protocol handlers all launch something - and not every caller supplies a
+    /// literal: the release and contributor links come from GitHub API responses, so the string can
+    /// arrive over the network. The same check the client-URL fields already apply in
+    /// <c>SettingsForm</c>, moved to the sink so every caller inherits it.</remarks>
     public static void OpenUrl(string url)
     {
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) ||
+            (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
+        {
+            LogManager.Instance.LogMessage($"Refused to open '{url}' - only http and https addresses are opened", LogLevel.Warn);
+            return;
+        }
+
         try
         {
             Process.Start(new ProcessStartInfo(url) { UseShellExecute = true })?.Dispose();

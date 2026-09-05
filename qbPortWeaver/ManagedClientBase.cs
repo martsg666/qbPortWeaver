@@ -1,5 +1,6 @@
 ﻿using System.Diagnostics;
 using System.Net;
+using System.Text.Json;
 
 namespace qbPortWeaver;
 
@@ -251,6 +252,59 @@ public abstract class ManagedClientBase : IManagedClient // NOSONAR S3881 - all 
             LogManager.Instance.LogMessage($"Failed to complete {ClientName} request in {methodName}: {ex.Message}", level);
             LogManager.Instance.LogDebug($"{GetType().Name}.{methodName}: {ex.GetType().Name}");
         }
+    }
+
+    /// <summary>
+    /// Turns a preferences response into a parsed <see cref="JsonDocument"/>, or <see langword="null"/>
+    /// when the request did not succeed. <b>The caller owns the returned document</b> and must
+    /// <c>using</c> it - the root element is only valid while it lives.
+    /// </summary>
+    /// <remarks>Shared by the three clients that read preferences over plain HTTP (qBittorrent,
+    /// Transmission, Deluge) - their requests differ, a GET against one URL versus two different RPC
+    /// bodies, but everything from the status check onwards was identical, including the failure
+    /// message. Duplicating that message three times is how it drifts: reword it in one client and
+    /// the log now describes the same failure two ways. Nicotine+ is not a caller - it reads through
+    /// its bridge's SendAsync, which reports transport failures itself.
+    /// <para>A parse failure is deliberately not caught here. Every caller already wraps this in a
+    /// try/catch that logs through <see cref="LogHttpException"/>, so catching it would either
+    /// swallow the cause or report it twice.</para></remarks>
+    protected async Task<JsonDocument?> ReadPreferencesJsonAsync(HttpResponseMessage response, CancellationToken cancellationToken)
+    {
+        if (!response.IsSuccessStatusCode)
+        {
+            LogManager.Instance.LogMessage(
+                $"Failed to get {ClientName} preferences (HTTP {(int)response.StatusCode} {response.StatusCode})", LogLevel.Error);
+            return null;
+        }
+
+        string json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+        return JsonDocument.Parse(json);
+    }
+
+    /// <summary>
+    /// The best-effort counterpart to <see cref="ReadPreferencesJsonAsync"/>: parses the response, or
+    /// logs at Debug and returns <see langword="null"/> when it did not succeed. <b>The caller owns the
+    /// returned document.</b>
+    /// </summary>
+    /// <remarks>For reads whose failure is "undeterminable" rather than a fault - the port test and the
+    /// conflicting-settings check - which is why this logs at Debug where the preferences read logs at
+    /// Error. The three call sites previously wrote their own line and had drifted to two different
+    /// levels of detail: one named the client and the status text, two reported only the numeric code.
+    /// <para><c>[CallerMemberName]</c> labels the entry with the public method that initiated the read,
+    /// the same way <see cref="LogHttpException"/> does, so the caller does not repeat its own name in
+    /// the message.</para></remarks>
+    protected async Task<JsonDocument?> TryReadJsonAsync(HttpResponseMessage response, CancellationToken cancellationToken,
+        [System.Runtime.CompilerServices.CallerMemberName] string callerName = "")
+    {
+        if (!response.IsSuccessStatusCode)
+        {
+            LogManager.Instance.LogDebug(
+                $"{GetType().Name}.{callerName}: {ClientName} returned HTTP {(int)response.StatusCode} {response.StatusCode}");
+            return null;
+        }
+
+        string json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+        return JsonDocument.Parse(json);
     }
 
     // Creates an HttpClient with a per-instance CookieContainer for cookie-based auth (qBittorrent, Deluge).

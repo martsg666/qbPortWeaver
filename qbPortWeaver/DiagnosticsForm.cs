@@ -32,16 +32,10 @@ internal sealed class DiagnosticsForm : Form
         _ranAt = DateTime.Now;
 
         Text = $"{AppIdentity.AppName} | Diagnostics ({_ranAt:HH:mm:ss})";
-        FormBorderStyle = FormBorderStyle.FixedDialog;
-        MaximizeBox = false;
-        MinimizeBox = false;
-        Icon     = Properties.Resources.qbPortWeaver;
-        ShowIcon = true;
-        ShowInTaskbar = false;
+        DialogLayout.ApplyDialogChrome(this);
+        // CenterScreen, not CenterParent: this opens from the tray menu as well as the Status panel,
+        // and CenterParent falls back to the OS default corner when there is no visible owner.
         StartPosition = FormStartPosition.CenterScreen;
-        // Match the designer forms' 96-DPI autoscale baseline so the manually-placed controls scale.
-        AutoScaleDimensions = new SizeF(7F, 15F);
-        AutoScaleMode = AutoScaleMode.Font;
         // Initial width; SizeToContent (after the report renders) sets the final height to fit.
         ClientSize = new Size(560, 690);
 

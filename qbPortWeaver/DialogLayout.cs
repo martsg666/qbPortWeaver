@@ -24,6 +24,61 @@ internal static class DialogLayout
     internal const int ButtonWidth = 82;
     internal const int ButtonHeight = 28;
 
+    /// <summary>
+    /// Applies the window chrome every code-built dialog shares: a fixed frame, no minimise or
+    /// maximise box, no taskbar entry, the app icon, and the designer's font-scaling baseline.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="Form.StartPosition"/> and <see cref="Form.AutoSize"/> are deliberately left to the
+    /// caller, because they are the two that genuinely differ: the auto-sized dialogs centre on their
+    /// owner, while DiagnosticsForm centres on the screen and sizes itself from its content.
+    /// <para>The window icon is what Alt+Tab draws. Leaving it unset gave every dialog a blank entry
+    /// there, so it is set here as on every other form; the title bar stays iconless because a
+    /// FixedDialog frame does not draw one, which is what the "no title-bar icon" convention actually
+    /// relies on - <c>ShowIcon = false</c> was suppressing the Alt+Tab icon as a side effect. That
+    /// reasoning applied to all four dialogs but lived in only one of them, which is why this moved.</para>
+    /// <para>Call it where the property block used to sit, before controls are added: the scaling
+    /// pair has to be set before the layout containers measure, exactly as the designer emits it.</para>
+    /// </remarks>
+    internal static void ApplyDialogChrome(Form form)
+    {
+        form.FormBorderStyle = FormBorderStyle.FixedDialog;
+        form.MinimizeBox = false;
+        form.MaximizeBox = false;
+        form.ShowInTaskbar = false;
+        form.Icon = Properties.Resources.qbPortWeaver;
+        form.ShowIcon = true;
+        // The layout containers size the form; AutoScaleMode.Font (designer baseline) scales fonts.
+        form.AutoScaleDimensions = new SizeF(7F, 15F);
+        form.AutoScaleMode = AutoScaleMode.Font;
+    }
+
+    /// <summary>
+    /// The outer content panel for an auto-sized dialog: one column, a content row above a button
+    /// row, and the standard inner padding. Callers add their content at (0,0) and a
+    /// <see cref="ButtonRow"/> at (0,1).
+    /// </summary>
+    /// <remarks>Only the auto-sized dialogs use this (ThemedMessageBox, ClientChooserForm,
+    /// TimeRangeForm) - DiagnosticsForm builds its own around a fixed <c>ClientSize</c>. A caller
+    /// that needs the single column to fill rather than hug its content adds its own
+    /// <see cref="ColumnStyle"/>; that is a real difference between these dialogs, not an oversight,
+    /// so it stays at the call site.</remarks>
+    internal static TableLayoutPanel ContentRoot()
+    {
+        var root = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            ColumnCount = 1,
+            RowCount = 2,
+            Padding = new Padding(EdgeMargin, EdgeMargin, EdgeMargin, BottomMargin),
+        };
+        root.RowStyles.Add(new RowStyle(SizeType.AutoSize)); // content
+        root.RowStyles.Add(new RowStyle(SizeType.AutoSize)); // button row
+        return root;
+    }
+
     /// <summary>A standard 82x28 dialog button carrying the given result, with no auto-margin.</summary>
     internal static Button DialogButton(string text, DialogResult result) => new()
     {

@@ -124,14 +124,8 @@ public sealed class TransmissionClient : ManagedClientBase
             using var response = await SendRpcAsync(body, cancellationToken: cancellationToken).ConfigureAwait(false);
             if (response is null) return (null, null);
 
-            if (!response.IsSuccessStatusCode)
-            {
-                LogManager.Instance.LogMessage($"Failed to get {ClientName} preferences (HTTP {(int)response.StatusCode} {response.StatusCode})", LogLevel.Error);
-                return (null, null);
-            }
-
-            var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-            using var doc = JsonDocument.Parse(json);
+            using var doc = await ReadPreferencesJsonAsync(response, cancellationToken).ConfigureAwait(false);
+            if (doc is null) return (null, null);
             var root = doc.RootElement;
 
             // Surface RPC-level errors (e.g. "method not allowed", session conflicts) with the
@@ -298,10 +292,12 @@ public sealed class TransmissionClient : ManagedClientBase
         using var doc = JsonDocument.Parse(json);
         var root = doc.RootElement;
 
+        // Shared bool rule, as in the other clients' port tests: also reads the 1/0 and "true"/"false"
+        // shapes, so a daemon that changes the field's type between releases still answers here rather
+        // than falling through to the "no port-is-open" branch below.
         if (root.TryGetProperty(JsonPropArguments, out var argumentsElement) &&
-            argumentsElement.TryGetProperty("port-is-open", out var portIsOpenElement) &&
-            portIsOpenElement.ValueKind is JsonValueKind.True or JsonValueKind.False)
-            return (portIsOpenElement.GetBoolean(), false);
+            argumentsElement.GetBoolOrNull("port-is-open") is bool portIsOpen)
+            return (portIsOpen, false);
 
         string? result = root.GetStringOrNull(JsonPropResult);
         LogManager.Instance.LogDebug($"TransmissionClient.RunPortTestAsync: no port-is-open in response (result: {result})");
@@ -497,7 +493,18 @@ public sealed class TransmissionClient : ManagedClientBase
         {
             const string body = """{"method":"session-get","arguments":{"fields":["config-dir"]}}""";
             using var response = await SendRpcAsync(body, cancellationToken: cancellationToken).ConfigureAwait(false);
-            if (response is null || !response.IsSuccessStatusCode) return null;
+            if (response is null || !response.IsSuccessStatusCode)
+            {
+                // Logged like the other two ways this method gives up (missing config-dir, and the
+                // catch below), which it previously was not: the summary above names "RPC unreachable"
+                // as a reason it returns null, and that was the one reason leaving nothing behind.
+                // It matters because null sends the caller to the service-installation heuristic, so a
+                // silent return is a mode *guess* with no record of why. A null response has already
+                // been reported inside SendRpcAsync; an unsuccessful status had not been reported anywhere.
+                LogManager.Instance.LogDebug(
+                    $"TransmissionClient.TryDetectServiceModeAsync: {(response is null ? "no RPC response" : $"HTTP {(int)response.StatusCode} {response.StatusCode}")} - falling back to the service-installation heuristic");
+                return null;
+            }
 
             var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
             using var doc = JsonDocument.Parse(json);

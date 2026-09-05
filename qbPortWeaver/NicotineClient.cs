@@ -246,11 +246,9 @@ public sealed class NicotineClient : ManagedClientBase
                 return null;
             }
 
-            if (root.TryGetProperty(JsonPropResult, out var resultElement) &&
-                resultElement.ValueKind is JsonValueKind.True or JsonValueKind.False)
-                return resultElement.GetBoolean();
-
-            return null;
+            // Same shared rule as the other clients use for a boolean field - see the note in
+            // DelugeClient.TestListeningPortAsync. An unreadable shape stays null, i.e. undeterminable.
+            return root.GetBoolOrNull(JsonPropResult);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
         catch (Exception ex)

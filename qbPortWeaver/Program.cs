@@ -34,11 +34,8 @@ internal static class Program
 
         if (!isNewInstance)
         {
-            ThemedMessageBox.Show(
-                $"{AppIdentity.AppName} is already running.",
-                AppIdentity.AppName,
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Information);
+            ThemedMessageBox.Info(
+                $"{AppIdentity.AppName} is already running.");
             return;
         }
         // Last line of defence. MainForm's own Load handler already reports failures it can see, but

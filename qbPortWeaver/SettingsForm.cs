@@ -384,11 +384,8 @@ public partial class SettingsForm : Form
             cboNatPmpAdapter.Enabled &&
             cboNatPmpAdapter.SelectedItem?.ToString() == NoAdaptersFoundPlaceholder)
         {
-            ThemedMessageBox.Show(
-                "No NAT-PMP capable adapters were found.\n\nEnsure the adapter is up and its gateway is responding to NAT-PMP, then click ⟳ to retry.",
-                AppIdentity.AppName,
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Warning);
+            ThemedMessageBox.Warn(
+                "No NAT-PMP capable adapters were found.\n\nEnsure the adapter is up and its gateway is responding to NAT-PMP, then click ⟳ to retry.");
             return;
         }
 
@@ -398,11 +395,8 @@ public partial class SettingsForm : Form
             (!Uri.TryCreate(urlText, UriKind.Absolute, out var uri) ||
              (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps)))
         {
-            ThemedMessageBox.Show(
-                $"The {clientName} URL is not valid. Enter a URL starting with http:// or https://",
-                AppIdentity.AppName,
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Warning);
+            ThemedMessageBox.Warn(
+                $"The {clientName} URL is not valid. Enter a URL starting with http:// or https://");
             return;
         }
 
@@ -415,12 +409,9 @@ public partial class SettingsForm : Form
         // Color theme takes effect at startup via Application.SetColorMode - restart if it changed
         if (selectedColorTheme != previousColorTheme)
         {
-            var result = ThemedMessageBox.Show(
-                "The color theme change takes effect after restarting.\n\nRestart now?",
-                AppIdentity.AppName,
-                MessageBoxButtons.YesNo,
-                MessageBoxIcon.Question);
-            if (result == DialogResult.Yes)
+            var result = ThemedMessageBox.Confirm(
+                "The color theme change takes effect after restarting.\n\nRestart now?");
+            if (result)
                 Application.Restart();
         }
 
@@ -440,9 +431,8 @@ public partial class SettingsForm : Form
         var detected = ClientDetector.DetectAll();
         if (detected.Count == 0)
         {
-            ThemedMessageBox.Show(
-                "No supported client was found running or installed in its default location.\n\nSelect your client manually and enter its connection details.",
-                AppIdentity.AppName, MessageBoxButtons.OK, MessageBoxIcon.Information);
+            ThemedMessageBox.Info(
+                "No supported client was found running or installed in its default location.\n\nSelect your client manually and enter its connection details.");
             return;
         }
 
@@ -474,9 +464,8 @@ public partial class SettingsForm : Form
         if (autoSelected)
         {
             string how = chosen.Kind == ClientDetector.DetectionKind.Running ? "running now" : "installed";
-            ThemedMessageBox.Show(
-                $"Detected {chosen.ClientName} ({how}).\n\nThe client selection and its process details have been filled in. Review the connection settings, then use Test before saving.",
-                AppIdentity.AppName, MessageBoxButtons.OK, MessageBoxIcon.Information);
+            ThemedMessageBox.Info(
+                $"Detected {chosen.ClientName} ({how}).\n\nThe client selection and its process details have been filled in. Review the connection settings, then use Test before saving.");
         }
     }
 
@@ -504,9 +493,8 @@ public partial class SettingsForm : Form
         {
             LogManager.Instance.LogDebug($"SettingsForm.btnDetectVpn_Click: {ex.Message}");
             if (!IsDisposed)
-                ThemedMessageBox.Show(
-                    $"VPN provider detection could not run.\n\n{ex.Message}",
-                    AppIdentity.AppName, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                ThemedMessageBox.Warn(
+                    $"VPN provider detection could not run.\n\n{ex.Message}");
         }
         finally
         {
@@ -522,9 +510,8 @@ public partial class SettingsForm : Form
 
         if (detected.Count == 0)
         {
-            ThemedMessageBox.Show(
-                $"No supported VPN provider was found installed on this machine.\n\nSelect your provider manually, or choose {RegistrySettingsManager.VpnProviderNatPmp} if your gateway supports it.",
-                AppIdentity.AppName, MessageBoxButtons.OK, MessageBoxIcon.Information);
+            ThemedMessageBox.Info(
+                $"No supported VPN provider was found installed on this machine.\n\nSelect your provider manually, or choose {RegistrySettingsManager.VpnProviderNatPmp} if your gateway supports it.");
             return;
         }
 
@@ -538,9 +525,8 @@ public partial class SettingsForm : Form
         // found and leave the selection alone - the dropdown is right next to the button.
         if (candidates.Count > 1)
         {
-            ThemedMessageBox.Show(
-                $"More than one supported VPN provider was found: {string.Join(", ", candidates.Select(c => c.ProviderKeyword))}.\n\nSelect the one you use from the list.",
-                AppIdentity.AppName, MessageBoxButtons.OK, MessageBoxIcon.Information);
+            ThemedMessageBox.Info(
+                $"More than one supported VPN provider was found: {string.Join(", ", candidates.Select(c => c.ProviderKeyword))}.\n\nSelect the one you use from the list.");
             return;
         }
 
@@ -548,9 +534,8 @@ public partial class SettingsForm : Form
         cboVpnProvider.SelectedItem = chosen.ProviderKeyword; // triggers cboVpnProvider_SelectedIndexChanged
 
         string how = chosen.Kind == VpnDetector.DetectionKind.Running ? "running now" : "installed";
-        ThemedMessageBox.Show(
-            $"Detected {chosen.ProviderKeyword} ({how}, service \"{chosen.ServiceName}\").\n\nThe VPN provider has been selected. Review the remaining settings before saving.",
-            AppIdentity.AppName, MessageBoxButtons.OK, MessageBoxIcon.Information);
+        ThemedMessageBox.Info(
+            $"Detected {chosen.ProviderKeyword} ({how}, service \"{chosen.ServiceName}\").\n\nThe VPN provider has been selected. Review the remaining settings before saving.");
     }
 
     // Fills the matched client's process-name field (always) and executable field (only when a default
@@ -642,10 +627,9 @@ public partial class SettingsForm : Form
     // per the confirmation convention: nothing is irreversibly lost.
     private async void btnTestRecovery_Click(object? sender, EventArgs e) // async void is correct here (WinForms event handler)
     {
-        var confirm = ThemedMessageBox.Show(
-            "This will run the recovery action now: the VPN service is restarted (or the adapter cycled) and the VPN connection drops briefly.\n\nContinue?",
-            AppIdentity.AppName, MessageBoxButtons.YesNo, MessageBoxIcon.Question);
-        if (confirm != DialogResult.Yes) return;
+        var confirm = ThemedMessageBox.Confirm(
+            "This will run the recovery action now: the VPN service is restarted (or the adapter cycled) and the VPN connection drops briefly.\n\nContinue?");
+        if (!confirm) return;
 
         string provider = cboVpnProvider.SelectedItem?.ToString() ?? RegistrySettingsManager.VpnProviderDisabled;
         // While discovery is pending the combo is disabled and holds placeholder text, not an
@@ -664,13 +648,11 @@ public partial class SettingsForm : Form
             bool dispatched = await PortSyncService.TestRecoveryAsync(provider, adapter, cts.Token);
             if (IsDisposed) return;
             if (dispatched)
-                ThemedMessageBox.Show(
-                    "Recovery action completed. See the log for the detailed outcome.",
-                    AppIdentity.AppName, MessageBoxButtons.OK, MessageBoxIcon.Information);
+                ThemedMessageBox.Info(
+                    "Recovery action completed. See the log for the detailed outcome.");
             else
-                ThemedMessageBox.Show(
-                    "The recovery test could not run.\n\nCheck the VPN provider selection and see the log for details.",
-                    AppIdentity.AppName, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                ThemedMessageBox.Warn(
+                    "The recovery test could not run.\n\nCheck the VPN provider selection and see the log for details.");
         }
         catch (OperationCanceledException)
         {
@@ -681,9 +663,8 @@ public partial class SettingsForm : Form
         {
             LogManager.Instance.LogMessage($"Recovery test failed: {ex.Message}", LogLevel.Warn);
             if (!IsDisposed)
-                ThemedMessageBox.Show(
-                    $"The recovery test could not run.\n\n{ex.Message}",
-                    AppIdentity.AppName, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                ThemedMessageBox.Warn(
+                    $"The recovery test could not run.\n\n{ex.Message}");
         }
         finally
         {
@@ -738,11 +719,10 @@ public partial class SettingsForm : Form
         if (handshake is null)
         {
             var status = NicotinePluginInstaller.GetStatus(txtNicotineExePath.Text.Trim());
-            ThemedMessageBox.Show(
+            ThemedMessageBox.Info(
                 "No connection details were found.\n\n" + DescribeNextStep(status) +
                 "\n\nIf Nicotine+ runs with a custom data folder, run /qbpw-connection-file inside " +
-                "Nicotine+ and enter the address and token here by hand.",
-                AppIdentity.AppName, MessageBoxButtons.OK, MessageBoxIcon.Information);
+                "Nicotine+ and enter the address and token here by hand.");
             RefreshNicotinePluginStatus();
             return;
         }
@@ -751,10 +731,9 @@ public partial class SettingsForm : Form
         txtNicotineToken.Text = handshake.Token;
         RefreshNicotinePluginStatus();
 
-        ThemedMessageBox.Show(
+        ThemedMessageBox.Info(
             $"Found the bridge plugin on {handshake.Url}.\n\nThe address and token have been filled in. " +
-            "Use Test to confirm, then save.",
-            AppIdentity.AppName, MessageBoxButtons.OK, MessageBoxIcon.Information);
+            "Use Test to confirm, then save.");
     }
 
     // Installs the bridge plugin and, when Nicotine+ is closed, offers to enable it too. Nicotine+
@@ -766,7 +745,7 @@ public partial class SettingsForm : Form
         var install = NicotinePluginInstaller.InstallFiles(exePath);
         if (!install.Success)
         {
-            ThemedMessageBox.Show(install.Message, AppIdentity.AppName, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            ThemedMessageBox.Warn(install.Message);
             RefreshNicotinePluginStatus();
             return;
         }
@@ -776,29 +755,26 @@ public partial class SettingsForm : Form
         {
             // Editing Nicotine+'s config now would be pointless: it rewrites the whole file from
             // memory when it exits, discarding anything changed underneath it.
-            ThemedMessageBox.Show(
+            ThemedMessageBox.Info(
                 $"Plugin installed to:\n{install.Message}\n\n" +
                 "Nicotine+ is running, so enable it there: open Preferences → Plugins, tick " +
                 "\"qbPortWeaver Bridge\", and apply. No restart is needed.\n\n" +
                 "Then click ⟳ here to pick up the connection details.\n\n" +
-                "Alternatively, close Nicotine+ and click Install Plugin again to have it enabled automatically.",
-                AppIdentity.AppName, MessageBoxButtons.OK, MessageBoxIcon.Information);
+                "Alternatively, close Nicotine+ and click Install Plugin again to have it enabled automatically.");
             RefreshNicotinePluginStatus();
             return;
         }
 
-        var choice = ThemedMessageBox.Show(
+        var choice = ThemedMessageBox.Confirm(
             $"Plugin installed to:\n{install.Message}\n\n" +
             "Nicotine+ is closed, so it can be enabled for you now. Enable it?\n\n" +
-            "Your current Nicotine+ configuration will be backed up first, and only the plugin list is changed.",
-            AppIdentity.AppName, MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+            "Your current Nicotine+ configuration will be backed up first, and only the plugin list is changed.");
 
-        if (choice != DialogResult.Yes)
+        if (!choice)
         {
-            ThemedMessageBox.Show(
+            ThemedMessageBox.Info(
                 "Plugin installed but not enabled.\n\nEnable \"qbPortWeaver Bridge\" in Nicotine+ under " +
-                "Preferences → Plugins, then click ⟳ here.",
-                AppIdentity.AppName, MessageBoxButtons.OK, MessageBoxIcon.Information);
+                "Preferences → Plugins, then click ⟳ here.");
             RefreshNicotinePluginStatus();
             return;
         }
@@ -808,14 +784,13 @@ public partial class SettingsForm : Form
 
         if (!enable.Success)
         {
-            ThemedMessageBox.Show(enable.Message, AppIdentity.AppName, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            ThemedMessageBox.Warn(enable.Message);
             return;
         }
 
-        ThemedMessageBox.Show(
+        ThemedMessageBox.Info(
             "The plugin is installed and enabled.\n\nStart Nicotine+, then click ⟳ here to read its " +
-            "connection details.",
-            AppIdentity.AppName, MessageBoxButtons.OK, MessageBoxIcon.Information);
+            "connection details.");
     }
 
     // Uses the in-form process name rather than the saved one, so a user who has just corrected it
@@ -941,9 +916,8 @@ public partial class SettingsForm : Form
             !Uri.TryCreate(url, UriKind.Absolute, out var uri) ||
             (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
         {
-            ThemedMessageBox.Show(
-                $"Enter a valid {clientName} URL starting with http:// or https:// before testing.",
-                AppIdentity.AppName, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            ThemedMessageBox.Warn(
+                $"Enter a valid {clientName} URL starting with http:// or https:// before testing.");
             return;
         }
 
@@ -980,13 +954,11 @@ public partial class SettingsForm : Form
 
             if (IsDisposed) return;
             if (listenPort is not null)
-                ThemedMessageBox.Show(
-                    $"Connected to {clientName} successfully.\n\nCurrent listening port: {listenPort}",
-                    AppIdentity.AppName, MessageBoxButtons.OK, MessageBoxIcon.Information);
+                ThemedMessageBox.Info(
+                    $"Connected to {clientName} successfully.\n\nCurrent listening port: {listenPort}");
             else
-                ThemedMessageBox.Show(
-                    $"Could not connect to {clientName}.\n\nCheck the URL and credentials, then see the log for details.",
-                    AppIdentity.AppName, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                ThemedMessageBox.Warn(
+                    $"Could not connect to {clientName}.\n\nCheck the URL and credentials, then see the log for details.");
         }
         catch (OperationCanceledException)
         {
@@ -997,9 +969,8 @@ public partial class SettingsForm : Form
             {
                 LogManager.Instance.LogMessage(
                     $"{clientName} connection test timed out after {AppConstants.ClientTestTimeoutSeconds}s", LogLevel.Warn);
-                ThemedMessageBox.Show(
-                    $"The {clientName} connection test timed out after {AppConstants.ClientTestTimeoutSeconds} seconds.\n\nCheck the URL and that the client is running.",
-                    AppIdentity.AppName, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                ThemedMessageBox.Warn(
+                    $"The {clientName} connection test timed out after {AppConstants.ClientTestTimeoutSeconds} seconds.\n\nCheck the URL and that the client is running.");
             }
         }
         // The caller is an async void event handler, so an escape here would take the app down.
@@ -1008,9 +979,8 @@ public partial class SettingsForm : Form
         {
             LogManager.Instance.LogMessage($"{clientName} connection test failed: {ex.Message}", LogLevel.Warn);
             if (!IsDisposed)
-                ThemedMessageBox.Show(
-                    $"The {clientName} connection test could not run.\n\n{ex.Message}",
-                    AppIdentity.AppName, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                ThemedMessageBox.Warn(
+                    $"The {clientName} connection test could not run.\n\n{ex.Message}");
         }
         finally
         {

@@ -12,6 +12,40 @@ namespace qbPortWeaver;
 /// </summary>
 internal static class ThemedMessageBox
 {
+    /// <summary>An informational dialog with an OK button.</summary>
+    /// <remarks>These four shorthands exist because every dialog in the app passes the same caption -
+    /// <see cref="AppIdentity.AppName"/> - and one of four fixed button/icon pairs. Spelling that
+    /// triple out at each call site repeated it 25 times and left the caption convention resting on
+    /// each author remembering it; here the convention is the signature. Reach for
+    /// <see cref="Show"/> directly only for a combination these do not cover.</remarks>
+    internal static void Info(string text) =>
+        Show(text, AppIdentity.AppName, MessageBoxButtons.OK, MessageBoxIcon.Information);
+
+    /// <summary>A warning dialog with an OK button: something the user should know, but nothing was lost.</summary>
+    internal static void Warn(string text) =>
+        Show(text, AppIdentity.AppName, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+
+    /// <summary>An error dialog with an OK button: an action failed and did not complete.</summary>
+    internal static void Error(string text) =>
+        Show(text, AppIdentity.AppName, MessageBoxButtons.OK, MessageBoxIcon.Error);
+
+    /// <summary>A Yes/No question. Returns <see langword="true"/> only when the user chose Yes.</summary>
+    /// <remarks>Returns a bool rather than a <see cref="DialogResult"/> so a caller cannot accidentally
+    /// treat Cancel or a closed dialog as consent - the confirmation convention for this app is that
+    /// anything other than an explicit Yes means no.</remarks>
+    internal static bool Confirm(string text) =>
+        Show(text, AppIdentity.AppName, MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes;
+
+    /// <summary>A Yes/No confirmation for an action that destroys data. Returns <see langword="true"/>
+    /// only when the user chose Yes.</summary>
+    /// <remarks>Separate from <see cref="Confirm"/> because the app distinguishes the two: a Question
+    /// icon asks something reversible, a Warning icon precedes irreversible loss and its text says so
+    /// ("This cannot be undone"). Having both as named methods is what keeps that distinction from
+    /// being decided icon-by-icon at each call site. Callers whose icon varies at runtime - the media
+    /// import, where only Move destroys anything - still use <see cref="Show"/> directly.</remarks>
+    internal static bool ConfirmDestructive(string text) =>
+        Show(text, AppIdentity.AppName, MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.Yes;
+
     /// <summary>Shows a themed modal message dialog and returns the <see cref="DialogResult"/> of the
     /// button the user clicked. Mirrors <see cref="MessageBox.Show(string, string, MessageBoxButtons,
     /// MessageBoxIcon)"/>.</summary>

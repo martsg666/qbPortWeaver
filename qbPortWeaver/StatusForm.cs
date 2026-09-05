@@ -676,13 +676,9 @@ public partial class StatusForm : Form
     // when there is something to lose.
     private void ctxClearHistory_Click(object? sender, EventArgs e)
     {
-        var confirm = ThemedMessageBox.Show(
-            "The recorded port history will be deleted. This cannot be undone.\n\nContinue?",
-            AppIdentity.AppName,
-            MessageBoxButtons.YesNo,
-            MessageBoxIcon.Warning);
-
-        if (confirm != DialogResult.Yes) return;
+        if (!ThemedMessageBox.ConfirmDestructive(
+                "The recorded port history will be deleted. This cannot be undone.\n\nContinue?"))
+            return;
 
         PortHistoryManager.Clear();
         PopulateHistoryAndStatistics();
@@ -700,14 +696,10 @@ public partial class StatusForm : Form
     // prompts when there is something to lose.
     private void ctxClearStats_Click(object? sender, EventArgs e)
     {
-        var confirm = ThemedMessageBox.Show(
-            $"The statistics counted over the past {FormatDuration(DateTimeOffset.Now - SessionStats.StartedAt)} " +
-            "will be reset. This cannot be undone.\n\nContinue?",
-            AppIdentity.AppName,
-            MessageBoxButtons.YesNo,
-            MessageBoxIcon.Warning);
-
-        if (confirm != DialogResult.Yes) return;
+        if (!ThemedMessageBox.ConfirmDestructive(
+                $"The statistics counted over the past {FormatDuration(DateTimeOffset.Now - SessionStats.StartedAt)} " +
+                "will be reset. This cannot be undone.\n\nContinue?"))
+            return;
 
         SessionStats.Reset();
         PopulateHistoryAndStatistics();

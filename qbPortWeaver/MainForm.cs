@@ -423,13 +423,9 @@ public partial class MainForm : Form
     // the user reaching for the log viewer is the one who can least afford to lose the history.
     private void clearLogs_Click(object? sender, EventArgs e)
     {
-        var confirm = ThemedMessageBox.Show(
-            "All log files, including rotated backups, will be deleted. This cannot be undone.\n\nContinue?",
-            AppIdentity.AppName,
-            MessageBoxButtons.YesNo,
-            MessageBoxIcon.Warning);
-
-        if (confirm != DialogResult.Yes) return;
+        if (!ThemedMessageBox.ConfirmDestructive(
+                "All log files, including rotated backups, will be deleted. This cannot be undone.\n\nContinue?"))
+            return;
 
         LogManager.Instance.ClearLogs();
         ResetLogAlerts();

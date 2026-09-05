@@ -248,9 +248,8 @@ internal static partial class AutoRecovery
             }
             catch (System.ServiceProcess.TimeoutException)
             {
-                logger.LogMessage($"Service '{serviceName}' StopPending timed out - force-killing process", LogLevel.Info);
-                KillServiceProcess(sc, logger);
-                await WaitForStoppedOrWarnAsync(sc, serviceName, logger, cancellationToken).ConfigureAwait(false);
+                await ForceKillAndWaitAsync(sc, serviceName,
+                    $"Service '{serviceName}' StopPending timed out", logger, cancellationToken).ConfigureAwait(false);
                 return;
             }
         }
@@ -267,9 +266,8 @@ internal static partial class AutoRecovery
             }
             catch (System.ServiceProcess.TimeoutException)
             {
-                logger.LogMessage($"Service '{serviceName}' StartPending timed out - force-killing process", LogLevel.Info);
-                KillServiceProcess(sc, logger);
-                await WaitForStoppedOrWarnAsync(sc, serviceName, logger, cancellationToken).ConfigureAwait(false);
+                await ForceKillAndWaitAsync(sc, serviceName,
+                    $"Service '{serviceName}' StartPending timed out", logger, cancellationToken).ConfigureAwait(false);
                 return;
             }
         }
@@ -279,9 +277,8 @@ internal static partial class AutoRecovery
         {
             // sc.Stop() can throw if the service doesn't accept stop controls or is in
             // a transient state. Fall through to force-kill.
-            logger.LogMessage($"Failed to stop service '{serviceName}' via SCM: {ex.Message} - force-killing process", LogLevel.Info);
-            KillServiceProcess(sc, logger);
-            await WaitForStoppedOrWarnAsync(sc, serviceName, logger, cancellationToken).ConfigureAwait(false);
+            await ForceKillAndWaitAsync(sc, serviceName,
+                $"Failed to stop service '{serviceName}' via SCM: {ex.Message}", logger, cancellationToken).ConfigureAwait(false);
             return;
         }
 
@@ -296,6 +293,22 @@ internal static partial class AutoRecovery
             KillServiceProcess(sc, logger);
             await WaitForStoppedOrWarnAsync(sc, serviceName, logger, cancellationToken).ConfigureAwait(false);
         }
+    }
+
+    // The escalation the stop path falls back to whenever SCM cannot bring the service down: say why,
+    // kill the process, then wait for Stopped. Extracted because all three routes here - StopPending
+    // timing out, StartPending timing out, and sc.Stop() throwing - ran the identical three steps and
+    // differed only in the reason. Keeping them as one sequence is what stops a later change (a
+    // different wait, an extra log line) reaching two of the three.
+    //
+    // The caller still returns after this: the escalation is terminal for the stop attempt, and making
+    // that explicit at each site reads better than a bool nobody branches on.
+    private static async Task ForceKillAndWaitAsync(ServiceController sc, string serviceName, string reason,
+        HelperLogger logger, CancellationToken cancellationToken)
+    {
+        logger.LogMessage($"{reason} - force-killing process", LogLevel.Info);
+        KillServiceProcess(sc, logger);
+        await WaitForStoppedOrWarnAsync(sc, serviceName, logger, cancellationToken).ConfigureAwait(false);
     }
 
     // Waits for a service to reach Stopped after a force-kill attempt, logging the outcome.

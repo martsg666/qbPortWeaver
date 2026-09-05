@@ -292,10 +292,12 @@ public sealed class TransmissionClient : ManagedClientBase
         using var doc = JsonDocument.Parse(json);
         var root = doc.RootElement;
 
+        // Shared bool rule, as in the other clients' port tests: also reads the 1/0 and "true"/"false"
+        // shapes, so a daemon that changes the field's type between releases still answers here rather
+        // than falling through to the "no port-is-open" branch below.
         if (root.TryGetProperty(JsonPropArguments, out var argumentsElement) &&
-            argumentsElement.TryGetProperty("port-is-open", out var portIsOpenElement) &&
-            portIsOpenElement.ValueKind is JsonValueKind.True or JsonValueKind.False)
-            return (portIsOpenElement.GetBoolean(), false);
+            argumentsElement.GetBoolOrNull("port-is-open") is bool portIsOpen)
+            return (portIsOpen, false);
 
         string? result = root.GetStringOrNull(JsonPropResult);
         LogManager.Instance.LogDebug($"TransmissionClient.RunPortTestAsync: no port-is-open in response (result: {result})");

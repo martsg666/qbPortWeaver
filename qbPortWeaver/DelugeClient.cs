@@ -137,14 +137,8 @@ public sealed class DelugeClient : ManagedClientBase
             var body = $$$"""{"method":"core.test_listen_port","params":[],"id":{{{_rpcId++}}}}""";
             using var content = new StringContent(body, Encoding.UTF8, JsonContentType);
             using var response = await HttpClient.PostAsync($"{Url}{RpcPath}", content, cancellationToken).ConfigureAwait(false);
-            if (!response.IsSuccessStatusCode)
-            {
-                LogManager.Instance.LogDebug($"DelugeClient.TestListeningPortAsync: Failed to test {ClientName} port (HTTP {(int)response.StatusCode} {response.StatusCode})");
-                return null;
-            }
-
-            var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-            using var doc = JsonDocument.Parse(json);
+            using var doc = await TryReadJsonAsync(response, cancellationToken).ConfigureAwait(false);
+            if (doc is null) return null;
             var root = doc.RootElement;
 
             if (root.TryGetProperty(JsonPropError, out var errorElement) && errorElement.ValueKind != JsonValueKind.Null)
@@ -153,11 +147,11 @@ public sealed class DelugeClient : ManagedClientBase
                 return null;
             }
 
-            if (root.TryGetProperty(JsonPropResult, out var resultElement) &&
-                resultElement.ValueKind is JsonValueKind.True or JsonValueKind.False)
-                return resultElement.GetBoolean();
-
-            return null;
+            // GetBoolOrNull rather than a strict True/False check: it is the same rule the conflict
+            // reads below already use, and it also accepts the 1/0 and "true"/"false" shapes a daemon
+            // may switch to between releases - which is exactly what the helper exists for. A shape it
+            // still cannot read stays null, i.e. "undeterminable", as before.
+            return root.GetBoolOrNull(JsonPropResult);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
         catch (Exception ex)
@@ -188,14 +182,8 @@ public sealed class DelugeClient : ManagedClientBase
             var body = $$$"""{"method":"core.get_config_values","params":[["random_port","upnp","natpmp"]],"id":{{{_rpcId++}}}}""";
             using var content = new StringContent(body, Encoding.UTF8, JsonContentType);
             using var response = await HttpClient.PostAsync($"{Url}{RpcPath}", content, cancellationToken).ConfigureAwait(false);
-            if (!response.IsSuccessStatusCode)
-            {
-                LogManager.Instance.LogDebug($"DelugeClient.GetConflictingSettingsAsync: HTTP {(int)response.StatusCode}");
-                return null;
-            }
-
-            var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-            using var doc = JsonDocument.Parse(json);
+            using var doc = await TryReadJsonAsync(response, cancellationToken).ConfigureAwait(false);
+            if (doc is null) return null;
             var root = doc.RootElement;
             if (root.TryGetProperty(JsonPropError, out var errorElement) && errorElement.ValueKind != JsonValueKind.Null)
             {

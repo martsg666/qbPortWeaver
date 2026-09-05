@@ -236,14 +236,8 @@ public sealed class QBittorrentClient : ManagedClientBase
         try
         {
             using var response = await HttpClient.GetAsync($"{Url}{ApiAppPreferences}", cancellationToken).ConfigureAwait(false);
-            if (!response.IsSuccessStatusCode)
-            {
-                LogManager.Instance.LogDebug($"QBittorrentClient.GetConflictingSettingsAsync: HTTP {(int)response.StatusCode}");
-                return null;
-            }
-
-            var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-            using var doc = JsonDocument.Parse(json);
+            using var doc = await TryReadJsonAsync(response, cancellationToken).ConfigureAwait(false);
+            if (doc is null) return null;
             var root = doc.RootElement;
 
             var conflicts = new List<ClientSettingConflict>();

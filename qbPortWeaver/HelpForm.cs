@@ -468,19 +468,8 @@ public partial class HelpForm : Form
     }
 
     // Handles Enter (next), Shift+Enter (prev), and Escape (clear) in the search box
-    private void txtSearch_KeyDown(object? sender, KeyEventArgs e)
-    {
-        if (e.KeyCode == Keys.Enter)
-        {
-            if (e.Shift) SearchPrev(); else SearchNext();
-            e.SuppressKeyPress = true;
-        }
-        else if (e.KeyCode == Keys.Escape)
-        {
-            txtSearch.Clear();
-            e.SuppressKeyPress = true;
-        }
-    }
+    private void txtSearch_KeyDown(object? sender, KeyEventArgs e) =>
+        UiHelpers.HandleSearchKeyDown(e, txtSearch, SearchNext, SearchPrev);
 
     private void btnClearSearch_Click(object? sender, EventArgs e) => txtSearch.Clear();
     private void btnPrev_Click(object? sender, EventArgs e) => SearchPrev();

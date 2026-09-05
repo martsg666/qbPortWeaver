@@ -281,6 +281,32 @@ public abstract class ManagedClientBase : IManagedClient // NOSONAR S3881 - all 
         return JsonDocument.Parse(json);
     }
 
+    /// <summary>
+    /// The best-effort counterpart to <see cref="ReadPreferencesJsonAsync"/>: parses the response, or
+    /// logs at Debug and returns <see langword="null"/> when it did not succeed. <b>The caller owns the
+    /// returned document.</b>
+    /// </summary>
+    /// <remarks>For reads whose failure is "undeterminable" rather than a fault - the port test and the
+    /// conflicting-settings check - which is why this logs at Debug where the preferences read logs at
+    /// Error. The three call sites previously wrote their own line and had drifted to two different
+    /// levels of detail: one named the client and the status text, two reported only the numeric code.
+    /// <para><c>[CallerMemberName]</c> labels the entry with the public method that initiated the read,
+    /// the same way <see cref="LogHttpException"/> does, so the caller does not repeat its own name in
+    /// the message.</para></remarks>
+    protected async Task<JsonDocument?> TryReadJsonAsync(HttpResponseMessage response, CancellationToken cancellationToken,
+        [System.Runtime.CompilerServices.CallerMemberName] string callerName = "")
+    {
+        if (!response.IsSuccessStatusCode)
+        {
+            LogManager.Instance.LogDebug(
+                $"{GetType().Name}.{callerName}: {ClientName} returned HTTP {(int)response.StatusCode} {response.StatusCode}");
+            return null;
+        }
+
+        string json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+        return JsonDocument.Parse(json);
+    }
+
     // Creates an HttpClient with a per-instance CookieContainer for cookie-based auth (qBittorrent, Deluge).
     // Per-instance (not static) because each sync-cycle instance needs its own cookie jar for the session cookie.
     protected static HttpClient CreateCookieHttpClient()

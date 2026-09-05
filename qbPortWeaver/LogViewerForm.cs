@@ -493,19 +493,8 @@ public partial class LogViewerForm : Form
     }
 
     // Handles Enter (next), Shift+Enter (prev), and Escape (clear) in the search box
-    private void txtSearch_KeyDown(object? sender, KeyEventArgs e)
-    {
-        if (e.KeyCode == Keys.Enter)
-        {
-            if (e.Shift) SearchPrev(); else SearchNext();
-            e.SuppressKeyPress = true;
-        }
-        else if (e.KeyCode == Keys.Escape)
-        {
-            txtSearch.Clear();
-            e.SuppressKeyPress = true;
-        }
-    }
+    private void txtSearch_KeyDown(object? sender, KeyEventArgs e) =>
+        UiHelpers.HandleSearchKeyDown(e, txtSearch, SearchNext, SearchPrev);
 
     // Keyboard shortcuts on the log list mirroring the context menu
     private void lvLog_KeyDown(object? sender, KeyEventArgs e)

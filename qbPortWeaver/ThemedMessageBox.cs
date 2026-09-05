@@ -13,21 +13,19 @@ namespace qbPortWeaver;
 internal static class ThemedMessageBox
 {
     /// <summary>An informational dialog with an OK button.</summary>
-    /// <remarks>These four shorthands exist because every dialog in the app passes the same caption -
-    /// <see cref="AppIdentity.AppName"/> - and one of four fixed button/icon pairs. Spelling that
-    /// triple out at each call site repeated it 25 times and left the caption convention resting on
-    /// each author remembering it; here the convention is the signature. Reach for
-    /// <see cref="Show"/> directly only for a combination these do not cover.</remarks>
+    /// <remarks>The shorthands below exist because every dialog in the app passes the same caption -
+    /// <see cref="AppIdentity.AppName"/> - with a fixed button/icon pair. Spelling that triple out at
+    /// each call site repeated it 25 times and left the caption convention resting on each author
+    /// remembering it; here the convention is the signature. Deliberately only the pairs that have a
+    /// caller: an unused shorthand is dead code no compiler warns about. Reach for
+    /// <see cref="Show"/> directly for anything they do not cover - today that is the media import's
+    /// runtime-chosen icon and the one dialog with its own caption.</remarks>
     internal static void Info(string text) =>
         Show(text, AppIdentity.AppName, MessageBoxButtons.OK, MessageBoxIcon.Information);
 
     /// <summary>A warning dialog with an OK button: something the user should know, but nothing was lost.</summary>
     internal static void Warn(string text) =>
         Show(text, AppIdentity.AppName, MessageBoxButtons.OK, MessageBoxIcon.Warning);
-
-    /// <summary>An error dialog with an OK button: an action failed and did not complete.</summary>
-    internal static void Error(string text) =>
-        Show(text, AppIdentity.AppName, MessageBoxButtons.OK, MessageBoxIcon.Error);
 
     /// <summary>A Yes/No question. Returns <see langword="true"/> only when the user chose Yes.</summary>
     /// <remarks>Returns a bool rather than a <see cref="DialogResult"/> so a caller cannot accidentally

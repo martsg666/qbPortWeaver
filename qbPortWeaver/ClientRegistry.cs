@@ -150,9 +150,11 @@ internal static class ClientRegistry
 /// details that client's <see cref="ClientRegistry.ClientInfo.Factory"/> constructs it from - and
 /// only those; <see cref="UserName"/> reaches the factory for qBittorrent and Transmission alone,
 /// since Deluge and Nicotine+ do not authenticate by username and leave it empty. Everything from
-/// <see cref="Restart"/> onwards is a behaviour setting the sync loop reads directly
-/// (<c>PortSyncService.GetClientBehaviorConfig</c>, <c>GetDefaultPort</c>, <c>LogConfigDebug</c>) and
-/// no factory sees.</para>
+/// <see cref="Restart"/> onwards is a behaviour setting the sync loop reads directly, and no factory
+/// sees. Those readers are <c>PortSyncService.GetClientBehaviorConfig</c>, <c>GetDefaultPort</c> and
+/// <c>LogConfigDebug</c> - plus, for <see cref="FixInterfaceBinding"/> alone, the <c>SyncConfig</c>
+/// construction in <c>RunCoreAsync</c>, which takes it straight off this record rather than through
+/// the behaviour tuple.</para>
 /// <para>A behaviour flag is false for any client whose <see cref="ClientRegistry.ClientInfo"/> row
 /// does not declare its key.</para>
 /// </summary>

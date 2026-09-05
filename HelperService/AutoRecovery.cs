@@ -289,16 +289,17 @@ internal static partial class AutoRecovery
         }
         catch (System.ServiceProcess.TimeoutException)
         {
-            logger.LogMessage($"Service '{serviceName}' stop timed out - force-killing process", LogLevel.Info);
-            KillServiceProcess(sc, logger);
-            await WaitForStoppedOrWarnAsync(sc, serviceName, logger, cancellationToken).ConfigureAwait(false);
+            await ForceKillAndWaitAsync(sc, serviceName,
+                $"Service '{serviceName}' stop timed out", logger, cancellationToken).ConfigureAwait(false);
         }
     }
 
     // The escalation the stop path falls back to whenever SCM cannot bring the service down: say why,
-    // kill the process, then wait for Stopped. Extracted because all three routes here - StopPending
-    // timing out, StartPending timing out, and sc.Stop() throwing - ran the identical three steps and
-    // differed only in the reason. Keeping them as one sequence is what stops a later change (a
+    // kill the process, then wait for Stopped. Every route that gives up on SCM comes through here -
+    // StopPending timing out, StartPending timing out, sc.Stop() throwing, and the ordinary stop
+    // timing out - each having run the identical three steps and differed only in the reason. That
+    // last one is the common case and was the one missed when this was first extracted, which is the
+    // drift in miniature. Keeping them as one sequence is what stops a later change (a
     // different wait, an extra log line) reaching two of the three.
     //
     // The caller still returns after this: the escalation is terminal for the stop attempt, and making

@@ -493,7 +493,18 @@ public sealed class TransmissionClient : ManagedClientBase
         {
             const string body = """{"method":"session-get","arguments":{"fields":["config-dir"]}}""";
             using var response = await SendRpcAsync(body, cancellationToken: cancellationToken).ConfigureAwait(false);
-            if (response is null || !response.IsSuccessStatusCode) return null;
+            if (response is null || !response.IsSuccessStatusCode)
+            {
+                // Logged like the other two ways this method gives up (missing config-dir, and the
+                // catch below), which it previously was not: the summary above names "RPC unreachable"
+                // as a reason it returns null, and that was the one reason leaving nothing behind.
+                // It matters because null sends the caller to the service-installation heuristic, so a
+                // silent return is a mode *guess* with no record of why. A null response has already
+                // been reported inside SendRpcAsync; an unsuccessful status had not been reported anywhere.
+                LogManager.Instance.LogDebug(
+                    $"TransmissionClient.TryDetectServiceModeAsync: {(response is null ? "no RPC response" : $"HTTP {(int)response.StatusCode} {response.StatusCode}")} - falling back to the service-installation heuristic");
+                return null;
+            }
 
             var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
             using var doc = JsonDocument.Parse(json);

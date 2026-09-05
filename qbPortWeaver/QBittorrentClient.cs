@@ -56,15 +56,8 @@ public sealed class QBittorrentClient : ManagedClientBase
         {
             using var response = await HttpClient.GetAsync($"{Url}{ApiAppPreferences}", cancellationToken).ConfigureAwait(false);
 
-            if (!response.IsSuccessStatusCode)
-            {
-                LogManager.Instance.LogMessage($"Failed to get {ClientName} preferences (HTTP {(int)response.StatusCode} {response.StatusCode})", LogLevel.Error);
-                return (null, null);
-            }
-
-            var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-
-            using var doc = JsonDocument.Parse(json);
+            using var doc = await ReadPreferencesJsonAsync(response, cancellationToken).ConfigureAwait(false);
+            if (doc is null) return (null, null);
             var root = doc.RootElement;
 
             bool hasListenPort = root.TryGetProperty("listen_port", out var listenPortElement);

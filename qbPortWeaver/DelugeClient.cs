@@ -45,14 +45,8 @@ public sealed class DelugeClient : ManagedClientBase
             using var content = new StringContent(body, Encoding.UTF8, JsonContentType);
             using var response = await HttpClient.PostAsync($"{Url}{RpcPath}", content, cancellationToken).ConfigureAwait(false);
 
-            if (!response.IsSuccessStatusCode)
-            {
-                LogManager.Instance.LogMessage($"Failed to get {ClientName} preferences (HTTP {(int)response.StatusCode} {response.StatusCode})", LogLevel.Error);
-                return (null, null);
-            }
-
-            var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-            using var doc = JsonDocument.Parse(json);
+            using var doc = await ReadPreferencesJsonAsync(response, cancellationToken).ConfigureAwait(false);
+            if (doc is null) return (null, null);
             var root = doc.RootElement;
 
             // Surface RPC-level errors (e.g. "Not Authenticated", "No daemon connected") with the

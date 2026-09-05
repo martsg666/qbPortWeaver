@@ -45,16 +45,9 @@ internal static class ThemedMessageBox
         {
             Text = caption;
             _messageText = text;
-            FormBorderStyle = FormBorderStyle.FixedDialog;
+            DialogLayout.ApplyDialogChrome(this);
+            // CenterParent here; the ownerless path overrides it to CenterScreen after construction.
             StartPosition = FormStartPosition.CenterParent;
-            MinimizeBox = false;
-            MaximizeBox = false;
-            ShowInTaskbar = false;
-            Icon     = Properties.Resources.qbPortWeaver;
-            ShowIcon = true;
-            // The layout containers size the form; AutoScaleMode.Font (designer baseline) scales fonts.
-            AutoScaleDimensions = new SizeF(7F, 15F);
-            AutoScaleMode = AutoScaleMode.Font;
             AutoSize = true;
             AutoSizeMode = AutoSizeMode.GrowAndShrink;
 
@@ -64,17 +57,7 @@ internal static class ThemedMessageBox
 
         private void BuildLayout(string text, MessageBoxIcon icon, MessageBoxButtons buttons)
         {
-            var root = new TableLayoutPanel
-            {
-                Dock = DockStyle.Fill,
-                AutoSize = true,
-                AutoSizeMode = AutoSizeMode.GrowAndShrink,
-                ColumnCount = 1,
-                RowCount = 2,
-                Padding = new Padding(DialogLayout.EdgeMargin, DialogLayout.EdgeMargin, DialogLayout.EdgeMargin, DialogLayout.BottomMargin),
-            };
-            root.RowStyles.Add(new RowStyle(SizeType.AutoSize)); // content
-            root.RowStyles.Add(new RowStyle(SizeType.AutoSize)); // buttons
+            var root = DialogLayout.ContentRoot(); // row 0: content, row 1: buttons
             root.Controls.Add(BuildContent(text, icon), 0, 0);
 
             var specs = ButtonSpecs(buttons);

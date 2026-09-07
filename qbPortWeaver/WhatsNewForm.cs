@@ -9,6 +9,13 @@ public partial class WhatsNewForm : Form
         "If you find qbPortWeaver useful, please star it on GitHub.";
 
     private const string ReleaseFeaturesText =
+        "New in 2.6.9\n\n" +
+        "PLACEHOLDER - replace before release\n" +
+        "Summarise this version's user-facing changes here, in the same voice as the sections below: " +
+        "a short title line, then a plain-language paragraph saying what it does for the user. The " +
+        "Debug.Assert in the constructor only checks that a 'New in <version>' section exists, not " +
+        "that it has been written, so this text will ship if it is not replaced.\n\n" +
+        "Previously released\n\n" +
         "New in 2.6.8\n\n" +
         "Diagnostics now checks your internet connection\n" +
         "Run Diagnostics reports whether this machine gets a reply when it pings the internet. That is " +
@@ -30,7 +37,6 @@ public partial class WhatsNewForm : Form
         "qbPortWeaver finds the plugin again on its own, but it wastes a failed attempt on every " +
         "cycle. Settings now shows this in amber instead of green and says the details differ, on the " +
         "same screen that has the button to correct them.\n\n" +
-        "Previously released\n\n" +
         "New in 2.6.7\n\n" +
         "Port forwarding that is switched off no longer restarts your VPN\n" +
         "When your VPN reports that port forwarding is switched off in its own settings, or that the " +

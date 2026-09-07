@@ -119,8 +119,7 @@ public sealed class NicotineClient : ManagedClientBase
             using var doc = await ReadJsonAsync(response, cancellationToken).ConfigureAwait(false);
             var root = doc.RootElement;
 
-            if (!root.TryGetProperty("listen_port", out var listenPortElement) ||
-                !listenPortElement.TryGetInt32(out int listenPort))
+            if (root.GetInt32OrNull("listen_port") is not int listenPort)
             {
                 LogManager.Instance.LogDebug("NicotineClient.GetPreferencesAsync: 'listen_port' missing or not an integer in the plugin response");
                 return (null, null);
@@ -246,11 +245,9 @@ public sealed class NicotineClient : ManagedClientBase
                 return null;
             }
 
-            if (root.TryGetProperty(JsonPropResult, out var resultElement) &&
-                resultElement.ValueKind is JsonValueKind.True or JsonValueKind.False)
-                return resultElement.GetBoolean();
-
-            return null;
+            // Same shared rule as the other clients use for a boolean field - see the note in
+            // DelugeClient.TestListeningPortAsync. An unreadable shape stays null, i.e. undeterminable.
+            return root.GetBoolOrNull(JsonPropResult);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
         catch (Exception ex)

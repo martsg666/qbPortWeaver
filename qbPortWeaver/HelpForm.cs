@@ -369,8 +369,12 @@ public partial class HelpForm : Form
     // Appends one line's text with inline markdown applied: [text](url) as a clickable link,
     // **text** in bold, *text* in italic, `text` in monospace. Escaping is not supported - the
     // guide does not use it - and an unterminated marker falls through as literal text.
-    private void AppendInline(string text, Color color)
+    // 'font' is the face plain text takes here: the control's base font at the top level, and the
+    // span's face when a bold or italic span re-enters through TryAppendSpan, so a link inside
+    // bold is drawn bold rather than printed as raw markdown.
+    private void AppendInline(string text, Color color, Font? font = null)
     {
+        Font plain = font ?? rtbHelp.Font;
         int pos = 0;
         while (pos < text.Length)
         {
@@ -380,15 +384,15 @@ public partial class HelpForm : Form
             int next = MinMarker(link, star, code);
             if (next < 0)
             {
-                Append(text[pos..], rtbHelp.Font, color);
+                Append(text[pos..], plain, color);
                 return;
             }
             if (next > pos)
-                Append(text[pos..next], rtbHelp.Font, color);
+                Append(text[pos..next], plain, color);
 
             int consumed;
             if (next == link)
-                consumed = TryAppendLink(text, next);
+                consumed = TryAppendLink(text, next, plain);
             else if (next == star)
                 consumed = next + 1 < text.Length && text[next + 1] == '*'
                     ? TryAppendSpan(text, next, "**", _boldFont!, color)
@@ -398,7 +402,7 @@ public partial class HelpForm : Form
             if (consumed == 0)
             {
                 // Unterminated or malformed marker - emit one literal character and move on.
-                Append(text[next].ToString(), rtbHelp.Font, color);
+                Append(text[next].ToString(), plain, color);
                 consumed = 1;
             }
             pos = next + consumed;
@@ -416,9 +420,10 @@ public partial class HelpForm : Form
         return min;
     }
 
-    // Appends a "[text](url)" link at 'start' as styled text and records its character range for
-    // click handling. Returns the source characters consumed, or 0 if the syntax does not match.
-    private int TryAppendLink(string text, int start)
+    // Appends a "[text](url)" link at 'start' as styled text in 'font' and records its character
+    // range for click handling. Returns the source characters consumed, or 0 if the syntax does
+    // not match.
+    private int TryAppendLink(string text, int start, Font font)
     {
         int closeBracket = text.IndexOf(']', start + 1);
         if (closeBracket < 0 || closeBracket + 1 >= text.Length || text[closeBracket + 1] != '(')
@@ -428,10 +433,10 @@ public partial class HelpForm : Form
             return 0;
 
         string linkText = text[(start + 1)..closeBracket];
-        string url = text[(closeBracket + 2)..closeParen];
+        string url = ResolveLinkTarget(text[(closeBracket + 2)..closeParen]);
         _links.Add((rtbHelp.TextLength, linkText.Length, url));
         rtbHelp.SelectionStart = rtbHelp.TextLength;
-        rtbHelp.SelectionFont = rtbHelp.Font;
+        rtbHelp.SelectionFont = font;
         rtbHelp.SelectionColor = _linkColor;
         // Underline via a derived font would need per-link disposal tracking; color alone reads
         // as a link here because the accent is used for nothing else in the document.
@@ -439,15 +444,33 @@ public partial class HelpForm : Form
         return closeParen - start + 1;
     }
 
+    // Turns a link target from the guide into something UiHelpers.OpenUrl will open. The README
+    // links to its companion documents by repository-relative path (the settings reference, the
+    // sync-cycle doc, the plugin README, CONTRIBUTING), which is right on GitHub and meaningless
+    // next to an installed exe - and OpenUrl refuses anything that is not absolute http(s), at Warn.
+    // Those paths are resolved against the repository on GitHub so the link opens the same file the
+    // README's author linked to. Absolute targets pass through untouched.
+    private static string ResolveLinkTarget(string url) =>
+        Uri.TryCreate(url, UriKind.Absolute, out _)
+            ? url
+            : $"{AppConstants.GitHubRepoUrl}/blob/master/{url}";
+
     // Appends a "<marker>text<marker>" span at 'start' with the given font. Returns the source
-    // characters consumed, or 0 if the closing marker is missing.
+    // characters consumed, or 0 if the closing marker is missing. Bold and italic content is
+    // parsed again with the span's font, so a link inside bold - which is how the README writes
+    // every link to a companion document - renders as a bold link rather than as its raw source.
+    // Code spans stay literal: backticks quote their content, markers and all.
     private int TryAppendSpan(string text, int start, string marker, Font font, Color color)
     {
         int contentStart = start + marker.Length;
         int end = text.IndexOf(marker, contentStart, StringComparison.Ordinal);
         if (end < 0)
             return 0;
-        Append(text[contentStart..end], font, color);
+        string content = text[contentStart..end];
+        if (marker == "`")
+            Append(content, font, color);
+        else
+            AppendInline(content, color, font);
         return end + marker.Length - start;
     }
 
@@ -468,19 +491,8 @@ public partial class HelpForm : Form
     }
 
     // Handles Enter (next), Shift+Enter (prev), and Escape (clear) in the search box
-    private void txtSearch_KeyDown(object? sender, KeyEventArgs e)
-    {
-        if (e.KeyCode == Keys.Enter)
-        {
-            if (e.Shift) SearchPrev(); else SearchNext();
-            e.SuppressKeyPress = true;
-        }
-        else if (e.KeyCode == Keys.Escape)
-        {
-            txtSearch.Clear();
-            e.SuppressKeyPress = true;
-        }
-    }
+    private void txtSearch_KeyDown(object? sender, KeyEventArgs e) =>
+        UiHelpers.HandleSearchKeyDown(e, txtSearch, SearchNext, SearchPrev);
 
     private void btnClearSearch_Click(object? sender, EventArgs e) => txtSearch.Clear();
     private void btnPrev_Click(object? sender, EventArgs e) => SearchPrev();

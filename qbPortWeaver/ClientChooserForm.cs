@@ -22,34 +22,12 @@ internal sealed class ClientChooserForm : Form
         _clients = clients;
 
         Text = $"{AppIdentity.AppName} | Detect Client";
-        FormBorderStyle = FormBorderStyle.FixedDialog;
+        DialogLayout.ApplyDialogChrome(this);
         StartPosition = FormStartPosition.CenterParent;
-        MinimizeBox = false;
-        MaximizeBox = false;
-        ShowInTaskbar = false;
-        // The window icon is what Alt+Tab draws. Leaving it unset gave every dialog a blank entry
-        // there, so it is set here as on every other form; the title bar stays iconless because a
-        // FixedDialog frame does not draw one, which is what the "no title-bar icon" convention
-        // actually relies on - ShowIcon = false was suppressing the Alt+Tab icon as a side effect.
-        Icon = Properties.Resources.qbPortWeaver;
-        ShowIcon = true;
-        // The layout containers size the form; AutoScaleMode.Font (designer baseline) scales fonts.
-        AutoScaleDimensions = new SizeF(7F, 15F);
-        AutoScaleMode = AutoScaleMode.Font;
         AutoSize = true;
         AutoSizeMode = AutoSizeMode.GrowAndShrink;
 
-        var root = new TableLayoutPanel
-        {
-            Dock = DockStyle.Fill,
-            AutoSize = true,
-            AutoSizeMode = AutoSizeMode.GrowAndShrink,
-            ColumnCount = 1,
-            RowCount = 2,
-            Padding = new Padding(DialogLayout.EdgeMargin, DialogLayout.EdgeMargin, DialogLayout.EdgeMargin, DialogLayout.BottomMargin),
-        };
-        root.RowStyles.Add(new RowStyle(SizeType.AutoSize)); // prompt + options
-        root.RowStyles.Add(new RowStyle(SizeType.AutoSize)); // buttons
+        var root = DialogLayout.ContentRoot(); // row 0: prompt + options, row 1: buttons
 
         var content = new FlowLayoutPanel
         {

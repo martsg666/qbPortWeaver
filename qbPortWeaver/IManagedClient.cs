@@ -73,8 +73,13 @@ public interface IManagedClient : IDisposable
 
     /// <summary>
     /// Returns the client's current connection status string, or <see langword="null"/> if unsupported or unreachable.
-    /// For qBittorrent this is one of "connected", "firewalled", or "disconnected".
-    /// For clients that do not expose connection status, always returns <see langword="null"/>.
+    /// <para>Two clients report one. qBittorrent returns "connected", "firewalled", or "disconnected".
+    /// Nicotine+ returns "connected" or "disconnected" only, folding its own transient "connecting"
+    /// into connected so a port change is not read as an outage; it has no firewalled equivalent.
+    /// Transmission and Deluge do not expose connection status and always return
+    /// <see langword="null"/>.</para>
+    /// <para>Callers compare against "disconnected" alone, so the two reporting clients are handled by
+    /// one branch.</para>
     /// </summary>
     Task<string?> GetConnectionStatusAsync(CancellationToken cancellationToken = default);
 

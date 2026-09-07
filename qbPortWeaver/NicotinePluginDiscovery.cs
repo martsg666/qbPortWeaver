@@ -165,7 +165,7 @@ internal static class NicotinePluginDiscovery
     {
         if (!root.TryGetProperty("schema", out var schemaElement)) return true;
 
-        if (!schemaElement.TryGetInt32(out int schema))
+        if (schemaElement.AsInt32OrNull() is not int schema)
         {
             LogManager.Instance.LogDebug(
                 $"NicotinePluginDiscovery.HasSupportedSchema: {path} has an unreadable connection-file schema - ignoring it");
@@ -210,8 +210,7 @@ internal static class NicotinePluginDiscovery
 
             if (!HasSupportedSchema(root, path)) return null;
 
-            if (!root.TryGetProperty("port", out var portElement) ||
-                !portElement.TryGetInt32(out int port) ||
+            if (root.GetInt32OrNull("port") is not int port ||
                 port is < AppConstants.MinPortNumber or > AppConstants.MaxPortNumber)
             {
                 LogManager.Instance.LogDebug($"NicotinePluginDiscovery.TryReadFile: {path} has no usable port");
@@ -229,8 +228,7 @@ internal static class NicotinePluginDiscovery
             // taken. This liveness check is the first guard; the second is the bearer token, which
             // an unrelated listener cannot honour, so it answers with something other than a valid
             // bridge response and the request fails cleanly.
-            if (root.TryGetProperty("pid", out var pidElement) && pidElement.TryGetInt32(out int pid) &&
-                !IsProcessAlive(pid))
+            if (root.GetInt32OrNull("pid") is int pid && !IsProcessAlive(pid))
             {
                 LogManager.Instance.LogDebug($"NicotinePluginDiscovery.TryReadFile: {path} was left by process {pid}, which is gone");
                 return null;

@@ -9,18 +9,19 @@
 /// <para>Adding a client: add one entry here (its key names and construction factory) plus its
 /// Settings UI. <see cref="PortSyncService"/> reads the active client's config and constructs it
 /// entirely from this table, and detection and resolution pick up the new entry automatically.</para>
-/// <para><b>The three exclusive settings are the exception, and they are not covered by this
-/// table.</b> <c>warnOnInterfaceMismatch</c> (qBittorrent and Nicotine+), <c>restartOnDisconnect</c>
-/// and <c>fixInterfaceBinding</c> (qBittorrent only) live as flat fields on <c>AppConfig</c> and are
-/// resolved by comparing the active section against hardcoded client identities in <b>two</b> places:
-/// <c>PortSyncService.LogConfigDebug</c> and <c>PortSyncService.GetClientBehaviorConfig</c>. A new
-/// client with any of them needs an arm in both, and nothing fails if you forget - the setting is
-/// simply honoured while going unreported, which is exactly how Nicotine+'s
-/// <c>warnOnInterfaceMismatch</c> stayed missing from the debug dump until 2.6.8.</para>
-/// <para>The way out, if that list grows again: give <see cref="ClientInfo"/> nullable keys for them
-/// the way <c>UserNameKey</c> and <c>RestartKey</c> already work, and move
-/// the values off <c>AppConfig</c>'s flat fields so the lookup can be table-driven too. Deliberately
-/// not done yet - keys alone would relocate the per-client branch rather than remove it.</para>
+/// <para><b>The three exclusive settings are covered by this table too</b>, as of 2.6.8:
+/// <c>warnOnInterfaceMismatch</c> (qBittorrent and Nicotine+), <c>restartOnDisconnect</c> and
+/// <c>fixInterfaceBinding</c> (qBittorrent only) are nullable keys on <see cref="ClientInfo"/>,
+/// exactly like <c>UserNameKey</c> and <c>RestartKey</c>, and their values ride on
+/// <see cref="ClientConfig"/> with the rest of the per-client block.</para>
+/// <para>They previously lived as flat fields on <c>AppConfig</c>, resolved by comparing the active
+/// section against hardcoded client identities in <b>two</b> places -
+/// <c>PortSyncService.GetClientBehaviorConfig</c> and <c>PortSyncService.LogConfigDebug</c>. Because
+/// the two sites were independent, they could drift: Nicotine+'s <c>warnOnInterfaceMismatch</c> was
+/// honoured by the first while missing from the second until 2.6.8, leaving a support log unable to
+/// say whether the one warning that client has a setting for was even enabled. Both now read the key
+/// from this row, so behaviour and reporting cannot disagree. The Settings UI is still separate, as
+/// it is for every other key here - see the note on the fields themselves.</para>
 /// </summary>
 internal static class ClientRegistry
 {
@@ -56,6 +57,17 @@ internal static class ClientRegistry
         string? RestartKey,
         string ForceStartKey,
         string DefaultPortKey,
+        // The three exclusive settings, null for a client that does not have one. Nullable for the
+        // same reason UserNameKey and RestartKey are: absence is a property of the client, and a null
+        // key is what both the config read and the debug dump branch on, so neither can claim a
+        // setting the client does not have. Declaring the key here is the single act that turns a
+        // setting on *in the sync loop*, so behaviour and the debug dump can no longer disagree - but
+        // it is not the only place: the Settings UI still declares its own checkbox per client, as it
+        // does for every other key here. A key declared with no checkbox behind it reads false
+        // forever, and the dump would report a setting the user has no way to enable.
+        string? WarnOnInterfaceMismatchKey,
+        string? RestartOnDisconnectKey,
+        string? FixInterfaceBindingKey,
         string[] ProcessNames,
         string DefaultExeFolder,
         string DefaultExeFile,
@@ -70,6 +82,9 @@ internal static class ClientRegistry
             PasswordKey: RegistrySettingsManager.KeyQBittorrentPassword, ExePathKey: RegistrySettingsManager.KeyQBittorrentExePath,
             ProcessNameKey: RegistrySettingsManager.KeyQBittorrentProcessName, RestartKey: RegistrySettingsManager.KeyQBittorrentRestart,
             ForceStartKey: RegistrySettingsManager.KeyQBittorrentForceStart, DefaultPortKey: RegistrySettingsManager.KeyQBittorrentDefaultPort,
+            WarnOnInterfaceMismatchKey: RegistrySettingsManager.KeyQBittorrentWarnOnInterfaceMismatch,
+            RestartOnDisconnectKey: RegistrySettingsManager.KeyQBittorrentRestartOnDisconnect,
+            FixInterfaceBindingKey: RegistrySettingsManager.KeyQBittorrentFixInterfaceBinding,
             ProcessNames: ["qbittorrent"], DefaultExeFolder: "qBittorrent", DefaultExeFile: "qbittorrent.exe",
             Factory: c => new QBittorrentClient(c.Url, c.UserName, c.Password, c.ProcessName, c.ExePath)),
 
@@ -78,6 +93,10 @@ internal static class ClientRegistry
             PasswordKey: RegistrySettingsManager.KeyTransmissionPassword, ExePathKey: RegistrySettingsManager.KeyTransmissionExePath,
             ProcessNameKey: RegistrySettingsManager.KeyTransmissionProcessName, RestartKey: RegistrySettingsManager.KeyTransmissionRestart,
             ForceStartKey: RegistrySettingsManager.KeyTransmissionForceStart, DefaultPortKey: RegistrySettingsManager.KeyTransmissionDefaultPort,
+            // All three null: Transmission reports a bind address rather than an adapter name, so there
+            // is no name to compare (see IManagedClient.SupportsInterfaceMismatchWarning), and the
+            // restart-on-disconnect and binding repairs are qBittorrent-only.
+            WarnOnInterfaceMismatchKey: null, RestartOnDisconnectKey: null, FixInterfaceBindingKey: null,
             ProcessNames: ["transmission-qt", "transmission-daemon"], DefaultExeFolder: "Transmission", DefaultExeFile: "transmission-qt.exe",
             Factory: c => new TransmissionClient(c.Url, c.UserName, c.Password, c.ProcessName, c.ExePath)),
 
@@ -87,6 +106,8 @@ internal static class ClientRegistry
             PasswordKey: RegistrySettingsManager.KeyDelugePassword, ExePathKey: RegistrySettingsManager.KeyDelugeExePath,
             ProcessNameKey: RegistrySettingsManager.KeyDelugeProcessName, RestartKey: RegistrySettingsManager.KeyDelugeRestart,
             ForceStartKey: RegistrySettingsManager.KeyDelugeForceStart, DefaultPortKey: RegistrySettingsManager.KeyDelugeDefaultPort,
+            // All three null, for the same reasons as Transmission.
+            WarnOnInterfaceMismatchKey: null, RestartOnDisconnectKey: null, FixInterfaceBindingKey: null,
             ProcessNames: ["deluge", "deluged"], DefaultExeFolder: "Deluge", DefaultExeFile: "deluge.exe",
             Factory: c => new DelugeClient(c.Url, c.Password, c.ProcessName, c.ExePath)),
 
@@ -104,6 +125,11 @@ internal static class ClientRegistry
             PasswordKey: RegistrySettingsManager.KeyNicotinePassword, ExePathKey: RegistrySettingsManager.KeyNicotineExePath,
             ProcessNameKey: RegistrySettingsManager.KeyNicotineProcessName, RestartKey: null,
             ForceStartKey: RegistrySettingsManager.KeyNicotineForceStart, DefaultPortKey: RegistrySettingsManager.KeyNicotineDefaultPort,
+            // Nicotine+ reports an adapter name, so the mismatch warning applies to it as it does to
+            // qBittorrent. The other two do not: it is never restarted (see RestartKey above), and the
+            // stale-binding repair reads and writes qBittorrent's own configuration.
+            WarnOnInterfaceMismatchKey: RegistrySettingsManager.KeyNicotineWarnOnInterfaceMismatch,
+            RestartOnDisconnectKey: null, FixInterfaceBindingKey: null,
             ProcessNames: ["Nicotine+"], DefaultExeFolder: "Nicotine+", DefaultExeFile: "Nicotine+.exe",
             Factory: c => new NicotineClient(c.Url, c.Password, c.ProcessName, c.ExePath)),
     ];
@@ -118,9 +144,19 @@ internal static class ClientRegistry
 
 /// <summary>
 /// Per-client connection and behaviour settings for one sync cycle, built by
-/// <see cref="PortSyncService"/> for the active client only and consumed by that client's
-/// <see cref="ClientRegistry.ClientInfo.Factory"/>. <see cref="UserName"/> is empty for clients that
-/// do not authenticate by username (e.g. Deluge).
+/// <see cref="PortSyncService"/> for the active client only.
+/// <para>Two groups with different consumers. <see cref="Url"/>, <see cref="UserName"/>,
+/// <see cref="Password"/>, <see cref="ProcessName"/> and <see cref="ExePath"/> are the connection
+/// details that client's <see cref="ClientRegistry.ClientInfo.Factory"/> constructs it from - and
+/// only those; <see cref="UserName"/> reaches the factory for qBittorrent and Transmission alone,
+/// since Deluge and Nicotine+ do not authenticate by username and leave it empty. Everything from
+/// <see cref="Restart"/> onwards is a behaviour setting the sync loop reads directly, and no factory
+/// sees. Those readers are <c>PortSyncService.GetClientBehaviorConfig</c>, <c>GetDefaultPort</c> and
+/// <c>LogConfigDebug</c> - plus, for <see cref="FixInterfaceBinding"/> alone, the <c>SyncConfig</c>
+/// construction in <c>RunCoreAsync</c>, which takes it straight off this record rather than through
+/// the behaviour tuple.</para>
+/// <para>A behaviour flag is false for any client whose <see cref="ClientRegistry.ClientInfo"/> row
+/// does not declare its key.</para>
 /// </summary>
 internal sealed record ClientConfig(
     string Url,
@@ -130,4 +166,7 @@ internal sealed record ClientConfig(
     string ExePath,
     bool Restart,
     bool ForceStart,
-    int DefaultPort);
+    int DefaultPort,
+    bool WarnOnInterfaceMismatch,
+    bool RestartOnDisconnect,
+    bool FixInterfaceBinding);

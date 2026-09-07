@@ -423,13 +423,9 @@ public partial class MainForm : Form
     // the user reaching for the log viewer is the one who can least afford to lose the history.
     private void clearLogs_Click(object? sender, EventArgs e)
     {
-        var confirm = ThemedMessageBox.Show(
-            "All log files, including rotated backups, will be deleted. This cannot be undone.\n\nContinue?",
-            AppIdentity.AppName,
-            MessageBoxButtons.YesNo,
-            MessageBoxIcon.Warning);
-
-        if (confirm != DialogResult.Yes) return;
+        if (!ThemedMessageBox.ConfirmDestructive(
+                "All log files, including rotated backups, will be deleted. This cannot be undone.\n\nContinue?"))
+            return;
 
         LogManager.Instance.ClearLogs();
         ResetLogAlerts();
@@ -802,10 +798,13 @@ public partial class MainForm : Form
                 LogManager.Instance.LogMessage($"Sync cycle failed, retrying in {updateInterval}s: {ex.Message}", LogLevel.Error);
                 if (!await TryDelayAfterErrorAsync(updateInterval))
                 {
-                    // Only reached when the delay primitive itself failed, which TryDelayAfterErrorAsync
-                    // describes as unrecoverable. Not retried: the delay is what broke, so looping would
-                    // spin. Recorded so the terminal line below reports the truth.
-                    graceful = false;
+                    // False covers a shutdown as well as a failure, and only the latter is a fault. A
+                    // shutdown that lands inside this delay is an ordinary Exit and must stay graceful -
+                    // without the check it was reported as an unrecoverable error, raising the tray
+                    // badge on a clean quit. Otherwise the delay primitive itself failed, which
+                    // TryDelayAfterErrorAsync has already logged. Not retried: the delay is what broke,
+                    // so looping would spin.
+                    graceful = _shutdownCts.IsCancellationRequested;
                     break;
                 }
             }

@@ -282,7 +282,6 @@ public sealed class PortSyncService
     private sealed record SyncConfig(
         bool ForceStart,
         bool Restart,
-        string PostUpdateCommand,
         IVpnManager? VpnManager,
         bool WarnOnInterfaceMismatch,
         bool RestartOnDisconnect,
@@ -596,7 +595,6 @@ public sealed class PortSyncService
             new SyncConfig(
                 ForceStart: forceStart,
                 Restart: restart,
-                PostUpdateCommand: cfg.PostUpdateCommand,
                 VpnManager: syncVpnManager,
                 WarnOnInterfaceMismatch: warnOnInterfaceMismatch,
                 RestartOnDisconnect: restartOnDisconnect,

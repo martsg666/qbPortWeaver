@@ -142,7 +142,7 @@ internal static partial class AutoRecovery
     // travels back over the pipe and raises the tray warning badge, so a Warn on the success path made
     // every routine recovery look like a fault. ProtonVPN's service never accepts an SCM stop while its
     // tunnel is up, so for that provider the force-kill path is not the exception - it is every time.
-    // The main app follows the same rule: AppConstants logs only kill outcomes, AutoRecoveryManager
+    // The main app follows the same rule: ProcessControl logs only kill outcomes, AutoRecoveryManager
     // logs a successful kill at Info.
 
     // Cycles a network adapter by disabling and re-enabling it via netsh.

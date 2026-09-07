@@ -798,10 +798,12 @@ public partial class MainForm : Form
                 LogManager.Instance.LogMessage($"Sync cycle failed, retrying in {updateInterval}s: {ex.Message}", LogLevel.Error);
                 if (!await TryDelayAfterErrorAsync(updateInterval))
                 {
-                    // Only reached when the delay primitive itself failed, which TryDelayAfterErrorAsync
-                    // describes as unrecoverable. Not retried: the delay is what broke, so looping would
-                    // spin. Recorded so the terminal line below reports the truth.
-                    graceful = false;
+                    // False covers two exits, and only one of them is a failure. A shutdown that lands
+                    // inside this delay is an ordinary Exit and must stay graceful - without the check
+                    // it was reported as an unrecoverable error, raising the tray badge on a clean
+                    // quit. Otherwise the delay primitive itself failed, which TryDelayAfterErrorAsync
+                    // has already logged. Not retried: the delay is what broke, so looping would spin.
+                    graceful = _shutdownCts.IsCancellationRequested;
                     break;
                 }
             }

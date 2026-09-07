@@ -260,8 +260,9 @@ public sealed class PortSyncService
     // not touched. Adding another client: add one entry to ClientRegistry (its keys + factory)
     // plus its Settings UI - ReadConfig, CreateManagedClient, and LogConfigDebug are all driven from
     // that table and pick it up with no change here.
-    // Per-client behaviour flags stay at the top level: restart-on-disconnect is qBittorrent-only,
-    // and the interface-mismatch warning applies only to the clients that report an adapter name.
+    // Per-client behaviour flags (interface-mismatch warning, restart-on-disconnect, binding repair)
+    // live in the Client block as well, read from nullable keys on the ClientRegistry entry so a
+    // client that does not carry the setting reads false without a special case here.
     private sealed record AppConfig(
         string VpnProvider,
         string NatPmpAdapterName,

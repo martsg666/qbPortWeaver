@@ -279,20 +279,17 @@ public sealed class DelugeClient : ManagedClientBase
         bool randomPort = resultElement.TryGetProperty("random_port", out var randomPortElement) &&
                           randomPortElement.ValueKind == JsonValueKind.True;
 
+        // listen_random_port is null until the daemon has actually picked one, and Deluge writes it
+        // back to null whenever random_port is turned off - so the null case here is its ordinary
+        // resting state, not a malformed response.
         if (randomPort)
-        {
-            if (resultElement.TryGetProperty("listen_random_port", out var listenRandomPortElement) &&
-                listenRandomPortElement.TryGetInt32(out int parsed))
-                return parsed;
-        }
-        else
-        {
-            if (resultElement.TryGetProperty("listen_ports", out var listenPortsElement) &&
-                listenPortsElement.ValueKind == JsonValueKind.Array &&
-                listenPortsElement.GetArrayLength() > 0 &&
-                listenPortsElement[0].TryGetInt32(out int parsed))
-                return parsed;
-        }
+            return resultElement.GetInt32OrNull("listen_random_port");
+
+        if (resultElement.TryGetProperty("listen_ports", out var listenPortsElement) &&
+            listenPortsElement.ValueKind == JsonValueKind.Array &&
+            listenPortsElement.GetArrayLength() > 0)
+            return listenPortsElement[0].AsInt32OrNull();
+
         return null;
     }
 }

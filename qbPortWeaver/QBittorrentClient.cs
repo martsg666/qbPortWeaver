@@ -65,11 +65,11 @@ public sealed class QBittorrentClient : ManagedClientBase
             int? listenPort = null;
             if (hasListenPort)
             {
-                // listen_port may be a JSON number or string depending on qBittorrent version
-                int parsed;
-                if (listenPortElement.ValueKind == JsonValueKind.Number && listenPortElement.TryGetInt32(out parsed))
-                    listenPort = parsed;
-                else if (int.TryParse(listenPortElement.AsStringOrNull(), out parsed))
+                // listen_port may be a JSON number or string depending on qBittorrent version.
+                // The number form goes through the shared reader, which owns the kind test that
+                // makes TryGetInt32 safe; the string form is qBittorrent's alone.
+                listenPort = listenPortElement.AsInt32OrNull();
+                if (listenPort is null && int.TryParse(listenPortElement.AsStringOrNull(), out int parsed))
                     listenPort = parsed;
             }
 

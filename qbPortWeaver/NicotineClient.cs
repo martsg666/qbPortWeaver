@@ -119,8 +119,7 @@ public sealed class NicotineClient : ManagedClientBase
             using var doc = await ReadJsonAsync(response, cancellationToken).ConfigureAwait(false);
             var root = doc.RootElement;
 
-            if (!root.TryGetProperty("listen_port", out var listenPortElement) ||
-                !listenPortElement.TryGetInt32(out int listenPort))
+            if (root.GetInt32OrNull("listen_port") is not int listenPort)
             {
                 LogManager.Instance.LogDebug("NicotineClient.GetPreferencesAsync: 'listen_port' missing or not an integer in the plugin response");
                 return (null, null);

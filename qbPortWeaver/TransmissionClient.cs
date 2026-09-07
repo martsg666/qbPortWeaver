@@ -143,10 +143,7 @@ public sealed class TransmissionClient : ManagedClientBase
                 return (null, null);
             }
 
-            int? listenPort = null;
-            if (argumentsElement.TryGetProperty("peer-port", out var peerPortElement) &&
-                peerPortElement.TryGetInt32(out int parsed))
-                listenPort = parsed;
+            int? listenPort = argumentsElement.GetInt32OrNull("peer-port");
 
             if (listenPort is null)
                 LogManager.Instance.LogDebug("TransmissionClient.GetPreferencesAsync: peer-port not parsed in RPC response");

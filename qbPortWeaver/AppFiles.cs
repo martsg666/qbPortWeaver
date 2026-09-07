@@ -47,9 +47,10 @@ public static class AppFiles
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             // Guarded with IsInitialized because this is a generic file helper reachable from
-            // early startup paths before LogManager.Initialize runs. The kill/service helpers
-            // below call LogManager.Instance unguarded by design - they only run inside the
-            // active sync loop, which cannot start until after initialization.
+            // early startup paths before LogManager.Initialize runs. The kill and service helpers
+            // in ProcessControl and ServiceLookup call LogManager.Instance unguarded by design -
+            // they only run inside the active sync loop, which cannot start until after
+            // initialization.
             if (LogManager.IsInitialized)
                 LogManager.Instance.LogDebug($"AppFiles.DeleteFileSafely: Could not delete '{path}': {ex.Message}");
         }

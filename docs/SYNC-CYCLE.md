@@ -591,7 +591,7 @@ Every cycle writes a JSON status file (`qbPortWeaver.status.json` in `%LocalAppD
 |---|---|
 | `Disabled` | Both triggers are off. Either one can restart the VPN with the other switched off, so one being off is not enough. |
 | `-` | No cycle has published a threshold yet: a status file from a version before these keys, or a cycle that failed before reading config. |
-| `Suspended - restarts did not restore the port, resumes when one is found` | The consecutive-recovery cap has been reached. Outranks both `Holding` rows: they defer the next attempt, this one means none is coming until a port reads successfully. |
+| `Suspended - restarts did not restore the port, resumes when one is found` | The consecutive-recovery cap has been reached. Outranks the sustained-failure `Holding` row: that one defers the next attempt, this one means none is coming until a port reads successfully. The offline `Holding` row sits above it, because the cap is not applied while the machine is offline (see Consecutive Recovery Cap). |
 | `Holding - cannot confirm internet, retry in ~12m` | The offline rate limiter is waiting. "Cannot confirm" rather than "no internet": the probe only knows nothing answered its pings, and a network filtering ICMP looks identical. |
 | `Holding - failures too recent, retry in ~48s` | The sustained-failure floor is waiting. It clears by itself within a cycle or two. |
 | `3 of 5 failed cycles` | A failure streak is building toward the trigger. |

@@ -3,7 +3,7 @@
 namespace qbPortWeaver;
 
 /// <summary>
-/// Reads string values out of JSON responses without trusting their type.
+/// Reads string and boolean values out of JSON responses without trusting their type.
 /// </summary>
 /// <remarks><see cref="JsonElement.GetString"/> throws <see cref="InvalidOperationException"/>
 /// when the value is neither a string nor null, so a client or plugin that reports a field in an

@@ -88,13 +88,10 @@ public partial class MediaManagerForm : Form
         // until Windows flags the app as preventing shutdown.
         if (_isBusy && e.CloseReason == CloseReason.UserClosing)
         {
-            var result = ThemedMessageBox.Show(
-                "A scan or import is in progress.\n\nClosing will cancel the operation. Any files already imported will remain in the library.\n\nClose anyway?",
-                AppIdentity.AppName,
-                MessageBoxButtons.YesNo,
-                MessageBoxIcon.Question);
+            var result = ThemedMessageBox.Confirm(
+                "A scan or import is in progress.\n\nClosing will cancel the operation. Any files already imported will remain in the library.\n\nClose anyway?");
 
-            if (result != DialogResult.Yes)
+            if (!result)
             {
                 e.Cancel = true;
                 return;

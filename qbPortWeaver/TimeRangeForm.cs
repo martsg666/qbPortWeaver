@@ -25,15 +25,8 @@ internal sealed class TimeRangeForm : Form
     internal TimeRangeForm(DateTime from, DateTime to)
     {
         Text = $"{AppIdentity.AppName} | Custom Time Range";
-        FormBorderStyle = FormBorderStyle.FixedDialog;
+        DialogLayout.ApplyDialogChrome(this);
         StartPosition = FormStartPosition.CenterParent;
-        MinimizeBox = false;
-        MaximizeBox = false;
-        ShowInTaskbar = false;
-        Icon = Properties.Resources.qbPortWeaver;
-        ShowIcon = true;
-        AutoScaleDimensions = new SizeF(7F, 15F);
-        AutoScaleMode = AutoScaleMode.Font;
         AutoSize = true;
         AutoSizeMode = AutoSizeMode.GrowAndShrink;
 
@@ -69,21 +62,12 @@ internal sealed class TimeRangeForm : Form
         AcceptButton = ok;
         CancelButton = cancel;
 
-        var root = new TableLayoutPanel
-        {
-            Dock = DockStyle.Fill,
-            AutoSize = true,
-            AutoSizeMode = AutoSizeMode.GrowAndShrink,
-            ColumnCount = 1,
-            RowCount = 2,
-            Padding = new Padding(DialogLayout.EdgeMargin, DialogLayout.EdgeMargin, DialogLayout.EdgeMargin, DialogLayout.BottomMargin),
-        };
+        var root = DialogLayout.ContentRoot(); // row 0: fields, row 1: buttons
         // Fill rather than auto-size: when the caption widens the dialog past its contents, an
         // auto-sized column would keep the content block at its natural width and leave the surplus
         // as dead space on the right, pulling the fields and buttons away from the true right edge.
+        // The only dialog that needs this, which is why ContentRoot leaves the column style open.
         root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
-        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));    // fields
-        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));    // buttons
         root.Controls.Add(grid, 0, 0);
         root.Controls.Add(DialogLayout.ButtonRow(ok, cancel), 0, 1);
         Controls.Add(root);

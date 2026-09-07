@@ -41,6 +41,19 @@ RECONNECT_GRACE_SECONDS = 30.0
 # when it does not there is no lock to miss, so "not locked" is the true answer rather than an
 # undetectable one. Neither is gated by _require, so no endpoint reports them as unsupported
 # either - which is what the warning below promises about everything it names.
+#
+# That argument covers Nicotine+ REMOVING the option. It does not cover Nicotine+ RENAMING the
+# attribute while --port still works, and that case is silent rather than merely undiagnosed:
+# cli_listen_port() would return None, preferences() would fall back to reporting the configured
+# port as listen_port, qbPortWeaver would compare its target against the value it had just written
+# and see a match, and Nicotine+ would go on listening on the --port value. Nothing warns, because
+# nothing disagrees. The eventual symptom is misleading - the forwarded port tests closed and
+# port-closed recovery restarts the VPN against a condition no restart can fix.
+#
+# Left as is deliberately: it needs an upstream rename that has not happened, and every remedy
+# changes this API's contract (reporting port_locked_by_cli as null-for-unknown, or having the C#
+# side cross-check). If it ever needs fixing, active_port is the field that already carries the
+# evidence - it is reported here and read by nothing.
 INFORMATIONAL_CAPABILITIES = ("port_test_native", "cli_lock_detectable")
 
 

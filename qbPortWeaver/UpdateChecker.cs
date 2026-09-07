@@ -211,7 +211,10 @@ public static class UpdateChecker
     /// let a checksum failure escape. Catch it explicitly, as
     /// <c>UpdateAvailableForm.DownloadAndInstallAsync</c> does.</para>
     /// <para>The destination file is removed on every one of those paths, so a failure never leaves a
-    /// partial or unverified installer behind under a name that looks finished.</para>
+    /// partial or unverified installer behind under a name that looks finished. That includes the
+    /// stream's final flush, which is where a disk-full <see cref="IOException"/> actually surfaces -
+    /// <see cref="FileStream"/> buffers, so the tail of the transfer is written at dispose rather than
+    /// by the last write. The dispose is therefore inside the same <c>try</c> as the transfer.</para>
     /// </summary>
     /// <param name="url">Direct download URL of the asset.</param>
     /// <param name="destPath">File to write, created or truncated. Deleted again if the transfer fails or the checksum does not match.</param>
@@ -238,10 +241,12 @@ public static class UpdateChecker
         long? total = response.Content.Headers.ContentLength;
 
         await using var source = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
-        var dest = new FileStream(destPath, FileMode.Create, FileAccess.Write, FileShare.None);
         // Same incremental idiom as NicotinePluginInstaller.ComputeBundledFingerprint. Left null when
-        // there is nothing to compare against, so the unverified path allocates nothing.
+        // there is nothing to compare against, so the unverified path allocates nothing. Declared
+        // before the FileStream deliberately: FileMode.Create truncates on construction, so nothing
+        // that can throw may sit between that and the try below, or the catch never runs to remove it.
         using var hash = expectedSha256 is null ? null : IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        var dest = new FileStream(destPath, FileMode.Create, FileAccess.Write, FileShare.None);
 
         try
         {
@@ -269,6 +274,14 @@ public static class UpdateChecker
                         $"(expected {expectedSha256!.ToLowerInvariant()}, got {actual.ToLowerInvariant()})");
                 }
             }
+
+            // Inside the try for the same reason, and it is not merely tidy: FileStream buffers, so
+            // the tail of the transfer is written here rather than by the last WriteAsync. A disk-full
+            // or IO fault at this flush throws IOException, and with this outside the try it escaped
+            // past the cleanup - leaving a truncated installer in %TEMP% under the finished name, the
+            // one outcome the catch below exists to prevent. DisposeAsync is idempotent, so if this
+            // one throws, the catch's own dispose is a no-op on that path.
+            await dest.DisposeAsync().ConfigureAwait(false);
         }
         catch
         {
@@ -279,9 +292,17 @@ public static class UpdateChecker
             // run it by hand. Same rule as AppFiles.WriteAtomicCore: a write that did not complete
             // leaves nothing behind.
             //
-            // Disposed explicitly first: `await using` has not run at this point and FileShare.None
-            // holds the handle, so the delete would fail with the file still open.
-            await dest.DisposeAsync().ConfigureAwait(false);
+            // Disposed explicitly because `dest` is deliberately not declared with `await using` - that
+            // would put the buffered flush outside this try, which is the ordering the success path
+            // above exists to avoid. FileShare.None holds the handle, so without this dispose the
+            // delete would fail with the file still open. Guarded because on every path but one -
+            // anything that throws before the dispose above, whether a failed transfer, a cancellation
+            // or a checksum mismatch - that dispose never ran, so the buffer is still dirty and this
+            // call is the one doing the flush. On a full volume that flush throws, and unguarded the
+            // IOException would escape past the delete below, stranding the partial file this block
+            // exists to remove.
+            try { await dest.DisposeAsync().ConfigureAwait(false); }
+            catch (Exception ex) when (ex is IOException or ObjectDisposedException) { } // NOSONAR S108 - the delete below is the cleanup that matters; a failed flush must not pre-empt it
             try { File.Delete(destPath); }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
@@ -290,8 +311,6 @@ public static class UpdateChecker
             }
             throw;
         }
-
-        await dest.DisposeAsync().ConfigureAwait(false);
     }
 
     private static bool IsBot(string login, string type) =>

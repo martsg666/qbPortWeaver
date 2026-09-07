@@ -111,6 +111,30 @@ internal static class NicotinePluginInstaller
             "Enabled - start Nicotine+ to connect", pluginFolder, installedVersion, null);
     }
 
+    /// <summary>
+    /// Whether the supplied connection settings point somewhere other than where the plugin actually
+    /// published itself. Meaningful only in <see cref="NicotinePluginState.Ready"/>, the one state
+    /// that carries a handshake; every other state returns <see langword="false"/> because there is
+    /// nothing to compare against.
+    /// </summary>
+    /// <remarks>
+    /// This is not a fault - <c>NicotineClient</c> rediscovers the connection file and recovers - but
+    /// it costs a failed request every cycle until it is corrected, so both surfaces flag it.
+    /// It happens on its own: the plugin falls back to a free port when its configured one is busy,
+    /// which moves the published address while the stored settings stay where they were.
+    /// <para>Lives here so the two callers cannot drift apart. They compare against different
+    /// sources by design - <c>DiagnosticsService</c> against the saved registry values, and
+    /// <c>SettingsForm</c> against the values currently in the form, so clicking the refresh button
+    /// clears the warning immediately rather than only after a save - but the rule for what counts
+    /// as a mismatch has to be one rule.</para>
+    /// <para>The URL comparison ignores a trailing slash and case (both name the same endpoint);
+    /// the token is compared exactly, since it is an opaque credential.</para>
+    /// </remarks>
+    internal static bool ConnectionSettingsDiffer(NicotinePluginStatus status, string url, string token) =>
+        status.Handshake is { } handshake &&
+        (!string.Equals(url.TrimEnd('/'), handshake.Url.TrimEnd('/'), StringComparison.OrdinalIgnoreCase) ||
+         !string.Equals(token, handshake.Token, StringComparison.Ordinal));
+
     // ------------------------------------------------------------------ install
 
     /// <summary>

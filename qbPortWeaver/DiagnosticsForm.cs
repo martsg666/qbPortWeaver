@@ -32,16 +32,10 @@ internal sealed class DiagnosticsForm : Form
         _ranAt = DateTime.Now;
 
         Text = $"{AppIdentity.AppName} | Diagnostics ({_ranAt:HH:mm:ss})";
-        FormBorderStyle = FormBorderStyle.FixedDialog;
-        MaximizeBox = false;
-        MinimizeBox = false;
-        Icon     = Properties.Resources.qbPortWeaver;
-        ShowIcon = true;
-        ShowInTaskbar = false;
+        DialogLayout.ApplyDialogChrome(this);
+        // CenterScreen, not CenterParent: this opens from the tray menu as well as the Status panel,
+        // and CenterParent falls back to the OS default corner when there is no visible owner.
         StartPosition = FormStartPosition.CenterScreen;
-        // Match the designer forms' 96-DPI autoscale baseline so the manually-placed controls scale.
-        AutoScaleDimensions = new SizeF(7F, 15F);
-        AutoScaleMode = AutoScaleMode.Font;
         // Initial width; SizeToContent (after the report renders) sets the final height to fit.
         ClientSize = new Size(560, 690);
 
@@ -214,14 +208,21 @@ internal sealed class DiagnosticsForm : Form
         _report.ScrollToCaret();
     }
 
-    // Sizes this fixed dialog to fit the rendered report plus the button row, so a short report
-    // (e.g. Transmission's 9 checks) leaves no dead space and qBittorrent's fuller 10-check report
-    // still fits without scrolling. Capped so a report with many fix hints scrolls rather than
-    // growing off-screen. Runs once at construction; a Re-run keeps the size and scrolls if taller.
+    // Sizes this fixed dialog to fit the rendered report plus the button row, so the shortest
+    // report (a client with neither an interface-binding row nor a plugin row) leaves no dead space
+    // and the fullest one (Nicotine+, which has both) still fits without scrolling. Capped so a
+    // report with many fix hints scrolls rather than growing off-screen. Runs once at construction;
+    // a Re-run keeps the size and scrolls if taller.
     private void SizeToContent()
     {
         int lineHeight = _report.Font.Height;
         int lines = 4; // summary line, blank, version subline, blank
+        // A hint counts as one line however long it is. Long hints wrap - the internet-connectivity
+        // one does at this width - so a report carrying several of them is under-counted and the
+        // dialog can scroll a little sooner than the cap implies. Deliberate: counting wrapped lines
+        // properly needs TextRenderer against the control width plus SelectionIndent, which is far
+        // more machinery than a small discrepancy in a dialog that is designed to scroll anyway. Do
+        // not read the arithmetic below as exact.
         foreach (var r in _results)
             lines += string.IsNullOrEmpty(r.Hint) ? 3 : 4; // name + detail (+ hint) + trailing blank
 
@@ -237,6 +238,11 @@ internal sealed class DiagnosticsForm : Form
         DiagnosticStatus.Pass => ("✓", PassColor),
         DiagnosticStatus.Warn => ("⚠", WarnColor),
         DiagnosticStatus.Fail => ("✗", FailColor),
+        // En dash, deliberate: the neutral "not applicable" mark for a skipped row, weighted to sit with
+        // the glyphs above rather than the hyphen a dash sweep would substitute. Not prose, so the
+        // project-wide no-em-dash rule does not reach it - the same exemption the separator class in
+        // FileNameParser.SitePrefixRegex documents at length. A dash scan that reports this line is
+        // reporting an expected hit, not a violation.
         _ => ("–", SystemColors.GrayText),
     };
 

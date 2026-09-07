@@ -493,19 +493,8 @@ public partial class LogViewerForm : Form
     }
 
     // Handles Enter (next), Shift+Enter (prev), and Escape (clear) in the search box
-    private void txtSearch_KeyDown(object? sender, KeyEventArgs e)
-    {
-        if (e.KeyCode == Keys.Enter)
-        {
-            if (e.Shift) SearchPrev(); else SearchNext();
-            e.SuppressKeyPress = true;
-        }
-        else if (e.KeyCode == Keys.Escape)
-        {
-            txtSearch.Clear();
-            e.SuppressKeyPress = true;
-        }
-    }
+    private void txtSearch_KeyDown(object? sender, KeyEventArgs e) =>
+        UiHelpers.HandleSearchKeyDown(e, txtSearch, SearchNext, SearchPrev);
 
     // Keyboard shortcuts on the log list mirroring the context menu
     private void lvLog_KeyDown(object? sender, KeyEventArgs e)
@@ -956,9 +945,12 @@ public partial class LogViewerForm : Form
 
     // Visibility of the entry preceding fromLine, which any continuation lines at the start of an
     // incremental append belong to. Recomputed by walking back rather than carried in a field: the
-    // append runs from three call sites and two of them clear _visibleRows, so a field would need
-    // resetting in each and would silently go stale if a fourth were ever added. Continuation lines
-    // are rare, so this normally stops on the first line it looks at.
+    // append is called from more than one place and the places that clear _visibleRows are a different
+    // set again (only RebuildVisibleRows does both), so a cached field would need resetting at each and
+    // would silently go stale the next time either set grew. Deliberately stated without quantities:
+    // the original wording counted both sets and both numbers had drifted, and "several" replaced one
+    // wrong number with a vaguer one. Continuation lines are rare, so this normally stops on the first
+    // line it looks at.
     //
     // True when no earlier classified line exists - a buffer that begins mid-entry (the log rotated
     // partway through one) should show those lines rather than hide content that has no parent to

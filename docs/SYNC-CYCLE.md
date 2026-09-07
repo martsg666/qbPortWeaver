@@ -491,6 +491,16 @@ That is why `UpdatePortAndNotifyAsync` clears the arm on a successful port write
 common, self-healing reconnect would stay armed after the port write had already repaired it, and
 spend that arm on some later closed port it had nothing to do with.
 
+**It says so when it does this**, and that line exists because of a real diagnosis. The address-change
+line logged earlier in the same cycle used to promise the rebind outright, and the port write that
+follows it moments later - in the same cycle, on the common reconnect where address *and* port both
+move - silently cancelled it. A live incident on 2026-09-02 produced exactly that log: the address
+change with its promise, a port write, then a VPN restart three cycles later with no rebind and no
+reason given, which reads as the feature failing rather than correctly standing down. The observation
+line is now conditional ("Unless the forwarded port also changes first") and the cancellation is
+announced, but only when an arm was genuinely spent - a routine port change on a client whose address
+never moved stays quiet.
+
 ### Restart-on-Disconnect Cap *(qBittorrent only)*
 
 `restartOnDisconnect` restarts the client when it reports `disconnected`. That helps only when the
@@ -581,8 +591,8 @@ Every cycle writes a JSON status file (`qbPortWeaver.status.json` in `%LocalAppD
 |---|---|
 | `Disabled` | Both triggers are off. Either one can restart the VPN with the other switched off, so one being off is not enough. |
 | `-` | No cycle has published a threshold yet: a status file from a version before these keys, or a cycle that failed before reading config. |
-| `Suspended - restarts did not restore the port, resumes when one is found` | The consecutive-recovery cap has been reached. Outranks both `Holding` rows: they defer the next attempt, this one means none is coming until a port reads successfully. |
-| `Holding - no internet connection, retry in ~12m` | The offline rate limiter is waiting. It lasts as long as the outage. |
+| `Suspended - restarts did not restore the port, resumes when one is found` | The consecutive-recovery cap has been reached. Outranks the sustained-failure `Holding` row: that one defers the next attempt, this one means none is coming until a port reads successfully. The offline `Holding` row sits above it, because the cap is not applied while the machine is offline (see Consecutive Recovery Cap). |
+| `Holding - cannot confirm internet, retry in ~12m` | The offline rate limiter is waiting. "Cannot confirm" rather than "no internet": the probe only knows nothing answered its pings, and a network filtering ICMP looks identical. |
 | `Holding - failures too recent, retry in ~48s` | The sustained-failure floor is waiting. It clears by itself within a cycle or two. |
 | `3 of 5 failed cycles` | A failure streak is building toward the trigger. |
 | `Will trigger on the next failed cycle` | The streak has passed the threshold with nothing holding it. |
@@ -672,9 +682,15 @@ Right-clicking the group offers **Clear Statistics**: the session counters zero 
 
 ## Diagnostics
 
-**Run Diagnostics** (Status panel button and tray menu) runs `DiagnosticsService.RunAsync`, a read-only health check that walks the whole sync chain once and reports pass/warn/fail per step with a fix hint: configuration, helper service, VPN connection, forwarded port, client running, client reachable, ports in sync, interface binding, client settings, and outside reachability.
+**Run Diagnostics** (Status panel button and tray menu) runs `DiagnosticsService.RunAsync`, a read-only health check that walks the whole sync chain once and reports pass/warn/fail per step with a fix hint: configuration, helper service, internet connectivity, VPN connection, forwarded port, client running, client plugin *(Nicotine+ only)*, client reachable, ports in sync, interface binding *(qBittorrent and Nicotine+)*, client settings, and outside reachability.
+
+The **client plugin** check (`AddNicotinePluginResult`) is added only when the active client is a `NicotineClient`, and it runs *before* the reachability read on purpose: `NotInstalled`, `NotEnabled` and `NotRunning` are indistinguishable from a failed `GetPreferencesAsync`, so without this row every one of them would surface as a bare "Could not reach Nicotine+". It maps `NicotinePluginState` onto the same severities `SettingsForm` uses for the status label, through the shared `NicotinePluginInstaller.ConnectionSettingsDiffer` rule for the mismatch case, so the report and that label cannot disagree. `Ready` is the one state that is not a single verdict: it is `Pass` normally, but `Warn` when the saved URL or token differs from what the plugin published, which costs a failed request every cycle until the token refresh button is used.
+
+The **internet connectivity** check (`AddInternetConnectivityResultAsync` → `InternetConnectivityProbe.IsInternetReachableAsync`) reports what auto-recovery's rate limiter sees, and sits beside the helper-service row because the two answer the same question: can recovery work on this machine at all. It is the inbound/outbound opposite of **outside reachability** - that one asks whether the world can reach this machine's forwarded port, this one whether this machine can reach anything. It is **Warn, never Fail**: the probe cannot tell "offline" from "this network drops outbound ICMP", says so in its own contract, and instructs callers not to read a false as grounds for refusing to act, so a red row would assert something it cannot know. Both causes are named in the hint for the same reason - a network that filters ping and a VPN killswitch holding traffic down while the tunnel is out are indistinguishable from here, and sending the reader to fix the wrong one is worse than naming both. The row exists because that ambiguity was otherwise invisible: on an ICMP-filtered network the probe answers false forever, `TryTakeRecoverySlotAsync` quietly spaces recovery out to 5, 10 and then 15 minutes, and every symptom points at qbPortWeaver. Note what the hint does **not** say: the limiter sits in `TriggerRecoveryIfDueAsync`, so it applies only when **Trigger auto-recovery when no port assigned or disconnected** is on, and only to that trigger - the port-closed trigger reaches `DispatchRecoveryAsync` directly, having already proven connectivity by fetching a port. Even where it applies, the first attempt of a streak runs immediately and only repeats wait. The hold's own Warn line now points here for the same reason.
 
 The **interface binding** check covers all three things that can be wrong with a qBittorrent binding, in the order the sync cycle repairs them: the stale *token* (`CheckInterfaceBindingAsync`), the dead pinned *address* (`BuildPinnedAddressResultAsync`, see Stale Interface Address), and finally the adapter *name* against the VPN provider. The first two run whatever the provider is and outrank the name-based verdicts, because the name reads correctly in both cases while the client listens on nothing.
+
+The row itself is added only for a client that reports an adapter name - `IManagedClient.SupportsInterfaceMismatchWarning`, which is qBittorrent and Nicotine+ - so a Transmission or Deluge report carries no interface-binding row at all rather than a row saying the check does not apply. Nicotine+ reaches only the third of the three parts above; the token and address checks read qBittorrent's own preferences and are gated on the client type inside `AddInterfaceResultAsync`.
 
 The **client settings** check (`AddClientSettingsResultAsync` → `IManagedClient.GetConflictingSettingsAsync`) reports the client's own options that undo the synchronized port: a randomised listening port, and the client's built-in UPnP/NAT-PMP mapping. All four clients already write these to a safe value on every `SetListeningPortAsync`, so this check exists for the window in between - a user can re-enable one at any time and nothing corrects it until the VPN's port next changes, which may be days. It runs from **both** Diagnostics and the sync cycle (`CheckClientSettingsConflictsAsync`, every `ConflictCheckEveryNCycles` = 5 cycles). The sync-loop half is not redundant: on Transmission and Nicotine+ these settings produce no symptom, so nothing prompts the user to open Diagnostics before their next client restart moves the port. The cycle warning is transition-logged - once when a conflict appears, once when it clears - because the condition persists until the user acts, which may be days. It also raises `ClientSettingsConflictDetected`, which `MainForm` renders as a tray balloon through the same `ShowWarningBalloon` handler as `InterfaceMismatchDetected` and `PortVerificationFailed`. The balloon is not redundant with the generic "warnings were logged" one: on the two clients where this condition has no symptom, a user with no reason to suspect a problem has no reason to open the log viewer either. A `null` (unreadable) result leaves the latch untouched, so a failed read can never silently clear a warning the user has not fixed. The contract distinguishes the two outcomes that matter: an empty list means the settings were read and none conflict (Pass), while `null` means they could not be read at all (Skip). Collapsing those would show a green tick for a check that never ran - and this check exists precisely for the clients where nothing else can see the problem, so a false green is worse than no row. A client's failure paths therefore all return `null`; only a completed read returns a list.
 
@@ -736,6 +752,8 @@ RunAsync
          │   ├─ RepairPinnedAddressAsync (stale pin; if fixInterfaceBinding, once per streak)
          │   │   └─ QBittorrentClient.ForceInterfaceRebindAsync
          │   └─ QBittorrentClient.TryGetConnectionStatusAsync (only on an address change; Debug on failure)
+         ├─ CheckClientSettingsConflictsAsync (every ConflictCheckEveryNCycles = 5; transition-logged)
+         │   └─ IManagedClient.GetConflictingSettingsAsync
          ├─ UpdatePortAndNotifyAsync (when ports differ)
          │   ├─ ApplyPortUpdateAsync
          │   │   ├─ IManagedClient.SetListeningPortAsync

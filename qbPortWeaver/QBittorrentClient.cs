@@ -56,15 +56,8 @@ public sealed class QBittorrentClient : ManagedClientBase
         {
             using var response = await HttpClient.GetAsync($"{Url}{ApiAppPreferences}", cancellationToken).ConfigureAwait(false);
 
-            if (!response.IsSuccessStatusCode)
-            {
-                LogManager.Instance.LogMessage($"Failed to get {ClientName} preferences (HTTP {(int)response.StatusCode} {response.StatusCode})", LogLevel.Error);
-                return (null, null);
-            }
-
-            var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-
-            using var doc = JsonDocument.Parse(json);
+            using var doc = await ReadPreferencesJsonAsync(response, cancellationToken).ConfigureAwait(false);
+            if (doc is null) return (null, null);
             var root = doc.RootElement;
 
             bool hasListenPort = root.TryGetProperty("listen_port", out var listenPortElement);
@@ -72,11 +65,11 @@ public sealed class QBittorrentClient : ManagedClientBase
             int? listenPort = null;
             if (hasListenPort)
             {
-                // listen_port may be a JSON number or string depending on qBittorrent version
-                int parsed;
-                if (listenPortElement.ValueKind == JsonValueKind.Number && listenPortElement.TryGetInt32(out parsed))
-                    listenPort = parsed;
-                else if (int.TryParse(listenPortElement.AsStringOrNull(), out parsed))
+                // listen_port may be a JSON number or string depending on qBittorrent version.
+                // The number form goes through the shared reader, which owns the kind test that
+                // makes TryGetInt32 safe; the string form is qBittorrent's alone.
+                listenPort = listenPortElement.AsInt32OrNull();
+                if (listenPort is null && int.TryParse(listenPortElement.AsStringOrNull(), out int parsed))
                     listenPort = parsed;
             }
 
@@ -243,14 +236,8 @@ public sealed class QBittorrentClient : ManagedClientBase
         try
         {
             using var response = await HttpClient.GetAsync($"{Url}{ApiAppPreferences}", cancellationToken).ConfigureAwait(false);
-            if (!response.IsSuccessStatusCode)
-            {
-                LogManager.Instance.LogDebug($"QBittorrentClient.GetConflictingSettingsAsync: HTTP {(int)response.StatusCode}");
-                return null;
-            }
-
-            var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-            using var doc = JsonDocument.Parse(json);
+            using var doc = await TryReadJsonAsync(response, cancellationToken).ConfigureAwait(false);
+            if (doc is null) return null;
             var root = doc.RootElement;
 
             var conflicts = new List<ClientSettingConflict>();

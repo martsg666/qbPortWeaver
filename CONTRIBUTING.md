@@ -23,6 +23,8 @@ Fork the repository and open your pull request against the **current release bra
 
 Hotfix and feature branches are merged into the release branch via pull request. QA and release-candidate branches stage a batch of changes for final testing before the release is tagged; they take direct commits, and only `master` and the bare `2.x.y` release branches require a pull request to update.
 
+"Direct commits" means no pull request is needed **per change**, not that the branch has none: open one for the batch as soon as you cut a `qa/` or `rc/` branch. That is how it has always been done (every `rc/` branch back to 2.6.0 had a PR), and it is also what gives the branch any CI at all - `build.yml` and `sonarcloud.yml` both trigger on `pull_request`, so once a PR is open every later push to the branch is checked. Before that PR exists, pushes to a `qa/` or `rc/` branch run nothing.
+
 ### Workflow diagram
 
 ```
@@ -61,7 +63,7 @@ master  ────────────────────────
    git merge --no-ff <new-release>
    git push origin master
    ```
-   This runs the **SonarCloud** workflow on `master`. Read that run before tagging: analysis of any other branch is not readable on the project's current plan, so the `master` run is the only one that can inform the release. Merging before tagging is also what carries every contributor's commits into `master`, so they appear in the repository's contributor list.
+   This runs the **SonarCloud** workflow on `master`. Read that run before tagging. Pull request analysis is included on this plan and posts a full quality gate, so a PR's SonarCloud check is readable and worth acting on as you go; what is not readable is *branch* analysis on anything other than `master`, and the `master` run is the only one that analyses the merged release content as it will ship. Merging before tagging is also what carries every contributor's commits into `master`, so they appear in the repository's contributor list.
 
 4. **Tag the release branch** - this triggers the pipeline:
    ```

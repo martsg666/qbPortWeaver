@@ -119,8 +119,7 @@ public sealed class NicotineClient : ManagedClientBase
             using var doc = await ReadJsonAsync(response, cancellationToken).ConfigureAwait(false);
             var root = doc.RootElement;
 
-            if (!root.TryGetProperty("listen_port", out var listenPortElement) ||
-                !listenPortElement.TryGetInt32(out int listenPort))
+            if (root.GetInt32OrNull("listen_port") is not int listenPort)
             {
                 LogManager.Instance.LogDebug("NicotineClient.GetPreferencesAsync: 'listen_port' missing or not an integer in the plugin response");
                 return (null, null);
@@ -181,10 +180,15 @@ public sealed class NicotineClient : ManagedClientBase
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
         catch (Exception ex)
         {
-            // Debug, like the other three read paths: SendAsync has already returned a successful
-            // response and reported any transport failure itself, so anything landing here is a
-            // malformed body. The user-facing Error comes from ApplyPortUpdateAsync, which turns
-            // the false below into "Failed to set {client} port to {n}" - this line only records why.
+            // Error (LogHttpException's default), matching the set-port catch in all three other
+            // clients - QBittorrentClient passes it explicitly into PostPreferencesAsync, and
+            // Transmission and Deluge call LogHttpException bare as this does. SendAsync has already
+            // returned a successful response and reported any transport failure itself, so anything
+            // landing here is a malformed body; this line records that cause, while the user-facing
+            // "Failed to set {client} port to {n}" comes from ApplyPortUpdateAsync turning the false
+            // below into a cycle failure. Deliberately not Debug: a port write that failed is
+            // actionable, and dropping the level here alone would leave this one client quieter than
+            // the other three about the same event.
             LogHttpException("SetListeningPortAsync", ex);
             return false;
         }
@@ -241,11 +245,9 @@ public sealed class NicotineClient : ManagedClientBase
                 return null;
             }
 
-            if (root.TryGetProperty(JsonPropResult, out var resultElement) &&
-                resultElement.ValueKind is JsonValueKind.True or JsonValueKind.False)
-                return resultElement.GetBoolean();
-
-            return null;
+            // Same shared rule as the other clients use for a boolean field - see the note in
+            // DelugeClient.TestListeningPortAsync. An unreadable shape stays null, i.e. undeterminable.
+            return root.GetBoolOrNull(JsonPropResult);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
         catch (Exception ex)

@@ -10,10 +10,12 @@
 /// <para><b>Not every member applies to every caller.</b> The button metrics are used by all four, but
 /// <see cref="EdgeMargin"/> and <see cref="BottomMargin"/> are for the dialogs that auto-size to their
 /// content (ThemedMessageBox, ClientChooserForm, TimeRangeForm), which need breathing room around a
-/// handful of controls. DiagnosticsForm has a fixed 560x690 ClientSize and uses a uniform 8px inset
-/// instead, matching the designer-built windows (StatusForm, LogViewerForm, SettingsForm) - the same
-/// margin in a dense report view would only waste space. Do not "fix" that to 16 for consistency: the
-/// split tracks whether the form sizes itself, not how it was built.</para>
+/// handful of controls. DiagnosticsForm instead fixes its width at 560 and computes only its height
+/// from the rendered report, capped at 760 (see its SizeToContent), so it is a scrolling report rather
+/// than a dialog that hugs its content. It uses a uniform 8px inset, matching the designer-built
+/// windows (StatusForm, LogViewerForm, SettingsForm) - the same margin in a dense report view would
+/// only waste space. Do not "fix" that to 16 for consistency: the split tracks whether the form hugs
+/// its content in both dimensions, not how it was built.</para>
 /// </summary>
 internal static class DialogLayout
 {
@@ -31,7 +33,7 @@ internal static class DialogLayout
     /// <remarks>
     /// <see cref="Form.StartPosition"/> and <see cref="Form.AutoSize"/> are deliberately left to the
     /// caller, because they are the two that genuinely differ: the auto-sized dialogs centre on their
-    /// owner, while DiagnosticsForm centres on the screen and sizes itself from its content.
+    /// owner, while DiagnosticsForm centres on the screen and sizes only its height from its content.
     /// <para>The window icon is what Alt+Tab draws. Leaving it unset gave every dialog a blank entry
     /// there, so it is set here as on every other form; the title bar stays iconless because a
     /// FixedDialog frame does not draw one, which is what the "no title-bar icon" convention actually
@@ -59,7 +61,7 @@ internal static class DialogLayout
     /// <see cref="ButtonRow"/> at (0,1).
     /// </summary>
     /// <remarks>Only the auto-sized dialogs use this (ThemedMessageBox, ClientChooserForm,
-    /// TimeRangeForm) - DiagnosticsForm builds its own around a fixed <c>ClientSize</c>. A caller
+    /// TimeRangeForm) - DiagnosticsForm builds its own around its fixed width. A caller
     /// that needs the single column to fill rather than hug its content adds its own
     /// <see cref="ColumnStyle"/>; that is a real difference between these dialogs, not an oversight,
     /// so it stays at the call site.</remarks>

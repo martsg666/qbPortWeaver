@@ -175,7 +175,7 @@ partial class SettingsForm
         grpAutoRecovery.Controls.Add(lblRecoveryCycles);
         grpAutoRecovery.Controls.Add(nudRecoveryCycles);
         grpAutoRecovery.Controls.Add(lblRecoveryCyclesUnit);
-        // All five group boxes share one size that fills the tab page with an even margin,
+        // Every group box shares one size that fills the tab page with an even margin,
         // so every tab shows an identical frame regardless of how much content it holds.
         grpGeneral.Location = new Point(6, 6);
         grpGeneral.Name     = "grpGeneral";
@@ -861,8 +861,8 @@ partial class SettingsForm
         chkDebugMode.Text     = "Enable debug logging";
         // ── tabSettings ───────────────────────────────────────────────
         // Tabs keep the dialog short enough for small screens (the single-column layout
-        // outgrew a 1080p display at 125% scaling). The three client groups overlay each
-        // other on the Client tab; their existing visibility toggling is unchanged.
+        // outgrew a 1080p display at 125% scaling). The client groups overlay each other
+        // on the Client tab; their existing visibility toggling is unchanged.
         tabSettings.Controls.Add(tabGeneral);
         tabSettings.Controls.Add(tabClient);
         tabSettings.Controls.Add(tabAutoRecovery);

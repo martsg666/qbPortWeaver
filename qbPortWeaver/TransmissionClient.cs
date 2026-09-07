@@ -243,17 +243,16 @@ public sealed class TransmissionClient : ManagedClientBase
         {
             const string body = """{"method":"session-get","arguments":{"fields":["peer-port-random-on-start","port-forwarding-enabled"]}}""";
             using var response = await SendRpcAsync(body, cancellationToken: cancellationToken).ConfigureAwait(false);
-            if (response is null || !response.IsSuccessStatusCode)
+            // Every null exit is logged: Diagnostics reports an unread check as Skip and tells the
+            // user to consult the log, so a silent return would send them somewhere empty.
+            if (response is null)
             {
-                // Every null exit is logged: Diagnostics reports an unread check as Skip and tells the
-                // user to consult the log, so a silent return would send them somewhere empty.
-                LogManager.Instance.LogDebug(
-                    $"TransmissionClient.GetConflictingSettingsAsync: {(response is null ? "no RPC response" : $"HTTP {(int)response.StatusCode}")}");
+                LogManager.Instance.LogDebug("TransmissionClient.GetConflictingSettingsAsync: no RPC response");
                 return null;
             }
 
-            var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-            using var doc = JsonDocument.Parse(json);
+            using var doc = await TryReadJsonAsync(response, cancellationToken).ConfigureAwait(false);
+            if (doc is null) return null;
             if (!doc.RootElement.TryGetProperty(JsonPropArguments, out var arguments))
             {
                 LogManager.Instance.LogDebug("TransmissionClient.GetConflictingSettingsAsync: 'arguments' key missing from RPC response");
@@ -282,14 +281,9 @@ public sealed class TransmissionClient : ManagedClientBase
     {
         using var response = await SendRpcAsync(body, LogLevel.Debug, cancellationToken).ConfigureAwait(false);
         if (response is null) return (null, false);
-        if (!response.IsSuccessStatusCode)
-        {
-            LogManager.Instance.LogDebug($"TransmissionClient.RunPortTestAsync: Failed to test {ClientName} port (HTTP {(int)response.StatusCode} {response.StatusCode})");
-            return (null, false);
-        }
 
-        var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-        using var doc = JsonDocument.Parse(json);
+        using var doc = await TryReadJsonAsync(response, cancellationToken).ConfigureAwait(false);
+        if (doc is null) return (null, false);
         var root = doc.RootElement;
 
         // Shared bool rule, as in the other clients' port tests: also reads the 1/0 and "true"/"false"

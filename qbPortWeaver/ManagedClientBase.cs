@@ -288,8 +288,8 @@ public abstract class ManagedClientBase : IManagedClient // NOSONAR S3881 - all 
     /// </summary>
     /// <remarks>For reads whose failure is "undeterminable" rather than a fault - the port test and the
     /// conflicting-settings check - which is why this logs at Debug where the preferences read logs at
-    /// Error. The three call sites previously wrote their own line and had drifted to two different
-    /// levels of detail: one named the client and the status text, two reported only the numeric code.
+    /// Error. The call sites previously wrote their own lines and had drifted to different levels of
+    /// detail: some named the client and the status text, others reported only the numeric code.
     /// <para><c>[CallerMemberName]</c> labels the entry with the public method that initiated the read,
     /// the same way <see cref="LogHttpException"/> does, so the caller does not repeat its own name in
     /// the message.</para></remarks>

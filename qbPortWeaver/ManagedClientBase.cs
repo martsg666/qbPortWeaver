@@ -290,9 +290,10 @@ public abstract class ManagedClientBase : IManagedClient // NOSONAR S3881 - all 
     /// conflicting-settings check - which is why this logs at Debug where the preferences read logs at
     /// Error. The call sites previously wrote their own lines and had drifted to different levels of
     /// detail: some named the client and the status text, others reported only the numeric code.
-    /// <para><c>[CallerMemberName]</c> labels the entry with the public method that initiated the read,
-    /// the same way <see cref="LogHttpException"/> does, so the caller does not repeat its own name in
-    /// the message.</para></remarks>
+    /// <para><c>[CallerMemberName]</c> labels the entry with the method that initiated the read, the
+    /// same way <see cref="LogHttpException"/> does, so the caller does not repeat its own name in the
+    /// message. Usually that is the public override; Transmission's port test reads through a private
+    /// helper, which is the more useful label there anyway.</para></remarks>
     protected async Task<JsonDocument?> TryReadJsonAsync(HttpResponseMessage response, CancellationToken cancellationToken,
         [System.Runtime.CompilerServices.CallerMemberName] string callerName = "")
     {

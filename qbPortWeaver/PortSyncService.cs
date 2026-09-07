@@ -769,10 +769,10 @@ public sealed class PortSyncService
         var activeClient = ClientRegistry.Resolve(clientName);
 
         // Only the active client's section is read; every client section uses the same key names, so
-        // the section is the only thing that varies here. HasUserName/HasRestart cover the two keys a
-        // client may not have at all (Deluge and Nicotine+ have no user name; Nicotine+ is never
-        // restarted). The password is DPAPI-decrypted via GetEncryptedValue, same as the per-client
-        // GetXxxPassword helpers.
+        // the section is the only thing that varies here. A nullable key on the ClientRegistry entry
+        // marks a setting a client may not have at all (Deluge and Nicotine+ have no user name;
+        // Nicotine+ is never restarted), and a null key reads as the setting's off value. The password
+        // is DPAPI-decrypted via GetEncryptedValue, same as the per-client GetXxxPassword helpers.
         var clientConfig = new ClientConfig(
             Url: RegistrySettingsManager.GetValue(activeClient.Section, activeClient.UrlKey),
             UserName: activeClient.UserNameKey is not null ? RegistrySettingsManager.GetValue(activeClient.Section, activeClient.UserNameKey) : string.Empty,

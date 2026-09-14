@@ -33,6 +33,13 @@ public partial class SettingsForm : Form
     // resetting this there would hide a theme change that arrived in the backup file.
     private string _colorThemeOnOpen = string.Empty;
 
+    // Cancels the adapter discovery currently in flight when a newer one starts. LoadSettings fires
+    // a discovery every time it runs, and a restore runs it a second time while the first may still
+    // be probing an unresponsive gateway - each carrying the adapter name read when it started. Both
+    // continuations write the same combo, so without superseding the older one the stale pre-restore
+    // name can land last and be saved over the restored one.
+    private CancellationTokenSource? _adapterDiscoveryCts;
+
     private System.Windows.Forms.Timer? _nicotinePluginStatusTimer;
 
     // What the plugin status line is currently showing, so a poll that finds no change leaves the
@@ -106,6 +113,9 @@ public partial class SettingsForm : Form
         _nicotinePluginStatusTimer?.Stop();
         _nicotinePluginStatusTimer?.Dispose();
         _nicotinePluginStatusTimer = null;
+        _adapterDiscoveryCts?.Cancel();
+        _adapterDiscoveryCts?.Dispose();
+        _adapterDiscoveryCts = null;
         _formCloseCts.Cancel();
         _formCloseCts.Dispose();
         base.OnFormClosed(e);
@@ -1138,12 +1148,27 @@ public partial class SettingsForm : Form
         btnRefreshAdapters.Enabled = enabled;
     }
 
+    // Supersedes any discovery already in flight and returns the token for this one. Same shape as
+    // MediaManagerForm.RenewOperationCancellationTokenAsync: Interlocked.Exchange swaps atomically,
+    // and the using disposes the old source only after its cancellation callbacks have run. Linked
+    // to the form-close token so closing the dialog still cancels whichever discovery is current.
+    // Not shared with MediaManagerForm's copy because a ref parameter cannot cross an async
+    // boundary, so sharing would mean a wrapper type to hold the field.
+    private async Task<CancellationToken> RenewAdapterDiscoveryTokenAsync()
+    {
+        var newCts = CancellationTokenSource.CreateLinkedTokenSource(_formCloseCts.Token);
+        using var oldCts = Interlocked.Exchange(ref _adapterDiscoveryCts, newCts);
+        if (oldCts is not null) await oldCts.CancelAsync().ConfigureAwait(true);
+        return newCts.Token;
+    }
+
     private async Task DiscoverNatPmpAdaptersAsync(string savedAdapter)
     {
         try
         {
+            var cancellationToken = await RenewAdapterDiscoveryTokenAsync();
             // No ConfigureAwait(false) - continuation must run on the UI thread to update controls.
-            var adapters = await NatPmpManager.DiscoverAdaptersAsync(cancellationToken: _formCloseCts.Token);
+            var adapters = await NatPmpManager.DiscoverAdaptersAsync(cancellationToken: cancellationToken);
 
             // Guard against the form being closed while adapter discovery was in flight.
             // IsDisposed check + ObjectDisposedException catch covers the TOCTOU window between
@@ -1175,7 +1200,9 @@ public partial class SettingsForm : Form
         }
         catch (OperationCanceledException)
         {
-            // Form is closing - discovery was cancelled via _formCloseCts; nothing to update.
+            // Either the form is closing, or a newer discovery superseded this one. Both mean this
+            // result is stale and must not be written: the combo now belongs to the newer run, and
+            // the adapter name captured here was read before whatever prompted it.
         }
         catch (Exception ex)
         {

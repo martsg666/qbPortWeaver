@@ -23,10 +23,6 @@ public partial class WhatsNewForm : Form
         "fills, so the part that explains a problem has often moved into an older file by the time " +
         "anyone asks for it, and that is easy to miss when sending logs by hand. Passwords and keys " +
         "are hidden, but check the files before sharing them.\n\n" +
-        "The About window no longer says Loading forever\n" +
-        "When About could not reach GitHub, it correctly reported that the update check had failed " +
-        "but left the contributor line stuck on \"Loading...\", as though it were still working. It " +
-        "now falls back to the project name.\n\n" +
         "Previously released\n\n" +
         "New in 2.6.8\n\n" +
         "Diagnostics now checks your internet connection\n" +

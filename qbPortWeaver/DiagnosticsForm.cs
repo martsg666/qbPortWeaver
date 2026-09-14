@@ -121,6 +121,10 @@ internal sealed class DiagnosticsForm : Form
         btnCopy.Click += (_, _) => UiHelpers.SetClipboardTextSafely(BuildPlainReport());
         leftGroup.Controls.Add(btnCopy);
 
+        var btnBundle = new Button { Text = "Save Bundle…", Size = new Size(110, DialogLayout.ButtonHeight), Margin = new Padding(0, 0, DialogLayout.Gap, 0) };
+        btnBundle.Click += (_, _) => SaveSupportBundle();
+        leftGroup.Controls.Add(btnBundle);
+
         _btnRerun = new Button { Text = "Re-run", Size = new Size(90, DialogLayout.ButtonHeight), Margin = new Padding(0) };
         _btnRerun.Click += (_, _) => RefreshRequested?.Invoke(this, EventArgs.Empty);
         leftGroup.Controls.Add(_btnRerun);
@@ -255,6 +259,29 @@ internal sealed class DiagnosticsForm : Form
     {
         _report.SelectionColor = color;
         _report.AppendText(text);
+    }
+
+    // Collects this report plus the logs and data files into one zip. The report is passed in rather
+    // than re-run so the bundle matches the report on screen, which is the one the user is describing.
+    private void SaveSupportBundle()
+    {
+        using var dialog = new SaveFileDialog
+        {
+            Title = "Save Support Bundle",
+            Filter = "Zip archive (*.zip)|*.zip|All files (*.*)|*.*",
+            FileName = SupportBundle.SuggestedFileName,
+            DefaultExt = "zip",
+            AddExtension = true,
+            OverwritePrompt = true,
+        };
+        if (dialog.ShowDialog(this) != DialogResult.OK) return;
+
+        var result = SupportBundle.Create(dialog.FileName, BuildPlainReport());
+        if (result.Success)
+            ThemedMessageBox.Info(
+                $"{result.Message}\n\nPasswords, tokens and API keys are masked. Review the files before sharing them.");
+        else
+            ThemedMessageBox.Warn(result.Message);
     }
 
     // Plain-text version for the Copy Report button - safe to paste into a GitHub issue.

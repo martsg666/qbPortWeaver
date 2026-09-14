@@ -90,6 +90,17 @@ public static class AppFiles
     private static FileStream OpenShared(string path) =>
         new(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
 
+    /// <summary>
+    /// Opens a file for reading under the same sharing rules as <see cref="ReadAllTextShared"/>, for
+    /// callers that copy it rather than parse it. The caller owns the returned stream.
+    /// </summary>
+    /// <remarks>Exists so a large file can be streamed straight into its destination. Reading one
+    /// through <see cref="ReadAllTextShared"/> first materialises the whole thing as a string, which
+    /// for a rotated log doubles a twenty-megabyte file into a Large Object Heap allocation and then
+    /// re-encodes it on the way out. Copying the bytes avoids both, and is faithful to what is
+    /// actually on disk rather than to what a decoder made of it.</remarks>
+    internal static FileStream OpenSharedForCopy(string path) => OpenShared(path);
+
     /// <summary>Writes text to a temp file then atomically renames it over the target.
     /// If the process is killed mid-write, only the temp file is lost and the original is untouched.</summary>
     internal static void WriteAtomic(string path, string content) =>

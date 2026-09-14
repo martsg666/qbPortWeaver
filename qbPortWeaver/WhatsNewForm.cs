@@ -17,6 +17,12 @@ public partial class WhatsNewForm : Form
         "encrypts those for one user account on one machine, so they cannot travel. A restore leaves " +
         "them exactly as they were and reminds you to enter them again if the backup came from " +
         "another PC.\n\n" +
+        "One file with everything a support request needs\n" +
+        "Run Diagnostics has a new Save Bundle button that collects the report, your settings, the " +
+        "log and its older copies, and the port history into a single zip. The log rotates as it " +
+        "fills, so the part that explains a problem has often moved into an older file by the time " +
+        "anyone asks for it, and that is easy to miss when sending logs by hand. Passwords and keys " +
+        "are hidden, but check the files before sharing them.\n\n" +
         "The About window no longer says Loading forever\n" +
         "When About could not reach GitHub, it correctly reported that the update check had failed " +
         "but left the contributor line stuck on \"Loading...\", as though it were still working. It " +

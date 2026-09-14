@@ -121,7 +121,10 @@ internal sealed class DiagnosticsForm : Form
         btnCopy.Click += (_, _) => UiHelpers.SetClipboardTextSafely(BuildPlainReport());
         leftGroup.Controls.Add(btnCopy);
 
-        var btnBundle = new Button { Text = "Save Bundle…", Size = new Size(110, DialogLayout.ButtonHeight), Margin = new Padding(0, 0, DialogLayout.Gap, 0) };
+        // Named in full rather than "Save Bundle…": this dialog carries no tooltips, so the label is
+        // the only thing explaining what the file is for, and "bundle" alone does not say. It also
+        // matches the caption of the save dialog it opens.
+        var btnBundle = new Button { Text = "Save Support Bundle…", Size = new Size(150, DialogLayout.ButtonHeight), Margin = new Padding(0, 0, DialogLayout.Gap, 0) };
         btnBundle.Click += (_, _) => SaveSupportBundle();
         leftGroup.Controls.Add(btnBundle);
 

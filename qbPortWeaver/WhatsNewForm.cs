@@ -18,7 +18,7 @@ public partial class WhatsNewForm : Form
         "them exactly as they were and reminds you to enter them again if the backup came from " +
         "another PC.\n\n" +
         "One file with everything a support request needs\n" +
-        "Run Diagnostics has a new Save Bundle button that collects the report, your settings, the " +
+        "Run Diagnostics has a new Save Support Bundle button that collects the report, your settings, the " +
         "log and its older copies, and the port history into a single zip. The log rotates as it " +
         "fills, so the part that explains a problem has often moved into an older file by the time " +
         "anyone asks for it, and that is easy to miss when sending logs by hand. Passwords and keys " +

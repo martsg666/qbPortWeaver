@@ -38,6 +38,9 @@ public static class PortHistoryManager
     private const string HistoryFileName = "qbPortWeaver.history.json";
     private const int MaxEntries = 50;
 
+    /// <summary>Full path of the history file, for callers that collect it rather than read it.</summary>
+    internal static string HistoryFilePath => AppFiles.GetDataFilePath(HistoryFileName);
+
     // State key for LogStateChange. A write failure here persists until the user fixes it (disk full,
     // permissions, an antivirus lock), and Append runs on every port event, so this reports the
     // condition once rather than once per event.

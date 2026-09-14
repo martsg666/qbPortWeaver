@@ -9,6 +9,21 @@ public partial class WhatsNewForm : Form
         "If you find qbPortWeaver useful, please star it on GitHub.";
 
     private const string ReleaseFeaturesText =
+        "New in 2.6.9\n\n" +
+        "Your settings can be backed up and restored\n" +
+        "Settings now has Back Up and Restore buttons. Back Up writes your whole configuration to a " +
+        "file, Restore reads it back, so reinstalling or moving to a new PC no longer means setting " +
+        "everything up again by hand. Passwords and the TMDB API key are not in the file: Windows " +
+        "encrypts those for one user account on one machine, so they cannot travel. A restore leaves " +
+        "them exactly as they were and reminds you to enter them again if the backup came from " +
+        "another PC.\n\n" +
+        "One file with everything a support request needs\n" +
+        "Run Diagnostics has a new Save Support Bundle button that collects the report, your settings, the " +
+        "log and its older copies, and the port history into a single zip. The log rotates as it " +
+        "fills, so the part that explains a problem has often moved into an older file by the time " +
+        "anyone asks for it, and that is easy to miss when sending logs by hand. Passwords and keys " +
+        "are hidden, but check the files before sharing them.\n\n" +
+        "Previously released\n\n" +
         "New in 2.6.8\n\n" +
         "Diagnostics now checks your internet connection\n" +
         "Run Diagnostics reports whether this machine gets a reply when it pings the internet. That is " +
@@ -30,7 +45,6 @@ public partial class WhatsNewForm : Form
         "qbPortWeaver finds the plugin again on its own, but it wastes a failed attempt on every " +
         "cycle. Settings now shows this in amber instead of green and says the details differ, on the " +
         "same screen that has the button to correct them.\n\n" +
-        "Previously released\n\n" +
         "New in 2.6.7\n\n" +
         "Port forwarding that is switched off no longer restarts your VPN\n" +
         "When your VPN reports that port forwarding is switched off in its own settings, or that the " +

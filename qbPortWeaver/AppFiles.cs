@@ -90,6 +90,17 @@ public static class AppFiles
     private static FileStream OpenShared(string path) =>
         new(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
 
+    /// <summary>
+    /// Opens a file for reading under the same sharing rules as <see cref="ReadAllTextShared"/>, for
+    /// callers that copy it rather than parse it. The caller owns the returned stream.
+    /// </summary>
+    /// <remarks>Exists so a large file can be streamed straight into its destination. Reading one
+    /// through <see cref="ReadAllTextShared"/> first materialises the whole thing as a string, which
+    /// for a rotated log doubles a twenty-megabyte file into a Large Object Heap allocation and then
+    /// re-encodes it on the way out. Copying the bytes avoids both, and is faithful to what is
+    /// actually on disk rather than to what a decoder made of it.</remarks>
+    internal static FileStream OpenSharedForCopy(string path) => OpenShared(path);
+
     /// <summary>Writes text to a temp file then atomically renames it over the target.
     /// If the process is killed mid-write, only the temp file is lost and the original is untouched.</summary>
     internal static void WriteAtomic(string path, string content) =>
@@ -102,7 +113,19 @@ public static class AppFiles
     internal static void WriteAtomic(string path, string[] lines) =>
         WriteAtomicCore(path, temp => File.WriteAllLines(temp, lines, Utf8NoBom));
 
-    private static readonly System.Text.UTF8Encoding Utf8NoBom = new(encoderShouldEmitUTF8Identifier: false);
+    /// <summary>Writes bytes to a temp file then atomically renames it over the target.</summary>
+    /// <remarks>For the callers writing a binary artefact to a folder the user chose. Note that
+    /// <see cref="SweepOrphanedTempFiles"/> only runs against the app data folder, so a process kill
+    /// between the write and the rename leaves a temp file behind wherever the user pointed. That is
+    /// the better failure: <see cref="WriteAtomicCore"/> removes its own temp on an ordinary write
+    /// error, and a visible stray file beats a truncated artefact that still opens.</remarks>
+    internal static void WriteAtomic(string path, byte[] bytes) =>
+        WriteAtomicCore(path, temp => File.WriteAllBytes(temp, bytes));
+
+    /// <summary>UTF-8 without a byte-order mark, for callers writing text this app will hand to
+    /// something else. Shared rather than reconstructed per caller, so there is one answer to
+    /// "which UTF-8 does this app write".</summary>
+    internal static readonly System.Text.UTF8Encoding Utf8NoBom = new(encoderShouldEmitUTF8Identifier: false);
 
     // Distinctive enough that a sweep can recognise our leftovers without touching anything else in
     // the folder - which matters because one caller writes into Nicotine+'s config folder.

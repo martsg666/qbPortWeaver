@@ -79,6 +79,15 @@ public partial class AboutForm : Form
     // Fetches the latest release info and contributor list in parallel, then populates all UI fields
     private async Task LoadGitHubDataAsync()
     {
+        // Declared out here so the catch can read each request's own outcome; WhenAll reports only
+        // that something failed, not which side.
+        //
+        // In practice neither request faults: both UpdateChecker methods catch everything and return
+        // null or an empty list, so this catch is reached only by something unforeseen. It is written
+        // to be correct anyway rather than to assume that stays true, because the cost of assuming is
+        // a dialog that silently discards a result it was handed.
+        Task<LatestReleaseInfo?>? releaseTask = null;
+        Task<IReadOnlyList<ContributorInfo>>? contributorsTask = null;
         try
         {
             btnCheckForUpdates.Enabled = false;
@@ -89,8 +98,8 @@ public partial class AboutForm : Form
             _availableUpdate = null;
 
             // Fetch release info and contributor list in parallel
-            var releaseTask = UpdateChecker.GetLatestReleaseInfoAsync(_githubCts.Token);
-            var contributorsTask = UpdateChecker.GetReleaseContributorsAsync(_githubCts.Token);
+            releaseTask = UpdateChecker.GetLatestReleaseInfoAsync(_githubCts.Token);
+            contributorsTask = UpdateChecker.GetReleaseContributorsAsync(_githubCts.Token);
             await Task.WhenAll(releaseTask, contributorsTask);
 
             // Guard against the form being closed while the GitHub requests were in flight
@@ -98,11 +107,7 @@ public partial class AboutForm : Form
 
             // Await already-completed tasks to unwrap exceptions directly rather than
             // through AggregateException (which .Result throws after WhenAll).
-            var contributors = await contributorsTask;
-            if (contributors.Count > 0)
-                SetContributorLinks(contributors);
-            else
-                lnkAuthor.Text = AppConstants.GitHubRepoOwner;
+            ApplyContributors(await contributorsTask);
 
             ApplyReleaseInfo(await releaseTask);
         }
@@ -111,7 +116,14 @@ public partial class AboutForm : Form
             LogManager.Instance.LogDebug($"AboutForm.LoadGitHubDataAsync: {ex.Message}");
             // Surface the failure in the labels and reset the button text. ApplyReleaseInfo(null)
             // owns the "check failed" text so the success path can keep its "Update" label intact.
-            if (!IsDisposed) ApplyReleaseInfo(null);
+            if (IsDisposed) return;
+            // WhenAll faults if either request failed, so the success path above never ran and both
+            // labels would otherwise keep their designer placeholders for the life of the dialog.
+            // Each task's own outcome is read rather than assuming both failed: whichever result did
+            // arrive is still worth showing, in either direction. Treating them asymmetrically is
+            // how a successful update check ends up reported as "Check failed".
+            ApplyContributors(contributorsTask is { IsCompletedSuccessfully: true } ? await contributorsTask : null);
+            ApplyReleaseInfo(releaseTask is { IsCompletedSuccessfully: true } ? await releaseTask : null);
         }
         finally
         {
@@ -146,6 +158,17 @@ public partial class AboutForm : Form
             lblStatusValue.ForeColor = ThemeColors.StatusOk;
             btnCheckForUpdates.Text = "Check for Updates";
         }
+    }
+
+    // Single owner of lnkAuthor's text, so the link can never be left on its designer placeholder:
+    // the contributor list when one arrived, the repository owner otherwise. Null means the fetch
+    // failed or was cancelled, which reads the same to the user as an empty list.
+    private void ApplyContributors(IReadOnlyList<ContributorInfo>? contributors)
+    {
+        if (contributors is { Count: > 0 })
+            SetContributorLinks(contributors);
+        else
+            lnkAuthor.Text = AppConstants.GitHubRepoOwner;
     }
 
     // Populates lnkAuthor with one clickable link region per contributor

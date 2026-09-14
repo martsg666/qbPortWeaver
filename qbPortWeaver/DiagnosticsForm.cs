@@ -121,6 +121,13 @@ internal sealed class DiagnosticsForm : Form
         btnCopy.Click += (_, _) => UiHelpers.SetClipboardTextSafely(BuildPlainReport());
         leftGroup.Controls.Add(btnCopy);
 
+        // Named in full rather than "Save Bundle…": this dialog carries no tooltips, so the label is
+        // the only thing explaining what the file is for, and "bundle" alone does not say. It also
+        // matches the caption of the save dialog it opens.
+        var btnBundle = new Button { Text = "Save Support Bundle…", Size = new Size(150, DialogLayout.ButtonHeight), Margin = new Padding(0, 0, DialogLayout.Gap, 0) };
+        btnBundle.Click += async (_, _) => await SaveSupportBundleAsync(btnBundle); // async void handler (WinForms)
+        leftGroup.Controls.Add(btnBundle);
+
         _btnRerun = new Button { Text = "Re-run", Size = new Size(90, DialogLayout.ButtonHeight), Margin = new Padding(0) };
         _btnRerun.Click += (_, _) => RefreshRequested?.Invoke(this, EventArgs.Empty);
         leftGroup.Controls.Add(_btnRerun);
@@ -255,6 +262,52 @@ internal sealed class DiagnosticsForm : Form
     {
         _report.SelectionColor = color;
         _report.AppendText(text);
+    }
+
+    // Collects this report plus the logs and data files into one zip. The report is passed in rather
+    // than re-run so the bundle matches the report on screen, which is the one the user is describing.
+    private async Task SaveSupportBundleAsync(Button button)
+    {
+        using var dialog = new SaveFileDialog
+        {
+            Title = "Save Support Bundle",
+            Filter = "Zip archive (*.zip)|*.zip|All files (*.*)|*.*",
+            FileName = SupportBundle.SuggestedFileName,
+            DefaultExt = "zip",
+            AddExtension = true,
+            OverwritePrompt = true,
+        };
+        if (dialog.ShowDialog(this) != DialogResult.OK) return;
+
+        // Off the UI thread: LogManager keeps several files of up to twenty megabytes each, and
+        // deflating that set at Optimal takes long enough that the dialog would stop repainting and
+        // be marked "Not Responding". The report is rendered here, on the UI thread, before handing
+        // the work over. Button disabled meanwhile so a second click cannot start a parallel write
+        // to the same path.
+        string report = BuildPlainReport();
+        string path = dialog.FileName;
+        button.Enabled = false;
+        UseWaitCursor = true;
+        SettingsTransfer.TransferResult result;
+        try
+        {
+            result = await Task.Run(() => SupportBundle.Create(path, report));
+        }
+        finally
+        {
+            if (!IsDisposed)
+            {
+                button.Enabled = true;
+                UseWaitCursor = false;
+            }
+        }
+
+        if (IsDisposed) return;
+        if (result.Success)
+            ThemedMessageBox.Info(
+                $"{result.Message}\n\nPasswords, tokens and API keys are masked. Review the files before sharing them.");
+        else
+            ThemedMessageBox.Warn(result.Message);
     }
 
     // Plain-text version for the Copy Report button - safe to paste into a GitHub issue.

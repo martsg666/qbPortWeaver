@@ -110,23 +110,7 @@ internal static class SupportBundle
 
     private static IEnumerable<string> EnumerateDataFiles()
     {
-        string folder = AppFiles.AppDataFolder;
-        List<string> logs;
-        try
-        {
-            // ToList inside the try is load-bearing: OrderBy is deferred, so without it the folder
-            // walk would run at the foreach below, outside this catch, and an IO or access error
-            // would escape and abort the whole bundle - the opposite of treating an unreadable log
-            // set as something to skip.
-            logs = [.. Directory.EnumerateFiles(folder, LogFilePattern).OrderBy(f => f, StringComparer.OrdinalIgnoreCase)];
-        }
-        catch (Exception ex)
-        {
-            LogManager.Instance.LogDebug($"SupportBundle.EnumerateDataFiles: {ex.Message}");
-            yield break;
-        }
-
-        foreach (string log in logs)
+        foreach (string log in FindLogFiles())
             yield return log;
 
         foreach (string path in new[] { AppFiles.GetStatusFilePath(), PortHistoryManager.HistoryFilePath }.Where(File.Exists))
@@ -143,6 +127,29 @@ internal static class SupportBundle
         using var destination = entry.Open();
         source.CopyTo(destination);
         return 1;
+    }
+
+    // The current log and its rotated backups, oldest name first, or an empty list when the folder
+    // cannot be walked. An unreadable log set is skipped rather than refusing the bundle: the report
+    // and the settings snapshot are still worth having.
+    //
+    // The materialisation inside the try is load-bearing, not a style choice: OrderBy is deferred, so
+    // handing back the lazy query would run the folder walk at the caller's foreach, outside this
+    // catch, and the guard would never fire. The return type is List rather than IEnumerable so the
+    // compiler enforces that rather than this comment - returning the lazy query directly no longer
+    // builds. Same reasoning, and the same shape, as NatPmpManager.GetActiveNetworkInterfaces.
+    private static List<string> FindLogFiles()
+    {
+        try
+        {
+            return [.. Directory.EnumerateFiles(AppFiles.AppDataFolder, LogFilePattern)
+                                .OrderBy(f => f, StringComparer.OrdinalIgnoreCase)];
+        }
+        catch (Exception ex)
+        {
+            LogManager.Instance.LogDebug($"SupportBundle.FindLogFiles: {ex.Message}");
+            return [];
+        }
     }
 
     // Returns the number of entries added, so the callers can total them without counting twice.

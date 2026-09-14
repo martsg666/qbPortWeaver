@@ -28,6 +28,11 @@ public partial class SettingsForm : Form
 
     private readonly Dictionary<string, ClientControls> _clientControls;
 
+    // The colour theme the running app is using, captured before anything in this dialog can write
+    // to the registry. Deliberately not refreshed by LoadSettings: a restore calls that again, and
+    // resetting this there would hide a theme change that arrived in the backup file.
+    private string _colorThemeOnOpen = string.Empty;
+
     private System.Windows.Forms.Timer? _nicotinePluginStatusTimer;
 
     // What the plugin status line is currently showing, so a poll that finds no change leaves the
@@ -88,6 +93,7 @@ public partial class SettingsForm : Form
         lblPortClosedChecks.Top = nudPortClosedChecks.Top + (nudPortClosedChecks.Height - lblPortClosedChecks.Height) / 2;
         lblRecoveryCycles.Top   = nudRecoveryCycles.Top + (nudRecoveryCycles.Height - lblRecoveryCycles.Height) / 2;
         SetupTooltips();
+        _colorThemeOnOpen = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionExtra, RegistrySettingsManager.KeyColorTheme);
         LoadSettings();
 
         _nicotinePluginStatusTimer = new System.Windows.Forms.Timer { Interval = NicotinePluginStatusPollMs };
@@ -418,12 +424,15 @@ public partial class SettingsForm : Form
 
     private void btnOK_Click(object? sender, EventArgs e)
     {
-        string previousColorTheme = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionExtra, RegistrySettingsManager.KeyColorTheme);
         string selectedColorTheme = cboColorTheme.SelectedItem?.ToString() ?? RegistrySettingsManager.ColorThemeSystem;
         if (!TryCommitSettings()) return;
 
         // Color theme takes effect at startup via Application.SetColorMode - restart if it changed
-        if (selectedColorTheme != previousColorTheme)
+        // since the dialog opened. Compared against the captured value rather than re-reading the
+        // registry here, because Back Up and Restore both write the registry while this dialog is
+        // open: re-reading would find the theme already stored, conclude nothing had changed, and
+        // leave the app running the old one with no prompt.
+        if (selectedColorTheme != _colorThemeOnOpen)
         {
             var result = ThemedMessageBox.Confirm(
                 "The color theme change takes effect after restarting.\n\nRestart now?");
@@ -441,10 +450,6 @@ public partial class SettingsForm : Form
 
     private void btnBackupSettings_Click(object? sender, EventArgs e)
     {
-        // Saved first, deliberately - see TryCommitSettings. A rejected validation stops the backup
-        // too, which is right: there is nothing worth preserving about a state the app will not keep.
-        if (!TryCommitSettings()) return;
-
         using var dialog = new SaveFileDialog
         {
             Title = "Back Up Settings",
@@ -455,6 +460,13 @@ public partial class SettingsForm : Form
             OverwritePrompt = true,
         };
         if (dialog.ShowDialog(this) != DialogResult.OK) return;
+
+        // Committed only once a destination has been chosen. Saving before the file dialog would
+        // make backing out of it a silent Save: the edits would already be in the registry and
+        // SettingsSaved already true, so a subsequent Cancel on this dialog would not cancel
+        // anything. A rejected validation stops the backup too, which is right - there is nothing
+        // worth preserving about a state the app will not keep.
+        if (!TryCommitSettings()) return;
 
         var result = SettingsTransfer.Export(dialog.FileName);
         if (result.Success)

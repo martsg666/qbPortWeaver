@@ -25,8 +25,11 @@ internal static class SupportBundle
     private const string SettingsEntryName = "settings-snapshot.txt";
 
     // The current log and every rotated backup. LogManager names them by appending a number, so one
-    // pattern catches the whole set without this having to know how many it keeps.
-    private const string LogFilePattern = "qbPortWeaver.log*";
+    // pattern catches the whole set without this having to know how many it keeps. Derived from
+    // AppIdentity rather than spelled out: a bundle that silently contains no logs is the one
+    // failure this feature cannot afford, and a literal here would produce exactly that the day the
+    // file name changes.
+    private static readonly string LogFilePattern = $"{AppIdentity.LogFileName}*";
 
     /// <summary>Default file name offered in the save dialog, stamped to the minute so successive bundles do not collide.</summary>
     internal static string SuggestedFileName => $"qbPortWeaver-support-{DateTime.Now:yyyy-MM-dd-HHmm}.zip";
@@ -108,10 +111,14 @@ internal static class SupportBundle
     private static IEnumerable<string> EnumerateDataFiles()
     {
         string folder = AppFiles.AppDataFolder;
-        IEnumerable<string> logs;
+        List<string> logs;
         try
         {
-            logs = Directory.EnumerateFiles(folder, LogFilePattern).OrderBy(f => f, StringComparer.OrdinalIgnoreCase);
+            // ToList inside the try is load-bearing: OrderBy is deferred, so without it the folder
+            // walk would run at the foreach below, outside this catch, and an IO or access error
+            // would escape and abort the whole bundle - the opposite of treating an unreadable log
+            // set as something to skip.
+            logs = [.. Directory.EnumerateFiles(folder, LogFilePattern).OrderBy(f => f, StringComparer.OrdinalIgnoreCase)];
         }
         catch (Exception ex)
         {

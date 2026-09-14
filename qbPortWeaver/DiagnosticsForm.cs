@@ -125,7 +125,7 @@ internal sealed class DiagnosticsForm : Form
         // the only thing explaining what the file is for, and "bundle" alone does not say. It also
         // matches the caption of the save dialog it opens.
         var btnBundle = new Button { Text = "Save Support Bundle…", Size = new Size(150, DialogLayout.ButtonHeight), Margin = new Padding(0, 0, DialogLayout.Gap, 0) };
-        btnBundle.Click += (_, _) => SaveSupportBundle();
+        btnBundle.Click += async (_, _) => await SaveSupportBundleAsync(btnBundle); // async void handler (WinForms)
         leftGroup.Controls.Add(btnBundle);
 
         _btnRerun = new Button { Text = "Re-run", Size = new Size(90, DialogLayout.ButtonHeight), Margin = new Padding(0) };
@@ -266,7 +266,7 @@ internal sealed class DiagnosticsForm : Form
 
     // Collects this report plus the logs and data files into one zip. The report is passed in rather
     // than re-run so the bundle matches the report on screen, which is the one the user is describing.
-    private void SaveSupportBundle()
+    private async Task SaveSupportBundleAsync(Button button)
     {
         using var dialog = new SaveFileDialog
         {
@@ -279,7 +279,30 @@ internal sealed class DiagnosticsForm : Form
         };
         if (dialog.ShowDialog(this) != DialogResult.OK) return;
 
-        var result = SupportBundle.Create(dialog.FileName, BuildPlainReport());
+        // Off the UI thread: LogManager keeps several files of up to twenty megabytes each, and
+        // deflating that set at Optimal takes long enough that the dialog would stop repainting and
+        // be marked "Not Responding". The report is rendered here, on the UI thread, before handing
+        // the work over. Button disabled meanwhile so a second click cannot start a parallel write
+        // to the same path.
+        string report = BuildPlainReport();
+        string path = dialog.FileName;
+        button.Enabled = false;
+        UseWaitCursor = true;
+        SettingsTransfer.TransferResult result;
+        try
+        {
+            result = await Task.Run(() => SupportBundle.Create(path, report));
+        }
+        finally
+        {
+            if (!IsDisposed)
+            {
+                button.Enabled = true;
+                UseWaitCursor = false;
+            }
+        }
+
+        if (IsDisposed) return;
         if (result.Success)
             ThemedMessageBox.Info(
                 $"{result.Message}\n\nPasswords, tokens and API keys are masked. Review the files before sharing them.");

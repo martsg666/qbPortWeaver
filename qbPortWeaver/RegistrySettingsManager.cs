@@ -313,17 +313,27 @@ public static class RegistrySettingsManager
     }
 
     /// <summary>Writes a string value to the app-level registry key (<c>HKCU\Software\qbPortWeaver</c>), above the settings sections.</summary>
-    public static void SetAppValue(string key, string value)
+    public static void SetAppValue(string key, string value) => TrySetAppValue(key, value);
+
+    /// <summary>
+    /// <see cref="SetAppValue"/>, returning whether the value actually reached the registry.
+    /// </summary>
+    /// <remarks>For callers that report an outcome to the user. The write swallows its exceptions so
+    /// one unwritable key cannot abort a whole save, which means a caller counting successes would
+    /// otherwise report a restore of settings that never landed.</remarks>
+    public static bool TrySetAppValue(string key, string value)
     {
         try
         {
             using var regKey = Registry.CurrentUser.CreateSubKey(AppIdentity.AppRegistryKey);
             regKey.SetValue(key, value, RegistryValueKind.String);
             LogManager.Instance.LogDebug($"RegistrySettingsManager.SetAppValue: {key} = {MaskSensitiveValue(key, value)}");
+            return true;
         }
         catch (Exception ex)
         {
             LogManager.Instance.LogMessage($"Failed to save app-level setting {key}: {ex.Message}", LogLevel.Warn);
+            return false;
         }
     }
 
@@ -647,6 +657,16 @@ public static class RegistrySettingsManager
     internal static bool IsTransferableKey(string key) => !_logMaskedKeys.Contains(key);
 
     /// <summary>
+    /// Whether a key is one this build stores in the given section.
+    /// </summary>
+    /// <remarks><see cref="_defaults"/> is the register of every key the app reads, so a key absent
+    /// from it has no reader here. Restoring one would write a value into the registry that nothing
+    /// consumes and nothing ever removes, which is the same reason an unrecognised *section* is
+    /// refused whole rather than created.</remarks>
+    internal static bool IsKnownSectionKey(string section, string key) =>
+        _defaults.TryGetValue(section, out var sectionDefaults) && sectionDefaults.ContainsKey(key);
+
+    /// <summary>
     /// Returns a section's stored values with the non-transferable keys omitted entirely, for writing
     /// to a settings backup. Unlike <see cref="GetSectionSnapshot"/> the values are unmasked, because
     /// a backup has to restore them; the secrets are left out rather than masked, since a <c>***</c>
@@ -824,17 +844,27 @@ public static class RegistrySettingsManager
     }
 
     /// <summary>Writes a string value to the registry under the given section and key.</summary>
-    public static void SetValue(string section, string key, string value)
+    public static void SetValue(string section, string key, string value) => TrySetValue(section, key, value);
+
+    /// <summary>
+    /// <see cref="SetValue"/>, returning whether the value actually reached the registry.
+    /// </summary>
+    /// <remarks>For callers that report an outcome to the user. The write swallows its exceptions so
+    /// one unwritable key cannot abort a whole save, which means a caller counting successes would
+    /// otherwise report a restore of settings that never landed.</remarks>
+    public static bool TrySetValue(string section, string key, string value)
     {
         try
         {
             using var regKey = Registry.CurrentUser.CreateSubKey($@"{BaseKeyPath}\{section}");
             regKey.SetValue(key, value, RegistryValueKind.String);
             LogManager.Instance.LogDebug($"RegistrySettingsManager.SetValue: [{section}] {key} = {MaskSensitiveValue(key, value)}");
+            return true;
         }
         catch (Exception ex)
         {
             LogManager.Instance.LogMessage($"Failed to save setting [{section}] {key}: {ex.Message}", LogLevel.Warn);
+            return false;
         }
     }
 

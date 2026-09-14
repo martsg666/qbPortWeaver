@@ -227,11 +227,19 @@ internal static class SettingsTransfer
     private static bool TryApplySectionValue(string section, JsonProperty entry)
     {
         string? value = entry.Value.AsStringOrNull();
-        if (value is null || !RegistrySettingsManager.IsTransferableKey(entry.Name))
+        // A key this build has no reader for is skipped for the same reason an unrecognised section
+        // is: writing it leaves a value in the registry that nothing consumes and nothing removes.
+        // It also keeps the reported "not recognised, skipped" count honest, which it was not while
+        // only whole sections were checked.
+        if (value is null ||
+            !RegistrySettingsManager.IsKnownSectionKey(section, entry.Name) ||
+            !RegistrySettingsManager.IsTransferableKey(entry.Name))
             return false;
 
-        RegistrySettingsManager.SetValue(section, entry.Name, value);
-        return true;
+        // The write swallows its own failures, so the result is what decides whether this counts as
+        // restored. Without it a locked or policy-restricted hive reports a full restore having
+        // written nothing.
+        return RegistrySettingsManager.TrySetValue(section, entry.Name, value);
     }
 
     // Same allow-list as the export side, so a hand-edited file cannot reintroduce installer-owned
@@ -244,8 +252,7 @@ internal static class SettingsTransfer
             !RegistrySettingsManager.IsTransferableKey(entry.Name))
             return false;
 
-        RegistrySettingsManager.SetAppValue(entry.Name, value);
-        return true;
+        return RegistrySettingsManager.TrySetAppValue(entry.Name, value);
     }
 
     private static int CountValues(JsonElement element) =>
@@ -254,8 +261,12 @@ internal static class SettingsTransfer
     private static string BuildImportMessage(int applied, int ignored)
     {
         string message = $"Restored {applied} settings.";
+        // Covers both reasons an entry is not counted as restored - unknown to this version, or a
+        // write that failed - because the user cannot act differently on the two and the log has the
+        // detail either way. Claiming only the first would be untrue whenever the hive is locked.
         if (ignored > 0)
-            message += $" {ignored} entries in the file were not recognised by this version and were skipped.";
+            message += $" {ignored} entries were skipped, either because this version does not " +
+                       "recognise them or because they could not be written. The log has the detail.";
 
         // Said every time, not only when something was skipped. Secrets are never in the file at all,
         // so there is nothing for the skipped count to hint at, and someone restoring onto a new

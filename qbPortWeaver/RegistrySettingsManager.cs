@@ -630,6 +630,97 @@ public static class RegistrySettingsManager
         return result;
     }
 
+    /// <summary>Every settings section this build knows about, in declaration order.</summary>
+    internal static IReadOnlyCollection<string> AllSections => _defaults.Keys;
+
+    /// <summary>
+    /// Whether a key may be written to, or read from, a settings backup file.
+    /// </summary>
+    /// <remarks>
+    /// False for every key in <see cref="_logMaskedKeys"/>, which is the encrypted set plus the pipe
+    /// session token. The encrypted values are DPAPI-protected to the current user on the current
+    /// machine, so they are meaningless anywhere else; the pipe token authenticates this install to
+    /// the SYSTEM helper service and must not be transplanted. Sharing that set rather than listing
+    /// the keys again means a secret added there in future is excluded from backups without anyone
+    /// remembering to come back here, which is the same reason the logging mask is built from it.
+    /// </remarks>
+    internal static bool IsTransferableKey(string key) => !_logMaskedKeys.Contains(key);
+
+    /// <summary>
+    /// Returns a section's stored values with the non-transferable keys omitted entirely, for writing
+    /// to a settings backup. Unlike <see cref="GetSectionSnapshot"/> the values are unmasked, because
+    /// a backup has to restore them; the secrets are left out rather than masked, since a <c>***</c>
+    /// placeholder would restore as a literal password.
+    /// </summary>
+    internal static IReadOnlyList<(string Key, string Value)> GetSectionForBackup(string section)
+    {
+        var result = new List<(string Key, string Value)>();
+        try
+        {
+            using var regKey = Registry.CurrentUser.OpenSubKey($@"{BaseKeyPath}\{section}");
+            if (regKey is null) return result;
+            foreach (var name in regKey.GetValueNames().OrderBy(n => n, StringComparer.OrdinalIgnoreCase))
+            {
+                if (!IsTransferableKey(name)) continue;
+                result.Add((name, regKey.GetValue(name)?.ToString() ?? string.Empty));
+            }
+        }
+        catch (Exception ex)
+        {
+            LogManager.Instance.LogDebug($"RegistrySettingsManager.GetSectionForBackup: [{section}] - {ex.Message}");
+        }
+        return result;
+    }
+
+    /// <summary>
+    /// Whether an app-level key belongs in a settings backup.
+    /// </summary>
+    /// <remarks>
+    /// True only for the keys in <see cref="_appDefaults"/>, which is this app's register of
+    /// app-level *configuration*: service search terms, adapter names, process names, the ProtonVPN
+    /// log path. An allow-list rather than a deny-list, because that registry key holds two other
+    /// kinds of value that a backup must not carry, and both look like ordinary settings:
+    /// <list type="bullet">
+    /// <item><c>lastSeenVersion</c> is state, not configuration. Restoring it onto a fresh machine
+    /// would tell the app that What's New had already been shown there when it had not.</item>
+    /// <item><c>DesktopShortcut</c> and <c>StartMenuShortcut</c> belong to the installer, which
+    /// writes them as the KeyPath of its per-user shortcut components. Writing an MSI component's
+    /// KeyPath from outside the MSI is not ours to do, and restoring one creates no shortcut
+    /// anyway.</item>
+    /// </list>
+    /// Anything added to <see cref="_appDefaults"/> in future is backed up automatically; anything
+    /// written to that key by the installer, or as runtime state, stays out without a second list to
+    /// maintain.
+    /// </remarks>
+    internal static bool IsBackupAppKey(string key) => _appDefaults.ContainsKey(key);
+
+    /// <summary>
+    /// The app-level configuration values (service search terms, adapter names, the ProtonVPN log
+    /// path) for writing to a settings backup. These sit above the sections in
+    /// <c>HKCU\Software\qbPortWeaver</c> and are as much a part of a working configuration as the
+    /// sections are. Only keys accepted by <see cref="IsBackupAppKey"/> are included.
+    /// </summary>
+    internal static IReadOnlyList<(string Key, string Value)> GetAppValuesForBackup()
+    {
+        var result = new List<(string Key, string Value)>();
+        try
+        {
+            using var regKey = Registry.CurrentUser.OpenSubKey(AppIdentity.AppRegistryKey);
+            if (regKey is null) return result;
+            foreach (var name in regKey.GetValueNames().OrderBy(n => n, StringComparer.OrdinalIgnoreCase))
+            {
+                // Subkeys are the sections, enumerated separately; only this key's own values belong here.
+                if (!IsBackupAppKey(name) || !IsTransferableKey(name)) continue;
+                result.Add((name, regKey.GetValue(name)?.ToString() ?? string.Empty));
+            }
+        }
+        catch (Exception ex)
+        {
+            LogManager.Instance.LogDebug($"RegistrySettingsManager.GetAppValuesForBackup: {ex.Message}");
+        }
+        return result;
+    }
+
     /// <summary>Reads a bool value from the registry. Returns the registered default if the key is missing or not parseable.</summary>
     public static bool GetBool(string section, string key)
     {

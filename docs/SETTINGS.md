@@ -18,6 +18,13 @@ Settings are stored in the **Windows Registry** under `HKCU\Software\qbPortWeave
 
 On first run, all settings are initialized with sensible defaults.
 
+**Back Up and Restore** (buttons on the Settings dialog) write these settings to a JSON file and read
+them back. Everything in the tables below is included, along with the advanced values above the
+sections. Passwords, the Nicotine+ token and the TMDB API key are **not**: Windows encrypts them to
+one user account on one machine, so they cannot be moved and are left untouched by a restore.
+Re-enter them after restoring onto a different PC. A restore replaces your current settings and
+cannot be undone, so it asks for confirmation first.
+
 ## Available Settings
 
 ### General

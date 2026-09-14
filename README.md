@@ -128,6 +128,9 @@ After installing, open **Settings** from the tray icon to configure the applicat
 - **Settings Dialog**
   All configuration options are editable through a dedicated Settings form (tray menu → Settings), organised into **General**, **Client**, **Auto-Recovery**, and **Extra** tabs, with inline descriptions and tooltips for each option. A **Detect** button on the General tab finds a running or installed client (qBittorrent, Transmission, Deluge, or Nicotine+) and fills in its selection and process details, asking you to choose when more than one is found. A second **Detect** button does the same for the VPN provider, selecting ProtonVPN or PIA when its service is present on the machine. NAT-PMP gateways are not machine-local and so cannot be detected; select **NAT-PMP** yourself if that is what you use.
 
+- **Back Up and Restore Settings**
+  **Back Up…** on the Settings dialog saves your configuration to a JSON file, and **Restore…** reads it back, so a reinstall or a move to another PC does not mean setting everything up again by hand. Every setting is included, along with the advanced values behind them. Passwords, the Nicotine+ token and the TMDB API key are not, because Windows encrypts them to one user account on one machine: a restore leaves those exactly as they were, and tells you to re-enter them if the backup came from elsewhere. Backing up saves the dialog first, so what you see on screen is what lands in the file. A restore replaces your current settings and cannot be undone, so it confirms first, and entries from a newer version that this one does not recognise are skipped rather than rejecting the whole file.
+
 - **Connection Test**
   Each client section in Settings has a **Test** button next to the URL. It checks the connection to the selected client using the values currently entered (no need to save first), then reports success along with the current listening port, or points you to the log if it cannot connect.
 

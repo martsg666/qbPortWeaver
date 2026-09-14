@@ -116,6 +116,8 @@ public partial class SettingsForm : Form
         toolTip.SetToolTip(cboClient, "Client to control (qBittorrent, Transmission, Deluge, or Nicotine+)");
         toolTip.SetToolTip(btnDetectClient, "Detect a running or installed client and fill in its selection and process details");
         toolTip.SetToolTip(btnTestRecovery, "Run the recovery action now to verify it works - restarts the VPN service (or cycles the adapter), so the VPN connection drops briefly");
+        toolTip.SetToolTip(btnBackupSettings, "Save your settings to a file. Passwords and the TMDB API key are not included, because Windows ties them to this user account on this machine.");
+        toolTip.SetToolTip(btnRestoreSettings, "Replace your current settings with those from a backup file. Passwords and the TMDB API key are left as they are.");
         toolTip.SetToolTip(txtQBittorrentURL, "URL for the qBittorrent Web UI (e.g. http://127.0.0.1:8080). The Web UI must be enabled in qBittorrent under Tools → Options → Web UI.");
         toolTip.SetToolTip(txtQBittorrentUserName, "Username for the qBittorrent Web UI");
         toolTip.SetToolTip(txtQBittorrentPassword, "Password for the qBittorrent Web UI");
@@ -378,7 +380,15 @@ public partial class SettingsForm : Form
         RegistrySettingsManager.SetBool(RegistrySettingsManager.SectionExtra, RegistrySettingsManager.KeyDebugMode, chkDebugMode.Checked);
     }
 
-    private void btnOK_Click(object? sender, EventArgs e)
+    /// <summary>
+    /// Validates what is on screen and writes it to the registry, or warns and writes nothing.
+    /// Returns whether the settings were saved.
+    /// </summary>
+    /// <remarks>Shared with the Back Up button, which has to persist the dialog's current values
+    /// before it can back them up: a backup taken from the registry while the user has unsaved edits
+    /// on screen would silently omit exactly the changes they had just finished making. Routing both
+    /// through here means the backup cannot capture a state the validation would have rejected.</remarks>
+    private bool TryCommitSettings()
     {
         if (cboVpnProvider.SelectedItem?.ToString() == RegistrySettingsManager.VpnProviderNatPmp &&
             cboNatPmpAdapter.Enabled &&
@@ -386,7 +396,7 @@ public partial class SettingsForm : Form
         {
             ThemedMessageBox.Warn(
                 "No NAT-PMP capable adapters were found.\n\nEnsure the adapter is up and its gateway is responding to NAT-PMP, then click ⟳ to retry.");
-            return;
+            return false;
         }
 
         var (clientName, controls) = SelectedClient;
@@ -397,14 +407,20 @@ public partial class SettingsForm : Form
         {
             ThemedMessageBox.Warn(
                 $"The {clientName} URL is not valid. Enter a URL starting with http:// or https://");
-            return;
+            return false;
         }
 
-        string previousColorTheme = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionExtra, RegistrySettingsManager.KeyColorTheme);
-        string selectedColorTheme = cboColorTheme.SelectedItem?.ToString() ?? RegistrySettingsManager.ColorThemeSystem;
         SaveSettings();
         LogManager.Instance.LogMessage("Settings saved", LogLevel.Info);
         SettingsSaved = true;
+        return true;
+    }
+
+    private void btnOK_Click(object? sender, EventArgs e)
+    {
+        string previousColorTheme = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionExtra, RegistrySettingsManager.KeyColorTheme);
+        string selectedColorTheme = cboColorTheme.SelectedItem?.ToString() ?? RegistrySettingsManager.ColorThemeSystem;
+        if (!TryCommitSettings()) return;
 
         // Color theme takes effect at startup via Application.SetColorMode - restart if it changed
         if (selectedColorTheme != previousColorTheme)
@@ -419,6 +435,67 @@ public partial class SettingsForm : Form
     }
 
     private void btnCancel_Click(object? sender, EventArgs e) => Close(); // NOSONAR S2325 - Close() is an instance method, handler cannot be static
+
+    // File-dialog filter for a settings backup. One place, so Back Up and Restore cannot drift apart.
+    private const string BackupFileFilter = "qbPortWeaver settings (*.json)|*.json|All files (*.*)|*.*";
+
+    private void btnBackupSettings_Click(object? sender, EventArgs e)
+    {
+        // Saved first, deliberately - see TryCommitSettings. A rejected validation stops the backup
+        // too, which is right: there is nothing worth preserving about a state the app will not keep.
+        if (!TryCommitSettings()) return;
+
+        using var dialog = new SaveFileDialog
+        {
+            Title = "Back Up Settings",
+            Filter = BackupFileFilter,
+            FileName = SettingsTransfer.SuggestedFileName,
+            DefaultExt = "json",
+            AddExtension = true,
+            OverwritePrompt = true,
+        };
+        if (dialog.ShowDialog(this) != DialogResult.OK) return;
+
+        var result = SettingsTransfer.Export(dialog.FileName);
+        if (result.Success)
+            ThemedMessageBox.Info($"Your settings were saved and backed up.\n\n{result.Message}");
+        else
+            ThemedMessageBox.Warn(result.Message);
+    }
+
+    private void btnRestoreSettings_Click(object? sender, EventArgs e)
+    {
+        using var dialog = new OpenFileDialog
+        {
+            Title = "Restore Settings",
+            Filter = BackupFileFilter,
+            DefaultExt = "json",
+            CheckFileExists = true,
+        };
+        if (dialog.ShowDialog(this) != DialogResult.OK) return;
+
+        // Confirmed because the current settings are overwritten and there is no undo, which is the
+        // line the app's confirmation convention draws. The prompt names the backup so a mis-picked
+        // file is visible before anything is written.
+        if (!ThemedMessageBox.ConfirmDestructive(
+                $"Your current settings will be replaced with those in:\n{Path.GetFileName(dialog.FileName)}\n\n" +
+                "This cannot be undone.\n\nContinue?"))
+            return;
+
+        var result = SettingsTransfer.Import(dialog.FileName);
+        if (!result.Success)
+        {
+            ThemedMessageBox.Warn(result.Message);
+            return;
+        }
+
+        // Reload before anything else can read the form: without this the controls still hold the
+        // pre-import values, and the next OK would write them straight back over what was restored.
+        LoadSettings();
+        RefreshNicotinePluginStatus();
+        SettingsSaved = true;
+        ThemedMessageBox.Info(result.Message);
+    }
 
     private void cboClient_SelectedIndexChanged(object? sender, EventArgs e) =>
         UpdateClientGroupVisibility();

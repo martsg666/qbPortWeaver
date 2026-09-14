@@ -10,11 +10,17 @@ public partial class WhatsNewForm : Form
 
     private const string ReleaseFeaturesText =
         "New in 2.6.9\n\n" +
-        "PLACEHOLDER - replace before release\n" +
-        "Summarise this version's user-facing changes here, in the same voice as the sections below: " +
-        "a short title line, then a plain-language paragraph saying what it does for the user. The " +
-        "Debug.Assert in the constructor only checks that a 'New in <version>' section exists, not " +
-        "that it has been written, so this text will ship if it is not replaced.\n\n" +
+        "Your settings can be backed up and restored\n" +
+        "Settings now has Back Up and Restore buttons. Back Up writes your whole configuration to a " +
+        "file, Restore reads it back, so reinstalling or moving to a new PC no longer means setting " +
+        "everything up again by hand. Passwords and the TMDB API key are not in the file: Windows " +
+        "encrypts those for one user account on one machine, so they cannot travel. A restore leaves " +
+        "them exactly as they were and reminds you to enter them again if the backup came from " +
+        "another PC.\n\n" +
+        "The About window no longer says Loading forever\n" +
+        "When About could not reach GitHub, it correctly reported that the update check had failed " +
+        "but left the contributor line stuck on \"Loading...\", as though it were still working. It " +
+        "now falls back to the project name.\n\n" +
         "Previously released\n\n" +
         "New in 2.6.8\n\n" +
         "Diagnostics now checks your internet connection\n" +

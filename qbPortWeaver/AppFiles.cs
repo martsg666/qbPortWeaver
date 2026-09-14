@@ -113,6 +113,15 @@ public static class AppFiles
     internal static void WriteAtomic(string path, string[] lines) =>
         WriteAtomicCore(path, temp => File.WriteAllLines(temp, lines, Utf8NoBom));
 
+    /// <summary>Writes bytes to a temp file then atomically renames it over the target.</summary>
+    /// <remarks>For the callers writing a binary artefact to a folder the user chose. Note that
+    /// <see cref="SweepOrphanedTempFiles"/> only runs against the app data folder, so a process kill
+    /// between the write and the rename leaves a temp file behind wherever the user pointed. That is
+    /// the better failure: <see cref="WriteAtomicCore"/> removes its own temp on an ordinary write
+    /// error, and a visible stray file beats a truncated artefact that still opens.</remarks>
+    internal static void WriteAtomic(string path, byte[] bytes) =>
+        WriteAtomicCore(path, temp => File.WriteAllBytes(temp, bytes));
+
     private static readonly System.Text.UTF8Encoding Utf8NoBom = new(encoderShouldEmitUTF8Identifier: false);
 
     // Distinctive enough that a sweep can recognise our leftovers without touching anything else in

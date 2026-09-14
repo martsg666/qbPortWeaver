@@ -57,7 +57,12 @@ internal static class SupportBundle
                 files += AddDataFiles(zip);
             }
 
-            File.WriteAllBytes(path, buffer.ToArray());
+            // Atomic, like the settings backup: a plain write truncates the destination first, so an
+            // IO error part way through would leave a short file at the chosen path - which still
+            // opens, and would be sent to a maintainer as though it were the whole bundle. That is
+            // the outcome the in-memory assembly above exists to prevent, and it would have leaked
+            // straight back in here.
+            AppFiles.WriteAtomic(path, buffer.ToArray());
             LogManager.Instance.LogMessage($"Support bundle written to {path} ({files} files)", LogLevel.Info);
             return new(true, $"Saved {files} files to:\n{path}", files);
         }

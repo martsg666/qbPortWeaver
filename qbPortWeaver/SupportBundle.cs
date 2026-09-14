@@ -134,7 +134,8 @@ internal static class SupportBundle
         return 1;
     }
 
-    // The current log and its rotated backups, oldest name first, or an empty list when the folder
+    // The current log and its rotated backups, current first and oldest last (rotation numbers
+    // ascend with age, so an ordinal sort puts them in that order), or an empty list when the folder
     // cannot be walked. An unreadable log set is skipped rather than refusing the bundle: the report
     // and the settings snapshot are still worth having.
     //

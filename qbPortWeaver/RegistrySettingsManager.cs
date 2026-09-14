@@ -681,7 +681,11 @@ public static class RegistrySettingsManager
             if (regKey is null) return result;
             foreach (var name in regKey.GetValueNames().OrderBy(n => n, StringComparer.OrdinalIgnoreCase))
             {
-                if (!IsTransferableKey(name)) continue;
+                // Both gates, matching the import side exactly. Without the known-key check the
+                // export is the wider of the two, so a value name this build has no reader for is
+                // written to the file and then reported as "not recognised, skipped" when the same
+                // build reads it back.
+                if (!IsKnownSectionKey(section, name) || !IsTransferableKey(name)) continue;
                 result.Add((name, regKey.GetValue(name)?.ToString() ?? string.Empty));
             }
         }
@@ -934,18 +938,40 @@ public static class RegistrySettingsManager
 
     // Keys whose values must never be written to logs in plaintext: every encrypted key, plus the
     // app-level secrets stored plaintext but protected by the HKCU ACL (the pipe session token used
-    // to authenticate messages to the SYSTEM helper service).
+    // to authenticate messages to the SYSTEM helper service), plus the former name of any key that
+    // is encrypted under its current one.
     //
     // Built *from* _encryptedKeys rather than re-listing it, so the superset relationship is
     // maintained by the compiler instead of by hand. Re-listing meant a future encrypted key could be
     // added to one set and missed in the other, and the only symptom would be a credential appearing
-    // in a user's log file - the one place nobody thinks to look for one. Declaration order matters
-    // here: field initialisers run top to bottom, so _encryptedKeys above must stay above.
-    private static readonly HashSet<string> _logMaskedKeys =
-        new(_encryptedKeys, StringComparer.OrdinalIgnoreCase)
+    // in a user's log file - the one place nobody thinks to look for one.
+    //
+    // The legacy names are there because MigrateLegacyKeys deliberately leaves a legacy value in
+    // place when its write fails ("Losing the value would be the worse outcome"), so a registry can
+    // still hold qBittorrentPassword, transmissionPassword, delugePassword or nicotineToken. Those
+    // names are absent from _encryptedKeys, which holds the unified names the constants now resolve
+    // to, so without this they read as ordinary settings: printed in full in the diagnostics
+    // settings snapshot that goes into a support bundle, and copied into a settings backup. Derived
+    // from _legacyKeys rather than listed, so a secret renamed in future is covered without anyone
+    // remembering this.
+    //
+    // Declaration order matters here: field initialisers run top to bottom, so _encryptedKeys and
+    // _legacyKeys must both stay above.
+    private static readonly HashSet<string> _logMaskedKeys = BuildLogMaskedKeys();
+
+    private static HashSet<string> BuildLogMaskedKeys()
+    {
+        var masked = new HashSet<string>(_encryptedKeys, StringComparer.OrdinalIgnoreCase)
         {
             AppIdentity.PipeSessionTokenKey
         };
+        foreach (var (_, legacyKey, newKey) in _legacyKeys)
+        {
+            if (_encryptedKeys.Contains(newKey))
+                masked.Add(legacyKey);
+        }
+        return masked;
+    }
 
     // Writes any missing keys for one registry section; returns true if anything was written
     private static bool WriteDefaultsForSection(RegistryKey regKey,

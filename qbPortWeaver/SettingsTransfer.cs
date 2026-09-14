@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 
 namespace qbPortWeaver;
@@ -109,88 +110,142 @@ internal static class SettingsTransfer
     /// </summary>
     internal static TransferResult Import(string path)
     {
-        JsonDocument doc;
-        try
-        {
-            doc = JsonDocument.Parse(AppFiles.ReadAllTextShared(path));
-        }
-        catch (Exception ex)
-        {
-            LogManager.Instance.LogMessage($"Settings import failed to read {path}: {ex.Message}", LogLevel.Error);
-            return new(false, $"The file could not be read.\n\n{ex.Message}");
-        }
+        if (!TryReadBackup(path, out var doc, out var failure))
+            return failure;
 
         using (doc)
         {
             var root = doc.RootElement;
-            if (root.ValueKind != JsonValueKind.Object || root.GetStringOrNull(KeyApp) != FileMarker)
-                return new(false, "That file is not a qbPortWeaver settings backup.");
+            if (Refuse(root) is { } refusal)
+                return refusal;
 
-            // Absent means schema 1, which is the only shape that ever shipped without the field.
-            int schema = root.GetInt32OrNull(KeySchema) ?? 1;
-            if (schema > CurrentSchema)
-                return new(false,
-                    $"That backup was written by a newer version of {AppIdentity.AppName} and cannot be read by this one.\n\n" +
-                    "Update qbPortWeaver, then import it again.");
-
-            int applied = 0, ignored = 0;
-            if (root.TryGetProperty(KeySections, out var sections) && sections.ValueKind == JsonValueKind.Object)
-            {
-                foreach (var section in sections.EnumerateObject())
-                {
-                    // An unknown section is ignored whole rather than created: a file from a later
-                    // build may carry a section this one has no reader for, and writing it would
-                    // leave dead keys in the registry that nothing ever cleans up.
-                    if (!RegistrySettingsManager.AllSections.Contains(section.Name, StringComparer.OrdinalIgnoreCase) ||
-                        section.Value.ValueKind != JsonValueKind.Object)
-                    {
-                        ignored += CountValues(section.Value);
-                        continue;
-                    }
-
-                    foreach (var entry in section.Value.EnumerateObject())
-                        ApplyValue(section.Name, entry, ref applied, ref ignored);
-                }
-            }
-
-            if (root.TryGetProperty(KeyApplication, out var appValues) && appValues.ValueKind == JsonValueKind.Object)
-            {
-                foreach (var entry in appValues.EnumerateObject())
-                {
-                    // Same allow-list as the export side, so a hand-edited file cannot reintroduce
-                    // installer-owned or state keys that the export deliberately leaves out.
-                    string? value = entry.Value.AsStringOrNull();
-                    if (value is null ||
-                        !RegistrySettingsManager.IsBackupAppKey(entry.Name) ||
-                        !RegistrySettingsManager.IsTransferableKey(entry.Name))
-                    {
-                        ignored++;
-                        continue;
-                    }
-                    RegistrySettingsManager.SetAppValue(entry.Name, value);
-                    applied++;
-                }
-            }
+            // Counts are carried back from each stage rather than accumulated in shared locals, so
+            // neither stage can quietly leave the totals inconsistent with what it actually wrote.
+            var sections = ApplySections(root);
+            var application = ApplyApplicationValues(root);
+            int applied = sections.Applied + application.Applied;
+            int ignored = sections.Ignored + application.Ignored;
 
             LogManager.Instance.LogMessage($"Settings imported from {path} ({applied} applied, {ignored} ignored)", LogLevel.Info);
             return new(true, BuildImportMessage(applied, ignored), applied, ignored);
         }
     }
 
-    // Writes one section value, or counts it as ignored. Non-transferable keys are refused even when
-    // present in the file: the stored form of a password is a DPAPI blob tied to one user on one
-    // machine, so a hand-edited plaintext value written here would not decrypt, and would replace a
-    // credential that currently works.
-    private static void ApplyValue(string section, JsonProperty entry, ref int applied, ref int ignored)
+    // Reads and parses the file. On failure the caller gets a ready-made result rather than an
+    // exception, because every failure here is a user-facing "that file did not work", not a fault.
+    private static bool TryReadBackup(
+        string path,
+        [NotNullWhen(true)] out JsonDocument? doc,
+        [NotNullWhen(false)] out TransferResult? failure)
+    {
+        try
+        {
+            doc = JsonDocument.Parse(AppFiles.ReadAllTextShared(path));
+            failure = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            LogManager.Instance.LogMessage($"Settings import failed to read {path}: {ex.Message}", LogLevel.Error);
+            doc = null;
+            failure = new(false, $"The file could not be read.\n\n{ex.Message}");
+            return false;
+        }
+    }
+
+    // Returns why the file is refused, or null to proceed. Both checks run before anything is
+    // written, so a rejected file leaves the registry exactly as it was.
+    private static TransferResult? Refuse(JsonElement root)
+    {
+        if (root.ValueKind != JsonValueKind.Object || root.GetStringOrNull(KeyApp) != FileMarker)
+            return new(false, "That file is not a qbPortWeaver settings backup.");
+
+        // Absent means schema 1, which is the only shape that ever shipped without the field.
+        int schema = root.GetInt32OrNull(KeySchema) ?? 1;
+        if (schema > CurrentSchema)
+            return new(false,
+                $"That backup was written by a newer version of {AppIdentity.AppName} and cannot be read by this one.\n\n" +
+                "Update qbPortWeaver, then import it again.");
+
+        return null;
+    }
+
+    private static (int Applied, int Ignored) ApplySections(JsonElement root)
+    {
+        if (!root.TryGetProperty(KeySections, out var sections) || sections.ValueKind != JsonValueKind.Object)
+            return (0, 0);
+
+        int applied = 0, ignored = 0;
+        foreach (var section in sections.EnumerateObject())
+        {
+            // An unknown section is ignored whole rather than created: a file from a later build may
+            // carry a section this one has no reader for, and writing it would leave dead keys in
+            // the registry that nothing ever cleans up.
+            if (!RegistrySettingsManager.AllSections.Contains(section.Name, StringComparer.OrdinalIgnoreCase) ||
+                section.Value.ValueKind != JsonValueKind.Object)
+            {
+                ignored += CountValues(section.Value);
+                continue;
+            }
+
+            var result = ApplySection(section.Name, section.Value);
+            applied += result.Applied;
+            ignored += result.Ignored;
+        }
+        return (applied, ignored);
+    }
+
+    private static (int Applied, int Ignored) ApplySection(string section, JsonElement values)
+    {
+        int applied = 0, total = 0;
+        foreach (var entry in values.EnumerateObject())
+        {
+            total++;
+            if (TryApplySectionValue(section, entry)) applied++;
+        }
+        return (applied, total - applied);
+    }
+
+    private static (int Applied, int Ignored) ApplyApplicationValues(JsonElement root)
+    {
+        if (!root.TryGetProperty(KeyApplication, out var appValues) || appValues.ValueKind != JsonValueKind.Object)
+            return (0, 0);
+
+        int applied = 0, total = 0;
+        foreach (var entry in appValues.EnumerateObject())
+        {
+            total++;
+            if (TryApplyApplicationValue(entry)) applied++;
+        }
+        return (applied, total - applied);
+    }
+
+    // Writes one section value, or reports that it was skipped. Non-transferable keys are refused
+    // even when present in the file: the stored form of a password is a DPAPI blob tied to one user
+    // on one machine, so a hand-edited plaintext value written here would not decrypt, and would
+    // replace a credential that currently works.
+    private static bool TryApplySectionValue(string section, JsonProperty entry)
     {
         string? value = entry.Value.AsStringOrNull();
         if (value is null || !RegistrySettingsManager.IsTransferableKey(entry.Name))
-        {
-            ignored++;
-            return;
-        }
+            return false;
+
         RegistrySettingsManager.SetValue(section, entry.Name, value);
-        applied++;
+        return true;
+    }
+
+    // Same allow-list as the export side, so a hand-edited file cannot reintroduce installer-owned
+    // or state keys that the export deliberately leaves out.
+    private static bool TryApplyApplicationValue(JsonProperty entry)
+    {
+        string? value = entry.Value.AsStringOrNull();
+        if (value is null ||
+            !RegistrySettingsManager.IsBackupAppKey(entry.Name) ||
+            !RegistrySettingsManager.IsTransferableKey(entry.Name))
+            return false;
+
+        RegistrySettingsManager.SetAppValue(entry.Name, value);
+        return true;
     }
 
     private static int CountValues(JsonElement element) =>

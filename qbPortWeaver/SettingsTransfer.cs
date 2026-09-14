@@ -38,11 +38,13 @@ internal static class SettingsTransfer
     private const string KeyApplication = "application";
 
     // Indented and minimally escaped, because this file is meant to be opened and read. The default
-    // encoder escapes every character outside a conservative set, which turns a Nicotine+ path into
-    // "Nicotine+" and a quoted command into a wall of " - still valid JSON, but unreadable
-    // for the person checking what their backup actually contains, and a trap for anyone editing one
-    // by hand. "Unsafe" here names the HTML-injection risk of embedding output in a web page, which
-    // is not what this is: it is a local file read by this app and by a text editor.
+    // encoder escapes every character outside a conservative set, so a plus sign and a double quote
+    // each come out as a six-character backslash-u sequence: a Nicotine+ path and a quoted
+    // post-update command turn into something still valid but unreadable for anyone checking what
+    // their backup contains, and a trap for anyone editing one by hand. Those sequences are
+    // described here rather than written out, because a literal one in this comment does not
+    // survive to the file on disk. "Unsafe" names the HTML-injection risk of embedding output in a
+    // web page, which is not what this is: a local file read by this app and by a text editor.
     private static readonly JsonSerializerOptions _writeOptions = new()
     {
         WriteIndented = true,
@@ -53,7 +55,8 @@ internal static class SettingsTransfer
     /// <param name="Success">False when nothing was written, in which case <paramref name="Message"/> says why.</param>
     /// <param name="Message">A complete sentence suitable for a dialog.</param>
     /// <param name="Applied">Values written. Zero for a failed operation.</param>
-    /// <param name="Ignored">Keys in the file this build does not recognise, or refuses to import. Import only.</param>
+    /// <param name="Ignored">Entries not restored: keys this build does not recognise, keys it
+    /// refuses to import, and writes that failed. Import only.</param>
     internal sealed record TransferResult(bool Success, string Message, int Applied = 0, int Ignored = 0);
 
     /// <summary>Default file name offered in the save dialog, dated so successive backups do not collide.</summary>
@@ -165,7 +168,7 @@ internal static class SettingsTransfer
         if (schema > CurrentSchema)
             return new(false,
                 $"That backup was written by a newer version of {AppIdentity.AppName} and cannot be read by this one.\n\n" +
-                "Update qbPortWeaver, then import it again.");
+                $"Update {AppIdentity.AppName}, then import it again.");
 
         return null;
     }

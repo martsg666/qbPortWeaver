@@ -129,6 +129,11 @@ internal static class SupportBundle
     {
         using var source = AppFiles.OpenSharedForCopy(path);
         var entry = zip.CreateEntry(Path.GetFileName(path), CompressionLevel.Optimal);
+        // CreateEntry stamps the entry with the current time, which would make every rotated log
+        // look as though it were written the moment the bundle was made. Whether the window that
+        // explains a problem is even in the archive is the first thing anyone reading one wants to
+        // know, and the filesystem already knows it.
+        entry.LastWriteTime = File.GetLastWriteTime(path);
         using var destination = entry.Open();
         source.CopyTo(destination);
         return 1;
@@ -159,10 +164,14 @@ internal static class SupportBundle
     }
 
     // Returns the number of entries added, so the callers can total them without counting twice.
+    //
+    // AppFiles.Utf8NoBom, not Encoding.UTF8: the latter emits a byte-order mark, and these two
+    // entries exist to be opened and pasted into an issue, where a BOM rides along invisibly on a
+    // copied first line. Nothing else this app writes carries one.
     private static int AddText(ZipArchive zip, string entryName, string content)
     {
         var entry = zip.CreateEntry(entryName, CompressionLevel.Optimal);
-        using var writer = new StreamWriter(entry.Open(), Encoding.UTF8);
+        using var writer = new StreamWriter(entry.Open(), AppFiles.Utf8NoBom);
         writer.Write(content);
         return 1;
     }

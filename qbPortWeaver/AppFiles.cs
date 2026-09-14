@@ -122,7 +122,10 @@ public static class AppFiles
     internal static void WriteAtomic(string path, byte[] bytes) =>
         WriteAtomicCore(path, temp => File.WriteAllBytes(temp, bytes));
 
-    private static readonly System.Text.UTF8Encoding Utf8NoBom = new(encoderShouldEmitUTF8Identifier: false);
+    /// <summary>UTF-8 without a byte-order mark, for callers writing text this app will hand to
+    /// something else. Shared rather than reconstructed per caller, so there is one answer to
+    /// "which UTF-8 does this app write".</summary>
+    internal static readonly System.Text.UTF8Encoding Utf8NoBom = new(encoderShouldEmitUTF8Identifier: false);
 
     // Distinctive enough that a sweep can recognise our leftovers without touching anything else in
     // the folder - which matters because one caller writes into Nicotine+'s config folder.

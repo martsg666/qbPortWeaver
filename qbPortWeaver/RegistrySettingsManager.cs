@@ -672,6 +672,19 @@ public static class RegistrySettingsManager
     /// a backup has to restore them; the secrets are left out rather than masked, since a <c>***</c>
     /// placeholder would restore as a literal password.
     /// </summary>
+    /// <remarks>
+    /// <b>A REG_EXPAND_SZ value is captured expanded, and restored as a plain string.</b> Considered
+    /// and accepted, not overlooked: <see cref="MigrateLegacyKeys"/> reads with
+    /// <c>DoNotExpandEnvironmentNames</c> precisely to keep a hand-edited <c>%VAR%</c> path from
+    /// being baked in, and this deliberately does not.
+    /// <para>Reading the raw text here would not be enough to preserve the behaviour, because the
+    /// restore writes through <see cref="SetValue"/> as <c>RegistryValueKind.String</c>, and a
+    /// <c>%VAR%</c> string stored under that kind is never expanded on read - so the path would come
+    /// back literal and broken. Preserving it properly means carrying the value kind through the
+    /// backup file and honouring it on the way in, which is a schema change and a second write path
+    /// for a case that only arises when someone has edited the registry by hand. As it stands the
+    /// indirection is lost but the path still works, which is the better of the two failures.</para>
+    /// </remarks>
     internal static IReadOnlyList<(string Key, string Value)> GetSectionForBackup(string section)
     {
         var result = new List<(string Key, string Value)>();

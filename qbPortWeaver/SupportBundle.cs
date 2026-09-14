@@ -29,7 +29,7 @@ internal static class SupportBundle
     // AppIdentity rather than spelled out: a bundle that silently contains no logs is the one
     // failure this feature cannot afford, and a literal here would produce exactly that the day the
     // file name changes.
-    private static readonly string LogFilePattern = $"{AppIdentity.LogFileName}*";
+    private const string LogFilePattern = $"{AppIdentity.LogFileName}*";
 
     /// <summary>Default file name offered in the save dialog, stamped to the minute so successive bundles do not collide.</summary>
     internal static string SuggestedFileName => $"qbPortWeaver-support-{DateTime.Now:yyyy-MM-dd-HHmm}.zip";

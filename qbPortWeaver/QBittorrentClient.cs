@@ -303,7 +303,9 @@ public sealed class QBittorrentClient : ManagedClientBase
     /// </summary>
     /// <param name="LiveAddresses">Addresses qBittorrent currently sees on the bound adapter, or
     /// <see langword="null"/> when they could not be read at all (a qBittorrent predating the endpoint,
-    /// an unreachable Web API, or no interface bound). Null means "do not draw any conclusion".</param>
+    /// an unreachable Web API, no interface bound, or an interface token that resolves to no adapter).
+    /// Null means "do not draw any conclusion". Never empty: an empty answer is the token failing to
+    /// resolve, not an adapter that has lost every address - see <see cref="GetInterfaceAddressStateAsync"/>.</param>
     /// <param name="PinnedAddress">The configured <c>current_interface_address</c>. Empty or null means
     /// qBittorrent binds to every address on the adapter, which is its default.</param>
     internal readonly record struct InterfaceAddressInfo(
@@ -335,7 +337,20 @@ public sealed class QBittorrentClient : ManagedClientBase
             return new InterfaceAddressInfo(null, _storedInterfaceAddress);
 
         var live = await GetInterfaceAddressesAsync(_storedInterfaceToken, cancellationToken).ConfigureAwait(false);
-        return new InterfaceAddressInfo(live, _storedInterfaceAddress);
+        // An empty list is not "this adapter has no addresses". It is what qBittorrent answers for a
+        // token that resolves to nothing: HTTP 200 with an empty array rather than an error. Two
+        // different states reach that, and only one of them is gated by the caller - a stale token is
+        // (see PortSyncService.CheckAndRepairInterfaceBindingAsync), but a token naming an adapter that
+        // is simply absent is not, because CheckInterfaceBindingAsync correctly calls that "not stale,
+        // leave the binding alone" and the gate lets it through. That is the ordinary VPN-disconnected
+        // state, so it arrives on every disconnect that still reaches the client path.
+        //
+        // Collapsed into the null contract here rather than guarded at each consumer: all three already
+        // treat null as "draw no conclusion", and the alternative is the same test repeated at three
+        // sites that can drift. It also costs nothing in the one case where an adapter genuinely has no
+        // address yet (mid-negotiation) - the repair path declines to act on that anyway, since
+        // SelectBindAddress has nothing usable to choose.
+        return new InterfaceAddressInfo(live is { Count: 0 } ? null : live, _storedInterfaceAddress);
     }
 
     // The three rules for reading current_interface_address, kept here rather than at either consumer

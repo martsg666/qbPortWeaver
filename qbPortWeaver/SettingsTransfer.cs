@@ -109,7 +109,8 @@ internal static class SettingsTransfer
 
     /// <summary>
     /// Reads <paramref name="path"/> and writes its values into the registry. Refuses the file
-    /// outright, changing nothing, when it is not one of ours or was written by a newer schema.
+    /// outright, changing nothing, when it is not one of ours, was written by a newer schema, or
+    /// carries a schema field this build cannot read.
     /// </summary>
     internal static TransferResult Import(string path)
     {
@@ -129,8 +130,22 @@ internal static class SettingsTransfer
             int applied = sections.Applied + application.Applied;
             int ignored = sections.Ignored + application.Ignored;
 
-            LogManager.Instance.LogMessage($"Settings imported from {path} ({applied} applied, {ignored} ignored)", LogLevel.Info);
-            return new(true, BuildImportMessage(applied, ignored), applied, ignored);
+            // Nothing written is not a successful restore, and the record's own contract says so
+            // ("False when nothing was written"). Two ways to get here: the file carried nothing this
+            // build recognises, or every write was refused by the hive - policy or an ACL on HKCU.
+            // The counts cannot tell those apart and the message does not pretend to, but the second
+            // is precisely what RegistrySettingsManager.TrySetValue was introduced to surface, and
+            // deciding success on the count here is the only thing that carries it to the user.
+            // Returning true instead also drove SettingsForm's success branch: an Info dialog rather
+            // than a warning, SettingsSaved set, and a "Settings changed" sync cycle for a restore
+            // that changed nothing.
+            bool success = applied > 0;
+            LogManager.Instance.LogMessage(
+                success
+                    ? $"Settings imported from {path} ({applied} applied, {ignored} ignored)"
+                    : $"Settings import from {path} applied nothing ({ignored} ignored)",
+                success ? LogLevel.Info : LogLevel.Warn);
+            return new(success, BuildImportMessage(applied, ignored), applied, ignored);
         }
     }
 
@@ -156,16 +171,34 @@ internal static class SettingsTransfer
         }
     }
 
-    // Returns why the file is refused, or null to proceed. Both checks run before anything is
+    // Returns why the file is refused, or null to proceed. Every check runs before anything is
     // written, so a rejected file leaves the registry exactly as it was.
     private static TransferResult? Refuse(JsonElement root)
     {
         if (root.ValueKind != JsonValueKind.Object || root.GetStringOrNull(KeyApp) != FileMarker)
             return new(false, "That file is not a qbPortWeaver settings backup.");
 
-        // Absent means schema 1, which is the only shape that ever shipped without the field.
-        int schema = root.GetInt32OrNull(KeySchema) ?? 1;
-        if (schema > CurrentSchema)
+        // Absent - or an explicit JSON null, which is the same statement - means schema 1, the only
+        // shape that ever shipped without the field.
+        //
+        // Present but unreadable is a different answer and must not collapse into it. AsInt32OrNull
+        // yields null for every kind other than Number, and for a Number that is not a whole int32,
+        // so a hand-edited "schema": "2" or a later release that changes the field's type would read
+        // as 1 under a plain `?? 1` and be imported key by key, past the very guard below. This is the
+        // same trap JsonElementExtensions documents for TryGetInt32, one level up: there the danger is
+        // a reader that throws, here it is a default that silently answers for a value it could not
+        // read. A file whose format version cannot be read is one whose shape this build cannot vouch
+        // for, and refusing is what the guard is for.
+        bool present = root.TryGetProperty(KeySchema, out var schemaElement) &&
+                       schemaElement.ValueKind != JsonValueKind.Null;
+        int? schema = present ? schemaElement.AsInt32OrNull() : null;
+
+        if (present && schema is null)
+            return new(false,
+                "That backup's format version could not be read, so this file cannot be imported safely.\n\n" +
+                "Nothing was changed.");
+
+        if ((schema ?? 1) > CurrentSchema)
             return new(false,
                 $"That backup was written by a newer version of {AppIdentity.AppName} and cannot be read by this one.\n\n" +
                 $"Update {AppIdentity.AppName}, then import it again.");
@@ -263,6 +296,22 @@ internal static class SettingsTransfer
 
     private static string BuildImportMessage(int applied, int ignored)
     {
+        // Zero applied opens differently, because this text lands in a warning rather than an
+        // information dialog and "Restored 0 settings." is a poor first line for one. It also states
+        // the outcome the user needs, which the count alone does not: their settings are untouched.
+        if (applied == 0)
+        {
+            string nothing = "No settings were restored, so yours are unchanged.";
+            if (ignored > 0)
+                nothing += $" All {ignored} entries in the file were skipped, either because this " +
+                           "version does not recognise them or because they could not be written. " +
+                           "The log has the detail.";
+            // No secrets paragraph here, unlike the restored case below. It explains what a restore
+            // did not bring across; with nothing brought across there is no such gap to explain, and
+            // on a warning it would bury the one sentence that matters.
+            return nothing;
+        }
+
         string message = $"Restored {applied} settings.";
         // Covers both reasons an entry is not counted as restored - unknown to this version, or a
         // write that failed - because the user cannot act differently on the two and the log has the
@@ -271,9 +320,10 @@ internal static class SettingsTransfer
             message += $" {ignored} entries were skipped, either because this version does not " +
                        "recognise them or because they could not be written. The log has the detail.";
 
-        // Said every time, not only when something was skipped. Secrets are never in the file at all,
-        // so there is nothing for the skipped count to hint at, and someone restoring onto a new
-        // machine has no other way to learn that the client will not connect until they re-enter them.
+        // Said on every restore that landed something, not only when entries were skipped. Secrets are
+        // never in the file at all, so there is nothing for the skipped count to hint at, and someone
+        // restoring onto a new machine has no other way to learn that the client will not connect
+        // until they re-enter them.
         return message +
             "\n\nPasswords and the TMDB API key are not included in a backup, because Windows ties them to " +
             "one user account on one machine. They have been left as they were - re-enter them if this " +

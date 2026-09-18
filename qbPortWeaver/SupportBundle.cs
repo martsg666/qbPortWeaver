@@ -165,9 +165,18 @@ internal static class SupportBundle
 
     // Returns the number of entries added, so the callers can total them without counting twice.
     //
-    // AppFiles.Utf8NoBom, not Encoding.UTF8: the latter emits a byte-order mark, and these two
-    // entries exist to be opened and pasted into an issue, where a BOM rides along invisibly on a
-    // copied first line. Nothing else this app writes carries one.
+    // AppFiles.Utf8NoBom, not Encoding.UTF8: the latter emits a byte-order mark, and the entries
+    // written through here exist to be opened and pasted into an issue, where a BOM rides along
+    // invisibly on a copied first line.
+    //
+    // Not a claim about the bundle as a whole. The log files AddFile copies in alongside these do
+    // carry one: LogManager.WriteRaw writes through a StreamWriter over Encoding.UTF8, which emits
+    // the preamble whenever an append stream starts at position zero, so every log file gets one at
+    // creation and keeps it through rotation. That is left alone deliberately - the readers all cope
+    // (AppFiles detects it, and LogViewerForm's tail offset is computed from the stream position
+    // precisely so a consumed BOM cannot shift it), and rewriting the log encoding to tidy a comment
+    // would change files mid-rotation for no benefit. Every other writer really is BOM-free: all the
+    // AppFiles.WriteAtomic overloads either default to it or pass Utf8NoBom.
     private static int AddText(ZipArchive zip, string entryName, string content)
     {
         var entry = zip.CreateEntry(entryName, CompressionLevel.Optimal);

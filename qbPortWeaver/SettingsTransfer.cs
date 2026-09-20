@@ -62,7 +62,8 @@ internal static class SettingsTransfer
     /// <summary>Default file name offered in the save dialog, dated so successive backups do not collide.</summary>
     internal static string SuggestedFileName => $"qbPortWeaver-settings-{DateTime.Now:yyyy-MM-dd}.json";
 
-    /// <summary>Writes the current settings to <paramref name="path"/>, overwriting it.</summary>
+    /// <summary>Writes the current settings to <paramref name="path"/>, overwriting it. Writes
+    /// nothing, and reports failure, when no setting could be read to put in it.</summary>
     internal static TransferResult Export(string path)
     {
         try
@@ -95,6 +96,24 @@ internal static class SettingsTransfer
                 [KeySections] = sections,
                 [KeyApplication] = appValues,
             };
+
+            // Nothing to back up is a failure, not an empty success. The two readers above swallow
+            // their own exceptions and hand back empty lists, so an unreadable or policy-locked hive
+            // arrives here looking exactly like a clean run, and the caller's success branch then
+            // tells the user their settings are backed up.
+            //
+            // Checked before the write, unlike the equivalent on the import side: a zero-value file
+            // would still pass Refuse at restore time and apply nothing, so it is worse than no file
+            // at all - and it would only be found out at the moment someone actually needed it.
+            //
+            // Deliberately does not try to catch a *partial* read. Some sections readable and others
+            // not leaves applied > 0, and the count reported is accurate; detecting that would mean
+            // teaching this method what it expects to find.
+            if (applied == 0)
+            {
+                LogManager.Instance.LogMessage($"Settings export to {path} found nothing to save", LogLevel.Warn);
+                return new(false, "No settings could be read, so nothing was backed up.\n\nSee the log for details.");
+            }
 
             AppFiles.WriteAtomic(path, JsonSerializer.Serialize(payload, _writeOptions));
             LogManager.Instance.LogMessage($"Settings exported to {path} ({applied} values)", LogLevel.Info);

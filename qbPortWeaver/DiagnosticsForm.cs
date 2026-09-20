@@ -288,10 +288,24 @@ internal sealed class DiagnosticsForm : Form
         string path = dialog.FileName;
         button.Enabled = false;
         UseWaitCursor = true;
-        SettingsTransfer.TransferResult result;
+        SettingsTransfer.TransferResult? result = null;
         try
         {
             result = await Task.Run(() => SupportBundle.Create(path, report));
+        }
+        // The caller is an async void event handler, as every other guarded path in this app notes.
+        // SupportBundle.Create catches everything itself and returns a failure result, so this guards
+        // that contract rather than a known failure - but without it an escape is only an unhandled
+        // UI-thread exception: the user clicks Save, the button comes back, and nothing else happens,
+        // on the one feature whose job is to help them report a problem.
+        //
+        // Reported below rather than here, so the message appears after the finally has restored the
+        // cursor and the button. Worded differently from SupportBundle.Create's own failure line on
+        // purpose - the two are mutually exclusive, and one condition described twice is how the
+        // wordings drift apart.
+        catch (Exception ex)
+        {
+            LogManager.Instance.LogMessage($"Saving the support bundle failed unexpectedly: {ex.Message}", LogLevel.Error);
         }
         finally
         {
@@ -303,7 +317,9 @@ internal sealed class DiagnosticsForm : Form
         }
 
         if (IsDisposed) return;
-        if (result.Success)
+        if (result is null)
+            ThemedMessageBox.Warn("The support bundle could not be saved.\n\nSee the log for details.");
+        else if (result.Success)
             ThemedMessageBox.Info(
                 $"{result.Message}\n\nPasswords, tokens and API keys are masked. Review the files before sharing them.");
         else

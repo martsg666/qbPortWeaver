@@ -347,9 +347,20 @@ public sealed class QBittorrentClient : ManagedClientBase
         //
         // Collapsed into the null contract here rather than guarded at each consumer: all three already
         // treat null as "draw no conclusion", and the alternative is the same test repeated at three
-        // sites that can drift. It also costs nothing in the one case where an adapter genuinely has no
-        // address yet (mid-negotiation) - the repair path declines to act on that anyway, since
-        // SelectBindAddress has nothing usable to choose.
+        // sites that can drift.
+        //
+        // The cost is real, not nothing. An adapter that genuinely has no address yet (mid-negotiation)
+        // answers with an empty list too, and that case previously reached RepairPinnedAddressAsync,
+        // which logs a Warn before declining to act, and gave DiagnosticsService a pinned-address row.
+        // Both now go quiet - and with a concrete pin Diagnostics can fall through to a name-based Pass
+        // for a client bound to an address its adapter does not have.
+        //
+        // Accepted deliberately. That state is an up-but-address-less adapter, which lasts seconds and
+        // self-corrects or escalates properly on the next cycle, whereas the unresolvable-token case it
+        // replaces produced a false Warn on every disconnect - badging the tray, and asserting "that
+        // adapter no longer has" about an adapter qBittorrent could not even find. Common and wrong
+        // beats rare and right. Telling the two apart needs "did the token resolve" threaded down from
+        // CheckInterfaceBindingAsync, which is not worth the structure for a transient window.
         return new InterfaceAddressInfo(live is { Count: 0 } ? null : live, _storedInterfaceAddress);
     }
 

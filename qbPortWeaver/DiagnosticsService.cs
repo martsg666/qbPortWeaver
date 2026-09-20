@@ -308,7 +308,7 @@ public static class DiagnosticsService
         DiagnosticResult result = status.State switch
         {
             NicotinePluginState.DataFolderMissing => new(Checks.ClientPlugin, DiagnosticStatus.Warn,
-                "Nicotine+'s data folder was not found",
+                NicotinePluginInstaller.DataFolderNotFoundText,
                 "Start Nicotine+ once, or set the Executable path in Settings for a portable installation."),
 
             NicotinePluginState.NotInstalled => new(Checks.ClientPlugin, DiagnosticStatus.Fail,

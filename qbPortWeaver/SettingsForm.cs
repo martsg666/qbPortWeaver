@@ -989,7 +989,7 @@ public partial class SettingsForm : Form
     private static string DescribeNextStep(NicotinePluginStatus status) => status.State switch
     {
         NicotinePluginState.DataFolderMissing =>
-            "Nicotine+'s data folder was not found. Start Nicotine+ once, or set the Executable path above for a portable installation.",
+            $"{NicotinePluginInstaller.DataFolderNotFoundText}. Start Nicotine+ once, or set the Executable path above for a portable installation.",
         NicotinePluginState.NotInstalled =>
             "The bridge plugin is not installed. Click \"Install Plugin\" first.",
         // "Differs" rather than "older": staleness is decided by comparing the installed files with

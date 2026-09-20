@@ -721,7 +721,23 @@ public sealed class PortSyncService
             }
 
             await HandlePortDetectionFailureAsync(vpnManager, cfg, cancellationToken).ConfigureAwait(false);
-            SetSyncResult(status, false, $"Failed to determine {vpnManager.ProviderName} port", LogLevel.Warn);
+            // Status only, no second log line. HandlePortDetectionFailureAsync has already reported this
+            // condition at Warn, and its line is the better of the two - it carries the streak count and
+            // the trigger threshold, which this message lacks. Logging both doubled the tray's
+            // unviewed-warning count for every failed cycle, and this file's own rule is that repeating
+            // a Warn costs more than a duplicated line because of exactly that.
+            //
+            // It also read as a false verdict on the recovery cycle. SetSyncResult runs after the
+            // awaited recovery returns, so the line landed after "Recovery completed" and looked like
+            // the recovery had failed, when it was only this cycle's outcome surfacing late.
+            //
+            // Set directly rather than through SetSyncResult, matching the two sibling failure paths
+            // above (VPN disconnected, and the NAT-PMP adapter not found) which already do this. The
+            // message still reaches the tray tooltip and the Status panel through the status file;
+            // only the duplicate log entry goes. LogCycleOutcome still emits the terminal Error line
+            // from the status value set here.
+            status[StatusKeys.Status] = SyncStatusValues.Error;
+            status[StatusKeys.Message] = $"Failed to determine {vpnManager.ProviderName} port";
             return new TargetPortResult(cfg.UpdateInterval, 0, null);
         }
 

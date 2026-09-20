@@ -82,6 +82,21 @@ internal static class SupportBundle
         sb.AppendLine($"{AppIdentity.AppName} {AppConstants.AppVersion} settings - {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
         sb.AppendLine("Passwords, tokens and API keys are shown as *** .");
         sb.AppendLine();
+
+        // The app-level values first, mirroring the registry tree: they sit above the sections, and
+        // they are where the service search terms, adapter names, process names and the ProtonVPN log
+        // path live. Those are the settings behind "ProtonVPN is not detected" and "adapter not
+        // found", so a bundle that omitted them - as this did - was missing the answer to most of
+        // what it gets sent for.
+        var appValues = RegistrySettingsManager.GetAppSnapshot();
+        if (appValues.Count > 0)
+        {
+            sb.AppendLine("[application]");
+            foreach (var (key, value) in appValues)
+                sb.AppendLine($"  {key} = {value}");
+            sb.AppendLine();
+        }
+
         foreach (string section in RegistrySettingsManager.AllSections)
         {
             var values = RegistrySettingsManager.GetSectionSnapshot(section);
@@ -107,7 +122,19 @@ internal static class SupportBundle
             }
             catch (Exception ex)
             {
-                LogManager.Instance.LogDebug($"SupportBundle.AddDataFiles: {Path.GetFileName(file)} - {ex.Message}");
+                // Warn, not Debug. AddFile creates the entry before the copy that can fail, so the
+                // archive keeps a short file while this counts it as absent. The truncated data is
+                // still worth having; what is not acceptable is that nobody was told - at Debug it
+                // was recorded nowhere at all with debug mode off, and the bundle then went to a
+                // maintainer with a log that simply stops.
+                //
+                // The partial entry cannot be undone: ZipArchiveEntry.Delete throws
+                // NotSupportedException in ZipArchiveMode.Create, and buffering the file to avoid
+                // creating the entry early would defeat the streaming this method exists to do (the
+                // rotated logs run to tens of megabytes each). So it is reported rather than fixed.
+                LogManager.Instance.LogMessage(
+                    $"Could not add '{Path.GetFileName(file)}' to the support bundle, so it may be incomplete in the archive: {ex.Message}",
+                    LogLevel.Warn);
             }
         }
         return added;
@@ -158,7 +185,14 @@ internal static class SupportBundle
         }
         catch (Exception ex)
         {
-            LogManager.Instance.LogDebug($"SupportBundle.FindLogFiles: {ex.Message}");
+            // Warn, not Debug, for the same reason as the per-file catch in AddDataFiles: skipping
+            // is the right degradation, staying silent about it is not. This one loses the *whole*
+            // log set, which is the part of a bundle anyone actually reads, and the user's only
+            // other signal is a file count they have no reason to find surprising. At Debug it was
+            // recorded nowhere at all with debug mode off.
+            LogManager.Instance.LogMessage(
+                $"Could not read the log folder, so the support bundle contains no log files: {ex.Message}",
+                LogLevel.Warn);
             return [];
         }
     }

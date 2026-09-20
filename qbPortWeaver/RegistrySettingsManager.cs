@@ -640,6 +640,44 @@ public static class RegistrySettingsManager
         return result;
     }
 
+    /// <summary>
+    /// The app-level counterpart to <see cref="GetSectionSnapshot"/>: every value stored on
+    /// <c>HKCU\Software\qbPortWeaver</c> itself, sorted by name, with sensitive values masked as
+    /// <c>***</c>. Returns an empty list when the key cannot be read.
+    /// </summary>
+    /// <remarks>
+    /// These sit above the sections and were missing from the support bundle entirely, which is
+    /// where the service search terms, adapter names, process names and the ProtonVPN log path live -
+    /// the values behind "ProtonVPN is not detected" and "adapter not found", which is most of what a
+    /// bundle is sent to answer.
+    /// <para><b>Masked, not filtered</b>, unlike <see cref="GetAppValuesForBackup"/>. That one omits
+    /// keys because a backup has to restore what it carries; a bundle shows the key with its value
+    /// hidden, because "this setting exists but its value is not shown" is itself diagnostic. It is
+    /// why <c>pipeSessionToken</c> belongs here as <c>***</c>: auto-recovery cannot run without it,
+    /// so its presence is worth reporting and its absence is a finding.</para>
+    /// <para><see cref="Microsoft.Win32.RegistryKey.GetValueNames"/> returns this key's own values
+    /// and not its subkeys, so the settings sections are not duplicated here.</para>
+    /// </remarks>
+    internal static IReadOnlyList<(string Key, string Value)> GetAppSnapshot()
+    {
+        var result = new List<(string Key, string Value)>();
+        try
+        {
+            using var regKey = Registry.CurrentUser.OpenSubKey(AppIdentity.AppRegistryKey);
+            if (regKey is null) return result;
+            foreach (var name in regKey.GetValueNames().OrderBy(n => n, StringComparer.OrdinalIgnoreCase))
+            {
+                string value = regKey.GetValue(name)?.ToString() ?? string.Empty;
+                result.Add((name, MaskSensitiveValue(name, value)));
+            }
+        }
+        catch (Exception ex)
+        {
+            LogManager.Instance.LogDebug($"RegistrySettingsManager.GetAppSnapshot: {ex.Message}");
+        }
+        return result;
+    }
+
     /// <summary>Every settings section this build knows about, in declaration order.</summary>
     internal static IReadOnlyCollection<string> AllSections => _defaults.Keys;
 

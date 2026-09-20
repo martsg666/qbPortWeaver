@@ -434,23 +434,38 @@ public partial class SettingsForm : Form
 
     private void btnOK_Click(object? sender, EventArgs e)
     {
-        string selectedColorTheme = cboColorTheme.SelectedItem?.ToString() ?? RegistrySettingsManager.ColorThemeSystem;
         if (!TryCommitSettings()) return;
-
-        // Color theme takes effect at startup via Application.SetColorMode - restart if it changed
-        // since the dialog opened. Compared against the captured value rather than re-reading the
-        // registry here, because Back Up and Restore both write the registry while this dialog is
-        // open: re-reading would find the theme already stored, conclude nothing had changed, and
-        // leave the app running the old one with no prompt.
-        if (selectedColorTheme != _colorThemeOnOpen)
-        {
-            var result = ThemedMessageBox.Confirm(
-                "The color theme change takes effect after restarting.\n\nRestart now?");
-            if (result)
-                Application.Restart();
-        }
-
+        PromptForThemeRestartIfChanged();
         Close();
+    }
+
+    /// <summary>
+    /// Prompts for the restart a colour-theme change needs, once per change.
+    /// </summary>
+    /// <remarks>
+    /// The theme takes effect at startup via <c>Application.SetColorMode</c>, so a change is stored
+    /// immediately but invisible until a restart. Compared against <see cref="_colorThemeOnOpen"/>
+    /// rather than the registry, because every committing path here writes the registry while the
+    /// dialog is open: re-reading would find the theme already stored, conclude nothing had changed,
+    /// and leave the app running the old one with no prompt.
+    /// <para><b>Every path that commits calls this, and always after its own work is finished.</b>
+    /// That ordering is load-bearing for Back Up, which commits *before* writing the file - putting
+    /// the prompt inside <see cref="TryCommitSettings"/> would let an accepted restart fire before
+    /// the export ran, so the user would agree to a restart and get no backup. It was previously
+    /// inline in <c>btnOK_Click</c> alone, which left Back Up and Restore committing a theme with no
+    /// prompt at all: Cancel afterwards did not cancel it, and the next visit found the new value
+    /// already stored so OK stayed silent too.</para>
+    /// <para>The baseline advances once asked, so a second committing action in the same session
+    /// does not ask again.</para>
+    /// </remarks>
+    private void PromptForThemeRestartIfChanged()
+    {
+        string selected = cboColorTheme.SelectedItem?.ToString() ?? RegistrySettingsManager.ColorThemeSystem;
+        if (selected == _colorThemeOnOpen) return;
+
+        _colorThemeOnOpen = selected;
+        if (ThemedMessageBox.Confirm("The color theme change takes effect after restarting.\n\nRestart now?"))
+            Application.Restart();
     }
 
     private void btnCancel_Click(object? sender, EventArgs e) => Close(); // NOSONAR S2325 - Close() is an instance method, handler cannot be static
@@ -483,6 +498,10 @@ public partial class SettingsForm : Form
             ThemedMessageBox.Info($"Your settings were saved and backed up.\n\n{result.Message}");
         else
             ThemedMessageBox.Warn(result.Message);
+
+        // After the export, never before: TryCommitSettings above has already stored a theme change,
+        // and an accepted restart here would otherwise end the process before the file was written.
+        PromptForThemeRestartIfChanged();
     }
 
     private void btnRestoreSettings_Click(object? sender, EventArgs e)
@@ -517,6 +536,11 @@ public partial class SettingsForm : Form
         RefreshNicotinePluginStatus();
         SettingsSaved = true;
         ThemedMessageBox.Info(result.Message);
+
+        // A backup from a machine with a different theme stores one here too, and LoadSettings above
+        // has just put it in the combo. Without this the restored theme sat in the registry unseen:
+        // Cancel did not undo it, and the next visit read it as the baseline so OK stayed silent.
+        PromptForThemeRestartIfChanged();
     }
 
     private void cboClient_SelectedIndexChanged(object? sender, EventArgs e) =>

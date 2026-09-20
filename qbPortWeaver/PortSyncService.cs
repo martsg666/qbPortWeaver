@@ -1911,16 +1911,26 @@ public sealed class PortSyncService
     }
 
     // Launches the post-update shell command (fire-and-forget).
-    // The command string is passed through directly without sanitisation - this is intentional.
-    // It is a user-configured value (stored in the registry under HKCU) so the user already
-    // controls execution in their own context; no external or untrusted input reaches this path.
+    // The command string is passed through directly without sanitisation - intentional, because
+    // running whatever the user chose is the entire feature.
+    //
+    // It is no longer only a hand-configured value, and the note here used to say so: it claimed "no
+    // external or untrusted input reaches this path", which the settings backup/restore feature made
+    // false. A restore writes this key from a JSON file the user may not have authored, so a restored
+    // backup can install a command that runs on the next port change. Corrected rather than deleted,
+    // because that is exactly the kind of claim a later reader would take at face value.
+    //
+    // Carrying the command in a backup is a deliberate decision, not an oversight: dropping it would
+    // silently discard a setting the user configured, which is the failure the rest of the transfer
+    // works to avoid. The exposure is therefore accepted - restoring someone else's settings file
+    // runs the command it contains.
     private static void RunPostUpdateCommand(string cmd)
     {
         LogManager.Instance.LogDebug($"PortSyncService.RunPostUpdateCommand: {cmd}");
         try
         {
             string cmdExe = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "cmd.exe");
-            Process.Start(ProcessHelpers.CreateHiddenStartInfo(cmdExe, $"/C \"{cmd}\""))?.Dispose(); // NOSONAR S4721 - cmd is a user-configured registry value; execution of arbitrary commands is the intended behaviour
+            Process.Start(ProcessHelpers.CreateHiddenStartInfo(cmdExe, $"/C \"{cmd}\""))?.Dispose(); // NOSONAR S4721 - executing the command the user chose is the intended behaviour; see the note above on where the value can originate
             LogManager.Instance.LogMessage("Post-update command launched", LogLevel.Info);
         }
         catch (Exception ex)

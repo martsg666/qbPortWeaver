@@ -173,7 +173,7 @@ public sealed class MovieProcessor(TmdbClient tmdb, bool dryRun, bool createFold
         if (info is null) return false;
         if (!isConfident)
         {
-            LogManager.Instance.LogMessage($"Skipped {skipLabel} - uncertain TMDB match, review in Media Manager", LogLevel.Warn, Subsystem.MediaManager);
+            LogManager.Instance.LogMessage(MediaManagerService.UncertainMatchSkip(skipLabel), LogLevel.Warn, Subsystem.MediaManager);
             return false;
         }
         return true;

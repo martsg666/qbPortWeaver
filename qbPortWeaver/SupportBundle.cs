@@ -31,6 +31,16 @@ internal static class SupportBundle
     // file name changes.
     private const string LogFilePattern = $"{AppIdentity.LogFileName}*";
 
+    /// <summary>
+    /// Heading for the app-level values in a settings listing, distinguishing them from the settings
+    /// sections below.
+    /// </summary>
+    /// <remarks>Shared with <see cref="DiagnosticsService.GetSettingsSnapshot"/> so the bundle's
+    /// snapshot and the pasted report label the same group the same way. Checked against every
+    /// <c>Section*</c> constant in <see cref="RegistrySettingsManager"/>: it collides with none, so it
+    /// cannot be mistaken for a real section.</remarks>
+    internal const string ApplicationGroupName = "application";
+
     /// <summary>Default file name offered in the save dialog, stamped to the minute so successive bundles do not collide.</summary>
     internal static string SuggestedFileName => $"qbPortWeaver-support-{DateTime.Now:yyyy-MM-dd-HHmm}.zip";
 
@@ -91,7 +101,7 @@ internal static class SupportBundle
         var appValues = RegistrySettingsManager.GetAppSnapshot();
         if (appValues.Count > 0)
         {
-            sb.AppendLine("[application]");
+            sb.AppendLine($"[{ApplicationGroupName}]");
             foreach (var (key, value) in appValues)
                 sb.AppendLine($"  {key} = {value}");
             sb.AppendLine();

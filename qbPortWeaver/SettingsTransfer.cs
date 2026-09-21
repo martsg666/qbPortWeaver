@@ -344,7 +344,7 @@ internal static class SettingsTransfer
         // restoring onto a new machine has no other way to learn that the client will not connect
         // until they re-enter them.
         return message +
-            "\n\nPasswords and the TMDB API key are not included in a backup, because Windows ties them to " +
+            "\n\nPasswords, the Nicotine+ token and the TMDB API key are not included in a backup, because Windows ties them to " +
             "one user account on one machine. They have been left as they were - re-enter them if this " +
             "backup came from another PC.";
     }

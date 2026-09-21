@@ -13,8 +13,9 @@ public partial class WhatsNewForm : Form
         "Your settings can be backed up and restored\n" +
         "Settings now has Back Up and Restore buttons. Back Up writes your whole configuration to a " +
         "file, Restore reads it back, so reinstalling or moving to a new PC no longer means setting " +
-        "everything up again by hand. Passwords and the TMDB API key are not in the file: Windows " +
-        "encrypts those for one user account on one machine, so they cannot travel. A restore leaves " +
+        "everything up again by hand. Passwords, the Nicotine+ token and the TMDB API key are not in " +
+        "the file: Windows encrypts those for one user account on one machine, so they cannot " +
+        "travel. A restore leaves " +
         "them exactly as they were and reminds you to enter them again if the backup came from " +
         "another PC.\n\n" +
         "One file with everything a support request needs\n" +

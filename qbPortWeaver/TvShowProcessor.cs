@@ -140,7 +140,8 @@ public sealed class TvShowProcessor(TmdbClient tmdb, bool dryRun, bool createFol
         if (info is null) return;
         if (!isConfident)
         {
-            LogManager.Instance.LogMessage($"Skipped '{Path.GetFileName(filePath)}' - uncertain TMDB match, review in Media Manager", LogLevel.Warn, Subsystem.MediaManager);
+            LogManager.Instance.LogMessage(
+                MediaManagerService.UncertainMatchSkip($"'{Path.GetFileName(filePath)}'"), LogLevel.Warn, Subsystem.MediaManager);
             return;
         }
 

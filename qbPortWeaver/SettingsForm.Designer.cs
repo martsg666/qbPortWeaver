@@ -127,6 +127,8 @@ partial class SettingsForm
         chkDebugMode         = new CheckBox();
         btnOK                = new Button();
         btnCancel            = new Button();
+        btnBackupSettings    = new Button();
+        btnRestoreSettings   = new Button();
         toolTip              = new ToolTip(components);
         tabSettings.SuspendLayout();
         tabGeneral.SuspendLayout();
@@ -892,6 +894,21 @@ partial class SettingsForm
         tabExtra.Name = "tabExtra";
         tabExtra.Text = "Extra";
         // ── Buttons ───────────────────────────────────────────────────
+        // Utility actions left, primary actions right - the same split DiagnosticsForm uses for its
+        // Copy Report and Re-run group. These act on the whole settings tree rather than on one tab,
+        // so they belong on the dialog's button row and not inside the tab control.
+        btnBackupSettings.Location = new Point(12, 449);
+        btnBackupSettings.Name     = "btnBackupSettings";
+        btnBackupSettings.Size     = new Size(110, 28);
+        btnBackupSettings.TabIndex = 3;
+        btnBackupSettings.Text     = "Back Up…";
+        btnBackupSettings.Click   += btnBackupSettings_Click;
+        btnRestoreSettings.Location = new Point(130, 449);
+        btnRestoreSettings.Name     = "btnRestoreSettings";
+        btnRestoreSettings.Size     = new Size(110, 28);
+        btnRestoreSettings.TabIndex = 4;
+        btnRestoreSettings.Text     = "Restore…";
+        btnRestoreSettings.Click   += btnRestoreSettings_Click;
         btnOK.Location = new Point(344, 449);
         btnOK.Name     = "btnOK";
         btnOK.Size     = new Size(82, 28);
@@ -914,6 +931,8 @@ partial class SettingsForm
         Controls.Add(tabSettings);
         Controls.Add(btnOK);
         Controls.Add(btnCancel);
+        Controls.Add(btnBackupSettings);
+        Controls.Add(btnRestoreSettings);
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox     = false;
         MinimizeBox     = false;
@@ -1070,5 +1089,7 @@ partial class SettingsForm
 
     private Button        btnOK;
     private Button        btnCancel;
+    private Button        btnBackupSettings;
+    private Button        btnRestoreSettings;
     private ToolTip       toolTip;
 }

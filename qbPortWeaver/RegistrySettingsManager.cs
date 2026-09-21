@@ -313,17 +313,27 @@ public static class RegistrySettingsManager
     }
 
     /// <summary>Writes a string value to the app-level registry key (<c>HKCU\Software\qbPortWeaver</c>), above the settings sections.</summary>
-    public static void SetAppValue(string key, string value)
+    public static void SetAppValue(string key, string value) => TrySetAppValue(key, value);
+
+    /// <summary>
+    /// <see cref="SetAppValue"/>, returning whether the value actually reached the registry.
+    /// </summary>
+    /// <remarks>For callers that report an outcome to the user. The write swallows its exceptions so
+    /// one unwritable key cannot abort a whole save, which means a caller counting successes would
+    /// otherwise report a restore of settings that never landed.</remarks>
+    public static bool TrySetAppValue(string key, string value)
     {
         try
         {
             using var regKey = Registry.CurrentUser.CreateSubKey(AppIdentity.AppRegistryKey);
             regKey.SetValue(key, value, RegistryValueKind.String);
             LogManager.Instance.LogDebug($"RegistrySettingsManager.SetAppValue: {key} = {MaskSensitiveValue(key, value)}");
+            return true;
         }
         catch (Exception ex)
         {
             LogManager.Instance.LogMessage($"Failed to save app-level setting {key}: {ex.Message}", LogLevel.Warn);
+            return false;
         }
     }
 
@@ -630,6 +640,162 @@ public static class RegistrySettingsManager
         return result;
     }
 
+    /// <summary>
+    /// The app-level counterpart to <see cref="GetSectionSnapshot"/>: every value stored on
+    /// <c>HKCU\Software\qbPortWeaver</c> itself, sorted by name, with sensitive values masked as
+    /// <c>***</c>. Returns an empty list when the key cannot be read.
+    /// </summary>
+    /// <remarks>
+    /// These sit above the sections and were missing from the support bundle entirely, which is
+    /// where the service search terms, adapter names, process names and the ProtonVPN log path live -
+    /// the values behind "ProtonVPN is not detected" and "adapter not found", which is most of what a
+    /// bundle is sent to answer.
+    /// <para><b>Masked, not filtered</b>, unlike <see cref="GetAppValuesForBackup"/>. That one omits
+    /// keys because a backup has to restore what it carries; a bundle shows the key with its value
+    /// hidden, because "this setting exists but its value is not shown" is itself diagnostic. It is
+    /// why <c>pipeSessionToken</c> belongs here as <c>***</c>: auto-recovery cannot run without it,
+    /// so its presence is worth reporting and its absence is a finding.</para>
+    /// <para><see cref="Microsoft.Win32.RegistryKey.GetValueNames"/> returns this key's own values
+    /// and not its subkeys, so the settings sections are not duplicated here.</para>
+    /// </remarks>
+    internal static IReadOnlyList<(string Key, string Value)> GetAppSnapshot()
+    {
+        var result = new List<(string Key, string Value)>();
+        try
+        {
+            using var regKey = Registry.CurrentUser.OpenSubKey(AppIdentity.AppRegistryKey);
+            if (regKey is null) return result;
+            foreach (var name in regKey.GetValueNames().OrderBy(n => n, StringComparer.OrdinalIgnoreCase))
+            {
+                string value = regKey.GetValue(name)?.ToString() ?? string.Empty;
+                result.Add((name, MaskSensitiveValue(name, value)));
+            }
+        }
+        catch (Exception ex)
+        {
+            LogManager.Instance.LogDebug($"RegistrySettingsManager.GetAppSnapshot: {ex.Message}");
+        }
+        return result;
+    }
+
+    /// <summary>Every settings section this build knows about, in declaration order.</summary>
+    internal static IReadOnlyCollection<string> AllSections => _defaults.Keys;
+
+    /// <summary>
+    /// Whether a key may be written to, or read from, a settings backup file.
+    /// </summary>
+    /// <remarks>
+    /// False for every key in <see cref="_logMaskedKeys"/>, which is the encrypted set plus the pipe
+    /// session token. The encrypted values are DPAPI-protected to the current user on the current
+    /// machine, so they are meaningless anywhere else; the pipe token authenticates this install to
+    /// the SYSTEM helper service and must not be transplanted. Sharing that set rather than listing
+    /// the keys again means a secret added there in future is excluded from backups without anyone
+    /// remembering to come back here, which is the same reason the logging mask is built from it.
+    /// </remarks>
+    internal static bool IsTransferableKey(string key) => !_logMaskedKeys.Contains(key);
+
+    /// <summary>
+    /// Whether a key is one this build stores in the given section.
+    /// </summary>
+    /// <remarks><see cref="_defaults"/> is the register of every key the app reads, so a key absent
+    /// from it has no reader here. Restoring one would write a value into the registry that nothing
+    /// consumes and nothing ever removes, which is the same reason an unrecognised *section* is
+    /// refused whole rather than created.</remarks>
+    internal static bool IsKnownSectionKey(string section, string key) =>
+        _defaults.TryGetValue(section, out var sectionDefaults) && sectionDefaults.ContainsKey(key);
+
+    /// <summary>
+    /// Returns a section's stored values with the non-transferable keys omitted entirely, for writing
+    /// to a settings backup. Unlike <see cref="GetSectionSnapshot"/> the values are unmasked, because
+    /// a backup has to restore them; the secrets are left out rather than masked, since a <c>***</c>
+    /// placeholder would restore as a literal password.
+    /// </summary>
+    /// <remarks>
+    /// <b>A REG_EXPAND_SZ value is captured expanded, and restored as a plain string.</b> Considered
+    /// and accepted, not overlooked: <see cref="MigrateLegacyKeys"/> reads with
+    /// <c>DoNotExpandEnvironmentNames</c> precisely to keep a hand-edited <c>%VAR%</c> path from
+    /// being baked in, and this deliberately does not.
+    /// <para>Reading the raw text here would not be enough to preserve the behaviour, because the
+    /// restore writes through <see cref="SetValue"/> as <c>RegistryValueKind.String</c>, and a
+    /// <c>%VAR%</c> string stored under that kind is never expanded on read - so the path would come
+    /// back literal and broken. Preserving it properly means carrying the value kind through the
+    /// backup file and honouring it on the way in, which is a schema change and a second write path
+    /// for a case that only arises when someone has edited the registry by hand. As it stands the
+    /// indirection is lost but the path still works, which is the better of the two failures.</para>
+    /// </remarks>
+    internal static IReadOnlyList<(string Key, string Value)> GetSectionForBackup(string section)
+    {
+        var result = new List<(string Key, string Value)>();
+        try
+        {
+            using var regKey = Registry.CurrentUser.OpenSubKey($@"{BaseKeyPath}\{section}");
+            if (regKey is null) return result;
+            foreach (var name in regKey.GetValueNames().OrderBy(n => n, StringComparer.OrdinalIgnoreCase))
+            {
+                // Both gates, matching the import side exactly. Without the known-key check the
+                // export is the wider of the two, so a value name this build has no reader for is
+                // written to the file and then reported as "not recognised, skipped" when the same
+                // build reads it back.
+                if (!IsKnownSectionKey(section, name) || !IsTransferableKey(name)) continue;
+                result.Add((name, regKey.GetValue(name)?.ToString() ?? string.Empty));
+            }
+        }
+        catch (Exception ex)
+        {
+            LogManager.Instance.LogDebug($"RegistrySettingsManager.GetSectionForBackup: [{section}] - {ex.Message}");
+        }
+        return result;
+    }
+
+    /// <summary>
+    /// Whether an app-level key belongs in a settings backup.
+    /// </summary>
+    /// <remarks>
+    /// True only for the keys in <see cref="_appDefaults"/>, which is this app's register of
+    /// app-level *configuration*: service search terms, adapter names, process names, the ProtonVPN
+    /// log path. An allow-list rather than a deny-list, because that registry key holds two other
+    /// kinds of value that a backup must not carry, and both look like ordinary settings:
+    /// <list type="bullet">
+    /// <item><c>lastSeenVersion</c> is state, not configuration. Restoring it onto a fresh machine
+    /// would tell the app that What's New had already been shown there when it had not.</item>
+    /// <item><c>DesktopShortcut</c> and <c>StartMenuShortcut</c> belong to the installer, which
+    /// writes them as the KeyPath of its per-user shortcut components. Writing an MSI component's
+    /// KeyPath from outside the MSI is not ours to do, and restoring one creates no shortcut
+    /// anyway.</item>
+    /// </list>
+    /// Anything added to <see cref="_appDefaults"/> in future is backed up automatically; anything
+    /// written to that key by the installer, or as runtime state, stays out without a second list to
+    /// maintain.
+    /// </remarks>
+    internal static bool IsBackupAppKey(string key) => _appDefaults.ContainsKey(key);
+
+    /// <summary>
+    /// The app-level configuration values (service search terms, adapter names, the ProtonVPN log
+    /// path) for writing to a settings backup. These sit above the sections in
+    /// <c>HKCU\Software\qbPortWeaver</c> and are as much a part of a working configuration as the
+    /// sections are. Only keys accepted by <see cref="IsBackupAppKey"/> are included.
+    /// </summary>
+    internal static IReadOnlyList<(string Key, string Value)> GetAppValuesForBackup()
+    {
+        var result = new List<(string Key, string Value)>();
+        try
+        {
+            using var regKey = Registry.CurrentUser.OpenSubKey(AppIdentity.AppRegistryKey);
+            if (regKey is null) return result;
+            foreach (var name in regKey.GetValueNames().OrderBy(n => n, StringComparer.OrdinalIgnoreCase))
+            {
+                // Subkeys are the sections, enumerated separately; only this key's own values belong here.
+                if (!IsBackupAppKey(name) || !IsTransferableKey(name)) continue;
+                result.Add((name, regKey.GetValue(name)?.ToString() ?? string.Empty));
+            }
+        }
+        catch (Exception ex)
+        {
+            LogManager.Instance.LogDebug($"RegistrySettingsManager.GetAppValuesForBackup: {ex.Message}");
+        }
+        return result;
+    }
+
     /// <summary>Reads a bool value from the registry. Returns the registered default if the key is missing or not parseable.</summary>
     public static bool GetBool(string section, string key)
     {
@@ -733,17 +899,27 @@ public static class RegistrySettingsManager
     }
 
     /// <summary>Writes a string value to the registry under the given section and key.</summary>
-    public static void SetValue(string section, string key, string value)
+    public static void SetValue(string section, string key, string value) => TrySetValue(section, key, value);
+
+    /// <summary>
+    /// <see cref="SetValue"/>, returning whether the value actually reached the registry.
+    /// </summary>
+    /// <remarks>For callers that report an outcome to the user. The write swallows its exceptions so
+    /// one unwritable key cannot abort a whole save, which means a caller counting successes would
+    /// otherwise report a restore of settings that never landed.</remarks>
+    public static bool TrySetValue(string section, string key, string value)
     {
         try
         {
             using var regKey = Registry.CurrentUser.CreateSubKey($@"{BaseKeyPath}\{section}");
             regKey.SetValue(key, value, RegistryValueKind.String);
             LogManager.Instance.LogDebug($"RegistrySettingsManager.SetValue: [{section}] {key} = {MaskSensitiveValue(key, value)}");
+            return true;
         }
         catch (Exception ex)
         {
             LogManager.Instance.LogMessage($"Failed to save setting [{section}] {key}: {ex.Message}", LogLevel.Warn);
+            return false;
         }
     }
 
@@ -813,18 +989,40 @@ public static class RegistrySettingsManager
 
     // Keys whose values must never be written to logs in plaintext: every encrypted key, plus the
     // app-level secrets stored plaintext but protected by the HKCU ACL (the pipe session token used
-    // to authenticate messages to the SYSTEM helper service).
+    // to authenticate messages to the SYSTEM helper service), plus the former name of any key that
+    // is encrypted under its current one.
     //
     // Built *from* _encryptedKeys rather than re-listing it, so the superset relationship is
     // maintained by the compiler instead of by hand. Re-listing meant a future encrypted key could be
     // added to one set and missed in the other, and the only symptom would be a credential appearing
-    // in a user's log file - the one place nobody thinks to look for one. Declaration order matters
-    // here: field initialisers run top to bottom, so _encryptedKeys above must stay above.
-    private static readonly HashSet<string> _logMaskedKeys =
-        new(_encryptedKeys, StringComparer.OrdinalIgnoreCase)
+    // in a user's log file - the one place nobody thinks to look for one.
+    //
+    // The legacy names are there because MigrateLegacyKeys deliberately leaves a legacy value in
+    // place when its write fails ("Losing the value would be the worse outcome"), so a registry can
+    // still hold qBittorrentPassword, transmissionPassword, delugePassword or nicotineToken. Those
+    // names are absent from _encryptedKeys, which holds the unified names the constants now resolve
+    // to, so without this they read as ordinary settings: printed in full in the diagnostics
+    // settings snapshot that goes into a support bundle, and copied into a settings backup. Derived
+    // from _legacyKeys rather than listed, so a secret renamed in future is covered without anyone
+    // remembering this.
+    //
+    // Declaration order matters here: field initialisers run top to bottom, so _encryptedKeys and
+    // _legacyKeys must both stay above.
+    private static readonly HashSet<string> _logMaskedKeys = BuildLogMaskedKeys();
+
+    private static HashSet<string> BuildLogMaskedKeys()
+    {
+        var masked = new HashSet<string>(_encryptedKeys, StringComparer.OrdinalIgnoreCase)
         {
             AppIdentity.PipeSessionTokenKey
         };
+        foreach (var (_, legacyKey, newKey) in _legacyKeys)
+        {
+            if (_encryptedKeys.Contains(newKey))
+                masked.Add(legacyKey);
+        }
+        return masked;
+    }
 
     // Writes any missing keys for one registry section; returns true if anything was written
     private static bool WriteDefaultsForSection(RegistryKey regKey,

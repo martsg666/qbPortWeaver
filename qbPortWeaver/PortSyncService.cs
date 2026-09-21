@@ -721,7 +721,23 @@ public sealed class PortSyncService
             }
 
             await HandlePortDetectionFailureAsync(vpnManager, cfg, cancellationToken).ConfigureAwait(false);
-            SetSyncResult(status, false, $"Failed to determine {vpnManager.ProviderName} port", LogLevel.Warn);
+            // Status only, no second log line. HandlePortDetectionFailureAsync has already reported this
+            // condition at Warn, and its line is the better of the two - it carries the streak count and
+            // the trigger threshold, which this message lacks. Logging both doubled the tray's
+            // unviewed-warning count for every failed cycle, and this file's own rule is that repeating
+            // a Warn costs more than a duplicated line because of exactly that.
+            //
+            // It also read as a false verdict on the recovery cycle. SetSyncResult runs after the
+            // awaited recovery returns, so the line landed after "Recovery completed" and looked like
+            // the recovery had failed, when it was only this cycle's outcome surfacing late.
+            //
+            // Set directly rather than through SetSyncResult, matching the two sibling failure paths
+            // above (VPN disconnected, and the NAT-PMP adapter not found) which already do this. The
+            // message still reaches the tray tooltip and the Status panel through the status file;
+            // only the duplicate log entry goes. LogCycleOutcome still emits the terminal Error line
+            // from the status value set here.
+            status[StatusKeys.Status] = SyncStatusValues.Error;
+            status[StatusKeys.Message] = $"Failed to determine {vpnManager.ProviderName} port";
             return new TargetPortResult(cfg.UpdateInterval, 0, null);
         }
 
@@ -1401,17 +1417,24 @@ public sealed class PortSyncService
         // Logged, not silent: the address-change line has already told the user a rebind is coming if
         // the port stops answering, and the port has now stopped answering. Returning here without a
         // word leaves them watching recovery run when the promise said a rebind would come first.
-        // Worded for both causes and logged at Info, not Warn. A null list is not only a failed read:
-        // GetInterfaceAddressStateAsync returns null outright for an empty interface token, which means
-        // "bound to all interfaces" - nothing was attempted and nothing failed, exactly as the comment
-        // above says. Asserting a read failure there was wrong, and Warn badged the tray for a benign
-        // state that recurs on every later closed streak because the arm is deliberately left set.
+        // Worded for every cause and logged at Info, not Warn. A null list is not only a failed read,
+        // and the benign causes are the common ones. GetInterfaceAddressStateAsync returns null for an
+        // empty interface token, which means "bound to all interfaces", and for a token that resolves
+        // to no adapter, which is the ordinary VPN-disconnected state. In both of those nothing was
+        // attempted and nothing failed, exactly as the comment above says. Asserting a read failure
+        // there was wrong, and Warn badged the tray for a benign state that recurs on every later
+        // closed streak because the arm is deliberately left set.
         // A genuine read failure is not lost: GetInterfaceAddressesAsync logs it at Debug itself.
+        //
+        // Keep this list in step with GetInterfaceAddressStateAsync's null contract. It has grown once
+        // already: the absent-adapter case was added there without this line or its message being
+        // updated, so the user was told their client was bound to all interfaces while its adapter was
+        // simply gone.
         if (live is null)
         {
             LogManager.Instance.LogMessage(
                 $"No adapter address list to rebind {client.ClientName} against - it is bound to all " +
-                "interfaces, or the list could not be read - escalating to recovery",
+                "interfaces, its adapter is not present, or the list could not be read - escalating to recovery",
                 LogLevel.Info);
             return false;
         }
@@ -1604,14 +1627,21 @@ public sealed class PortSyncService
     // is repaired, warnOnInterfaceMismatch decides whether an unrepaired one is reported.
     //
     // Returns whether the token can be trusted to read an address under - healthy, or repaired just
-    // now. False means the client is still bound by a token that names no live adapter, and the
-    // caller must not run the address check: qBittorrent answers
-    // networkInterfaceAddressList?iface=<stale token> with HTTP 200 and an empty array rather than an
-    // error (measured), so the address check's "live is null means unknown, not healthy" guard never
-    // fires and it reads the adapter as having lost every address. That produces a Warn or an Info
-    // stating something false, arms the port-closed rebind on nothing, and poisons
-    // _lastKnownInterfaceAddresses so the next healthy cycle reports a second phantom change back.
-    // DiagnosticsService.AddInterfaceResultAsync returns after a stale token for this same reason.
+    // now. False means the client is still bound by a token that names no live adapter, and the caller
+    // skips the address check rather than spending a request on a token already known not to resolve:
+    // qBittorrent answers networkInterfaceAddressList?iface=<stale token> with HTTP 200 and an empty
+    // array rather than an error (measured). DiagnosticsService.AddInterfaceResultAsync returns after a
+    // stale token for the same reason.
+    //
+    // This gate is no longer the only thing standing between that empty answer and a phantom
+    // address-loss report, and must not be treated as such. It never covered the case that actually
+    // produces one on an ordinary disconnect: an adapter that is merely *absent* is not stale, so
+    // CheckInterfaceBindingAsync returns "leave the binding alone" and this returns true, with the
+    // token no more resolvable than a stale one. GetInterfaceAddressStateAsync now maps every empty
+    // answer to null, which is what makes the address check's "null means unknown, not healthy" guard
+    // fire for both. Keep that mapping if this gate is ever relaxed - without it, a false Warn or Info
+    // arms the port-closed rebind on nothing and poisons _lastKnownInterfaceAddresses, so the next
+    // healthy cycle reports a second phantom change back.
     private async Task<bool> CheckAndRepairInterfaceBindingAsync(QBittorrentClient client, string? interfaceName, SyncConfig config, CancellationToken cancellationToken)
     {
         var (stale, expectedToken) = await client.CheckInterfaceBindingAsync(interfaceName, cancellationToken).ConfigureAwait(false);
@@ -1702,6 +1732,14 @@ public sealed class PortSyncService
         // real observation rather than against a gap, so a change spanning the gap is still reported.
         if (live is null) return;
 
+        // One normalised key, used by both the comparison below and the store at the end, so the two
+        // cannot disagree about what a missing interface name is. They did: the store collapsed null
+        // to empty while the comparison used the raw value, so a null name could never match itself
+        // and the change test was dead for any cycle that read a token but no name. Unreachable today
+        // (qBittorrent writes the two preferences together), which is exactly why an asymmetry here
+        // could sit unnoticed rather than announce itself.
+        string interfaceKey = interfaceName ?? string.Empty;
+
         if (!QBittorrentClient.IsWildcardBindAddress(pinned) && !live.Contains(pinned, StringComparer.OrdinalIgnoreCase))
         {
             // Provably broken rather than suspected: the client is bound to an address the adapter does
@@ -1711,7 +1749,7 @@ public sealed class PortSyncService
         }
         else if (QBittorrentClient.IsWildcardBindAddress(pinned) &&
                  _lastKnownInterfaceAddresses is { } baseline &&
-                 string.Equals(baseline.Interface, interfaceName, StringComparison.Ordinal) &&
+                 string.Equals(baseline.Interface, interfaceKey, StringComparison.Ordinal) &&
                  !baseline.Addresses.SequenceEqual(live, StringComparer.OrdinalIgnoreCase))
         {
             // The wildcard test is load-bearing, not a tidy-up. The first branch is false in *two*
@@ -1775,7 +1813,8 @@ public sealed class PortSyncService
         }
 
         // Keyed to the interface it was read from, so the next cycle only compares like with like.
-        _lastKnownInterfaceAddresses = (interfaceName ?? string.Empty, live);
+        // Same normalised key the comparison above used - see interfaceKey.
+        _lastKnownInterfaceAddresses = (interfaceKey, live);
     }
 
     // Corrects a pin that names an address the adapter no longer has. Writing the live address is a real
@@ -1872,16 +1911,26 @@ public sealed class PortSyncService
     }
 
     // Launches the post-update shell command (fire-and-forget).
-    // The command string is passed through directly without sanitisation - this is intentional.
-    // It is a user-configured value (stored in the registry under HKCU) so the user already
-    // controls execution in their own context; no external or untrusted input reaches this path.
+    // The command string is passed through directly without sanitisation - intentional, because
+    // running whatever the user chose is the entire feature.
+    //
+    // It is no longer only a hand-configured value, and the note here used to say so: it claimed "no
+    // external or untrusted input reaches this path", which the settings backup/restore feature made
+    // false. A restore writes this key from a JSON file the user may not have authored, so a restored
+    // backup can install a command that runs on the next port change. Corrected rather than deleted,
+    // because that is exactly the kind of claim a later reader would take at face value.
+    //
+    // Carrying the command in a backup is a deliberate decision, not an oversight: dropping it would
+    // silently discard a setting the user configured, which is the failure the rest of the transfer
+    // works to avoid. The exposure is therefore accepted - restoring someone else's settings file
+    // runs the command it contains.
     private static void RunPostUpdateCommand(string cmd)
     {
         LogManager.Instance.LogDebug($"PortSyncService.RunPostUpdateCommand: {cmd}");
         try
         {
             string cmdExe = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "cmd.exe");
-            Process.Start(ProcessHelpers.CreateHiddenStartInfo(cmdExe, $"/C \"{cmd}\""))?.Dispose(); // NOSONAR S4721 - cmd is a user-configured registry value; execution of arbitrary commands is the intended behaviour
+            Process.Start(ProcessHelpers.CreateHiddenStartInfo(cmdExe, $"/C \"{cmd}\""))?.Dispose(); // NOSONAR S4721 - executing the command the user chose is the intended behaviour; see the note above on where the value can originate
             LogManager.Instance.LogMessage("Post-update command launched", LogLevel.Info);
         }
         catch (Exception ex)

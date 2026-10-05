@@ -5,8 +5,11 @@ internal static class Program
     [STAThread]
     static void Main()
     {
+        // Initialize WinForms defaults before any app-specific UI setup can create an IWin32Window.
+        ApplicationConfiguration.Initialize();
+
         // Route UI-thread event-handler exceptions through Application.ThreadException instead
-        // of the OS crash dialog. Must be called before ApplicationConfiguration.Initialize().
+        // of the OS crash dialog.
         Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
         Application.ThreadException += OnThreadException;
         AppDomain.CurrentDomain.UnhandledException += OnUnhandledException;
@@ -18,7 +21,6 @@ internal static class Program
         // ignores dark mode; setting this once here means no individual ContextMenuStrip has to
         // remember it. Must come after SetColorMode and before any menu is created.
         ToolStripManager.RenderMode = ToolStripManagerRenderMode.System;
-        ApplicationConfiguration.Initialize();
 
         // Enforce single instance per Windows user using a named mutex.
         // Local\ prefix scopes the mutex to the current session so each Windows user can run

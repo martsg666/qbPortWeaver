@@ -65,37 +65,55 @@ internal sealed class HelperLogger(string logFilePath, bool debugMode, Action<Ac
         {
             try
             {
-                runAsCaller(() =>
-                {
-                    using var fs = new FileStream(logFilePath, FileMode.Append, FileAccess.Write, FileShare.ReadWrite);
-                    using var writer = new StreamWriter(fs, Encoding.UTF8);
-                    writer.Write(entry);
-                });
+                AppendAsCaller(entry);
                 return true;
             }
             catch (DirectoryNotFoundException) when (attempt < WriteMaxAttempts - 1)
             {
                 // Edge case: AppData subfolder does not yet exist (helper runs before the tray app has
                 // created it on a fresh install). Create the directory and let the loop retry.
-                // CreateDirectory is idempotent so no per-instance flag is needed. As the caller, for
-                // the same reason as the write: SYSTEM must not create directories where the caller points.
-                try
-                {
-                    string? dir = Path.GetDirectoryName(logFilePath);
-                    if (!string.IsNullOrEmpty(dir)) runAsCaller(() => Directory.CreateDirectory(dir));
-                }
-                catch { return false; } // directory creation also failed; log entry is lost
+                if (!TryCreateLogDirectoryAsCaller()) return false; // directory creation also failed; log entry is lost
             }
             catch (IOException) when (attempt < WriteMaxAttempts - 1)
             {
                 Thread.Sleep(WriteRetryDelayMs); // intentional: WriteLog is synchronous by design; retries are rare and brief
             }
-            catch (IOException) { return false; }
-            catch (UnauthorizedAccessException) { return false; }
-            // The client disconnected or the pipe was torn down, so there is no identity left to write
-            // as. Writing as SYSTEM instead is exactly what this class must not do, so the entry is lost.
-            catch (Exception ex) when (ex is InvalidOperationException or ObjectDisposedException) { return false; }
+            // Out of retries, no permission, or the client has gone. InvalidOperationException and
+            // ObjectDisposedException mean the pipe was disconnected or torn down, so there is no
+            // identity left to write as - and writing as SYSTEM instead is exactly what this class must
+            // not do, so the entry is lost.
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException
+                                       or InvalidOperationException or ObjectDisposedException)
+            {
+                return false;
+            }
         }
         return false;
+    }
+
+    // One append of a formatted entry, impersonating the pipe client - see the class remarks.
+    private void AppendAsCaller(string entry) =>
+        runAsCaller(() =>
+        {
+            using var fs = new FileStream(logFilePath, FileMode.Append, FileAccess.Write, FileShare.ReadWrite);
+            using var writer = new StreamWriter(fs, Encoding.UTF8);
+            writer.Write(entry);
+        });
+
+    // Creates the log file's folder, impersonating the pipe client for the same reason as the write:
+    // SYSTEM must not create directories where the caller points. CreateDirectory is idempotent, so no
+    // per-instance flag is needed. Returns false when the folder could not be created.
+    private bool TryCreateLogDirectoryAsCaller()
+    {
+        try
+        {
+            string? dir = Path.GetDirectoryName(logFilePath);
+            if (!string.IsNullOrEmpty(dir)) runAsCaller(() => Directory.CreateDirectory(dir));
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
     }
 }

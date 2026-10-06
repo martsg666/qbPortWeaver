@@ -47,6 +47,19 @@ internal sealed record NicotinePluginActionResult(bool Success, string Message);
 /// </summary>
 internal static class NicotinePluginInstaller
 {
+    /// <summary>
+    /// The one wording for "Nicotine+'s data folder could not be located", shared by the Diagnostics
+    /// row, the Settings next-step line and this class's own failure paths.
+    /// </summary>
+    /// <remarks>Three surfaces describe this same state, and the Diagnostics hint for it sends the
+    /// user to the Settings dialog, so two of them can be on screen together. Sharing the clause is
+    /// the same rule <c>DiagnosticsService.ClientUnreachableSkip</c> follows, and for the same
+    /// reason: one condition should not end up explained several different ways.
+    /// <para>Callers append their own next step - the surfaces legitimately differ there
+    /// (Diagnostics carries a separate Hint, Settings says "above", the installer's two are dialog
+    /// text) - so only this leading clause is shared, and it carries no trailing punctuation.</para></remarks>
+    internal const string DataFolderNotFoundText = "Nicotine+'s data folder was not found";
+
     private const string ResourcePrefix = "qbPortWeaver.Plugins.Nicotine.qbpw_nicotine_bridge.";
     private const string PluginInfoFileName = NicotinePluginDiscovery.PluginMarkerFileName;
     private const string PluginsSection = "plugins";
@@ -72,7 +85,7 @@ internal static class NicotinePluginInstaller
         if (dataFolder is null)
         {
             return new NicotinePluginStatus(NicotinePluginState.DataFolderMissing,
-                "Nicotine+'s data folder was not found", null, null, null);
+                DataFolderNotFoundText, null, null, null);
         }
 
         string pluginFolder = NicotinePluginDiscovery.CombinePluginFolder(dataFolder);
@@ -152,7 +165,7 @@ internal static class NicotinePluginInstaller
         if (dataFolder is null)
         {
             return new NicotinePluginActionResult(false,
-                "Nicotine+'s data folder was not found.\n\n" +
+                $"{DataFolderNotFoundText}.\n\n" +
                 "Start Nicotine+ once so it creates its data folder, or set the Executable path " +
                 "above if this is a portable installation.");
         }
@@ -217,7 +230,7 @@ internal static class NicotinePluginInstaller
 
         string? dataFolder = NicotinePluginDiscovery.ResolveDataFolder(exePathHint);
         if (dataFolder is null)
-            return new NicotinePluginActionResult(false, "Nicotine+'s data folder was not found.");
+            return new NicotinePluginActionResult(false, $"{DataFolderNotFoundText}.");
 
         string configPath = Path.Combine(dataFolder, ConfigFolderName, ConfigFileName);
         string fallbackPath = Path.Combine(dataFolder, ConfigFolderName, ConfigFallbackFileName);

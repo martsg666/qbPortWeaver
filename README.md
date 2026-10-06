@@ -128,6 +128,12 @@ After installing, open **Settings** from the tray icon to configure the applicat
 - **Settings Dialog**
   All configuration options are editable through a dedicated Settings form (tray menu → Settings), organised into **General**, **Client**, **Auto-Recovery**, and **Extra** tabs, with inline descriptions and tooltips for each option. A **Detect** button on the General tab finds a running or installed client (qBittorrent, Transmission, Deluge, or Nicotine+) and fills in its selection and process details, asking you to choose when more than one is found. A second **Detect** button does the same for the VPN provider, selecting ProtonVPN or PIA when its service is present on the machine. NAT-PMP gateways are not machine-local and so cannot be detected; select **NAT-PMP** yourself if that is what you use.
 
+- **Back Up and Restore Settings**
+  **Back Up…** on the Settings dialog saves your configuration to a JSON file, and **Restore…** reads it back, so a reinstall or a move to another PC does not mean setting everything up again by hand. Every setting is included, along with the VPN provider details stored alongside them (service names, adapter names, client process names and the ProtonVPN log path). Passwords, the Nicotine+ token and the TMDB API key are not, because Windows encrypts them to one user account on one machine: a restore leaves those exactly as they were, and tells you to re-enter them if the backup came from elsewhere. Backing up saves the dialog once you have chosen where to put the file, so what you see on screen is what lands in it. A restore replaces your current settings and cannot be undone, so it confirms first. Individual entries this version does not recognise are skipped and counted rather than rejecting the whole file; a backup whose format is newer than this build understands is refused outright, leaving your settings untouched.
+
+- **Support Bundle**
+  **Save Support Bundle…** in the Diagnostics window collects everything a support request needs into one zip: the diagnostics report as shown, a settings snapshot covering every section and the values stored alongside them, the current log with its rotated backups, the status file and the port history. Assembling that by hand is easy to get wrong, because the log rotates and the window that explains a problem may already have moved into a backup file. Passwords, tokens and API keys are masked, and the key names are kept so the report still shows which settings are present.
+
 - **Connection Test**
   Each client section in Settings has a **Test** button next to the URL. It checks the connection to the selected client using the values currently entered (no need to save first), then reports success along with the current listening port, or points you to the log if it cannot connect.
 
@@ -370,7 +376,7 @@ Some problems sit outside the sync loop and used to pass unnoticed. Each of thes
 
 - **The log file cannot be written** (disk full, or permissions on the qbPortWeaver folder). Reported as a tray message rather than a log entry, for the obvious reason. It is announced once per episode and re-arms after a write succeeds, so a persistently failing log does not notify on every entry.
 - **The Windows startup entry could not be updated** after the application moved. Logged as a warning naming where the entry still points, since the consequence is that qbPortWeaver may not start at logon, or may start an older copy. Write access to that registry key is often restricted by group policy on managed machines.
-- **The port history file could not be written**, which means Recent Port Changes stops updating.
+- **The port history file could not be written**, which means Recent Port Changes stops updating. If the file is damaged rather than unwritable (for example after a power cut), it is reset instead, with a warning in the log, and the history starts over.
 - **The helper service is older than the application**, usually after an upgrade where the service was left behind. Recovery still runs, but newer behaviour may be missing; reinstall qbPortWeaver to update it. The reverse case, a helper newer than the app after a downgrade, is reported separately so the advice is not misleading.
 
 ---

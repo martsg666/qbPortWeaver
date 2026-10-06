@@ -20,8 +20,10 @@ namespace qbPortWeaver.HelperService;
 /// handshake that rejects malformed and stale connections, not an authentication boundary between
 /// users; the actual boundary is the pipe ACL. See "Trust boundary" below for what is genuinely
 /// trusted, and do not treat this line as a per-user gate when deciding whether to widen that ACL.
-/// The log file path is derived from the caller's HKCU Volatile Environment during impersonation
-/// rather than being caller-supplied, so no path validation is needed.
+/// The log file path is derived from the caller's HKCU Volatile Environment during impersonation. That
+/// value, and the folder it names, are under the caller's control, so the path is caller-controlled in
+/// effect: HelperLogger therefore performs every file operation impersonating the caller, never as
+/// SYSTEM, and the write can only reach what the caller could already write.
 ///
 /// Trust boundary: the helper trusts any caller that (a) has access to the named pipe ACL
 /// (AuthenticatedUserSid) and (b) can read the pipeSessionToken value from their own HKCU hive.
@@ -155,7 +157,11 @@ internal sealed class HelperPipeServer(ILogger<HelperPipeServer> logger) : Backg
             return;
         }
 
-        var helperLogger = new HelperLogger(logFilePath, debugMode);
+        // File writes run as the pipe client, not as SYSTEM - see HelperLogger. The pipe stays
+        // connected for the whole action (the client waits for the result line), so the client's
+        // identity is available for every entry the action logs.
+        var helperLogger = new HelperLogger(logFilePath, debugMode,
+            write => pipe.RunAsClient(new PipeStreamImpersonationWorker(write)));
 
         switch (action)
         {

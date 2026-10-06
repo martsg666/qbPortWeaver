@@ -308,7 +308,7 @@ public static class DiagnosticsService
         DiagnosticResult result = status.State switch
         {
             NicotinePluginState.DataFolderMissing => new(Checks.ClientPlugin, DiagnosticStatus.Warn,
-                "Nicotine+'s data folder was not found",
+                NicotinePluginInstaller.DataFolderNotFoundText,
                 "Start Nicotine+ once, or set the Executable path in Settings for a portable installation."),
 
             NicotinePluginState.NotInstalled => new(Checks.ClientPlugin, DiagnosticStatus.Fail,
@@ -525,17 +525,33 @@ public static class DiagnosticsService
     }
 
     /// <summary>
-    /// Returns the port-sync-relevant registry settings (general, the active client, and extra),
-    /// grouped by section, for the diagnostics report. Sensitive values are masked; sections with no
-    /// stored values are omitted.
+    /// Returns the port-sync-relevant registry settings for the diagnostics report: the app-level
+    /// values, then general, the active client, and extra. Sensitive values are masked; groups with
+    /// no stored values are omitted.
     /// </summary>
+    /// <remarks>
+    /// The app-level block comes first, mirroring the registry tree and matching the order the
+    /// support bundle's snapshot uses, so the two surfaces read the same way. It holds the service
+    /// search terms, adapter names, process names and the ProtonVPN log path - the settings behind
+    /// "ProtonVPN is not detected" and "adapter not found", which the report was previously unable to
+    /// answer because it only ever carried section values.
+    /// <para>The rest stays trimmed on purpose: this report is pasted into an issue body, so it takes
+    /// the active client's section rather than all four. The app-level block is the same content the
+    /// bundle carries, deliberately not filtered further - two surfaces disagreeing about what
+    /// <c>[application]</c> means would be worse than a dozen extra lines.</para>
+    /// </remarks>
     internal static IReadOnlyList<(string Section, IReadOnlyList<(string Key, string Value)> Values)> GetSettingsSnapshot()
     {
         string clientSetting = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyClient);
         string activeClientSection = ClientRegistry.Resolve(clientSetting).Section;
 
-        string[] sections = [RegistrySettingsManager.SectionGeneral, activeClientSection, RegistrySettingsManager.SectionExtra];
         var snapshot = new List<(string Section, IReadOnlyList<(string Key, string Value)> Values)>();
+
+        var appValues = RegistrySettingsManager.GetAppSnapshot();
+        if (appValues.Count > 0)
+            snapshot.Add((SupportBundle.ApplicationGroupName, appValues));
+
+        string[] sections = [RegistrySettingsManager.SectionGeneral, activeClientSection, RegistrySettingsManager.SectionExtra];
         foreach (var section in sections)
         {
             var values = RegistrySettingsManager.GetSectionSnapshot(section);

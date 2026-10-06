@@ -115,7 +115,13 @@ public sealed class TmdbClient(string apiKey)
                    string.Equals(FileNameParser.NormalizeTitleForMatch(getTitle(c)), normalizedSearch, StringComparison.Ordinal))
                ?? candidates.FirstOrDefault(c =>
                    string.Equals(FileNameParser.NormalizeTitleForMatch(getTitle(c)), normalizedSearch, StringComparison.Ordinal))
-               ?? candidates[0])
+               // TMDB's own top-ranked result, read through FirstOrNull rather than indexed: the
+               // ternary guards null but not empty, and this method takes an arbitrary search
+               // delegate, so "never returns an empty list" is a property of today's two callers
+               // rather than of anything enforced here. An empty list now falls through to the
+               // retry-without-year branch below instead of throwing past both callers' catch
+               // filters. Same accessor the retry branch and the fallback lookups already use.
+               ?? FirstOrNull(candidates))
             : null;
 
         // Without a year in the filename we cannot corroborate the match by year alone.

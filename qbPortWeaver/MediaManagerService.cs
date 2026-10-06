@@ -671,6 +671,23 @@ public static class MediaManagerService
         TmdbCacheManager.Clear();
     }
 
+    /// <summary>
+    /// The one wording for skipping an import because the TMDB match is not confident enough.
+    /// </summary>
+    /// <remarks>Shared by both processors so a single condition cannot be logged two ways. They
+    /// interleave in the same log during one import - a source folder can hold films and episodes -
+    /// so two copies would be visibly inconsistent, not merely a maintenance risk. The sibling
+    /// outcome is already single-sourced this way in <c>TmdbClient.LookupAsync</c> ("No TMDB match
+    /// found for ...").
+    /// <para>A method rather than a suffix constant, so the shape of the sentence is owned here too
+    /// and one copy cannot quietly gain a full stop. Only the wording is shared: the two processors
+    /// keep their own control flow, which differs for local reasons (<c>MovieProcessor</c> routes
+    /// through a <c>ShouldImportMatch</c> helper carrying <c>[NotNullWhen(true)]</c>).</para></remarks>
+    /// <param name="label">What was skipped: a quoted file name, or <c>folder '&lt;name&gt;'</c> for
+    /// a multi-part film resolved from its containing folder.</param>
+    internal static string UncertainMatchSkip(string label) =>
+        $"Skipped {label} - uncertain TMDB match, review in Media Manager";
+
     internal static ImportMode ParseImportMode(string value) =>
         Enum.TryParse<ImportMode>(value, ignoreCase: true, out var mode) ? mode : ImportMode.Hardlink;
 

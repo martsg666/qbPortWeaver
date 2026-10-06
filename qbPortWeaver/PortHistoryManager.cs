@@ -58,7 +58,21 @@ public static class PortHistoryManager
         {
             try
             {
-                var entries = ReadCore();
+                List<PortHistoryEntry> entries;
+                try
+                {
+                    entries = ReadCore();
+                }
+                catch (JsonException ex)
+                {
+                    // Unreadable is not the same as unwritable: the atomic write below replaces the
+                    // file, so the history restarts rather than freezing until someone deletes it by
+                    // hand. Reachable without a hand edit - WriteAtomic does not flush the temp file to
+                    // disk before the rename, so a power loss can leave it empty.
+                    LogManager.Instance.LogMessage(
+                        $"The port history file was unreadable and has been reset: {ex.Message}", LogLevel.Warn);
+                    entries = [];
+                }
                 entries.Add(new PortHistoryEntry
                 {
                     Timestamp = DateTimeOffset.Now,

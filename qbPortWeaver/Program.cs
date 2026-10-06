@@ -5,11 +5,13 @@ internal static class Program
     [STAThread]
     static void Main()
     {
-        // Initialize WinForms defaults before any app-specific UI setup can create an IWin32Window.
+        // Must run before SetColorMode below: switching to the dark color set can pump messages and
+        // create a window handle, after which Initialize() throws (SetCompatibleTextRenderingDefault
+        // requires that no handle exists yet). Seen with the System theme while Windows is in dark mode.
         ApplicationConfiguration.Initialize();
 
         // Route UI-thread event-handler exceptions through Application.ThreadException instead
-        // of the OS crash dialog.
+        // of the OS crash dialog. Must be called before any window handle is created.
         Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
         Application.ThreadException += OnThreadException;
         AppDomain.CurrentDomain.UnhandledException += OnUnhandledException;

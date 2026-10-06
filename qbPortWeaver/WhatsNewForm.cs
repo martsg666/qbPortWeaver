@@ -24,6 +24,10 @@ public partial class WhatsNewForm : Form
         "fills, so the part that explains a problem has often moved into an older file by the time " +
         "anyone asks for it, and that is easy to miss when sending logs by hand. Passwords and keys " +
         "are hidden, but check the files before sharing them.\n\n" +
+        "Fixed: the app could close as soon as it started\n" +
+        "With the color theme set to System while Windows was in dark mode, qbPortWeaver could close " +
+        "immediately on startup without showing anything. It now starts normally with every theme " +
+        "setting.\n\n" +
         "Previously released\n\n" +
         "New in 2.6.8\n\n" +
         "Diagnostics now checks your internet connection\n" +

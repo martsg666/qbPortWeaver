@@ -376,7 +376,7 @@ Some problems sit outside the sync loop and used to pass unnoticed. Each of thes
 
 - **The log file cannot be written** (disk full, or permissions on the qbPortWeaver folder). Reported as a tray message rather than a log entry, for the obvious reason. It is announced once per episode and re-arms after a write succeeds, so a persistently failing log does not notify on every entry.
 - **The Windows startup entry could not be updated** after the application moved. Logged as a warning naming where the entry still points, since the consequence is that qbPortWeaver may not start at logon, or may start an older copy. Write access to that registry key is often restricted by group policy on managed machines.
-- **The port history file could not be written**, which means Recent Port Changes stops updating.
+- **The port history file could not be written**, which means Recent Port Changes stops updating. If the file is damaged rather than unwritable (for example after a power cut), it is reset instead, with a warning in the log, and the history starts over.
 - **The helper service is older than the application**, usually after an upgrade where the service was left behind. Recovery still runs, but newer behaviour may be missing; reinstall qbPortWeaver to update it. The reverse case, a helper newer than the app after a downgrade, is reported separately so the advice is not misleading.
 
 ---

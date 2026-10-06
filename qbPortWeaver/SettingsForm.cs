@@ -1186,6 +1186,39 @@ public partial class SettingsForm : Form
         return newCts.Token;
     }
 
+    // Fills the adapter combo from a discovery result and selects the saved adapter.
+    //
+    // The saved adapter is kept even when discovery did not return it, which is the usual state while
+    // the VPN is down: its adapter is absent or not answering, while some other adapter - typically the
+    // home router - may well answer NAT-PMP. Falling back to the first discovered entry meant any OK,
+    // for an unrelated change, silently re-pointed port mapping at that adapter, outside the tunnel.
+    // And with nothing discovered, the placeholder blocked saving altogether, so a NAT-PMP user could
+    // not change any setting until the VPN was back. The placeholder now appears only when nothing is
+    // saved either, which is the one case where there is genuinely no adapter to keep.
+    // Matched ignoring case, as the sync loop matches adapter names.
+    private void PopulateAdapterCombo(IEnumerable<string> discovered, string savedAdapter)
+    {
+        cboNatPmpAdapter.Items.Clear();
+        foreach (string name in discovered)
+            cboNatPmpAdapter.Items.Add(name);
+
+        string? match = cboNatPmpAdapter.Items.Cast<string>()
+            .FirstOrDefault(n => n.Equals(savedAdapter, StringComparison.OrdinalIgnoreCase));
+        if (match is null && !string.IsNullOrEmpty(savedAdapter))
+        {
+            cboNatPmpAdapter.Items.Insert(0, savedAdapter);
+            match = savedAdapter;
+        }
+
+        if (cboNatPmpAdapter.Items.Count == 0)
+            cboNatPmpAdapter.Items.Add(NoAdaptersFoundPlaceholder);
+
+        if (match is not null)
+            cboNatPmpAdapter.SelectedItem = match;
+        else
+            cboNatPmpAdapter.SelectedIndex = 0;
+    }
+
     private async Task DiscoverNatPmpAdaptersAsync(string savedAdapter)
     {
         try
@@ -1200,20 +1233,7 @@ public partial class SettingsForm : Form
             if (IsDisposed) return;
             try
             {
-                cboNatPmpAdapter.Items.Clear();
-                if (adapters.Count == 0)
-                {
-                    cboNatPmpAdapter.Items.Add(NoAdaptersFoundPlaceholder);
-                    cboNatPmpAdapter.SelectedIndex = 0;
-                }
-                else
-                {
-                    foreach (var adapter in adapters)
-                        cboNatPmpAdapter.Items.Add(adapter.ProviderName);
-                    cboNatPmpAdapter.SelectedItem = savedAdapter;
-                    if (cboNatPmpAdapter.SelectedIndex < 0)
-                        cboNatPmpAdapter.SelectedIndex = 0;
-                }
+                PopulateAdapterCombo(adapters.Select(a => a.ProviderName), savedAdapter);
                 bool isNatPmp = cboVpnProvider.SelectedItem?.ToString() == RegistrySettingsManager.VpnProviderNatPmp;
                 SetAdapterControlsEnabled(isNatPmp);
             }
@@ -1234,9 +1254,7 @@ public partial class SettingsForm : Form
             try
             {
                 LogManager.Instance.LogDebug($"SettingsForm.DiscoverNatPmpAdaptersAsync: {ex.Message}");
-                cboNatPmpAdapter.Items.Clear();
-                cboNatPmpAdapter.Items.Add(NoAdaptersFoundPlaceholder);
-                cboNatPmpAdapter.SelectedIndex = 0;
+                PopulateAdapterCombo([], savedAdapter);
                 bool isNatPmp = cboVpnProvider.SelectedItem?.ToString() == RegistrySettingsManager.VpnProviderNatPmp;
                 SetAdapterControlsEnabled(isNatPmp);
             }

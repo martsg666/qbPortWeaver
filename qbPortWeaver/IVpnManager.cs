@@ -2,14 +2,15 @@
 
 /// <summary>
 /// Provider-agnostic contract for reading the forwarded port and driving auto-recovery
-/// for a VPN tunnel (ProtonVPN, PIA) or NAT-PMP gateway.
+/// for a VPN tunnel (ProtonVPN, PIA), a NAT-PMP gateway, or a port set in Settings (Static port).
 /// </summary>
 public interface IVpnManager
 {
     /// <summary>
     /// Display name of the provider or gateway used for port detection.
     /// For ProtonVPN and PIA this is the provider name (e.g. "ProtonVPN", "PIA").
-    /// For NAT-PMP this is the network adapter name of the responding gateway.
+    /// For NAT-PMP this is the network adapter name of the responding gateway; for Static port, the
+    /// network adapter chosen in Settings.
     /// </summary>
     string ProviderName { get; }
 
@@ -17,6 +18,7 @@ public interface IVpnManager
     /// Returns <see langword="true"/> if the provider or gateway is currently reachable and active.
     /// For ProtonVPN this means the tunnel adapter is up; for PIA it means piactl reports the connection
     /// state as Connected. For NAT-PMP this means the configured network adapter is up (gateway responsiveness is verified at creation time).
+    /// For Static port it means the configured network adapter is up.
     /// </summary>
     bool IsVpnConnected();
 
@@ -28,6 +30,7 @@ public interface IVpnManager
     /// mappings - UDP then TCP - since the protocols are independent and a gateway may grant one
     /// without the other. The returned port is the UDP grant; a TCP mapping that is refused or
     /// lands on a different port is reported but does not change the result.
+    /// For Static port this is the port entered in Settings, returned as is.
     /// <para>Cancellation is best-effort and differs by provider. NAT-PMP genuinely aborts an
     /// in-flight request, while ProtonVPN and PIA wrap synchronous work in <c>Task.Run</c>, where the
     /// token can only prevent the work starting - once running it completes regardless. Both are
@@ -55,15 +58,15 @@ public interface IVpnManager
     /// Returns the recovery target passed to <c>AutoRecoveryManager.TriggerRestartAsync</c> or
     /// <c>TriggerCycleAdapterAsync</c>, or <see langword="null"/> if recovery is not supported.
     /// For ProtonVPN and PIA this is the provider token (e.g. "ProtonVPN", "PIA").
-    /// For NAT-PMP this is the provider token when the adapter belongs to a known provider,
-    /// or the adapter name when it does not (e.g. a standalone NAT-PMP gateway).
+    /// For NAT-PMP and Static port this is the provider token when the adapter belongs to a known
+    /// provider, or the adapter name when it does not (e.g. a standalone NAT-PMP gateway).
     /// </summary>
     string? GetRecoveryTarget();
 
     /// <summary>
     /// Returns the auto-recovery action to request from the helper service.
     /// For ProtonVPN and PIA this is always <see cref="qbPortWeaver.Shared.HelperProtocol.ActionRestart"/>.
-    /// For NAT-PMP this is <see cref="qbPortWeaver.Shared.HelperProtocol.ActionRestart"/> when the adapter belongs
+    /// For NAT-PMP and Static port this is <see cref="qbPortWeaver.Shared.HelperProtocol.ActionRestart"/> when the adapter belongs
     /// to a known provider, or <see cref="qbPortWeaver.Shared.HelperProtocol.ActionCycleAdapter"/> otherwise.
     /// </summary>
     string GetRecoveryAction();
@@ -72,7 +75,7 @@ public interface IVpnManager
     /// Returns <see langword="true"/> if <paramref name="interfaceName"/> matches this provider's adapter naming convention.
     /// Each implementation performs a bidirectional case-insensitive substring match against its configured
     /// adapter name(s), so e.g. registry "ProtonVPN" matches Windows adapter "ProtonVPN TUN" and vice versa.
-    /// NAT-PMP and PIA match a single configured name; ProtonVPN matches either its legacy name
+    /// NAT-PMP, Static port and PIA match a single configured name; ProtonVPN matches either its legacy name
     /// ("ProtonVPN" / "ProtonVPN TUN") or its in-house tunnel name ("ProTUN").
     /// </summary>
     bool IsAdapterMatch(string interfaceName);

@@ -351,11 +351,10 @@ public partial class SettingsForm : Form
         RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyVpnProvider, cboVpnProvider.SelectedItem?.ToString() ?? RegistrySettingsManager.VpnProviderDisabled);
         RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyClient, cboClient.SelectedItem?.ToString() ?? RegistrySettingsManager.ClientNameQBittorrent);
         RegistrySettingsManager.SetInt(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyUpdateIntervalSeconds, (int)nudUpdateInterval.Value);
-        // If discovery is still pending (combo disabled), preserve the existing value to avoid
-        // saving the "Discovering adapters…" placeholder text as the adapter name
-        string adapterName = cboVpnAdapter.Enabled
-            ? cboVpnAdapter.SelectedItem?.ToString() ?? string.Empty
-            : RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyVpnAdapterName);
+        // With no real choice on screen (discovery pending, combo disabled, or a placeholder), keep
+        // the saved value rather than storing placeholder text as the adapter name.
+        string adapterName = SelectedAdapterName
+            ?? RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyVpnAdapterName);
         RegistrySettingsManager.SetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyVpnAdapterName, adapterName);
         RegistrySettingsManager.SetInt(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyStaticPort, (int)nudStaticPort.Value);
         RegistrySettingsManager.SetBool(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyVpnAutoRecoveryEnabled, chkAutoRecovery.Checked);
@@ -722,6 +721,14 @@ public partial class SettingsForm : Form
 
     private string? SelectedVpnProvider => cboVpnProvider.SelectedItem?.ToString();
 
+    // The adapter the user has chosen on screen, or null when the combo holds no real choice:
+    // disabled (discovery pending or a provider without an adapter) or showing a placeholder.
+    private string? SelectedAdapterName =>
+        cboVpnAdapter.Enabled && cboVpnAdapter.SelectedItem?.ToString() is { Length: > 0 } name &&
+        name is not (DiscoveringAdaptersPlaceholder or NoAdaptersFoundPlaceholder or SelectAdapterPlaceholder)
+            ? name
+            : null;
+
     // NAT-PMP and Static port are the providers that need an adapter chosen in Settings.
     private static bool UsesAdapter(string? provider) =>
         provider is RegistrySettingsManager.VpnProviderNatPmp or RegistrySettingsManager.VpnProviderStaticPort;
@@ -757,12 +764,8 @@ public partial class SettingsForm : Form
     // user has chosen on screen, or the saved one when the combo holds no real choice.
     private void StartAdapterDiscovery()
     {
-        string? selected = cboVpnAdapter.SelectedItem?.ToString();
-        string current = cboVpnAdapter.Enabled && selected is not null &&
-                         selected != NoAdaptersFoundPlaceholder && selected != DiscoveringAdaptersPlaceholder &&
-                         selected != SelectAdapterPlaceholder
-            ? selected
-            : RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyVpnAdapterName);
+        string current = SelectedAdapterName
+            ?? RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyVpnAdapterName);
 
         _adapterListProvider = SelectedVpnProvider;
         cboVpnAdapter.Items.Clear();
@@ -814,11 +817,10 @@ public partial class SettingsForm : Form
         if (!confirm) return;
 
         string provider = cboVpnProvider.SelectedItem?.ToString() ?? RegistrySettingsManager.VpnProviderDisabled;
-        // While discovery is pending the combo is disabled and holds placeholder text, not an
-        // adapter name (same guard as SaveSettings); an empty adapter takes the clean no-manager path.
-        string adapter = cboVpnAdapter.Enabled
-            ? cboVpnAdapter.SelectedItem?.ToString() ?? string.Empty
-            : string.Empty;
+        // Placeholder text is never passed on as an adapter name: for Static port any non-empty name
+        // builds a manager, so the helper would be asked to cycle an adapter that does not exist. An
+        // empty adapter takes the clean no-manager path and reports that the test could not run.
+        string adapter = SelectedAdapterName ?? string.Empty;
 
         btnTestRecovery.Enabled = false;
         UseWaitCursor = true;

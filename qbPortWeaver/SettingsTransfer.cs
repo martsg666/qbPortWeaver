@@ -282,19 +282,22 @@ internal static class SettingsTransfer
     private static bool TryApplySectionValue(string section, JsonProperty entry)
     {
         string? value = entry.Value.AsStringOrNull();
+        // A file written before a key was renamed carries the former name; restore it under the
+        // current one, as the startup migration does for the registry itself.
+        string key = RegistrySettingsManager.ResolveCurrentKey(section, entry.Name);
         // A key this build has no reader for is skipped for the same reason an unrecognised section
         // is: writing it leaves a value in the registry that nothing consumes and nothing removes.
         // It also keeps the reported "not recognised, skipped" count honest, which it was not while
         // only whole sections were checked.
         if (value is null ||
-            !RegistrySettingsManager.IsKnownSectionKey(section, entry.Name) ||
-            !RegistrySettingsManager.IsTransferableKey(entry.Name))
+            !RegistrySettingsManager.IsKnownSectionKey(section, key) ||
+            !RegistrySettingsManager.IsTransferableKey(key))
             return false;
 
         // The write swallows its own failures, so the result is what decides whether this counts as
         // restored. Without it a locked or policy-restricted hive reports a full restore having
         // written nothing.
-        return RegistrySettingsManager.TrySetValue(section, entry.Name, value);
+        return RegistrySettingsManager.TrySetValue(section, key, value);
     }
 
     // Same allow-list as the export side, so a hand-edited file cannot reintroduce installer-owned

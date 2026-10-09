@@ -37,10 +37,11 @@ internal static class VpnProviderRegistry
         KnownProviders.FirstOrDefault(p => p.Keyword.Equals(keyword, StringComparison.OrdinalIgnoreCase));
 
     /// <summary>
-    /// Returns <see langword="true"/> if <paramref name="provider"/> is one of the three VPN providers
-    /// selectable in Settings (ProtonVPN, PIA, NAT-PMP). Broader than <see cref="KnownProviders"/>,
-    /// which only lists providers with a dedicated service-restart recovery config - NAT-PMP recovers
-    /// via generic adapter cycling instead, so it is valid here but absent from <see cref="KnownProviders"/>.
+    /// Returns <see langword="true"/> if <paramref name="provider"/> is one of the VPN providers
+    /// selectable in Settings (ProtonVPN, PIA, NAT-PMP, Static port). Broader than <see cref="KnownProviders"/>,
+    /// which only lists providers with a dedicated service-restart recovery config - NAT-PMP and Static
+    /// port recover through the chosen adapter instead, so they are valid here but absent from
+    /// <see cref="KnownProviders"/>.
     /// </summary>
     internal static bool IsRecognizedProvider(string? provider) =>
         provider is not null && (
@@ -48,7 +49,9 @@ internal static class VpnProviderRegistry
             // automatically. Re-listing them meant a new provider recovered correctly but was reported
             // as unrecognised by Diagnostics.
             KnownProviders.Any(p => p.Keyword.Equals(provider, StringComparison.OrdinalIgnoreCase)) ||
-            // NAT-PMP stays explicit: it is deliberately absent from KnownProviders (no service to
-            // restart - it recovers by cycling the adapter) while still being selectable in Settings.
-            provider.Equals(RegistrySettingsManager.VpnProviderNatPmp, StringComparison.OrdinalIgnoreCase));
+            // NAT-PMP and Static port stay explicit: they are deliberately absent from KnownProviders
+            // (no service of their own to restart - they recover through the chosen adapter) while
+            // still being selectable in Settings.
+            provider.Equals(RegistrySettingsManager.VpnProviderNatPmp, StringComparison.OrdinalIgnoreCase) ||
+            provider.Equals(RegistrySettingsManager.VpnProviderStaticPort, StringComparison.OrdinalIgnoreCase));
 }

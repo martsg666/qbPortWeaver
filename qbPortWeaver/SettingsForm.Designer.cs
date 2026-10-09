@@ -33,9 +33,11 @@ partial class SettingsForm
         nudUpdateInterval         = new NumericUpDown();
         lblSeconds                = new Label();
         chkResyncOnNetworkChange  = new CheckBox();
-        lblNatPmpAdapter          = new Label();
-        cboNatPmpAdapter          = new ComboBox();
+        lblVpnAdapter          = new Label();
+        cboVpnAdapter          = new ComboBox();
         btnRefreshAdapters        = new Button();
+        lblStaticPort             = new Label();
+        nudStaticPort             = new NumericUpDown();
         chkNotifyOnPortUpdate     = new CheckBox();
         chkShowUpdateForm         = new CheckBox();
         chkWaitForVpnOnStartup    = new CheckBox();
@@ -138,6 +140,7 @@ partial class SettingsForm
         grpGeneral.SuspendLayout();
         grpAutoRecovery.SuspendLayout();
         ((System.ComponentModel.ISupportInitialize)nudUpdateInterval).BeginInit();
+        ((System.ComponentModel.ISupportInitialize)nudStaticPort).BeginInit();
         ((System.ComponentModel.ISupportInitialize)nudRecoveryCycles).BeginInit();
         ((System.ComponentModel.ISupportInitialize)nudPortClosedChecks).BeginInit();
         grpQBittorrent.SuspendLayout();
@@ -161,9 +164,11 @@ partial class SettingsForm
         grpGeneral.Controls.Add(lblVpnProvider);
         grpGeneral.Controls.Add(cboVpnProvider);
         grpGeneral.Controls.Add(btnDetectVpn);
-        grpGeneral.Controls.Add(lblNatPmpAdapter);
-        grpGeneral.Controls.Add(cboNatPmpAdapter);
+        grpGeneral.Controls.Add(lblVpnAdapter);
+        grpGeneral.Controls.Add(cboVpnAdapter);
         grpGeneral.Controls.Add(btnRefreshAdapters);
+        grpGeneral.Controls.Add(lblStaticPort);
+        grpGeneral.Controls.Add(nudStaticPort);
         grpGeneral.Controls.Add(chkNotifyOnPortUpdate);
         grpGeneral.Controls.Add(chkShowUpdateForm);
         grpGeneral.Controls.Add(chkWaitForVpnOnStartup);
@@ -261,18 +266,18 @@ partial class SettingsForm
         btnDetectVpn.TabIndex = 9;
         btnDetectVpn.Text     = "Detect";
         btnDetectVpn.Click   += btnDetectVpn_Click;
-        lblNatPmpAdapter.Location  = new Point(12, 111);
-        lblNatPmpAdapter.Name      = "lblNatPmpAdapter";
-        lblNatPmpAdapter.Size      = new Size(130, 23);
-        lblNatPmpAdapter.TabIndex  = 10;
-        lblNatPmpAdapter.Text      = "NAT-PMP adapter:";
-        lblNatPmpAdapter.TextAlign = ContentAlignment.MiddleLeft;
-        cboNatPmpAdapter.DropDownStyle = ComboBoxStyle.DropDownList;
-        cboNatPmpAdapter.FlatStyle     = FlatStyle.Flat;
-        cboNatPmpAdapter.Location      = new Point(148, 111);
-        cboNatPmpAdapter.Name          = "cboNatPmpAdapter";
-        cboNatPmpAdapter.Size          = new Size(290, 23);
-        cboNatPmpAdapter.TabIndex      = 11;
+        lblVpnAdapter.Location  = new Point(12, 111);
+        lblVpnAdapter.Name      = "lblVpnAdapter";
+        lblVpnAdapter.Size      = new Size(130, 23);
+        lblVpnAdapter.TabIndex  = 10;
+        lblVpnAdapter.Text      = "VPN adapter:";
+        lblVpnAdapter.TextAlign = ContentAlignment.MiddleLeft;
+        cboVpnAdapter.DropDownStyle = ComboBoxStyle.DropDownList;
+        cboVpnAdapter.FlatStyle     = FlatStyle.Flat;
+        cboVpnAdapter.Location      = new Point(148, 111);
+        cboVpnAdapter.Name          = "cboVpnAdapter";
+        cboVpnAdapter.Size          = new Size(290, 23);
+        cboVpnAdapter.TabIndex      = 11;
         btnRefreshAdapters.Enabled  = false;
         btnRefreshAdapters.Location = new Point(442, 111);
         btnRefreshAdapters.Name     = "btnRefreshAdapters";
@@ -280,22 +285,35 @@ partial class SettingsForm
         btnRefreshAdapters.TabIndex = 12;
         btnRefreshAdapters.Text     = "⟳";
         btnRefreshAdapters.Click   += btnRefreshAdapters_Click;
-        // Notify and show-update rows follow immediately after the NAT-PMP row at 29px spacing
+        // Static port row sits under the adapter row it shares with NAT-PMP. Minimum 0 means "not
+        // set", which the save validation refuses only while Static port is the selected provider.
+        lblStaticPort.Location  = new Point(12, 140);
+        lblStaticPort.Name      = "lblStaticPort";
+        lblStaticPort.Size      = new Size(130, 23);
+        lblStaticPort.TabIndex  = 13;
+        lblStaticPort.Text      = "Forwarded port:";
+        lblStaticPort.TextAlign = ContentAlignment.MiddleLeft;
+        nudStaticPort.Location = new Point(148, 140);
+        nudStaticPort.Maximum  = new decimal(new int[] { 65535, 0, 0, 0 });
+        nudStaticPort.Name     = "nudStaticPort";
+        nudStaticPort.Size     = new Size(80, 23);
+        nudStaticPort.TabIndex = 14;
+        // Notify and show-update rows follow immediately after the Static port row at 29px spacing
         chkNotifyOnPortUpdate.AutoSize  = true;
-        chkNotifyOnPortUpdate.Location  = new Point(15, 140);
+        chkNotifyOnPortUpdate.Location  = new Point(15, 169);
         chkNotifyOnPortUpdate.Name      = "chkNotifyOnPortUpdate";
-        chkNotifyOnPortUpdate.TabIndex  = 13;
+        chkNotifyOnPortUpdate.TabIndex  = 15;
         chkNotifyOnPortUpdate.Text      = "Show notification when port updates";
         chkShowUpdateForm.AutoSize      = true;
-        chkShowUpdateForm.Location      = new Point(15, 198);
+        chkShowUpdateForm.Location      = new Point(15, 227);
         chkShowUpdateForm.Name          = "chkShowUpdateForm";
-        chkShowUpdateForm.TabIndex      = 15;
+        chkShowUpdateForm.TabIndex      = 17;
         chkShowUpdateForm.Text          = "Show update form on startup";
         // Sits directly under "Show notification when port updates".
         chkWaitForVpnOnStartup.AutoSize = true;
-        chkWaitForVpnOnStartup.Location = new Point(15, 169);
+        chkWaitForVpnOnStartup.Location = new Point(15, 198);
         chkWaitForVpnOnStartup.Name     = "chkWaitForVpnOnStartup";
-        chkWaitForVpnOnStartup.TabIndex = 14;
+        chkWaitForVpnOnStartup.TabIndex = 16;
         chkWaitForVpnOnStartup.Text     = "Wait for VPN on startup";
         // "Trigger after" labels use AutoSize so the NUD sits immediately after the text.
         // Top-right action button, on the first row with the Verify-port checkbox (x=398 matches the client groups' Test button).
@@ -947,6 +965,7 @@ partial class SettingsForm
         grpAutoRecovery.ResumeLayout(false);
         grpAutoRecovery.PerformLayout();
         ((System.ComponentModel.ISupportInitialize)nudUpdateInterval).EndInit();
+        ((System.ComponentModel.ISupportInitialize)nudStaticPort).EndInit();
         ((System.ComponentModel.ISupportInitialize)nudRecoveryCycles).EndInit();
         ((System.ComponentModel.ISupportInitialize)nudPortClosedChecks).EndInit();
         grpQBittorrent.ResumeLayout(false);
@@ -989,9 +1008,11 @@ partial class SettingsForm
     private Label         lblVpnProvider;
     private ComboBox      cboVpnProvider;
     private Button        btnDetectVpn;
-    private Label         lblNatPmpAdapter;
-    private ComboBox      cboNatPmpAdapter;
+    private Label         lblVpnAdapter;
+    private ComboBox      cboVpnAdapter;
     private Button        btnRefreshAdapters;
+    private Label         lblStaticPort;
+    private NumericUpDown nudStaticPort;
     private CheckBox      chkNotifyOnPortUpdate;
     private CheckBox      chkShowUpdateForm;
     private CheckBox      chkWaitForVpnOnStartup;

@@ -181,10 +181,14 @@ public static class DiagnosticsService
         IVpnManager? vpn = await PortSyncService.BuildActiveVpnManagerAsync(cancellationToken).ConfigureAwait(false);
         if (vpn is null)
         {
-            bool natPmp = provider.Equals(RegistrySettingsManager.VpnProviderNatPmp, StringComparison.OrdinalIgnoreCase);
-            string hint = natPmp
-                ? "Select a NAT-PMP adapter in Settings, and ensure it is up and its gateway responds to NAT-PMP."
-                : "Reselect the VPN provider in Settings.";
+            string hint = provider switch
+            {
+                _ when provider.Equals(RegistrySettingsManager.VpnProviderNatPmp, StringComparison.OrdinalIgnoreCase) =>
+                    "Select a NAT-PMP adapter in Settings, and ensure it is up and its gateway responds to NAT-PMP.",
+                _ when provider.Equals(RegistrySettingsManager.VpnProviderStaticPort, StringComparison.OrdinalIgnoreCase) =>
+                    "Select the VPN adapter in Settings.",
+                _ => "Reselect the VPN provider in Settings."
+            };
             results.Add(new(Checks.VpnConnection, DiagnosticStatus.Fail, $"Could not initialize {provider}", hint));
             results.Add(new(Checks.ForwardedPort, DiagnosticStatus.Skip, "VPN unavailable"));
             return (null, null);
@@ -207,9 +211,13 @@ public static class DiagnosticsService
         // to skip rather than compare the client against nonsense.
         if (port is int reported && !AppConstants.IsUsablePort(reported))
         {
-            results.Add(new(Checks.ForwardedPort, DiagnosticStatus.Fail,
-                $"{vpn.ProviderName} reported an unusable port ({reported})",
-                "The VPN is connected but has not assigned a usable forwarded port. Re-check that port forwarding is enabled on a P2P server."));
+            // A Static port value comes from Settings, not from the VPN, so the remedy is there.
+            results.Add(vpn is StaticPortManager
+                ? new(Checks.ForwardedPort, DiagnosticStatus.Fail, "No forwarded port configured",
+                    "Enter the port your VPN provider assigned in Settings → General.")
+                : new(Checks.ForwardedPort, DiagnosticStatus.Fail,
+                    $"{vpn.ProviderName} reported an unusable port ({reported})",
+                    "The VPN is connected but has not assigned a usable forwarded port. Re-check that port forwarding is enabled on a P2P server."));
             return (vpn, null);
         }
 

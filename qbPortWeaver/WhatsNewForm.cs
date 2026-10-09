@@ -10,11 +10,12 @@ public partial class WhatsNewForm : Form
 
     private const string ReleaseFeaturesText =
         "New in 2.7.0\n\n" +
-        "PLACEHOLDER - replace before release\n" +
-        "Summarise this version's user-facing changes here, in the same voice as the sections below: " +
-        "a short title line, then a plain-language paragraph saying what it does for the user. The " +
-        "Debug.Assert in the constructor only checks that a 'New in <version>' section exists, not " +
-        "that it has been written, so this text will ship if it is not replaced.\n\n" +
+        "Works with VPN providers that give you a permanent port\n" +
+        "Some VPN providers assign a forwarded port once, in your account on their website, and never " +
+        "change it. Choose the new Static port option as the VPN provider in Settings, pick your VPN's " +
+        "network adapter and enter the port. qbPortWeaver then keeps your client on that port and " +
+        "applies everything else it already does: the network interface checks, the open-port " +
+        "check, auto-recovery when the VPN drops, and the default port while it is disconnected.\n\n" +
         "Previously released\n\n" +
         "New in 2.6.9\n\n" +
         "Your settings can be backed up and restored\n" +

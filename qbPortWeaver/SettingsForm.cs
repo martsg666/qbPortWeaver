@@ -8,6 +8,7 @@ public partial class SettingsForm : Form
 
     private const string DiscoveringAdaptersPlaceholder = "Discovering adapters…";
     private const string NoAdaptersFoundPlaceholder = "No adapters found";
+    private const string SelectAdapterPlaceholder = "Select the VPN adapter";
     private const string DefaultPortTooltip = "Port to apply when the VPN is disconnected (0 = do nothing when disconnected)";
 
     // How often the Nicotine+ plugin status line re-checks itself while the dialog is open. What it
@@ -435,6 +436,14 @@ public partial class SettingsForm : Form
             return false;
         }
 
+        if (UsesAdapter(provider) &&
+            cboVpnAdapter.Enabled &&
+            cboVpnAdapter.SelectedItem?.ToString() == SelectAdapterPlaceholder)
+        {
+            ThemedMessageBox.Warn("Select your VPN's network adapter. Choosing another adapter, such as your home network, would apply the port while the VPN is down.");
+            return false;
+        }
+
         if (provider == RegistrySettingsManager.VpnProviderStaticPort && nudStaticPort.Value == 0)
         {
             ThemedMessageBox.Warn("Enter the forwarded port your VPN provider assigned to you.");
@@ -750,7 +759,8 @@ public partial class SettingsForm : Form
     {
         string? selected = cboVpnAdapter.SelectedItem?.ToString();
         string current = cboVpnAdapter.Enabled && selected is not null &&
-                         selected != NoAdaptersFoundPlaceholder && selected != DiscoveringAdaptersPlaceholder
+                         selected != NoAdaptersFoundPlaceholder && selected != DiscoveringAdaptersPlaceholder &&
+                         selected != SelectAdapterPlaceholder
             ? selected
             : RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyVpnAdapterName);
 
@@ -1245,7 +1255,12 @@ public partial class SettingsForm : Form
     // not change any setting until the VPN was back. The placeholder now appears only when nothing is
     // saved either, which is the one case where there is genuinely no adapter to keep.
     // Matched ignoring case, as the sync loop matches adapter names.
-    private void PopulateAdapterCombo(IEnumerable<string> discovered, string savedAdapter)
+    //
+    // requireChoice is for Static port, whose list is every adapter that is up rather than the few
+    // that answer NAT-PMP. Its first entry is usually the physical LAN adapter, so with nothing saved
+    // the combo opens on a placeholder that cannot be saved instead of selecting that entry: an OK
+    // would otherwise store the LAN adapter as the VPN adapter, and auto-recovery would cycle it.
+    private void PopulateAdapterCombo(IEnumerable<string> discovered, string savedAdapter, bool requireChoice = false)
     {
         cboVpnAdapter.Items.Clear();
         foreach (string name in discovered)
@@ -1261,6 +1276,8 @@ public partial class SettingsForm : Form
 
         if (cboVpnAdapter.Items.Count == 0)
             cboVpnAdapter.Items.Add(NoAdaptersFoundPlaceholder);
+        else if (match is null && requireChoice)
+            cboVpnAdapter.Items.Insert(0, SelectAdapterPlaceholder);
 
         if (match is not null)
             cboVpnAdapter.SelectedItem = match;
@@ -1289,7 +1306,7 @@ public partial class SettingsForm : Form
             if (IsDisposed) return;
             try
             {
-                PopulateAdapterCombo(adapters, savedAdapter);
+                PopulateAdapterCombo(adapters, savedAdapter, requireChoice: provider == RegistrySettingsManager.VpnProviderStaticPort);
                 SetAdapterControlsEnabled(UsesAdapter(SelectedVpnProvider));
             }
             catch (ObjectDisposedException)

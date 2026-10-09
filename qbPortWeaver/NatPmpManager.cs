@@ -49,25 +49,7 @@ public sealed class NatPmpManager : IVpnManager
     /// <inheritdoc />
     // Re-enumerates network interfaces because the stored _adapter object retains its
     // last-seen OperationalStatus even after the adapter is removed on disconnect.
-    public bool IsVpnConnected()
-    {
-        try
-        {
-            bool connected = NetworkInterface.GetAllNetworkInterfaces()
-                .Any(nic => nic.Name.Equals(_adapter.Name, StringComparison.OrdinalIgnoreCase)
-                         && nic.OperationalStatus == OperationalStatus.Up);
-
-            LogManager.Instance.LogDebug(connected
-                ? $"NatPmpManager.IsVpnConnected: Adapter '{_adapter.Name}' is connected"
-                : $"NatPmpManager.IsVpnConnected: Adapter '{_adapter.Name}' is not found or not connected");
-
-            return connected;
-        }
-        catch (Exception ex)
-        {
-            return LogManager.LogDebugFalse($"NatPmpManager.IsVpnConnected: {ex.Message}");
-        }
-    }
+    public bool IsVpnConnected() => VpnAdapter.IsUp(_adapter.Name, "NatPmpManager.IsVpnConnected");
 
     /// <inheritdoc />
     // Logs at INFO/WARN (not DEBUG) because lease time and failure details are not surfaced
@@ -185,13 +167,10 @@ public sealed class NatPmpManager : IVpnManager
     /// <inheritdoc />
     // Returns the provider token when the adapter belongs to a known provider (for service restart),
     // or the adapter name for standalone NAT-PMP gateways (for adapter cycling).
-    public string? GetRecoveryTarget() => FindProviderToken(_adapter.Name) ?? _adapter.Name;
+    public string? GetRecoveryTarget() => VpnAdapter.GetRecoveryTarget(_adapter.Name);
 
     /// <inheritdoc />
-    public string GetRecoveryAction() =>
-        FindProviderToken(_adapter.Name) is not null
-            ? HelperProtocol.ActionRestart
-            : HelperProtocol.ActionCycleAdapter;
+    public string GetRecoveryAction() => VpnAdapter.GetRecoveryAction(_adapter.Name);
 
     /// <inheritdoc />
     // Delegates to the shared matcher (AdapterNamesMatch). NAT-PMP and PIA match one configured
@@ -212,7 +191,7 @@ public sealed class NatPmpManager : IVpnManager
     {
         var candidates = new List<(NetworkInterface Nic, IPAddress Gateway)>();
 
-        foreach (NetworkInterface nic in GetActiveNetworkInterfaces())
+        foreach (NetworkInterface nic in VpnAdapter.GetActiveInterfaces())
         {
             IPAddress? gateway = ResolveGateway(nic);
             if (gateway is null)
@@ -248,7 +227,7 @@ public sealed class NatPmpManager : IVpnManager
     /// <param name="cancellationToken">Cancels in-flight UDP probes so the sync cycle can yield promptly on shutdown.</param>
     public static async Task<NatPmpManager?> TryCreateForAdapterAsync(string adapterName, uint mappingLifetime = DefaultMappingLifetime, CancellationToken cancellationToken = default)
     {
-        NetworkInterface? nic = GetActiveNetworkInterfaces()
+        NetworkInterface? nic = VpnAdapter.GetActiveInterfaces()
             .FirstOrDefault(n => n.Name.Equals(adapterName, StringComparison.OrdinalIgnoreCase));
 
         if (nic is null)
@@ -270,14 +249,6 @@ public sealed class NatPmpManager : IVpnManager
         return externalIp is not null ? new NatPmpManager(nic, gateway, mappingLifetime) : null;
     }
 
-    /// <summary>
-    /// Returns the VPN provider token if <paramref name="adapterName"/> matches a known provider keyword,
-    /// or <see langword="null"/> if it does not. Used to decide whether to trigger a service restart or an adapter cycle.
-    /// Delegates to <see cref="VpnProviderRegistry.FindProviderToken"/> so the provider list stays single-source.
-    /// </summary>
-    internal static string? FindProviderToken(string adapterName) =>
-        VpnProviderRegistry.FindProviderToken(adapterName);
-
     // Transfers renewal state from a previous instance so that port renewal works correctly
     // when a fresh NatPmpManager instance is created each cycle.
     internal void CopyRenewalStateFrom(NatPmpManager other)
@@ -285,42 +256,6 @@ public sealed class NatPmpManager : IVpnManager
         _lastExternalPort = other._lastExternalPort;
         _lastEpochSeconds = other._lastEpochSeconds;
         LastGrantedLifetime = other.LastGrantedLifetime;
-    }
-
-    // Returns all network interfaces that are up and not loopback or protocol-tunnel adapters.
-    // NetworkInterfaceType.Tunnel covers Windows IF_TYPE_TUNNEL (Teredo, ISATAP, 6to4) -
-    // not VPN adapters. WireGuard/wintun (ProtonVPN) and TAP/OpenVPN adapters report as
-    // Unknown or Ethernet and are not excluded by this filter.
-    //
-    // Guarded the same way both IsVpnConnected implementations guard this call (here and in
-    // ProtonVpnManager): GetAllNetworkInterfaces throws NetworkInformationException when the network
-    // subsystem is briefly unavailable, which on a machine riding VPN adapter churn is an ordinary
-    // transient rather than a fault. An empty sequence hands the callers the answer they already
-    // handle - TryCreateForAdapterAsync returns null ("not found or not up") and DiscoverAdaptersAsync
-    // an empty list - instead of a throw that RunAsync would report as "An unexpected error occurred"
-    // at Error, for what is really just a disconnected adapter. Without this the two static factories
-    // were the only unguarded users of an API the two instance methods already treat as fallible.
-    //
-    // ToList inside the try is load-bearing: a deferred Where would run GetAllNetworkInterfaces at the
-    // caller's foreach or FirstOrDefault, outside this catch, and the guard would never fire. The
-    // return type is List rather than IEnumerable so the compiler enforces that rather than this
-    // comment: returning the lazy Where directly no longer builds. It also lets the foreach in
-    // DiscoverAdaptersAsync use List's struct enumerator instead of dispatching through the interface.
-    private static List<NetworkInterface> GetActiveNetworkInterfaces()
-    {
-        try
-        {
-            return NetworkInterface.GetAllNetworkInterfaces()
-                .Where(nic => nic.OperationalStatus == OperationalStatus.Up
-                           && nic.NetworkInterfaceType is not NetworkInterfaceType.Loopback
-                                                      and not NetworkInterfaceType.Tunnel)
-                .ToList();
-        }
-        catch (NetworkInformationException ex)
-        {
-            LogManager.Instance.LogDebug($"NatPmpManager.GetActiveNetworkInterfaces: {ex.Message}");
-            return [];
-        }
     }
 
     // Resolves the usable gateway for an adapter.

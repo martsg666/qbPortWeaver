@@ -1006,12 +1006,11 @@ public sealed class PortSyncService
             MarkWaitingForVpn(status, $"Waiting for VPN adapter '{adapterName}' to come up");
             return null;
         }
-        string? providerToken = NatPmpManager.FindProviderToken(adapterName);
         string disconnectedMsg = $"NAT-PMP adapter '{adapterName}' not found - VPN may be disconnected";
         await RegisterFailureAndTryRecoveryAsync(
             disconnectedMsg, LogLevel.Info,
-            providerToken is not null ? HelperProtocol.ActionRestart : HelperProtocol.ActionCycleAdapter,
-            providerToken ?? adapterName,
+            VpnAdapter.GetRecoveryAction(adapterName),
+            VpnAdapter.GetRecoveryTarget(adapterName),
             $"NAT-PMP adapter '{adapterName}'",
             cfg, cancellationToken).ConfigureAwait(false);
 

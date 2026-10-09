@@ -1,6 +1,4 @@
-﻿using System.Net.NetworkInformation;
-
-namespace qbPortWeaver;
+﻿namespace qbPortWeaver;
 
 /// <summary>
 /// VPN manager for providers that assign a permanent forwarded port in their own account settings
@@ -19,26 +17,7 @@ public sealed class StaticPortManager(string adapterName, int port) : IVpnManage
     public string ProviderName => adapterName;
 
     /// <inheritdoc />
-    // Re-enumerated on every call: a VPN adapter disappears or goes down on disconnect.
-    public bool IsVpnConnected()
-    {
-        try
-        {
-            bool connected = NetworkInterface.GetAllNetworkInterfaces()
-                .Any(nic => nic.Name.Equals(adapterName, StringComparison.OrdinalIgnoreCase)
-                         && nic.OperationalStatus == OperationalStatus.Up);
-
-            LogManager.Instance.LogDebug(connected
-                ? $"StaticPortManager.IsVpnConnected: Adapter '{adapterName}' is connected"
-                : $"StaticPortManager.IsVpnConnected: Adapter '{adapterName}' is not found or not connected");
-
-            return connected;
-        }
-        catch (Exception ex)
-        {
-            return LogManager.LogDebugFalse($"StaticPortManager.IsVpnConnected: {ex.Message}");
-        }
-    }
+    public bool IsVpnConnected() => VpnAdapter.IsUp(adapterName, "StaticPortManager.IsVpnConnected");
 
     /// <inheritdoc />
     // The configured value, as is. The sync loop applies the same usable-port rule to it as to a
@@ -49,13 +28,10 @@ public sealed class StaticPortManager(string adapterName, int port) : IVpnManage
     /// <inheritdoc />
     // Same rule as NAT-PMP: restart the provider's service when the adapter belongs to a known
     // provider, otherwise cycle the adapter itself.
-    public string? GetRecoveryTarget() => VpnProviderRegistry.FindProviderToken(adapterName) ?? adapterName;
+    public string? GetRecoveryTarget() => VpnAdapter.GetRecoveryTarget(adapterName);
 
     /// <inheritdoc />
-    public string GetRecoveryAction() =>
-        VpnProviderRegistry.FindProviderToken(adapterName) is not null
-            ? HelperProtocol.ActionRestart
-            : HelperProtocol.ActionCycleAdapter;
+    public string GetRecoveryAction() => VpnAdapter.GetRecoveryAction(adapterName);
 
     /// <inheritdoc />
     public bool IsAdapterMatch(string interfaceName)
@@ -64,25 +40,12 @@ public sealed class StaticPortManager(string adapterName, int port) : IVpnManage
     /// <summary>
     /// Returns the names of the network adapters that are currently up, sorted, for the Settings
     /// adapter list. Unlike NAT-PMP discovery nothing is probed: any adapter can carry a static
-    /// forward, so the user picks the VPN's own adapter from everything that is up. Loopback and
-    /// tunnel-type pseudo adapters are left out, as NAT-PMP discovery leaves them out.
+    /// forward, so the user picks the VPN's own adapter from everything that is up. The candidates are
+    /// the ones NAT-PMP discovery starts from (<see cref="VpnAdapter.GetActiveInterfaces"/>).
     /// </summary>
-    internal static IReadOnlyList<string> GetActiveAdapterNames()
-    {
-        try
-        {
-            return NetworkInterface.GetAllNetworkInterfaces()
-                .Where(nic => nic.OperationalStatus == OperationalStatus.Up
-                           && nic.NetworkInterfaceType is not NetworkInterfaceType.Loopback
-                                                      and not NetworkInterfaceType.Tunnel)
-                .Select(nic => nic.Name)
-                .Order(StringComparer.OrdinalIgnoreCase)
-                .ToList();
-        }
-        catch (NetworkInformationException ex)
-        {
-            LogManager.Instance.LogDebug($"StaticPortManager.GetActiveAdapterNames: {ex.Message}");
-            return [];
-        }
-    }
+    internal static IReadOnlyList<string> GetActiveAdapterNames() =>
+        VpnAdapter.GetActiveInterfaces()
+            .Select(nic => nic.Name)
+            .Order(StringComparer.OrdinalIgnoreCase)
+            .ToList();
 }

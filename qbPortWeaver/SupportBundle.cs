@@ -185,7 +185,7 @@ internal static class SupportBundle
     // handing back the lazy query would run the folder walk at the caller's foreach, outside this
     // catch, and the guard would never fire. The return type is List rather than IEnumerable so the
     // compiler enforces that rather than this comment - returning the lazy query directly no longer
-    // builds. Same reasoning, and the same shape, as NatPmpManager.GetActiveNetworkInterfaces.
+    // builds. Same reasoning, and the same shape, as VpnAdapter.GetActiveInterfaces.
     private static List<string> FindLogFiles()
     {
         try

@@ -9,6 +9,14 @@ public partial class WhatsNewForm : Form
         "If you find qbPortWeaver useful, please star it on GitHub.";
 
     private const string ReleaseFeaturesText =
+        "New in 2.7.0\n\n" +
+        "Works with VPN providers that give you a permanent port\n" +
+        "Some VPN providers assign a forwarded port once, in your account on their website, and never " +
+        "change it. Choose the new Static port option as the VPN provider in Settings, pick your VPN's " +
+        "network adapter and enter the port. qbPortWeaver then keeps your client on that port and " +
+        "applies everything else it already does: the network interface checks, the open-port " +
+        "check, auto-recovery when the VPN drops, and the default port while it is disconnected.\n\n" +
+        "Previously released\n\n" +
         "New in 2.6.9\n\n" +
         "Your settings can be backed up and restored\n" +
         "Settings now has Back Up and Restore buttons. Back Up writes your whole configuration to a " +
@@ -28,7 +36,6 @@ public partial class WhatsNewForm : Form
         "With the color theme set to System while Windows was in dark mode, qbPortWeaver could close " +
         "immediately on startup without showing anything. It now starts normally with every theme " +
         "setting.\n\n" +
-        "Previously released\n\n" +
         "New in 2.6.8\n\n" +
         "Diagnostics now checks your internet connection\n" +
         "Run Diagnostics reports whether this machine gets a reply when it pings the internet. That is " +

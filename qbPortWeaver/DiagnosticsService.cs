@@ -178,13 +178,29 @@ public static class DiagnosticsService
             return (null, null);
         }
 
+        // Checked before the connection, as the sync loop refuses this configuration before it looks
+        // at the adapter: otherwise a down adapter would be reported first, with a hint about the
+        // VPN's port forwarding, and the missing setting would never be named.
+        if (provider.Equals(RegistrySettingsManager.VpnProviderStaticPort, StringComparison.OrdinalIgnoreCase) &&
+            !AppConstants.IsUsablePort(RegistrySettingsManager.GetInt(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyStaticPort)))
+        {
+            results.Add(new(Checks.VpnConnection, DiagnosticStatus.Skip, "Static port is not fully configured"));
+            results.Add(new(Checks.ForwardedPort, DiagnosticStatus.Fail, "No forwarded port configured",
+                "Enter the port your VPN provider assigned in Settings → General."));
+            return (null, null);
+        }
+
         IVpnManager? vpn = await PortSyncService.BuildActiveVpnManagerAsync(cancellationToken).ConfigureAwait(false);
         if (vpn is null)
         {
-            bool natPmp = provider.Equals(RegistrySettingsManager.VpnProviderNatPmp, StringComparison.OrdinalIgnoreCase);
-            string hint = natPmp
-                ? "Select a NAT-PMP adapter in Settings, and ensure it is up and its gateway responds to NAT-PMP."
-                : "Reselect the VPN provider in Settings.";
+            string hint = provider switch
+            {
+                _ when provider.Equals(RegistrySettingsManager.VpnProviderNatPmp, StringComparison.OrdinalIgnoreCase) =>
+                    "Select a NAT-PMP adapter in Settings, and ensure it is up and its gateway responds to NAT-PMP.",
+                _ when provider.Equals(RegistrySettingsManager.VpnProviderStaticPort, StringComparison.OrdinalIgnoreCase) =>
+                    "Select the VPN adapter in Settings.",
+                _ => "Reselect the VPN provider in Settings."
+            };
             results.Add(new(Checks.VpnConnection, DiagnosticStatus.Fail, $"Could not initialize {provider}", hint));
             results.Add(new(Checks.ForwardedPort, DiagnosticStatus.Skip, "VPN unavailable"));
             return (null, null);

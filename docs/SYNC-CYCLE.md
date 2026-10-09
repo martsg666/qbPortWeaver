@@ -84,12 +84,17 @@ The sync cycle instantiates a provider-specific `IVpnManager` based on the confi
 | ProtonVPN  | `ProtonVpnManager` | Parses the ProtonVPN log file for the last assigned port |
 | PIA        | `PiaVpnManager`    | Runs `piactl get portforward` and parses stdout, classifying the four non-numeric states (see below) |
 | NAT-PMP    | `NatPmpManager`    | Sends a port mapping request (RFC 6886) to the gateway, for UDP then TCP |
+| Static port | `StaticPortManager` | Returns the port entered in Settings (`staticPort`); connection state is whether the chosen adapter (`vpnAdapterName`) is up |
 
 `Disabled` is the default for new installations.
 
 > **PIA port-forward states:** `piactl get portforward` returns either a port number or one of four words, and the difference between them decides whether auto-recovery may run. `Inactive` (PIA disconnected, or port forwarding switched off in its settings) and `Unavailable` (the connected region does not offer it) describe conditions no restart can change, so `PiaVpnManager` reports them through `IVpnManager.PortForwardingUnavailable` and the cycle takes the no-recovery path described under VPN Disconnection Handling. `Attempting` (still connecting and assigning) and `Failed` (PIA tried to assign a port and did not succeed) stay ordinary failed cycles and still count toward the recovery threshold, since reconnecting is a plausible remedy for both. Output that parses as none of these is not classified either way and is likewise treated as an ordinary failure. The flag is rewritten on every port read, including the exception path, so it can never outlive the evidence for it. `PortForwardingUnavailable` is a default interface member returning `false`: ProtonVPN's log carries a port or it does not, and a NAT-PMP gateway that refuses one mapping may grant the next, so neither can make this distinction.
 
 > **ProtonVPN adapter names:** ProtonVPN's tunnel adapter is named `ProtonVPN` (standard WireGuard) or `ProtonVPN TUN` (OpenVPN) on the earlier protocols, and `ProTUN` on the newer Proton Protocols (Proton WireGuard, Proton Stealth). The earlier names are matched via the registry-driven `protonVpnAdapterName` value (bidirectional substring) and `ProTUN` via `protonVpnNativeAdapterName`, so detection and interface matching work across protocols without reconfiguration.
+
+### Static Port Manager Creation
+
+`CreateStaticPortVpnManager` builds a `StaticPortManager` from the saved adapter and port, and refuses to when either is unset (no adapter, or a port outside the usable range). That case is reported as a failed cycle through `SetSyncResult` with a transition-only log line, and it deliberately returns before the cycle's no-port branch: that branch counts toward auto-recovery, and no restart can supply a setting the user has not entered. Otherwise the manager is built every cycle even while the adapter is down, so the ordinary disconnected handling (startup grace, default port fallback, auto-recovery) applies unchanged. Recovery follows the NAT-PMP rule: a service restart when the adapter belongs to a known provider, an adapter cycle otherwise. The adapter setting `vpnAdapterName` is shared with NAT-PMP (it was `natPmpAdapterName` before 2.7.0 and is migrated, including from a settings backup).
 
 ### NAT-PMP Manager Creation
 
@@ -139,7 +144,7 @@ This counter drives two behaviors:
    - Resets the counter (to prevent repeated triggers)
    - Determines the recovery action and target based on the provider type:
      - **ProtonVPN / PIA (direct or NAT-PMP mode):** action = `restart`, target = the resolved Windows service name - the main app auto-discovers the service name and sends it to the helper, which restarts it directly
-     - **NAT-PMP with a generic gateway:** action = `cycle-adapter`, target = adapter name - the helper disables and re-enables the adapter via netsh
+     - **NAT-PMP with a generic gateway, and Static port:** action = `cycle-adapter`, target = adapter name - the helper disables and re-enables the adapter via netsh (Static port on a known provider's adapter restarts that provider's service, as NAT-PMP does)
    - Passes through the connectivity rate limiter (below)
    - Sends the recovery request to the helper service (runs as SYSTEM) via named pipe. After a service restart the helper **verifies** the service actually reached Running (`AutoRecovery.VerifyServiceRunningAsync`) rather than reporting success on the strength of having issued the start: `StartServiceAsync` deliberately swallows a start timeout, so without the check a service that never came back would still be logged as "Restarted". A service left not-Running is logged at **Error**, which travels back over the pipe in the helper's ERROR count and raises the tray alert. That matters most with a VPN killswitch enabled, where a service that fails to restart leaves the machine with no network at all.
 
@@ -658,7 +663,7 @@ The `status` field is one of:
 
 ### Standing Conditions in the Log
 
-Some conditions are re-evaluated every cycle but stay true until the user acts on them: a client bound to the wrong network interface, a stale qBittorrent interface token, a NAT-PMP lease shorter than the sync interval, an unrecognised VPN provider, an unusable default port, an unset NAT-PMP adapter, a provider reporting port forwarding unavailable, auto-recovery suspended at its consecutive-attempt cap, and a client pinned to an address its adapter no longer carries. Logging those once per cycle buries the entries that matter, and at `Warn` or above it also drives the tray's unviewed-warning count up indefinitely - a badge the user cannot clear by fixing anything.
+Some conditions are re-evaluated every cycle but stay true until the user acts on them: a client bound to the wrong network interface, a stale qBittorrent interface token, a NAT-PMP lease shorter than the sync interval, an unrecognised VPN provider, an unusable default port, an unset NAT-PMP adapter, an unset Static port adapter or port, a provider reporting port forwarding unavailable, auto-recovery suspended at its consecutive-attempt cap, and a client pinned to an address its adapter no longer carries. Logging those once per cycle buries the entries that matter, and at `Warn` or above it also drives the tray's unviewed-warning count up indefinitely - a badge the user cannot clear by fixing anything.
 
 These are written through `LogManager.LogStateChange`, which records the last message logged under a key and writes again only when that message *changes*. Each site pairs it with a `ClearLogState` on the path where the condition clears, so a later recurrence is reported rather than swallowed as a duplicate. Because the comparison is on the message and not just the key, a condition that changes - a different adapter goes wrong, a different port becomes unusable - still announces itself.
 
@@ -721,6 +726,7 @@ RunAsync
  └─ RunCoreAsync
      ├─ ReadConfig
      ├─ CreateVpnManagerAsync
+     │   ├─ CreateStaticPortVpnManager (Static port only)
      │   └─ CreateNatPmpVpnManagerAsync (NAT-PMP only)
      │       ├─ MarkWaitingForVpn (startup grace: adapter not discoverable yet)
      │       └─ RegisterFailureAndTryRecoveryAsync

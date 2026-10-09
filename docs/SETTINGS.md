@@ -38,8 +38,9 @@ update first.
 | Setting | Description | Default |
 |---|---|---|
 | Client | Client to control: `qBittorrent`, `Transmission`, `Deluge`, or `Nicotine+` | `qBittorrent` |
-| VPN provider | `Disabled`, `ProtonVPN`, `PIA`, or `NAT-PMP` | `Disabled` |
-| NAT-PMP adapter | Network adapter to use for NAT-PMP port mapping (only enabled when NAT-PMP is selected) | - |
+| VPN provider | `Disabled`, `ProtonVPN`, `PIA`, `NAT-PMP`, or `Static port` (for a provider that assigns a permanent forwarded port) | `Disabled` |
+| VPN adapter | Network adapter of the VPN. For NAT-PMP, the adapter whose gateway maps the port (only adapters that answer NAT-PMP are listed); for Static port, the adapter that must be up for the port to apply (every adapter that is up is listed). Only enabled for those two providers | - |
+| Forwarded port | The port your VPN provider assigned to your account. Only enabled when Static port is selected, and required then | - |
 | Update interval | How often to check and sync the port (seconds) | `180` |
 | Sync on network change | Also run a sync immediately when a network or VPN connection change is detected, instead of waiting for the next interval (rapid changes are coalesced; pausing still suppresses it) | `True` |
 | Wait for VPN on startup | For a short grace period after the app starts, wait quietly while the VPN is still connecting instead of reporting it as disconnected, applying the default-port fallback, or triggering auto-recovery. Syncs as soon as the VPN comes up | `True` |
@@ -106,7 +107,7 @@ so the change is live within a few seconds and a restart would only discard sett
 
 ### Auto-Recovery
 
-Auto-recovery restarts your VPN service (or cycles the adapter for a generic NAT-PMP gateway) when the VPN stops providing a working forwarded port. The **Test** button runs the recovery action on demand.
+Auto-recovery restarts your VPN service (or cycles the adapter for a generic NAT-PMP gateway or Static port) when the VPN stops providing a working forwarded port. The **Test** button runs the recovery action on demand.
 
 Two limits keep it from acting where it cannot help, since every recovery briefly takes the tunnel down and interrupts transfers:
 
@@ -120,7 +121,7 @@ There is also a cheaper remedy it tries first. If the port stays closed and the 
 | Check that the forwarded port is open after each sync | After each sync, check that the listening port is reachable from the Internet (after a port change and every 5th cycle) | `True` |
 | Trigger auto-recovery when port stays closed | Independent trigger: runs auto-recovery when port verification confirms the port closed for the configured number of checks. Fires at most once until a scheduled check reports the port open again. Requires the port check above | `True` |
 | Trigger after (confirmed closed checks) | Number of confirmed closed checks before auto-recovery is triggered | `3` |
-| Trigger auto-recovery when no port assigned or disconnected | Trigger auto-recovery (a VPN service restart, or adapter cycle for generic NAT-PMP gateways) after N consecutive cycles where the VPN is disconnected or assigns no forwarded port. Client-side failures do not count | `True` |
+| Trigger auto-recovery when no port assigned or disconnected | Trigger auto-recovery (a VPN service restart, or adapter cycle for generic NAT-PMP gateways and Static port) after N consecutive cycles where the VPN is disconnected or assigns no forwarded port. Client-side failures do not count | `True` |
 | Trigger after (consecutive failed cycles) | Number of consecutive cycles without an assigned port before auto-recovery is triggered. Recovery is also held until the failures have persisted for the time these cycles would normally span, so a brief network blip that races through several early re-syncs does not trigger it | `3` |
 
 ### Extra

@@ -191,7 +191,7 @@ jobs:
           # One entry per paragraph. Emitted under a '|-' literal block, matching the
           # field's existing style, so each stays a separate paragraph.
           $description = @(
-            'qbPortWeaver is a Windows system tray application that keeps the listening port of qBittorrent, Transmission, Deluge, or Nicotine+ synchronized with the port assigned by ProtonVPN, PIA, or any NAT-PMP capable VPN gateway or router.'
+            'qbPortWeaver is a Windows system tray application that keeps the listening port of qBittorrent, Transmission, Deluge, or Nicotine+ synchronized with the port assigned by ProtonVPN, PIA, any NAT-PMP capable VPN gateway or router, or any VPN provider that assigns a permanent forwarded port.'
             'It monitors the VPN''s forwarded port on a configurable interval, updates the client automatically when the port changes, verifies the port is reachable, and can recover the VPN connection automatically when port detection fails. Nicotine+ is driven through a small bridge plugin that qbPortWeaver installs, so its port changes while the client keeps running. A Status panel shows the live sync chain, recent port changes, and session statistics, and a built-in Media Manager can import media files into Plex-compatible library folders.'
           )
 

@@ -493,7 +493,7 @@ public sealed class PortSyncService
     // Maps the finalized status dictionary to a tray SyncState and raises the SyncCompleted event.
     private void RaiseSyncCompleted(Dictionary<string, object?> status)
     {
-        bool success = status[StatusKeys.Status] as string == SyncStatusValues.Success;
+        string outcome = status[StatusKeys.Status] as string ?? SyncStatusValues.Error;
         bool vpnConnected = status[StatusKeys.VpnConnected] is true;
         int? port = status[StatusKeys.ClientPort] as int?;
         string message = status[StatusKeys.Message] as string ?? string.Empty;
@@ -504,13 +504,19 @@ public sealed class PortSyncService
         // red with the "not recognized" message rather than orange "VPN not connected".
         bool isKnownProvider = isDisabled || VpnProviderRegistry.IsRecognizedProvider(provider);
 
+        // The cycle outcome decides before the VPN state does. VpnConnected is only set once the
+        // provider check has run, so an error raised earlier (no adapter or port configured for
+        // Static port or NAT-PMP, an unexpected exception) would otherwise read as a disconnection:
+        // orange "VPN not connected" with the reason visible nowhere but the log. The same holds
+        // when the VPN is down and the default-port fallback itself fails (client not running, port
+        // write refused): the fallback the user configured did not work, which is red, not orange.
+        // Skipped outcomes (VPN down with no default port, startup grace, disabled) are unchanged.
         SyncState state;
         if (isDisabled) state = SyncState.Disabled;
-        else if (!isKnownProvider) state = SyncState.Error;
+        else if (!isKnownProvider || outcome == SyncStatusValues.Error) state = SyncState.Error;
         else if (_waitingForVpnThisCycle) state = SyncState.WaitingForVpn;
         else if (!vpnConnected) state = SyncState.VpnDisconnected;
-        else if (success) state = SyncState.Synced;
-        else state = SyncState.Error;
+        else state = SyncState.Synced;
 
         try { SyncCompleted?.Invoke(new TrayStatus(state, port, message)); }
         catch (Exception ex) { LogManager.Instance.LogMessage($"SyncCompleted handler failed: {ex.Message}", LogLevel.Warn); }

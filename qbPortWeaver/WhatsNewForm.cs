@@ -22,6 +22,10 @@ public partial class WhatsNewForm : Form
         "and the tooltip says what to set. The same applies when the VPN is down and the default port " +
         "could not be applied because the client is not running or refused the change: the fallback " +
         "you configured did not work, so the tray says so instead of reporting a disconnection.\n\n" +
+        "Changed: Diagnostics gives adapter-based advice for NAT-PMP and Static port\n" +
+        "When the VPN adapter is down, the VPN connection row no longer tells you to pick a P2P " +
+        "server, which only applies to ProtonVPN and PIA. It now names the adapter and suggests " +
+        "connecting the VPN that owns it or selecting the right one in Settings.\n\n" +
         "Previously released\n\n" +
         "New in 2.6.9\n\n" +
         "Your settings can be backed up and restored\n" +

@@ -208,8 +208,14 @@ public static class DiagnosticsService
 
         if (!vpn.IsVpnConnected())
         {
-            results.Add(new(Checks.VpnConnection, DiagnosticStatus.Fail, $"{vpn.ProviderName} is not connected",
-                "Connect your VPN and enable port forwarding on a P2P server."));
+            // NAT-PMP and Static port name the adapter, and "not connected" means that adapter is
+            // down; a P2P-server hint only fits the two service-backed providers.
+            bool adapterBased = provider.Equals(RegistrySettingsManager.VpnProviderNatPmp, StringComparison.OrdinalIgnoreCase) ||
+                provider.Equals(RegistrySettingsManager.VpnProviderStaticPort, StringComparison.OrdinalIgnoreCase);
+            string hint = adapterBased
+                ? $"Connect the VPN that owns the '{vpn.ProviderName}' adapter, or select the right adapter in Settings."
+                : "Connect your VPN and enable port forwarding on a P2P server.";
+            results.Add(new(Checks.VpnConnection, DiagnosticStatus.Fail, $"{vpn.ProviderName} is not connected", hint));
             results.Add(new(Checks.ForwardedPort, DiagnosticStatus.Skip, "VPN not connected"));
             return (vpn, null);
         }

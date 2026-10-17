@@ -164,7 +164,14 @@ jobs:
           WINGET_TOKEN:    ${{ secrets.WINGET_TOKEN }}
         run: |
           $ErrorActionPreference = 'Stop'
-          Invoke-WebRequest -Uri 'https://aka.ms/wingetcreate/latest' -OutFile wingetcreate.exe
+          # Pinned to a release asset and checked against its published SHA256, like the
+          # SHA-pinned actions above: this executable runs with the winget token. Bump the
+          # version and hash together from the release page when updating.
+          $wingetCreateUrl    = 'https://github.com/microsoft/winget-create/releases/download/v1.12.13.0/wingetcreate.exe'
+          $wingetCreateSha256 = '24042BD37915805615E6CF969AC57C6439124C3FE85823327F5F3FB24BD9FFEA'
+          Invoke-WebRequest -Uri $wingetCreateUrl -OutFile wingetcreate.exe
+          $actual = (Get-FileHash -Path wingetcreate.exe -Algorithm SHA256).Hash.ToUpper()
+          if ($actual -ne $wingetCreateSha256) { throw "wingetcreate.exe hash mismatch: expected $wingetCreateSha256, got $actual" }
           .\wingetcreate.exe update martsg666.qbPortWeaver `
             --version $env:RELEASE_VERSION `
             --urls $env:MSI_URL `

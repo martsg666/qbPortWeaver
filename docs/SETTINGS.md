@@ -91,7 +91,7 @@ update first.
 ### Nicotine+
 
 Nicotine+ is a Soulseek client, not a BitTorrent one, and it has no remote-control interface at all.
-qbPortWeaver drives it through a small plugin it installs for you (see the setup section below).
+qbPortWeaver drives it through a small plugin it installs for you (see the Nicotine+ setup steps in the [README](../README.md#nicotine)).
 There is no "Restart after port change" setting: the plugin applies the port to the running client,
 so the change is live within a few seconds and a restart would only discard settings.
 

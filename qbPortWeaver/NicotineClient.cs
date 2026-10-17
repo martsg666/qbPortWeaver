@@ -262,7 +262,8 @@ public sealed class NicotineClient : ManagedClientBase
     /// <inheritdoc/>
     public override async Task<IReadOnlyList<ClientSettingConflict>?> GetConflictingSettingsAsync(CancellationToken cancellationToken = default)
     {
-        // Debug, not Error: this runs from Diagnostics, which reports an unreachable client itself.
+        // Debug, not Error: Diagnostics reports an unreachable client on its own row, and in the sync cycle
+        // this runs right after a successful preferences read, so a failure here is not news.
         using var response = await SendAsync(HttpMethod.Get, PathPreferences, null,
             LogLevel.Debug, cancellationToken).ConfigureAwait(false);
         if (response is null) return null;

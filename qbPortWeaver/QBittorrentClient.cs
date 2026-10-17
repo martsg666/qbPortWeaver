@@ -221,8 +221,8 @@ public sealed class QBittorrentClient : ManagedClientBase
     }
 
     /// <inheritdoc/>
-    // Re-reads preferences rather than reusing the sync cycle's values: this runs from Diagnostics,
-    // on demand and long after that read, and the whole point is to see the setting as it is now.
+    // Re-reads preferences rather than reusing the sync cycle's values: this runs from Diagnostics on
+    // demand, and from the cycle only every few cycles, so the values must be read as they are now.
     public override async Task<IReadOnlyList<ClientSettingConflict>?> GetConflictingSettingsAsync(CancellationToken cancellationToken = default)
     {
         // Every null exit below is logged: Diagnostics reports an unread check as Skip and tells the

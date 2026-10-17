@@ -146,7 +146,8 @@ internal static partial class AutoRecovery
     // logs a successful kill at Info.
 
     // Cycles a network adapter by disabling and re-enabling it via netsh.
-    // Used for generic NAT-PMP gateways where no known VPN service is involved.
+    // Used when the adapter belongs to no known provider: a generic NAT-PMP gateway, or a Static
+    // port adapter the registry does not recognise.
     // For known providers (ProtonVPN, PIA), the main app sends "restart" instead.
     internal static async Task CycleAdapterAsync(string adapterName, HelperLogger logger, CancellationToken cancellationToken = default)
     {

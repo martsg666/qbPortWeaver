@@ -11,7 +11,7 @@ internal sealed class VpnRegistryConfig
     private readonly string _clientProcessNameKey;
     private readonly string _adapterNameKey;
     // Optional secondary adapter name key (ProtonVPN's in-house "ProTUN" name). Null for providers
-    // that expose a single adapter name (PIA, NAT-PMP).
+    // that expose a single adapter name (PIA).
     private readonly string? _nativeAdapterNameKey;
     private readonly string _logPrefix;
 

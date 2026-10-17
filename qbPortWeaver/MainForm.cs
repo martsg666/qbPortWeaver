@@ -533,42 +533,39 @@ public partial class MainForm : Form
     // results dialog. 'form' is the Status panel when triggered there (so its button can be toggled),
     // or null from the tray. Guarded so the two entry points and the dialog's Re-run cannot run
     // concurrently.
-    private async Task RunDiagnosticsAsync(StatusForm? form)
+    private Task RunDiagnosticsAsync(StatusForm? form) => RunDiagnosticsAsync(
+        "Diagnostics requested",
+        form is null ? null : running => { if (!form.IsDisposed) form.SetDiagnosticsRunning(running); },
+        ShowDiagnosticsResults);
+
+    // The one run wrapper behind the three entry points: the concurrency guard, the busy toggle on
+    // whichever form asked (checked for disposal, since the user can close it mid-run), the request
+    // line, and the result sink.
+    private async Task RunDiagnosticsAsync(string requestLine, Action<bool>? setBusy, Action<IReadOnlyList<DiagnosticResult>> showResults)
     {
         if (_diagnosticsRunning) return;
         _diagnosticsRunning = true;
-        form?.SetDiagnosticsRunning(true);
-        LogManager.Instance.LogMessage("Diagnostics requested", LogLevel.Info);
+        setBusy?.Invoke(true);
+        LogManager.Instance.LogMessage(requestLine, LogLevel.Info);
         try
         {
             var results = await RunDiagnosticsCoreAsync();
-            if (results is not null) ShowDiagnosticsResults(results);
+            if (results is not null) showResults(results);
         }
         finally
         {
             _diagnosticsRunning = false;
-            if (form is { IsDisposed: false }) form.SetDiagnosticsRunning(false);
+            setBusy?.Invoke(false);
         }
     }
 
     // From the results dialog's Re-run button: re-runs diagnostics and refreshes the dialog in place.
-    private async Task RerunDiagnosticsAsync(DiagnosticsForm form)
-    {
-        if (_diagnosticsRunning) return;
-        _diagnosticsRunning = true;
-        form.SetRunning(true);
-        LogManager.Instance.LogMessage("Diagnostics re-run requested", LogLevel.Info);
-        try
-        {
-            var results = await RunDiagnosticsCoreAsync();
-            if (results is not null && !form.IsDisposed) form.SetResults(results);
-        }
-        finally
-        {
-            _diagnosticsRunning = false;
-            if (!form.IsDisposed) form.SetRunning(false);
-        }
-    }
+    // Results go straight to that dialog rather than through ShowDiagnosticsResults, so a dialog the
+    // user closed during the run is not reopened.
+    private Task RerunDiagnosticsAsync(DiagnosticsForm form) => RunDiagnosticsAsync(
+        "Diagnostics re-run requested",
+        running => { if (!form.IsDisposed) form.SetRunning(running); },
+        results => { if (!form.IsDisposed) form.SetResults(results); });
 
     // Runs the diagnostics service with the standard shutdown-linked timeout and error handling. Builds
     // fresh managers/clients off the saved settings, so it is safe to run alongside a sync cycle.

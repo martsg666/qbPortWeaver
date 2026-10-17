@@ -1262,10 +1262,15 @@ public sealed class PortSyncService
         string cause = string.Empty;
         if (_recoveryPendingThisCycle) cause = " - after recovery";
         else if (_networkChangeTriggered) cause = " - after network change";
-        PortHistoryManager.Append(PortHistoryKind.PortChanged, targetPort,
-            (config.VpnManager is null
-                ? $"Default port applied (was {previousPort})"
-                : $"VPN assigned new port (was {previousPort})") + cause);
+        // A Static port is entered by the user, not assigned by the VPN at runtime, so the history
+        // must not credit the VPN with a change the user made.
+        string reason = config.VpnManager switch
+        {
+            null => $"Default port applied (was {previousPort})",
+            StaticPortManager => $"Configured port applied (was {previousPort})",
+            _ => $"VPN assigned new port (was {previousPort})"
+        };
+        PortHistoryManager.Append(PortHistoryKind.PortChanged, targetPort, reason + cause);
         if (config.NotifyOnPortUpdate)
             NotifyPortUpdated(manager.ClientName, targetPort);
         return true;

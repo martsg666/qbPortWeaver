@@ -58,8 +58,14 @@ internal static class AutoRecoveryManager
             return;
         }
 
-        await RestartClientProcessAsync(provider.Config.GetClientProcessName(), provider.Config.GetClientExePath, cancellationToken).ConfigureAwait(false);
-        LogManager.Instance.LogMessage($"Recovery completed for '{providerKeyword}'", LogLevel.Info);
+        bool clientRelaunched = await RestartClientProcessAsync(provider.Config.GetClientProcessName(), provider.Config.GetClientExePath, cancellationToken).ConfigureAwait(false);
+        // The service restart did complete either way; the terminal line says whether the client
+        // app came back with it, so a failed relaunch (already logged at Error above) is not
+        // followed by a line that reads as a clean outcome.
+        if (clientRelaunched)
+            LogManager.Instance.LogMessage($"Recovery completed for '{providerKeyword}'", LogLevel.Info);
+        else
+            LogManager.Instance.LogMessage($"Recovery for '{providerKeyword}' restarted the service but could not relaunch the VPN client app - start it by hand if it is not running", LogLevel.Warn);
     }
 
     /// <summary>
@@ -90,12 +96,14 @@ internal static class AutoRecoveryManager
     // waits briefly, then relaunches it. Runs in the main app's user session - no
     // elevation or WTS token manipulation needed.
     // If the process is not running, falls back to the registry-derived exe path via getInstalledExePath.
-    private static async Task RestartClientProcessAsync(string processName, Func<string?> getInstalledExePath, CancellationToken cancellationToken = default)
+    // Returns false only when a relaunch was due and did not happen (no exe path, or the start failed);
+    // a provider without a client process has nothing to relaunch and counts as done.
+    private static async Task<bool> RestartClientProcessAsync(string processName, Func<string?> getInstalledExePath, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(processName))
         {
             LogManager.Instance.LogDebug("AutoRecoveryManager.RestartClientProcessAsync: Process name is empty - skipping");
-            return;
+            return true;
         }
 
         string? exePath = null;
@@ -119,7 +127,7 @@ internal static class AutoRecoveryManager
         if (exePath is null)
         {
             LogManager.Instance.LogMessage($"No EXE path available for '{processName}' - cannot restart client process", LogLevel.Error);
-            return;
+            return false;
         }
 
         // Not atomic across cancellation: a shutdown during this delay leaves the client killed and
@@ -134,10 +142,12 @@ internal static class AutoRecoveryManager
         {
             Process.Start(new ProcessStartInfo(exePath) { UseShellExecute = true })?.Dispose();
             LogManager.Instance.LogMessage($"Restarted client process '{processName}'", LogLevel.Info);
+            return true;
         }
         catch (Exception ex)
         {
             LogManager.Instance.LogMessage($"Failed to restart client process '{processName}': {ex.Message}", LogLevel.Error);
+            return false;
         }
     }
 

@@ -423,8 +423,9 @@ public sealed class PortSyncService
 
         // Captured so the finally can publish NextSyncAt against the wait this cycle actually
         // returned - including the shortened startup-grace poll - rather than re-reading the
-        // configured interval. Stays at the default when RunCoreAsync throws, which is what the
-        // catch returns anyway.
+        // configured interval. When RunCoreAsync throws, the catch falls back to the configured
+        // interval so the retry cadence the user chose still holds; the registry read itself
+        // cannot throw (the getters return defaults), so the catch cannot throw either.
         int nextWaitSeconds = AppConstants.DefaultUpdateIntervalSeconds;
         try
         {
@@ -434,6 +435,8 @@ public sealed class PortSyncService
         catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
         {
             SetSyncResult(status, false, $"An unexpected error occurred: {ex.Message}");
+            nextWaitSeconds = RegistrySettingsManager.GetClampedUpdateIntervalSeconds();
+            status[StatusKeys.UpdateIntervalSeconds] = nextWaitSeconds;
             return nextWaitSeconds;
         }
         finally

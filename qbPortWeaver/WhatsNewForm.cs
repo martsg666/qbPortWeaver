@@ -30,6 +30,9 @@ public partial class WhatsNewForm : Form
         "When auto-recovery restarted the VPN service but the VPN client app did not come back, the " +
         "log still ended with a completed line. It now ends with a warning saying the app needs to be " +
         "started by hand.\n\n" +
+        "Fixed: an unexpected error in a sync cycle ignored your sync interval\n" +
+        "After a cycle failed with an unexpected error, the next one always ran 3 minutes later " +
+        "whatever interval was set. It now waits the configured interval, as every other outcome does.\n\n" +
         "Previously released\n\n" +
         "New in 2.6.9\n\n" +
         "Your settings can be backed up and restored\n" +

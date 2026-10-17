@@ -451,9 +451,7 @@ public partial class SettingsForm : Form
 
         var (clientName, controls) = SelectedClient;
         string urlText = controls.Url.Text.Trim();
-        if (!string.IsNullOrEmpty(urlText) &&
-            (!Uri.TryCreate(urlText, UriKind.Absolute, out var uri) ||
-             (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps)))
+        if (!string.IsNullOrEmpty(urlText) && !UiHelpers.IsHttpUrl(urlText))
         {
             ThemedMessageBox.Warn(
                 $"The {clientName} URL is not valid. Enter a URL starting with http:// or https://");
@@ -1096,9 +1094,7 @@ public partial class SettingsForm : Form
     // and the button re-enabled in finally, even on cancel or form disposal.
     private async Task RunConnectionTestAsync(Func<IManagedClient> clientFactory, Button button, string url, string clientName) // NOSONAR S2325 - accesses instance state (UseWaitCursor, IsDisposed) for post-await UI safety
     {
-        if (string.IsNullOrEmpty(url) ||
-            !Uri.TryCreate(url, UriKind.Absolute, out var uri) ||
-            (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
+        if (!UiHelpers.IsHttpUrl(url))
         {
             ThemedMessageBox.Warn(
                 $"Enter a valid {clientName} URL starting with http:// or https:// before testing.");

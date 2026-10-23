@@ -250,6 +250,7 @@ public static class MediaManagerService
             var list = proposals as IList<MediaProposal> ?? proposals.ToList();
             int total = list.Count;
             int current = 0;
+            int placed = 0;
             foreach (var proposal in list)
             {
                 cancellationToken.ThrowIfCancellationRequested();
@@ -266,7 +267,10 @@ public static class MediaManagerService
                     // multi-part film ("Title (Year) - cd1.srt") and any name the user edited. Only when
                     // the video is in place: a skipped or failed video leaves its subtitles where they are.
                     if (MediaImporter.AddFileToLibrary(proposal.OriginalPath, proposal.ProposedPath, importMode))
+                    {
+                        placed++;
                         ImportCompanionFiles(proposal.OriginalPath, proposal.ProposedPath, dryRun: false, importMode);
+                    }
                 }
                 // Deliberately broad: this is the outermost per-item boundary of a user-initiated batch.
                 // AddFileToLibrary already handles the expected IO/permission cases, so anything reaching
@@ -279,6 +283,10 @@ public static class MediaManagerService
                         LogLevel.Error, Subsystem.MediaManager);
                 }
             }
+
+            // The batch's end line, as the sync import and the scan have: without it a support log shows
+            // the per-file lines but not where Import Now stopped or how many files made it.
+            LogManager.Instance.LogMessage($"Import Now finished: {placed} of {TextFormat.Pluralize(total, "file")} placed in the library", LogLevel.Info, Subsystem.MediaManager);
         }, cancellationToken);
 
     // Deletes subdirectories of rootFolder that are empty or contain only .nfo files.

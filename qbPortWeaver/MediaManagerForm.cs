@@ -573,7 +573,7 @@ public partial class MediaManagerForm : Form
             // The pre-import rows are out of date either way, so clear them rather than leave
             // files that may already be in the library looking importable.
             PopulateGrid([]);
-            return "Imported. The library could not be read for the re-scan - see the log for details.";
+            return "Import finished, but the library could not be read to confirm it - see the log for each file.";
         }
 
         PopulateGrid(remaining);
@@ -1007,7 +1007,16 @@ public partial class MediaManagerForm : Form
     private string GetProposedName(DataGridViewRow row)
     {
         string raw = row.Cells[colProposed.Index].Value?.ToString() ?? string.Empty;
-        return raw.Length == 0 ? raw : FileNameParser.SanitizeFileName(Path.GetFileName(raw));
+        if (raw.Length == 0) return raw;
+
+        string name = FileNameParser.SanitizeFileName(Path.GetFileName(raw));
+        // An import never changes the container, so the extension always comes from the source file:
+        // a name typed without one would otherwise import as a file nothing opens, and a dotted title
+        // ("Title 2.0 (Year)") would lose part of itself to Path.GetExtension further down.
+        string sourceExtension = row.Tag is RowData rd ? Path.GetExtension(rd.Proposal.OriginalPath) : string.Empty;
+        if (sourceExtension.Length > 0 && !name.EndsWith(sourceExtension, StringComparison.OrdinalIgnoreCase))
+            name += sourceExtension;
+        return name;
     }
 
     private void SetBusy(bool busy)
@@ -1043,7 +1052,7 @@ public partial class MediaManagerForm : Form
         {
             (0, 0) when listed > 0 => "No files selected for import.",
             (0, 0) => "All files already imported.",
-            (0, _) => $"{unmatchedStr} had no TMDB match - enter proposed names manually.",
+            (0, _) => $"{unmatchedStr} had no TMDB match - enter proposed names, then Re-match.",
             (_, 0) => $"{includeStr} would be imported.",
             _ => $"{includeStr} would be imported, {unmatchedStr} had no TMDB match."
         };

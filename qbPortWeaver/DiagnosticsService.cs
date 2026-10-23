@@ -227,11 +227,13 @@ public static class DiagnosticsService
         // Same usability rule the sync loop applies, so the report cannot pass a port the loop
         // would ignore. An unusable value is discarded here too, leaving the later in-sync check
         // to skip rather than compare the client against nonsense.
+        string? gatewayHint = GenericGatewayNoPortHint(provider, vpn);
         if (port is int reported && !AppConstants.IsUsablePort(reported))
         {
             results.Add(new(Checks.ForwardedPort, DiagnosticStatus.Fail,
                 $"{vpn.ProviderName} reported an unusable port ({reported})",
-                "The VPN is connected but has not assigned a usable forwarded port. Re-check that port forwarding is enabled on a P2P server."));
+                "The VPN is connected but has not assigned a usable forwarded port. " +
+                (gatewayHint ?? "Re-check that port forwarding is enabled on a P2P server.")));
             return (vpn, null);
         }
 
@@ -239,9 +241,19 @@ public static class DiagnosticsService
             results.Add(new(Checks.ForwardedPort, DiagnosticStatus.Pass, $"Port {p}"));
         else
             results.Add(new(Checks.ForwardedPort, DiagnosticStatus.Fail, $"No forwarded port from {vpn.ProviderName}",
-                "Ensure port forwarding is enabled on a P2P server."));
+                gatewayHint ?? "Ensure port forwarding is enabled on a P2P server."));
         return (vpn, port);
     }
+
+    // The P2P-server advice fits ProtonVPN and PIA, including NAT-PMP on one of their adapters. A
+    // generic NAT-PMP gateway has no such setting: its mapping request went unanswered or was refused.
+    // Returns null when the P2P-server advice applies. Static port never reaches the rows that use
+    // this, since its port is checked as usable before the connection is.
+    private static string? GenericGatewayNoPortHint(string provider, IVpnManager vpn) =>
+        provider.Equals(RegistrySettingsManager.VpnProviderNatPmp, StringComparison.OrdinalIgnoreCase) &&
+        VpnProviderRegistry.FindProviderToken(vpn.ProviderName) is null
+            ? $"Check that the gateway behind the '{vpn.ProviderName}' adapter accepts NAT-PMP port mapping requests."
+            : null;
 
     // Client running, reachable, in sync, correctly bound, and reachable from outside.
     private static async Task AddClientResultsAsync(List<DiagnosticResult> results, IVpnManager? vpn, int? vpnPort, CancellationToken cancellationToken)

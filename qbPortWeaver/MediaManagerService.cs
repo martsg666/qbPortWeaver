@@ -101,6 +101,8 @@ public static class MediaManagerService
     /// <summary>
     /// Returns import proposals for all configured source folders without modifying any files.
     /// Only processors whose library path is configured will produce proposals.
+    /// Returns <see langword="null"/> when the library index could not be built (a library folder is
+    /// unreachable), so the caller can say so instead of reading an empty list as "all imported".
     /// Throws <see cref="OperationCanceledException"/> if <paramref name="cancellationToken"/> is cancelled.
     /// </summary>
     /// <param name="apiKey">TMDB API key used to look up movie and TV show metadata.</param>
@@ -110,7 +112,7 @@ public static class MediaManagerService
     /// <param name="tvShowsLibraryPath">Library folder for TV shows. Empty to skip TV show processing.</param>
     /// <param name="progress">Optional progress sink; reports current and total item counts as each item is processed.</param>
     /// <param name="cancellationToken">Token to cancel the scan between folders.</param>
-    public static async Task<List<MediaProposal>> ScanAsync(string apiKey, bool createFolders, string[] sourceFolders,
+    public static async Task<List<MediaProposal>?> ScanAsync(string apiKey, bool createFolders, string[] sourceFolders,
         string moviesLibraryPath, string tvShowsLibraryPath,
         IProgress<(int Current, int Total)>? progress = null, CancellationToken cancellationToken = default)
     {
@@ -123,7 +125,7 @@ public static class MediaManagerService
         if (prep is null)
         {
             LogManager.Instance.LogMessage("Scan aborted - library index unavailable", LogLevel.Warn, Subsystem.MediaManager);
-            return [];
+            return null;
         }
         var (tmdb, classified, total) = prep.Value;
 

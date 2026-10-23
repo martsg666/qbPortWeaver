@@ -4,6 +4,9 @@
 public partial class MediaManagerForm : Form
 {
     private const int MaxStatusFileNameLength = 40;
+    // ScanAsync returns null when the library index could not be built. An empty grid would read as
+    // "All files already imported", so the scan says what actually happened instead.
+    private const string LibraryUnavailableStatus = "The library folder could not be read, so nothing was scanned. See the log for details.";
     [System.Text.RegularExpressions.GeneratedRegex(@"\(\d{4}\)$")]
     private static partial System.Text.RegularExpressions.Regex TitleYearFolderRegex();
 
@@ -410,7 +413,10 @@ public partial class MediaManagerForm : Form
             bool createFolders = chkCreateFolders.Checked;
             var proposals = await MediaManagerService.ScanAsync(apiKey, createFolders, sourceFolders, moviesLibraryPath, tvShowsLibraryPath, CreateScanProgress("Scanning…"), cancellationToken);
 
-            PopulateGrid(proposals);
+            if (proposals is null)
+                completionStatus = LibraryUnavailableStatus;
+            else
+                PopulateGrid(proposals);
         }
         catch (OperationCanceledException)
         {
@@ -471,7 +477,9 @@ public partial class MediaManagerForm : Form
         string? completionStatus = null;
         try
         {
-            await RunImportAndRescanAsync(toApply, cancellationToken);
+            // Shown after UpdateScanStatus in the finally below, which would otherwise replace it
+            // with the grid summary before it was ever seen.
+            completionStatus = await RunImportAndRescanAsync(toApply, cancellationToken);
         }
         catch (OperationCanceledException)
         {
@@ -494,7 +502,8 @@ public partial class MediaManagerForm : Form
     }
 
     // Applies proposals, optionally cleans up empty folders, then re-scans to refresh the grid.
-    private async Task RunImportAndRescanAsync(List<MediaProposal> toApply, CancellationToken cancellationToken)
+    // Returns the completion message, or null when the form was closed meanwhile.
+    private async Task<string?> RunImportAndRescanAsync(List<MediaProposal> toApply, CancellationToken cancellationToken)
     {
         var importMode = MediaManagerService.ParseImportMode(cboImportMode.SelectedItem?.ToString() ?? RegistrySettingsManager.ImportModeHardlink);
 
@@ -511,7 +520,7 @@ public partial class MediaManagerForm : Form
         });
         await MediaManagerService.ApplyProposalsAsync(toApply, importMode, progress, cancellationToken);
 
-        if (IsDisposed) return;
+        if (IsDisposed) return null;
 
         var sourceFolders = lstSourceFolders.Items.Cast<string>().ToArray();
         if (chkDeleteEmptyFolders.Checked)
@@ -527,7 +536,7 @@ public partial class MediaManagerForm : Form
             }, cancellationToken);
         }
 
-        if (IsDisposed) return;
+        if (IsDisposed) return null;
 
         lblScanStatus.Text = "Re-scanning…";
         BeginProgress();
@@ -535,14 +544,25 @@ public partial class MediaManagerForm : Form
             txtTmdbApiKey.Text.Trim(), chkCreateFolders.Checked, sourceFolders,
             txtMoviesLibraryPath.Text.Trim(), txtTvShowsLibraryPath.Text.Trim(), CreateScanProgress("Re-scanning…"), cancellationToken);
 
-        if (IsDisposed) return;
+        if (IsDisposed) return null;
+
+        if (remaining is null)
+        {
+            // The pre-import rows are out of date either way, so clear them rather than leave
+            // files that may already be in the library looking importable.
+            PopulateGrid([]);
+            return "Imported. The library could not be read for the re-scan - see the log for details.";
+        }
+
         PopulateGrid(remaining);
 
-        string remainingLabel = TextFormat.Pluralize(remaining.Count, "file");
-        lblScanStatus.Text = remaining.Count == 0
-            ? "Done - all files imported successfully."
-            : $"Done - {remainingLabel} could not be imported.";
-        btnImportNow.Enabled = remaining.Count > 0;
+        // Only the files sent to import count as failures: a row the user left unchecked is still in
+        // the re-scan, but nothing was attempted for it.
+        var applied = new HashSet<string>(toApply.Select(t => t.OriginalPath), StringComparer.OrdinalIgnoreCase);
+        int failed = remaining.Count(r => applied.Contains(r.OriginalPath));
+        return failed == 0
+            ? "Done - all selected files imported."
+            : $"Done - {TextFormat.Pluralize(failed, "file")} could not be imported. See the log for details.";
     }
 
     // Builds updated proposals from the grid, honouring any edits the user made to the Proposed column.

@@ -503,14 +503,18 @@ public sealed class NicotineClient : ManagedClientBase
 
     private void LogTransportFailure(string callerName, Exception? exception, LogLevel failureLevel)
     {
+        // Named after the address actually tried. _endpoint can come from the plugin's connection file
+        // and differ from the URL in Settings, which LogHttpException would name instead - pointing the
+        // user at an address that was never contacted.
+        string reason = exception switch
+        {
+            TaskCanceledException => "timed out",
+            null => "no response",
+            _ => exception.Message,
+        };
+        Log($"{ClientName} bridge plugin is not reachable at {_endpoint} ({reason})", failureLevel);
         if (exception is not null)
-        {
-            LogHttpException(callerName, exception, failureLevel);
-        }
-        else
-        {
-            Log($"{ClientName} bridge plugin is not reachable at {_endpoint}", failureLevel);
-        }
+            LogManager.Instance.LogDebug($"NicotineClient.{callerName}: {exception.GetType().Name}");
 
         // Distinguish "plugin missing" from "Nicotine+ down", which need different fixes.
         if (failureLevel == LogLevel.Error && !NicotinePluginDiscovery.IsPluginInstalled(_exePathHint))

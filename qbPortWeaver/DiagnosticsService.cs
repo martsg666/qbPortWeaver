@@ -54,6 +54,9 @@ public static class DiagnosticsService
     /// <summary>Runs all diagnostic checks in sync-chain order. Throws <see cref="OperationCanceledException"/> only if <paramref name="cancellationToken"/> fires.</summary>
     public static async Task<IReadOnlyList<DiagnosticResult>> RunAsync(CancellationToken cancellationToken = default)
     {
+        // Read the debug setting here as the sync cycle does: the client-settings hint tells the user to
+        // turn debug logging on and run Diagnostics again, and that must work without waiting for a cycle.
+        LogManager.Instance.DebugMode = RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionExtra, RegistrySettingsManager.KeyDebugMode);
         LogManager.Instance.LogMessage("Diagnostics started", LogLevel.Info);
         var results = new List<DiagnosticResult>();
 

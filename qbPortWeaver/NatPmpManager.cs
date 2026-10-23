@@ -130,9 +130,13 @@ public sealed class NatPmpManager : IVpnManager
     {
         var tcp = await RequestPortMappingAsync(_gateway, _mappingLifetime, OpcodeMapTcp, udpPort, cancellationToken).ConfigureAwait(false);
 
+        // Transition-only: this runs on every renewal, and a gateway that refuses TCP refuses it every
+        // time, so a per-cycle Warn would bury the log and keep raising the badge. Cleared once TCP is
+        // granted on the same port, so a recurrence is reported again.
+        string tcpStateKey = $"vpn.natpmpTcp.{_adapter.Name}";
         if (!tcp.Success)
         {
-            LogManager.Instance.LogMessage(
+            LogManager.Instance.LogStateChange(tcpStateKey,
                 $"NAT-PMP TCP mapping for port {udpPort} was not granted on '{_adapter.Name}': {tcp.Error} - " +
                 "UDP is mapped, so this only matters if the gateway does not forward both protocols together",
                 LogLevel.Warn);
@@ -141,12 +145,13 @@ public sealed class NatPmpManager : IVpnManager
 
         if (tcp.ExternalPort != udpPort)
         {
-            LogManager.Instance.LogMessage(
+            LogManager.Instance.LogStateChange(tcpStateKey,
                 $"NAT-PMP granted TCP port {tcp.ExternalPort} but UDP port {udpPort} on '{_adapter.Name}' - " +
                 "the client listens on one port, so inbound TCP may not reach it",
                 LogLevel.Warn);
             return false;
         }
+        LogManager.Instance.ClearLogState(tcpStateKey);
 
         // Track the shorter of the two leases. WarnIfNatPmpLeaseTooShort compares the user's sync
         // interval against LastGrantedLifetime, which until here holds the UDP grant only - a TCP

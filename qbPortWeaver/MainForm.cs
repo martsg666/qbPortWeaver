@@ -1003,7 +1003,7 @@ public partial class MainForm : Form
         }
     }
 
-    // Check failed or was cancelled by shutdown - UpdateChecker already logged the cause at Debug.
+    // Check failed or was cancelled by shutdown - UpdateChecker already logged the cause at Info.
     // Kept distinct from NotifyUpToDate so a failed check is never reported as "up to date"
     // (the manual balloon would otherwise show false information).
     private void NotifyUpdateCheckFailed(bool manual)

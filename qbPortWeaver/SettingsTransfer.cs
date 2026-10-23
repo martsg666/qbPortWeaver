@@ -240,6 +240,7 @@ internal static class SettingsTransfer
                 section.Value.ValueKind != JsonValueKind.Object)
             {
                 ignored += CountValues(section.Value);
+                LogManager.Instance.LogMessage($"Settings restore skipped section [{section.Name}] - not recognised by this version", LogLevel.Info);
                 continue;
             }
 
@@ -257,6 +258,7 @@ internal static class SettingsTransfer
         {
             total++;
             if (TryApplySectionValue(section, entry)) applied++;
+            else LogSkippedEntry($"[{section}] {entry.Name}");
         }
         return (applied, total - applied);
     }
@@ -271,9 +273,16 @@ internal static class SettingsTransfer
         {
             total++;
             if (TryApplyApplicationValue(entry)) applied++;
+            else LogSkippedEntry(entry.Name);
         }
         return (applied, total - applied);
     }
+
+    // The restore message says the log has the detail of every skipped entry. A failed write is
+    // already logged at Warn by the registry layer; this line covers the rest - an entry this version
+    // does not recognise or will not restore - and names the key only, never its value.
+    private static void LogSkippedEntry(string name) =>
+        LogManager.Instance.LogMessage($"Settings restore skipped {name} - not restored by this version or not written", LogLevel.Info);
 
     // Writes one section value, or reports that it was skipped. Non-transferable keys are refused
     // even when present in the file: the stored form of a password is a DPAPI blob tied to one user

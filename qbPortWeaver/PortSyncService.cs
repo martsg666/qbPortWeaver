@@ -29,7 +29,7 @@ public sealed class PortSyncService
     // Connection status value returned by clients that support GetConnectionStatusAsync
     private const string ClientDisconnectedStatus = "disconnected";
 
-    // LogManager.LogStateChange keys for the three conditions in this cycle that persist until the
+    // LogManager.LogStateChange keys for the conditions in this cycle that persist until the
     // user acts, so each is logged on the transition rather than on every cycle. The two restart and
     // settings-conflict warnings nearby already do this with their own fields; these use the shared
     // mechanism because they have no other reason to carry state. Every Warn also bumps the tray's
@@ -44,6 +44,7 @@ public sealed class PortSyncService
     private const string PortForwardingUnavailableStateKey = "vpn.portForwardingUnavailable";
     private const string BindingAddressStateKey = "client.bindingAddressStale";
     private const string RecoveryCapStateKey = "vpn.recoveryCapReached";
+    private const string UnexpectedErrorDetailsStateKey = "sync.unexpectedErrorDetails";
 
     /// <summary>Raised when a sync cycle completes (success or failure) with the resulting tray status.</summary>
     public event Action<TrayStatus>? SyncCompleted;
@@ -430,6 +431,7 @@ public sealed class PortSyncService
         try
         {
             nextWaitSeconds = await RunCoreAsync(status, cancellationToken).ConfigureAwait(false);
+            LogManager.Instance.ClearLogState(UnexpectedErrorDetailsStateKey);
             return nextWaitSeconds;
         }
         catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
@@ -437,8 +439,10 @@ public sealed class PortSyncService
             // The status message stays one short line because the tray tooltip shows it; the full exception
             // goes to the log as Info, since an exception reaching here is a bug and its type and stack are
             // what a report needs. Info rather than Error: the line above already counts once towards the badge.
+            // Once per distinct exception: a persistent bug would otherwise repeat the whole stack every
+            // cycle. The key is cleared by the next cycle that completes, so a recurrence is logged again.
             SetSyncResult(status, false, $"An unexpected error occurred: {ex.Message}");
-            LogManager.Instance.LogMessage($"Details of the unexpected error: {ex}", LogLevel.Info);
+            LogManager.Instance.LogStateChange(UnexpectedErrorDetailsStateKey, $"Details of the unexpected error: {ex}", LogLevel.Info);
             nextWaitSeconds = RegistrySettingsManager.GetClampedUpdateIntervalSeconds();
             status[StatusKeys.UpdateIntervalSeconds] = nextWaitSeconds;
             return nextWaitSeconds;

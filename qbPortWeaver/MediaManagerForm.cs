@@ -192,7 +192,8 @@ public partial class MediaManagerForm : Form
         }
         catch (Exception ex)
         {
-            if (!IsDisposed) completionStatus = $"Error: {ex.Message}";
+            var status = ReportUnexpectedError("Re-match", ex);
+            if (!IsDisposed) completionStatus = status;
         }
         finally
         {
@@ -204,6 +205,15 @@ public partial class MediaManagerForm : Form
                 if (completionStatus is not null) lblScanStatus.Text = completionStatus;
             }
         }
+    }
+
+    // Anything reaching the Scan / Import / Re-match catch-alls is unexpected. The status label can only
+    // show the message, so the log gets the full exception (type and stack) for a report. One Error line:
+    // these are user-initiated, so unlike a sync cycle nothing repeats it.
+    private static string ReportUnexpectedError(string operation, Exception ex)
+    {
+        LogManager.Instance.LogMessage($"{operation} failed unexpectedly: {ex}", LogLevel.Error, Subsystem.MediaManager);
+        return $"Error: {ex.Message}";
     }
 
     // Re-verifies uncertain and unmatched rows using the current Proposed filenames.
@@ -330,10 +340,10 @@ public partial class MediaManagerForm : Form
             return (info, isConfident);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException)
         {
-            // A real cancel propagates above; a timeout is one failed lookup, as in TmdbClient.LookupAsync,
-            // so the remaining rows are still re-matched. JsonException propagates to the caller's handler.
+            // A real cancel propagates above; a timeout or an unreadable reply is one failed lookup, as in
+            // TmdbClient.LookupAsync, so the remaining rows are still re-matched.
             LogManager.Instance.LogMessage($"Re-match {mediaLabel} lookup failed for '{title}': {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
             return (null, false);
         }
@@ -420,7 +430,8 @@ public partial class MediaManagerForm : Form
         }
         catch (Exception ex)
         {
-            if (!IsDisposed) completionStatus = $"Error: {ex.Message}";
+            var status = ReportUnexpectedError("Scan", ex);
+            if (!IsDisposed) completionStatus = status;
         }
         finally
         {
@@ -497,7 +508,8 @@ public partial class MediaManagerForm : Form
         }
         catch (Exception ex)
         {
-            if (!IsDisposed) completionStatus = $"Error: {ex.Message}";
+            var status = ReportUnexpectedError("Import", ex);
+            if (!IsDisposed) completionStatus = status;
         }
         finally
         {

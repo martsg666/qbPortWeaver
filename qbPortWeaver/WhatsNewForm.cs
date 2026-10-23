@@ -84,6 +84,9 @@ public partial class WhatsNewForm : Form
         "Fixed: Re-match in the Media Manager could import only one part of a multi-part movie\n" +
         "After a re-match, every part of a movie split across several files got the same name, so " +
         "only the first one was imported. Each part now keeps its own name, as it does after a scan.\n\n" +
+        "Fixed: a movie split across files that each carry the title imported only its first part\n" +
+        "All parts now import into the movie's folder, each with its part number. A single file with " +
+        "a title such as \"Part 2\" is still imported as it was.\n\n" +
         "Fixed: Import Now put each part of a multi-part movie in its own folder\n" +
         "All parts, and their subtitles, now go into the movie's folder, as the automatic import " +
         "does.\n\n" +

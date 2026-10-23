@@ -80,7 +80,7 @@ internal static class AutoRecoveryManager
             return;
         }
 
-        LogManager.Instance.LogMessage($"Cycling adapter '{adapterName}'", LogLevel.Info);
+        // No "Cycling adapter" line here: the helper logs it, as it does "Restarting service" for a restart.
         var cycleResult = await HelperServiceClient.SendCycleAdapterAsync(adapterName, cancellationToken).ConfigureAwait(false);
         cycleResult.RaiseLogAlerts();
 

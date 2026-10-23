@@ -46,6 +46,9 @@ internal sealed class HelperPipeServer(ILogger<HelperPipeServer> logger) : Backg
     // Bound for reading the client's request line after a connection is accepted. (Named
     // distinctly from HelperServiceClient.ResponseTimeoutMs, which bounds the opposite direction.)
     private const int RequestReadTimeoutMs = 5_000;
+    // Cap on how much of a malformed request reaches the log. Any signed-in user can open the pipe,
+    // so a junk line of any length must not be copied whole into the log by this SYSTEM service.
+    private const int MaxLoggedMessageLength = 200;
 
     // Registry paths and keys for impersonated HKCU reads. Subkey names not in AppIdentity are session-environment specific.
     private const string VolatileEnvironmentKey = @"Volatile Environment";
@@ -133,7 +136,8 @@ internal sealed class HelperPipeServer(ILogger<HelperPipeServer> logger) : Backg
         var parts = message.Split('|', 3);
         if (parts.Length != 3)
         {
-            logger.LogWarning("Received malformed pipe message ({PartCount} part(s), expected 3): '{Message}'", parts.Length, message);
+            logger.LogWarning("Received malformed pipe message ({PartCount} part(s), expected 3): '{Message}'", parts.Length,
+                message.Length > MaxLoggedMessageLength ? message[..MaxLoggedMessageLength] + "..." : message);
             return;
         }
 

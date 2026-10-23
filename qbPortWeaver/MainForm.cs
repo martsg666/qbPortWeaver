@@ -929,7 +929,7 @@ public partial class MainForm : Form
             }
             catch (Exception ex)
             {
-                LogManager.Instance.LogMessage($"Media import cycle failed: {ex.Message}", LogLevel.Error);
+                LogManager.Instance.LogMessage($"Media import cycle failed: {ex.Message}", LogLevel.Error, Subsystem.MediaManager);
             }
             finally
             {

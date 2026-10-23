@@ -80,6 +80,12 @@ by definition not answering. `GET /` is the one to start with: it reports the ve
 sides and the capability map, so a Nicotine+ update that removed something the bridge depends on
 can be identified directly rather than inferred from a failing endpoint.
 
+A successful `POST /v1/port` also carries `warnings`, a list of what it could not do on top of
+saving the port: `reconnect_unsupported` and `connect_unsupported` (the new port waits for the next
+connection), `setup_incomplete` (Nicotine+'s first-run setup is not finished, so it is not
+connected), and `portmapper_unsupported` or `portmapper_failed` (an old UPnP mapping may remain).
+qbPortWeaver logs each one.
+
 `POST /v1/porttest` never blocks longer than the plugin's own cap, so a slow check returns
 `state: "pending"` rather than timing out. Treat anything other than `state: "done"` as
 undetermined, not as a closed port. Both porttest responses carry `source`: `native` when the

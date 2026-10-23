@@ -27,6 +27,7 @@ public sealed class NicotineClient : ManagedClientBase
     private const string JsonPropMessage = "message";
     private const string JsonPropState = "state";
     private const string JsonPropResult = "result";
+    private const string JsonPropWarnings = "warnings";
 
     private const string ErrorPortLocked = "port_locked_by_cli";
     private const string StateDone = "done";
@@ -171,6 +172,7 @@ public sealed class NicotineClient : ManagedClientBase
                 // is gone. Re-arm the warning latch so a later one is reported instead of being
                 // swallowed as a repeat - same rule as the interface latches in PortSyncService.
                 _lastLockedWarning = null;
+                LogSetPortWarnings(root, port);
                 return true;
             }
 
@@ -419,6 +421,33 @@ public sealed class NicotineClient : ManagedClientBase
         }
 
         LogManager.Instance.LogMessage($"Failed to set {ClientName} port{detail}", LogLevel.Error);
+    }
+
+    // The plugin saves the port and reports, rather than fails on, whatever it could not do on top:
+    // rebinding the listener, or removing an old UPnP mapping (bridge/core_io.py, set_port). Unread,
+    // a port saved but not live looked like a clean success, and the next cycle read the saved value
+    // back and found nothing to fix. Warn where something stays wrong, Info where the port simply
+    // waits for Nicotine+ to connect. No dedupe: a set-port request is only sent on a real change.
+    private void LogSetPortWarnings(JsonElement root, int port)
+    {
+        if (!root.TryGetProperty(JsonPropWarnings, out var warnings) || warnings.ValueKind != JsonValueKind.Array)
+            return;
+
+        // Non-string entries are skipped: GetString would throw, and the caller's catch would then
+        // report a port change that succeeded as failed.
+        foreach (var item in warnings.EnumerateArray().Where(w => w.ValueKind == JsonValueKind.String))
+        {
+            var (text, level) = item.GetString() switch
+            {
+                "reconnect_unsupported" => ($"{ClientName} saved port {port} but this version cannot reconnect from the plugin. It keeps listening on the old port until you reconnect or restart {ClientName}.", LogLevel.Warn),
+                "connect_unsupported" => ($"{ClientName} is offline and this version cannot connect from the plugin. Port {port} applies when you connect.", LogLevel.Info),
+                "setup_incomplete" => ($"{ClientName} has not finished its first-run setup. Port {port} applies once it is completed and connected.", LogLevel.Info),
+                "portmapper_unsupported" or "portmapper_failed" => ($"{ClientName} could not remove its UPnP port mapping. Your router may still forward the old port.", LogLevel.Warn),
+                // A code from a newer plugin: recorded, but not worth alerting on without knowing it.
+                var other => ($"{ClientName} reported '{other}' after the port change", LogLevel.Debug),
+            };
+            LogManager.Instance.LogMessage(text, level);
+        }
     }
 
     private async Task LogHttpFailureAsync(HttpResponseMessage response, string path,

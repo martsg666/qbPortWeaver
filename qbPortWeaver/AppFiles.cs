@@ -1,9 +1,11 @@
-﻿namespace qbPortWeaver;
+﻿using System.Text.RegularExpressions;
+
+namespace qbPortWeaver;
 
 /// <summary>The application's own files on disk: where they live, and how to read and write them safely.
 /// <para>Reads share the file so a concurrent atomic rewrite is never blocked, and writes go through a
 /// temp file renamed over the target, so a reader sees either the whole old file or the whole new one.</para></summary>
-public static class AppFiles
+public static partial class AppFiles
 {
     private const string StatusFileName = "qbPortWeaver.status.json";
 
@@ -131,6 +133,17 @@ public static class AppFiles
     // the folder - which matters because one caller writes into Nicotine+'s config folder.
     private const string TempFilePrefix = ".qbpw-";
     private const string TempFileSuffix = ".tmp";
+
+    /// <summary>The exception's message with any atomic-write temp file name replaced by the target's,
+    /// so a failure reads the same on every attempt and <see cref="LogManager.LogStateChange"/> can
+    /// recognise it as a repeat. The temp name is random per write (see <see cref="WriteAtomicCore"/>),
+    /// so a message quoting it never matches the previous one.</summary>
+    internal static string DescribeWriteFailure(Exception ex, string targetPath) =>
+        TempFileNameRegex().Replace(ex.Message, Path.GetFileName(targetPath));
+
+    // TempFilePrefix + 32 hex digits (Guid "N" format) + TempFileSuffix.
+    [GeneratedRegex(@"\.qbpw-[0-9a-f]{32}\.tmp", RegexOptions.IgnoreCase)]
+    private static partial Regex TempFileNameRegex();
 
     /// <summary>Deletes temp files an interrupted atomic write left behind in <paramref name="folder"/>.</summary>
     /// <remarks>

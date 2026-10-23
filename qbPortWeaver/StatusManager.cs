@@ -104,7 +104,7 @@ public static class StatusManager
             // Transition-only, as PortHistoryManager does for its file: a write failure persists until
             // the user fixes it (disk full, permissions), and a Warn on every cycle would bury the log
             // and keep raising the badge.
-            LogManager.Instance.LogStateChange(StatusWriteStateKey, $"Failed to write status file: {ex.Message}", LogLevel.Warn);
+            LogManager.Instance.LogStateChange(StatusWriteStateKey, $"Failed to write status file: {AppFiles.DescribeWriteFailure(ex, filePath)}", LogLevel.Warn);
         }
     }
 

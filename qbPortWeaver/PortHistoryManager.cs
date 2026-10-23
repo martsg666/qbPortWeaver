@@ -97,7 +97,7 @@ public static class PortHistoryManager
                 // LogStateChange reports it once and again only if the message changes, so a
                 // permanent failure cannot drive the tray badge up.
                 LogManager.Instance.LogStateChange(HistoryWriteStateKey,
-                    $"Could not write the port history file - Recent Port Changes will stop updating: {ex.Message}",
+                    $"Could not write the port history file - Recent Port Changes will stop updating: {AppFiles.DescribeWriteFailure(ex, HistoryFilePath)}",
                     LogLevel.Warn);
             }
         }

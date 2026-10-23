@@ -741,12 +741,17 @@ public partial class MainForm : Form
             });
     }
 
-    // Shared handler for PortSyncService warning events (interface mismatch, port verification
-    // failure) - both fire transition-only and warrant a one-shot warning balloon.
-    private void ShowWarningBalloon(string message)
+    // Shared handler for the PortSyncService warning events (interface mismatch, port verification
+    // failure, client settings conflict), which fire transition-only and warrant a one-shot warning
+    // balloon. Each follows a Warn already in the log, so a click opens the Log Viewer on it, as the
+    // log-alert balloon this one replaces on screen would have.
+    private void ShowWarningBalloon(string message) => ShowWarningBalloon(message, opensLog: true);
+
+    // opensLog: false for the log-write failure, which has nothing in the log to show.
+    private void ShowWarningBalloon(string message, bool opensLog)
     {
         if (_shutdownCts.IsCancellationRequested) return;
-        InvokeOnUiThread(() => { _logAlertBalloonPending = false; _trayIcon.ShowBalloonTip(AppConstants.BalloonTipDurationMs, AppIdentity.AppName, message, ToolTipIcon.Warning); });
+        InvokeOnUiThread(() => { _logAlertBalloonPending = opensLog; _trayIcon.ShowBalloonTip(AppConstants.BalloonTipDurationMs, AppIdentity.AppName, message, ToolTipIcon.Warning); });
     }
 
     // Called by PortSyncService when the client's listening port is successfully updated.
@@ -1182,7 +1187,7 @@ public partial class MainForm : Form
     // the event again. LogManager latches the event, so this fires once per failure episode.
     private void OnLogWriteFailed()
     {
-        ShowWarningBalloon("Cannot write to the log file. Check free disk space and the permissions on the qbPortWeaver folder.");
+        ShowWarningBalloon("Cannot write to the log file. Check free disk space and the permissions on the qbPortWeaver folder.", opensLog: false);
     }
 
     // Called from background threads via LogManager.WarnOrErrorLogged; marshals to UI thread

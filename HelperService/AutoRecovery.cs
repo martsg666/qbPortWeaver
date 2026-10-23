@@ -310,7 +310,7 @@ internal static partial class AutoRecovery
     private static async Task ForceKillAndWaitAsync(ServiceController sc, string serviceName, string reason,
         HelperLogger logger, CancellationToken cancellationToken)
     {
-        logger.LogMessage($"{reason} - force-killing process", LogLevel.Info);
+        logger.LogMessage($"{reason} - attempting to force-kill the process", LogLevel.Info);
         KillServiceProcess(sc, logger);
         await WaitForStoppedOrWarnAsync(sc, serviceName, logger, cancellationToken).ConfigureAwait(false);
     }
@@ -325,7 +325,9 @@ internal static partial class AutoRecovery
         }
         catch (System.ServiceProcess.TimeoutException)
         {
-            logger.LogMessage($"Service '{serviceName}' still not stopped after force-kill - proceeding with start anyway", LogLevel.Warn);
+            // Worded for every route here, not only a kill that ran: the shared-host refusal and a failed or
+            // denied kill also arrive, and each has already logged why the process was not killed.
+            logger.LogMessage($"Service '{serviceName}' still not stopped - proceeding with start anyway", LogLevel.Warn);
         }
     }
 

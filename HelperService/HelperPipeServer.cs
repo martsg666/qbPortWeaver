@@ -39,6 +39,11 @@ namespace qbPortWeaver.HelperService;
 /// allowlist would help but the realistic threat (malware already running as the user) implies
 /// the attacker has user-scope access already, and the user-to-SYSTEM escalation is accepted as
 /// the documented privilege boundary the helper crosses.
+/// The reverse direction is not covered either: the pipe is one instance, recreated per connection,
+/// and the tray app does not check who serves it, so another user's process that creates the pipe
+/// name between connections could answer requests with a made-up result or hold the name. The worst
+/// outcome is a recovery reported wrongly or not run - no privilege is gained - and closing it would
+/// need a server-identity check in HelperServiceClient, so it is accepted alongside the boundary above.
 /// </summary>
 internal sealed class HelperPipeServer(ILogger<HelperPipeServer> logger) : BackgroundService
 {

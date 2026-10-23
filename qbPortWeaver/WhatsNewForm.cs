@@ -33,6 +33,11 @@ public partial class WhatsNewForm : Form
         "Fixed: an unexpected error in a sync cycle ignored your sync interval\n" +
         "After a cycle failed with an unexpected error, the next one always ran 3 minutes later " +
         "whatever interval was set. It now waits the configured interval, as every other outcome does.\n\n" +
+        "Fixed: auto-recovery could force-stop more than one Windows service\n" +
+        "When a service refused to stop, the helper service ended the process it runs in. For a " +
+        "Windows service that shares its process with others, that stopped all of them. It now " +
+        "leaves such a service alone and logs a warning. The VPN services auto-recovery restarts " +
+        "each run in their own process and are not affected.\n\n" +
         "Previously released\n\n" +
         "New in 2.6.9\n\n" +
         "Your settings can be backed up and restored\n" +

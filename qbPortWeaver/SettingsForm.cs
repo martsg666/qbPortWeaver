@@ -799,7 +799,9 @@ public partial class SettingsForm : Form
         if (!string.IsNullOrWhiteSpace(target.Text) && File.Exists(target.Text))
             dlg.InitialDirectory = Path.GetDirectoryName(target.Text) ?? string.Empty;
 
-        if (dlg.ShowDialog() == DialogResult.OK)
+        // Owned by the Settings form, as every other dialog here is; the method is static, so the
+        // owner is found through the text box being filled.
+        if (dlg.ShowDialog(target.FindForm()) == DialogResult.OK)
             target.Text = dlg.FileName;
     }
 

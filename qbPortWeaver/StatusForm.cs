@@ -329,8 +329,10 @@ public partial class StatusForm : Form
 
         // The label ellipsises rather than clipping (see the designer), so the tooltip carries the
         // untruncated text. The part that gets cut is the countdown at the end of the longest value,
-        // which is the half a user is reading the row for.
-        toolTip.SetToolTip(lblAutoRecoveryValue, text);
+        // which is the half a user is reading the row for. Only on a change, as SetLastSyncToolTip
+        // does: this runs on the one-second tick, and re-setting it restarts a tooltip being read.
+        if (toolTip.GetToolTip(lblAutoRecoveryValue) != text)
+            toolTip.SetToolTip(lblAutoRecoveryValue, text);
     }
 
     // One phrase for "nothing is holding recovery back any more", reached from three places: either

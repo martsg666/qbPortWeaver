@@ -73,6 +73,9 @@ public partial class WhatsNewForm : Form
         "Fixed: Re-match in the Media Manager could import only one part of a multi-part movie\n" +
         "After a re-match, every part of a movie split across several files got the same name, so " +
         "only the first one was imported. Each part now keeps its own name, as it does after a scan.\n\n" +
+        "Fixed: Import Now put each part of a multi-part movie in its own folder\n" +
+        "All parts, and their subtitles, now go into the movie's folder, as the automatic import " +
+        "does.\n\n" +
         "Fixed: misleading Media Manager status messages\n" +
         "A slow TMDB answer during Re-match no longer stops it and reports it as cancelled, and " +
         "unchecking every file no longer says everything is already imported.\n\n" +

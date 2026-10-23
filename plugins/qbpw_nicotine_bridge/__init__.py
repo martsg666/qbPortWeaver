@@ -393,8 +393,7 @@ class Plugin(BasePlugin):
 
         text = (args or "").strip()
         try:
-            port = int(text) if text else (self._core_io.active_port()
-                                           or self._core_io.configured_port())
+            port = int(text) if text else self._core_io.effective_port()
         except ValueError:
             self.output(f"'{text}' is not a port number.")
             return
@@ -482,4 +481,7 @@ class Plugin(BasePlugin):
             self.output("The bridge has been restarted.")
         # Report the failure; a command must never break the command loop.
         except Exception as error:  # noqa: BLE001
+            # Same cleanup loaded_notification does: a start that failed part-way must not leave a
+            # server thread or a published connection file behind.
+            self._stop()
             self.output(f"Could not restart the bridge: {error}")

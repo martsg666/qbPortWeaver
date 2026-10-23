@@ -252,6 +252,15 @@ public sealed class TransmissionClient : ManagedClientBase
 
             using var doc = await TryReadJsonAsync(response, cancellationToken).ConfigureAwait(false);
             if (doc is null) return null;
+            // Checked as GetPreferencesAsync does: a failed RPC can still carry an empty "arguments"
+            // object, which would otherwise read as "no conflicts" - a green Pass for a check that
+            // never read the settings.
+            if (doc.RootElement.TryGetProperty(JsonPropResult, out var resultElement) &&
+                !string.Equals(resultElement.AsStringOrNull(), RpcResultSuccess, StringComparison.OrdinalIgnoreCase))
+            {
+                LogManager.Instance.LogDebug($"TransmissionClient.GetConflictingSettingsAsync: RPC returned non-success result: {resultElement}");
+                return null;
+            }
             if (!doc.RootElement.TryGetProperty(JsonPropArguments, out var arguments))
             {
                 LogManager.Instance.LogDebug("TransmissionClient.GetConflictingSettingsAsync: 'arguments' key missing from RPC response");

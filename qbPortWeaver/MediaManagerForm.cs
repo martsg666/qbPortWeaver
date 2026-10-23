@@ -329,9 +329,11 @@ public partial class MediaManagerForm : Form
             LogManager.Instance.LogDebug($"MediaManagerForm.SearchTmdbByPlexNameAsync: Matched {mediaLabel} '{getTitle(info)}' ({getYear(info)})", Subsystem.MediaManager);
             return (info, isConfident);
         }
-        catch (HttpRequestException ex)
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
         {
-            // TaskCanceledException and JsonException propagate to the caller's handlers.
+            // A real cancel propagates above; a timeout is one failed lookup, as in TmdbClient.LookupAsync,
+            // so the remaining rows are still re-matched. JsonException propagates to the caller's handler.
             LogManager.Instance.LogMessage($"Re-match {mediaLabel} lookup failed for '{title}': {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
             return (null, false);
         }
@@ -1006,10 +1008,12 @@ public partial class MediaManagerForm : Form
     {
         int included = 0;
         int unmatched = 0;
+        int listed = 0;
 
         foreach (DataGridViewRow row in dgvResults.Rows)
         {
             if (row.Tag is not RowData { Proposal: var p }) continue;
+            listed++;
             bool isChecked = row.Cells[colInclude.Index].Value is true; // NOSONAR S1125 - 'is true' pattern requires the literal to match the boxed bool value
 
             if (isChecked && !p.IsMatched)
@@ -1023,6 +1027,7 @@ public partial class MediaManagerForm : Form
 
         lblScanStatus.Text = (included, unmatched) switch
         {
+            (0, 0) when listed > 0 => "No files selected for import.",
             (0, 0) => "All files already imported.",
             (0, _) => $"{unmatchedStr} had no TMDB match - enter proposed names manually.",
             (_, 0) => $"{includeStr} would be imported.",

@@ -313,7 +313,7 @@ public static class DiagnosticsService
             // would show a green tick for a check that never ran - and this check exists for exactly
             // the clients where nothing else can see the problem, so a false green is worse than none.
             results.Add(new(Checks.ClientSettings, DiagnosticStatus.Skip, $"Could not read {client.ClientName}'s settings",
-                "The client answered the first request but not this one. See the log for details."));
+                "The client answered the first request but not this one. Turn on debug logging (Settings → Extra) and run Diagnostics again to see its reply."));
             return;
         }
 

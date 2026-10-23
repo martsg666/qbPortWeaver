@@ -240,8 +240,10 @@ public sealed class TransmissionClient : ManagedClientBase
         {
             const string body = """{"method":"session-get","arguments":{"fields":["peer-port-random-on-start","port-forwarding-enabled"]}}""";
             using var response = await SendRpcAsync(body, cancellationToken: cancellationToken).ConfigureAwait(false);
-            // Every null exit is logged: Diagnostics reports an unread check as Skip and tells the
-            // user to consult the log, so a silent return would send them somewhere empty.
+            // Every null exit is logged, at Debug: Diagnostics reports an unread check as Skip and
+            // tells the user to turn on debug logging, which is where these lines appear. Debug rather
+            // than Warn because the sync cycle also runs this every few cycles, and a persistent
+            // failure here would otherwise badge the tray each time for an advisory check.
             if (response is null)
             {
                 LogManager.Instance.LogDebug("TransmissionClient.GetConflictingSettingsAsync: no RPC response");

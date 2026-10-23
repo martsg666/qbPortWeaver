@@ -103,6 +103,12 @@ public partial class WhatsNewForm : Form
         "Fixed: some debug entries were written with debug logging switched off\n" +
         "Failed port checks and a few other routine lines appeared in the log as DEBUG entries even " +
         "when debug logging was off. They now appear only when it is on.\n\n" +
+        "Fixed: several smaller issues\n" +
+        "Warnings that repeat every sync, such as a status file that cannot be written or a NAT-PMP " +
+        "gateway that refuses the TCP mapping, now appear once. The Start Automatically menu item " +
+        "shows the real state if it could not be changed. The Media Manager always keeps the original " +
+        "file extension. Nicotine+ commands no longer print \"None\", /qbpw-test uses a port fixed by " +
+        "--port, and a Transmission settings check that failed is no longer reported as passed.\n\n" +
         "Fixed: a portable Nicotine+ running under another Windows account was not found\n" +
         "qbPortWeaver could not check that Nicotine+ was still running when it belonged to another " +
         "account, so it ignored the connection details the plugin published and showed Nicotine+ as " +

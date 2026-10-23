@@ -51,6 +51,14 @@ EVENT_PORT_STATUS = "check-port-status"
 _BRIDGE_NOT_RUNNING = "The bridge is not running."
 
 
+def _port_summary(core_io):
+    """"<configured> configured, <active> in use" - active_port() is None while Nicotine+ is not
+    logged in, which reads as a raw "None" if printed directly."""
+    active = core_io.active_port()
+    in_use = f"{active} in use" if active is not None else "none in use (not connected)"
+    return f"{core_io.configured_port()} configured, {in_use}"
+
+
 class Plugin(BasePlugin):
 
     def __init__(self, *args, **kwargs):
@@ -304,7 +312,7 @@ class Plugin(BasePlugin):
         core_io = self._core_io
         host = self.settings.get("bind_host") or "127.0.0.1"
         self.output(f"Bridge:      http://{host}:{self._bridge.port}/")
-        self.output(f"Connection:  {core_io.connection_state()}")
+        self.output(f"Connection:  {core_io.connection_state() or 'unknown'}")
 
         cli_port = core_io.cli_listen_port()
         if cli_port is not None:
@@ -315,8 +323,7 @@ class Plugin(BasePlugin):
             # as a generic plugin failure. The remaining lines still print: a port this build
             # cannot read must not cost the user the connection state and the capability list.
             try:
-                self.output(f"Port:        {core_io.configured_port()} configured, "
-                            f"{core_io.active_port()} in use")
+                self.output(f"Port:        {_port_summary(core_io)}")
             except errors.ApiError as error:
                 self.output(f"Port:        {error.message}")
 
@@ -350,8 +357,7 @@ class Plugin(BasePlugin):
             # Echo the ApiError message for the same reason the set_port branch below reports its
             # failure: the sentence is the useful part, and a command must never escape.
             try:
-                self.output(f"Port {self._core_io.configured_port()} configured, "
-                            f"{self._core_io.active_port()} in use.")
+                self.output(f"Port {_port_summary(self._core_io)}.")
             except errors.ApiError as error:
                 self.output(error.message)
             return

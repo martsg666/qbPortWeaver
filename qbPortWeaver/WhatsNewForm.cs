@@ -26,6 +26,9 @@ public partial class WhatsNewForm : Form
         "When the VPN adapter is down, the VPN connection row no longer tells you to pick a P2P " +
         "server, which only applies to ProtonVPN and PIA. It now names the adapter and suggests " +
         "connecting the VPN that owns it or selecting the right one in Settings.\n\n" +
+        "Changed: the Status panel shows why the last sync failed\n" +
+        "Hover over Last sync to see the same reason the tray tooltip gives, such as a setting that " +
+        "is missing or a client that is not running.\n\n" +
         "Changed: Nicotine+ says when a new port could not be applied straight away\n" +
         "A port change was always logged as done once Nicotine+ had saved it, even when it could not " +
         "switch over yet, for example before its first-run setup is finished. The log now says what " +

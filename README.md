@@ -319,10 +319,10 @@ plugin. Everything below is a one-off; after it, port sync is fully automatic an
 without restarting Nicotine+.
 
 1. In qbPortWeaver **Settings → General**, set **Client** to **Nicotine+** (or click **Detect**).
-2. Open the **Client** tab - it now shows the Nicotine+ section - and click **Install Plugin**. If
-   Nicotine+ is closed, accept the offer to enable it too - your Nicotine+ configuration is backed
-   up first and only the plugin list is touched. If Nicotine+ is running, enable **qbPortWeaver
-   Bridge** in **Preferences → Plugins**; no restart needed.
+2. Open the **Nicotine+** tab (the client tab is named after the selected client) and click
+   **Install Plugin**. If Nicotine+ is closed, accept the offer to enable it too - your Nicotine+
+   configuration is backed up first and only the plugin list is touched. If Nicotine+ is running,
+   enable **qbPortWeaver Bridge** in **Preferences → Plugins**; no restart needed.
 3. Start Nicotine+ if it is not running, then click **⟳** next to the Plugin token. The address and
    token fill in automatically.
 4. Use **Test** to confirm, then save.

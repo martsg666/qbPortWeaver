@@ -38,6 +38,10 @@ public partial class WhatsNewForm : Form
         "Windows service that shares its process with others, that stopped all of them. It now " +
         "leaves such a service alone and logs a warning. The VPN services auto-recovery restarts " +
         "each run in their own process and are not affected.\n\n" +
+        "Fixed: the Nicotine+ /qbpw-test command never showed its result\n" +
+        "The command said the result would appear shortly, then printed nothing. It now reports " +
+        "whether the port is open, closed or could not be determined, in the chat you typed it in. " +
+        "To get it, click Update Plugin on the Nicotine+ tab in Settings, then restart Nicotine+.\n\n" +
         "Previously released\n\n" +
         "New in 2.6.9\n\n" +
         "Your settings can be backed up and restored\n" +

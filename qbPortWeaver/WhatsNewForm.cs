@@ -45,6 +45,10 @@ public partial class WhatsNewForm : Form
         "Fixed: Import Now in the Media Manager did not bring subtitles along\n" +
         "Subtitle files next to a video are now imported with it, as the automatic import already " +
         "did. Before, they were left in the source folder and never followed later.\n\n" +
+        "Fixed: the Media Manager could say everything was imported when the library was unreachable\n" +
+        "When the library folder could not be read, a scan showed \"All files already imported.\" It " +
+        "now says the library could not be read. After Import Now, the result is no longer replaced " +
+        "straight away, and it counts only the files you selected that failed.\n\n" +
         "Previously released\n\n" +
         "New in 2.6.9\n\n" +
         "Your settings can be backed up and restored\n" +

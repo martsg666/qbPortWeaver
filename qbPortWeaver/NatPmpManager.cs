@@ -173,11 +173,10 @@ public sealed class NatPmpManager : IVpnManager
     public string GetRecoveryAction() => VpnAdapter.GetRecoveryAction(_adapter.Name);
 
     /// <inheritdoc />
-    // Delegates to the shared matcher (AdapterNamesMatch). NAT-PMP and PIA match one configured
-    // name; ProtonVpnManager matches either of its two names. The configured name here is the
-    // adapter's own name (an instance field), not a registry value.
+    // Exact match (AdapterNamesMatchExactly), shared with Static port. The configured name here is
+    // the adapter's own name (an instance field), not a registry value.
     public bool IsAdapterMatch(string interfaceName)
-        => VpnRegistryConfig.AdapterNamesMatch(_adapter.Name, interfaceName);
+        => VpnRegistryConfig.AdapterNamesMatchExactly(_adapter.Name, interfaceName);
 
     /// <summary>
     /// Returns all network adapters whose gateway actively responds to NAT-PMP,

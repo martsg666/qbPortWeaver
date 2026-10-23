@@ -35,7 +35,7 @@ public sealed class StaticPortManager(string adapterName, int port) : IVpnManage
 
     /// <inheritdoc />
     public bool IsAdapterMatch(string interfaceName)
-        => VpnRegistryConfig.AdapterNamesMatch(adapterName, interfaceName);
+        => VpnRegistryConfig.AdapterNamesMatchExactly(adapterName, interfaceName);
 
     /// <summary>
     /// Returns the names of the network adapters that are currently up, sorted, for the Settings

@@ -27,6 +27,10 @@ public partial class WhatsNewForm : Form
         "When the VPN adapter is down, the VPN connection row no longer tells you to pick a P2P " +
         "server, which only applies to ProtonVPN and PIA. It now names the adapter and suggests " +
         "connecting the VPN that owns it or selecting the right one in Settings.\n\n" +
+        "Changed: the network interface check for NAT-PMP and Static port needs the exact adapter\n" +
+        "A client bound to a similarly named adapter, such as \"Ethernet\" when the VPN adapter is " +
+        "\"Ethernet 2\", passed the check, so no leak warning appeared although its traffic went " +
+        "outside the VPN. It now gets the warning. ProtonVPN and PIA are unchanged.\n\n" +
         "Changed: warning notifications open the log when clicked\n" +
         "Clicking a notification about the port, the network interface or a client setting now " +
         "opens the log viewer at that warning. Before, the click did nothing, although the " +

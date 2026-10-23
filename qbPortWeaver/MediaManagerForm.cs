@@ -410,13 +410,7 @@ public partial class MediaManagerForm : Form
         string? completionStatus = null;
         try
         {
-            bool createFolders = chkCreateFolders.Checked;
-            var proposals = await MediaManagerService.ScanAsync(apiKey, createFolders, sourceFolders, moviesLibraryPath, tvShowsLibraryPath, CreateScanProgress("Scanning…"), cancellationToken);
-
-            if (proposals is null)
-                completionStatus = LibraryUnavailableStatus;
-            else
-                PopulateGrid(proposals);
+            completionStatus = await RunScanAsync(apiKey, sourceFolders, moviesLibraryPath, tvShowsLibraryPath, cancellationToken);
         }
         catch (OperationCanceledException)
         {
@@ -436,6 +430,20 @@ public partial class MediaManagerForm : Form
                 if (completionStatus is not null) lblScanStatus.Text = completionStatus;
             }
         }
+    }
+
+    // Runs the scan and fills the grid. Returns the completion message to show instead of the grid
+    // summary, or null when the summary is the right thing to show - the counterpart of
+    // RunImportAndRescanAsync for Scan Now.
+    private async Task<string?> RunScanAsync(string apiKey, string[] sourceFolders, string moviesLibraryPath,
+        string tvShowsLibraryPath, CancellationToken cancellationToken)
+    {
+        var proposals = await MediaManagerService.ScanAsync(apiKey, chkCreateFolders.Checked, sourceFolders,
+            moviesLibraryPath, tvShowsLibraryPath, CreateScanProgress("Scanning…"), cancellationToken);
+        if (proposals is null) return LibraryUnavailableStatus;
+
+        PopulateGrid(proposals);
+        return null;
     }
 
     // Import Now - applies proposals from the grid, respecting any user edits to the Proposed column

@@ -84,12 +84,17 @@ internal static class AutoRecoveryManager
         var cycleResult = await HelperServiceClient.SendCycleAdapterAsync(adapterName, cancellationToken).ConfigureAwait(false);
         cycleResult.RaiseLogAlerts();
 
+        // Every problem on the helper's cycle path (netsh failing, the disable or the re-enable not taking)
+        // is logged as a Warn, so the outcome counts Warns as well as Errors: a cycle that left the adapter
+        // disabled must not end with a "completed" line. The restart path differs - it verifies the service
+        // state at the end and reports a failure as an Error.
+        int problems = cycleResult.WarnCount + cycleResult.ErrorCount;
         if (!cycleResult.Completed)
             LogManager.Instance.LogMessage($"Adapter cycle did not complete for '{adapterName}'", LogLevel.Warn);
-        else if (cycleResult.ErrorCount == 0)
+        else if (problems == 0)
             LogManager.Instance.LogMessage($"Adapter cycle completed for '{adapterName}'", LogLevel.Info);
         else
-            LogManager.Instance.LogMessage($"Adapter cycle for '{adapterName}' completed with {TextFormat.Pluralize(cycleResult.ErrorCount, "error")} - see helper log entries", LogLevel.Warn);
+            LogManager.Instance.LogMessage($"Adapter cycle for '{adapterName}' reported {TextFormat.Pluralize(problems, "problem")} - see helper log entries and check that the adapter is enabled", LogLevel.Warn);
     }
 
     // Kills all instances of the named client process (capturing the exe path first),

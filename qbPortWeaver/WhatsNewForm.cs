@@ -17,9 +17,10 @@ public partial class WhatsNewForm : Form
         "applies everything else it already does: the network interface checks, the open-port " +
         "check, auto-recovery when the VPN drops, and the default port while it is disconnected.\n\n" +
         "Changed: a setting that needs fixing now shows red, not orange\n" +
-        "When the Static port or NAT-PMP provider had no adapter or no port set, the tray showed the " +
-        "orange \"VPN not connected\" and kept the actual reason in the log. The tray dot is now red " +
-        "and the tooltip says what to set. The same applies when the VPN is down and the default port " +
+        "When the NAT-PMP provider had no adapter set, the tray showed the orange \"VPN not " +
+        "connected\" and kept the actual reason in the log. The tray dot is now red and the tooltip " +
+        "says what to set. The new Static port provider works the same way when its adapter or port " +
+        "is missing. The same applies when the VPN is down and the default port " +
         "could not be applied because the client is not running or refused the change: the fallback " +
         "you configured did not work, so the tray says so instead of reporting a disconnection.\n\n" +
         "Changed: Diagnostics gives adapter-based advice for NAT-PMP and Static port\n" +

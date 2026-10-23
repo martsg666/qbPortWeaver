@@ -84,6 +84,9 @@ public partial class WhatsNewForm : Form
         "Fixed: Re-match in the Media Manager could import only one part of a multi-part movie\n" +
         "After a re-match, every part of a movie split across several files got the same name, so " +
         "only the first one was imported. Each part now keeps its own name, as it does after a scan.\n\n" +
+        "Fixed: Media Manager errors were shown only in its status line\n" +
+        "They are now written to the log as well, and a TMDB reply that cannot be read during " +
+        "Re-match now skips only that file instead of stopping the whole Re-match.\n\n" +
         "Fixed: subtitles could be imported when their video was not\n" +
         "When a video was skipped because a different file already had its name, or could not be " +
         "copied, its subtitles were still added to the library under that name. They are now left in " +

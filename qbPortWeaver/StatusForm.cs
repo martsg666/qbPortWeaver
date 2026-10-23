@@ -567,6 +567,7 @@ public partial class StatusForm : Form
         if (s.Timestamp is not DateTimeOffset ts)
         {
             SetNeutral(lblLastSyncValue, "-");
+            SetLastSyncToolTip(null);
             return;
         }
 
@@ -587,6 +588,18 @@ public partial class StatusForm : Form
         };
         // Relative suffix so "how recent was this?" reads at a glance without mental arithmetic.
         SetColor(lblLastSyncValue, $"{time} - {result} ({FormatAgo(DateTimeOffset.Now - ts)})", color);
+        // The cycle's own message, as the tray tooltip shows it. The panel had no other place that
+        // said why a sync failed, which left a red "Error" here explained only in the log.
+        SetLastSyncToolTip(s.Message);
+    }
+
+    // Only on a change: PopulateLastSync also runs on the one-second tick, and re-setting the same
+    // text every second would restart a tooltip the user is reading.
+    private void SetLastSyncToolTip(string? message)
+    {
+        string text = message ?? string.Empty;
+        if (toolTip.GetToolTip(lblLastSyncValue) != text)
+            toolTip.SetToolTip(lblLastSyncValue, text.Length == 0 ? null : text);
     }
 
     // Relative age of a past event: "now" under a minute, otherwise "12m ago" / "2h 5m ago". Shared

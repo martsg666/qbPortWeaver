@@ -632,7 +632,9 @@ public partial class MediaManagerForm : Form
         // not a flat library root. Regex avoids matching generic folder names like "Movies" or "TV Shows".
         if (TitleYearFolderRegex().IsMatch(lastSegment))
         {
-            var newTitle = Path.GetFileNameWithoutExtension(editedFileName);
+            // A multi-part name ("Title (Year) - cd1") names the folder without its part suffix, so
+            // every part of one movie lands in the same folder, as the automatic import puts them.
+            MovieProcessor.TrySplitPartSuffix(Path.GetFileNameWithoutExtension(editedFileName), out var newTitle, out _);
             var libraryPath = Path.GetDirectoryName(originalDir) ?? string.Empty;
             return Path.Combine(libraryPath, newTitle);
         }

@@ -195,15 +195,29 @@ public sealed class MovieProcessor(TmdbClient tmdb, bool dryRun, bool createFold
     // subfolder, so re-matching the parts of one movie does not give them all the same target.
     internal static string BuildRematchMoviePath(string editedName, MovieInfo info, string libraryPath, bool createFolders)
     {
-        var nameWithoutExt = Path.GetFileNameWithoutExtension(editedName);
-        int dash = nameWithoutExt.LastIndexOf(" - ", StringComparison.Ordinal);
-        var segment = dash < 0 ? string.Empty : nameWithoutExt[(dash + 3)..];
-        var partSuffix = ExtractPartSuffix(segment);
-        if (partSuffix is null || !string.Equals(segment, partSuffix, StringComparison.OrdinalIgnoreCase))
+        if (!TrySplitPartSuffix(Path.GetFileNameWithoutExtension(editedName), out _, out var partSuffix))
             return BuildStandaloneMoviePath(editedName, info, libraryPath, createFolders);
 
         var plexFolderName = FileNameParser.FormatPlexName(info.Title, info.Year);
         return Path.Combine(libraryPath, plexFolderName, BuildFolderMovieFileName(plexFolderName, partSuffix, Path.GetExtension(editedName)));
+    }
+
+    // Splits a name in the multi-part form BuildFolderMovieFileName produces ("Title (Year) - cd1") into
+    // its base and part suffix. Anything else returns false with the whole name as the base, so an
+    // ordinary title such as "Title - Part 2 (Year)" is never mistaken for a part.
+    internal static bool TrySplitPartSuffix(string nameWithoutExt, out string baseName, [NotNullWhen(true)] out string? partSuffix)
+    {
+        int dash = nameWithoutExt.LastIndexOf(" - ", StringComparison.Ordinal);
+        var segment = dash < 0 ? string.Empty : nameWithoutExt[(dash + 3)..];
+        partSuffix = ExtractPartSuffix(segment);
+        if (partSuffix is null || !string.Equals(segment, partSuffix, StringComparison.OrdinalIgnoreCase))
+        {
+            baseName = nameWithoutExt;
+            partSuffix = null;
+            return false;
+        }
+        baseName = nameWithoutExt[..dash];
+        return true;
     }
 
     // Builds the library target path for a movie file inside a folder (supports multi-part suffixes).

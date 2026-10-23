@@ -442,7 +442,8 @@ class Plugin(BasePlugin):
                     self.echo_public(target, text, "command")
                 else:
                     self.echo_private(target, text, "command")
-            except Exception as error:  # noqa: BLE001 - must not escape, see the docstring
+            # Must not escape, see the docstring.
+            except Exception as error:  # noqa: BLE001
                 self.log("Could not show the port test result: %s", (error,))
 
         events.invoke_main_thread(_echo)

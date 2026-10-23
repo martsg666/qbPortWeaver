@@ -1,4 +1,5 @@
-﻿using System.Diagnostics;
+﻿using System.ComponentModel;
+using System.Diagnostics;
 using System.Text.Json;
 
 namespace qbPortWeaver;
@@ -280,6 +281,13 @@ internal static class NicotinePluginDiscovery
         catch (Exception ex) when (ex is ArgumentException or InvalidOperationException)
         {
             return false;
+        }
+        // A process that exists but cannot be opened (another account's Nicotine+, the cross-account
+        // portable setup handshake.py describes) is treated as alive: GetProcessById already proved
+        // the pid is in use, and the bearer token remains the guard against an unrelated listener.
+        catch (Win32Exception)
+        {
+            return true;
         }
     }
 

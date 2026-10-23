@@ -62,7 +62,7 @@ public partial class WhatsNewForm : Form
         "Fixed: the Nicotine+ /qbpw-test command never showed its result\n" +
         "The command said the result would appear shortly, then printed nothing. It now reports " +
         "whether the port is open, closed or could not be determined, in the chat you typed it in. " +
-        "To get it, click Update Plugin on the Nicotine+ tab in Settings, then restart Nicotine+.\n\n" +
+        "To get it, click Update Plugin under Settings → Client, then restart Nicotine+.\n\n" +
         "Fixed: Import Now in the Media Manager did not bring subtitles along\n" +
         "Subtitle files next to a video are now imported with it, as the automatic import already " +
         "did. Before, they were left in the source folder and never followed later.\n\n" +

@@ -151,10 +151,10 @@ public sealed class MovieProcessor(TmdbClient tmdb, bool dryRun, bool createFold
         if (!ShouldImportMatch(info, isConfident, $"'{Path.GetFileName(filePath)}'")) return;
 
         var targetPath = BuildSelfDescribingMoviePath(filePath, info, partSuffix);
-        MediaManagerService.ImportFile(filePath, targetPath, dryRun, importMode);
-
-        // Standalone files use the shared companion importer (subtitle matched by filename prefix).
-        MediaManagerService.ImportCompanionFiles(filePath, targetPath, dryRun, importMode);
+        // Standalone files use the shared companion importer (subtitle matched by filename prefix), and
+        // only once the video is in place - a skipped or failed video leaves its subtitles where they are.
+        if (MediaManagerService.ImportFile(filePath, targetPath, dryRun, importMode))
+            MediaManagerService.ImportCompanionFiles(filePath, targetPath, dryRun, importMode);
     }
 
     // Processes folder-dependent files using the parent folder name for TMDB lookup
@@ -165,13 +165,17 @@ public sealed class MovieProcessor(TmdbClient tmdb, bool dryRun, bool createFold
         var (info, isConfident) = resolved.Value;
         if (!ShouldImportMatch(info, isConfident, $"folder '{Path.GetFileName(dirPath)}'")) return;
 
-        foreach (var file in folderDependent)
-            MediaManagerService.ImportFile(file, BuildFolderMoviePath(file, info), dryRun, importMode);
+        // ImportFile does the import and reports whether the part was placed; ToList runs it once per file.
+        var placed = folderDependent
+            .Where(file => MediaManagerService.ImportFile(file, BuildFolderMoviePath(file, info), dryRun, importMode))
+            .ToList();
 
         var plexFolderName = FileNameParser.FormatPlexName(info.Title, info.Year);
         // Folder-dependent files use a separate companion importer that pairs subtitles by part suffix
-        // (e.g. cd1.srt -> Title (Year) - cd1.srt) rather than by filename prefix.
-        ImportFolderCompanionFiles(dirPath, folderDependent, plexFolderName);
+        // (e.g. cd1.srt -> Title (Year) - cd1.srt) rather than by filename prefix. Only the parts that
+        // were placed bring their subtitles.
+        if (placed.Count > 0)
+            ImportFolderCompanionFiles(dirPath, placed, plexFolderName);
     }
 
     // Shared per-file scan proposal logic. Both standalone and folder-dependent paths call this

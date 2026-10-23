@@ -260,12 +260,13 @@ public static class MediaManagerService
                     LogLevel.Info, Subsystem.MediaManager);
                 try
                 {
-                    MediaImporter.AddFileToLibrary(proposal.OriginalPath, proposal.ProposedPath, importMode);
                     // Subtitles follow the video, as on the sync cycle. This is the only chance: once
                     // the video is in the library the cycle skips its source, so a subtitle left behind
                     // here would never be imported. Naming from the proposed path also covers a
-                    // multi-part film ("Title (Year) - cd1.srt") and any name the user edited.
-                    ImportCompanionFiles(proposal.OriginalPath, proposal.ProposedPath, dryRun: false, importMode);
+                    // multi-part film ("Title (Year) - cd1.srt") and any name the user edited. Only when
+                    // the video is in place: a skipped or failed video leaves its subtitles where they are.
+                    if (MediaImporter.AddFileToLibrary(proposal.OriginalPath, proposal.ProposedPath, importMode))
+                        ImportCompanionFiles(proposal.OriginalPath, proposal.ProposedPath, dryRun: false, importMode);
                 }
                 // Deliberately broad: this is the outermost per-item boundary of a user-initiated batch.
                 // AddFileToLibrary already handles the expected IO/permission cases, so anything reaching
@@ -610,16 +611,19 @@ public static class MediaManagerService
     /// <summary>Logs and performs the file transfer, or logs a dry-run message without touching files.
     /// No-ops when source and target are the same path, or the target already exists with the same fingerprint.
     /// Warns in both dry-run and live mode when the target exists with different content.</summary>
-    internal static void ImportFile(string sourcePath, string targetPath, bool dryRun, ImportMode importMode)
+    /// <returns><see langword="true"/> when the file is (or in a dry run, would be) at the target afterwards;
+    /// <see langword="false"/> on a destination conflict or a failed transfer. See
+    /// <see cref="MediaImporter.AddFileToLibrary"/> for why the subtitle callers depend on it.</returns>
+    internal static bool ImportFile(string sourcePath, string targetPath, bool dryRun, ImportMode importMode)
     {
-        if (string.Equals(sourcePath, targetPath, StringComparison.OrdinalIgnoreCase)) return;
+        if (string.Equals(sourcePath, targetPath, StringComparison.OrdinalIgnoreCase)) return true;
 
         // Check applies in both live and dry-run: skip files already correctly placed so we
         // don't falsely report "Would import" for content already present in the library.
         if (MediaImporter.DestinationMatchesSource(sourcePath, targetPath))
         {
             LogManager.Instance.LogDebug($"MediaManagerService.ImportFile: Skipped '{Path.GetFileName(sourcePath)}' - target already exists", Subsystem.MediaManager);
-            return;
+            return true;
         }
 
         // Warn in both scan and import: two source files resolved to the same target name.
@@ -627,7 +631,7 @@ public static class MediaManagerService
         if (File.Exists(targetPath))
         {
             MediaImporter.LogDestinationConflict(sourcePath, targetPath);
-            return;
+            return false;
         }
 
         string verb = dryRun ? "Would import" : "Importing";
@@ -635,8 +639,7 @@ public static class MediaManagerService
         // confusing "..\..\E:\..." style strings when source and target live on different volumes.
         LogManager.Instance.LogMessage($"{verb} '{Path.GetFileName(sourcePath)}' -> '{targetPath}'", LogLevel.Info, Subsystem.MediaManager);
 
-        if (!dryRun)
-            MediaImporter.AddFileToLibrary(sourcePath, targetPath, importMode);
+        return dryRun || MediaImporter.AddFileToLibrary(sourcePath, targetPath, importMode);
     }
 
     // Imports companion subtitle files that share the same base name as the video file

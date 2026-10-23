@@ -159,22 +159,26 @@ internal static partial class MediaImporter
     /// Creates the target directory if needed. Skips files that already exist at the destination with the same fingerprint.
     /// In <see cref="ImportMode.Hardlink"/> mode, automatically falls back to copy if the hardlink fails.
     /// </summary>
-    internal static void AddFileToLibrary(string sourcePath, string destinationPath, ImportMode importMode)
+    /// <returns><see langword="true"/> when the file is at the destination afterwards (imported, or already
+    /// there with the same fingerprint); <see langword="false"/> on a destination conflict or a failed
+    /// transfer. Callers import a video's subtitles only on <see langword="true"/>, so a subtitle never
+    /// lands beside a different file that holds the video's name.</returns>
+    internal static bool AddFileToLibrary(string sourcePath, string destinationPath, ImportMode importMode)
     {
         if (string.Equals(sourcePath, destinationPath, StringComparison.OrdinalIgnoreCase))
-            return;
+            return true;
 
         if (DestinationMatchesSource(sourcePath, destinationPath))
         {
             LogManager.Instance.LogDebug($"MediaImporter.AddFileToLibrary: Skipped '{Path.GetFileName(destinationPath)}' - target already exists with same fingerprint", Subsystem.MediaManager);
-            return;
+            return true;
         }
 
         // Destination exists but different content: two different source files resolved to the same target path
         if (File.Exists(destinationPath))
         {
             LogDestinationConflict(sourcePath, destinationPath);
-            return;
+            return false;
         }
 
         var targetDir = Path.GetDirectoryName(destinationPath);
@@ -206,10 +210,11 @@ internal static partial class MediaImporter
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or PathTooLongException)
         {
             LogManager.Instance.LogMessage($"Failed to import '{Path.GetFileName(sourcePath)}': {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
-            return;
+            return false;
         }
 
         AddToLibraryIndex(destinationPath);
+        return true;
     }
 
     // Returns the file's size as a display string ("12345 bytes"), or "unknown size" if it cannot be

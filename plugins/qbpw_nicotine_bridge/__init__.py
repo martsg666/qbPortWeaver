@@ -320,7 +320,8 @@ class Plugin(BasePlugin):
             except errors.ApiError as error:
                 self.output(f"Port:        {error.message}")
 
-        self.output(f"UPnP:        {core_io.upnp_enabled()}")
+        upnp = core_io.upnp_enabled()
+        self.output(f"UPnP:        {'unknown' if upnp is None else ('on' if upnp else 'off')}")
 
         # Same filter probe() applies to its startup warning, and for the same reason: the two
         # informational capabilities degrade nothing when absent, so naming them here reports a
@@ -391,6 +392,11 @@ class Plugin(BasePlugin):
         # needs the capability. With a port given explicitly there is nothing to read.
         except errors.ApiError as error:
             self.output(error.message)
+            return
+
+        # Same range /qbpw-port and the HTTP API enforce; anything outside it has no meaningful verdict.
+        if port is None or not 1 <= port <= 65535:
+            self.output("The port must be between 1 and 65535.")
             return
 
         # Nicotine+ clears the command source as soon as this returns, and output() drops anything

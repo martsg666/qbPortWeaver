@@ -86,6 +86,9 @@ public partial class WhatsNewForm : Form
         "Fixed: misleading Media Manager status messages\n" +
         "A slow TMDB answer during Re-match no longer stops it and reports it as cancelled, and " +
         "unchecking every file no longer says everything is already imported.\n\n" +
+        "Fixed: some debug entries were written with debug logging switched off\n" +
+        "Failed port checks and a few other routine lines appeared in the log as DEBUG entries even " +
+        "when debug logging was off. They now appear only when it is on.\n\n" +
         "Fixed: a portable Nicotine+ running under another Windows account was not found\n" +
         "qbPortWeaver could not check that Nicotine+ was still running when it belonged to another " +
         "account, so it ignored the connection details the plugin published and showed Nicotine+ as " +

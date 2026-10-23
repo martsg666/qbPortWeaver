@@ -321,7 +321,11 @@ class Plugin(BasePlugin):
                 self.output(f"Port:        {error.message}")
 
         upnp = core_io.upnp_enabled()
-        self.output(f"UPnP:        {'unknown' if upnp is None else ('on' if upnp else 'off')}")
+        if upnp is None:
+            upnp_text = "unknown"
+        else:
+            upnp_text = "on" if upnp else "off"
+        self.output(f"UPnP:        {upnp_text}")
 
         # Same filter probe() applies to its startup warning, and for the same reason: the two
         # informational capabilities degrade nothing when absent, so naming them here reports a

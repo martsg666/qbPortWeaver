@@ -58,6 +58,10 @@ public partial class WhatsNewForm : Form
         "Windows service that shares its process with others, that stopped all of them. It now " +
         "leaves such a service alone and logs a warning. The VPN services auto-recovery restarts " +
         "each run in their own process and are not affected.\n\n" +
+        "Fixed: auto-recovery could restart the wrong VPN's service\n" +
+        "A NAT-PMP adapter with a short name such as \"VPN\" was mistaken for ProtonVPN, so recovery " +
+        "restarted the ProtonVPN service instead of cycling the adapter. It now cycles the adapter. " +
+        "The new Static port provider follows the same rule.\n\n" +
         "Fixed: an adapter cycle that failed was logged as completed\n" +
         "When auto-recovery could not disable or re-enable the network adapter, the log still ended " +
         "with a completed line. It now says the cycle had problems and to check that the adapter is " +

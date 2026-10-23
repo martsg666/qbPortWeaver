@@ -25,6 +25,8 @@ internal static partial class AutoRecovery
 
     // P/Invoke - used by KillServiceProcess to resolve a service's host process ID
     private const int SC_STATUS_PROCESS_INFO = 0; // the only valid infoLevel for QueryServiceStatusEx
+    private const int SERVICE_WIN32_SHARE_PROCESS = 0x20;   // dwServiceType bit
+    private const int SERVICE_RUNS_IN_SYSTEM_PROCESS = 0x1; // dwServiceFlags bit
 
     [LibraryImport("advapi32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
@@ -357,7 +359,20 @@ internal static partial class AutoRecovery
                         SC_STATUS_PROCESS_INFO, buf, bufSize, out _))
                     return;
 
-                int pid = Marshal.PtrToStructure<ServiceStatusProcess>(buf).dwProcessId;
+                var status = Marshal.PtrToStructure<ServiceStatusProcess>(buf);
+
+                // A shared host (svchost) runs other services too, and a system process is Windows
+                // itself: killing either takes down far more than the service asked for. The VPN
+                // services this exists for each run in their own process, so refusing here never
+                // blocks a real recovery.
+                if ((status.dwServiceType & SERVICE_WIN32_SHARE_PROCESS) != 0 ||
+                    (status.dwServiceFlags & SERVICE_RUNS_IN_SYSTEM_PROCESS) != 0)
+                {
+                    logger.LogMessage($"Service '{sc.ServiceName}' shares its process with other services - not force-killed", LogLevel.Warn);
+                    return;
+                }
+
+                int pid = status.dwProcessId;
                 if (pid <= 0) return;
 
                 // Known residual risk: between QueryServiceStatusEx returning the PID and

@@ -27,7 +27,7 @@
     Defaults to the version defined in qbPortWeaver.csproj.
 
 .PARAMETER OutputDirectory
-    Where to write the .nupkg file. Defaults to the choco/ folder (gitignored).
+    Where to write the .nupkg file. Defaults to the choco/ folder, where .nupkg files are gitignored.
 
 .EXAMPLE
     # Build and pack using the version from qbPortWeaver.csproj

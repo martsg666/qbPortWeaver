@@ -13,11 +13,11 @@ function Section($title) { "<tr><td colspan='2' style='padding:10px 0 2px;font-w
 # What the failed-cycle trigger is doing, or $null when it is idle. Its own function so the caller
 # can fall through to the port-closed trigger, mirroring how the app itself splits the two.
 function FailedCycleState($s) {
-    # Checked ahead of the holds, as the app does: they defer the next attempt, this one means none is
-    # coming until a port reads successfully. A missing key is an older app version, where the cap did
-    # not exist, so absent is correctly falsy here.
-    # Both holds are absolute instants, not remaining durations. The offline hold is checked first
-    # because the cap does not apply while the machine is offline - it keeps retrying on a backoff.
+    # Same order as the app. The offline hold comes first because the cap does not apply while the
+    # machine is offline - it keeps retrying on a backoff. The cap comes next, ahead of the sustained
+    # hold: that hold defers the next attempt, the cap means none is coming until a port reads
+    # successfully. A missing key is an older app version, where the cap did not exist, so absent is
+    # correctly falsy here. Both holds are absolute instants, not remaining durations.
     if ($null -ne $s.recoveryHoldUntil) { return "Holding - cannot confirm internet, retry at $($s.recoveryHoldUntil)" }
     if ($s.recoverySuspended) { return 'Suspended - restarts did not restore the port, resumes when one is found' }
     if ($null -ne $s.recoverySustainedUntil) { return "Holding - failures too recent, retry at $($s.recoverySustainedUntil)" }

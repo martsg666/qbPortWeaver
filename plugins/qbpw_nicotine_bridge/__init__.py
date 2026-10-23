@@ -51,6 +51,14 @@ EVENT_PORT_STATUS = "check-port-status"
 _BRIDGE_NOT_RUNNING = "The bridge is not running."
 
 
+def _port_summary(core_io):
+    """"<configured> configured, <active> in use" - active_port() is None while Nicotine+ is not
+    logged in, which reads as a raw "None" if printed directly."""
+    active = core_io.active_port()
+    in_use = f"{active} in use" if active is not None else "none in use (not connected)"
+    return f"{core_io.configured_port()} configured, {in_use}"
+
+
 class Plugin(BasePlugin):
 
     def __init__(self, *args, **kwargs):
@@ -304,7 +312,7 @@ class Plugin(BasePlugin):
         core_io = self._core_io
         host = self.settings.get("bind_host") or "127.0.0.1"
         self.output(f"Bridge:      http://{host}:{self._bridge.port}/")
-        self.output(f"Connection:  {core_io.connection_state()}")
+        self.output(f"Connection:  {core_io.connection_state() or 'unknown'}")
 
         cli_port = core_io.cli_listen_port()
         if cli_port is not None:
@@ -315,12 +323,16 @@ class Plugin(BasePlugin):
             # as a generic plugin failure. The remaining lines still print: a port this build
             # cannot read must not cost the user the connection state and the capability list.
             try:
-                self.output(f"Port:        {core_io.configured_port()} configured, "
-                            f"{core_io.active_port()} in use")
+                self.output(f"Port:        {_port_summary(core_io)}")
             except errors.ApiError as error:
                 self.output(f"Port:        {error.message}")
 
-        self.output(f"UPnP:        {core_io.upnp_enabled()}")
+        upnp = core_io.upnp_enabled()
+        if upnp is None:
+            upnp_text = "unknown"
+        else:
+            upnp_text = "on" if upnp else "off"
+        self.output(f"UPnP:        {upnp_text}")
 
         # Same filter probe() applies to its startup warning, and for the same reason: the two
         # informational capabilities degrade nothing when absent, so naming them here reports a
@@ -345,8 +357,7 @@ class Plugin(BasePlugin):
             # Echo the ApiError message for the same reason the set_port branch below reports its
             # failure: the sentence is the useful part, and a command must never escape.
             try:
-                self.output(f"Port {self._core_io.configured_port()} configured, "
-                            f"{self._core_io.active_port()} in use.")
+                self.output(f"Port {_port_summary(self._core_io)}.")
             except errors.ApiError as error:
                 self.output(error.message)
             return
@@ -382,8 +393,7 @@ class Plugin(BasePlugin):
 
         text = (args or "").strip()
         try:
-            port = int(text) if text else (self._core_io.active_port()
-                                           or self._core_io.configured_port())
+            port = int(text) if text else self._core_io.effective_port()
         except ValueError:
             self.output(f"'{text}' is not a port number.")
             return
@@ -393,6 +403,14 @@ class Plugin(BasePlugin):
             self.output(error.message)
             return
 
+        # Same range /qbpw-port and the HTTP API enforce; anything outside it has no meaningful verdict.
+        if not 1 <= port <= 65535:
+            self.output("The port must be between 1 and 65535.")
+            return
+
+        # Nicotine+ clears the command source as soon as this returns, and output() drops anything
+        # printed after that, so the worker reports back through the source captured here.
+        source = getattr(self.parent, "command_source", None)
         self.output(f"Checking port {port}; the result will appear here shortly.")
 
         # Go through PortTest.request rather than the native checker directly, so the command
@@ -400,25 +418,50 @@ class Plugin(BasePlugin):
         # On a worker thread: request() blocks for up to MAX_WAIT_SECONDS, and its native path
         # marshals onto the main thread, which is where commands already run - calling it inline
         # would stall there until the proxy timed out, with the interface frozen meanwhile.
-        threading.Thread(target=self._run_port_test, args=(port,),
+        threading.Thread(target=self._run_port_test, args=(port, source),
                          name="qbpwPortTestCommand", daemon=True).start()
 
-    def _run_port_test(self, port):
+    def _run_port_test(self, port, source):
         try:
             snapshot = self._port_test.request(port, MAX_WAIT_SECONDS)
         # Report the failure; a worker thread must never die silently.
         except Exception as error:  # noqa: BLE001
-            self.output(f"Could not check port {port}: {error}")
+            self._reply_later(source, f"Could not check port {port}: {error}")
             return
 
         if snapshot["state"] != STATE_DONE:
             # Undetermined rather than closed: the check service was unreachable, or the verdict
             # had not arrived yet. Saying "closed" here would send the user chasing a firewall.
-            self.output(f"Could not determine whether port {port} is reachable. Try again shortly.")
+            self._reply_later(source, f"Could not determine whether port {port} is reachable. Try again shortly.")
         elif snapshot["result"]:
-            self.output(f"Port {port} is open.")
+            self._reply_later(source, f"Port {port} is open.")
         else:
-            self.output(f"Port {port} is closed. Check the forwarded port on your VPN.")
+            self._reply_later(source, f"Port {port} is closed. Check the forwarded port on your VPN.")
+
+    def _reply_later(self, source, text):
+        """Show text in the chat a command came from, after the command has returned.
+
+        Routes the way BasePlugin.echo_message does, but from a captured source rather than the
+        live one, and queued onto the main thread, which owns the chat views. The queued callable
+        must not raise: an exception escaping it quits Nicotine+ (see bridge/main_thread.py).
+        """
+        if source is None:
+            return
+
+        def _echo():
+            try:
+                interface, target = source
+                if interface == "cli":
+                    print(text)
+                elif interface == "chatroom":
+                    self.echo_public(target, text, "command")
+                else:
+                    self.echo_private(target, text, "command")
+            # Must not escape, see the docstring.
+            except Exception as error:  # noqa: BLE001
+                self.log("Could not show the port test result: %s", (error,))
+
+        events.invoke_main_thread(_echo)
 
     def connection_file_command(self, _args, **_unused):
         if not self._handshake_paths:
@@ -438,4 +481,7 @@ class Plugin(BasePlugin):
             self.output("The bridge has been restarted.")
         # Report the failure; a command must never break the command loop.
         except Exception as error:  # noqa: BLE001
+            # Same cleanup loaded_notification does: a start that failed part-way must not leave a
+            # server thread or a published connection file behind.
+            self._stop()
             self.output(f"Could not restart the bridge: {error}")

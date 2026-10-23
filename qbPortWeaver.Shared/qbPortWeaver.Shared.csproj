@@ -5,14 +5,14 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyTitle>qbPortWeaver Shared</AssemblyTitle>
-    <Description>Constants shared between qbPortWeaver (main app) and qbPortWeaver.HelperService - pipe protocol, registry paths, log column widths.</Description>
+    <Description>Code shared between qbPortWeaver (main app) and qbPortWeaver.HelperService - pipe protocol, registry paths, log column widths, process start and kill helpers.</Description>
     <Company>martsg666</Company>
     <Product>qbPortWeaver</Product>
     <Authors>martsg666</Authors>
     <Copyright>© 2026 martsg666</Copyright>
-    <Version>2.6.9</Version>
-    <FileVersion>2.6.9.0</FileVersion>
-    <AssemblyVersion>2.6.9.0</AssemblyVersion>
+    <Version>2.7.0</Version>
+    <FileVersion>2.7.0.0</FileVersion>
+    <AssemblyVersion>2.7.0.0</AssemblyVersion>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <!-- CS1591 - doc *coverage* is deliberately optional; see GenerateDocumentationFile below -->
     <NoWarn>CS1591</NoWarn>

@@ -7,7 +7,8 @@ namespace qbPortWeaver.Shared;
 /// <summary>Outcome of <see cref="ProcessKillHelper.KillProcessTreeWithEscalation"/>.</summary>
 public enum ProcessKillOutcome
 {
-    /// <summary>Process had already exited before the kill attempt (InvalidOperationException).</summary>
+    /// <summary>Process had exited by the time <see cref="Process.Kill(bool)"/> ran - at stage 1, or at the
+    /// stage 3 retry after taskkill (InvalidOperationException).</summary>
     AlreadyExited,
     /// <summary>Stage 1 (<see cref="Process.Kill(bool)"/>) succeeded and the process exited within the timeout.</summary>
     KilledByProcessKill,

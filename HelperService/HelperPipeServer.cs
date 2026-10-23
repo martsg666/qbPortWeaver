@@ -32,13 +32,20 @@ namespace qbPortWeaver.HelperService;
 /// hive, which any user can populate for themselves. Once trusted, the caller can name any
 /// Windows service for restart and any adapter name for cycle - so on a multi-user machine a
 /// second, non-administrator user can have SYSTEM restart an arbitrary service or cycle any
-/// adapter. The helper does not allowlist service names because the service
+/// adapter. Two consequences follow from that and are accepted with it: a restart stops the named
+/// service's running dependents too but starts only the named service, and the helper's own name is
+/// accepted like any other (stopping it cleanly does not trigger its failure actions). The helper does not allowlist service names because the service
 /// search terms themselves are user-configurable in HKCU; an attacker with user-level write
 /// access to HKCU would simply rewrite the search term to point at any other service before
 /// sending the restart request, so an allowlist sourced from HKCU adds no protection. A baked-in
 /// allowlist would help but the realistic threat (malware already running as the user) implies
 /// the attacker has user-scope access already, and the user-to-SYSTEM escalation is accepted as
 /// the documented privilege boundary the helper crosses.
+/// The reverse direction is not covered either: the pipe is one instance, recreated per connection,
+/// and the tray app does not check who serves it, so another user's process that creates the pipe
+/// name between connections could answer requests with a made-up result or hold the name. The worst
+/// outcome is a recovery reported wrongly or not run - no privilege is gained - and closing it would
+/// need a server-identity check in HelperServiceClient, so it is accepted alongside the boundary above.
 /// </summary>
 internal sealed class HelperPipeServer(ILogger<HelperPipeServer> logger) : BackgroundService
 {
@@ -46,6 +53,9 @@ internal sealed class HelperPipeServer(ILogger<HelperPipeServer> logger) : Backg
     // Bound for reading the client's request line after a connection is accepted. (Named
     // distinctly from HelperServiceClient.ResponseTimeoutMs, which bounds the opposite direction.)
     private const int RequestReadTimeoutMs = 5_000;
+    // Cap on how much of a malformed request reaches the log. Any signed-in user can open the pipe,
+    // so a junk line of any length must not be copied whole into the log by this SYSTEM service.
+    private const int MaxLoggedMessageLength = 200;
 
     // Registry paths and keys for impersonated HKCU reads. Subkey names not in AppIdentity are session-environment specific.
     private const string VolatileEnvironmentKey = @"Volatile Environment";
@@ -133,7 +143,8 @@ internal sealed class HelperPipeServer(ILogger<HelperPipeServer> logger) : Backg
         var parts = message.Split('|', 3);
         if (parts.Length != 3)
         {
-            logger.LogWarning("Received malformed pipe message ({PartCount} part(s), expected 3): '{Message}'", parts.Length, message);
+            logger.LogWarning("Received malformed pipe message ({PartCount} part(s), expected 3): '{Message}'", parts.Length,
+                message.Length > MaxLoggedMessageLength ? message[..MaxLoggedMessageLength] + "..." : message);
             return;
         }
 

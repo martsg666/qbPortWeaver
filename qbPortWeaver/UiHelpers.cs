@@ -119,17 +119,26 @@ public static class UiHelpers
         }
     }
 
+    /// <summary>
+    /// True when <paramref name="url"/> is an absolute http or https address. The one rule behind
+    /// both the client URL fields in Settings and <see cref="OpenUrl"/>, so they cannot drift apart.
+    /// Null and empty are not addresses, so they return false; callers that allow an empty field
+    /// check that first.
+    /// </summary>
+    public static bool IsHttpUrl(string? url) =>
+        Uri.TryCreate(url, UriKind.Absolute, out var uri) &&
+        (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps);
+
     /// <summary>Opens an http or https URL in the default browser using ShellExecute.</summary>
     /// <remarks>Anything that is not absolute http/https is refused rather than passed on.
     /// <c>UseShellExecute</c> resolves far more than a browser address - <c>file://</c>, a UNC path
     /// and registered protocol handlers all launch something - and not every caller supplies a
     /// literal: the release and contributor links come from GitHub API responses, so the string can
-    /// arrive over the network. The same check the client-URL fields already apply in
-    /// <c>SettingsForm</c>, moved to the sink so every caller inherits it.</remarks>
+    /// arrive over the network. The same check the client-URL fields apply in
+    /// <c>SettingsForm</c>, applied at the sink so every caller inherits it.</remarks>
     public static void OpenUrl(string url)
     {
-        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) ||
-            (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
+        if (!IsHttpUrl(url))
         {
             LogManager.Instance.LogMessage($"Refused to open '{url}' - only http and https addresses are opened", LogLevel.Warn);
             return;

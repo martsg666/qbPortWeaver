@@ -166,9 +166,16 @@ public partial class AboutForm : Form
     private void ApplyContributors(IReadOnlyList<ContributorInfo>? contributors)
     {
         if (contributors is { Count: > 0 })
+        {
             SetContributorLinks(contributors);
-        else
-            lnkAuthor.Text = AppConstants.GitHubRepoOwner;
+            return;
+        }
+
+        // Rebuilt like the contributor list: link regions from an earlier successful fetch would
+        // otherwise stay behind, pointing past the end of the shorter text or at the wrong profile.
+        lnkAuthor.Text = AppConstants.GitHubRepoOwner;
+        lnkAuthor.Links.Clear();
+        lnkAuthor.Links.Add(0, AppConstants.GitHubRepoOwner.Length, $"https://github.com/{AppConstants.GitHubRepoOwner}");
     }
 
     // Populates lnkAuthor with one clickable link region per contributor

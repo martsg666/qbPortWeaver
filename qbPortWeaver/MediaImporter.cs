@@ -8,7 +8,6 @@ namespace qbPortWeaver;
 /// <summary>File-level infrastructure for the media import pipeline: file transfer (hardlink/copy/move), library fingerprint index, source and library cache management, and file utilities.</summary>
 internal static partial class MediaImporter
 {
-    // Library index: fingerprints (size + partial SHA-256) of every file in the library folders.
     // State key for LogManager.LogStateChange - an inaccessible library path persists for as long as
     // the share is down, and this is re-evaluated every import cycle.
     private const string LibraryIndexStateKey = "media.libraryindex";
@@ -18,6 +17,7 @@ internal static partial class MediaImporter
     // I/O-bound: storage throughput is the constraint, not CPU count.
     // 8 concurrent reads balances throughput vs not overwhelming slower storage.
     internal const int FingerprintParallelism = 8;
+    // Library index: fingerprints (size + partial SHA-256) of every file in the library folders.
     private static HashSet<string>? _libraryFingerprints;
     private static readonly object _libraryLock = new();
     private static readonly SemaphoreSlim _libraryBuildSemaphore = new(1, 1);
@@ -65,10 +65,10 @@ internal static partial class MediaImporter
     private const int UncExistsTimeoutMs = 5000;        // budget for a UNC Directory.Exists before giving up
     private const int UnreachableHostCacheSeconds = 30; // how long a timed-out host stays marked unreachable
 
-    // Hosts whose bounded existence check recently timed out, keyed by host name with the UTC time of
-    // the timeout. Lets multiple paths on one dead host (e.g. \\NAS\A and \\NAS\B) fail fast without
+    // Hosts whose bounded existence check recently timed out, keyed by host name with the time of the
+    // timeout. Lets multiple paths on one dead host (e.g. \\NAS\A and \\NAS\B) fail fast without
     // each spawning another blocked check.
-    // Keyed on Environment.TickCount64 (monotonic) rather than a wall-clock timestamp, so a clock
+    // The time is Environment.TickCount64 (monotonic) rather than a wall-clock timestamp, so a clock
     // correction cannot make an entry look arbitrarily old or arbitrarily fresh.
     private static readonly ConcurrentDictionary<string, long> _unreachableHosts =
         new(StringComparer.OrdinalIgnoreCase);
@@ -91,7 +91,6 @@ internal static partial class MediaImporter
         return result;
     }
 
-    // Verifies that two paths refer to the same file by comparing volume serial number and file index.
     // Attempts a hardlink from sourcePath to destinationPath, verifies the link identity,
     // and falls back to a file copy if the hardlink fails or the filesystem silently copies instead.
     private static void ImportWithHardlink(string sourcePath, string destinationPath)
@@ -118,6 +117,7 @@ internal static partial class MediaImporter
         }
     }
 
+    // Verifies that two paths refer to the same file by comparing volume serial number and file index.
     // Returns false if the files have different identities (some filesystems silently create a copy instead of a hardlink).
     private static bool VerifyHardLink(string sourcePath, string destinationPath)
     {
@@ -159,22 +159,26 @@ internal static partial class MediaImporter
     /// Creates the target directory if needed. Skips files that already exist at the destination with the same fingerprint.
     /// In <see cref="ImportMode.Hardlink"/> mode, automatically falls back to copy if the hardlink fails.
     /// </summary>
-    internal static void AddFileToLibrary(string sourcePath, string destinationPath, ImportMode importMode)
+    /// <returns><see langword="true"/> when the file is at the destination afterwards (imported, or already
+    /// there with the same fingerprint); <see langword="false"/> on a destination conflict or a failed
+    /// transfer. Callers import a video's subtitles only on <see langword="true"/>, so a subtitle never
+    /// lands beside a different file that holds the video's name.</returns>
+    internal static bool AddFileToLibrary(string sourcePath, string destinationPath, ImportMode importMode)
     {
         if (string.Equals(sourcePath, destinationPath, StringComparison.OrdinalIgnoreCase))
-            return;
+            return true;
 
         if (DestinationMatchesSource(sourcePath, destinationPath))
         {
             LogManager.Instance.LogDebug($"MediaImporter.AddFileToLibrary: Skipped '{Path.GetFileName(destinationPath)}' - target already exists with same fingerprint", Subsystem.MediaManager);
-            return;
+            return true;
         }
 
         // Destination exists but different content: two different source files resolved to the same target path
         if (File.Exists(destinationPath))
         {
             LogDestinationConflict(sourcePath, destinationPath);
-            return;
+            return false;
         }
 
         var targetDir = Path.GetDirectoryName(destinationPath);
@@ -206,10 +210,11 @@ internal static partial class MediaImporter
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or PathTooLongException)
         {
             LogManager.Instance.LogMessage($"Failed to import '{Path.GetFileName(sourcePath)}': {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
-            return;
+            return false;
         }
 
         AddToLibraryIndex(destinationPath);
+        return true;
     }
 
     // Returns the file's size as a display string ("12345 bytes"), or "unknown size" if it cannot be

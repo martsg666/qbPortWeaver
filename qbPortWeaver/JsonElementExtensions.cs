@@ -17,7 +17,11 @@ namespace qbPortWeaver;
 /// and only returns false for a number that will not fit. Call sites written against the name
 /// therefore had unreachable "not an integer" branches whose diagnostics could never be
 /// written. Route integer reads through here rather than restating the kind test at each
-/// site.</para></remarks>
+/// site.</para>
+/// <para>The tolerance covers the value, not the parent: the <c>...OrNull(parent, name)</c> readers
+/// use <see cref="JsonElement.TryGetProperty(string, out JsonElement)"/>, which throws when the
+/// parent is not a JSON object. Callers read from a root they have already checked, or sit inside
+/// a catch-all, so check the parent's kind first when that is not true.</para></remarks>
 internal static class JsonElementExtensions
 {
     /// <summary>Reads <paramref name="propertyName"/> as a string, or <see langword="null"/> when

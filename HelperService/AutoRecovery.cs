@@ -25,6 +25,8 @@ internal static partial class AutoRecovery
 
     // P/Invoke - used by KillServiceProcess to resolve a service's host process ID
     private const int SC_STATUS_PROCESS_INFO = 0; // the only valid infoLevel for QueryServiceStatusEx
+    private const int SERVICE_WIN32_SHARE_PROCESS = 0x20;   // dwServiceType bit
+    private const int SERVICE_RUNS_IN_SYSTEM_PROCESS = 0x1; // dwServiceFlags bit
 
     [LibraryImport("advapi32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
@@ -146,7 +148,8 @@ internal static partial class AutoRecovery
     // logs a successful kill at Info.
 
     // Cycles a network adapter by disabling and re-enabling it via netsh.
-    // Used for generic NAT-PMP gateways where no known VPN service is involved.
+    // Used when the adapter belongs to no known provider: a generic NAT-PMP gateway, or a Static
+    // port adapter the registry does not recognise.
     // For known providers (ProtonVPN, PIA), the main app sends "restart" instead.
     internal static async Task CycleAdapterAsync(string adapterName, HelperLogger logger, CancellationToken cancellationToken = default)
     {
@@ -307,7 +310,7 @@ internal static partial class AutoRecovery
     private static async Task ForceKillAndWaitAsync(ServiceController sc, string serviceName, string reason,
         HelperLogger logger, CancellationToken cancellationToken)
     {
-        logger.LogMessage($"{reason} - force-killing process", LogLevel.Info);
+        logger.LogMessage($"{reason} - attempting to force-kill the process", LogLevel.Info);
         KillServiceProcess(sc, logger);
         await WaitForStoppedOrWarnAsync(sc, serviceName, logger, cancellationToken).ConfigureAwait(false);
     }
@@ -322,7 +325,9 @@ internal static partial class AutoRecovery
         }
         catch (System.ServiceProcess.TimeoutException)
         {
-            logger.LogMessage($"Service '{serviceName}' still not stopped after force-kill - proceeding with start anyway", LogLevel.Warn);
+            // Worded for every route here, not only a kill that ran: the shared-host refusal and a failed or
+            // denied kill also arrive, and each has already logged why the process was not killed.
+            logger.LogMessage($"Service '{serviceName}' still not stopped - proceeding with start anyway", LogLevel.Warn);
         }
     }
 
@@ -356,7 +361,20 @@ internal static partial class AutoRecovery
                         SC_STATUS_PROCESS_INFO, buf, bufSize, out _))
                     return;
 
-                int pid = Marshal.PtrToStructure<ServiceStatusProcess>(buf).dwProcessId;
+                var status = Marshal.PtrToStructure<ServiceStatusProcess>(buf);
+
+                // A shared host (svchost) runs other services too, and a system process is Windows
+                // itself: killing either takes down far more than the service asked for. The VPN
+                // services this exists for each run in their own process, so refusing here never
+                // blocks a real recovery.
+                if ((status.dwServiceType & SERVICE_WIN32_SHARE_PROCESS) != 0 ||
+                    (status.dwServiceFlags & SERVICE_RUNS_IN_SYSTEM_PROCESS) != 0)
+                {
+                    logger.LogMessage($"Service '{sc.ServiceName}' shares its process with other services - not force-killed", LogLevel.Warn);
+                    return;
+                }
+
+                int pid = status.dwProcessId;
                 if (pid <= 0) return;
 
                 // Known residual risk: between QueryServiceStatusEx returning the PID and
@@ -396,7 +414,7 @@ internal static partial class AutoRecovery
         switch (result.Outcome)
         {
             case ProcessKillOutcome.AlreadyExited:
-                logger.LogMessage($"Service '{serviceName}' process (PID {pid}) already exited", LogLevel.Warn);
+                logger.LogMessage($"Service '{serviceName}' process (PID {pid}) had already exited when the force-kill reached it", LogLevel.Info);
                 break;
             case ProcessKillOutcome.AccessDenied:
                 logger.LogMessage($"Service '{serviceName}' process (PID {pid}) could not be killed - access denied or process protected", LogLevel.Warn);

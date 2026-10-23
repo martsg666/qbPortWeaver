@@ -533,42 +533,39 @@ public partial class MainForm : Form
     // results dialog. 'form' is the Status panel when triggered there (so its button can be toggled),
     // or null from the tray. Guarded so the two entry points and the dialog's Re-run cannot run
     // concurrently.
-    private async Task RunDiagnosticsAsync(StatusForm? form)
+    private Task RunDiagnosticsAsync(StatusForm? form) => RunDiagnosticsAsync(
+        "Diagnostics requested",
+        form is null ? null : running => { if (!form.IsDisposed) form.SetDiagnosticsRunning(running); },
+        ShowDiagnosticsResults);
+
+    // The one run wrapper behind the three entry points: the concurrency guard, the busy toggle on
+    // whichever form asked (checked for disposal, since the user can close it mid-run), the request
+    // line, and the result sink.
+    private async Task RunDiagnosticsAsync(string requestLine, Action<bool>? setBusy, Action<IReadOnlyList<DiagnosticResult>> showResults)
     {
         if (_diagnosticsRunning) return;
         _diagnosticsRunning = true;
-        form?.SetDiagnosticsRunning(true);
-        LogManager.Instance.LogMessage("Diagnostics requested", LogLevel.Info);
+        setBusy?.Invoke(true);
+        LogManager.Instance.LogMessage(requestLine, LogLevel.Info);
         try
         {
             var results = await RunDiagnosticsCoreAsync();
-            if (results is not null) ShowDiagnosticsResults(results);
+            if (results is not null) showResults(results);
         }
         finally
         {
             _diagnosticsRunning = false;
-            if (form is { IsDisposed: false }) form.SetDiagnosticsRunning(false);
+            setBusy?.Invoke(false);
         }
     }
 
     // From the results dialog's Re-run button: re-runs diagnostics and refreshes the dialog in place.
-    private async Task RerunDiagnosticsAsync(DiagnosticsForm form)
-    {
-        if (_diagnosticsRunning) return;
-        _diagnosticsRunning = true;
-        form.SetRunning(true);
-        LogManager.Instance.LogMessage("Diagnostics re-run requested", LogLevel.Info);
-        try
-        {
-            var results = await RunDiagnosticsCoreAsync();
-            if (results is not null && !form.IsDisposed) form.SetResults(results);
-        }
-        finally
-        {
-            _diagnosticsRunning = false;
-            if (!form.IsDisposed) form.SetRunning(false);
-        }
-    }
+    // Results go straight to that dialog rather than through ShowDiagnosticsResults, so a dialog the
+    // user closed during the run is not reopened.
+    private Task RerunDiagnosticsAsync(DiagnosticsForm form) => RunDiagnosticsAsync(
+        "Diagnostics re-run requested",
+        running => { if (!form.IsDisposed) form.SetRunning(running); },
+        results => { if (!form.IsDisposed) form.SetResults(results); });
 
     // Runs the diagnostics service with the standard shutdown-linked timeout and error handling. Builds
     // fresh managers/clients off the saved settings, so it is safe to run alongside a sync cycle.
@@ -622,7 +619,13 @@ public partial class MainForm : Form
         frm.Show(); // NOSONAR S6966 - non-modal is intentional; ShowOrActivate cannot express the in-place SetResults refresh above
     }
 
-    private void autoStart_Click(object? sender, EventArgs e) => StartupManager.SetStartup(_autoStartMenuItem.Checked);
+    // CheckOnClick has already flipped the mark; SetStartup logs and swallows a failed write, so the
+    // mark is re-read from the Run key afterwards rather than left showing a state that was never set.
+    private void autoStart_Click(object? sender, EventArgs e)
+    {
+        StartupManager.SetStartup(_autoStartMenuItem.Checked);
+        _autoStartMenuItem.Checked = StartupManager.IsStartupEnabled();
+    }
 
     private void trayIcon_MouseDoubleClick(object? sender, MouseEventArgs e)
     {
@@ -744,12 +747,17 @@ public partial class MainForm : Form
             });
     }
 
-    // Shared handler for PortSyncService warning events (interface mismatch, port verification
-    // failure) - both fire transition-only and warrant a one-shot warning balloon.
-    private void ShowWarningBalloon(string message)
+    // Shared handler for the PortSyncService warning events (interface mismatch, port verification
+    // failure, client settings conflict), which fire transition-only and warrant a one-shot warning
+    // balloon. Each follows a Warn already in the log, so a click opens the Log Viewer on it, as the
+    // log-alert balloon this one replaces on screen would have.
+    private void ShowWarningBalloon(string message) => ShowWarningBalloon(message, opensLog: true);
+
+    // opensLog: false for the log-write failure, which has nothing in the log to show.
+    private void ShowWarningBalloon(string message, bool opensLog)
     {
         if (_shutdownCts.IsCancellationRequested) return;
-        InvokeOnUiThread(() => { _logAlertBalloonPending = false; _trayIcon.ShowBalloonTip(AppConstants.BalloonTipDurationMs, AppIdentity.AppName, message, ToolTipIcon.Warning); });
+        InvokeOnUiThread(() => { _logAlertBalloonPending = opensLog; _trayIcon.ShowBalloonTip(AppConstants.BalloonTipDurationMs, AppIdentity.AppName, message, ToolTipIcon.Warning); });
     }
 
     // Called by PortSyncService when the client's listening port is successfully updated.
@@ -927,7 +935,7 @@ public partial class MainForm : Form
             }
             catch (Exception ex)
             {
-                LogManager.Instance.LogMessage($"Media import cycle failed: {ex.Message}", LogLevel.Error);
+                LogManager.Instance.LogMessage($"Media import cycle failed: {ex.Message}", LogLevel.Error, Subsystem.MediaManager);
             }
             finally
             {
@@ -1001,7 +1009,7 @@ public partial class MainForm : Form
         }
     }
 
-    // Check failed or was cancelled by shutdown - UpdateChecker already logged the cause at Debug.
+    // Check failed or was cancelled by shutdown - UpdateChecker already logged the cause at Info.
     // Kept distinct from NotifyUpToDate so a failed check is never reported as "up to date"
     // (the manual balloon would otherwise show false information).
     private void NotifyUpdateCheckFailed(bool manual)
@@ -1185,7 +1193,7 @@ public partial class MainForm : Form
     // the event again. LogManager latches the event, so this fires once per failure episode.
     private void OnLogWriteFailed()
     {
-        ShowWarningBalloon("Cannot write to the log file. Check free disk space and the permissions on the qbPortWeaver folder.");
+        ShowWarningBalloon("Cannot write to the log file. Check free disk space and the permissions on the qbPortWeaver folder.", opensLog: false);
     }
 
     // Called from background threads via LogManager.WarnOrErrorLogged; marshals to UI thread

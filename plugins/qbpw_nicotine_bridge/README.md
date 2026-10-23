@@ -14,7 +14,7 @@ never has to be restarted**. Transfers in progress survive; only the Soulseek co
 ## Installing
 
 Easiest: in qbPortWeaver, set **Client** to **Nicotine+** under **Settings → General**, then open
-the **Client** tab and click **Install Plugin**. It copies the plugin into place and, if Nicotine+
+the **Nicotine+** tab and click **Install Plugin**. It copies the plugin into place and, if Nicotine+
 is closed, offers to enable it too.
 
 By hand: copy this folder into your Nicotine+ plugin folder, then enable **qbPortWeaver Bridge**
@@ -34,8 +34,8 @@ On start, the plugin writes a small file with its address and access token:
 
 qbPortWeaver picks these up on its own, so there is normally nothing to configure. If you run
 Nicotine+ with a custom data folder (`-c` or `--user-data`), qbPortWeaver cannot work out where
-to look - run `/qbpw-connection-file` in Nicotine+ and enter the address and token into
-qbPortWeaver's settings by hand. Both are stable across restarts.
+to look - run `/qbpw-connection-file` in a Nicotine+ private chat and enter the address and
+token into qbPortWeaver's settings by hand. Both are stable across restarts.
 
 The file carries a `schema` number describing its layout. qbPortWeaver checks it before reading
 anything else and ignores a file whose schema is newer than the version it understands, rather
@@ -45,11 +45,12 @@ not connected instead of misbehaving quietly. Update qbPortWeaver if you see tha
 
 ## Commands
 
-Type these in any Nicotine+ chat window:
+Type these in a Nicotine+ chat window. `/qbpw-connection-file` works only in a private chat, not in a
+chat room, because chat rooms are public.
 
 | Command | What it does |
 |---|---|
-| `/qbpw-status` | Bridge address, connection state, configured and in-use port |
+| `/qbpw-status` | Bridge address, connection state, configured and in-use port, UPnP state, and any capability this Nicotine+ version lacks |
 | `/qbpw-port [port]` | Show the port, or change it |
 | `/qbpw-test [port]` | Check whether the port is reachable from outside |
 | `/qbpw-connection-file` | Where the connection details are published |
@@ -79,6 +80,12 @@ misbehaving bridge inspectable by hand with `curl`, which is the point at which 
 by definition not answering. `GET /` is the one to start with: it reports the versions on both
 sides and the capability map, so a Nicotine+ update that removed something the bridge depends on
 can be identified directly rather than inferred from a failing endpoint.
+
+A successful `POST /v1/port` also carries `warnings`, a list of what it could not do on top of
+saving the port: `reconnect_unsupported` and `connect_unsupported` (the new port waits for the next
+connection), `setup_incomplete` (Nicotine+'s first-run setup is not finished, so it is not
+connected), and `portmapper_unsupported` or `portmapper_failed` (an old UPnP mapping may remain).
+qbPortWeaver logs each one. `POST /v1/reconnect` carries the same list, limited to the first three.
 
 `POST /v1/porttest` never blocks longer than the plugin's own cap, so a slow check returns
 `state: "pending"` rather than timing out. Treat anything other than `state: "done"` as

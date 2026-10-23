@@ -6,7 +6,7 @@ namespace qbPortWeaver;
 /// <summary>Category of a port history event, driving the row accent in the Status panel.</summary>
 public enum PortHistoryKind
 {
-    /// <summary>A normal port change (VPN assigned a new port, or the default port was applied).</summary>
+    /// <summary>A normal port change (VPN assigned a new port, the Static port was applied, or the default port was applied).</summary>
     PortChanged,
     /// <summary>The forwarded port was confirmed unreachable from outside.</summary>
     PortClosed,
@@ -29,8 +29,8 @@ public sealed record PortHistoryEntry
 /// Persisted, bounded history of port-affecting events (port changes, confirmed-closed results,
 /// auto-recovery dispatches), shown in the Status panel. Port changes are rare (VPN reconnects),
 /// so the history is persisted across restarts - a session-only list would usually be empty.
-/// Events are appended by the sync loop (background thread) and read by the Status panel (UI
-/// thread); appends are serialized by a lock and the file write is atomic, so a concurrent read
+/// Events are appended from background threads (the sync loop, and the recovery dispatch that the
+/// Settings Test button also runs) and read by the Status panel (UI thread); appends are serialized by a lock and the file write is atomic, so a concurrent read
 /// sees either the previous or the new complete file.
 /// </summary>
 public static class PortHistoryManager
@@ -97,7 +97,7 @@ public static class PortHistoryManager
                 // LogStateChange reports it once and again only if the message changes, so a
                 // permanent failure cannot drive the tray badge up.
                 LogManager.Instance.LogStateChange(HistoryWriteStateKey,
-                    $"Could not write the port history file - Recent Port Changes will stop updating: {ex.Message}",
+                    $"Could not write the port history file - Recent Port Changes will stop updating: {AppFiles.DescribeWriteFailure(ex, HistoryFilePath)}",
                     LogLevel.Warn);
             }
         }

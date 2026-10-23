@@ -164,7 +164,14 @@ jobs:
           WINGET_TOKEN:    ${{ secrets.WINGET_TOKEN }}
         run: |
           $ErrorActionPreference = 'Stop'
-          Invoke-WebRequest -Uri 'https://aka.ms/wingetcreate/latest' -OutFile wingetcreate.exe
+          # Pinned to a release asset and checked against its published SHA256, like the
+          # SHA-pinned actions above: this executable runs with the winget token. Bump the
+          # version and hash together from the release page when updating.
+          $wingetCreateUrl    = 'https://github.com/microsoft/winget-create/releases/download/v1.12.13.0/wingetcreate.exe'
+          $wingetCreateSha256 = '24042BD37915805615E6CF969AC57C6439124C3FE85823327F5F3FB24BD9FFEA'
+          Invoke-WebRequest -Uri $wingetCreateUrl -OutFile wingetcreate.exe
+          $actual = (Get-FileHash -Path wingetcreate.exe -Algorithm SHA256).Hash.ToUpper()
+          if ($actual -ne $wingetCreateSha256) { throw "wingetcreate.exe hash mismatch: expected $wingetCreateSha256, got $actual" }
           .\wingetcreate.exe update martsg666.qbPortWeaver `
             --version $env:RELEASE_VERSION `
             --urls $env:MSI_URL `
@@ -191,7 +198,7 @@ jobs:
           # One entry per paragraph. Emitted under a '|-' literal block, matching the
           # field's existing style, so each stays a separate paragraph.
           $description = @(
-            'qbPortWeaver is a Windows system tray application that keeps the listening port of qBittorrent, Transmission, Deluge, or Nicotine+ synchronized with the port assigned by ProtonVPN, PIA, or any NAT-PMP capable VPN gateway or router.'
+            'qbPortWeaver is a Windows system tray application that keeps the listening port of qBittorrent, Transmission, Deluge, or Nicotine+ synchronized with the port assigned by ProtonVPN, PIA, any NAT-PMP capable VPN gateway or router, or any VPN provider that assigns a permanent forwarded port.'
             'It monitors the VPN''s forwarded port on a configurable interval, updates the client automatically when the port changes, verifies the port is reachable, and can recover the VPN connection automatically when port detection fails. Nicotine+ is driven through a small bridge plugin that qbPortWeaver installs, so its port changes while the client keeps running. A Status panel shows the live sync chain, recent port changes, and session statistics, and a built-in Media Manager can import media files into Plex-compatible library folders.'
           )
 

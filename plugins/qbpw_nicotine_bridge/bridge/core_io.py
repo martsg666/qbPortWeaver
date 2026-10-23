@@ -145,6 +145,11 @@ class CoreIO:
         """The port forced by ``--port``, or None. A forced port cannot be changed at all."""
         return getattr(self._core, "cli_listen_port", None)
 
+    def effective_port(self):
+        """The port a reachability check should test when none is given: the one in use, else the
+        ``--port`` lock (it overrides the setting for the whole process), else the configured one."""
+        return self.active_port() or self.cli_listen_port() or self.configured_port()
+
     def active_port(self):
         """The port Nicotine+ is actually bound to right now, or None when not logged in.
 

@@ -9,6 +9,114 @@ public partial class WhatsNewForm : Form
         "If you find qbPortWeaver useful, please star it on GitHub.";
 
     private const string ReleaseFeaturesText =
+        "New in 2.7.0\n\n" +
+        "Works with VPN providers that give you a permanent port\n" +
+        "Some VPN providers assign a forwarded port once, in your account on their website, and never " +
+        "change it. Choose the new Static port option as the VPN provider in Settings, pick your VPN's " +
+        "network adapter and enter the port. qbPortWeaver then keeps your client on that port and " +
+        "applies everything else it already does: the network interface checks, the open-port " +
+        "check, auto-recovery when the VPN drops, and the default port while it is disconnected.\n\n" +
+        "Changed: a setting that needs fixing now shows red, not orange\n" +
+        "When the NAT-PMP provider had no adapter set, the tray showed the orange \"VPN not " +
+        "connected\" and kept the actual reason in the log. The tray dot is now red and the tooltip " +
+        "says what to set. The new Static port provider works the same way when its adapter or port " +
+        "is missing. The same applies when the VPN is down and the default port " +
+        "could not be applied because the client is not running or refused the change: the fallback " +
+        "you configured did not work, so the tray says so instead of reporting a disconnection.\n\n" +
+        "Changed: Diagnostics gives NAT-PMP advice that fits its adapter\n" +
+        "When the VPN adapter was down, the VPN connection row told you to pick a P2P server, which only " +
+        "applies to ProtonVPN and PIA. It now names the adapter and suggests connecting the VPN that owns " +
+        "it or selecting the right one in Settings. When a NAT-PMP gateway assigns no port, the forwarded " +
+        "port rows now suggest checking that the gateway accepts NAT-PMP port mapping requests. The new " +
+        "Static port provider gets the same adapter advice.\n\n" +
+        "Changed: the network interface check for NAT-PMP needs the exact adapter\n" +
+        "A client bound to a similarly named adapter, such as \"Ethernet\" when the VPN adapter is " +
+        "\"Ethernet 2\", passed the check, so no leak warning appeared although its traffic went " +
+        "outside the VPN. It now gets the warning. The new Static port provider uses the same exact " +
+        "check; ProtonVPN and PIA are unchanged.\n\n" +
+        "Changed: warning notifications open the log when clicked\n" +
+        "Clicking a notification about the port, the network interface or a client setting now " +
+        "opens the log viewer at that warning. Before, the click did nothing, although the " +
+        "notification could say to see the log.\n\n" +
+        "Changed: the Status panel shows why the last sync failed\n" +
+        "Hover over Last sync to see the same reason the tray tooltip gives, such as a setting that " +
+        "is missing or a client that is not running.\n\n" +
+        "Changed: Nicotine+ says when a new port could not be applied straight away\n" +
+        "A port change was always logged as done once Nicotine+ had saved it, even when it could not " +
+        "switch over yet, for example before its first-run setup is finished. The log now says what " +
+        "is still pending, and warns when the old port stays in use or an old router mapping may " +
+        "remain.\n\n" +
+        "Fixed: a recovery that could not relaunch the VPN client app was logged as completed\n" +
+        "When auto-recovery restarted the VPN service but the VPN client app did not come back, the " +
+        "log still ended with a completed line. It now ends with a warning saying the app needs to be " +
+        "started by hand.\n\n" +
+        "Fixed: an unexpected error in a sync cycle ignored your sync interval\n" +
+        "After a cycle failed with an unexpected error, the next one always ran 3 minutes later " +
+        "whatever interval was set. It now waits the configured interval, as every other outcome does.\n\n" +
+        "Fixed: auto-recovery could force-stop more than one Windows service\n" +
+        "When a service refused to stop, the helper service ended the process it runs in. For a " +
+        "Windows service that shares its process with others, that stopped all of them. It now " +
+        "leaves such a service alone and logs a warning. The VPN services auto-recovery restarts " +
+        "each run in their own process and are not affected.\n\n" +
+        "Fixed: auto-recovery could restart the wrong VPN's service\n" +
+        "A NAT-PMP adapter with a short name such as \"VPN\" was mistaken for ProtonVPN, so recovery " +
+        "restarted the ProtonVPN service instead of cycling the adapter. It now cycles the adapter. " +
+        "The new Static port provider follows the same rule.\n\n" +
+        "Fixed: an adapter cycle that failed was logged as completed\n" +
+        "When auto-recovery could not disable or re-enable the network adapter, the log still ended " +
+        "with a completed line. It now says the cycle had problems and to check that the adapter is " +
+        "enabled.\n\n" +
+        "Fixed: a successful auto-recovery could show the warning badge\n" +
+        "When a VPN service finished stopping on its own just as auto-recovery was about to " +
+        "force-stop it, the log recorded a warning and the tray showed the warning badge, although " +
+        "the recovery worked. It is now an ordinary log line.\n\n" +
+        "Fixed: the Nicotine+ /qbpw-test command never showed its result\n" +
+        "The command said the result would appear shortly, then printed nothing. It now reports " +
+        "whether the port is open, closed or could not be determined, in the chat you typed it in. " +
+        "To get it, click Update Plugin on the Nicotine+ tab in Settings, then restart Nicotine+.\n\n" +
+        "Fixed: Import Now in the Media Manager did not bring subtitles along\n" +
+        "Subtitle files next to a video are now imported with it, as the automatic import already " +
+        "did. Before, they were left in the source folder and never followed later.\n\n" +
+        "Fixed: the Media Manager could say everything was imported when the library was unreachable\n" +
+        "When the library folder could not be read, a scan showed \"All files already imported.\" It " +
+        "now says the library could not be read. After Import Now, the result is no longer replaced " +
+        "straight away, and it counts only the files you selected that failed.\n\n" +
+        "Fixed: Re-match in the Media Manager could import only one part of a multi-part movie\n" +
+        "After a re-match, every part of a movie split across several files got the same name, so " +
+        "only the first one was imported. Each part now keeps its own name, as it does after a scan.\n\n" +
+        "Fixed: Media Manager errors were shown only in its status line\n" +
+        "They are now written to the log as well, and a TMDB reply that cannot be read during " +
+        "Re-match now skips only that file instead of stopping the whole Re-match.\n\n" +
+        "Fixed: a movie split into files named only by part was not recognised\n" +
+        "Files such as cd1 and cd2 were each looked up as a movie of that name. They are now matched " +
+        "through the movie's folder name and imported together, each with its part number.\n\n" +
+        "Fixed: subtitles could be imported when their video was not\n" +
+        "When a video was skipped because a different file already had its name, or could not be " +
+        "copied, its subtitles were still added to the library under that name. They are now left in " +
+        "place as well.\n\n" +
+        "Fixed: a movie split across files that each carry the title imported only its first part\n" +
+        "All parts now import into the movie's folder, each with its part number. A single file with " +
+        "a title such as \"Part 2\" is still imported as it was.\n\n" +
+        "Fixed: Import Now put each part of a multi-part movie in its own folder\n" +
+        "All parts, and their subtitles, now go into the movie's folder, as the automatic import " +
+        "does.\n\n" +
+        "Fixed: misleading Media Manager status messages\n" +
+        "A slow TMDB answer during Re-match no longer stops it and reports it as cancelled, and " +
+        "unchecking every file no longer says everything is already imported.\n\n" +
+        "Fixed: some debug entries were written with debug logging switched off\n" +
+        "Failed port checks and a few other routine lines appeared in the log as DEBUG entries even " +
+        "when debug logging was off. They now appear only when it is on.\n\n" +
+        "Fixed: several smaller issues\n" +
+        "Warnings that repeat every sync, such as a status file that cannot be written or a NAT-PMP " +
+        "gateway that refuses the TCP mapping, now appear once. The Start Automatically menu item " +
+        "shows the real state if it could not be changed. The Media Manager always keeps the original " +
+        "file extension. Nicotine+ commands no longer print \"None\", /qbpw-test uses a port fixed by " +
+        "--port, and a Transmission settings check that failed is no longer reported as passed.\n\n" +
+        "Fixed: a portable Nicotine+ running under another Windows account was not found\n" +
+        "qbPortWeaver could not check that Nicotine+ was still running when it belonged to another " +
+        "account, so it ignored the connection details the plugin published and showed Nicotine+ as " +
+        "not connected. It now uses them.\n\n" +
+        "Previously released\n\n" +
         "New in 2.6.9\n\n" +
         "Your settings can be backed up and restored\n" +
         "Settings now has Back Up and Restore buttons. Back Up writes your whole configuration to a " +
@@ -28,7 +136,6 @@ public partial class WhatsNewForm : Form
         "With the color theme set to System while Windows was in dark mode, qbPortWeaver could close " +
         "immediately on startup without showing anything. It now starts normally with every theme " +
         "setting.\n\n" +
-        "Previously released\n\n" +
         "New in 2.6.8\n\n" +
         "Diagnostics now checks your internet connection\n" +
         "Run Diagnostics reports whether this machine gets a reply when it pings the internet. That is " +

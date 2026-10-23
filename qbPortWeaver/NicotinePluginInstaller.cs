@@ -131,8 +131,8 @@ internal static class NicotinePluginInstaller
     /// nothing to compare against.
     /// </summary>
     /// <remarks>
-    /// This is not a fault - <c>NicotineClient</c> rediscovers the connection file and recovers - but
-    /// it costs a failed request every cycle until it is corrected, so both surfaces flag it.
+    /// This is not a fault - <c>NicotineClient</c> adopts the connection file when it is created, so
+    /// requests reach the plugin - but the saved settings are out of date, so both surfaces flag it.
     /// It happens on its own: the plugin falls back to a free port when its configured one is busy,
     /// which moves the published address while the stored settings stay where they were.
     /// <para>Lives here so the two callers cannot drift apart. They compare against different
@@ -570,8 +570,8 @@ internal static class NicotinePluginInstaller
         [.. Assembly.GetExecutingAssembly().GetManifestResourceNames()
             .Where(name => name.StartsWith(ResourcePrefix, StringComparison.Ordinal))];
 
-    // Resource names flatten the folder separators, so the last two dots are the file extension
-    // and everything before the final remaining dot is a subfolder.
+    // Resource names flatten the folder separators into dots, so the text after the last dot is the
+    // file extension and every dot before it is a folder separator.
     private static string ResourceNameToRelativePath(string suffix)
     {
         int lastDot = suffix.LastIndexOf('.');

@@ -29,7 +29,7 @@ public sealed class PortSyncService
     // Connection status value returned by clients that support GetConnectionStatusAsync
     private const string ClientDisconnectedStatus = "disconnected";
 
-    // LogManager.LogStateChange keys for the three conditions in this cycle that persist until the
+    // LogManager.LogStateChange keys for the conditions in this cycle that persist until the
     // user acts, so each is logged on the transition rather than on every cycle. The two restart and
     // settings-conflict warnings nearby already do this with their own fields; these use the shared
     // mechanism because they have no other reason to carry state. Every Warn also bumps the tray's
@@ -40,9 +40,11 @@ public sealed class PortSyncService
     private const string VpnProviderStateKey = "vpn.providerUnrecognized";
     private const string DefaultPortStateKey = "client.defaultPortUnusable";
     private const string NatPmpAdapterStateKey = "vpn.natpmpAdapterUnconfigured";
+    private const string StaticPortStateKey = "vpn.staticPortUnconfigured";
     private const string PortForwardingUnavailableStateKey = "vpn.portForwardingUnavailable";
     private const string BindingAddressStateKey = "client.bindingAddressStale";
     private const string RecoveryCapStateKey = "vpn.recoveryCapReached";
+    private const string UnexpectedErrorDetailsStateKey = "sync.unexpectedErrorDetails";
 
     /// <summary>Raised when a sync cycle completes (success or failure) with the resulting tray status.</summary>
     public event Action<TrayStatus>? SyncCompleted;
@@ -265,7 +267,8 @@ public sealed class PortSyncService
     // client that does not carry the setting reads false without a special case here.
     private sealed record AppConfig(
         string VpnProvider,
-        string NatPmpAdapterName,
+        string VpnAdapterName,
+        int StaticPort,
         int UpdateInterval,
         string ClientName,
         ClientConfig Client,
@@ -421,17 +424,27 @@ public sealed class PortSyncService
 
         // Captured so the finally can publish NextSyncAt against the wait this cycle actually
         // returned - including the shortened startup-grace poll - rather than re-reading the
-        // configured interval. Stays at the default when RunCoreAsync throws, which is what the
-        // catch returns anyway.
+        // configured interval. When RunCoreAsync throws, the catch falls back to the configured
+        // interval so the retry cadence the user chose still holds; the registry read itself
+        // cannot throw (the getters return defaults), so the catch cannot throw either.
         int nextWaitSeconds = AppConstants.DefaultUpdateIntervalSeconds;
         try
         {
             nextWaitSeconds = await RunCoreAsync(status, cancellationToken).ConfigureAwait(false);
+            LogManager.Instance.ClearLogState(UnexpectedErrorDetailsStateKey);
             return nextWaitSeconds;
         }
         catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
         {
+            // The status message stays one short line because the tray tooltip shows it; the full exception
+            // goes to the log as Info, since an exception reaching here is a bug and its type and stack are
+            // what a report needs. Info rather than Error: the line above already counts once towards the badge.
+            // Once per distinct exception: a persistent bug would otherwise repeat the whole stack every
+            // cycle. The key is cleared by the next cycle that completes, so a recurrence is logged again.
             SetSyncResult(status, false, $"An unexpected error occurred: {ex.Message}");
+            LogManager.Instance.LogStateChange(UnexpectedErrorDetailsStateKey, $"Details of the unexpected error: {ex}", LogLevel.Info);
+            nextWaitSeconds = RegistrySettingsManager.GetClampedUpdateIntervalSeconds();
+            status[StatusKeys.UpdateIntervalSeconds] = nextWaitSeconds;
             return nextWaitSeconds;
         }
         finally
@@ -491,7 +504,7 @@ public sealed class PortSyncService
     // Maps the finalized status dictionary to a tray SyncState and raises the SyncCompleted event.
     private void RaiseSyncCompleted(Dictionary<string, object?> status)
     {
-        bool success = status[StatusKeys.Status] as string == SyncStatusValues.Success;
+        string outcome = status[StatusKeys.Status] as string ?? SyncStatusValues.Error;
         bool vpnConnected = status[StatusKeys.VpnConnected] is true;
         int? port = status[StatusKeys.ClientPort] as int?;
         string message = status[StatusKeys.Message] as string ?? string.Empty;
@@ -502,13 +515,19 @@ public sealed class PortSyncService
         // red with the "not recognized" message rather than orange "VPN not connected".
         bool isKnownProvider = isDisabled || VpnProviderRegistry.IsRecognizedProvider(provider);
 
+        // The cycle outcome decides before the VPN state does. VpnConnected is only set once the
+        // provider check has run, so an error raised earlier (no adapter or port configured for
+        // Static port or NAT-PMP, an unexpected exception) would otherwise read as a disconnection:
+        // orange "VPN not connected" with the reason visible nowhere but the log. The same holds
+        // when the VPN is down and the default-port fallback itself fails (client not running, port
+        // write refused): the fallback the user configured did not work, which is red, not orange.
+        // Skipped outcomes (VPN down with no default port, startup grace, disabled) are unchanged.
         SyncState state;
         if (isDisabled) state = SyncState.Disabled;
-        else if (!isKnownProvider) state = SyncState.Error;
+        else if (!isKnownProvider || outcome == SyncStatusValues.Error) state = SyncState.Error;
         else if (_waitingForVpnThisCycle) state = SyncState.WaitingForVpn;
         else if (!vpnConnected) state = SyncState.VpnDisconnected;
-        else if (success) state = SyncState.Synced;
-        else state = SyncState.Error;
+        else state = SyncState.Synced;
 
         try { SyncCompleted?.Invoke(new TrayStatus(state, port, message)); }
         catch (Exception ex) { LogManager.Instance.LogMessage($"SyncCompleted handler failed: {ex.Message}", LogLevel.Warn); }
@@ -809,7 +828,8 @@ public sealed class PortSyncService
 
         return new AppConfig(
             VpnProvider: RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyVpnProvider),
-            NatPmpAdapterName: RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyNatPmpAdapterName),
+            VpnAdapterName: RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyVpnAdapterName),
+            StaticPort: RegistrySettingsManager.GetInt(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyStaticPort),
             UpdateInterval: updateInterval,
             ClientName: clientName,
             Client: clientConfig,
@@ -834,7 +854,8 @@ public sealed class PortSyncService
 
         LogManager.Instance.LogDebug(
             $"PortSyncService.RunCoreAsync [general]: {RegistrySettingsManager.KeyVpnProvider}={cfg.VpnProvider}, " +
-            $"{RegistrySettingsManager.KeyNatPmpAdapterName}={cfg.NatPmpAdapterName}, " +
+            $"{RegistrySettingsManager.KeyVpnAdapterName}={cfg.VpnAdapterName}, " +
+            $"{RegistrySettingsManager.KeyStaticPort}={cfg.StaticPort}, " +
             $"{RegistrySettingsManager.KeyUpdateIntervalSeconds}={cfg.UpdateInterval}s, " +
             $"{RegistrySettingsManager.KeyVpnAutoRecoveryEnabled}={cfg.VpnAutoRecoveryEnabled}, " +
             $"{RegistrySettingsManager.KeyVpnAutoRecoveryTriggerCycles}={cfg.VpnAutoRecoveryTriggerCycles}, " +
@@ -889,7 +910,7 @@ public sealed class PortSyncService
     // Adding a new VPN provider: add a VpnProvider* constant in RegistrySettingsManager; if it is
     // stateless (like PIA/ProtonVPN) add an arm in CreateStatelessVpnManager (shared by the sync loop
     // and diagnostics), otherwise add an arm in both this method and BuildActiveVpnManagerAsync (as
-    // NAT-PMP does); then add the keyword in VpnProviderRegistry.IsRecognizedProvider, an entry in
+    // NAT-PMP and Static port do); then add the keyword in VpnProviderRegistry.IsRecognizedProvider, an entry in
     // VpnProviderRegistry.KnownProviders (when service-restart recovery applies), and the value in
     // SettingsForm's cboVpnProvider list.
     private async Task<IVpnManager?> CreateVpnManagerAsync(AppConfig cfg, Dictionary<string, object?> status, CancellationToken cancellationToken)
@@ -916,6 +937,9 @@ public sealed class PortSyncService
         if (cfg.VpnProvider.Equals(RegistrySettingsManager.VpnProviderNatPmp, StringComparison.OrdinalIgnoreCase))
             return await CreateNatPmpVpnManagerAsync(cfg, status, cancellationToken).ConfigureAwait(false);
 
+        if (cfg.VpnProvider.Equals(RegistrySettingsManager.VpnProviderStaticPort, StringComparison.OrdinalIgnoreCase))
+            return CreateStaticPortVpnManager(cfg, status);
+
         // Transition-only: the provider name comes from the registry and stays wrong until Settings is
         // corrected, so the same line every cycle adds nothing. The status below still reports Error on
         // every cycle, which is the signal that should persist.
@@ -926,11 +950,32 @@ public sealed class PortSyncService
         return null;
     }
 
+    // Builds the Static port manager, or reports what is missing. Refused here rather than left to
+    // the usable-port guard in the cycle: that guard falls through to the no-port branch, which counts
+    // toward auto-recovery, and restarting the VPN cannot fix a setting the user has not entered.
+    private static StaticPortManager? CreateStaticPortVpnManager(AppConfig cfg, Dictionary<string, object?> status)
+    {
+        string? missing = null;
+        if (string.IsNullOrWhiteSpace(cfg.VpnAdapterName))
+            missing = "No VPN adapter configured";
+        else if (!AppConstants.IsUsablePort(cfg.StaticPort))
+            missing = "No forwarded port configured";
+        if (missing is not null)
+        {
+            // Transition-only, like the unset NAT-PMP adapter: it stays unset until Settings changes.
+            SetSyncResult(status, false, $"{missing} for {RegistrySettingsManager.VpnProviderStaticPort} - open Settings and set it",
+                stateKey: StaticPortStateKey);
+            return null;
+        }
+        LogManager.Instance.ClearLogState(StaticPortStateKey);
+        return new StaticPortManager(cfg.VpnAdapterName, cfg.StaticPort);
+    }
+
     // Resolves the NAT-PMP VPN manager for the configured adapter, handling the disconnected
     // fallback cases and auto-recovery triggering when no adapter is reachable.
     private async Task<IVpnManager?> CreateNatPmpVpnManagerAsync(AppConfig cfg, Dictionary<string, object?> status, CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(cfg.NatPmpAdapterName))
+        if (string.IsNullOrWhiteSpace(cfg.VpnAdapterName))
         {
             // Transition-only: an unset adapter stays unset until the user opens Settings, so the
             // identical line every cycle says nothing new. The status above still reports the error
@@ -943,10 +988,10 @@ public sealed class PortSyncService
 
         // Discard the fallback if the adapter name changed in settings
         if (_lastKnownNatPmpManager is not null &&
-            !_lastKnownNatPmpManager.ProviderName.Equals(cfg.NatPmpAdapterName, StringComparison.OrdinalIgnoreCase))
+            !_lastKnownNatPmpManager.ProviderName.Equals(cfg.VpnAdapterName, StringComparison.OrdinalIgnoreCase))
             _lastKnownNatPmpManager = null;
 
-        var selected = await NatPmpManager.TryCreateForAdapterAsync(cfg.NatPmpAdapterName, cancellationToken: cancellationToken).ConfigureAwait(false);
+        var selected = await NatPmpManager.TryCreateForAdapterAsync(cfg.VpnAdapterName, cancellationToken: cancellationToken).ConfigureAwait(false);
 
         if (selected is not null)
         {
@@ -970,7 +1015,7 @@ public sealed class PortSyncService
         // No previous knowledge of this adapter - VPN likely just disconnected for the first time.
         // No IVpnManager instance is available here (adapter not found, no fallback manager),
         // so we resolve the recovery action and target directly instead of going through the interface.
-        string adapterName = cfg.NatPmpAdapterName;
+        string adapterName = cfg.VpnAdapterName;
         // Startup grace: the adapter is likely still coming up after boot/login. Wait quietly instead
         // of registering a failure. The null return re-checks on the fast grace poll (see RunCoreAsync).
         if (ShouldWaitForVpnStartup(cfg.WaitForVpnOnStartup))
@@ -978,12 +1023,11 @@ public sealed class PortSyncService
             MarkWaitingForVpn(status, $"Waiting for VPN adapter '{adapterName}' to come up");
             return null;
         }
-        string? providerToken = NatPmpManager.FindProviderToken(adapterName);
         string disconnectedMsg = $"NAT-PMP adapter '{adapterName}' not found - VPN may be disconnected";
         await RegisterFailureAndTryRecoveryAsync(
             disconnectedMsg, LogLevel.Info,
-            providerToken is not null ? HelperProtocol.ActionRestart : HelperProtocol.ActionCycleAdapter,
-            providerToken ?? adapterName,
+            VpnAdapter.GetRecoveryAction(adapterName),
+            VpnAdapter.GetRecoveryTarget(adapterName),
             $"NAT-PMP adapter '{adapterName}'",
             cfg, cancellationToken).ConfigureAwait(false);
 
@@ -1048,30 +1092,40 @@ public sealed class PortSyncService
     /// Builds the currently-configured VPN manager fresh for read-only callers (e.g.
     /// <see cref="DiagnosticsService"/>), without the sync loop's status side effects or NAT-PMP
     /// fallback state. Returns <see langword="null"/> when the provider is Disabled/unrecognized, the
-    /// NAT-PMP adapter is unset, or the adapter cannot currently be reached. Mirrors the provider
-    /// dispatch in <see cref="CreateVpnManagerAsync"/>: stateless providers come from the shared
-    /// <see cref="CreateStatelessVpnManager"/>; only the NAT-PMP arm is per-path (plain probe here, sticky
-    /// fallback there) - keep that arm in step when adding a non-stateless provider.
+    /// NAT-PMP or Static port adapter is unset, or the NAT-PMP adapter cannot currently be reached.
+    /// Mirrors the provider dispatch in <see cref="CreateVpnManagerAsync"/>: stateless providers come
+    /// from the shared <see cref="CreateStatelessVpnManager"/>; the NAT-PMP and Static port arms are
+    /// per-path (plain probe here, sticky fallback there for NAT-PMP; no status reporting here for
+    /// Static port) - keep them in step when adding a non-stateless provider.
     /// </summary>
     internal static Task<IVpnManager?> BuildActiveVpnManagerAsync(CancellationToken cancellationToken = default)
     {
         string provider = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyVpnProvider);
-        string adapter = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyNatPmpAdapterName);
+        string adapter = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyVpnAdapterName);
         return BuildVpnManagerForAsync(provider, adapter, cancellationToken);
     }
 
     // Core of BuildActiveVpnManagerAsync with the provider selection passed in, so the Settings
     // form's recovery test can build from its in-form (possibly unsaved) selection - the same
     // convention the client Test buttons follow.
-    private static async Task<IVpnManager?> BuildVpnManagerForAsync(string provider, string? natPmpAdapterName, CancellationToken cancellationToken)
+    private static async Task<IVpnManager?> BuildVpnManagerForAsync(string provider, string? vpnAdapterName, CancellationToken cancellationToken)
     {
         if (CreateStatelessVpnManager(provider) is { } manager)
             return manager;
 
         if (provider.Equals(RegistrySettingsManager.VpnProviderNatPmp, StringComparison.OrdinalIgnoreCase))
         {
-            if (string.IsNullOrWhiteSpace(natPmpAdapterName)) return null;
-            return await NatPmpManager.TryCreateForAdapterAsync(natPmpAdapterName, cancellationToken: cancellationToken).ConfigureAwait(false);
+            if (string.IsNullOrWhiteSpace(vpnAdapterName)) return null;
+            return await NatPmpManager.TryCreateForAdapterAsync(vpnAdapterName, cancellationToken: cancellationToken).ConfigureAwait(false);
+        }
+
+        if (provider.Equals(RegistrySettingsManager.VpnProviderStaticPort, StringComparison.OrdinalIgnoreCase))
+        {
+            if (string.IsNullOrWhiteSpace(vpnAdapterName)) return null;
+            // The saved port, also for the Settings recovery test: recovery acts on the adapter only,
+            // so an unsaved port edit on screen cannot change what the test does.
+            return new StaticPortManager(vpnAdapterName,
+                RegistrySettingsManager.GetInt(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyStaticPort));
         }
         return null; // Disabled or unrecognized
     }
@@ -1079,15 +1133,16 @@ public sealed class PortSyncService
     /// <summary>
     /// Dispatches the recovery action for the given provider selection on demand (the Settings
     /// form's Auto-recovery Test button). Runs the exact same action as automatic recovery (VPN
-    /// service restart, or adapter cycle for NAT-PMP) so the recovery chain - helper service,
+    /// service restart for ProtonVPN, PIA or a NAT-PMP / Static port adapter that belongs to one of them,
+    /// adapter cycle for any other adapter) so the recovery chain - helper service,
     /// service discovery, VPN client relaunch - can be verified before a real failure needs it.
     /// Returns <see langword="false"/> when nothing could be dispatched (provider disabled or
     /// unrecognized, adapter unreachable, or no recovery target); the outcome of a dispatched
     /// action is reported through the log exactly like an automatic recovery.
     /// </summary>
-    public static async Task<bool> TestRecoveryAsync(string vpnProvider, string? natPmpAdapterName, CancellationToken cancellationToken = default)
+    public static async Task<bool> TestRecoveryAsync(string vpnProvider, string? vpnAdapterName, CancellationToken cancellationToken = default)
     {
-        IVpnManager? vpnManager = await BuildVpnManagerForAsync(vpnProvider, natPmpAdapterName, cancellationToken).ConfigureAwait(false);
+        IVpnManager? vpnManager = await BuildVpnManagerForAsync(vpnProvider, vpnAdapterName, cancellationToken).ConfigureAwait(false);
         if (vpnManager is null)
         {
             LogManager.Instance.LogMessage($"Recovery test: no VPN manager available for provider '{vpnProvider}' - nothing to test", LogLevel.Warn);
@@ -1216,10 +1271,15 @@ public sealed class PortSyncService
         string cause = string.Empty;
         if (_recoveryPendingThisCycle) cause = " - after recovery";
         else if (_networkChangeTriggered) cause = " - after network change";
-        PortHistoryManager.Append(PortHistoryKind.PortChanged, targetPort,
-            (config.VpnManager is null
-                ? $"Default port applied (was {previousPort})"
-                : $"VPN assigned new port (was {previousPort})") + cause);
+        // A Static port is entered by the user, not assigned by the VPN at runtime, so the history
+        // must not credit the VPN with a change the user made.
+        string reason = config.VpnManager switch
+        {
+            null => $"Default port applied (was {previousPort})",
+            StaticPortManager => $"Configured port applied (was {previousPort})",
+            _ => $"VPN assigned new port (was {previousPort})"
+        };
+        PortHistoryManager.Append(PortHistoryKind.PortChanged, targetPort, reason + cause);
         if (config.NotifyOnPortUpdate)
             NotifyPortUpdated(manager.ClientName, targetPort);
         return true;
@@ -1372,14 +1432,9 @@ public sealed class PortSyncService
         if (!_portClosedRecoveryArmed)
             return " (recovery has already run for this outage - it will not run again until a scheduled check reports the port open)";
         string checks = TextFormat.PluralizeNoun(_confirmedClosedCount, "closed check");
-        return $" ({_confirmedClosedCount} consecutive {checks}, recovery triggers after {config.PortClosedRecoveryTriggerChecks} consecutive closed checks)";
+        return $" ({_confirmedClosedCount} consecutive {checks}, recovery triggers after {config.PortClosedRecoveryTriggerChecks} consecutive {TextFormat.PluralizeNoun(config.PortClosedRecoveryTriggerChecks, "closed check")})";
     }
 
-    // Opt-in: when the port has been confirmed closed for the configured number of checks,
-    // dispatches the provider's recovery action once. Independent of the failed-sync recovery
-    // trigger - the two share the action, not the gate. One-shot arming: after firing, recovery
-    // stays disarmed until a verification reports the port open again (see HandlePortOpenResult),
-    // so a persistently false "closed" can never cause a recovery loop.
     // Forces the client to rebuild its listen sockets when a confirmed-closed port coincides with the
     // bound adapter having changed address. Returns true when a rebind was actually attempted, which is
     // what tells the caller to hold recovery back for one more round of confirmation.
@@ -1387,8 +1442,8 @@ public sealed class PortSyncService
     // that does not help escalates to recovery instead of repeating.
     //
     // "recovery" rather than "the VPN restart" throughout, matching the messages below: the action is a
-    // service restart for ProtonVPN and PIA, but NatPmpManager.GetRecoveryAction returns cycle-adapter
-    // for a generic gateway, where no VPN is restarted at all.
+    // service restart for ProtonVPN and PIA, but for NAT-PMP and Static port VpnAdapter.GetRecoveryAction
+    // returns cycle-adapter when the adapter belongs to no known provider, where no VPN is restarted at all.
     private async Task<bool> TryRebindClientAddressAsync(IManagedClient manager, SyncConfig config, CancellationToken cancellationToken)
     {
         if (!_interfaceAddressChangedSinceRebind || !config.FixInterfaceBinding) return false;
@@ -1509,6 +1564,11 @@ public sealed class PortSyncService
         return true;
     }
 
+    // Opt-in: when the port has been confirmed closed for the configured number of checks,
+    // dispatches the provider's recovery action once. Independent of the failed-sync recovery
+    // trigger - the two share the action, not the gate. One-shot arming: after firing, recovery
+    // stays disarmed until a verification reports the port open again (see HandlePortOpenResult),
+    // so a persistently false "closed" can never cause a recovery loop.
     private async Task MaybeTriggerPortClosedRecoveryAsync(IManagedClient manager, SyncConfig config, CancellationToken cancellationToken)
     {
         if (!config.PortClosedRecoveryEnabled)
@@ -2059,7 +2119,7 @@ public sealed class PortSyncService
         else if (_consecutiveRecoveries >= MaxConsecutiveRecoveries)
             recoverySuffix = $", auto-recovery is suspended after {MaxConsecutiveRecoveries} attempts that did not restore a port";
         else
-            recoverySuffix = $", recovery may trigger after {cfg.VpnAutoRecoveryTriggerCycles} consecutive failed cycles";
+            recoverySuffix = $", recovery may trigger after {cfg.VpnAutoRecoveryTriggerCycles} consecutive {TextFormat.PluralizeNoun(cfg.VpnAutoRecoveryTriggerCycles, "failed cycle")}";
         return $"{prefix} ({count} consecutive {cycles}{recoverySuffix})";
     }
 
@@ -2359,9 +2419,6 @@ public sealed class PortSyncService
 
     private static int GetDefaultPort(AppConfig cfg) => cfg.Client.DefaultPort;
 
-    // Sets the cycle status and message in the status dict, logs the message, and adds a closing bookend on failure.
-    // Pass an explicit level to override the default (Info on success, Error on failure).
-    // The bookend uses the same effective level so a Warn-level soft failure does not escalate to Error.
     /// <summary>Records this cycle's outcome in the status dictionary and, on failure, logs the reason.</summary>
     /// <param name="status">The cycle's status dictionary, written to the status file in RunAsync's finally.</param>
     /// <param name="success">Whether the cycle succeeded; false writes the error status and logs the reason.</param>

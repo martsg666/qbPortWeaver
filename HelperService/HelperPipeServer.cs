@@ -32,7 +32,9 @@ namespace qbPortWeaver.HelperService;
 /// hive, which any user can populate for themselves. Once trusted, the caller can name any
 /// Windows service for restart and any adapter name for cycle - so on a multi-user machine a
 /// second, non-administrator user can have SYSTEM restart an arbitrary service or cycle any
-/// adapter. The helper does not allowlist service names because the service
+/// adapter. Two consequences follow from that and are accepted with it: a restart stops the named
+/// service's running dependents too but starts only the named service, and the helper's own name is
+/// accepted like any other (stopping it cleanly does not trigger its failure actions). The helper does not allowlist service names because the service
 /// search terms themselves are user-configurable in HKCU; an attacker with user-level write
 /// access to HKCU would simply rewrite the search term to point at any other service before
 /// sending the restart request, so an allowlist sourced from HKCU adds no protection. A baked-in

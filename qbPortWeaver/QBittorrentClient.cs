@@ -122,8 +122,8 @@ public sealed class QBittorrentClient : ManagedClientBase
     // envelope to inspect, so the status code is the whole result. What differs between the two
     // callers is the wording and the severity (a failed port write is an Error the user must act on;
     // a failed binding repair is a Warn the next cycle retries), so those are parameters.
-    // [CallerMemberName] keeps the transport log line attributed to the public method, as the
-    // equivalent helpers in TransmissionClient and NicotineClient do.
+    // [CallerMemberName] keeps the transport log line attributed to the method that started the write
+    // (usually a public one), as the equivalent helpers in TransmissionClient and NicotineClient do.
     private async Task<bool> PostPreferencesAsync(string jsonBody, string failureMessage, LogLevel failureLevel,
         CancellationToken cancellationToken, [CallerMemberName] string callerName = "")
     {

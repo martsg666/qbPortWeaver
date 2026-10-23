@@ -2419,9 +2419,6 @@ public sealed class PortSyncService
 
     private static int GetDefaultPort(AppConfig cfg) => cfg.Client.DefaultPort;
 
-    // Sets the cycle status and message in the status dict, logs the message, and adds a closing bookend on failure.
-    // Pass an explicit level to override the default (Info on success, Error on failure).
-    // The bookend uses the same effective level so a Warn-level soft failure does not escalate to Error.
     /// <summary>Records this cycle's outcome in the status dictionary and, on failure, logs the reason.</summary>
     /// <param name="status">The cycle's status dictionary, written to the status file in RunAsync's finally.</param>
     /// <param name="success">Whether the cycle succeeded; false writes the error status and logs the reason.</param>

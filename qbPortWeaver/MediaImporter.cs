@@ -8,7 +8,6 @@ namespace qbPortWeaver;
 /// <summary>File-level infrastructure for the media import pipeline: file transfer (hardlink/copy/move), library fingerprint index, source and library cache management, and file utilities.</summary>
 internal static partial class MediaImporter
 {
-    // Library index: fingerprints (size + partial SHA-256) of every file in the library folders.
     // State key for LogManager.LogStateChange - an inaccessible library path persists for as long as
     // the share is down, and this is re-evaluated every import cycle.
     private const string LibraryIndexStateKey = "media.libraryindex";
@@ -18,6 +17,7 @@ internal static partial class MediaImporter
     // I/O-bound: storage throughput is the constraint, not CPU count.
     // 8 concurrent reads balances throughput vs not overwhelming slower storage.
     internal const int FingerprintParallelism = 8;
+    // Library index: fingerprints (size + partial SHA-256) of every file in the library folders.
     private static HashSet<string>? _libraryFingerprints;
     private static readonly object _libraryLock = new();
     private static readonly SemaphoreSlim _libraryBuildSemaphore = new(1, 1);

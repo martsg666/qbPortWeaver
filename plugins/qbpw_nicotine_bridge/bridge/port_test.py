@@ -221,7 +221,7 @@ def _web_port_check(port, timeout, log):
             body = response.read(65536).decode("utf-8", "replace")
     # Any network or parse failure means "could not determine", never a hard error.
     except Exception as error:  # noqa: BLE001
-        log("qbPortWeaver: web port check failed: %s", (error,))
+        log("web port check failed: %s", (error,))
         return None
 
     # The service echoes "<ip> Port: <port>/tcp open|closed"; match on the port we asked about.

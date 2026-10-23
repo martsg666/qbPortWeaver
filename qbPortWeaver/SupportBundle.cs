@@ -11,7 +11,8 @@ namespace qbPortWeaver;
 /// Exists because assembling this by hand is both tedious and unreliable. The log rotates, so by the
 /// time a problem is described the window that explains it may already have moved into a backup
 /// file the user does not know to send, or out of the set entirely.
-/// <para><b>Everything here is masked, not omitted</b>, which is the opposite of
+/// <para><b>Settings here are masked, not omitted</b> (the log files are copied as they are - they
+/// hold no secrets because nothing logs one), which is the opposite of
 /// <see cref="SettingsTransfer"/>. A backup leaves secrets out because a <c>***</c> placeholder
 /// would restore as a literal password; a bundle keeps the key visible with its value masked,
 /// because "this setting is present but I will not show you its value" is itself diagnostic.</para>

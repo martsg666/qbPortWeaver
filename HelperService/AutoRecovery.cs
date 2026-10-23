@@ -414,7 +414,7 @@ internal static partial class AutoRecovery
         switch (result.Outcome)
         {
             case ProcessKillOutcome.AlreadyExited:
-                logger.LogMessage($"Service '{serviceName}' process (PID {pid}) exited on its own before the force-kill", LogLevel.Info);
+                logger.LogMessage($"Service '{serviceName}' process (PID {pid}) had already exited when the force-kill reached it", LogLevel.Info);
                 break;
             case ProcessKillOutcome.AccessDenied:
                 logger.LogMessage($"Service '{serviceName}' process (PID {pid}) could not be killed - access denied or process protected", LogLevel.Warn);

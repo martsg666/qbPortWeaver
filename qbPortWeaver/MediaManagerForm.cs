@@ -953,7 +953,7 @@ public partial class MediaManagerForm : Form
         UpdateScanStatus();
     }
 
-    // Colors rows by match confidence: gold = uncertain TMDB match, orange-red = no TMDB match
+    // Colors rows by match confidence: the log's warning colour = uncertain TMDB match, its error colour = no TMDB match
     private void dgvResults_CellFormatting(object? sender, DataGridViewCellFormattingEventArgs e)
     {
         if (e.RowIndex < 0 || e.RowIndex >= dgvResults.Rows.Count) return;
@@ -1090,7 +1090,7 @@ public partial class MediaManagerForm : Form
         ApplyGridFilter();
     }
 
-    // Hides confident rows when the "Review needed only" filter is active.
+    // Hides confident rows when "Show only rows with uncertain or no TMDB match" is ticked.
     private void ApplyGridFilter()
     {
         foreach (DataGridViewRow row in dgvResults.Rows)

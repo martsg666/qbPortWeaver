@@ -29,8 +29,8 @@ public sealed record PortHistoryEntry
 /// Persisted, bounded history of port-affecting events (port changes, confirmed-closed results,
 /// auto-recovery dispatches), shown in the Status panel. Port changes are rare (VPN reconnects),
 /// so the history is persisted across restarts - a session-only list would usually be empty.
-/// Events are appended by the sync loop (background thread) and read by the Status panel (UI
-/// thread); appends are serialized by a lock and the file write is atomic, so a concurrent read
+/// Events are appended from background threads (the sync loop, and the recovery dispatch that the
+/// Settings Test button also runs) and read by the Status panel (UI thread); appends are serialized by a lock and the file write is atomic, so a concurrent read
 /// sees either the previous or the new complete file.
 /// </summary>
 public static class PortHistoryManager

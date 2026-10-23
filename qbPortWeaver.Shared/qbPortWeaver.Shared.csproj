@@ -5,7 +5,7 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyTitle>qbPortWeaver Shared</AssemblyTitle>
-    <Description>Constants shared between qbPortWeaver (main app) and qbPortWeaver.HelperService - pipe protocol, registry paths, log column widths.</Description>
+    <Description>Code shared between qbPortWeaver (main app) and qbPortWeaver.HelperService - pipe protocol, registry paths, log column widths, process start and kill helpers.</Description>
     <Company>martsg666</Company>
     <Product>qbPortWeaver</Product>
     <Authors>martsg666</Authors>

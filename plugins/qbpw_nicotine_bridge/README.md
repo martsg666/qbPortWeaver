@@ -50,7 +50,7 @@ chat room, because chat rooms are public.
 
 | Command | What it does |
 |---|---|
-| `/qbpw-status` | Bridge address, connection state, configured and in-use port |
+| `/qbpw-status` | Bridge address, connection state, configured and in-use port, UPnP state, and any capability this Nicotine+ version lacks |
 | `/qbpw-port [port]` | Show the port, or change it |
 | `/qbpw-test [port]` | Check whether the port is reachable from outside |
 | `/qbpw-connection-file` | Where the connection details are published |
@@ -85,7 +85,7 @@ A successful `POST /v1/port` also carries `warnings`, a list of what it could no
 saving the port: `reconnect_unsupported` and `connect_unsupported` (the new port waits for the next
 connection), `setup_incomplete` (Nicotine+'s first-run setup is not finished, so it is not
 connected), and `portmapper_unsupported` or `portmapper_failed` (an old UPnP mapping may remain).
-qbPortWeaver logs each one.
+qbPortWeaver logs each one. `POST /v1/reconnect` carries the same list, limited to the first three.
 
 `POST /v1/porttest` never blocks longer than the plugin's own cap, so a slow check returns
 `state: "pending"` rather than timing out. Treat anything other than `state: "done"` as

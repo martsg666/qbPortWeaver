@@ -4,7 +4,8 @@ using System.Diagnostics.CodeAnalysis;
 
 namespace qbPortWeaver;
 
-/// <summary>Orchestrates media file imports on each sync cycle when the Media Manager feature is enabled.</summary>
+/// <summary>Orchestrates media file imports: the automatic import on each sync cycle when the Media
+/// Manager feature is enabled, and the Media Manager window's Scan Now and Import Now.</summary>
 public static class MediaManagerService
 {
     internal const int MaxSubfolderDepth = 10; // passed as EnumerationOptions.MaxRecursionDepth
@@ -111,7 +112,7 @@ public static class MediaManagerService
     /// <param name="moviesLibraryPath">Library folder for movies. Empty to skip movie processing.</param>
     /// <param name="tvShowsLibraryPath">Library folder for TV shows. Empty to skip TV show processing.</param>
     /// <param name="progress">Optional progress sink; reports current and total item counts as each item is processed.</param>
-    /// <param name="cancellationToken">Token to cancel the scan between folders.</param>
+    /// <param name="cancellationToken">Token to cancel the scan; passed through to the library index build, the folder scans and their TMDB lookups.</param>
     public static async Task<List<MediaProposal>?> ScanAsync(string apiKey, bool createFolders, string[] sourceFolders,
         string moviesLibraryPath, string tvShowsLibraryPath,
         IProgress<(int Current, int Total)>? progress = null, CancellationToken cancellationToken = default)

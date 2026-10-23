@@ -6,7 +6,9 @@ namespace qbPortWeaver;
 /// Read-only results dialog for a <see cref="DiagnosticsService"/> run: a color-coded checklist with a
 /// per-check detail line and fix hint, a point-in-time timestamp, a Re-run button that refreshes the
 /// report in place, a Copy Report button that yields a plain-text version for pasting into a bug
-/// report, and a Save Support Bundle button that saves the report with the logs and settings. Built in code (no designer) because its content is entirely dynamic.
+/// report, and a Save Support Bundle button that saves the report with the logs, the masked settings,
+/// the status file and the port history. Built in code (no designer) because its content is entirely
+/// dynamic.
 /// </summary>
 internal sealed class DiagnosticsForm : Form
 {

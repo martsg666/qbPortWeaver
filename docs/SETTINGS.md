@@ -70,8 +70,8 @@ update first.
 | URL | Transmission RPC URL | `http://127.0.0.1:9091` |
 | Username | RPC username (leave empty if authentication is disabled) | - |
 | Password | RPC password (leave empty if authentication is disabled) | - |
-| Process name | Process name for user-space detection (e.g. `transmission-qt`) | `transmission-qt` |
 | Executable | Path to Transmission executable (user-space mode) | `C:\Program Files\Transmission\transmission-qt.exe` |
+| Process name | Process name for user-space detection (e.g. `transmission-qt`) | `transmission-qt` |
 | Restart after a port change | Restart Transmission after updating the port (recommended) | `True` |
 | Force-start if not running | Automatically launch Transmission if it is not running | `True` |
 | Default port | Fallback port to apply when the VPN is not connected. `0` disables the fallback, so a disconnected VPN leaves the client's port alone | `0` |
@@ -90,7 +90,7 @@ update first.
 
 ### Nicotine+
 
-Nicotine+ is a Soulseek client, not a BitTorrent one, and it has no remote-control interface at all.
+Nicotine+ is a Soulseek client and, unlike the other supported clients, has no remote-control interface at all.
 qbPortWeaver drives it through a small plugin it installs for you (see the Nicotine+ setup steps in the [README](../README.md#nicotine)).
 There is no "Restart after port change" setting: the plugin applies the port to the running client,
 so the change is live within a few seconds and a restart would only discard settings.
@@ -107,7 +107,7 @@ so the change is live within a few seconds and a restart would only discard sett
 
 ### Auto-Recovery
 
-Auto-recovery restarts your VPN service (or cycles the adapter for a generic NAT-PMP gateway or Static port) when the VPN stops providing a working forwarded port. The **Test** button runs the recovery action on demand.
+Auto-recovery restarts your VPN service (or cycles the adapter when NAT-PMP or Static port uses one that belongs to no known VPN) when the VPN stops providing a working forwarded port. The **Test** button runs the recovery action on demand.
 
 Two limits keep it from acting where it cannot help, since every recovery briefly takes the tunnel down and interrupts transfers:
 
@@ -121,7 +121,7 @@ There is also a cheaper remedy it tries first. If the port stays closed and the 
 | Check that the forwarded port is open after each sync | After each sync, check that the listening port is reachable from the Internet (after a port change and every 5th cycle) | `True` |
 | Trigger auto-recovery when port stays closed | Independent trigger: runs auto-recovery when port verification confirms the port closed for the configured number of checks. Fires at most once until a scheduled check reports the port open again. Requires the port check above | `True` |
 | Trigger after (confirmed closed checks) | Number of confirmed closed checks before auto-recovery is triggered | `3` |
-| Trigger auto-recovery when no port assigned or disconnected | Trigger auto-recovery (a VPN service restart, or adapter cycle for generic NAT-PMP gateways and Static port) after N consecutive cycles where the VPN is disconnected or assigns no forwarded port. Client-side failures do not count | `True` |
+| Trigger auto-recovery when no port assigned or disconnected | Trigger auto-recovery (a VPN service restart, or an adapter cycle when NAT-PMP or Static port uses an adapter of no known VPN) after N consecutive cycles where the VPN is disconnected or assigns no forwarded port. Client-side failures do not count | `True` |
 | Trigger after (consecutive failed cycles) | Number of consecutive cycles without an assigned port before auto-recovery is triggered. Recovery is also held until the failures have persisted for the time these cycles would normally span, so a brief network blip that races through several early re-syncs does not trigger it | `3` |
 
 ### Extra

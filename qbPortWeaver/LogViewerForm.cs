@@ -935,11 +935,14 @@ public partial class LogViewerForm : Form
     // indistinguishable from a cycle separator, because both are whitespace-only lines with no level
     // column. Such a line therefore takes the separator branch in ShouldAppend and does not inherit
     // its parent's visibility, so a filtered-out entry containing one can still leave that blank row
-    // behind. Nothing in the app writes a multi-line entry today (every call passes ex.Message, not
-    // ex.ToString()), so this is unreachable in practice, and telling the two apart would mean
-    // inferring structure the log format does not record - a guess that could just as easily swallow
-    // a real cycle separator. If entries ever do span lines, the fix belongs in the writer: have
-    // LogManager mark continuations explicitly rather than have the reader infer them.
+    // behind. Multi-line entries are written - full exceptions (ex.ToString()) by the fatal handlers,
+    // the unexpected-sync-error details line and the Media Manager's unexpected-error line - but a
+    // stack trace has no blank lines, so this is reached only by an exception that renders one (an
+    // AggregateException with several inner exceptions ends its list with one): one stray blank row,
+    // cosmetic. Telling the two apart would mean inferring structure the log format does not record -
+    // a guess that could just as easily swallow a real cycle separator. If it ever matters, the fix
+    // belongs in the writer: have LogManager mark continuations explicitly rather than have the reader
+    // infer them.
     private static bool IsSeparatorLine(LogLine line) =>
         line.Level == LevelMeta && string.IsNullOrWhiteSpace(line.Text);
 
@@ -1004,10 +1007,10 @@ public partial class LogViewerForm : Form
     // method: ShouldAppend decides those, a blank separator by the dedup rule and a continuation line
     // by inheriting its parent entry's verdict from here.
     //
-    // Nothing writes a multi-line entry today - every logging call passes ex.Message rather than
-    // ex.ToString() - so the continuation path is not currently exercised. It is handled anyway
-    // because that is a convention nobody enforces: the first ex.ToString() to land would otherwise
-    // split an entry across a filter boundary, silently and in the one tool used to diagnose it.
+    // The continuation path is exercised by the entries that log a full exception (ex.ToString()) -
+    // the fatal handlers, the unexpected-sync-error details and the Media Manager's unexpected-error
+    // line. Without it, a stack trace would split from its entry across a filter boundary, silently
+    // and in the one tool used to diagnose it.
     private static bool IsLineVisible(LogLine line, bool[] filters, string? subsystemToken, (DateTime? From, DateTime? To) window)
     {
         if (!filters[line.Level]) return false;                     // level filtered out

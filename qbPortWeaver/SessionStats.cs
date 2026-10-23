@@ -76,7 +76,7 @@ public static class SessionStats
     public static void RecordRecovery() => Interlocked.Increment(ref _recoveryCount);
 
     /// <summary>Zeroes the counters and re-stamps <see cref="StartedAt"/> (the Status panel's
-    /// Clear Statistics command), so the figures read "since the clear". The three exchanges are
+    /// Clear Statistics command), so the figures read "since the clear". The counter exchanges are
     /// not atomic as a group, so a RecordSync racing the reset can briefly leave the OK count
     /// above the total; the Status panel clamps OK to total when displaying, and the skew clears
     /// on the next reset or restart.</summary>

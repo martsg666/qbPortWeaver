@@ -404,7 +404,7 @@ class Plugin(BasePlugin):
             return
 
         # Same range /qbpw-port and the HTTP API enforce; anything outside it has no meaningful verdict.
-        if port is None or not 1 <= port <= 65535:
+        if not 1 <= port <= 65535:
             self.output("The port must be between 1 and 65535.")
             return
 

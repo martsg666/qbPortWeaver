@@ -6,7 +6,8 @@ namespace qbPortWeaver;
 /// <summary>
 /// String values written to the "status" field of the status file (and surfaced to the Status
 /// panel and external scripts). Kept stable across releases like the status keys. "skipped" means
-/// port sync was disabled or the VPN was disconnected with no default port (the cycle is a no-op).
+/// the cycle did no port work - for example port sync was disabled, or the VPN was disconnected
+/// with no default port.
 /// </summary>
 public static class SyncStatusValues
 {

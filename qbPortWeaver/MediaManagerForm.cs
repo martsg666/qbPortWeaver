@@ -353,7 +353,7 @@ public partial class MediaManagerForm : Form
 
     private void ApplyMovieRematchResult(DataGridViewRow row, MovieInfo info, string moviesLib, bool createFolders, string editedName, bool isConfident)
     {
-        var proposedPath = MovieProcessor.BuildStandaloneMoviePath(editedName, info, moviesLib, createFolders);
+        var proposedPath = MovieProcessor.BuildRematchMoviePath(editedName, info, moviesLib, createFolders);
         UpdateRow(row, proposedPath, Path.GetFileName(proposedPath), isConfident, new TmdbMatch(info.PosterPath, info.TmdbId, info.VoteCount, info.Overview));
     }
 

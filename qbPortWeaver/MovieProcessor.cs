@@ -180,14 +180,30 @@ public sealed class MovieProcessor(TmdbClient tmdb, bool dryRun, bool createFold
     }
 
     // Builds the library target path for a standalone movie file.
-    // Exposed for MediaManagerForm rematch logic to share the same naming convention.
-    internal static string BuildStandaloneMoviePath(string filePath, MovieInfo info, string libraryPath, bool createFolders)
+    private static string BuildStandaloneMoviePath(string filePath, MovieInfo info, string libraryPath, bool createFolders)
     {
         var ext = Path.GetExtension(filePath);
         var plexName = FileNameParser.FormatPlexName(info.Title, info.Year);
         return createFolders
             ? Path.Combine(libraryPath, plexName, $"{plexName}{ext}")
             : Path.Combine(libraryPath, $"{plexName}{ext}");
+    }
+
+    // Builds the library target path for a re-matched movie row, for MediaManagerForm to share the
+    // same naming convention as the scan. A name ending in the multi-part
+    // form BuildFolderMovieFileName produces ("Title (Year) - cd1.ext") keeps its part suffix and its
+    // subfolder, so re-matching the parts of one movie does not give them all the same target.
+    internal static string BuildRematchMoviePath(string editedName, MovieInfo info, string libraryPath, bool createFolders)
+    {
+        var nameWithoutExt = Path.GetFileNameWithoutExtension(editedName);
+        int dash = nameWithoutExt.LastIndexOf(" - ", StringComparison.Ordinal);
+        var segment = dash < 0 ? string.Empty : nameWithoutExt[(dash + 3)..];
+        var partSuffix = ExtractPartSuffix(segment);
+        if (partSuffix is null || !string.Equals(segment, partSuffix, StringComparison.OrdinalIgnoreCase))
+            return BuildStandaloneMoviePath(editedName, info, libraryPath, createFolders);
+
+        var plexFolderName = FileNameParser.FormatPlexName(info.Title, info.Year);
+        return Path.Combine(libraryPath, plexFolderName, BuildFolderMovieFileName(plexFolderName, partSuffix, Path.GetExtension(editedName)));
     }
 
     // Builds the library target path for a movie file inside a folder (supports multi-part suffixes).

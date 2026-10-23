@@ -259,6 +259,11 @@ public static class MediaManagerService
                 try
                 {
                     MediaImporter.AddFileToLibrary(proposal.OriginalPath, proposal.ProposedPath, importMode);
+                    // Subtitles follow the video, as on the sync cycle. This is the only chance: once
+                    // the video is in the library the cycle skips its source, so a subtitle left behind
+                    // here would never be imported. Naming from the proposed path also covers a
+                    // multi-part film ("Title (Year) - cd1.srt") and any name the user edited.
+                    ImportCompanionFiles(proposal.OriginalPath, proposal.ProposedPath, dryRun: false, importMode);
                 }
                 // Deliberately broad: this is the outermost per-item boundary of a user-initiated batch.
                 // AddFileToLibrary already handles the expected IO/permission cases, so anything reaching

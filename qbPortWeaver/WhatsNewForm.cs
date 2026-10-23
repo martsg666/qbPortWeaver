@@ -42,6 +42,9 @@ public partial class WhatsNewForm : Form
         "The command said the result would appear shortly, then printed nothing. It now reports " +
         "whether the port is open, closed or could not be determined, in the chat you typed it in. " +
         "To get it, click Update Plugin on the Nicotine+ tab in Settings, then restart Nicotine+.\n\n" +
+        "Fixed: Import Now in the Media Manager did not bring subtitles along\n" +
+        "Subtitle files next to a video are now imported with it, as the automatic import already " +
+        "did. Before, they were left in the source folder and never followed later.\n\n" +
         "Previously released\n\n" +
         "New in 2.6.9\n\n" +
         "Your settings can be backed up and restored\n" +

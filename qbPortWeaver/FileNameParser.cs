@@ -287,7 +287,7 @@ public static partial class FileNameParser
 
     // Strips a trailing year hint from rawTitle (year in parens or bare year at end-of-string).
     // Returns the year if the remainder is non-empty, null otherwise.
-    // Guard: does not strip the year when it IS the entire title (e.g. "1883").
+    // Guard: does not strip the year when it IS the entire title (e.g. "1950").
     private static int? TryStripTrailingYear(ref string rawTitle)
     {
         // Try year in parens first: "Show Name (2018)"
@@ -319,9 +319,9 @@ public static partial class FileNameParser
 
     // Finds the first standalone 4-digit year in a pre-cleaned (dots/underscores removed) title string.
     // Handles three special cases:
-    //   1) Year-as-title with second year:  "1917 2019"       -> title "1917",              year 2019
+    //   1) Year-as-title with second year:  "1950 2019"       -> title "1950",            year 2019
     //   2) Leading year with no second year: "2008 The Title"  -> title "The Title",         year 2008
-    //   3) Back-to-back years:               "Title 2049 2017" -> title "Title 2049",        year 2017
+    //   3) Back-to-back years:               "Title 2050 2017" -> title "Title 2050",       year 2017
     // Returns the title portion; sets parsedYear to null if no year was found.
     private static string FindStandaloneYear(string cleaned, out int? parsedYear)
     {
@@ -355,7 +355,7 @@ public static partial class FileNameParser
             if (next.Success && string.IsNullOrWhiteSpace(cleaned[(yearMatch.Index + yearMatch.Length)..next.Index]))
             {
                 // Case 3: two years with only whitespace between - first is part of title,
-                // second is the release year (e.g. "Title 2049 2017")
+                // second is the release year (e.g. "Title 2050 2017")
                 yearMatch = next;
             }
         }

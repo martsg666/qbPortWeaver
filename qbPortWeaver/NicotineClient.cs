@@ -439,12 +439,12 @@ public sealed class NicotineClient : ManagedClientBase
         {
             var (text, level) = item.GetString() switch
             {
-                "reconnect_unsupported" => ($"{ClientName} saved port {port} but this version cannot reconnect from the plugin. It keeps listening on the old port until you reconnect or restart {ClientName}.", LogLevel.Warn),
-                "connect_unsupported" => ($"{ClientName} is offline and this version cannot connect from the plugin. Port {port} applies when you connect.", LogLevel.Info),
-                "setup_incomplete" => ($"{ClientName} has not finished its first-run setup. Port {port} applies once it is completed and connected.", LogLevel.Info),
-                "portmapper_unsupported" or "portmapper_failed" => ($"{ClientName} could not remove its UPnP port mapping. Your router may still forward the old port.", LogLevel.Warn),
+                "reconnect_unsupported" => ($"{ClientName} saved port {port} but this version cannot reconnect from the plugin - it keeps listening on the old port until you reconnect or restart {ClientName}", LogLevel.Warn),
+                "connect_unsupported" => ($"{ClientName} is offline and this version cannot connect from the plugin - port {port} applies when you connect", LogLevel.Info),
+                "setup_incomplete" => ($"{ClientName} has not finished its first-run setup - port {port} applies once it is completed and connected", LogLevel.Info),
+                "portmapper_unsupported" or "portmapper_failed" => ($"{ClientName} could not remove its UPnP port mapping - your router may still forward the old port", LogLevel.Warn),
                 // A code from a newer plugin: recorded, but not worth alerting on without knowing it.
-                var other => ($"{ClientName} reported '{other}' after the port change", LogLevel.Debug),
+                var other => ($"NicotineClient.LogSetPortWarnings: {ClientName} reported '{other}' after the port change", LogLevel.Debug),
             };
             LogManager.Instance.LogMessage(text, level);
         }

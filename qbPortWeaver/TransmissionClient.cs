@@ -239,7 +239,7 @@ public sealed class TransmissionClient : ManagedClientBase
         try
         {
             const string body = """{"method":"session-get","arguments":{"fields":["peer-port-random-on-start","port-forwarding-enabled"]}}""";
-            using var response = await SendRpcAsync(body, cancellationToken: cancellationToken).ConfigureAwait(false);
+            using var response = await SendRpcAsync(body, LogLevel.Debug, cancellationToken).ConfigureAwait(false);
             // Every null exit is logged, at Debug: Diagnostics reports an unread check as Skip and
             // tells the user to turn on debug logging, which is where these lines appear. Debug rather
             // than Warn because the sync cycle also runs this every few cycles, and a persistent
@@ -269,7 +269,7 @@ public sealed class TransmissionClient : ManagedClientBase
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
         catch (Exception ex)
         {
-            LogHttpException("GetConflictingSettingsAsync", ex);
+            LogHttpException("GetConflictingSettingsAsync", ex, LogLevel.Debug);
             return null;
         }
     }

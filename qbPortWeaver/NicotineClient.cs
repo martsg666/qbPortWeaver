@@ -282,7 +282,7 @@ public sealed class NicotineClient : ManagedClientBase
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
         catch (Exception ex)
         {
-            LogHttpException("GetConflictingSettingsAsync", ex);
+            LogHttpException("GetConflictingSettingsAsync", ex, LogLevel.Debug);
             return null;
         }
     }

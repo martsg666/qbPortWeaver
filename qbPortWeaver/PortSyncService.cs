@@ -434,7 +434,11 @@ public sealed class PortSyncService
         }
         catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
         {
+            // The status message stays one short line because the tray tooltip shows it; the full exception
+            // goes to the log as Info, since an exception reaching here is a bug and its type and stack are
+            // what a report needs. Info rather than Error: the line above already counts once towards the badge.
             SetSyncResult(status, false, $"An unexpected error occurred: {ex.Message}");
+            LogManager.Instance.LogMessage($"Details of the unexpected error: {ex}", LogLevel.Info);
             nextWaitSeconds = RegistrySettingsManager.GetClampedUpdateIntervalSeconds();
             status[StatusKeys.UpdateIntervalSeconds] = nextWaitSeconds;
             return nextWaitSeconds;

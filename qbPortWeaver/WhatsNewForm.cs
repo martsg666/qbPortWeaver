@@ -55,6 +55,10 @@ public partial class WhatsNewForm : Form
         "Windows service that shares its process with others, that stopped all of them. It now " +
         "leaves such a service alone and logs a warning. The VPN services auto-recovery restarts " +
         "each run in their own process and are not affected.\n\n" +
+        "Fixed: an adapter cycle that failed was logged as completed\n" +
+        "When auto-recovery could not disable or re-enable the network adapter, the log still ended " +
+        "with a completed line. It now says the cycle had problems and to check that the adapter is " +
+        "enabled.\n\n" +
         "Fixed: a successful auto-recovery could show the warning badge\n" +
         "When a VPN service finished stopping on its own just as auto-recovery was about to " +
         "force-stop it, the log recorded a warning and the tray showed the warning badge, although " +

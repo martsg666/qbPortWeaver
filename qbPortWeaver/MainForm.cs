@@ -619,7 +619,13 @@ public partial class MainForm : Form
         frm.Show(); // NOSONAR S6966 - non-modal is intentional; ShowOrActivate cannot express the in-place SetResults refresh above
     }
 
-    private void autoStart_Click(object? sender, EventArgs e) => StartupManager.SetStartup(_autoStartMenuItem.Checked);
+    // CheckOnClick has already flipped the mark; SetStartup logs and swallows a failed write, so the
+    // mark is re-read from the Run key afterwards rather than left showing a state that was never set.
+    private void autoStart_Click(object? sender, EventArgs e)
+    {
+        StartupManager.SetStartup(_autoStartMenuItem.Checked);
+        _autoStartMenuItem.Checked = StartupManager.IsStartupEnabled();
+    }
 
     private void trayIcon_MouseDoubleClick(object? sender, MouseEventArgs e)
     {

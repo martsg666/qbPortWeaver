@@ -393,6 +393,9 @@ class Plugin(BasePlugin):
             self.output(error.message)
             return
 
+        # Nicotine+ clears the command source as soon as this returns, and output() drops anything
+        # printed after that, so the worker reports back through the source captured here.
+        source = getattr(self.parent, "command_source", None)
         self.output(f"Checking port {port}; the result will appear here shortly.")
 
         # Go through PortTest.request rather than the native checker directly, so the command
@@ -400,25 +403,49 @@ class Plugin(BasePlugin):
         # On a worker thread: request() blocks for up to MAX_WAIT_SECONDS, and its native path
         # marshals onto the main thread, which is where commands already run - calling it inline
         # would stall there until the proxy timed out, with the interface frozen meanwhile.
-        threading.Thread(target=self._run_port_test, args=(port,),
+        threading.Thread(target=self._run_port_test, args=(port, source),
                          name="qbpwPortTestCommand", daemon=True).start()
 
-    def _run_port_test(self, port):
+    def _run_port_test(self, port, source):
         try:
             snapshot = self._port_test.request(port, MAX_WAIT_SECONDS)
         # Report the failure; a worker thread must never die silently.
         except Exception as error:  # noqa: BLE001
-            self.output(f"Could not check port {port}: {error}")
+            self._reply_later(source, f"Could not check port {port}: {error}")
             return
 
         if snapshot["state"] != STATE_DONE:
             # Undetermined rather than closed: the check service was unreachable, or the verdict
             # had not arrived yet. Saying "closed" here would send the user chasing a firewall.
-            self.output(f"Could not determine whether port {port} is reachable. Try again shortly.")
+            self._reply_later(source, f"Could not determine whether port {port} is reachable. Try again shortly.")
         elif snapshot["result"]:
-            self.output(f"Port {port} is open.")
+            self._reply_later(source, f"Port {port} is open.")
         else:
-            self.output(f"Port {port} is closed. Check the forwarded port on your VPN.")
+            self._reply_later(source, f"Port {port} is closed. Check the forwarded port on your VPN.")
+
+    def _reply_later(self, source, text):
+        """Show text in the chat a command came from, after the command has returned.
+
+        Routes the way BasePlugin.echo_message does, but from a captured source rather than the
+        live one, and queued onto the main thread, which owns the chat views. The queued callable
+        must not raise: an exception escaping it quits Nicotine+ (see bridge/main_thread.py).
+        """
+        if source is None:
+            return
+
+        def _echo():
+            try:
+                interface, target = source
+                if interface == "cli":
+                    print(text)
+                elif interface == "chatroom":
+                    self.echo_public(target, text, "command")
+                else:
+                    self.echo_private(target, text, "command")
+            except Exception as error:  # noqa: BLE001 - must not escape, see the docstring
+                self.log("Could not show the port test result: %s", (error,))
+
+        events.invoke_main_thread(_echo)
 
     def connection_file_command(self, _args, **_unused):
         if not self._handshake_paths:

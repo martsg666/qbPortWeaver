@@ -34,8 +34,8 @@ On start, the plugin writes a small file with its address and access token:
 
 qbPortWeaver picks these up on its own, so there is normally nothing to configure. If you run
 Nicotine+ with a custom data folder (`-c` or `--user-data`), qbPortWeaver cannot work out where
-to look - run `/qbpw-connection-file` in Nicotine+ and enter the address and token into
-qbPortWeaver's settings by hand. Both are stable across restarts.
+to look - run `/qbpw-connection-file` in a Nicotine+ private chat and enter the address and
+token into qbPortWeaver's settings by hand. Both are stable across restarts.
 
 The file carries a `schema` number describing its layout. qbPortWeaver checks it before reading
 anything else and ignores a file whose schema is newer than the version it understands, rather
@@ -45,7 +45,8 @@ not connected instead of misbehaving quietly. Update qbPortWeaver if you see tha
 
 ## Commands
 
-Type these in any Nicotine+ chat window:
+Type these in a Nicotine+ chat window. `/qbpw-connection-file` works only in a private chat, not in a
+chat room, because chat rooms are public.
 
 | Command | What it does |
 |---|---|

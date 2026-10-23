@@ -337,8 +337,8 @@ Notes:
 - **Portable installations** work as long as the Executable path is set, which is how qbPortWeaver
   finds the `portable\data` folder beside it.
 - If you run Nicotine+ with a custom data folder (`-c` or `--user-data`), qbPortWeaver cannot work
-  out where to look. Run `/qbpw-connection-file` in Nicotine+ and enter the address and token by
-  hand - both are stable across restarts.
+  out where to look. Run `/qbpw-connection-file` in a Nicotine+ private chat and enter the address
+  and token by hand - both are stable across restarts.
 - **Enable your VPN client's killswitch.** Nicotine+ can bind to a named adapter, and qbPortWeaver
   warns when that does not match your VPN, but the killswitch is what actually stops a leak.
 

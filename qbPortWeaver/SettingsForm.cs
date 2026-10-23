@@ -903,8 +903,8 @@ public partial class SettingsForm : Form
             var status = NicotinePluginInstaller.GetStatus(txtNicotineExePath.Text.Trim());
             ThemedMessageBox.Info(
                 "No connection details were found.\n\n" + DescribeNextStep(status) +
-                "\n\nIf Nicotine+ runs with a custom data folder, run /qbpw-connection-file inside " +
-                "Nicotine+ and enter the address and token here by hand.");
+                "\n\nIf Nicotine+ runs with a custom data folder, run /qbpw-connection-file in " +
+                "a Nicotine+ private chat and enter the address and token here by hand.");
             RefreshNicotinePluginStatus();
             return;
         }

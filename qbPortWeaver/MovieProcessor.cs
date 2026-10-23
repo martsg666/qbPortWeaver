@@ -66,14 +66,28 @@ public sealed class MovieProcessor(TmdbClient tmdb, bool dryRun, bool createFold
 
         foreach (var file in videoFiles)
         {
-            var (title, year) = FileNameParser.ParseTitleYear(Path.GetFileName(file));
-            if (!string.IsNullOrWhiteSpace(title))
+            var fileName = Path.GetFileName(file);
+            var (title, year) = FileNameParser.ParseTitleYear(fileName);
+            if (!string.IsNullOrWhiteSpace(title) && !IsBarePartName(fileName, title, year))
                 selfDescribing.Add((file, title, year));
             else
                 folderDependent.Add(file);
         }
 
         return (AssignPartSuffixes(selfDescribing), folderDependent);
+    }
+
+    // A file named only by its part ("cd1.mkv", "Part 2.mkv", "Disc 1.mkv") parses as a movie titled
+    // "cd1" and so on; it belongs to the folder-name lookup instead, which keeps the part suffix. Only
+    // when the parsed title IS the part token and there is no year, so "Title Part 2" and "Title 2"
+    // stay ordinary titles. Uses the same ExtractPartSuffix the folder path names the parts with, so
+    // a name it cannot number (e.g. "CD-1") stays where it is today rather than collide there.
+    private static bool IsBarePartName(string fileName, string title, int? year)
+    {
+        if (year is not null) return false;
+        var suffix = ExtractPartSuffix(fileName);
+        var compactTitle = new string(title.Where(char.IsLetterOrDigit).ToArray());
+        return suffix is not null && string.Equals(suffix, compactTitle, StringComparison.OrdinalIgnoreCase);
     }
 
     // Parts of one movie whose names each carry the title ("Title.Year.cd1", "Title.Year.cd2") would all

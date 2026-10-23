@@ -87,6 +87,9 @@ public partial class WhatsNewForm : Form
         "Fixed: Media Manager errors were shown only in its status line\n" +
         "They are now written to the log as well, and a TMDB reply that cannot be read during " +
         "Re-match now skips only that file instead of stopping the whole Re-match.\n\n" +
+        "Fixed: a movie split into files named only by part was not recognised\n" +
+        "Files such as cd1 and cd2 were each looked up as a movie of that name. They are now matched " +
+        "through the movie's folder name and imported together, each with its part number.\n\n" +
         "Fixed: subtitles could be imported when their video was not\n" +
         "When a video was skipped because a different file already had its name, or could not be " +
         "copied, its subtitles were still added to the library under that name. They are now left in " +

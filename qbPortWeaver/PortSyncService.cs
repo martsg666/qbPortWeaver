@@ -1427,7 +1427,7 @@ public sealed class PortSyncService
         if (!_portClosedRecoveryArmed)
             return " (recovery has already run for this outage - it will not run again until a scheduled check reports the port open)";
         string checks = TextFormat.PluralizeNoun(_confirmedClosedCount, "closed check");
-        return $" ({_confirmedClosedCount} consecutive {checks}, recovery triggers after {config.PortClosedRecoveryTriggerChecks} consecutive closed checks)";
+        return $" ({_confirmedClosedCount} consecutive {checks}, recovery triggers after {config.PortClosedRecoveryTriggerChecks} consecutive {TextFormat.PluralizeNoun(config.PortClosedRecoveryTriggerChecks, "closed check")})";
     }
 
     // Opt-in: when the port has been confirmed closed for the configured number of checks,
@@ -2114,7 +2114,7 @@ public sealed class PortSyncService
         else if (_consecutiveRecoveries >= MaxConsecutiveRecoveries)
             recoverySuffix = $", auto-recovery is suspended after {MaxConsecutiveRecoveries} attempts that did not restore a port";
         else
-            recoverySuffix = $", recovery may trigger after {cfg.VpnAutoRecoveryTriggerCycles} consecutive failed cycles";
+            recoverySuffix = $", recovery may trigger after {cfg.VpnAutoRecoveryTriggerCycles} consecutive {TextFormat.PluralizeNoun(cfg.VpnAutoRecoveryTriggerCycles, "failed cycle")}";
         return $"{prefix} ({count} consecutive {cycles}{recoverySuffix})";
     }
 

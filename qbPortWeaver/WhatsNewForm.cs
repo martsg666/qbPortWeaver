@@ -23,14 +23,17 @@ public partial class WhatsNewForm : Form
         "is missing. The same applies when the VPN is down and the default port " +
         "could not be applied because the client is not running or refused the change: the fallback " +
         "you configured did not work, so the tray says so instead of reporting a disconnection.\n\n" +
-        "Changed: Diagnostics gives adapter-based advice for NAT-PMP and Static port\n" +
-        "When the VPN adapter is down, the VPN connection row no longer tells you to pick a P2P " +
-        "server, which only applies to ProtonVPN and PIA. It now names the adapter and suggests " +
-        "connecting the VPN that owns it or selecting the right one in Settings.\n\n" +
-        "Changed: the network interface check for NAT-PMP and Static port needs the exact adapter\n" +
+        "Changed: Diagnostics gives NAT-PMP advice that fits its adapter\n" +
+        "When the VPN adapter was down, the VPN connection row told you to pick a P2P server, which only " +
+        "applies to ProtonVPN and PIA. It now names the adapter and suggests connecting the VPN that owns " +
+        "it or selecting the right one in Settings. When a NAT-PMP gateway assigns no port, the forwarded " +
+        "port rows now suggest checking that the gateway accepts NAT-PMP port mapping requests. The new " +
+        "Static port provider gets the same adapter advice.\n\n" +
+        "Changed: the network interface check for NAT-PMP needs the exact adapter\n" +
         "A client bound to a similarly named adapter, such as \"Ethernet\" when the VPN adapter is " +
         "\"Ethernet 2\", passed the check, so no leak warning appeared although its traffic went " +
-        "outside the VPN. It now gets the warning. ProtonVPN and PIA are unchanged.\n\n" +
+        "outside the VPN. It now gets the warning. The new Static port provider uses the same exact " +
+        "check; ProtonVPN and PIA are unchanged.\n\n" +
         "Changed: warning notifications open the log when clicked\n" +
         "Clicking a notification about the port, the network interface or a client setting now " +
         "opens the log viewer at that warning. Before, the click did nothing, although the " +

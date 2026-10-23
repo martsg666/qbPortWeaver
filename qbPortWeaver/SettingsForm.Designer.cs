@@ -335,8 +335,8 @@ partial class SettingsForm
         chkPortClosedRecovery.TabIndex       = 18;
         chkPortClosedRecovery.Text           = "Trigger auto-recovery when port stays closed";
         chkPortClosedRecovery.CheckedChanged += chkPortClosedRecovery_CheckedChanged;
-        // "Trigger after" sub-rows align with the parent checkbox's text at x=28 (checkbox left 12 +
-        // ~16px glyph/margin). NUD and unit-label X are finalized in OnLoad via PreferredSize.Width.
+        // "Trigger after" sub-rows align with the parent checkbox's text at x=28 (checkbox left 15 +
+        // ~13px glyph/margin). NUD and unit-label X are finalized in OnLoad via PreferredSize.Width.
         lblPortClosedChecks.AutoSize  = true;
         lblPortClosedChecks.Location  = new Point(28, 82);
         lblPortClosedChecks.Name      = "lblPortClosedChecks";

@@ -333,8 +333,8 @@ public partial class LogViewerForm : Form
         chk.BackColor = pnlToolbar.BackColor;
     }
 
-    // Paints the nav chevrons via the shared drawer, in the button's ForeColor (neutral WindowText
-    // for the search-match arrows, the accent for the issue-nav arrows). btnPrev/btnIssuePrev point up.
+    // Paints the nav chevrons via the shared drawer, in the button's ForeColor (the accent ApplyTheme
+    // gives all four). btnPrev/btnIssuePrev point up.
     private void NavButton_Paint(object? sender, PaintEventArgs e)
     {
         if (sender is not Button btn) return;

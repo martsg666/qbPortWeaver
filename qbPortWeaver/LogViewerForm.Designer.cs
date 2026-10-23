@@ -152,7 +152,7 @@ partial class LogViewerForm
         cboSubsystem.SelectedIndexChanged += cboSubsystem_SelectedIndexChanged;
         toolTip.SetToolTip(cboSubsystem, "Filter entries by subsystem");
 
-        // Time range - narrows the view to a window ending now, or to a custom span. Sits between the
+        // Time range - narrows the view to a window ending now, or to a custom span. Sits after the
         // subsystem and log-file pickers because all three answer "which entries", unlike search.
         cboTimeRange.Anchor        = AnchorStyles.Left | AnchorStyles.Top;
         cboTimeRange.DropDownStyle = ComboBoxStyle.DropDownList;
@@ -197,7 +197,7 @@ partial class LogViewerForm
         btnClearSearch.Location                  = new Point(950, 5); // fine-tuned in OnLoad
         btnClearSearch.Padding                   = new Padding(0);
         btnClearSearch.Size                      = new Size(16, 16);  // fine-tuned in OnLoad
-        btnClearSearch.Text                      = ""; // clear glyph owner-drawn in ClearButton_Paint
+        btnClearSearch.Text                      = ""; // clear glyph owner-drawn by the Paint handler wired in OnLoad (UiHelpers.DrawClearGlyph)
         btnClearSearch.TextAlign                 = ContentAlignment.MiddleCenter;
         btnClearSearch.TabIndex                  = 10;
         btnClearSearch.TabStop                   = false;

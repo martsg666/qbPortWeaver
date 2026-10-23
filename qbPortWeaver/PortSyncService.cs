@@ -1129,7 +1129,8 @@ public sealed class PortSyncService
     /// <summary>
     /// Dispatches the recovery action for the given provider selection on demand (the Settings
     /// form's Auto-recovery Test button). Runs the exact same action as automatic recovery (VPN
-    /// service restart, or adapter cycle for NAT-PMP and Static port) so the recovery chain - helper service,
+    /// service restart for ProtonVPN, PIA or a NAT-PMP / Static port adapter that belongs to one of them,
+    /// adapter cycle for any other adapter) so the recovery chain - helper service,
     /// service discovery, VPN client relaunch - can be verified before a real failure needs it.
     /// Returns <see langword="false"/> when nothing could be dispatched (provider disabled or
     /// unrecognized, adapter unreachable, or no recovery target); the outcome of a dispatched
@@ -1430,11 +1431,6 @@ public sealed class PortSyncService
         return $" ({_confirmedClosedCount} consecutive {checks}, recovery triggers after {config.PortClosedRecoveryTriggerChecks} consecutive {TextFormat.PluralizeNoun(config.PortClosedRecoveryTriggerChecks, "closed check")})";
     }
 
-    // Opt-in: when the port has been confirmed closed for the configured number of checks,
-    // dispatches the provider's recovery action once. Independent of the failed-sync recovery
-    // trigger - the two share the action, not the gate. One-shot arming: after firing, recovery
-    // stays disarmed until a verification reports the port open again (see HandlePortOpenResult),
-    // so a persistently false "closed" can never cause a recovery loop.
     // Forces the client to rebuild its listen sockets when a confirmed-closed port coincides with the
     // bound adapter having changed address. Returns true when a rebind was actually attempted, which is
     // what tells the caller to hold recovery back for one more round of confirmation.
@@ -1442,8 +1438,8 @@ public sealed class PortSyncService
     // that does not help escalates to recovery instead of repeating.
     //
     // "recovery" rather than "the VPN restart" throughout, matching the messages below: the action is a
-    // service restart for ProtonVPN and PIA, but NatPmpManager.GetRecoveryAction returns cycle-adapter
-    // for a generic gateway, where no VPN is restarted at all.
+    // service restart for ProtonVPN and PIA, but for NAT-PMP and Static port VpnAdapter.GetRecoveryAction
+    // returns cycle-adapter when the adapter belongs to no known provider, where no VPN is restarted at all.
     private async Task<bool> TryRebindClientAddressAsync(IManagedClient manager, SyncConfig config, CancellationToken cancellationToken)
     {
         if (!_interfaceAddressChangedSinceRebind || !config.FixInterfaceBinding) return false;
@@ -1564,6 +1560,11 @@ public sealed class PortSyncService
         return true;
     }
 
+    // Opt-in: when the port has been confirmed closed for the configured number of checks,
+    // dispatches the provider's recovery action once. Independent of the failed-sync recovery
+    // trigger - the two share the action, not the gate. One-shot arming: after firing, recovery
+    // stays disarmed until a verification reports the port open again (see HandlePortOpenResult),
+    // so a persistently false "closed" can never cause a recovery loop.
     private async Task MaybeTriggerPortClosedRecoveryAsync(IManagedClient manager, SyncConfig config, CancellationToken cancellationToken)
     {
         if (!config.PortClosedRecoveryEnabled)

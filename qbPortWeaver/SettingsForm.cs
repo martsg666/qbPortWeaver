@@ -626,8 +626,8 @@ public partial class SettingsForm : Form
 
     // Detects which VPN provider is installed on this machine and pre-fills the provider selection, so
     // the user does not have to know which of the supported providers qbPortWeaver drives. Only the
-    // selection is applied, not saved - the user reviews it and Saves. NAT-PMP is never detected (no
-    // machine-local service to find), so it remains the manual choice for other gateways.
+    // selection is applied, not saved - the user reviews it and Saves. NAT-PMP and Static port are never
+    // detected (no machine-local service to find), so they remain the manual choices for other VPNs.
     // Detection runs off the UI thread: DetectAll enumerates every Windows service through the SCM and
     // reads the status of each match, which is fast on a home machine and slow on a domain-joined one
     // (or one with a service stuck pending). The button is disabled for the duration so the click
@@ -1202,7 +1202,10 @@ public partial class SettingsForm : Form
         lblPortClosedChecksUnit.Enabled = closedChecksEnabled;
     }
 
-    // Enables or disables all port-sync-related controls (everything except VPN provider, update interval, and debug mode)
+    // Enables or disables the port-sync controls: client selection, port check, auto-recovery, every
+    // client section and the post-update command. The rest of the dialog (VPN provider with its adapter
+    // and Static port rows, update interval, notification and startup options, colour theme, debug
+    // mode) is left alone.
     private void SetPortSyncControlsEnabled(bool enabled)
     {
         // General section - client and auto-recovery controls (adapter and Static port rows handled by cboVpnProvider_SelectedIndexChanged)

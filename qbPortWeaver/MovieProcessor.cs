@@ -207,7 +207,7 @@ public sealed class MovieProcessor(TmdbClient tmdb, bool dryRun, bool createFold
     }
 
     // Builds the library target path for a movie file inside a folder (supports multi-part suffixes).
-    // Always places files in a subfolder regardless of _createFolders: multi-part files must be grouped
+    // Always places files in a subfolder regardless of createFolders: multi-part files must be grouped
     // together under one folder to avoid name collisions in a flat library root.
     private string BuildFolderMoviePath(string filePath, MovieInfo info)
     {

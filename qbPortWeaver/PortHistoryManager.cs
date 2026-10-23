@@ -6,7 +6,7 @@ namespace qbPortWeaver;
 /// <summary>Category of a port history event, driving the row accent in the Status panel.</summary>
 public enum PortHistoryKind
 {
-    /// <summary>A normal port change (VPN assigned a new port, or the default port was applied).</summary>
+    /// <summary>A normal port change (VPN assigned a new port, the Static port was applied, or the default port was applied).</summary>
     PortChanged,
     /// <summary>The forwarded port was confirmed unreachable from outside.</summary>
     PortClosed,

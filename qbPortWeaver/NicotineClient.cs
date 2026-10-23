@@ -381,7 +381,7 @@ public sealed class NicotineClient : ManagedClientBase
         if (logChange && handshake.Url != _endpoint)
         {
             LogManager.Instance.LogMessage(
-                $"{ClientName} bridge plugin moved to {handshake.Url} - update the URL in Settings to skip this lookup each cycle",
+                $"{ClientName} bridge plugin moved to {handshake.Url} - now using the new address; update the URL in Settings to match",
                 LogLevel.Info);
         }
 

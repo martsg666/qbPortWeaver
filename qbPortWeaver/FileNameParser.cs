@@ -434,7 +434,7 @@ public static partial class FileNameParser
     //   2) Bare www prefix:     www.SiteName.com -  (TLD 2-5 chars, followed by a dash separator)
     // Also handles ww. and www, (non-standard dot separators)
     //
-    // The [--] class below holds three characters: hyphen, en dash and em dash. The em dash is the
+    // The dash class below holds three characters: hyphen, en dash (U+2013) and em dash (U+2014). The em dash is the
     // repository's only one and it is deliberate - this is a pattern the parser *reads*, not prose it
     // writes, so the project-wide "no em dashes" rule does not apply here any more than the "no media
     // titles" rule applies to the codec tokens in _cutoffTokens. A sweep that strips it would stop the

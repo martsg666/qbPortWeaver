@@ -446,7 +446,7 @@ public sealed class NatPmpManager : IVpnManager
             // every caller, so shutting down mid-request logged a port detection failure, advanced the
             // auto-recovery streak, and could dispatch a VPN restart on the way out. Listed first so the
             // two filters are exhaustive over OperationCanceledException and none can reach the generic
-            // catch. Same arm the clients, PiaVpnManager and ProtonVpnManager already use.
+            // catch. Same arm the clients already use.
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
             catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
             {

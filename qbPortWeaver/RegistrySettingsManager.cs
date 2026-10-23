@@ -448,7 +448,7 @@ public static class RegistrySettingsManager
         (SectionDeluge, "restartDeluge",     KeyDelugeRestart),
         (SectionDeluge, "forceStartDeluge",  KeyDelugeForceStart),
 
-        // Nicotine+ never shipped, but dev and beta machines carry these from 2.6.4 pre-releases.
+        // These Nicotine+ key names never shipped, but dev and beta machines carry them from 2.6.4 pre-releases.
         (SectionNicotine, "nicotineURL",         KeyNicotineUrl),
         (SectionNicotine, "nicotineToken",       KeyNicotinePassword),
         (SectionNicotine, "nicotineExePath",     KeyNicotineExePath),

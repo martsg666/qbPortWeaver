@@ -65,10 +65,10 @@ internal static partial class MediaImporter
     private const int UncExistsTimeoutMs = 5000;        // budget for a UNC Directory.Exists before giving up
     private const int UnreachableHostCacheSeconds = 30; // how long a timed-out host stays marked unreachable
 
-    // Hosts whose bounded existence check recently timed out, keyed by host name with the UTC time of
-    // the timeout. Lets multiple paths on one dead host (e.g. \\NAS\A and \\NAS\B) fail fast without
+    // Hosts whose bounded existence check recently timed out, keyed by host name with the time of the
+    // timeout. Lets multiple paths on one dead host (e.g. \\NAS\A and \\NAS\B) fail fast without
     // each spawning another blocked check.
-    // Keyed on Environment.TickCount64 (monotonic) rather than a wall-clock timestamp, so a clock
+    // The time is Environment.TickCount64 (monotonic) rather than a wall-clock timestamp, so a clock
     // correction cannot make an entry look arbitrarily old or arbitrarily fresh.
     private static readonly ConcurrentDictionary<string, long> _unreachableHosts =
         new(StringComparer.OrdinalIgnoreCase);
@@ -91,7 +91,6 @@ internal static partial class MediaImporter
         return result;
     }
 
-    // Verifies that two paths refer to the same file by comparing volume serial number and file index.
     // Attempts a hardlink from sourcePath to destinationPath, verifies the link identity,
     // and falls back to a file copy if the hardlink fails or the filesystem silently copies instead.
     private static void ImportWithHardlink(string sourcePath, string destinationPath)
@@ -118,6 +117,7 @@ internal static partial class MediaImporter
         }
     }
 
+    // Verifies that two paths refer to the same file by comparing volume serial number and file index.
     // Returns false if the files have different identities (some filesystems silently create a copy instead of a hardlink).
     private static bool VerifyHardLink(string sourcePath, string destinationPath)
     {

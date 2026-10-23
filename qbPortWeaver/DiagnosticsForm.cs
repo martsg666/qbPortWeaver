@@ -5,8 +5,8 @@ namespace qbPortWeaver;
 /// <summary>
 /// Read-only results dialog for a <see cref="DiagnosticsService"/> run: a color-coded checklist with a
 /// per-check detail line and fix hint, a point-in-time timestamp, a Re-run button that refreshes the
-/// report in place, and a Copy Report button that yields a plain-text version for pasting into a bug
-/// report. Built in code (no designer) because its content is entirely dynamic.
+/// report in place, a Copy Report button that yields a plain-text version for pasting into a bug
+/// report, and a Save Support Bundle button that saves the report with the logs and settings. Built in code (no designer) because its content is entirely dynamic.
 /// </summary>
 internal sealed class DiagnosticsForm : Form
 {
@@ -95,7 +95,7 @@ internal sealed class DiagnosticsForm : Form
         };
         root.Controls.Add(_report, 0, 0);
 
-        // Button bar: Copy Report + Re-run grouped on the left, Close on the right.
+        // Button bar: Copy Report, Save Support Bundle and Re-run grouped on the left, Close on the right.
         var buttonBar = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,

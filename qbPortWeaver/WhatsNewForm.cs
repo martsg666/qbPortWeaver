@@ -62,6 +62,9 @@ public partial class WhatsNewForm : Form
         "When the library folder could not be read, a scan showed \"All files already imported.\" It " +
         "now says the library could not be read. After Import Now, the result is no longer replaced " +
         "straight away, and it counts only the files you selected that failed.\n\n" +
+        "Fixed: Re-match in the Media Manager could import only one part of a multi-part movie\n" +
+        "After a re-match, every part of a movie split across several files got the same name, so " +
+        "only the first one was imported. Each part now keeps its own name, as it does after a scan.\n\n" +
         "Previously released\n\n" +
         "New in 2.6.9\n\n" +
         "Your settings can be backed up and restored\n" +

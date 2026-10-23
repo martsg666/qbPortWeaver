@@ -44,16 +44,30 @@ internal sealed class VpnRegistryConfig
 
     // Matches any of the provider's registry-configured adapter names against an observed interface
     // name. ProtonVPN configures a secondary "native" name (ProTUN) alongside its primary name, so
-    // both are checked; single-name providers check only the primary. Used both for interface
-    // matching and for provider-token resolution during recovery (VpnProviderRegistry.FindProviderToken),
-    // so a ProTUN adapter is recognised as ProtonVPN and recovery restarts the service instead of
-    // cycling the adapter.
+    // both are checked; single-name providers check only the primary. Used for the ProtonVPN and PIA
+    // interface checks; recovery classification uses IsLiveAdapterOfThisProvider below.
     internal bool MatchesAdapterName(string interfaceName)
     {
         if (AdapterNamesMatch(GetAdapterName(), interfaceName)) return true;
         var native = GetNativeAdapterName();
         return native is not null && AdapterNamesMatch(native, interfaceName);
     }
+
+    // Classifies a live adapter (NAT-PMP / Static port recovery and the Diagnostics hint, through
+    // VpnProviderRegistry.FindProviderToken), so a ProTUN adapter is recognised as ProtonVPN and
+    // recovery restarts the service instead of cycling the adapter. The live name containing a
+    // configured name ("ProtonVPN TUN" contains "ProtonVPN") is the normal case; the reverse is
+    // accepted only as a prefix, for a configured name longer than the live one ("ProtonVPN TUN"
+    // configured, "ProtonVPN" live). A plain reverse substring would let a short generic adapter such
+    // as "VPN" pass as ProtonVPN.
+    internal bool IsLiveAdapterOfThisProvider(string adapterName) =>
+        LiveAdapterMatches(GetAdapterName(), adapterName) ||
+        (GetNativeAdapterName() is string native && LiveAdapterMatches(native, adapterName));
+
+    private static bool LiveAdapterMatches(string configuredName, string liveName) =>
+        configuredName.Length > 0 && liveName.Length > 0 &&
+        (liveName.Contains(configuredName, StringComparison.OrdinalIgnoreCase) ||
+         configuredName.StartsWith(liveName, StringComparison.OrdinalIgnoreCase));
 
     // Case-insensitive bidirectional substring match between a configured adapter name and an
     // observed interface name. Bidirectional handles the configured name and the actual Windows

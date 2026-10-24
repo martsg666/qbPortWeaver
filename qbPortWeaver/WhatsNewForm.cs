@@ -38,6 +38,9 @@ public partial class WhatsNewForm : Form
         "An unreachable library is reported instead of \"All files already imported\", a slow TMDB " +
         "answer no longer stops Re-match, the Import Now result stays on screen, and errors are " +
         "written to the log.\n\n" +
+        "Fixed: Media Manager scans with other library folders\n" +
+        "Scan Now and Import Now wait for the import running on the sync cycle instead of disturbing " +
+        "it, which could fill the log with warnings about files already in the library.\n\n" +
         "Fixed: Nicotine+ /qbpw-test and other Windows accounts\n" +
         "/qbpw-test now shows its result in the chat you typed it in; click Update Plugin on the " +
         "Nicotine+ tab in Settings, then restart Nicotine+. A portable Nicotine+ running under another " +

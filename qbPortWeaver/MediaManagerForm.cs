@@ -452,7 +452,7 @@ public partial class MediaManagerForm : Form
         string tvShowsLibraryPath, CancellationToken cancellationToken)
     {
         var proposals = await MediaManagerService.ScanAsync(apiKey, chkCreateFolders.Checked, sourceFolders,
-            moviesLibraryPath, tvShowsLibraryPath, CreateScanProgress("Scanning…"), cancellationToken);
+            moviesLibraryPath, tvShowsLibraryPath, CreateScanProgress("Scanning…"), CreateWaitProgress("Scanning…"), cancellationToken);
         if (proposals is null) return LibraryUnavailableStatus;
 
         PopulateGrid(proposals);
@@ -540,7 +540,7 @@ public partial class MediaManagerForm : Form
                 : p.FileName;
             lblScanStatus.Text = $"Importing {p.Current}/{p.Total} - {name}";
         });
-        await MediaManagerService.ApplyProposalsAsync(toApply, importMode, progress, cancellationToken);
+        await MediaManagerService.ApplyProposalsAsync(toApply, importMode, progress, CreateWaitProgress("Importing…"), cancellationToken);
 
         if (IsDisposed) return null;
 
@@ -564,7 +564,7 @@ public partial class MediaManagerForm : Form
         BeginProgress();
         var remaining = await MediaManagerService.ScanAsync(
             txtTmdbApiKey.Text.Trim(), chkCreateFolders.Checked, sourceFolders,
-            txtMoviesLibraryPath.Text.Trim(), txtTvShowsLibraryPath.Text.Trim(), CreateScanProgress("Re-scanning…"), cancellationToken);
+            txtMoviesLibraryPath.Text.Trim(), txtTvShowsLibraryPath.Text.Trim(), CreateScanProgress("Re-scanning…"), CreateWaitProgress("Re-scanning…"), cancellationToken);
 
         if (IsDisposed) return null;
 
@@ -983,6 +983,15 @@ public partial class MediaManagerForm : Form
             prgScan.Maximum = p.Total > 0 ? p.Total : 1;
             prgScan.Value = Math.Min(p.Current, prgScan.Maximum);
             lblScanStatus.Text = $"{verb} {p.Current}/{p.Total}";
+        });
+
+    // Says why a Scan Now or Import Now is not moving while it waits for the sync cycle's import,
+    // then puts the operation's own status back once it can start.
+    private Progress<bool> CreateWaitProgress(string resumeStatus)
+        => new Progress<bool>(waiting =>
+        {
+            if (IsDisposed) return;
+            lblScanStatus.Text = waiting ? "Waiting for the sync cycle's import to finish…" : resumeStatus;
         });
 
     private void BeginProgress()

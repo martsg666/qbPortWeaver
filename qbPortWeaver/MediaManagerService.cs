@@ -15,13 +15,63 @@ public static class MediaManagerService
     private const string ImportConfigStateKey = "media.import.config";
     private const string SourceFolderStateKeyPrefix = "media.sourcefolder:";
 
+    // One media operation at a time. The library index and the caches are process-wide, so a scan
+    // from the Media Manager window, which uses the window's library paths, would replace the index
+    // a sync-cycle import is still querying, and every source file would look new to that import.
+    // The sync-cycle import skips its turn while the gate is held; Scan Now and Import Now wait.
+    private static readonly SemaphoreSlim _operationGate = new(1, 1);
+
     /// <summary>
     /// Runs one media import cycle, moving or linking files into the configured library.
     /// Returns immediately if the feature is disabled, the TMDB API key is not configured,
-    /// or no library paths are set.
+    /// or no library paths are set, and skips the cycle while a Media Manager window operation runs.
     /// Throws <see cref="OperationCanceledException"/> if <paramref name="cancellationToken"/> is cancelled.
     /// </summary>
     public static async Task ImportAsync(CancellationToken cancellationToken = default)
+    {
+        if (!_operationGate.Wait(0))
+        {
+            LogManager.Instance.LogDebug("MediaManagerService.ImportAsync: Import skipped - the Media Manager window is scanning or importing", Subsystem.MediaManager);
+            return;
+        }
+
+        try
+        {
+            await ImportCoreAsync(cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            _operationGate.Release();
+        }
+    }
+
+    // Runs fn once the gate is free. Only the Media Manager window comes here, and it runs one
+    // operation at a time, so a held gate means the sync-cycle import: waiting reports true, then
+    // false once the gate is taken, so the window can say why it is not progressing.
+    private static async Task<T> RunExclusiveAsync<T>(Func<Task<T>> fn, IProgress<bool>? waiting, CancellationToken cancellationToken)
+    {
+        if (!_operationGate.Wait(0))
+        {
+            LogManager.Instance.LogMessage("Waiting for the sync cycle's import to finish", LogLevel.Info, Subsystem.MediaManager);
+            waiting?.Report(true);
+            await _operationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+            waiting?.Report(false);
+        }
+
+        try
+        {
+            return await fn().ConfigureAwait(false);
+        }
+        finally
+        {
+            _operationGate.Release();
+        }
+    }
+
+    private static Task RunExclusiveAsync(Func<Task> fn, IProgress<bool>? waiting, CancellationToken cancellationToken)
+        => RunExclusiveAsync(async () => { await fn().ConfigureAwait(false); return true; }, waiting, cancellationToken);
+
+    private static async Task ImportCoreAsync(CancellationToken cancellationToken)
     {
         if (!RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionMedia, RegistrySettingsManager.KeyMediaEnabled))
             return;
@@ -112,10 +162,18 @@ public static class MediaManagerService
     /// <param name="moviesLibraryPath">Library folder for movies. Empty to skip movie processing.</param>
     /// <param name="tvShowsLibraryPath">Library folder for TV shows. Empty to skip TV show processing.</param>
     /// <param name="progress">Optional progress sink; reports current and total item counts as each item is processed.</param>
-    /// <param name="cancellationToken">Token to cancel the scan; passed through to the library index build, the folder scans and their TMDB lookups.</param>
-    public static async Task<List<MediaProposal>?> ScanAsync(string apiKey, bool createFolders, string[] sourceFolders,
+    /// <param name="waiting">Optional sink; reports <see langword="true"/> while the scan waits for the sync cycle's import to finish, then <see langword="false"/>.</param>
+    /// <param name="cancellationToken">Token to cancel the scan; passed through to the wait, the library index build, the folder scans and their TMDB lookups.</param>
+    public static Task<List<MediaProposal>?> ScanAsync(string apiKey, bool createFolders, string[] sourceFolders,
         string moviesLibraryPath, string tvShowsLibraryPath,
-        IProgress<(int Current, int Total)>? progress = null, CancellationToken cancellationToken = default)
+        IProgress<(int Current, int Total)>? progress = null, IProgress<bool>? waiting = null, CancellationToken cancellationToken = default)
+        => RunExclusiveAsync(
+            () => ScanCoreAsync(apiKey, createFolders, sourceFolders, moviesLibraryPath, tvShowsLibraryPath, progress, cancellationToken),
+            waiting, cancellationToken);
+
+    private static async Task<List<MediaProposal>?> ScanCoreAsync(string apiKey, bool createFolders, string[] sourceFolders,
+        string moviesLibraryPath, string tvShowsLibraryPath,
+        IProgress<(int Current, int Total)>? progress, CancellationToken cancellationToken)
     {
         var scanSw = Stopwatch.StartNew();
         LogManager.Instance.LogMessage($"Scan started (createFolders={createFolders})", LogLevel.Info, Subsystem.MediaManager);
@@ -243,52 +301,57 @@ public static class MediaManagerService
     /// <param name="proposals">The import proposals to apply. Each proposal's <see cref="MediaProposal.ProposedPath"/> is the library target.</param>
     /// <param name="importMode">Determines how files are transferred: hardlink, copy, or move.</param>
     /// <param name="progress">Optional progress sink; reports current item count, total, and filename as each file is imported.</param>
-    /// <param name="cancellationToken">Token to cancel the operation between imports.</param>
+    /// <param name="waiting">Optional sink; reports <see langword="true"/> while the import waits for the sync cycle's import to finish, then <see langword="false"/>.</param>
+    /// <param name="cancellationToken">Token to cancel the wait or the operation between imports.</param>
     public static Task ApplyProposalsAsync(IEnumerable<MediaProposal> proposals, ImportMode importMode,
-        IProgress<(int Current, int Total, string FileName)>? progress = null, CancellationToken cancellationToken = default)
-        => Task.Run(() =>
+        IProgress<(int Current, int Total, string FileName)>? progress = null, IProgress<bool>? waiting = null, CancellationToken cancellationToken = default)
+        => RunExclusiveAsync(() => Task.Run(() => ApplyProposals(proposals, importMode, progress, cancellationToken), cancellationToken),
+            waiting, cancellationToken);
+
+    private static void ApplyProposals(IEnumerable<MediaProposal> proposals, ImportMode importMode,
+        IProgress<(int Current, int Total, string FileName)>? progress, CancellationToken cancellationToken)
+    {
+        var list = proposals as IList<MediaProposal> ?? proposals.ToList();
+        int total = list.Count;
+        int current = 0;
+        int placed = 0;
+        foreach (var proposal in list)
         {
-            var list = proposals as IList<MediaProposal> ?? proposals.ToList();
-            int total = list.Count;
-            int current = 0;
-            int placed = 0;
-            foreach (var proposal in list)
+            cancellationToken.ThrowIfCancellationRequested();
+            current++;
+            progress?.Report((current, total, Path.GetFileName(proposal.OriginalPath)));
+            LogManager.Instance.LogMessage(
+                $"Importing '{Path.GetFileName(proposal.OriginalPath)}' -> '{proposal.ProposedPath}'",
+                LogLevel.Info, Subsystem.MediaManager);
+            try
             {
-                cancellationToken.ThrowIfCancellationRequested();
-                current++;
-                progress?.Report((current, total, Path.GetFileName(proposal.OriginalPath)));
-                LogManager.Instance.LogMessage(
-                    $"Importing '{Path.GetFileName(proposal.OriginalPath)}' -> '{proposal.ProposedPath}'",
-                    LogLevel.Info, Subsystem.MediaManager);
-                try
+                // Subtitles follow the video, as on the sync cycle. This is the only chance: once
+                // the video is in the library the cycle skips its source, so a subtitle left behind
+                // here would never be imported. Naming from the proposed path also covers a
+                // multi-part film ("Title (Year) - cd1.srt") and any name the user edited. Only when
+                // the video is in place: a skipped or failed video leaves its subtitles where they are.
+                if (MediaImporter.AddFileToLibrary(proposal.OriginalPath, proposal.ProposedPath, importMode))
                 {
-                    // Subtitles follow the video, as on the sync cycle. This is the only chance: once
-                    // the video is in the library the cycle skips its source, so a subtitle left behind
-                    // here would never be imported. Naming from the proposed path also covers a
-                    // multi-part film ("Title (Year) - cd1.srt") and any name the user edited. Only when
-                    // the video is in place: a skipped or failed video leaves its subtitles where they are.
-                    if (MediaImporter.AddFileToLibrary(proposal.OriginalPath, proposal.ProposedPath, importMode))
-                    {
-                        placed++;
-                        ImportCompanionFiles(proposal.OriginalPath, proposal.ProposedPath, dryRun: false, importMode);
-                    }
-                }
-                // Deliberately broad: this is the outermost per-item boundary of a user-initiated batch.
-                // AddFileToLibrary already handles the expected IO/permission cases, so anything reaching
-                // here is unexpected - log it at Error and keep going so one bad file cannot strand the
-                // rest of the batch. (Narrowing this would abort the remaining imports on a surprise.)
-                catch (Exception ex)
-                {
-                    LogManager.Instance.LogMessage(
-                        $"Failed to import '{Path.GetFileName(proposal.OriginalPath)}': {ex.Message}",
-                        LogLevel.Error, Subsystem.MediaManager);
+                    placed++;
+                    ImportCompanionFiles(proposal.OriginalPath, proposal.ProposedPath, dryRun: false, importMode);
                 }
             }
+            // Deliberately broad: this is the outermost per-item boundary of a user-initiated batch.
+            // AddFileToLibrary already handles the expected IO/permission cases, so anything reaching
+            // here is unexpected - log it at Error and keep going so one bad file cannot strand the
+            // rest of the batch. (Narrowing this would abort the remaining imports on a surprise.)
+            catch (Exception ex)
+            {
+                LogManager.Instance.LogMessage(
+                    $"Failed to import '{Path.GetFileName(proposal.OriginalPath)}': {ex.Message}",
+                    LogLevel.Error, Subsystem.MediaManager);
+            }
+        }
 
-            // The batch's end line, as the sync import and the scan have: without it a support log shows
-            // the per-file lines but not where Import Now stopped or how many files made it.
-            LogManager.Instance.LogMessage($"Import Now finished: {placed} of {TextFormat.Pluralize(total, "file")} placed in the library", LogLevel.Info, Subsystem.MediaManager);
-        }, cancellationToken);
+        // The batch's end line, as the sync import and the scan have: without it a support log shows
+        // the per-file lines but not where Import Now stopped or how many files made it.
+        LogManager.Instance.LogMessage($"Import Now finished: {placed} of {TextFormat.Pluralize(total, "file")} placed in the library", LogLevel.Info, Subsystem.MediaManager);
+    }
 
     // Deletes subdirectories of rootFolder that are empty or contain only .nfo files.
     // Walks bottom-up (longest path first) so nested empty folders are cleaned in a single pass.

@@ -155,9 +155,37 @@ public partial class MediaManagerForm : Form
 
     private void btnAddSourceFolder_Click(object? sender, EventArgs e) => AddFolder(lstSourceFolders);
     private void btnRemoveSourceFolder_Click(object? sender, EventArgs e) => RemoveSelectedFolder(lstSourceFolders);
-    private void btnClearCache_Click(object? sender, EventArgs e)
+    private async void btnClearCache_Click(object? sender, EventArgs e) // async void is correct here (WinForms event handler)
     {
-        MediaManagerService.ClearAllCaches();
+        var cancellationToken = await RenewOperationCancellationTokenAsync();
+        SetBusy(true);
+
+        string? failureStatus = null;
+        try
+        {
+            await MediaManagerService.ClearAllCachesAsync(CreateWaitProgress("Clearing cache…"), cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            failureStatus = "Clear cache cancelled.";
+        }
+        catch (Exception ex)
+        {
+            failureStatus = ReportUnexpectedError("Clear cache", ex);
+        }
+        finally
+        {
+            if (!IsDisposed) SetBusy(false);
+        }
+
+        if (IsDisposed) return;
+        if (failureStatus is not null)
+        {
+            UpdateScanStatus();
+            lblScanStatus.Text = failureStatus;
+            return;
+        }
+
         dgvResults.Rows.Clear();
         ClearDetailPanel();
         foreach (var img in _posterCache.Values) img.Dispose();
@@ -207,7 +235,7 @@ public partial class MediaManagerForm : Form
         }
     }
 
-    // Anything reaching the Scan / Import / Re-match catch-alls is unexpected. The status label can only
+    // Anything reaching the Scan / Import / Re-match / Clear cache catch-alls is unexpected. The status label can only
     // show the message, so the log gets the full exception (type and stack) for a report. One Error line:
     // these are user-initiated, so unlike a sync cycle nothing repeats it.
     private static string ReportUnexpectedError(string operation, Exception ex)

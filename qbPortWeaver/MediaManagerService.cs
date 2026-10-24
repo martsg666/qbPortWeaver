@@ -18,7 +18,7 @@ public static class MediaManagerService
     // One media operation at a time. The library index and the caches are process-wide, so a scan
     // from the Media Manager window, which uses the window's library paths, would replace the index
     // a sync-cycle import is still querying, and every source file would look new to that import.
-    // The sync-cycle import skips its turn while the gate is held; Scan Now and Import Now wait.
+    // The sync-cycle import skips its turn while the gate is held; Scan Now, Import Now and Clear cache wait.
     private static readonly SemaphoreSlim _operationGate = new(1, 1);
 
     /// <summary>
@@ -743,12 +743,20 @@ public static class MediaManagerService
         }
     }
 
-    /// <summary>Clears all media manager caches from memory and disk, forcing a full re-index and TMDB re-lookup on the next scan.</summary>
-    public static void ClearAllCaches()
-    {
-        MediaImporter.ClearAllCaches();
-        TmdbCacheManager.Clear();
-    }
+    /// <summary>
+    /// Clears all media manager caches from memory and disk, forcing a full re-index and TMDB re-lookup on the next scan.
+    /// Waits for a running sync-cycle import first: clearing the library index under it would make every source file look new to it.
+    /// Throws <see cref="OperationCanceledException"/> if <paramref name="cancellationToken"/> is cancelled during the wait.
+    /// </summary>
+    /// <param name="waiting">Optional sink; reports <see langword="true"/> while the clear waits for the sync cycle's import to finish, then <see langword="false"/>.</param>
+    /// <param name="cancellationToken">Token to cancel the wait.</param>
+    public static Task ClearAllCachesAsync(IProgress<bool>? waiting = null, CancellationToken cancellationToken = default)
+        => RunExclusiveAsync(() =>
+        {
+            MediaImporter.ClearAllCaches();
+            TmdbCacheManager.Clear();
+            return Task.FromResult(true);
+        }, waiting, cancellationToken);
 
     /// <summary>
     /// The one wording for skipping an import because the TMDB match is not confident enough.

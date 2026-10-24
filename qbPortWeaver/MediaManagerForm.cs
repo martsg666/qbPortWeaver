@@ -452,7 +452,7 @@ public partial class MediaManagerForm : Form
         string tvShowsLibraryPath, CancellationToken cancellationToken)
     {
         var proposals = await MediaManagerService.ScanAsync(apiKey, chkCreateFolders.Checked, sourceFolders,
-            moviesLibraryPath, tvShowsLibraryPath, CreateScanProgress("Scanning…"), CreateWaitProgress("Scanning…"), cancellationToken);
+            moviesLibraryPath, tvShowsLibraryPath, new(CreateScanProgress("Scanning…"), CreateWaitProgress("Scanning…")), cancellationToken);
         if (proposals is null) return LibraryUnavailableStatus;
 
         PopulateGrid(proposals);
@@ -540,7 +540,7 @@ public partial class MediaManagerForm : Form
                 : p.FileName;
             lblScanStatus.Text = $"Importing {p.Current}/{p.Total} - {name}";
         });
-        await MediaManagerService.ApplyProposalsAsync(toApply, importMode, progress, CreateWaitProgress("Importing…"), cancellationToken);
+        await MediaManagerService.ApplyProposalsAsync(toApply, importMode, new(progress, CreateWaitProgress("Importing…")), cancellationToken);
 
         if (IsDisposed) return null;
 
@@ -564,7 +564,7 @@ public partial class MediaManagerForm : Form
         BeginProgress();
         var remaining = await MediaManagerService.ScanAsync(
             txtTmdbApiKey.Text.Trim(), chkCreateFolders.Checked, sourceFolders,
-            txtMoviesLibraryPath.Text.Trim(), txtTvShowsLibraryPath.Text.Trim(), CreateScanProgress("Re-scanning…"), CreateWaitProgress("Re-scanning…"), cancellationToken);
+            txtMoviesLibraryPath.Text.Trim(), txtTvShowsLibraryPath.Text.Trim(), new(CreateScanProgress("Re-scanning…"), CreateWaitProgress("Re-scanning…")), cancellationToken);
 
         if (IsDisposed) return null;
 

@@ -29,7 +29,7 @@ public static class MediaManagerService
     /// </summary>
     public static async Task ImportAsync(CancellationToken cancellationToken = default)
     {
-        if (!_operationGate.Wait(0))
+        if (!_operationGate.Wait(0, cancellationToken))
         {
             LogManager.Instance.LogDebug("MediaManagerService.ImportAsync: Import skipped - the Media Manager window is scanning or importing", Subsystem.MediaManager);
             return;
@@ -50,7 +50,7 @@ public static class MediaManagerService
     // false once the gate is taken, so the window can say why it is not progressing.
     private static async Task<T> RunExclusiveAsync<T>(Func<Task<T>> fn, IProgress<bool>? waiting, CancellationToken cancellationToken)
     {
-        if (!_operationGate.Wait(0))
+        if (!_operationGate.Wait(0, cancellationToken))
         {
             LogManager.Instance.LogMessage("Waiting for the sync cycle's import to finish", LogLevel.Info, Subsystem.MediaManager);
             waiting?.Report(true);
@@ -67,9 +67,6 @@ public static class MediaManagerService
             _operationGate.Release();
         }
     }
-
-    private static Task RunExclusiveAsync(Func<Task> fn, IProgress<bool>? waiting, CancellationToken cancellationToken)
-        => RunExclusiveAsync(async () => { await fn().ConfigureAwait(false); return true; }, waiting, cancellationToken);
 
     private static async Task ImportCoreAsync(CancellationToken cancellationToken)
     {
@@ -161,15 +158,14 @@ public static class MediaManagerService
     /// <param name="sourceFolders">Source folders to scan for both movies and TV shows.</param>
     /// <param name="moviesLibraryPath">Library folder for movies. Empty to skip movie processing.</param>
     /// <param name="tvShowsLibraryPath">Library folder for TV shows. Empty to skip TV show processing.</param>
-    /// <param name="progress">Optional progress sink; reports current and total item counts as each item is processed.</param>
-    /// <param name="waiting">Optional sink; reports <see langword="true"/> while the scan waits for the sync cycle's import to finish, then <see langword="false"/>.</param>
+    /// <param name="progress">Optional sinks; <see cref="MediaOperationProgress{T}.Items"/> reports current and total item counts as each item is processed.</param>
     /// <param name="cancellationToken">Token to cancel the scan; passed through to the wait, the library index build, the folder scans and their TMDB lookups.</param>
     public static Task<List<MediaProposal>?> ScanAsync(string apiKey, bool createFolders, string[] sourceFolders,
         string moviesLibraryPath, string tvShowsLibraryPath,
-        IProgress<(int Current, int Total)>? progress = null, IProgress<bool>? waiting = null, CancellationToken cancellationToken = default)
+        MediaOperationProgress<(int Current, int Total)>? progress = null, CancellationToken cancellationToken = default)
         => RunExclusiveAsync(
-            () => ScanCoreAsync(apiKey, createFolders, sourceFolders, moviesLibraryPath, tvShowsLibraryPath, progress, cancellationToken),
-            waiting, cancellationToken);
+            () => ScanCoreAsync(apiKey, createFolders, sourceFolders, moviesLibraryPath, tvShowsLibraryPath, progress?.Items, cancellationToken),
+            progress?.Waiting, cancellationToken);
 
     private static async Task<List<MediaProposal>?> ScanCoreAsync(string apiKey, bool createFolders, string[] sourceFolders,
         string moviesLibraryPath, string tvShowsLibraryPath,
@@ -300,15 +296,15 @@ public static class MediaManagerService
     /// </summary>
     /// <param name="proposals">The import proposals to apply. Each proposal's <see cref="MediaProposal.ProposedPath"/> is the library target.</param>
     /// <param name="importMode">Determines how files are transferred: hardlink, copy, or move.</param>
-    /// <param name="progress">Optional progress sink; reports current item count, total, and filename as each file is imported.</param>
-    /// <param name="waiting">Optional sink; reports <see langword="true"/> while the import waits for the sync cycle's import to finish, then <see langword="false"/>.</param>
+    /// <param name="progress">Optional sinks; <see cref="MediaOperationProgress{T}.Items"/> reports current item count, total, and filename as each file is imported.</param>
     /// <param name="cancellationToken">Token to cancel the wait or the operation between imports.</param>
-    public static Task ApplyProposalsAsync(IEnumerable<MediaProposal> proposals, ImportMode importMode,
-        IProgress<(int Current, int Total, string FileName)>? progress = null, IProgress<bool>? waiting = null, CancellationToken cancellationToken = default)
-        => RunExclusiveAsync(() => Task.Run(() => ApplyProposals(proposals, importMode, progress, cancellationToken), cancellationToken),
-            waiting, cancellationToken);
+    /// <returns>The number of files placed in the library.</returns>
+    public static Task<int> ApplyProposalsAsync(IEnumerable<MediaProposal> proposals, ImportMode importMode,
+        MediaOperationProgress<(int Current, int Total, string FileName)>? progress = null, CancellationToken cancellationToken = default)
+        => RunExclusiveAsync(() => Task.Run(() => ApplyProposals(proposals, importMode, progress?.Items, cancellationToken), cancellationToken),
+            progress?.Waiting, cancellationToken);
 
-    private static void ApplyProposals(IEnumerable<MediaProposal> proposals, ImportMode importMode,
+    private static int ApplyProposals(IEnumerable<MediaProposal> proposals, ImportMode importMode,
         IProgress<(int Current, int Total, string FileName)>? progress, CancellationToken cancellationToken)
     {
         var list = proposals as IList<MediaProposal> ?? proposals.ToList();
@@ -351,6 +347,7 @@ public static class MediaManagerService
         // The batch's end line, as the sync import and the scan have: without it a support log shows
         // the per-file lines but not where Import Now stopped or how many files made it.
         LogManager.Instance.LogMessage($"Import Now finished: {placed} of {TextFormat.Pluralize(total, "file")} placed in the library", LogLevel.Info, Subsystem.MediaManager);
+        return placed;
     }
 
     // Deletes subdirectories of rootFolder that are empty or contain only .nfo files.
@@ -782,3 +779,8 @@ public static class MediaManagerService
         string MoviesLibraryPath,
         string TvShowsLibraryPath);
 }
+
+/// <summary>Progress sinks for a Media Manager window operation. <see cref="Items"/> reports each processed
+/// item; <see cref="Waiting"/> reports <see langword="true"/> while the operation waits for the sync cycle's
+/// import to finish, then <see langword="false"/> once it starts.</summary>
+public sealed record MediaOperationProgress<T>(IProgress<T>? Items, IProgress<bool>? Waiting);

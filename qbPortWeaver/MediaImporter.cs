@@ -788,7 +788,7 @@ internal static partial class MediaImporter
             if (_libraryCache is null) return;
             stale = _libraryCache.Keys
                 .Where(k => !seenPaths.Contains(k)
-                         && rootPrefixes.Any(p => k.StartsWith(p, StringComparison.OrdinalIgnoreCase)))
+                         && Array.Exists(rootPrefixes, p => k.StartsWith(p, StringComparison.OrdinalIgnoreCase)))
                 .ToList();
             if (stale.Count == 0) return;
 

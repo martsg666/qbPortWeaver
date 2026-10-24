@@ -409,18 +409,21 @@ public sealed class NicotineClient : ManagedClientBase
 
         if (code == ErrorPortLocked)
         {
-            // Not a transient failure: the port cannot change until Nicotine+ is restarted
-            // without the option. Warn rather than Error, once per distinct message.
-            string warning = $"Cannot set the {ClientName} port{detail}";
-            if (_lastLockedWarning != warning)
-            {
-                _lastLockedWarning = warning;
-                LogManager.Instance.LogMessage(warning, LogLevel.Warn);
-            }
+            LogPortLocked(detail);
             return;
         }
 
         LogManager.Instance.LogMessage($"Failed to set {ClientName} port{detail}", LogLevel.Error);
+    }
+
+    // Not a transient failure: the port cannot change until Nicotine+ is restarted without the
+    // --port option. Warn rather than Error, once per distinct message.
+    private void LogPortLocked(string detail)
+    {
+        string warning = $"Cannot set the {ClientName} port{detail}";
+        if (_lastLockedWarning == warning) return;
+        _lastLockedWarning = warning;
+        LogManager.Instance.LogMessage(warning, LogLevel.Warn);
     }
 
     // The plugin saves the port and reports, rather than fails on, whatever it could not do on top:
@@ -453,7 +456,15 @@ public sealed class NicotineClient : ManagedClientBase
     private async Task LogHttpFailureAsync(HttpResponseMessage response, string path,
         LogLevel failureLevel, CancellationToken cancellationToken)
     {
-        string detail = await ReadErrorDetailAsync(response, cancellationToken).ConfigureAwait(false);
+        var (code, detail) = await ReadErrorDetailAsync(response, cancellationToken).ConfigureAwait(false);
+
+        // The plugin sends a --port lock as 409. The warn-once message is the designed report for
+        // it, so it must not also be logged as a generic HTTP failure on every sync.
+        if (code == ErrorPortLocked)
+        {
+            LogPortLocked(detail);
+            return;
+        }
 
         string message = response.StatusCode switch
         {
@@ -467,20 +478,20 @@ public sealed class NicotineClient : ManagedClientBase
         Log(message, failureLevel);
     }
 
-    private static async Task<string> ReadErrorDetailAsync(HttpResponseMessage response, CancellationToken cancellationToken)
+    private static async Task<(string Code, string Detail)> ReadErrorDetailAsync(HttpResponseMessage response, CancellationToken cancellationToken)
     {
         try
         {
             string json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
             using var doc = JsonDocument.Parse(json);
-            var (_, message) = ReadError(doc.RootElement);
-            return message.Length > 0 ? $": {message}" : string.Empty;
+            var (code, message) = ReadError(doc.RootElement);
+            return (code, message.Length > 0 ? $": {message}" : string.Empty);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
         catch (Exception)
         {
             // An error body is a nicety; its absence must not mask the status code.
-            return string.Empty;
+            return (string.Empty, string.Empty);
         }
     }
 

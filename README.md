@@ -331,7 +331,8 @@ Notes:
 
 - **Do not launch Nicotine+ with `--port`.** That option overrides the configured port for the life
   of the process and nothing can change it - not this plugin, not Nicotine+'s own preferences dialog.
-  qbPortWeaver reports it and stops trying.
+  qbPortWeaver logs the reason once and reports each sync as failed until Nicotine+ is restarted
+  without `--port`.
 - The plugin turns Nicotine+'s own **UPnP** off when it sets the port, so its port mapping cannot
   fight the externally managed one.
 - **Portable installations** work as long as the Executable path is set, which is how qbPortWeaver

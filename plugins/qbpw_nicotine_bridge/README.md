@@ -108,7 +108,8 @@ before any check has run. The two fail differently, so it is worth knowing which
 ## If Nicotine+ was started with `--port`
 
 That option overrides the configured port for the life of the process, and nothing can change it
-- not this plugin, not the Preferences dialog. qbPortWeaver will report it and stop trying.
+- not this plugin, not the Preferences dialog. qbPortWeaver logs the reason once
+and reports each sync as failed until Nicotine+ is restarted without it.
 Remove `--port` from the shortcut and restart Nicotine+.
 
 ## Security

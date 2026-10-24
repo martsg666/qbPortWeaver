@@ -487,7 +487,7 @@ internal static partial class MediaImporter
                 return false;
             }
 
-            PruneLibraryCache(seenPaths);
+            PruneLibraryCache(libraryPaths, seenPaths);
 
             sw.Stop();
             lock (_libraryLock) { _libraryFingerprints = fingerprints; }
@@ -765,18 +765,31 @@ internal static partial class MediaImporter
         return fp;
     }
 
-    // Removes library cache entries for files not present in the current directory walk.
+    // Removes library cache entries for files under the walked roots that the walk did not see.
+    // Entries outside those roots are kept: a Media Manager scan can use library folders other than
+    // the configured ones, and dropping the configured library's entries would make the next import
+    // fingerprint every library file again. The cost is that entries under a library folder the user
+    // stops using stay in the cache until Clear cache.
     // Caller holds _libraryBuildSemaphore so the cache won't be racing with another rebuild,
     // but ClearAllCaches can still null _libraryCache concurrently - treat that as a no-op.
     // Reading _libraryCache inside the lock matches the locking discipline used elsewhere
     // in this file (GetOrComputeLibraryFingerprint, IsFileReadyForImport).
-    private static void PruneLibraryCache(HashSet<string> seenPaths)
+    private static void PruneLibraryCache(string[] walkedRoots, HashSet<string> seenPaths)
     {
+        // GetFullPath matches the FileInfo.FullName keys; a drive root such as "D:\" already ends in a separator
+        var rootPrefixes = walkedRoots
+            .Select(Path.GetFullPath)
+            .Select(r => Path.EndsInDirectorySeparator(r) ? r : r + Path.DirectorySeparatorChar)
+            .ToArray();
+
         List<string> stale;
         lock (_libraryLock)
         {
             if (_libraryCache is null) return;
-            stale = _libraryCache.Keys.Where(k => !seenPaths.Contains(k)).ToList();
+            stale = _libraryCache.Keys
+                .Where(k => !seenPaths.Contains(k)
+                         && rootPrefixes.Any(p => k.StartsWith(p, StringComparison.OrdinalIgnoreCase)))
+                .ToList();
             if (stale.Count == 0) return;
 
             foreach (var key in stale)

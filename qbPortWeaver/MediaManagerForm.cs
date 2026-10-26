@@ -624,9 +624,12 @@ public partial class MediaManagerForm : Form
     // to keep that method under the cognitive-complexity gate.
     private static string ImportOutcomeStatus(MediaScanResult remaining, List<MediaProposal> toApply)
     {
-        // A source folder the re-scan could not read hides its files, which would otherwise count as imported.
-        if (remaining.UnreadableSourceFolders.Length > 0)
-            return $"Import finished, but {TextFormat.Pluralize(remaining.UnreadableSourceFolders.Length, "source folder")} could not be read to confirm it - see the log.";
+        // A source folder the re-scan could not read hides its files, which would otherwise count as
+        // imported. Only the folders that held a file sent to import matter: an offline folder the import
+        // never touched says nothing about this result, and must not hide the failure count below.
+        int unconfirmed = remaining.UnreadableSourceFolders.Count(folder => toApply.Any(t => IsUnderFolder(t.OriginalPath, folder)));
+        if (unconfirmed > 0)
+            return $"Import finished, but {TextFormat.Pluralize(unconfirmed, "source folder")} could not be read to confirm it - see the log.";
 
         // Only the files sent to import count as failures: a row the user left unchecked is still in
         // the re-scan, but nothing was attempted for it.
@@ -635,6 +638,12 @@ public partial class MediaManagerForm : Form
         return failed == 0
             ? "Done - all selected files imported."
             : $"Done - {TextFormat.Pluralize(failed, "file")} could not be imported. See the log for details.";
+    }
+
+    private static bool IsUnderFolder(string path, string folder)
+    {
+        string root = Path.EndsInDirectorySeparator(folder) ? folder : folder + Path.DirectorySeparatorChar;
+        return path.StartsWith(root, StringComparison.OrdinalIgnoreCase);
     }
 
     // Builds updated proposals from the grid, honouring any edits the user made to the Proposed column.

@@ -488,7 +488,11 @@ public static class MediaManagerService
         }
 
         var libraryTask = MediaImporter.BuildLibraryIndexAsync(moviesLibraryPath, tvShowsLibraryPath, allowReuse: allowLibraryReuse, cancellationToken);
-        var enumerated = await EnumerateSourceFoldersAsync(validFolders, cancellationToken).ConfigureAwait(false);
+        var enumeration = await EnumerateSourceFoldersAsync(validFolders, cancellationToken).ConfigureAwait(false);
+        // A folder that exists but could not be listed (the share dropped after the check above) is
+        // as unread as one that is missing, and must not reach the window as "All files already imported".
+        unreadableFolders.AddRange(enumeration.Where(e => e.Failed).Select(e => e.Folder));
+        var enumerated = enumeration.Select(e => (e.Folder, e.Candidates)).ToList();
         bool libraryReady = await libraryTask.ConfigureAwait(false);
         if (!libraryReady)
             return null;
@@ -502,7 +506,7 @@ public static class MediaManagerService
     // Phase 1: enumerates each source folder and returns a candidate FileInfo list.
     // Uses directory metadata (Length, LastWriteTimeUtc) populated by EnumerateFiles - no extra stat per file.
     // Safe to run concurrently with BuildLibraryIndex since it does not call IsAlreadyInLibrary.
-    private static async Task<List<(string Folder, List<FileInfo> Candidates)>> EnumerateSourceFoldersAsync(
+    private static async Task<List<(string Folder, List<FileInfo> Candidates, bool Failed)>> EnumerateSourceFoldersAsync(
         List<string> validFolders, CancellationToken cancellationToken)
     {
         LogManager.Instance.LogMessage($"Enumerating source files across {TextFormat.Pluralize(validFolders.Count, "folder")}", LogLevel.Info, Subsystem.MediaManager);
@@ -512,12 +516,12 @@ public static class MediaManagerService
                 LogManager.Instance.LogMessage($"Enumerating source folder: '{f}'", LogLevel.Info, Subsystem.MediaManager);
                 try
                 {
-                    return (Folder: f, Candidates: EnumerateSourceFolder(f));
+                    return (Folder: f, Candidates: EnumerateSourceFolder(f), Failed: false);
                 }
                 catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
                 {
                     LogManager.Instance.LogMessage($"Skipped source folder '{f}': {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
-                    return (Folder: f, Candidates: []);
+                    return (Folder: f, Candidates: new List<FileInfo>(), Failed: true);
                 }
             }, cancellationToken)
         )).ConfigureAwait(false)).ToList();

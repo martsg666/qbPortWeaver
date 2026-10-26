@@ -83,8 +83,8 @@ internal static class NicotinePluginDiscovery
     /// Resolves Nicotine+'s data folder, or <see langword="null"/> if it cannot be found.
     /// <para>Checks for a portable layout beside the executable before the roaming default,
     /// matching the order Nicotine+ itself uses. A data folder chosen with Nicotine+'s
-    /// <c>-c</c>/<c>--user-data</c> options cannot be discovered from outside the process;
-    /// those users enter the address and token manually.</para>
+    /// <c>-c</c>/<c>--user-data</c> options cannot be discovered from outside the process; the
+    /// connection file in qbPortWeaver's own folder still covers those users.</para>
     /// </summary>
     internal static string? ResolveDataFolder(string? exePathHint)
     {

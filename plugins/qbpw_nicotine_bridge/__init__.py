@@ -250,7 +250,8 @@ class Plugin(BasePlugin):
         """Return the access token, generating and saving one on first run.
 
         Persisted rather than regenerated per launch so the connection details a user enters by
-        hand - the only option when Nicotine+ runs with a custom data folder - stay valid.
+        hand - the only option when the connection file cannot be found automatically (another
+        Windows account, or an overridden path) - stay valid.
         """
         token = (self.settings.get("token") or "").strip()
         if not token:
@@ -283,8 +284,8 @@ class Plugin(BasePlugin):
 
         written = handshake.write(self._handshake_paths, payload, self.log)
         if not written:
-            self.log("Could not write the connection file anywhere. Enter the address and token "
-                     "into qbPortWeaver by hand: see /qbpw-connection-file.")
+            self.log("Could not write the connection file anywhere. Enter the address shown by "
+                     "/qbpw-status and this plugin's access token into qbPortWeaver by hand.")
         self._handshake_paths = written
 
     @staticmethod

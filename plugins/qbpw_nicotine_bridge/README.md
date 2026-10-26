@@ -32,10 +32,10 @@ On start, the plugin writes a small file with its address and access token:
 - `%LOCALAPPDATA%\qbPortWeaver\nicotine-bridge.json` - the one qbPortWeaver reads
 - `<Nicotine+ data folder>\qbportweaver-bridge.json` - a copy you can find easily
 
-qbPortWeaver picks these up on its own, so there is normally nothing to configure. If you run
-Nicotine+ with a custom data folder (`-c` or `--user-data`), qbPortWeaver cannot work out where
-to look - run `/qbpw-connection-file` in a Nicotine+ private chat and enter the address and
-token into qbPortWeaver's settings by hand. Both are stable across restarts.
+qbPortWeaver picks these up on its own, so there is normally nothing to configure. If Nicotine+
+runs under another Windows account, or the plugin's connection file setting points elsewhere, run
+`/qbpw-connection-file` in a Nicotine+ private chat, open the file it lists, and copy its `url`
+and `token` into qbPortWeaver's settings. Both are stable across restarts.
 
 The file carries a `schema` number describing its layout. qbPortWeaver checks it before reading
 anything else and ignores a file whose schema is newer than the version it understands, rather

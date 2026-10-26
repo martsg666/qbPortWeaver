@@ -34,7 +34,7 @@ public partial class WhatsNewForm : Form
         "mistaken for ProtonVPN. A Windows service that shares its process with others is never " +
         "force-stopped, and a recovery that worked no longer shows the warning badge.\n\n" +
         "Fixed: multi-part movies and subtitles in the Media Manager\n" +
-        "Movies split into several files, named only by part (cd1, cd2) or each carrying the title, " +
+        "Movies split into several files, named only by part (cd1, Part.1, CD_2) or each carrying the title, " +
         "are now recognised, keep their part numbers on Re-match and import into one folder. Import " +
         "Now brings subtitles along, and only for videos it placed.\n\n" +
         "Fixed: Media Manager status messages\n" +

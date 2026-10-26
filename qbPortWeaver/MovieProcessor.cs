@@ -81,7 +81,7 @@ public sealed class MovieProcessor(TmdbClient tmdb, bool dryRun, bool createFold
     // "cd1" and so on; it belongs to the folder-name lookup instead, which keeps the part suffix. Only
     // when the parsed title IS the part token and there is no year, so "Title Part 2" and "Title 2"
     // stay ordinary titles. Uses the same ExtractPartSuffix the folder path names the parts with, so
-    // a name it cannot number (e.g. "CD-1") stays where it is today rather than collide there.
+    // a name it cannot number stays where it is rather than collide there.
     private static bool IsBarePartName(string fileName, string title, int? year)
     {
         if (year is not null) return false;
@@ -366,7 +366,8 @@ public sealed class MovieProcessor(TmdbClient tmdb, bool dryRun, bool createFold
             // Ensure the match is at a word boundary, not embedded in a longer word
             if (idx > 0 && char.IsLetterOrDigit(name[idx - 1])) continue;
 
-            var after = name[(idx + pattern.Length)..].Trim();
+            // The number may follow a separator as well as a space: "Part.1", "CD_1", "Disc-2"
+            var after = name[(idx + pattern.Length)..].TrimStart(' ', '.', '_', '-');
             int numEnd = after.TakeWhile(char.IsDigit).Count();
             if (numEnd > 0)
                 return $"{pattern}{after[..numEnd]}";

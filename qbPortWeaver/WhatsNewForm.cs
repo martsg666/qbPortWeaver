@@ -17,7 +17,7 @@ public partial class WhatsNewForm : Form
         "Changed: clearer status when something needs fixing\n" +
         "A missing setting, or a default port that could not be applied, now shows the tray red with " +
         "the reason instead of orange \"VPN not connected\". Hover over Last sync in the Status panel " +
-        "to see the same reason, and click a warning notification to open the log at that warning.\n\n" +
+        "to see the same reason, and click a warning notification to open the log at the latest warning.\n\n" +
         "Changed: stricter NAT-PMP checks and better advice\n" +
         "The network interface check now needs the exact adapter, so a client bound to \"Ethernet\" " +
         "no longer passes for a VPN on \"Ethernet 2\". Diagnostics gives advice that fits the adapter " +

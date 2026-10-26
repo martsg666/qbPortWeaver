@@ -88,13 +88,15 @@ internal static class AutoRecoveryManager
         // is logged as a Warn, so the outcome counts Warns as well as Errors: a cycle that left the adapter
         // disabled must not end with a "completed" line. The restart path differs - it verifies the service
         // state at the end and reports a failure as an Error.
-        int problems = cycleResult.WarnCount + cycleResult.ErrorCount;
+        // No count and no advice in the Warn: one failed netsh call logs two helper Warns, and the
+        // helper's own lines just above it already say which step failed.
+        bool anyProblem = cycleResult.WarnCount + cycleResult.ErrorCount > 0;
         if (!cycleResult.Completed)
             LogManager.Instance.LogMessage($"Adapter cycle did not complete for '{adapterName}'", LogLevel.Warn);
-        else if (problems == 0)
+        else if (!anyProblem)
             LogManager.Instance.LogMessage($"Adapter cycle completed for '{adapterName}'", LogLevel.Info);
         else
-            LogManager.Instance.LogMessage($"Adapter cycle for '{adapterName}' reported {TextFormat.Pluralize(problems, "problem")} - see helper log entries and check that the adapter is enabled", LogLevel.Warn);
+            LogManager.Instance.LogMessage($"Adapter cycle for '{adapterName}' did not finish cleanly - see the helper log entries above", LogLevel.Warn);
     }
 
     // Kills all instances of the named client process (capturing the exe path first),

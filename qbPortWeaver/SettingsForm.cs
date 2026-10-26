@@ -740,7 +740,7 @@ public partial class SettingsForm : Form
         if (usesAdapter && provider != _adapterListProvider)
         {
             // The combo holds the other provider's list, or none yet: fetch this one's.
-            StartAdapterDiscovery();
+            StartAdapterDiscovery(keepOnScreenChoice: false);
         }
         else
         {
@@ -756,13 +756,16 @@ public partial class SettingsForm : Form
         nudStaticPort.Enabled = isStaticPort;
     }
 
-    private void btnRefreshAdapters_Click(object? sender, EventArgs e) => StartAdapterDiscovery();
+    private void btnRefreshAdapters_Click(object? sender, EventArgs e) => StartAdapterDiscovery(keepOnScreenChoice: true);
 
-    // Replaces the adapter list with a fresh one for the selected provider, keeping the adapter the
-    // user has chosen on screen, or the saved one when the combo holds no real choice.
-    private void StartAdapterDiscovery()
+    // Replaces the adapter list with a fresh one for the selected provider, keeping the saved adapter.
+    // A refresh also keeps the adapter chosen on screen. A provider switch does not: NAT-PMP selects
+    // its first answering adapter on its own when nothing is saved, often the LAN adapter, and carrying
+    // that into Static port would skip the "Select the VPN adapter" placeholder that requireChoice
+    // puts there to keep the LAN adapter from being saved as the VPN adapter.
+    private void StartAdapterDiscovery(bool keepOnScreenChoice)
     {
-        string current = SelectedAdapterName
+        string current = (keepOnScreenChoice ? SelectedAdapterName : null)
             ?? RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionGeneral, RegistrySettingsManager.KeyVpnAdapterName);
 
         _adapterListProvider = SelectedVpnProvider;

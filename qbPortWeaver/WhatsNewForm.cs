@@ -39,7 +39,7 @@ public partial class WhatsNewForm : Form
         "are now recognised, keep their part numbers on Re-match and import into one folder. Import " +
         "Now brings subtitles along, and only for videos it placed.\n\n" +
         "Fixed: Media Manager status messages\n" +
-        "An unreachable library is reported instead of \"All files already imported\", a slow TMDB " +
+        "An unreachable library or source folder is reported instead of \"All files already imported\", a slow TMDB " +
         "answer no longer stops Re-match, the Import Now result stays on screen, and errors are " +
         "written to the log.\n\n" +
         "Fixed: Media Manager scans with other library folders\n" +

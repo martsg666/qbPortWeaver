@@ -479,12 +479,24 @@ public partial class MediaManagerForm : Form
     private async Task<string?> RunScanAsync(string apiKey, string[] sourceFolders, string moviesLibraryPath,
         string tvShowsLibraryPath, CancellationToken cancellationToken)
     {
-        var proposals = await MediaManagerService.ScanAsync(apiKey, chkCreateFolders.Checked, sourceFolders,
+        var result = await MediaManagerService.ScanAsync(apiKey, chkCreateFolders.Checked, sourceFolders,
             moviesLibraryPath, tvShowsLibraryPath, new(CreateScanProgress("Scanning…"), CreateWaitProgress("Scanning…")), cancellationToken);
-        if (proposals is null) return LibraryUnavailableStatus;
+        if (result is null) return LibraryUnavailableStatus;
 
-        PopulateGrid(proposals);
-        return null;
+        PopulateGrid(result.Proposals);
+        return UnreadableSourcesStatus(result, sourceFolders.Length);
+    }
+
+    // The grid summary alone would read "All files already imported." for a source folder that could not
+    // be read at all. Null when every source folder was read, so the summary stays as it is.
+    private static string? UnreadableSourcesStatus(MediaScanResult result, int sourceFolderCount)
+    {
+        int unreadable = result.UnreadableSourceFolders.Length;
+        if (unreadable == 0) return null;
+        // Kept short rather than appended to the grid summary, which can already fill the label.
+        return unreadable >= sourceFolderCount
+            ? "No source folder could be read, so nothing was scanned. See the log for details."
+            : $"{TextFormat.Pluralize(unreadable, "source folder")} could not be read; the others were scanned. See the log for details.";
     }
 
     // Import Now - applies proposals from the grid, respecting any user edits to the Proposed column
@@ -604,12 +616,16 @@ public partial class MediaManagerForm : Form
             return "Import finished, but the library could not be read to confirm it - see the log for each file.";
         }
 
-        PopulateGrid(remaining);
+        PopulateGrid(remaining.Proposals);
+
+        // A source folder the re-scan could not read hides its files, which would otherwise count as imported.
+        if (remaining.UnreadableSourceFolders.Length > 0)
+            return $"Import finished, but {TextFormat.Pluralize(remaining.UnreadableSourceFolders.Length, "source folder")} could not be read to confirm it - see the log.";
 
         // Only the files sent to import count as failures: a row the user left unchecked is still in
         // the re-scan, but nothing was attempted for it.
         var applied = new HashSet<string>(toApply.Select(t => t.OriginalPath), StringComparer.OrdinalIgnoreCase);
-        int failed = remaining.Count(r => applied.Contains(r.OriginalPath));
+        int failed = remaining.Proposals.Count(r => applied.Contains(r.OriginalPath));
         return failed == 0
             ? "Done - all selected files imported."
             : $"Done - {TextFormat.Pluralize(failed, "file")} could not be imported. See the log for details.";

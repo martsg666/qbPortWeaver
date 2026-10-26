@@ -126,7 +126,7 @@ public static class MediaManagerService
             LogManager.Instance.LogMessage("Import skipped this cycle - library index unavailable", LogLevel.Info, Subsystem.MediaManager);
             return;
         }
-        var (tmdb, classified, total) = prep.Value;
+        var (tmdb, classified, total, _) = prep.Value;
 
         var ctx = new ImportContext(tmdb, dryRun, createFolders, importMode, moviesLibraryPath, tvShowsLibraryPath);
 
@@ -151,7 +151,8 @@ public static class MediaManagerService
     /// Returns import proposals for all configured source folders without modifying any files.
     /// Only processors whose library path is configured will produce proposals.
     /// Returns <see langword="null"/> when the library index could not be built (a library folder is
-    /// unreachable), so the caller can say so instead of reading an empty list as "all imported".
+    /// unreachable), so the caller can say so instead of reading an empty list as "all imported". The
+    /// result also names the source folders that could not be read, for the same reason.
     /// Throws <see cref="OperationCanceledException"/> if <paramref name="cancellationToken"/> is cancelled.
     /// </summary>
     /// <param name="apiKey">TMDB API key used to look up movie and TV show metadata.</param>
@@ -161,14 +162,14 @@ public static class MediaManagerService
     /// <param name="tvShowsLibraryPath">Library folder for TV shows. Empty to skip TV show processing.</param>
     /// <param name="progress">Optional sinks; <see cref="MediaOperationProgress{T}.Items"/> reports current and total item counts as each item is processed.</param>
     /// <param name="cancellationToken">Token to cancel the scan; passed through to the wait, the library index build, the folder scans and their TMDB lookups.</param>
-    public static Task<List<MediaProposal>?> ScanAsync(string apiKey, bool createFolders, string[] sourceFolders,
+    public static Task<MediaScanResult?> ScanAsync(string apiKey, bool createFolders, string[] sourceFolders,
         string moviesLibraryPath, string tvShowsLibraryPath,
         MediaOperationProgress<(int Current, int Total)>? progress = null, CancellationToken cancellationToken = default)
         => RunExclusiveAsync(
             () => ScanCoreAsync(apiKey, createFolders, sourceFolders, moviesLibraryPath, tvShowsLibraryPath, progress?.Items, cancellationToken),
             progress?.Waiting, cancellationToken);
 
-    private static async Task<List<MediaProposal>?> ScanCoreAsync(string apiKey, bool createFolders, string[] sourceFolders,
+    private static async Task<MediaScanResult?> ScanCoreAsync(string apiKey, bool createFolders, string[] sourceFolders,
         string moviesLibraryPath, string tvShowsLibraryPath,
         IProgress<(int Current, int Total)>? progress, CancellationToken cancellationToken)
     {
@@ -183,7 +184,7 @@ public static class MediaManagerService
             LogManager.Instance.LogMessage("Scan aborted - library index unavailable", LogLevel.Warn, Subsystem.MediaManager);
             return null;
         }
-        var (tmdb, classified, total) = prep.Value;
+        var (tmdb, classified, total, unreadableSources) = prep.Value;
 
         int current = 0;
         void OnItemProcessed()
@@ -205,7 +206,11 @@ public static class MediaManagerService
         MediaImporter.SaveLibraryCache();
         scanSw.Stop();
         LogManager.Instance.LogMessage($"Scan completed: {TextFormat.Pluralize(proposals.Count, "proposal")} in {scanSw.ElapsedMilliseconds}ms", LogLevel.Info, Subsystem.MediaManager);
-        return proposals;
+        // Logged on every scan, unlike the per-folder warning, which appears once while a folder stays
+        // offline: the window points the user at the log, so the log has to say it each time.
+        if (unreadableSources.Length > 0)
+            LogManager.Instance.LogMessage($"Scan could not read {TextFormat.Pluralize(unreadableSources.Length, "source folder")}: {string.Join(", ", unreadableSources.Select(f => $"'{f}'"))}", LogLevel.Info, Subsystem.MediaManager);
+        return new MediaScanResult(proposals, unreadableSources);
     }
 
     // Scans a single source folder, returning proposals for both movies and TV shows.
@@ -449,7 +454,7 @@ public static class MediaManagerService
     // Returns null when the library index could not be built (or was incomplete) so the caller can
     // skip the cycle - acting on a partial index would falsely report library files as missing and
     // risk creating duplicate imports.
-    private static async Task<(TmdbClient Tmdb, List<(string Folder, (string[] MovieFiles, string[] TvShowFiles, FolderClassifiedEpisode[] FolderTvFiles) Items)> Classified, int Total)?>
+    private static async Task<(TmdbClient Tmdb, List<(string Folder, (string[] MovieFiles, string[] TvShowFiles, FolderClassifiedEpisode[] FolderTvFiles) Items)> Classified, int Total, string[] UnreadableSources)?>
         PrepareClassifiedSourcesAsync(
             string apiKey, string[] sourceFolders, string moviesLibraryPath, string tvShowsLibraryPath,
             bool allowLibraryReuse, CancellationToken cancellationToken)
@@ -466,10 +471,12 @@ public static class MediaManagerService
         var tmdb = new TmdbClient(apiKey);
 
         var validFolders = new List<string>();
+        var unreadableFolders = new List<string>();
         foreach (var f in sourceFolders)
         {
             if (!MediaImporter.DirectoryExistsWithSmbRetry(f))
             {
+                unreadableFolders.Add(f);
                 // Keyed per folder: an offline share stays offline for hours, and one warning per
                 // folder per import cycle would bury everything else and pin the tray badge.
                 LogManager.Instance.LogStateChange($"{SourceFolderStateKeyPrefix}{f}",
@@ -489,7 +496,7 @@ public static class MediaManagerService
         var classified = await ClassifySourceFoldersAsync(enumerated, cancellationToken).ConfigureAwait(false);
         int total = classified.Sum(c => c.Items.MovieFiles.Length + c.Items.TvShowFiles.Length + c.Items.FolderTvFiles.Length);
 
-        return (tmdb, classified, total);
+        return (tmdb, classified, total, [.. unreadableFolders]);
     }
 
     // Phase 1: enumerates each source folder and returns a candidate FileInfo list.
@@ -793,3 +800,7 @@ public static class MediaManagerService
 /// item; <see cref="Waiting"/> reports <see langword="true"/> while the operation waits for the sync cycle's
 /// import to finish, then <see langword="false"/> once it starts.</summary>
 public sealed record MediaOperationProgress<T>(IProgress<T>? Items, IProgress<bool>? Waiting);
+
+/// <summary>The outcome of a Media Manager scan: the proposals, and the source folders that could not be
+/// read, so an empty <see cref="Proposals"/> is not mistaken for "all files already imported".</summary>
+public sealed record MediaScanResult(List<MediaProposal> Proposals, string[] UnreadableSourceFolders);

@@ -337,7 +337,7 @@ Notes:
   fight the externally managed one.
 - **Portable installations** work as long as the Executable path is set, which is how qbPortWeaver
   finds the `portable\data` folder beside it.
-- If Nicotine+ runs under another Windows account, or the plugin's connection file setting points
+- If a non-portable Nicotine+ runs under another Windows account, or the plugin's connection file setting points
   elsewhere, run `/qbpw-connection-file` in a Nicotine+ private chat, open the file it lists, and
   copy its `url` and `token` into qbPortWeaver's settings - both are stable across restarts.
 - **Enable your VPN client's killswitch.** Nicotine+ can bind to a named adapter, and qbPortWeaver

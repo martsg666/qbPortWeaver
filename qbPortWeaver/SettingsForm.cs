@@ -908,7 +908,7 @@ public partial class SettingsForm : Form
             var status = NicotinePluginInstaller.GetStatus(txtNicotineExePath.Text.Trim());
             ThemedMessageBox.Info(
                 "No connection details were found.\n\n" + DescribeNextStep(status) +
-                "\n\nIf Nicotine+ runs under another Windows account, or the plugin's connection file " +
+                "\n\nIf a non-portable Nicotine+ runs under another Windows account, or the plugin's connection file " +
                 "setting points elsewhere, run /qbpw-connection-file in a Nicotine+ private chat, open " +
                 "the file it lists and copy its url and token here.");
             RefreshNicotinePluginStatus();

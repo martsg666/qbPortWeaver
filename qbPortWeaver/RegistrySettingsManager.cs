@@ -254,8 +254,8 @@ public static class RegistrySettingsManager
             [SectionNicotine] = new(StringComparer.OrdinalIgnoreCase)
             {
                 // The URL and token are normally discovered from the bridge plugin's connection
-                // file; these defaults only matter when that file cannot be found (Nicotine+ under
-                // another Windows account, or an overridden file path) and the user fills them in by hand.
+                // file; these defaults only matter when that file cannot be found (a non-portable Nicotine+
+                // under another Windows account, or an overridden file path) and the user fills them in by hand.
                 [KeyNicotineUrl] = "http://127.0.0.1:38472",
                 [KeyNicotinePassword] = "",
                 [KeyNicotineExePath] = @"C:\Program Files\Nicotine+\Nicotine+.exe",

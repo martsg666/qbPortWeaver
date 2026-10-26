@@ -250,8 +250,8 @@ class Plugin(BasePlugin):
         """Return the access token, generating and saving one on first run.
 
         Persisted rather than regenerated per launch so the connection details a user enters by
-        hand - the only option when the connection file cannot be found automatically (another
-        Windows account, or an overridden path) - stay valid.
+        hand - the only option when the connection file cannot be found automatically (a non-portable
+        Nicotine+ under another Windows account, or an overridden path) - stay valid.
         """
         token = (self.settings.get("token") or "").strip()
         if not token:

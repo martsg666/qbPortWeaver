@@ -25,6 +25,9 @@ public partial class WhatsNewForm : Form
         "Changed: Nicotine+ says when a new port is not live yet\n" +
         "The log now says when Nicotine+ saved the port but could not switch over straight away, or " +
         "may have left an old router mapping in place.\n\n" +
+        "Changed: latest .NET security update included\n" +
+        "qbPortWeaver now ships with the October 2026 .NET update, which fixes a flaw in its " +
+        "decompression code. qbPortWeaver never used that code, but you get the fix anyway.\n\n" +
         "Fixed: auto-recovery\n" +
         "A recovery that could not relaunch the VPN client app, or an adapter cycle that failed, is no " +
         "longer logged as completed. A NAT-PMP adapter with a short name such as \"VPN\" is no longer " +

@@ -26,8 +26,9 @@ internal static class VpnProviderRegistry
     /// provider's configured adapter name(s), or <see langword="null"/> otherwise. Matches against the
     /// provider's registry-driven adapter name(s) via <see cref="VpnRegistryConfig.IsLiveAdapterOfThisProvider"/> -
     /// for ProtonVPN that includes both its primary name and its in-house "ProTUN" name - rather than
-    /// the bare keyword, so a ProTUN adapter is still recognised as ProtonVPN. Recovery uses this to
-    /// decide whether to restart the provider's service (match) or cycle the adapter (no match).
+    /// the bare keyword, so a ProTUN adapter is still recognised as ProtonVPN. Recovery uses this, plus
+    /// a check that the provider's service is installed, to decide whether to restart that service or
+    /// cycle the adapter (<see cref="VpnAdapter.GetRecoveryAction"/>).
     /// </summary>
     internal static string? FindProviderToken(string adapterName) =>
         KnownProviders.FirstOrDefault(p => p.Config.IsLiveAdapterOfThisProvider(adapterName))?.Keyword;

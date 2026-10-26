@@ -75,17 +75,27 @@ internal static class VpnAdapter
 
     /// <summary>
     /// The recovery target for an adapter: the provider token when the adapter belongs to a known
-    /// provider (so its service is restarted), otherwise the adapter name itself (so it is cycled).
+    /// provider whose service is installed (so that service is restarted), otherwise the adapter name
+    /// itself (so it is cycled).
     /// </summary>
     internal static string GetRecoveryTarget(string adapterName) =>
-        VpnProviderRegistry.FindProviderToken(adapterName) ?? adapterName;
+        FindRestartableProviderToken(adapterName) ?? adapterName;
 
     /// <summary>
-    /// The recovery action matching <see cref="GetRecoveryTarget"/>: a service restart for a known
-    /// provider's adapter, an adapter cycle for any other.
+    /// The recovery action matching <see cref="GetRecoveryTarget"/>: a service restart for an installed
+    /// known provider's adapter, an adapter cycle for any other.
     /// </summary>
     internal static string GetRecoveryAction(string adapterName) =>
-        VpnProviderRegistry.FindProviderToken(adapterName) is not null
+        FindRestartableProviderToken(adapterName) is not null
             ? HelperProtocol.ActionRestart
             : HelperProtocol.ActionCycleAdapter;
+
+    // The adapter name alone is not enough: a provider's WireGuard config run in WireGuard's own app is
+    // often named after the provider ("ProtonVPN-NL-12") with that provider's app not installed, and a
+    // restart of a service that does not exist skips recovery every time, while cycling the adapter works.
+    private static string? FindRestartableProviderToken(string adapterName) =>
+        VpnProviderRegistry.FindProviderToken(adapterName) is { } token &&
+        VpnProviderRegistry.FindByKeyword(token)?.Config.FindServiceName() is not null
+            ? token
+            : null;
 }

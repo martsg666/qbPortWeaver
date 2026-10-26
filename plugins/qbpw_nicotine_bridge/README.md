@@ -107,14 +107,14 @@ before any check has run. The two fail differently, so it is worth knowing which
 
 ## If Nicotine+ was started with `--port`
 
-That option overrides the configured port for the life of the process, and nothing can change it
-- not this plugin, not the Preferences dialog. qbPortWeaver logs the reason once
+That option overrides the configured port for the life of the process, and nothing can change it:
+not this plugin, not the Preferences dialog. qbPortWeaver logs the reason once
 and reports each sync as failed until Nicotine+ is restarted without it.
 Remove `--port` from the shortcut and restart Nicotine+.
 
 ## Security
 
-The API listens on loopback only and requires a bearer token.
+The API listens on loopback by default (see the Address setting) and requires a bearer token.
 
 Be aware that on Windows, loopback is not scoped per user: any process on the machine can reach
 the socket, which is why the token exists. The token is protected by the containing folder's

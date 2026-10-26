@@ -457,8 +457,10 @@ internal static partial class AutoRecovery
             }
             catch (System.ServiceProcess.TimeoutException)
             {
+                // Not a failure yet: the verification after this method gives the verdict, as for the
+                // start timeout below, and a throw would skip it and report Error for a service that
+                // may be Running a moment later.
                 logger.LogMessage($"Service '{serviceName}' stuck in StartPending after {ServiceOperationTimeoutMs}ms", LogLevel.Warn);
-                throw;
             }
             return;
         }
@@ -495,8 +497,10 @@ internal static partial class AutoRecovery
             }
             catch (System.ServiceProcess.TimeoutException)
             {
+                // Not a failure yet: the verification after this method gives the verdict, as for the
+                // start timeout below, and a throw would skip it and report Error for a service that
+                // may be Running a moment later.
                 logger.LogMessage($"Service '{serviceName}' stuck in StartPending after {ServiceOperationTimeoutMs}ms", LogLevel.Warn);
-                throw;
             }
             return;
         }

@@ -1013,13 +1013,13 @@ public partial class MediaManagerForm : Form
             lblScanStatus.Text = $"{verb} {p.Current}/{p.Total}";
         });
 
-    // Says why a Scan Now or Import Now is not moving while it waits for the sync cycle's import,
+    // Says why a Scan Now or Import Now is not moving while it waits for a running import,
     // then puts the operation's own status back once it can start.
     private Progress<bool> CreateWaitProgress(string resumeStatus)
         => new Progress<bool>(waiting =>
         {
             if (IsDisposed) return;
-            lblScanStatus.Text = waiting ? "Waiting for the sync cycle's import to finish…" : resumeStatus;
+            lblScanStatus.Text = waiting ? "Waiting for a running import to finish…" : resumeStatus;
         });
 
     private void BeginProgress()

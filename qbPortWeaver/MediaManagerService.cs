@@ -46,13 +46,14 @@ public static class MediaManagerService
     }
 
     // Runs fn once the gate is free. Only the Media Manager window comes here, and it runs one
-    // operation at a time, so a held gate means the sync-cycle import: waiting reports true, then
-    // false once the gate is taken, so the window can say why it is not progressing.
+    // operation at a time, so a held gate is an import: normally the sync cycle's, or an Import Now
+    // from a window closed mid-copy, since a file copy in progress cannot be cancelled. Waiting
+    // reports true, then false once the gate is taken, so the window can say why it is not progressing.
     private static async Task<T> RunExclusiveAsync<T>(Func<Task<T>> fn, IProgress<bool>? waiting, CancellationToken cancellationToken)
     {
         if (!_operationGate.Wait(0, cancellationToken))
         {
-            LogManager.Instance.LogMessage("Waiting for the sync cycle's import to finish", LogLevel.Info, Subsystem.MediaManager);
+            LogManager.Instance.LogMessage("Waiting for a running import to finish", LogLevel.Info, Subsystem.MediaManager);
             waiting?.Report(true);
             await _operationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
             waiting?.Report(false);
@@ -748,7 +749,7 @@ public static class MediaManagerService
     /// Waits for a running sync-cycle import first: clearing the library index under it would make every source file look new to it.
     /// Throws <see cref="OperationCanceledException"/> if <paramref name="cancellationToken"/> is cancelled during the wait.
     /// </summary>
-    /// <param name="waiting">Optional sink; reports <see langword="true"/> while the clear waits for the sync cycle's import to finish, then <see langword="false"/>.</param>
+    /// <param name="waiting">Optional sink; reports <see langword="true"/> while the clear waits for a running import to finish, then <see langword="false"/>.</param>
     /// <param name="cancellationToken">Token to cancel the wait.</param>
     public static Task ClearAllCachesAsync(IProgress<bool>? waiting = null, CancellationToken cancellationToken = default)
         => RunExclusiveAsync(() =>

@@ -617,7 +617,13 @@ public partial class MediaManagerForm : Form
         }
 
         PopulateGrid(remaining.Proposals);
+        return ImportOutcomeStatus(remaining, toApply);
+    }
 
+    // The Import Now result once the re-scan has read the library. Split out of RunImportAndRescanAsync
+    // to keep that method under the cognitive-complexity gate.
+    private static string ImportOutcomeStatus(MediaScanResult remaining, List<MediaProposal> toApply)
+    {
         // A source folder the re-scan could not read hides its files, which would otherwise count as imported.
         if (remaining.UnreadableSourceFolders.Length > 0)
             return $"Import finished, but {TextFormat.Pluralize(remaining.UnreadableSourceFolders.Length, "source folder")} could not be read to confirm it - see the log.";

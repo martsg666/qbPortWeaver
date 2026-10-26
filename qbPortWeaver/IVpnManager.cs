@@ -59,7 +59,7 @@ public interface IVpnManager
     /// <c>TriggerCycleAdapterAsync</c>, or <see langword="null"/> if recovery is not supported.
     /// For ProtonVPN and PIA this is the provider token (e.g. "ProtonVPN", "PIA").
     /// For NAT-PMP and Static port this is the provider token when the adapter belongs to a known
-    /// provider, or the adapter name when it does not (e.g. a standalone NAT-PMP gateway).
+    /// provider whose service is installed, or the adapter name otherwise (e.g. a standalone NAT-PMP gateway).
     /// </summary>
     string? GetRecoveryTarget();
 
@@ -67,7 +67,7 @@ public interface IVpnManager
     /// Returns the auto-recovery action to request from the helper service.
     /// For ProtonVPN and PIA this is always <see cref="qbPortWeaver.Shared.HelperProtocol.ActionRestart"/>.
     /// For NAT-PMP and Static port this is <see cref="qbPortWeaver.Shared.HelperProtocol.ActionRestart"/> when the adapter belongs
-    /// to a known provider, or <see cref="qbPortWeaver.Shared.HelperProtocol.ActionCycleAdapter"/> otherwise.
+    /// to a known provider whose service is installed, or <see cref="qbPortWeaver.Shared.HelperProtocol.ActionCycleAdapter"/> otherwise.
     /// </summary>
     string GetRecoveryAction();
 

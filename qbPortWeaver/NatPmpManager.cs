@@ -170,7 +170,7 @@ public sealed class NatPmpManager : IVpnManager
     }
 
     /// <inheritdoc />
-    // Returns the provider token when the adapter belongs to a known provider (for service restart),
+    // Returns the provider token when the adapter belongs to an installed known provider (for service restart),
     // or the adapter name for standalone NAT-PMP gateways (for adapter cycling).
     public string? GetRecoveryTarget() => VpnAdapter.GetRecoveryTarget(_adapter.Name);
 

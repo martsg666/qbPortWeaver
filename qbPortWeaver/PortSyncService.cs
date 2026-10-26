@@ -187,6 +187,9 @@ public sealed class PortSyncService
     // Latches while a conflict is being reported, so the warning fires on the transition rather than on
     // every check. The condition persists until the user acts on it, which could be days.
     private bool _clientSettingsConflictActive;
+    // The client the two fields above describe. A switch in Settings starts them over, so a warning
+    // latched for one client cannot silence, or be reported as cleared by, the next one.
+    private string? _conflictClientName;
     private bool _portCheckPendingConfirmation; // one unconfirmed closed result seen
     private bool _portConfirmedClosed;          // closed confirmed by two consecutive checks
     // Consecutive undetermined results while awaiting confirmation. An undetermined result cannot
@@ -2060,6 +2063,13 @@ public sealed class PortSyncService
     // repeat the same line for as long as the setting stays on.
     private async Task CheckClientSettingsConflictsAsync(IManagedClient manager, CancellationToken cancellationToken)
     {
+        if (_conflictClientName != manager.ClientName)
+        {
+            _conflictClientName = manager.ClientName;
+            _clientSettingsConflictActive = false;
+            _cyclesSinceConflictCheck = ConflictCheckEveryNCycles; // check the new client this cycle
+        }
+
         if (++_cyclesSinceConflictCheck < ConflictCheckEveryNCycles) return;
         _cyclesSinceConflictCheck = 0;
 

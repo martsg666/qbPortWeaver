@@ -81,7 +81,7 @@ public sealed partial class ProtonVpnManager : IVpnManager
     // overload below to avoid a per-adapter registry read.
     private static bool MatchesProtonAdapter(string interfaceName) => Config.MatchesAdapterName(interfaceName);
 
-    // Matches against pre-read configured names (loop fast-path). The bidirectional substring rule
+    // Matches against pre-read configured names (loop fast-path). The matching rule
     // (AdapterNamesMatch) guards against empty values, so a cleared registry key cannot cause a false
     // match. Kept in step with Config.MatchesAdapterName, which applies the same two-name rule.
     private static bool MatchesProtonAdapter(string interfaceName, string legacyName, string nativeName) =>

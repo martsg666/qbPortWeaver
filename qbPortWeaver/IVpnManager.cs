@@ -73,8 +73,9 @@ public interface IVpnManager
 
     /// <summary>
     /// Returns <see langword="true"/> if <paramref name="interfaceName"/> matches this provider's adapter naming convention.
-    /// ProtonVPN and PIA perform a bidirectional case-insensitive substring match against their registry
-    /// adapter name(s), so e.g. registry "ProtonVPN" matches Windows adapter "ProtonVPN TUN" and vice versa.
+    /// ProtonVPN and PIA match their registry adapter name(s) case-insensitively: the Windows adapter name
+    /// containing the configured one, or the configured one starting with it, so e.g. registry "ProtonVPN"
+    /// matches Windows adapter "ProtonVPN TUN" and vice versa, while a short unrelated "VPN" does not.
     /// PIA matches a single configured name; ProtonVPN matches either its legacy name ("ProtonVPN" /
     /// "ProtonVPN TUN") or its in-house tunnel name ("ProTUN"). NAT-PMP and Static port require an exact
     /// case-insensitive match, since their adapter is picked from the live Windows list.

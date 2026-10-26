@@ -30,7 +30,7 @@ public partial class WhatsNewForm : Form
         "decompression code. qbPortWeaver never used that code, but you get the fix anyway.\n\n" +
         "Fixed: auto-recovery\n" +
         "A recovery that could not relaunch the VPN client app, or an adapter cycle that failed, is no " +
-        "longer logged as completed. A NAT-PMP adapter with a short name such as \"VPN\" is no longer " +
+        "longer logged as completed. An adapter with a short name such as \"VPN\" is no longer " +
         "mistaken for ProtonVPN. A Windows service that shares its process with others is never " +
         "force-stopped, and a recovery that worked no longer shows the warning badge.\n\n" +
         "Fixed: multi-part movies and subtitles in the Media Manager\n" +

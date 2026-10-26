@@ -52,7 +52,8 @@ public partial class WhatsNewForm : Form
         "Windows account is now found. A closed port is checked again instead of repeated from an " +
         "earlier answer, so a short sync interval no longer reports it closed by mistake.\n\n" +
         "Fixed: several smaller issues\n" +
-        "An unexpected sync error no longer resets the sync interval to 3 minutes. Warnings that " +
+        "An unexpected sync error no longer resets the sync interval to 3 minutes, and a network change " +
+        "during a sync, such as a VPN reconnect by auto-recovery, keeps its quick re-check. Warnings that " +
         "repeat every sync now appear once, and debug entries no longer appear with debug logging off. " +
         "Start Automatically shows the real state, the Media Manager keeps the file extension, " +
         "Nicotine+ commands no longer print \"None\", and a failed Transmission settings check is no " +

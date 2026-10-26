@@ -787,7 +787,7 @@ public partial class MainForm : Form
             {
                 // Paused: skip the whole cycle body (port sync and media import). A manual
                 // "Sync Port Now" click overrides the pause for exactly one cycle; the flag is
-                // consumed by the normal manual-sync handling after that cycle completes.
+                // consumed by the normal manual-sync handling when that cycle starts.
                 if (_syncPaused && !_manualSyncTriggered)
                     PublishPausedStatus();
                 else
@@ -854,13 +854,23 @@ public partial class MainForm : Form
     private async Task<int> RunSyncCycleAsync()
     {
         int updateInterval;
+        bool manualSync;
+        bool quickRecheck;
         await _updateSemaphore.WaitAsync(_shutdownCts.Token);
         try
         {
             LogManager.Instance.LogBlankLine();
             LogManager.Instance.LogMessage("Sync cycle started", LogLevel.Info);
+            // All three triggers are taken when the cycle starts, not when it ends: one that arrives
+            // mid-cycle (a network change while auto-recovery restarts the VPN, a Sync Now click)
+            // already makes the next cycle start at once, and its short follow-up wait belongs to that
+            // cycle rather than to the one that was running before it.
             bool networkChangeSync = _networkChangeSyncPending;
             _networkChangeSyncPending = false;
+            manualSync = _manualSyncTriggered;
+            _manualSyncTriggered = false;
+            quickRecheck = _quickRecheckPending;
+            _quickRecheckPending = false;
             updateInterval = await _portSyncService.RunAsync(networkChangeSync, _shutdownCts.Token);
         }
         finally
@@ -870,19 +880,17 @@ public partial class MainForm : Form
 
         KickOffMediaImportIfIdle();
 
-        // After a manual sync, wait only 10 seconds before next check.
-        if (_manualSyncTriggered)
+        // After a manual sync, wait only 10 seconds before next check. Manual takes precedence over
+        // the quick re-check below, so the two are not both applied.
+        if (manualSync)
         {
-            _manualSyncTriggered = false;
-            _quickRecheckPending = false; // manual takes precedence; do not also queue a quick re-check
             updateInterval = AppConstants.ManualSyncWaitSeconds;
             LogManager.Instance.LogMessage("Manual sync completed", LogLevel.Info);
         }
         // A network-change-triggered cycle may have run before the VPN finished settling; re-check
         // shortly instead of resetting to a full interval. One-shot, so it does not spin.
-        else if (_quickRecheckPending)
+        else if (quickRecheck)
         {
-            _quickRecheckPending = false;
             updateInterval = AppConstants.ManualSyncWaitSeconds;
         }
         return updateInterval;

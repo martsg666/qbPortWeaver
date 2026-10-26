@@ -3,7 +3,7 @@
 > Companion to the [README](../README.md), which covers installation, settings and day-to-day use.
 > This document is the implementation reference: what each cycle does and why it decides as it does.
 
-This document describes the core port sync logic implemented in `PortSyncService.cs`. The sync cycle runs on a configurable interval (default 180s). Each port sync cycle is serialized by a semaphore in `MainForm` so port sync cycles never overlap. The Media Manager runs as a fire-and-forget task after each port sync, in parallel with the next cycle's wait; subsequent imports are skipped if a previous one is still running, so a slow library scan cannot delay port sync or pile up imports on slow storage.
+This document describes the core port sync logic implemented in `PortSyncService.cs`. The sync cycle runs on a configurable interval (default 180s). Each port sync cycle is serialized by a semaphore in `MainForm` so port sync cycles never overlap. The Media Manager runs as a fire-and-forget task after each port sync, in parallel with the next cycle's wait; subsequent imports are skipped if a previous one is still running or the Media Manager window is busy, so a slow library scan cannot delay port sync or pile up imports on slow storage.
 
 The tray menu's **Pause Syncing** item skips entire cycles (port sync and the Media Manager kick-off) until resumed; the tray icon shows the paused state and **Sync Port Now** still runs a single cycle on demand. The paused state is in-memory only - a restart always resumes syncing.
 
@@ -793,7 +793,11 @@ RunAsync
 
 ## Media Manager
 
-The Media Manager runs after every sync cycle as a fire-and-forget task, in parallel with the wait until the next port sync cycle. If a previous import is still running when the next cycle ends, the new import is skipped to avoid pile-up on slow storage. When VPN Provider is set to **Disabled**, port sync is skipped entirely but the Media Manager still runs (kicked off after the no-op cycle).
+The Media Manager runs after every sync cycle as a fire-and-forget task, in parallel with the wait until the next port sync cycle. If a previous import is still running when the next cycle ends, the new import is skipped to avoid pile-up on slow storage. It is also skipped while the Media Manager window is scanning, importing or clearing the cache; in the other direction, Scan Now, Import Now and Clear cache wait for a running sync-cycle import to finish, and the window says so. When VPN Provider is set to **Disabled**, port sync is skipped entirely but the Media Manager still runs (kicked off after the no-op cycle).
+
+### One Media Operation at a Time
+
+The library index and the fingerprint caches are shared by the whole process, so `MediaManagerService._operationGate` lets only one media operation run at a time. Without it, a window scan using other library folders would replace the index a running sync-cycle import is still querying, and every source file would look new to that import. The two sides take the gate differently: the sync-cycle import tries it once and skips its turn (Debug line "Import skipped - the Media Manager window is scanning or importing"), because the next cycle runs it again anyway; Scan Now, Import Now and Clear cache wait for it, logging "Waiting for the sync cycle's import to finish" and showing the same text in the window.
 
 ### Unreachable Source/Library Folders
 
@@ -840,7 +844,7 @@ Both TV buckets flow into `TvShowProcessor`, which shares the post-resolution `S
 
 ### Lazy Fingerprint Deduplication
 
-If `ImportAsync` and `ScanAsync` overlap (e.g. a manual **Scan Now** triggered while a sync cycle is running), both call `ClassifySourceFoldersAsync` concurrently. A `ConcurrentDictionary<string, Lazy<string>>` ensures that when two threads race on the same source file, only one issues the 128 KB read while the other waits on the same `Lazy<string>` and reuses the result.
+Media operations no longer overlap (see One Media Operation at a Time), so this is a safeguard within a single run: a `ConcurrentDictionary<string, Lazy<string>>` ensures that when two threads race on the same source file, only one issues the 128 KB read while the other waits on the same `Lazy<string>` and reuses the result.
 
 ### Cache Layers
 

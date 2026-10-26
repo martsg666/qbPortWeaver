@@ -38,12 +38,13 @@ internal static partial class MediaImporter
     private static int _sourceCachedCount;
     private static int _sourceComputedCount;
 
-    // In-flight deduplication: if two threads race on the same source file (e.g. ImportAsync and ScanAsync
-    // both classifying with a cold cache), GetOrAdd returns the same Lazy so both share one read.
+    // In-flight deduplication: if two threads race on the same source file, GetOrAdd returns the same
+    // Lazy so both share one read. Media operations no longer overlap (MediaManagerService._operationGate),
+    // so this guards the parallel classification within one run.
     private static readonly ConcurrentDictionary<string, Lazy<string>> _sourceInFlight =
         new(StringComparer.OrdinalIgnoreCase);
 
-    // Serialises concurrent file writes from the sync loop and the UI scan path.
+    // Serialises cache file writes; a second line of defence behind MediaManagerService's one-operation gate.
     private static readonly object _cacheFileLock = new();
 
     private const int FingerprintChunkBytes = 64 * 1024; // 64 KB per chunk (head + tail)
@@ -406,8 +407,8 @@ internal static partial class MediaImporter
     /// Walks the library folders and builds a fingerprint index so <see cref="IsAlreadyInLibrary(string)"/> can detect
     /// files that were previously imported (regardless of the name they were imported under).
     /// Uses a persisted cache so only new or modified library files are fingerprinted; deleted files are pruned.
-    /// If called concurrently (e.g. from both the sync loop and a UI scan), the second caller waits for the
-    /// first to finish. When <paramref name="allowReuse"/> is true, the existing index is reused for up to
+    /// If called concurrently, the second caller waits for the first to finish; MediaManagerService already
+    /// runs one media operation at a time, so this is a second line of defence. When <paramref name="allowReuse"/> is true, the existing index is reused for up to
     /// <see cref="FullRebuildIntervalCycles"/> cycles before forcing a full rebuild to catch external changes.
     /// Returns <see langword="true"/> when the index reflects the configured library state and is safe to
     /// query. Returns <see langword="false"/> when the configured paths were inaccessible or one or more

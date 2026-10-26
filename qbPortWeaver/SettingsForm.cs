@@ -44,7 +44,7 @@ public partial class SettingsForm : Form
 
     // The provider the adapter combo was last filled for (NAT-PMP or Static port), or null when it
     // has not been filled for either. NAT-PMP lists only adapters whose gateway answers NAT-PMP,
-    // Static port lists every adapter that is up, so a switch between them needs a fresh list.
+    // Static port lists every adapter that is up with an IPv4 address, so a switch between them needs a fresh list.
     private string? _adapterListProvider;
 
     private System.Windows.Forms.Timer? _nicotinePluginStatusTimer;
@@ -1263,7 +1263,7 @@ public partial class SettingsForm : Form
     // saved either, which is the one case where there is genuinely no adapter to keep.
     // Matched ignoring case, as the sync loop matches adapter names.
     //
-    // requireChoice is for Static port, whose list is every adapter that is up rather than the few
+    // requireChoice is for Static port, whose list is every adapter that is up (with an IPv4 address) rather than the few
     // that answer NAT-PMP. Its first entry is usually the physical LAN adapter, so with nothing saved
     // the combo opens on a placeholder that cannot be saved instead of selecting that entry: an OK
     // would otherwise store the LAN adapter as the VPN adapter, and auto-recovery would cycle it.
@@ -1292,7 +1292,7 @@ public partial class SettingsForm : Form
             cboVpnAdapter.SelectedIndex = 0;
     }
 
-    // Static port lists every adapter that is up, which is immediate. NAT-PMP probes each adapter's
+    // Static port lists every adapter that is up with an IPv4 address, which is immediate. NAT-PMP probes each adapter's
     // gateway and lists only those that answer.
     private async Task DiscoverVpnAdaptersAsync(string? provider, string savedAdapter)
     {

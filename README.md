@@ -277,7 +277,7 @@ NAT-PMP (RFC 6886) is a protocol for requesting port mappings directly from a ga
 Some VPN providers assign a forwarded port once, from your account on their website, and keep it the same for as long as you have it, with no NAT-PMP or local client to ask. Use **Static port** for those:
 - Create the port forward in your VPN provider's account settings and note the port number.
 - Set `VPN Provider` to `Static port` in qbPortWeaver Settings.
-- Select your VPN's **network adapter** in the VPN adapter dropdown. The list shows every adapter that is currently up, so connect the VPN first.
+- Select your VPN's **network adapter** in the VPN adapter dropdown. The list shows every adapter that is currently up and has an IPv4 address, so connect the VPN first.
 - Enter the port in **Forwarded port**.
 
 qbPortWeaver then sets your client to that port whenever the adapter is up, and treats the adapter going down as the VPN disconnecting: the default port fallback, the interface checks, port verification and auto-recovery (an adapter cycle, or a service restart if the adapter belongs to an installed ProtonVPN or PIA) all work as they do for the other providers.

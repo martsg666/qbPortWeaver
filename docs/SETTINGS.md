@@ -39,7 +39,7 @@ update first.
 |---|---|---|
 | Client | Client to control: `qBittorrent`, `Transmission`, `Deluge`, or `Nicotine+` | `qBittorrent` |
 | VPN provider | `Disabled`, `ProtonVPN`, `PIA`, `NAT-PMP`, or `Static port` (for a provider that assigns a permanent forwarded port) | `Disabled` |
-| VPN adapter | Network adapter of the VPN. For NAT-PMP, the adapter whose gateway maps the port (only adapters that answer NAT-PMP are listed); for Static port, the adapter that must be up for the port to apply (every adapter that is up is listed). Only enabled for those two providers | - |
+| VPN adapter | Network adapter of the VPN. For NAT-PMP, the adapter whose gateway maps the port (only adapters that answer NAT-PMP are listed); for Static port, the adapter that must be up for the port to apply (every adapter that is up and has an IPv4 address is listed). Only enabled for those two providers | - |
 | Forwarded port | The port your VPN provider assigned to your account. Only enabled when Static port is selected, and required then | - |
 | Update interval | How often to check and sync the port (seconds) | `180` |
 | Sync on network change | Also run a sync immediately when a network or VPN connection change is detected, instead of waiting for the next interval (rapid changes are coalesced; pausing still suppresses it) | `True` |

@@ -1871,12 +1871,7 @@ public sealed class PortSyncService
             //
             // Hence a conditional clause rather than more hedging, and an off-branch that states the
             // requirement rather than guessing which of the three is missing.
-            string rebindClause = config.RebindReachable
-                ? $"Unless the forwarded port also changes first, {client.ClientName} will be rebound " +
-                  "if that port stops answering, before recovery runs"
-                : $"{client.ClientName} will not be rebound if that port stops answering - that needs the " +
-                  "VPN connected, and the port check, port-closed recovery and \"Fix the network " +
-                  "interface binding when it goes stale\" all switched on";
+            string rebindClause = RebindClause(client.ClientName, config);
             LogManager.Instance.LogMessage(
                 $"The address on '{interfaceName}' changed from {QBittorrentClient.FormatAddressList(baseline.Addresses)} to {QBittorrentClient.FormatAddressList(live)} " +
                 $"while {client.ClientName} is bound to all addresses on it ({client.ClientName} reports " +
@@ -1892,6 +1887,23 @@ public sealed class PortSyncService
         // Keyed to the interface it was read from, so the next cycle only compares like with like.
         // Same normalised key the comparison above used - see interfaceKey.
         _lastKnownInterfaceAddresses = (interfaceKey, live);
+    }
+
+    // The promise in the address-change line. Three cases, because the rebind runs only from the
+    // port-closed path, and only while that trigger is armed: after port-closed recovery has fired for
+    // this outage it stays disarmed until a check reports the port open, so promising a rebind then
+    // would be false. Split out of CheckInterfaceAddressAsync to keep it under the complexity gate.
+    private string RebindClause(string clientName, SyncConfig config)
+    {
+        if (!config.RebindReachable)
+            return $"{clientName} will not be rebound if that port stops answering - that needs the " +
+                   "VPN connected, and the port check, port-closed recovery and \"Fix the network " +
+                   "interface binding when it goes stale\" all switched on";
+        if (!_portClosedRecoveryArmed)
+            return $"{clientName} will not be rebound while recovery for this outage has already run - " +
+                   "that is possible again once a check reports the port open";
+        return $"Unless the forwarded port also changes first, {clientName} will be rebound " +
+               "if that port stops answering, before recovery runs";
     }
 
     // Corrects a pin that names an address the adapter no longer has. Writing the live address is a real

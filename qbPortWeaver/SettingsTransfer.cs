@@ -122,7 +122,7 @@ internal static class SettingsTransfer
         catch (Exception ex)
         {
             LogManager.Instance.LogMessage($"Settings export failed: {ex.Message}", LogLevel.Error);
-            return new(false, $"The settings could not be saved.\n\n{ex.Message}");
+            return new(false, $"The backup file could not be written.\n\n{ex.Message}");
         }
     }
 

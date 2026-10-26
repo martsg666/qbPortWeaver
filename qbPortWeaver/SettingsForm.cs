@@ -529,7 +529,7 @@ public partial class SettingsForm : Form
         if (result.Success)
             ThemedMessageBox.Info($"Your settings were saved and backed up.\n\n{result.Message}");
         else
-            ThemedMessageBox.Warn(result.Message);
+            ThemedMessageBox.Warn($"Your settings were saved, but they were not backed up.\n\n{result.Message}");
 
         // After the export, never before: TryCommitSettings above has already stored a theme change,
         // and an accepted restart here would otherwise end the process before the file was written.

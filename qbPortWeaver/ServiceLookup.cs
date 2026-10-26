@@ -23,10 +23,12 @@ public static class ServiceLookup
     /// <see langword="null"/> if no match is found. When multiple services match, the first one
     /// returned by <see cref="ServiceController.GetServices()"/> is used; that order is not guaranteed
     /// to be stable across reboots, so callers should pass a precise enough search term that no more
-    /// than one service can match.
+    /// than one service can match. A blank term returns <see langword="null"/>, since it would match every service.
     /// </summary>
     internal static string? FindServiceName(string searchTerm)
     {
+        if (string.IsNullOrWhiteSpace(searchTerm)) return null;
+
         ServiceController[]? services = null;
         try
         {

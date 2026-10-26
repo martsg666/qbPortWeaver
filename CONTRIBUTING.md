@@ -32,7 +32,7 @@ master  ────────────────────────
            │                                                          ▲
            │  git checkout -b <new-release> origin/<previous-release>│ git merge --no-ff <new-release>
            ▼                                                          │ then read the SonarCloud run on master
-<new-release> ──┬─────────────────────────────────────────────────────┴── git tag v<new-release>
+<new-release> ──┬─────────────────────────────────────────────────────┴── git tag -a v<new-release> (on the master merge)
            │                                                                  │
            ├── fix/some-bug   → PR → merge into <new-release>                 └─► CI/CD pipeline triggers
            └── feature/new-ui → PR → merge into <new-release>                      ├─ dotnet publish (self-contained win-x64)
@@ -60,16 +60,16 @@ master  ────────────────────────
 3. **Merge the release branch into `master`** once all testing is complete, before tagging:
    ```
    git checkout master
-   git merge --no-ff <new-release>
+   git merge --no-ff <new-release> -m "Release <new-release>"
    git push origin master
    ```
    This runs the **SonarCloud** workflow on `master`. Read that run before tagging. Pull request analysis is included on this plan and posts a full quality gate, so a PR's SonarCloud check is readable and worth acting on as you go; what is not readable is *branch* analysis on anything other than `master`, and the `master` run is the only one that analyses the merged release content as it will ship. Merging before tagging is also what carries every contributor's commits into `master`, so they appear in the repository's contributor list.
 
-4. **Tag the release branch** - this triggers the pipeline:
+4. **Tag the merge commit on `master`** with an annotated tag - this triggers the pipeline:
    ```
-   git checkout <new-release>
+   git checkout master
    git pull --ff-only
-   git tag v<new-release>
+   git tag -a v<new-release> -m "Release <new-release>"
    git push origin v<new-release>
    ```
    Pushing the tag automatically triggers the **Build and Release** pipeline, which builds the app, compiles the MSI installer, creates the GitHub Release, and uploads the MSI and Chocolatey package as release assets. The package managers are then published manually from the Actions tab: run **Publish to winget** (opens the winget-pkgs submission via wingetcreate), and once the previous Chocolatey version is approved, run **Publish to Chocolatey**.

@@ -47,10 +47,11 @@ public partial class WhatsNewForm : Form
         "no longer forgets what it knew about the configured library, so the next import does not " +
         "re-read every library file.\n\n" +
         "Fixed: Nicotine+ /qbpw-test and other Windows accounts\n" +
-        "/qbpw-test now shows its result in the chat you typed it in; click Update Plugin on the " +
-        "Nicotine+ tab in Settings, then restart Nicotine+. A portable Nicotine+ running under another " +
-        "Windows account is now found. A closed port is checked again instead of repeated from an " +
-        "earlier answer, so a short sync interval no longer reports it closed by mistake.\n\n" +
+        "/qbpw-test now shows its result in the chat you typed it in, and a closed port is checked again " +
+        "instead of repeated from an earlier answer, so a short sync interval no longer reports it closed " +
+        "by mistake. A portable Nicotine+ running under another Windows account is now found. To get the " +
+        "plugin fixes in this release, click Update Plugin on the Nicotine+ tab in Settings, then restart " +
+        "Nicotine+.\n\n" +
         "Fixed: several smaller issues\n" +
         "An unexpected sync error no longer resets the sync interval to 3 minutes, and a network change " +
         "during a sync, such as a VPN reconnect by auto-recovery, keeps its quick re-check. Warnings that " +

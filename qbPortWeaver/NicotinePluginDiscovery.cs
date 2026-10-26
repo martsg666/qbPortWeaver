@@ -58,6 +58,11 @@ internal static class NicotinePluginDiscovery
             || bare.Equals("::1", StringComparison.OrdinalIgnoreCase);
     }
 
+    // 0.0.0.0 is a listen address (every interface), not one Windows can connect to. The connection
+    // file is only read on the plugin's own machine, so reach it through loopback, which a wildcard
+    // listener accepts.
+    private static string ConnectHost(string host) => host == "0.0.0.0" ? "127.0.0.1" : host;
+
     /// <summary>Renders <paramref name="host"/> for use in a URL, bracketing an IPv6 literal.</summary>
     /// <remarks>A host containing a colon can only be an IPv6 address - neither a host name nor an
     /// IPv4 address may contain one - and RFC 3986 requires those to be bracketed in an authority.
@@ -262,11 +267,7 @@ internal static class NicotinePluginDiscovery
                 LogManager.Instance.ClearLogState(NonLoopbackHostStateKey);
             }
 
-            // 0.0.0.0 is a listen address (every interface), not one Windows can connect to. The bridge
-            // is on this machine, so reach it through loopback, which a wildcard listener accepts.
-            string connectHost = host == "0.0.0.0" ? "127.0.0.1" : host;
-
-            return new NicotinePluginHandshake($"http://{FormatHostForUrl(connectHost)}:{port}", token, path); // NOSONAR S5332 - loopback by default (warned above when not); TLS is meaningless for a local-only handshake
+            return new NicotinePluginHandshake($"http://{FormatHostForUrl(ConnectHost(host))}:{port}", token, path); // NOSONAR S5332 - loopback by default (warned above when not); TLS is meaningless for a local-only handshake
         }
         catch (Exception ex)
         {

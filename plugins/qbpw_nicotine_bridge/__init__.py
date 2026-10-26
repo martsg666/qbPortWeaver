@@ -51,6 +51,14 @@ EVENT_PORT_STATUS = "check-port-status"
 _BRIDGE_NOT_RUNNING = "The bridge is not running."
 
 
+def _bridge_url(host, port):
+    """The address to reach the bridge at from this machine. 0.0.0.0 is a listen address (every
+    interface), not one Windows can connect to, so a wildcard bind is shown as loopback, which it
+    also accepts - this is the URL a user copies into qbPortWeaver by hand."""
+    connect_host = "127.0.0.1" if host == "0.0.0.0" else host
+    return f"http://{connect_host}:{port}/"  # NOSONAR S5332 - loopback bridge; TLS not applicable to a 127.0.0.1 IPC channel
+
+
 def _port_summary(core_io):
     """"<configured> configured, <active> in use" - active_port() is None while Nicotine+ is not
     logged in, which reads as a raw "None" if printed directly."""
@@ -186,8 +194,8 @@ class Plugin(BasePlugin):
             self._event_connected = True
 
         self._publish()
-        self.log("Ready for qbPortWeaver on http://%s:%s/",
-                 (self.settings["bind_host"] or "127.0.0.1", self._bridge.port))
+        self.log("Ready for qbPortWeaver on %s",
+                 (_bridge_url(self.settings["bind_host"] or "127.0.0.1", self._bridge.port),))
 
     def _stop(self):
         if self._event_connected:
@@ -272,8 +280,8 @@ class Plugin(BasePlugin):
             "api": API_VERSION,
             "plugin_version": PLUGIN_VERSION,
             "nicotine_version": self._nicotine_version(),
-            "url": f"http://{host}:{self._bridge.port}/",  # NOSONAR S5332 - loopback bridge; TLS not applicable to a 127.0.0.1 IPC channel
-            "host": host,
+            "url": _bridge_url(host, self._bridge.port),
+            "host": host,  # the listen address as set; qbPortWeaver reads this one, and warns when it is not loopback
             "port": self._bridge.port,
             "token": self._bridge.token,
             "pid": os.getpid(),
@@ -312,7 +320,8 @@ class Plugin(BasePlugin):
 
         core_io = self._core_io
         host = self.settings.get("bind_host") or "127.0.0.1"
-        self.output(f"Bridge:      http://{host}:{self._bridge.port}/")
+        listening = " (listening on all interfaces)" if host == "0.0.0.0" else ""
+        self.output(f"Bridge:      {_bridge_url(host, self._bridge.port)}{listening}")
         self.output(f"Connection:  {core_io.connection_state() or 'unknown'}")
 
         cli_port = core_io.cli_listen_port()

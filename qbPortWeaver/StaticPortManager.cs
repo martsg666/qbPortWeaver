@@ -1,4 +1,7 @@
-﻿namespace qbPortWeaver;
+﻿using System.Net.NetworkInformation;
+using System.Net.Sockets;
+
+namespace qbPortWeaver;
 
 /// <summary>
 /// VPN manager for providers that assign a permanent forwarded port in their own account settings
@@ -41,11 +44,30 @@ public sealed class StaticPortManager(string adapterName, int port) : IVpnManage
     /// Returns the names of the network adapters that are currently up, sorted, for the Settings
     /// adapter list. Unlike NAT-PMP discovery nothing is probed: any adapter can carry a static
     /// forward, so the user picks the VPN's own adapter from everything that is up. The candidates are
-    /// the ones NAT-PMP discovery starts from (<see cref="VpnAdapter.GetActiveInterfaces"/>).
+    /// the ones NAT-PMP discovery starts from (<see cref="VpnAdapter.GetActiveInterfaces"/>), less
+    /// those without an IPv4 address.
     /// </summary>
+    // .NET lists hidden entries alongside the real adapters - the WAN Miniports and each adapter's
+    // filter drivers ("Ethernet-QoS Packet Scheduler-0000") - and reports them up. None carries an
+    // address, while a connected VPN adapter always has the IPv4 address its forwarded port lives on.
+    // NAT-PMP discovery needs no such filter: it only keeps adapters whose gateway answers.
     internal static IReadOnlyList<string> GetActiveAdapterNames() =>
         VpnAdapter.GetActiveInterfaces()
+            .Where(HasIPv4Address)
             .Select(nic => nic.Name)
             .Order(StringComparer.OrdinalIgnoreCase)
             .ToList();
+
+    private static bool HasIPv4Address(NetworkInterface nic)
+    {
+        try
+        {
+            return nic.GetIPProperties().UnicastAddresses
+                .Any(a => a.Address.AddressFamily == AddressFamily.InterNetwork);
+        }
+        catch (NetworkInformationException ex)
+        {
+            return LogManager.LogDebugFalse($"StaticPortManager.HasIPv4Address: {nic.Name}: {ex.Message}");
+        }
+    }
 }

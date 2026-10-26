@@ -150,9 +150,10 @@ class PortTest:
 
         Runs on the handler thread and touches no Nicotine+ internals. An open verdict is cached per
         port for STALE_AFTER, so repeated checks return the cached answer rather than re-querying the
-        service; a closed one is always queried again (see STALE_AFTER). The lock is released across the HTTP call, so two checks starting at the same time
-        both query it - unlike the native path, which joins an in-flight check. That costs one extra
-        request in a rare race, which is cheaper than a second implementation of the join logic.
+        service; a closed one is always queried again (see STALE_AFTER). The lock is released across
+        the HTTP call, so two checks starting at the same time both query it - unlike the native path,
+        which joins an in-flight check. That costs one extra request in a rare race, which is cheaper
+        than a second implementation of the join logic.
         """
         now = time.monotonic()
         with self._lock:

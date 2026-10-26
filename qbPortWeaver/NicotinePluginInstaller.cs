@@ -306,14 +306,25 @@ internal static class NicotinePluginInstaller
                 if (!File.Exists(configPath)) return null;
             }
 
+            // Both keys count: the plugin must be in the list, and the master switch must not be off,
+            // since Nicotine+ loads no plugin at all while it is. Without the second check a switched-off
+            // Nicotine+ read as "Enabled - start Nicotine+" forever, and the Enable Plugin button that
+            // turns the switch back on (EnsureMasterSwitch) was never offered.
+            bool? listed = false;
+            bool masterOff = false;
             foreach (var (section, key, value) in ReadSettings(AppFiles.ReadAllLinesShared(configPath)))
             {
-                if (section != PluginsSection || key != EnabledKey) continue;
-                if (!TryParsePythonStringList(value, out var names)) return null;
-                return names.Contains(NicotinePluginDiscovery.PluginFolderName, StringComparer.Ordinal);
+                if (section != PluginsSection) continue;
+                if (key == EnabledKey)
+                    listed = TryParsePythonStringList(value, out var names)
+                        ? names.Contains(NicotinePluginDiscovery.PluginFolderName, StringComparer.Ordinal)
+                        : null;
+                else if (key == EnableKey)
+                    masterOff = value.Equals("False", StringComparison.OrdinalIgnoreCase);
             }
 
-            return false;
+            if (masterOff) return false;
+            return listed;
         }
         catch (Exception ex)
         {

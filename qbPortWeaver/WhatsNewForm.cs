@@ -58,8 +58,9 @@ public partial class WhatsNewForm : Form
         "during a sync, such as a VPN reconnect by auto-recovery, keeps its quick re-check. Warnings that " +
         "repeat every sync now appear once, and debug entries no longer appear with debug logging off. " +
         "Start Automatically shows the real state, the Media Manager keeps the file extension, " +
-        "Nicotine+ commands no longer print \"None\", and a failed Transmission settings check is no " +
-        "longer reported as passed.\n\n" +
+        "Nicotine+ commands no longer print \"None\", the Nicotine+ plugin shows as not enabled when " +
+        "Nicotine+ has plugins turned off, and a failed Transmission settings check is no longer " +
+        "reported as passed.\n\n" +
         "Previously released\n\n" +
         "New in 2.6.9\n\n" +
         "Your settings can be backed up and restored\n" +

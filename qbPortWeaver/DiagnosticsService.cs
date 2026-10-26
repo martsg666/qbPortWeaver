@@ -364,7 +364,7 @@ public static class DiagnosticsService
 
             NicotinePluginState.NotEnabled => new(Checks.ClientPlugin, DiagnosticStatus.Fail,
                 "The bridge plugin is installed but not enabled",
-                "In Nicotine+, open Preferences → Plugins and tick \"qbPortWeaver Bridge\"."),
+                "In Nicotine+, open Preferences → Plugins, make sure plugins are turned on, and tick \"qbPortWeaver Bridge\"."),
 
             NicotinePluginState.NotRunning => new(Checks.ClientPlugin, DiagnosticStatus.Warn,
                 "The bridge plugin is enabled but has not published its connection details",

@@ -225,7 +225,7 @@ internal static class NicotinePluginInstaller
         {
             return new NicotinePluginActionResult(false,
                 "Nicotine+ is running. Close it first, or enable the plugin from " +
-                "Preferences → Plugins inside Nicotine+.");
+                "Preferences → Plugins inside Nicotine+, with plugins turned on.");
         }
 
         string? dataFolder = NicotinePluginDiscovery.ResolveDataFolder(exePathHint);
@@ -258,7 +258,7 @@ internal static class NicotinePluginInstaller
                     $"Not enabling the Nicotine+ bridge plugin automatically: {reason}", LogLevel.Warn);
                 return new NicotinePluginActionResult(false,
                     $"Nicotine+'s configuration could not be updated safely ({reason}).\n\n" +
-                    "Nothing was changed. Enable the plugin from Preferences → Plugins inside Nicotine+ instead.");
+                    "Nothing was changed. Enable the plugin from Preferences → Plugins inside Nicotine+ instead, with plugins turned on.");
             }
 
             if (isNicotineRunning())
@@ -287,7 +287,7 @@ internal static class NicotinePluginInstaller
             LogManager.Instance.LogMessage($"Failed to enable the Nicotine+ bridge plugin: {ex.Message}", LogLevel.Error);
             return new NicotinePluginActionResult(false,
                 $"Could not update Nicotine+'s configuration.\n\n{ex.Message}\n\n" +
-                "Enable the plugin from Preferences → Plugins inside Nicotine+ instead.");
+                "Enable the plugin from Preferences → Plugins inside Nicotine+ instead, with plugins turned on.");
         }
     }
 

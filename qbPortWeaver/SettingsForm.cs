@@ -945,7 +945,7 @@ public partial class SettingsForm : Form
             // memory when it exits, discarding anything changed underneath it.
             ThemedMessageBox.Info(
                 $"Plugin installed to:\n{install.Message}\n\n" +
-                "Nicotine+ is running, so enable it there: open Preferences → Plugins, tick " +
+                "Nicotine+ is running, so enable it there: open Preferences → Plugins, make sure plugins are turned on, tick " +
                 "\"qbPortWeaver Bridge\", and apply. No restart is needed.\n\n" +
                 "Then click ⟳ here to pick up the connection details.\n\n" +
                 "Alternatively, close Nicotine+ and click Install Plugin again to have it enabled automatically.");
@@ -956,13 +956,13 @@ public partial class SettingsForm : Form
         var choice = ThemedMessageBox.Confirm(
             $"Plugin installed to:\n{install.Message}\n\n" +
             "Nicotine+ is closed, so it can be enabled for you now. Enable it?\n\n" +
-            "Your current Nicotine+ configuration will be backed up first, and only the plugin list is changed.");
+            "Your current Nicotine+ configuration will be backed up first, and only its plugin settings are changed.");
 
         if (!choice)
         {
             ThemedMessageBox.Info(
-                "Plugin installed but not enabled.\n\nEnable \"qbPortWeaver Bridge\" in Nicotine+ under " +
-                "Preferences → Plugins, then click ⟳ here.");
+                "Plugin installed but not enabled.\n\nIn Nicotine+, open Preferences → Plugins, make sure plugins are " +
+                "turned on, and tick \"qbPortWeaver Bridge\", then click ⟳ here.");
             RefreshNicotinePluginStatus();
             return;
         }
@@ -1088,7 +1088,7 @@ public partial class SettingsForm : Form
         NicotinePluginState.Outdated =>
             "The installed bridge plugin differs from the one this build ships. Click \"Update Plugin\".",
         NicotinePluginState.NotEnabled =>
-            "The plugin is installed but not enabled. Enable \"qbPortWeaver Bridge\" in Nicotine+ under Preferences → Plugins.",
+            "The plugin is installed but not enabled. In Nicotine+, open Preferences → Plugins, make sure plugins are turned on, and tick \"qbPortWeaver Bridge\".",
         _ => "The plugin is enabled but has not published its details yet. Start Nicotine+ and try again."
     };
 

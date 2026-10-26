@@ -4,7 +4,7 @@ A Nicotine+ plugin that lets [qbPortWeaver](https://github.com/martsg666/qbPortW
 Soulseek listening port in sync with a VPN's forwarded port.
 
 Nicotine+ has no remote-control interface, so there is no way for an external application to
-change its listening port. This plugin adds a small JSON API on `127.0.0.1` that does exactly
+change its listening port. This plugin adds a small JSON API, on `127.0.0.1` by default, that does exactly
 that, and nothing else.
 
 The port is applied the same way the Preferences dialog applies it - the setting is written and

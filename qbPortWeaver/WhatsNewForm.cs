@@ -44,7 +44,7 @@ public partial class WhatsNewForm : Form
         "answer no longer stops Re-match, the Import Now result stays on screen, and errors are " +
         "written to the log.\n\n" +
         "Fixed: Media Manager scans with other library folders\n" +
-        "Scan Now, Import Now and Clear cache wait for the import running on the sync cycle instead of " +
+        "Scan Now, Import Now and Clear Cache wait for the import running on the sync cycle instead of " +
         "disturbing it, which could fill the log with warnings about files already in the library. A scan also " +
         "no longer forgets what it knew about the configured library, so the next import does not " +
         "re-read every library file.\n\n" +

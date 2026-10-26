@@ -2,7 +2,7 @@
 """qbPortWeaver Bridge - lets qbPortWeaver manage the Soulseek listening port.
 
 Nicotine+ has no remote-control interface, so qbPortWeaver cannot follow a VPN's forwarded
-port on its own. This plugin adds a small JSON API on 127.0.0.1 that lets it read and change
+port on its own. This plugin adds a small JSON API, on 127.0.0.1 by default, that lets it read and change
 the port, applying the change the same way the Preferences dialog does - by rewriting the
 setting and forcing a reconnect - so the new port is live in about five seconds and Nicotine+
 never has to be restarted.

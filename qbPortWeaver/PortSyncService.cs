@@ -918,6 +918,14 @@ public sealed class PortSyncService
     // SettingsForm's cboVpnProvider list.
     private async Task<IVpnManager?> CreateVpnManagerAsync(AppConfig cfg, Dictionary<string, object?> status, CancellationToken cancellationToken)
     {
+        // Re-arms each provider's "setting missing" line while another provider is selected, so
+        // switching away and back with the setting still missing logs the reason again. Placed before
+        // the Disabled return so a round trip through Disabled re-arms them too.
+        if (!cfg.VpnProvider.Equals(RegistrySettingsManager.VpnProviderStaticPort, StringComparison.OrdinalIgnoreCase))
+            LogManager.Instance.ClearLogState(StaticPortStateKey);
+        if (!cfg.VpnProvider.Equals(RegistrySettingsManager.VpnProviderNatPmp, StringComparison.OrdinalIgnoreCase))
+            LogManager.Instance.ClearLogState(NatPmpAdapterStateKey);
+
         if (cfg.VpnProvider.Equals(RegistrySettingsManager.VpnProviderDisabled, StringComparison.OrdinalIgnoreCase))
         {
             LogManager.Instance.LogMessage("Port sync disabled", LogLevel.Info);

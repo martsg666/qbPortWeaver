@@ -49,7 +49,8 @@ public partial class WhatsNewForm : Form
         "Fixed: Nicotine+ /qbpw-test and other Windows accounts\n" +
         "/qbpw-test now shows its result in the chat you typed it in; click Update Plugin on the " +
         "Nicotine+ tab in Settings, then restart Nicotine+. A portable Nicotine+ running under another " +
-        "Windows account is now found.\n\n" +
+        "Windows account is now found. A closed port is checked again instead of repeated from an " +
+        "earlier answer, so a short sync interval no longer reports it closed by mistake.\n\n" +
         "Fixed: several smaller issues\n" +
         "An unexpected sync error no longer resets the sync interval to 3 minutes. Warnings that " +
         "repeat every sync now appear once, and debug entries no longer appear with debug logging off. " +

@@ -149,8 +149,9 @@ internal static partial class AutoRecovery
 
     // Cycles a network adapter by disabling and re-enabling it via netsh.
     // Used when the adapter belongs to no known provider: a generic NAT-PMP gateway, or a Static
-    // port adapter the registry does not recognise.
-    // For known providers (ProtonVPN, PIA), the main app sends "restart" instead.
+    // port adapter the registry does not recognise. For an adapter of a known provider (ProtonVPN,
+    // PIA) the main app sends "restart" instead, but only when that provider's service is installed;
+    // otherwise, e.g. a WireGuard tunnel named after the provider, it cycles the adapter here too.
     internal static async Task CycleAdapterAsync(string adapterName, HelperLogger logger, CancellationToken cancellationToken = default)
     {
         try

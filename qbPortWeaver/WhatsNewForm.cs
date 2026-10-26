@@ -33,7 +33,8 @@ public partial class WhatsNewForm : Form
         "longer logged as completed. An adapter with a short name such as \"VPN\" is no longer " +
         "mistaken for ProtonVPN, and a WireGuard tunnel named after ProtonVPN or PIA without their app " +
         "installed is cycled instead of skipped. A Windows service that shares its process with others is never " +
-        "force-stopped, and a recovery that worked no longer shows the warning badge.\n\n" +
+        "force-stopped, a VPN service that is slow to start is no longer reported as a failed restart, and " +
+        "a recovery that worked no longer shows the warning badge.\n\n" +
         "Fixed: multi-part movies and subtitles in the Media Manager\n" +
         "Movies split into several files, named only by part (cd1, Part.1, CD_2) or each carrying the title, " +
         "are now recognised, keep their part numbers on Re-match and import into one folder. Import " +

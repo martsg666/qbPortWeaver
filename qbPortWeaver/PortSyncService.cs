@@ -918,13 +918,17 @@ public sealed class PortSyncService
     // SettingsForm's cboVpnProvider list.
     private async Task<IVpnManager?> CreateVpnManagerAsync(AppConfig cfg, Dictionary<string, object?> status, CancellationToken cancellationToken)
     {
-        // Re-arms each provider's "setting missing" line while another provider is selected, so
-        // switching away and back with the setting still missing logs the reason again. Placed before
+        // Re-arms each provider's standing warnings (a missing setting, the NAT-PMP lease being shorter
+        // than the interval) while another provider is selected, so switching away and back with the
+        // condition still present logs it again. Placed before
         // the Disabled return so a round trip through Disabled re-arms them too.
         if (!cfg.VpnProvider.Equals(RegistrySettingsManager.VpnProviderStaticPort, StringComparison.OrdinalIgnoreCase))
             LogManager.Instance.ClearLogState(StaticPortStateKey);
         if (!cfg.VpnProvider.Equals(RegistrySettingsManager.VpnProviderNatPmp, StringComparison.OrdinalIgnoreCase))
+        {
             LogManager.Instance.ClearLogState(NatPmpAdapterStateKey);
+            LogManager.Instance.ClearLogState(NatPmpLeaseStateKey);
+        }
 
         if (cfg.VpnProvider.Equals(RegistrySettingsManager.VpnProviderDisabled, StringComparison.OrdinalIgnoreCase))
         {
@@ -1144,7 +1148,8 @@ public sealed class PortSyncService
     /// <summary>
     /// Dispatches the recovery action for the given provider selection on demand (the Settings
     /// form's Auto-recovery Test button). Runs the exact same action as automatic recovery (VPN
-    /// service restart for ProtonVPN, PIA or a NAT-PMP / Static port adapter that belongs to one of them,
+    /// service restart for ProtonVPN, PIA or a NAT-PMP / Static port adapter that belongs to one of them
+    /// with its service installed,
     /// adapter cycle for any other adapter) so the recovery chain - helper service,
     /// service discovery, VPN client relaunch - can be verified before a real failure needs it.
     /// Returns <see langword="false"/> when nothing could be dispatched (provider disabled or
@@ -1454,7 +1459,8 @@ public sealed class PortSyncService
     //
     // "recovery" rather than "the VPN restart" throughout, matching the messages below: the action is a
     // service restart for ProtonVPN and PIA, but for NAT-PMP and Static port VpnAdapter.GetRecoveryAction
-    // returns cycle-adapter when the adapter belongs to no known provider, where no VPN is restarted at all.
+    // returns cycle-adapter when the adapter belongs to no known provider, or to one whose service is not
+    // installed, where no VPN is restarted at all.
     private async Task<bool> TryRebindClientAddressAsync(IManagedClient manager, SyncConfig config, CancellationToken cancellationToken)
     {
         if (!_interfaceAddressChangedSinceRebind || !config.FixInterfaceBinding) return false;

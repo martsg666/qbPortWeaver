@@ -321,8 +321,9 @@ without restarting Nicotine+.
 1. In qbPortWeaver **Settings → General**, set **Client** to **Nicotine+** (or click **Detect**).
 2. Open the **Nicotine+** tab (the client tab is named after the selected client) and click
    **Install Plugin**. If Nicotine+ is closed, accept the offer to enable it too - your Nicotine+
-   configuration is backed up first and only the plugin list is touched. If Nicotine+ is running,
-   enable **qbPortWeaver Bridge** in **Preferences → Plugins**; no restart needed.
+   configuration is backed up first and only its plugin settings are changed. If Nicotine+ is
+   running, open **Preferences → Plugins**, make sure plugins are turned on, and enable
+   **qbPortWeaver Bridge**; no restart needed.
 3. Start Nicotine+ if it is not running, then click **⟳** next to the Plugin token. The address and
    token fill in automatically.
 4. Use **Test** to confirm, then save.

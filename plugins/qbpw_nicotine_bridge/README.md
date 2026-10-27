@@ -17,8 +17,8 @@ Easiest: in qbPortWeaver, set **Client** to **Nicotine+** under **Settings → G
 the **Nicotine+** tab and click **Install Plugin**. It copies the plugin into place and, if Nicotine+
 is closed, offers to enable it too.
 
-By hand: copy this folder into your Nicotine+ plugin folder, then enable **qbPortWeaver Bridge**
-in **Preferences → Plugins**.
+By hand: copy this folder into your Nicotine+ plugin folder, then in **Preferences → Plugins**
+make sure plugins are turned on and enable **qbPortWeaver Bridge**.
 
 | Install | Plugin folder |
 |---|---|

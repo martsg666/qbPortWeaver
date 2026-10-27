@@ -531,7 +531,7 @@ public sealed class NicotineClient : ManagedClientBase
         if (failureLevel == LogLevel.Error && !NicotinePluginDiscovery.IsPluginInstalled(_exePathHint))
         {
             LogManager.Instance.LogMessage(
-                $"The qbPortWeaver bridge plugin is not installed in {ClientName} - install it from Settings, then enable it in Nicotine+ under Preferences → Plugins",
+                $"The qbPortWeaver bridge plugin is not installed in {ClientName} - install it from Settings, then enable it in Nicotine+ under Preferences → Plugins, with plugins turned on",
                 LogLevel.Error);
         }
     }

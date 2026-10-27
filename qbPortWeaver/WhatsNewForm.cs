@@ -63,7 +63,8 @@ public partial class WhatsNewForm : Form
         "Scan Now, Import Now and Clear Cache wait for the import running on the sync cycle instead of " +
         "disturbing it, which could fill the log with warnings about files already in the library. A scan also " +
         "no longer forgets what it knew about the configured library, so the next import does not " +
-        "re-read every library file.\n\n" +
+        "re-read every library file, and closing the Media Manager during a scan no longer leaves the " +
+        "next imports using an out-of-date view of the library.\n\n" +
         "Fixed: Nicotine+ /qbpw-test and other Windows accounts\n" +
         "/qbpw-test now shows its result in the chat you typed it in, and a closed port is checked again " +
         "instead of repeated from an earlier answer, so a short sync interval no longer reports it closed " +

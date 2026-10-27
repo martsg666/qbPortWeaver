@@ -419,10 +419,19 @@ internal static partial class MediaImporter
     internal static async Task<bool> BuildLibraryIndexAsync(string moviesLibraryPath, string tvShowsLibraryPath, bool allowReuse = false, CancellationToken cancellationToken = default)
     {
         await _libraryBuildSemaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
+        // TryReuseCachedIndex records the new paths and "cycle 1" before the build runs, so a build that
+        // ends without committing - cancelled (the window closed mid-index) or thrown - would leave the
+        // previous index in place looking current for the paths just recorded. Set once the index is
+        // either reused or committed; otherwise the finally forces a rebuild next call, as the two
+        // explicit failure paths below already do.
+        bool settled = false;
         try
         {
             if (TryReuseCachedIndex(moviesLibraryPath, tvShowsLibraryPath, allowReuse))
+            {
+                settled = true;
                 return true;
+            }
 
             int configuredCount = (string.IsNullOrWhiteSpace(moviesLibraryPath) ? 0 : 1)
                                 + (string.IsNullOrWhiteSpace(tvShowsLibraryPath) ? 0 : 1);
@@ -492,6 +501,7 @@ internal static partial class MediaImporter
 
             sw.Stop();
             lock (_libraryLock) { _libraryFingerprints = fingerprints; }
+            settled = true;
             LogManager.Instance.LogMessage(
                 $"Library index built: {fingerprints.Count} files in {sw.ElapsedMilliseconds}ms (cached={cached}, computed={computed})",
                 LogLevel.Info, Subsystem.MediaManager);
@@ -499,6 +509,8 @@ internal static partial class MediaImporter
         }
         finally
         {
+            if (!settled)
+                lock (_libraryLock) _libraryBuildCycleCount = FullRebuildIntervalCycles; // see the equivalent write above
             _libraryBuildSemaphore.Release();
         }
     }

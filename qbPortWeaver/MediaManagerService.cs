@@ -4,7 +4,8 @@ using System.Diagnostics.CodeAnalysis;
 
 namespace qbPortWeaver;
 
-/// <summary>Orchestrates media file imports on each sync cycle when the Media Manager feature is enabled.</summary>
+/// <summary>Orchestrates media file imports: the automatic import on each sync cycle when the Media
+/// Manager feature is enabled, and the Media Manager window's Scan Now and Import Now.</summary>
 public static class MediaManagerService
 {
     internal const int MaxSubfolderDepth = 10; // passed as EnumerationOptions.MaxRecursionDepth
@@ -14,13 +15,62 @@ public static class MediaManagerService
     private const string ImportConfigStateKey = "media.import.config";
     private const string SourceFolderStateKeyPrefix = "media.sourcefolder:";
 
+    // One media operation at a time. The library index and the caches are process-wide, so a scan
+    // from the Media Manager window, which uses the window's library paths, would replace the index
+    // a sync-cycle import is still querying, and every source file would look new to that import.
+    // The sync-cycle import skips its turn while the gate is held; Scan Now, Import Now and Clear cache wait.
+    private static readonly SemaphoreSlim _operationGate = new(1, 1);
+
     /// <summary>
     /// Runs one media import cycle, moving or linking files into the configured library.
     /// Returns immediately if the feature is disabled, the TMDB API key is not configured,
-    /// or no library paths are set.
+    /// or no library paths are set, and skips the cycle while a Media Manager window operation runs.
     /// Throws <see cref="OperationCanceledException"/> if <paramref name="cancellationToken"/> is cancelled.
     /// </summary>
     public static async Task ImportAsync(CancellationToken cancellationToken = default)
+    {
+        if (!_operationGate.Wait(0, cancellationToken))
+        {
+            LogManager.Instance.LogDebug("MediaManagerService.ImportAsync: Import skipped - the Media Manager window is scanning or importing", Subsystem.MediaManager);
+            return;
+        }
+
+        try
+        {
+            await ImportCoreAsync(cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            _operationGate.Release();
+        }
+    }
+
+    // Runs fn once the gate is free. Only the Media Manager window comes here, and it runs one
+    // operation at a time, so a held gate is normally the sync cycle's import. It can also be an
+    // operation from a window closed mid-run that has not reached a cancellation point yet: an Import
+    // Now copying a file, or a scan still listing a library folder. Hence the neutral wording. Waiting
+    // reports true, then false once the gate is taken, so the window can say why it is not progressing.
+    private static async Task<T> RunExclusiveAsync<T>(Func<Task<T>> fn, IProgress<bool>? waiting, CancellationToken cancellationToken)
+    {
+        if (!_operationGate.Wait(0, cancellationToken))
+        {
+            LogManager.Instance.LogMessage("Waiting for another Media Manager task to finish", LogLevel.Info, Subsystem.MediaManager);
+            waiting?.Report(true);
+            await _operationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+            waiting?.Report(false);
+        }
+
+        try
+        {
+            return await fn().ConfigureAwait(false);
+        }
+        finally
+        {
+            _operationGate.Release();
+        }
+    }
+
+    private static async Task ImportCoreAsync(CancellationToken cancellationToken)
     {
         if (!RegistrySettingsManager.GetBool(RegistrySettingsManager.SectionMedia, RegistrySettingsManager.KeyMediaEnabled))
             return;
@@ -77,7 +127,7 @@ public static class MediaManagerService
             LogManager.Instance.LogMessage("Import skipped this cycle - library index unavailable", LogLevel.Info, Subsystem.MediaManager);
             return;
         }
-        var (tmdb, classified, total) = prep.Value;
+        var (tmdb, classified, total, _) = prep.Value;
 
         var ctx = new ImportContext(tmdb, dryRun, createFolders, importMode, moviesLibraryPath, tvShowsLibraryPath);
 
@@ -101,6 +151,9 @@ public static class MediaManagerService
     /// <summary>
     /// Returns import proposals for all configured source folders without modifying any files.
     /// Only processors whose library path is configured will produce proposals.
+    /// Returns <see langword="null"/> when the library index could not be built (a library folder is
+    /// unreachable), so the caller can say so instead of reading an empty list as "all imported". The
+    /// result also names the source folders that could not be read, for the same reason.
     /// Throws <see cref="OperationCanceledException"/> if <paramref name="cancellationToken"/> is cancelled.
     /// </summary>
     /// <param name="apiKey">TMDB API key used to look up movie and TV show metadata.</param>
@@ -108,11 +161,18 @@ public static class MediaManagerService
     /// <param name="sourceFolders">Source folders to scan for both movies and TV shows.</param>
     /// <param name="moviesLibraryPath">Library folder for movies. Empty to skip movie processing.</param>
     /// <param name="tvShowsLibraryPath">Library folder for TV shows. Empty to skip TV show processing.</param>
-    /// <param name="progress">Optional progress sink; reports current and total item counts as each item is processed.</param>
-    /// <param name="cancellationToken">Token to cancel the scan between folders.</param>
-    public static async Task<List<MediaProposal>> ScanAsync(string apiKey, bool createFolders, string[] sourceFolders,
+    /// <param name="progress">Optional sinks; <see cref="MediaOperationProgress{T}.Items"/> reports current and total item counts as each item is processed.</param>
+    /// <param name="cancellationToken">Token to cancel the scan; passed through to the wait, the library index build, the folder scans and their TMDB lookups.</param>
+    public static Task<MediaScanResult?> ScanAsync(string apiKey, bool createFolders, string[] sourceFolders,
         string moviesLibraryPath, string tvShowsLibraryPath,
-        IProgress<(int Current, int Total)>? progress = null, CancellationToken cancellationToken = default)
+        MediaOperationProgress<(int Current, int Total)>? progress = null, CancellationToken cancellationToken = default)
+        => RunExclusiveAsync(
+            () => ScanCoreAsync(apiKey, createFolders, sourceFolders, moviesLibraryPath, tvShowsLibraryPath, progress?.Items, cancellationToken),
+            progress?.Waiting, cancellationToken);
+
+    private static async Task<MediaScanResult?> ScanCoreAsync(string apiKey, bool createFolders, string[] sourceFolders,
+        string moviesLibraryPath, string tvShowsLibraryPath,
+        IProgress<(int Current, int Total)>? progress, CancellationToken cancellationToken)
     {
         var scanSw = Stopwatch.StartNew();
         LogManager.Instance.LogMessage($"Scan started (createFolders={createFolders})", LogLevel.Info, Subsystem.MediaManager);
@@ -123,9 +183,9 @@ public static class MediaManagerService
         if (prep is null)
         {
             LogManager.Instance.LogMessage("Scan aborted - library index unavailable", LogLevel.Warn, Subsystem.MediaManager);
-            return [];
+            return null;
         }
-        var (tmdb, classified, total) = prep.Value;
+        var (tmdb, classified, total, unreadableSources) = prep.Value;
 
         int current = 0;
         void OnItemProcessed()
@@ -147,7 +207,11 @@ public static class MediaManagerService
         MediaImporter.SaveLibraryCache();
         scanSw.Stop();
         LogManager.Instance.LogMessage($"Scan completed: {TextFormat.Pluralize(proposals.Count, "proposal")} in {scanSw.ElapsedMilliseconds}ms", LogLevel.Info, Subsystem.MediaManager);
-        return proposals;
+        // Logged on every scan, unlike the per-folder warning, which appears once while a folder stays
+        // offline: the window points the user at the log, so the log has to say it each time.
+        if (unreadableSources.Length > 0)
+            LogManager.Instance.LogMessage($"Scan could not read {TextFormat.Pluralize(unreadableSources.Length, "source folder")}: {string.Join(", ", unreadableSources.Select(f => $"'{f}'"))}", LogLevel.Info, Subsystem.MediaManager);
+        return new MediaScanResult(proposals, unreadableSources);
     }
 
     // Scans a single source folder, returning proposals for both movies and TV shows.
@@ -239,39 +303,59 @@ public static class MediaManagerService
     /// </summary>
     /// <param name="proposals">The import proposals to apply. Each proposal's <see cref="MediaProposal.ProposedPath"/> is the library target.</param>
     /// <param name="importMode">Determines how files are transferred: hardlink, copy, or move.</param>
-    /// <param name="progress">Optional progress sink; reports current item count, total, and filename as each file is imported.</param>
-    /// <param name="cancellationToken">Token to cancel the operation between imports.</param>
-    public static Task ApplyProposalsAsync(IEnumerable<MediaProposal> proposals, ImportMode importMode,
-        IProgress<(int Current, int Total, string FileName)>? progress = null, CancellationToken cancellationToken = default)
-        => Task.Run(() =>
+    /// <param name="progress">Optional sinks; <see cref="MediaOperationProgress{T}.Items"/> reports current item count, total, and filename as each file is imported.</param>
+    /// <param name="cancellationToken">Token to cancel the wait or the operation between imports.</param>
+    /// <returns>The number of files placed in the library.</returns>
+    public static Task<int> ApplyProposalsAsync(IEnumerable<MediaProposal> proposals, ImportMode importMode,
+        MediaOperationProgress<(int Current, int Total, string FileName)>? progress = null, CancellationToken cancellationToken = default)
+        => RunExclusiveAsync(() => Task.Run(() => ApplyProposals(proposals, importMode, progress?.Items, cancellationToken), cancellationToken),
+            progress?.Waiting, cancellationToken);
+
+    private static int ApplyProposals(IEnumerable<MediaProposal> proposals, ImportMode importMode,
+        IProgress<(int Current, int Total, string FileName)>? progress, CancellationToken cancellationToken)
+    {
+        var list = proposals as IList<MediaProposal> ?? proposals.ToList();
+        int total = list.Count;
+        int current = 0;
+        int placed = 0;
+        foreach (var proposal in list)
         {
-            var list = proposals as IList<MediaProposal> ?? proposals.ToList();
-            int total = list.Count;
-            int current = 0;
-            foreach (var proposal in list)
+            cancellationToken.ThrowIfCancellationRequested();
+            current++;
+            progress?.Report((current, total, Path.GetFileName(proposal.OriginalPath)));
+            LogManager.Instance.LogMessage(
+                $"Importing '{Path.GetFileName(proposal.OriginalPath)}' -> '{proposal.ProposedPath}'",
+                LogLevel.Info, Subsystem.MediaManager);
+            try
             {
-                cancellationToken.ThrowIfCancellationRequested();
-                current++;
-                progress?.Report((current, total, Path.GetFileName(proposal.OriginalPath)));
-                LogManager.Instance.LogMessage(
-                    $"Importing '{Path.GetFileName(proposal.OriginalPath)}' -> '{proposal.ProposedPath}'",
-                    LogLevel.Info, Subsystem.MediaManager);
-                try
+                // Subtitles follow the video, as on the sync cycle. This is the only chance: once
+                // the video is in the library the cycle skips its source, so a subtitle left behind
+                // here would never be imported. Naming from the proposed path also covers a
+                // multi-part film ("Title (Year) - cd1.srt") and any name the user edited. Only when
+                // the video is in place: a skipped or failed video leaves its subtitles where they are.
+                if (MediaImporter.AddFileToLibrary(proposal.OriginalPath, proposal.ProposedPath, importMode))
                 {
-                    MediaImporter.AddFileToLibrary(proposal.OriginalPath, proposal.ProposedPath, importMode);
-                }
-                // Deliberately broad: this is the outermost per-item boundary of a user-initiated batch.
-                // AddFileToLibrary already handles the expected IO/permission cases, so anything reaching
-                // here is unexpected - log it at Error and keep going so one bad file cannot strand the
-                // rest of the batch. (Narrowing this would abort the remaining imports on a surprise.)
-                catch (Exception ex)
-                {
-                    LogManager.Instance.LogMessage(
-                        $"Failed to import '{Path.GetFileName(proposal.OriginalPath)}': {ex.Message}",
-                        LogLevel.Error, Subsystem.MediaManager);
+                    placed++;
+                    ImportCompanionFiles(proposal.OriginalPath, proposal.ProposedPath, dryRun: false, importMode);
                 }
             }
-        }, cancellationToken);
+            // Deliberately broad: this is the outermost per-item boundary of a user-initiated batch.
+            // AddFileToLibrary already handles the expected IO/permission cases, so anything reaching
+            // here is unexpected - log it at Error and keep going so one bad file cannot strand the
+            // rest of the batch. (Narrowing this would abort the remaining imports on a surprise.)
+            catch (Exception ex)
+            {
+                LogManager.Instance.LogMessage(
+                    $"Failed to import '{Path.GetFileName(proposal.OriginalPath)}': {ex.Message}",
+                    LogLevel.Error, Subsystem.MediaManager);
+            }
+        }
+
+        // The batch's end line, as the sync import and the scan have: without it a support log shows
+        // the per-file lines but not where Import Now stopped or how many files made it.
+        LogManager.Instance.LogMessage($"Import Now finished: {placed} of {TextFormat.Pluralize(total, "file")} placed in the library", LogLevel.Info, Subsystem.MediaManager);
+        return placed;
+    }
 
     // Deletes subdirectories of rootFolder that are empty or contain only .nfo files.
     // Walks bottom-up (longest path first) so nested empty folders are cleaned in a single pass.
@@ -371,7 +455,7 @@ public static class MediaManagerService
     // Returns null when the library index could not be built (or was incomplete) so the caller can
     // skip the cycle - acting on a partial index would falsely report library files as missing and
     // risk creating duplicate imports.
-    private static async Task<(TmdbClient Tmdb, List<(string Folder, (string[] MovieFiles, string[] TvShowFiles, FolderClassifiedEpisode[] FolderTvFiles) Items)> Classified, int Total)?>
+    private static async Task<(TmdbClient Tmdb, List<(string Folder, (string[] MovieFiles, string[] TvShowFiles, FolderClassifiedEpisode[] FolderTvFiles) Items)> Classified, int Total, string[] UnreadableSources)?>
         PrepareClassifiedSourcesAsync(
             string apiKey, string[] sourceFolders, string moviesLibraryPath, string tvShowsLibraryPath,
             bool allowLibraryReuse, CancellationToken cancellationToken)
@@ -388,10 +472,12 @@ public static class MediaManagerService
         var tmdb = new TmdbClient(apiKey);
 
         var validFolders = new List<string>();
+        var unreadableFolders = new List<string>();
         foreach (var f in sourceFolders)
         {
             if (!MediaImporter.DirectoryExistsWithSmbRetry(f))
             {
+                unreadableFolders.Add(f);
                 // Keyed per folder: an offline share stays offline for hours, and one warning per
                 // folder per import cycle would bury everything else and pin the tray badge.
                 LogManager.Instance.LogStateChange($"{SourceFolderStateKeyPrefix}{f}",
@@ -403,7 +489,11 @@ public static class MediaManagerService
         }
 
         var libraryTask = MediaImporter.BuildLibraryIndexAsync(moviesLibraryPath, tvShowsLibraryPath, allowReuse: allowLibraryReuse, cancellationToken);
-        var enumerated = await EnumerateSourceFoldersAsync(validFolders, cancellationToken).ConfigureAwait(false);
+        var enumeration = await EnumerateSourceFoldersAsync(validFolders, cancellationToken).ConfigureAwait(false);
+        // A folder that exists but could not be listed (the share dropped after the check above) is
+        // as unread as one that is missing, and must not reach the window as "All files already imported".
+        unreadableFolders.AddRange(enumeration.Where(e => e.Failed).Select(e => e.Folder));
+        var enumerated = enumeration.Select(e => (e.Folder, e.Candidates)).ToList();
         bool libraryReady = await libraryTask.ConfigureAwait(false);
         if (!libraryReady)
             return null;
@@ -411,13 +501,13 @@ public static class MediaManagerService
         var classified = await ClassifySourceFoldersAsync(enumerated, cancellationToken).ConfigureAwait(false);
         int total = classified.Sum(c => c.Items.MovieFiles.Length + c.Items.TvShowFiles.Length + c.Items.FolderTvFiles.Length);
 
-        return (tmdb, classified, total);
+        return (tmdb, classified, total, [.. unreadableFolders]);
     }
 
     // Phase 1: enumerates each source folder and returns a candidate FileInfo list.
     // Uses directory metadata (Length, LastWriteTimeUtc) populated by EnumerateFiles - no extra stat per file.
     // Safe to run concurrently with BuildLibraryIndex since it does not call IsAlreadyInLibrary.
-    private static async Task<List<(string Folder, List<FileInfo> Candidates)>> EnumerateSourceFoldersAsync(
+    private static async Task<List<(string Folder, List<FileInfo> Candidates, bool Failed)>> EnumerateSourceFoldersAsync(
         List<string> validFolders, CancellationToken cancellationToken)
     {
         LogManager.Instance.LogMessage($"Enumerating source files across {TextFormat.Pluralize(validFolders.Count, "folder")}", LogLevel.Info, Subsystem.MediaManager);
@@ -427,12 +517,12 @@ public static class MediaManagerService
                 LogManager.Instance.LogMessage($"Enumerating source folder: '{f}'", LogLevel.Info, Subsystem.MediaManager);
                 try
                 {
-                    return (Folder: f, Candidates: EnumerateSourceFolder(f));
+                    return (Folder: f, Candidates: EnumerateSourceFolder(f), Failed: false);
                 }
                 catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
                 {
                     LogManager.Instance.LogMessage($"Skipped source folder '{f}': {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
-                    return (Folder: f, Candidates: []);
+                    return (Folder: f, Candidates: new List<FileInfo>(), Failed: true);
                 }
             }, cancellationToken)
         )).ConfigureAwait(false)).ToList();
@@ -603,24 +693,28 @@ public static class MediaManagerService
     /// <summary>Logs and performs the file transfer, or logs a dry-run message without touching files.
     /// No-ops when source and target are the same path, or the target already exists with the same fingerprint.
     /// Warns in both dry-run and live mode when the target exists with different content.</summary>
-    internal static void ImportFile(string sourcePath, string targetPath, bool dryRun, ImportMode importMode)
+    /// <returns><see langword="true"/> when the file is (or in a dry run, would be) at the target afterwards;
+    /// <see langword="false"/> on a destination conflict or a failed transfer. See
+    /// <see cref="MediaImporter.AddFileToLibrary"/> for why the subtitle callers depend on it.</returns>
+    internal static bool ImportFile(string sourcePath, string targetPath, bool dryRun, ImportMode importMode)
     {
-        if (string.Equals(sourcePath, targetPath, StringComparison.OrdinalIgnoreCase)) return;
+        if (string.Equals(sourcePath, targetPath, StringComparison.OrdinalIgnoreCase)) return true;
 
         // Check applies in both live and dry-run: skip files already correctly placed so we
         // don't falsely report "Would import" for content already present in the library.
         if (MediaImporter.DestinationMatchesSource(sourcePath, targetPath))
         {
             LogManager.Instance.LogDebug($"MediaManagerService.ImportFile: Skipped '{Path.GetFileName(sourcePath)}' - target already exists", Subsystem.MediaManager);
-            return;
+            return true;
         }
 
-        // Warn in both scan and import: two source files resolved to the same target name.
-        // Checked before dryRun branch so the conflict is visible during Scan Now, not only on live import.
+        // Warn in both a dry run and a live import: the target name already holds a different file.
+        // Checked before the dryRun branch so a dry-run import reports the conflict too. Scan Now does
+        // not come through here - it proposes such a row normally, and Import Now refuses it.
         if (File.Exists(targetPath))
         {
             MediaImporter.LogDestinationConflict(sourcePath, targetPath);
-            return;
+            return false;
         }
 
         string verb = dryRun ? "Would import" : "Importing";
@@ -628,8 +722,7 @@ public static class MediaManagerService
         // confusing "..\..\E:\..." style strings when source and target live on different volumes.
         LogManager.Instance.LogMessage($"{verb} '{Path.GetFileName(sourcePath)}' -> '{targetPath}'", LogLevel.Info, Subsystem.MediaManager);
 
-        if (!dryRun)
-            MediaImporter.AddFileToLibrary(sourcePath, targetPath, importMode);
+        return dryRun || MediaImporter.AddFileToLibrary(sourcePath, targetPath, importMode);
     }
 
     // Imports companion subtitle files that share the same base name as the video file
@@ -664,12 +757,20 @@ public static class MediaManagerService
         }
     }
 
-    /// <summary>Clears all media manager caches from memory and disk, forcing a full re-index and TMDB re-lookup on the next scan.</summary>
-    public static void ClearAllCaches()
-    {
-        MediaImporter.ClearAllCaches();
-        TmdbCacheManager.Clear();
-    }
+    /// <summary>
+    /// Clears all media manager caches from memory and disk, forcing a full re-index and TMDB re-lookup on the next scan.
+    /// Waits for another Media Manager task first (normally the sync cycle's import): clearing the library index under an import would make every source file look new to it.
+    /// Throws <see cref="OperationCanceledException"/> if <paramref name="cancellationToken"/> is cancelled during the wait.
+    /// </summary>
+    /// <param name="waiting">Optional sink; reports <see langword="true"/> while the clear waits for another Media Manager task to finish, then <see langword="false"/>.</param>
+    /// <param name="cancellationToken">Token to cancel the wait.</param>
+    public static Task ClearAllCachesAsync(IProgress<bool>? waiting = null, CancellationToken cancellationToken = default)
+        => RunExclusiveAsync(() =>
+        {
+            MediaImporter.ClearAllCaches();
+            TmdbCacheManager.Clear();
+            return Task.FromResult(true);
+        }, waiting, cancellationToken);
 
     /// <summary>
     /// The one wording for skipping an import because the TMDB match is not confident enough.
@@ -700,3 +801,12 @@ public static class MediaManagerService
         string MoviesLibraryPath,
         string TvShowsLibraryPath);
 }
+
+/// <summary>Progress sinks for a Media Manager window operation. <see cref="Items"/> reports each processed
+/// item; <see cref="Waiting"/> reports <see langword="true"/> while the operation waits for another Media Manager
+/// task (normally the sync cycle's import) to finish, then <see langword="false"/> once it starts.</summary>
+public sealed record MediaOperationProgress<T>(IProgress<T>? Items, IProgress<bool>? Waiting);
+
+/// <summary>The outcome of a Media Manager scan: the proposals, and the source folders that could not be
+/// read, so an empty <see cref="Proposals"/> is not mistaken for "all files already imported".</summary>
+public sealed record MediaScanResult(List<MediaProposal> Proposals, string[] UnreadableSourceFolders);

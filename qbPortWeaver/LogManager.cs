@@ -65,7 +65,7 @@ public sealed class LogManager
 
     private volatile bool _debugMode;
 
-    /// <summary>When <see langword="true"/>, <see cref="LogDebug"/> writes entries; when <see langword="false"/>, debug calls are no-ops.</summary>
+    /// <summary>When <see langword="true"/>, Debug-level entries are written; when <see langword="false"/>, they are not, whichever method logs them.</summary>
     public bool DebugMode
     {
         get => _debugMode;
@@ -104,6 +104,11 @@ public sealed class LogManager
     /// and later failed writes as successes.</para></remarks>
     public bool LogMessage(string message, LogLevel level, string subsystem = Subsystem.MainApp)
     {
+        // The debug toggle is enforced here rather than only in LogDebug: callers that pass a level
+        // through (LogHttpException for best-effort reads, the clients' failure-level parameters) would
+        // otherwise write Debug entries with debug logging off.
+        if (level == LogLevel.Debug && !DebugMode) return false;
+
         bool shouldNotify = false;
         bool writeFailed = false;
         bool wrote = false;

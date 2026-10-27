@@ -6,7 +6,7 @@ namespace qbPortWeaver;
 /// <summary>Category of a port history event, driving the row accent in the Status panel.</summary>
 public enum PortHistoryKind
 {
-    /// <summary>A normal port change (VPN assigned a new port, or the default port was applied).</summary>
+    /// <summary>A normal port change (VPN assigned a new port, the Static port was applied, or the default port was applied).</summary>
     PortChanged,
     /// <summary>The forwarded port was confirmed unreachable from outside.</summary>
     PortClosed,
@@ -29,8 +29,8 @@ public sealed record PortHistoryEntry
 /// Persisted, bounded history of port-affecting events (port changes, confirmed-closed results,
 /// auto-recovery dispatches), shown in the Status panel. Port changes are rare (VPN reconnects),
 /// so the history is persisted across restarts - a session-only list would usually be empty.
-/// Events are appended by the sync loop (background thread) and read by the Status panel (UI
-/// thread); appends are serialized by a lock and the file write is atomic, so a concurrent read
+/// Events are appended from background threads (the sync loop, and the recovery dispatch that the
+/// Settings Test button also runs) and read by the Status panel (UI thread); appends are serialized by a lock and the file write is atomic, so a concurrent read
 /// sees either the previous or the new complete file.
 /// </summary>
 public static class PortHistoryManager
@@ -54,6 +54,11 @@ public static class PortHistoryManager
     /// Never throws - a failed write costs one history entry, never a sync cycle.</summary>
     public static void Append(PortHistoryKind kind, int? port, string eventText)
     {
+        // Warnings are logged after the lock is released: a Warn waits for the UI thread to update
+        // the tray, and the UI thread takes this lock in Clear, so logging inside it could hang both.
+        string? resetWarning = null;
+        string? writeFailure = null;
+
         lock (_lock)
         {
             try
@@ -69,8 +74,7 @@ public static class PortHistoryManager
                     // file, so the history restarts rather than freezing until someone deletes it by
                     // hand. Reachable without a hand edit - WriteAtomic does not flush the temp file to
                     // disk before the rename, so a power loss can leave it empty.
-                    LogManager.Instance.LogMessage(
-                        $"The port history file was unreadable and has been reset: {ex.Message}", LogLevel.Warn);
+                    resetWarning = $"The port history file was unreadable and has been reset: {ex.Message}";
                     entries = [];
                 }
                 entries.Add(new PortHistoryEntry
@@ -96,11 +100,14 @@ public static class PortHistoryManager
                 // port has not changed" during exactly the problem the user is investigating.
                 // LogStateChange reports it once and again only if the message changes, so a
                 // permanent failure cannot drive the tray badge up.
-                LogManager.Instance.LogStateChange(HistoryWriteStateKey,
-                    $"Could not write the port history file - Recent Port Changes will stop updating: {ex.Message}",
-                    LogLevel.Warn);
+                writeFailure = $"Could not write the port history file - Recent Port Changes will stop updating: {AppFiles.DescribeWriteFailure(ex, HistoryFilePath)}";
             }
         }
+
+        if (resetWarning is not null)
+            LogManager.Instance.LogMessage(resetWarning, LogLevel.Warn);
+        if (writeFailure is not null)
+            LogManager.Instance.LogStateChange(HistoryWriteStateKey, writeFailure, LogLevel.Warn);
     }
 
     /// <summary>Returns the recorded events, oldest first. Empty when no history exists yet or the

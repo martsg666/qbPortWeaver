@@ -8,7 +8,6 @@ namespace qbPortWeaver;
 /// <summary>File-level infrastructure for the media import pipeline: file transfer (hardlink/copy/move), library fingerprint index, source and library cache management, and file utilities.</summary>
 internal static partial class MediaImporter
 {
-    // Library index: fingerprints (size + partial SHA-256) of every file in the library folders.
     // State key for LogManager.LogStateChange - an inaccessible library path persists for as long as
     // the share is down, and this is re-evaluated every import cycle.
     private const string LibraryIndexStateKey = "media.libraryindex";
@@ -18,6 +17,7 @@ internal static partial class MediaImporter
     // I/O-bound: storage throughput is the constraint, not CPU count.
     // 8 concurrent reads balances throughput vs not overwhelming slower storage.
     internal const int FingerprintParallelism = 8;
+    // Library index: fingerprints (size + partial SHA-256) of every file in the library folders.
     private static HashSet<string>? _libraryFingerprints;
     private static readonly object _libraryLock = new();
     private static readonly SemaphoreSlim _libraryBuildSemaphore = new(1, 1);
@@ -38,12 +38,13 @@ internal static partial class MediaImporter
     private static int _sourceCachedCount;
     private static int _sourceComputedCount;
 
-    // In-flight deduplication: if two threads race on the same source file (e.g. ImportAsync and ScanAsync
-    // both classifying with a cold cache), GetOrAdd returns the same Lazy so both share one read.
+    // In-flight deduplication: if two threads race on the same source file, GetOrAdd returns the same
+    // Lazy so both share one read. Media operations no longer overlap (MediaManagerService._operationGate),
+    // so this guards the parallel classification within one run.
     private static readonly ConcurrentDictionary<string, Lazy<string>> _sourceInFlight =
         new(StringComparer.OrdinalIgnoreCase);
 
-    // Serialises concurrent file writes from the sync loop and the UI scan path.
+    // Serialises cache file writes; a second line of defence behind MediaManagerService's one-operation gate.
     private static readonly object _cacheFileLock = new();
 
     private const int FingerprintChunkBytes = 64 * 1024; // 64 KB per chunk (head + tail)
@@ -65,10 +66,10 @@ internal static partial class MediaImporter
     private const int UncExistsTimeoutMs = 5000;        // budget for a UNC Directory.Exists before giving up
     private const int UnreachableHostCacheSeconds = 30; // how long a timed-out host stays marked unreachable
 
-    // Hosts whose bounded existence check recently timed out, keyed by host name with the UTC time of
-    // the timeout. Lets multiple paths on one dead host (e.g. \\NAS\A and \\NAS\B) fail fast without
+    // Hosts whose bounded existence check recently timed out, keyed by host name with the time of the
+    // timeout. Lets multiple paths on one dead host (e.g. \\NAS\A and \\NAS\B) fail fast without
     // each spawning another blocked check.
-    // Keyed on Environment.TickCount64 (monotonic) rather than a wall-clock timestamp, so a clock
+    // The time is Environment.TickCount64 (monotonic) rather than a wall-clock timestamp, so a clock
     // correction cannot make an entry look arbitrarily old or arbitrarily fresh.
     private static readonly ConcurrentDictionary<string, long> _unreachableHosts =
         new(StringComparer.OrdinalIgnoreCase);
@@ -91,7 +92,6 @@ internal static partial class MediaImporter
         return result;
     }
 
-    // Verifies that two paths refer to the same file by comparing volume serial number and file index.
     // Attempts a hardlink from sourcePath to destinationPath, verifies the link identity,
     // and falls back to a file copy if the hardlink fails or the filesystem silently copies instead.
     private static void ImportWithHardlink(string sourcePath, string destinationPath)
@@ -118,6 +118,7 @@ internal static partial class MediaImporter
         }
     }
 
+    // Verifies that two paths refer to the same file by comparing volume serial number and file index.
     // Returns false if the files have different identities (some filesystems silently create a copy instead of a hardlink).
     private static bool VerifyHardLink(string sourcePath, string destinationPath)
     {
@@ -159,22 +160,26 @@ internal static partial class MediaImporter
     /// Creates the target directory if needed. Skips files that already exist at the destination with the same fingerprint.
     /// In <see cref="ImportMode.Hardlink"/> mode, automatically falls back to copy if the hardlink fails.
     /// </summary>
-    internal static void AddFileToLibrary(string sourcePath, string destinationPath, ImportMode importMode)
+    /// <returns><see langword="true"/> when the file is at the destination afterwards (imported, or already
+    /// there with the same fingerprint); <see langword="false"/> on a destination conflict or a failed
+    /// transfer. Callers import a video's subtitles only on <see langword="true"/>, so a subtitle never
+    /// lands beside a different file that holds the video's name.</returns>
+    internal static bool AddFileToLibrary(string sourcePath, string destinationPath, ImportMode importMode)
     {
         if (string.Equals(sourcePath, destinationPath, StringComparison.OrdinalIgnoreCase))
-            return;
+            return true;
 
         if (DestinationMatchesSource(sourcePath, destinationPath))
         {
             LogManager.Instance.LogDebug($"MediaImporter.AddFileToLibrary: Skipped '{Path.GetFileName(destinationPath)}' - target already exists with same fingerprint", Subsystem.MediaManager);
-            return;
+            return true;
         }
 
         // Destination exists but different content: two different source files resolved to the same target path
         if (File.Exists(destinationPath))
         {
             LogDestinationConflict(sourcePath, destinationPath);
-            return;
+            return false;
         }
 
         var targetDir = Path.GetDirectoryName(destinationPath);
@@ -206,10 +211,11 @@ internal static partial class MediaImporter
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or PathTooLongException)
         {
             LogManager.Instance.LogMessage($"Failed to import '{Path.GetFileName(sourcePath)}': {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
-            return;
+            return false;
         }
 
         AddToLibraryIndex(destinationPath);
+        return true;
     }
 
     // Returns the file's size as a display string ("12345 bytes"), or "unknown size" if it cannot be
@@ -401,8 +407,8 @@ internal static partial class MediaImporter
     /// Walks the library folders and builds a fingerprint index so <see cref="IsAlreadyInLibrary(string)"/> can detect
     /// files that were previously imported (regardless of the name they were imported under).
     /// Uses a persisted cache so only new or modified library files are fingerprinted; deleted files are pruned.
-    /// If called concurrently (e.g. from both the sync loop and a UI scan), the second caller waits for the
-    /// first to finish. When <paramref name="allowReuse"/> is true, the existing index is reused for up to
+    /// If called concurrently, the second caller waits for the first to finish; MediaManagerService already
+    /// runs one media operation at a time, so this is a second line of defence. When <paramref name="allowReuse"/> is true, the existing index is reused for up to
     /// <see cref="FullRebuildIntervalCycles"/> cycles before forcing a full rebuild to catch external changes.
     /// Returns <see langword="true"/> when the index reflects the configured library state and is safe to
     /// query. Returns <see langword="false"/> when the configured paths were inaccessible or one or more
@@ -482,7 +488,7 @@ internal static partial class MediaImporter
                 return false;
             }
 
-            PruneLibraryCache(seenPaths);
+            PruneLibraryCache(libraryPaths, seenPaths);
 
             sw.Stop();
             lock (_libraryLock) { _libraryFingerprints = fingerprints; }
@@ -760,18 +766,31 @@ internal static partial class MediaImporter
         return fp;
     }
 
-    // Removes library cache entries for files not present in the current directory walk.
+    // Removes library cache entries for files under the walked roots that the walk did not see.
+    // Entries outside those roots are kept: a Media Manager scan can use library folders other than
+    // the configured ones, and dropping the configured library's entries would make the next import
+    // fingerprint every library file again. The cost is that entries under a library folder the user
+    // stops using stay in the cache until Clear cache.
     // Caller holds _libraryBuildSemaphore so the cache won't be racing with another rebuild,
     // but ClearAllCaches can still null _libraryCache concurrently - treat that as a no-op.
     // Reading _libraryCache inside the lock matches the locking discipline used elsewhere
     // in this file (GetOrComputeLibraryFingerprint, IsFileReadyForImport).
-    private static void PruneLibraryCache(HashSet<string> seenPaths)
+    private static void PruneLibraryCache(string[] walkedRoots, HashSet<string> seenPaths)
     {
+        // GetFullPath matches the FileInfo.FullName keys; a drive root such as "D:\" already ends in a separator
+        var rootPrefixes = walkedRoots
+            .Select(Path.GetFullPath)
+            .Select(r => Path.EndsInDirectorySeparator(r) ? r : r + Path.DirectorySeparatorChar)
+            .ToArray();
+
         List<string> stale;
         lock (_libraryLock)
         {
             if (_libraryCache is null) return;
-            stale = _libraryCache.Keys.Where(k => !seenPaths.Contains(k)).ToList();
+            stale = _libraryCache.Keys
+                .Where(k => !seenPaths.Contains(k)
+                         && Array.Exists(rootPrefixes, p => k.StartsWith(p, StringComparison.OrdinalIgnoreCase)))
+                .ToList();
             if (stale.Count == 0) return;
 
             foreach (var key in stale)

@@ -283,7 +283,9 @@ public abstract class ManagedClientBase : IManagedClient // NOSONAR S3881 - all 
 
     /// <summary>
     /// The best-effort counterpart to <see cref="ReadPreferencesJsonAsync"/>: parses the response, or
-    /// logs at Debug and returns <see langword="null"/> when it did not succeed. <b>The caller owns the
+    /// logs at Debug and returns <see langword="null"/> when the HTTP status was not a success. "Try"
+    /// covers that status path only - a body that is not valid JSON still throws
+    /// <see cref="JsonException"/>, which every caller's catch handles. <b>The caller owns the
     /// returned document.</b>
     /// </summary>
     /// <remarks>For reads whose failure is "undeterminable" rather than a fault - the port test and the

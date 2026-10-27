@@ -30,7 +30,7 @@ public sealed class TransmissionClient : ManagedClientBase
     // null is never assigned at runtime - the field starts as Empty and only transitions to non-empty
     // on a successful lookup. The nullable type is required by the volatile reference contract.
     // Static so the SCM enumeration persists across sync-cycle instances.
-    // Mirrors the caching pattern used by ProtonVpnManager and PiaVpnManager.
+    // Same Empty-sentinel volatile cache as PiaVpnManager's piactl path and VpnRegistryConfig's client exe path.
     // volatile ensures writes from one sync-cycle thread are visible to concurrent callers.
     private static volatile string? _resolvedServiceName = string.Empty;
 
@@ -239,9 +239,11 @@ public sealed class TransmissionClient : ManagedClientBase
         try
         {
             const string body = """{"method":"session-get","arguments":{"fields":["peer-port-random-on-start","port-forwarding-enabled"]}}""";
-            using var response = await SendRpcAsync(body, cancellationToken: cancellationToken).ConfigureAwait(false);
-            // Every null exit is logged: Diagnostics reports an unread check as Skip and tells the
-            // user to consult the log, so a silent return would send them somewhere empty.
+            using var response = await SendRpcAsync(body, LogLevel.Debug, cancellationToken).ConfigureAwait(false);
+            // Every null exit is logged, at Debug: Diagnostics reports an unread check as Skip and
+            // tells the user to turn on debug logging, which is where these lines appear. Debug rather
+            // than Warn because the sync cycle also runs this every few cycles, and a persistent
+            // failure here would otherwise badge the tray each time for an advisory check.
             if (response is null)
             {
                 LogManager.Instance.LogDebug("TransmissionClient.GetConflictingSettingsAsync: no RPC response");
@@ -250,6 +252,15 @@ public sealed class TransmissionClient : ManagedClientBase
 
             using var doc = await TryReadJsonAsync(response, cancellationToken).ConfigureAwait(false);
             if (doc is null) return null;
+            // Checked as GetPreferencesAsync does: a failed RPC can still carry an empty "arguments"
+            // object, which would otherwise read as "no conflicts" - a green Pass for a check that
+            // never read the settings.
+            if (doc.RootElement.TryGetProperty(JsonPropResult, out var resultElement) &&
+                !string.Equals(resultElement.AsStringOrNull(), RpcResultSuccess, StringComparison.OrdinalIgnoreCase))
+            {
+                LogManager.Instance.LogDebug($"TransmissionClient.GetConflictingSettingsAsync: RPC returned non-success result: {resultElement}");
+                return null;
+            }
             if (!doc.RootElement.TryGetProperty(JsonPropArguments, out var arguments))
             {
                 LogManager.Instance.LogDebug("TransmissionClient.GetConflictingSettingsAsync: 'arguments' key missing from RPC response");
@@ -267,7 +278,7 @@ public sealed class TransmissionClient : ManagedClientBase
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
         catch (Exception ex)
         {
-            LogHttpException("GetConflictingSettingsAsync", ex);
+            LogHttpException("GetConflictingSettingsAsync", ex, LogLevel.Debug);
             return null;
         }
     }

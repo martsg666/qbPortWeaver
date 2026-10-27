@@ -27,6 +27,7 @@ public sealed class NicotineClient : ManagedClientBase
     private const string JsonPropMessage = "message";
     private const string JsonPropState = "state";
     private const string JsonPropResult = "result";
+    private const string JsonPropWarnings = "warnings";
 
     private const string ErrorPortLocked = "port_locked_by_cli";
     private const string StateDone = "done";
@@ -171,6 +172,7 @@ public sealed class NicotineClient : ManagedClientBase
                 // is gone. Re-arm the warning latch so a later one is reported instead of being
                 // swallowed as a repeat - same rule as the interface latches in PortSyncService.
                 _lastLockedWarning = null;
+                LogSetPortWarnings(root, port);
                 return true;
             }
 
@@ -219,8 +221,9 @@ public sealed class NicotineClient : ManagedClientBase
     }
 
     /// <inheritdoc/>
-    /// <remarks>Runs Nicotine+'s own reachability check, which probes the port through the
-    /// Soulseek project's online check service. The plugin caps how long it will hold the request,
+    /// <remarks>Asks the bridge plugin for a reachability check through the Soulseek project's
+    /// online check service: Nicotine+'s own checker where the running version has one, otherwise
+    /// the plugin's direct query of the same service. The plugin caps how long it will hold the request,
     /// so a slow check comes back as still pending and is reported here as undeterminable rather
     /// than as a closed port. Failures log at Debug only - this is a best-effort probe.</remarks>
     public override async Task<bool?> TestListeningPortAsync(CancellationToken cancellationToken = default)
@@ -262,7 +265,8 @@ public sealed class NicotineClient : ManagedClientBase
     /// <inheritdoc/>
     public override async Task<IReadOnlyList<ClientSettingConflict>?> GetConflictingSettingsAsync(CancellationToken cancellationToken = default)
     {
-        // Debug, not Error: this runs from Diagnostics, which reports an unreachable client itself.
+        // Debug, not Error: Diagnostics reports an unreachable client on its own row, and in the sync cycle
+        // this runs right after a successful preferences read, so a failure here is not news.
         using var response = await SendAsync(HttpMethod.Get, PathPreferences, null,
             LogLevel.Debug, cancellationToken).ConfigureAwait(false);
         if (response is null) return null;
@@ -279,7 +283,7 @@ public sealed class NicotineClient : ManagedClientBase
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
         catch (Exception ex)
         {
-            LogHttpException("GetConflictingSettingsAsync", ex);
+            LogHttpException("GetConflictingSettingsAsync", ex, LogLevel.Debug);
             return null;
         }
     }
@@ -378,7 +382,7 @@ public sealed class NicotineClient : ManagedClientBase
         if (logChange && handshake.Url != _endpoint)
         {
             LogManager.Instance.LogMessage(
-                $"{ClientName} bridge plugin moved to {handshake.Url} - update the URL in Settings to skip this lookup each cycle",
+                $"{ClientName} bridge plugin moved to {handshake.Url} - now using the new address; update the URL in Settings to match",
                 LogLevel.Info);
         }
 
@@ -406,24 +410,62 @@ public sealed class NicotineClient : ManagedClientBase
 
         if (code == ErrorPortLocked)
         {
-            // Not a transient failure: the port cannot change until Nicotine+ is restarted
-            // without the option. Warn rather than Error, once per distinct message.
-            string warning = $"Cannot set the {ClientName} port{detail}";
-            if (_lastLockedWarning != warning)
-            {
-                _lastLockedWarning = warning;
-                LogManager.Instance.LogMessage(warning, LogLevel.Warn);
-            }
+            LogPortLocked(detail);
             return;
         }
 
         LogManager.Instance.LogMessage($"Failed to set {ClientName} port{detail}", LogLevel.Error);
     }
 
+    // Not a transient failure: the port cannot change until Nicotine+ is restarted without the
+    // --port option. Warn rather than Error, once per distinct message.
+    private void LogPortLocked(string detail)
+    {
+        string warning = $"Cannot set the {ClientName} port{detail}";
+        if (_lastLockedWarning == warning) return;
+        _lastLockedWarning = warning;
+        LogManager.Instance.LogMessage(warning, LogLevel.Warn);
+    }
+
+    // The plugin saves the port and reports, rather than fails on, whatever it could not do on top:
+    // rebinding the listener, or removing an old UPnP mapping (bridge/core_io.py, set_port). Unread,
+    // a port saved but not live looked like a clean success, and the next cycle read the saved value
+    // back and found nothing to fix. Warn where something stays wrong, Info where the port simply
+    // waits for Nicotine+ to connect. No dedupe: a set-port request is only sent on a real change.
+    private void LogSetPortWarnings(JsonElement root, int port)
+    {
+        if (!root.TryGetProperty(JsonPropWarnings, out var warnings) || warnings.ValueKind != JsonValueKind.Array)
+            return;
+
+        // Non-string entries are skipped: GetString would throw, and the caller's catch would then
+        // report a port change that succeeded as failed.
+        foreach (var item in warnings.EnumerateArray().Where(w => w.ValueKind == JsonValueKind.String))
+        {
+            var (text, level) = item.GetString() switch
+            {
+                "reconnect_unsupported" => ($"{ClientName} saved port {port} but this version cannot reconnect from the plugin - it keeps listening on the old port until you reconnect or restart {ClientName}", LogLevel.Warn),
+                "connect_unsupported" => ($"{ClientName} is offline and this version cannot connect from the plugin - port {port} applies when you connect", LogLevel.Info),
+                "setup_incomplete" => ($"{ClientName} has not finished its first-run setup - port {port} applies once it is completed and connected", LogLevel.Info),
+                "portmapper_unsupported" or "portmapper_failed" => ($"{ClientName} could not remove its UPnP port mapping - your router may still forward the old port", LogLevel.Warn),
+                // A code from a newer plugin: recorded, but not worth alerting on without knowing it.
+                var other => ($"NicotineClient.LogSetPortWarnings: {ClientName} reported '{other}' after the port change", LogLevel.Debug),
+            };
+            LogManager.Instance.LogMessage(text, level);
+        }
+    }
+
     private async Task LogHttpFailureAsync(HttpResponseMessage response, string path,
         LogLevel failureLevel, CancellationToken cancellationToken)
     {
-        string detail = await ReadErrorDetailAsync(response, cancellationToken).ConfigureAwait(false);
+        var (code, detail) = await ReadErrorDetailAsync(response, cancellationToken).ConfigureAwait(false);
+
+        // The plugin sends a --port lock as 409. The warn-once message is the designed report for
+        // it, so it must not also be logged as a generic HTTP failure on every sync.
+        if (code == ErrorPortLocked)
+        {
+            LogPortLocked(detail);
+            return;
+        }
 
         string message = response.StatusCode switch
         {
@@ -437,20 +479,20 @@ public sealed class NicotineClient : ManagedClientBase
         Log(message, failureLevel);
     }
 
-    private static async Task<string> ReadErrorDetailAsync(HttpResponseMessage response, CancellationToken cancellationToken)
+    private static async Task<(string Code, string Detail)> ReadErrorDetailAsync(HttpResponseMessage response, CancellationToken cancellationToken)
     {
         try
         {
             string json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
             using var doc = JsonDocument.Parse(json);
-            var (_, message) = ReadError(doc.RootElement);
-            return message.Length > 0 ? $": {message}" : string.Empty;
+            var (code, message) = ReadError(doc.RootElement);
+            return (code, message.Length > 0 ? $": {message}" : string.Empty);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
         catch (Exception)
         {
             // An error body is a nicety; its absence must not mask the status code.
-            return string.Empty;
+            return (string.Empty, string.Empty);
         }
     }
 
@@ -473,20 +515,24 @@ public sealed class NicotineClient : ManagedClientBase
 
     private void LogTransportFailure(string callerName, Exception? exception, LogLevel failureLevel)
     {
+        // Named after the address actually tried. _endpoint can come from the plugin's connection file
+        // and differ from the URL in Settings, which LogHttpException would name instead - pointing the
+        // user at an address that was never contacted.
+        string reason = exception switch
+        {
+            TaskCanceledException => "timed out",
+            null => "no response",
+            _ => exception.Message,
+        };
+        Log($"{ClientName} bridge plugin is not reachable at {_endpoint} ({reason})", failureLevel);
         if (exception is not null)
-        {
-            LogHttpException(callerName, exception, failureLevel);
-        }
-        else
-        {
-            Log($"{ClientName} bridge plugin is not reachable at {_endpoint}", failureLevel);
-        }
+            LogManager.Instance.LogDebug($"NicotineClient.{callerName}: {exception.GetType().Name}");
 
         // Distinguish "plugin missing" from "Nicotine+ down", which need different fixes.
         if (failureLevel == LogLevel.Error && !NicotinePluginDiscovery.IsPluginInstalled(_exePathHint))
         {
             LogManager.Instance.LogMessage(
-                $"The qbPortWeaver bridge plugin is not installed in {ClientName} - install it from Settings, then enable it in Nicotine+ under Preferences → Plugins",
+                $"The qbPortWeaver bridge plugin is not installed in {ClientName} - install it from Settings, then enable it in Nicotine+ under Preferences → Plugins, with plugins turned on",
                 LogLevel.Error);
         }
     }

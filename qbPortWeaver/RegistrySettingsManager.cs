@@ -33,6 +33,7 @@ public static class RegistrySettingsManager
     public const string VpnProviderProtonVpn = "ProtonVPN";
     public const string VpnProviderPia = "PIA";
     public const string VpnProviderNatPmp = "NAT-PMP";
+    public const string VpnProviderStaticPort = "Static port";
 
     public const string ClientNameQBittorrent = "qBittorrent";
     public const string ClientNameTransmission = "Transmission";
@@ -50,7 +51,9 @@ public static class RegistrySettingsManager
     // Registry key names - general section
     public const string KeyVpnProvider = "vpnProvider";
     public const string KeyUpdateIntervalSeconds = "updateIntervalSeconds";
-    public const string KeyNatPmpAdapterName = "natPmpAdapterName";
+    // Shared by NAT-PMP and Static port: both name the adapter the forwarded port belongs to.
+    public const string KeyVpnAdapterName = "vpnAdapterName";
+    public const string KeyStaticPort = "staticPort";
     public const string KeyClient = "client";
 
     // general section (auto-recovery)
@@ -194,7 +197,9 @@ public static class RegistrySettingsManager
             {
                 [KeyVpnProvider] = VpnProviderDisabled,
                 [KeyUpdateIntervalSeconds] = "180",
-                [KeyNatPmpAdapterName] = "",
+                [KeyVpnAdapterName] = "",
+                // 0 = not set; the sync loop and Settings both refuse it for the Static port provider.
+                [KeyStaticPort] = "0",
                 [KeyVpnAutoRecoveryEnabled] = ValueTrue,
                 [KeyVpnAutoRecoveryTriggerCycles] = "3",
                 [KeyClient] = ClientNameQBittorrent,
@@ -249,8 +254,8 @@ public static class RegistrySettingsManager
             [SectionNicotine] = new(StringComparer.OrdinalIgnoreCase)
             {
                 // The URL and token are normally discovered from the bridge plugin's connection
-                // file; these defaults only matter when that file cannot be found (Nicotine+
-                // started with a custom data folder) and the user fills them in by hand.
+                // file; these defaults only matter when that file cannot be found (a non-portable Nicotine+
+                // under another Windows account, or an overridden file path) and the user fills them in by hand.
                 [KeyNicotineUrl] = "http://127.0.0.1:38472",
                 [KeyNicotinePassword] = "",
                 [KeyNicotineExePath] = @"C:\Program Files\Nicotine+\Nicotine+.exe",
@@ -417,6 +422,8 @@ public static class RegistrySettingsManager
         // (a Soulseek client) made it wrong. Same mechanism as the rest, so it lives in the same
         // table rather than in a migration of its own.
         (SectionGeneral, "bitTorrentClient", KeyClient),
+        // NAT-PMP-specific until the Static port provider started using the same adapter setting.
+        (SectionGeneral, "natPmpAdapterName", KeyVpnAdapterName),
 
         (SectionQBittorrent, "qBittorrentURL",         KeyQBittorrentUrl),
         (SectionQBittorrent, "qBittorrentUserName",    KeyQBittorrentUserName),
@@ -441,7 +448,7 @@ public static class RegistrySettingsManager
         (SectionDeluge, "restartDeluge",     KeyDelugeRestart),
         (SectionDeluge, "forceStartDeluge",  KeyDelugeForceStart),
 
-        // Nicotine+ never shipped, but dev and beta machines carry these from 2.6.4 pre-releases.
+        // These Nicotine+ key names never shipped, but dev and beta machines carry them from 2.6.4 pre-releases.
         (SectionNicotine, "nicotineURL",         KeyNicotineUrl),
         (SectionNicotine, "nicotineToken",       KeyNicotinePassword),
         (SectionNicotine, "nicotineExePath",     KeyNicotineExePath),
@@ -703,6 +710,23 @@ public static class RegistrySettingsManager
     /// refused whole rather than created.</remarks>
     internal static bool IsKnownSectionKey(string section, string key) =>
         _defaults.TryGetValue(section, out var sectionDefaults) && sectionDefaults.ContainsKey(key);
+
+    /// <summary>
+    /// Returns the current name of <paramref name="key"/> when it is a former name listed in
+    /// <see cref="_legacyKeys"/> for <paramref name="section"/>, or <paramref name="key"/> unchanged.
+    /// </summary>
+    /// <remarks>Used by settings restore, so a backup written before a rename still restores the value
+    /// under its new name instead of being skipped as unrecognised.</remarks>
+    internal static string ResolveCurrentKey(string section, string key)
+    {
+        foreach (var (legacySection, legacyKey, newKey) in _legacyKeys)
+        {
+            if (legacySection.Equals(section, StringComparison.OrdinalIgnoreCase) &&
+                legacyKey.Equals(key, StringComparison.OrdinalIgnoreCase))
+                return newKey;
+        }
+        return key;
+    }
 
     /// <summary>
     /// Returns a section's stored values with the non-transferable keys omitted entirely, for writing

@@ -122,8 +122,8 @@ public sealed class QBittorrentClient : ManagedClientBase
     // envelope to inspect, so the status code is the whole result. What differs between the two
     // callers is the wording and the severity (a failed port write is an Error the user must act on;
     // a failed binding repair is a Warn the next cycle retries), so those are parameters.
-    // [CallerMemberName] keeps the transport log line attributed to the public method, as the
-    // equivalent helpers in TransmissionClient and NicotineClient do.
+    // [CallerMemberName] keeps the transport log line attributed to the method that started the write
+    // (usually a public one), as the equivalent helpers in TransmissionClient and NicotineClient do.
     private async Task<bool> PostPreferencesAsync(string jsonBody, string failureMessage, LogLevel failureLevel,
         CancellationToken cancellationToken, [CallerMemberName] string callerName = "")
     {
@@ -221,12 +221,14 @@ public sealed class QBittorrentClient : ManagedClientBase
     }
 
     /// <inheritdoc/>
-    // Re-reads preferences rather than reusing the sync cycle's values: this runs from Diagnostics,
-    // on demand and long after that read, and the whole point is to see the setting as it is now.
+    // Re-reads preferences rather than reusing the sync cycle's values: this runs from Diagnostics on
+    // demand, and from the cycle only every few cycles, so the values must be read as they are now.
     public override async Task<IReadOnlyList<ClientSettingConflict>?> GetConflictingSettingsAsync(CancellationToken cancellationToken = default)
     {
-        // Every null exit below is logged: Diagnostics reports an unread check as Skip and tells the
-        // user to consult the log, so a silent return would send them somewhere empty.
+        // Every null exit below is logged, at Debug: Diagnostics reports an unread check as Skip and
+        // tells the user to turn on debug logging, which is where these lines appear. Debug rather
+        // than Warn because the sync cycle also runs this every few cycles, and a persistent failure
+        // here would otherwise badge the tray each time for an advisory check.
         if (!await EnsureAuthenticatedAsync(cancellationToken).ConfigureAwait(false))
         {
             LogManager.Instance.LogDebug("QBittorrentClient.GetConflictingSettingsAsync: not authenticated");
@@ -250,7 +252,7 @@ public sealed class QBittorrentClient : ManagedClientBase
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
         catch (Exception ex)
         {
-            LogHttpException("GetConflictingSettingsAsync", ex);
+            LogHttpException("GetConflictingSettingsAsync", ex, LogLevel.Debug);
             return null;
         }
     }

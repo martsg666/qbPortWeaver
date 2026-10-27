@@ -1,4 +1,4 @@
-using System.Diagnostics.CodeAnalysis;
+﻿using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 
 namespace qbPortWeaver;
@@ -122,7 +122,7 @@ internal static class SettingsTransfer
         catch (Exception ex)
         {
             LogManager.Instance.LogMessage($"Settings export failed: {ex.Message}", LogLevel.Error);
-            return new(false, $"The settings could not be saved.\n\n{ex.Message}");
+            return new(false, $"The backup file could not be written.\n\n{ex.Message}");
         }
     }
 
@@ -240,6 +240,7 @@ internal static class SettingsTransfer
                 section.Value.ValueKind != JsonValueKind.Object)
             {
                 ignored += CountValues(section.Value);
+                LogManager.Instance.LogMessage($"Settings restore skipped section [{section.Name}] - not recognised by this version", LogLevel.Info);
                 continue;
             }
 
@@ -257,6 +258,7 @@ internal static class SettingsTransfer
         {
             total++;
             if (TryApplySectionValue(section, entry)) applied++;
+            else LogSkippedEntry($"[{section}] {entry.Name}");
         }
         return (applied, total - applied);
     }
@@ -271,9 +273,16 @@ internal static class SettingsTransfer
         {
             total++;
             if (TryApplyApplicationValue(entry)) applied++;
+            else LogSkippedEntry(entry.Name);
         }
         return (applied, total - applied);
     }
+
+    // The restore message says the log has the detail of every skipped entry. A failed write is
+    // already logged at Warn by the registry layer; this line covers the rest - an entry this version
+    // does not recognise or will not restore - and names the key only, never its value.
+    private static void LogSkippedEntry(string name) =>
+        LogManager.Instance.LogMessage($"Settings restore skipped {name} - not restored by this version or not written", LogLevel.Info);
 
     // Writes one section value, or reports that it was skipped. Non-transferable keys are refused
     // even when present in the file: the stored form of a password is a DPAPI blob tied to one user
@@ -282,19 +291,22 @@ internal static class SettingsTransfer
     private static bool TryApplySectionValue(string section, JsonProperty entry)
     {
         string? value = entry.Value.AsStringOrNull();
+        // A file written before a key was renamed carries the former name; restore it under the
+        // current one, as the startup migration does for the registry itself.
+        string key = RegistrySettingsManager.ResolveCurrentKey(section, entry.Name);
         // A key this build has no reader for is skipped for the same reason an unrecognised section
         // is: writing it leaves a value in the registry that nothing consumes and nothing removes.
         // It also keeps the reported "not recognised, skipped" count honest, which it was not while
         // only whole sections were checked.
         if (value is null ||
-            !RegistrySettingsManager.IsKnownSectionKey(section, entry.Name) ||
-            !RegistrySettingsManager.IsTransferableKey(entry.Name))
+            !RegistrySettingsManager.IsKnownSectionKey(section, key) ||
+            !RegistrySettingsManager.IsTransferableKey(key))
             return false;
 
         // The write swallows its own failures, so the result is what decides whether this counts as
         // restored. Without it a locked or policy-restricted hive reports a full restore having
         // written nothing.
-        return RegistrySettingsManager.TrySetValue(section, entry.Name, value);
+        return RegistrySettingsManager.TrySetValue(section, key, value);
     }
 
     // Same allow-list as the export side, so a hand-edited file cannot reintroduce installer-owned

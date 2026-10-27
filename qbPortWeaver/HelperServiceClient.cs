@@ -90,8 +90,9 @@ internal readonly record struct HelperResult(bool Completed, int WarnCount, int 
 internal static class HelperServiceClient
 {
     private const int PipeConnectTimeoutMs = 5000;
-    // Bound for awaiting the helper's response. Covers the helper's pathological
-    // restart path (stop ~45s + 5s pause + start ~30s = ~80s) with headroom. The
+    // Bound for awaiting the helper's response. Covers the helper's pathological restart path - the
+    // SCM stop, the escalating force-kill, the pause, the start and the post-start verification, each
+    // running to its own timeout - which adds up to roughly 100-115s, so the headroom is small. The
     // helper writes its response only after the action completes. (Named distinctly from
     // HelperPipeServer.RequestReadTimeoutMs, which bounds the opposite direction.)
     private const int ResponseTimeoutMs = 120_000;
@@ -155,7 +156,7 @@ internal static class HelperServiceClient
             await writer.WriteLineAsync($"{action}|{target}|{sessionToken}".AsMemory(), cancellationToken).ConfigureAwait(false);
             LogManager.Instance.LogMessage($"Sent '{action}' request for '{target}'", LogLevel.Info);
 
-            return ParseResult(await ReadResponseAsync(reader, action, cancellationToken).ConfigureAwait(false));
+            return ParseResult(await ReadResponseAsync(reader, action, cancellationToken).ConfigureAwait(false), action);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -193,7 +194,12 @@ internal static class HelperServiceClient
         using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
         try
         {
-            return await reader.ReadLineAsync(linkedCts.Token).ConfigureAwait(false);
+            string? line = await reader.ReadLineAsync(linkedCts.Token).ConfigureAwait(false);
+            // The helper closed the pipe without a result - stopped mid-action, or crashed. Logged here
+            // because the caller's follow-up line refers back to "the prior log entry".
+            if (line is null)
+                LogManager.Instance.LogMessage($"Helper service closed the connection without a result for '{action}' request", LogLevel.Warn);
+            return line;
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
@@ -206,9 +212,11 @@ internal static class HelperServiceClient
     // Returns Rejected if the helper sent the rejected sentinel (session token mismatch).
     // Requires at least one recognised key to parse so future protocol garble does not silently
     // succeed as Ok(0, 0).
-    private static HelperResult ParseResult(string? response)
+    // A null response was already logged where it was read (timeout or closed pipe); an empty or
+    // unrecognised one is logged here, so every Failed result has a line the caller can refer to.
+    private static HelperResult ParseResult(string? response, string action)
     {
-        if (string.IsNullOrWhiteSpace(response)) return HelperResult.Failed;
+        if (response is null) return HelperResult.Failed;
         if (response == HelperProtocol.ResultRejectedSentinel) return HelperResult.Rejected;
 
         int warn = 0, error = 0, protocolVersion = 0;
@@ -223,6 +231,9 @@ internal static class HelperServiceClient
             // result, and treating it as one would report a completed action that never ran.
             else if (kv[0] == HelperProtocol.ResultVersionKey) protocolVersion = value;
         }
-        return anyKeyParsed ? HelperResult.Ok(warn, error, protocolVersion) : HelperResult.Failed;
+        if (anyKeyParsed) return HelperResult.Ok(warn, error, protocolVersion);
+
+        LogManager.Instance.LogMessage($"Helper service returned an unreadable result for '{action}' request", LogLevel.Warn);
+        return HelperResult.Failed;
     }
 }

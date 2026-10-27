@@ -4,7 +4,7 @@ A Nicotine+ plugin that lets [qbPortWeaver](https://github.com/martsg666/qbPortW
 Soulseek listening port in sync with a VPN's forwarded port.
 
 Nicotine+ has no remote-control interface, so there is no way for an external application to
-change its listening port. This plugin adds a small JSON API on `127.0.0.1` that does exactly
+change its listening port. This plugin adds a small JSON API, on `127.0.0.1` by default, that does exactly
 that, and nothing else.
 
 The port is applied the same way the Preferences dialog applies it - the setting is written and
@@ -14,11 +14,11 @@ never has to be restarted**. Transfers in progress survive; only the Soulseek co
 ## Installing
 
 Easiest: in qbPortWeaver, set **Client** to **Nicotine+** under **Settings → General**, then open
-the **Client** tab and click **Install Plugin**. It copies the plugin into place and, if Nicotine+
+the **Nicotine+** tab and click **Install Plugin**. It copies the plugin into place and, if Nicotine+
 is closed, offers to enable it too.
 
-By hand: copy this folder into your Nicotine+ plugin folder, then enable **qbPortWeaver Bridge**
-in **Preferences → Plugins**.
+By hand: copy this folder into your Nicotine+ plugin folder, then in **Preferences → Plugins**
+make sure plugins are turned on and enable **qbPortWeaver Bridge**.
 
 | Install | Plugin folder |
 |---|---|
@@ -32,10 +32,10 @@ On start, the plugin writes a small file with its address and access token:
 - `%LOCALAPPDATA%\qbPortWeaver\nicotine-bridge.json` - the one qbPortWeaver reads
 - `<Nicotine+ data folder>\qbportweaver-bridge.json` - a copy you can find easily
 
-qbPortWeaver picks these up on its own, so there is normally nothing to configure. If you run
-Nicotine+ with a custom data folder (`-c` or `--user-data`), qbPortWeaver cannot work out where
-to look - run `/qbpw-connection-file` in Nicotine+ and enter the address and token into
-qbPortWeaver's settings by hand. Both are stable across restarts.
+qbPortWeaver picks these up on its own, so there is normally nothing to configure. If a non-portable
+Nicotine+ runs under another Windows account, or the plugin's connection file setting points elsewhere, run
+`/qbpw-connection-file` in a Nicotine+ private chat, open the file it lists, and copy its `url`
+and `token` into qbPortWeaver's settings. Both are stable across restarts.
 
 The file carries a `schema` number describing its layout. qbPortWeaver checks it before reading
 anything else and ignores a file whose schema is newer than the version it understands, rather
@@ -45,11 +45,12 @@ not connected instead of misbehaving quietly. Update qbPortWeaver if you see tha
 
 ## Commands
 
-Type these in any Nicotine+ chat window:
+Type these in a Nicotine+ chat window. `/qbpw-connection-file` works only in a private chat, not in a
+chat room, because chat rooms are public.
 
 | Command | What it does |
 |---|---|
-| `/qbpw-status` | Bridge address, connection state, configured and in-use port |
+| `/qbpw-status` | Bridge address, connection state, configured and in-use port, UPnP state, and any capability this Nicotine+ version lacks |
 | `/qbpw-port [port]` | Show the port, or change it |
 | `/qbpw-test [port]` | Check whether the port is reachable from outside |
 | `/qbpw-connection-file` | Where the connection details are published |
@@ -80,6 +81,12 @@ by definition not answering. `GET /` is the one to start with: it reports the ve
 sides and the capability map, so a Nicotine+ update that removed something the bridge depends on
 can be identified directly rather than inferred from a failing endpoint.
 
+A successful `POST /v1/port` also carries `warnings`, a list of what it could not do on top of
+saving the port: `reconnect_unsupported` and `connect_unsupported` (the new port waits for the next
+connection), `setup_incomplete` (Nicotine+'s first-run setup is not finished, so it is not
+connected), and `portmapper_unsupported` or `portmapper_failed` (an old UPnP mapping may remain).
+qbPortWeaver logs each one. `POST /v1/reconnect` carries the same list, limited to the first three.
+
 `POST /v1/porttest` never blocks longer than the plugin's own cap, so a slow check returns
 `state: "pending"` rather than timing out. Treat anything other than `state: "done"` as
 undetermined, not as a closed port. Both porttest responses carry `source`: `native` when the
@@ -100,13 +107,14 @@ before any check has run. The two fail differently, so it is worth knowing which
 
 ## If Nicotine+ was started with `--port`
 
-That option overrides the configured port for the life of the process, and nothing can change it
-- not this plugin, not the Preferences dialog. qbPortWeaver will report it and stop trying.
+That option overrides the configured port for the life of the process, and nothing can change it:
+not this plugin, not the Preferences dialog. qbPortWeaver logs the reason once
+and reports each sync as failed until Nicotine+ is restarted without it.
 Remove `--port` from the shortcut and restart Nicotine+.
 
 ## Security
 
-The API listens on loopback only and requires a bearer token.
+The API listens on loopback by default (see the Address setting) and requires a bearer token.
 
 Be aware that on Windows, loopback is not scoped per user: any process on the machine can reach
 the socket, which is why the token exists. The token is protected by the containing folder's

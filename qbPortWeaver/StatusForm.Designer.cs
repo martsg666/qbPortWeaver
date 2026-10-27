@@ -289,7 +289,7 @@ partial class StatusForm
         lblSyncsLabel.TabIndex = 4;
         lblSyncsLabel.Text = "Syncs (session):";
         lblSyncsLabel.TextAlign = ContentAlignment.MiddleLeft;
-        // AutoEllipsis: after very long sessions the value ("10080 (10079 OK)") can outgrow the
+        // AutoEllipsis: after very long sessions the value ("10080 (12 failed)") can outgrow the
         // column; an ellipsis beats silent clipping.
         lblSyncsValue.AutoEllipsis = true;
         lblSyncsValue.Location = new Point(148, 53);
@@ -323,8 +323,9 @@ partial class StatusForm
         lblMonitoringSinceValue.Text = "-";
         lblMonitoringSinceValue.TextAlign = ContentAlignment.MiddleLeft;
         // Discrete clear option - right-click the Statistics group (mirrors the history list's
-        // context menu). Session counters only: the history-derived figures (port held, changes
-        // today) are cleared through the history list's own Clear History. The menu is also
+        // context menu). Session counters only: the history-derived figure (changes today) is cleared
+        // through the history list's own Clear History, and the current port is read live from the
+        // client, so neither is a counter to reset. The menu is also
         // attached to every child label in the constructor (AttachStatsContextMenu), since
         // ContextMenuStrip does not propagate from a container to its children.
         ctxClearStats.Text = "Clear Statistics";

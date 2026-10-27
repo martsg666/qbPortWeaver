@@ -6,7 +6,8 @@ namespace qbPortWeaver;
 /// <summary>
 /// String values written to the "status" field of the status file (and surfaced to the Status
 /// panel and external scripts). Kept stable across releases like the status keys. "skipped" means
-/// port sync was disabled or the VPN was disconnected with no default port (the cycle is a no-op).
+/// the cycle did no port work - for example port sync was disabled, or the VPN was disconnected
+/// with no default port.
 /// </summary>
 public static class SyncStatusValues
 {
@@ -84,6 +85,9 @@ public static class StatusManager
     private static readonly JsonSerializerOptions _jsonOptions = new() { WriteIndented = true };
     private static readonly JsonSerializerOptions _readOptions = new() { PropertyNameCaseInsensitive = true };
 
+    // State key for LogStateChange: a status-file write failure is reported once, not once per cycle.
+    private const string StatusWriteStateKey = "statusFile.write";
+
     /// <summary>Serializes <paramref name="status"/> to the JSON status file using an atomic temp-file write.</summary>
     public static void Write(IReadOnlyDictionary<string, object?> status)
     {
@@ -93,10 +97,14 @@ public static class StatusManager
         {
             string json = JsonSerializer.Serialize(status, _jsonOptions);
             AppFiles.WriteAtomic(filePath, json);
+            LogManager.Instance.ClearLogState(StatusWriteStateKey);
         }
         catch (Exception ex)
         {
-            LogManager.Instance.LogMessage($"Failed to write status file: {ex.Message}", LogLevel.Warn);
+            // Transition-only, as PortHistoryManager does for its file: a write failure persists until
+            // the user fixes it (disk full, permissions), and a Warn on every cycle would bury the log
+            // and keep raising the badge.
+            LogManager.Instance.LogStateChange(StatusWriteStateKey, $"Failed to write status file: {AppFiles.DescribeWriteFailure(ex, filePath)}", LogLevel.Warn);
         }
     }
 

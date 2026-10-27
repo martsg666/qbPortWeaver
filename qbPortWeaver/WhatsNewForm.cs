@@ -9,6 +9,62 @@ public partial class WhatsNewForm : Form
         "If you find qbPortWeaver useful, please star it on GitHub.";
 
     private const string ReleaseFeaturesText =
+        "New in 2.7.0\n\n" +
+        "Works with VPN providers that give you a permanent port\n" +
+        "Choose Static port as the VPN provider in Settings, pick your VPN's network adapter and enter " +
+        "the port. The network interface checks, the open-port check, auto-recovery and the default " +
+        "port all work as they do with the other providers.\n\n" +
+        "Changed: clearer status when something needs fixing\n" +
+        "A missing setting, or a default port that could not be applied, now shows the tray red with " +
+        "the reason instead of orange \"VPN not connected\". Hover over Last sync in the Status panel " +
+        "to see the same reason, and click a warning notification to open the log at the latest warning.\n\n" +
+        "Changed: stricter NAT-PMP checks and better advice\n" +
+        "The network interface check now needs the exact adapter, so a client bound to \"Ethernet\" " +
+        "no longer passes for a VPN on \"Ethernet 2\". Diagnostics gives advice that fits the adapter " +
+        "or gateway instead of telling you to pick a P2P server.\n\n" +
+        "Changed: Nicotine+ says when a new port is not live yet\n" +
+        "The log now says when Nicotine+ saved the port but could not switch over straight away, or " +
+        "may have left an old router mapping in place.\n\n" +
+        "Changed: latest .NET security update included\n" +
+        "qbPortWeaver now ships with the October 2026 .NET update, which fixes a flaw in its " +
+        "decompression code. qbPortWeaver never used that code, but you get the fix anyway.\n\n" +
+        "Fixed: auto-recovery\n" +
+        "A recovery that could not relaunch the VPN client app, or an adapter cycle that failed, is no " +
+        "longer logged as completed. An adapter with a short name such as \"VPN\" is no longer " +
+        "mistaken for ProtonVPN, and a WireGuard tunnel named after ProtonVPN or PIA without their app " +
+        "installed is cycled instead of skipped. An adapter cycle whose disable step hangs re-enables the " +
+        "adapter instead of leaving it disabled. A Windows service that shares its process with others is never " +
+        "force-stopped, a VPN service that is slow to start is no longer reported as a failed restart, and " +
+        "a recovery that worked no longer shows the warning badge.\n\n" +
+        "Fixed: multi-part movies and subtitles in the Media Manager\n" +
+        "Movies split into several files, named only by part (cd1, Part.1, CD_2) or each carrying the title, " +
+        "are now recognised, keep their part numbers on Re-match and import into one folder. Import " +
+        "Now brings subtitles along, and every import moves subtitles only with a video it placed.\n\n" +
+        "Fixed: Media Manager status messages\n" +
+        "An unreachable library or source folder is reported instead of \"All files already imported\", a slow TMDB " +
+        "answer no longer stops Re-match, the Import Now result stays on screen, and errors are " +
+        "written to the log.\n\n" +
+        "Fixed: Media Manager scans with other library folders\n" +
+        "Scan Now, Import Now and Clear Cache wait for the import running on the sync cycle instead of " +
+        "disturbing it, which could fill the log with warnings about files already in the library. A scan also " +
+        "no longer forgets what it knew about the configured library, so the next import does not " +
+        "re-read every library file.\n\n" +
+        "Fixed: Nicotine+ /qbpw-test and other Windows accounts\n" +
+        "/qbpw-test now shows its result in the chat you typed it in, and a closed port is checked again " +
+        "instead of repeated from an earlier answer, so a short sync interval no longer reports it closed " +
+        "by mistake. A portable Nicotine+ running under another Windows account is now found. To get the " +
+        "plugin fixes in this release, click Update Plugin on the Nicotine+ tab in Settings, then restart " +
+        "Nicotine+.\n\n" +
+        "Fixed: several smaller issues\n" +
+        "An unexpected sync error no longer resets the sync interval to 3 minutes, and a network change " +
+        "during a sync, such as a VPN reconnect by auto-recovery, keeps its quick re-check. A port change " +
+        "after two recoveries in a row is still marked \"after recovery\" in the port history. Warnings that " +
+        "repeat every sync now appear once, and debug entries no longer appear with debug logging off. " +
+        "Start Automatically shows the real state, the Media Manager keeps the file extension, " +
+        "Nicotine+ commands no longer print \"None\", the Nicotine+ plugin shows as not enabled when " +
+        "Nicotine+ has plugins turned off, and a failed Transmission settings check is no longer " +
+        "reported as passed.\n\n" +
+        "Previously released\n\n" +
         "New in 2.6.9\n\n" +
         "Your settings can be backed up and restored\n" +
         "Settings now has Back Up and Restore buttons. Back Up writes your whole configuration to a " +
@@ -28,7 +84,6 @@ public partial class WhatsNewForm : Form
         "With the color theme set to System while Windows was in dark mode, qbPortWeaver could close " +
         "immediately on startup without showing anything. It now starts normally with every theme " +
         "setting.\n\n" +
-        "Previously released\n\n" +
         "New in 2.6.8\n\n" +
         "Diagnostics now checks your internet connection\n" +
         "Run Diagnostics reports whether this machine gets a reply when it pings the internet. That is " +

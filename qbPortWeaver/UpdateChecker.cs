@@ -61,7 +61,10 @@ public static class UpdateChecker
 
             if (root.GetStringOrNull(JsonPropTagName) is not { } tagName ||
                 root.GetStringOrNull(JsonPropHtmlUrl) is not { } releaseUrl)
+            {
+                LogManager.Instance.LogMessage("Update check failed: the latest release has no tag or page link", LogLevel.Info);
                 return null;
+            }
 
             string versionStr = tagName.TrimStart('v', 'V');
 
@@ -81,8 +84,10 @@ public static class UpdateChecker
             // No OCE filter here (matches GetReleaseContributorsAsync): the arm above already
             // suppresses shutdown cancellation, so anything reaching here - including a non-token
             // HttpClient timeout surfacing as TaskCanceledException - is a real failure to log,
-            // not propagate.
-            LogManager.Instance.LogDebug($"UpdateChecker.GetLatestReleaseInfoAsync: {ex.Message}");
+            // not propagate. Info, not Debug: the manual check's balloon points the user at the log, so
+            // the cause has to be there with debug logging off; and a periodic check fails rarely
+            // enough (no connection, GitHub down) that one line per failure is not noise.
+            LogManager.Instance.LogMessage($"Update check failed: {ex.Message}", LogLevel.Info);
             return null;
         }
     }

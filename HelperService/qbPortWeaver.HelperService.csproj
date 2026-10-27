@@ -11,9 +11,9 @@
     <Product>qbPortWeaver</Product>
     <Authors>martsg666</Authors>
     <Copyright>© 2026 martsg666</Copyright>
-    <Version>2.6.9</Version>
-    <FileVersion>2.6.9.0</FileVersion>
-    <AssemblyVersion>2.6.9.0</AssemblyVersion>
+    <Version>2.7.0</Version>
+    <FileVersion>2.7.0.0</FileVersion>
+    <AssemblyVersion>2.7.0.0</AssemblyVersion>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <!-- Suppress known SonarAnalyzer false positives. Each is documented below; per-site
          // NOSONAR comments mark the specific occurrences where the rule permits one
@@ -33,9 +33,9 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="10.0.0" />
-    <PackageReference Include="System.ServiceProcess.ServiceController"     Version="10.0.0" />
-    <PackageReference Include="SonarAnalyzer.CSharp" Version="10.21.0.135717">
+    <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="10.0.14" />
+    <PackageReference Include="System.ServiceProcess.ServiceController"     Version="10.0.14" />
+    <PackageReference Include="SonarAnalyzer.CSharp" Version="10.35.0.4138">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>

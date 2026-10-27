@@ -146,8 +146,9 @@ public sealed class TvShowProcessor(TmdbClient tmdb, bool dryRun, bool createFol
         }
 
         var targetPath = BuildEpisodePath(filePath, info, episodeInfo, libraryPath, createFolders);
-        MediaManagerService.ImportFile(filePath, targetPath, dryRun, importMode);
-        MediaManagerService.ImportCompanionFiles(filePath, targetPath, dryRun, importMode);
+        // Subtitles only once the episode is in place - a skipped or failed episode leaves them where they are.
+        if (MediaManagerService.ImportFile(filePath, targetPath, dryRun, importMode))
+            MediaManagerService.ImportCompanionFiles(filePath, targetPath, dryRun, importMode);
     }
 
     // Builds the library target path for an episode file.

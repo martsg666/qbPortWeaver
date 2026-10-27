@@ -8,14 +8,14 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <ApplicationIcon>qbPortWeaver.ico</ApplicationIcon>
     <AssemblyTitle>qbPortWeaver</AssemblyTitle>
-    <Description>Syncs the listening port of qBittorrent, Transmission, Deluge, or Nicotine+ with the port assigned by your VPN provider (ProtonVPN, PIA, or any NAT-PMP capable gateway)</Description>
+    <Description>Syncs the listening port of qBittorrent, Transmission, Deluge, or Nicotine+ with the port assigned by your VPN provider (ProtonVPN, PIA, any NAT-PMP capable gateway, or a permanent forwarded port entered once)</Description>
     <Company>martsg666</Company>
     <Product>qbPortWeaver</Product>
     <Authors>martsg666</Authors>
     <Copyright>© 2026 martsg666</Copyright>
-    <Version>2.6.9</Version>
-    <FileVersion>2.6.9.0</FileVersion>
-    <AssemblyVersion>2.6.9.0</AssemblyVersion>
+    <Version>2.7.0</Version>
+    <FileVersion>2.7.0.0</FileVersion>
+    <AssemblyVersion>2.7.0.0</AssemblyVersion>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <SignAssembly>False</SignAssembly>
     <PackageReadmeFile>README.md</PackageReadmeFile>
@@ -56,11 +56,11 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="SonarAnalyzer.CSharp" Version="10.21.0.135717">
+    <PackageReference Include="SonarAnalyzer.CSharp" Version="10.35.0.4138">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
-    <PackageReference Include="System.ServiceProcess.ServiceController" Version="10.0.0" />
+    <PackageReference Include="System.ServiceProcess.ServiceController" Version="10.0.14" />
   </ItemGroup>
 
   <ItemGroup>

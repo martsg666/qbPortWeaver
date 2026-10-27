@@ -131,8 +131,8 @@ internal static class NicotinePluginInstaller
     /// nothing to compare against.
     /// </summary>
     /// <remarks>
-    /// This is not a fault - <c>NicotineClient</c> rediscovers the connection file and recovers - but
-    /// it costs a failed request every cycle until it is corrected, so both surfaces flag it.
+    /// This is not a fault - <c>NicotineClient</c> adopts the connection file when it is created, so
+    /// requests reach the plugin - but the saved settings are out of date, so both surfaces flag it.
     /// It happens on its own: the plugin falls back to a free port when its configured one is busy,
     /// which moves the published address while the stored settings stay where they were.
     /// <para>Lives here so the two callers cannot drift apart. They compare against different
@@ -225,7 +225,7 @@ internal static class NicotinePluginInstaller
         {
             return new NicotinePluginActionResult(false,
                 "Nicotine+ is running. Close it first, or enable the plugin from " +
-                "Preferences → Plugins inside Nicotine+.");
+                "Preferences → Plugins inside Nicotine+, with plugins turned on.");
         }
 
         string? dataFolder = NicotinePluginDiscovery.ResolveDataFolder(exePathHint);
@@ -258,7 +258,7 @@ internal static class NicotinePluginInstaller
                     $"Not enabling the Nicotine+ bridge plugin automatically: {reason}", LogLevel.Warn);
                 return new NicotinePluginActionResult(false,
                     $"Nicotine+'s configuration could not be updated safely ({reason}).\n\n" +
-                    "Nothing was changed. Enable the plugin from Preferences → Plugins inside Nicotine+ instead.");
+                    "Nothing was changed. Enable the plugin from Preferences → Plugins inside Nicotine+ instead, with plugins turned on.");
             }
 
             if (isNicotineRunning())
@@ -287,7 +287,7 @@ internal static class NicotinePluginInstaller
             LogManager.Instance.LogMessage($"Failed to enable the Nicotine+ bridge plugin: {ex.Message}", LogLevel.Error);
             return new NicotinePluginActionResult(false,
                 $"Could not update Nicotine+'s configuration.\n\n{ex.Message}\n\n" +
-                "Enable the plugin from Preferences → Plugins inside Nicotine+ instead.");
+                "Enable the plugin from Preferences → Plugins inside Nicotine+ instead, with plugins turned on.");
         }
     }
 
@@ -306,14 +306,25 @@ internal static class NicotinePluginInstaller
                 if (!File.Exists(configPath)) return null;
             }
 
+            // Both keys count: the plugin must be in the list, and the master switch must not be off,
+            // since Nicotine+ loads no plugin at all while it is. Without the second check a switched-off
+            // Nicotine+ read as "Enabled - start Nicotine+" forever, and the Enable Plugin button that
+            // turns the switch back on (EnsureMasterSwitch) was never offered.
+            bool? listed = false;
+            bool masterOff = false;
             foreach (var (section, key, value) in ReadSettings(AppFiles.ReadAllLinesShared(configPath)))
             {
-                if (section != PluginsSection || key != EnabledKey) continue;
-                if (!TryParsePythonStringList(value, out var names)) return null;
-                return names.Contains(NicotinePluginDiscovery.PluginFolderName, StringComparer.Ordinal);
+                if (section != PluginsSection) continue;
+                if (key == EnabledKey)
+                    listed = TryParsePythonStringList(value, out var names)
+                        ? names.Contains(NicotinePluginDiscovery.PluginFolderName, StringComparer.Ordinal)
+                        : null;
+                else if (key == EnableKey)
+                    masterOff = value.Equals("False", StringComparison.OrdinalIgnoreCase);
             }
 
-            return false;
+            if (masterOff) return false;
+            return listed;
         }
         catch (Exception ex)
         {
@@ -570,8 +581,8 @@ internal static class NicotinePluginInstaller
         [.. Assembly.GetExecutingAssembly().GetManifestResourceNames()
             .Where(name => name.StartsWith(ResourcePrefix, StringComparison.Ordinal))];
 
-    // Resource names flatten the folder separators, so the last two dots are the file extension
-    // and everything before the final remaining dot is a subfolder.
+    // Resource names flatten the folder separators into dots, so the text after the last dot is the
+    // file extension and every dot before it is a folder separator.
     private static string ResourceNameToRelativePath(string suffix)
     {
         int lastDot = suffix.LastIndexOf('.');

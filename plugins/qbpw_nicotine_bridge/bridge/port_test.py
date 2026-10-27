@@ -33,9 +33,11 @@ SOURCE_WEB = "web"
 # is not in a release yet). The service returns an HTML page containing "<port>/tcp open|closed".
 _PORT_CHECK_URL_DEFAULT = "https://www.slsknet.org/porttest.php?port=%s"
 
-# A verdict older than this is refreshed rather than reused. Long enough that a sync cycle
+# An open verdict older than this is refreshed rather than reused. Long enough that a sync cycle
 # does not re-probe the external check service every time, short enough to notice a port
-# that has since closed.
+# that has since closed. A closed verdict is never reused: qbPortWeaver confirms a closed
+# result with a second check on its next cycle, and a replayed answer would make one probe
+# taken while Nicotine+ was still reconnecting count as both.
 STALE_AFTER = 90.0
 
 # Nicotine+'s checker never reports failure, it just never emits - so give up eventually.
@@ -108,7 +110,7 @@ class PortTest:
         now = time.monotonic()
 
         with self._lock:
-            if self._state == STATE_DONE and self._port == port and now - self._started < STALE_AFTER:
+            if self._has_fresh_open_verdict(port, now):
                 return self._snapshot()
 
             joining = (self._state == STATE_PENDING and self._port == port
@@ -146,15 +148,16 @@ class PortTest:
     def _web_request(self, port, wait_seconds):
         """Fallback path: query the Soulseek port-test service over HTTP and parse the verdict.
 
-        Runs on the handler thread and touches no Nicotine+ internals. A verdict is cached per port
-        for STALE_AFTER, so repeated checks return the cached answer rather than re-querying the
-        service. The lock is released across the HTTP call, so two checks starting at the same time
-        both query it - unlike the native path, which joins an in-flight check. That costs one extra
-        request in a rare race, which is cheaper than a second implementation of the join logic.
+        Runs on the handler thread and touches no Nicotine+ internals. An open verdict is cached per
+        port for STALE_AFTER, so repeated checks return the cached answer rather than re-querying the
+        service; a closed one is always queried again (see STALE_AFTER). The lock is released across
+        the HTTP call, so two checks starting at the same time both query it - unlike the native path,
+        which joins an in-flight check. That costs one extra request in a rare race, which is cheaper
+        than a second implementation of the join logic.
         """
         now = time.monotonic()
         with self._lock:
-            if self._state == STATE_DONE and self._port == port and now - self._started < STALE_AFTER:
+            if self._has_fresh_open_verdict(port, now):
                 return self._snapshot()
 
         result = _web_port_check(port, wait_seconds, self._log)
@@ -174,6 +177,11 @@ class PortTest:
                 self._state = STATE_DONE
                 self._result = result
             return self._snapshot()
+
+    def _has_fresh_open_verdict(self, port, now):
+        """True when an open verdict for this port is recent enough to reuse. Caller holds the lock."""
+        return (self._state == STATE_DONE and self._result is True and self._port == port
+                and now - self._started < STALE_AFTER)
 
     def peek(self):
         """Current state without starting anything."""
@@ -221,7 +229,7 @@ def _web_port_check(port, timeout, log):
             body = response.read(65536).decode("utf-8", "replace")
     # Any network or parse failure means "could not determine", never a hard error.
     except Exception as error:  # noqa: BLE001
-        log("qbPortWeaver: web port check failed: %s", (error,))
+        log("web port check failed: %s", (error,))
         return None
 
     # The service echoes "<ip> Port: <port>/tcp open|closed"; match on the port we asked about.

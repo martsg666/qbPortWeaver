@@ -329,8 +329,10 @@ public partial class StatusForm : Form
 
         // The label ellipsises rather than clipping (see the designer), so the tooltip carries the
         // untruncated text. The part that gets cut is the countdown at the end of the longest value,
-        // which is the half a user is reading the row for.
-        toolTip.SetToolTip(lblAutoRecoveryValue, text);
+        // which is the half a user is reading the row for. Only on a change, as SetLastSyncToolTip
+        // does: this runs on the one-second tick, and re-setting it restarts a tooltip being read.
+        if (toolTip.GetToolTip(lblAutoRecoveryValue) != text)
+            toolTip.SetToolTip(lblAutoRecoveryValue, text);
     }
 
     // One phrase for "nothing is holding recovery back any more", reached from three places: either
@@ -567,6 +569,7 @@ public partial class StatusForm : Form
         if (s.Timestamp is not DateTimeOffset ts)
         {
             SetNeutral(lblLastSyncValue, "-");
+            SetLastSyncToolTip(null);
             return;
         }
 
@@ -587,6 +590,18 @@ public partial class StatusForm : Form
         };
         // Relative suffix so "how recent was this?" reads at a glance without mental arithmetic.
         SetColor(lblLastSyncValue, $"{time} - {result} ({FormatAgo(DateTimeOffset.Now - ts)})", color);
+        // The cycle's own message, as the tray tooltip shows it. The panel had no other place that
+        // said why a sync failed, which left a red "Error" here explained only in the log.
+        SetLastSyncToolTip(s.Message);
+    }
+
+    // Only on a change: PopulateLastSync also runs on the one-second tick, and re-setting the same
+    // text every second would restart a tooltip the user is reading.
+    private void SetLastSyncToolTip(string? message)
+    {
+        string text = message ?? string.Empty;
+        if (toolTip.GetToolTip(lblLastSyncValue) != text)
+            toolTip.SetToolTip(lblLastSyncValue, text.Length == 0 ? null : text);
     }
 
     // Relative age of a past event: "now" under a minute, otherwise "12m ago" / "2h 5m ago". Shared

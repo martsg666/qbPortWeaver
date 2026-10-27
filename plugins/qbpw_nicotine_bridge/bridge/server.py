@@ -100,7 +100,10 @@ class BridgeHandler(BaseHTTPRequestHandler):
             self._respond(status, payload)
 
         except errors.ApiError as error:
-            self._respond(error.status, error.payload())
+            # Closed after an error: a request rejected before its body was read (401, 404, an
+            # oversized body) leaves that body on the connection, and a keep-alive client would have
+            # its next request parsed from it.
+            self._respond(error.status, error.payload(), close=True)
         except (ConnectionError, socket.timeout):
             # Client hung up mid-response; nothing useful left to say.
             pass
@@ -109,7 +112,8 @@ class BridgeHandler(BaseHTTPRequestHandler):
                 bridge.log_debug(f"Unhandled error serving {method} {self.path}: {error!r}")
             try:
                 self._respond(500, {"ok": False,
-                                    "error": {"code": "internal_error", "message": str(error)}})
+                                    "error": {"code": "internal_error", "message": str(error)}},
+                              close=True)
             except (ConnectionError, socket.timeout):
                 pass
 
@@ -211,13 +215,17 @@ class BridgeHandler(BaseHTTPRequestHandler):
             raise errors.bad_request("Request body must be a JSON object.")
         return payload
 
-    def _respond(self, status, payload):
+    def _respond(self, status, payload, close=False):
         body = json.dumps(payload).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
         self.send_header("X-Content-Type-Options", "nosniff")
+        if close:
+            # BaseHTTPRequestHandler.send_header also sets close_connection on this header, so the
+            # client is told and the server drops the connection after this reply.
+            self.send_header("Connection", "close")
         self.end_headers()
         self.wfile.write(body)
 
@@ -344,7 +352,7 @@ class Bridge:
         return self.port_test.peek()
 
     def _effective_port(self):
-        return self.core_io.active_port() or self.core_io.configured_port()
+        return self.core_io.effective_port()
 
 
 def _require_port(body):

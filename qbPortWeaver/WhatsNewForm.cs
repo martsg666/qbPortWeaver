@@ -39,7 +39,7 @@ public partial class WhatsNewForm : Form
         "Fixed: multi-part movies and subtitles in the Media Manager\n" +
         "Movies split into several files, named only by part (cd1, Part.1, CD_2) or each carrying the title, " +
         "are now recognised, keep their part numbers on Re-match and import into one folder. Import " +
-        "Now brings subtitles along, and only for videos it placed.\n\n" +
+        "Now brings subtitles along, and every import moves subtitles only with a video it placed.\n\n" +
         "Fixed: Media Manager status messages\n" +
         "An unreachable library or source folder is reported instead of \"All files already imported\", a slow TMDB " +
         "answer no longer stops Re-match, the Import Now result stays on screen, and errors are " +

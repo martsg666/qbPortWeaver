@@ -198,6 +198,10 @@ public sealed class PortSyncService
     private string? _conflictClientName;
     private bool _portCheckPendingConfirmation; // one unconfirmed closed result seen
     private bool _portConfirmedClosed;          // closed confirmed by two consecutive checks
+    // Whether a confirmed-closed Warn has gone out and no open result has followed it. Outlives
+    // _portConfirmedClosed, which RestartClosedPortSequence clears mid-outage, so the "reachable again"
+    // line still closes every warning it answers.
+    private bool _portClosedAnnounced;
     // Consecutive undetermined results while awaiting confirmation. An undetermined result cannot
     // resolve the pending state, but pending forces a check every cycle - so a checker outage would
     // otherwise be polled at full rate indefinitely, by every install at once. Counts only while
@@ -417,6 +421,10 @@ public sealed class PortSyncService
         // asked to change server. Published as a pair so a reader never hardcodes the limit.
         public const string VpnExitReconnects = "vpnExitReconnects";
         public const string VpnExitReconnectsMax = "vpnExitReconnectsMax";
+        // True once the last reconnect's session was looked at and still did not match, so the user has
+        // been asked to change server. A separate flag because the count reaches the limit as soon as
+        // the last reconnect is dispatched, before its result is known.
+        public const string VpnExitReconnectGaveUp = "vpnExitReconnectGaveUp";
 
         // Values for the Status key live in the public SyncStatusValues (shared with the Status panel).
     }
@@ -466,7 +474,8 @@ public sealed class PortSyncService
             [StatusKeys.VpnExitAddress] = null,
             [StatusKeys.VpnExitAddressMismatch] = false,
             [StatusKeys.VpnExitReconnects] = 0,
-            [StatusKeys.VpnExitReconnectsMax] = MaxVpnExitReconnects
+            [StatusKeys.VpnExitReconnectsMax] = MaxVpnExitReconnects,
+            [StatusKeys.VpnExitReconnectGaveUp] = false
         };
 
         // Captured so the finally can publish NextSyncAt against the wait this cycle actually
@@ -522,6 +531,7 @@ public sealed class PortSyncService
                 status[StatusKeys.VpnExitAddress] = _vpnExitAddress?.ToString();
                 status[StatusKeys.VpnExitAddressMismatch] = _vpnExitMismatch;
                 status[StatusKeys.VpnExitReconnects] = _vpnExitReconnects;
+                status[StatusKeys.VpnExitReconnectGaveUp] = _vpnExitGiveUpNotified;
                 StatusManager.Write(status);
                 string? outcome = status[StatusKeys.Status] as string;
                 LogCycleOutcome(outcome);
@@ -1363,7 +1373,9 @@ public sealed class PortSyncService
         // A closed port the exit-address mismatch explains is checked every cycle while reconnects for it
         // remain - each one may give a matching address, and a reconnect does not always bring a new port
         // to force the check - then falls to the throttle like a disarmed one once they run out.
-        bool exitReconnectPending = _vpnExitMismatch && portClosedRecoveryEnabled && _vpnExitReconnects < MaxVpnExitReconnects;
+        // Keyed on the give-up, not on the count: the count reaches the limit when the last reconnect is
+        // dispatched, before its session has been looked at, and that session still needs checking.
+        bool exitReconnectPending = _vpnExitMismatch && portClosedRecoveryEnabled && !_vpnExitGiveUpNotified;
         if (portChanged || _portCheckPendingConfirmation || exitReconnectPending ||
             (_portConfirmedClosed && portClosedRecoveryEnabled && _portClosedRecoveryArmed && !_vpnExitMismatch))
         {
@@ -1435,6 +1447,9 @@ public sealed class PortSyncService
         System.Net.IPAddress? forward = vpnManager?.ForwardAddress;
         if (vpnManager is null || forward is null)
         {
+            // A hold ending this way - typically a switch to a provider that reports no forward address -
+            // restarts the closed-port sequence for the same reason a matching lookup does below.
+            if (_vpnExitMismatch) RestartClosedPortSequence();
             ClearVpnExitMismatch();
             return;
         }
@@ -1471,12 +1486,7 @@ public sealed class PortSyncService
         // design, so without this the first check after a reconnect to a good server - usually the
         // client still reconnecting - would be counted as confirmed, and with a trigger of one would
         // fire recovery on the very server the user just moved to.
-        if (_vpnExitMismatch)
-        {
-            _portConfirmedClosed = false;
-            _portCheckPendingConfirmation = false;
-            _confirmedClosedCount = 0;
-        }
+        if (_vpnExitMismatch) RestartClosedPortSequence();
         _vpnExitMismatch = false;
         // Only a lookup that found the addresses equal ends the episode. One that could not complete
         // ends the hold (fail open) but keeps the reconnects already spent, so a lookup that keeps
@@ -1487,6 +1497,17 @@ public sealed class PortSyncService
             _vpnExitGiveUpNotified = false;
         }
         LogManager.Instance.ClearLogState(VpnExitMismatchStateKey);
+    }
+
+    // Makes the next closed result a first, unconfirmed one again. Used when an exit-address hold ends at
+    // a closed check: the confirmed state survives a port change by design, so without this the first
+    // check after a reconnect - usually the client still reconnecting - would count as confirmed. The
+    // outage itself stays announced (_portClosedAnnounced), so a later reopen is still reported.
+    private void RestartClosedPortSequence()
+    {
+        _portConfirmedClosed = false;
+        _portCheckPendingConfirmation = false;
+        _confirmedClosedCount = 0;
     }
 
     // Ends a hold the mismatch was causing - the port is open, or the provider reports no forward
@@ -1505,12 +1526,13 @@ public sealed class PortSyncService
 
     private void HandlePortOpenResult(string clientName, int port, SyncConfig config)
     {
-        if (_portConfirmedClosed)
+        if (_portConfirmedClosed || _portClosedAnnounced)
             LogManager.Instance.LogMessage($"{clientName} port {port} is reachable from outside again", LogLevel.Info);
         else
             LogManager.Instance.LogDebug($"PortSyncService.HandlePortOpenResult: {clientName} port {port} verified open");
         _portCheckPendingConfirmation = false;
         _portConfirmedClosed = false;
+        _portClosedAnnounced = false;
         _confirmedClosedCount = 0;
         // A port verified reachable proves the client is listening, so whatever the adapter's address
         // did earlier, it did not strand the listener. Spending the arm here matters: without it a
@@ -1563,6 +1585,7 @@ public sealed class PortSyncService
 
         _portCheckPendingConfirmation = false;
         _portConfirmedClosed = true;
+        _portClosedAnnounced = true;
         _confirmedClosedCount = _vpnExitMismatch ? 0 : 1;
         // History records the transition into confirmed-closed only (like the balloon), not the
         // per-cycle re-confirmations - the persistent condition is one event, not many.

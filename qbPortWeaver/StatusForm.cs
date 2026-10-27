@@ -431,10 +431,10 @@ public partial class StatusForm : Form
         // Ahead of the disarmed state, as in the log's closed-port suffix: the mismatch is what the
         // user can act on, and while it holds the closed-check count is not advancing.
         if (s.VpnExitAddressMismatch)
-            return s.VpnExitReconnects < s.VpnExitReconnectsMax
-                ? $"Reconnecting for a matching exit address ({s.VpnExitReconnects} of {s.VpnExitReconnectsMax}) - traffic leaves from " +
-                  $"{s.VpnExitAddress}, not from {s.VpnForwardAddress} where the port is forwarded"
-                : $"Held - {s.VpnExitReconnectsMax} reconnects did not give a matching exit address; connect the VPN to a different server";
+            return s.VpnExitReconnectGaveUp
+                ? $"Held - {s.VpnExitReconnectsMax} reconnects did not give a matching exit address; connect the VPN to a different server"
+                : $"Reconnecting for a matching exit address ({s.VpnExitReconnects} of {s.VpnExitReconnectsMax}) - traffic leaves from " +
+                  $"{s.VpnExitAddress}, not from {s.VpnForwardAddress} where the port is forwarded";
 
         // The one-shot trigger has fired and cannot fire again until a verification reports the port
         // open. Worth its own state precisely because nothing else on the panel shows it: the port

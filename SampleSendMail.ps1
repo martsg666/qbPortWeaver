@@ -32,7 +32,7 @@ function PortClosedState($s) {
     # the VPN for a new exit address, up to vpnExitReconnectsMax times, then holds and asks for a
     # different server. The closed checks the mismatch explains are not counted.
     if ($s.vpnExitAddressMismatch) {
-        if ($s.vpnExitReconnects -lt $s.vpnExitReconnectsMax) { return "Reconnecting for a matching exit address ($($s.vpnExitReconnects) of $($s.vpnExitReconnectsMax)) - traffic leaves from $($s.vpnExitAddress), not $($s.vpnForwardAddress)" }
+        if (-not $s.vpnExitReconnectGaveUp) { return "Reconnecting for a matching exit address ($($s.vpnExitReconnects) of $($s.vpnExitReconnectsMax)) - traffic leaves from $($s.vpnExitAddress), not $($s.vpnForwardAddress)" }
         return "Held - $($s.vpnExitReconnectsMax) reconnects did not give a matching exit address; connect the VPN to a different server"
     }
     # One-shot: once it fires it stays disarmed until a scheduled check reports the port open.

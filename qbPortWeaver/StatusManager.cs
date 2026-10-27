@@ -86,6 +86,9 @@ public sealed record StatusSnapshot
     /// <summary>The most reconnects made for one mismatch before the user is asked to change server;
     /// 0 on a status file written before this key existed.</summary>
     [JsonPropertyName("vpnExitReconnectsMax")] public int VpnExitReconnectsMax { get; init; }
+    /// <summary>True once the last reconnect's session still did not match and the user was asked to
+    /// change server. Not inferred from the count, which reaches the limit before that session is checked.</summary>
+    [JsonPropertyName("vpnExitReconnectGaveUp")] public bool VpnExitReconnectGaveUp { get; init; }
 }
 
 /// <summary>

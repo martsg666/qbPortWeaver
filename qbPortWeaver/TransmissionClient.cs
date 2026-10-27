@@ -17,7 +17,7 @@ public sealed class TransmissionClient : ManagedClientBase
     // refresh - if a future Qt build changes the default this delay needs updating.
     private const int GracefulShutdownWaitMs = 5000;
     // How long the Qt client gets to exit after its window is closed. It writes settings.json only on
-    // a normal exit, after telling its trackers it is stopping, so a force-close before then discards
+    // a normal exit, after announcing that it is stopping, so a force-close before then discards
     // every preference changed since it started - the RPC password included. A few seconds was not
     // always enough; the exit is polled, so a quick close still restarts quickly.
     private const int WindowCloseWaitMs = 20000;

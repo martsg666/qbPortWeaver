@@ -14,6 +14,13 @@ public partial class WhatsNewForm : Form
         "Choose Static port as the VPN provider in Settings, pick your VPN's network adapter and enter " +
         "the port. The network interface checks, the open-port check, auto-recovery and the default " +
         "port all work as they do with the other providers.\n\n" +
+        "Tells you when a VPN server sends your traffic out on the wrong address\n" +
+        "Some VPN servers forward your port on one address but send your traffic out on another, so " +
+        "peers are given an address with no forward and the port stays closed whatever you do. With " +
+        "NAT-PMP, qbPortWeaver now checks this when the port reads closed and names both addresses in " +
+        "the log, the notification, the Status panel and Diagnostics, so you know to connect to a " +
+        "different server. Auto-recovery no longer restarts the VPN for it, since that does not help. " +
+        "The notification script example and the status file report both addresses too.\n\n" +
         "Changed: clearer status when something needs fixing\n" +
         "A missing setting, or a default port that could not be applied, now shows the tray red with " +
         "the reason instead of orange \"VPN not connected\". Hover over Last sync in the Status panel " +

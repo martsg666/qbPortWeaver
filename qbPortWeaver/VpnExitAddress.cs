@@ -8,7 +8,7 @@ namespace qbPortWeaver;
 /// <summary>
 /// Finds the public address a VPN sends this machine's traffic out on, by asking a STUN server
 /// (RFC 5389) which address a request sent from the VPN adapter arrived from. Peers learn a client's
-/// address from what other hosts observe - a tracker, the Soulseek server, DHT - so this is the address
+/// address from what other hosts observe - the Soulseek server, other peers - so this is the address
 /// they are given. When it differs from the address the NAT-PMP gateway forwards the port on, no peer
 /// can ever reach the forward, whatever the client does.
 /// </summary>

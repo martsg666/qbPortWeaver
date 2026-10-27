@@ -11,12 +11,14 @@ public partial class WhatsNewForm : Form
     private const string ReleaseFeaturesText =
         "New in 2.7.0\n\n" +
         "Tells you when a VPN server sends your traffic out on the wrong address\n" +
-        "Some VPN servers forward your port on one address but send your traffic out on another, so " +
-        "peers are given an address with no forward and the port stays closed whatever you do. With " +
-        "NAT-PMP or ProtonVPN, qbPortWeaver now checks this when the port reads closed and names both addresses in " +
-        "the log, the notification, the Status panel and Diagnostics, so you know to connect to a " +
-        "different server. Auto-recovery no longer restarts the VPN for it, since that does not help. " +
-        "The notification script example and the status file report both addresses too.\n\n" +
+        "Some VPN servers forward your port on one address but send your traffic out on another, picked " +
+        "at random for each connection, so peers are given an address with no forward and the port stays " +
+        "closed whatever you do. With NAT-PMP or ProtonVPN, qbPortWeaver now checks this when the port " +
+        "reads closed and names both addresses in the log, the notification, the Status panel and " +
+        "Diagnostics. With port-closed recovery on, it then reconnects the VPN for a new exit address, up " +
+        "to 3 times, and if none matches it asks you to connect to a different server instead of " +
+        "restarting the VPN over and over. The notification script example and the status file report " +
+        "both addresses too.\n\n" +
         "Works with VPN providers that give you a permanent port\n" +
         "Choose Static port as the VPN provider in Settings, pick your VPN's network adapter and enter " +
         "the port. The network interface checks, the open-port check, auto-recovery and the default " +

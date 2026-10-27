@@ -81,6 +81,11 @@ public sealed record StatusSnapshot
     /// <summary>True while both addresses are known and differ: peers are given the exit address and cannot
     /// reach the forward, and port-closed recovery is held.</summary>
     [JsonPropertyName("vpnExitAddressMismatch")] public bool VpnExitAddressMismatch { get; init; }
+    /// <summary>VPN reconnects made so far for the current mismatch, each one for a new exit address.</summary>
+    [JsonPropertyName("vpnExitReconnects")] public int VpnExitReconnects { get; init; }
+    /// <summary>The most reconnects made for one mismatch before the user is asked to change server;
+    /// 0 on a status file written before this key existed.</summary>
+    [JsonPropertyName("vpnExitReconnectsMax")] public int VpnExitReconnectsMax { get; init; }
 }
 
 /// <summary>

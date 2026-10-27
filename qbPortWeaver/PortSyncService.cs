@@ -160,6 +160,11 @@ public sealed class PortSyncService
     // alone: the port-closed trigger runs after a successful fetch (which has already cleared the
     // count), and a recovery the user asked for by hand is never withheld.
     private const int MaxConsecutiveRecoveries = 3;
+    // How many times the VPN is reconnected for one exit-address mismatch before the user is asked to
+    // change server instead. The mismatch is re-rolled on every connection - the server hands each one a
+    // random exit address and forwards the port on a fixed one - so a reconnect can fix it, but each one
+    // drops the tunnel, and a server whose pool rarely lands on the forward address must not loop.
+    private const int MaxVpnExitReconnects = 3;
     // Started once at construction (the sync service is created once at app startup). Monotonic, so a
     // wall-clock/NTP correction during the grace window - likely just after boot/login - cannot shift it.
     private readonly System.Diagnostics.Stopwatch _uptime = System.Diagnostics.Stopwatch.StartNew();
@@ -214,6 +219,10 @@ public sealed class PortSyncService
     private System.Net.IPAddress? _vpnForwardAddress;
     private System.Net.IPAddress? _vpnExitAddress;
     private bool _vpnExitMismatch;
+    // Reconnects made for the current mismatch (see ReconnectForExitAddressAsync), and whether the user
+    // has been told they ran out. Both reset when the mismatch ends.
+    private int _vpnExitReconnects;
+    private bool _vpnExitGiveUpNotified;
 
     // Incremented each time a recovery action is dispatched (automatic or manual test). A recovery
     // is pending while this is ahead of _recoveryGenerationConsumed, and the next successful cycle
@@ -404,6 +413,10 @@ public sealed class PortSyncService
         public const string VpnForwardAddress = "vpnForwardAddress";
         public const string VpnExitAddress = "vpnExitAddress";
         public const string VpnExitAddressMismatch = "vpnExitAddressMismatch";
+        // Reconnects made for the current mismatch, and the most that will be made before the user is
+        // asked to change server. Published as a pair so a reader never hardcodes the limit.
+        public const string VpnExitReconnects = "vpnExitReconnects";
+        public const string VpnExitReconnectsMax = "vpnExitReconnectsMax";
 
         // Values for the Status key live in the public SyncStatusValues (shared with the Status panel).
     }
@@ -451,7 +464,9 @@ public sealed class PortSyncService
             [StatusKeys.PortClosedRecoveryArmed] = true,
             [StatusKeys.VpnForwardAddress] = null,
             [StatusKeys.VpnExitAddress] = null,
-            [StatusKeys.VpnExitAddressMismatch] = false
+            [StatusKeys.VpnExitAddressMismatch] = false,
+            [StatusKeys.VpnExitReconnects] = 0,
+            [StatusKeys.VpnExitReconnectsMax] = MaxVpnExitReconnects
         };
 
         // Captured so the finally can publish NextSyncAt against the wait this cycle actually
@@ -506,6 +521,7 @@ public sealed class PortSyncService
                 status[StatusKeys.VpnForwardAddress] = _vpnForwardAddress?.ToString();
                 status[StatusKeys.VpnExitAddress] = _vpnExitAddress?.ToString();
                 status[StatusKeys.VpnExitAddressMismatch] = _vpnExitMismatch;
+                status[StatusKeys.VpnExitReconnects] = _vpnExitReconnects;
                 StatusManager.Write(status);
                 string? outcome = status[StatusKeys.Status] as string;
                 LogCycleOutcome(outcome);
@@ -1344,10 +1360,12 @@ public sealed class PortSyncService
     // online check services every cycle for a port that may stay closed indefinitely.
     private bool ShouldVerifyThisCycle(bool portChanged, bool portClosedRecoveryEnabled)
     {
-        // A closed port the exit-address mismatch explains falls to the throttle too, like a disarmed
-        // one: recovery is held, so nothing changes until the user reconnects - and a reconnect brings
-        // a new port, which forces a check by itself.
-        if (portChanged || _portCheckPendingConfirmation || (_portConfirmedClosed && portClosedRecoveryEnabled && _portClosedRecoveryArmed && !_vpnExitMismatch))
+        // A closed port the exit-address mismatch explains is checked every cycle while reconnects for it
+        // remain - each one may give a matching address, and a reconnect does not always bring a new port
+        // to force the check - then falls to the throttle like a disarmed one once they run out.
+        bool exitReconnectPending = _vpnExitMismatch && portClosedRecoveryEnabled && _vpnExitReconnects < MaxVpnExitReconnects;
+        if (portChanged || _portCheckPendingConfirmation || exitReconnectPending ||
+            (_portConfirmedClosed && portClosedRecoveryEnabled && _portClosedRecoveryArmed && !_vpnExitMismatch))
         {
             _cyclesSinceVerify = 0;
             return true;
@@ -1442,7 +1460,9 @@ public sealed class PortSyncService
 
         if (exit is not null && _vpnExitMismatch)
             LogManager.Instance.LogMessage(
-                $"Traffic now leaves from {exit}, the address the port is forwarded on", LogLevel.Info);
+                $"Traffic now leaves from {exit}, the address the port is forwarded on" +
+                (_vpnExitReconnects > 0 ? $" - matched after {TextFormat.Pluralize(_vpnExitReconnects, "reconnect")}" : string.Empty),
+                LogLevel.Info);
         else if (exit is null)
             LogManager.Instance.LogDebug("PortSyncService.CheckVpnExitAddressAsync: exit address could not be determined");
 
@@ -1458,6 +1478,14 @@ public sealed class PortSyncService
             _confirmedClosedCount = 0;
         }
         _vpnExitMismatch = false;
+        // Only a lookup that found the addresses equal ends the episode. One that could not complete
+        // ends the hold (fail open) but keeps the reconnects already spent, so a lookup that keeps
+        // failing between mismatches cannot add up to more than MaxVpnExitReconnects.
+        if (exit is not null)
+        {
+            _vpnExitReconnects = 0;
+            _vpnExitGiveUpNotified = false;
+        }
         LogManager.Instance.ClearLogState(VpnExitMismatchStateKey);
     }
 
@@ -1468,6 +1496,8 @@ public sealed class PortSyncService
     private void ClearVpnExitMismatch()
     {
         _vpnExitMismatch = false;
+        _vpnExitReconnects = 0;
+        _vpnExitGiveUpNotified = false;
         _vpnForwardAddress = null;
         _vpnExitAddress = null;
         LogManager.Instance.ClearLogState(VpnExitMismatchStateKey);
@@ -1564,7 +1594,9 @@ public sealed class PortSyncService
         // Ahead of the disarmed case: the mismatch is the more useful thing to say, and while it holds,
         // the count below is not advancing, so quoting it would read as a trigger about to fire.
         if (_vpnExitMismatch)
-            return " (recovery is held - traffic leaves from a different address than the port is forwarded on, which recovery cannot fix)";
+            return _vpnExitReconnects < MaxVpnExitReconnects
+                ? $" (traffic leaves from a different address than the port is forwarded on - reconnecting the VPN for a matching one, {_vpnExitReconnects} of {MaxVpnExitReconnects} reconnects so far)"
+                : $" (traffic leaves from a different address than the port is forwarded on - {MaxVpnExitReconnects} reconnects did not change that, so recovery is held)";
         if (!_portClosedRecoveryArmed)
             return " (recovery has already run for this outage - it will not run again until a scheduled check reports the port open)";
         string checks = TextFormat.PluralizeNoun(_confirmedClosedCount, "closed check");
@@ -1715,9 +1747,14 @@ public sealed class PortSyncService
             _confirmedClosedCount = 0;
             return;
         }
-        // Held while the exit-address mismatch explains the closed port: the count is not advancing
-        // then anyway, and this keeps the hold from depending on that alone.
-        if (_vpnExitMismatch || !_portClosedRecoveryArmed || _confirmedClosedCount < config.PortClosedRecoveryTriggerChecks) return;
+        // A closed port the exit-address mismatch explains gets its own remedy, a reconnect, rather than
+        // the count-and-restart below: its cause is known, so there is nothing to confirm.
+        if (_vpnExitMismatch)
+        {
+            await ReconnectForExitAddressAsync(config, cancellationToken).ConfigureAwait(false);
+            return;
+        }
+        if (!_portClosedRecoveryArmed || _confirmedClosedCount < config.PortClosedRecoveryTriggerChecks) return;
 
         // A cheaper and more likely remedy first, when the evidence points at it: the port is confirmed
         // closed *and* the bound adapter's address moved since the client last bound. Restarting the VPN
@@ -1744,6 +1781,42 @@ public sealed class PortSyncService
         string action = vpnManager.GetRecoveryAction();
         await DispatchRecoveryAsync(action, target, vpnManager.ProviderName, cancellationToken,
             triggerLogMessage: $"Triggering '{action}' for '{vpnManager.ProviderName}' after {config.PortClosedRecoveryTriggerChecks} consecutive closed {TextFormat.PluralizeNoun(config.PortClosedRecoveryTriggerChecks, "check")}").ConfigureAwait(false);
+    }
+
+    // Reconnects the VPN so the server hands out a new exit address, which may be the one the port is
+    // forwarded on - the only remedy for a mismatch, since nothing on this machine chooses the exit
+    // address. Up to MaxVpnExitReconnects times per mismatch; after that the user is asked once to
+    // change server, and the hold stays, so a server that rarely lands on the forward address cannot
+    // loop. Uses the provider's normal recovery action but not the one-shot port-closed arm, which
+    // belongs to closed ports with no known cause. Runs only while port-closed recovery is enabled
+    // (checked by the caller): that setting is the user's consent to the VPN being restarted.
+    private async Task ReconnectForExitAddressAsync(SyncConfig config, CancellationToken cancellationToken)
+    {
+        IVpnManager vpnManager = config.VpnManager!; // non-null: a mismatch needs a forward address, which needs a manager
+        if (_vpnExitReconnects >= MaxVpnExitReconnects)
+        {
+            if (_vpnExitGiveUpNotified) return;
+            _vpnExitGiveUpNotified = true;
+            string giveUp = $"{MaxVpnExitReconnects} VPN reconnects did not give an exit address that matches the forwarded one - " +
+                            "connect the VPN to a different server";
+            LogManager.Instance.LogMessage(giveUp, LogLevel.Warn);
+            try { PortVerificationFailed?.Invoke(giveUp + "."); }
+            catch (Exception ex) { LogManager.Instance.LogMessage($"PortVerificationFailed handler failed: {ex.Message}", LogLevel.Warn); }
+            return;
+        }
+
+        string? target = vpnManager.GetRecoveryTarget();
+        if (target is null)
+        {
+            LogManager.Instance.LogMessage($"No recovery target found for '{vpnManager.ProviderName}' - cannot reconnect for a matching exit address", LogLevel.Warn);
+            return;
+        }
+
+        _vpnExitReconnects++;
+        string action = vpnManager.GetRecoveryAction();
+        await DispatchRecoveryAsync(action, target, vpnManager.ProviderName, cancellationToken,
+            triggerLogMessage: $"Reconnecting '{vpnManager.ProviderName}' for an exit address that matches the forwarded one " +
+                               $"(attempt {_vpnExitReconnects} of {MaxVpnExitReconnects}) - each connection gets a new exit address").ConfigureAwait(false);
     }
 
     // Returns true if the client is running (or was successfully force-started), false otherwise

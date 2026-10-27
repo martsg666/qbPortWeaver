@@ -67,7 +67,8 @@ internal static class VpnExitAddress
                    $"while traffic leaves from {exit} - the gateway is itself behind another NAT, so the port " +
                    "cannot be reached from the Internet";
         return $"{source} forwards {portText} on {forward}, but traffic leaves from {exit}. Peers are " +
-               $"given {exit}, so they cannot reach the forwarded port - connect the VPN to a different server";
+               $"given {exit}, so they cannot reach the forwarded port - each VPN connection gets a new exit " +
+               "address, so reconnecting can fix it, or connect to a different server";
     }
 
     // RFC 1918 private ranges, RFC 6598 shared address space (carrier-grade NAT) and link-local: none

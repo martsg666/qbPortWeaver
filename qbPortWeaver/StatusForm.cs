@@ -431,7 +431,10 @@ public partial class StatusForm : Form
         // Ahead of the disarmed state, as in the log's closed-port suffix: the mismatch is what the
         // user can act on, and while it holds the closed-check count is not advancing.
         if (s.VpnExitAddressMismatch)
-            return $"Held - traffic leaves from {s.VpnExitAddress}, not from {s.VpnForwardAddress} where the port is forwarded";
+            return s.VpnExitReconnects < s.VpnExitReconnectsMax
+                ? $"Reconnecting for a matching exit address ({s.VpnExitReconnects} of {s.VpnExitReconnectsMax}) - traffic leaves from " +
+                  $"{s.VpnExitAddress}, not from {s.VpnForwardAddress} where the port is forwarded"
+                : $"Held - {s.VpnExitReconnectsMax} reconnects did not give a matching exit address; connect the VPN to a different server";
 
         // The one-shot trigger has fired and cannot fire again until a verification reports the port
         // open. Worth its own state precisely because nothing else on the panel shows it: the port
@@ -555,7 +558,7 @@ public partial class StatusForm : Form
                 ? $"The gateway forwards the port on {s.VpnForwardAddress}, a private address, while traffic leaves from " +
                   $"{s.VpnExitAddress}: the gateway is itself behind another NAT, so the port cannot be reached from the Internet."
                 : $"Forwarded on {s.VpnForwardAddress}, but traffic leaves the VPN from {s.VpnExitAddress}: peers are given " +
-                  $"{s.VpnExitAddress}, so they cannot reach the port. Connect the VPN to a different server.";
+                  $"{s.VpnExitAddress}, so they cannot reach the port. Each VPN connection gets a new exit address, so reconnecting can fix it, or connect to a different server.";
         }
         if (toolTip.GetToolTip(lblReachableValue) != (cause ?? string.Empty))
             toolTip.SetToolTip(lblReachableValue, cause);

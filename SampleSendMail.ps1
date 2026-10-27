@@ -28,9 +28,13 @@ function FailedCycleState($s) {
 
 # What the port-closed trigger is doing, or $null when it is idle.
 function PortClosedState($s) {
-    # Held while the VPN sends traffic out on a different address than it forwards the port on: a
-    # restart does not fix that, and the closed checks it explains are not counted.
-    if ($s.vpnExitAddressMismatch) { return "Held - traffic leaves from $($s.vpnExitAddress), not $($s.vpnForwardAddress) where the port is forwarded" }
+    # While traffic leaves from a different address than the port is forwarded on, the app reconnects
+    # the VPN for a new exit address, up to vpnExitReconnectsMax times, then holds and asks for a
+    # different server. The closed checks the mismatch explains are not counted.
+    if ($s.vpnExitAddressMismatch) {
+        if ($s.vpnExitReconnects -lt $s.vpnExitReconnectsMax) { return "Reconnecting for a matching exit address ($($s.vpnExitReconnects) of $($s.vpnExitReconnectsMax)) - traffic leaves from $($s.vpnExitAddress), not $($s.vpnForwardAddress)" }
+        return "Held - $($s.vpnExitReconnectsMax) reconnects did not give a matching exit address; connect the VPN to a different server"
+    }
     # One-shot: once it fires it stays disarmed until a scheduled check reports the port open.
     if (-not $s.portClosedRecoveryArmed) { return 'Triggered - waiting for the next scheduled check' }
     if ($s.portClosedRecoveryChecks -gt 0) { return "$($s.portClosedRecoveryChecks) of $($s.portClosedRecoveryTriggerChecks) closed checks" }
@@ -70,7 +74,7 @@ function AddressMatch($s) {
         # A private or carrier-grade NAT forward address is a home router behind a second NAT, where
         # switching VPN servers is not the fix - the same split the app makes.
         if (BehindAnotherNat $s.vpnForwardAddress) { return 'No - the gateway is itself behind another NAT, so the port cannot be reached from the Internet' }
-        return 'No - peers cannot reach the forwarded port; connect the VPN to a different server'
+        return 'No - peers cannot reach the forwarded port; reconnecting the VPN gives a new exit address, or connect to a different server'
     }
     if ($s.vpnForwardAddress -and $s.vpnExitAddress) { return 'Yes' }
     return 'Not checked'

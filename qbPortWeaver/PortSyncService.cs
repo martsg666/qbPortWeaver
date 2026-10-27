@@ -1314,6 +1314,11 @@ public sealed class PortSyncService
         // connections, so a closed result would be expected noise.
         if (config.VerifyPort && config.VpnManager is not null)
             await VerifyPortAsync(manager, targetPort, config, status, cancellationToken).ConfigureAwait(false);
+        // With verification off nothing refreshes the exit-address state, so a mismatch found earlier would
+        // stay in the status file indefinitely. Not on a disconnected cycle: the exit-address reconnects
+        // cause those, and clearing there would restart their count on every reconnect.
+        else if (!config.VerifyPort)
+            ClearVpnExitMismatch();
 
         SetSyncResult(status, true, "Sync cycle completed");
     }

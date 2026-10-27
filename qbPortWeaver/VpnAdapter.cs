@@ -1,4 +1,6 @@
-﻿using System.Net.NetworkInformation;
+﻿using System.Net;
+using System.Net.NetworkInformation;
+using System.Net.Sockets;
 
 namespace qbPortWeaver;
 
@@ -70,6 +72,28 @@ internal static class VpnAdapter
         catch (Exception ex)
         {
             return LogManager.LogDebugFalse($"{caller}: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// The first IPv4 unicast address of the adapter named <paramref name="adapterName"/>, or
+    /// <see langword="null"/> if it is not up or has none. Re-enumerates on every call, like
+    /// <see cref="IsUp"/>, because the VPN hands the adapter a new address on each reconnect.
+    /// </summary>
+    internal static IPAddress? GetIPv4Address(string adapterName)
+    {
+        try
+        {
+            return GetActiveInterfaces()
+                .FirstOrDefault(nic => nic.Name.Equals(adapterName, StringComparison.OrdinalIgnoreCase))?
+                .GetIPProperties().UnicastAddresses
+                .Select(a => a.Address)
+                .FirstOrDefault(a => a.AddressFamily == AddressFamily.InterNetwork);
+        }
+        catch (NetworkInformationException ex)
+        {
+            LogManager.Instance.LogDebug($"VpnAdapter.GetIPv4Address: {ex.Message}");
+            return null;
         }
     }
 

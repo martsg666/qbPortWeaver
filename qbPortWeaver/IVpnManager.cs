@@ -55,6 +55,17 @@ public interface IVpnManager
     bool PortForwardingUnavailable => false;
 
     /// <summary>
+    /// The public address the port is forwarded on, when the provider reports one; otherwise
+    /// <see langword="null"/>. Compared with the address traffic actually leaves from (see
+    /// <see cref="VpnExitAddress"/>): when they differ, peers are given the exit address and cannot
+    /// reach the forward. When non-null, <see cref="ProviderName"/> is the network adapter the
+    /// forward was made through, so the exit address is looked up from that adapter.
+    /// <para>Only NAT-PMP reports it - its external-address reply carries it. ProtonVPN's log, PIA and
+    /// Static port do not, so the check does not run for them.</para>
+    /// </summary>
+    System.Net.IPAddress? ForwardAddress => null;
+
+    /// <summary>
     /// Returns the recovery target passed to <c>AutoRecoveryManager.TriggerRestartAsync</c> or
     /// <c>TriggerCycleAdapterAsync</c>, or <see langword="null"/> if recovery is not supported.
     /// For ProtonVPN and PIA this is the provider token (e.g. "ProtonVPN", "PIA").

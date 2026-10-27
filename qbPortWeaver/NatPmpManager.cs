@@ -33,15 +33,21 @@ public sealed class NatPmpManager : IVpnManager
     private ushort _lastExternalPort;  // zero until first mapping; suggested to gateway on renewal
     private uint _lastEpochSeconds;  // SSOE (Seconds Since Opened Epoch) from the last successful NAT-PMP response
 
-    private NatPmpManager(NetworkInterface adapter, IPAddress gateway, uint mappingLifetime)
+    private NatPmpManager(NetworkInterface adapter, IPAddress gateway, uint mappingLifetime, IPAddress? forwardAddress = null)
     {
         _adapter = adapter;
         _gateway = gateway;
         _mappingLifetime = mappingLifetime;
+        ForwardAddress = forwardAddress;
     }
 
     /// <inheritdoc />
     public string ProviderName => _adapter.Name;
+
+    /// <inheritdoc />
+    // The gateway's reply to the external-address probe made when this instance was created, which
+    // happens every sync cycle, so it is never older than the cycle reading it.
+    public IPAddress? ForwardAddress { get; }
 
     /// <summary>Lease lifetime in seconds granted by the gateway on the last successful port mapping; 0 until first mapping.</summary>
     public uint LastGrantedLifetime { get; private set; }
@@ -250,7 +256,7 @@ public sealed class NatPmpManager : IVpnManager
         IPAddress? externalIp = await RequestExternalAddressAsync(gateway, MaxAttempts, cancellationToken).ConfigureAwait(false);
         LogProbeResultDebug("TryCreateForAdapterAsync", adapterName, gateway, externalIp);
 
-        return externalIp is not null ? new NatPmpManager(nic, gateway, mappingLifetime) : null;
+        return externalIp is not null ? new NatPmpManager(nic, gateway, mappingLifetime, externalIp) : null;
     }
 
     // Transfers renewal state from a previous instance so that port renewal works correctly

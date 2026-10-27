@@ -81,7 +81,8 @@ public partial class WhatsNewForm : Form
         "reported as passed. When qbPortWeaver restarts Transmission after a port change, Transmission " +
         "now has time to close normally, so a password or other setting changed in it is no longer lost, " +
         "unless Transmission is set to stay in the notification area when its window closes; the log then " +
-        "says so.\n\n" +
+        "says so. A port change whose client restart fails is now still recorded in the port history and " +
+        "notified, and the post-update command still runs, with the failure in the status file.\n\n" +
         "Previously released\n\n" +
         "New in 2.6.9\n\n" +
         "Your settings can be backed up and restored\n" +

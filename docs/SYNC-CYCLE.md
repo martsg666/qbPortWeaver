@@ -289,7 +289,7 @@ All client communication goes through the `IManagedClient` interface, with imple
    POST /v1/porttest             → open/closed/pending                       [Nicotine+]
 ```
 
-> The **post-update command** (if configured) is not part of this sequence: it is launched at the very end of the cycle, *after* the status JSON file is written (see Status Output) and only on a successful port change - so a script that reads the status file sees this cycle's result rather than the previous one.
+> The **post-update command** (if configured) is not part of this sequence: it is launched at the very end of the cycle, *after* the status JSON file is written (see Status Output) and only when the port changed this cycle (including when the client restart after the write failed, which the status file reports) - so a script that reads the status file sees this cycle's result rather than the previous one.
 
 ### Interface Mismatch Warning *(qBittorrent and Nicotine+)*
 

@@ -583,11 +583,13 @@ public sealed class PortSyncService
 
     // Launches the post-update command after the status file has been written, so a script that reads
     // the status file (e.g. an email notifier) sees this cycle's result rather than the previous cycle's.
-    // Fires only on a successful port change. Read fresh from the registry since the cycle's SyncConfig
-    // is not in scope in RunAsync's finally.
+    // Fires whenever the port was changed this cycle, including when the client restart after the write
+    // failed: the change is real, the next cycle reads it as already matching so this is the only chance,
+    // and the status file the script reads carries the failure. Read fresh from the registry since the
+    // cycle's SyncConfig is not in scope in RunAsync's finally.
     private static void LaunchPostUpdateCommandIfChanged(Dictionary<string, object?> status)
     {
-        if (status[StatusKeys.Status] as string != SyncStatusValues.Success || status[StatusKeys.PortChanged] is not true)
+        if (status[StatusKeys.PortChanged] is not true)
             return;
         string postUpdateCmd = RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionExtra, RegistrySettingsManager.KeyPostUpdateCmd);
         if (!string.IsNullOrWhiteSpace(postUpdateCmd))
@@ -1318,7 +1320,9 @@ public sealed class PortSyncService
         }
         else if (!await UpdatePortAndNotifyAsync(manager, targetPort, currentPort.Value, config, status, cancellationToken).ConfigureAwait(false))
         {
-            return; // port update failed - skip RestartOnDisconnect check; next cycle will retry
+            // The write or the restart after it failed - skip the RestartOnDisconnect check. A failed write
+            // is retried next cycle; a failed restart is not, since the port then already matches.
+            return;
         }
 
         // Check connection status and restart if offline - skip if a restart was already performed
@@ -1346,7 +1350,11 @@ public sealed class PortSyncService
     // update failed - the caller skips the cycle's remaining steps and the next cycle retries.
     private async Task<bool> UpdatePortAndNotifyAsync(IManagedClient manager, int targetPort, int previousPort, SyncConfig config, Dictionary<string, object?> status, CancellationToken cancellationToken)
     {
-        if (!await ApplyPortUpdateAsync(manager, targetPort, config, status, cancellationToken).ConfigureAwait(false))
+        // A restart that fails after a successful write still leaves the port changed - and the next cycle
+        // reads it as already matching - so the history entry and balloon below are recorded whenever the
+        // port was written; only a failed write skips them. The cycle still ends as an error either way.
+        bool applied = await ApplyPortUpdateAsync(manager, targetPort, config, status, cancellationToken).ConfigureAwait(false);
+        if (!applied && status[StatusKeys.PortChanged] is not true)
             return false;
         // A port write rebuilds the client's listen sockets from a fresh enumeration of the adapter,
         // exactly as an address write does - measured, not assumed. So it has already done what the
@@ -1394,7 +1402,7 @@ public sealed class PortSyncService
         PortHistoryManager.Append(PortHistoryKind.PortChanged, targetPort, reason + cause);
         if (config.NotifyOnPortUpdate)
             NotifyPortUpdated(manager.ClientName, targetPort);
-        return true;
+        return applied;
     }
 
     // Throttles the reachability test: Transmission's and Deluge's tests contact their projects'

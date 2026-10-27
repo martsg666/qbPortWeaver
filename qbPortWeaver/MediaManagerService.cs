@@ -707,8 +707,9 @@ public static class MediaManagerService
             return true;
         }
 
-        // Warn in both scan and import: two source files resolved to the same target name.
-        // Checked before dryRun branch so the conflict is visible during Scan Now, not only on live import.
+        // Warn in both a dry run and a live import: the target name already holds a different file.
+        // Checked before the dryRun branch so a dry-run import reports the conflict too. Scan Now does
+        // not come through here - it proposes such a row normally, and Import Now refuses it.
         if (File.Exists(targetPath))
         {
             MediaImporter.LogDestinationConflict(sourcePath, targetPath);

@@ -98,7 +98,8 @@ internal static class HelperServiceClient
     private const int PipeConnectTimeoutMs = 5000;
     // Bound for awaiting the helper's response. Covers the helper's pathological restart path - the
     // SCM stop, the escalating force-kill, the pause, the start and the post-start verification, each
-    // running to its own timeout - which adds up to roughly 100-115s, so the headroom is small. The
+    // running to its own timeout - which adds up to roughly 100-115s, so the headroom is small: the
+    // helper's AutoRecovery constants are the other half of this sum and carry the same warning. The
     // helper writes its response only after the action completes. (Named distinctly from
     // HelperPipeServer.RequestReadTimeoutMs, which bounds the opposite direction.)
     private const int ResponseTimeoutMs = 120_000;

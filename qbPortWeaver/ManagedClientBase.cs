@@ -27,10 +27,11 @@ public abstract class ManagedClientBase : IManagedClient // NOSONAR S3881 - all 
     protected readonly string ProcessName;
     protected readonly string ExePath;
     protected readonly HttpClient HttpClient;
-    // Not volatile: IsAuthenticated is only accessed on the single-threaded sync loop so no
-    // cross-thread visibility guarantee is needed. Unlike the static TransmissionClient._resolvedServiceName,
-    // which is shared across sync-cycle instances (hence volatile), this field is confined to a single
-    // client instance and is always read and written on the same thread.
+    // Not volatile: IsAuthenticated is only accessed by one sync cycle at a time, never concurrently.
+    // The awaits run with ConfigureAwait(false), so successive accesses can land on different pool
+    // threads, but each await is a full memory barrier, so a later access always sees the earlier write.
+    // Unlike the static TransmissionClient._resolvedServiceName, which is shared across sync-cycle
+    // instances (hence volatile), this field is confined to a single client instance.
     protected bool IsAuthenticated;
     private bool _disposed;
 

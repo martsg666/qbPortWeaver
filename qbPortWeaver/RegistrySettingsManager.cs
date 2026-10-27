@@ -627,22 +627,29 @@ public static class RegistrySettingsManager
     /// API keys, tokens) masked as <c>***</c>. Intended for the diagnostics report. Returns an empty
     /// list when the section has no stored values or cannot be read.
     /// </summary>
-    internal static IReadOnlyList<(string Key, string Value)> GetSectionSnapshot(string section)
+    internal static IReadOnlyList<(string Key, string Value)> GetSectionSnapshot(string section) =>
+        ReadSortedValues($@"{BaseKeyPath}\{section}", _ => true, MaskSensitiveValue, $"GetSectionSnapshot: [{section}]");
+
+    // Every value stored on one registry key, sorted by name, keeping the names include accepts and
+    // passing each through map. Empty when the key is missing or cannot be read, logged at Debug under
+    // caller. Shared by the two snapshot readers (masked) and the two backup readers (filtered).
+    private static List<(string Key, string Value)> ReadSortedValues(string keyPath, Func<string, bool> include,
+        Func<string, string, string> map, string caller)
     {
         var result = new List<(string Key, string Value)>();
         try
         {
-            using var regKey = Registry.CurrentUser.OpenSubKey($@"{BaseKeyPath}\{section}");
+            using var regKey = Registry.CurrentUser.OpenSubKey(keyPath);
             if (regKey is null) return result;
             foreach (var name in regKey.GetValueNames().OrderBy(n => n, StringComparer.OrdinalIgnoreCase))
             {
-                string value = regKey.GetValue(name)?.ToString() ?? string.Empty;
-                result.Add((name, MaskSensitiveValue(name, value)));
+                if (!include(name)) continue;
+                result.Add((name, map(name, regKey.GetValue(name)?.ToString() ?? string.Empty)));
             }
         }
         catch (Exception ex)
         {
-            LogManager.Instance.LogDebug($"RegistrySettingsManager.GetSectionSnapshot: [{section}] - {ex.Message}");
+            LogManager.Instance.LogDebug($"RegistrySettingsManager.{caller} - {ex.Message}");
         }
         return result;
     }
@@ -665,25 +672,8 @@ public static class RegistrySettingsManager
     /// <para><see cref="Microsoft.Win32.RegistryKey.GetValueNames"/> returns this key's own values
     /// and not its subkeys, so the settings sections are not duplicated here.</para>
     /// </remarks>
-    internal static IReadOnlyList<(string Key, string Value)> GetAppSnapshot()
-    {
-        var result = new List<(string Key, string Value)>();
-        try
-        {
-            using var regKey = Registry.CurrentUser.OpenSubKey(AppIdentity.AppRegistryKey);
-            if (regKey is null) return result;
-            foreach (var name in regKey.GetValueNames().OrderBy(n => n, StringComparer.OrdinalIgnoreCase))
-            {
-                string value = regKey.GetValue(name)?.ToString() ?? string.Empty;
-                result.Add((name, MaskSensitiveValue(name, value)));
-            }
-        }
-        catch (Exception ex)
-        {
-            LogManager.Instance.LogDebug($"RegistrySettingsManager.GetAppSnapshot: {ex.Message}");
-        }
-        return result;
-    }
+    internal static IReadOnlyList<(string Key, string Value)> GetAppSnapshot() =>
+        ReadSortedValues(AppIdentity.AppRegistryKey, _ => true, MaskSensitiveValue, "GetAppSnapshot");
 
     /// <summary>Every settings section this build knows about, in declaration order.</summary>
     internal static IReadOnlyCollection<string> AllSections => _defaults.Keys;
@@ -747,29 +737,12 @@ public static class RegistrySettingsManager
     /// for a case that only arises when someone has edited the registry by hand. As it stands the
     /// indirection is lost but the path still works, which is the better of the two failures.</para>
     /// </remarks>
-    internal static IReadOnlyList<(string Key, string Value)> GetSectionForBackup(string section)
-    {
-        var result = new List<(string Key, string Value)>();
-        try
-        {
-            using var regKey = Registry.CurrentUser.OpenSubKey($@"{BaseKeyPath}\{section}");
-            if (regKey is null) return result;
-            foreach (var name in regKey.GetValueNames().OrderBy(n => n, StringComparer.OrdinalIgnoreCase))
-            {
-                // Both gates, matching the import side exactly. Without the known-key check the
-                // export is the wider of the two, so a value name this build has no reader for is
-                // written to the file and then reported as "not recognised, skipped" when the same
-                // build reads it back.
-                if (!IsKnownSectionKey(section, name) || !IsTransferableKey(name)) continue;
-                result.Add((name, regKey.GetValue(name)?.ToString() ?? string.Empty));
-            }
-        }
-        catch (Exception ex)
-        {
-            LogManager.Instance.LogDebug($"RegistrySettingsManager.GetSectionForBackup: [{section}] - {ex.Message}");
-        }
-        return result;
-    }
+    internal static IReadOnlyList<(string Key, string Value)> GetSectionForBackup(string section) =>
+        // Both gates, matching the import side exactly. Without the known-key check the export is the
+        // wider of the two, so a value name this build has no reader for is written to the file and then
+        // reported as "not recognised, skipped" when the same build reads it back.
+        ReadSortedValues($@"{BaseKeyPath}\{section}", name => IsKnownSectionKey(section, name) && IsTransferableKey(name),
+            (_, value) => value, $"GetSectionForBackup: [{section}]");
 
     /// <summary>
     /// Whether an app-level key belongs in a settings backup.
@@ -799,26 +772,10 @@ public static class RegistrySettingsManager
     /// <c>HKCU\Software\qbPortWeaver</c> and are as much a part of a working configuration as the
     /// sections are. Only keys accepted by <see cref="IsBackupAppKey"/> are included.
     /// </summary>
-    internal static IReadOnlyList<(string Key, string Value)> GetAppValuesForBackup()
-    {
-        var result = new List<(string Key, string Value)>();
-        try
-        {
-            using var regKey = Registry.CurrentUser.OpenSubKey(AppIdentity.AppRegistryKey);
-            if (regKey is null) return result;
-            foreach (var name in regKey.GetValueNames().OrderBy(n => n, StringComparer.OrdinalIgnoreCase))
-            {
-                // Subkeys are the sections, enumerated separately; only this key's own values belong here.
-                if (!IsBackupAppKey(name) || !IsTransferableKey(name)) continue;
-                result.Add((name, regKey.GetValue(name)?.ToString() ?? string.Empty));
-            }
-        }
-        catch (Exception ex)
-        {
-            LogManager.Instance.LogDebug($"RegistrySettingsManager.GetAppValuesForBackup: {ex.Message}");
-        }
-        return result;
-    }
+    internal static IReadOnlyList<(string Key, string Value)> GetAppValuesForBackup() =>
+        // Subkeys are the sections, enumerated separately; GetValueNames returns only this key's own values.
+        ReadSortedValues(AppIdentity.AppRegistryKey, name => IsBackupAppKey(name) && IsTransferableKey(name),
+            (_, value) => value, "GetAppValuesForBackup");
 
     /// <summary>Reads a bool value from the registry. Returns the registered default if the key is missing or not parseable.</summary>
     public static bool GetBool(string section, string key)

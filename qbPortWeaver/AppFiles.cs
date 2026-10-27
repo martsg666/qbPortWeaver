@@ -145,6 +145,10 @@ public static partial class AppFiles
     [GeneratedRegex(@"\.qbpw-[0-9a-f]{32}\.tmp", RegexOptions.IgnoreCase)]
     private static partial Regex TempFileNameRegex();
 
+    // The same form as a whole file name, for the sweep.
+    [GeneratedRegex(@"^\.qbpw-[0-9a-f]{32}\.tmp$", RegexOptions.IgnoreCase)]
+    private static partial Regex OwnTempFileNameRegex();
+
     /// <summary>Deletes temp files an interrupted atomic write left behind in <paramref name="folder"/>.</summary>
     /// <remarks>
     /// <see cref="WriteAtomicCore"/> deletes its own temp file when the write throws, but nothing can
@@ -158,7 +162,11 @@ public static partial class AppFiles
     {
         try
         {
-            foreach (string file in Directory.EnumerateFiles(folder, $"{TempFilePrefix}*{TempFileSuffix}"))
+            // Only names in this app's exact form (32 hex digits): the Nicotine+ bridge plugin writes its
+            // connection file atomically through a temp file in a folder swept here, and its names share
+            // the prefix and suffix, so a looser match could delete a write the plugin has in flight.
+            foreach (string file in Directory.EnumerateFiles(folder, $"{TempFilePrefix}*{TempFileSuffix}")
+                         .Where(f => OwnTempFileNameRegex().IsMatch(Path.GetFileName(f))))
                 DeleteFileSafely(file);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or DirectoryNotFoundException)

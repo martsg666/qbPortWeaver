@@ -12,6 +12,10 @@ namespace qbPortWeaver.HelperService;
 /// </summary>
 internal static partial class AutoRecovery
 {
+    // These timeouts add up to the helper's worst-case restart time - roughly 100-115s across the SCM
+    // stop, the escalating force-kill, the pause, the start and the post-start verification - which
+    // HelperServiceClient.ResponseTimeoutMs (120s, in the main app) must stay above. Raising any of them
+    // means re-deriving that sum and raising the client's bound to match.
     private const int ProcessKillTimeoutMs = 5000;
     // Delay between stop and start to let the service host fully release its handles
     // and listening sockets before we ask the SCM to bring it back up.
@@ -463,6 +467,26 @@ internal static partial class AutoRecovery
         }
     }
 
+    // Waits for a start the SCM itself is carrying out - its recovery policy restarting the service -
+    // rather than calling Start(), which would throw while one is pending. Shared by the two places
+    // StartServiceAsync finds the service already starting.
+    private static async Task AwaitScmStartAsync(ServiceController sc, string serviceName, HelperLogger logger, CancellationToken cancellationToken)
+    {
+        logger.LogMessage($"Service '{serviceName}' is already starting (likely SCM auto-recovery) - waiting", LogLevel.Info);
+        try
+        {
+            await WaitForStatusAsync(sc, ServiceControllerStatus.Running, cancellationToken).ConfigureAwait(false);
+            logger.LogMessage($"Service '{serviceName}' started (by SCM)", LogLevel.Info);
+        }
+        catch (System.ServiceProcess.TimeoutException)
+        {
+            // Not a failure yet: the verification after StartServiceAsync gives the verdict, as for its own
+            // start timeout, and a throw would skip it and report Error for a service that may be Running a
+            // moment later.
+            logger.LogMessage($"Service '{serviceName}' stuck in StartPending after {ServiceOperationTimeoutMs}ms", LogLevel.Info);
+        }
+    }
+
     private static async Task StartServiceAsync(string serviceName, HelperLogger logger, CancellationToken cancellationToken = default)
     {
         using var sc = new ServiceController(serviceName);
@@ -478,19 +502,7 @@ internal static partial class AutoRecovery
         // already starting, just wait for it instead of calling Start() which would throw.
         if (sc.Status == ServiceControllerStatus.StartPending)
         {
-            logger.LogMessage($"Service '{serviceName}' is already starting (likely SCM auto-recovery) - waiting", LogLevel.Info);
-            try
-            {
-                await WaitForStatusAsync(sc, ServiceControllerStatus.Running, cancellationToken).ConfigureAwait(false);
-                logger.LogMessage($"Service '{serviceName}' started (by SCM)", LogLevel.Info);
-            }
-            catch (System.ServiceProcess.TimeoutException)
-            {
-                // Not a failure yet: the verification after this method gives the verdict, as for the
-                // start timeout below, and a throw would skip it and report Error for a service that
-                // may be Running a moment later.
-                logger.LogMessage($"Service '{serviceName}' stuck in StartPending after {ServiceOperationTimeoutMs}ms", LogLevel.Info);
-            }
+            await AwaitScmStartAsync(sc, serviceName, logger, cancellationToken).ConfigureAwait(false);
             return;
         }
 
@@ -518,19 +530,7 @@ internal static partial class AutoRecovery
             sc.Refresh();
             if (sc.Status is not ServiceControllerStatus.Running and not ServiceControllerStatus.StartPending)
                 throw;
-            logger.LogMessage($"Service '{serviceName}' is already starting (likely SCM auto-recovery) - waiting", LogLevel.Info);
-            try
-            {
-                await WaitForStatusAsync(sc, ServiceControllerStatus.Running, cancellationToken).ConfigureAwait(false);
-                logger.LogMessage($"Service '{serviceName}' started (by SCM)", LogLevel.Info);
-            }
-            catch (System.ServiceProcess.TimeoutException)
-            {
-                // Not a failure yet: the verification after this method gives the verdict, as for the
-                // start timeout below, and a throw would skip it and report Error for a service that
-                // may be Running a moment later.
-                logger.LogMessage($"Service '{serviceName}' stuck in StartPending after {ServiceOperationTimeoutMs}ms", LogLevel.Info);
-            }
+            await AwaitScmStartAsync(sc, serviceName, logger, cancellationToken).ConfigureAwait(false);
             return;
         }
 

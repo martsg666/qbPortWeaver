@@ -477,7 +477,7 @@ public sealed class NicotineClient : ManagedClientBase
             _ => $"{ClientName} bridge plugin returned HTTP {(int)response.StatusCode} {response.StatusCode} for {path}{detail}"
         };
 
-        Log(message, failureLevel);
+        LogManager.Instance.LogMessage(message, failureLevel);
     }
 
     private static async Task<(string Code, string Detail)> ReadErrorDetailAsync(HttpResponseMessage response, CancellationToken cancellationToken)
@@ -525,7 +525,7 @@ public sealed class NicotineClient : ManagedClientBase
             null => "no response",
             _ => exception.Message,
         };
-        Log($"{ClientName} bridge plugin is not reachable at {_endpoint} ({reason})", failureLevel);
+        LogManager.Instance.LogMessage($"{ClientName} bridge plugin is not reachable at {_endpoint} ({reason})", failureLevel);
         if (exception is not null)
             LogManager.Instance.LogDebug($"NicotineClient.{callerName}: {exception.GetType().Name}");
 
@@ -536,12 +536,6 @@ public sealed class NicotineClient : ManagedClientBase
                 $"The qbPortWeaver bridge plugin is not installed in {ClientName} - install it from Settings, then enable it in Nicotine+ under Preferences → Plugins, with plugins turned on",
                 LogLevel.Error);
         }
-    }
-
-    private static void Log(string message, LogLevel level)
-    {
-        if (level == LogLevel.Debug) LogManager.Instance.LogDebug(message);
-        else LogManager.Instance.LogMessage(message, level);
     }
 
     // No cookie container and no default headers: the bridge authenticates per request with a

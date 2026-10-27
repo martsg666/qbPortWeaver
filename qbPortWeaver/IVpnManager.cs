@@ -75,8 +75,9 @@ public interface IVpnManager
     System.Net.IPAddress? TunnelAddress => null;
 
     /// <summary>
-    /// How the exit-address messages name where the forward comes from - the NAT-PMP adapter, or the
-    /// ProtonVPN server - so the user knows what to change. Defaults to <see cref="ProviderName"/>.
+    /// How the exit-address messages name where the forward comes from - the NAT-PMP gateway on its
+    /// adapter, or the ProtonVPN server - so the user knows what to change. It opens the message, so it
+    /// reads as a sentence start. Defaults to <see cref="ProviderName"/>.
     /// </summary>
     string ForwardSource => ProviderName;
 

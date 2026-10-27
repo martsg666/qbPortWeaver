@@ -66,7 +66,7 @@ internal static class VpnExitAddress
         // sits behind a second NAT (carrier-grade NAT, or another router upstream). No server to switch
         // to there, so the VPN advice would be wrong.
         if (IsBehindAnotherNat(forward))
-            return $"The NAT-PMP gateway on {source} forwards {portText} on {forward}, a private address, " +
+            return $"{source} forwards {portText} on {forward}, a private address, " +
                    $"while traffic leaves from {exit} - the gateway is itself behind another NAT, so the port " +
                    "cannot be reached from the Internet";
         string advice = protonOverOpenVpn

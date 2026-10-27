@@ -53,7 +53,7 @@ public sealed class NatPmpManager : IVpnManager
     public IPAddress? TunnelAddress => VpnAdapter.GetIPv4Address(_adapter.Name);
 
     /// <inheritdoc />
-    public string ForwardSource => $"'{_adapter.Name}'";
+    public string ForwardSource => $"The NAT-PMP gateway on '{_adapter.Name}'";
 
     /// <inheritdoc />
     public bool IsProtonVpnOverOpenVpn =>

@@ -560,8 +560,8 @@ public partial class StatusForm : Form
             bool behindAnotherNat = System.Net.IPAddress.TryParse(s.VpnForwardAddress, out var forward)
                 && VpnExitAddress.IsBehindAnotherNat(forward);
             string advice = s.VpnProtonOverOpenVpn
-                ? "ProtonVPN's OpenVPN connections can do this while its Proton WireGuard ones did not in testing: switch ProtonVPN to Proton WireGuard (UDP), or reconnect, or connect to a different server."
-                : "Each VPN connection gets a new exit address, so reconnecting can fix it, or connect to a different server.";
+                ? "ProtonVPN's OpenVPN connections often do this; switch ProtonVPN to Proton WireGuard (UDP), or connect to a different server."
+                : "Reconnecting may give a different exit address, or connect to a different server.";
             cause = behindAnotherNat
                 ? $"The gateway forwards the port on {s.VpnForwardAddress}, a private address, while traffic leaves from " +
                   $"{s.VpnExitAddress}: the gateway is itself behind another NAT, so the port cannot be reached from the Internet."

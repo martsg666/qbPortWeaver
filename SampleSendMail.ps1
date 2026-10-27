@@ -76,8 +76,8 @@ function AddressMatch($s) {
         # switching VPN servers is not the fix - the same split the app makes.
         if (BehindAnotherNat $s.vpnForwardAddress) { return 'No - the gateway is itself behind another NAT, so the port cannot be reached from the Internet' }
         # Mismatches were seen on ProtonVPN's OpenVPN tunnel and not on Proton WireGuard on the same server, hence the protocol advice there.
-        if ($s.vpnProtonOverOpenVpn) { return 'No - peers cannot reach the forwarded port; switch ProtonVPN to Proton WireGuard (UDP), or reconnect, or connect to a different server' }
-        return 'No - peers cannot reach the forwarded port; reconnecting the VPN gives a new exit address, or connect to a different server'
+        if ($s.vpnProtonOverOpenVpn) { return "No - peers cannot reach the forwarded port; ProtonVPN's OpenVPN connections often do this, switch ProtonVPN to Proton WireGuard (UDP), or connect to a different server" }
+        return 'No - peers cannot reach the forwarded port; reconnecting the VPN may give a different exit address, or connect to a different server'
     }
     if ($s.vpnForwardAddress -and $s.vpnExitAddress) { return 'Yes' }
     return 'Not checked'

@@ -161,9 +161,9 @@ public sealed class PortSyncService
     // count), and a recovery the user asked for by hand is never withheld.
     private const int MaxConsecutiveRecoveries = 3;
     // How many times the VPN is reconnected for one exit-address mismatch before the user is asked to
-    // change server instead. The mismatch is re-rolled on every connection - the server hands each one a
-    // random exit address and forwards the port on a fixed one - so a reconnect can fix it, but each one
-    // drops the tunnel, and a server whose pool rarely lands on the forward address must not loop.
+    // change server instead. The exit address can change from one connection to the next while the
+    // forward stays on a fixed one, so a reconnect may fix it, but each one drops the tunnel, and a
+    // server that rarely lands on the forward address must not loop.
     private const int MaxVpnExitReconnects = 3;
     // Started once at construction (the sync service is created once at app startup). Monotonic, so a
     // wall-clock/NTP correction during the grace window - likely just after boot/login - cannot shift it.
@@ -1848,7 +1848,7 @@ public sealed class PortSyncService
             triggerLogMessage: $"Triggering '{action}' for '{vpnManager.ProviderName}' after {config.PortClosedRecoveryTriggerChecks} consecutive closed {TextFormat.PluralizeNoun(config.PortClosedRecoveryTriggerChecks, "check")}").ConfigureAwait(false);
     }
 
-    // Reconnects the VPN so the server hands out a new exit address, which may be the one the port is
+    // Reconnects the VPN so the server may hand out a different exit address, possibly the one the port is
     // forwarded on - the only remedy for a mismatch, since nothing on this machine chooses the exit
     // address. Up to MaxVpnExitReconnects times per mismatch; after that the user is asked once to
     // change server, and the hold stays, so a server that rarely lands on the forward address cannot
@@ -1883,7 +1883,7 @@ public sealed class PortSyncService
         string action = vpnManager.GetRecoveryAction();
         await DispatchRecoveryAsync(action, target, vpnManager.ProviderName, cancellationToken,
             triggerLogMessage: $"Reconnecting '{vpnManager.ProviderName}' for an exit address that matches the forwarded one " +
-                               $"(attempt {_vpnExitReconnects} of {MaxVpnExitReconnects}) - each connection gets a new exit address").ConfigureAwait(false);
+                               $"(attempt {_vpnExitReconnects} of {MaxVpnExitReconnects}) - a new connection may get a different exit address").ConfigureAwait(false);
     }
 
     // Returns true if the client is running (or was successfully force-started), false otherwise

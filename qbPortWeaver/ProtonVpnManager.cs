@@ -197,6 +197,10 @@ public sealed partial class ProtonVpnManager : IVpnManager
 
     // Finds the newest server address and server name lines, once per instance. Any failure leaves
     // them null, which only means the exit-address check does not run this cycle.
+    // Falls back to the rotated log (client-logs.1.txt) for whichever line the current one lacks:
+    // ProtonVPN writes both only when it connects, and rotates its log about every 400 KB, so for much
+    // of a long session they are only in the rotated file. The port line needs no such fallback - it is
+    // written every minute.
     private void EnsureServerScanned()
     {
         if (_serverScanned) return;
@@ -204,15 +208,11 @@ public sealed partial class ProtonVpnManager : IVpnManager
         if (string.IsNullOrWhiteSpace(_logFilePath) || !File.Exists(_logFilePath)) return;
         try
         {
-            ScanLogBackwards(line =>
-            {
-                if (_serverAddress is null && ServerAddressRegex().Match(line) is { Success: true } address &&
-                    System.Net.IPAddress.TryParse(address.Groups[1].Value, out var parsed))
-                    _serverAddress = parsed;
-                if (_serverName is null && ServerNameRegex().Match(line) is { Success: true } name)
-                    _serverName = name.Groups[1].Value;
-                return _serverAddress is not null && _serverName is not null;
-            });
+            ScanLogBackwards(_logFilePath, VisitServerLine);
+            string rotated = Path.Combine(Path.GetDirectoryName(_logFilePath) ?? string.Empty,
+                Path.GetFileNameWithoutExtension(_logFilePath) + ".1" + Path.GetExtension(_logFilePath));
+            if ((_serverAddress is null || _serverName is null) && File.Exists(rotated))
+                ScanLogBackwards(rotated, VisitServerLine);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
@@ -221,12 +221,25 @@ public sealed partial class ProtonVpnManager : IVpnManager
         LogManager.Instance.LogDebug($"ProtonVpnManager.EnsureServerScanned: server {_serverName ?? "(none)"} at {_serverAddress?.ToString() ?? "(none)"}");
     }
 
+    // Takes the newest of each line not found yet; true once both are known, which ends the scan.
+    private bool VisitServerLine(string line)
+    {
+        if (_serverAddress is null && ServerAddressRegex().Match(line) is { Success: true } address &&
+            System.Net.IPAddress.TryParse(address.Groups[1].Value, out var parsed))
+            _serverAddress = parsed;
+        if (_serverName is null && ServerNameRegex().Match(line) is { Success: true } name)
+            _serverName = name.Groups[1].Value;
+        return _serverAddress is not null && _serverName is not null;
+    }
+
     // Scans the log file from the end in chunks, passing each line newest first to visit until it
     // returns true. Opens with FileShare.ReadWrite so ProtonVPN can keep writing while we read.
     // Note: if a chunk boundary falls mid-multi-byte UTF-8 character, GetString produces a
     // replacement char on that boundary. This is harmless because the patterns searched for are pure
     // ASCII and ProtonVPN logs use ASCII-only content.
-    private void ScanLogBackwards(Func<string, bool> visit)
+    private void ScanLogBackwards(Func<string, bool> visit) => ScanLogBackwards(_logFilePath, visit);
+
+    private static void ScanLogBackwards(string path, Func<string, bool> visit)
     {
         // FileShare.Delete as well as ReadWrite. Windows requires DELETE access on an open handle before
         // another process can rename over it, so without it a log rotation by ProtonVPN *during* this
@@ -235,7 +248,7 @@ public sealed partial class ProtonVpnManager : IVpnManager
         // we cannot observe and did not have to cause. Nothing is torn by allowing it - the scan either
         // completes on the handle it opened or fails cleanly, and the enclosing catch turns that into
         // "no port found" for one cycle, which the next cycle retries.
-        using var fs = new FileStream(_logFilePath, FileMode.Open, FileAccess.Read,
+        using var fs = new FileStream(path, FileMode.Open, FileAccess.Read,
             FileShare.ReadWrite | FileShare.Delete);
 
         long bytesRemaining = fs.Length;

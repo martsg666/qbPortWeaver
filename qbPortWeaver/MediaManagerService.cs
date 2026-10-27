@@ -759,7 +759,7 @@ public static class MediaManagerService
 
     /// <summary>
     /// Clears all media manager caches from memory and disk, forcing a full re-index and TMDB re-lookup on the next scan.
-    /// Waits for a running import first (normally the sync cycle's): clearing the library index under it would make every source file look new to it.
+    /// Waits for another Media Manager task first (normally the sync cycle's import): clearing the library index under an import would make every source file look new to it.
     /// Throws <see cref="OperationCanceledException"/> if <paramref name="cancellationToken"/> is cancelled during the wait.
     /// </summary>
     /// <param name="waiting">Optional sink; reports <see langword="true"/> while the clear waits for another Media Manager task to finish, then <see langword="false"/>.</param>
@@ -803,8 +803,8 @@ public static class MediaManagerService
 }
 
 /// <summary>Progress sinks for a Media Manager window operation. <see cref="Items"/> reports each processed
-/// item; <see cref="Waiting"/> reports <see langword="true"/> while the operation waits for a running import
-/// (normally the sync cycle's) to finish, then <see langword="false"/> once it starts.</summary>
+/// item; <see cref="Waiting"/> reports <see langword="true"/> while the operation waits for another Media Manager
+/// task (normally the sync cycle's import) to finish, then <see langword="false"/> once it starts.</summary>
 public sealed record MediaOperationProgress<T>(IProgress<T>? Items, IProgress<bool>? Waiting);
 
 /// <summary>The outcome of a Media Manager scan: the proposals, and the source folders that could not be

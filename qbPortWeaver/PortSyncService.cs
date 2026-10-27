@@ -202,6 +202,10 @@ public sealed class PortSyncService
     // _portConfirmedClosed, which RestartClosedPortSequence clears mid-outage, so the "reachable again"
     // line still closes every warning it answers.
     private bool _portClosedAnnounced;
+    // Whether this outage already has its "Port confirmed closed" history entry. Its own flag because an
+    // outage can be confirmed more than once (an exit-address hold ending restarts the sequence) and can
+    // be announced before any confirmation (the mismatch balloon), so neither flag above fits.
+    private bool _portClosedRecorded;
     // Consecutive undetermined results while awaiting confirmation. An undetermined result cannot
     // resolve the pending state, but pending forces a check every cycle - so a checker outage would
     // otherwise be polled at full rate indefinitely, by every install at once. Counts only while
@@ -1660,6 +1664,7 @@ public sealed class PortSyncService
         _portCheckPendingConfirmation = false;
         _portConfirmedClosed = false;
         _portClosedAnnounced = false;
+        _portClosedRecorded = false;
         _confirmedClosedCount = 0;
         // A port verified reachable proves the client is listening, so whatever the adapter's address
         // did earlier, it did not strand the listener. Spending the arm here matters: without it a
@@ -1715,8 +1720,11 @@ public sealed class PortSyncService
         _portClosedAnnounced = true;
         _confirmedClosedCount = _vpnExitMismatch ? 0 : 1;
         // History records the transition into confirmed-closed only (like the balloon), not the
-        // per-cycle re-confirmations - the persistent condition is one event, not many.
-        PortHistoryManager.Append(PortHistoryKind.PortClosed, port, "Port confirmed closed from outside");
+        // per-cycle re-confirmations - the persistent condition is one event, not many - and once per
+        // outage, not again when a restarted sequence confirms it a second time.
+        if (!_portClosedRecorded)
+            PortHistoryManager.Append(PortHistoryKind.PortClosed, port, "Port confirmed closed from outside");
+        _portClosedRecorded = true;
         string confirmedSuffix = BuildPortClosedRecoverySuffix(config);
         LogManager.Instance.LogMessage($"{clientName} port {port} is not reachable from outside (confirmed by two checks){confirmedSuffix}", LogLevel.Warn);
         // With an exit-address mismatch held, its own balloon (raised when it was found, see

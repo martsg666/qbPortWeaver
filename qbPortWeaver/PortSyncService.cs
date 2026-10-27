@@ -1582,7 +1582,9 @@ public sealed class PortSyncService
         else
         {
             LogManager.Instance.LogMessage(
-                $"Could not rebind {client.ClientName} - the next confirmed closed check will escalate to recovery instead",
+                // The caller resets the closed count after this attempt, so recovery needs a full fresh round.
+                $"Could not rebind {client.ClientName} - recovery runs instead if the port is still confirmed closed " +
+                $"after another {TextFormat.Pluralize(config.PortClosedRecoveryTriggerChecks, "check")}",
                 LogLevel.Warn);
         }
 

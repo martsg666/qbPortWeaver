@@ -16,7 +16,12 @@ public sealed class TransmissionClient : ManagedClientBase
     // that point overwrites the change with the stale Qt-side value. 5s matches the default
     // refresh - if a future Qt build changes the default this delay needs updating.
     private const int GracefulShutdownWaitMs = 5000;
-    private const int WindowCloseWaitMs = 3000;
+    // How long the Qt client gets to exit after its window is closed. It writes settings.json only on
+    // a normal exit, after telling its trackers it is stopping, so a force-close before then discards
+    // every preference changed since it started - the RPC password included. A few seconds was not
+    // always enough; the exit is polled, so a quick close still restarts quickly.
+    private const int WindowCloseWaitMs = 20000;
+    private const int WindowClosePollMs = 500;
     private const string RpcPath = "/transmission/rpc";
     private const string SessionIdHeader = "X-Transmission-Session-Id";
     private const string JsonContentType = "application/json";
@@ -382,10 +387,17 @@ public sealed class TransmissionClient : ManagedClientBase
                 finally { proc.Dispose(); }
             }
 
-            // Wait for graceful exit, then hard-kill any survivors
-            await Task.Delay(WindowCloseWaitMs, cancellationToken).ConfigureAwait(false);
-            if (IsRunning() && !await KillAndVerifyAsync(cancellationToken).ConfigureAwait(false))
-                return false;
+            // Wait for a graceful exit, then hard-kill any survivors - said at Warn, because a forced
+            // close loses whatever the user changed in Transmission since it started.
+            if (!await WaitForExitAsync(cancellationToken).ConfigureAwait(false))
+            {
+                LogManager.Instance.LogMessage(
+                    $"{ClientName} did not close within {WindowCloseWaitMs / 1000} seconds - force-closing it; " +
+                    "settings changed in Transmission since it started may not have been saved",
+                    LogLevel.Warn);
+                if (!await KillAndVerifyAsync(cancellationToken).ConfigureAwait(false))
+                    return false;
+            }
 
             ResetAuthState();
             return await LaunchAndWaitAsync(ProcessInitDelayMs, cancellationToken).ConfigureAwait(false);
@@ -399,6 +411,19 @@ public sealed class TransmissionClient : ManagedClientBase
             LogManager.Instance.LogMessage($"Failed to restart {ClientName}: {ex.Message} - check the Executable path in Settings ({ExePath})", LogLevel.Error);
             return false;
         }
+    }
+
+    // Polls for the Qt client to exit after its window was closed. True once no process is left,
+    // false if one is still running when WindowCloseWaitMs runs out.
+    private async Task<bool> WaitForExitAsync(CancellationToken cancellationToken)
+    {
+        var deadline = Environment.TickCount64 + WindowCloseWaitMs;
+        while (IsRunning())
+        {
+            if (Environment.TickCount64 >= deadline) return false;
+            await Task.Delay(WindowClosePollMs, cancellationToken).ConfigureAwait(false);
+        }
+        return true;
     }
 
     // Sends a Transmission RPC request, handling the CSRF token handshake transparently.

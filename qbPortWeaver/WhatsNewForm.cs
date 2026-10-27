@@ -63,7 +63,8 @@ public partial class WhatsNewForm : Form
         "Start Automatically shows the real state, the Media Manager keeps the file extension, " +
         "Nicotine+ commands no longer print \"None\", the Nicotine+ plugin shows as not enabled when " +
         "Nicotine+ has plugins turned off, and a failed Transmission settings check is no longer " +
-        "reported as passed.\n\n" +
+        "reported as passed. When qbPortWeaver restarts Transmission after a port change, Transmission " +
+        "now has time to close normally, so a password or other setting changed in it is no longer lost.\n\n" +
         "Previously released\n\n" +
         "New in 2.6.9\n\n" +
         "Your settings can be backed up and restored\n" +

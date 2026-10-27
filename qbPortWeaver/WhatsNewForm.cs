@@ -35,10 +35,6 @@ public partial class WhatsNewForm : Form
         "Changed: latest .NET security update included\n" +
         "qbPortWeaver now ships with the October 2026 .NET update, which fixes a flaw in its " +
         "decompression code. qbPortWeaver never used that code, but you get the fix anyway.\n\n" +
-        "Fixed: the open-port check works with Deluge again\n" +
-        "Deluge's own port check can fail without an answer, which left Deluge's port as \"could not be " +
-        "determined\" every time. qbPortWeaver now asks the same check service itself, through the VPN, " +
-        "so Test Port, Diagnostics and the regular check report open or closed again.\n\n" +
         "Fixed: auto-recovery\n" +
         "A recovery that could not relaunch the VPN client app, or an adapter cycle that failed, is no " +
         "longer logged as completed. An adapter with a short name such as \"VPN\" is no longer " +

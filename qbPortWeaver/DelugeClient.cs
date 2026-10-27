@@ -13,10 +13,6 @@ public sealed class DelugeClient : ManagedClientBase
     private const string JsonContentType = "application/json";
     private const string JsonPropError = "error";
     private const string JsonPropResult = "result";
-    // Deluge's own port-check service - the one core.test_listen_port queries. It tests the address
-    // the request arrives from and answers "1" (open) or "0" (closed).
-    private const string PortCheckUrl = "https://deluge-torrent.org/test_port.php?port=";
-    private const int PortCheckTimeoutMs = 20000;
 
     private readonly string _password;
     private int _rpcId = 1; // sequential - DelugeClient is not shared across threads; no atomic increment needed
@@ -124,53 +120,6 @@ public sealed class DelugeClient : ManagedClientBase
     /// <inheritdoc/>
     /// <remarks>Deluge does not expose a connection status endpoint; always returns <see langword="null"/>.</remarks>
     public override Task<string?> GetConnectionStatusAsync(CancellationToken cancellationToken = default) => Task.FromResult<string?>(null);
-
-    /// <summary>
-    /// Queries Deluge's port-check service from this machine, from <paramref name="localAddress"/>, for
-    /// when <c>core.test_listen_port</c> cannot answer - on Windows it can fail on every call, for a
-    /// reason Deluge only writes to a log it does not keep by default. The service tests the address the
-    /// request comes from, so it is sent from the VPN adapter's address: that makes it leave through the
-    /// tunnel even with split tunnelling, and tests the address peers see. Returns
-    /// <see langword="null"/> when it cannot be determined; throws only on cancellation.
-    /// </summary>
-    /// <param name="port">The listening port to test.</param>
-    /// <param name="localAddress">The VPN adapter's IPv4 address (<see cref="IVpnManager.TunnelAddress"/>).</param>
-    /// <param name="cancellationToken">Cancels the request.</param>
-    internal static async Task<bool?> TestViaCheckServiceAsync(int port, System.Net.IPAddress localAddress, CancellationToken cancellationToken = default)
-    {
-        using var handler = new SocketsHttpHandler
-        {
-            // Bound to the adapter's address before connecting, so the connection leaves through it.
-            ConnectCallback = async (context, token) =>
-            {
-                var socket = new System.Net.Sockets.Socket(System.Net.Sockets.AddressFamily.InterNetwork,
-                    System.Net.Sockets.SocketType.Stream, System.Net.Sockets.ProtocolType.Tcp);
-                try
-                {
-                    socket.Bind(new System.Net.IPEndPoint(localAddress, 0));
-                    await socket.ConnectAsync(context.DnsEndPoint, token).ConfigureAwait(false);
-                    return new System.Net.Sockets.NetworkStream(socket, ownsSocket: true);
-                }
-                catch
-                {
-                    socket.Dispose();
-                    throw;
-                }
-            }
-        };
-        using var http = new HttpClient(handler, disposeHandler: false) { Timeout = TimeSpan.FromMilliseconds(PortCheckTimeoutMs) };
-        try
-        {
-            string body = (await http.GetStringAsync($"{PortCheckUrl}{port}", cancellationToken).ConfigureAwait(false)).Trim();
-            return body switch { "1" => true, "0" => false, _ => null };
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or System.Net.Sockets.SocketException or IOException)
-        {
-            LogManager.Instance.LogDebug($"DelugeClient.TestViaCheckServiceAsync: {ex.GetType().Name}: {ex.Message}");
-            return null;
-        }
-    }
 
     /// <inheritdoc/>
     /// <remarks>Uses <c>core.test_listen_port</c>, which actively probes the port via Deluge's

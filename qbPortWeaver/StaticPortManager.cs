@@ -23,9 +23,6 @@ public sealed class StaticPortManager(string adapterName, int port) : IVpnManage
     public bool IsVpnConnected() => VpnAdapter.IsUp(adapterName, "StaticPortManager.IsVpnConnected");
 
     /// <inheritdoc />
-    public System.Net.IPAddress? TunnelAddress => VpnAdapter.GetIPv4Address(adapterName);
-
-    /// <inheritdoc />
     // The configured value, as is. The sync loop applies the same usable-port rule to it as to a
     // discovered port, so an out-of-range value is reported rather than pushed to the client.
     public Task<int?> GetVpnPortAsync(CancellationToken cancellationToken = default) =>

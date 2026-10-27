@@ -67,10 +67,10 @@ public interface IVpnManager
     System.Net.IPAddress? ForwardAddress => null;
 
     /// <summary>
-    /// The VPN adapter's current IPv4 address, which outside lookups are sent from so that they leave
-    /// through the tunnel and see the address peers see - the exit-address lookup, and the Deluge port
-    /// check when Deluge's own cannot answer. <see langword="null"/> when the adapter is not up or has
-    /// none. Read live on each call, because the VPN hands the adapter a new address on every reconnect.
+    /// The VPN adapter's current IPv4 address, which the exit-address lookup is sent from so that it
+    /// leaves through the tunnel; <see langword="null"/> when the adapter is not up or has none, and for
+    /// providers without a <see cref="ForwardAddress"/>. Read live on each call, because the VPN hands
+    /// the adapter a new address on every reconnect.
     /// </summary>
     System.Net.IPAddress? TunnelAddress => null;
 

@@ -250,7 +250,8 @@ public sealed class PortSyncService
     // _recoveryGeneration as read at cycle start, the generation the last successful cycle consumed,
     // and whether the two differed. Taken at cycle start so a recovery dispatched mid-cycle
     // (port-closed trigger fires after the port update step) is never consumed by the same
-    // cycle that dispatched it. Serialised by MainForm._updateSemaphore.
+    // cycle that dispatched it. Serialised by MainForm._updateSemaphore. Instance fields beside a
+    // static counter are safe because MainForm creates this service once, in a readonly field.
     private int _recoveryGenerationAtStart;
     private int _recoveryGenerationConsumed;
     private bool _recoveryPendingThisCycle;

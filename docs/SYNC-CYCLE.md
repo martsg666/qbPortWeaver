@@ -793,7 +793,7 @@ RunAsync
 
 ## Media Manager
 
-The Media Manager runs after every sync cycle as a fire-and-forget task, in parallel with the wait until the next port sync cycle. If a previous import is still running when the next cycle ends, the new import is skipped to avoid pile-up on slow storage. It is also skipped while the Media Manager window is scanning, importing or clearing the cache; in the other direction, Scan Now, Import Now and Clear Cache wait for a running sync-cycle import to finish, and the window says so. When VPN Provider is set to **Disabled**, port sync is skipped entirely but the Media Manager still runs (kicked off after the no-op cycle).
+The Media Manager runs after every sync cycle as a fire-and-forget task, in parallel with the wait until the next port sync cycle. If a previous import is still running when the next cycle ends, the new import is skipped to avoid pile-up on slow storage. It is also skipped while the Media Manager window is scanning, importing or clearing the cache; in the other direction, Scan Now, Import Now and Clear Cache wait for a running sync-cycle import to finish, and the window says it is waiting for another Media Manager task. When VPN Provider is set to **Disabled**, port sync is skipped entirely but the Media Manager still runs (kicked off after the no-op cycle).
 
 ### One Media Operation at a Time
 

@@ -212,9 +212,12 @@ internal static partial class AutoRecovery
             {
                 if (adapterMayBeDown)
                 {
-                    if (await RunNetshAsync([NetshInterface, "set", NetshInterface, adapterName, "admin=enable"],
-                            logger, CancellationToken.None).ConfigureAwait(false) == NetshResult.Succeeded)
+                    var enable = await RunNetshAsync([NetshInterface, "set", NetshInterface, adapterName, "admin=enable"],
+                        logger, CancellationToken.None).ConfigureAwait(false);
+                    if (enable == NetshResult.Succeeded)
                         logger.LogMessage($"Re-enabled adapter '{adapterName}'", LogLevel.Info);
+                    else if (enable == NetshResult.Unknown)
+                        logger.LogMessage($"netsh did not confirm that adapter '{adapterName}' was re-enabled - check it in Network Connections", LogLevel.Warn);
                     else
                         logger.LogMessage($"Failed to re-enable adapter '{adapterName}'", LogLevel.Warn);
                 }

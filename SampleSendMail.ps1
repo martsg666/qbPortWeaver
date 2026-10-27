@@ -32,6 +32,8 @@ function PortClosedState($s) {
     # the VPN for a new exit address, up to vpnExitReconnectsMax times, then holds and asks for a
     # different server. The closed checks the mismatch explains are not counted.
     if ($s.vpnExitAddressMismatch) {
+        # Behind another NAT no reconnect is made: none can change the address.
+        if (BehindAnotherNat $s.vpnForwardAddress) { return 'Held - the gateway is itself behind another NAT, so the port cannot be reached from the Internet' }
         if (-not $s.vpnExitReconnectGaveUp) { return "Reconnecting for a matching exit address ($($s.vpnExitReconnects) of $($s.vpnExitReconnectsMax)) - traffic leaves from $($s.vpnExitAddress), not $($s.vpnForwardAddress)" }
         if ($s.vpnProtonOverOpenVpn) { return "Held - $($s.vpnExitReconnectsMax) reconnects did not give a matching exit address; switch ProtonVPN to Proton WireGuard (UDP), or connect to a different server" }
         return "Held - $($s.vpnExitReconnectsMax) reconnects did not give a matching exit address; connect the VPN to a different server"

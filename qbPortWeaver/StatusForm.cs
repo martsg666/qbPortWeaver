@@ -432,6 +432,9 @@ public partial class StatusForm : Form
         // user can act on, and while it holds the closed-check count is not advancing.
         if (s.VpnExitAddressMismatch)
         {
+            // Same split as VpnExitAddress.DescribeMismatch: behind another NAT no reconnect is made.
+            if (System.Net.IPAddress.TryParse(s.VpnForwardAddress, out var forward) && VpnExitAddress.IsBehindAnotherNat(forward))
+                return "Held - the gateway is itself behind another NAT, so the port cannot be reached from the Internet";
             if (!s.VpnExitReconnectGaveUp)
                 return $"Reconnecting for a matching exit address ({s.VpnExitReconnects} of {s.VpnExitReconnectsMax}) - traffic leaves from " +
                        $"{s.VpnExitAddress}, not from {s.VpnForwardAddress} where the port is forwarded";

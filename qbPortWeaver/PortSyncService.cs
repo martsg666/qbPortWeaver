@@ -1383,7 +1383,8 @@ public sealed class PortSyncService
         // to force the check - then falls to the throttle like a disarmed one once they run out.
         // Keyed on the give-up, not on the count: the count reaches the limit when the last reconnect is
         // dispatched, before its session has been looked at, and that session still needs checking.
-        bool exitReconnectPending = _vpnExitMismatch && portClosedRecoveryEnabled && !_vpnExitGiveUpNotified;
+        bool exitReconnectPending = _vpnExitMismatch && portClosedRecoveryEnabled && !_vpnExitGiveUpNotified
+            && !VpnExitMismatchBehindAnotherNat;
         if (portChanged || _portCheckPendingConfirmation || exitReconnectPending ||
             (_portConfirmedClosed && portClosedRecoveryEnabled && _portClosedRecoveryArmed && !_vpnExitMismatch))
         {
@@ -1555,6 +1556,12 @@ public sealed class PortSyncService
     // address - without announcing anything: the open-port line or the provider change says what happened.
     // The addresses go too, so the status file does not show a stale pair beside a cleared mismatch, or
     // a NAT-PMP pair after a switch to a provider that reports none.
+    // A mismatch whose forward address is private or carrier-grade NAT: the gateway is a home router behind
+    // another NAT, where the port cannot be reached from the Internet and no reconnect can change that, so
+    // the reconnects are skipped and the messages give that cause instead of VPN advice.
+    private bool VpnExitMismatchBehindAnotherNat =>
+        _vpnExitMismatch && _vpnForwardAddress is not null && VpnExitAddress.IsBehindAnotherNat(_vpnForwardAddress);
+
     private void ClearVpnExitMismatch()
     {
         _vpnExitMismatch = false;
@@ -1658,6 +1665,8 @@ public sealed class PortSyncService
             return string.Empty;
         // Ahead of the disarmed case: the mismatch is the more useful thing to say, and while it holds,
         // the count below is not advancing, so quoting it would read as a trigger about to fire.
+        if (VpnExitMismatchBehindAnotherNat)
+            return " (the gateway is itself behind another NAT, so the port cannot be reached from the Internet - recovery is held)";
         if (_vpnExitMismatch)
             return _vpnExitReconnects < MaxVpnExitReconnects
                 ? $" (traffic leaves from a different address than the port is forwarded on - reconnecting the VPN for a matching one, {_vpnExitReconnects} of {MaxVpnExitReconnects} reconnects so far)"
@@ -1858,6 +1867,9 @@ public sealed class PortSyncService
     private async Task ReconnectForExitAddressAsync(SyncConfig config, CancellationToken cancellationToken)
     {
         IVpnManager vpnManager = config.VpnManager!; // non-null: a mismatch needs a forward address, which needs a manager
+        // Behind another NAT a reconnect cannot help - for an adapter no provider owns, the recovery action
+        // cycles the machine's own network adapter - so none is made; the mismatch Warn already gave the cause.
+        if (VpnExitMismatchBehindAnotherNat) return;
         if (_vpnExitReconnects >= MaxVpnExitReconnects)
         {
             if (_vpnExitGiveUpNotified) return;

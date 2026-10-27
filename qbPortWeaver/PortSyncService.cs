@@ -205,12 +205,15 @@ public sealed class PortSyncService
     private int _confirmedClosedCount;
     private bool _portClosedRecoveryArmed = true;
 
-    // Set when a recovery action is dispatched (automatic or manual test) and consumed by the
-    // next successful cycle: a port change in that cycle gets the "after recovery" history
-    // annotation. Static because DispatchRecoveryAsync is shared by the sync loop's instance
-    // paths and the static manual-test entry point (TestRecoveryAsync); the app runs a single
-    // sync service, and volatile covers the manual test setting it from the UI thread.
-    private static volatile bool _recoveryDispatched;
+    // Incremented each time a recovery action is dispatched (automatic or manual test). A recovery
+    // is pending while this is ahead of _recoveryGenerationConsumed, and the next successful cycle
+    // consumes it: a port change in that cycle gets the "after recovery" history annotation. A
+    // counter rather than a flag so a cycle consumes only the recoveries dispatched before it
+    // started - clearing a flag at cycle end would also wipe one dispatched mid-cycle. Static
+    // because DispatchRecoveryAsync is shared by the sync loop's instance paths and the static
+    // manual-test entry point (TestRecoveryAsync); the app runs a single sync service, and
+    // Interlocked/Volatile cover the manual test bumping it from the UI thread.
+    private static int _recoveryGeneration;
 
     // How long recovery waits between attempts while connectivity cannot be confirmed. The first
     // attempt of a streak is not delayed at all; these are the waits before the second, third, and
@@ -228,8 +231,8 @@ public sealed class PortSyncService
     // (0 = none, so the next one runs immediately) and the Environment.TickCount64 reading of the last
     // one. Reset when the connectivity probe next succeeds, or when a cycle fetches a port. Instance
     // fields, serialised by MainForm._updateSemaphore like the rest of the cycle's state - unlike
-    // _recoveryDispatched above, which is static and volatile because the manual test really does set
-    // it from the UI thread. The gate these belong to runs only from TriggerRecoveryIfDueAsync.
+    // _recoveryGeneration above, which is static and interlocked because the manual test really does
+    // bump it from the UI thread. The gate these belong to runs only from TriggerRecoveryIfDueAsync.
     private int _offlineRecoveryAttempts;
     private long _lastOfflineRecoveryMs;
     // Latches while a wait window is being served, so the "holding recovery" explanation is logged once
@@ -244,9 +247,12 @@ public sealed class PortSyncService
     // RecoveryHoldUntil: it is read a cycle later than it is computed.
     private DateTimeOffset? _recoverySustainedUntil;
 
-    // Snapshot of _recoveryDispatched taken at cycle start, so a recovery dispatched mid-cycle
+    // _recoveryGeneration as read at cycle start, the generation the last successful cycle consumed,
+    // and whether the two differed. Taken at cycle start so a recovery dispatched mid-cycle
     // (port-closed trigger fires after the port update step) is never consumed by the same
     // cycle that dispatched it. Serialised by MainForm._updateSemaphore.
+    private int _recoveryGenerationAtStart;
+    private int _recoveryGenerationConsumed;
     private bool _recoveryPendingThisCycle;
 
     // Whether the running cycle was triggered by a network change (passed in by MainForm's
@@ -389,7 +395,8 @@ public sealed class PortSyncService
     public async Task<int> RunAsync(bool networkChangeTriggered = false, CancellationToken cancellationToken = default)
     {
         _networkChangeTriggered = networkChangeTriggered;
-        _recoveryPendingThisCycle = _recoveryDispatched;
+        _recoveryGenerationAtStart = Volatile.Read(ref _recoveryGeneration);
+        _recoveryPendingThisCycle = _recoveryGenerationAtStart != _recoveryGenerationConsumed;
         _waitingForVpnThisCycle = false;
         // Initialize status with default values. This is written to the status file at the end of the method (in finally)
         // so it captures the final state even if an exception occurs.
@@ -481,10 +488,10 @@ public sealed class PortSyncService
                     SessionStats.RecordSync(outcome == SyncStatusValues.Success);
                 // A successful cycle concludes a pending recovery whether or not the port
                 // changed (the annotation, if due, was applied during the cycle). Only the
-                // cycle-start snapshot is cleared, so a recovery dispatched mid-cycle
+                // generation read at cycle start is consumed, so a recovery dispatched mid-cycle
                 // stays pending for the next one.
                 if (outcome == SyncStatusValues.Success && _recoveryPendingThisCycle)
-                    _recoveryDispatched = false; // NOSONAR S2696 - the app runs a single sync service; the field is static only because the manual-test dispatch path is static
+                    _recoveryGenerationConsumed = _recoveryGenerationAtStart;
                 LaunchPostUpdateCommandIfChanged(status);
                 RaiseSyncCompleted(status);
             }
@@ -2427,14 +2434,14 @@ public sealed class PortSyncService
             // helper reports the outcome - the log file carries the actual result.
             PortHistoryManager.Append(PortHistoryKind.Recovery, null, $"{trigger} triggered for '{displayName}' (service restart)");
             if (!manualTest) SessionStats.RecordRecovery();
-            _recoveryDispatched = true;
+            Interlocked.Increment(ref _recoveryGeneration);
             await AutoRecoveryManager.TriggerRestartAsync(recoveryTarget, cancellationToken).ConfigureAwait(false);
         }
         else if (action == HelperProtocol.ActionCycleAdapter)
         {
             PortHistoryManager.Append(PortHistoryKind.Recovery, null, $"{trigger} triggered for '{displayName}' (adapter cycle)");
             if (!manualTest) SessionStats.RecordRecovery();
-            _recoveryDispatched = true;
+            Interlocked.Increment(ref _recoveryGeneration);
             await AutoRecoveryManager.TriggerCycleAdapterAsync(recoveryTarget, cancellationToken).ConfigureAwait(false);
         }
         else

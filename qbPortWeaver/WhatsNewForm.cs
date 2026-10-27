@@ -57,7 +57,8 @@ public partial class WhatsNewForm : Form
         "Nicotine+.\n\n" +
         "Fixed: several smaller issues\n" +
         "An unexpected sync error no longer resets the sync interval to 3 minutes, and a network change " +
-        "during a sync, such as a VPN reconnect by auto-recovery, keeps its quick re-check. Warnings that " +
+        "during a sync, such as a VPN reconnect by auto-recovery, keeps its quick re-check. A port change " +
+        "after two recoveries in a row is still marked \"after recovery\" in the port history. Warnings that " +
         "repeat every sync now appear once, and debug entries no longer appear with debug logging off. " +
         "Start Automatically shows the real state, the Media Manager keeps the file extension, " +
         "Nicotine+ commands no longer print \"None\", the Nicotine+ plugin shows as not enabled when " +

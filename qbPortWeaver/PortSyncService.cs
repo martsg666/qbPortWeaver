@@ -230,6 +230,9 @@ public sealed class PortSyncService
     // has been told they ran out. Both reset when the mismatch ends.
     private int _vpnExitReconnects;
     private bool _vpnExitGiveUpNotified;
+    // The forward address the give-up was for, so a mismatch on another one is told apart as a new server
+    // (see StartNewExitEpisodeIfForwardChanged).
+    private System.Net.IPAddress? _vpnExitGiveUpForward;
 
     // Incremented each time a recovery action is dispatched (automatic or manual test). A recovery
     // is pending while this is ahead of _recoveryGenerationConsumed, and the next successful cycle
@@ -1501,7 +1504,7 @@ public sealed class PortSyncService
             // Entering the hold: the closed checks this explains must not count towards the trigger, or
             // the count would sit past it and fire on the first closed check after the user reconnects
             // to a good server - usually the client still reconnecting.
-            bool entering = !_vpnExitMismatch;
+            bool entering = StartNewExitEpisodeIfForwardChanged(forward) || !_vpnExitMismatch;
             if (entering) _confirmedClosedCount = 0;
             _vpnExitMismatch = true;
             LogManager.Instance.LogStateChange(VpnExitMismatchStateKey,
@@ -1515,6 +1518,21 @@ public sealed class PortSyncService
         }
 
         EndVpnExitHold(exit);
+    }
+
+    // After a give-up, a mismatch on a different forward address is a new server - usually the one the
+    // give-up told the user to move to - so it gets its own reconnects and balloon instead of inheriting the
+    // spent ones. Safe from looping: after a give-up the app reconnects no more, so the forward can only
+    // have changed from outside, and before one a changed forward resets nothing, so the app's own
+    // reconnects landing on another server cannot stretch the limit. Compared with the give-up's forward,
+    // not the last one seen, so an open result in between (which clears the addresses) buys nothing.
+    private bool StartNewExitEpisodeIfForwardChanged(System.Net.IPAddress forward)
+    {
+        if (!_vpnExitGiveUpNotified || forward.Equals(_vpnExitGiveUpForward)) return false;
+        _vpnExitReconnects = 0;
+        _vpnExitGiveUpNotified = false;
+        _vpnExitGiveUpForward = null;
+        return true;
     }
 
     // The no-mismatch outcome of a lookup: the addresses are equal, or the exit address could not be
@@ -1543,6 +1561,7 @@ public sealed class PortSyncService
         {
             _vpnExitReconnects = 0;
             _vpnExitGiveUpNotified = false;
+            _vpnExitGiveUpForward = null;
         }
         LogManager.Instance.ClearLogState(VpnExitMismatchStateKey);
     }
@@ -1578,6 +1597,7 @@ public sealed class PortSyncService
         {
             _vpnExitReconnects = 0;
             _vpnExitGiveUpNotified = false;
+            _vpnExitGiveUpForward = null;
         }
         _vpnForwardAddress = null;
         _vpnExitAddress = null;
@@ -1884,6 +1904,7 @@ public sealed class PortSyncService
         {
             if (_vpnExitGiveUpNotified) return;
             _vpnExitGiveUpNotified = true;
+            _vpnExitGiveUpForward = _vpnForwardAddress;
             string giveUp = $"{MaxVpnExitReconnects} VPN reconnects did not give an exit address that matches the forwarded one - " +
                             (_vpnProtonOverOpenVpn
                                 ? "switch ProtonVPN to Proton WireGuard (UDP), or connect to a different server"

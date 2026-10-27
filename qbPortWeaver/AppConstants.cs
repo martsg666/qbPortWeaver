@@ -37,7 +37,8 @@ public static class AppConstants
     // VPN exit-address check (see VpnExitAddress). A public STUN server answers one UDP request
     // with the address the request arrived from - the address the VPN sends this machine's traffic
     // out on. No account, no HTTP. Contacted only while a port check reports the port closed
-    // or cannot determine it, and when Diagnostics runs.
+    // or cannot determine it, once on an open result after exit-address reconnects (to confirm the
+    // match), and when Diagnostics runs.
     public const string StunServerHost = "stun.cloudflare.com";
     public const int StunServerPort = 3478;
 

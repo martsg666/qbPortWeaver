@@ -67,7 +67,16 @@ public sealed partial class ProtonVpnManager : IVpnManager
         string.Equals(ActiveAdapterName, AppConstants.ProtonVpnOpenVpnAdapterName, StringComparison.OrdinalIgnoreCase);
 
     // The first up adapter carrying one of ProtonVPN's names, read live: a protocol switch changes it.
-    private static string? ActiveAdapterName => VpnAdapter.GetActiveInterfaces().Find(nic => MatchesProtonAdapter(nic.Name))?.Name;
+    // The two configured names are read once, not per adapter.
+    private static string? ActiveAdapterName
+    {
+        get
+        {
+            string legacyName = Config.GetAdapterName();
+            string nativeName = Config.GetNativeAdapterName() ?? string.Empty;
+            return VpnAdapter.GetActiveInterfaces().Find(nic => MatchesProtonAdapter(nic.Name, legacyName, nativeName))?.Name;
+        }
+    }
 
     /// <inheritdoc />
     public string ForwardSource
@@ -84,28 +93,15 @@ public sealed partial class ProtonVpnManager : IVpnManager
     /// <inheritdoc />
     public bool IsVpnConnected()
     {
-        try
-        {
-            var adapters = NetworkInterface.GetAllNetworkInterfaces();
-            // Uses Name (not Description). The legacy stack names its adapter "ProtonVPN" (WireGuard)
-            // or "ProtonVPN TUN" (OpenVPN); the new in-house protocols (Proton WireGuard, Proton Stealth)
-            // name it "ProTUN". Both configured names are read once here, then matched per adapter.
-            string legacyName = Config.GetAdapterName();
-            string nativeName = Config.GetNativeAdapterName() ?? string.Empty;
-            NetworkInterface? matched = adapters.FirstOrDefault(adapter =>
-                adapter.OperationalStatus == OperationalStatus.Up &&
-                MatchesProtonAdapter(adapter.Name, legacyName, nativeName));
-
-            LogManager.Instance.LogDebug(matched is not null
-                ? $"ProtonVpnManager.IsVpnConnected: Adapter '{matched.Name}' is connected"
-                : $"ProtonVpnManager.IsVpnConnected: Adapter '{legacyName}'/'{nativeName}' is not found or not connected");
-
-            return matched is not null;
-        }
-        catch (Exception ex)
-        {
-            return LogManager.LogDebugFalse($"ProtonVpnManager.IsVpnConnected: {ex.Message}");
-        }
+        // Uses Name (not Description). The legacy stack names its adapter "ProtonVPN" (WireGuard) or
+        // "ProtonVPN TUN" (OpenVPN); the new in-house protocols (Proton WireGuard, Proton Stealth) name it
+        // "ProTUN". The same lookup as TunnelAddress and IsProtonVpnOverOpenVpn, so "connected" and the
+        // exit check can never disagree about which adapter is the tunnel.
+        string? matched = ActiveAdapterName;
+        LogManager.Instance.LogDebug(matched is not null
+            ? $"ProtonVpnManager.IsVpnConnected: Adapter '{matched}' is connected"
+            : $"ProtonVpnManager.IsVpnConnected: Adapter '{Config.GetAdapterName()}'/'{Config.GetNativeAdapterName()}' is not found or not connected");
+        return matched is not null;
     }
 
     /// <inheritdoc />

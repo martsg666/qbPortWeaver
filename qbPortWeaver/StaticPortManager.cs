@@ -31,10 +31,15 @@ public sealed class StaticPortManager(string adapterName, int port) : IVpnManage
     /// <inheritdoc />
     // Same rule as NAT-PMP: restart the provider's service when the adapter belongs to a known
     // provider whose service is installed, otherwise cycle the adapter itself.
-    public string? GetRecoveryTarget() => VpnAdapter.GetRecoveryTarget(adapterName);
+    public string? GetRecoveryTarget() => Recovery.Target;
 
     /// <inheritdoc />
-    public string GetRecoveryAction() => VpnAdapter.GetRecoveryAction(adapterName);
+    public string GetRecoveryAction() => Recovery.Action;
+
+    // Target and action from one service lookup, once per instance (one instance per cycle), so the two
+    // always agree and the Windows services are enumerated once rather than once per call.
+    private (string Target, string Action)? _recovery;
+    private (string Target, string Action) Recovery => _recovery ??= VpnAdapter.GetRecovery(adapterName);
 
     /// <inheritdoc />
     public bool IsAdapterMatch(string interfaceName)

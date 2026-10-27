@@ -83,7 +83,7 @@ public sealed class NatPmpManager : IVpnManager
 
             if (!result.Success)
             {
-                LogManager.Instance.LogMessage($"Failed to map NAT-PMP port on '{_adapter.Name}': {result.Error}", LogLevel.Warn);
+                LogManager.Instance.LogMessage($"Failed to map NAT-PMP port on '{_adapter.Name}': {result.Error}", LogLevel.Info); // Info: the cycle logs the Warn for this failure
                 return null;
             }
 
@@ -127,7 +127,7 @@ public sealed class NatPmpManager : IVpnManager
         }
         catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
         {
-            LogManager.Instance.LogMessage($"NAT-PMP error on '{_adapter.Name}': {ex.Message}", LogLevel.Warn);
+            LogManager.Instance.LogMessage($"NAT-PMP error on '{_adapter.Name}': {ex.Message}", LogLevel.Info); // Info: the cycle logs the Warn for this failure
             return null;
         }
     }
@@ -188,10 +188,15 @@ public sealed class NatPmpManager : IVpnManager
     /// <inheritdoc />
     // Returns the provider token when the adapter belongs to an installed known provider (for service restart),
     // or the adapter name for standalone NAT-PMP gateways (for adapter cycling).
-    public string? GetRecoveryTarget() => VpnAdapter.GetRecoveryTarget(_adapter.Name);
+    public string? GetRecoveryTarget() => Recovery.Target;
 
     /// <inheritdoc />
-    public string GetRecoveryAction() => VpnAdapter.GetRecoveryAction(_adapter.Name);
+    public string GetRecoveryAction() => Recovery.Action;
+
+    // Target and action from one service lookup, once per instance (one instance per cycle), so the two
+    // always agree and the Windows services are enumerated once rather than once per call.
+    private (string Target, string Action)? _recovery;
+    private (string Target, string Action) Recovery => _recovery ??= VpnAdapter.GetRecovery(_adapter.Name);
 
     /// <inheritdoc />
     // Exact match (AdapterNamesMatchExactly), shared with Static port. The configured name here is

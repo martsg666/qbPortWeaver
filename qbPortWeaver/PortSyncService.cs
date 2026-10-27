@@ -57,7 +57,10 @@ public sealed class PortSyncService
     /// <summary>Raised when the client's listening port is successfully updated to a new value.</summary>
     public event Action<string>? PortUpdated;
 
-    /// <summary>Raised once when the forwarded port is confirmed unreachable from outside (two consecutive failed checks). Transition-only - it re-fires only after the port has tested open again.</summary>
+    /// <summary>Raised for the port-reachability warnings, each once per condition: when the forwarded port is
+    /// confirmed unreachable from outside (two consecutive failed checks; re-fires only after the port has
+    /// tested open again), when an exit-address mismatch is first found, and when the exit-address
+    /// reconnects run out.</summary>
     public event Action<string>? PortVerificationFailed;
 
     /// <summary>Raised when the client's own settings are found working against the synchronized port. Transition-only - it re-fires only after the settings have tested clean again.</summary>
@@ -1131,10 +1134,11 @@ public sealed class PortSyncService
             return null;
         }
         string disconnectedMsg = $"NAT-PMP adapter '{adapterName}' not found - VPN may be disconnected";
+        var (recoveryTarget, recoveryAction) = VpnAdapter.GetRecovery(adapterName);
         await RegisterFailureAndTryRecoveryAsync(
             disconnectedMsg, LogLevel.Info,
-            VpnAdapter.GetRecoveryAction(adapterName),
-            VpnAdapter.GetRecoveryTarget(adapterName),
+            recoveryAction,
+            recoveryTarget,
             $"NAT-PMP adapter '{adapterName}'",
             cfg, cancellationToken).ConfigureAwait(false);
 
@@ -1816,7 +1820,7 @@ public sealed class PortSyncService
     // that does not help escalates to recovery instead of repeating.
     //
     // "recovery" rather than "the VPN restart" throughout, matching the messages below: the action is a
-    // service restart for ProtonVPN and PIA, but for NAT-PMP and Static port VpnAdapter.GetRecoveryAction
+    // service restart for ProtonVPN and PIA, but for NAT-PMP and Static port VpnAdapter.GetRecovery
     // returns cycle-adapter when the adapter belongs to no known provider, or to one whose service is not
     // installed, where no VPN is restarted at all.
     private async Task<bool> TryRebindClientAddressAsync(IManagedClient manager, SyncConfig config, CancellationToken cancellationToken)
@@ -2474,6 +2478,20 @@ public sealed class PortSyncService
 
         if (_consecutiveDisconnectRestarts >= MaxDisconnectRestarts)
         {
+            // The give-up is said here, on the first check after the last restart that still finds the
+            // client disconnected - not right after that restart, which may well have worked. Logged once:
+            // the counter steps past the cap, so a persistent cause does not repeat it every cycle. The
+            // hint names the most common unfixable-by-restart cause: a binding the client keeps in its own
+            // configuration, which a restart re-reads unchanged.
+            if (_consecutiveDisconnectRestarts == MaxDisconnectRestarts)
+            {
+                _consecutiveDisconnectRestarts++;
+                LogManager.Instance.LogMessage(
+                    $"Restarting has not cleared {manager.ClientName}'s disconnected status after {MaxDisconnectRestarts} attempts - " +
+                    $"no further restarts until it reconnects. If it is bound to a VPN adapter, re-select the network interface in {manager.ClientName}'s settings",
+                    LogLevel.Warn);
+                return;
+            }
             LogManager.Instance.LogDebug(
                 $"PortSyncService.CheckAndRestartIfDisconnectedAsync: {manager.ClientName} still disconnected, restarts remain suspended");
             return;
@@ -2488,15 +2506,6 @@ public sealed class PortSyncService
             LogManager.Instance.LogMessage($"Failed to restart {manager.ClientName} after connection disconnect", LogLevel.Error);
         else
             LogManager.Instance.LogMessage($"Restarted {manager.ClientName} after connection disconnect", LogLevel.Info);
-
-        // Logged once, on the transition to the cap, so a persistent cause does not repeat this every
-        // cycle. The hint names the most common unfixable-by-restart cause: a binding the client keeps
-        // in its own configuration, which a restart re-reads unchanged.
-        if (_consecutiveDisconnectRestarts == MaxDisconnectRestarts)
-            LogManager.Instance.LogMessage(
-                $"Restarting has not cleared {manager.ClientName}'s disconnected status after {MaxDisconnectRestarts} attempts - " +
-                $"no further restarts until it reconnects. If it is bound to a VPN adapter, re-select the network interface in {manager.ClientName}'s settings",
-                LogLevel.Warn);
     }
 
     // Warns when the client's own settings are working against the synchronized port - a randomised

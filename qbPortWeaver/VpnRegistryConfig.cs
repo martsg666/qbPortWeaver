@@ -15,12 +15,7 @@ internal sealed class VpnRegistryConfig
     private readonly string? _nativeAdapterNameKey;
     private readonly string _logPrefix;
 
-    // Cached path; null = not found, string.Empty = not yet resolved.
-    // Install paths never change at runtime so we resolve once and reuse.
-    // volatile: the field is written at most once (Empty -> resolved path). Without it a reading
-    // thread on a different core could observe a stale Empty and trigger one redundant re-resolve.
-    // Matches the pattern used by PiaVpnManager._piactlPathCache.
-    private volatile string? _clientExePathCache = string.Empty;
+    private readonly ServiceExeCache _clientExePath = new();
 
     public VpnRegistryConfig(
         string serviceSearchTermKey,
@@ -44,8 +39,9 @@ internal sealed class VpnRegistryConfig
 
     // Matches any of the provider's registry-configured adapter names against an observed interface
     // name. ProtonVPN configures a secondary "native" name (ProTUN) alongside its primary name, so
-    // both are checked; single-name providers check only the primary. Used for the ProtonVPN and PIA
-    // connection and interface checks, and for recovery classification through IsLiveAdapterOfThisProvider.
+    // both are checked; single-name providers check only the primary. Used for ProtonVPN's connection
+    // and interface checks, PIA's interface check (its connection check is piactl), and for recovery
+    // classification through IsLiveAdapterOfThisProvider.
     internal bool MatchesAdapterName(string interfaceName)
     {
         if (AdapterNamesMatch(GetAdapterName(), interfaceName)) return true;
@@ -83,17 +79,32 @@ internal sealed class VpnRegistryConfig
 
     // Live SCM enumeration; call site caches the result where repeated lookups matter.
     internal string? FindServiceName() => ServiceLookup.FindServiceName(GetServiceSearchTerm());
-    // Resolved once from the service's ImagePath registry entry; cached via _clientExePathCache sentinel.
-    internal string? GetClientExePath()
+    // Resolved once from the service's ImagePath registry entry, then cached.
+    internal string? GetClientExePath() => _clientExePath.Get(GetClientProcessName() + ".exe", FindServiceName, _logPrefix);
+}
+
+/// <summary>
+/// A cached path to an executable in a Windows service's install folder, resolved through
+/// <see cref="ServiceLookup.FindExeInServiceDirectory"/>. Install paths never change at runtime, so the
+/// path is resolved once and reused. Shared by the VPN client exe (<see cref="VpnRegistryConfig"/>) and
+/// PIA's piactl, which used to carry two copies of this logic.
+/// </summary>
+internal sealed class ServiceExeCache
+{
+    // null = not found, string.Empty = not yet resolved. volatile: written at most once (Empty ->
+    // resolved path); without it a reader on another core could see a stale Empty and re-resolve once.
+    private volatile string? _path = string.Empty;
+
+    internal string? Get(string exeName, Func<string?> findServiceName, string logPrefix)
     {
         // Read/write the volatile field via a local so the ref pass does not strip volatile semantics (CS0420).
-        string? cache = _clientExePathCache;
-        var result = ServiceLookup.FindExeInServiceDirectory(ref cache, GetClientProcessName() + ".exe", FindServiceName, _logPrefix);
+        string? cache = _path;
+        var result = ServiceLookup.FindExeInServiceDirectory(ref cache, exeName, findServiceName, logPrefix);
         // Write back only a resolution. FindExeInServiceDirectory leaves the value untouched on a miss,
         // so an unconditional write lets a caller that failed overwrite another thread's resolved path
-        // with the not-yet-resolved sentinel. This instance is shared (Config is static on the
-        // managers) and diagnostics can run while the sync loop does, so those calls genuinely overlap.
-        if (cache is { Length: > 0 }) _clientExePathCache = cache;
+        // with the not-yet-resolved sentinel. The caches are shared (Config is static on the managers)
+        // and diagnostics can run while the sync loop does, so those calls genuinely overlap.
+        if (cache is { Length: > 0 }) _path = cache;
         return result;
     }
 }

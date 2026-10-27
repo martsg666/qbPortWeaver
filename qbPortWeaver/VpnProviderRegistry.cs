@@ -6,7 +6,7 @@ internal sealed record VpnProvider(string Keyword, VpnRegistryConfig Config);
 /// <summary>
 /// Single source of truth for the VPN providers qbPortWeaver knows how to drive in auto-recovery.
 /// <para><b>Adding a provider.</b> Add one entry to <see cref="KnownProviders"/>; everything in this
-/// class derives from it, as do <see cref="VpnAdapter.GetRecoveryTarget"/>,
+/// class derives from it, as do <see cref="VpnAdapter.GetRecovery"/>,
 /// <see cref="AutoRecoveryManager"/> and <see cref="VpnDetector"/>. That is not the whole job,
 /// though - you must also add the keyword constant in <see cref="RegistrySettingsManager"/>, the
 /// dispatch in <c>PortSyncService.CreateVpnManagerAsync</c> that decides which manager to construct,
@@ -28,7 +28,7 @@ internal static class VpnProviderRegistry
     /// for ProtonVPN that includes both its primary name and its in-house "ProTUN" name - rather than
     /// the bare keyword, so a ProTUN adapter is still recognised as ProtonVPN. Recovery uses this, plus
     /// a check that the provider's service is installed, to decide whether to restart that service or
-    /// cycle the adapter (<see cref="VpnAdapter.GetRecoveryAction"/>).
+    /// cycle the adapter (<see cref="VpnAdapter.GetRecovery"/>).
     /// </summary>
     internal static string? FindProviderToken(string adapterName) =>
         KnownProviders.FirstOrDefault(p => p.Config.IsLiveAdapterOfThisProvider(adapterName))?.Keyword;

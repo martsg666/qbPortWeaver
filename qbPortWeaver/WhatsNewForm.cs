@@ -32,7 +32,8 @@ public partial class WhatsNewForm : Form
         "A recovery that could not relaunch the VPN client app, or an adapter cycle that failed, is no " +
         "longer logged as completed. An adapter with a short name such as \"VPN\" is no longer " +
         "mistaken for ProtonVPN, and a WireGuard tunnel named after ProtonVPN or PIA without their app " +
-        "installed is cycled instead of skipped. A Windows service that shares its process with others is never " +
+        "installed is cycled instead of skipped. An adapter cycle whose disable step hangs re-enables the " +
+        "adapter instead of leaving it disabled. A Windows service that shares its process with others is never " +
         "force-stopped, a VPN service that is slow to start is no longer reported as a failed restart, and " +
         "a recovery that worked no longer shows the warning badge.\n\n" +
         "Fixed: multi-part movies and subtitles in the Media Manager\n" +

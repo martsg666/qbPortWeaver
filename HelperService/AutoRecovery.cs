@@ -187,19 +187,24 @@ internal static partial class AutoRecovery
             // OCE, and the adapter stayed disabled.
             //
             // adapterMayBeDown starts true and is cleared only when netsh *explicitly reports*
-            // failure, because that is the one outcome proving the adapter is still up. A throw
-            // leaves it unknown, so the flag stays set and the re-enable runs anyway: re-enabling an
+            // failure, because that is the one outcome proving the adapter is still up. A throw, or a
+            // netsh killed after its timeout, leaves it unknown - the disable may have taken effect
+            // before netsh hung - so the flag stays set and the re-enable runs anyway: re-enabling an
             // adapter that was never disabled is a no-op, failing to re-enable one that was is not.
             bool adapterMayBeDown = true;
             try
             {
-                if (!await RunNetshAsync([NetshInterface, "set", NetshInterface, adapterName, "admin=disable"], logger, cancellationToken).ConfigureAwait(false))
+                var disable = await RunNetshAsync([NetshInterface, "set", NetshInterface, adapterName, "admin=disable"], logger, cancellationToken).ConfigureAwait(false);
+                if (disable == NetshResult.Failed)
                 {
                     adapterMayBeDown = false;
                     logger.LogMessage($"Failed to disable adapter '{adapterName}'", LogLevel.Warn);
                     return;
                 }
-                logger.LogMessage($"Adapter '{adapterName}' disabled", LogLevel.Info);
+                if (disable == NetshResult.Unknown)
+                    logger.LogMessage($"netsh did not confirm that adapter '{adapterName}' was disabled - re-enabling it anyway", LogLevel.Warn);
+                else
+                    logger.LogMessage($"Adapter '{adapterName}' disabled", LogLevel.Info);
 
                 await Task.Delay(AdapterCycleDelayMs, CancellationToken.None).ConfigureAwait(false);
             }
@@ -208,7 +213,7 @@ internal static partial class AutoRecovery
                 if (adapterMayBeDown)
                 {
                     if (await RunNetshAsync([NetshInterface, "set", NetshInterface, adapterName, "admin=enable"],
-                            logger, CancellationToken.None).ConfigureAwait(false))
+                            logger, CancellationToken.None).ConfigureAwait(false) == NetshResult.Succeeded)
                         logger.LogMessage($"Re-enabled adapter '{adapterName}'", LogLevel.Info);
                     else
                         logger.LogMessage($"Failed to re-enable adapter '{adapterName}'", LogLevel.Warn);
@@ -526,11 +531,17 @@ internal static partial class AutoRecovery
     private static Task WaitForStatusAsync(ServiceController sc, ServiceControllerStatus status, CancellationToken cancellationToken = default) =>
         Task.Run(() => sc.WaitForStatus(status, TimeSpan.FromMilliseconds(ServiceOperationTimeoutMs)), cancellationToken);
 
-    // Runs a netsh command and returns true if it exits with code 0.
+    // Failed means netsh reported failure (or never started), so the command did not take effect.
+    // Unknown means netsh started but its outcome was never read - killed after its timeout, or an
+    // error after start - so the command may or may not have taken effect.
+    private enum NetshResult { Succeeded, Failed, Unknown }
+
+    // Runs a netsh command: Succeeded when it exits with code 0, otherwise see NetshResult.
     // Arguments are passed via ProcessStartInfo.ArgumentList so .NET handles escaping/quoting,
     // avoiding manual quote-escaping pitfalls for adapter names containing spaces or trailing backslashes.
-    private static async Task<bool> RunNetshAsync(IReadOnlyList<string> arguments, HelperLogger logger, CancellationToken cancellationToken = default)
+    private static async Task<NetshResult> RunNetshAsync(IReadOnlyList<string> arguments, HelperLogger logger, CancellationToken cancellationToken = default)
     {
+        bool started = false;
         try
         {
             string netshPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "netsh.exe");
@@ -548,8 +559,9 @@ internal static partial class AutoRecovery
             if (process is null)
             {
                 logger.LogMessage("Failed to start netsh", LogLevel.Warn);
-                return false;
+                return NetshResult.Failed;
             }
+            started = true;
 
             // Start drain tasks concurrently so a full pipe buffer cannot deadlock the child against WaitForExit.
             // Drain tasks are awaited only after WaitForExit returns - awaiting them first would let a hung
@@ -566,7 +578,7 @@ internal static partial class AutoRecovery
                 process.Kill(entireProcessTree: true);
                 process.WaitForExit(ProcessKillTimeoutMs);
                 logger.LogMessage("netsh timed out and was killed", LogLevel.Warn);
-                return false;
+                return NetshResult.Unknown;
             }
 
             // Process has exited - streams are closed so drain tasks complete promptly.
@@ -579,15 +591,15 @@ internal static partial class AutoRecovery
             {
                 string output = !string.IsNullOrWhiteSpace(stderr) ? stderr.Trim() : stdout.Trim();
                 logger.LogMessage($"netsh exited with code {process.ExitCode}: {output}", LogLevel.Warn);
-                return false;
+                return NetshResult.Failed;
             }
 
-            return true;
+            return NetshResult.Succeeded;
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             logger.LogMessage($"Failed to run netsh: {ex.Message}", LogLevel.Warn);
-            return false;
+            return started ? NetshResult.Unknown : NetshResult.Failed;
         }
     }
 }

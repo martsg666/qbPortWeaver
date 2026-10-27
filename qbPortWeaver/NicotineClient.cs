@@ -221,8 +221,9 @@ public sealed class NicotineClient : ManagedClientBase
     }
 
     /// <inheritdoc/>
-    /// <remarks>Runs Nicotine+'s own reachability check, which probes the port through the
-    /// Soulseek project's online check service. The plugin caps how long it will hold the request,
+    /// <remarks>Asks the bridge plugin for a reachability check through the Soulseek project's
+    /// online check service: Nicotine+'s own checker where the running version has one, otherwise
+    /// the plugin's direct query of the same service. The plugin caps how long it will hold the request,
     /// so a slow check comes back as still pending and is reported here as undeterminable rather
     /// than as a closed port. Failures log at Debug only - this is a best-effort probe.</remarks>
     public override async Task<bool?> TestListeningPortAsync(CancellationToken cancellationToken = default)

@@ -37,8 +37,8 @@ public sealed partial class ProtonVpnManager : IVpnManager
 
     // Read lazily, once per instance: only the exit-address check needs them, and only while the port
     // reads closed, whereas the port is read every cycle. The server lines are written once per
-    // connection, so on a long session they sit far back in the file - or have been rotated out of it,
-    // in which case both stay null and the check does not run.
+    // connection, so on a long session they sit far back in the file or in the rotated one; only when both
+    // files have lost them do they stay null, and the check does not run.
     private bool _serverScanned;
     private System.Net.IPAddress? _serverAddress;
     private string? _serverName;
@@ -178,18 +178,29 @@ public sealed partial class ProtonVpnManager : IVpnManager
         }
     }
 
-    // Returns the most recent matched port.
+    // Returns the most recent matched port. Falls back to the rotated log when the current one has no port
+    // line yet: ProtonVPN writes one every minute, but a file it has just rotated to can be up to a minute
+    // without one, and a cycle landing there would otherwise report port detection as failed.
     private int? ReadLastPortFromLog()
     {
         int? port = null;
-        ScanLogBackwards(line =>
+        bool VisitPortLine(string line)
         {
             var match = PortPairRegex().Match(line);
             if (match.Success && int.TryParse(match.Groups[1].Value, out int p)) port = p;
             return port is not null;
-        });
+        }
+        ScanLogBackwards(_logFilePath, VisitPortLine);
+        string rotated = RotatedLogPath;
+        if (port is null && File.Exists(rotated))
+            ScanLogBackwards(rotated, VisitPortLine);
         return port;
     }
+
+    // The log ProtonVPN rotated away last: client-logs.1.txt beside client-logs.txt.
+    private string RotatedLogPath =>
+        Path.Combine(Path.GetDirectoryName(_logFilePath) ?? string.Empty,
+            Path.GetFileNameWithoutExtension(_logFilePath) + ".1" + Path.GetExtension(_logFilePath));
 
     // Finds the newest server address and server name lines, once per instance. Any failure leaves
     // them null, which only means the exit-address check does not run this cycle.
@@ -205,8 +216,7 @@ public sealed partial class ProtonVpnManager : IVpnManager
         try
         {
             ScanLogBackwards(_logFilePath, VisitServerLine);
-            string rotated = Path.Combine(Path.GetDirectoryName(_logFilePath) ?? string.Empty,
-                Path.GetFileNameWithoutExtension(_logFilePath) + ".1" + Path.GetExtension(_logFilePath));
+            string rotated = RotatedLogPath;
             if ((_serverAddress is null || _serverName is null) && File.Exists(rotated))
                 ScanLogBackwards(rotated, VisitServerLine);
         }
@@ -233,7 +243,6 @@ public sealed partial class ProtonVpnManager : IVpnManager
     // Note: if a chunk boundary falls mid-multi-byte UTF-8 character, GetString produces a
     // replacement char on that boundary. This is harmless because the patterns searched for are pure
     // ASCII and ProtonVPN logs use ASCII-only content.
-    private void ScanLogBackwards(Func<string, bool> visit) => ScanLogBackwards(_logFilePath, visit);
 
     private static void ScanLogBackwards(string path, Func<string, bool> visit)
     {

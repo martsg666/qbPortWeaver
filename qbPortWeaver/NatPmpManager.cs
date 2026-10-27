@@ -46,8 +46,17 @@ public sealed class NatPmpManager : IVpnManager
 
     /// <inheritdoc />
     // The gateway's reply to the external-address probe made when this instance was created, which
-    // happens every sync cycle, so it is never older than the cycle reading it.
-    public IPAddress? ForwardAddress { get; }
+    // happens every sync cycle - except for the instance the sync loop falls back to when that probe goes
+    // unanswered, which forgets it (ForgetForwardAddress) rather than offer one from an earlier cycle.
+    public IPAddress? ForwardAddress { get; private set; }
+
+    /// <summary>
+    /// Drops the forward address, for the instance the sync loop reuses when this cycle's probe failed. The
+    /// gateway may have changed since (a reconnect to another server behind the same inferred gateway), and
+    /// comparing an old forward address with a new exit address would report a false mismatch. Without one,
+    /// the exit-address check treats the cycle as a failed lookup.
+    /// </summary>
+    internal void ForgetForwardAddress() => ForwardAddress = null;
 
     /// <inheritdoc />
     public IPAddress? TunnelAddress => VpnAdapter.GetIPv4Address(_adapter.Name);

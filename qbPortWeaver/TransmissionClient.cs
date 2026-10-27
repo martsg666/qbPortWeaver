@@ -135,8 +135,7 @@ public sealed class TransmissionClient : ManagedClientBase
 
             // Surface RPC-level errors (e.g. "method not allowed", session conflicts) with the
             // actual server message before falling through to the generic arguments-missing path.
-            if (root.TryGetProperty(JsonPropResult, out var resultElement) &&
-                !string.Equals(resultElement.AsStringOrNull(), RpcResultSuccess, StringComparison.OrdinalIgnoreCase))
+            if (TryGetRpcFailure(root, out var resultElement))
             {
                 LogManager.Instance.LogMessage($"{ClientName} RPC returned non-success result for session-get: {resultElement}", LogLevel.Error);
                 return (null, null);
@@ -260,8 +259,7 @@ public sealed class TransmissionClient : ManagedClientBase
             // Checked as GetPreferencesAsync does: a failed RPC can still carry an empty "arguments"
             // object, which would otherwise read as "no conflicts" - a green Pass for a check that
             // never read the settings.
-            if (doc.RootElement.TryGetProperty(JsonPropResult, out var resultElement) &&
-                !string.Equals(resultElement.AsStringOrNull(), RpcResultSuccess, StringComparison.OrdinalIgnoreCase))
+            if (TryGetRpcFailure(doc.RootElement, out var resultElement))
             {
                 LogManager.Instance.LogDebug($"TransmissionClient.GetConflictingSettingsAsync: RPC returned non-success result: {resultElement}");
                 return null;
@@ -428,7 +426,7 @@ public sealed class TransmissionClient : ManagedClientBase
     private async Task<bool> WaitForExitAsync(CancellationToken cancellationToken)
     {
         var deadline = Environment.TickCount64 + WindowCloseWaitMs;
-        while (IsRunning())
+        while (IsProcessRunning())
         {
             if (Environment.TickCount64 >= deadline) return false;
             await Task.Delay(WindowClosePollMs, cancellationToken).ConfigureAwait(false);
@@ -579,4 +577,11 @@ public sealed class TransmissionClient : ManagedClientBase
             new System.Net.Http.Headers.AuthenticationHeaderValue("Basic", credentials);
         return client;
     }
+
+    // A "result" present and other than "success" is an RPC failure. A missing one is not decided here:
+    // session-get and the conflict check fall through to their own missing-"arguments" handling, while
+    // session-set, which has nothing else to read, treats a missing result as a failure on its own.
+    private static bool TryGetRpcFailure(JsonElement root, out JsonElement result) =>
+        root.TryGetProperty(JsonPropResult, out result) &&
+        !string.Equals(result.AsStringOrNull(), RpcResultSuccess, StringComparison.OrdinalIgnoreCase);
 }

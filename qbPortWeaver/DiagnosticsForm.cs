@@ -218,10 +218,11 @@ internal sealed class DiagnosticsForm : Form
     }
 
     // Sizes this fixed dialog to fit the rendered report plus the button row, so the shortest
-    // report (a client with neither an interface-binding row nor a plugin row) leaves no dead space
-    // and the fullest one (Nicotine+, which has both) still fits without scrolling. Capped so a
-    // report with many fix hints scrolls rather than growing off-screen. Runs once at construction;
-    // a Re-run keeps the size and scrolls if taller.
+    // report (a client with neither an interface-binding row nor a plugin row) leaves no dead space.
+    // The fullest one - Nicotine+ (interface-binding and plugin rows) on NAT-PMP or ProtonVPN (the VPN
+    // exit address row), with fix hints - reaches the cap and scrolls. Capped so a report with many
+    // fix hints scrolls rather than growing off-screen. Runs once at construction; a Re-run keeps the
+    // size and scrolls if taller.
     private void SizeToContent()
     {
         int lineHeight = _report.Font.Height;

@@ -322,8 +322,7 @@ class CoreIO:
             if not self.capabilities.get("reconnect"):
                 warnings.append("reconnect_unsupported")
                 return "none"
-            self._core.reconnect()
-            return "reconnect"
+            return self._cycle_connection(self._core.reconnect, "reconnect", warnings)
 
         if not self.capabilities.get("connect"):
             warnings.append("connect_unsupported")
@@ -335,8 +334,23 @@ class CoreIO:
             warnings.append("setup_incomplete")
             return "none"
 
-        self._core.connect()
-        return "connect"
+        return self._cycle_connection(self._core.connect, "connect", warnings)
+
+    def _cycle_connection(self, call, action, warnings):
+        """Run reconnect() or connect() and report a failure as a warning, not an error.
+
+        The port is already saved by then, so the next sync reads it back as matching and
+        never asks again: an exception here would leave Nicotine+ listening on the old port
+        with nothing but one failed request to show for it. As a warning the app logs it at
+        Warn, and the saved port takes effect on Nicotine+'s next connection.
+        """
+        try:
+            call()
+        except Exception as error:  # noqa: BLE001 - a failed rebind is reported to the caller
+            self._log("Could not %s after the port change: %s", (action, error))
+            warnings.append("reconnect_failed")
+            return "none"
+        return action
 
     def _remove_port_mapping(self, warnings):
         if not self.capabilities.get("portmapper"):

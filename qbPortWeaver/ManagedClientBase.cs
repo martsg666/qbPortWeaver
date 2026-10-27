@@ -60,7 +60,12 @@ public abstract class ManagedClientBase : IManagedClient // NOSONAR S3881 - all 
     }
 
     /// <inheritdoc/>
-    public virtual bool IsRunning()
+    public virtual bool IsRunning() => IsProcessRunning();
+
+    // Whether a process named ProcessName exists. Separate from IsRunning, which a client can widen (the
+    // Transmission service counts as running too): the kill-and-verify and exit-wait loops act on
+    // processes, so they must ask about processes, or a running service would make them wait and fail.
+    protected bool IsProcessRunning()
     {
         if (string.IsNullOrEmpty(ProcessName)) return false;
 
@@ -221,10 +226,10 @@ public abstract class ManagedClientBase : IManagedClient // NOSONAR S3881 - all 
     protected async Task<bool> KillAndVerifyAsync(CancellationToken cancellationToken)
     {
         ProcessControl.KillProcessesByName(ProcessName, ProcessKillTimeoutMs, ClientName);
-        if (!IsRunning()) return true;
+        if (!IsProcessRunning()) return true;
         await Task.Delay(ProcessKillRetryDelayMs, cancellationToken).ConfigureAwait(false);
         ProcessControl.KillProcessesByName(ProcessName, ProcessKillTimeoutMs, ClientName);
-        if (!IsRunning()) return true;
+        if (!IsProcessRunning()) return true;
         LogManager.Instance.LogMessage($"Failed to kill all {ClientName} processes - aborting restart", LogLevel.Error);
         return false;
     }

@@ -1020,11 +1020,13 @@ public partial class MainForm : Form
     // Check failed or was cancelled by shutdown - UpdateChecker already logged the cause at Info.
     // Kept distinct from NotifyUpToDate so a failed check is never reported as "up to date"
     // (the manual balloon would otherwise show false information).
+    // Through ShowWarningBalloon so the click state is set like every other warning balloon's. opensLog:
+    // false, because a click opens the Log Viewer on the latest Warn and this cause is logged at Info, so it
+    // would land on an unrelated warning; left as it was, a click did whatever an earlier balloon had set.
     private void NotifyUpdateCheckFailed(bool manual)
     {
         if (manual)
-            _trayIcon.ShowBalloonTip(AppConstants.BalloonTipDurationMs, AppIdentity.AppName,
-                "Could not check for updates - see the log for details.", ToolTipIcon.Warning);
+            ShowWarningBalloon("Could not check for updates - see the log for details.", opensLog: false);
     }
 
     private void NotifyUpToDate(bool manual)

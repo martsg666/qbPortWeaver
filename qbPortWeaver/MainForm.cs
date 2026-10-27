@@ -893,6 +893,11 @@ public partial class MainForm : Form
         {
             updateInterval = AppConstants.ManualSyncWaitSeconds;
         }
+        // Paused while this cycle was running: its SyncCompleted has just put its own result on the tray,
+        // and the loop would not publish Paused again until the full interval had passed. A manual sync is
+        // left showing its result, as it always was; the next skipped interval restores Paused.
+        if (_syncPaused && !manualSync)
+            PublishPausedStatus();
         return updateInterval;
     }
 

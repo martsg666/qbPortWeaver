@@ -69,6 +69,8 @@ public sealed class PortSyncService
     // limiter and consecutive-recovery cap. Serialised by MainForm._updateSemaphore (same guarantee as
     // _lastKnownNatPmpManager), like every field below.
     private readonly RecoveryGate _recoveryGate;
+    // The provider and adapter the gate's current streak belongs to; null before the first cycle.
+    private string? _recoveryContext;
     // Consecutive restarts issued because the client reported itself disconnected, reset the moment it
     // reports anything else. Restarting only helps when the cause is the client's own state; when the
     // cause is persisted configuration - a stale network-interface binding, say - every restart re-reads
@@ -152,13 +154,6 @@ public sealed class PortSyncService
     // wall-clock/NTP correction during the grace window - likely just after boot/login - cannot shift it.
     private readonly System.Diagnostics.Stopwatch _uptime = System.Diagnostics.Stopwatch.StartNew();
 
-    /// <summary>Creates the sync service. MainForm makes one, at startup, for the life of the app.</summary>
-    public PortSyncService()
-    {
-        // In the constructor rather than at the field: the gate measures its sustained-failure floor on
-        // this service's uptime clock, and a field initializer cannot read another instance field.
-        _recoveryGate = new RecoveryGate(_uptime);
-    }
     // Set when the current cycle is a quiet startup wait (VPN not up within the grace window), so
     // RaiseSyncCompleted maps it to the neutral WaitingForVpn tray state instead of orange
     // VpnDisconnected. Reset at the start of every cycle; serialised by MainForm._updateSemaphore.
@@ -415,6 +410,14 @@ public sealed class PortSyncService
         public const string VpnProtonOverOpenVpn = "vpnProtonOverOpenVpn";
 
         // Values for the Status key live in the public SyncStatusValues (shared with the Status panel).
+    }
+
+    /// <summary>Creates the sync service. MainForm makes one, at startup, for the life of the app.</summary>
+    public PortSyncService()
+    {
+        // In the constructor rather than at the field: the gate measures its sustained-failure floor on
+        // this service's uptime clock, and a field initializer cannot read another instance field.
+        _recoveryGate = new RecoveryGate(_uptime);
     }
 
     /// <summary>Runs one port sync cycle and returns the configured update interval in seconds.
@@ -1090,8 +1093,21 @@ public sealed class PortSyncService
     // NAT-PMP and Static port do); then add the keyword in VpnProviderRegistry.IsRecognizedProvider, an entry in
     // VpnProviderRegistry.KnownProviders (when service-restart recovery applies), and the value in
     // SettingsForm's cboVpnProvider list.
+    // A failure streak describes one provider and adapter: switching either (or to Disabled) starts the
+    // failed-cycle trigger afresh, rather than letting the new setup inherit a streak whose start lies far
+    // in the past and fire recovery on its first failure.
+    private void TrackRecoveryContext(AppConfig cfg)
+    {
+        string recoveryContext = $"{cfg.VpnProvider}|{cfg.VpnAdapterName}";
+        if (_recoveryContext is not null && !string.Equals(_recoveryContext, recoveryContext, StringComparison.OrdinalIgnoreCase))
+            _recoveryGate.ResetForNewContext();
+        _recoveryContext = recoveryContext;
+    }
+
     private async Task<IVpnManager?> CreateVpnManagerAsync(AppConfig cfg, Dictionary<string, object?> status, CancellationToken cancellationToken)
     {
+        TrackRecoveryContext(cfg);
+
         // Re-arms each provider's standing warnings (a missing setting, the NAT-PMP lease being shorter
         // than the interval) while another provider is selected, so switching away and back with the
         // condition still present logs it again. Placed before
@@ -1106,6 +1122,8 @@ public sealed class PortSyncService
 
         if (cfg.VpnProvider.Equals(RegistrySettingsManager.VpnProviderDisabled, StringComparison.OrdinalIgnoreCase))
         {
+            // Nothing fails while sync is disabled, so no streak survives an hour of it either.
+            _recoveryGate.ResetForNewContext();
             LogManager.Instance.LogMessage("Port sync disabled", LogLevel.Info);
             status[StatusKeys.Status] = SyncStatusValues.Skipped;
             status[StatusKeys.Message] = "Port sync disabled";
@@ -1773,7 +1791,7 @@ public sealed class PortSyncService
     }
 
     // Builds the recovery-progress suffix for the port-closed Warn messages, mirroring
-    // BuildCycleCountMessage's structure (counted in checks, not cycles) so it reads consistently
+    // RecoveryGate.BuildCycleCountMessage's structure (counted in checks, not cycles) so it reads consistently
     // with the failed-cycle recovery logs.
     // With recovery off there is nothing to report and the count is zeroed each cycle, so the suffix
     // is empty. Once recovery has fired (disarmed) the count no longer drives a trigger, so reporting

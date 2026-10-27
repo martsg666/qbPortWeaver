@@ -25,7 +25,7 @@ internal sealed class RecoveryGate(System.Diagnostics.Stopwatch uptime)
     // suspended - only an unbroken run of futile recoveries is. Applies to the failed-cycle trigger
     // alone: the port-closed trigger runs after a successful fetch (which has already cleared the
     // count), and a recovery the user asked for by hand is never withheld.
-    internal const int MaxConsecutiveRecoveries = 3;
+    private const int MaxConsecutiveRecoveries = 3;
 
     // How long recovery waits between attempts while connectivity cannot be confirmed. The first
     // attempt of a streak is not delayed at all; these are the waits before the second, third, and
@@ -91,14 +91,16 @@ internal sealed class RecoveryGate(System.Diagnostics.Stopwatch uptime)
     // streak keeps climbing (deliberately - the failures are real), so a suffix that only knew about the
     // setting promised "recovery may trigger after N cycles" on every one of those cycles, for a recovery
     // that could not run. The log then contradicted both the suspension warning and the Status panel.
-    internal string BuildCycleCountMessage(string prefix, int count, RecoverySettings cfg)
+    private string BuildCycleCountMessage(string prefix, int count, RecoverySettings cfg)
     {
         string cycles = TextFormat.PluralizeNoun(count, "failed cycle");
         string recoverySuffix;
         if (!cfg.Enabled)
             recoverySuffix = string.Empty;
+        // "while the internet is reachable": the cap only holds online, and an offline machine keeps
+        // retrying on the backoff, so an unqualified "suspended" was followed by a recovery attempt.
         else if (_consecutiveRecoveries >= MaxConsecutiveRecoveries)
-            recoverySuffix = $", auto-recovery is suspended after {MaxConsecutiveRecoveries} attempts that did not restore a port";
+            recoverySuffix = $", auto-recovery is suspended while the internet is reachable, after {MaxConsecutiveRecoveries} attempts that did not restore a port";
         else
             recoverySuffix = $", recovery may trigger after {cfg.TriggerCycles} consecutive {TextFormat.PluralizeNoun(cfg.TriggerCycles, "failed cycle")}";
         return $"{prefix} ({count} consecutive {cycles}{recoverySuffix})";
@@ -114,6 +116,15 @@ internal sealed class RecoveryGate(System.Diagnostics.Stopwatch uptime)
         string recoveryAction, string? recoveryTarget, string displayName,
         RecoverySettings cfg, CancellationToken cancellationToken)
     {
+        // With the trigger off there is no streak to report: counting one only for TriggerRecoveryIfDueAsync
+        // to reset it made every cycle of an outage log "(1 consecutive failed cycle)".
+        if (!cfg.Enabled)
+        {
+            LogManager.Instance.LogMessage(reason, logLevel);
+            ResetFailureStreak();
+            ResetRecoveryCap();
+            return;
+        }
         if (_consecutiveFailedCycles == 0) _failureStreakStarted = uptime.Elapsed;
         _consecutiveFailedCycles++;
         int count = _consecutiveFailedCycles;
@@ -129,6 +140,17 @@ internal sealed class RecoveryGate(System.Diagnostics.Stopwatch uptime)
     {
         _consecutiveFailedCycles = 0;
         _recoverySustainedUntil = null;   // the floor is measured from a streak that no longer exists
+    }
+
+    // Forgets the failure streak and the offline backoff, for when the cycle's failures stop describing the
+    // same thing: port sync switched to Disabled, or a different VPN provider. Without it a streak from the
+    // old provider (or from before an hour of Disabled) carries over, and its long-past start lets the
+    // first failure afterwards clear the sustained-failure floor and fire recovery at once. The cap stays:
+    // it is cleared only by a port actually being read.
+    internal void ResetForNewContext()
+    {
+        ResetFailureStreak();
+        ResetOfflineRecoveryBackoff();
     }
 
     // Ends a run of consecutive recoveries. Called from the successful-port path and when auto-recovery

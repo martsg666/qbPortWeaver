@@ -75,7 +75,9 @@ public partial class WhatsNewForm : Form
         "plugin fixes in this release, click Update Plugin on the Nicotine+ tab in Settings, then restart " +
         "Nicotine+.\n\n" +
         "Fixed: several smaller issues\n" +
-        "An unexpected sync error no longer resets the sync interval to 3 minutes, and a network change " +
+        "Pausing while a sync is running shows Paused once that sync ends, instead of its result until the next " +
+        "interval, and switching VPN provider or adapter no longer carries the previous one's failed cycles " +
+        "into auto-recovery. An unexpected sync error no longer resets the sync interval to 3 minutes, and a network change " +
         "during a sync, such as a VPN reconnect by auto-recovery, keeps its quick re-check. A port change " +
         "after two recoveries in a row is still marked \"after recovery\" in the port history. Warnings that " +
         "repeat every sync now appear once, and debug entries no longer appear with debug logging off. " +

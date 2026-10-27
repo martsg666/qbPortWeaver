@@ -38,6 +38,7 @@ public static class DiagnosticsService
         public const string InternetConnectivity = "Internet connectivity";
         public const string VpnConnection = "VPN connection";
         public const string ForwardedPort = "Forwarded port";
+        public const string VpnExitAddress = "VPN exit address";
         public const string ClientRunning = "Client running";
         public const string ClientReachable = "Client reachable";
         public const string PortsInSync = "Ports in sync";
@@ -244,11 +245,40 @@ public static class DiagnosticsService
         }
 
         if (port is int p)
+        {
             results.Add(new(Checks.ForwardedPort, DiagnosticStatus.Pass, $"Port {p}"));
+            await AddVpnExitAddressResultAsync(results, vpn, p, cancellationToken).ConfigureAwait(false);
+        }
         else
             results.Add(new(Checks.ForwardedPort, DiagnosticStatus.Fail, $"No forwarded port from {vpn.ProviderName}",
                 gatewayHint ?? "Ensure port forwarding is enabled on a P2P server."));
         return (vpn, port);
+    }
+
+    // Whether traffic leaves from the address the port is forwarded on - the same comparison the sync
+    // loop makes at a confirming closed check (see VpnExitAddress). Only for a provider that reports the
+    // forward address, which today is NAT-PMP alone; for the others there is nothing to compare, so the
+    // row is left out rather than shown as a permanent Skip. Run whether or not the port is closed: this
+    // is the row that explains a closed "Port reachable" below, and it is the one the user acts on.
+    private static async Task AddVpnExitAddressResultAsync(List<DiagnosticResult> results, IVpnManager vpn, int port, CancellationToken cancellationToken)
+    {
+        if (vpn.ForwardAddress is not System.Net.IPAddress forward) return;
+
+        System.Net.IPAddress? local = VpnAdapter.GetIPv4Address(vpn.ProviderName);
+        System.Net.IPAddress? exit = local is null
+            ? null
+            : await VpnExitAddress.QueryAsync(local, cancellationToken).ConfigureAwait(false);
+
+        if (exit is null)
+            results.Add(new(Checks.VpnExitAddress, DiagnosticStatus.Skip,
+                $"Could not determine (no answer from {AppConstants.StunServerHost})"));
+        else if (exit.Equals(forward))
+            results.Add(new(Checks.VpnExitAddress, DiagnosticStatus.Pass,
+                $"Traffic leaves from {exit}, the address the port is forwarded on"));
+        else
+            results.Add(new(Checks.VpnExitAddress, DiagnosticStatus.Warn,
+                $"Forwarded on {forward}, but traffic leaves from {exit}",
+                VpnExitAddress.DescribeMismatch(vpn.ProviderName, port, forward, exit) + "."));
     }
 
     // The P2P-server advice fits ProtonVPN and PIA, including NAT-PMP on one of their adapters. A
@@ -533,13 +563,24 @@ public static class DiagnosticsService
             // closed); the others actively probe through their projects' online check services -
             // Nicotine+ via the bridge plugin, which reports undetermined rather than false when
             // the check cannot complete, so it never reaches this branch on a slow result.
-            string hint = client is QBittorrentClient
-                ? "Allow a moment after a port change. qBittorrent infers this from incoming connections, so an idle client may report closed."
-                : "Allow a moment after a port change, then re-run. A persistently closed port usually means port forwarding is not active on the VPN.";
-            results.Add(new(Checks.PortReachable, DiagnosticStatus.Warn, "Listening port appears closed from the Internet", hint));
+            results.Add(new(Checks.PortReachable, DiagnosticStatus.Warn, "Listening port appears closed from the Internet",
+                PortClosedHint(results, client)));
         }
         else
             results.Add(new(Checks.PortReachable, DiagnosticStatus.Skip, "Could not determine (client, Internet, or port-check service unavailable)"));
+    }
+
+    // The fix hint for a closed port. A mismatch found by the exit-address row above is the cause,
+    // whatever the client, so it is named rather than sending the user to check port forwarding,
+    // which is working.
+    private static string PortClosedHint(List<DiagnosticResult> results, IManagedClient client)
+    {
+        if (results.Exists(r => r.Check == Checks.VpnExitAddress && r.Status == DiagnosticStatus.Warn))
+            return $"See {Checks.VpnExitAddress} above: the port is forwarded, but peers are given a different address.";
+        if (client is QBittorrentClient)
+            return "Allow a moment after a port change. qBittorrent infers this from incoming connections, so an idle client may report closed.";
+        return "Allow a moment after a port change, then re-run. A persistently closed port usually means port forwarding is not active on the VPN, " +
+               "or the VPN sends traffic out on a different address than it forwards on.";
     }
 
     /// <summary>The running app's version (e.g. "X.Y.Z"), for the diagnostics header and report.</summary>

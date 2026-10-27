@@ -1438,8 +1438,10 @@ public sealed class PortSyncService
         {
             // At the confirming check, not the first closed result: that one, right after a port change,
             // is usually the client still reconnecting, and is tested again next cycle anyway. Before
-            // HandlePortClosedResult, so its Warn and balloon can give the reason.
-            if (_portCheckPendingConfirmation || _portConfirmedClosed)
+            // HandlePortClosedResult, so its Warn and balloon can give the reason. Also on any closed result
+            // while a mismatch is held - one found on an undetermined result has neither flag set - so a
+            // reconnect is never made for a session nobody looked at, or for a provider switched away from.
+            if (_portCheckPendingConfirmation || _portConfirmedClosed || _vpnExitMismatch)
                 await CheckVpnExitAddressAsync(config.VpnManager, port, cancellationToken).ConfigureAwait(false);
             HandlePortClosedResult(manager.ClientName, port, config);
             await MaybeTriggerPortClosedRecoveryAsync(manager, config, cancellationToken).ConfigureAwait(false);

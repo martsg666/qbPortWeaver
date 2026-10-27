@@ -165,6 +165,11 @@ public sealed class PortSyncService
     // forward stays on a fixed one, so a reconnect may fix it, but each one drops the tunnel, and a
     // server that rarely lands on the forward address must not loop.
     private const int MaxVpnExitReconnects = 3;
+    // The least time between two exit-address reconnects. A reconnect makes the next cycle start at once
+    // (the recovery is a network change) and ProtonVPN reconnects on its own through 2-3 connections, which
+    // took about 40 seconds when measured, so without this the next lookup can judge a connection that is
+    // about to be replaced and spend a reconnect on it. Lookups still run meanwhile; a match ends the episode.
+    private static readonly TimeSpan MinVpnExitReconnectSpacing = TimeSpan.FromMinutes(2);
     // Started once at construction (the sync service is created once at app startup). Monotonic, so a
     // wall-clock/NTP correction during the grace window - likely just after boot/login - cannot shift it.
     private readonly System.Diagnostics.Stopwatch _uptime = System.Diagnostics.Stopwatch.StartNew();
@@ -240,6 +245,8 @@ public sealed class PortSyncService
     // The forward address the give-up was for, so a mismatch on another one is told apart as a new server
     // (see StartNewExitEpisodeIfForwardChanged).
     private System.Net.IPAddress? _vpnExitGiveUpForward;
+    // Uptime reading at the last exit-address reconnect, for MinVpnExitReconnectSpacing; null before the first.
+    private TimeSpan? _vpnExitLastReconnectAt;
     // Whether the current mismatch episode has had its balloon. Outlives a failed lookup, which ends the
     // hold but not the episode; cleared by a matching lookup, an open port or a provider with no forward.
     private bool _vpnExitAnnounced;
@@ -1976,6 +1983,14 @@ public sealed class PortSyncService
         // Behind another NAT a reconnect cannot help - for an adapter no provider owns, the recovery action
         // cycles the machine's own network adapter - so none is made; the mismatch Warn already gave the cause.
         if (VpnExitMismatchBehindAnotherNat) return;
+        // Ahead of the give-up as well as the next reconnect: the session the last reconnect produced must
+        // have settled before it is judged either way.
+        if (_vpnExitLastReconnectAt is { } last && _uptime.Elapsed - last < MinVpnExitReconnectSpacing)
+        {
+            LogManager.Instance.LogDebug("PortSyncService.ReconnectForExitAddressAsync: the last reconnect is under " +
+                $"{MinVpnExitReconnectSpacing.TotalMinutes:0} minutes old - waiting for the connection to settle");
+            return;
+        }
         if (_vpnExitReconnects >= MaxVpnExitReconnects)
         {
             if (_vpnExitGiveUpNotified) return;
@@ -2000,6 +2015,7 @@ public sealed class PortSyncService
         }
 
         _vpnExitReconnects++;
+        _vpnExitLastReconnectAt = _uptime.Elapsed;
         string action = vpnManager.GetRecoveryAction();
         await DispatchRecoveryAsync(action, target, vpnManager.ProviderName, cancellationToken,
             triggerLogMessage: $"Reconnecting '{vpnManager.ProviderName}' for an exit address that matches the forwarded one " +

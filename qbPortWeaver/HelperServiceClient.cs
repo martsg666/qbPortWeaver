@@ -12,7 +12,7 @@ internal readonly record struct HelperResult(bool Completed, int WarnCount, int 
 {
     // Helper unreachable, target invalid, session token unavailable, or response unparseable.
     public static HelperResult Failed => default; // Completed=false, IsRejected=false
-    // Helper actively rejected the command (session token mismatch).
+    // Helper actively rejected the command (session token mismatch, or the caller could not be verified).
     public static HelperResult Rejected => new(Completed: false, WarnCount: 0, ErrorCount: 0, IsRejected: true);
     // Helper processed the command and returned its WARN/ERROR counts. ProtocolVersion is 0 when the
     // response carried no version key, which means a helper built before versioning existed - the
@@ -38,7 +38,12 @@ internal readonly record struct HelperResult(bool Completed, int WarnCount, int 
     {
         if (IsRejected)
         {
-            LogManager.Instance.LogMessage("Helper service rejected the command - session token mismatch", LogLevel.Warn);
+            // One "rejected" reply covers a token mismatch, a failed impersonation and an underivable log
+            // path, so this line names only what all three share; the helper logs which one it was.
+            LogManager.Instance.LogMessage(
+                "Helper service rejected the command - the session token did not match or the helper could not " +
+                "verify the calling user (the helper's reason is in the Windows Application event log)",
+                LogLevel.Warn);
             return;
         }
         ReportProtocolVersion();
@@ -209,7 +214,7 @@ internal static class HelperServiceClient
     }
 
     // Parses "warn=N|error=M" from the helper. Returns Failed if the line is missing or malformed.
-    // Returns Rejected if the helper sent the rejected sentinel (session token mismatch).
+    // Returns Rejected if the helper sent the rejected sentinel (session token mismatch, or the caller could not be verified).
     // Requires at least one recognised key to parse so future protocol garble does not silently
     // succeed as Ok(0, 0).
     // A null response was already logged where it was read (timeout or closed pipe); an empty or

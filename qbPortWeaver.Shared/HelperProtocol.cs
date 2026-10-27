@@ -51,7 +51,7 @@ public static class HelperProtocol
     /// <summary>Result key: number of ERROR-level entries the helper wrote during the action.</summary>
     public const string ResultErrorKey = "error";
 
-    /// <summary>Result sentinel: the helper rejected the request (session token mismatch).</summary>
+    /// <summary>Result sentinel: the helper rejected the request (session token mismatch, or the caller could not be verified).</summary>
     public const string ResultRejectedSentinel = "rejected";
 
     /// <summary>

@@ -1068,7 +1068,8 @@ public partial class SettingsForm : Form
 
         btnInstallNicotinePlugin.Text = status.State switch
         {
-            NicotinePluginState.NotInstalled => "Install Plugin…",
+            // Nothing can be installed yet either way; clicking reports the missing data folder.
+            NicotinePluginState.NotInstalled or NicotinePluginState.DataFolderMissing => "Install Plugin…",
             NicotinePluginState.Outdated => "Update Plugin…",
             NicotinePluginState.NotEnabled => "Enable Plugin…",
             _ => "Reinstall Plugin…"

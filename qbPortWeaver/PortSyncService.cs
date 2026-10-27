@@ -233,6 +233,9 @@ public sealed class PortSyncService
     // The forward address the give-up was for, so a mismatch on another one is told apart as a new server
     // (see StartNewExitEpisodeIfForwardChanged).
     private System.Net.IPAddress? _vpnExitGiveUpForward;
+    // Whether the current mismatch episode has had its balloon. Outlives a failed lookup, which ends the
+    // hold but not the episode; cleared by a matching lookup, an open port or a provider with no forward.
+    private bool _vpnExitAnnounced;
 
     // Incremented each time a recovery action is dispatched (automatic or manual test). A recovery
     // is pending while this is ahead of _recoveryGenerationConsumed, and the next successful cycle
@@ -1512,8 +1515,12 @@ public sealed class PortSyncService
             // The mismatch balloon is raised here and only here, once per mismatch, whichever path found
             // it: the closed-port transition balloon stands aside while a mismatch is held, so the two can
             // neither double up nor leave a mismatch that starts mid-outage unannounced.
-            if (entering)
+            // Not again for a mismatch already announced: a failed lookup in between ends the hold (fail
+            // open) but not the episode, and is likeliest right after a reconnect, so without this every
+            // reconnect would bring the same balloon back.
+            if (entering && !_vpnExitAnnounced)
                 RaisePortVerificationFailed(VpnExitAddress.DescribeMismatchShort(vpnManager.ForwardSource, port, forward, exit, _vpnProtonOverOpenVpn));
+            _vpnExitAnnounced = true;
             return;
         }
 
@@ -1532,6 +1539,7 @@ public sealed class PortSyncService
         _vpnExitReconnects = 0;
         _vpnExitGiveUpNotified = false;
         _vpnExitGiveUpForward = null;
+        _vpnExitAnnounced = false;
         return true;
     }
 
@@ -1539,7 +1547,9 @@ public sealed class PortSyncService
     // determined (null). Split out of CheckVpnExitAddressAsync to keep it under the complexity gate.
     private void EndVpnExitHold(System.Net.IPAddress? exit)
     {
-        if (exit is not null && _vpnExitMismatch)
+        // Keyed on the episode as well as the hold: a failed lookup in between ends the hold but not the
+        // episode, and the match that finally ends it must still be reported.
+        if (exit is not null && (_vpnExitMismatch || _vpnExitAnnounced))
             LogManager.Instance.LogMessage(
                 $"Traffic now leaves from {exit}, the address the port is forwarded on" +
                 (_vpnExitReconnects > 0 ? $" - matched after {TextFormat.Pluralize(_vpnExitReconnects, "reconnect")}" : string.Empty),
@@ -1556,14 +1566,16 @@ public sealed class PortSyncService
         _vpnExitMismatch = false;
         // Only a lookup that found the addresses equal ends the episode. One that could not complete
         // ends the hold (fail open) but keeps the reconnects already spent, so a lookup that keeps
-        // failing between mismatches cannot add up to more than MaxVpnExitReconnects.
+        // failing between mismatches cannot add up to more than MaxVpnExitReconnects. It also keeps the
+        // episode announced and the Warn latched, so the same mismatch found again is not reported twice.
         if (exit is not null)
         {
             _vpnExitReconnects = 0;
             _vpnExitGiveUpNotified = false;
             _vpnExitGiveUpForward = null;
+            _vpnExitAnnounced = false;
+            LogManager.Instance.ClearLogState(VpnExitMismatchStateKey);
         }
-        LogManager.Instance.ClearLogState(VpnExitMismatchStateKey);
     }
 
     // Makes the next closed result a first, unconfirmed one again. Used when an exit-address hold ends at
@@ -1602,6 +1614,7 @@ public sealed class PortSyncService
         _vpnForwardAddress = null;
         _vpnExitAddress = null;
         _vpnProtonOverOpenVpn = false;
+        _vpnExitAnnounced = false;
         LogManager.Instance.ClearLogState(VpnExitMismatchStateKey);
     }
 

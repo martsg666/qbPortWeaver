@@ -73,6 +73,14 @@ public sealed record StatusSnapshot
     /// <summary>False once the one-shot port-closed trigger has fired, until a verification reports the
     /// port open again. While false that trigger cannot fire however long the port stays closed.</summary>
     [JsonPropertyName("portClosedRecoveryArmed")] public bool PortClosedRecoveryArmed { get; init; }
+    /// <summary>The address the port is forwarded on, as the provider reported it at the last exit-address
+    /// lookup; null until a closed port prompts one, and for providers that report no forward address.</summary>
+    [JsonPropertyName("vpnForwardAddress")] public string? VpnForwardAddress { get; init; }
+    /// <summary>The address traffic was last seen leaving the VPN from; null when not looked up or not determinable.</summary>
+    [JsonPropertyName("vpnExitAddress")] public string? VpnExitAddress { get; init; }
+    /// <summary>True while both addresses are known and differ: peers are given the exit address and cannot
+    /// reach the forward, and port-closed recovery is held.</summary>
+    [JsonPropertyName("vpnExitAddressMismatch")] public bool VpnExitAddressMismatch { get; init; }
 }
 
 /// <summary>

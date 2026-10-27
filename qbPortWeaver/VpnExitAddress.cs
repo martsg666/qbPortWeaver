@@ -72,7 +72,7 @@ internal static class VpnExitAddress
 
     // RFC 1918 private ranges, RFC 6598 shared address space (carrier-grade NAT) and link-local: none
     // of them is reachable from the Internet, so a gateway reporting one is behind another NAT.
-    private static bool IsBehindAnotherNat(IPAddress address)
+    internal static bool IsBehindAnotherNat(IPAddress address)
     {
         byte[] b = address.GetAddressBytes();
         if (b.Length != 4) return false;

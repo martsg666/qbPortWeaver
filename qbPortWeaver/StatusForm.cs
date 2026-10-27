@@ -428,6 +428,11 @@ public partial class StatusForm : Form
         // the same version-guard case the top of DescribeAutoRecovery handles for the other trigger.
         if (!s.PortClosedRecoveryEnabled || s.PortClosedRecoveryTriggerChecks == 0) return null;
 
+        // Ahead of the disarmed state, as in the log's closed-port suffix: the mismatch is what the
+        // user can act on, and while it holds the closed-check count is not advancing.
+        if (s.VpnExitAddressMismatch)
+            return $"Held - traffic leaves the VPN from {s.VpnExitAddress}, not from {s.VpnForwardAddress} where the port is forwarded";
+
         // The one-shot trigger has fired and cannot fire again until a verification reports the port
         // open. Worth its own state precisely because nothing else on the panel shows it: the port
         // stays closed, the Reachable row keeps saying so, and without this the row would read "Idle"
@@ -535,6 +540,25 @@ public partial class StatusForm : Form
             }
         }
         RenderReachable();
+
+        // The cause of a closed port, when the exit-address check found it - on a tooltip, so the row
+        // keeps its width at any DPI. Set whether or not port-closed recovery is on: the Auto-recovery
+        // row only reports it while that trigger is enabled.
+        string? cause = null;
+        if (s.VpnExitAddressMismatch)
+        {
+            // Same split as VpnExitAddress.DescribeMismatch: a private forward address is the user's own
+            // router behind a second NAT, where switching VPN servers is not the fix.
+            bool behindAnotherNat = System.Net.IPAddress.TryParse(s.VpnForwardAddress, out var forward)
+                && VpnExitAddress.IsBehindAnotherNat(forward);
+            cause = behindAnotherNat
+                ? $"The gateway forwards the port on {s.VpnForwardAddress}, a private address, while traffic leaves from " +
+                  $"{s.VpnExitAddress}: the gateway is itself behind another NAT, so the port cannot be reached from the Internet."
+                : $"Forwarded on {s.VpnForwardAddress}, but traffic leaves the VPN from {s.VpnExitAddress}: peers are given " +
+                  $"{s.VpnExitAddress}, so they cannot reach the port. Connect the VPN to a different server.";
+        }
+        if (toolTip.GetToolTip(lblReachableValue) != (cause ?? string.Empty))
+            toolTip.SetToolTip(lblReachableValue, cause);
     }
 
     // Paints the Reachable label from the remembered result plus a live "ago" age. Shared by the

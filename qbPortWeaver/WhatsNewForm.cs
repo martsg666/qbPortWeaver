@@ -10,16 +10,21 @@ public partial class WhatsNewForm : Form
 
     private const string ReleaseFeaturesText =
         "New in 2.7.0\n\n" +
-        "Tells you when a VPN server sends your traffic out on the wrong address\n" +
-        "Some VPN servers forward your port on one address but send your traffic out on another, picked " +
-        "at random for each connection, so peers are given an address with no forward and the port stays " +
-        "closed whatever you do. With NAT-PMP or ProtonVPN, qbPortWeaver now checks this when the port " +
-        "reads closed, or when the client cannot test its port, and names both addresses in the log, the notification, the Status panel and " +
-        "Diagnostics. With port-closed recovery on, it then reconnects the VPN for a new exit address, up " +
-        "to 3 times, and if none matches it asks you to connect to a different server instead of " +
-        "restarting the VPN over and over. With ProtonVPN this was seen on OpenVPN connections and not on " +
-        "Proton WireGuard ones, so use Proton WireGuard (UDP) as the protocol; on OpenVPN the messages say so. The notification script example and the status file report " +
-        "both addresses too.\n\n" +
+        "ProtonVPN: use Proton WireGuard (UDP) for a reachable port\n" +
+        "Testing for this release found that ProtonVPN's OpenVPN connections can forward your port on one " +
+        "address while sending your traffic out on another, so peers are given an address with no forward " +
+        "and the port stays closed whatever you do. On the same servers, every Proton WireGuard connection " +
+        "sent traffic out on the forwarded address and the port was reachable. If you use OpenVPN, switch " +
+        "ProtonVPN to Proton WireGuard (UDP) under Proton Protocols, then reselect the VPN adapter, now " +
+        "named ProTUN, wherever you set it.\n\n" +
+        "Tells you when a VPN sends your traffic out on the wrong address\n" +
+        "With NAT-PMP or ProtonVPN, qbPortWeaver now checks that your traffic leaves from the address the " +
+        "port is forwarded on, when the port reads closed or the client cannot test its port, and names " +
+        "both addresses in the log, the notification, the Status panel and Diagnostics. With port-closed " +
+        "recovery on, it then reconnects the VPN for a new exit address, up to 3 times, and if none " +
+        "matches it asks you to connect to a different server instead of restarting the VPN over and " +
+        "over. On ProtonVPN's OpenVPN protocol the messages also suggest switching to Proton WireGuard. " +
+        "The notification script example and the status file report both addresses too.\n\n" +
         "Works with VPN providers that give you a permanent port\n" +
         "Choose Static port as the VPN provider in Settings, pick your VPN's network adapter and enter " +
         "the port. The network interface checks, the open-port check, auto-recovery and the default " +

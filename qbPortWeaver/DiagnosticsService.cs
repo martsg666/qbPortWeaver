@@ -98,7 +98,10 @@ public static class DiagnosticsService
         string url = RegistrySettingsManager.GetValue(client.Section, client.UrlKey);
         if (string.IsNullOrWhiteSpace(url))
             results.Add(new(Checks.Client, DiagnosticStatus.Warn, $"{client.Name} selected, but no URL is configured",
-                $"Enter the {client.Name} Web UI/RPC URL in Settings."));
+                // Nicotine+ has no Web UI or RPC: the address is the bridge plugin's, filled in by ⟳.
+                client.Name == RegistrySettingsManager.ClientNameNicotine
+                    ? $"With {client.Name} running, click ⟳ next to the Plugin token on the {client.Name} tab in Settings."
+                    : $"Enter the {client.Name} Web UI/RPC URL in Settings."));
         else
             results.Add(new(Checks.Client, DiagnosticStatus.Pass, $"{client.Name} ({url})"));
     }
@@ -278,7 +281,10 @@ public static class DiagnosticsService
         if (clientPort is not int cp)
         {
             results.Add(new(Checks.ClientReachable, DiagnosticStatus.Fail, $"Could not reach {client.ClientName}",
-                "Check the URL and credentials in Settings and that the Web UI/RPC is enabled. See the log for details."));
+                client is NicotineClient
+                    ? $"Check that {client.ClientName} is running with the qbPortWeaver Bridge plugin enabled (see {Checks.ClientPlugin} above), " +
+                      "and the Plugin URL and token in Settings. See the log for details."
+                    : "Check the URL and credentials in Settings and that the Web UI/RPC is enabled. See the log for details."));
             results.Add(new(Checks.PortsInSync, DiagnosticStatus.Skip, ClientUnreachableSkip));
             if (client.SupportsInterfaceMismatchWarning)
                 results.Add(new(Checks.InterfaceBinding, DiagnosticStatus.Skip, ClientUnreachableSkip));

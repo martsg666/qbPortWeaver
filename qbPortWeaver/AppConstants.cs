@@ -37,14 +37,14 @@ public static class AppConstants
     // VPN exit-address check (see VpnExitAddress). A public STUN server answers one UDP request
     // with the address the request arrived from - the address the VPN sends this machine's traffic
     // out on. No account, no HTTP. Contacted only while a port check reports the port closed
-    // or cannot determine it.
+    // or cannot determine it, and when Diagnostics runs.
     public const string StunServerHost = "stun.cloudflare.com";
+    public const int StunServerPort = 3478;
 
     // The tunnel adapter name ProtonVPN gives its OpenVPN protocol. Exit-address mismatches were seen on
     // OpenVPN sessions and not on Proton WireGuard ones, so on this adapter the mismatch messages
     // suggest switching protocol (see IVpnManager.IsProtonVpnOverOpenVpn).
     public const string ProtonVpnOpenVpnAdapterName = "ProtonVPN TUN";
-    public const int StunServerPort = 3478;
 
     /// <summary>Returns <see langword="true"/> when <paramref name="port"/> is a usable listening port.</summary>
     /// <remarks>Shared by every consumer of a provider-reported port - the sync loop and the

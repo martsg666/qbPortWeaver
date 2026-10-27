@@ -216,7 +216,8 @@ public sealed class PortSyncService
     private bool _portClosedRecoveryArmed = true;
 
     // VPN exit-address check (see CheckVpnExitAddressAsync), for a provider that reports the address it
-    // forwards the port on. Looked up at each confirming closed check; the addresses are the last ones
+    // forwards the port on. Looked up at each confirming closed check, at any closed result while a
+    // mismatch is held, and at each undetermined result; the addresses are the last ones
     // seen, kept for the status file. _vpnExitMismatch is true only when both are known and differ, and
     // while it is, the closed port is explained: port-closed recovery is held and the checks it
     // explains are not counted towards the trigger. Serialised by MainForm._updateSemaphore.

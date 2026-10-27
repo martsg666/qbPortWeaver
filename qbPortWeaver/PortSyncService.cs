@@ -1550,6 +1550,9 @@ public sealed class PortSyncService
             if (entering && !_vpnExitAnnounced)
                 RaisePortVerificationFailed(VpnExitAddress.DescribeMismatchShort(vpnManager.ForwardSource, port, forward, exit, _vpnProtonOverOpenVpn));
             _vpnExitAnnounced = true;
+            // The balloon announced the port unreachable, so a later open result logs "reachable again"
+            // even when no closed result was ever confirmed (a mismatch found on undetermined results).
+            _portClosedAnnounced = true;
             return;
         }
 

@@ -411,8 +411,8 @@ public sealed class PortSyncService
         public const string PortClosedRecoveryArmed = "portClosedRecoveryArmed";
         // The VPN exit-address check: the address the port is forwarded on, the address traffic was
         // last seen leaving from, and whether they differ. The addresses are the last ones looked up
-        // (null until a closed port prompts a lookup, and for providers that report no forward
-        // address); Mismatch is true only while both are known and differ, which is also when
+        // (null until a closed or undetermined port test prompts a lookup, and for providers that
+        // report no forward address); Mismatch is true only while both are known and differ, which is also when
         // port-closed recovery is held.
         public const string VpnForwardAddress = "vpnForwardAddress";
         public const string VpnExitAddress = "vpnExitAddress";
@@ -1392,7 +1392,8 @@ public sealed class PortSyncService
     // closed result is logged at Info and re-tested next cycle (absorbs qBittorrent's
     // idle-firewalled false positive and transient check-service glitches); the second
     // consecutive closed result is confirmed - see HandlePortClosedResult. Null results
-    // (client unreachable, test service unavailable) leave the verification state unchanged.
+    // (client unreachable, test service unavailable) leave the verification state unchanged, but
+    // still run the exit-address check - see CheckVpnExitAddressForUndeterminedAsync.
     private async Task VerifyPortAsync(IManagedClient manager, int port, SyncConfig config, Dictionary<string, object?> status, CancellationToken cancellationToken)
     {
         if (!ShouldVerifyThisCycle(status[StatusKeys.PortChanged] is true, config.PortClosedRecoveryEnabled)) return;
@@ -1413,6 +1414,7 @@ public sealed class PortSyncService
                     "the earlier closed result could not be confirmed, resuming the normal check interval",
                     LogLevel.Info);
             }
+            await CheckVpnExitAddressForUndeterminedAsync(port, config, cancellationToken).ConfigureAwait(false);
             return;
         }
         _pendingUndeterminedCount = 0;
@@ -1433,6 +1435,29 @@ public sealed class PortSyncService
             HandlePortClosedResult(manager.ClientName, port, config);
             await MaybeTriggerPortClosedRecoveryAsync(manager, config, cancellationToken).ConfigureAwait(false);
         }
+    }
+
+    // The exit-address check for a client whose own test gave no answer - Deluge's check service filters
+    // automated requests, and any check service can be down - which would otherwise never reach the
+    // check, since that runs on a closed result. A mismatch needs no confirmation from the client: peers
+    // are given the exit address, so the forward is unreachable whatever its test would have said. So it
+    // is handled like a closed port the mismatch explains: the lookup's one Warn, one balloon on entering
+    // it, and the reconnects while port-closed recovery is on. A match or a failed lookup shows nothing.
+    private async Task CheckVpnExitAddressForUndeterminedAsync(int port, SyncConfig config, CancellationToken cancellationToken)
+    {
+        bool wasMismatched = _vpnExitMismatch;
+        await CheckVpnExitAddressAsync(config.VpnManager, port, cancellationToken).ConfigureAwait(false);
+        if (!_vpnExitMismatch) return;
+
+        if (!wasMismatched && _vpnForwardAddress is not null && _vpnExitAddress is not null && config.VpnManager is not null)
+        {
+            string balloon = VpnExitAddress.DescribeMismatch(config.VpnManager.ForwardSource, port, _vpnForwardAddress, _vpnExitAddress) + ".";
+            try { PortVerificationFailed?.Invoke(balloon); }
+            catch (Exception ex) { LogManager.Instance.LogMessage($"PortVerificationFailed handler failed: {ex.Message}", LogLevel.Warn); }
+        }
+
+        if (config.PortClosedRecoveryEnabled)
+            await ReconnectForExitAddressAsync(config, cancellationToken).ConfigureAwait(false);
     }
 
     // Compares the address the provider forwards the port on with the address traffic actually leaves

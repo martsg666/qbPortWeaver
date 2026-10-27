@@ -14,7 +14,7 @@ public partial class WhatsNewForm : Form
         "Some VPN servers forward your port on one address but send your traffic out on another, picked " +
         "at random for each connection, so peers are given an address with no forward and the port stays " +
         "closed whatever you do. With NAT-PMP or ProtonVPN, qbPortWeaver now checks this when the port " +
-        "reads closed and names both addresses in the log, the notification, the Status panel and " +
+        "reads closed, or when the client cannot test its port, and names both addresses in the log, the notification, the Status panel and " +
         "Diagnostics. With port-closed recovery on, it then reconnects the VPN for a new exit address, up " +
         "to 3 times, and if none matches it asks you to connect to a different server instead of " +
         "restarting the VPN over and over. The notification script example and the status file report " +

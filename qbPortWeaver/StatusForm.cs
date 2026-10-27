@@ -544,7 +544,7 @@ public partial class StatusForm : Form
         }
         RenderReachable();
 
-        // The cause of a closed port, when the exit-address check found it - on a tooltip, so the row
+        // The cause of an unreachable port, when the exit-address check found it - on a tooltip, so the row
         // keeps its width at any DPI. Set whether or not port-closed recovery is on: the Auto-recovery
         // row only reports it while that trigger is enabled.
         string? cause = null;

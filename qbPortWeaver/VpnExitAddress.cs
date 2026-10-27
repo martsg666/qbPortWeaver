@@ -69,8 +69,8 @@ internal static class VpnExitAddress
                    $"while traffic leaves from {exit} - the gateway is itself behind another NAT, so the port " +
                    "cannot be reached from the Internet";
         string advice = protonOverOpenVpn
-            ? "this has been seen with ProtonVPN over OpenVPN, so switch ProtonVPN to Proton WireGuard (UDP), " +
-              "or reconnect, or connect to a different server"
+            ? "ProtonVPN's OpenVPN connections can do this while its Proton WireGuard ones did not in testing, so " +
+              "switch ProtonVPN to Proton WireGuard (UDP), or reconnect, or connect to a different server"
             : "each VPN connection gets a new exit address, so reconnecting can fix it, or connect to a different server";
         return $"{source} forwards {portText} on {forward}, but traffic leaves from {exit}. Peers are " +
                $"given {exit}, so they cannot reach the forwarded port - {advice}";

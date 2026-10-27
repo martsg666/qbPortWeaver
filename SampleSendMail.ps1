@@ -75,7 +75,7 @@ function AddressMatch($s) {
         # A private or carrier-grade NAT forward address is a home router behind a second NAT, where
         # switching VPN servers is not the fix - the same split the app makes.
         if (BehindAnotherNat $s.vpnForwardAddress) { return 'No - the gateway is itself behind another NAT, so the port cannot be reached from the Internet' }
-        # Mismatches were seen on ProtonVPN's OpenVPN tunnel and not on Proton WireGuard, hence the protocol advice there.
+        # Mismatches were seen on ProtonVPN's OpenVPN tunnel and not on Proton WireGuard on the same server, hence the protocol advice there.
         if ($s.vpnProtonOverOpenVpn) { return 'No - peers cannot reach the forwarded port; switch ProtonVPN to Proton WireGuard (UDP), or reconnect, or connect to a different server' }
         return 'No - peers cannot reach the forwarded port; reconnecting the VPN gives a new exit address, or connect to a different server'
     }

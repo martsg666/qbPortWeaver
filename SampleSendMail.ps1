@@ -33,10 +33,10 @@ function PortClosedState($s) {
     # different server. The closed checks the mismatch explains are not counted.
     if ($s.vpnExitAddressMismatch) {
         # Behind another NAT no reconnect is made: none can change the address.
-        if (BehindAnotherNat $s.vpnForwardAddress) { return 'Held - the gateway is itself behind another NAT, so the port cannot be reached from the Internet' }
-        if (-not $s.vpnExitReconnectGaveUp) { return "Reconnecting for a matching exit address ($($s.vpnExitReconnects) of $($s.vpnExitReconnectsMax)) - traffic leaves from $($s.vpnExitAddress), not from $($s.vpnForwardAddress) where the port is forwarded" }
-        if ($s.vpnProtonOverOpenVpn) { return "Held - still no matching exit address after $($s.vpnExitReconnectsMax) reconnect attempts; switch ProtonVPN to Proton WireGuard (UDP), or connect to a different server" }
-        return "Held - still no matching exit address after $($s.vpnExitReconnectsMax) reconnect attempts; connect the VPN to a different server"
+        # Short, as on the Status panel; the addresses and the advice are in the Address Match row.
+        if (BehindAnotherNat $s.vpnForwardAddress) { return 'Held - the gateway is behind another NAT' }
+        if (-not $s.vpnExitReconnectGaveUp) { return "Reconnecting for a matching exit address ($($s.vpnExitReconnects) of $($s.vpnExitReconnectsMax))" }
+        return "Held - no matching exit address after $($s.vpnExitReconnectsMax) attempts"
     }
     # One-shot: once it fires it stays disarmed until a scheduled check reports the port open.
     if (-not $s.portClosedRecoveryArmed) { return 'Triggered - waiting for the next scheduled check' }
@@ -78,8 +78,14 @@ function AddressMatch($s) {
         # switching VPN servers is not the fix - the same split the app makes.
         if (BehindAnotherNat $s.vpnForwardAddress) { return 'No - the gateway is itself behind another NAT, so the port cannot be reached from the Internet' }
         # Mismatches were seen on ProtonVPN's OpenVPN tunnel and not on Proton WireGuard on the same server, hence the protocol advice there.
-        if ($s.vpnProtonOverOpenVpn) { return "No - peers cannot reach the forwarded port; ProtonVPN's OpenVPN connections often do this, switch ProtonVPN to Proton WireGuard (UDP), or connect to a different server" }
-        return 'No - peers cannot reach the forwarded port; reconnecting the VPN may give a different exit address, or connect to a different server'
+        # After the give-up the advice drops the reconnect, as the Status panel's tooltip does.
+        $prefix = "No - traffic leaves from $($s.vpnExitAddress), not from $($s.vpnForwardAddress) where the port is forwarded; "
+        if ($s.vpnExitReconnectGaveUp) {
+            if ($s.vpnProtonOverOpenVpn) { return $prefix + 'switch ProtonVPN to Proton WireGuard (UDP), or connect to a different server' }
+            return $prefix + 'connect the VPN to a different server'
+        }
+        if ($s.vpnProtonOverOpenVpn) { return $prefix + "ProtonVPN's OpenVPN connections often do this, switch ProtonVPN to Proton WireGuard (UDP), or connect to a different server" }
+        return $prefix + 'reconnecting the VPN may give a different exit address, or connect to a different server'
     }
     if ($s.vpnForwardAddress -and $s.vpnExitAddress) { return 'Yes' }
     return 'Not checked'

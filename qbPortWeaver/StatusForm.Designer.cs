@@ -202,10 +202,11 @@ partial class StatusForm
         lblAutoRecoveryValue.TabIndex = 17;
         lblAutoRecoveryValue.Text = "-";
         lblAutoRecoveryValue.TextAlign = ContentAlignment.MiddleLeft;
-        // AutoEllipsis + the tooltip PopulateAutoRecovery sets are belt and braces. Every value this
-        // row produces fits 384px today (the longest, "Holding - cannot confirm internet, retry in
-        // ~15m", is ~315px), but the countdown that would be cut first sits at the end, and a longer
-        // duration or a larger system font could still reach the edge.
+        // AutoEllipsis + the tooltip PopulateAutoRecovery sets are belt and braces. Values are kept to
+        // fit 384px: the longest, "Suspended - restarts did not restore the port, resumes when one is
+        // found", measures about 390px, at the edge, so it may lose its last word; the exit-address states are deliberately
+        // short, with their addresses and advice in the tooltip. A larger system font could still reach
+        // the edge, and the tooltip carries the full text when it does.
         lblAutoRecoveryValue.AutoEllipsis = true;
         // ── grpHistory (recent port changes and recovery events; populated in PopulateHistory) ──
         grpHistory.Controls.Add(lvHistory);

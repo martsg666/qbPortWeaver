@@ -331,8 +331,12 @@ public partial class StatusForm : Form
         // untruncated text. The part that gets cut is the countdown at the end of the longest value,
         // which is the half a user is reading the row for. Only on a change, as SetLastSyncToolTip
         // does: this runs on the one-second tick, and re-setting it restarts a tooltip being read.
-        if (toolTip.GetToolTip(lblAutoRecoveryValue) != text)
-            toolTip.SetToolTip(lblAutoRecoveryValue, text);
+        // An exit-address mismatch row is kept short to fit, so its tooltip adds the addresses and the advice.
+        string tip = s.VpnExitAddressMismatch && text == DescribeExitMismatchRow(s)
+            ? text + Environment.NewLine + DescribeExitMismatch(s)
+            : text;
+        if (toolTip.GetToolTip(lblAutoRecoveryValue) != tip)
+            toolTip.SetToolTip(lblAutoRecoveryValue, tip);
     }
 
     // One phrase for "nothing is holding recovery back any more", reached from three places: either
@@ -420,6 +424,15 @@ public partial class StatusForm : Form
         return null;
     }
 
+    // The Auto-recovery row's text for an exit-address mismatch. Short enough to fit the value label: the
+    // addresses and the advice go in the row's tooltip (DescribeExitMismatch), not behind its ellipsis.
+    private static string DescribeExitMismatchRow(StatusSnapshot s)
+    {
+        if (IsExitMismatchBehindAnotherNat(s)) return "Held - the gateway is behind another NAT";
+        if (!s.VpnExitReconnectGaveUp) return $"Reconnecting for a matching exit address ({s.VpnExitReconnects} of {s.VpnExitReconnectsMax})";
+        return $"Held - no matching exit address after {s.VpnExitReconnectsMax} attempts";
+    }
+
     // What the port-closed trigger is doing, or null when it is off or idle. Counted in confirmed
     // closed checks rather than cycles, matching how the log reports the same progress.
     private static string? DescribePortClosedRecovery(StatusSnapshot s)
@@ -430,19 +443,7 @@ public partial class StatusForm : Form
 
         // Ahead of the disarmed state, as in the log's closed-port suffix: the mismatch is what the
         // user can act on, and while it holds the closed-check count is not advancing.
-        if (s.VpnExitAddressMismatch)
-        {
-            // Same split as VpnExitAddress.DescribeMismatch: behind another NAT no reconnect is made.
-            if (System.Net.IPAddress.TryParse(s.VpnForwardAddress, out var forward) && VpnExitAddress.IsBehindAnotherNat(forward))
-                return "Held - the gateway is itself behind another NAT, so the port cannot be reached from the Internet";
-            if (!s.VpnExitReconnectGaveUp)
-                return $"Reconnecting for a matching exit address ({s.VpnExitReconnects} of {s.VpnExitReconnectsMax}) - traffic leaves from " +
-                       $"{s.VpnExitAddress}, not from {s.VpnForwardAddress} where the port is forwarded";
-            string next = s.VpnProtonOverOpenVpn
-                ? "switch ProtonVPN to Proton WireGuard (UDP), or connect to a different server"
-                : "connect the VPN to a different server";
-            return $"Held - still no matching exit address after {s.VpnExitReconnectsMax} reconnect attempts; {next}";
-        }
+        if (s.VpnExitAddressMismatch) return DescribeExitMismatchRow(s);
 
         // The one-shot trigger has fired and cannot fire again until a verification reports the port
         // open. Worth its own state precisely because nothing else on the panel shows it: the port
@@ -555,24 +556,35 @@ public partial class StatusForm : Form
         // The cause of an unreachable port, when the exit-address check found it - on a tooltip, so the row
         // keeps its width at any DPI. Set whether or not port-closed recovery is on: the Auto-recovery
         // row only reports it while that trigger is enabled.
-        string? cause = null;
-        if (s.VpnExitAddressMismatch)
-        {
-            // Same split as VpnExitAddress.DescribeMismatch: a private forward address is the user's own
-            // router behind a second NAT, where switching VPN servers is not the fix.
-            bool behindAnotherNat = System.Net.IPAddress.TryParse(s.VpnForwardAddress, out var forward)
-                && VpnExitAddress.IsBehindAnotherNat(forward);
-            string advice = s.VpnProtonOverOpenVpn
-                ? "ProtonVPN's OpenVPN connections often do this; switch ProtonVPN to Proton WireGuard (UDP), or connect to a different server."
-                : "Reconnecting may give a different exit address, or connect to a different server.";
-            cause = behindAnotherNat
-                ? $"The gateway forwards the port on {s.VpnForwardAddress}, a private address, while traffic leaves from " +
-                  $"{s.VpnExitAddress}: the gateway is itself behind another NAT, so the port cannot be reached from the Internet."
-                : $"Forwarded on {s.VpnForwardAddress}, but traffic leaves the VPN from {s.VpnExitAddress}: peers are given " +
-                  $"{s.VpnExitAddress}, so they cannot reach the port. {advice}";
-        }
+        string? cause = s.VpnExitAddressMismatch ? DescribeExitMismatch(s) : null;
         if (toolTip.GetToolTip(lblReachableValue) != (cause ?? string.Empty))
             toolTip.SetToolTip(lblReachableValue, cause);
+    }
+
+    // Same split as VpnExitAddress.DescribeMismatch: a private forward address is the user's own router
+    // behind a second NAT, where switching VPN servers is not the fix and no reconnect is made.
+    private static bool IsExitMismatchBehindAnotherNat(StatusSnapshot s) =>
+        System.Net.IPAddress.TryParse(s.VpnForwardAddress, out var forward) && VpnExitAddress.IsBehindAnotherNat(forward);
+
+    // The full explanation of an exit-address mismatch, for the Reachable tooltip and the Auto-recovery
+    // row's tooltip - one text, so the two cannot disagree. The advice follows the state: once the app has
+    // given up reconnecting, suggesting a reconnect would contradict the row beside it.
+    private static string DescribeExitMismatch(StatusSnapshot s)
+    {
+        if (IsExitMismatchBehindAnotherNat(s))
+            return $"The gateway forwards the port on {s.VpnForwardAddress}, a private address, while traffic leaves from " +
+                   $"{s.VpnExitAddress}: the gateway is itself behind another NAT, so the port cannot be reached from the Internet.";
+        string advice;
+        if (s.VpnExitReconnectGaveUp)
+            advice = s.VpnProtonOverOpenVpn
+                ? "Switch ProtonVPN to Proton WireGuard (UDP), or connect to a different server."
+                : "Connect the VPN to a different server.";
+        else
+            advice = s.VpnProtonOverOpenVpn
+                ? "ProtonVPN's OpenVPN connections often do this; switch ProtonVPN to Proton WireGuard (UDP), or connect to a different server."
+                : "Reconnecting may give a different exit address, or connect to a different server.";
+        return $"Forwarded on {s.VpnForwardAddress}, but traffic leaves the VPN from {s.VpnExitAddress}: peers are given " +
+               $"{s.VpnExitAddress}, so they cannot reach the port. {advice}";
     }
 
     // Paints the Reachable label from the remembered result plus a live "ago" age. Shared by the

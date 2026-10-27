@@ -1635,6 +1635,14 @@ public sealed class PortSyncService
         // episode announced and the Warn latched, so the same mismatch found again is not reported twice.
         if (exit is not null)
         {
+            // A match that took reconnects counts them as this outage's recovery: the session they produced
+            // is the good one, and the generic trigger, still armed because exit reconnects never spend it,
+            // would otherwise restart the VPN a few checks later on the client's post-reconnect closed
+            // readings (qBittorrent stays firewalled for minutes) and throw that session away. It re-arms on
+            // the next open result, as after any recovery.
+            // Keyed on the episode, not the hold, which is already cleared above (and may have ended at a
+            // failed lookup in between).
+            if (_vpnExitAnnounced && _vpnExitReconnects > 0) _portClosedRecoveryArmed = false;
             _vpnExitReconnects = 0;
             _vpnExitGiveUpNotified = false;
             _vpnExitGiveUpForward = null;

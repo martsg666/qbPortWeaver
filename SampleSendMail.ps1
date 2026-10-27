@@ -33,6 +33,7 @@ function PortClosedState($s) {
     # different server. The closed checks the mismatch explains are not counted.
     if ($s.vpnExitAddressMismatch) {
         if (-not $s.vpnExitReconnectGaveUp) { return "Reconnecting for a matching exit address ($($s.vpnExitReconnects) of $($s.vpnExitReconnectsMax)) - traffic leaves from $($s.vpnExitAddress), not $($s.vpnForwardAddress)" }
+        if ($s.vpnProtonOverOpenVpn) { return "Held - $($s.vpnExitReconnectsMax) reconnects did not give a matching exit address; switch ProtonVPN to Proton WireGuard (UDP), or connect to a different server" }
         return "Held - $($s.vpnExitReconnectsMax) reconnects did not give a matching exit address; connect the VPN to a different server"
     }
     # One-shot: once it fires it stays disarmed until a scheduled check reports the port open.
@@ -74,6 +75,8 @@ function AddressMatch($s) {
         # A private or carrier-grade NAT forward address is a home router behind a second NAT, where
         # switching VPN servers is not the fix - the same split the app makes.
         if (BehindAnotherNat $s.vpnForwardAddress) { return 'No - the gateway is itself behind another NAT, so the port cannot be reached from the Internet' }
+        # Mismatches were seen on ProtonVPN's OpenVPN tunnel and not on Proton WireGuard, hence the protocol advice there.
+        if ($s.vpnProtonOverOpenVpn) { return 'No - peers cannot reach the forwarded port; switch ProtonVPN to Proton WireGuard (UDP), or reconnect, or connect to a different server' }
         return 'No - peers cannot reach the forwarded port; reconnecting the VPN gives a new exit address, or connect to a different server'
     }
     if ($s.vpnForwardAddress -and $s.vpnExitAddress) { return 'Yes' }

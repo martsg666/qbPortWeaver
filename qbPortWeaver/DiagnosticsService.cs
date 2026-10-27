@@ -281,7 +281,7 @@ public static class DiagnosticsService
         else
             results.Add(new(Checks.VpnExitAddress, DiagnosticStatus.Warn,
                 $"Forwarded on {forward}, but traffic leaves from {exit}",
-                VpnExitAddress.DescribeMismatch(vpn.ForwardSource, port, forward, exit) + "."));
+                VpnExitAddress.DescribeMismatch(vpn.ForwardSource, port, forward, exit, vpn.IsProtonVpnOverOpenVpn) + "."));
     }
 
     // The P2P-server advice fits ProtonVPN and PIA, including NAT-PMP on one of their adapters. A

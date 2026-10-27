@@ -55,6 +55,10 @@ public sealed class NatPmpManager : IVpnManager
     /// <inheritdoc />
     public string ForwardSource => $"'{_adapter.Name}'";
 
+    /// <inheritdoc />
+    public bool IsProtonVpnOverOpenVpn =>
+        string.Equals(_adapter.Name, AppConstants.ProtonVpnOpenVpnAdapterName, StringComparison.OrdinalIgnoreCase);
+
     /// <summary>Lease lifetime in seconds granted by the gateway on the last successful port mapping; 0 until first mapping.</summary>
     public uint LastGrantedLifetime { get; private set; }
 

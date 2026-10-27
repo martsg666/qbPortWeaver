@@ -656,11 +656,12 @@ The hold was originally appended to the **VPN status** line instead. That hid it
   "vpnExitAddressMismatch": false,
   "vpnExitReconnects": 0,
   "vpnExitReconnectsMax": 3,
-  "vpnExitReconnectGaveUp": false
+  "vpnExitReconnectGaveUp": false,
+  "vpnProtonOverOpenVpn": false
 }
 ```
 
-`vpnForwardAddress` and `vpnExitAddress` are the addresses from the last VPN exit address lookup (see Port Verification): `null` until a closed or undetermined port test prompts one, and for providers that report no forward address. `vpnExitAddressMismatch` is `true` only while both are known and differ, which is also exactly when the normal port-closed recovery is held. `vpnExitReconnects` is the number of reconnects made for the current mismatch and `vpnExitReconnectsMax` the limit, published so readers never hardcode it. `vpnExitReconnectGaveUp` turns `true` only once the last reconnect's session has been looked at and still did not match - not when the count reaches the limit, which happens as soon as the last reconnect is dispatched - and it is what the Status panel and `SampleSendMail.ps1` key the "Held" wording on. `SampleSendMail.ps1` reports all three.
+`vpnForwardAddress` and `vpnExitAddress` are the addresses from the last VPN exit address lookup (see Port Verification): `null` until a closed or undetermined port test prompts one, and for providers that report no forward address. `vpnExitAddressMismatch` is `true` only while both are known and differ, which is also exactly when the normal port-closed recovery is held. `vpnExitReconnects` is the number of reconnects made for the current mismatch and `vpnExitReconnectsMax` the limit, published so readers never hardcode it. `vpnExitReconnectGaveUp` turns `true` only once the last reconnect's session has been looked at and still did not match - not when the count reaches the limit, which happens as soon as the last reconnect is dispatched - and it is what the Status panel and `SampleSendMail.ps1` key the "Held" wording on. `SampleSendMail.ps1` reports all three. `vpnProtonOverOpenVpn` is `true` when the last lookup ran over ProtonVPN's OpenVPN tunnel (adapter `ProtonVPN TUN`); the mismatch and give-up messages then advise switching ProtonVPN to Proton WireGuard (UDP), since mismatches were seen on OpenVPN sessions and not on Proton WireGuard ones.
 
 The `portVerified` field is `true` when the reachability test reported the port open, `false` when it reported closed, and `null` when no test ran this cycle (verification disabled, VPN disconnected, throttled, or the result could not be determined).
 

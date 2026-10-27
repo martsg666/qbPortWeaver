@@ -39,6 +39,11 @@ public static class AppConstants
     // out on. No account, no HTTP. Contacted only while a port check reports the port closed
     // or cannot determine it.
     public const string StunServerHost = "stun.cloudflare.com";
+
+    // The tunnel adapter name ProtonVPN gives its OpenVPN protocol. Exit-address mismatches were seen on
+    // OpenVPN sessions and not on Proton WireGuard ones, so on this adapter the mismatch messages
+    // suggest switching protocol (see IVpnManager.IsProtonVpnOverOpenVpn).
+    public const string ProtonVpnOpenVpnAdapterName = "ProtonVPN TUN";
     public const int StunServerPort = 3478;
 
     /// <summary>Returns <see langword="true"/> when <paramref name="port"/> is a usable listening port.</summary>

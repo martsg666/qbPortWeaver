@@ -18,7 +18,7 @@ public partial class WhatsNewForm : Form
         "Diagnostics. With port-closed recovery on, it then reconnects the VPN for a new exit address, up " +
         "to 3 times, and if none matches it asks you to connect to a different server instead of " +
         "restarting the VPN over and over. With ProtonVPN this was seen on OpenVPN connections, so use " +
-        "Proton WireGuard (UDP) as the protocol. The notification script example and the status file report " +
+        "Proton WireGuard (UDP) as the protocol; on OpenVPN the messages say so. The notification script example and the status file report " +
         "both addresses too.\n\n" +
         "Works with VPN providers that give you a permanent port\n" +
         "Choose Static port as the VPN provider in Settings, pick your VPN's network adapter and enter " +

@@ -56,7 +56,9 @@ internal static class VpnExitAddress
     /// <param name="port">The forwarded port, or <see langword="null"/> when none is named.</param>
     /// <param name="forward">The address the port is forwarded on.</param>
     /// <param name="exit">The address traffic leaves from.</param>
-    internal static string DescribeMismatch(string source, int? port, IPAddress forward, IPAddress exit)
+    /// <param name="protonOverOpenVpn">Whether the tunnel is ProtonVPN's OpenVPN one, where the advice
+    /// leads with switching protocol (see <see cref="IVpnManager.IsProtonVpnOverOpenVpn"/>).</param>
+    internal static string DescribeMismatch(string source, int? port, IPAddress forward, IPAddress exit, bool protonOverOpenVpn)
     {
         string portText = port is int p ? $"port {p}" : "the port";
         // A private or shared forward address is the user's own router reporting its WAN side, which
@@ -66,9 +68,12 @@ internal static class VpnExitAddress
             return $"The NAT-PMP gateway on {source} forwards {portText} on {forward}, a private address, " +
                    $"while traffic leaves from {exit} - the gateway is itself behind another NAT, so the port " +
                    "cannot be reached from the Internet";
+        string advice = protonOverOpenVpn
+            ? "this has been seen with ProtonVPN over OpenVPN, so switch ProtonVPN to Proton WireGuard (UDP), " +
+              "or reconnect, or connect to a different server"
+            : "each VPN connection gets a new exit address, so reconnecting can fix it, or connect to a different server";
         return $"{source} forwards {portText} on {forward}, but traffic leaves from {exit}. Peers are " +
-               $"given {exit}, so they cannot reach the forwarded port - each VPN connection gets a new exit " +
-               "address, so reconnecting can fix it, or connect to a different server";
+               $"given {exit}, so they cannot reach the forwarded port - {advice}";
     }
 
     // RFC 1918 private ranges, RFC 6598 shared address space (carrier-grade NAT) and link-local: none

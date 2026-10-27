@@ -223,6 +223,9 @@ public sealed class PortSyncService
     private System.Net.IPAddress? _vpnForwardAddress;
     private System.Net.IPAddress? _vpnExitAddress;
     private bool _vpnExitMismatch;
+    // Whether the last lookup ran over ProtonVPN's OpenVPN tunnel, where the messages suggest switching
+    // protocol (see IVpnManager.IsProtonVpnOverOpenVpn).
+    private bool _vpnProtonOverOpenVpn;
     // Reconnects made for the current mismatch (see ReconnectForExitAddressAsync), and whether the user
     // has been told they ran out. Both reset when the mismatch ends.
     private int _vpnExitReconnects;
@@ -425,6 +428,9 @@ public sealed class PortSyncService
         // been asked to change server. A separate flag because the count reaches the limit as soon as
         // the last reconnect is dispatched, before its result is known.
         public const string VpnExitReconnectGaveUp = "vpnExitReconnectGaveUp";
+        // True when the last lookup ran over ProtonVPN's OpenVPN tunnel, where mismatches were seen and
+        // the advice is to switch ProtonVPN to Proton WireGuard (UDP).
+        public const string VpnProtonOverOpenVpn = "vpnProtonOverOpenVpn";
 
         // Values for the Status key live in the public SyncStatusValues (shared with the Status panel).
     }
@@ -475,7 +481,8 @@ public sealed class PortSyncService
             [StatusKeys.VpnExitAddressMismatch] = false,
             [StatusKeys.VpnExitReconnects] = 0,
             [StatusKeys.VpnExitReconnectsMax] = MaxVpnExitReconnects,
-            [StatusKeys.VpnExitReconnectGaveUp] = false
+            [StatusKeys.VpnExitReconnectGaveUp] = false,
+            [StatusKeys.VpnProtonOverOpenVpn] = false
         };
 
         // Captured so the finally can publish NextSyncAt against the wait this cycle actually
@@ -532,6 +539,7 @@ public sealed class PortSyncService
                 status[StatusKeys.VpnExitAddressMismatch] = _vpnExitMismatch;
                 status[StatusKeys.VpnExitReconnects] = _vpnExitReconnects;
                 status[StatusKeys.VpnExitReconnectGaveUp] = _vpnExitGiveUpNotified;
+                status[StatusKeys.VpnProtonOverOpenVpn] = _vpnProtonOverOpenVpn;
                 StatusManager.Write(status);
                 string? outcome = status[StatusKeys.Status] as string;
                 LogCycleOutcome(outcome);
@@ -1451,7 +1459,7 @@ public sealed class PortSyncService
 
         if (!wasMismatched && _vpnForwardAddress is not null && _vpnExitAddress is not null && config.VpnManager is not null)
         {
-            string balloon = VpnExitAddress.DescribeMismatch(config.VpnManager.ForwardSource, port, _vpnForwardAddress, _vpnExitAddress) + ".";
+            string balloon = VpnExitAddress.DescribeMismatch(config.VpnManager.ForwardSource, port, _vpnForwardAddress, _vpnExitAddress, _vpnProtonOverOpenVpn) + ".";
             try { PortVerificationFailed?.Invoke(balloon); }
             catch (Exception ex) { LogManager.Instance.LogMessage($"PortVerificationFailed handler failed: {ex.Message}", LogLevel.Warn); }
         }
@@ -1485,6 +1493,7 @@ public sealed class PortSyncService
             : await VpnExitAddress.QueryAsync(local, cancellationToken).ConfigureAwait(false);
         _vpnForwardAddress = forward;
         _vpnExitAddress = exit;
+        _vpnProtonOverOpenVpn = vpnManager.IsProtonVpnOverOpenVpn;
 
         if (exit is not null && !exit.Equals(forward))
         {
@@ -1494,7 +1503,7 @@ public sealed class PortSyncService
             if (!_vpnExitMismatch) _confirmedClosedCount = 0;
             _vpnExitMismatch = true;
             LogManager.Instance.LogStateChange(VpnExitMismatchStateKey,
-                VpnExitAddress.DescribeMismatch(vpnManager.ForwardSource, port, forward, exit), LogLevel.Warn);
+                VpnExitAddress.DescribeMismatch(vpnManager.ForwardSource, port, forward, exit, _vpnProtonOverOpenVpn), LogLevel.Warn);
             return;
         }
 
@@ -1553,6 +1562,7 @@ public sealed class PortSyncService
         _vpnExitGiveUpNotified = false;
         _vpnForwardAddress = null;
         _vpnExitAddress = null;
+        _vpnProtonOverOpenVpn = false;
         LogManager.Instance.ClearLogState(VpnExitMismatchStateKey);
     }
 
@@ -1627,7 +1637,7 @@ public sealed class PortSyncService
         // With a known exit-address mismatch the balloon names the cause and the fix, since a bare
         // "not reachable" sends the user looking at the client, which is not where the problem is.
         string balloon = _vpnExitMismatch && _vpnForwardAddress is not null && _vpnExitAddress is not null && config.VpnManager is not null
-            ? VpnExitAddress.DescribeMismatch(config.VpnManager.ForwardSource, port, _vpnForwardAddress, _vpnExitAddress) + "."
+            ? VpnExitAddress.DescribeMismatch(config.VpnManager.ForwardSource, port, _vpnForwardAddress, _vpnExitAddress, _vpnProtonOverOpenVpn) + "."
             : $"{clientName} port {port} is not reachable from outside.";
         try { PortVerificationFailed?.Invoke(balloon); }
         catch (Exception ex) { LogManager.Instance.LogMessage($"PortVerificationFailed handler failed: {ex.Message}", LogLevel.Warn); }
@@ -1853,7 +1863,9 @@ public sealed class PortSyncService
             if (_vpnExitGiveUpNotified) return;
             _vpnExitGiveUpNotified = true;
             string giveUp = $"{MaxVpnExitReconnects} VPN reconnects did not give an exit address that matches the forwarded one - " +
-                            "connect the VPN to a different server";
+                            (_vpnProtonOverOpenVpn
+                                ? "switch ProtonVPN to Proton WireGuard (UDP), or connect to a different server"
+                                : "connect the VPN to a different server");
             LogManager.Instance.LogMessage(giveUp, LogLevel.Warn);
             try { PortVerificationFailed?.Invoke(giveUp + "."); }
             catch (Exception ex) { LogManager.Instance.LogMessage($"PortVerificationFailed handler failed: {ex.Message}", LogLevel.Warn); }

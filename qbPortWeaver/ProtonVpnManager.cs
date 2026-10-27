@@ -57,10 +57,17 @@ public sealed partial class ProtonVpnManager : IVpnManager
     {
         get
         {
-            string? adapter = VpnAdapter.GetActiveInterfaces().Find(nic => MatchesProtonAdapter(nic.Name))?.Name;
+            string? adapter = ActiveAdapterName;
             return adapter is null ? null : VpnAdapter.GetIPv4Address(adapter);
         }
     }
+
+    /// <inheritdoc />
+    public bool IsProtonVpnOverOpenVpn =>
+        string.Equals(ActiveAdapterName, AppConstants.ProtonVpnOpenVpnAdapterName, StringComparison.OrdinalIgnoreCase);
+
+    // The first up adapter carrying one of ProtonVPN's names, read live: a protocol switch changes it.
+    private string? ActiveAdapterName => VpnAdapter.GetActiveInterfaces().Find(nic => MatchesProtonAdapter(nic.Name))?.Name;
 
     /// <inheritdoc />
     public string ForwardSource

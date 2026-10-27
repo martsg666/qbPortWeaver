@@ -89,6 +89,9 @@ public sealed record StatusSnapshot
     /// <summary>True once the last reconnect's session still did not match and the user was asked to
     /// change server. Not inferred from the count, which reaches the limit before that session is checked.</summary>
     [JsonPropertyName("vpnExitReconnectGaveUp")] public bool VpnExitReconnectGaveUp { get; init; }
+    /// <summary>True when the last lookup ran over ProtonVPN's OpenVPN tunnel, where mismatches were seen
+    /// and the advice is to switch ProtonVPN to Proton WireGuard (UDP).</summary>
+    [JsonPropertyName("vpnProtonOverOpenVpn")] public bool VpnProtonOverOpenVpn { get; init; }
 }
 
 /// <summary>

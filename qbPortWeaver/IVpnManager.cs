@@ -81,6 +81,13 @@ public interface IVpnManager
     string ForwardSource => ProviderName;
 
     /// <summary>
+    /// Whether the tunnel is ProtonVPN's OpenVPN one (adapter <see cref="AppConstants.ProtonVpnOpenVpnAdapterName"/>).
+    /// Exit-address mismatches were seen on those sessions and not on Proton WireGuard ones, so the
+    /// mismatch messages then suggest switching protocol. Defaults to <see langword="false"/>.
+    /// </summary>
+    bool IsProtonVpnOverOpenVpn => false;
+
+    /// <summary>
     /// Returns the recovery target passed to <c>AutoRecoveryManager.TriggerRestartAsync</c> or
     /// <c>TriggerCycleAdapterAsync</c>, or <see langword="null"/> if recovery is not supported.
     /// For ProtonVPN and PIA this is the provider token (e.g. "ProtonVPN", "PIA").

@@ -904,8 +904,8 @@ MediaManagerService.ImportAsync / ScanAsync
  │
  ├─ ClassifySourceFoldersAsync  [Phase 2 - waits for Phase 1 + library index]
  │   └─ ClassifyCandidates (per folder, Parallel.ForEach degree 8)
- │       ├─ MediaImporter.IsAlreadyInLibrary (per file)
- │       │   └─ GetOrComputeSourceFingerprint (with Lazy deduplication)
+ │       ├─ GetOrComputeSourceFingerprint (per file, with Lazy deduplication)
+ │       ├─ MediaImporter.IsAlreadyInLibrary (the fingerprint against the library index)
  │       └─ TryClassifyAsFolderTv (when filename has no SxxExx pattern)
  │           ├─ FileNameParser.ParseEpisodePrefix (filename)
  │           └─ FileNameParser.ParseSeasonFromFolder (parent folder)

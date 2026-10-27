@@ -368,12 +368,17 @@ public partial class MediaManagerForm : Form
             return (info, isConfident);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException
-                                       or TmdbClient.TmdbUnavailableException)
+        catch (TmdbClient.TmdbUnavailableException ex)
         {
-            // A real cancel propagates above; a timeout or an unreadable reply is one failed lookup, as in
-            // TmdbClient.LookupAsync, so the remaining rows are still re-matched. TmdbUnavailableException is
-            // the client failing fast after an earlier failure of the same kind in this Re-match.
+            // TMDB rejected the key, could not be reached, or timed out twice running: the client now fails
+            // the remaining rows at once, so they are reported once, as the import's lookups are.
+            TmdbClient.ReportUnavailable($"Re-match {mediaLabel} '{title}'", ex);
+            return (null, false);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException)
+        {
+            // A real cancel propagates above; a single timeout or an unreadable reply is one failed lookup,
+            // as in TmdbClient.LookupAsync, so the remaining rows are still re-matched.
             LogManager.Instance.LogMessage($"Re-match {mediaLabel} lookup failed for '{title}': {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
             return (null, false);
         }
@@ -486,6 +491,10 @@ public partial class MediaManagerForm : Form
         if (result is null) return LibraryUnavailableStatus;
 
         PopulateGrid(result.Proposals);
+        // Ahead of the grid summary, which would call the skipped rows titles with "no TMDB match" and send
+        // the user to edit names that were never actually looked up.
+        if (result.TmdbUnavailable)
+            return "TMDB could not be reached or rejected the API key, so some files were not looked up. See the log for details.";
         return UnreadableSourcesStatus(result, sourceFolders.Length);
     }
 

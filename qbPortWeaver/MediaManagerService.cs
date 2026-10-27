@@ -127,7 +127,7 @@ public static class MediaManagerService
             LogManager.Instance.LogMessage("Import skipped this cycle - library index unavailable", LogLevel.Info, Subsystem.MediaManager);
             return;
         }
-        var (tmdb, classified, total, _) = prep.Value;
+        var (tmdb, classified, total, unreadableSources) = prep.Value;
 
         var ctx = new ImportContext(tmdb, dryRun, createFolders, importMode, moviesLibraryPath, tvShowsLibraryPath);
 
@@ -142,7 +142,7 @@ public static class MediaManagerService
             CleanupSourceFolders(sourceFolders, dryRun, cancellationToken);
 
         TmdbCacheManager.Save();
-        MediaImporter.SaveSourceCache();
+        MediaImporter.SaveSourceCache([.. sourceFolders.Except(unreadableSources, StringComparer.OrdinalIgnoreCase)]);
         MediaImporter.SaveLibraryCache();
         importSw.Stop();
         LogManager.Instance.LogMessage($"Import completed: {TextFormat.Pluralize(total, "file")} in {importSw.ElapsedMilliseconds}ms", LogLevel.Info, Subsystem.MediaManager);
@@ -203,7 +203,7 @@ public static class MediaManagerService
         var proposals = results.SelectMany(r => r).ToList();
 
         TmdbCacheManager.Save();
-        MediaImporter.SaveSourceCache();
+        MediaImporter.SaveSourceCache([.. sourceFolders.Except(unreadableSources, StringComparer.OrdinalIgnoreCase)]);
         MediaImporter.SaveLibraryCache();
         scanSw.Stop();
         LogManager.Instance.LogMessage($"Scan completed: {TextFormat.Pluralize(proposals.Count, "proposal")} in {scanSw.ElapsedMilliseconds}ms", LogLevel.Info, Subsystem.MediaManager);
@@ -211,7 +211,7 @@ public static class MediaManagerService
         // offline: the window points the user at the log, so the log has to say it each time.
         if (unreadableSources.Length > 0)
             LogManager.Instance.LogMessage($"Scan could not read {TextFormat.Pluralize(unreadableSources.Length, "source folder")}: {string.Join(", ", unreadableSources.Select(f => $"'{f}'"))}", LogLevel.Info, Subsystem.MediaManager);
-        return new MediaScanResult(proposals, unreadableSources);
+        return new MediaScanResult(proposals, unreadableSources, tmdb.WasUnavailable);
     }
 
     // Scans a single source folder, returning proposals for both movies and TV shows.
@@ -484,29 +484,15 @@ public static class MediaManagerService
 
         var tmdb = new TmdbClient(apiKey);
 
-        var validFolders = new List<string>();
-        var unreadableFolders = new List<string>();
-        foreach (var f in sourceFolders)
-        {
-            if (!MediaImporter.DirectoryExistsWithSmbRetry(f))
-            {
-                unreadableFolders.Add(f);
-                // Keyed per folder: an offline share stays offline for hours, and one warning per
-                // folder per import cycle would bury everything else and pin the tray badge.
-                LogManager.Instance.LogStateChange($"{SourceFolderStateKeyPrefix}{f}",
-                    $"Source folder not accessible: '{f}'", LogLevel.Warn, Subsystem.MediaManager);
-                continue;
-            }
-            LogManager.Instance.ClearLogState($"{SourceFolderStateKeyPrefix}{f}");
-            validFolders.Add(f);
-        }
-
         // On its own task: BuildLibraryIndexAsync does its walk synchronously before it first yields, so
-        // called directly it would finish before the source listing even started.
+        // called directly it would finish before the source listing even started. Started ahead of the
+        // source folders' existence checks too, which against an offline share take seconds each.
         var libraryTask = Task.Run(() => MediaImporter.BuildLibraryIndexAsync(moviesLibraryPath, tvShowsLibraryPath, allowReuse: allowLibraryReuse, cancellationToken), cancellationToken);
+        List<string> unreadableFolders;
         List<(string Folder, List<FileInfo> Candidates, bool Failed)> enumeration;
         try
         {
+            (var validFolders, unreadableFolders) = CheckSourceFolders(sourceFolders);
             enumeration = await EnumerateSourceFoldersAsync(validFolders, cancellationToken).ConfigureAwait(false);
         }
         catch
@@ -529,6 +515,29 @@ public static class MediaManagerService
         int total = classified.Sum(c => c.Items.MovieFiles.Length + c.Items.TvShowFiles.Length + c.Items.FolderTvFiles.Length);
 
         return (tmdb, classified, total, [.. unreadableFolders]);
+    }
+
+    // Splits the configured source folders into those that can be reached and those that cannot, warning
+    // once per folder while it stays unreachable.
+    private static (List<string> Valid, List<string> Unreadable) CheckSourceFolders(string[] sourceFolders)
+    {
+        var validFolders = new List<string>();
+        var unreadableFolders = new List<string>();
+        foreach (var f in sourceFolders)
+        {
+            if (!MediaImporter.DirectoryExistsWithSmbRetry(f))
+            {
+                unreadableFolders.Add(f);
+                // Keyed per folder: an offline share stays offline for hours, and one warning per
+                // folder per import cycle would bury everything else and pin the tray badge.
+                LogManager.Instance.LogStateChange($"{SourceFolderStateKeyPrefix}{f}",
+                    $"Source folder not accessible: '{f}'", LogLevel.Warn, Subsystem.MediaManager);
+                continue;
+            }
+            LogManager.Instance.ClearLogState($"{SourceFolderStateKeyPrefix}{f}");
+            validFolders.Add(f);
+        }
+        return (validFolders, unreadableFolders);
     }
 
     // Phase 1: enumerates each source folder and returns a candidate FileInfo list.
@@ -729,10 +738,16 @@ public static class MediaManagerService
 
         // Check applies in both live and dry-run: skip files already correctly placed so we
         // don't falsely report "Would import" for content already present in the library.
-        if (MediaImporter.DestinationMatchesSource(sourcePath, targetPath))
+        bool? same = MediaImporter.CompareWithDestination(sourcePath, targetPath);
+        if (same == true)
         {
             LogManager.Instance.LogDebug($"MediaManagerService.ImportFile: Skipped '{Path.GetFileName(sourcePath)}' - target already exists", Subsystem.MediaManager);
             return true;
+        }
+        if (same is null)
+        {
+            MediaImporter.LogUncomparedDestination(targetPath);
+            return false;
         }
 
         // Warn in both a dry run and a live import: the target name already holds a different file.
@@ -835,5 +850,6 @@ public static class MediaManagerService
 public sealed record MediaOperationProgress<T>(IProgress<T>? Items, IProgress<bool>? Waiting);
 
 /// <summary>The outcome of a Media Manager scan: the proposals, and the source folders that could not be
-/// read, so an empty <see cref="Proposals"/> is not mistaken for "all files already imported".</summary>
-public sealed record MediaScanResult(List<MediaProposal> Proposals, string[] UnreadableSourceFolders);
+/// read, so an empty <see cref="Proposals"/> is not mistaken for "all files already imported", and whether TMDB was
+/// unavailable for part of the scan, so its unmatched rows are not presented as titles TMDB does not know.</summary>
+public sealed record MediaScanResult(List<MediaProposal> Proposals, string[] UnreadableSourceFolders, bool TmdbUnavailable = false);

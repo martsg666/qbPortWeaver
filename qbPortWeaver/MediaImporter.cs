@@ -169,10 +169,16 @@ internal static partial class MediaImporter
         if (string.Equals(sourcePath, destinationPath, StringComparison.OrdinalIgnoreCase))
             return true;
 
-        if (DestinationMatchesSource(sourcePath, destinationPath))
+        bool? same = CompareWithDestination(sourcePath, destinationPath);
+        if (same == true)
         {
             LogManager.Instance.LogDebug($"MediaImporter.AddFileToLibrary: Skipped '{Path.GetFileName(destinationPath)}' - target already exists with same fingerprint", Subsystem.MediaManager);
             return true;
+        }
+        if (same is null)
+        {
+            LogUncomparedDestination(destinationPath);
+            return false;
         }
 
         // Destination exists but different content: two different source files resolved to the same target path
@@ -243,8 +249,26 @@ internal static partial class MediaImporter
             $"(source: {DescribeFileSize(sourcePath)}, dest: {DescribeFileSize(destinationPath)}). Skipping to avoid overwriting",
             LogLevel.Warn, Subsystem.MediaManager);
 
+    /// <summary>Logs that a file already at the destination could not be compared with the source, so the
+    /// import of that file is skipped this cycle. Info, not the conflict Warn: nothing is known to differ,
+    /// and the comparison usually works on the next cycle. Shared by both import sites.</summary>
+    internal static void LogUncomparedDestination(string destinationPath) =>
+        LogManager.Instance.LogMessage(
+            $"Could not compare '{Path.GetFileName(destinationPath)}' with the file already in the library - skipped this cycle",
+            LogLevel.Info, Subsystem.MediaManager);
+
     /// <summary>Returns <see langword="true"/> if the destination file already exists and its fingerprint matches the source - i.e. the source was already imported.</summary>
-    internal static bool DestinationMatchesSource(string sourcePath, string destinationPath)
+    internal static bool DestinationMatchesSource(string sourcePath, string destinationPath) =>
+        CompareWithDestination(sourcePath, destinationPath) == true;
+
+    /// <summary>
+    /// Compares a source file with the file already at <paramref name="destinationPath"/>:
+    /// <see langword="true"/> when they have the same fingerprint, <see langword="false"/> when the
+    /// destination is missing or differs, <see langword="null"/> when the two could not be compared.
+    /// </summary>
+    /// <remarks>Null rather than false for a comparison that failed, so the import sites can say "could not
+    /// be compared" instead of reporting a destination conflict nobody verified.</remarks>
+    internal static bool? CompareWithDestination(string sourcePath, string destinationPath)
     {
         if (!File.Exists(destinationPath))
             return false;
@@ -255,15 +279,15 @@ internal static partial class MediaImporter
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            // Fingerprinting failed (typically a transient SMB hiccup): not known to match. This used to
-            // fall back to comparing sizes, which could count a different file of the same size as the one
-            // already placed, and then put its subtitles beside it. Not a match costs at most a skipped
-            // file this cycle - the caller never overwrites an existing destination - and the next cycle,
-            // with the share back, decides properly.
+            // Fingerprinting failed (typically a transient SMB hiccup): unknown. This used to fall back to
+            // comparing sizes, which could count a different file of the same size as the one already
+            // placed, and then put its subtitles beside it. The caller never overwrites an existing
+            // destination, so not knowing costs at most a skipped file this cycle, and the next cycle, with
+            // the share back, decides properly.
             LogManager.Instance.LogDebug(
-                $"MediaImporter.DestinationMatchesSource: Could not fingerprint '{Path.GetFileName(sourcePath)}' or its destination ({ex.GetType().Name}: {ex.Message}) - treated as not matching",
+                $"MediaImporter.CompareWithDestination: Could not fingerprint '{Path.GetFileName(sourcePath)}' or its destination ({ex.GetType().Name}: {ex.Message})",
                 Subsystem.MediaManager);
-            return false;
+            return null;
         }
     }
 
@@ -442,11 +466,7 @@ internal static partial class MediaImporter
                 LogManager.Instance.LogStateChange(LibraryIndexStateKey,
                     "Library index build skipped: one or more configured paths not accessible - will retry next cycle",
                     LogLevel.Warn, Subsystem.MediaManager);
-                // Under _libraryLock like every other access to this field. The semaphore this method
-                // holds serialises rebuilds against each other, but ClearAllCaches writes the same
-                // counter and takes only the lock, so the semaphore alone leaves the two unordered.
-                lock (_libraryLock) _libraryBuildCycleCount = FullRebuildIntervalCycles;
-                return false;
+                return false; // not settled, so the finally forces a rebuild next cycle
             }
 
             // Reached the build, so every configured path resolved: re-arm the warning above.
@@ -488,8 +508,7 @@ internal static partial class MediaImporter
                 LogManager.Instance.LogMessage(
                     "Library index build incomplete - one or more configured folders failed to enumerate; will retry next cycle",
                     LogLevel.Warn, Subsystem.MediaManager);
-                lock (_libraryLock) _libraryBuildCycleCount = FullRebuildIntervalCycles; // see the equivalent write above
-                return false;
+                return false; // not settled, so the finally forces a rebuild next cycle
             }
 
             PruneLibraryCache(libraryPaths, seenPaths);
@@ -504,8 +523,12 @@ internal static partial class MediaImporter
         }
         finally
         {
+            // Under _libraryLock like every other access to this field. The semaphore this method holds
+            // serialises rebuilds against each other, but ClearAllCaches writes the same counter and takes
+            // only the lock, so the semaphore alone leaves the two unordered. Covers both failure returns
+            // above as well as a cancellation or an unexpected throw.
             if (!settled)
-                lock (_libraryLock) _libraryBuildCycleCount = FullRebuildIntervalCycles; // see the equivalent write above
+                lock (_libraryLock) _libraryBuildCycleCount = FullRebuildIntervalCycles;
             _libraryBuildSemaphore.Release();
         }
     }
@@ -937,7 +960,11 @@ internal static partial class MediaImporter
     /// copy and from the in-memory cache alike, so a file that is gone is checked for once, not on every
     /// save for the rest of the session. No-op if the cache has not changed since the last save (or load).
     /// </summary>
-    internal static void SaveSourceCache()
+    /// <param name="readFolders">The source folders read this run. Only entries under them are checked for
+    /// staleness: an entry under a folder that could not be read (an offline share) is kept as it is,
+    /// rather than tested with a File.Exists that blocks on the unreachable host and then dropped, which
+    /// would make the whole share be fingerprinted again when it returns.</param>
+    internal static void SaveSourceCache(IReadOnlyCollection<string> readFolders)
     {
         try
         {
@@ -966,7 +993,8 @@ internal static partial class MediaImporter
             if (!wasDirty && !mightHaveStaleEntries) return;
 
             var toSave = mightHaveStaleEntries
-                ? snapshot.Where(kv => File.Exists(kv.Key)).ToDictionary(kv => kv.Key, kv => kv.Value, StringComparer.OrdinalIgnoreCase)
+                ? snapshot.Where(kv => !IsUnderAnyFolder(kv.Key, readFolders) || File.Exists(kv.Key))
+                          .ToDictionary(kv => kv.Key, kv => kv.Value, StringComparer.OrdinalIgnoreCase)
                 : snapshot;
 
             if (toSave.Count < snapshot.Count)
@@ -990,6 +1018,10 @@ internal static partial class MediaImporter
             LogManager.Instance.LogMessage($"Failed to save source cache: {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
         }
     }
+
+    // Whether path lies inside one of folders (a prefix match on whole path segments).
+    private static bool IsUnderAnyFolder(string path, IReadOnlyCollection<string> folders) =>
+        folders.Any(f => path.StartsWith(Path.TrimEndingDirectorySeparator(f) + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase));
 
     /// <summary>
     /// Persists the library cache to disk.

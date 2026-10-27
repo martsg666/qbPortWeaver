@@ -178,12 +178,7 @@ public sealed class TmdbClient(string apiKey)
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
         catch (TmdbUnavailableException ex)
         {
-            // Once per state rather than once per title: every remaining lookup of the run fails the same
-            // way, and a Warn each would bury the log and pin the badge. Cleared by the next success.
-            LogManager.Instance.LogDebug($"TmdbClient.LookupAsync: {mediaKind} '{query.Title}' skipped: {ex.Message}", Subsystem.MediaManager);
-            LogManager.Instance.LogStateChange(UnavailableStateKey,
-                "TMDB is unreachable or rejected the API key - the remaining lookups of this run are skipped; check the API key in the Media Manager and the connection",
-                LogLevel.Warn, Subsystem.MediaManager);
+            ReportUnavailable($"{mediaKind} '{query.Title}'", ex);
             return (null, false);
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException)
@@ -196,22 +191,52 @@ public sealed class TmdbClient(string apiKey)
     // State key for the "TMDB unavailable" Warn, so a run of failures reports once.
     private const string UnavailableStateKey = "tmdb.unavailable";
 
+    /// <summary>
+    /// Reports a lookup skipped because TMDB is unavailable: the title at Debug, and once per state the Warn
+    /// that says why - shared by the import and scan lookups and by the window's Re-match, so a run of
+    /// failures says it once however many titles it skips. Cleared by the next successful request.
+    /// </summary>
+    internal static void ReportUnavailable(string what, Exception ex)
+    {
+        LogManager.Instance.LogDebug($"TmdbClient.ReportUnavailable: {what} skipped: {ex.Message}", Subsystem.MediaManager);
+        LogManager.Instance.LogStateChange(UnavailableStateKey,
+            "TMDB is unreachable or rejected the API key - the remaining lookups of this run are skipped; check the API key in the Media Manager and the connection",
+            LogLevel.Warn, Subsystem.MediaManager);
+    }
+
     // Thrown for a lookup once TMDB has failed in a way every later lookup of the run would repeat: the
-    // key was rejected (401/403), TMDB could not be reached, or it timed out. Each later call then fails
-    // at once instead of spending a request - up to the 10 s timeout - and a Warn per title.
-    // Public only because exception types must be (S3871); nothing outside this class throws or catches it.
+    // key was rejected (401/403), TMDB could not be reached, or it timed out twice in a row. Each later
+    // call then fails at once instead of spending a request - up to the 10 s timeout - and a Warn per title.
+    // Public only because exception types must be (S3871).
     public sealed class TmdbUnavailableException(string message, Exception? inner = null) : Exception(message, inner);
 
-    // Set by the first such failure; this instance serves one import or scan run, so it resets with the next.
+    // Set by the first such failure; this instance serves one import, scan or Re-match run, so it resets
+    // with the next.
     private volatile bool _unavailable;
 
-    private static bool MeansUnavailable(Exception ex, CancellationToken cancellationToken) => ex switch
+    /// <summary>Whether TMDB became unavailable during this instance's run, so lookups after that point
+    /// were skipped rather than answered.</summary>
+    internal bool WasUnavailable => _unavailable;
+
+    // Consecutive timeouts. One alone is a slow answer, not an outage - it costs that one title - so the run
+    // is only given up on at the second in a row. Reset by any successful request.
+    private int _consecutiveTimeouts;
+    private const int TimeoutsBeforeUnavailable = 2;
+
+    // Whether a failure means every later lookup of the run would fail the same way.
+    private bool MeansUnavailable(Exception ex, CancellationToken cancellationToken)
     {
-        HttpRequestException { StatusCode: null } => true,                                  // could not be reached
-        HttpRequestException { StatusCode: System.Net.HttpStatusCode.Unauthorized or System.Net.HttpStatusCode.Forbidden } => true,
-        TaskCanceledException when !cancellationToken.IsCancellationRequested => true,      // timed out
-        _ => false,
-    };
+        switch (ex)
+        {
+            case HttpRequestException { StatusCode: null }:                                 // could not be reached
+            case HttpRequestException { StatusCode: System.Net.HttpStatusCode.Unauthorized or System.Net.HttpStatusCode.Forbidden }:
+                return true;
+            case TaskCanceledException when !cancellationToken.IsCancellationRequested:     // timed out
+                return Interlocked.Increment(ref _consecutiveTimeouts) >= TimeoutsBeforeUnavailable;
+            default:
+                return false;
+        }
+    }
 
     // Enforces a minimum delay between TMDB API calls to avoid HTTP 429 rate limiting.
     // The delay runs inside the semaphore hold so the next caller waits for the cooldown to finish.
@@ -219,6 +244,14 @@ public sealed class TmdbClient(string apiKey)
     {
         if (_unavailable) throw new TmdbUnavailableException("TMDB failed earlier in this run");
         await _rateLimiter.WaitAsync(cancellationToken).ConfigureAwait(false);
+        // Again once it is this caller's turn: callers already queued on the limiter when the failure came
+        // would otherwise each still send a request, at up to the timeout apiece. Released without the
+        // cooldown, which only spaces requests that are actually sent.
+        if (_unavailable)
+        {
+            _rateLimiter.Release();
+            throw new TmdbUnavailableException("TMDB failed earlier in this run");
+        }
         try
         {
             T? result;
@@ -234,6 +267,7 @@ public sealed class TmdbClient(string apiKey)
             {
                 result = await _httpClient.GetFromJsonAsync<T>(url, cancellationToken).ConfigureAwait(false);
             }
+            Interlocked.Exchange(ref _consecutiveTimeouts, 0);
             LogManager.Instance.ClearLogState(UnavailableStateKey);
             return result;
         }

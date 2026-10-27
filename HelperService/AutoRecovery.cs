@@ -461,7 +461,7 @@ internal static partial class AutoRecovery
                 // Not a failure yet: the verification after this method gives the verdict, as for the
                 // start timeout below, and a throw would skip it and report Error for a service that
                 // may be Running a moment later.
-                logger.LogMessage($"Service '{serviceName}' stuck in StartPending after {ServiceOperationTimeoutMs}ms", LogLevel.Warn);
+                logger.LogMessage($"Service '{serviceName}' stuck in StartPending after {ServiceOperationTimeoutMs}ms", LogLevel.Info);
             }
             return;
         }
@@ -478,7 +478,7 @@ internal static partial class AutoRecovery
             }
             catch (System.ServiceProcess.TimeoutException)
             {
-                logger.LogMessage($"Service '{serviceName}' StopPending timed out during start - proceeding anyway", LogLevel.Warn);
+                logger.LogMessage($"Service '{serviceName}' StopPending timed out during start - proceeding anyway", LogLevel.Info);
             }
         }
 
@@ -501,7 +501,7 @@ internal static partial class AutoRecovery
                 // Not a failure yet: the verification after this method gives the verdict, as for the
                 // start timeout below, and a throw would skip it and report Error for a service that
                 // may be Running a moment later.
-                logger.LogMessage($"Service '{serviceName}' stuck in StartPending after {ServiceOperationTimeoutMs}ms", LogLevel.Warn);
+                logger.LogMessage($"Service '{serviceName}' stuck in StartPending after {ServiceOperationTimeoutMs}ms", LogLevel.Info);
             }
             return;
         }
@@ -513,7 +513,10 @@ internal static partial class AutoRecovery
         }
         catch (System.ServiceProcess.TimeoutException)
         {
-            logger.LogMessage($"Service '{serviceName}' start timed out - service may still be starting", LogLevel.Warn);
+            // Info, like the other wait timeouts in this method: VerifyServiceRunningAsync gives the
+            // verdict and logs Error if the service never comes up. A Warn here travels back to the
+            // tray and badges a recovery whose service started a few seconds late.
+            logger.LogMessage($"Service '{serviceName}' start timed out - service may still be starting", LogLevel.Info);
         }
     }
 

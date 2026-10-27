@@ -257,17 +257,20 @@ public static class DiagnosticsService
 
     // Whether traffic leaves from the address the port is forwarded on - the same comparison the sync
     // loop makes at a confirming closed check (see VpnExitAddress). Only for a provider that reports the
-    // forward address, which today is NAT-PMP alone; for the others there is nothing to compare, so the
-    // row is left out rather than shown as a permanent Skip. Run whether or not the port is closed: this
-    // is the row that explains a closed "Port reachable" below, and it is the one the user acts on.
+    // forward address (NAT-PMP and ProtonVPN); for the others there is nothing to compare, so the row is
+    // left out rather than shown as a permanent Skip. Run whether or not the port is closed: this is the
+    // row that explains a closed "Port reachable" below, and it is the one the user acts on.
     private static async Task AddVpnExitAddressResultAsync(List<DiagnosticResult> results, IVpnManager vpn, int port, CancellationToken cancellationToken)
     {
         if (vpn.ForwardAddress is not System.Net.IPAddress forward) return;
 
-        System.Net.IPAddress? local = vpn.TunnelAddress;
-        System.Net.IPAddress? exit = local is null
-            ? null
-            : await VpnExitAddress.QueryAsync(local, cancellationToken).ConfigureAwait(false);
+        if (vpn.TunnelAddress is not System.Net.IPAddress local)
+        {
+            results.Add(new(Checks.VpnExitAddress, DiagnosticStatus.Skip,
+                "Could not determine (the VPN adapter has no IPv4 address)"));
+            return;
+        }
+        System.Net.IPAddress? exit = await VpnExitAddress.QueryAsync(local, cancellationToken).ConfigureAwait(false);
 
         if (exit is null)
             results.Add(new(Checks.VpnExitAddress, DiagnosticStatus.Skip,

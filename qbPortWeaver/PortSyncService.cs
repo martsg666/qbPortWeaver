@@ -1480,18 +1480,34 @@ public sealed class PortSyncService
 
         if (exit is not null && _vpnExitMismatch)
             LogManager.Instance.LogMessage(
-                $"Traffic now leaves the VPN from {exit}, the address the port is forwarded on", LogLevel.Info);
+                $"Traffic now leaves from {exit}, the address the port is forwarded on", LogLevel.Info);
         else if (exit is null)
             LogManager.Instance.LogDebug("PortSyncService.CheckVpnExitAddressAsync: exit address could not be determined");
+
+        // Ending a hold restarts the closed-port sequence from the beginning: this result becomes a first,
+        // unconfirmed closed result, not a confirmed one. The confirmed state survives a port change by
+        // design, so without this the first check after a reconnect to a good server - usually the
+        // client still reconnecting - would be counted as confirmed, and with a trigger of one would
+        // fire recovery on the very server the user just moved to.
+        if (_vpnExitMismatch)
+        {
+            _portConfirmedClosed = false;
+            _portCheckPendingConfirmation = false;
+            _confirmedClosedCount = 0;
+        }
         _vpnExitMismatch = false;
         LogManager.Instance.ClearLogState(VpnExitMismatchStateKey);
     }
 
     // Ends a hold the mismatch was causing - the port is open, or the provider reports no forward
     // address - without announcing anything: the open-port line or the provider change says what happened.
+    // The addresses go too, so the status file does not show a stale pair beside a cleared mismatch, or
+    // a NAT-PMP pair after a switch to a provider that reports none.
     private void ClearVpnExitMismatch()
     {
         _vpnExitMismatch = false;
+        _vpnForwardAddress = null;
+        _vpnExitAddress = null;
         LogManager.Instance.ClearLogState(VpnExitMismatchStateKey);
     }
 

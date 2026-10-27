@@ -30,7 +30,7 @@ function FailedCycleState($s) {
 function PortClosedState($s) {
     # Held while the VPN sends traffic out on a different address than it forwards the port on: a
     # restart does not fix that, and the closed checks it explains are not counted.
-    if ($s.vpnExitAddressMismatch) { return "Held - traffic leaves the VPN from $($s.vpnExitAddress), not $($s.vpnForwardAddress) where the port is forwarded" }
+    if ($s.vpnExitAddressMismatch) { return "Held - traffic leaves from $($s.vpnExitAddress), not $($s.vpnForwardAddress) where the port is forwarded" }
     # One-shot: once it fires it stays disarmed until a scheduled check reports the port open.
     if (-not $s.portClosedRecoveryArmed) { return 'Triggered - waiting for the next scheduled check' }
     if ($s.portClosedRecoveryChecks -gt 0) { return "$($s.portClosedRecoveryChecks) of $($s.portClosedRecoveryTriggerChecks) closed checks" }
@@ -62,15 +62,28 @@ function RecoveryState($s) {
 
 function OnOff($enabled) { if ($enabled) { 'Enabled' } else { 'Disabled' } }
 
-# Whether traffic leaves the VPN from the address the port is forwarded on. The app looks this up
+# Whether traffic leaves from the address the port is forwarded on. The app looks this up
 # only when a port check reports the port closed, and only for NAT-PMP and ProtonVPN, so "Not checked" is normal
 # while the port is open, for other providers, and for app versions without these keys.
 function AddressMatch($s) {
-    if ($s.vpnExitAddressMismatch) { return 'No - peers cannot reach the forwarded port; connect the VPN to a different server' }
+    if ($s.vpnExitAddressMismatch) {
+        # A private or carrier-grade NAT forward address is a home router behind a second NAT, where
+        # switching VPN servers is not the fix - the same split the app makes.
+        if (BehindAnotherNat $s.vpnForwardAddress) { return 'No - the gateway is itself behind another NAT, so the port cannot be reached from the Internet' }
+        return 'No - peers cannot reach the forwarded port; connect the VPN to a different server'
+    }
     if ($s.vpnForwardAddress -and $s.vpnExitAddress) { return 'Yes' }
     return 'Not checked'
 }
 function OrNotChecked($val) { if ($val) { $val } else { 'Not checked' } }
+function BehindAnotherNat($ip) {
+    $parsed = $null
+    if (-not [System.Net.IPAddress]::TryParse([string]$ip, [ref]$parsed)) { return $false }
+    $b = $parsed.GetAddressBytes()
+    if ($b.Length -ne 4) { return $false }
+    return ($b[0] -eq 10) -or ($b[0] -eq 172 -and $b[1] -ge 16 -and $b[1] -le 31) -or ($b[0] -eq 192 -and $b[1] -eq 168) -or
+           ($b[0] -eq 100 -and $b[1] -ge 64 -and $b[1] -le 127) -or ($b[0] -eq 169 -and $b[1] -eq 254)
+}
 
 $Body = @"
 <table style='font-family:monospace;font-size:13px;border-collapse:collapse;'>

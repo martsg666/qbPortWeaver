@@ -38,11 +38,11 @@ internal static class AutoRecoveryManager
         restartResult.RaiseLogAlerts();
 
         // Only restart the VPN client app if the helper actually completed the service restart.
-        // If the helper was unreachable, rejected the request, or reported errors, killing the
+        // If the helper did not complete the request, rejected it, or reported errors, killing the
         // VPN client UI alone does not fix the underlying VPN service - it just closes the user's
         // VPN client window for nothing.
         // The lower layer (HelperServiceClient / RaiseLogAlerts) already logged the specific cause
-        // for unreachable / rejected; this line communicates the consequence (skipping the client
+        // for incomplete / rejected; this line communicates the consequence (skipping the client
         // restart) with a reason tailored to each failure mode so the two log lines do not look
         // like duplicates.
         if (!restartResult.Completed || restartResult.ErrorCount > 0)
@@ -51,7 +51,9 @@ internal static class AutoRecoveryManager
             if (restartResult.IsRejected)
                 reason = "helper service rejected the command (see prior log entry)";
             else if (!restartResult.Completed)
-                reason = "helper service was unreachable (see prior log entry)";
+                // Not "unreachable": the helper may have been reached and then timed out, closed the
+                // pipe or sent an unreadable reply, or the request was never sent. The prior line says which.
+                reason = "helper service did not complete the request (see prior log entry)";
             else
                 reason = $"helper service reported {TextFormat.Pluralize(restartResult.ErrorCount, "error")} during the service restart (see helper log entries)";
             LogManager.Instance.LogMessage($"Skipping VPN client app restart for '{providerKeyword}' - {reason}", LogLevel.Warn);

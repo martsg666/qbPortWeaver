@@ -35,8 +35,8 @@ function PortClosedState($s) {
         # Behind another NAT no reconnect is made: none can change the address.
         if (BehindAnotherNat $s.vpnForwardAddress) { return 'Held - the gateway is itself behind another NAT, so the port cannot be reached from the Internet' }
         if (-not $s.vpnExitReconnectGaveUp) { return "Reconnecting for a matching exit address ($($s.vpnExitReconnects) of $($s.vpnExitReconnectsMax)) - traffic leaves from $($s.vpnExitAddress), not $($s.vpnForwardAddress)" }
-        if ($s.vpnProtonOverOpenVpn) { return "Held - $($s.vpnExitReconnectsMax) reconnects did not give a matching exit address; switch ProtonVPN to Proton WireGuard (UDP), or connect to a different server" }
-        return "Held - $($s.vpnExitReconnectsMax) reconnects did not give a matching exit address; connect the VPN to a different server"
+        if ($s.vpnProtonOverOpenVpn) { return "Held - still no matching exit address after $($s.vpnExitReconnectsMax) reconnect attempts; switch ProtonVPN to Proton WireGuard (UDP), or connect to a different server" }
+        return "Held - still no matching exit address after $($s.vpnExitReconnectsMax) reconnect attempts; connect the VPN to a different server"
     }
     # One-shot: once it fires it stays disarmed until a scheduled check reports the port open.
     if (-not $s.portClosedRecoveryArmed) { return 'Triggered - waiting for the next scheduled check' }

@@ -441,7 +441,7 @@ public partial class StatusForm : Form
             string next = s.VpnProtonOverOpenVpn
                 ? "switch ProtonVPN to Proton WireGuard (UDP), or connect to a different server"
                 : "connect the VPN to a different server";
-            return $"Held - {s.VpnExitReconnectsMax} reconnects did not give a matching exit address; {next}";
+            return $"Held - still no matching exit address after {s.VpnExitReconnectsMax} reconnect attempts; {next}";
         }
 
         // The one-shot trigger has fired and cannot fire again until a verification reports the port

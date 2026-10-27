@@ -1718,7 +1718,7 @@ public sealed class PortSyncService
         if (_vpnExitMismatch)
             return _vpnExitReconnects < MaxVpnExitReconnects
                 ? $" (traffic leaves from a different address than the port is forwarded on - reconnecting the VPN for a matching one, {_vpnExitReconnects} of {MaxVpnExitReconnects} reconnects so far)"
-                : $" (traffic leaves from a different address than the port is forwarded on - {MaxVpnExitReconnects} reconnects did not change that, so recovery is held)";
+                : $" (traffic leaves from a different address than the port is forwarded on - still so after {MaxVpnExitReconnects} reconnect attempts, so recovery is held)";
         if (!_portClosedRecoveryArmed)
             return " (recovery has already run for this outage - it will not run again until a scheduled check reports the port open)";
         string checks = TextFormat.PluralizeNoun(_confirmedClosedCount, "closed check");
@@ -1923,7 +1923,9 @@ public sealed class PortSyncService
             if (_vpnExitGiveUpNotified) return;
             _vpnExitGiveUpNotified = true;
             _vpnExitGiveUpForward = _vpnForwardAddress;
-            string giveUp = $"{MaxVpnExitReconnects} VPN reconnects did not give an exit address that matches the forwarded one - " +
+            // "attempts": a reconnect is counted when it is dispatched, and one the helper could not carry
+            // out has already logged its own Warn, so the line must stay true either way.
+            string giveUp = $"The exit address still does not match the forwarded one after {MaxVpnExitReconnects} reconnect attempts - " +
                             (_vpnProtonOverOpenVpn
                                 ? "switch ProtonVPN to Proton WireGuard (UDP), or connect to a different server"
                                 : "connect the VPN to a different server");

@@ -1431,7 +1431,7 @@ public sealed class PortSyncService
 
         if (open.Value)
         {
-            ClearVpnExitMismatch();
+            ClearVpnExitMismatch(keepReconnects: true);
             HandlePortOpenResult(manager.ClientName, port, config);
         }
         else
@@ -1554,21 +1554,27 @@ public sealed class PortSyncService
         _confirmedClosedCount = 0;
     }
 
-    // Ends a hold the mismatch was causing - the port is open, or the provider reports no forward
-    // address - without announcing anything: the open-port line or the provider change says what happened.
-    // The addresses go too, so the status file does not show a stale pair beside a cleared mismatch, or
-    // a NAT-PMP pair after a switch to a provider that reports none.
     // A mismatch whose forward address is private or carrier-grade NAT: the gateway is a home router behind
     // another NAT, where the port cannot be reached from the Internet and no reconnect can change that, so
     // the reconnects are skipped and the messages give that cause instead of VPN advice.
     private bool VpnExitMismatchBehindAnotherNat =>
         _vpnExitMismatch && _vpnForwardAddress is not null && VpnExitAddress.IsBehindAnotherNat(_vpnForwardAddress);
 
-    private void ClearVpnExitMismatch()
+    // Ends a hold the mismatch was causing - the port is open, or the provider reports no forward
+    // address - without announcing anything: the open-port line or the provider change says what happened.
+    // The addresses go too, so the status file does not show a stale pair beside a cleared mismatch, or
+    // a NAT-PMP pair after a switch to a provider that reports none.
+    // keepReconnects (the open-port case): the reconnects already made stay spent, so a client whose test
+    // flips to open in between cannot buy a fresh MaxVpnExitReconnects each time - only a lookup that finds
+    // the addresses equal (EndVpnExitHold) or a provider with no forward address starts the count again.
+    private void ClearVpnExitMismatch(bool keepReconnects = false)
     {
         _vpnExitMismatch = false;
-        _vpnExitReconnects = 0;
-        _vpnExitGiveUpNotified = false;
+        if (!keepReconnects)
+        {
+            _vpnExitReconnects = 0;
+            _vpnExitGiveUpNotified = false;
+        }
         _vpnForwardAddress = null;
         _vpnExitAddress = null;
         _vpnProtonOverOpenVpn = false;

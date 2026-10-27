@@ -1473,6 +1473,13 @@ public sealed class PortSyncService
             return;
         }
 
+        EndVpnExitHold(exit);
+    }
+
+    // The no-mismatch outcome of a lookup: the addresses are equal, or the exit address could not be
+    // determined (null). Split out of CheckVpnExitAddressAsync to keep it under the complexity gate.
+    private void EndVpnExitHold(System.Net.IPAddress? exit)
+    {
         if (exit is not null && _vpnExitMismatch)
             LogManager.Instance.LogMessage(
                 $"Traffic now leaves from {exit}, the address the port is forwarded on" +

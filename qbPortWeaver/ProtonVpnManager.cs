@@ -67,7 +67,7 @@ public sealed partial class ProtonVpnManager : IVpnManager
         string.Equals(ActiveAdapterName, AppConstants.ProtonVpnOpenVpnAdapterName, StringComparison.OrdinalIgnoreCase);
 
     // The first up adapter carrying one of ProtonVPN's names, read live: a protocol switch changes it.
-    private string? ActiveAdapterName => VpnAdapter.GetActiveInterfaces().Find(nic => MatchesProtonAdapter(nic.Name))?.Name;
+    private static string? ActiveAdapterName => VpnAdapter.GetActiveInterfaces().Find(nic => MatchesProtonAdapter(nic.Name))?.Name;
 
     /// <inheritdoc />
     public string ForwardSource

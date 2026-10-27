@@ -569,21 +569,35 @@ public static class DiagnosticsService
             results.Add(new(Checks.PortReachable, DiagnosticStatus.Warn, "Listening port appears closed from the Internet",
                 PortClosedHint(results, client)));
         }
+        else if (HasExitAddressMismatch(results))
+            // The client could not test the port (Deluge's check service filters automated requests), but
+            // the exit-address row already shows peers cannot reach it, so point there.
+            results.Add(new(Checks.PortReachable, DiagnosticStatus.Skip, "Could not determine (client, Internet, or port-check service unavailable)",
+                ExitAddressMismatchHint));
         else
             results.Add(new(Checks.PortReachable, DiagnosticStatus.Skip, "Could not determine (client, Internet, or port-check service unavailable)"));
     }
+
+    private const string ExitAddressMismatchHint =
+        $"See {Checks.VpnExitAddress} above: the port is forwarded, but peers are given a different address.";
+
+    private static bool HasExitAddressMismatch(List<DiagnosticResult> results) =>
+        results.Exists(r => r.Check == Checks.VpnExitAddress && r.Status == DiagnosticStatus.Warn);
 
     // The fix hint for a closed port. A mismatch found by the exit-address row above is the cause,
     // whatever the client, so it is named rather than sending the user to check port forwarding,
     // which is working.
     private static string PortClosedHint(List<DiagnosticResult> results, IManagedClient client)
     {
-        if (results.Exists(r => r.Check == Checks.VpnExitAddress && r.Status == DiagnosticStatus.Warn))
-            return $"See {Checks.VpnExitAddress} above: the port is forwarded, but peers are given a different address.";
+        if (HasExitAddressMismatch(results))
+            return ExitAddressMismatchHint;
         if (client is QBittorrentClient)
             return "Allow a moment after a port change. qBittorrent infers this from incoming connections, so an idle client may report closed.";
-        return "Allow a moment after a port change, then re-run. A persistently closed port usually means port forwarding is not active on the VPN, " +
-               "or the VPN sends traffic out on a different address than it forwards on.";
+        // The exit-address cause is offered only when the row above could not rule it out: it is absent
+        // (PIA, Static port) or a Skip. A Pass there has already shown traffic leaves from the forward.
+        bool exitAddressChecked = results.Exists(r => r.Check == Checks.VpnExitAddress && r.Status == DiagnosticStatus.Pass);
+        return "Allow a moment after a port change, then re-run. A persistently closed port usually means port forwarding is not active on the VPN" +
+               (exitAddressChecked ? "." : ", or the VPN sends traffic out on a different address than it forwards on.");
     }
 
     /// <summary>The running app's version (e.g. "X.Y.Z"), for the diagnostics header and report.</summary>

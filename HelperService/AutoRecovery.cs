@@ -572,7 +572,11 @@ internal static partial class AutoRecovery
             Task<string> stdoutTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
             Task<string> stderrTask = process.StandardError.ReadToEndAsync(cancellationToken);
 
-            bool exited = await Task.Run(() => process.WaitForExit(NetshTimeoutMs), cancellationToken).ConfigureAwait(false);
+            // Not cancellable: a token cancelled before Task.Run schedules would skip the wait while netsh
+            // is still running, and the caller's re-enable would then race this command - a disable that
+            // finished last would leave the adapter down. The wait is bounded by NetshTimeoutMs, and a
+            // shutdown is still reported just below, once netsh has exited.
+            bool exited = await Task.Run(() => process.WaitForExit(NetshTimeoutMs), CancellationToken.None).ConfigureAwait(false);
             if (!exited)
             {
                 // netsh is a short-lived system utility that always responds to Process.Kill -

@@ -1452,23 +1452,21 @@ public sealed class PortSyncService
     // automated requests, and any check service can be down - which would otherwise never reach the
     // check, since that runs on a closed result. A mismatch needs no confirmation from the client: peers
     // are given the exit address, so the forward is unreachable whatever its test would have said. So it
-    // is handled like a closed port the mismatch explains: the lookup's one Warn, one balloon on entering
-    // it, and the reconnects while port-closed recovery is on. A match or a failed lookup shows nothing.
+    // is handled like a closed port the mismatch explains: the lookup's one Warn and balloon (raised by
+    // CheckVpnExitAddressAsync on entering it), and the reconnects while port-closed recovery is on. A
+    // match or a failed lookup shows nothing.
     private async Task CheckVpnExitAddressForUndeterminedAsync(int port, SyncConfig config, CancellationToken cancellationToken)
     {
-        bool wasMismatched = _vpnExitMismatch;
         await CheckVpnExitAddressAsync(config.VpnManager, port, cancellationToken).ConfigureAwait(false);
-        if (!_vpnExitMismatch) return;
-
-        if (!wasMismatched && _vpnForwardAddress is not null && _vpnExitAddress is not null && config.VpnManager is not null)
-        {
-            string balloon = VpnExitAddress.DescribeMismatchShort(config.VpnManager.ForwardSource, port, _vpnForwardAddress, _vpnExitAddress, _vpnProtonOverOpenVpn);
-            try { PortVerificationFailed?.Invoke(balloon); }
-            catch (Exception ex) { LogManager.Instance.LogMessage($"PortVerificationFailed handler failed: {ex.Message}", LogLevel.Warn); }
-        }
-
-        if (config.PortClosedRecoveryEnabled)
+        if (_vpnExitMismatch && config.PortClosedRecoveryEnabled)
             await ReconnectForExitAddressAsync(config, cancellationToken).ConfigureAwait(false);
+    }
+
+    // Raises the PortVerificationFailed balloon event. A throwing handler must not break the cycle.
+    private void RaisePortVerificationFailed(string message)
+    {
+        try { PortVerificationFailed?.Invoke(message); }
+        catch (Exception ex) { LogManager.Instance.LogMessage($"PortVerificationFailed handler failed: {ex.Message}", LogLevel.Warn); }
     }
 
     // Compares the address the provider forwards the port on with the address traffic actually leaves
@@ -1503,10 +1501,16 @@ public sealed class PortSyncService
             // Entering the hold: the closed checks this explains must not count towards the trigger, or
             // the count would sit past it and fire on the first closed check after the user reconnects
             // to a good server - usually the client still reconnecting.
-            if (!_vpnExitMismatch) _confirmedClosedCount = 0;
+            bool entering = !_vpnExitMismatch;
+            if (entering) _confirmedClosedCount = 0;
             _vpnExitMismatch = true;
             LogManager.Instance.LogStateChange(VpnExitMismatchStateKey,
                 VpnExitAddress.DescribeMismatch(vpnManager.ForwardSource, port, forward, exit, _vpnProtonOverOpenVpn), LogLevel.Warn);
+            // The mismatch balloon is raised here and only here, once per mismatch, whichever path found
+            // it: the closed-port transition balloon stands aside while a mismatch is held, so the two can
+            // neither double up nor leave a mismatch that starts mid-outage unannounced.
+            if (entering)
+                RaisePortVerificationFailed(VpnExitAddress.DescribeMismatchShort(vpnManager.ForwardSource, port, forward, exit, _vpnProtonOverOpenVpn));
             return;
         }
 
@@ -1649,13 +1653,11 @@ public sealed class PortSyncService
         PortHistoryManager.Append(PortHistoryKind.PortClosed, port, "Port confirmed closed from outside");
         string confirmedSuffix = BuildPortClosedRecoverySuffix(config);
         LogManager.Instance.LogMessage($"{clientName} port {port} is not reachable from outside (confirmed by two checks){confirmedSuffix}", LogLevel.Warn);
-        // With a known exit-address mismatch the balloon names the cause and the fix, since a bare
-        // "not reachable" sends the user looking at the client, which is not where the problem is.
-        string balloon = _vpnExitMismatch && _vpnForwardAddress is not null && _vpnExitAddress is not null && config.VpnManager is not null
-            ? VpnExitAddress.DescribeMismatchShort(config.VpnManager.ForwardSource, port, _vpnForwardAddress, _vpnExitAddress, _vpnProtonOverOpenVpn)
-            : $"{clientName} port {port} is not reachable from outside.";
-        try { PortVerificationFailed?.Invoke(balloon); }
-        catch (Exception ex) { LogManager.Instance.LogMessage($"PortVerificationFailed handler failed: {ex.Message}", LogLevel.Warn); }
+        // With an exit-address mismatch held, its own balloon (raised when it was found, see
+        // CheckVpnExitAddressAsync) already named the cause and the fix, and a second one saying only
+        // "not reachable" would send the user looking at the client, which is not where the problem is.
+        if (!_vpnExitMismatch)
+            RaisePortVerificationFailed($"{clientName} port {port} is not reachable from outside.");
     }
 
     // Builds the recovery-progress suffix for the port-closed Warn messages, mirroring
@@ -1887,8 +1889,7 @@ public sealed class PortSyncService
                                 ? "switch ProtonVPN to Proton WireGuard (UDP), or connect to a different server"
                                 : "connect the VPN to a different server");
             LogManager.Instance.LogMessage(giveUp, LogLevel.Warn);
-            try { PortVerificationFailed?.Invoke(giveUp + "."); }
-            catch (Exception ex) { LogManager.Instance.LogMessage($"PortVerificationFailed handler failed: {ex.Message}", LogLevel.Warn); }
+            RaisePortVerificationFailed(giveUp + ".");
             return;
         }
 

@@ -1459,7 +1459,7 @@ public sealed class PortSyncService
 
         if (!wasMismatched && _vpnForwardAddress is not null && _vpnExitAddress is not null && config.VpnManager is not null)
         {
-            string balloon = VpnExitAddress.DescribeMismatch(config.VpnManager.ForwardSource, port, _vpnForwardAddress, _vpnExitAddress, _vpnProtonOverOpenVpn) + ".";
+            string balloon = VpnExitAddress.DescribeMismatchShort(config.VpnManager.ForwardSource, port, _vpnForwardAddress, _vpnExitAddress, _vpnProtonOverOpenVpn);
             try { PortVerificationFailed?.Invoke(balloon); }
             catch (Exception ex) { LogManager.Instance.LogMessage($"PortVerificationFailed handler failed: {ex.Message}", LogLevel.Warn); }
         }
@@ -1637,7 +1637,7 @@ public sealed class PortSyncService
         // With a known exit-address mismatch the balloon names the cause and the fix, since a bare
         // "not reachable" sends the user looking at the client, which is not where the problem is.
         string balloon = _vpnExitMismatch && _vpnForwardAddress is not null && _vpnExitAddress is not null && config.VpnManager is not null
-            ? VpnExitAddress.DescribeMismatch(config.VpnManager.ForwardSource, port, _vpnForwardAddress, _vpnExitAddress, _vpnProtonOverOpenVpn) + "."
+            ? VpnExitAddress.DescribeMismatchShort(config.VpnManager.ForwardSource, port, _vpnForwardAddress, _vpnExitAddress, _vpnProtonOverOpenVpn)
             : $"{clientName} port {port} is not reachable from outside.";
         try { PortVerificationFailed?.Invoke(balloon); }
         catch (Exception ex) { LogManager.Instance.LogMessage($"PortVerificationFailed handler failed: {ex.Message}", LogLevel.Warn); }

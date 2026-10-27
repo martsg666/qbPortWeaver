@@ -75,6 +75,23 @@ internal static class VpnExitAddress
                $"given {exit}, so they cannot reach the forwarded port - {advice}";
     }
 
+    /// <summary>
+    /// The tray balloon form of <see cref="DescribeMismatch"/>: Windows keeps at most 255 characters of a
+    /// balloon's text, which the full form passes on OpenVPN, cutting off the advice. This one leads with
+    /// the problem and the action and drops the source, which the log line it follows names. Ends with a
+    /// full stop, as balloon texts do.
+    /// </summary>
+    internal static string DescribeMismatchShort(string source, int port, IPAddress forward, IPAddress exit, bool protonOverOpenVpn)
+    {
+        // The home-router text is short enough to fit as it is.
+        if (IsBehindAnotherNat(forward))
+            return DescribeMismatch(source, port, forward, exit, protonOverOpenVpn) + ".";
+        string advice = protonOverOpenVpn
+            ? "Switch ProtonVPN to Proton WireGuard (UDP), or connect to a different server."
+            : "Reconnecting may help, or connect to a different server.";
+        return $"Port {port} cannot be reached: traffic leaves the VPN from {exit}, not {forward} where it is forwarded. {advice}";
+    }
+
     // RFC 1918 private ranges, RFC 6598 shared address space (carrier-grade NAT) and link-local: none
     // of them is reachable from the Internet, so a gateway reporting one is behind another NAT.
     internal static bool IsBehindAnotherNat(IPAddress address)

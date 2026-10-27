@@ -1105,13 +1105,14 @@ public sealed class PortSyncService
         try
         {
             client = BuildActiveClient();
-            // Only Deluge's fallback needs the VPN adapter and the listening port, so only Deluge pays
-            // for building a manager - for NAT-PMP that is a gateway probe.
-            if (client is not DelugeClient)
-                return await client.TestListeningPortAsync(cancellationToken).ConfigureAwait(false);
+            // The client's own test first, as before. Only when Deluge's cannot answer is the fallback
+            // set up: it needs the VPN adapter and the listening port, and building a manager is a
+            // gateway probe for NAT-PMP, which a Test Port click should not pay for otherwise.
+            bool? open = await client.TestListeningPortAsync(cancellationToken).ConfigureAwait(false);
+            if (open is not null || client is not DelugeClient) return open;
             IVpnManager? vpn = await BuildActiveVpnManagerAsync(cancellationToken).ConfigureAwait(false);
             var (listenPort, _) = await client.GetPreferencesAsync(cancellationToken).ConfigureAwait(false);
-            return await TestReachabilityAsync(client, vpn, listenPort, cancellationToken).ConfigureAwait(false);
+            return await TestDelugeFallbackAsync(vpn, listenPort, cancellationToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
@@ -1144,6 +1145,12 @@ public sealed class PortSyncService
     {
         bool? open = await client.TestListeningPortAsync(cancellationToken).ConfigureAwait(false);
         if (open is not null || client is not DelugeClient) return open;
+        return await TestDelugeFallbackAsync(vpnManager, port, cancellationToken).ConfigureAwait(false);
+    }
+
+    // Deluge's check service queried from the VPN adapter, for when Deluge's own test has no answer.
+    private static async Task<bool?> TestDelugeFallbackAsync(IVpnManager? vpnManager, int? port, CancellationToken cancellationToken)
+    {
         if (port is not int p || vpnManager?.TunnelAddress is not System.Net.IPAddress local)
         {
             LogManager.Instance.LogDebug("PortSyncService.TestReachabilityAsync: Deluge could not test its port, and there is no VPN adapter address to check it from");

@@ -61,7 +61,8 @@ public interface IVpnManager
     /// reach the forward.
     /// <para>NAT-PMP takes it from the gateway's external-address reply, ProtonVPN from the server
     /// address its client logs on each connection. PIA and Static port report none, so the check
-    /// does not run for them. Valid after <see cref="GetVpnPortAsync"/> has run this cycle.</para>
+    /// does not run for them. Valid once the provider has been created for this cycle: NAT-PMP sets it
+    /// at creation, ProtonVPN reads it from the log on first access.</para>
     /// </summary>
     System.Net.IPAddress? ForwardAddress => null;
 

@@ -28,6 +28,9 @@ function FailedCycleState($s) {
 
 # What the port-closed trigger is doing, or $null when it is idle.
 function PortClosedState($s) {
+    # Held while the VPN sends traffic out on a different address than it forwards the port on: a
+    # restart does not fix that, and the closed checks it explains are not counted.
+    if ($s.vpnExitAddressMismatch) { return "Held - traffic leaves the VPN from $($s.vpnExitAddress), not $($s.vpnForwardAddress) where the port is forwarded" }
     # One-shot: once it fires it stays disarmed until a scheduled check reports the port open.
     if (-not $s.portClosedRecoveryArmed) { return 'Triggered - waiting for the next scheduled check' }
     if ($s.portClosedRecoveryChecks -gt 0) { return "$($s.portClosedRecoveryChecks) of $($s.portClosedRecoveryTriggerChecks) closed checks" }
@@ -59,6 +62,16 @@ function RecoveryState($s) {
 
 function OnOff($enabled) { if ($enabled) { 'Enabled' } else { 'Disabled' } }
 
+# Whether traffic leaves the VPN from the address the port is forwarded on. The app looks this up
+# only when a port check reports the port closed, and only for NAT-PMP, so "Not checked" is normal
+# while the port is open, for other providers, and for app versions without these keys.
+function AddressMatch($s) {
+    if ($s.vpnExitAddressMismatch) { return 'No - peers cannot reach the forwarded port; connect the VPN to a different server' }
+    if ($s.vpnForwardAddress -and $s.vpnExitAddress) { return 'Yes' }
+    return 'Not checked'
+}
+function OrNotChecked($val) { if ($val) { $val } else { 'Not checked' } }
+
 $Body = @"
 <table style='font-family:monospace;font-size:13px;border-collapse:collapse;'>
 $(Section '[App]')
@@ -70,6 +83,9 @@ $(Section '[VPN]')
 $(Row 'Provider'  $status.vpnProvider)
 $(Row 'Connected' $status.vpnConnected)
 $(Row 'Port'      $status.vpnPort)
+$(Row 'Forward Address' (OrNotChecked $status.vpnForwardAddress))
+$(Row 'Exit Address'    (OrNotChecked $status.vpnExitAddress))
+$(Row 'Address Match'   (AddressMatch $status))
 $(Section '[Client]')
 $(Row 'Name'          $status.client)
 $(Row 'Running'       $status.clientRunning)

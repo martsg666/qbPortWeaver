@@ -85,6 +85,16 @@ public sealed class PiaVpnManager : IVpnManager
     /// <inheritdoc />
     public bool IsAdapterMatch(string interfaceName) => Config.MatchesAdapterName(interfaceName);
 
+    /// <inheritdoc />
+    public System.Net.IPAddress? TunnelAddress
+    {
+        get
+        {
+            string? adapter = VpnAdapter.GetActiveInterfaces().Find(nic => IsAdapterMatch(nic.Name))?.Name;
+            return adapter is null ? null : VpnAdapter.GetIPv4Address(adapter);
+        }
+    }
+
     private int? GetVpnPortCore()
     {
         try

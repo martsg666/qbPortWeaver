@@ -1105,7 +1105,13 @@ public sealed class PortSyncService
         try
         {
             client = BuildActiveClient();
-            return await client.TestListeningPortAsync(cancellationToken).ConfigureAwait(false);
+            // Only Deluge's fallback needs the VPN adapter and the listening port, so only Deluge pays
+            // for building a manager - for NAT-PMP that is a gateway probe.
+            if (client is not DelugeClient)
+                return await client.TestListeningPortAsync(cancellationToken).ConfigureAwait(false);
+            IVpnManager? vpn = await BuildActiveVpnManagerAsync(cancellationToken).ConfigureAwait(false);
+            var (listenPort, _) = await client.GetPreferencesAsync(cancellationToken).ConfigureAwait(false);
+            return await TestReachabilityAsync(client, vpn, listenPort, cancellationToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
@@ -1121,6 +1127,31 @@ public sealed class PortSyncService
             // Replaces the `using` the try-scoping displaced: null when construction itself failed.
             client?.Dispose();
         }
+    }
+
+    /// <summary>
+    /// Tests whether the client's listening port is reachable from outside: the client's own check,
+    /// then - for Deluge, whose own check can fail to answer at all - the same check service queried
+    /// from the VPN adapter (see <see cref="DelugeClient.TestViaCheckServiceAsync"/>). Shared by the
+    /// sync loop, <see cref="TestActivePortAsync"/> and <see cref="DiagnosticsService"/>, so the three
+    /// cannot disagree about a Deluge port.
+    /// </summary>
+    /// <param name="client">The client to test.</param>
+    /// <param name="vpnManager">The active VPN manager, for the adapter the fallback is sent from.</param>
+    /// <param name="port">The client's listening port, for the fallback.</param>
+    /// <param name="cancellationToken">Cancels both checks.</param>
+    internal static async Task<bool?> TestReachabilityAsync(IManagedClient client, IVpnManager? vpnManager, int? port, CancellationToken cancellationToken = default)
+    {
+        bool? open = await client.TestListeningPortAsync(cancellationToken).ConfigureAwait(false);
+        if (open is not null || client is not DelugeClient) return open;
+        if (port is not int p || vpnManager?.TunnelAddress is not System.Net.IPAddress local)
+        {
+            LogManager.Instance.LogDebug("PortSyncService.TestReachabilityAsync: Deluge could not test its port, and there is no VPN adapter address to check it from");
+            return null;
+        }
+        bool? fallback = await DelugeClient.TestViaCheckServiceAsync(p, local, cancellationToken).ConfigureAwait(false);
+        LogManager.Instance.LogDebug($"PortSyncService.TestReachabilityAsync: Deluge could not test its port; the check service, queried from {local}, reports {fallback?.ToString() ?? "no answer"}");
+        return fallback;
     }
 
     /// <summary>
@@ -1367,7 +1398,7 @@ public sealed class PortSyncService
     {
         if (!ShouldVerifyThisCycle(status[StatusKeys.PortChanged] is true, config.PortClosedRecoveryEnabled)) return;
 
-        bool? open = await manager.TestListeningPortAsync(cancellationToken).ConfigureAwait(false);
+        bool? open = await TestReachabilityAsync(manager, config.VpnManager, port, cancellationToken).ConfigureAwait(false);
         if (open is null)
         {
             LogManager.Instance.LogDebug($"PortSyncService.VerifyPortAsync: {manager.ClientName} port reachability could not be determined");

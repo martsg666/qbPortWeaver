@@ -337,7 +337,7 @@ public static class DiagnosticsService
         if (client.SupportsInterfaceMismatchWarning)
             await AddInterfaceResultAsync(results, client, vpn, interfaceName, cancellationToken).ConfigureAwait(false);
         await AddClientSettingsResultAsync(results, client, cancellationToken).ConfigureAwait(false);
-        await AddPortReachableResultAsync(results, client, vpnPort, cancellationToken).ConfigureAwait(false);
+        await AddPortReachableResultAsync(results, client, vpn, vpnPort, clientPort, cancellationToken).ConfigureAwait(false);
     }
 
     // Reports the client's own settings that undo the synchronized port. qbPortWeaver writes these to
@@ -547,14 +547,14 @@ public static class DiagnosticsService
 
     // Only meaningful when the VPN is connected with a forwarded port - mirrors the sync loop, which
     // skips verification while disconnected (a closed result would be expected noise on the default port).
-    private static async Task AddPortReachableResultAsync(List<DiagnosticResult> results, IManagedClient client, int? vpnPort, CancellationToken cancellationToken)
+    private static async Task AddPortReachableResultAsync(List<DiagnosticResult> results, IManagedClient client, IVpnManager? vpn, int? vpnPort, int? clientPort, CancellationToken cancellationToken)
     {
         if (vpnPort is null)
         {
             results.Add(new(Checks.PortReachable, DiagnosticStatus.Skip, "VPN not connected or no forwarded port"));
             return;
         }
-        bool? open = await client.TestListeningPortAsync(cancellationToken).ConfigureAwait(false);
+        bool? open = await PortSyncService.TestReachabilityAsync(client, vpn, clientPort, cancellationToken).ConfigureAwait(false);
         if (open == true)
             results.Add(new(Checks.PortReachable, DiagnosticStatus.Pass, "Listening port is reachable from the Internet"));
         else if (open == false)

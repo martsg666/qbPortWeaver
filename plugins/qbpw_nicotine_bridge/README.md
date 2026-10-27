@@ -59,7 +59,7 @@ chat room, because chat rooms are public.
 ## HTTP API
 
 Every response is JSON. A failure carries `{"ok": false, "error": {"code": ..., "message": ...}}`;
-the `code` is stable and is what qbPortWeaver branches on, the `message` is for people and may be
+the `code` is stable and machine-readable, the `message` is for people and may be
 reworded between versions.
 
 All paths except `GET /` require `Authorization: Bearer <token>`.
@@ -84,7 +84,8 @@ can be identified directly rather than inferred from a failing endpoint.
 A successful `POST /v1/port` also carries `warnings`, a list of what it could not do on top of
 saving the port: `reconnect_unsupported` and `connect_unsupported` (the new port waits for the next
 connection), `reconnect_failed` (Nicotine+ raised an error while reconnecting, so it keeps
-listening on the old port until the next connection), `setup_incomplete` (Nicotine+'s first-run
+listening on the old port until the next connection), `connect_failed` (Nicotine+ was offline
+and raised an error while connecting, so the port applies on the next connection), `setup_incomplete` (Nicotine+'s first-run
 setup is not finished, so it is not connected), and `portmapper_unsupported` or `portmapper_failed`
 (an old UPnP mapping may remain). qbPortWeaver logs each one. `POST /v1/reconnect` carries the same
 list, without the two port-mapping codes.

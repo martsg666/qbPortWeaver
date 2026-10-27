@@ -348,7 +348,7 @@ class CoreIO:
             call()
         except Exception as error:  # noqa: BLE001 - a failed rebind is reported to the caller
             self._log("Could not %s after the port change: %s", (action, error))
-            warnings.append("reconnect_failed")
+            warnings.append(action + "_failed")
             return "none"
         return action
 

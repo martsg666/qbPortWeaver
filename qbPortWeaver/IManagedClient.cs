@@ -44,8 +44,10 @@ public interface IManagedClient : IDisposable
     /// <summary>
     /// Restarts the client and returns <see langword="true"/> on success.
     /// For clients running as a Windows service, delegates to the helper service (Session 0).
-    /// For clients running as a user-space process, behaviour is client-defined: some kill and
-    /// relaunch the executable; others are no-ops if the port change is already live in-place.
+    /// For clients running as a user-space process, behaviour is client-defined: some ask the client
+    /// to exit cleanly first (qBittorrent through its shutdown call, Transmission by closing its
+    /// window), then kill whatever remains and relaunch the executable; others are no-ops if the
+    /// port change is already live in-place.
     /// </summary>
     Task<bool> RestartAsync(CancellationToken cancellationToken = default);
 

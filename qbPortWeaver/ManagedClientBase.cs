@@ -146,7 +146,7 @@ public abstract class ManagedClientBase : IManagedClient // NOSONAR S3881 - all 
     // had never actually looked at. Making it abstract forces each one to answer for itself.
     public abstract Task<IReadOnlyList<ClientSettingConflict>?> GetConflictingSettingsAsync(CancellationToken cancellationToken = default);
 
-    /// <summary>Called by <see cref="RestartAsync"/> before the kill step. Override to inject pre-kill work (e.g. waiting for a config flush).</summary>
+    /// <summary>Called by <see cref="RestartAsync"/> before the graceful-exit request and the kill. Override to inject pre-kill work (e.g. waiting for a config flush).</summary>
     protected virtual Task PreRestartAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 
     // Launches the process, waits for the OS to register it, confirms it is running, then polls the
@@ -233,8 +233,6 @@ public abstract class ManagedClientBase : IManagedClient // NOSONAR S3881 - all 
     /// <summary>Label identifying the endpoint type used in HTTP error messages (e.g. <c>"Web UI"</c> or <c>"RPC"</c>).</summary>
     protected virtual string ApiLabel => "Web UI";
 
-    // Kills all processes matching ProcessName, waits for stragglers, then retries once.
-    // Returns false (and logs an error) if processes remain after both passes.
     // Asks the client to exit cleanly before a restart. True when the request was accepted, so a
     // process exit should follow; false when the client has no such request or it could not be made,
     // and the restart goes straight to the kill as it always did.
@@ -253,6 +251,8 @@ public abstract class ManagedClientBase : IManagedClient // NOSONAR S3881 - all 
         return true;
     }
 
+    // Kills all processes matching ProcessName, waits for stragglers, then retries once.
+    // Returns false (and logs an error) if processes remain after both passes.
     protected async Task<bool> KillAndVerifyAsync(CancellationToken cancellationToken)
     {
         ProcessControl.KillProcessesByName(ProcessName, ProcessKillTimeoutMs, ClientName);

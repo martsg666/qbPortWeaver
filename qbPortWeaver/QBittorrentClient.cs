@@ -450,7 +450,12 @@ public sealed class QBittorrentClient : ManagedClientBase
 
             var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
             using var doc = JsonDocument.Parse(json);
-            if (doc.RootElement.ValueKind != JsonValueKind.Array) return null;
+            if (doc.RootElement.ValueKind != JsonValueKind.Array)
+            {
+                LogManager.Instance.LogDebug(
+                    $"QBittorrentClient.{caller}: response is a JSON {doc.RootElement.ValueKind}, not an array - {notChecked}");
+                return null;
+            }
 
             var result = new List<T>();
             foreach (var entry in doc.RootElement.EnumerateArray())

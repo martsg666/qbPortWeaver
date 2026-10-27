@@ -183,10 +183,12 @@ public sealed class TransmissionClient : ManagedClientBase
 
             var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
             using var doc = JsonDocument.Parse(json);
-            if (!string.Equals(doc.RootElement.GetStringOrNull(JsonPropResult), RpcResultSuccess,
-                    StringComparison.OrdinalIgnoreCase))
+            var result = doc.RootElement.GetStringOrNull(JsonPropResult);
+            if (!string.Equals(result, RpcResultSuccess, StringComparison.OrdinalIgnoreCase))
             {
-                LogManager.Instance.LogMessage($"{ClientName} RPC returned non-success result for session-set", LogLevel.Error);
+                LogManager.Instance.LogMessage(
+                    $"{ClientName} RPC returned non-success result for session-set: {(result is null ? "no result" : $"'{result}'")}",
+                    LogLevel.Error);
                 return false;
             }
         }
@@ -399,7 +401,7 @@ public sealed class TransmissionClient : ManagedClientBase
             {
                 LogManager.Instance.LogMessage(
                     $"{ClientName} did not close" + (closeSent ? $" within {WindowCloseWaitMs / 1000} seconds" : string.Empty) +
-                    " - it is probably set to stay in the notification area when its window closes (Edit > Preferences > Desktop); " +
+                    " - it is probably set to stay in the notification area when its window closes (Edit → Preferences → Desktop); " +
                     "force-closing it, so settings changed in Transmission since it started may not be saved",
                     LogLevel.Warn);
                 if (!await KillAndVerifyAsync(cancellationToken).ConfigureAwait(false))

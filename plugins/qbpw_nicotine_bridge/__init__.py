@@ -392,9 +392,20 @@ class Plugin(BasePlugin):
 
         if not result["changed"]:
             self.output(f"Already listening on port {port}.")
+            return
+
+        # Say what actually happened to the connection: a reconnect that failed or was not
+        # possible leaves the new port waiting for the next connection.
+        action = result.get("reconnect")
+        if action == "reconnect":
+            tail = "Reconnecting; it will be live in a few seconds."
+        elif action == "connect":
+            tail = "Connecting; it will be live in a few seconds."
         else:
-            self.output(f"Port changed from {result['previous_port']} to {port}. "
-                        "Reconnecting; it will be live in a few seconds.")
+            tail = "It takes effect on the next connection."
+        if any(code.startswith("portmapper_") for code in result.get("warnings", [])):
+            tail += " The old UPnP mapping may remain on the router."
+        self.output(f"Port changed from {result['previous_port']} to {port}. {tail}")
 
     def test_command(self, args, **_unused):
         if self._bridge is None:

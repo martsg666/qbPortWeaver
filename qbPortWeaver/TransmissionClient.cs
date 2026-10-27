@@ -378,22 +378,32 @@ public sealed class TransmissionClient : ManagedClientBase
             // Wait for the Qt client to poll and reflect the port change before closing
             await Task.Delay(GracefulShutdownWaitMs, cancellationToken).ConfigureAwait(false);
 
-            // Close the main window cleanly; the app saves settings on exit
+            // Close the main window cleanly; the app saves settings on exit. CloseMainWindow returns false
+            // when there is no window to close - Transmission hidden in the notification area - and then no
+            // close is coming, so the wait below is skipped.
+            bool closeSent = false;
+            bool anyFound = false;
             foreach (var proc in Process.GetProcessesByName(ProcessName))
             {
+                anyFound = true;
                 // CloseMainWindow can fail if the process has already exited; safe to ignore.
-                try { proc.CloseMainWindow(); }
+                try { closeSent |= proc.CloseMainWindow(); }
                 catch { } // NOSONAR S108
                 finally { proc.Dispose(); }
             }
+            // Nothing running means nothing to close (it exited on its own): not the hidden-window case.
+            if (!anyFound) closeSent = true;
 
             // Wait for a graceful exit, then hard-kill any survivors - said at Warn, because a forced
-            // close loses whatever the user changed in Transmission since it started.
-            if (!await WaitForExitAsync(cancellationToken).ConfigureAwait(false))
+            // close loses whatever the user changed in Transmission since it started. With its
+            // notification-area icon on, Transmission hides its window instead of quitting when the window
+            // is closed, which is the likeliest reason it is still running, so the Warn names that setting.
+            if (!closeSent || !await WaitForExitAsync(cancellationToken).ConfigureAwait(false))
             {
                 LogManager.Instance.LogMessage(
-                    $"{ClientName} did not close within {WindowCloseWaitMs / 1000} seconds - force-closing it; " +
-                    "settings changed in Transmission since it started may not have been saved",
+                    $"{ClientName} did not close" + (closeSent ? $" within {WindowCloseWaitMs / 1000} seconds" : string.Empty) +
+                    " - it is probably set to stay in the notification area when its window closes (Edit > Preferences > Desktop); " +
+                    "force-closing it, so settings changed in Transmission since it started may not be saved",
                     LogLevel.Warn);
                 if (!await KillAndVerifyAsync(cancellationToken).ConfigureAwait(false))
                     return false;

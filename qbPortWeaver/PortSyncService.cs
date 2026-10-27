@@ -1444,6 +1444,7 @@ public sealed class PortSyncService
         if (open.Value)
         {
             ClearVpnExitMismatch(keepReconnects: true);
+            await ResetSpentExitReconnectsIfMatchedAsync(config.VpnManager, cancellationToken).ConfigureAwait(false);
             HandlePortOpenResult(manager.ClientName, port, config);
         }
         else
@@ -1472,6 +1473,28 @@ public sealed class PortSyncService
         await CheckVpnExitAddressAsync(config.VpnManager, port, cancellationToken).ConfigureAwait(false);
         if (_vpnExitMismatch && config.PortClosedRecoveryEnabled)
             await ReconnectForExitAddressAsync(config, cancellationToken).ConfigureAwait(false);
+    }
+
+    // An open result keeps the exit-address reconnects spent (see ClearVpnExitMismatch), so a client whose
+    // test flips to open under a mismatch cannot buy fresh ones - but an open result is also how a working
+    // fix normally shows up, and no lookup runs on one, so without this the count would never reset after
+    // a success and later outages on the same server would get fewer reconnects, or none after a give-up.
+    // One direct lookup settles it, only while reconnects are spent: equal addresses end the episode for
+    // good. Not through CheckVpnExitAddressAsync, which would announce a mismatch on an open port.
+    private async Task ResetSpentExitReconnectsIfMatchedAsync(IVpnManager? vpnManager, CancellationToken cancellationToken)
+    {
+        if (_vpnExitReconnects == 0 && !_vpnExitGiveUpNotified) return;
+        System.Net.IPAddress? forward = vpnManager?.ForwardAddress;
+        System.Net.IPAddress? local = vpnManager?.TunnelAddress;
+        if (forward is null || local is null) return;
+        System.Net.IPAddress? exit = await VpnExitAddress.QueryAsync(local, cancellationToken).ConfigureAwait(false);
+        if (exit is null || !exit.Equals(forward)) return;
+        LogManager.Instance.LogMessage(
+            $"Traffic now leaves from {exit}, the address the port is forwarded on - the exit-address reconnect count starts again",
+            LogLevel.Info);
+        _vpnExitReconnects = 0;
+        _vpnExitGiveUpNotified = false;
+        _vpnExitGiveUpForward = null;
     }
 
     // Raises the PortVerificationFailed balloon event. A throwing handler must not break the cycle.
@@ -1607,7 +1630,8 @@ public sealed class PortSyncService
     // a NAT-PMP pair after a switch to a provider that reports none.
     // keepReconnects (the open-port case): the reconnects already made stay spent, so a client whose test
     // flips to open in between cannot buy a fresh MaxVpnExitReconnects each time - only a lookup that finds
-    // the addresses equal (EndVpnExitHold) or a provider with no forward address starts the count again.
+    // the addresses equal (EndVpnExitHold, or ResetSpentExitReconnectsIfMatchedAsync on an open result), a
+    // provider with no forward address, or verification switched off starts the count again.
     private void ClearVpnExitMismatch(bool keepReconnects = false)
     {
         _vpnExitMismatch = false;

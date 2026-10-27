@@ -140,12 +140,12 @@ This counter drives two behaviors:
 
 1. **Default port fallback** - if `DefaultPort` is a usable port, the cycle applies it to the client so it remains functional (typically on a non-VPN port). If it is `0`, or outside the usable range, the cycle is skipped entirely.
 
-2. **Auto-recovery** - if enabled, once the counter reaches the configured threshold *and* the failure streak has lasted at least `(threshold - 1) x interval` seconds, the cycle:
-   - Resets the counter (to prevent repeated triggers)
+2. **Auto-recovery** - if enabled, once the counter reaches the configured threshold *and* the failure streak has lasted at least `(threshold - 1) x interval` seconds, the cycle, in this order:
    - Determines the recovery action and target based on the provider type:
-     - **ProtonVPN / PIA (direct, or NAT-PMP on their adapter with their service installed):** action = `restart`, target = the resolved Windows service name - the main app auto-discovers the service name and sends it to the helper, which restarts it directly
+     - **ProtonVPN / PIA (direct, or NAT-PMP on their adapter with their service installed):** action = `restart`, target = the provider token - `AutoRecoveryManager` resolves it to the installed Windows service name and sends that to the helper, which restarts it directly
      - **NAT-PMP with a generic gateway, and Static port:** action = `cycle-adapter`, target = adapter name - the helper disables and re-enables the adapter via netsh (Static port on a known provider's adapter restarts that provider's service, as NAT-PMP does, but only when that provider's service is installed: a WireGuard tunnel named after the provider, run without its app, is cycled instead)
-   - Passes through the connectivity rate limiter (below)
+   - Passes through the connectivity rate limiter (below), and then, only when the machine is online, the consecutive-recovery cap
+   - Resets the counter (to prevent repeated triggers) - after the slot and the cap, so a held attempt leaves the streak running
    - Sends the recovery request to the helper service (runs as SYSTEM) via named pipe. After a service restart the helper **verifies** the service actually reached Running (`AutoRecovery.VerifyServiceRunningAsync`) rather than reporting success on the strength of having issued the start: `StartServiceAsync` deliberately swallows a start timeout, so without the check a service that never came back would still be logged as "Restarted". A service left not-Running is logged at **Error**, which travels back over the pipe in the helper's ERROR count and raises the tray alert. That matters most with a VPN killswitch enabled, where a service that fails to restart leaves the machine with no network at all.
 
      **Log levels around the force-kill escalation.** The helper's WARN count travels back over the same pipe as the ERROR count and also raises the tray warning badge, so what the helper logs at Warn is a user-visible signal, not just text in a file. Levels are therefore assigned by outcome, not by drama: *announcing* an escalation to a force-kill is **Info** (it is the designed fallback), a stage that *succeeds* is **Info** ("force-killed via ..."), and only a stage that *fails* is **Warn** ("Failed to ...", "could not be killed", "still running"). This is not a rare path - ProtonVPN's service does not accept an SCM stop while its tunnel is up, so a normal recovery times out after `ServiceOperationTimeoutMs` and force-kills **every time**; a service that shares its host process with others (svchost) or runs in a system process is never force-killed - the helper logs a warning and goes on to the start; its own restart-on-failure policy then usually brings it back before the helper issues the start, which is why the log often reads "is already running". Logging that sequence at Warn made every successful recovery badge the tray as though something had gone wrong. The main app follows the same rule: `ProcessControl` logs only kill outcomes, and `AutoRecoveryManager` logs a successful kill at Info.
@@ -174,7 +174,7 @@ This exists because the alternative is actively harmful, not merely wasteful. Re
 
 `MaxConsecutiveRecoveries` (3) bounds how many auto-recoveries the **failed-cycle trigger** may dispatch without a single successful port read between them. `_consecutiveRecoveries` is incremented in `TriggerRecoveryIfDueAsync` past every other gate, at the point a recovery is actually dispatched, so attempts held by the connectivity rate limiter do not consume it. It is cleared by a successful port fetch and when auto-recovery is switched off, and deliberately **not** by `ResetFailureStreak` - the dispatch path resets that streak every time it fires, so clearing the count there would mean the cap was never reached.
 
-Once the cap is hit, the check returns before the sustained-failure floor and the rate limiter, logging through `LogStateChange` so the suspension is stated once rather than every cycle. The failure streak is left running rather than reset: the failures genuinely are continuing, and the count is what the per-cycle log line and the Status panel's Auto-recovery line report.
+Once the cap is hit, the check returns after the sustained-failure floor and the rate-limiter slot (the cap applies only to an online slot) and before the dispatch, logging through `LogStateChange` so the suspension is stated once rather than every cycle. The failure streak is left running rather than reset: the failures genuinely are continuing, and the count is what the per-cycle log line and the Status panel's Auto-recovery line report.
 
 The reasoning mirrors `MaxDisconnectRestarts` (see Restart-on-Disconnect Cap): a remedy that has failed three times running is not addressing the cause, and each repetition costs the user a torn-down tunnel and interrupted transfers. None of the pre-existing gates covered this. The cycle count and the sustained-failure floor both reset with the streak, so they bound how *fast* recoveries arrive but not how *many*; and the connectivity rate limiter only engages when the machine cannot reach the internet at all, which is precisely not the case when the VPN is up and merely portless. Recovery resumes on its own the moment a port reads successfully, so an intermittently failing VPN is never permanently suspended - only an unbroken run of futile recoveries is.
 
@@ -258,7 +258,7 @@ The Settings form's **Test** button (Auto-recovery header row) dispatches the sa
 
 All client communication goes through the `IManagedClient` interface, with implementations for qBittorrent (`QBittorrentClient`), Transmission (`TransmissionClient`), Deluge (`DelugeClient`), and Nicotine+ (`NicotineClient`). The active implementation is selected each cycle based on the configured client setting.
 
-> **Nicotine+** is a Soulseek client with no remote-control interface of its own. `NicotineClient` talks to the qbPortWeaver bridge plugin (`plugins/qbpw_nicotine_bridge/`), a GPL-3.0 Nicotine+ plugin that serves a token-authenticated JSON API on `127.0.0.1`. The plugin discovers itself to qbPortWeaver by writing its address and token to `%LocalAppData%\qbPortWeaver\nicotine-bridge.json`, which `NicotinePluginDiscovery` reads. It applies a port change by rewriting the setting and forcing a reconnect - the same thing the Preferences dialog does - so the port is live in roughly five seconds with no restart. Accordingly `NicotineClient.RestartAsync` is a deliberate no-op: killing Nicotine+ would discard its configuration, since it only writes it on a graceful shutdown.
+> **Nicotine+** is a Soulseek client with no remote-control interface of its own. `NicotineClient` talks to the qbPortWeaver bridge plugin (`plugins/qbpw_nicotine_bridge/`), a GPL-3.0-or-later Nicotine+ plugin that serves a token-authenticated JSON API on `127.0.0.1` by default. The plugin discovers itself to qbPortWeaver by writing its address and token to `%LocalAppData%\qbPortWeaver\nicotine-bridge.json`, which `NicotinePluginDiscovery` reads. It applies a port change by rewriting the setting and forcing a reconnect - the same thing the Preferences dialog does - so the port is live in roughly five seconds with no restart. Accordingly `NicotineClient.RestartAsync` is a deliberate no-op: killing Nicotine+ would discard its configuration, since it only writes it on a graceful shutdown.
 
 ### Port Update Sequence
 
@@ -787,19 +787,31 @@ RunAsync
          │   ├─ ApplyPortUpdateAsync
          │   │   ├─ IManagedClient.SetListeningPortAsync
          │   │   └─ IManagedClient.RestartAsync
-         │   ├─ PortHistoryManager.Append (on successful change)
+         │   ├─ PortHistoryManager.Append (whenever the port was written, even if the restart failed)
          │   └─ PortUpdated?.Invoke (if NotifyOnPortUpdate)
          ├─ CheckAndRestartIfDisconnectedAsync (qBittorrent only; skipped if already restarted)
          │   └─ IManagedClient.RestartAsync
-         ├─ VerifyPortAsync (if verifyPortAfterSync and VPN connected)
+         ├─ VerifyPortAsync (if verifyPortAfterSync and VPN connected; otherwise ClearVpnExitMismatch when verification is off)
          │   ├─ ShouldVerifyThisCycle (throttle)
          │   ├─ IManagedClient.TestListeningPortAsync
-         │   ├─ HandlePortOpenResult (re-arms port-closed recovery)
-         │   ├─ HandlePortClosedResult (PortVerificationFailed event + history entry on confirmed transition)
-         │   └─ MaybeTriggerPortClosedRecoveryAsync (one-shot)
-         │       ├─ TryRebindClientAddressAsync (qBittorrent; if the adapter changed address)
-         │       │   └─ QBittorrentClient.ForceInterfaceRebindAsync (holds the restart one round)
-         │       └─ DispatchRecoveryAsync
+         │   ├─ undetermined: CheckVpnExitAddressForUndeterminedAsync
+         │   │   ├─ CheckVpnExitAddressAsync (see below)
+         │   │   └─ ReconnectForExitAddressAsync (mismatch, port-closed recovery on)
+         │   ├─ open: ClearVpnExitMismatch (keeps spent reconnects)
+         │   │   ├─ ResetSpentExitReconnectsIfMatchedAsync (only while reconnects are spent)
+         │   │   └─ HandlePortOpenResult (re-arms port-closed recovery)
+         │   └─ closed:
+         │       ├─ CheckVpnExitAddressAsync (confirming check, or a mismatch held)
+         │       │   ├─ VpnExitAddress.QueryAsync (STUN through the VPN adapter)
+         │       │   ├─ mismatch: StartNewExitEpisodeIfForwardChanged, then the Warn and balloon on entry
+         │       │   ├─ no forward address: EndVpnExitHoldWithoutForward
+         │       │   └─ otherwise: EndVpnExitHold
+         │       ├─ HandlePortClosedResult (PortVerificationFailed event + history entry on confirmed transition)
+         │       └─ MaybeTriggerPortClosedRecoveryAsync
+         │           ├─ mismatch held: ReconnectForExitAddressAsync (up to 3, spaced 2 minutes, then the give-up)
+         │           ├─ TryRebindClientAddressAsync (qBittorrent; if the adapter changed address)
+         │           │   └─ QBittorrentClient.ForceInterfaceRebindAsync (holds the restart one round)
+         │           └─ DispatchRecoveryAsync (one-shot)
          └─ SetSyncResult
 ```
 

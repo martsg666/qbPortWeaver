@@ -39,10 +39,11 @@ internal readonly record struct HelperResult(bool Completed, int WarnCount, int 
         if (IsRejected)
         {
             // One "rejected" reply covers a token mismatch, a failed impersonation and an underivable log
-            // path, so this line names only what all three share; the helper logs which one it was.
+            // path, so this line names only what all three share; the helper logs which one it was, as its
+            // own entry in the Windows Application event log under the source qbPortWeaver.HelperService.
             LogManager.Instance.LogMessage(
                 "Helper service rejected the command - the session token did not match or the helper could not " +
-                "verify the calling user (the helper's reason is in the Windows Application event log)",
+                "verify the calling user (the helper's reason is in the Windows Application event log, source qbPortWeaver.HelperService)",
                 LogLevel.Warn);
             return;
         }

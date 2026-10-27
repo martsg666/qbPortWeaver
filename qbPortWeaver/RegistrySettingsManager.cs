@@ -899,6 +899,7 @@ public static class RegistrySettingsManager
                 try
                 {
                     byte[] decrypted = ProtectedData.Unprotect(encrypted, null, DataProtectionScope.CurrentUser);
+                    LogManager.Instance.ClearLogState($"settings.decrypt.{section}.{key}");
                     return Encoding.UTF8.GetString(decrypted);
                 }
                 catch (CryptographicException ex)
@@ -906,8 +907,10 @@ public static class RegistrySettingsManager
                     // Value parsed as Base64 but DPAPI cannot decrypt it - typically a machine/profile
                     // change (registry restored on a different machine) or DPAPI master key rotation.
                     // Returning the raw Base64 would produce a confusing auth failure; surface the
-                    // underlying cause at Warn so the user can re-enter the value in Settings.
-                    LogManager.Instance.LogMessage(
+                    // underlying cause at Warn so the user can re-enter the value in Settings. Once per
+                    // state, keyed per value: the sync cycle reads it every cycle, and a condition only the
+                    // user can fix would otherwise repeat the Warn and keep raising the badge.
+                    LogManager.Instance.LogStateChange($"settings.decrypt.{section}.{key}",
                         $"Failed to decrypt [{section}] {key}: {ex.Message} - re-enter the value in Settings",
                         LogLevel.Warn);
                     return string.Empty;

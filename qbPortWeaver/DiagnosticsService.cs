@@ -114,7 +114,14 @@ public static class DiagnosticsService
         {
             using var sc = new ServiceController(HelperProtocol.ServiceName);
             ServiceControllerStatus status = sc.Status; // throws InvalidOperationException when the service is not installed
-            if (status == ServiceControllerStatus.Running)
+            // A helper from another version can be left behind by a partial upgrade or a downgrade (an
+            // older installer does not replace a newer helper), and the app otherwise only notices at the
+            // first recovery that completes. Unknown version (unreadable file) is not a mismatch.
+            string? helperVersion = status == ServiceControllerStatus.Running ? GetHelperServiceVersion() : null;
+            if (status == ServiceControllerStatus.Running && helperVersion is not null && helperVersion != AppVersion)
+                results.Add(new(Checks.HelperService, DiagnosticStatus.Warn, $"Installed and running, but version {helperVersion} (the app is {AppVersion})",
+                    "Reinstall qbPortWeaver so the helper service matches the app."));
+            else if (status == ServiceControllerStatus.Running)
                 results.Add(new(Checks.HelperService, DiagnosticStatus.Pass, "Installed and running"));
             else
                 results.Add(new(Checks.HelperService, DiagnosticStatus.Warn, $"Installed but {status}",
@@ -607,7 +614,7 @@ public static class DiagnosticsService
     /// <summary>
     /// The installed helper service's file version, or <see langword="null"/> when the service is not
     /// installed or its executable cannot be read. Read from the service's on-disk ImagePath so it
-    /// reflects the actually-installed helper (surfacing a version mismatch after a partial upgrade).
+    /// reflects the actually-installed helper; the Helper service row warns when it differs from the app's.
     /// </summary>
     internal static string? GetHelperServiceVersion()
     {

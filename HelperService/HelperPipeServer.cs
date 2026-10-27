@@ -154,7 +154,7 @@ internal sealed class HelperPipeServer(ILogger<HelperPipeServer> logger) : Backg
 
         if (!TryReadClientHkcu(pipe, pipeSessionToken, out var logFilePath, out bool debugMode))
         {
-            logger.LogWarning("Rejected pipe message: session token mismatch or could not derive log file path");
+            // TryReadClientHkcu has logged which check failed.
             try
             {
                 // No ConfigureAwait on the disposal, unlike every other await here: applying it to the
@@ -274,9 +274,22 @@ internal sealed class HelperPipeServer(ILogger<HelperPipeServer> logger) : Backg
         catch (Exception ex)
         {
             logger.LogWarning(ex, "Pipe client impersonation failed");
+            return false; // logged with its cause just above
         }
         logFilePath = derivedPath;
         debugMode = derivedDebugMode;
-        return tokenValid && !string.IsNullOrEmpty(logFilePath);
+        // Each rejection names its own cause: the tray app gets one "rejected" reply for all of them and
+        // points the user here, so this is the only place that can say which it was.
+        if (!tokenValid)
+        {
+            logger.LogWarning("Rejected pipe message: the session token does not match the caller's registry (another session, or the tray app restarted)");
+            return false;
+        }
+        if (string.IsNullOrEmpty(logFilePath))
+        {
+            logger.LogWarning("Rejected pipe message: the caller's log file path could not be derived from its Volatile Environment");
+            return false;
+        }
+        return true;
     }
 }

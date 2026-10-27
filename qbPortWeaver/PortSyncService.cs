@@ -45,6 +45,7 @@ public sealed class PortSyncService
     private const string BindingAddressStateKey = "client.bindingAddressStale";
     private const string RecoveryCapStateKey = "vpn.recoveryCapReached";
     private const string VpnExitMismatchStateKey = "vpn.exitAddressMismatch";
+    private const string VpnExitNoTargetStateKey = "vpn.exitAddressNoRecoveryTarget";
     private const string UnexpectedErrorDetailsStateKey = "sync.unexpectedErrorDetails";
 
     /// <summary>Raised when a sync cycle completes (success or failure) with the resulting tray status.</summary>
@@ -1648,6 +1649,7 @@ public sealed class PortSyncService
             _vpnExitGiveUpForward = null;
             _vpnExitAnnounced = false;
             LogManager.Instance.ClearLogState(VpnExitMismatchStateKey);
+            LogManager.Instance.ClearLogState(VpnExitNoTargetStateKey);
         }
     }
 
@@ -1690,6 +1692,7 @@ public sealed class PortSyncService
         _vpnProtonOverOpenVpn = false;
         _vpnExitAnnounced = false;
         LogManager.Instance.ClearLogState(VpnExitMismatchStateKey);
+        LogManager.Instance.ClearLogState(VpnExitNoTargetStateKey);
     }
 
     private void HandlePortOpenResult(string clientName, int port, SyncConfig config)
@@ -2018,9 +2021,13 @@ public sealed class PortSyncService
         string? target = vpnManager.GetRecoveryTarget();
         if (target is null)
         {
-            LogManager.Instance.LogMessage($"No recovery target found for '{vpnManager.ProviderName}' - cannot reconnect for a matching exit address", LogLevel.Warn);
+            // Once per state: verification runs every cycle while reconnects remain, and this is a setting
+            // the user has to fix, so repeating it would only keep raising the badge.
+            LogManager.Instance.LogStateChange(VpnExitNoTargetStateKey,
+                $"No recovery target found for '{vpnManager.ProviderName}' - cannot reconnect for a matching exit address", LogLevel.Warn);
             return;
         }
+        LogManager.Instance.ClearLogState(VpnExitNoTargetStateKey);
 
         _vpnExitReconnects++;
         _vpnExitLastReconnectAt = _uptime.Elapsed;

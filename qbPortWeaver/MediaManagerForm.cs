@@ -1050,7 +1050,7 @@ public partial class MediaManagerForm : Form
         => new Progress<bool>(waiting =>
         {
             if (IsDisposed) return;
-            lblScanStatus.Text = waiting ? "Waiting for a running import to finish…" : resumeStatus;
+            lblScanStatus.Text = waiting ? "Waiting for another Media Manager task to finish…" : resumeStatus;
         });
 
     private void BeginProgress()

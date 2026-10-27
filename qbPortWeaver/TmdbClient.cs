@@ -176,6 +176,16 @@ public sealed class TmdbClient(string apiKey)
             return (info, isConfident);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+        catch (TmdbUnavailableException ex)
+        {
+            // Once per state rather than once per title: every remaining lookup of the run fails the same
+            // way, and a Warn each would bury the log and pin the badge. Cleared by the next success.
+            LogManager.Instance.LogDebug($"TmdbClient.LookupAsync: {mediaKind} '{query.Title}' skipped: {ex.Message}", Subsystem.MediaManager);
+            LogManager.Instance.LogStateChange(UnavailableStateKey,
+                "TMDB is unreachable or rejected the API key - the remaining lookups of this run are skipped; check the API key in the Media Manager and the connection",
+                LogLevel.Warn, Subsystem.MediaManager);
+            return (null, false);
+        }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException)
         {
             LogManager.Instance.LogMessage($"Failed to look up TMDB {mediaKind}: {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
@@ -183,22 +193,54 @@ public sealed class TmdbClient(string apiKey)
         }
     }
 
+    // State key for the "TMDB unavailable" Warn, so a run of failures reports once.
+    private const string UnavailableStateKey = "tmdb.unavailable";
+
+    // Thrown for a lookup once TMDB has failed in a way every later lookup of the run would repeat: the
+    // key was rejected (401/403), TMDB could not be reached, or it timed out. Each later call then fails
+    // at once instead of spending a request - up to the 10 s timeout - and a Warn per title.
+    // Public only because exception types must be (S3871); nothing outside this class throws or catches it.
+    public sealed class TmdbUnavailableException(string message, Exception? inner = null) : Exception(message, inner);
+
+    // Set by the first such failure; this instance serves one import or scan run, so it resets with the next.
+    private volatile bool _unavailable;
+
+    private static bool MeansUnavailable(Exception ex, CancellationToken cancellationToken) => ex switch
+    {
+        HttpRequestException { StatusCode: null } => true,                                  // could not be reached
+        HttpRequestException { StatusCode: System.Net.HttpStatusCode.Unauthorized or System.Net.HttpStatusCode.Forbidden } => true,
+        TaskCanceledException when !cancellationToken.IsCancellationRequested => true,      // timed out
+        _ => false,
+    };
+
     // Enforces a minimum delay between TMDB API calls to avoid HTTP 429 rate limiting.
     // The delay runs inside the semaphore hold so the next caller waits for the cooldown to finish.
     private async Task<T?> GetWithRateLimitAsync<T>(string url, CancellationToken cancellationToken = default)
     {
+        if (_unavailable) throw new TmdbUnavailableException("TMDB failed earlier in this run");
         await _rateLimiter.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
+            T? result;
             if (_useBearer)
             {
                 using var request = new HttpRequestMessage(HttpMethod.Get, url);
                 request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", apiKey);
                 using var response = await _httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
                 response.EnsureSuccessStatusCode();
-                return await response.Content.ReadFromJsonAsync<T>(cancellationToken).ConfigureAwait(false);
+                result = await response.Content.ReadFromJsonAsync<T>(cancellationToken).ConfigureAwait(false);
             }
-            return await _httpClient.GetFromJsonAsync<T>(url, cancellationToken).ConfigureAwait(false);
+            else
+            {
+                result = await _httpClient.GetFromJsonAsync<T>(url, cancellationToken).ConfigureAwait(false);
+            }
+            LogManager.Instance.ClearLogState(UnavailableStateKey);
+            return result;
+        }
+        catch (Exception ex) when (MeansUnavailable(ex, cancellationToken))
+        {
+            _unavailable = true;
+            throw new TmdbUnavailableException(ex.Message, ex);
         }
         finally
         {

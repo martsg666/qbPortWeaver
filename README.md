@@ -112,9 +112,11 @@ After installing, open **Settings** from the tray icon to configure the applicat
   Optionally run a custom command after a successful port update (fire-and-forget). See SampleSendMail.ps1 for an example of sending an email notification with status details.
 
 - **Media Manager**
-  Imports movie and TV episode files into Plex-compatible library folders each cycle, using [TMDB](https://www.themoviedb.org) for titles and years and Plex naming (`Title (Year).ext`, `Show (Year) - SxxExx.ext`, multi-episode `SxxExxExx`) via hardlink (falling back to copy across volumes), copy, or move. Beyond the `SxxExx` pattern, episodes in season subfolders with numbered filenames (`Show/Season N/01-Title.mp4`) are recognised too (English, French, Spanish, and Italian season indicators). It can create Plex subfolders (`Movies/Title (Year)/`, `TV Shows/Show (Year)/Season XX/`) and delete emptied source folders (including `.nfo`-only ones).
+  Imports movie and TV episode files into Plex-compatible library folders each cycle, using [TMDB](https://www.themoviedb.org) for titles and years and Plex naming (`Title (Year).ext`, `Show (Year) - SxxExx.ext`, multi-episode `SxxExxExx`) via hardlink (falling back to copy across volumes), copy, or move. Beyond the `SxxExx` pattern, episodes in season subfolders with numbered filenames (`Show/Season N/01-Title.mp4`) are recognised too (English, French, Spanish, and Italian season indicators). Season 0 (`S00Exx`, or a `Season 00` folder), where Plex and TMDB put a show's specials, is imported like any other season. It can create Plex subfolders (`Movies/Title (Year)/`, `TV Shows/Show (Year)/Season XX/`) and delete emptied source folders (including `.nfo`-only ones).
 
   A dedicated **Media Manager** dialog (tray menu → Media Manager) configures source and library folders, previews imports (**Scan Now**), and applies or corrects them (**Import Now**), highlighting uncertain TMDB matches. A free TMDB API key is required.
+
+  A file counts as already imported when the same file is in the library now, whatever its name there, so a title deleted from the library is imported again on a later cycle while its source file remains. To keep it out, remove or move the source file as well.
 
 - **Tray Icon Interface**
   Runs quietly in the background with a system tray icon for quick access to logs, settings, and controls.

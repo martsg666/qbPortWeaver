@@ -368,10 +368,12 @@ public partial class MediaManagerForm : Form
             return (info, isConfident);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException)
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException
+                                       or TmdbClient.TmdbUnavailableException)
         {
             // A real cancel propagates above; a timeout or an unreadable reply is one failed lookup, as in
-            // TmdbClient.LookupAsync, so the remaining rows are still re-matched.
+            // TmdbClient.LookupAsync, so the remaining rows are still re-matched. TmdbUnavailableException is
+            // the client failing fast after an earlier failure of the same kind in this Re-match.
             LogManager.Instance.LogMessage($"Re-match {mediaLabel} lookup failed for '{title}': {ex.Message}", LogLevel.Warn, Subsystem.MediaManager);
             return (null, false);
         }
@@ -588,14 +590,9 @@ public partial class MediaManagerForm : Form
         if (chkDeleteEmptyFolders.Checked)
         {
             lblScanStatus.Text = "Cleaning up empty folders…";
-            await Task.Run(() =>
-            {
-                foreach (var folder in sourceFolders)
-                {
-                    cancellationToken.ThrowIfCancellationRequested();
-                    MediaManagerService.CleanupEmptyFolders(folder, dryRun: false);
-                }
-            }, cancellationToken);
+            // Through the media gate like the import before it, so a sync-cycle import cannot run on the
+            // same folders at the same time.
+            await MediaManagerService.CleanupSourceFoldersAsync(sourceFolders, CreateWaitProgress("Cleaning up empty folders…"), cancellationToken);
         }
 
         if (IsDisposed) return null;

@@ -54,17 +54,20 @@ public partial class WhatsNewForm : Form
         "Fixed: multi-part movies and subtitles in the Media Manager\n" +
         "Movies split into several files, named only by part (cd1, Part.1, CD_2) or each carrying the title and year, " +
         "are now recognised, keep their part numbers on Re-match and import into one folder. Import " +
-        "Now brings subtitles along, and every import moves subtitles only with a video it placed.\n\n" +
+        "Now brings subtitles along, and every import moves subtitles only with a video it placed. Season 0 " +
+        "episodes, where Plex and TMDB put a show's specials, are now imported too.\n\n" +
         "Fixed: Media Manager status messages\n" +
         "An unreachable library or source folder is reported instead of \"All files already imported\", a slow TMDB " +
         "answer no longer stops Re-match, the Import Now result stays on screen, and errors are " +
-        "written to the log.\n\n" +
+        "written to the log. When TMDB cannot be reached or rejects the API key, the rest of that run's " +
+        "lookups are skipped with one warning, instead of a warning and a wait for every title.\n\n" +
         "Fixed: Media Manager scans with other library folders\n" +
-        "Scan Now, Import Now and Clear Cache wait for the import running on the sync cycle instead of " +
+        "Scan Now, Import Now (including its cleanup of empty folders) and Clear Cache wait for the import running on the sync cycle instead of " +
         "disturbing it, which could fill the log with warnings about files already in the library. A scan also " +
         "no longer forgets what it knew about the configured library, so the next import does not " +
         "re-read every library file, and closing the Media Manager during a scan no longer leaves the " +
-        "next imports using an out-of-date view of the library.\n\n" +
+        "next imports using an out-of-date view of the library. The library is now read while the source " +
+        "folders are listed rather than before, so a scan over network shares finishes sooner.\n\n" +
         "Fixed: Nicotine+ /qbpw-test and other Windows accounts\n" +
         "/qbpw-test now shows its result in the chat you typed it in, and a closed port is checked again " +
         "instead of repeated from an earlier answer, so a short sync interval no longer reports it closed " +

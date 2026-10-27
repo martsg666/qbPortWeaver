@@ -255,24 +255,15 @@ internal static partial class MediaImporter
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            // Fingerprinting failed (typically a transient SMB hiccup). Fall back to size comparison.
-            // The fallback can also throw if the file became inaccessible between the calls, so guard
-            // it too - returning false makes the caller attempt the import, which has its own IO
-            // protections (AddFileToLibrary catches IOException, and the "destination conflict"
-            // check re-tests File.Exists). Better to retry the import than abort the whole category.
-            try
-            {
-                var sourceInfo = new FileInfo(sourcePath);
-                var destInfo = new FileInfo(destinationPath);
-                return sourceInfo.Length == destInfo.Length;
-            }
-            catch (Exception fallbackEx) when (fallbackEx is IOException or UnauthorizedAccessException)
-            {
-                LogManager.Instance.LogDebug(
-                    $"MediaImporter.DestinationMatchesSource: Both fingerprint and length check failed for '{Path.GetFileName(sourcePath)}' ({ex.GetType().Name}, then {fallbackEx.GetType().Name}: {fallbackEx.Message})",
-                    Subsystem.MediaManager);
-                return false;
-            }
+            // Fingerprinting failed (typically a transient SMB hiccup): not known to match. This used to
+            // fall back to comparing sizes, which could count a different file of the same size as the one
+            // already placed, and then put its subtitles beside it. Not a match costs at most a skipped
+            // file this cycle - the caller never overwrites an existing destination - and the next cycle,
+            // with the share back, decides properly.
+            LogManager.Instance.LogDebug(
+                $"MediaImporter.DestinationMatchesSource: Could not fingerprint '{Path.GetFileName(sourcePath)}' or its destination ({ex.GetType().Name}: {ex.Message}) - treated as not matching",
+                Subsystem.MediaManager);
+            return false;
         }
     }
 
@@ -298,7 +289,11 @@ internal static partial class MediaImporter
                 && entry.LastWriteTimeTicks == fi.LastWriteTimeUtc.Ticks)
                 return true;
         }
-        return IsFileWriteComplete(fi.FullName);
+        if (IsFileWriteComplete(fi.FullName)) return true;
+        // Debug: the normal state of a file still being written, retried every cycle - but without a line
+        // the log cannot say why a finished file another process keeps open is never imported.
+        LogManager.Instance.LogDebug($"MediaImporter.IsFileReadyForImport: Skipped '{fi.Name}' - it is open for writing by another process", Subsystem.MediaManager);
+        return false;
     }
 
     /// <summary>
@@ -938,14 +933,16 @@ internal static partial class MediaImporter
     }
 
     /// <summary>
-    /// Persists the source cache to disk, pruning entries for files that no longer exist.
-    /// No-op if the cache has not changed since the last save (or load).
+    /// Persists the source cache to disk, pruning entries for files that no longer exist - from the saved
+    /// copy and from the in-memory cache alike, so a file that is gone is checked for once, not on every
+    /// save for the rest of the session. No-op if the cache has not changed since the last save (or load).
     /// </summary>
     internal static void SaveSourceCache()
     {
         try
         {
             Dictionary<string, CacheEntry> snapshot;
+            Dictionary<string, CacheEntry> source;
             bool wasDirty;
             lock (_sourceCacheLock)
             {
@@ -953,6 +950,7 @@ internal static partial class MediaImporter
                 // a reference captured outside could be orphaned by a concurrent ClearAllCaches,
                 // and saving it would resurrect the just-deleted cache file.
                 if (_sourceCache is null) return;
+                source = _sourceCache;
                 snapshot = new Dictionary<string, CacheEntry>(_sourceCache, StringComparer.OrdinalIgnoreCase);
                 wasDirty = _sourceCacheDirty;
                 _sourceCacheDirty = false; // reset inside lock so concurrent writes after this point re-set it
@@ -970,6 +968,18 @@ internal static partial class MediaImporter
             var toSave = mightHaveStaleEntries
                 ? snapshot.Where(kv => File.Exists(kv.Key)).ToDictionary(kv => kv.Key, kv => kv.Value, StringComparer.OrdinalIgnoreCase)
                 : snapshot;
+
+            if (toSave.Count < snapshot.Count)
+            {
+                lock (_sourceCacheLock)
+                {
+                    // Only into the dictionary the snapshot came from: after a ClearAllCaches or a reload,
+                    // _sourceCache is another instance that these keys say nothing about.
+                    if (ReferenceEquals(_sourceCache, source))
+                        foreach (var key in snapshot.Keys.Where(k => !toSave.ContainsKey(k)))
+                            source.Remove(key);
+                }
+            }
 
             WriteCacheToDisk(toSave, SourceCacheFileName, "SaveSourceCache");
         }

@@ -282,6 +282,19 @@ public static class MediaManagerService
         LogManager.Instance.LogMessage($"Processed source folder '{folder}': {TextFormat.Pluralize(totalFiles, "file")}", LogLevel.Info, Subsystem.MediaManager);
     }
 
+    /// <summary>
+    /// Removes empty folders left in the given source folders, as one media operation: it waits for any
+    /// other (the sync cycle's import included) and holds the gate while it runs, so it never deletes a
+    /// folder another operation is moving files out of or listing. For the window's Import Now, which used
+    /// to run this outside the gate.
+    /// </summary>
+    public static Task CleanupSourceFoldersAsync(string[] sourceFolders, IProgress<bool>? waiting = null, CancellationToken cancellationToken = default)
+        => RunExclusiveAsync(() => Task.Run(() =>
+        {
+            CleanupSourceFolders(sourceFolders, dryRun: false, cancellationToken);
+            return true;
+        }, cancellationToken), waiting, cancellationToken);
+
     // Runs folder cleanup for all configured source folders.
     private static void CleanupSourceFolders(string[] sourceFolders, bool dryRun, CancellationToken cancellationToken)
     {
@@ -448,8 +461,8 @@ public static class MediaManagerService
         }
     }
 
-    // Loads caches, validates source folders, then runs the library index build and source enumeration
-    // concurrently (both are directory listings on different paths). Fingerprints candidates once the
+    // Loads caches, validates source folders, then runs the library index build (on its own task) and the
+    // source enumeration concurrently (both are directory listings on different paths). Fingerprints candidates once the
     // library index is ready. allowLibraryReuse: true for background sync cycles (reuses index up to
     // FullRebuildIntervalCycles); false for UI-initiated scans (always rebuilds for fresh results).
     // Returns null when the library index could not be built (or was incomplete) so the caller can
@@ -488,8 +501,22 @@ public static class MediaManagerService
             validFolders.Add(f);
         }
 
-        var libraryTask = MediaImporter.BuildLibraryIndexAsync(moviesLibraryPath, tvShowsLibraryPath, allowReuse: allowLibraryReuse, cancellationToken);
-        var enumeration = await EnumerateSourceFoldersAsync(validFolders, cancellationToken).ConfigureAwait(false);
+        // On its own task: BuildLibraryIndexAsync does its walk synchronously before it first yields, so
+        // called directly it would finish before the source listing even started.
+        var libraryTask = Task.Run(() => MediaImporter.BuildLibraryIndexAsync(moviesLibraryPath, tvShowsLibraryPath, allowReuse: allowLibraryReuse, cancellationToken), cancellationToken);
+        List<(string Folder, List<FileInfo> Candidates, bool Failed)> enumeration;
+        try
+        {
+            enumeration = await EnumerateSourceFoldersAsync(validFolders, cancellationToken).ConfigureAwait(false);
+        }
+        catch
+        {
+            // Never return with the build still running: the caller releases the one-at-a-time media gate
+            // when this returns, and a build outliving it would race the next operation's. The listing's
+            // exception is the one reported; the build's own outcome is not wanted here.
+            await ((Task)libraryTask).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+            throw;
+        }
         // A folder that exists but could not be listed (the share dropped after the check above) is
         // as unread as one that is missing, and must not reach the window as "All files already imported".
         unreadableFolders.AddRange(enumeration.Where(e => e.Failed).Select(e => e.Folder));

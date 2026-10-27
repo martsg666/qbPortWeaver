@@ -58,12 +58,26 @@ public interface IVpnManager
     /// The public address the port is forwarded on, when the provider reports one; otherwise
     /// <see langword="null"/>. Compared with the address traffic actually leaves from (see
     /// <see cref="VpnExitAddress"/>): when they differ, peers are given the exit address and cannot
-    /// reach the forward. When non-null, <see cref="ProviderName"/> is the network adapter the
-    /// forward was made through, so the exit address is looked up from that adapter.
-    /// <para>Only NAT-PMP reports it - its external-address reply carries it. ProtonVPN's log, PIA and
-    /// Static port do not, so the check does not run for them.</para>
+    /// reach the forward.
+    /// <para>NAT-PMP takes it from the gateway's external-address reply, ProtonVPN from the server
+    /// address its client logs on each connection. PIA and Static port report none, so the check
+    /// does not run for them. Valid after <see cref="GetVpnPortAsync"/> has run this cycle.</para>
     /// </summary>
     System.Net.IPAddress? ForwardAddress => null;
+
+    /// <summary>
+    /// The VPN adapter's current IPv4 address, which the exit-address lookup is sent from so that it
+    /// leaves through the tunnel; <see langword="null"/> when the adapter is not up or has none, and for
+    /// providers without a <see cref="ForwardAddress"/>. Read live on each call, because the VPN hands
+    /// the adapter a new address on every reconnect.
+    /// </summary>
+    System.Net.IPAddress? TunnelAddress => null;
+
+    /// <summary>
+    /// How the exit-address messages name where the forward comes from - the NAT-PMP adapter, or the
+    /// ProtonVPN server - so the user knows what to change. Defaults to <see cref="ProviderName"/>.
+    /// </summary>
+    string ForwardSource => ProviderName;
 
     /// <summary>
     /// Returns the recovery target passed to <c>AutoRecoveryManager.TriggerRestartAsync</c> or

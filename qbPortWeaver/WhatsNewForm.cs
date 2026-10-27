@@ -17,7 +17,7 @@ public partial class WhatsNewForm : Form
         "Tells you when a VPN server sends your traffic out on the wrong address\n" +
         "Some VPN servers forward your port on one address but send your traffic out on another, so " +
         "peers are given an address with no forward and the port stays closed whatever you do. With " +
-        "NAT-PMP, qbPortWeaver now checks this when the port reads closed and names both addresses in " +
+        "NAT-PMP or ProtonVPN, qbPortWeaver now checks this when the port reads closed and names both addresses in " +
         "the log, the notification, the Status panel and Diagnostics, so you know to connect to a " +
         "different server. Auto-recovery no longer restarts the VPN for it, since that does not help. " +
         "The notification script example and the status file report both addresses too.\n\n" +

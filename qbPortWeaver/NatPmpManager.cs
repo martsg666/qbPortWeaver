@@ -49,6 +49,12 @@ public sealed class NatPmpManager : IVpnManager
     // happens every sync cycle, so it is never older than the cycle reading it.
     public IPAddress? ForwardAddress { get; }
 
+    /// <inheritdoc />
+    public IPAddress? TunnelAddress => VpnAdapter.GetIPv4Address(_adapter.Name);
+
+    /// <inheritdoc />
+    public string ForwardSource => $"'{_adapter.Name}'";
+
     /// <summary>Lease lifetime in seconds granted by the gateway on the last successful port mapping; 0 until first mapping.</summary>
     public uint LastGrantedLifetime { get; private set; }
 

@@ -1421,7 +1421,7 @@ public sealed class PortSyncService
             return;
         }
 
-        System.Net.IPAddress? local = VpnAdapter.GetIPv4Address(vpnManager.ProviderName);
+        System.Net.IPAddress? local = vpnManager.TunnelAddress;
         System.Net.IPAddress? exit = local is null
             ? null
             : await VpnExitAddress.QueryAsync(local, cancellationToken).ConfigureAwait(false);
@@ -1436,13 +1436,13 @@ public sealed class PortSyncService
             if (!_vpnExitMismatch) _confirmedClosedCount = 0;
             _vpnExitMismatch = true;
             LogManager.Instance.LogStateChange(VpnExitMismatchStateKey,
-                VpnExitAddress.DescribeMismatch(vpnManager.ProviderName, port, forward, exit), LogLevel.Warn);
+                VpnExitAddress.DescribeMismatch(vpnManager.ForwardSource, port, forward, exit), LogLevel.Warn);
             return;
         }
 
         if (exit is not null && _vpnExitMismatch)
             LogManager.Instance.LogMessage(
-                $"Traffic now leaves '{vpnManager.ProviderName}' from {exit}, the address the port is forwarded on", LogLevel.Info);
+                $"Traffic now leaves the VPN from {exit}, the address the port is forwarded on", LogLevel.Info);
         else if (exit is null)
             LogManager.Instance.LogDebug("PortSyncService.CheckVpnExitAddressAsync: exit address could not be determined");
         _vpnExitMismatch = false;
@@ -1526,7 +1526,7 @@ public sealed class PortSyncService
         // With a known exit-address mismatch the balloon names the cause and the fix, since a bare
         // "not reachable" sends the user looking at the client, which is not where the problem is.
         string balloon = _vpnExitMismatch && _vpnForwardAddress is not null && _vpnExitAddress is not null && config.VpnManager is not null
-            ? VpnExitAddress.DescribeMismatch(config.VpnManager.ProviderName, port, _vpnForwardAddress, _vpnExitAddress) + "."
+            ? VpnExitAddress.DescribeMismatch(config.VpnManager.ForwardSource, port, _vpnForwardAddress, _vpnExitAddress) + "."
             : $"{clientName} port {port} is not reachable from outside.";
         try { PortVerificationFailed?.Invoke(balloon); }
         catch (Exception ex) { LogManager.Instance.LogMessage($"PortVerificationFailed handler failed: {ex.Message}", LogLevel.Warn); }

@@ -264,7 +264,7 @@ public static class DiagnosticsService
     {
         if (vpn.ForwardAddress is not System.Net.IPAddress forward) return;
 
-        System.Net.IPAddress? local = VpnAdapter.GetIPv4Address(vpn.ProviderName);
+        System.Net.IPAddress? local = vpn.TunnelAddress;
         System.Net.IPAddress? exit = local is null
             ? null
             : await VpnExitAddress.QueryAsync(local, cancellationToken).ConfigureAwait(false);
@@ -278,7 +278,7 @@ public static class DiagnosticsService
         else
             results.Add(new(Checks.VpnExitAddress, DiagnosticStatus.Warn,
                 $"Forwarded on {forward}, but traffic leaves from {exit}",
-                VpnExitAddress.DescribeMismatch(vpn.ProviderName, port, forward, exit) + "."));
+                VpnExitAddress.DescribeMismatch(vpn.ForwardSource, port, forward, exit) + "."));
     }
 
     // The P2P-server advice fits ProtonVPN and PIA, including NAT-PMP on one of their adapters. A

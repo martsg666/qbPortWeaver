@@ -63,7 +63,7 @@ function RecoveryState($s) {
 function OnOff($enabled) { if ($enabled) { 'Enabled' } else { 'Disabled' } }
 
 # Whether traffic leaves the VPN from the address the port is forwarded on. The app looks this up
-# only when a port check reports the port closed, and only for NAT-PMP, so "Not checked" is normal
+# only when a port check reports the port closed, and only for NAT-PMP and ProtonVPN, so "Not checked" is normal
 # while the port is open, for other providers, and for app versions without these keys.
 function AddressMatch($s) {
     if ($s.vpnExitAddressMismatch) { return 'No - peers cannot reach the forwarded port; connect the VPN to a different server' }

@@ -52,21 +52,21 @@ internal static class VpnExitAddress
     /// Explains a mismatch between the forward address and the exit address, for the log, the tray
     /// balloon and Diagnostics. Shared so the three cannot describe the same condition differently.
     /// </summary>
-    /// <param name="adapterName">The adapter the forward was made through.</param>
+    /// <param name="source">Where the forward comes from, as <see cref="IVpnManager.ForwardSource"/> names it.</param>
     /// <param name="port">The forwarded port, or <see langword="null"/> when none is named.</param>
-    /// <param name="forward">The address the gateway forwards the port on.</param>
+    /// <param name="forward">The address the port is forwarded on.</param>
     /// <param name="exit">The address traffic leaves from.</param>
-    internal static string DescribeMismatch(string adapterName, int? port, IPAddress forward, IPAddress exit)
+    internal static string DescribeMismatch(string source, int? port, IPAddress forward, IPAddress exit)
     {
         string portText = port is int p ? $"port {p}" : "the port";
         // A private or shared forward address is the user's own router reporting its WAN side, which
         // sits behind a second NAT (carrier-grade NAT, or another router upstream). No server to switch
         // to there, so the VPN advice would be wrong.
         if (IsBehindAnotherNat(forward))
-            return $"The NAT-PMP gateway on '{adapterName}' forwards {portText} on {forward}, a private address, " +
+            return $"The NAT-PMP gateway on {source} forwards {portText} on {forward}, a private address, " +
                    $"while traffic leaves from {exit} - the gateway is itself behind another NAT, so the port " +
                    "cannot be reached from the Internet";
-        return $"'{adapterName}' forwards {portText} on {forward}, but traffic leaves from {exit}. Peers are " +
+        return $"{source} forwards {portText} on {forward}, but traffic leaves from {exit}. Peers are " +
                $"given {exit}, so they cannot reach the forwarded port - connect the VPN to a different server";
     }
 

@@ -24,8 +24,49 @@ public sealed partial class ProtonVpnManager : IVpnManager
     [GeneratedRegex(@"Port pair\s+(\d+)->(?:\d+)")]
     private static partial Regex PortPairRegex();
 
+    // The server address the client is connected to: "... connected to server with IPv4 'a.b.c.d' ...".
+    // Written more than once per connection, the first time sometimes with a different address of the
+    // same server, so only the newest line counts - that one has matched the NAT-PMP forward address.
+    [GeneratedRegex(@"connected to server with IPv4 '(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})'")]
+    private static partial Regex ServerAddressRegex();
+
+    // The server name: "... Connected to server CA#104 ...". Case-sensitive on purpose: the address line
+    // above contains "connected to server with", which must not be read as a server named "with".
+    [GeneratedRegex(@"Connected to server ([A-Z]{2}(?:-[A-Z]{2})?#\d+[A-Za-z0-9-]*)")]
+    private static partial Regex ServerNameRegex();
+
+    // Read lazily, once per instance: only the exit-address check needs them, and only while the port
+    // reads closed, whereas the port is read every cycle. The server lines are written once per
+    // connection, so on a long session they sit far back in the file - or have been rotated out of it,
+    // in which case both stay null and the check does not run.
+    private bool _serverScanned;
+    private System.Net.IPAddress? _serverAddress;
+    private string? _serverName;
+
     /// <inheritdoc />
     public string ProviderName => RegistrySettingsManager.VpnProviderProtonVpn;
+
+    /// <inheritdoc />
+    public System.Net.IPAddress? ForwardAddress
+    {
+        get { EnsureServerScanned(); return _serverAddress; }
+    }
+
+    /// <inheritdoc />
+    public System.Net.IPAddress? TunnelAddress
+    {
+        get
+        {
+            string? adapter = VpnAdapter.GetActiveInterfaces().Find(nic => MatchesProtonAdapter(nic.Name))?.Name;
+            return adapter is null ? null : VpnAdapter.GetIPv4Address(adapter);
+        }
+    }
+
+    /// <inheritdoc />
+    public string ForwardSource
+    {
+        get { EnsureServerScanned(); return _serverName is null ? ProviderName : $"{ProviderName} server {_serverName}"; }
+    }
 
     /// <summary>Creates a manager that reads the forwarded port from the ProtonVPN client log file at <paramref name="logFilePath"/>.</summary>
     public ProtonVpnManager(string logFilePath)
@@ -134,12 +175,51 @@ public sealed partial class ProtonVpnManager : IVpnManager
         }
     }
 
-    // Scans the log file from the end in chunks and returns the most recent matched port.
-    // Opens with FileShare.ReadWrite so ProtonVPN can keep writing while we read.
-    // Note: if a chunk boundary falls mid-multi-byte UTF-8 character, GetString produces a
-    // replacement char on that boundary. This is harmless because the target pattern
-    // "Port pair N->N" is pure ASCII and ProtonVPN logs use ASCII-only content.
+    // Returns the most recent matched port.
     private int? ReadLastPortFromLog()
+    {
+        int? port = null;
+        ScanLogBackwards(line =>
+        {
+            var match = PortPairRegex().Match(line);
+            if (match.Success && int.TryParse(match.Groups[1].Value, out int p)) port = p;
+            return port is not null;
+        });
+        return port;
+    }
+
+    // Finds the newest server address and server name lines, once per instance. Any failure leaves
+    // them null, which only means the exit-address check does not run this cycle.
+    private void EnsureServerScanned()
+    {
+        if (_serverScanned) return;
+        _serverScanned = true;
+        if (string.IsNullOrWhiteSpace(_logFilePath) || !File.Exists(_logFilePath)) return;
+        try
+        {
+            ScanLogBackwards(line =>
+            {
+                if (_serverAddress is null && ServerAddressRegex().Match(line) is { Success: true } address &&
+                    System.Net.IPAddress.TryParse(address.Groups[1].Value, out var parsed))
+                    _serverAddress = parsed;
+                if (_serverName is null && ServerNameRegex().Match(line) is { Success: true } name)
+                    _serverName = name.Groups[1].Value;
+                return _serverAddress is not null && _serverName is not null;
+            });
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            LogManager.Instance.LogDebug($"ProtonVpnManager.EnsureServerScanned: {ex.Message}");
+        }
+        LogManager.Instance.LogDebug($"ProtonVpnManager.EnsureServerScanned: server {_serverName ?? "(none)"} at {_serverAddress?.ToString() ?? "(none)"}");
+    }
+
+    // Scans the log file from the end in chunks, passing each line newest first to visit until it
+    // returns true. Opens with FileShare.ReadWrite so ProtonVPN can keep writing while we read.
+    // Note: if a chunk boundary falls mid-multi-byte UTF-8 character, GetString produces a
+    // replacement char on that boundary. This is harmless because the patterns searched for are pure
+    // ASCII and ProtonVPN logs use ASCII-only content.
+    private void ScanLogBackwards(Func<string, bool> visit)
     {
         // FileShare.Delete as well as ReadWrite. Windows requires DELETE access on an open handle before
         // another process can rename over it, so without it a log rotation by ProtonVPN *during* this
@@ -169,25 +249,16 @@ public sealed partial class ProtonVpnManager : IVpnManager
             // lines[0] may be a partial line whose start is in the next (earlier) chunk
             lineFragment = lines[0];
 
-            // Process complete lines right-to-left; stop on first match
+            // Process complete lines right-to-left; stop as soon as visit is satisfied
             for (int i = lines.Length - 1; i >= 1; i--)
             {
                 string line = lines[i].TrimEnd('\r');
-                if (line.Length == 0) continue;
-                var match = PortPairRegex().Match(line);
-                if (match.Success && int.TryParse(match.Groups[1].Value, out int port))
-                    return port;
+                if (line.Length > 0 && visit(line)) return;
             }
         }
 
-        // Check the very first line of the file
+        // The very first line of the file
         if (lineFragment.Length > 0)
-        {
-            var match = PortPairRegex().Match(lineFragment.TrimEnd('\r'));
-            if (match.Success && int.TryParse(match.Groups[1].Value, out int port))
-                return port;
-        }
-
-        return null;
+            visit(lineFragment.TrimEnd('\r'));
     }
 }

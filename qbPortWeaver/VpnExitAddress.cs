@@ -84,7 +84,8 @@ internal static class VpnExitAddress
     /// </summary>
     internal static string DescribeMismatchShort(string source, int port, IPAddress forward, IPAddress exit, bool protonOverOpenVpn)
     {
-        // The home-router text is short enough to fit as it is.
+        // The home-router text fits as it is: about 220 characters plus the adapter name, so it passes the
+        // limit only for adapter names longer than about 35 characters.
         if (IsBehindAnotherNat(forward))
             return DescribeMismatch(source, port, forward, exit, protonOverOpenVpn) + ".";
         string advice = protonOverOpenVpn

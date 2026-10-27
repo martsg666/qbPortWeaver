@@ -232,7 +232,9 @@ public sealed class PortSyncService
     // protocol (see IVpnManager.IsProtonVpnOverOpenVpn).
     private bool _vpnProtonOverOpenVpn;
     // Reconnects made for the current mismatch (see ReconnectForExitAddressAsync), and whether the user
-    // has been told they ran out. Both reset when the mismatch ends.
+    // has been told they ran out. Reset by a matching lookup (including the one an open result makes while
+    // they are spent), a provider with no forward address, or verification switched off - not by an open
+    // result alone or a failed lookup.
     private int _vpnExitReconnects;
     private bool _vpnExitGiveUpNotified;
     // The forward address the give-up was for, so a mismatch on another one is told apart as a new server

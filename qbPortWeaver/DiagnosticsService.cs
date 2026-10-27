@@ -382,8 +382,9 @@ public static class DiagnosticsService
         results.Add(result);
     }
 
-    // Ready, but the saved connection settings may still point somewhere else - which works (the
-    // client re-reads the file) yet costs a failed request every cycle, so it is worth flagging.
+    // Ready, but the saved connection settings may still point somewhere else - which still works
+    // (the client prefers the connection file from its first request) but leaves the saved settings
+    // out of date, so it is worth flagging.
     // The mismatch rule itself is NicotinePluginInstaller.ConnectionSettingsDiffer, shared with the
     // Settings label so the report and that label cannot disagree about this condition. Here it is
     // applied to the saved registry values, which is what the sync loop will actually use.

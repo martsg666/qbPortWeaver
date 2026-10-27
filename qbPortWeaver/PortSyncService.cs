@@ -233,7 +233,7 @@ public sealed class PortSyncService
     private bool _vpnProtonOverOpenVpn;
     // Reconnects made for the current mismatch (see ReconnectForExitAddressAsync), and whether the user
     // has been told they ran out. Reset by a matching lookup (including the one an open result makes while
-    // they are spent), a provider with no forward address, or verification switched off - not by an open
+    // they are spent), a switch to a provider with no forward address, or verification switched off - not by an open
     // result alone or a failed lookup.
     private int _vpnExitReconnects;
     private bool _vpnExitGiveUpNotified;
@@ -243,6 +243,9 @@ public sealed class PortSyncService
     // Whether the current mismatch episode has had its balloon. Outlives a failed lookup, which ends the
     // hold but not the episode; cleared by a matching lookup, an open port or a provider with no forward.
     private bool _vpnExitAnnounced;
+    // The provider the last successful forward-address read came from, so a provider that cannot read its
+    // forward right now is told apart from a switch to one that reports none (see CheckVpnExitAddressAsync).
+    private string? _vpnExitProvider;
 
     // Incremented each time a recovery action is dispatched (automatic or manual test). A recovery
     // is pending while this is ahead of _recoveryGenerationConsumed, and the next successful cycle
@@ -1522,12 +1525,10 @@ public sealed class PortSyncService
         System.Net.IPAddress? forward = vpnManager?.ForwardAddress;
         if (vpnManager is null || forward is null)
         {
-            // A hold ending this way - typically a switch to a provider that reports no forward address -
-            // restarts the closed-port sequence for the same reason a matching lookup does below.
-            if (_vpnExitMismatch) RestartClosedPortSequence();
-            ClearVpnExitMismatch();
+            EndVpnExitHoldWithoutForward(vpnManager);
             return;
         }
+        _vpnExitProvider = vpnManager.ProviderName;
 
         System.Net.IPAddress? local = vpnManager.TunnelAddress;
         System.Net.IPAddress? exit = local is null
@@ -1563,6 +1564,25 @@ public sealed class PortSyncService
         }
 
         EndVpnExitHold(exit);
+    }
+
+    // No forward address to compare. The same provider failing to read it right now - ProtonVPN once its log
+    // has rotated the connection line away - is no evidence either way, so it is handled as a failed lookup:
+    // the hold ends but the episode, its reconnects and its give-up stay, or the next fresh log line would
+    // start a whole new round of reconnects hours after a give-up. The exit address goes, so the status file
+    // does not show the old differing pair beside a cleared mismatch. Only a different provider (a switch to
+    // one that reports none) ends the episode outright. Either way the hold ending restarts the closed-port
+    // sequence, for the same reason a matching lookup does.
+    private void EndVpnExitHoldWithoutForward(IVpnManager? vpnManager)
+    {
+        if (vpnManager is not null && string.Equals(vpnManager.ProviderName, _vpnExitProvider, StringComparison.Ordinal))
+        {
+            _vpnExitAddress = null;
+            EndVpnExitHold(null);
+            return;
+        }
+        if (_vpnExitMismatch) RestartClosedPortSequence();
+        ClearVpnExitMismatch();
     }
 
     // After a give-up, a mismatch on a different forward address is a new server - usually the one the
@@ -1640,7 +1660,7 @@ public sealed class PortSyncService
     // keepReconnects (the open-port case): the reconnects already made stay spent, so a client whose test
     // flips to open in between cannot buy a fresh MaxVpnExitReconnects each time - only a lookup that finds
     // the addresses equal (EndVpnExitHold, or ResetSpentExitReconnectsIfMatchedAsync on an open result), a
-    // provider with no forward address, or verification switched off starts the count again.
+    // switch to a provider with no forward address, or verification switched off starts the count again.
     private void ClearVpnExitMismatch(bool keepReconnects = false)
     {
         _vpnExitMismatch = false;

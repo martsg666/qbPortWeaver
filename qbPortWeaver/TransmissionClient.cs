@@ -21,7 +21,6 @@ public sealed class TransmissionClient : ManagedClientBase
     // every preference changed since it started - the RPC password included. A few seconds was not
     // always enough; the exit is polled, so a quick close still restarts quickly.
     private const int WindowCloseWaitMs = 20000;
-    private const int WindowClosePollMs = 500;
     private const string RpcPath = "/transmission/rpc";
     private const string SessionIdHeader = "X-Transmission-Session-Id";
     private const string JsonContentType = "application/json";
@@ -396,7 +395,7 @@ public sealed class TransmissionClient : ManagedClientBase
             // close loses whatever the user changed in Transmission since it started. With its
             // notification-area icon on, Transmission hides its window instead of quitting when the window
             // is closed, which is the likeliest reason it is still running, so the Warn names that setting.
-            if (!closeSent || !await WaitForExitAsync(cancellationToken).ConfigureAwait(false))
+            if (!closeSent || !await WaitForProcessExitAsync(WindowCloseWaitMs, cancellationToken).ConfigureAwait(false))
             {
                 LogManager.Instance.LogMessage(
                     $"{ClientName} did not close" + (closeSent ? $" within {WindowCloseWaitMs / 1000} seconds" : string.Empty) +
@@ -419,19 +418,6 @@ public sealed class TransmissionClient : ManagedClientBase
             LogManager.Instance.LogMessage($"Failed to restart {ClientName}: {ex.Message} - check the Executable path in Settings ({ExePath})", LogLevel.Error);
             return false;
         }
-    }
-
-    // Polls for the Qt client to exit after its window was closed. True once no process is left,
-    // false if one is still running when WindowCloseWaitMs runs out.
-    private async Task<bool> WaitForExitAsync(CancellationToken cancellationToken)
-    {
-        var deadline = Environment.TickCount64 + WindowCloseWaitMs;
-        while (IsProcessRunning())
-        {
-            if (Environment.TickCount64 >= deadline) return false;
-            await Task.Delay(WindowClosePollMs, cancellationToken).ConfigureAwait(false);
-        }
-        return true;
     }
 
     // Sends a Transmission RPC request, handling the CSRF token handshake transparently.

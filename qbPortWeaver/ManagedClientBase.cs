@@ -16,6 +16,9 @@ public abstract class ManagedClientBase : IManagedClient // NOSONAR S3881 - all 
     protected const int ProcessInitDelayMs = 1000;    // warm restart, via RestartAsync
     protected const int ProcessKillTimeoutMs = 5000;
     protected const int ProcessKillRetryDelayMs = 1000;
+    // How long a client asked to exit cleanly (RequestGracefulExitAsync) gets before it is killed.
+    private const int GracefulExitWaitMs = 15000;
+    protected const int ProcessExitPollMs = 500;
     private const int ApiReadyPollIntervalMs = 500;
     private const int ApiReadyTimeoutSeconds = 30;
     private const int ApiProbeTimeoutSeconds = 2;
@@ -96,13 +99,21 @@ public abstract class ManagedClientBase : IManagedClient // NOSONAR S3881 - all 
     }
 
     /// <inheritdoc/>
-    /// <remarks>Kills all running processes and launches a new instance. Subclasses may override
-    /// <see cref="PreRestartAsync"/> to inject work (e.g. a config-flush wait) before the kill step.</remarks>
+    /// <remarks>Asks the client to exit cleanly where it can (<see cref="RequestGracefulExitAsync"/>), then
+    /// kills whatever remains and launches a new instance. Subclasses may override
+    /// <see cref="PreRestartAsync"/> to inject work (e.g. a config-flush wait) before the exit step.</remarks>
     public virtual async Task<bool> RestartAsync(CancellationToken cancellationToken = default)
     {
         try
         {
             await PreRestartAsync(cancellationToken).ConfigureAwait(false);
+            // A clean exit saves state a kill would lose. Warn when it does not happen in time, as the
+            // Transmission restart does, because the kill below then loses that state after all.
+            if (await RequestGracefulExitAsync(cancellationToken).ConfigureAwait(false)
+                && !await WaitForProcessExitAsync(GracefulExitWaitMs, cancellationToken).ConfigureAwait(false))
+                LogManager.Instance.LogMessage(
+                    $"{ClientName} did not exit within {GracefulExitWaitMs / 1000} seconds of being asked to - force-closing it; " +
+                    "state it saves only on exit may be lost", LogLevel.Warn);
             // Kill all running processes and verify none remain before launching the new instance,
             // to avoid the new process inheriting a port or file lock held by a still-dying instance.
             if (!await KillAndVerifyAsync(cancellationToken).ConfigureAwait(false)) return false;
@@ -223,6 +234,24 @@ public abstract class ManagedClientBase : IManagedClient // NOSONAR S3881 - all 
 
     // Kills all processes matching ProcessName, waits for stragglers, then retries once.
     // Returns false (and logs an error) if processes remain after both passes.
+    // Asks the client to exit cleanly before a restart. True when the request was accepted, so a
+    // process exit should follow; false when the client has no such request or it could not be made,
+    // and the restart goes straight to the kill as it always did.
+    protected virtual Task<bool> RequestGracefulExitAsync(CancellationToken cancellationToken) => Task.FromResult(false);
+
+    // Polls for every ProcessName process to exit. True once none is left, false if one is still running
+    // when timeoutMs runs out. Monotonic clock, so a wall-clock change cannot stretch or cut the wait.
+    protected async Task<bool> WaitForProcessExitAsync(int timeoutMs, CancellationToken cancellationToken)
+    {
+        var deadline = Environment.TickCount64 + timeoutMs;
+        while (IsProcessRunning())
+        {
+            if (Environment.TickCount64 >= deadline) return false;
+            await Task.Delay(ProcessExitPollMs, cancellationToken).ConfigureAwait(false);
+        }
+        return true;
+    }
+
     protected async Task<bool> KillAndVerifyAsync(CancellationToken cancellationToken)
     {
         ProcessControl.KillProcessesByName(ProcessName, ProcessKillTimeoutMs, ClientName);

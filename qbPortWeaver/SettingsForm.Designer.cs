@@ -33,8 +33,8 @@ partial class SettingsForm
         nudUpdateInterval         = new NumericUpDown();
         lblSeconds                = new Label();
         chkResyncOnNetworkChange  = new CheckBox();
-        lblVpnAdapter          = new Label();
-        cboVpnAdapter          = new ComboBox();
+        lblVpnAdapter             = new Label();
+        cboVpnAdapter             = new ComboBox();
         btnRefreshAdapters        = new Button();
         lblStaticPort             = new Label();
         nudStaticPort             = new NumericUpDown();

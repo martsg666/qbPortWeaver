@@ -357,7 +357,13 @@ internal static partial class AutoRecovery
     {
         try
         {
-            if (sc.ServiceHandle.IsInvalid) return;
+            // Every early return logs its reason: StopServiceAsync's "still not stopped" line that follows
+            // relies on each route having said why the process was not killed.
+            if (sc.ServiceHandle.IsInvalid)
+            {
+                logger.LogMessage($"Service '{sc.ServiceName}' could not be force-killed - its service handle is not valid", LogLevel.Warn);
+                return;
+            }
 
             int bufSize = Marshal.SizeOf<ServiceStatusProcess>();
             IntPtr buf = Marshal.AllocHGlobal(bufSize);
@@ -368,7 +374,11 @@ internal static partial class AutoRecovery
                 // ServiceController is finalized concurrently. Avoids DangerousGetHandle.
                 if (!QueryServiceStatusEx(sc.ServiceHandle,
                         SC_STATUS_PROCESS_INFO, buf, bufSize, out _))
+                {
+                    logger.LogMessage($"Service '{sc.ServiceName}' could not be force-killed - its process ID could not be read " +
+                        $"(error {Marshal.GetLastPInvokeError()})", LogLevel.Warn);
                     return;
+                }
 
                 var status = Marshal.PtrToStructure<ServiceStatusProcess>(buf);
 
@@ -384,7 +394,12 @@ internal static partial class AutoRecovery
                 }
 
                 int pid = status.dwProcessId;
-                if (pid <= 0) return;
+                if (pid <= 0)
+                {
+                    // No process: the service stopped on its own after the stop timed out.
+                    logger.LogMessage($"Service '{sc.ServiceName}' has no process left to force-kill", LogLevel.Info);
+                    return;
+                }
 
                 // Known residual risk: between QueryServiceStatusEx returning the PID and
                 // GetProcessById opening it, the service process could exit cleanly and Windows
@@ -393,7 +408,12 @@ internal static partial class AutoRecovery
                 // typically takes much longer, so the probability is negligible in practice.
                 Process process;
                 try { process = Process.GetProcessById(pid); }
-                catch (ArgumentException) { return; } // already exited between SCM query and here
+                catch (ArgumentException)
+                {
+                    // Already exited between the SCM query and here.
+                    logger.LogMessage($"Service '{sc.ServiceName}' process (PID {pid}) exited before it could be force-killed", LogLevel.Info);
+                    return;
+                }
 
                 using (process)
                 {

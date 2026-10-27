@@ -179,11 +179,12 @@ internal static class AutoRecoveryManager
                 // Leave exePath null so the registry fallback path is used below.
                 LogManager.Instance.LogDebug($"AutoRecoveryManager.KillClientProcesses: Could not read exe path for '{processName}': {ex.Message}");
             }
+            int killed = 0;
             foreach (var p in processes)
             {
                 try
                 {
-                    ProcessControl.KillProcess(p, $"Client process '{processName}'");
+                    if (ProcessControl.KillProcess(p, $"Client process '{processName}'")) killed++;
                 }
                 catch (Exception ex) { LogManager.Instance.LogDebug($"AutoRecoveryManager.KillClientProcesses: Kill '{processName}': {ex.Message}"); }
             }
@@ -191,10 +192,14 @@ internal static class AutoRecoveryManager
             // exePath is also null when instances *were* killed but MainModule threw (the 32/64-bit
             // mismatch and access-denied cases handled above), and VPN clients commonly run elevated -
             // so using it here would report "was not running" immediately after killing them.
-            if (processes.Length > 0)
-                LogManager.Instance.LogMessage($"Killed client process '{processName}'", LogLevel.Info);
-            else
+            // Counted, so the line only claims the kills that happened: an instance KillProcess could not
+            // end has already been reported by it at Warn, and "Killed" after that would contradict it.
+            if (processes.Length == 0)
                 LogManager.Instance.LogDebug($"AutoRecoveryManager.KillClientProcesses: Client process '{processName}' was not running");
+            else if (killed == processes.Length)
+                LogManager.Instance.LogMessage($"Killed client process '{processName}'", LogLevel.Info);
+            else if (killed > 0)
+                LogManager.Instance.LogMessage($"Killed {killed} of {processes.Length} '{processName}' client processes", LogLevel.Info);
             return exePath;
         }
         finally

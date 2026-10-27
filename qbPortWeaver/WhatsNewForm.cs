@@ -10,10 +10,6 @@ public partial class WhatsNewForm : Form
 
     private const string ReleaseFeaturesText =
         "New in 2.7.0\n\n" +
-        "Works with VPN providers that give you a permanent port\n" +
-        "Choose Static port as the VPN provider in Settings, pick your VPN's network adapter and enter " +
-        "the port. The network interface checks, the open-port check, auto-recovery and the default " +
-        "port all work as they do with the other providers.\n\n" +
         "Tells you when a VPN server sends your traffic out on the wrong address\n" +
         "Some VPN servers forward your port on one address but send your traffic out on another, so " +
         "peers are given an address with no forward and the port stays closed whatever you do. With " +
@@ -21,6 +17,10 @@ public partial class WhatsNewForm : Form
         "the log, the notification, the Status panel and Diagnostics, so you know to connect to a " +
         "different server. Auto-recovery no longer restarts the VPN for it, since that does not help. " +
         "The notification script example and the status file report both addresses too.\n\n" +
+        "Works with VPN providers that give you a permanent port\n" +
+        "Choose Static port as the VPN provider in Settings, pick your VPN's network adapter and enter " +
+        "the port. The network interface checks, the open-port check, auto-recovery and the default " +
+        "port all work as they do with the other providers.\n\n" +
         "Changed: clearer status when something needs fixing\n" +
         "A missing setting, or a default port that could not be applied, now shows the tray red with " +
         "the reason instead of orange \"VPN not connected\". Hover over Last sync in the Status panel " +
@@ -35,6 +35,10 @@ public partial class WhatsNewForm : Form
         "Changed: latest .NET security update included\n" +
         "qbPortWeaver now ships with the October 2026 .NET update, which fixes a flaw in its " +
         "decompression code. qbPortWeaver never used that code, but you get the fix anyway.\n\n" +
+        "Fixed: the open-port check works with Deluge again\n" +
+        "Deluge's own port check can fail without an answer, which left Deluge's port as \"could not be " +
+        "determined\" every time. qbPortWeaver now asks the same check service itself, through the VPN, " +
+        "so Test Port, Diagnostics and the regular check report open or closed again.\n\n" +
         "Fixed: auto-recovery\n" +
         "A recovery that could not relaunch the VPN client app, or an adapter cycle that failed, is no " +
         "longer logged as completed. An adapter with a short name such as \"VPN\" is no longer " +
@@ -71,9 +75,7 @@ public partial class WhatsNewForm : Form
         "Nicotine+ commands no longer print \"None\", the Nicotine+ plugin shows as not enabled when " +
         "Nicotine+ has plugins turned off, and a failed Transmission settings check is no longer " +
         "reported as passed. When qbPortWeaver restarts Transmission after a port change, Transmission " +
-        "now has time to close normally, so a password or other setting changed in it is no longer lost. " +
-        "When Deluge cannot check its own port, qbPortWeaver now asks the same check service itself, " +
-        "through the VPN, so the open-port check works with Deluge again.\n\n" +
+        "now has time to close normally, so a password or other setting changed in it is no longer lost.\n\n" +
         "Previously released\n\n" +
         "New in 2.6.9\n\n" +
         "Your settings can be backed up and restored\n" +

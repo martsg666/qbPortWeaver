@@ -1266,15 +1266,16 @@ public sealed class PortSyncService
         // failing, not as it correctly standing down. Only logged when an arm was really spent, so a
         // routine port change on a client whose address never moved stays quiet.
         //
-        // Gated on the same two facts the rebind itself is gated on, not on the arm alone.
-        // CheckInterfaceAddressAsync sets the arm whatever fixInterfaceBinding says, so on a machine
-        // with the repair switched off this cycle would log "will not be rebound" and then, seconds
+        // Gated on the same facts RebindClause promises the rebind on - reachable by settings, and
+        // port-closed recovery still armed - not on the arm alone. CheckInterfaceAddressAsync sets the
+        // arm whatever fixInterfaceBinding says, and whether or not recovery for this outage has
+        // already run, so in either case this cycle would log "will not be rebound" and then, seconds
         // later, "the pending rebind is no longer needed" - announcing the cancellation of something
         // that was never pending. The client test matters for a narrower reason: only the qBittorrent
         // path sets the arm and nothing clears it when the active client changes, so a switch to
         // another client between the address change and the next port write would name that client
         // in a message about a rebind that was never pending for it.
-        if (_interfaceAddressChangedSinceRebind && config.RebindReachable && manager is QBittorrentClient)
+        if (_interfaceAddressChangedSinceRebind && config.RebindReachable && _portClosedRecoveryArmed && manager is QBittorrentClient)
         {
             LogManager.Instance.LogMessage(
                 $"The port write rebuilt {manager.ClientName}'s listen sockets, so the pending rebind for the " +

@@ -15,6 +15,7 @@ namespace qbPortWeaver;
 internal static class VpnExitAddress
 {
     private const int TimeoutMs = 2000;
+    private const int DnsTimeoutMs = 3000;
     private const int MaxAttempts = 2;
     private const int HeaderLength = 20;
     private const int TransactionIdLength = 12;
@@ -107,10 +108,19 @@ internal static class VpnExitAddress
 
     private static async Task<IPAddress?> ResolveServerAsync(CancellationToken cancellationToken)
     {
+        // Bounded like each UDP attempt: a resolver that is down (likely right after a reconnect) would
+        // otherwise hold the sync cycle for the system's own DNS timeout.
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(DnsTimeoutMs);
         try
         {
-            IPAddress[] addresses = await Dns.GetHostAddressesAsync(AppConstants.StunServerHost, AddressFamily.InterNetwork, cancellationToken).ConfigureAwait(false);
+            IPAddress[] addresses = await Dns.GetHostAddressesAsync(AppConstants.StunServerHost, AddressFamily.InterNetwork, timeout.Token).ConfigureAwait(false);
             return addresses.FirstOrDefault();
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            LogManager.Instance.LogDebug($"VpnExitAddress.ResolveServerAsync: {AppConstants.StunServerHost} did not resolve within {DnsTimeoutMs} ms");
+            return null;
         }
         catch (SocketException ex)
         {

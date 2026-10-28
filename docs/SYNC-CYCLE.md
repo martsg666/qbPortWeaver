@@ -361,11 +361,14 @@ repaired in this same cycle. `CheckAndRepairInterfaceBindingAsync` returns that 
 call site is an `&&`, because a correct token is a *precondition* of reading the address rather than
 a description of the usual case. Measured, on qBittorrent 5.2.3:
 `GET /api/v2/app/networkInterfaceAddressList?iface=<stale token>` answers **HTTP 200 with an empty
-array**, not an error - so `live` comes back as `[]` rather than `null`, the "unknown rather than
-healthy" guard below never fires, and the adapter reads as having lost every address it has. Ungated,
-that produced a `Warn` or an `Info` stating something false, armed the port-closed escalation on
-nothing, and left `_lastKnownInterfaceAddresses` empty so the next readable cycle reported a second
-phantom change back. `DiagnosticsService.AddInterfaceResultAsync` returns after a stale token for the
+array**, not an error. Taken at face value the adapter would read as having lost every address it has,
+so `QBittorrentClient.GetInterfaceAddressStateAsync` maps an empty list to `null` (a stale token, or one
+naming an adapter that is not there): it reads as unknown, and the "unknown rather than healthy" guard
+below applies. The `&&` gate is the second guard, repairing a stale token before the address is read at
+all. Ungated and unmapped, it produced a `Warn` or an `Info` stating something false, armed the
+port-closed escalation on nothing, and left `_lastKnownInterfaceAddresses` empty so the next readable
+cycle reported a second phantom change back. The mapping has an accepted cost: an adapter that is up
+but has no address yet answers with an empty list too, and reads as unknown for those few seconds. `DiagnosticsService.AddInterfaceResultAsync` returns after a stale token for the
 same reason; the sync loop had claimed the precondition in a comment without enforcing it.
 
 | condition | response |
@@ -382,7 +385,7 @@ transport failure at `Error`, which would raise the tray error badge inside a br
 calls an ordinary reconnect. Here the status only decorates the line, the `"no status"` fallback
 already treats an unreadable one as expected, and a failure logs at `Debug`.
 
-An unreadable list (older qBittorrent, unreachable API, nothing bound) is treated as *unknown*, not
+An unreadable list (older qBittorrent, unreachable API, nothing bound, a token that resolves to no adapter) is treated as *unknown*, not
 healthy, and leaves the remembered addresses alone - so the next readable cycle compares against the
 last real observation and a change spanning the gap is still reported.
 

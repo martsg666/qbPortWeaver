@@ -8,6 +8,7 @@ setting and forcing a reconnect - so the new port is live in about five seconds 
 never has to be restarted.
 """
 
+import errno
 import os
 import secrets
 import threading
@@ -95,6 +96,17 @@ def _port_summary(core_io):
     active = core_io.active_port()
     in_use = f"{active} in use" if active is not None else "none in use (not connected)"
     return f"{core_io.configured_port()} configured, {in_use}"
+
+
+# Windows reports socket errors with their WSA codes: 10048 is address in use, 10013 access
+# denied, which is also what a port inside one of Windows' reserved ranges gives.
+_PORT_UNAVAILABLE_WINERRORS = (10048, 10013)
+
+
+def _is_port_unavailable(error):
+    """Whether a bind failed because of the port, not the address."""
+    return (error.errno in (errno.EADDRINUSE, errno.EACCES, *_PORT_UNAVAILABLE_WINERRORS)
+            or getattr(error, "winerror", None) in _PORT_UNAVAILABLE_WINERRORS)
 
 
 class Plugin(BasePlugin):
@@ -277,6 +289,12 @@ class Plugin(BasePlugin):
                     nicotine_version=self._nicotine_version()
                 )
             except OSError as error:
+                # Only a port that is taken or reserved is worth trying another for. Anything else -
+                # a name that does not resolve, an address this machine no longer has - fails the same
+                # way on every port, and blaming the port would send the user to the wrong setting.
+                if not _is_port_unavailable(error):
+                    raise OSError(f"Could not listen on address '{host}' ({error}) - "
+                                  "check the Address setting in the plugin's settings") from error
                 last_error = error
                 if candidate:
                     self.log("Port %s is not available (%s); picking a free port instead.",

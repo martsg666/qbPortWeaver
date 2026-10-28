@@ -280,7 +280,12 @@ public sealed class NatPmpManager : IVpnManager
         IPAddress? externalIp = await RequestExternalAddressAsync(gateway, MaxAttempts, cancellationToken).ConfigureAwait(false);
         LogProbeResultDebug("TryCreateForAdapterAsync", adapterName, gateway, externalIp);
 
-        return externalIp is not null ? new NatPmpManager(nic, gateway, mappingLifetime, externalIp) : null;
+        if (externalIp is null) return null;
+
+        // RFC 6886 lets a gateway with no public address yet answer 0.0.0.0. It still speaks NAT-PMP, but
+        // that is no forward address: compared with the exit address it would report a false mismatch.
+        IPAddress? forwardAddress = externalIp.Equals(IPAddress.Any) ? null : externalIp;
+        return new NatPmpManager(nic, gateway, mappingLifetime, forwardAddress);
     }
 
     // Transfers renewal state from a previous instance so that port renewal works correctly

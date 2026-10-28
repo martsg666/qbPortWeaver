@@ -138,11 +138,12 @@ public static class MediaManagerService
         await Task.WhenAll(classified.Select(c =>
             ProcessSourceFolderAsync(c.Folder, c.Items, ctx, cancellationToken))).ConfigureAwait(false);
 
-        // Only the folders read this run: an offline one has nothing to clean up, and checking it again
-        // would cost another existence check against an unreachable host.
+        // Only the folders read this run are walked: an offline one has nothing to clean up, and checking it
+        // again would cost another existence check against an unreachable host. Every configured one stays
+        // protected, though: an unread folder nested in a read one is still reached by the outer walk.
         string[] readSources = [.. sourceFolders.Except(unreadableSources, StringComparer.OrdinalIgnoreCase)];
         if (deleteEmptyFolders)
-            CleanupSourceFolders(readSources, [moviesLibraryPath, tvShowsLibraryPath], dryRun, cancellationToken);
+            CleanupSourceFolders(readSources, new FolderKeepSet(sourceFolders, [moviesLibraryPath, tvShowsLibraryPath]), dryRun, cancellationToken);
 
         TmdbCacheManager.Save();
         MediaImporter.SaveSourceCache(readSources);
@@ -289,22 +290,29 @@ public static class MediaManagerService
     /// Removes empty folders left in the given source folders, as one media operation: it waits for any
     /// other (the sync cycle's import included) and holds the gate while it runs, so it never deletes a
     /// folder another operation is moving files out of or listing. For the window's Import Now, which used
-    /// to run this outside the gate.
+    /// to run this outside the gate. <paramref name="keepSources"/> and <paramref name="libraryFolders"/>
+    /// are the window's values, which may be unsaved; the saved source and library folders are protected as
+    /// well, so a folder the next sync-cycle import relies on is never deleted for an edit not yet saved.
     /// </summary>
-    public static Task CleanupSourceFoldersAsync(string[] sourceFolders, string[] libraryFolders, IProgress<bool>? waiting = null, CancellationToken cancellationToken = default)
+    public static Task CleanupSourceFoldersAsync(string[] sourceFolders, string[] keepSources, string[] libraryFolders, IProgress<bool>? waiting = null, CancellationToken cancellationToken = default)
         => RunExclusiveAsync(() => Task.Run(() =>
         {
-            CleanupSourceFolders(sourceFolders, libraryFolders, dryRun: false, cancellationToken);
+            var keep = new FolderKeepSet(
+                [.. keepSources, .. GetFolders(RegistrySettingsManager.KeyMediaSourceFolders)],
+                [.. libraryFolders,
+                 RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionMedia, RegistrySettingsManager.KeyMediaMoviesLibraryPath),
+                 RegistrySettingsManager.GetValue(RegistrySettingsManager.SectionMedia, RegistrySettingsManager.KeyMediaTvShowsLibraryPath)]);
+            CleanupSourceFolders(sourceFolders, keep, dryRun: false, cancellationToken);
             return true;
         }, cancellationToken), waiting, cancellationToken);
 
-    // Runs folder cleanup for all configured source folders. A source folder listed inside another is
-    // cleaned as part of the outer one, and is itself never deleted, even when empty: it is configured.
-    // Nor is a library folder placed inside a source folder, or anything under one: a new, still-empty
-    // library folder deleted here would make every later import fail to read the library.
-    private static void CleanupSourceFolders(string[] sourceFolders, string[] libraryFolders, bool dryRun, CancellationToken cancellationToken)
+    // Runs folder cleanup over the given source folders. A source folder listed inside another is cleaned
+    // as part of the outer one, and is itself never deleted, even when empty: it is configured, which is
+    // why keep holds every configured one, not only those walked. Nor is a library folder placed inside a
+    // source folder, or anything under one: a new, still-empty library folder deleted here would make
+    // every later import fail to read the library.
+    private static void CleanupSourceFolders(string[] sourceFolders, FolderKeepSet keep, bool dryRun, CancellationToken cancellationToken)
     {
-        var keep = new FolderKeepSet(sourceFolders, libraryFolders);
         foreach (var folder in OutermostFolders(sourceFolders))
         {
             cancellationToken.ThrowIfCancellationRequested();

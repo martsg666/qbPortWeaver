@@ -629,7 +629,7 @@ public partial class MediaManagerForm : Form
             // unreachable host. Through the media gate like the import before it, so a sync-cycle import
             // cannot run on the same folders at the same time.
             string[] readFolders = [.. sourceFolders.Except(remaining.UnreadableSourceFolders, StringComparer.OrdinalIgnoreCase)];
-            await MediaManagerService.CleanupSourceFoldersAsync(readFolders, [txtMoviesLibraryPath.Text.Trim(), txtTvShowsLibraryPath.Text.Trim()],
+            await MediaManagerService.CleanupSourceFoldersAsync(readFolders, sourceFolders, [txtMoviesLibraryPath.Text.Trim(), txtTvShowsLibraryPath.Text.Trim()],
                 CreateWaitProgress("Cleaning up empty folders…"), cancellationToken);
             if (IsDisposed) return null;
         }

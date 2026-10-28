@@ -44,7 +44,7 @@ function PortClosedState($s) {
     # stayed closed long enough yet, or an exit-address reconnect is still settling. An absolute instant.
     if ($null -ne $s.portClosedRecoveryHeldUntil) {
         # Published past its end too, on a cycle that did not reach the trigger: it fires on the next closed check.
-        if ([DateTimeOffset]::Parse("$($s.portClosedRecoveryHeldUntil)") -le [DateTimeOffset]::Now) { return 'Will trigger on the next closed check' }
+        if ([DateTimeOffset]$s.portClosedRecoveryHeldUntil -le [DateTimeOffset]::Now) { return 'Will trigger on the next closed check' }
         return "Holding - too soon to restart, retry at $($s.portClosedRecoveryHeldUntil)"
     }
     if ($s.portClosedRecoveryChecks -gt 0) { return "$($s.portClosedRecoveryChecks) of $($s.portClosedRecoveryTriggerChecks) closed checks" }

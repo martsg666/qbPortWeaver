@@ -210,12 +210,12 @@ public partial class LogViewerForm : Form
         _ = LoadInitialContentAsync(); // fire-and-forget; exceptions are handled inside LoadInitialContentAsync
     }
 
-    // Escape closes the viewer, except while the search box has focus - there Escape clears the search
+    // Escape closes the viewer, except while the search box has focus and holds text - there Escape clears the search
     // (handled in txtSearch_KeyDown). Ctrl+F focuses the search box (same as the Help viewer).
     // KeyPreview (set in OnLoad) lets the form see the keys first.
     protected override void OnKeyDown(KeyEventArgs e)
     {
-        if (e.KeyCode == Keys.Escape && !txtSearch.Focused)
+        if (e.KeyCode == Keys.Escape && (!txtSearch.Focused || txtSearch.TextLength == 0))
         {
             Close();
             e.Handled = true;

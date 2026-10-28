@@ -5,8 +5,10 @@
 /// TimeRangeForm, DiagnosticsForm). These dialogs have dynamic content, so they are built in code
 /// rather than the designer; routing their chrome through here keeps button sizing, spacing, and the
 /// right-aligned button row identical across all four. Layout uses the automatic layout containers
-/// (TableLayoutPanel / FlowLayoutPanel), which size and position at the current DPI, so the dialogs
-/// scale correctly without hand-computed pixel coordinates.
+/// (TableLayoutPanel / FlowLayoutPanel), and each dialog is built between the SuspendLayout that
+/// <see cref="ApplyDialogChrome"/> opens and the <see cref="EndDialogLayout"/> that closes it, so
+/// AutoScaleMode.Font scales every literal size and margin once, at the end, as it does for the
+/// designer-built forms.
 /// <para><b>Not every member applies to every caller.</b> The button metrics are used by all four, but
 /// <see cref="EdgeMargin"/> and <see cref="BottomMargin"/> are for the dialogs that auto-size to their
 /// content (ThemedMessageBox, ClientChooserForm, TimeRangeForm), which need breathing room around a
@@ -39,11 +41,14 @@ internal static class DialogLayout
     /// FixedDialog frame does not draw one, which is what the "no title-bar icon" convention actually
     /// relies on - <c>ShowIcon = false</c> was suppressing the Alt+Tab icon as a side effect. That
     /// reasoning applied to all four dialogs but lived in only one of them, which is why this moved.</para>
-    /// <para>Call it where the property block used to sit, before controls are added: the scaling
-    /// pair has to be set before the layout containers measure, exactly as the designer emits it.</para>
+    /// <para>Call it first, before controls are added, and <see cref="EndDialogLayout"/> once they all
+    /// are. It suspends layout, as the designer does around its property block: setting the scaling pair
+    /// on a form whose layout is live runs the font scaling at once, on the still-empty form, and every
+    /// control added afterwards then keeps its literal size, so buttons clipped their text at 150%.</para>
     /// </remarks>
     internal static void ApplyDialogChrome(Form form)
     {
+        form.SuspendLayout();
         form.FormBorderStyle = FormBorderStyle.FixedDialog;
         form.MinimizeBox = false;
         form.MaximizeBox = false;
@@ -53,6 +58,18 @@ internal static class DialogLayout
         // The layout containers size the form; AutoScaleMode.Font (designer baseline) scales fonts.
         form.AutoScaleDimensions = new SizeF(7F, 15F);
         form.AutoScaleMode = AutoScaleMode.Font;
+    }
+
+    /// <summary>
+    /// Closes the layout <see cref="ApplyDialogChrome"/> opened, once every control is added: the font
+    /// scaling runs here, over the whole dialog, exactly as at the end of a designer InitializeComponent.
+    /// Sizes computed from rendered text afterwards are already in device pixels, so they belong after
+    /// this call, not before it, or they are scaled a second time.
+    /// </summary>
+    internal static void EndDialogLayout(Form form)
+    {
+        form.ResumeLayout(false);
+        form.PerformLayout();
     }
 
     /// <summary>

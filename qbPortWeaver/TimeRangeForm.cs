@@ -71,6 +71,7 @@ internal sealed class TimeRangeForm : Form
         root.Controls.Add(grid, 0, 0);
         root.Controls.Add(DialogLayout.ButtonRow(ok, cancel), 0, 1);
         Controls.Add(root);
+        DialogLayout.EndDialogLayout(this);
     }
 
     // Vertical margin on each field; applied to both neighbours, so this is half the row gap. Set to

@@ -43,6 +43,8 @@ internal sealed class DiagnosticsForm : Form
 
         BuildControls();
         RenderReport();
+        // Scaling first: SizeToContent works from the rendered font height, already in device pixels.
+        DialogLayout.EndDialogLayout(this);
         SizeToContent();
     }
 
@@ -240,10 +242,13 @@ internal sealed class DiagnosticsForm : Form
         foreach (var r in _results)
             lines += string.IsNullOrEmpty(r.Hint) ? 3 : 4; // name + detail (+ hint) + trailing blank
 
-        const int reportTop = 8;    // _report.Location.Y
-        const int buttonArea = 44;  // report bottom to form bottom: 8px gap + 28px button + 8px margin
+        // Layout units, scaled by the same factor the font scaling used (the current font's measure against the
+        // designer baseline ApplyDialogChrome sets, 15 at 100%), since this runs after the scaling.
+        double scale = CurrentAutoScaleDimensions.Height / 15.0;
+        int reportTop = (int)Math.Round(8 * scale);    // _report.Location.Y
+        int buttonArea = (int)Math.Round(44 * scale);  // report bottom to form bottom: 8px gap + 28px button + 8px margin
         int reportHeight = lines * lineHeight + lineHeight; // one extra line of breathing room
-        int height = Math.Min(reportTop + reportHeight + buttonArea, 760);
+        int height = Math.Min(reportTop + reportHeight + buttonArea, (int)Math.Round(760 * scale));
         ClientSize = new Size(ClientSize.Width, height);
     }
 

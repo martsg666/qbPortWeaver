@@ -118,7 +118,7 @@ public partial class HelpForm : Form
 
     protected override void OnKeyDown(KeyEventArgs e)
     {
-        if (e.KeyCode == Keys.Escape && !txtSearch.Focused)
+        if (e.KeyCode == Keys.Escape && (!txtSearch.Focused || txtSearch.TextLength == 0))
         {
             Close();
             e.Handled = true;

@@ -73,6 +73,7 @@ internal sealed class ClientChooserForm : Form
         CancelButton = btnCancel;
 
         Controls.Add(root);
+        DialogLayout.EndDialogLayout(this);
     }
 
     // Records which radio button was selected before the dialog closes with DialogResult.OK.

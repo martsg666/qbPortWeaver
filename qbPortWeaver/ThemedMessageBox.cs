@@ -115,6 +115,7 @@ internal static class ThemedMessageBox
             root.Controls.Add(DialogLayout.ButtonRow(buttonControls), 0, 1);
 
             Controls.Add(root);
+            DialogLayout.EndDialogLayout(this);
             // Focused as well as accepted: Enter clicks the focused button, not AcceptButton, so the
             // default only holds while it has the focus. After Controls.Add: ActiveControl throws for a
             // control that is not yet inside the form.

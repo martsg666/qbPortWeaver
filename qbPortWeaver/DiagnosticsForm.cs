@@ -150,10 +150,11 @@ internal sealed class DiagnosticsForm : Form
         root.Controls.Add(buttonBar, 0, 1);
         AcceptButton = btnClose;
         CancelButton = btnClose;
-        // Enter clicks the focused button, and Copy Report would otherwise take the first focus.
-        ActiveControl = btnClose;
 
         Controls.Add(root);
+        // Enter clicks the focused button, and Copy Report would otherwise take the first focus. After
+        // Controls.Add: ActiveControl throws for a control that is not yet inside the form.
+        ActiveControl = btnClose;
     }
 
     // Renders the checklist with color runs: a summary line, a timestamp, then per-check a bold colored

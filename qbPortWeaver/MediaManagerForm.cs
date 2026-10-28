@@ -541,7 +541,8 @@ public partial class MediaManagerForm : Form
             message,
             AppIdentity.AppName,
             MessageBoxButtons.YesNo,
-            icon);
+            icon,
+            dismissIsDefault: importMode == ImportMode.Move); // No by default where the source is removed, as ConfirmDestructive
 
         if (confirm != DialogResult.Yes) return;
 

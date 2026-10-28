@@ -49,9 +49,12 @@ internal static class ThemedMessageBox
     /// <summary>Shows a themed modal message dialog and returns the <see cref="DialogResult"/> of the
     /// button the user clicked. Mirrors <see cref="MessageBox.Show(string, string, MessageBoxButtons,
     /// MessageBoxIcon)"/>.</summary>
+    /// <remarks><c>dismissIsDefault</c> makes the last (dismiss) button the default, for a caller whose
+    /// prompt destroys data only in some cases (see <see cref="ConfirmDestructive"/>).</remarks>
     public static DialogResult Show(string text, string caption = "",
-        MessageBoxButtons buttons = MessageBoxButtons.OK, MessageBoxIcon icon = MessageBoxIcon.None) =>
-        ShowCore(text, caption, buttons, icon, dismissIsDefault: false);
+        MessageBoxButtons buttons = MessageBoxButtons.OK, MessageBoxIcon icon = MessageBoxIcon.None,
+        bool dismissIsDefault = false) =>
+        ShowCore(text, caption, buttons, icon, dismissIsDefault);
 
     // dismissIsDefault: the last (dismiss) button is the default instead of the affirmative one.
     private static DialogResult ShowCore(string text, string caption, MessageBoxButtons buttons, MessageBoxIcon icon, bool dismissIsDefault)
@@ -109,12 +112,13 @@ internal static class ThemedMessageBox
                 buttonControls[i] = b;
             }
             if (dismissIsDefault) AcceptButton = buttonControls[^1];
-            // Focused as well as accepted: Enter clicks the focused button, not AcceptButton, so the
-            // default only holds while it has the focus.
-            if (AcceptButton is Control defaultButton) ActiveControl = defaultButton;
             root.Controls.Add(DialogLayout.ButtonRow(buttonControls), 0, 1);
 
             Controls.Add(root);
+            // Focused as well as accepted: Enter clicks the focused button, not AcceptButton, so the
+            // default only holds while it has the focus. After Controls.Add: ActiveControl throws for a
+            // control that is not yet inside the form.
+            if (AcceptButton is Control defaultButton) ActiveControl = defaultButton;
         }
 
         // Builds the content row: the message label, preceded by the severity icon when there is one.

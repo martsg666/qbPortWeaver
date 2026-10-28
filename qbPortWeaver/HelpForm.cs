@@ -118,7 +118,8 @@ public partial class HelpForm : Form
 
     protected override void OnKeyDown(KeyEventArgs e)
     {
-        if (e.KeyCode == Keys.Escape && (!txtSearch.Focused || txtSearch.TextLength == 0))
+        if (e.KeyCode == Keys.Escape && (!txtSearch.Focused || txtSearch.TextLength == 0)
+            && ActiveControl is not ComboBox { DroppedDown: true })
         {
             Close();
             e.Handled = true;

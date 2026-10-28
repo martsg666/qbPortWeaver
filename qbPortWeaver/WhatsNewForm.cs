@@ -103,7 +103,7 @@ public partial class WhatsNewForm : Form
         "confirmation dialogs Enter now answers Yes or OK, and No when the action deletes something, and " +
         "Tab moves left to right. Enter no longer opens a link in the update, What's New and About windows. " +
         "Buttons in message boxes and other small dialogs no longer cut off their text at high display " +
-        "scaling, and Escape closes the log viewer and help from an empty search box.\n\n" +
+        "scaling, the Status panel and Diagnostics no longer run past the screen there, and Escape closes the log viewer and help from an empty search box.\n\n" +
         "Previously released\n\n" +
         "New in 2.6.9\n\n" +
         "Your settings can be backed up and restored\n" +

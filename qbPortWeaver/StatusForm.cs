@@ -61,6 +61,28 @@ public partial class StatusForm : Form
         InitializeComponent();
         Text = $"{AppIdentity.AppName} | Status";
         AttachStatsContextMenu();
+        ScaleHistoryColumns();
+    }
+
+    // ListView column widths are not scaled by AutoScaleMode, so at 125% the time and port were cut off
+    // and at 150% the columns left a blank strip. Scaled here by the same factor as the rest of the form
+    // (the current font's width against the designer baseline of 7).
+    private void ScaleHistoryColumns()
+    {
+        float scale = CurrentAutoScaleDimensions.Width / 7f;
+        colHistoryTime.Width = (int)Math.Round(colHistoryTime.Width * scale);
+        colHistoryPort.Width = (int)Math.Round(colHistoryPort.Width * scale);
+        colHistoryEvent.Width = EventColumnMinWidth;
+    }
+
+    // The window cannot be taller than the screen's working area: at 150% on a 1080p display the designer
+    // height scales past it, and the button row would sit behind the taskbar. Scrolls instead.
+    private void FitToWorkingArea()
+    {
+        int workingHeight = Screen.FromControl(this).WorkingArea.Height;
+        if (Height <= workingHeight) return;
+        AutoScroll = true;
+        Height = workingHeight;
     }
 
     // The Statistics group's Clear menu also has to be attached to each child label:
@@ -76,6 +98,7 @@ public partial class StatusForm : Form
     protected override void OnLoad(EventArgs e)
     {
         base.OnLoad(e);
+        FitToWorkingArea();
         RefreshStatus();
         _clockTimer = new System.Windows.Forms.Timer { Interval = 1000 };
         _clockTimer.Tick += clockTimer_Tick;
@@ -182,8 +205,9 @@ public partial class StatusForm : Form
             colHistoryEvent.Width = EventColumnMinWidth;
     }
 
-    // Matches the Event column's designer width, which fills the list (with Time + Port) exactly.
-    private const int EventColumnMinWidth = 350;
+    // The Event column's least width: what is left of the list beside the Time and Port columns, so short
+    // content still fills it at any scaling.
+    private int EventColumnMinWidth => lvHistory.ClientSize.Width - colHistoryTime.Width - colHistoryPort.Width;
 
     // Fills the Statistics group: the currently managed port (from the live snapshot), today's
     // change count (from the persisted port history), and the in-memory session counters. Refreshed

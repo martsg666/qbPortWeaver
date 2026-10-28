@@ -248,7 +248,12 @@ internal sealed class DiagnosticsForm : Form
         int reportTop = (int)Math.Round(8 * scale);    // _report.Location.Y
         int buttonArea = (int)Math.Round(44 * scale);  // report bottom to form bottom: 8px gap + 28px button + 8px margin
         int reportHeight = lines * lineHeight + lineHeight; // one extra line of breathing room
-        int height = Math.Min(reportTop + reportHeight + buttonArea, (int)Math.Round(760 * scale));
+        // Capped by the screen as well: the scaled cap alone passes a 1080p working area at 125% and 150%,
+        // which would put the button row behind the taskbar. The screen the dialog opens on (CenterScreen
+        // places it on the one holding the cursor).
+        int frame = Height - ClientSize.Height;
+        int screenCap = Screen.FromPoint(Cursor.Position).WorkingArea.Height - frame;
+        int height = Math.Min(reportTop + reportHeight + buttonArea, Math.Min((int)Math.Round(760 * scale), screenCap));
         ClientSize = new Size(ClientSize.Width, height);
     }
 

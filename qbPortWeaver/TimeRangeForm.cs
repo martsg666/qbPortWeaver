@@ -90,9 +90,9 @@ internal sealed class TimeRangeForm : Form
     /// narrower than its own title and render it truncated.
     /// <para>Measured rather than hard-coded, because the caption is drawn in the system caption
     /// font rather than the form font, so it does not follow the form's own font scaling. Applied
-    /// here rather than in the constructor so it lands after <see cref="AutoScaleMode.Font"/>
-    /// scaling has run, which would otherwise scale an already-correct pixel width a second
-    /// time.</para>
+    /// here, after the constructor's <see cref="DialogLayout.EndDialogLayout"/>, so it lands after
+    /// <see cref="AutoScaleMode.Font"/> scaling has run, which would otherwise scale an already-correct
+    /// pixel width a second time.</para>
     /// </summary>
     protected override void OnLoad(EventArgs e)
     {
@@ -152,7 +152,7 @@ internal sealed class TimeRangeForm : Form
         Text = value.ToString(LoggingConstants.DateFormat, LoggingConstants.DateCulture),
         BackColor = SystemColors.Window,        // input surface, like every text box and combo in the app
         ForeColor = SystemColors.WindowText,
-        Width = 170,                // floor only: the anchor below stretches the field past this
+        Width = 170,                // starting width, scaled with the dialog; the anchor below stretches the field from there
         Anchor = AnchorStyles.Left | AnchorStyles.Right,
         Margin = new Padding(0, RowSpacing, 0, RowSpacing),
     };

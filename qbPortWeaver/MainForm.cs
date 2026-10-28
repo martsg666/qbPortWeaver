@@ -472,7 +472,12 @@ public partial class MainForm : Form
 
     private void showStatus_Click(object? sender, EventArgs e) => ShowStatusPanel();
 
-    private async void runDiagnostics_Click(object? sender, EventArgs e) => await RunDiagnosticsAsync(null); // async void is correct here (WinForms event handler)
+    // The tray item greys out while the run is in progress: from the tray there is no form to show it, and
+    // a second click is ignored by the concurrency guard, so without this nothing said a run was going.
+    private async void runDiagnostics_Click(object? sender, EventArgs e) => // async void is correct here (WinForms event handler)
+        await RunDiagnosticsAsync("Diagnostics requested",
+            running => { if (sender is ToolStripItem item) item.Enabled = !running; },
+            ShowDiagnosticsResults);
 
     private void ShowStatusPanel()
     {

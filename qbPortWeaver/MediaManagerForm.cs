@@ -581,12 +581,13 @@ public partial class MediaManagerForm : Form
         }
     }
 
-    // Applies proposals, optionally cleans up empty folders, then re-scans to refresh the grid.
-    // Returns the completion message, or null when the form was closed meanwhile.
     // Set once the import itself has finished, so a cancel during the re-scan or cleanup that follows is
     // not reported as the import being cancelled.
     private bool _importApplied;
 
+    // Applies proposals, re-scans to refresh the grid, then optionally cleans up empty folders - only those
+    // the re-scan could read, and not at all when it could not read the library. Returns the completion
+    // message, or null when the form was closed meanwhile.
     private async Task<string?> RunImportAndRescanAsync(List<MediaProposal> toApply, CancellationToken cancellationToken)
     {
         _importApplied = false;

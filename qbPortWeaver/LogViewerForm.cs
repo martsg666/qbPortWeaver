@@ -215,7 +215,8 @@ public partial class LogViewerForm : Form
     // KeyPreview (set in OnLoad) lets the form see the keys first.
     protected override void OnKeyDown(KeyEventArgs e)
     {
-        if (e.KeyCode == Keys.Escape && (!txtSearch.Focused || txtSearch.TextLength == 0))
+        if (e.KeyCode == Keys.Escape && (!txtSearch.Focused || txtSearch.TextLength == 0)
+            && ActiveControl is not ComboBox { DroppedDown: true })
         {
             Close();
             e.Handled = true;

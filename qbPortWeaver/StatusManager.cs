@@ -73,6 +73,10 @@ public sealed record StatusSnapshot
     /// <summary>False once the one-shot port-closed trigger has fired, until a verification reports the
     /// port open again. While false that trigger cannot fire however long the port stays closed.</summary>
     [JsonPropertyName("portClosedRecoveryArmed")] public bool PortClosedRecoveryArmed { get; init; }
+    /// <summary>When the port-closed trigger's hold ends, while its count has reached the threshold but
+    /// a time hold keeps it back (the port has not stayed closed long enough, or an exit-address
+    /// reconnect is still settling); null otherwise. The counterpart of <see cref="RecoverySustainedUntil"/>.</summary>
+    [JsonPropertyName("portClosedRecoveryHeldUntil")] public DateTimeOffset? PortClosedRecoveryHeldUntil { get; init; }
     /// <summary>The address the port is forwarded on, as the provider reported it at the last exit-address
     /// lookup; null until a closed or undetermined port test prompts one, and for providers that report no forward address.</summary>
     [JsonPropertyName("vpnForwardAddress")] public string? VpnForwardAddress { get; init; }

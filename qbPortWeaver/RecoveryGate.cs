@@ -95,11 +95,10 @@ internal sealed class RecoveryGate(System.Diagnostics.Stopwatch uptime)
     {
         string cycles = TextFormat.PluralizeNoun(count, "failed cycle");
         string recoverySuffix;
-        if (!cfg.Enabled)
-            recoverySuffix = string.Empty;
         // "while the internet is reachable": the cap only holds online, and an offline machine keeps
         // retrying on the backoff, so an unqualified "suspended" was followed by a recovery attempt.
-        else if (_consecutiveRecoveries >= MaxConsecutiveRecoveries)
+        // Only reached with the trigger on (see RegisterFailureAndTryRecoveryAsync).
+        if (_consecutiveRecoveries >= MaxConsecutiveRecoveries)
             recoverySuffix = $", auto-recovery is suspended while the internet is reachable, after {MaxConsecutiveRecoveries} attempts that did not restore a port";
         else
             recoverySuffix = $", recovery may trigger after {cfg.TriggerCycles} consecutive {TextFormat.PluralizeNoun(cfg.TriggerCycles, "failed cycle")}";
@@ -116,8 +115,9 @@ internal sealed class RecoveryGate(System.Diagnostics.Stopwatch uptime)
         string recoveryAction, string? recoveryTarget, string displayName,
         RecoverySettings cfg, CancellationToken cancellationToken)
     {
-        // With the trigger off there is no streak to report: counting one only for TriggerRecoveryIfDueAsync
-        // to reset it made every cycle of an outage log "(1 consecutive failed cycle)".
+        // With the trigger off there is no streak to report: counting one only for it to be reset made every
+        // cycle of an outage log "(1 consecutive failed cycle)". Switched off, nothing can be accumulating, so
+        // the cap goes too: a disabled feature leaves no stale counters to surprise the user on re-enable.
         if (!cfg.Enabled)
         {
             LogManager.Instance.LogMessage(reason, logLevel);
@@ -145,12 +145,16 @@ internal sealed class RecoveryGate(System.Diagnostics.Stopwatch uptime)
     // Forgets the failure streak and the offline backoff, for when the cycle's failures stop describing the
     // same thing: port sync switched to Disabled, or a different VPN provider. Without it a streak from the
     // old provider (or from before an hour of Disabled) carries over, and its long-past start lets the
-    // first failure afterwards clear the sustained-failure floor and fire recovery at once. The cap stays:
-    // it is cleared only by a port actually being read.
-    internal void ResetForNewContext()
+    // first failure afterwards clear the sustained-failure floor and fire recovery at once.
+    // newProvider: a switch of provider or adapter also ends the run of consecutive recoveries, which
+    // describes the old one - otherwise the new provider's first failure would be suspended as "3
+    // consecutive recoveries did not restore a forwarded port" for restarts it never had. The per-cycle
+    // reset while Disabled keeps the cap, which is otherwise cleared only by a port actually being read.
+    internal void ResetForNewContext(bool newProvider)
     {
         ResetFailureStreak();
         ResetOfflineRecoveryBackoff();
+        if (newProvider) ResetRecoveryCap();
     }
 
     // Ends a run of consecutive recoveries. Called from the successful-port path and when auto-recovery
@@ -163,21 +167,13 @@ internal sealed class RecoveryGate(System.Diagnostics.Stopwatch uptime)
         LogManager.Instance.ClearLogState(RecoveryCapStateKey);
     }
 
-    // Triggers auto-recovery if enabled and both gates are cleared: the failure cycle threshold
-    // AND enough monotonic time has elapsed since the streak began. The time gate (derived from
-    // the normal cycle cadence) prevents a burst of early wakes from fast-tracking recovery during
-    // a transient outage. Resets the counter before the target check so the warning does not fire
-    // every cycle when no recovery target is found.
+    // Triggers auto-recovery once both gates are cleared: the failure cycle threshold AND enough monotonic
+    // time has elapsed since the streak began. The time gate (derived from the normal cycle cadence)
+    // prevents a burst of early wakes from fast-tracking recovery during a transient outage. Resets the
+    // counter before the target check so the warning does not fire every cycle when no recovery target is
+    // found. Only called with the trigger on: RegisterFailureAndTryRecoveryAsync returns before it otherwise.
     private async Task TriggerRecoveryIfDueAsync(string action, string? recoveryTarget, string displayName, RecoverySettings cfg, CancellationToken cancellationToken)
     {
-        if (!cfg.Enabled)
-        {
-            ResetFailureStreak();
-            // Switched off, so nothing can be accumulating: clear the cap too, matching the existing
-            // rule that a disabled feature leaves no stale counters to surprise the user on re-enable.
-            ResetRecoveryCap();
-            return;
-        }
         if (_consecutiveFailedCycles < cfg.TriggerCycles) return;
 
         // Sustained-failure floor: the elapsed time recovery would have taken under normal

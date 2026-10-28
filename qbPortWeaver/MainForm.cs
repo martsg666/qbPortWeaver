@@ -202,7 +202,7 @@ public partial class MainForm : Form
 
             // Schedule periodic update checks every 12 hours
             _updateCheckTimer = new System.Windows.Forms.Timer { Interval = AppConstants.AutoUpdateCheckIntervalMs };
-            _updateCheckTimer.Tick += OnUpdateCheckTimerTick;
+            _updateCheckTimer.Tick += updateCheckTimer_Tick;
             _updateCheckTimer.Start();
         }
         catch (Exception ex)
@@ -727,8 +727,8 @@ public partial class MainForm : Form
 
     private void exit_Click(object? sender, EventArgs e) => Close(); // NOSONAR S2325 - Close() is an instance method, handler cannot be static
 
-    // Called by PortSyncService when a sync cycle completes, and directly by the pause
-    // handling (pauseSync_Click and the paused loop branch) to publish the Paused status.
+    // Called by PortSyncService when a sync cycle completes, and directly through PublishPausedStatus
+    // (ToggleSyncPaused, the paused loop branch, and the end of a cycle that ran while paused).
     private void OnSyncCompleted(TrayStatus status)
     {
         _lastSyncStatus = status;
@@ -840,12 +840,12 @@ public partial class MainForm : Form
             LogLevel.Error);
     }
 
-    // Publishes the Paused tray status while cycles are being skipped. Re-published on every
-    // skipped interval because a one-shot manual sync while paused leaves that cycle's result
-    // on the tray, and this puts the paused status back.
+    // Publishes the Paused tray status: while cycles are being skipped, re-published on every skipped
+    // interval because a one-shot manual sync while paused leaves that cycle's result on the tray, and
+    // at the end of a cycle that was already running when sync was paused, for the same reason.
     private void PublishPausedStatus()
     {
-        LogManager.Instance.LogDebug("MainForm.PublishPausedStatus: Sync paused - skipping cycle");
+        LogManager.Instance.LogDebug("MainForm.PublishPausedStatus: Sync paused - showing the paused status");
         OnSyncCompleted(new TrayStatus(SyncState.Paused, null, "Port sync paused"));
     }
 
@@ -988,7 +988,7 @@ public partial class MainForm : Form
 
     // Periodic update-check timer tick. Uses intrusive: false so a 12-hour tick surfaces an available
     // update via the tray (menu item + balloon) rather than popping the UpdateAvailableForm in the user's face.
-    private async void OnUpdateCheckTimerTick(object? sender, EventArgs e) // async void is correct here (WinForms event handler)
+    private async void updateCheckTimer_Tick(object? sender, EventArgs e) // async void is correct here (WinForms event handler)
         => await PerformUpdateCheckAsync(intrusive: false);
 
     // Checks GitHub for a newer release.

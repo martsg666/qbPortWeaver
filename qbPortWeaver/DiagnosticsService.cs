@@ -171,7 +171,7 @@ public static class DiagnosticsService
         // genuinely cannot tell them apart. Same opening words as the hold line RecoveryGate.TryTakeRecoverySlotAsync
         // writes to the log, so a support reader matching the two sees one condition, not two.
         // "when enabled" and "repeat attempts" are both load-bearing. The limiter lives in
-        // RecoveryGate.TriggerRecoveryIfDueAsync, which returns early unless vpnAutoRecoveryEnabled is set, and it
+        // RecoveryGate.TriggerRecoveryIfDueAsync, which RegisterFailureAndTryRecoveryAsync reaches only while vpnAutoRecoveryEnabled is set, and it
         // gates only that trigger - the port-closed trigger reaches DispatchRecoveryAsync directly,
         // having already proven connectivity by fetching a port. Even where it does apply, the first
         // attempt of a streak always runs; only later ones wait. Stating it flatly told a user with

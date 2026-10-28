@@ -455,6 +455,13 @@ public partial class StatusForm : Form
         // them clicking Test Port, being told the port is open, and seeing this line unchanged.
         if (!s.PortClosedRecoveryArmed) return "Triggered - waiting for the next scheduled check";
 
+        // The count has reached the threshold but a time hold keeps the trigger back. Without this the row
+        // would read "4 of 3 closed checks", a counter past its target, as the failed-cycle side avoids.
+        if (s.PortClosedRecoveryHeldUntil is DateTimeOffset until)
+            return DescribeCountdown(until) is string when
+                ? $"Holding - port closed too recently, retry in {when}"
+                : "Will trigger on the next closed check";
+
         if (s.PortClosedRecoveryChecks > 0)
         {
             return $"{s.PortClosedRecoveryChecks} of {s.PortClosedRecoveryTriggerChecks} closed " +

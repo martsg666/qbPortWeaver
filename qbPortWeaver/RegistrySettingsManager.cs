@@ -484,7 +484,7 @@ public static class RegistrySettingsManager
     /// app ignores is exactly the confusion this cleanup exists to prevent.
     /// <para>Deliberately an explicit list rather than "delete anything not in <c>_defaults</c>":
     /// the app-level key holds values this class never declares - the installer's shortcut flags,
-    /// the per-session pipe token, the last-seen version - and a blanket sweep would take them with
+    /// the pipe token, the last-seen version - and a blanket sweep would take them with
     /// it. Naming each removal keeps that impossible.</para>
     /// </remarks>
     private static readonly (string Section, string Key)[] _obsoleteKeys =

@@ -282,7 +282,7 @@ internal sealed class HelperPipeServer(ILogger<HelperPipeServer> logger) : Backg
         // points the user here, so this is the only place that can say which it was.
         if (!tokenValid)
         {
-            logger.LogWarning("Rejected pipe message: the session token does not match the caller's registry (another session, or the tray app restarted)");
+            logger.LogWarning("Rejected pipe message: the session token does not match the caller's registry value (it was changed or removed after the tray app read it - restart qbPortWeaver)");
             return false;
         }
         if (string.IsNullOrEmpty(logFilePath))

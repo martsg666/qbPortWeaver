@@ -19,7 +19,7 @@ function FailedCycleState($s) {
     # successfully. A missing key is an older app version, where the cap did not exist, so absent is
     # correctly falsy here. Both holds are absolute instants, not remaining durations.
     if ($null -ne $s.recoveryHoldUntil) { return "Holding - cannot confirm internet, retry at $($s.recoveryHoldUntil)" }
-    if ($s.recoverySuspended) { return 'Suspended - restarts did not restore the port, resumes when one is found' }
+    if ($s.recoverySuspended) { return 'Suspended - restarts did not help, resumes when a port is found' }
     if ($null -ne $s.recoverySustainedUntil) { return "Holding - failures too recent, retry at $($s.recoverySustainedUntil)" }
     if ($s.recoveryFailedCycles -ge $s.recoveryTriggerCycles) { return 'Will trigger on the next failed cycle' }
     if ($s.recoveryFailedCycles -gt 0) { return "$($s.recoveryFailedCycles) of $($s.recoveryTriggerCycles) failed cycles" }
@@ -40,6 +40,9 @@ function PortClosedState($s) {
     }
     # One-shot: once it fires it stays disarmed until a scheduled check reports the port open.
     if (-not $s.portClosedRecoveryArmed) { return 'Triggered - waiting for the next scheduled check' }
+    # The count has reached the threshold but a time hold keeps the trigger back: the port has not
+    # stayed closed long enough yet, or an exit-address reconnect is still settling. An absolute instant.
+    if ($null -ne $s.portClosedRecoveryHeldUntil) { return "Holding - port closed too recently, retry at $($s.portClosedRecoveryHeldUntil)" }
     if ($s.portClosedRecoveryChecks -gt 0) { return "$($s.portClosedRecoveryChecks) of $($s.portClosedRecoveryTriggerChecks) closed checks" }
     return $null
 }

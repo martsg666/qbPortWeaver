@@ -15,6 +15,7 @@ public partial class MainForm : Form
     private ToolStripMenuItem _pauseSyncMenuItem = null!;
     private ToolStripMenuItem _showLogsMenuItem = null!;
     private ToolStripMenuItem _checkUpdatesMenuItem = null!;
+    private ToolStripMenuItem _runDiagnosticsMenuItem = null!;
     private ToolStripMenuItem _autoStartMenuItem = null!;
 
     private const string ShowLogsMenuText = "Show Logs";
@@ -372,7 +373,9 @@ public partial class MainForm : Form
 
         // Status and diagnostics
         _trayMenu.Items.Add("Show Status", null, showStatus_Click);
-        _trayMenu.Items.Add("Run Diagnostics", null, runDiagnostics_Click);
+        _runDiagnosticsMenuItem = new ToolStripMenuItem("Run Diagnostics");
+        _runDiagnosticsMenuItem.Click += runDiagnostics_Click;
+        _trayMenu.Items.Add(_runDiagnosticsMenuItem);
         _trayMenu.Items.Add(new ToolStripSeparator());
 
         // Logs
@@ -472,12 +475,8 @@ public partial class MainForm : Form
 
     private void showStatus_Click(object? sender, EventArgs e) => ShowStatusPanel();
 
-    // The tray item greys out while the run is in progress: from the tray there is no form to show it, and
-    // a second click is ignored by the concurrency guard, so without this nothing said a run was going.
     private async void runDiagnostics_Click(object? sender, EventArgs e) => // async void is correct here (WinForms event handler)
-        await RunDiagnosticsAsync("Diagnostics requested",
-            running => { if (sender is ToolStripItem item) item.Enabled = !running; },
-            ShowDiagnosticsResults);
+        await RunDiagnosticsAsync("Diagnostics requested", null, ShowDiagnosticsResults);
 
     private void ShowStatusPanel()
     {
@@ -534,22 +533,23 @@ public partial class MainForm : Form
         LogManager.Instance.LogMessage($"Manual port test result: {result}", LogLevel.Info);
     }
 
-    // From the Status panel button or the tray menu: runs diagnostics and opens (or refreshes) the
-    // results dialog. 'form' is the Status panel when triggered there (so its button can be toggled),
-    // or null from the tray. Guarded so the two entry points and the dialog's Re-run cannot run
-    // concurrently.
-    private Task RunDiagnosticsAsync(StatusForm? form) => RunDiagnosticsAsync(
+    // From the Status panel button: runs diagnostics and opens (or refreshes) the results dialog, toggling
+    // the panel's button while it runs.
+    private Task RunDiagnosticsAsync(StatusForm form) => RunDiagnosticsAsync(
         "Diagnostics requested",
-        form is null ? null : running => { if (!form.IsDisposed) form.SetDiagnosticsRunning(running); },
+        running => { if (!form.IsDisposed) form.SetDiagnosticsRunning(running); },
         ShowDiagnosticsResults);
 
-    // The one run wrapper behind the three entry points: the concurrency guard, the busy toggle on
-    // whichever form asked (checked for disposal, since the user can close it mid-run), the request
-    // line, and the result sink.
+    // The one run wrapper behind the three entry points (the tray menu, the Status panel, the results
+    // dialog's Re-run): the concurrency guard, the busy toggle on whichever form asked (checked for
+    // disposal, since the user can close it mid-run), the request line, and the result sink. The tray
+    // item greys out for every run, whichever started it: a click on it during a run is ignored by the
+    // guard, so without this nothing said a run was already going.
     private async Task RunDiagnosticsAsync(string requestLine, Action<bool>? setBusy, Action<IReadOnlyList<DiagnosticResult>> showResults)
     {
         if (_diagnosticsRunning) return;
         _diagnosticsRunning = true;
+        _runDiagnosticsMenuItem.Enabled = false;
         setBusy?.Invoke(true);
         LogManager.Instance.LogMessage(requestLine, LogLevel.Info);
         try
@@ -560,6 +560,7 @@ public partial class MainForm : Form
         finally
         {
             _diagnosticsRunning = false;
+            _runDiagnosticsMenuItem.Enabled = true;
             setBusy?.Invoke(false);
         }
     }

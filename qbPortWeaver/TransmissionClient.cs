@@ -34,7 +34,7 @@ public sealed class TransmissionClient : ManagedClientBase
     // null is never assigned at runtime - the field starts as Empty and only transitions to non-empty
     // on a successful lookup. The nullable type is required by the volatile reference contract.
     // Static so the SCM enumeration persists across sync-cycle instances.
-    // Same Empty-sentinel volatile cache as PiaVpnManager's piactl path and VpnRegistryConfig's client exe path.
+    // Same Empty-sentinel volatile cache as ServiceExeCache, which PiaVpnManager and VpnRegistryConfig share.
     // volatile ensures writes from one sync-cycle thread are visible to concurrent callers.
     private static volatile string? _resolvedServiceName = string.Empty;
 

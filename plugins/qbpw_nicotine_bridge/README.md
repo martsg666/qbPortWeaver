@@ -68,7 +68,7 @@ All paths except `GET /` require `Authorization: Bearer <token>`.
 |---|---|---|---|
 | `GET` | `/` | Liveness, plugin and Nicotine+ versions, and which capabilities resolved. No token required | Diagnosis |
 | `GET` | `/v1/preferences` | Listening port, bound interface, UPnP state, connection state | qbPortWeaver |
-| `POST` | `/v1/port` | Set the listening port, turn Nicotine+'s own UPnP off, and reconnect | qbPortWeaver |
+| `POST` | `/v1/port` | Set the listening port (`port`), turn Nicotine+'s own UPnP off unless `disable_upnp` is `false`, and reconnect | qbPortWeaver |
 | `GET` | `/v1/port` | Alias of `GET /v1/preferences` | Diagnosis |
 | `GET` | `/v1/status` | Connection state, username, public IP, active port | Diagnosis |
 | `POST` | `/v1/porttest` | Run a reachability check and wait up to `wait_ms` for the verdict | qbPortWeaver |

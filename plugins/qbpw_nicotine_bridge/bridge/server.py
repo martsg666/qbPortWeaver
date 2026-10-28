@@ -180,7 +180,10 @@ class BridgeHandler(BaseHTTPRequestHandler):
         if self.headers.get("Origin"):
             raise errors.forbidden_origin()
 
-        host = (self.headers.get("Host") or "").split(":", 1)[0].strip("[]")
+        # A bracketed IPv6 authority ("[::1]:38472") holds colons of its own, so take what is inside the
+        # brackets; anything else is host[:port].
+        raw = self.headers.get("Host") or ""
+        host = raw[1:raw.find("]")] if raw.startswith("[") and "]" in raw else raw.split(":", 1)[0]
         if _is_loopback_host(bridge.bind_host) and host and not _is_loopback_host(host):
             raise errors.forbidden_origin()
 

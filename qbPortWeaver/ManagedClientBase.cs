@@ -11,7 +11,7 @@ public abstract class ManagedClientBase : IManagedClient // NOSONAR S3881 - all 
     // the client was not running) waits longer because the executable and its dependencies are being
     // paged in for the first time; a restart (the image is already in the file cache, and the process
     // was alive moments ago) registers with the OS sooner. Both are only the wait before the
-    // IsRunning check - API readiness is polled separately by WaitForApiReadyAsync.
+    // IsProcessRunning check - API readiness is polled separately by WaitForApiReadyAsync.
     protected const int ProcessStartDelayMs = 2000;   // cold start, via ForceStartAsync
     protected const int ProcessInitDelayMs = 1000;    // warm restart, via RestartAsync
     protected const int ProcessKillTimeoutMs = 5000;

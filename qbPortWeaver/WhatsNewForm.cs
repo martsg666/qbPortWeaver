@@ -98,6 +98,8 @@ public partial class WhatsNewForm : Form
         "after two recoveries in a row is still marked \"after recovery\" in the port history. Warnings that " +
         "repeat every sync now appear once, and debug entries no longer appear with debug logging off. " +
         "The ProtonVPN port is no longer missed for a sync right after ProtonVPN starts a new log file. " +
+        "With NAT-PMP, the default port is now applied when qbPortWeaver starts while the VPN adapter is " +
+        "down, instead of only after the adapter had come up once. " +
         "Start Automatically shows the real state, the Media Manager keeps the file extension and shows " +
         "an & in a title as itself, " +
         "Nicotine+ commands no longer print \"None\", the Nicotine+ plugin shows as not enabled when " +

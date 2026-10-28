@@ -75,7 +75,7 @@ flowchart TD
     RUN_CMD --> END
 ```
 
-> During the startup grace period (see Startup Grace Period), the *Handle disconnection* and *port not found* paths - and the NAT-PMP "adapter not found" path - instead hold quietly and re-check on a fast poll, without incrementing the failure counter or applying the default port.
+> During the startup grace period (see Startup Grace Period), the *Handle disconnection* and *port not found* paths - which a NAT-PMP adapter that is not found also takes - instead hold quietly and re-check on a fast poll, without incrementing the failure counter or applying the default port.
 
 ## VPN Manager Creation
 
@@ -115,14 +115,12 @@ flowchart TD
     COPY --> RETURN([Return new manager])
     D -- No --> E{Has cached fallback manager?}
     E -- Yes --> FALLBACK([Return cached manager, forward address forgotten])
-    E -- No --> GRACE{Startup grace period?}
-    GRACE -- Yes --> HOLD([HOLD: waiting for VPN, fast re-check])
-    GRACE -- No --> F[Increment failed counter]
-    F --> G[TriggerRecoveryIfDueAsync]
-    G --> SKIP_STATUS([SKIP: Adapter not found])
+    E -- No --> STANDIN([Return a stand-in that reports the adapter down])
 ```
 
 **Why the fallback?** When a VPN reconnects, the network adapter may briefly disappear. Returning the last known `NatPmpManager` lets `IsVpnConnected()` report `false`, so the main flow handles disconnection gracefully (applies the default port or skips) instead of erroring out. The same fallback is returned when the adapter is up but the gateway did not answer the probe: `IsVpnConnected()` then reports `true`, a port read that fails counts toward recovery as any failed cycle does, and the instance has forgotten its forward address, so the exit-address check treats the cycle as a failed lookup.
+
+**Why the stand-in?** With no cached manager (the adapter has not been seen up since the app started, or the adapter setting just changed) there is no gateway to build a real `NatPmpManager` from. `MissingNatPmpAdapter` reports the adapter down and carries its recovery action, so the cycle goes through the same disconnected handling as any later outage: the startup grace hold, the failure count and auto-recovery, and the default-port fallback. It is never kept as the cached manager, which must carry renewal state.
 
 ## Startup Grace Period
 
@@ -755,13 +753,7 @@ RunAsync
      ├─ CreateVpnManagerAsync
      │   ├─ TrackRecoveryContext (a new provider or adapter: RecoveryGate.ResetForNewContext)
      │   ├─ CreateStaticPortVpnManager (Static port only)
-     │   └─ CreateNatPmpVpnManagerAsync (NAT-PMP only)
-     │       ├─ MarkWaitingForVpn (startup grace: adapter not discoverable yet)
-     │       ├─ ForceVerifyAfterOutage, RestartClosedPortSequence (adapter not found)
-     │       └─ RecoveryGate.RegisterFailureAndTryRecoveryAsync
-     │           ├─ BuildCycleCountMessage
-     │           └─ TriggerRecoveryIfDueAsync
-     │               └─ DispatchRecoveryAsync
+     │   └─ CreateNatPmpVpnManagerAsync (NAT-PMP only; an adapter not found returns the cached manager or a MissingNatPmpAdapter stand-in, both handled as disconnected below)
      ├─ IVpnManager.IsVpnConnected
      ├─ HandleVpnDisconnectedAsync (if disconnected)
      │   ├─ MarkWaitingForVpn (startup grace: VPN not connected)

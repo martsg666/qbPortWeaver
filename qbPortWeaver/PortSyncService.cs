@@ -1269,31 +1269,28 @@ public sealed class PortSyncService
             return _lastKnownNatPmpManager;
         }
 
-        // No previous knowledge of this adapter - VPN likely just disconnected for the first time.
-        // No IVpnManager instance is available here (adapter not found, no fallback manager),
-        // so we resolve the recovery action and target directly instead of going through the interface.
-        string adapterName = cfg.VpnAdapterName;
-        // Startup grace: the adapter is likely still coming up after boot/login. Wait quietly instead
-        // of registering a failure. The null return re-checks on the fast grace poll (see RunCoreAsync).
-        if (ShouldWaitForVpnStartup(cfg.WaitForVpnOnStartup))
-        {
-            MarkWaitingForVpn(status, $"Waiting for VPN adapter '{adapterName}' to come up");
-            return null;
-        }
-        ForceVerifyAfterOutage();
-        RestartClosedPortSequence(); // as when the VPN is not connected, see HandleVpnDisconnectedAsync
-        string disconnectedMsg = $"NAT-PMP adapter '{adapterName}' not found - VPN may be disconnected";
-        var (recoveryTarget, recoveryAction) = VpnAdapter.GetRecovery(adapterName);
-        await _recoveryGate.RegisterFailureAndTryRecoveryAsync(
-            disconnectedMsg, LogLevel.Info,
-            recoveryAction,
-            recoveryTarget,
-            $"NAT-PMP adapter '{adapterName}'",
-            RecoverySettingsOf(cfg), cancellationToken).ConfigureAwait(false);
+        // No previous knowledge of this adapter: it has not been seen up since the app started (a boot with
+        // the VPN down), or the adapter setting just changed. A stand-in that reports it down sends the cycle
+        // through the same disconnected handling as a later outage - the startup grace hold, the failure
+        // count and recovery, and the default-port fallback, which a separate path here used to skip.
+        LogManager.Instance.LogDebug("PortSyncService.CreateNatPmpVpnManagerAsync: Adapter not discoverable and none seen before - handling it as disconnected");
+        return new MissingNatPmpAdapter(cfg.VpnAdapterName);
+    }
 
-        status[StatusKeys.Status] = SyncStatusValues.Skipped;
-        status[StatusKeys.Message] = disconnectedMsg;
-        return null;
+    // The NAT-PMP manager for an adapter that has not been seen up in this run, so no gateway is known to
+    // build a real one from. Reports the adapter down and carries its recovery action; never kept as
+    // _lastKnownNatPmpManager, which must be a real manager with renewal state.
+    private sealed class MissingNatPmpAdapter(string adapterName) : IVpnManager
+    {
+        private (string Target, string Action)? _recovery;
+        private (string Target, string Action) Recovery => _recovery ??= VpnAdapter.GetRecovery(adapterName);
+
+        public string ProviderName => adapterName;
+        public bool IsVpnConnected() => false;
+        public Task<int?> GetVpnPortAsync(CancellationToken cancellationToken = default) => Task.FromResult<int?>(null);
+        public string? GetRecoveryTarget() => Recovery.Target;
+        public string GetRecoveryAction() => Recovery.Action;
+        public bool IsAdapterMatch(string interfaceName) => VpnRegistryConfig.AdapterNamesMatchExactly(adapterName, interfaceName);
     }
 
     // Creates the active IManagedClient via its ClientRegistry factory from the config block

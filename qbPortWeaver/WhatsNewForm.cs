@@ -86,7 +86,9 @@ public partial class WhatsNewForm : Form
         "Fixed: Nicotine+ /qbpw-test and other Windows accounts\n" +
         "/qbpw-test now shows its result in the chat you typed it in, and a closed port is checked again " +
         "instead of repeated from an earlier answer, so a short sync interval no longer reports it closed " +
-        "by mistake. A portable Nicotine+ running under another Windows account is now found. A port change " +
+        "by mistake. A portable Nicotine+ running under another Windows account is now found. When qbPortWeaver " +
+        "starts Nicotine+ and the plugin comes up on a different port than before, the start is no longer " +
+        "reported as failed. A port change " +
         "no longer logs Nicotine+ back in after you disconnected it yourself; the new port applies when you " +
         "connect, and a port check while Nicotine+ is disconnected no longer counts as a closed port. To get the " +
         "plugin fixes in this release, click Update Plugin on the Nicotine+ tab in Settings, then restart " +
@@ -102,7 +104,8 @@ public partial class WhatsNewForm : Form
         "With NAT-PMP, the default port is now applied when qbPortWeaver starts while the VPN adapter is " +
         "down, instead of only after the adapter had come up once. " +
         "Start Automatically shows the real state, the Media Manager keeps the file extension and shows " +
-        "an & in a title as itself, " +
+        "an & in a title as itself, and no longer takes a different file of the same size for one already " +
+        "in the library when a network share cannot be read, " +
         "Nicotine+ commands no longer print \"None\", the Nicotine+ plugin shows as not enabled when " +
         "Nicotine+ has plugins turned off, and a failed Transmission settings check is no longer " +
         "reported as passed. When qbPortWeaver restarts Transmission after a port change, Transmission " +

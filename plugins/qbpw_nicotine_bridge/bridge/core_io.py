@@ -409,6 +409,18 @@ class CoreIO:
     def note_disconnected(self, user_initiated):
         self._manual_disconnect = bool(user_initiated)
 
+    def connection_flags(self):
+        """The connection history the events above built, for a bridge restart to hand on."""
+        return self._manual_disconnect, self._have_connected
+
+    def restore_connection_flags(self, flags):
+        """Takes over the history of the CoreIO this one replaces.
+
+        Nicotine+ sends no event for the state it is already in, so a new CoreIO would otherwise
+        forget that the user disconnected and let the next port change log them back in.
+        """
+        self._manual_disconnect, self._have_connected = flags
+
     def note_port_changed(self):
         """Opens the reconnect grace window read by ``connection_state``.
 

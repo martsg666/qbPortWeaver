@@ -221,8 +221,10 @@ class Plugin(BasePlugin):
 
     # ------------------------------------------------------------- start / stop
 
-    def _start(self):
+    def _start(self, connection_flags=None):
         self._core_io = CoreIO(self.config, self.core, self.log)
+        if connection_flags is not None:
+            self._core_io.restore_connection_flags(connection_flags)
         capabilities = self._core_io.probe()
 
         self._proxy = MainThreadProxy()
@@ -529,9 +531,11 @@ class Plugin(BasePlugin):
             self.output(f"Token starts with: {self._bridge.token[:6]}...")
 
     def restart_command(self, _args, **_unused):
+        # The connection events already seen are kept: a restart is not a reconnect.
+        connection_flags = self._core_io.connection_flags() if self._core_io is not None else None
         self._stop()
         try:
-            self._start()
+            self._start(connection_flags)
             self.output("The bridge has been restarted.")
         # Report the failure; a command must never break the command loop.
         except Exception as error:  # noqa: BLE001

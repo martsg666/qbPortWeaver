@@ -65,7 +65,7 @@ public sealed class DelugeClient : ManagedClientBase
             int? listenPort = ParseListenPort(resultElement);
 
             if (listenPort is null)
-                LogManager.Instance.LogDebug("DelugeClient.GetPreferencesAsync: listen_ports not parsed in RPC response");
+                LogManager.Instance.LogDebug("DelugeClient.GetPreferencesAsync: listen port not parsed in RPC response (listen_ports, or listen_random_port while random_port is on and none is picked yet)");
 
             string? bindAddress = resultElement.GetStringOrNull("listen_interface");
 

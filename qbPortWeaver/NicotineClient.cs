@@ -47,8 +47,9 @@ public sealed class NicotineClient : ManagedClientBase
     // Deduplicates the --port guidance. The condition lasts for the life of the Nicotine+
     // process and each sync cycle builds a fresh client, so the latch has to outlive the
     // instance or every cycle would repeat the same warning. Cleared on a successful port
-    // change (see SetListeningPortAsync): the lock is then gone, and a later one must warn
-    // again rather than be suppressed as a repeat of a condition that has since been fixed.
+    // change (see SetListeningPortAsync) and when the plugin reports no lock (GetPreferencesAsync):
+    // the lock is then gone, and a later one must warn again rather than be suppressed as a repeat
+    // of a condition that has since been fixed.
     private static string? _lastLockedWarning; // NOSONAR S2696 - one sync loop; the dedupe is deliberately process-wide
 
     /// <inheritdoc/>
@@ -130,6 +131,12 @@ public sealed class NicotineClient : ManagedClientBase
             // outside the VPN, while null is "this client cannot report an interface" and skips
             // the check entirely. Same convention as qBittorrent.
             string? interfaceName = root.GetStringOrNull("interface");
+
+            // The lock reported gone: re-arm the --port warning. A port that already matches needs no
+            // write, so the successful-change path alone would leave it latched across a removed and
+            // re-added lock.
+            if (root.TryGetProperty("port_locked_by_cli", out var locked) && locked.ValueKind == JsonValueKind.False)
+                _lastLockedWarning = null;
 
             return (listenPort, interfaceName);
         }
@@ -472,7 +479,7 @@ public sealed class NicotineClient : ManagedClientBase
         string message = response.StatusCode switch
         {
             HttpStatusCode.Unauthorized =>
-                $"{ClientName} bridge plugin rejected the token - use Refresh next to the Plugin token in Settings to read the current one",
+                $"{ClientName} bridge plugin rejected the token - click ⟳ next to the Plugin token on the {ClientName} tab in Settings to read the current one",
             HttpStatusCode.NotFound =>
                 $"{ClientName} bridge plugin does not provide {path} - reinstall it from Settings to match this version of qbPortWeaver",
             _ => $"{ClientName} bridge plugin returned HTTP {(int)response.StatusCode} {response.StatusCode} for {path}{detail}"

@@ -283,7 +283,7 @@ All client communication goes through the `IManagedClient` interface, with imple
    NotifyOnPortUpdate is enabled (raises PortUpdated event)
 5. (optional, qBittorrent only) GET /api/v2/transfer/info → check connection_status
               If "disconnected" → restart qBittorrent
-              Skipped if step 4 already restarted (avoids redundant restart)
+              Skipped if step 3 already restarted (avoids redundant restart)
 6. (optional) Verify outside reachability of the port (see Port Verification below):
    GET /api/v2/transfer/info     → connection_status connected/firewalled    [qBittorrent]
    port_test (ip_protocol=ipv4)  → port-is-open                              [Transmission]

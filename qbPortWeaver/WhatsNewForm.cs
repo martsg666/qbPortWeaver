@@ -74,7 +74,8 @@ public partial class WhatsNewForm : Form
         "no longer forgets what it knew about the configured library, so the next import does not " +
         "re-read every library file, and closing the Media Manager during a scan no longer leaves the " +
         "next imports using an out-of-date view of the library. The library is now read while the source " +
-        "folders are listed rather than before, so a scan over network shares finishes sooner.\n\n" +
+        "folders are listed rather than before, so a scan over network shares finishes sooner. A source folder " +
+        "listed inside another is scanned once with it, and empty-folder cleanup no longer deletes it.\n\n" +
         "Fixed: Nicotine+ /qbpw-test and other Windows accounts\n" +
         "/qbpw-test now shows its result in the chat you typed it in, and a closed port is checked again " +
         "instead of repeated from an earlier answer, so a short sync interval no longer reports it closed " +
@@ -100,7 +101,9 @@ public partial class WhatsNewForm : Form
         "abruptly, so what it saves on exit is kept. A port change whose client restart fails is now still recorded in the port history and " +
         "notified, and the post-update command still runs, with the failure in the status file. In " +
         "confirmation dialogs Enter now answers Yes or OK, and No when the action deletes something, and " +
-        "Tab moves left to right. Enter no longer opens a link in the update, What's New and About windows.\n\n" +
+        "Tab moves left to right. Enter no longer opens a link in the update, What's New and About windows. " +
+        "Buttons in message boxes and other small dialogs no longer cut off their text at high display " +
+        "scaling, and Escape closes the log viewer and help from an empty search box.\n\n" +
         "Previously released\n\n" +
         "New in 2.6.9\n\n" +
         "Your settings can be backed up and restored\n" +

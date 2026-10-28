@@ -29,8 +29,8 @@ make sure plugins are turned on and enable **qbPortWeaver Bridge**.
 
 On start, the plugin writes a small file with its address and access token:
 
-- `%LOCALAPPDATA%\qbPortWeaver\nicotine-bridge.json` - the one qbPortWeaver reads
-- `<Nicotine+ data folder>\qbportweaver-bridge.json` - a copy you can find easily
+- `%LOCALAPPDATA%\qbPortWeaver\nicotine-bridge.json` - the one qbPortWeaver reads first
+- `<Nicotine+ data folder>\qbportweaver-bridge.json` - a copy you can find easily, which qbPortWeaver also reads as a fallback
 
 qbPortWeaver picks these up on its own, so there is normally nothing to configure. If a non-portable
 Nicotine+ runs under another Windows account, or the plugin's connection file setting points elsewhere, run
@@ -50,7 +50,7 @@ chat room, because chat rooms are public.
 
 | Command | What it does |
 |---|---|
-| `/qbpw-status` | Bridge address, connection state, configured and in-use port, UPnP state, and any capability this Nicotine+ version lacks |
+| `/qbpw-status` | Bridge address, connection state, configured and in-use port, UPnP state, and any missing capability an endpoint depends on |
 | `/qbpw-port [port]` | Show the port, or change it (UPnP is turned off too, as qbPortWeaver does) |
 | `/qbpw-test [port]` | Check whether the port is reachable from outside |
 | `/qbpw-connection-file` | Where the connection details are published |

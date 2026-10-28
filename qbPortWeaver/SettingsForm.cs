@@ -153,7 +153,7 @@ public partial class SettingsForm : Form
         toolTip.SetToolTip(chkForceStartQBittorrent, "Automatically launch qBittorrent if it is not already running");
         toolTip.SetToolTip(nudQBittorrentDefaultPort, DefaultPortTooltip);
         toolTip.SetToolTip(chkQBittorrentWarnOnInterfaceMismatch, "Show a warning when qBittorrent's network interface does not match the configured VPN provider");
-        toolTip.SetToolTip(chkQBittorrentRestartOnDisconnect, "Automatically restart qBittorrent when its connection status becomes disconnected");
+        toolTip.SetToolTip(chkQBittorrentRestartOnDisconnect, "Automatically restart qBittorrent when its connection status becomes disconnected, at most 3 times in a row until it reconnects");
         // Covers all three behaviours this one checkbox gates, not just the identifier case it was
         // written for: the address repair and the port-closed rebind were both added behind it in 2.6.7.
         // They share one cause - a VPN reconnect moving the binding out from under qBittorrent - and one

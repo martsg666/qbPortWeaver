@@ -40,7 +40,7 @@ update first.
 | Client | Client to control: `qBittorrent`, `Transmission`, `Deluge`, or `Nicotine+` | `qBittorrent` |
 | VPN provider | `Disabled`, `ProtonVPN`, `PIA`, `NAT-PMP`, or `Static port` (for a provider that assigns a permanent forwarded port) | `Disabled` |
 | VPN adapter | Network adapter of the VPN. For NAT-PMP, the adapter whose gateway maps the port (only adapters that answer NAT-PMP are listed); for Static port, the adapter that must be up for the port to apply (every adapter that is up and has an IPv4 address is listed). Only enabled for those two providers | - |
-| Forwarded port | The port your VPN provider assigned to your account. Only enabled when Static port is selected, and required then | - |
+| Forwarded port | The port your VPN provider assigned to your account. Only enabled when Static port is selected, and required then (`0` = not set) | `0` |
 | Update interval | How often to check and sync the port (seconds) | `180` |
 | Sync on network change | Also run a sync immediately when a network or VPN connection change is detected, instead of waiting for the next interval (rapid changes are coalesced; pausing still suppresses it) | `True` |
 | Wait for VPN on startup | For a short grace period after the app starts, wait quietly while the VPN is still connecting instead of reporting it as disconnected, applying the default-port fallback, or triggering auto-recovery. Syncs as soon as the VPN comes up | `True` |
@@ -60,7 +60,7 @@ update first.
 | Force-start if not running | Automatically launch qBittorrent if it is not running | `True` |
 | Default port | Fallback port to apply when the VPN is not connected. `0` disables the fallback, so a disconnected VPN leaves the client's port alone | `0` |
 | Warn when network interface doesn't match the VPN | Warn if qBittorrent's network interface doesn't match the configured VPN provider | `True` |
-| Restart qBittorrent if connection status disconnects | Restart qBittorrent when its connection status changes to disconnected (requires Executable and Process name) | `True` |
+| Restart qBittorrent if connection status disconnects | Restart qBittorrent when its connection status changes to disconnected (requires Executable and Process name). At most 3 restarts in a row; they start again once qBittorrent reports connected | `True` |
 | Fix the network interface binding when it goes stale | Re-apply qBittorrent's network interface when its stored identifier no longer matches the adapter it names. Also corrects a bind address the adapter no longer has, and - if the forwarded port stops answering after the adapter changed address - nudges qBittorrent into listening on the new one. Your qBittorrent settings are left as you had them | `True` |
 
 ### Transmission

@@ -267,7 +267,8 @@ partial class MediaManagerForm
         lblScanStatus.Anchor    = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
         lblScanStatus.Location  = new Point(420, 278);
         lblScanStatus.Name      = "lblScanStatus";
-        lblScanStatus.Size      = new Size(272, 28);
+        // Two lines of Segoe UI 9 need 30px; status messages are kept to two lines.
+        lblScanStatus.Size      = new Size(272, 30);
         lblScanStatus.TabIndex  = 5;
         // Shows file names, which may contain '&'.
         lblScanStatus.UseMnemonic = false;
@@ -385,6 +386,7 @@ partial class MediaManagerForm
         lblTmdbTitle.Location     = new Point(84, 10);
         lblTmdbTitle.Name         = "lblTmdbTitle";
         lblTmdbTitle.Size         = new Size(390, 20);
+        lblTmdbTitle.AutoEllipsis = true;
         lblTmdbTitle.TabIndex     = 1;
         // Titles and file names may contain '&', which must show as itself, not as a mnemonic.
         lblTmdbTitle.UseMnemonic  = false;

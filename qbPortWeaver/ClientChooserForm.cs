@@ -65,18 +65,18 @@ internal sealed class ClientChooserForm : Form
             _options[0].Checked = true;
         root.Controls.Add(content, 0, 0);
 
-        var btnOk = DialogLayout.DialogButton("OK", DialogResult.OK);
-        btnOk.Click += btnOk_Click;
+        var btnOK = DialogLayout.DialogButton("OK", DialogResult.OK);
+        btnOK.Click += btnOK_Click;
         var btnCancel = DialogLayout.DialogButton("Cancel", DialogResult.Cancel);
-        root.Controls.Add(DialogLayout.ButtonRow(btnOk, btnCancel), 0, 1);
-        AcceptButton = btnOk;
+        root.Controls.Add(DialogLayout.ButtonRow(btnOK, btnCancel), 0, 1);
+        AcceptButton = btnOK;
         CancelButton = btnCancel;
 
         Controls.Add(root);
     }
 
     // Records which radio button was selected before the dialog closes with DialogResult.OK.
-    private void btnOk_Click(object? sender, EventArgs e)
+    private void btnOK_Click(object? sender, EventArgs e)
     {
         for (int i = 0; i < _options.Length; i++)
         {

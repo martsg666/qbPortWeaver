@@ -203,8 +203,9 @@ partial class StatusForm
         lblAutoRecoveryValue.Text = "-";
         lblAutoRecoveryValue.TextAlign = ContentAlignment.MiddleLeft;
         // AutoEllipsis + the tooltip PopulateAutoRecovery sets are belt and braces. Values are kept to
-        // fit 384px with room to spare, and the exit-address states are deliberately short, with their addresses and advice in the tooltip. A larger system font could still reach
-        // the edge, and the tooltip carries the full text when it does.
+        // fit 384px with room to spare, and the exit-address states are deliberately short, with their
+        // addresses and advice in the tooltip. A larger system font could still reach the edge, and the
+        // tooltip carries the full text when it does.
         lblAutoRecoveryValue.AutoEllipsis = true;
         // ── grpHistory (recent port changes and recovery events; populated in PopulateHistory) ──
         grpHistory.Controls.Add(lvHistory);

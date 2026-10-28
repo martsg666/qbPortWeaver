@@ -555,6 +555,9 @@ public partial class WhatsNewForm : Form
         if (ThemeColors.IsDarkModeEnabled())
             lnkCommunity.LinkColor = ThemeColors.LinkDark;
         RenderFeatures();
+        // The first tab stop is a link, and a focused LinkLabel takes Enter, which would open the browser
+        // instead of pressing Close. Focusing it keeps the tab order as laid out.
+        ActiveControl = btnClose;
     }
 
     protected override void OnShown(EventArgs e)

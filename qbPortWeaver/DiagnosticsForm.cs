@@ -91,7 +91,8 @@ internal sealed class DiagnosticsForm : Form
             ReadOnly = true,
             BorderStyle = BorderStyle.None,
             BackColor = SystemColors.Control,
-            TabStop = false,
+            // Reachable by Tab so the keyboard can scroll a long report; Close keeps the first focus.
+            TabStop = true,
             Dock = DockStyle.Fill,
             Margin = new Padding(0),
         };
@@ -149,6 +150,8 @@ internal sealed class DiagnosticsForm : Form
         root.Controls.Add(buttonBar, 0, 1);
         AcceptButton = btnClose;
         CancelButton = btnClose;
+        // Enter clicks the focused button, and Copy Report would otherwise take the first focus.
+        ActiveControl = btnClose;
 
         Controls.Add(root);
     }

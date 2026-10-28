@@ -44,6 +44,9 @@ internal sealed partial class UpdateAvailableForm : Form
         base.OnLoad(e);
         if (ThemeColors.IsDarkModeEnabled())
             lnkReleaseNotes.LinkColor = ThemeColors.LinkDark;
+        // The first tab stop is a link, and a focused LinkLabel takes Enter, which would open the browser
+        // instead of pressing Download & Install. Focusing it keeps the tab order as laid out.
+        ActiveControl = btnUpdate;
     }
 
     protected override void OnShown(EventArgs e)

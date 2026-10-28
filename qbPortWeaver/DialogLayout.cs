@@ -112,6 +112,9 @@ internal static class DialogLayout
         {
             // Left margin creates the inter-button gap; the leftmost button (i == 0) sits flush.
             buttonsLeftToRight[i].Margin = new Padding(i == 0 ? 0 : Gap, 0, 0, 0);
+            // Tab order follows add order unless set, and the buttons are added right to left, so without
+            // this Tab ran backwards and the dismiss button took the first focus - and with it Enter.
+            buttonsLeftToRight[i].TabIndex = i;
             panel.Controls.Add(buttonsLeftToRight[i]);
         }
         return panel;

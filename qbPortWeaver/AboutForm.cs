@@ -32,6 +32,9 @@ public partial class AboutForm : Form
             lnkAuthor.LinkColor = ThemeColors.LinkDark;
             lnkGitHub.LinkColor = ThemeColors.LinkDark;
         }
+        // The first tab stop is a link, and a focused LinkLabel takes Enter, which would open the browser
+        // instead of pressing Close. Focusing it keeps the tab order as laid out.
+        ActiveControl = btnClose;
         _ = LoadGitHubDataAsync(); // fire-and-forget; exceptions are handled inside LoadGitHubDataAsync
     }
 

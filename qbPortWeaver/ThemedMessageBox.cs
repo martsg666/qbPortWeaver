@@ -40,17 +40,23 @@ internal static class ThemedMessageBox
     /// icon asks something reversible, a Warning icon precedes irreversible loss and its text says so
     /// ("This cannot be undone"). Having both as named methods is what keeps that distinction from
     /// being decided icon-by-icon at each call site. Callers whose icon varies at runtime - the media
-    /// import, where only Move destroys anything - still use <see cref="Show"/> directly.</remarks>
+    /// import, where only Move destroys anything - still use <see cref="Show"/> directly.
+    /// <para>No is the default here, focused and taken by Enter, as Windows recommends for a prompt whose
+    /// affirmative answer destroys data: a reflexive Enter must not be the thing that deletes it.</para></remarks>
     internal static bool ConfirmDestructive(string text) =>
-        Show(text, AppIdentity.AppName, MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.Yes;
+        ShowCore(text, AppIdentity.AppName, MessageBoxButtons.YesNo, MessageBoxIcon.Warning, dismissIsDefault: true) == DialogResult.Yes;
 
     /// <summary>Shows a themed modal message dialog and returns the <see cref="DialogResult"/> of the
     /// button the user clicked. Mirrors <see cref="MessageBox.Show(string, string, MessageBoxButtons,
     /// MessageBoxIcon)"/>.</summary>
     public static DialogResult Show(string text, string caption = "",
-        MessageBoxButtons buttons = MessageBoxButtons.OK, MessageBoxIcon icon = MessageBoxIcon.None)
+        MessageBoxButtons buttons = MessageBoxButtons.OK, MessageBoxIcon icon = MessageBoxIcon.None) =>
+        ShowCore(text, caption, buttons, icon, dismissIsDefault: false);
+
+    // dismissIsDefault: the last (dismiss) button is the default instead of the affirmative one.
+    private static DialogResult ShowCore(string text, string caption, MessageBoxButtons buttons, MessageBoxIcon icon, bool dismissIsDefault)
     {
-        using var form = new ThemedMessageBoxForm(text, caption, buttons, icon);
+        using var form = new ThemedMessageBoxForm(text, caption, buttons, icon, dismissIsDefault);
         var owner = Form.ActiveForm;
         if (owner is not null && !owner.IsDisposed && owner.Visible && owner != form)
             return form.ShowDialog(owner); // CenterParent (set in the form) centres over the owner window
@@ -73,7 +79,7 @@ internal static class ThemedMessageBox
         private string[] _buttonLabels = [];
         private Bitmap? _iconBitmap;
 
-        internal ThemedMessageBoxForm(string text, string caption, MessageBoxButtons buttons, MessageBoxIcon icon)
+        internal ThemedMessageBoxForm(string text, string caption, MessageBoxButtons buttons, MessageBoxIcon icon, bool dismissIsDefault)
         {
             Text = caption;
             _messageText = text;
@@ -84,10 +90,10 @@ internal static class ThemedMessageBox
             AutoSizeMode = AutoSizeMode.GrowAndShrink;
 
             _sound = SoundFor(icon);
-            BuildLayout(text, icon, buttons);
+            BuildLayout(text, icon, buttons, dismissIsDefault);
         }
 
-        private void BuildLayout(string text, MessageBoxIcon icon, MessageBoxButtons buttons)
+        private void BuildLayout(string text, MessageBoxIcon icon, MessageBoxButtons buttons, bool dismissIsDefault)
         {
             var root = DialogLayout.ContentRoot(); // row 0: content, row 1: buttons
             root.Controls.Add(BuildContent(text, icon), 0, 0);
@@ -102,6 +108,10 @@ internal static class ThemedMessageBox
                 if (specs[i].IsCancel) CancelButton = b;  // Escape triggers the cancel-like button, or nothing for Yes/No
                 buttonControls[i] = b;
             }
+            if (dismissIsDefault) AcceptButton = buttonControls[^1];
+            // Focused as well as accepted: Enter clicks the focused button, not AcceptButton, so the
+            // default only holds while it has the focus.
+            if (AcceptButton is Control defaultButton) ActiveControl = defaultButton;
             root.Controls.Add(DialogLayout.ButtonRow(buttonControls), 0, 1);
 
             Controls.Add(root);

@@ -17,7 +17,7 @@ public partial class MediaManagerForm : Form
     private CancellationTokenSource? _operationCts;
     private CancellationTokenSource? _thumbnailCts;
     private readonly Dictionary<string, Image> _posterCache = new(StringComparer.OrdinalIgnoreCase);
-    private ToolStripMenuItem? _mnuPaste;
+    private ToolStripMenuItem? _ctxPaste;
     private bool _allIncluded = true;
     private bool _isBusy;
     private bool _showOnlyReviewNeeded;
@@ -276,7 +276,7 @@ public partial class MediaManagerForm : Form
         // Ahead of the verified count, which would send the user to edit names that were never looked up.
         // The log may hold only Debug lines for it, when an earlier run already raised the warning.
         if (tmdb.WasUnavailable)
-            return "TMDB could not be reached or rejected the API key, so some rows were not re-matched. See the log for details.";
+            return "TMDB could not be reached or rejected the API key; some rows were not re-matched.";
         int verified = tvShowRows.Count(r => ((RowData)r.Tag!).Confidence == RowConfidence.Confident)
                      + movieRows.Count(r => ((RowData)r.Tag!).Confidence == RowConfidence.Confident);
         return verified == total
@@ -499,8 +499,8 @@ public partial class MediaManagerForm : Form
         // the user to edit names that were never actually looked up.
         if (result.TmdbUnavailable)
             return result.UnreadableSourceFolders.Length > 0
-                ? "Some source folders could not be read, and TMDB could not be reached or rejected the API key. See the log for details."
-                : "TMDB could not be reached or rejected the API key, so some files were not looked up. See the log for details.";
+                ? "Some source folders could not be read, and TMDB could not be reached. See the log."
+                : "TMDB could not be reached or rejected the API key; some files were not looked up.";
         return UnreadableSourcesStatus(result, sourceFolders.Length);
     }
 
@@ -651,8 +651,8 @@ public partial class MediaManagerForm : Form
         // unchecked would otherwise show as "no TMDB match" when they were never looked up.
         if (remaining.TmdbUnavailable)
             return failed == 0
-                ? "Done - all selected files imported, but TMDB could not be reached for the rest. See the log."
-                : $"Done - {TextFormat.Pluralize(failed, "file")} could not be imported, and TMDB could not be reached for the rest. See the log.";
+                ? "Done - all selected files imported; TMDB could not be reached for the rest."
+                : $"Done - {TextFormat.Pluralize(failed, "file")} could not be imported; TMDB could not be reached for the rest.";
         return failed == 0
             ? "Done - all selected files imported."
             : $"Done - {TextFormat.Pluralize(failed, "file")} could not be imported. See the log for details.";
@@ -833,7 +833,7 @@ public partial class MediaManagerForm : Form
 
         if (!p.IsConfident)
         {
-            lblTmdbConfidence.Text = "Uncertain match - review recommended";
+            lblTmdbConfidence.Text = "Uncertain match - review it";
             lblTmdbConfidence.ForeColor = _colorUncertain;
         }
         else
@@ -857,38 +857,38 @@ public partial class MediaManagerForm : Form
 
     private void SetupGridContextMenu()
     {
-        var mnuCopy = new ToolStripMenuItem("Copy");
-        _mnuPaste = new ToolStripMenuItem("Paste");
-        var mnuSelectAll = new ToolStripMenuItem("Select All");
+        var ctxCopy = new ToolStripMenuItem("Copy");
+        _ctxPaste = new ToolStripMenuItem("Paste");
+        var ctxSelectAll = new ToolStripMenuItem("Select All");
 
-        mnuCopy.ShortcutKeyDisplayString = "Ctrl+C";
-        _mnuPaste.ShortcutKeyDisplayString = "Ctrl+V";
-        mnuSelectAll.ShortcutKeyDisplayString = "Ctrl+A";
+        ctxCopy.ShortcutKeyDisplayString = "Ctrl+C";
+        _ctxPaste.ShortcutKeyDisplayString = "Ctrl+V";
+        ctxSelectAll.ShortcutKeyDisplayString = "Ctrl+A";
 
-        mnuCopy.Click += mnuCopy_Click;
-        _mnuPaste.Click += mnuPaste_Click;
-        mnuSelectAll.Click += mnuSelectAll_Click;
+        ctxCopy.Click += ctxCopy_Click;
+        _ctxPaste.Click += ctxPaste_Click;
+        ctxSelectAll.Click += ctxSelectAll_Click;
 
-        var menu = new ContextMenuStrip(components);
-        menu.Items.Add(mnuCopy);
-        menu.Items.Add(_mnuPaste);
-        menu.Items.Add(new ToolStripSeparator());
-        menu.Items.Add(mnuSelectAll);
+        var ctxResults = new ContextMenuStrip(components);
+        ctxResults.Items.Add(ctxCopy);
+        ctxResults.Items.Add(_ctxPaste);
+        ctxResults.Items.Add(new ToolStripSeparator());
+        ctxResults.Items.Add(ctxSelectAll);
 
         dgvResults.MouseDown += dgvResults_MouseDown;
-        menu.Opening += gridContextMenu_Opening;
-        dgvResults.ContextMenuStrip = menu;
+        ctxResults.Opening += ctxResults_Opening;
+        dgvResults.ContextMenuStrip = ctxResults;
     }
 
-    private void mnuCopy_Click(object? sender, EventArgs e)
+    private void ctxCopy_Click(object? sender, EventArgs e)
     {
         if (dgvResults.CurrentCell?.Value is string v && v.Length > 0)
             UiHelpers.SetClipboardTextSafely(v);
     }
 
-    private void mnuPaste_Click(object? sender, EventArgs e) => PasteToCurrentCell();
+    private void ctxPaste_Click(object? sender, EventArgs e) => PasteToCurrentCell();
 
-    private void mnuSelectAll_Click(object? sender, EventArgs e) => dgvResults.SelectAll();
+    private void ctxSelectAll_Click(object? sender, EventArgs e) => dgvResults.SelectAll();
 
     // Right-click first moves focus to the cell under the cursor, then the menu opens
     private void dgvResults_MouseDown(object? sender, MouseEventArgs e)
@@ -899,12 +899,12 @@ public partial class MediaManagerForm : Form
             dgvResults.CurrentCell = dgvResults[hit.ColumnIndex, hit.RowIndex];
     }
 
-    private void gridContextMenu_Opening(object? sender, System.ComponentModel.CancelEventArgs e)
+    private void ctxResults_Opening(object? sender, System.ComponentModel.CancelEventArgs e)
     {
         bool canPaste = dgvResults.CurrentCell?.ColumnIndex == colProposed.Index
                         && !dgvResults.CurrentCell.ReadOnly
                         && UiHelpers.ClipboardHasText();
-        _mnuPaste!.Enabled = canPaste;
+        _ctxPaste!.Enabled = canPaste;
     }
 
     private void PasteToCurrentCell()
@@ -922,7 +922,7 @@ public partial class MediaManagerForm : Form
         switch (e.KeyCode)
         {
             case Keys.C:
-                mnuCopy_Click(sender, e);
+                ctxCopy_Click(sender, e);
                 e.Handled = true;
                 break;
             case Keys.V:

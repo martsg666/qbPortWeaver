@@ -1594,6 +1594,7 @@ public partial class LogViewerForm : Form
             TextAlign = ContentAlignment.MiddleCenter,
             Font = lvLog.Font,
             Visible = false,
+            UseMnemonic = false, // shows exception text, which can hold a path with '&' in it
         };
         lvLog.Parent!.Controls.Add(_metaLabel);
         SyncMetaLabelBounds();

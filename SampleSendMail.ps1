@@ -42,7 +42,7 @@ function PortClosedState($s) {
     if (-not $s.portClosedRecoveryArmed) { return 'Triggered - waiting for the next scheduled check' }
     # The count has reached the threshold but a time hold keeps the trigger back: the port has not
     # stayed closed long enough yet, or an exit-address reconnect is still settling. An absolute instant.
-    if ($null -ne $s.portClosedRecoveryHeldUntil) { return "Holding - port closed too recently, retry at $($s.portClosedRecoveryHeldUntil)" }
+    if ($null -ne $s.portClosedRecoveryHeldUntil) { return "Holding - too soon to restart, retry at $($s.portClosedRecoveryHeldUntil)" }
     if ($s.portClosedRecoveryChecks -gt 0) { return "$($s.portClosedRecoveryChecks) of $($s.portClosedRecoveryTriggerChecks) closed checks" }
     return $null
 }
@@ -73,7 +73,8 @@ function RecoveryState($s) {
 function OnOff($enabled) { if ($enabled) { 'Enabled' } else { 'Disabled' } }
 
 # Whether traffic leaves from the address the port is forwarded on. The app looks this up
-# only when a port check reports the port closed or cannot determine it, and only for NAT-PMP and ProtonVPN, so
+# when a port check reports the port closed or cannot determine it (and once on an open result after
+# reconnects), and only for NAT-PMP and ProtonVPN, so
 # "Not checked" is normal while the port is open, for other providers, and for app versions without these keys.
 function AddressMatch($s) {
     if ($s.vpnExitAddressMismatch) {

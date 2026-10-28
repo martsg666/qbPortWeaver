@@ -652,7 +652,7 @@ public partial class MainForm : Form
     private void pauseSync_Click(object? sender, EventArgs e) => ToggleSyncPaused();
 
     // Shared by the tray menu's Pause/Resume item and the Status panel's Pause/Resume button.
-    // On pause the tray feedback flips immediately via OnSyncCompleted, which also refreshes the
+    // On pause the tray feedback flips immediately via PublishPausedStatus, which also refreshes the
     // panel; on resume the delay is interrupted so a cycle starts now, and the panel is refreshed
     // directly so its button label and Next sync estimate update without waiting for that cycle.
     private void ToggleSyncPaused()
@@ -662,7 +662,7 @@ public partial class MainForm : Form
         if (_syncPaused)
         {
             LogManager.Instance.LogMessage("Syncing paused by user", LogLevel.Info);
-            OnSyncCompleted(new TrayStatus(SyncState.Paused, null, "Port sync paused"));
+            PublishPausedStatus();
         }
         else
         {

@@ -4,7 +4,7 @@
 /// Decides when the failed-cycle auto-recovery trigger may run, and runs it: the failure streak, the
 /// sustained-failure floor, the offline rate limiter and the consecutive-recovery cap. Split out of
 /// <see cref="PortSyncService"/>, which owns one instance and feeds it every failed cycle; the port-closed
-/// trigger and the manual recovery test do not pass through here and share only the dispatch
+/// trigger, the exit-address reconnects and the manual recovery test do not pass through here and share only the dispatch
 /// (<see cref="PortSyncService.DispatchRecoveryAsync"/>). Serialised by MainForm._updateSemaphore, like
 /// the rest of the sync cycle's state.
 /// </summary>
@@ -145,20 +145,20 @@ internal sealed class RecoveryGate(System.Diagnostics.Stopwatch uptime)
     // Forgets the failure streak and the offline backoff, for when the cycle's failures stop describing the
     // same thing: port sync switched to Disabled, or a different VPN provider. Without it a streak from the
     // old provider (or from before an hour of Disabled) carries over, and its long-past start lets the
-    // first failure afterwards clear the sustained-failure floor and fire recovery at once.
-    // newProvider: a switch of provider or adapter also ends the run of consecutive recoveries, which
-    // describes the old one - otherwise the new provider's first failure would be suspended as "3
-    // consecutive recoveries did not restore a forwarded port" for restarts it never had. The per-cycle
-    // reset while Disabled keeps the cap, which is otherwise cleared only by a port actually being read.
-    internal void ResetForNewContext(bool newProvider)
+    // first failure afterwards clear the sustained-failure floor and fire recovery at once. It ends the run
+    // of consecutive recoveries too, which describes the old setup - otherwise the new provider's first
+    // failure would be suspended as "3 consecutive recoveries did not restore a forwarded port" for restarts
+    // it never had. A trip through Disabled counts as a switch: nothing can add to the cap while disabled.
+    internal void ResetForNewContext()
     {
         ResetFailureStreak();
         ResetOfflineRecoveryBackoff();
-        if (newProvider) ResetRecoveryCap();
+        ResetRecoveryCap();
     }
 
-    // Ends a run of consecutive recoveries. Called from the successful-port path and when auto-recovery
-    // is switched off, and deliberately not from ResetFailureStreak: the run has to be broken by recovery
+    // Ends a run of consecutive recoveries. Called from the successful-port path, when auto-recovery is
+    // switched off, and on a change of provider or adapter (ResetForNewContext), and deliberately not from
+    // ResetFailureStreak: the run has to be broken by recovery
     // actually working, not merely by the failure counter being reset - the dispatch path resets that
     // streak every time it fires, so clearing the count there would mean the cap was never reached.
     internal void ResetRecoveryCap()

@@ -459,7 +459,7 @@ public partial class StatusForm : Form
         // would read "4 of 3 closed checks", a counter past its target, as the failed-cycle side avoids.
         if (s.PortClosedRecoveryHeldUntil is DateTimeOffset until)
             return DescribeCountdown(until) is string when
-                ? $"Holding - port closed too recently, retry in {when}"
+                ? $"Holding - too soon to restart, retry in {when}"
                 : "Will trigger on the next closed check";
 
         if (s.PortClosedRecoveryChecks > 0)

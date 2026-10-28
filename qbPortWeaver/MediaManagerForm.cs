@@ -68,7 +68,7 @@ public partial class MediaManagerForm : Form
         toolTip.SetToolTip(chkDryRun, "When checked, the automatic sync cycle will only log what it would import without touching any files");
         toolTip.SetToolTip(chkCreateFolders, "Import each title into its own Plex-recommended folder: Movies/Title (Year)/Title (Year).ext");
         toolTip.SetToolTip(chkDeleteEmptyFolders, "Delete source folders left empty after importing - folders containing only .nfo files are also removed");
-        toolTip.SetToolTip(cboImportMode, "Hardlink: links without copying (same volume required). Copy: duplicates the file. Move: relocates the file.");
+        toolTip.SetToolTip(cboImportMode, "Hardlink: links without copying (copies instead across volumes). Copy: duplicates the file. Move: relocates the file.");
         toolTip.SetToolTip(txtMoviesLibraryPath, "Target library folder for imported movies");
         toolTip.SetToolTip(btnBrowseMoviesLibrary, "Browse for the movies library folder");
         toolTip.SetToolTip(txtTvShowsLibraryPath, "Target library folder for imported TV shows");
@@ -859,9 +859,9 @@ public partial class MediaManagerForm : Form
         _mnuPaste.ShortcutKeyDisplayString = "Ctrl+V";
         mnuSelectAll.ShortcutKeyDisplayString = "Ctrl+A";
 
-        mnuCopy.Click += gridContextCopy_Click;
-        _mnuPaste.Click += gridContextPaste_Click;
-        mnuSelectAll.Click += gridContextSelectAll_Click;
+        mnuCopy.Click += mnuCopy_Click;
+        _mnuPaste.Click += mnuPaste_Click;
+        mnuSelectAll.Click += mnuSelectAll_Click;
 
         var menu = new ContextMenuStrip(components);
         menu.Items.Add(mnuCopy);
@@ -869,23 +869,23 @@ public partial class MediaManagerForm : Form
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(mnuSelectAll);
 
-        dgvResults.MouseDown += gridResults_MouseDown;
+        dgvResults.MouseDown += dgvResults_MouseDown;
         menu.Opening += gridContextMenu_Opening;
         dgvResults.ContextMenuStrip = menu;
     }
 
-    private void gridContextCopy_Click(object? sender, EventArgs e)
+    private void mnuCopy_Click(object? sender, EventArgs e)
     {
         if (dgvResults.CurrentCell?.Value is string v && v.Length > 0)
             UiHelpers.SetClipboardTextSafely(v);
     }
 
-    private void gridContextPaste_Click(object? sender, EventArgs e) => PasteToCurrentCell();
+    private void mnuPaste_Click(object? sender, EventArgs e) => PasteToCurrentCell();
 
-    private void gridContextSelectAll_Click(object? sender, EventArgs e) => dgvResults.SelectAll();
+    private void mnuSelectAll_Click(object? sender, EventArgs e) => dgvResults.SelectAll();
 
     // Right-click first moves focus to the cell under the cursor, then the menu opens
-    private void gridResults_MouseDown(object? sender, MouseEventArgs e)
+    private void dgvResults_MouseDown(object? sender, MouseEventArgs e)
     {
         if (e.Button != MouseButtons.Right) return;
         var hit = dgvResults.HitTest(e.X, e.Y);
@@ -916,7 +916,7 @@ public partial class MediaManagerForm : Form
         switch (e.KeyCode)
         {
             case Keys.C:
-                gridContextCopy_Click(sender, e);
+                mnuCopy_Click(sender, e);
                 e.Handled = true;
                 break;
             case Keys.V:

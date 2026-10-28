@@ -140,8 +140,8 @@ public partial class SettingsForm : Form
         toolTip.SetToolTip(cboClient, "Client to control (qBittorrent, Transmission, Deluge, or Nicotine+)");
         toolTip.SetToolTip(btnDetectClient, "Detect a running or installed client and fill in its selection and process details");
         toolTip.SetToolTip(btnTestRecovery, "Run the recovery action now to verify it works - restarts the VPN service (or cycles the adapter), so the VPN connection drops briefly");
-        toolTip.SetToolTip(btnBackupSettings, "Save your settings to a file. Passwords and the TMDB API key are not included, because Windows ties them to this user account on this machine.");
-        toolTip.SetToolTip(btnRestoreSettings, "Replace your current settings with those from a backup file. Passwords and the TMDB API key are left as they are.");
+        toolTip.SetToolTip(btnBackupSettings, "Save your settings to a file. Passwords, the TMDB API key and the Nicotine+ token are not included, because Windows ties them to this user account on this machine.");
+        toolTip.SetToolTip(btnRestoreSettings, "Replace your current settings with those from a backup file. Passwords, the TMDB API key and the Nicotine+ token are left as they are.");
         toolTip.SetToolTip(txtQBittorrentURL, "URL for the qBittorrent Web UI (e.g. http://127.0.0.1:8080). The Web UI must be enabled in qBittorrent under Tools → Options → Web UI.");
         toolTip.SetToolTip(txtQBittorrentUserName, "Username for the qBittorrent Web UI");
         toolTip.SetToolTip(txtQBittorrentPassword, "Password for the qBittorrent Web UI");

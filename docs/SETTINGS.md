@@ -129,7 +129,7 @@ There is also a cheaper remedy it tries first. If the port stays closed and the 
 | Setting | Description | Default |
 |---|---|---|
 | Color theme | Application color theme: `System` (follows Windows), `Dark`, or `Light`. Requires a restart to take effect | `System` |
-| Post-update | Command to run after the port is updated, also when the client restart after it failed - the status file says so (leave empty to disable) | - |
+| Post-update | Command to run after the port is updated, also when restarting the client afterwards failed - the status file says so (leave empty to disable) | - |
 | Enable debug logging | Enable verbose debug logging to the log file | `False` |
 
 ## Media Manager Settings

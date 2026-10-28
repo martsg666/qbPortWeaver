@@ -21,8 +21,8 @@ partial class MediaManagerForm
         components       = new System.ComponentModel.Container();
         toolTip          = new ToolTip(components);
         tabMedia         = new TabControl();
-        tabPageGeneral   = new TabPage();
-        tabPageFolders   = new TabPage();
+        tabGeneral       = new TabPage();
+        tabFolders       = new TabPage();
         grpGeneral       = new GroupBox();
         chkEnabled       = new CheckBox();
         lblTmdbApiKey    = new Label();
@@ -66,8 +66,8 @@ partial class MediaManagerForm
         btnOK          = new Button();
         btnCancel      = new Button();
         tabMedia.SuspendLayout();
-        tabPageGeneral.SuspendLayout();
-        tabPageFolders.SuspendLayout();
+        tabGeneral.SuspendLayout();
+        tabFolders.SuspendLayout();
         grpGeneral.SuspendLayout();
         grpLibrary.SuspendLayout();
         grpSourceFolders.SuspendLayout();
@@ -114,7 +114,7 @@ partial class MediaManagerForm
         chkDryRun.Location = new Point(15, 82);
         chkDryRun.Name     = "chkDryRun";
         chkDryRun.TabIndex = 3;
-        chkDryRun.Text     = "Dry run (preview only - no files will be imported)";
+        chkDryRun.Text     = "Dry run (sync cycle only logs what it would import)";
         chkCreateFolders.AutoSize = true;
         chkCreateFolders.Location = new Point(15, 111);
         chkCreateFolders.Name     = "chkCreateFolders";
@@ -217,8 +217,8 @@ partial class MediaManagerForm
         // Tabs keep the dialog short enough for small screens and high-DPI scaling (the stacked
         // single-column layout outgrew a 1080p display at 125% scaling) - same pattern as
         // SettingsForm. General holds the feature settings; Folders holds library and source paths.
-        tabMedia.Controls.Add(tabPageGeneral);
-        tabMedia.Controls.Add(tabPageFolders);
+        tabMedia.Controls.Add(tabGeneral);
+        tabMedia.Controls.Add(tabFolders);
         // Fixed width (Top|Left, not Right) so the fixed-size group boxes inside are never stretched;
         // the form stays Sizable for the results grid/detail panel below, which do stretch. The tab
         // ends flush with the grid at the design width; widening the form grows the grid past it.
@@ -231,13 +231,13 @@ partial class MediaManagerForm
         tabMedia.TabIndex      = 0;
         // UseVisualStyleBackColor is deliberately left false on both pages: the visual-style
         // page background renders light even in dark mode (see SettingsForm's tabs).
-        tabPageGeneral.Controls.Add(grpGeneral);
-        tabPageGeneral.Name = "tabPageGeneral";
-        tabPageGeneral.Text = "General";
-        tabPageFolders.Controls.Add(grpLibrary);
-        tabPageFolders.Controls.Add(grpSourceFolders);
-        tabPageFolders.Name = "tabPageFolders";
-        tabPageFolders.Text = "Folders";
+        tabGeneral.Controls.Add(grpGeneral);
+        tabGeneral.Name = "tabGeneral";
+        tabGeneral.Text = "General";
+        tabFolders.Controls.Add(grpLibrary);
+        tabFolders.Controls.Add(grpSourceFolders);
+        tabFolders.Name = "tabFolders";
+        tabFolders.Text = "Folders";
         // ── Action buttons ────────────────────────────────────────────
         btnScanNow.Location = new Point(8, 278);
         btnScanNow.Name     = "btnScanNow";
@@ -269,6 +269,8 @@ partial class MediaManagerForm
         lblScanStatus.Name      = "lblScanStatus";
         lblScanStatus.Size      = new Size(272, 28);
         lblScanStatus.TabIndex  = 5;
+        // Shows file names, which may contain '&'.
+        lblScanStatus.UseMnemonic = false;
         lblScanStatus.TextAlign = ContentAlignment.MiddleLeft;
         lblScanStatus.ForeColor = SystemColors.GrayText;
         // ── Results grid ──────────────────────────────────────────────
@@ -327,7 +329,10 @@ partial class MediaManagerForm
         dgvResults.Size         = new Size(684, 196);
         dgvResults.ClipboardCopyMode = DataGridViewClipboardCopyMode.EnableWithoutHeaderText;
         dgvResults.TabIndex          = 7;
-        dgvResults.TabStop           = false;
+        // Reachable by Tab so rows can be reviewed from the keyboard; StandardTab lets Tab leave the
+        // grid instead of walking its cells.
+        dgvResults.TabStop           = true;
+        dgvResults.StandardTab       = true;
         dgvResults.CellFormatting          += dgvResults_CellFormatting;
         dgvResults.CellContentClick        += dgvResults_CellContentClick;
         dgvResults.CellEndEdit             += dgvResults_CellEndEdit;
@@ -381,11 +386,14 @@ partial class MediaManagerForm
         lblTmdbTitle.Name         = "lblTmdbTitle";
         lblTmdbTitle.Size         = new Size(390, 20);
         lblTmdbTitle.TabIndex     = 1;
+        // Titles and file names may contain '&', which must show as itself, not as a mnemonic.
+        lblTmdbTitle.UseMnemonic  = false;
         lblTmdbMeta.Anchor        = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
         lblTmdbMeta.Location      = new Point(84, 36);
         lblTmdbMeta.Name          = "lblTmdbMeta";
         lblTmdbMeta.Size          = new Size(590, 18);
         lblTmdbMeta.TabIndex      = 2;
+        lblTmdbMeta.UseMnemonic   = false;
         lblTmdbMeta.ForeColor     = SystemColors.GrayText;
         lblTmdbConfidence.Anchor  = AnchorStyles.Top | AnchorStyles.Right;
         lblTmdbConfidence.Location = new Point(480, 10);
@@ -458,8 +466,8 @@ partial class MediaManagerForm
         grpLibrary.ResumeLayout(false);
         grpLibrary.PerformLayout();
         grpSourceFolders.ResumeLayout(false);
-        tabPageGeneral.ResumeLayout(false);
-        tabPageFolders.ResumeLayout(false);
+        tabGeneral.ResumeLayout(false);
+        tabFolders.ResumeLayout(false);
         tabMedia.ResumeLayout(false);
         ((System.ComponentModel.ISupportInitialize)dgvResults).EndInit();
         pnlTmdbDetail.ResumeLayout(false);
@@ -468,8 +476,8 @@ partial class MediaManagerForm
     }
 
     private TabControl tabMedia;
-    private TabPage    tabPageGeneral;
-    private TabPage    tabPageFolders;
+    private TabPage    tabGeneral;
+    private TabPage    tabFolders;
 
     private GroupBox grpGeneral;
     private CheckBox chkEnabled;

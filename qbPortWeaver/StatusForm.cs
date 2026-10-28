@@ -78,7 +78,7 @@ public partial class StatusForm : Form
         base.OnLoad(e);
         RefreshStatus();
         _clockTimer = new System.Windows.Forms.Timer { Interval = 1000 };
-        _clockTimer.Tick += ClockTimer_Tick;
+        _clockTimer.Tick += clockTimer_Tick;
         _clockTimer.Start();
     }
 
@@ -94,7 +94,7 @@ public partial class StatusForm : Form
     // sync "ago" suffix, the Monitoring since elapsed duration, and the Reachable age. The remaining
     // values change only when a cycle completes, so they are left untouched here. Monitoring since
     // needs no snapshot, so it advances even before the first cycle has produced one.
-    private void ClockTimer_Tick(object? sender, EventArgs e)
+    private void clockTimer_Tick(object? sender, EventArgs e)
     {
         if (IsDisposed) return;
         PopulateMonitoringSince();
@@ -349,7 +349,7 @@ public partial class StatusForm : Form
     private const string RecoveryNextCycleText = "Will trigger on the next failed cycle";
     // No countdown, unlike the two holds: this state ends on a successful port read rather than at a
     // deadline. Says what stopped it and what starts it again, so the row is not simply a dead end.
-    private const string RecoverySuspendedText = "Suspended - restarts did not restore the port, resumes when one is found";
+    private const string RecoverySuspendedText = "Suspended - restarts did not help, resumes when a port is found";
 
     // What the Auto-recovery row says, and whether it warrants the warning accent. Split from the
     // display above so every outcome routes through one place that also sets the tooltip - with the

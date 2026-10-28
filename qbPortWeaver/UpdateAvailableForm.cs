@@ -114,7 +114,7 @@ internal sealed partial class UpdateAvailableForm : Form
         {
             if (IsDisposed) return;
             SetDownloadingUi(false);
-            lblStatus.Text = "The download failed its integrity check - opening the release page instead.";
+            lblStatus.Text = "Integrity check failed - opening the release page instead.";
             LogManager.Instance.LogMessage(
                 $"Update download rejected: {ex.Message}. The file was deleted; falling back to the release page",
                 LogLevel.Error);

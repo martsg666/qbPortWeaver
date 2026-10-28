@@ -91,7 +91,7 @@ public sealed class TransmissionClient : ManagedClientBase
     {
         string? serviceName = GetEffectiveServiceName();
         if (serviceName is not null)
-            return await RestartServiceModeAsync(serviceName, cancellationToken).ConfigureAwait(false);
+            return await RestartServiceModeAsync(serviceName, "start", cancellationToken).ConfigureAwait(false);
 
         return await base.ForceStartAsync(cancellationToken).ConfigureAwait(false);
     }
@@ -124,7 +124,7 @@ public sealed class TransmissionClient : ManagedClientBase
             modeDescription = $"service mode (assumed; daemon RPC unreachable). Service name: {serviceName}";
         LogManager.Instance.LogMessage($"{ClientName} restarting in {modeDescription}", LogLevel.Info);
         return isService
-            ? await RestartServiceModeAsync(serviceName!, cancellationToken).ConfigureAwait(false)
+            ? await RestartServiceModeAsync(serviceName!, "restart", cancellationToken).ConfigureAwait(false)
             : await RestartProcessModeAsync(cancellationToken).ConfigureAwait(false);
     }
 
@@ -339,7 +339,9 @@ public sealed class TransmissionClient : ManagedClientBase
         return found;
     }
 
-    private async Task<bool> RestartServiceModeAsync(string serviceName, CancellationToken cancellationToken)
+    // action names the attempt in the failure lines: a force-start goes through the same helper restart
+    // (which starts a stopped service), but nothing was running, so "restart" would misdescribe it.
+    private async Task<bool> RestartServiceModeAsync(string serviceName, string action, CancellationToken cancellationToken)
     {
         try
         {
@@ -351,13 +353,13 @@ public sealed class TransmissionClient : ManagedClientBase
 
             if (!helperResult.Completed || helperResult.ErrorCount > 0)
             {
-                LogManager.Instance.LogMessage($"{ClientName} service '{serviceName}' restart did not complete cleanly", LogLevel.Error);
+                LogManager.Instance.LogMessage($"{ClientName} service '{serviceName}' {action} did not complete cleanly", LogLevel.Error);
                 return false;
             }
 
             if (!IsRunning())
             {
-                LogManager.Instance.LogMessage($"{ClientName} service '{serviceName}' did not come back up after restart", LogLevel.Error);
+                LogManager.Instance.LogMessage($"{ClientName} service '{serviceName}' did not come up after the {action}", LogLevel.Error);
                 return false;
             }
 
@@ -372,7 +374,7 @@ public sealed class TransmissionClient : ManagedClientBase
         // cancellation, then catch broadly so LogHttpException can classify the timeout.
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            LogManager.Instance.LogMessage($"Failed to restart {ClientName} service: {ex.Message}", LogLevel.Error);
+            LogManager.Instance.LogMessage($"Failed to {action} {ClientName} service: {ex.Message}", LogLevel.Error);
             return false;
         }
     }

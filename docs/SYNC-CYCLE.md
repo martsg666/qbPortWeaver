@@ -434,7 +434,9 @@ move is to wait for the next cycle rather than write something about to be wrong
 
 **The escalation.** For the ambiguous case, `TryRebindClientAddressAsync` runs inside
 `MaybeTriggerPortClosedRecoveryAsync`, ahead of the VPN restart dispatch, and only when the port is
-confirmed closed *and* the adapter changed address. That ordering is the point: restarting the VPN
+confirmed closed, the adapter changed address, the client is qBittorrent and **Fix interface binding**
+is on. Port verification and port-closed recovery must be on as well, since this runs inside that
+trigger (`SyncConfig.RebindReachable` names the whole set). That ordering is the point: restarting the VPN
 cannot move a listener stranded on the old address, and costs the user the tunnel to discover it. The
 rebind is tried first, the trigger deliberately stays **armed**, and the confirmed-closed count resets
 so the next escalation needs fresh evidence - if the rebind did not help, that round restarts the VPN
@@ -819,7 +821,7 @@ RunAsync
          │           ├─ mismatch held: ReconnectForExitAddressAsync (up to 3, spaced 2 minutes, then the give-up)
          │           │   └─ DispatchRecoveryAsync
          │           ├─ PortClosedRecoveryHeldBack (time floor, settle window; PortClosedHoldEnd for the status file)
-         │           ├─ TryRebindClientAddressAsync (qBittorrent; if the adapter changed address)
+         │           ├─ TryRebindClientAddressAsync (qBittorrent with Fix interface binding on; if the adapter changed address)
          │           │   └─ QBittorrentClient.ForceInterfaceRebindAsync (holds the restart one round)
          │           └─ DispatchRecoveryAsync (one-shot)
          └─ SetSyncResult

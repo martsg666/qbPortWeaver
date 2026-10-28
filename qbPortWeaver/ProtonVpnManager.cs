@@ -35,8 +35,9 @@ public sealed partial class ProtonVpnManager : IVpnManager
     [GeneratedRegex(@"Connected to server ([A-Z]{2}(?:-[A-Z]{2})?#\d+[A-Za-z0-9-]*)")]
     private static partial Regex ServerNameRegex();
 
-    // Read lazily, once per instance: only the exit-address check needs them, and only while the port
-    // reads closed, whereas the port is read every cycle. The server lines are written once per
+    // Read lazily, once per instance: only the exit-address check needs them (on a closed or undetermined
+    // port test, on an open one while exit reconnects are spent, and in Diagnostics), whereas the port is
+    // read every cycle. The server lines are written once per
     // connection, so on a long session they sit far back in the file or in the rotated one; only when both
     // files have lost them do they stay null, and the check does not run.
     private bool _serverScanned;

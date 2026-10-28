@@ -55,7 +55,9 @@ public partial class WhatsNewForm : Form
         "the port has stayed closed for as long as its checks normally take, so the quick checks that follow " +
         "a reconnect no longer restart the VPN while the client is still reconnecting; the Status panel " +
         "shows it holding rather than a count past its target. Switching VPN provider or adapter also ends " +
-        "a run of recoveries, so the new one is not suspended for restarts it never had.\n\n" +
+        "a run of recoveries, so the new one is not suspended for restarts it never had. A closed port is " +
+        "confirmed only by a check at least half a sync interval after the first, so the quick re-check after " +
+        "a reconnect no longer reports the client still settling as an outage.\n\n" +
         "Fixed: multi-part movies and subtitles in the Media Manager\n" +
         "Movies split into several files, named only by part (cd1, Part.1, CD_2) or each carrying the title and year, " +
         "are now recognised, keep their part numbers on Re-match and import into one folder. Import " +

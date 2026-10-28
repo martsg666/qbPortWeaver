@@ -184,6 +184,7 @@ public sealed class PortSyncService
     // latched for one client cannot silence, or be reported as cleared by, the next one.
     private string? _conflictClientName;
     private bool _portCheckPendingConfirmation; // one unconfirmed closed result seen
+    private TimeSpan? _portClosedPendingAt;     // uptime reading at that result, so the confirmation cannot follow too soon
     private bool _portConfirmedClosed;          // closed confirmed by two consecutive checks
     // Whether a confirmed-closed Warn has gone out and no open result has followed it. Outlives
     // _portConfirmedClosed, which RestartClosedPortSequence clears mid-outage, so the "reachable again"
@@ -231,8 +232,9 @@ public sealed class PortSyncService
     private bool _vpnProtonOverOpenVpn;
     // Reconnects made for the current mismatch (see ReconnectForExitAddressAsync), and whether the user
     // has been told they ran out. Reset by a matching lookup outside the settle window (including the one an
-    // open result makes while they are spent), a switch to a provider with no forward address, or
-    // verification switched off - not by an open result alone or a failed lookup.
+    // open result makes while they are spent), a mismatch on a new forward after a give-up
+    // (StartNewExitEpisodeIfForwardChanged), a change of provider or adapter, a switch to a provider with no
+    // forward address, or verification switched off - not by an open result alone or a failed lookup.
     private int _vpnExitReconnects;
     private bool _vpnExitGiveUpNotified;
     // The forward address the give-up was for, so a mismatch on another one is told apart as a new server
@@ -241,8 +243,8 @@ public sealed class PortSyncService
     // Uptime reading at the last exit-address reconnect, for MinVpnExitReconnectSpacing; null before the first.
     private TimeSpan? _vpnExitLastReconnectAt;
     // Whether the current mismatch episode has had its balloon. Outlives a failed lookup, which ends the
-    // hold but not the episode; cleared by a matching lookup, an open port outside the settle window, or a
-    // provider with no forward.
+    // hold but not the episode; cleared by a matching lookup, an open port outside the settle window, a new
+    // forward after a give-up, a change of provider or adapter, or a provider with no forward.
     private bool _vpnExitAnnounced;
     // Whether the "reachable again" line has gone out for the current exit-address announcement: an open
     // result inside the settle window keeps the announcement, and the checks after it would otherwise
@@ -1136,7 +1138,14 @@ public sealed class PortSyncService
     {
         string recoveryContext = $"{cfg.VpnProvider}|{cfg.VpnAdapterName}";
         if (_recoveryContext is not null && !string.Equals(_recoveryContext, recoveryContext, StringComparison.OrdinalIgnoreCase))
+        {
             _recoveryGate.ResetForNewContext();
+            // So does an exit-address episode: its reconnects, give-up and announcement were for the old
+            // setup, and two setups can report the same provider name (a NAT-PMP adapter and Static port on
+            // it), so the provider check in EndVpnExitHoldWithoutForward cannot tell them apart.
+            if (_vpnExitMismatch) RestartClosedPortSequence();
+            ClearVpnExitMismatch();
+        }
         _recoveryContext = recoveryContext;
     }
 
@@ -1630,9 +1639,9 @@ public sealed class PortSyncService
     // has rotated the connection line away - is no evidence either way, so it is handled as a failed lookup:
     // the hold ends but the episode, its reconnects and its give-up stay, or the next fresh log line would
     // start a whole new round of reconnects hours after a give-up. The exit address goes, so the status file
-    // does not show the old differing pair beside a cleared mismatch. Only a different provider (a switch to
-    // one that reports none) ends the episode outright. Either way the hold ending restarts the closed-port
-    // sequence, for the same reason a matching lookup does.
+    // does not show the old differing pair beside a cleared mismatch. After a give-up the hold stays instead
+    // (see below). Only a different provider (a switch to one that reports none) ends the episode outright.
+    // Whenever the hold ends, the closed-port sequence restarts, for the same reason a matching lookup does.
     private void EndVpnExitHoldWithoutForward(IVpnManager? vpnManager)
     {
         if (vpnManager is not null && string.Equals(vpnManager.ProviderName, _vpnExitProvider, StringComparison.OrdinalIgnoreCase))
@@ -1684,10 +1693,7 @@ public sealed class PortSyncService
         // Keyed on the episode as well as the hold: a failed lookup in between ends the hold but not the
         // episode, and the match that finally ends it must still be reported.
         if (episodeEnds && (_vpnExitMismatch || _vpnExitAnnounced))
-            LogManager.Instance.LogMessage(
-                $"Traffic now leaves from {exit}, the address the port is forwarded on" +
-                (_vpnExitReconnects > 0 ? $" - matched after {TextFormat.Pluralize(_vpnExitReconnects, "reconnect")}" : string.Empty),
-                LogLevel.Info);
+            LogExitAddressMatched(exit!);
         else if (exit is null)
             LogManager.Instance.LogDebug("PortSyncService.CheckVpnExitAddressAsync: exit address could not be determined");
         else if (settling)
@@ -1730,6 +1736,15 @@ public sealed class PortSyncService
         // reported twice.
         if (episodeEnds) EndVpnExitEpisode();
     }
+
+    // The Info line for a match that ends an episode. Credits the reconnects only before a give-up: after it
+    // the app reconnected no more, so a match then is the user's doing (another server, or the switch to
+    // Proton WireGuard), not the reconnects'.
+    private void LogExitAddressMatched(System.Net.IPAddress exit) =>
+        LogManager.Instance.LogMessage(
+            $"Traffic now leaves from {exit}, the address the port is forwarded on" +
+            (_vpnExitReconnects > 0 && !_vpnExitGiveUpNotified ? $" - matched after {TextFormat.Pluralize(_vpnExitReconnects, "reconnect")}" : string.Empty),
+            LogLevel.Info);
 
     // Whether the connection may still be one of the provider's own intermediate ones: an exit reconnect, or
     // any other recovery (the failed-cycle or port-closed trigger restarts the service just the same), less
@@ -1797,6 +1812,7 @@ public sealed class PortSyncService
     // keepReconnects (the open-port case): the reconnects already made stay spent, so a client whose test
     // flips to open in between cannot buy a fresh MaxVpnExitReconnects each time - only a lookup that finds
     // the addresses equal (EndVpnExitHold, or ResetSpentExitReconnectsIfMatchedAsync on an open result), a
+    // new forward after a give-up (StartNewExitEpisodeIfForwardChanged), a change of provider or adapter, a
     // switch to a provider with no forward address, or verification switched off starts the count again.
     private void ClearVpnExitMismatch(bool keepReconnects = false)
     {
@@ -1880,7 +1896,18 @@ public sealed class PortSyncService
         if (!_portCheckPendingConfirmation)
         {
             _portCheckPendingConfirmation = true;
+            _portClosedPendingAt = _uptime.Elapsed;
             LogManager.Instance.LogMessage($"{clientName} port {port} test reports closed - confirming on the next check", LogLevel.Info);
+            return;
+        }
+        // The confirming check has to come at least half an interval later: the quick re-check after a
+        // network change or Sync Now runs about 10 seconds on, and two closed readings that close together
+        // are usually one reconnect still settling (qBittorrent stays firewalled for minutes), which would
+        // then be warned and announced as an outage. Still pending, so the next cycle checks again.
+        if (_portClosedPendingAt is { } pendingSince
+            && _uptime.Elapsed - pendingSince < TimeSpan.FromSeconds(config.UpdateIntervalSeconds / 2.0))
+        {
+            LogManager.Instance.LogDebug("PortSyncService.HandlePortClosedResult: closed again too soon after the first closed result to confirm it - waiting for the next cycle");
             return;
         }
 

@@ -499,7 +499,7 @@ public partial class MediaManagerForm : Form
         // the user to edit names that were never actually looked up.
         if (result.TmdbUnavailable)
             return result.UnreadableSourceFolders.Length > 0
-                ? "Some source folders could not be read, and TMDB could not be reached. See the log."
+                ? "Some source folders could not be read, and TMDB was unavailable. See the log."
                 : "TMDB could not be reached or rejected the API key; some files were not looked up.";
         return UnreadableSourcesStatus(result, sourceFolders.Length);
     }
@@ -651,8 +651,8 @@ public partial class MediaManagerForm : Form
         // unchecked would otherwise show as "no TMDB match" when they were never looked up.
         if (remaining.TmdbUnavailable)
             return failed == 0
-                ? "Done - all selected files imported; TMDB could not be reached for the rest."
-                : $"Done - {TextFormat.Pluralize(failed, "file")} could not be imported; TMDB could not be reached for the rest.";
+                ? "Done - all selected files imported; TMDB was unavailable for the rest."
+                : $"Done - {TextFormat.Pluralize(failed, "file")} could not be imported; TMDB was unavailable for the rest.";
         return failed == 0
             ? "Done - all selected files imported."
             : $"Done - {TextFormat.Pluralize(failed, "file")} could not be imported. See the log for details.";

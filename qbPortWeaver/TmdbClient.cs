@@ -74,7 +74,9 @@ public sealed class TmdbClient(string apiKey)
         // or a truncated download produces on an otherwise successful response. Letting it escape
         // kills the app, because the caller is an async void event handler that only expects
         // OperationCanceledException. Returning null is the documented "no poster" outcome.
-        catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException
+        // IOException: GetByteArrayAsync streams the body, so a connection reset mid-download surfaces as
+        // an HttpIOException rather than an HttpRequestException.
+        catch (Exception ex) when (ex is HttpRequestException or IOException or OperationCanceledException
                                          or ArgumentException or OutOfMemoryException or NotSupportedException)
         {
             LogManager.Instance.LogDebug(
@@ -257,19 +259,16 @@ public sealed class TmdbClient(string apiKey)
         }
         try
         {
-            T? result;
+            // One request path for both key formats. SendAsync buffers the whole body before returning, so a
+            // connection reset mid-reply surfaces as an HttpRequestException with no status, which
+            // MeansUnavailable counts; GetFromJsonAsync streamed it instead, and the same reset escaped as an
+            // HttpIOException that no TMDB handler caught, depending only on which key format was pasted.
+            using var request = new HttpRequestMessage(HttpMethod.Get, url);
             if (_useBearer)
-            {
-                using var request = new HttpRequestMessage(HttpMethod.Get, url);
                 request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", apiKey);
-                using var response = await _httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
-                response.EnsureSuccessStatusCode();
-                result = await response.Content.ReadFromJsonAsync<T>(cancellationToken).ConfigureAwait(false);
-            }
-            else
-            {
-                result = await _httpClient.GetFromJsonAsync<T>(url, cancellationToken).ConfigureAwait(false);
-            }
+            using var response = await _httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
+            response.EnsureSuccessStatusCode();
+            T? result = await response.Content.ReadFromJsonAsync<T>(cancellationToken).ConfigureAwait(false);
             Interlocked.Exchange(ref _consecutiveTransportFailures, 0);
             LogManager.Instance.ClearLogState(UnavailableStateKey);
             return result;

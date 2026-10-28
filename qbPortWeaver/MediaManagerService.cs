@@ -514,7 +514,8 @@ public static class MediaManagerService
         if (!libraryReady)
             return null;
 
-        var classified = await ClassifySourceFoldersAsync(enumerated, cancellationToken).ConfigureAwait(false);
+        var (classified, lostFolders) = await ClassifySourceFoldersAsync(enumerated, cancellationToken).ConfigureAwait(false);
+        unreadableFolders.AddRange(lostFolders);
         int total = classified.Sum(c => c.Items.MovieFiles.Length + c.Items.TvShowFiles.Length + c.Items.FolderTvFiles.Length);
 
         return (tmdb, classified, total, [.. unreadableFolders]);
@@ -590,7 +591,8 @@ public static class MediaManagerService
     // Folders are processed sequentially so that a single Parallel.ForEach (degree MediaImporter.FingerprintParallelism)
     // is active at a time - processing folders concurrently would multiply the parallelism by the folder count.
     // sourceFpToPath is shared across all folders so source duplicates spanning multiple folders are detected.
-    private static Task<List<(string Folder, (string[] MovieFiles, string[] TvShowFiles, FolderClassifiedEpisode[] FolderTvFiles) Items)>> ClassifySourceFoldersAsync(
+    // Also returns the folders that turned out to be unreachable after they were listed.
+    private static Task<(List<(string Folder, (string[] MovieFiles, string[] TvShowFiles, FolderClassifiedEpisode[] FolderTvFiles) Items)> Classified, List<string> Lost)> ClassifySourceFoldersAsync(
         List<(string Folder, List<FileInfo> Candidates)> enumerated, CancellationToken cancellationToken)
     {
         return Task.Run(() =>
@@ -599,19 +601,20 @@ public static class MediaManagerService
             var classified = new List<(string Folder, (string[] MovieFiles, string[] TvShowFiles, FolderClassifiedEpisode[] FolderTvFiles) Items)>(enumerated.Count);
             var sourceFpToPath = new ConcurrentDictionary<string, string>(StringComparer.Ordinal);
 
+            var lost = new List<string>();
             foreach (var e in enumerated)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                try
+                var (items, unreadFiles) = ClassifyCandidates(e.Candidates, sourceFpToPath, cancellationToken);
+                classified.Add((e.Folder, items));
+                // Every file failing to read is either a folder of files still being written, or a share
+                // that dropped after it was listed - classification waits for the library build, so that
+                // window is real. Told apart by asking for the folder itself: a dropped share joins the
+                // unreadable folders, so the window does not report its files as already imported.
+                if (unreadFiles > 0 && unreadFiles == e.Candidates.Count && !MediaImporter.DirectoryExistsWithSmbRetry(e.Folder))
                 {
-                    classified.Add((e.Folder, ClassifyCandidates(e.Candidates, sourceFpToPath, cancellationToken)));
-                }
-                // Parallel.ForEach wraps what its body throws in an AggregateException, so the folder is
-                // skipped when every inner failure is a file-system one, as a direct throw would be.
-                catch (AggregateException ex) when (IsFileSystemFailure(ex))
-                {
-                    LogManager.Instance.LogMessage($"Skipped source folder '{e.Folder}': {ex.Flatten().InnerExceptions[0].Message}", LogLevel.Warn, Subsystem.MediaManager);
-                    classified.Add((e.Folder, (MovieFiles: [], TvShowFiles: [], FolderTvFiles: [])));
+                    LogManager.Instance.LogMessage($"Source folder '{e.Folder}' could not be read after it was listed - skipped", LogLevel.Warn, Subsystem.MediaManager);
+                    lost.Add(e.Folder);
                 }
             }
 
@@ -624,21 +627,20 @@ public static class MediaManagerService
                 $"Source files classified: {movieTotal + tvShowTotal + folderTvTotal} ({movieTotal} movies, {tvShowTotal + folderTvTotal} TV episodes) in {classifySw.ElapsedMilliseconds}ms (cached={sourceCached}, computed={sourceComputed})",
                 LogLevel.Info, Subsystem.MediaManager);
 
-            return classified;
+            return (classified, lost);
         }, cancellationToken);
     }
-
-    private static bool IsFileSystemFailure(AggregateException ex) =>
-        ex.Flatten().InnerExceptions.All(inner => inner is IOException or UnauthorizedAccessException);
 
     // Fingerprints candidates in parallel, filters out files already in the library, and classifies
     // the remainder into movie and TV episode file paths in a single pass.
     // Each candidate requires a 128 KB read; reads are bounded by MediaImporter.FingerprintParallelism.
     // fpToPath maps each fingerprint to the first source path that produced it (shared across folders).
     // Files already in the library are silently skipped; additional source copies of the same content are warned.
-    private static (string[] MovieFiles, string[] TvShowFiles, FolderClassifiedEpisode[] FolderTvFiles) ClassifyCandidates(
+    // UnreadFiles: how many candidates could not be read to fingerprint them.
+    private static ((string[] MovieFiles, string[] TvShowFiles, FolderClassifiedEpisode[] FolderTvFiles) Items, int UnreadFiles) ClassifyCandidates(
         List<FileInfo> candidates, ConcurrentDictionary<string, string> fpToPath, CancellationToken cancellationToken)
     {
+        int unreadFiles = 0;
         var movieFiles = new ConcurrentBag<string>();
         var tvShowFiles = new ConcurrentBag<string>();
         var folderTvFiles = new ConcurrentBag<FolderClassifiedEpisode>();
@@ -652,6 +654,7 @@ public static class MediaManagerService
                 catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
                 {
                     LogManager.Instance.LogDebug($"MediaManagerService.ClassifyCandidates: Skipped '{fi.Name}': {ex.Message}", Subsystem.MediaManager);
+                    Interlocked.Increment(ref unreadFiles);
                     return;
                 }
 
@@ -683,7 +686,7 @@ public static class MediaManagerService
                 }
             });
 
-        return (movieFiles.ToArray(), tvShowFiles.ToArray(), folderTvFiles.ToArray());
+        return ((movieFiles.ToArray(), tvShowFiles.ToArray(), folderTvFiles.ToArray()), unreadFiles);
     }
 
     // Recognises files that live under a season-indicator folder (e.g. "Season 01", "saison 1")

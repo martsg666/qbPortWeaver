@@ -983,12 +983,15 @@ internal static partial class MediaImporter
             // If visited==0, the source share was unreachable this cycle; treat as no stale entries to
             // avoid calling File.Exists on hundreds of UNC paths against an unreachable host (each call
             // blocks for a full SMB timeout, turning a missed cycle into a multi-minute hang).
+            // Compared with the entries under the folders read, not the whole cache: entries under a folder
+            // that is offline, or no longer in the list, are kept on purpose, and counting them made every
+            // cycle check every entry and rewrite the file while such a folder existed.
             int visited = _sourceCachedCount + _sourceComputedCount;
-            bool mightHaveStaleEntries = visited > 0 && snapshot.Count > visited;
+            var readPrefixes = readFolders.Select(FolderPrefix).ToArray();
+            bool mightHaveStaleEntries = visited > 0 && snapshot.Keys.Count(k => IsUnderAnyPrefix(k, readPrefixes)) > visited;
 
             if (!wasDirty && !mightHaveStaleEntries) return;
 
-            var readPrefixes = readFolders.Select(FolderPrefix).ToArray();
             var toSave = mightHaveStaleEntries
                 ? snapshot.Where(kv => !IsUnderAnyPrefix(kv.Key, readPrefixes) || File.Exists(kv.Key))
                           .ToDictionary(kv => kv.Key, kv => kv.Value, StringComparer.OrdinalIgnoreCase)

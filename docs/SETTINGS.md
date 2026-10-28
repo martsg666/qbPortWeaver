@@ -120,7 +120,7 @@ There is also a cheaper remedy it tries first. If the port stays closed and the 
 |---|---|---|
 | Check that the forwarded port is open after each sync | After each sync, check that the listening port is reachable from the Internet (after a port change and every 5th cycle) | `True` |
 | Trigger auto-recovery when port stays closed | Independent trigger: runs auto-recovery when port verification confirms the port closed for the configured number of checks. Fires at most once until a scheduled check reports the port open again. If traffic leaves the VPN from a different address than the port is forwarded on, it instead reconnects the VPN up to 3 times for a matching one, or makes no reconnect when the gateway is itself behind another NAT (see VPN Exit Address Check in the README). Requires the port check above | `True` |
-| Trigger after (confirmed closed checks) | Number of confirmed closed checks before auto-recovery is triggered | `3` |
+| Trigger after (confirmed closed checks) | Number of confirmed closed checks before auto-recovery is triggered. Recovery is also held until the port has stayed closed for the time these checks would normally span, and for 2 minutes after an exit-address reconnect, so the quick checks that follow a reconnect do not trigger it | `3` |
 | Trigger auto-recovery when no port assigned or disconnected | Trigger auto-recovery (a VPN service restart, or an adapter cycle when NAT-PMP or Static port uses an adapter of no installed ProtonVPN or PIA) after N consecutive cycles where the VPN is disconnected or assigns no forwarded port. Client-side failures do not count | `True` |
 | Trigger after (consecutive failed cycles) | Number of consecutive cycles without an assigned port before auto-recovery is triggered. Recovery is also held until the failures have persisted for the time these cycles would normally span, so a brief network blip that races through several early re-syncs does not trigger it | `3` |
 
@@ -140,7 +140,7 @@ Configured via tray menu → **Media Manager**.
 |---|---|---|
 | Enable Media Manager | Run the media importer on each sync cycle | `False` |
 | TMDB API Key | API key for The Movie Database lookups (free at themoviedb.org/settings/api) | - |
-| Dry run | Preview imports without touching any files | `True` |
+| Dry run | The automatic sync cycle only logs what it would import, without touching any files. Import Now in the Media Manager still imports | `True` |
 | Import mode | How files are transferred to the library: `Hardlink` (default, falls back to copy for cross-volume), `Copy`, or `Move` | `Hardlink` |
 | Create Plex folder structure when importing | Organise each title into its own Plex subfolder (`Title (Year)/` for movies, `Show (Year)/Season XX/` for TV) | `True` |
 | Delete empty source folders after importing | After importing, delete source subfolders that are empty or contain only `.nfo` files | `False` |

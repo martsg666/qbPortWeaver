@@ -39,7 +39,8 @@ public partial class WhatsNewForm : Form
         "or gateway instead of telling you to pick a P2P server.\n\n" +
         "Changed: Nicotine+ says when a new port is not live yet\n" +
         "The log now says when Nicotine+ saved the port but could not switch over straight away, or " +
-        "may have left an old router mapping in place, and /qbpw-port says so too.\n\n" +
+        "may have left an old router mapping in place, and /qbpw-port says so too, including when it " +
+        "turned UPnP off. The plugin's Address setting now accepts an IPv6 address such as ::1.\n\n" +
         "Changed: latest .NET security update included\n" +
         "qbPortWeaver now ships with the October 2026 .NET update, which fixes a flaw in its " +
         "decompression code. qbPortWeaver never used that code, but you get the fix anyway.\n\n" +
@@ -52,7 +53,9 @@ public partial class WhatsNewForm : Form
         "force-stopped, a VPN service that is slow to start is no longer reported as a failed restart, and " +
         "a recovery that worked no longer shows the warning badge. Port-closed recovery now also waits until " +
         "the port has stayed closed for as long as its checks normally take, so the quick checks that follow " +
-        "a reconnect no longer restart the VPN while the client is still reconnecting.\n\n" +
+        "a reconnect no longer restart the VPN while the client is still reconnecting; the Status panel " +
+        "shows it holding rather than a count past its target. Switching VPN provider or adapter also ends " +
+        "a run of recoveries, so the new one is not suspended for restarts it never had.\n\n" +
         "Fixed: multi-part movies and subtitles in the Media Manager\n" +
         "Movies split into several files, named only by part (cd1, Part.1, CD_2) or each carrying the title and year, " +
         "are now recognised, keep their part numbers on Re-match and import into one folder. Import " +
@@ -63,7 +66,8 @@ public partial class WhatsNewForm : Form
         "answer no longer stops Re-match, the Import Now result stays on screen, and errors are " +
         "written to the log. When TMDB rejects the API key, or cannot be reached or times out twice in a row, " +
         "the rest of that run's lookups are skipped with one warning, instead of a warning and a wait for " +
-        "every title, and Scan Now says so rather than listing the files as unmatched.\n\n" +
+        "every title, and Scan Now, Re-match and Import Now say so rather than listing the files as unmatched. " +
+        "A source folder that cannot be read during a scan is skipped instead of ending the whole scan.\n\n" +
         "Fixed: Media Manager scans with other library folders\n" +
         "Scan Now, Import Now (including its cleanup of empty folders) and Clear Cache wait for the import running on the sync cycle instead of " +
         "disturbing it, which could fill the log with warnings about files already in the library. A scan also " +
@@ -94,7 +98,9 @@ public partial class WhatsNewForm : Form
         "unless Transmission is set to stay in the notification area when its window closes; the log then " +
         "says so. qBittorrent is now asked to exit cleanly before a restart instead of being closed " +
         "abruptly, so what it saves on exit is kept. A port change whose client restart fails is now still recorded in the port history and " +
-        "notified, and the post-update command still runs, with the failure in the status file.\n\n" +
+        "notified, and the post-update command still runs, with the failure in the status file. In " +
+        "confirmation dialogs Enter now answers Yes or OK, and No when the action deletes something, and " +
+        "Tab moves left to right. Enter no longer opens a link in the update, What's New and About windows.\n\n" +
         "Previously released\n\n" +
         "New in 2.6.9\n\n" +
         "Your settings can be backed up and restored\n" +
